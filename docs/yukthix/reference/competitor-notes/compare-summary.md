@@ -170,3 +170,78 @@ Tier 1 is built in seven batches by area, in this order, after the assessments s
 - **G. Bigger single pieces:** 12, 14, 21.
 
 Tiers 2 and 3 are decided after tier 1. Attendance-leave E2 (leave clash) is already live and off the list.
+
+## Payroll (Zoho Payroll compare, 17 Nov 2026)
+
+From `compare-payroll.md` (Zoho Payroll India trial, Keka My Finances, YukthiX code). 66 rows; 64 have a pick (two
+point to `compare-expenses-pay.md`).
+
+| Keep ours | Take Z | Mix | Skip |
+|---|---|---|---|
+| 42 | 10 | 11 | 1 |
+
+YukthiX is ahead on runs, filings, arrears, bonus, F&F and controls. Zoho is ahead on statutory breadth (every PT and
+LWF state, loan perquisites, flexible benefits, the new Act's section names).
+
+Top 5 must-builds. They do not fit batches A to G, so they go in a new batch:
+
+- **H. Payroll:**
+  1. D4: PT rule files for every PT state (M).
+  2. D14: loan perquisite worked out into TDS (M).
+  3. D10: new Income Tax Act section numbers with the old ones in brackets (S).
+  4. B2: "PF only below the ₹15,000 ceiling" component flag (S).
+  5. A2: block run approval when the entity's TAN, PAN or a PT registration is missing (S).
+
+The rest of the payroll Must tier (B8 / E5 flexible benefits, D5 LWF states, E1 open and lock declaration windows,
+A3 "Not ready for payroll" on People, E2 HR declares on behalf) follows in batch H after these five.
+
+## Founder decision (17 Nov 2026, "ok for all"): payroll and multi-country
+
+- **Batch H (Payroll statutory) moves before batch C.** The order is now A, B, H, C, D, E, F, G. H covers:
+  - PT rule files for every PT state;
+  - the loan perquisite in TDS;
+  - the new Income Tax Act section names;
+  - the "PF only below ₹15,000" component flag;
+  - blocking pay-run approval when PAN, TAN or PT registration is missing.
+
+  LWF for every state and the bonus minimum wage per state go into H too.
+- **Multi-country:**
+  - HR works in any country, with per-country rule packs, currencies and time zones.
+  - Payroll stays India-first; other countries connect to local payroll or EOR partners.
+  - The Oracle pass covers multi-country (entities, countries, currencies) next to the six enterprise areas.
+- **Enterprise batch:** gaps from the enterprise readiness check (costing and GL, retro pay, approval rules, position management, absence depth, audit history) become an "Enterprise" batch after tier 1, or earlier for a big customer.
+- **India rule files marked "verify":** they must be checked by a CA before any real company goes live on payroll.
+
+## Founder decision (17 Nov 2026, "ok for all"): GLPI ideas
+
+- **Added to batch F (helpdesk quick wins):** GLPI 4, 8 and 10 from `glpi-docs.md`:
+  - requester chase with auto-solve after N days with no reply (S);
+  - OLA team targets on tickets (S);
+  - rule export and import (S).
+- **New "IT assets" batch, with the Enterprise batch after tier 1:** GLPI 1, 2, 3, 5, 6 and 7:
+  - helpdesk IT asset register (L);
+  - warranty and finance per asset (M);
+  - asset booking (M);
+  - vendor contracts and suppliers (M);
+  - software licence seats (M);
+  - ticket and change costs rolling into budgets (M).
+- **GLPI 9:** notification templates in more languages, with the Hindi/locale work (Admin C1).
+
+## Founder decision (17 Nov 2026, "ok for all"): earlier gap order folded in
+
+Four items the founder had ranked first earlier move from tier 2 into **batch A**:
+- attendance-leave D12: partial cancel and extend;
+- D10: editable balance grid;
+- A9: office or remote on each punch;
+- B6: bulk shift, weekly-off and penalty changes.
+
+Batch A is now: 2, 5, 18, 7, 8, 9, C4, D12, D10, A9, B6. The order stays A → B → H → C → D → E → F → G. This
+replaces the 17 Nov "gap order" in `keka-ideas-map.md`; every item from it is now placed (calendar sync is tier 3,
+backups tier 2).
+
+## Founder decision (17 Nov 2026, "ok for all"): statutory findings
+
+1. **Urgent fix, ahead of the queue:** the PF and EPS wage ceiling becomes a dated rule: ₹15,000 before 17 Sep 2026, ₹25,000 from 17 Sep 2026 (S.O. 5109(E); the CA to confirm).
+2. **Same fix:** Tamil Nadu (Greater Chennai) PT deduction months become August and January, with the due date per the 4 Aug 2026 notice.
+3. **Batch H follows the H1–H16 builder list** in `reference/statutory/india-state-rules-2026-27.md`. Officially confirmed states go first; the rest wait for the CA.
+4. **CA checklist:** section 6 of that file goes out as a document for the CA.

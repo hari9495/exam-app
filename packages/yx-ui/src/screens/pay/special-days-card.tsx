@@ -20,8 +20,12 @@ export interface RunSpecialDays {
   /** Payroll may change them (payroll.input.manage; the run is not locked). */
   editable: boolean;
   rows: { employeeId: string; name: string; kind: SpecialKind; days: string; source: 'leave' | 'payroll'; note: string }[];
-  /** Injury leave approved after its month was locked (answer 93): to review, never applied by the app. */
-  corrections: { id: string; employeeId: string; name: string; month: string; days: string; note: string }[];
+  /**
+   * Injury leave approved after its month was locked (answer 93): to review, never applied by the app. An attendance or
+   * leave correction approved after the lock (kind "attendance", with its day) is paid by this run as an LOP reversal or
+   * recovery; payroll may mark it not paid. An older server sends no kind: injury.
+   */
+  corrections: { id: string; employeeId: string; name: string; month: string; days: string; note: string; kind?: 'injury' | 'attendance'; on?: string | null }[];
   /** Answer 121: late injury leave marked "Not paid", with its reason; undone only while the run is open. */
   notPaid?: { id: string; name: string; month: string; days: string; reason: string; by: string }[];
 }
@@ -103,18 +107,43 @@ export function SpecialDaysCard({
     }
   };
   const current = (employeeId: string) => data.rows.find((r) => r.employeeId === employeeId && r.kind === 'injury');
+  const injuries = data.corrections.filter((x) => x.kind !== 'attendance');
+  const paidHere = data.corrections.filter((x) => x.kind === 'attendance');
   return (
     <section className="yx-pay-panel" aria-label="Special days">
       <SectionTitle>Special days</SectionTitle>
       <div className="yx-pay-stack">
         <p className="yx-pay-muted">Days paid as a benefit instead of salary (injury, maternity, suspension), per person, with where each came from.</p>
-        {data.corrections.length > 0 && (
+        {paidHere.length > 0 && (
+          <PlainTable
+            label="Late corrections paid in this run"
+            caption="Approved after their month was locked: paid now as an LOP reversal or recovered, at that month's pay"
+            rows={paidHere}
+            getRowId={(x) => x.id}
+            columns={[
+              { key: 'name', header: 'Person', rowHeader: true, cell: (x) => x.name },
+              { key: 'on', header: 'Day', cell: (x) => (x.on ? new Date(`${x.on}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : monthText(x.month)) },
+              { key: 'note', header: 'Why', cell: (x) => x.note },
+              {
+                key: 'act',
+                header: <VisuallyHidden>Action</VisuallyHidden>,
+                cell: (x) =>
+                  canEdit && onNotPaid ? (
+                    <Button size="sm" onClick={() => (setError(null), setWhy(''), setDropping({ id: x.id, name: x.name }))}>
+                      Not paid
+                    </Button>
+                  ) : null,
+              },
+            ]}
+          />
+        )}
+        {injuries.length > 0 && (
           <InlineAlert tone="warning" title="Injury leave approved after its month was locked">
             <div className="yx-pay-stack">
               <span>Review each one: add the days to this month if they should be paid now. Nothing is added by itself.</span>
               <PlainTable
                 label="Late injury leave to review"
-                rows={data.corrections}
+                rows={injuries}
                 getRowId={(x) => x.id}
                 columns={[
                   { key: 'name', header: 'Person', rowHeader: true, cell: (x) => x.name },
@@ -166,7 +195,7 @@ export function SpecialDaysCard({
         />
         {(data.notPaid ?? []).length > 0 && (
           <PlainTable
-            label="Late injury leave marked not paid"
+            label="Late corrections marked not paid"
             caption="Marked not paid (not raised again)"
             rows={data.notPaid!}
             getRowId={(x) => x.id}

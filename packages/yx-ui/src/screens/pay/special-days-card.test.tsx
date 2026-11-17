@@ -84,6 +84,21 @@ describe('Special days card', () => {
     expect(onUndoNotPaid).toHaveBeenCalledWith('pc-0');
   });
 
+  it('a late attendance correction is listed as paid in this run (no Add to this month); Not paid takes it out', async () => {
+    const onNotPaid = vi.fn().mockResolvedValue(undefined);
+    const data = { ...SPECIAL_DAYS_SAMPLE, corrections: [{ id: 'pc-9', employeeId: 'e-asha', name: 'Asha Rao', month: '2026-10', days: '1.00', note: 'The gate reader missed me', kind: 'attendance' as const, on: '2026-10-05' }] };
+    show(<SpecialDaysCard data={data} onSave={vi.fn()} onNotPaid={onNotPaid} />);
+    const t = screen.getByRole('table', { name: /Approved after their month was locked/ });
+    expect(within(t).getByText('5 Oct 2026')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add to this month' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Injury leave approved after its month was locked')).not.toBeInTheDocument();
+    await ue.click(within(t).getByRole('button', { name: 'Not paid' }));
+    const d = await screen.findByRole('dialog', { name: 'Not paid · Asha Rao' });
+    await ue.type(within(d).getByRole('textbox', { name: /Why it is not paid/ }), 'Paid by cash at the site office');
+    await ue.click(within(d).getByRole('button', { name: 'Mark not paid' }));
+    expect(onNotPaid).toHaveBeenCalledWith('pc-9', 'Paid by cash at the site office');
+  });
+
   it('answer 121: no Not paid or Undo once the run is locked; a refusal stays in the dialog', async () => {
     const { unmount } = show(<SpecialDaysCard data={{ ...SPECIAL_DAYS_SAMPLE, editable: false }} onSave={vi.fn()} onNotPaid={vi.fn()} onUndoNotPaid={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Not paid' })).not.toBeInTheDocument();

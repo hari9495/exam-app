@@ -142,6 +142,21 @@ describe('VIS-01 walk-ins at the desk (live)', () => {
     expect((await screen.findAllByText('Mohan Lal is waiting for the host')).length).toBeGreaterThan(0);
   });
 
+  it('negative: the notice cannot be accepted before it shows; Ask the host says to wait and sends nothing', async () => {
+    const live = desk({ visits: [], walkIns: walkIns({ needs: vi.fn(() => new Promise<never>(() => undefined)) }) });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Add walk-in' }));
+    const d = screen.getByRole('dialog', { name: /Add a walk-in/ });
+    await ue.type(within(d).getByLabelText(/^Visitor's name/), 'Mohan Lal');
+    await ue.type(within(d).getByLabelText(/^Mobile/), '9000011111');
+    await ue.click(within(d).getByRole('combobox', { name: 'Visiting' }));
+    await ue.click(await screen.findByRole('option', { name: /Anita Desai/ }));
+    expect(within(d).getByRole('checkbox', { name: 'The visitor read and accepted the notice' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Ask the host' }));
+    expect(within(d).getByText('Wait for the notice to show, then let the visitor read it.')).toBeInTheDocument();
+    expect(live.walkIns.onAdd).not.toHaveBeenCalled();
+  });
+
   it('decide for the host: only after the timeout; a refusal needs the reason; acting: no walk-in button', async () => {
     const before = desk({ visits: [v({ approvalDueAt: new Date(Date.now() + 5 * 60_000).toISOString() })] });
     const { unmount } = show(<VisitorDeskScreen visits={[]} today={TODAY} live={before} />);
