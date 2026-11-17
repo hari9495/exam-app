@@ -157,4 +157,18 @@ describe('Assessments remainders', () => {
       await api('writer', 'get', `/asmt/tests/${ids.exam}/sections/nope/question-choices`).expect(400);
     });
   });
+  describe('2285 skill names for the tests key', () => {
+    it('a test writer reads the skill names (id and name only) without the bank key', async () => {
+      const rows = (await api('writer', 'get', '/asmt/tests/skills').expect(200)).body as Record<string, unknown>[];
+      expect(rows.map((r) => r.name)).toEqual(expect.arrayContaining([`java-${run}`, `sql-${run}`]));
+      expect(rows.every((r) => Object.keys(r).sort().join() === 'id,name')).toBe(true);
+    });
+
+    it('negative: the bank route stays the bank key\'s; the wrong role is refused; another company sees none of these', async () => {
+      await api('writer', 'get', '/tags').expect(403);
+      await api('reader', 'get', '/asmt/tests/skills').expect(403);
+      const b = (await api('adminB', 'get', '/asmt/tests/skills').expect(200)).body as { name: string }[];
+      expect(b.some((r) => r.name.includes(run))).toBe(false);
+    });
+  });
 });

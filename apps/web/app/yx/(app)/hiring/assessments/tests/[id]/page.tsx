@@ -20,7 +20,8 @@ export default function YxTestBuilderPage() {
   const write = useApiWrite();
   const { accessToken } = useAuth();
   const apiGet = <T,>(path: string) => apiFetch(path, {}, accessToken ?? undefined) as Promise<T>;
-  const skills = useApi<{ id: string; name: string }[]>('/tags');
+  // Answer 2285: skill names readable with the tests key.
+  const skills = useApi<{ id: string; name: string }[]>('/asmt/tests/skills');
   const perms = useYxPermissions();
   const open = (other: string) => router.push(`${BANK_BASE}/tests/${other}`);
   const t = `/asmt/tests/${id}`;

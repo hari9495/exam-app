@@ -82,6 +82,13 @@ export class AsmtTestsController {
     return this.tests.defaults(ctx);
   }
 
+  /** Answer 2285: the company's skill names (question tags) for test writers, names only (the bank key not needed). */
+  @Get('skills')
+  @RequirePermissions('exam:manage')
+  skills(@CurrentTenant() ctx: TenantContext) {
+    return this.tests.skills(ctx);
+  }
+
   @Post('from-job-description/propose')
   @HttpCode(200)
   @RequirePermissions('exam:manage')

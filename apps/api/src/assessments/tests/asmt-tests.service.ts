@@ -233,6 +233,11 @@ export class AsmtTestsService {
     });
   }
 
+  /** Answer 2285: the skills (question tags) by name, for mapping and pool skills; no questions, no counts. */
+  async skills(ctx: TenantContext): Promise<{ id: string; name: string }[]> {
+    return this.tenantPrisma.forTenant(ctx, (tx) => tx.tag.findMany({ where: { organizationId: ctx.organizationId as string }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 2000 }));
+  }
+
   async defaults(ctx: TenantContext): Promise<{ proctorMode: ProctorMode; highStakes: number; aiDrafts: boolean }> {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId as string;
