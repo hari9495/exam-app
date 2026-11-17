@@ -11,7 +11,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, LeaveHistoryQueryDto, WorkingDayDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PermissionDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, CancelDaysDto, ExtendLeaveDto, LeaveHistoryQueryDto, WorkingDayDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PermissionDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
@@ -83,6 +83,20 @@ export class TimeController {
   @HttpCode(200)
   cancel(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
     return this.leave.cancel(ctx, this.user(req), id, dto.reason);
+  }
+
+  /** Batch A D12: ask to cancel some days of approved leave not yet taken (to the approver). */
+  @Post('me/leave/:id/cancel-days')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  cancelDays(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelDaysDto) {
+    return this.leave.cancelDays(ctx, this.user(req), id, dto);
+  }
+
+  /** Batch A D12: extend leave: a new request from the day after its last day, linked to it. */
+  @Post('me/leave/:id/extend')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  extend(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ExtendLeaveDto) {
+    return this.leave.extend(ctx, this.user(req), id, dto);
   }
 
   @Post('me/holidays/:id/choose')

@@ -41,6 +41,11 @@ export interface LeaveRequestRow {
   decidedAt: string | null;
   /** Sent back for changes: what the approver asked to change, and who. */
   sentBack?: { reason: string | null; by: string | null; at: string } | null;
+  /** Batch A D12: approved leave still to come lists its leave days, and the days of a cancel waiting for approval. */
+  leaveDays?: { on: string; portion: number }[];
+  changeWaiting?: string[] | null;
+  /** Batch A D12: an extension names the request it extends. */
+  extendsRequestId?: string | null;
 }
 
 export interface HolidayRow {

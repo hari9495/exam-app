@@ -36,6 +36,9 @@ function MyLeave() {
         onResend: (rid, input) => write(`/me/leave/${id(rid)}/resend`, 'POST', input, true, 'Changed and sent again for approval'),
         onWithdraw: (rid) => write(`/me/leave/${id(rid)}/withdraw`, 'POST', undefined, true, 'Leave request withdrawn'),
         onCancel: (rid, reason) => write(`/me/leave/${id(rid)}/cancel`, 'POST', { reason }, true, 'Cancellation sent to your manager'),
+        // Batch A D12: cancel some days (to the approver) and extend (a new linked request); the drawers say done.
+        onCancelDays: (rid, x) => write(`/me/leave/${id(rid)}/cancel-days`, 'POST', x),
+        onExtend: (rid, x) => write(`/me/leave/${id(rid)}/extend`, 'POST', x),
         onChooseHoliday: (hid, choose) => write(`/me/holidays/${id(hid)}/${choose ? 'choose' : 'unchoose'}`, 'POST', undefined, true, choose ? 'Optional holiday taken' : 'Optional holiday given back'),
         // Batch A item 2 (C2): my full leave history, a page at a time.
         onHistory: (q) => {
