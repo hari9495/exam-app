@@ -2193,6 +2193,32 @@ function QueryDrawer({ slip, period, lines, lineCode, onClose, onSend }: { slip:
 
 /* ------------------------------------------------------------------ PAY-22 + PAY-41 live: Me › Tax, Me › Tax declarations */
 
+/** A tax window as the employee sees it: open or not, its dates, and whether HR opened or locked it early. */
+export interface TaxWindow {
+  key: 'declarations' | 'proofs';
+  open: boolean;
+  from: string;
+  to: string;
+  by: 'dates' | 'hr_open' | 'hr_lock';
+}
+
+const WINDOW_TITLE: Record<TaxWindow['key'], string> = { declarations: 'Declarations', proofs: 'Proofs of investment' };
+/** E1: one card per window with an OPEN tag (expenses-pay B7, Keka's window cards). */
+export function TaxWindowCards({ windows }: { windows: TaxWindow[] }) {
+  return (
+    <div className="yx-pay-windows" role="list" aria-label="Tax windows">
+      {windows.map((w) => (
+        <Card key={w.key} role="listitem" title={WINDOW_TITLE[w.key]} actions={<Badge tone={w.open ? 'success' : 'neutral'}>{w.open ? 'OPEN' : 'Closed'}</Badge>}>
+          <p className="yx-pay-note">
+            {dateText(w.from)} to {dateText(w.to)}
+            {w.by === 'hr_open' ? ' · opened early by HR' : w.by === 'hr_lock' ? ' · locked by HR' : ''}
+          </p>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 /** GET tax/me/workspace. */
 export interface MyTaxWorkspace {
   id?: string;
@@ -2206,6 +2232,8 @@ export interface MyTaxWorkspace {
   canChooseRegime?: boolean;
   canDeclare?: boolean;
   canSendProofs?: boolean;
+  /** E1 (batch H part 2): the declaration and proof windows, by the company dates or as HR opened or locked them. */
+  windows?: TaxWindow[];
   /** Founder answer 3: the latest "ask HR to change my regime" request (Approvals). */
   regimeRequest?: { id: string; from: 'new' | 'old'; to: 'new' | 'old'; reason: string; status: 'pending' | 'approved' | 'rejected'; requestedAt: string; decidedAt: string | null } | null;
   /** PAY-22 NoPan: the latest PAN link confirmation sent to payroll (waiting, or the last decision). */
@@ -2677,9 +2705,10 @@ function TaxDeclarations({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
         {askHr && <AskHrRegime w={w} onClose={() => setAskHr(false)} onSend={live.onRegimeRequest} />}
         {w.regime === 'new' && <p className="yx-pay-note">In the new regime, the declarations below don't reduce your tax. Keep them if you might switch.</p>}
       </section>
+      {w.windows && w.windows.length > 0 && <TaxWindowCards windows={w.windows} />}
       {d && !open && (
         <InlineAlert tone="info" title="Declarations are closed">
-          They closed on {dateText(d.proofCutoff)}. Anything else is claimed in your own tax return.
+          {w.windows?.find((x) => x.key === 'declarations')?.by === 'hr_lock' ? 'HR locked them.' : `They closed on ${dateText(d.proofCutoff)}.`} Anything else is claimed in your own tax return.
         </InlineAlert>
       )}
       {d && !d.lines.length && <EmptyState compact title="Nothing declared yet." description="Declare rent, investments and insurance to lower the tax taken from your pay." />}

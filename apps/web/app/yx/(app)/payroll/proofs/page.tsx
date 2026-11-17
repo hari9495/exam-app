@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { ProofQueueScreen, type Form12bRow, type MyDeclarations, type MyTaxWorkspace, type PanLinkRow, type ProofQueueLine, type ProofStatusFilter, type ResidencyRow } from '@yukthix/ui/pay';
+import { ProofQueueScreen, type AdminTaxWindow, type Form12bRow, type MyDeclarations, type MyTaxWorkspace, type PanLinkRow, type ProofQueueLine, type ProofStatusFilter, type ResidencyRow } from '@yukthix/ui/pay';
 import { payState, usePayBlob, usePayDownload } from '../../../../../lib/yx-pay';
 import { useApi, useApiWrite } from '../../../../../lib/yx-pay-5j';
 
@@ -32,6 +32,8 @@ export default function YxPayProofsPage() {
     ...(ownLine && ownWs.data?.id ? { line: { ...ownLine, workspaceId: ownWs.data.id, employeeId: '', employeeName: 'You' } } : {}),
     ...(ownRes ? { residency: { ...ownRes, employeeId: '', employeeName: 'You', legalEntityId: '' } } : {}),
   };
+  // E1 (batch H part 2): the declaration and proof windows, for those who may open or lock them (tax.regime.override).
+  const windows = useApi<AdminTaxWindow[]>('/tax/windows');
   const write = useApiWrite();
   const download = usePayDownload();
   const blob = usePayBlob();
@@ -58,6 +60,8 @@ export default function YxPayProofsPage() {
         onPanLinkFile: (r) => download(`/tax/pan-links/${e(r.id)}/file`, r.file?.name ?? 'pan-link.pdf'),
         onPanLinkPreview: (r) => blob(`/tax/pan-links/${e(r.id)}/file`),
         onPanLinkDecide: (r, d) => write(`/tax/pan-links/${e(r.id)}/decision`, d),
+        windows: windows.data ?? null,
+        onWindow: (w, action, reason) => write('/tax/windows', { legalEntityId: w.legalEntityId, window: w.key, action, reason }).then(() => windows.refetch()),
         openId,
         own: own.line || own.residency ? own : undefined,
       }}

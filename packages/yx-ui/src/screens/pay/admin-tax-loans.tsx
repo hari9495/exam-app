@@ -11,7 +11,7 @@ import { useRun } from '../org/org-kit';
 import { dateText } from '../time/live/kit';
 import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
 import { FindPerson, type PersonHit } from './equity';
-import { LANDLORD_RELATION, LOAN_STATE, LOAN_TYPE_TEXT, monthName, previewEmi, rateText, subjectText } from './employee-pay';
+import { LANDLORD_RELATION, TaxWindowCards, type TaxWindow, LOAN_STATE, LOAN_TYPE_TEXT, monthName, previewEmi, rateText, subjectText } from './employee-pay';
 import { EntityPicker } from './live/setup';
 import type { LoadState } from './live/types';
 import type { SetupEntity } from './live/types-5b';
@@ -569,10 +569,16 @@ export function ProofQueueScreen(p: {
   rows?: ProofRow[];
   /** Stories: the residential-status row (founder last 10, items 7 and 10). */ residency?: ResidencyStory;
   /** Stories: the PAN link confirmation (PAY-22 NoPan, checked here). */ panLink?: PanLinkStory;
+  /** Stories: E1 HR window controls above the queue. */ windows?: boolean;
   live?: LiveProofQueue;
 }) {
-  return p.live ? <LiveProofQueue live={p.live} /> : p.residency ? <LiveProofQueue key={p.residency} live={sampleResidencyQueue(p.residency)} /> : p.panLink ? <LiveProofQueue key={p.panLink} live={samplePanLinkQueue(p.panLink)} /> : <SampleProofQueue {...p} />;
+  return p.live ? <LiveProofQueue live={p.live} /> : p.windows ? <LiveProofQueue live={{ ...sampleResidencyQueue('queue'), windows: SAMPLE_WINDOWS, onWindow: async () => undefined }} /> : p.residency ? <LiveProofQueue key={p.residency} live={sampleResidencyQueue(p.residency)} /> : p.panLink ? <LiveProofQueue key={p.panLink} live={samplePanLinkQueue(p.panLink)} /> : <SampleProofQueue {...p} />;
 }
+
+const SAMPLE_WINDOWS: AdminTaxWindow[] = [
+  { legalEntityId: 'le1', entityName: 'Kaveri Foods Pvt Ltd', taxYear: '2026-27', key: 'declarations', open: true, from: '2026-04-01', to: '2027-02-28', by: 'dates' },
+  { legalEntityId: 'le1', entityName: 'Kaveri Foods Pvt Ltd', taxYear: '2026-27', key: 'proofs', open: true, from: '2027-01-01', to: '2027-02-28', by: 'hr_open' },
+];
 
 /** PAY-23 PAN link design states (PAY-22 NoPan sends them). */
 export type PanLinkStory = 'queue' | 'decide' | 'refused';
@@ -1914,7 +1920,18 @@ export interface PanLinkRow {
   verifiedAt: string | null;
 }
 
+/** E1: a tax window of one legal entity as HR manages it. */
+export interface AdminTaxWindow extends TaxWindow {
+  legalEntityId: string;
+  entityName: string;
+  taxYear: string;
+}
+export type TaxWindowAction = 'open' | 'lock' | 'dates';
+
 export interface LiveProofQueue {
+  /** E1 (batch H part 2): the declaration and proof windows HR may open or lock early (tax.regime.override). */
+  windows?: AdminTaxWindow[] | null;
+  onWindow?: (w: AdminTaxWindow, action: TaxWindowAction, reason: string) => Promise<unknown>;
   state: LoadState;
   onRetry?: () => void;
   status: ProofStatusFilter;
@@ -1968,6 +1985,55 @@ const LIVE_PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
   rejected: { label: 'Rejected', tone: 'danger' },
 };
 
+const WINDOW_NAME: Record<TaxWindow['key'], string> = { declarations: 'declarations', proofs: 'proofs' };
+const ACTION_TEXT: Record<TaxWindowAction, { button: string; title: (w: AdminTaxWindow) => string; done: string }> = {
+  open: { button: 'Open now', title: (w) => `Open the ${WINDOW_NAME[w.key]} window now (${w.entityName})`, done: 'Opened. Employees can send them now.' },
+  lock: { button: 'Lock now', title: (w) => `Lock the ${WINDOW_NAME[w.key]} window now (${w.entityName})`, done: 'Locked. Proofs already sent can still be decided.' },
+  dates: { button: 'Use the dates', title: (w) => `Go back to the dates for ${WINDOW_NAME[w.key]} (${w.entityName})`, done: 'Back to the company dates.' },
+};
+
+/** E1: HR opens or locks a window before its dates, or goes back to them; a reason each time (kept and audited). */
+function TaxWindowAdmin({ windows, onWindow }: { windows: AdminTaxWindow[]; onWindow: NonNullable<LiveProofQueue['onWindow']> }) {
+  const [act, setAct] = useState<{ w: AdminTaxWindow; action: TaxWindowAction } | null>(null);
+  const [reason, setReason] = useState('');
+  const entities = [...new Set(windows.map((w) => w.legalEntityId))];
+  const errors: FormErrorItem[] = reason.trim().length < 5 ? [{ fieldId: 'tw-reason', message: 'Say why, in a few words.' }] : [];
+  return (
+    <section className="yx-pay-panel" aria-label="Tax windows">
+      <SectionTitle>Declaration and proof windows</SectionTitle>
+      {entities.map((id) => {
+        const mine = windows.filter((w) => w.legalEntityId === id);
+        return (
+          <div key={id} className="yx-pay-stack">
+            {entities.length > 1 && <strong>{mine[0].entityName}</strong>}
+            <TaxWindowCards windows={mine} />
+            <div className="yx-pay-row">
+              {mine.flatMap((w) =>
+                (['open', 'lock', 'dates'] as const)
+                  .filter((a) => (a === 'open' ? !w.open : a === 'lock' ? w.open : w.by !== 'dates'))
+                  .map((a) => (
+                    <Button key={`${w.key}-${a}`} size="sm" onClick={() => { setReason(''); setAct({ w, action: a }); }}>
+                      {ACTION_TEXT[a].button}: {WINDOW_NAME[w.key]}
+                    </Button>
+                  )),
+              )}
+            </div>
+          </div>
+        );
+      })}
+      {act && (
+        <PayFormDrawer title={ACTION_TEXT[act.action].title(act.w)} confirm={ACTION_TEXT[act.action].button} done={ACTION_TEXT[act.action].done} errors={errors} onClose={() => setAct(null)} onSave={() => onWindow(act.w, act.action, reason.trim())}>
+          {(errorOf) => (
+            <FormField id="tw-reason" label="Reason" required error={errorOf('tw-reason')} helper="Kept with the change and shown in the audit log.">
+              <TextArea rows={3} value={reason} onChange={setReason} maxLength={300} />
+            </FormField>
+          )}
+        </PayFormDrawer>
+      )}
+    </section>
+  );
+}
+
 function LiveProofQueue({ live }: { live: LiveProofQueue }) {
   const [openId, setOpenId] = useState<string | null>(live.story?.openId ?? live.openId ?? null);
   const [ownOpen, setOwnOpen] = useState(true);
@@ -2008,6 +2074,7 @@ function LiveProofQueue({ live }: { live: LiveProofQueue }) {
     <PayFrame page="tax" counts={live.status === 'pending' ? { tax: rows.length } : undefined}>
       <PageHeader title="Proof verification" description="Proofs employees sent for their tax declarations, previous employers' Form 12B and residential-status changes. What you approve counts in their tax; a line rejected goes back with your comment. Your own proofs never show here." facts={live.state === 'ready' ? `${rows.length} ${live.status === 'pending' ? 'waiting' : 'lines'}` : undefined} />
       <PayPageState state={live.state} onRetry={live.onRetry} what="proofs" grantedBy="your payroll admin">
+        {live.windows && live.onWindow && <TaxWindowAdmin windows={live.windows} onWindow={live.onWindow} />}
         <DataTable
           label="Proof lines"
           columns={cols}

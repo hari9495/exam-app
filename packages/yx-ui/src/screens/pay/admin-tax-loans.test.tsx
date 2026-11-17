@@ -151,6 +151,33 @@ describe('PAY-23 · Payroll › Proof checking (live)', () => {
   const F12B: Form12bRow = { id: 'f1', employeeId: 'p2', employeeName: 'Divya Raghunathan', legalEntityId: 'e1', taxYear: '2026-27', employerName: 'Old Co', employerTan: 'BLRA12345B', gross: '300000.00', exemptions: '0.00', tds: '12000.00', status: 'pending', comment: null, file: { name: 'form12b.pdf', size: 1000, at: '2026-10-01T10:00:00Z' }, submittedAt: '2026-10-01T10:00:00Z' };
   const live = (over: Partial<LiveProofQueue> = {}): LiveProofQueue => ({ state: 'ready', status: 'pending', onStatus: vi.fn(), lines: PROOFS, form12b: [F12B], onFile: fn(), onDecide: fn(), onForm12bFile: fn(), onForm12bDecide: fn(), ...over });
 
+  it('E1: HR sees each window with its OPEN tag; Lock now asks for a reason first, then sends it', async () => {
+    const onWindow = fn();
+    const windows = [
+      { legalEntityId: 'e1', entityName: 'Kaveri Foods Pvt Ltd', taxYear: '2026-27', key: 'declarations' as const, open: true, from: '2026-04-01', to: '2027-02-28', by: 'dates' as const },
+      { legalEntityId: 'e1', entityName: 'Kaveri Foods Pvt Ltd', taxYear: '2026-27', key: 'proofs' as const, open: false, from: '2027-01-01', to: '2027-02-28', by: 'dates' as const },
+    ];
+    render(<ProofQueueScreen live={live({ windows, onWindow })} />);
+    const panel = screen.getByRole('region', { name: 'Tax windows' });
+    expect(within(panel).getByText('OPEN')).toBeInTheDocument();
+    expect(within(panel).getByText('Closed')).toBeInTheDocument();
+    // Only the actions that change something: lock the open one, open the closed one; no "Use the dates" yet.
+    expect(within(panel).queryByRole('button', { name: /Use the dates/ })).not.toBeInTheDocument();
+    await ue.click(within(panel).getByRole('button', { name: 'Lock now: declarations' }));
+    const d = screen.getByRole('dialog');
+    await ue.click(within(d).getByRole('button', { name: 'Lock now' }));
+    expect(within(d).getByText('Say why, in a few words.')).toBeInTheDocument();
+    expect(onWindow).not.toHaveBeenCalled();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Projection freeze');
+    await ue.click(within(d).getByRole('button', { name: 'Lock now' }));
+    await waitFor(() => expect(onWindow).toHaveBeenCalledWith(windows[0], 'lock', 'Projection freeze'));
+  });
+
+  it('without the windows (no override key) the panel is not shown', () => {
+    render(<ProofQueueScreen live={live()} />);
+    expect(screen.queryByRole('region', { name: 'Tax windows' })).not.toBeInTheDocument();
+  });
+
   it('a part approval is below what was declared; a rejection needs a comment', async () => {
     const onDecide = fn();
     render(<ProofQueueScreen live={live({ onDecide })} />);

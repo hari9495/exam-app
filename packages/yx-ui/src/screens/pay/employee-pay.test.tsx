@@ -292,6 +292,20 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     expect(screen.getByRole('button', { name: 'Ask HR to change regime' })).toBeInTheDocument();
   });
 
+  it('E1: the window cards show OPEN or Closed; locked by HR, declaring is off and the note says HR locked it', () => {
+    const windows = [
+      { key: 'declarations' as const, open: false, from: '2026-04-01', to: '2099-01-31', by: 'hr_lock' as const },
+      { key: 'proofs' as const, open: true, from: '2026-04-01', to: '2099-01-31', by: 'hr_open' as const },
+    ];
+    render(<TaxWorkspaceScreen live={live({ tab: 'declarations', workspace: { ...WS, canDeclare: false, windows } })} />);
+    const list = screen.getByRole('list', { name: 'Tax windows' });
+    expect(within(list).getByText('OPEN')).toBeInTheDocument();
+    expect(within(list).getByText(/locked by HR/)).toBeInTheDocument();
+    expect(within(list).getByText(/opened early by HR/)).toBeInTheDocument();
+    expect(screen.getByText(/HR locked them/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add declaration' })).not.toBeInTheDocument();
+  });
+
   it('declare rent: it asks for the months and the city and sends the monthly rent', async () => {
     const onDeclare = fn();
     render(<TaxWorkspaceScreen live={live({ tab: 'declarations', declarations: { ...DECLARATIONS, lines: [DECLARATIONS.lines[1]] }, onDeclare })} />);

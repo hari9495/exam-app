@@ -379,4 +379,38 @@ describe('Payroll: state statutory rules (batch H)', () => {
       expect((await api('payAdmin', 'patch', `/payroll/components/${c.id}`).send({ ...body({ pfWage: true, pfBelowCeiling: false }), version: c.version }).expect(200)).body).toMatchObject({ pfWage: true, pfBelowCeiling: false });
     });
   });
+
+  describe('E1 (batch H part 2): HR opens or locks the declaration and proof windows', () => {
+    type W = { legalEntityId: string; key: string; open: boolean; by: string };
+    const mine = (rows: W[], key: string) => rows.find((w) => w.legalEntityId === ids.entity && w.key === key)!;
+    const ws = async () => (await api('emp1', 'get', '/tax/me/workspace').expect(200)).body as { windows: W[]; canDeclare: boolean; canSendProofs: boolean };
+    it('by the dates in November: declarations open, proofs not yet (they open on 1 Jan)', async () => {
+      const rows = (await api('payAdmin', 'get', '/tax/windows').expect(200)).body as W[];
+      expect([mine(rows, 'declarations'), mine(rows, 'proofs')]).toMatchObject([{ open: true, by: 'dates' }, { open: false, by: 'dates' }]);
+      expect(await ws()).toMatchObject({ canDeclare: true, canSendProofs: false });
+    });
+    it('negatives: an employee is refused, another company gets 404, a bad action or short reason is a 400; nothing is kept', async () => {
+      const send = (who: Who, extra: Record<string, unknown>) => api(who, 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'proofs', action: 'open', reason: 'Year-end rush', ...extra });
+      await send('emp1', {}).expect(403);
+      await send('payAdminB', {}).expect(404);
+      await send('payAdmin', { action: 'close' }).expect(400);
+      await send('payAdmin', { reason: 'no' }).expect(400);
+      expect(await inA((tx) => tx.taxWindowAction.count({ where: { legalEntityId: ids.entity } }))).toBe(0);
+    });
+    it('HR opens proofs early and locks declarations: the employee sees both, and a declaration is refused (409) with nothing saved', async () => {
+      await api('payAdmin', 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'proofs', action: 'open', reason: 'Year-end rush, open early' }).expect(200);
+      const locked = (await api('payAdmin', 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'declarations', action: 'lock', reason: 'Projection freeze for December' }).expect(200)).body as W[];
+      expect(mine(locked, 'declarations')).toMatchObject({ open: false, by: 'hr_lock' });
+      expect(await ws()).toMatchObject({ canDeclare: false, canSendProofs: true });
+      const before = await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }));
+      expect((await api('emp1', 'post', '/tax/me/declarations').send({ lines: [{ subjectKey: 'sec80c', amount: '50000.00' }] }).expect(409)).body.message).toBe('HR has locked declarations for now.');
+      expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(before);
+    });
+    it('back to the dates: declarations open again; every change is kept and audited', async () => {
+      await api('payAdmin', 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'declarations', action: 'dates', reason: 'Freeze over' }).expect(200);
+      expect((await ws()).canDeclare).toBe(true);
+      expect(await inA((tx) => tx.taxWindowAction.count({ where: { legalEntityId: ids.entity } }))).toBe(3);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'tax.window.changed', entityId: ids.entity } }))).toBe(3);
+    });
+  });
 });

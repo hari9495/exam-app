@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, RegimeRequestDto, RegimeWhatIfDto, ResidencyRequestDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
+import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, RegimeRequestDto, RegimeWhatIfDto, ResidencyRequestDto, TaxWindowActionDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
 import { TaxService } from './tax.service';
 
 // Payroll batch 5e, income tax (M03-BUILD-DESIGN §14.5). Every route declares its key (YX-SEC-01) or is the signed-in
@@ -134,6 +134,19 @@ export class TaxController {
   @RequirePermissions('tax.workspace.view')
   workspaces(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: WorkspaceListDto) {
     return this.tax.workspaces(ctx, this.user(req), q.employeeId);
+  }
+
+  @Get('windows')
+  @RequirePermissions('tax.regime.override')
+  windows(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.tax.windowsAdmin(ctx, this.user(req));
+  }
+
+  @Post('windows')
+  @HttpCode(200)
+  @RequirePermissions('tax.regime.override')
+  setWindow(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TaxWindowActionDto) {
+    return this.tax.setWindow(ctx, this.user(req), dto);
   }
 
   @Post('workspaces/:id/regime')

@@ -24,3 +24,4 @@ export const ResidencyOwn: S = { name: 'Residency · deciding your own · refuse
 export const PanLinkQueue: S = { name: 'PAN link · in the queue', args: { panLink: 'queue' } };
 export const PanLinkDecide: S = { name: 'PAN link · confirmation · decide', args: { panLink: 'decide' } };
 export const PanLinkRefused: S = { name: 'PAN link · refused with a reason', args: { panLink: 'refused' } };
+export const Windows: S = { name: 'Windows · HR opens or locks early (E1)', args: { windows: true } };
