@@ -107,6 +107,20 @@ export class PayrollController {
     return this.periods.lateRequest(ctx, this.user(req), dto);
   }
 
+  /** Answer 2282: the company's active leave types (code and name) for a late request's "it was this leave". */
+  @Get('leave-types')
+  @RequirePermissions('payroll.input.manage')
+  leaveTypes(@CurrentTenant() ctx: TenantContext) {
+    return this.periods.leaveTypes(ctx);
+  }
+
+  /** Answer 2283 (PAY-01): late corrections of people who have left, waiting for their full and final settlement. */
+  @Get('corrections/waiting-fnf')
+  @RequirePermissions('payroll.run.view')
+  waitingForFnf(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.periods.waitingForFnf(ctx, this.user(req));
+  }
+
   /** PAY-04: the month's stage per legal entity for the LOP input (frozen or locked takes a late request). */
   @Get('input-periods/:month')
   @RequirePermissions('payroll.input.manage')

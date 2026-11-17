@@ -31,6 +31,17 @@ const home = (over: Partial<LivePayrollHome> = {}): LivePayrollHome => ({
 });
 
 describe('PAY-01 Payroll home, live', () => {
+  it('answer 2283: a late correction of someone who has left shows as waiting for F&F, with a link to it; none, nothing shown', () => {
+    const { unmount } = render(<PayrollHomeScreen live={home({ waitingForFnf: [{ id: 'pc1', name: 'Ravi Kumar', on: '2026-08-05', month: '2026-09', fnfId: 'f1' }], fnfHref: (id) => `/fnf/${id}` })} />);
+    const list = screen.getByRole('list', { name: 'Waiting for F&F' });
+    expect(within(list).getByText('Ravi Kumar: late correction for 2026-08-05')).toBeInTheDocument();
+    expect(within(list).getByText('Waiting for F&F')).toBeInTheDocument();
+    expect(within(list).getByRole('link', { name: 'Open F&F' })).toHaveAttribute('href', '/fnf/f1');
+    unmount();
+    render(<PayrollHomeScreen live={home({ waitingForFnf: [] })} />);
+    expect(screen.queryByRole('list', { name: 'Waiting for F&F' })).toBeNull();
+  });
+
   it('the stages and the badge cover all nine statuses; void runs are never this month’s run', () => {
     expect(stageOf('reopened', false)).toBe('In review');
     expect(stageOf('submitted', false)).toBe('In review');

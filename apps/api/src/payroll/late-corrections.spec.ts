@@ -27,3 +27,15 @@ describe('late corrections paid in the next run', () => {
     expect(correctionLabel('2026-12-05', 0.5, null)).toMatch(/^Loss of pay recovered for 2026-12-05 \(0.5 day; late correction\)/);
   });
 });
+
+describe('answer 2282: the fixed choice', () => {
+  const types = [{ name: 'Leave without pay', code: 'LWP', paid: false }, { name: 'Casual leave', code: 'CL', paid: true }];
+  it('unpaid is a whole unpaid day; a leave type by code is paid or unpaid as the type is', () => {
+    expect(shouldBeLop({ source: 'hr', change: { shouldBe: 'unpaid' } }, types)).toBe(1);
+    expect(shouldBeLop({ source: 'hr', change: { shouldBe: 'leave:LWP' } }, types)).toBe(1);
+    expect(shouldBeLop({ source: 'late_request', change: { shouldBe: 'leave:cl' } }, types)).toBe(0);
+  });
+  it('negative: a leave code the company does not have counts as a paid day (the server refuses it when asked)', () => {
+    expect(shouldBeLop({ source: 'hr', change: { shouldBe: 'leave:XYZ' } }, types)).toBe(0);
+  });
+});

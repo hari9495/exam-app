@@ -18,10 +18,18 @@ export const LISTED_SOURCES = [...PAID_SOURCES, 'injury_leave'];
 
 const D = (v: Prisma.Decimal.Value) => new Prisma.Decimal(v);
 
-/** The unpaid part of the day it should have been (0, 0.5 or 1). Unknown words count as a paid day: the approver said so. */
+/**
+ * The unpaid part of the day it should have been (0, 0.5 or 1). Answer 2282: new requests say "present", "half_day",
+ * "unpaid" or "leave:<code>"; older free-text ones are read as before (an unknown word counts as a paid day).
+ */
 export function shouldBeLop(x: { source: string; change: unknown }, leaveTypes: { name: string; code: string; paid: boolean }[]): number {
   if (x.source === 'device_backfill') return 0;
   const said = String((x.change as { shouldBe?: string } | null)?.shouldBe ?? '').trim().toLowerCase();
+  if (said === 'unpaid' || said === 'absent') return 1;
+  if (said.startsWith('leave:')) {
+    const t = leaveTypes.find((l) => l.code.toLowerCase() === said.slice(6));
+    return t && !t.paid ? 1 : 0;
+  }
   if (said === 'half_day' || said === 'half day') return 0.5;
   if (said === 'present' || said === 'on_leave' || said === 'on leave') return 0;
   const t = leaveTypes.find((l) => l.name.toLowerCase() === said || l.code.toLowerCase() === said);
@@ -73,3 +81,27 @@ export function paidCorrections(tx: Tx, org: string, legalEntityId: string, empl
 }
 
 export const monthOf = (d: Date) => dateOf(d).slice(0, 7);
+
+/** Answer 2283: the leaver's last day in this legal entity (left, or an accepted exit with its approved last day), else null. */
+export async function lastDayIn(tx: Tx, org: string, employeeId: string, legalEntityId: string): Promise<string | null> {
+  const em = await tx.employment.findFirst({ where: { organizationId: org, employeeId, legalEntityId }, orderBy: { joinedOn: 'desc' }, select: { id: true, exitedOn: true } });
+  if (!em) return null;
+  if (em.exitedOn) return dateOf(em.exitedOn);
+  const exit = await tx.exitCase.findFirst({ where: { organizationId: org, employmentId: em.id, status: 'accepted', approvedLwd: { not: null } }, orderBy: { approvedLwd: 'desc' }, select: { approvedLwd: true } });
+  return exit?.approvedLwd ? dateOf(exit.approvedLwd) : null;
+}
+
+/**
+ * Answer 2283: a correction that would be paid in a month after the person left goes to their full and final
+ * settlement instead (the F&F run of the month of the last day pays it; it is never lost in a payroll they are not in).
+ */
+export async function paidIn(tx: Tx, org: string, employeeId: string, legalEntityId: string, nextOpen: string): Promise<{ month: string; fnf: boolean }> {
+  const last = await lastDayIn(tx, org, employeeId, legalEntityId);
+  return last && nextOpen > last.slice(0, 7) ? { month: last.slice(0, 7), fnf: true } : { month: nextOpen, fnf: false };
+}
+
+/** The leave types a "leave:<code>" choice may name (answer 2282). */
+export async function knownLeave(tx: Tx, org: string, shouldBe: string): Promise<boolean> {
+  if (!shouldBe.startsWith('leave:')) return true;
+  return Boolean(await tx.leaveType.findFirst({ where: { organizationId: org, code: { equals: shouldBe.slice(6), mode: 'insensitive' } }, select: { id: true } }));
+}
