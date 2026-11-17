@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { createHash, randomBytes } from 'crypto';
+import { parse } from 'csv-parse/sync';
+import { isEmail } from 'class-validator';
 import { Prisma } from '@prisma/client';
 import { AuditService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../../email/email.service';
@@ -12,6 +14,18 @@ import { campusSettingsProblem, readCampus, type CampusSettings } from './campus
 // college coordinator's read-only link. No admit cards.
 
 export type Visibility = 'none' | 'aggregate' | 'per_candidate';
+
+export const INSTITUTION_COLUMNS = ['name', 'code', 'city', 'coordinator_name', 'coordinator_email', 'results'] as const;
+export const INSTITUTION_IMPORT_MAX = 500;
+const RESULTS_WORDS: Record<string, Visibility> = { none: 'none', counts: 'aggregate', each: 'per_candidate' };
+
+export interface InstitutionImportRow {
+  line: number;
+  name: string;
+  code: string;
+  ok: boolean;
+  problem: string | null;
+}
 
 export interface InstitutionRow {
   id: string;
@@ -155,6 +169,59 @@ export class CampusService {
     });
     await this.audit.record(ctx, { actorUserId: userId, action: id ? 'institution.updated' : 'institution.created', entityType: 'institution', entityId: saved.id, metadata: { code: saved.code } });
     return { id: saved.id };
+  }
+
+  /**
+   * Answer 2241: institutions from a CSV (name, code, city, coordinator_name, coordinator_email, results). Every row is
+   * checked first; `commit` adds the good rows in one go. A code already in the list (or twice in the file) is refused.
+   */
+  async importInstitutions(ctx: TenantContext, userId: string, csv: string, commit: boolean): Promise<{ rows: InstitutionImportRow[]; added: number }> {
+    const org = this.org(ctx);
+    let records: string[][];
+    try {
+      records = parse(csv.replace(/^﻿/, ''), { skip_empty_lines: true, trim: true, max_record_size: 4096 }) as string[][];
+    } catch (e) {
+      throw new BadRequestException(`The file is not valid CSV: ${(e as Error).message}`);
+    }
+    if (records.length < 2) throw new BadRequestException('The file has no rows under the header.');
+    if (records.length > INSTITUTION_IMPORT_MAX + 1) throw new BadRequestException(`Import at most ${INSTITUTION_IMPORT_MAX} institutions at a time.`);
+    const header = records[0].map((h) => h.trim().toLowerCase().replace(/[\s-]+/g, '_'));
+    const unknown = header.filter((h) => !(INSTITUTION_COLUMNS as readonly string[]).includes(h));
+    if (unknown.length) throw new BadRequestException(`Unknown column: ${unknown.join(', ')}. Use: ${INSTITUTION_COLUMNS.join(', ')}.`);
+    if (!header.includes('name') || !header.includes('code')) throw new BadRequestException('The file needs the name and code columns.');
+    const cell = (r: string[], k: (typeof INSTITUTION_COLUMNS)[number]) => (header.includes(k) ? (r[header.indexOf(k)] ?? '').trim() : '');
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const existing = await tx.asmtInstitution.findMany({ where: { organizationId: org }, select: { code: true } });
+      const taken = new Set(existing.map((e) => e.code.toLowerCase()));
+      const rows: (InstitutionImportRow & { data?: Prisma.AsmtInstitutionUncheckedCreateInput })[] = records.slice(1).map((r, i) => {
+        const line = i + 2;
+        const name = cell(r, 'name');
+        const code = cell(r, 'code');
+        const city = cell(r, 'city');
+        const coordinatorName = cell(r, 'coordinator_name');
+        const coordinatorEmail = cell(r, 'coordinator_email').toLowerCase();
+        const results = cell(r, 'results').toLowerCase() || 'counts';
+        const problem =
+          name.length < 2 || name.length > 300 ? 'Name the institution (2 to 300 characters).'
+          : !code || code.length > 40 ? 'Give its code (up to 40 characters).'
+          : taken.has(code.toLowerCase()) ? `The code ${code} is already in the list.`
+          : city.length > 120 ? 'The city is too long (120 characters at most).'
+          : coordinatorName.length > 200 ? "The coordinator's name is too long (200 characters at most)."
+          : coordinatorEmail && (!isEmail(coordinatorEmail) || coordinatorEmail.length > 320) ? `Not an email address: ${coordinatorEmail}.`
+          : !(results in RESULTS_WORDS) ? 'Results must be none, counts or each.'
+          : null;
+        if (problem) return { line, name, code, ok: false, problem };
+        taken.add(code.toLowerCase());
+        return { line, name, code, ok: true, problem: null, data: { organizationId: org, name, code, city: city || null, coordinatorName: coordinatorName || null, coordinatorEmail: coordinatorEmail || null, resultsVisibility: RESULTS_WORDS[results] } };
+      });
+      const good = rows.filter((r) => r.data);
+      let added = 0;
+      if (commit && good.length) {
+        added = (await tx.asmtInstitution.createMany({ data: good.map((r) => r.data!) })).count;
+        await this.audit.record(ctx, { actorUserId: userId, action: 'institution.imported', entityType: 'institution', metadata: { added, codes: good.map((r) => r.code) } });
+      }
+      return { rows: rows.map(({ data: _data, ...r }) => r), added };
+    });
   }
 
   /* ---------------------------------------------------------------- a drive's campus kit */

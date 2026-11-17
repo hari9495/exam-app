@@ -47,6 +47,12 @@ export class SaveCampusDto {
   @IsOptional() @ValidateNested() @Type(() => CampusSettingsDto) settings!: CampusSettingsDto | null;
 }
 
+/** Answer 2241: a CSV of institutions; `commit` false only checks the rows. */
+export class InstitutionImportDto {
+  @IsString() @MinLength(1) @MaxLength(262_144) csv!: string;
+  @IsBoolean() commit!: boolean;
+}
+
 export class MergeDto {
   @IsUUID() intoId!: string;
 }
@@ -71,6 +77,13 @@ export class CampusController {
   @RequirePermissions('candidate:manage')
   createInstitution(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Body() dto: InstitutionDto) {
     return this.campus.saveInstitution(ctx, userId, null, dto);
+  }
+
+  @Post('institutions/import')
+  @HttpCode(200)
+  @RequirePermissions('candidate:manage')
+  importInstitutions(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Body() dto: InstitutionImportDto) {
+    return this.campus.importInstitutions(ctx, userId, dto.csv, dto.commit);
   }
 
   @Put('institutions/:id')

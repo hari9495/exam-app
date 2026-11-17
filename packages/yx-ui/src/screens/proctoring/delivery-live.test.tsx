@@ -252,6 +252,38 @@ describe('PRC-29 campus kit (live)', () => {
   });
 });
 
+describe('PRC-29 import institutions (live, answer 2241)', () => {
+  it('checks the pasted rows first, then adds only the good ones', async () => {
+    const onImportInstitutions = vi.fn().mockResolvedValueOnce({ rows: [{ line: 2, name: 'Vaigai College', code: 'VCE-31', ok: true, problem: null }, { line: 3, name: 'Copy', code: 'CIT-1', ok: false, problem: 'The code CIT-1 is already in the list.' }], added: 0 }).mockResolvedValueOnce({ rows: [], added: 1 });
+    wrap(<CampusKitScreen live={liveCampus({ onImportInstitutions })} tab="institutions" />);
+    await ue.click(screen.getByRole('button', { name: 'Import institutions' }));
+    await ue.click(screen.getByRole('textbox', { name: /Or paste the rows/ }));
+    const CSV = 'name,code\nVaigai College,VCE-31\nCopy,CIT-1';
+    await ue.paste(CSV);
+    await ue.click(screen.getByRole('button', { name: 'Check the file' }));
+    expect(onImportInstitutions).toHaveBeenLastCalledWith(CSV, false);
+    expect(screen.getByText('1 of 2 rows can be added')).toBeInTheDocument();
+    expect(screen.getByText('The code CIT-1 is already in the list.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add 1 institution' }));
+    expect(onImportInstitutions).toHaveBeenLastCalledWith(expect.any(String), true);
+    expect((await screen.findAllByText('1 institution added')).length).toBeGreaterThan(0);
+  });
+
+  it('negative: nothing chosen asks for a file; a refused file says why and adds nothing', async () => {
+    const onImportInstitutions = vi.fn().mockRejectedValue(new Error('Unknown column: campus. Use: name, code, city, coordinator_name, coordinator_email, results.'));
+    wrap(<CampusKitScreen live={liveCampus({ onImportInstitutions })} tab="institutions" />);
+    await ue.click(screen.getByRole('button', { name: 'Import institutions' }));
+    await ue.click(screen.getByRole('button', { name: 'Check the file' }));
+    expect(screen.getByText('Choose a CSV file or paste the rows.')).toBeInTheDocument();
+    expect(onImportInstitutions).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('textbox', { name: /Or paste the rows/ }));
+    await ue.paste('name,campus');
+    await ue.click(screen.getByRole('button', { name: 'Check the file' }));
+    expect(await screen.findByText(/Unknown column: campus/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Add \d/ })).toBeNull();
+  });
+});
+
 describe('PRC-29 college coordinator (live)', () => {
   it('shows their college only, with counts, and no results before the drive closes', () => {
     wrap(<CoordinatorPortalScreen live={liveCoordinator()} />);

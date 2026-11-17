@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { CampusKitScreen, type LiveCampusSettings, type LiveCollegeRow, type LiveDriveRow, type LiveInstitution, type LiveRegistrant } from '@yukthix/ui/assessments';
+import { CampusKitScreen, type InstitutionImportResult, type LiveCampusSettings, type LiveCollegeRow, type LiveDriveRow, type LiveInstitution, type LiveRegistrant } from '@yukthix/ui/assessments';
 import { useApi, useApiWrite } from '../../../../../../../lib/yx-hiring';
 import { loadState } from '../../../../../../../lib/yx-assessments';
 
@@ -42,6 +42,8 @@ export default function YxDriveCampusPage() {
         onSaveInstitution: async (instId, body) => {
           await write(instId ? 'PUT' : 'POST', instId ? `/asmt/institutions/${instId}` : '/asmt/institutions', body);
         },
+        // Answer 2241: check (commit false) then add the good rows.
+        onImportInstitutions: (csv, commit) => write<InstitutionImportResult>('POST', '/asmt/institutions/import', { csv, commit }),
         onSendCoordinatorLink: async (institutionId) => (await write<{ sentTo: string }>('POST', `/asmt/drives/${id}/coordinator-link`, { institutionId })).sentTo,
         onMerge: async (regId, intoId) => {
           await write('POST', `/asmt/registrants/${regId}/merge`, { intoId });
