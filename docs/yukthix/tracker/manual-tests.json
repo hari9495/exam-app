@@ -22272,6 +22272,33 @@
     "note": "Positive and negative. No video or evidence frames on the incident yet (question 2262)."
   },
   {
+    "id": "MT-ASMT-INT2",
+    "area": "Live console, pauses in the runner, face re-check, appeal file, section rescore, emails: answers 2006, 2205, 2231, 2264-2266 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Tests › a test › Live console; Candidate › the test and Your result; Appeals",
+    "url": "http://localhost:3000/yx/hiring/assessments/tests",
+    "account": "A proctor with a security key; two candidates taking a short test (one with face checks and an enrolment photo); a reviewer who did not give the verdict.",
+    "steps": [
+      "As the proctor, open /yx/hiring/assessments/tests/<test id>/live while both candidates answer.",
+      "Negative: open a tile; Pause with a 5-character reason.",
+      "Pause with a reason and the message 'Please clear your desk'.",
+      "As that candidate, look at the test; try to continue.",
+      "As the proctor, Resume with a reason; then End attempt with a reason (security key).",
+      "Approve time above the cap for the face-checked candidate (Connectivity).",
+      "As that candidate, press Check and continue facing the camera.",
+      "Give a 'section not counted' verdict on a finished attempt; check the result and the candidate's email.",
+      "As the candidate, appeal with a PDF; negative: try a .html renamed to .pdf.",
+      "As the reviewer, open the appeal's file with View; overturn it (security key); check the result and email."
+    ],
+    "expected": "Step 2: 'Enter a reason of at least 10 characters'; nothing sent. Step 3: the tile shows Paused. Step 4: the paused view with 'Message from your proctor: \"Please clear your desk\"'; no Continue. Step 5: the test carries on, then ends; the record keeps both reasons. Step 6: the candidate's test pauses with 'Check your face to continue'. Step 7: it resumes (or says it did not match and stays paused). Step 8: that section scores zero; an email with the decision, reason and window. Step 9: the PDF is accepted; the fake file is refused. Step 10: the file opens; overturned restores the score; an email with the outcome.",
+    "stories": [
+      "LiveConsole",
+      "PausedByProctor",
+      "LiveDecide",
+      "LiveVerdict"
+    ],
+    "note": "Positive and negative. No integrity score or camera thumbnails on the tiles yet (question 2268)."
+  },
+  {
     "id": "MT-ASMT-HELP1",
     "area": "Assessments AS-4b (16 Nov 2026)",
     "screen": "Candidate › Ask for an accommodation; Hire › Assessments › Accommodation requests",
