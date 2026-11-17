@@ -22681,5 +22681,124 @@
       "Screens/Time/TIM-19 · Leave request detail"
     ],
     "note": "Positive and negative. HR's screen for cancelling any day is not built yet (API only, question 2325)."
+  },
+  {
+    "id": "MT-BATA-D10",
+    "area": "Batch A: balance correction grid (D10, answer 2314, 17 Nov 2026)",
+    "screen": "Time › Leave balances › Correct balances (TIM-21 HR · balance grid)",
+    "url": "http://localhost:3000/yx/time/balances?view=grid",
+    "account": "HR hr-tester@demo-org.test (leave.balance.adjust); employee arjun@demo-org.test to check the result; manager panel@demo-org.test (Divya) for the refusal.",
+    "steps": [
+      "As hr-tester: open Leave balances, press Correct balances. Check every person in scope is a row and every leave type with a balance is a column.",
+      "Press Arjun's Earned leave figure. Press Post correction without changing anything.",
+      "Type a figure below the leave type's minimum (e.g. -5 when the type may go 0 below zero) and post.",
+      "Type the current figure + 2, leave Reason empty, post. Then reason 'Opening balance from the old system was short' and post.",
+      "Open Arjun's own row from the leave card (One person): read the History.",
+      "Find your own row (hr-tester) in the grid.",
+      "In a second tab correct the same cell, then post the first tab's dialog without reloading.",
+      "As Divya: open /yx/time/balances?view=grid."
+    ],
+    "expected": "Step 2: 'That is the balance now. Change it first.' and 'Say why…'; Post stays pressable. Step 3: 'It can't go below N days, the leave type's minimum balance.' Step 4: toast 'Earned leave for Arjun … is now X days'; the cell shows X. Step 5: an adjustment +2 with the reason. Step 6: your own figures are plain text (no button). Step 7: 'The Earned leave balance is now …: it changed since you loaded it. Reload and try again.', nothing saved. Step 8: no grid (reports only, or no access).",
+    "stories": [
+      "Screens/Time/TIM-21 · Leave card"
+    ],
+    "note": "Positive and negative. Each correction is a ledger adjustment, audited (leave.balance.corrected) with before and after."
+  },
+  {
+    "id": "MT-BATA-A9",
+    "area": "Batch A: office or remote on each punch (A9, answer 2312, 17 Nov 2026)",
+    "screen": "Me › Attendance (day panel, List and Table); Settings › Time › WFH and on-duty",
+    "url": "http://localhost:3000/yx/time/attendance",
+    "account": "Employee arjun@demo-org.test (office location with a geofence or office network); manager panel@demo-org.test (Divya); admin for the setting.",
+    "steps": [
+      "As Arjun at the office (on the office network or inside the geofence): clock in. Open today in the day panel.",
+      "Clock out from outside the office without choosing work from home (refused).",
+      "Next day: clock in from home with 'Work from home today'. Open the day panel, then the List and Table views.",
+      "On a day with both (home in the morning, office later): open the day panel as Arjun and as Divya.",
+      "As admin: Settings › Time › 'A day with both office and remote punches counts as' = remote wins; reopen that day. Then first punch. Then back to office wins.",
+      "As Arjun: try to open Settings › Time and change the rule."
+    ],
+    "expected": "Step 1: the punch shows 'Office' and the day 'Worked from the office'. Step 2: the refused punch has no place badge. Step 3: 'Remote' on the punch, 'Worked remotely' on the day, 'Remote' in the List row and the Table's Where column. Step 4: office wins by default. Step 5: remote, then whichever came first. Step 6: not allowed.",
+    "stories": [
+      "Screens/Time/Extra · Attendance calendar",
+      "Screens/Time/TIM-03 · Day card"
+    ],
+    "note": "Positive and negative. Punches from before this change show the place worked out from their recorded check."
+  },
+  {
+    "id": "MT-BATA-B6",
+    "area": "Batch A: bulk team changes on the roster (B6, answer 2316, 17 Nov 2026)",
+    "screen": "Time › Roster (TIM-05): row checkboxes and the bulk bar",
+    "url": "http://localhost:3000/yx/time/roster",
+    "account": "Manager panel@demo-org.test (Divya, her team); HR hr-tester@demo-org.test (roster.manage, attendance.lock); employee arjun@demo-org.test for the refusal.",
+    "steps": [
+      "As Divya: tick two team members. Check the bar says '2 people ticked' with Change shift and Change weekly off (no penalty policy).",
+      "Change shift: press Apply with nothing filled. Then pick a shift and a date next week; apply. Open the next weeks of the roster.",
+      "Change weekly off for one of them: untick Sunday and press Apply; then tick four days; then Saturday and Sunday; apply.",
+      "Try a date inside last month (locked by payroll).",
+      "As hr-tester: tick people and Change penalty policy: choose the 15th of next month; then the 1st of next month, 1 free mark, a day each; apply.",
+      "As hr-tester: tick someone on the location's usual shift and change only the weekly off.",
+      "As Arjun: open the roster (no checkboxes)."
+    ],
+    "expected": "Step 2: 'Choose the date…' and 'Choose the new shift.'; then a toast 'Change shift: done for 2 people', and their working days show the new shift with their weekly offs kept. Step 3: 'Choose at least one weekly-off day.', 'Choose up to three…', then done. Step 4: 'Attendance is locked up to …' (or '… is locked for attendance and leave'), nothing changed. Step 5: '…starts on the 1st of a month', then done; earlier months keep their policy. Step 6: '<name> works the location's usual shift. Choose the shift for them too.' Step 7: staff view only.",
+    "stories": [
+      "Screens/Time/TIM-05 · Roster"
+    ],
+    "note": "Positive and negative. Audited as time.roster.bulk_changed."
+  },
+  {
+    "id": "MT-BATA-2325",
+    "area": "Batch A: HR cancels some days of approved leave (answer 2325, 17 Nov 2026)",
+    "screen": "Time › Leave balances › a person's leave card › Approved leave › Cancel some days",
+    "url": "http://localhost:3000/yx/time/balances",
+    "account": "HR hr-tester@demo-org.test (leave.balance.adjust); employee arjun@demo-org.test with approved leave of 3 days.",
+    "steps": [
+      "As hr-tester: open Arjun's leave card. Find the Approved leave card.",
+      "Press Cancel some days; press Cancel these days with nothing ticked.",
+      "Tick every day; reason 'short'; press Cancel these days.",
+      "Tick one day; reason 'Came in for the audit that day'; press Cancel these days.",
+      "Check the History and the balance; as Arjun open My leave."
+    ],
+    "expected": "Step 2: 'Pick at least one day to cancel.' Step 3: 'That is every day of this leave. Use Ask to cancel instead.' and 'Give the reason in a sentence (at least 10 letters).' Step 4: toast '1 day cancelled'; the leave is a day shorter at once. Step 5: 1 day back on the ledger; Arjun sees the shorter leave.",
+    "stories": [
+      "Screens/Time/TIM-21 · Leave card"
+    ],
+    "note": "Positive and negative. Audited as leave.request.days_cancelled_by_hr."
+  },
+  {
+    "id": "MT-ASM-2307",
+    "area": "Assessments: Restore asks why while a fairness finding is open (answer 2307, 17 Nov 2026)",
+    "screen": "Hire › Assessments › Tests › an archived test (PRC-04)",
+    "url": "http://localhost:3000/yx/hiring/assessments/tests",
+    "account": "A test writer (exam:manage); a test retired from a fairness review (Fairness › Decide › Retire).",
+    "steps": [
+      "Open the retired test. Press Restore, then Restore in the dialog with the reason empty.",
+      "Type 'too short' and press Restore.",
+      "Type 'Questions fixed and re-checked by the panel' and press Restore.",
+      "Archive and restore a test with no fairness review."
+    ],
+    "expected": "Step 1 and 2: 'Say why in a sentence (at least 10 letters).'; the dialog stays open. Step 3: toast 'Test restored'; the audit entry exam.restored keeps the reason. Step 4: no reason asked.",
+    "stories": [
+      "Screens/Proctoring/PRC-04 · Test builder"
+    ],
+    "note": "Positive and negative. A finding counts as open while its latest review is undecided or decided Retire (question 2329)."
+  },
+  {
+    "id": "MT-BATA-2342",
+    "area": "Leave: ceiling on the balance and no credit in the first months (answer 2342, Oracle O10 and O11, 17 Nov 2026)",
+    "screen": "Time › Setup › Leave policies (ceiling per type); Leave types (no credit for the first N months)",
+    "url": "http://localhost:3000/yx/time/setup",
+    "account": "HR hr-tester@demo-org.test (leave.settings.manage); a new joiner and someone with a high earned-leave balance.",
+    "steps": [
+      "Leave types › Earned leave: 'No credit for the first (months after joining)' = 25; save. Then 3; save.",
+      "Leave policies › a policy › Earned leave: 'Most days held (ceiling)' = 0; save. Then carry forward 45 with ceiling 30; save. Then ceiling 30, carry forward 15; save from next month.",
+      "After the next monthly credit run: open the leave card of someone at 30 days, and of a joiner in their second month."
+    ],
+    "expected": "Step 1: 'No credit for the first 0 to 24 months…' then saved. Step 2: 'the most days held is 0.5 to 400…', 'carry forward is more than the most days held.', then saved. Step 3: the person at 30 gets the credit and a 'lapse' line 'Over the 30-day ceiling…' so they stay at 30; the joiner gets no credit for months 1 to 3 (not paid later).",
+    "stories": [
+      "Screens/Time/TIM-27 · Leave type editor",
+      "Screens/Time/TIM-28 · Leave policies"
+    ],
+    "note": "Positive and negative. Service bands (D3) are not built yet, so the ceiling sits on the policy line beside the accrual rate."
   }
 ]
