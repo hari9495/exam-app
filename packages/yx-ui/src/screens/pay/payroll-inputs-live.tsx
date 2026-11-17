@@ -24,7 +24,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { useRun } from '../org/org-kit';
 import { SectionTitle } from './pay-kit';
-import { BulkUploadDrawer, CapPreview, recurringPlan, type UploadRowResult } from './payroll-inputs';
+import { BulkUploadDrawer, CapPreview, LopReversalDrawer, recurringPlan, type UploadRowResult } from './payroll-inputs';
 import { PlainTable } from '../../components/plain-table';
 import { PersonPicker, type HoldRow, type LopRow, type PersonHit } from './live/inputs';
 import { parseCsv } from './live/setup';
@@ -99,6 +99,10 @@ export interface LiveInputs {
     onLateRequest?: (x: { employeeId: string; on: string; kind: 'attendance'; shouldBe: string; reason: string }) => Promise<unknown>;
     /** Answer 2282: the company's leave types, so a late request can say "it was this leave". */
     leaveTypes?: { code: string; name: string }[];
+    /** Batch A item 8 (D15): HR reverses loss of pay for days of a locked month (POST corrections/lop-reversal). */
+    onReverseLop?: (x: { employeeId: string; days: { on: string; shouldBe: string }[]; reason: string }) => Promise<unknown>;
+    /** Where HR regularises days of an open month (the reversal drawer sends HR there). */
+    regulariseHref?: string;
   };
   oneTime: {
     rows: OneTimeItem[] | null;
@@ -181,6 +185,7 @@ export function LiveLopPanel({ live }: { live: LiveInputs }) {
   // PAY-04 Frozen: the month is frozen or locked, so days change only through a late request (the design's state).
   const frozen = !!live.lop.stage && live.lop.stage !== 'open';
   const [late, setLate] = useState(false);
+  const [reversing, setReversing] = useState(false);
   const frozenText = `Inputs are frozen for ${label}. Changes now go through a late request.`;
   const cols: TableColumn<LopLine>[] = [
     { key: 'employee', header: 'Employee', type: 'person', value: (r) => live.nameOf(r.employeeId), person: (r) => ({ name: live.nameOf(r.employeeId) }), width: 240 },
@@ -209,6 +214,7 @@ export function LiveLopPanel({ live }: { live: LiveInputs }) {
               <Button icon={Upload} onClick={() => (frozen ? say(frozenText, 'default') : (setResults(null), setUploading(true)))}>
                 Bulk upload
               </Button>
+              {live.lop.onReverseLop && <Button onClick={() => setReversing(true)}>Reverse loss of pay</Button>}
               {frozen ? (
                 live.lop.onLateRequest && (
                   <Button variant="primary" icon={Plus} onClick={() => setLate(true)}>
@@ -259,6 +265,9 @@ export function LiveLopPanel({ live }: { live: LiveInputs }) {
           empty={<EmptyState title={`No loss-of-pay days in ${label}.`} description="Add days for people in groups paid as present; everyone else's come from attendance." action={<Button icon={Plus} onClick={() => setAdding(true)}>Add loss of pay</Button>} />}
         />
         {adding && <LopDrawer live={live} days={days} onClose={() => setAdding(false)} onSaved={(t) => say(t)} />}
+        {reversing && live.lop.onReverseLop && (
+          <LopReversalDrawer month={live.month} monthOpen={!frozen} regulariseHref={live.lop.regulariseHref ?? '/yx/time/exceptions'} onSearch={live.onSearch} leaveTypes={live.lop.leaveTypes} onSend={live.lop.onReverseLop} onClose={() => setReversing(false)} />
+        )}
         {late && live.lop.onLateRequest && <LateRequestDrawer live={live} onClose={() => setLate(false)} onSaved={(t) => say(t)} />}
         <BulkUploadDrawer
           open={uploading}

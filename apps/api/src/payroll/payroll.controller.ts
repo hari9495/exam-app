@@ -17,6 +17,7 @@ import {
   DocumentListDto,
   FileListDto,
   HrCorrectionDto,
+  LopReversalDto,
   IssueDocumentDto,
   LateCorrectionDto,
   LegalHoldDto,
@@ -141,6 +142,14 @@ export class PayrollController {
   @RequirePermissions('attendance.lock')
   hrCorrection(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: HrCorrectionDto) {
     return this.periods.hrCorrection(ctx, this.user(req), dto);
+  }
+
+  /** Batch A item 8 (D15): HR reverses loss of pay for days of a locked month (one HR correction a day, paid next run). */
+  @Post('corrections/lop-reversal')
+  @RequirePermissions('attendance.lock')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  reverseLop(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LopReversalDto) {
+    return this.periods.reverseLop(ctx, this.user(req), dto);
   }
 
   @Post('device-batches')

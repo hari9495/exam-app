@@ -23,7 +23,7 @@ describe('Time batch A', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hrAdmin' | 'mgr' | 'emp' | 'peer' | 'empB';
+  type Who = 'adminA' | 'adminB' | 'hrAdmin' | 'mgr' | 'emp' | 'peer' | 'empB' | 'payApprover';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -63,6 +63,7 @@ describe('Time batch A', () => {
       ['emp', 'A', 'panel', null],
       ['peer', 'A', 'panel', null],
       ['empB', 'B', 'panel', null],
+      ['payApprover', 'A', 'panel', ['payroll.correction.approve']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -321,6 +322,52 @@ describe('Time batch A', () => {
       await api('adminA', 'put', '/org/settings').send({ key: 'attendance.permission.monthly_limit', value: '3', scopeType: 'tenant' }).expect(200);
       await api('emp', 'post', '/time/me/permission').send(body({ on: days[k] })).expect(201);
       await api('adminA', 'put', '/org/settings').send({ key: 'attendance.permission.monthly_limit', value: '2', scopeType: 'tenant' }).expect(200);
+    });
+  });
+
+  // ------------------------------------------------------------------ item 8 (D15): LOP reversal through HR corrections
+  describe('D15 reverse loss of pay', () => {
+    // Last month, locked for payroll; someone who worked all of it.
+    const last = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
+    const body = (over: Record<string, unknown> = {}) => ({ employeeId: ids.lopEmp, days: [{ on: `${last}-10`, shouldBe: 'present' }, { on: `${last}-11`, shouldBe: 'half_day' }], reason: 'Was on site at the supplier both days', ...over });
+    const corrections = () => inA((tx) => tx.payCorrection.count({ where: { employeeId: ids.lopEmp } }));
+    beforeAll(async () => {
+      ids.lopEmp = (
+        await api('adminA', 'post', '/people/employees')
+          .send({ legalEntityId: ids.entityA, status: 'confirmed', reason: 'Joined', givenName: 'Lop', familyName: run, joinedOn: d(-70), workEmail: `lop@bata-${run}.test`, assignment: { locationId: ids.locA, departmentId: ids.deptA, designationId: ids.desigA, employmentTypeId: ids.permA, managerEmployeeId: null } })
+          .expect(201)
+      ).body.id;
+      await inA((tx) => tx.payPeriod.create({ data: { organizationId: org.A.id, legalEntityId: ids.entityA, periodStart: new Date(`${last}-01T00:00:00Z`), periodEnd: new Date(`${addDays(`${today.slice(0, 7)}-01`, -1)}T00:00:00Z`), stage: 'locked', lockedAt: new Date(), reason: 'Batch A test' } }));
+    });
+
+    it('negative: the wrong role, another company, bad input and an open month are refused with nothing saved', async () => {
+      await api('emp', 'post', '/payroll/corrections/lop-reversal').send(body()).expect(403);
+      await api('mgr', 'post', '/payroll/corrections/lop-reversal').send(body()).expect(403);
+      await api('adminB', 'post', '/payroll/corrections/lop-reversal').send(body()).expect(404);
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${last}-10`, shouldBe: 'unpaid' }] })).expect(400);
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [] })).expect(400);
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ reason: 'short' })).expect(400);
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ extra: 1 })).expect(400);
+      expect((await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${last}-10`, shouldBe: 'present' }, { on: `${last}-10`, shouldBe: 'half_day' }] })).expect(400)).body.message).toBe('Each day can be listed once.');
+      expect((await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${last}-10`, shouldBe: 'present' }, { on: `${today.slice(0, 7)}-01`, shouldBe: 'present' }] })).expect(400)).body.message).toBe('Pick days of one month at a time.');
+      // An open month goes to regularisation instead.
+      const open = (await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${today.slice(0, 7)}-01`, shouldBe: 'present' }] })).expect(409)).body;
+      expect(open).toMatchObject({ code: 'MONTH_OPEN', message: expect.stringMatching(/is still open\. Fix the days in regularisation instead\./) });
+      expect(await corrections()).toBe(0);
+    });
+
+    it('HR reverses two days of the locked month: one HR correction each for payroll to approve, audited', async () => {
+      const r = (await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body()).expect(201)).body;
+      expect(r).toMatchObject({ count: 2, status: 'pending' });
+      const rows = await inA((tx) => tx.payCorrection.findMany({ where: { employeeId: ids.lopEmp }, orderBy: { workOn: 'asc' } }));
+      expect(rows.map((x) => [x.workOn.toISOString().slice(0, 10), (x.change as { shouldBe: string }).shouldBe, x.source, x.status])).toEqual([[`${last}-10`, 'present', 'hr', 'pending'], [`${last}-11`, 'half_day', 'hr', 'pending']]);
+      expect(rows.every((x) => x.wfRequestId)).toBe(true);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.lop_reversal.submitted', entityId: ids.lopEmp } }))).toBe(1);
+      // The same day again is already waiting.
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${last}-10`, shouldBe: 'present' }] })).expect(409);
+      expect(await corrections()).toBe(2);
+      // Another company sees none of it.
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.payCorrection.count({ where: { employeeId: ids.lopEmp } }))).toBe(0);
     });
   });
 });

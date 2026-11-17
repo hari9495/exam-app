@@ -11,6 +11,7 @@ import { FieldRow, FormField, FormSection } from '../../components/field';
 import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
 import { PlainTable } from '../../components/plain-table';
@@ -29,6 +30,7 @@ import { Amount, FactRow, PayFrame, SectionTitle, StateBlock, type PayPersona, t
 import { FIN_APPROVER, HOLDS, HR_HEAD, LOP_ROWS, MY_LOP_DAY, ONE_TIME, PAYROLL_ADMIN, QUERIES, RUN, RUN_HISTORY, RUN_ROWS, d, type HoldRow, type LopRow, type OneTimeRow, type QueryRow } from './pay-data';
 import { FNF_LEAVER, FNF_NET } from './offcycle';
 import { applyDeductionCap, computeTax, esiContribution, pfContribution, type DeductionLine } from './pay-logic';
+import { PersonPicker, type PersonHit } from './live/inputs';
 import { LiveHoldsPanel, LiveInputsScreen, LiveLopPanel, LiveQueryQueue, LiveRecoveries, type LiveInputs, type LiveQueries, type LiveRecoveriesData } from './payroll-inputs-live';
 import { LivePaymentsScreen, SamplePaymentModes, type LivePayments } from './payments-live';
 
@@ -301,6 +303,166 @@ function SampleLopInputScreen({ state = 'ready', upload, locked, rows: initial =
         }}
       />
     </PayFrame>
+  );
+}
+
+/* ================================================================== PAY-04 · Reverse loss of pay (batch A item 8, D15) */
+
+/** One day to reverse and what it should have been (answer 2315: never "unpaid"; that is not a reversal). */
+export interface LopReversalDay { on: Date | null; shouldBe: 'present' | 'half_day' | 'leave'; leave: string | null }
+const REVERSE_AS: { value: LopReversalDay['shouldBe']; label: string }[] = [
+  { value: 'present', label: 'Paid day' },
+  { value: 'half_day', label: 'Half day' },
+  { value: 'leave', label: 'Leave' },
+];
+export interface LopReversalDrawerProps {
+  /** "2026-09": the month on the inputs page. */
+  month: string;
+  /** The month is still open (not frozen or locked): the drawer sends HR to regularisation instead. */
+  monthOpen: boolean;
+  /** Where HR regularises days of an open month. */
+  regulariseHref: string;
+  /** Finds the person (the payroll inputs search). */
+  onSearch: (q: string) => Promise<PersonHit[]>;
+  leaveTypes?: { code: string; name: string }[];
+  /** Sends the days as HR corrections (POST /payroll/corrections/lop-reversal); throws a plain message on failure. */
+  onSend: (x: { employeeId: string; days: { on: string; shouldBe: string }[]; reason: string }) => Promise<unknown>;
+  onClose: () => void;
+  /** Stories: start with a person and days filled in. */
+  start?: { who: PersonHit; days: LopReversalDay[]; reason: string };
+}
+const lopIso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+const lopMonthName = (m: string) => new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+/**
+ * PAY-04 "Reverse loss of pay": HR picks a person, the days of a locked month and what each should have been. Each day
+ * goes as an HR correction for someone in payroll to approve, and the next regular run pays it back. An open month
+ * has nothing to reverse yet: the drawer sends HR to regularisation instead.
+ */
+export function LopReversalDrawer({ month, monthOpen, regulariseHref, onSearch, leaveTypes = [], onSend, onClose, start }: LopReversalDrawerProps) {
+  const label = lopMonthName(month);
+  const [who, setWho] = useState<PersonHit | null>(start?.who ?? null);
+  const [days, setDays] = useState<LopReversalDay[]>(start?.days ?? [{ on: null, shouldBe: 'present', leave: null }]);
+  const [reason, setReason] = useState(start?.reason ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const { toast } = useToast();
+  const first = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const kinds = leaveTypes.length ? REVERSE_AS : REVERSE_AS.filter((o) => o.value !== 'leave');
+  const picked = days.filter((d) => d.on).map((d) => lopIso(d.on!));
+  const errors = [
+    ...(!who ? [{ fieldId: 'lopr-who', message: 'Choose the person.' }] : []),
+    ...days.flatMap((d, i) => [
+      ...(!d.on ? [{ fieldId: `lopr-day-${i}`, message: `Choose day ${i + 1} in ${label}.` }] : picked.indexOf(lopIso(d.on)) !== i ? [{ fieldId: `lopr-day-${i}`, message: `${formatDate(d.on)} is listed twice.` }] : []),
+      ...(d.shouldBe === 'leave' && !d.leave ? [{ fieldId: `lopr-leave-${i}`, message: `Choose the leave type for day ${i + 1}.` }] : []),
+    ]),
+    ...(reason.trim().length < 10 ? [{ fieldId: 'lopr-why', message: 'Say why, in at least 10 characters.' }] : []),
+  ];
+  const errorOf = (id: string) => (tried ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const set = (i: number, patch: Partial<LopReversalDay>) => setDays(days.map((d, k) => (k === i ? { ...d, ...patch } : d)));
+  const send = async () => {
+    if (errors.length) {
+      setTried(true);
+      document.getElementById(errors[0].fieldId)?.focus();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await onSend({ employeeId: who!.id, days: days.map((d) => ({ on: lopIso(d.on!), shouldBe: d.shouldBe === 'leave' ? `leave:${d.leave}` : d.shouldBe })), reason: reason.trim() });
+      toast({ tone: 'success', title: `Loss of pay reversal for ${who!.name} sent to payroll`, description: `${days.length === 1 ? '1 day' : `${days.length} days`} of ${label}. Paid in the next regular payroll once approved.` });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Not sent. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Reverse loss of pay"
+      subtitle={monthOpen ? `${label} is still open` : `${label} is locked. Someone in payroll approves it; the next regular payroll pays it back.`}
+      dirty={!monthOpen && Boolean(reason || who)}
+      footer={
+        monthOpen ? (
+          <Button onClick={onClose}>Close</Button>
+        ) : (
+          <>
+            {tried && errors[0] && <span className="yx-pay-muted">{errors[0].message}</span>}
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={() => void send()}>
+              Send to payroll
+            </Button>
+          </>
+        )
+      }
+    >
+      {monthOpen ? (
+        <div className="yx-pay-stack">
+          <InlineAlert tone="info" title={`${label} has not been locked yet`}>
+            Loss of pay in an open month is fixed in attendance: regularise the days, and this month's payroll pays them as usual.
+          </InlineAlert>
+          <div className="yx-pay-row">
+            <Button variant="primary" asChild>
+              <a href={regulariseHref}>Go to regularisation</a>
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="yx-pay-stack">
+          {error && (
+            <InlineAlert tone="danger" title="Not sent">
+              {error}
+            </InlineAlert>
+          )}
+          <PersonPicker id="lopr-who" label="Employee" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('lopr-who')} />
+          <FormSection title="Days to pay back">
+            <div className="yx-pay-stack">
+              {days.map((d, i) => (
+                <FieldRow key={i}>
+                  <FormField id={`lopr-day-${i}`} label={`Day ${i + 1}`} required error={errorOf(`lopr-day-${i}`)}>
+                    <DatePicker value={d.on} onChange={(on) => set(i, { on })} min={first} max={last} aria-label={`Day ${i + 1}`} />
+                  </FormField>
+                  <FormField label="It should be">
+                    <Segment label={`Day ${i + 1} should be`} value={d.shouldBe} onChange={(shouldBe) => set(i, { shouldBe })} options={kinds} />
+                  </FormField>
+                  {d.shouldBe === 'leave' && (
+                    <FormField id={`lopr-leave-${i}`} label="Leave type" required error={errorOf(`lopr-leave-${i}`)}>
+                      <Select value={d.leave} onChange={(leave) => set(i, { leave })} options={leaveTypes.map((t) => ({ value: t.code, label: t.name }))} placeholder="Choose the leave type" />
+                    </FormField>
+                  )}
+                  {days.length > 1 && (
+                    <FormField label="Remove">
+                      <Button onClick={() => setDays(days.filter((_, k) => k !== i))} aria-label={`Remove day ${i + 1}`}>
+                        Remove
+                      </Button>
+                    </FormField>
+                  )}
+                </FieldRow>
+              ))}
+              {days.length < 31 && (
+                <div className="yx-pay-row">
+                  <Button icon={Plus} onClick={() => setDays([...days, { on: null, shouldBe: 'present', leave: null }])}>
+                    Add a day
+                  </Button>
+                </div>
+              )}
+            </div>
+          </FormSection>
+          <FormField id="lopr-why" label="Reason" required error={errorOf('lopr-why')} helper="Saved with each correction and in the audit trail.">
+            <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+          </FormField>
+          <p className="yx-pay-muted">
+            {who ? `${who.name}: ` : ''}
+            {days.length === 1 ? '1 day goes' : `${days.length} days go`} to payroll for approval, one correction each. Nothing changes in {label}; the next regular payroll pays the difference.
+          </p>
+        </div>
+      )}
+    </Drawer>
   );
 }
 
