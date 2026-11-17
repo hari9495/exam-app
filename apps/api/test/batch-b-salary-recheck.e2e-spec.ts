@@ -7,6 +7,10 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { markSteppedUp } from './fixtures/step-up';
+import { enableSalaryRecheck } from './fixtures/salary-recheck';
+
+// This suite proves the rule, so it turns the e2e skip off (see fixtures/salary-recheck.ts).
+enableSalaryRecheck();
 
 // Batch B item 1 (pay B12 / admin B4, answers 2360-2363), against the real database (forced RLS, app role): salary pages
 // need a recent "Confirm it's you" while the company's re-check is on (default, 15 minutes; 5 or 10 allowed); own-pay

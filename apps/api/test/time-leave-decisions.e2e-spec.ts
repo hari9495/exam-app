@@ -10,7 +10,6 @@ import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { addDays } from '../src/time/time-maths';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
-import { markSteppedUp } from './fixtures/step-up';
 
 // Founder decisions 1, 2 and 3 (29 Oct 2026), end to end against the real database (forced RLS, the app role):
 // recording a long absence (check first, then record) and company block dates by leave type with the people already
@@ -95,8 +94,6 @@ describe('Leave decisions (29 Oct 2026)', () => {
       const permissionProfileId = keys ? await profile(o, who, keys) : null;
       users[who] = (await tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, (tx) => tx.user.create({ data: { organizationId: o, email: `${who}@leavedec-${run}.test`, name: `${who} ${run}`, passwordHash, role, permissionProfileId } }))).id;
       token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: `${who}@leavedec-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
-      // Batch B item 1: payroll and salary routes need a recent "Confirm it's you" (the salary re-check).
-      await markSteppedUp(tenantPrisma, token[who]!);
     }
     for (const k of ['A', 'B'] as const) {
       await tenantPrisma.forTenant({ organizationId: org[k].id, isSuperAdmin: false }, async (tx) => {
