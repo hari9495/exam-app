@@ -11,7 +11,7 @@ import { useRun } from '../org/org-kit';
 import { dateText } from '../time/live/kit';
 import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
 import { FindPerson, type PersonHit } from './equity';
-import { LOAN_STATE, LOAN_TYPE_TEXT, monthName, previewEmi, rateText, subjectText } from './employee-pay';
+import { LANDLORD_RELATION, LOAN_STATE, LOAN_TYPE_TEXT, monthName, previewEmi, rateText, subjectText } from './employee-pay';
 import { EntityPicker } from './live/setup';
 import type { LoadState } from './live/types';
 import type { SetupEntity } from './live/types-5b';
@@ -2156,7 +2156,7 @@ function ProofDecisionDrawer({ line, own, onFile, onPreview, onClose, onSave }: 
         <>
           {facts}
           {files}
-          {line.subjectKey === 'hra' && line.landlordPan && <p className="yx-pay-note">Landlord {line.landlordName ?? ''} · PAN {line.landlordPan}</p>}
+          {line.subjectKey === 'hra' && line.landlordPan && <p className="yx-pay-note">Landlord {line.landlordName ?? ''} · PAN {line.landlordPan}{line.landlordRelationship ? ` · ${LANDLORD_RELATION[line.landlordRelationship]}` : ''}</p>}
           <FormField id="pf-decision" label="Decision" required>
             <Segment
               label="Decision"

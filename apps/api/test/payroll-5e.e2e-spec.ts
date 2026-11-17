@@ -261,7 +261,8 @@ describe('Payroll batch 5e (income tax)', () => {
     await api('emp1', 'post', '/tax/me/declarations')
       .send({
         lines: [
-          { ...rent, landlordName: 'R Iyer', landlordPan: 'ABCPI1234K' },
+          // Batch H (H15): under the 2025 Act (Form No. 124) the relationship to the landlord comes with the PAN.
+          { ...rent, landlordName: 'R Iyer', landlordPan: 'ABCPI1234K', landlordRelationship: 'not_related' },
           { subjectKey: 'sec80c', amount: '150000' },
         ],
       })

@@ -3,10 +3,10 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
-import { IN_STATES, entityTimeZone, localDate } from '../org-structure/org-validation';
+import { IN_STATES, entityTimeZone, localDate, todayIst } from '../org-structure/org-validation';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
-import { damages, due, inForce, penalty, type RuleSet } from '../statutory/evaluator';
+import { damages, due, inForce, noPt, penalty, type RuleSet } from '../statutory/evaluator';
 import { FORMATS, ecrFile, esiFile, lwfFile, ptFile, type EcrRow, type EsiRow, type LwfRow, type PtRow, type TdsRow } from '../statutory/filing-files';
 import { ETDS_FORMAT, checkFvu, etdsFile, type Deductor } from '../statutory/etds';
 import { FvuRunner, FvuUnavailable, type FvuOutcome } from '../statutory/fvu';
@@ -92,7 +92,7 @@ export async function setupMissing(tx: Tx, org: string, entityId: string, rules:
   const out = ['IN.PF', 'IN.ESI'].filter((s) => !has(s));
   if (!entity.tan && !has('IN.TDS')) out.push('IN.TDS');
   for (const st of [...new Set(places.map((p) => p.state))].sort())
-    for (const s of ['IN.PT', 'IN.LWF']) if (rules.some((r) => r.statute === s && r.jurisdiction === st) && !has(s, st)) out.push(`${s} ${st}`);
+    for (const s of ['IN.PT', 'IN.LWF']) if (rules.some((r) => r.statute === s && r.jurisdiction === st) && !(s === 'IN.PT' && noPt(rules, st, todayIst())) && !has(s, st)) out.push(`${s} ${st}`);
   return out;
 }
 

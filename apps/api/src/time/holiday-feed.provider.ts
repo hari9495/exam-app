@@ -19,7 +19,7 @@ export const HOLIDAY_PROVIDER = Symbol('HOLIDAY_PROVIDER');
 /** States the feed screen offers (India; the ISO 3166-2 code and its name). */
 export const FEED_STATES: Record<string, string> = {
   'IN-AP': 'Andhra Pradesh', 'IN-DL': 'Delhi', 'IN-GJ': 'Gujarat', 'IN-HR': 'Haryana', 'IN-KA': 'Karnataka', 'IN-KL': 'Kerala',
-  'IN-MH': 'Maharashtra', 'IN-TN': 'Tamil Nadu', 'IN-TG': 'Telangana', 'IN-UP': 'Uttar Pradesh', 'IN-WB': 'West Bengal',
+  'IN-MH': 'Maharashtra', 'IN-TN': 'Tamil Nadu', 'IN-TS': 'Telangana', 'IN-UP': 'Uttar Pradesh', 'IN-WB': 'West Bengal',
 };
 
 /** Dev-fake: the same fixed dates every year (national days plus one state day), so local checks are repeatable. */

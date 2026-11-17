@@ -22802,6 +22802,78 @@
     "note": "Positive and negative. Service bands (D3) are not built yet, so the ceiling sits on the policy line beside the accrual rate."
   },
   {
+    "id": "MT-BATH-01",
+    "area": "Pay: state statutory rules, batch H (17 Nov 2026)",
+    "screen": "Payroll · Statutory rules; Payroll · Setup (registrations)",
+    "url": "http://localhost:3000/yx/payroll/statutory-rules",
+    "account": "admin@demo-org.test (System Admin) adds the places; payroll@demo-org.test (Payroll Admin - Suresh) checks. Browser window 1278 x 635.",
+    "steps": [
+      "As admin: Settings · Locations: add a location in Haryana (Gurugram) and one in West Bengal (Kolkata) for Kaveri Foods.",
+      "As payroll: Payroll · Statutory rules, entity Kaveri Foods: find Professional tax for IN-HR, IN-WB.",
+      "Payroll · Setup · Registrations: read the 'still needed' list.",
+      "Negative: try to save a PT registration for Uttar Pradesh (no place there).",
+      "Negative: as arjun@demo-org.test open http://localhost:3000/yx/payroll/statutory-rules."
+    ],
+    "expected": "Step 2: IN-HR shows one set with no slabs, marked 'verify' with its source naming CA checklist item 23; IN-WB shows two versions, 2014-v1 ending 30 Sep 2026 and 2026-v2 from 1 Oct 2026, both 'verify'. Step 3: 'IN.PT IN-WB: say whether the entity is registered' is listed, nothing for IN.PT IN-HR. Step 4: refused with 'The entity has no location in IN-UP.' and nothing saved. Step 5: not allowed (no payroll keys).",
+    "stories": [
+      "Screens/Pay/Statutory rules",
+      "Screens/Pay/Setup"
+    ],
+    "note": "Positive and negative. All new state values are verify until the CA ticks the checklist (research file section 6)."
+  },
+  {
+    "id": "MT-BATH-02",
+    "area": "Pay: state statutory rules, batch H (17 Nov 2026)",
+    "screen": "Payroll · Runs (a run with someone in West Bengal)",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh), after MT-BATH-01 and one employee moved to the Kolkata location with a monthly gross of about 25,000.",
+    "steps": [
+      "Calculate the September 2026 run (or open it if done) and open that person's payslip lines.",
+      "Calculate the October 2026 run and open the same payslip lines.",
+      "Negative: open the same payslip as arjun@demo-org.test through its URL."
+    ],
+    "expected": "Step 1: Professional tax 130 ('IN-WB professional tax for this month on the PT wage ...'). Step 2: Professional tax 100 under the new schedule. Step 3: not found / not allowed.",
+    "stories": [
+      "Screens/Pay/Runs"
+    ],
+    "note": "Positive and negative. The amounts depend on the PT wage; slab edges are in the unit tests."
+  },
+  {
+    "id": "MT-BATH-03",
+    "area": "Pay: state statutory rules, batch H (17 Nov 2026)",
+    "screen": "Me · Tax declarations",
+    "url": "http://localhost:3000/yx/me/tax-declarations",
+    "account": "arjun@demo-org.test (employee). Browser window 1278 x 635.",
+    "steps": [
+      "Read the line under the declarations heading.",
+      "Add declaration · What: open the list.",
+      "Choose Rent paid (HRA): rent 18,000 a month, April 2026 to March 2027, landlord's PAN ABCDE1234F, leave 'How you are related to the landlord' empty, Save.",
+      "Set 'How you are related to the landlord' to Parent and Save."
+    ],
+    "expected": "Step 1: 'Form No. 124. Proofs are sent from ...'. Step 2: 'Investments and payments · s.123, Sch XV (old 80C)', 'Health insurance ... · s.126 (old 80D)'; Education loan interest and Home loan interest keep their old labels (2025 Act section not found). Step 3 (negative): 'Rent above ₹100000 a year needs how you are related to your landlord.' and nothing saved. Step 4: toast 'Declaration saved...'; the line shows; payroll's proof queue shows '· Parent' next to the landlord PAN.",
+    "stories": [
+      "Screens/Pay/Employee tax workspace"
+    ],
+    "note": "Positive and negative. H14 and H15."
+  },
+  {
+    "id": "MT-BATH-04",
+    "area": "Pay: state statutory rules, batch H (17 Nov 2026)",
+    "screen": "Payroll · Setup · Legal options (bonus rate)",
+    "url": "http://localhost:3000/yx/payroll/setup",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh).",
+    "steps": [
+      "Payroll · Statutory rules: find Bonus.",
+      "Legal options: set the bonus rate to 0.25 from 1 Dec 2026.",
+      "Set it to 0.1 from 1 Dec 2026."
+    ],
+    "expected": "Step 1: two versions, 2015-v1 (Payment of Bonus Act) and 2025-v2 from 21 Nov 2025 (Code on Wages, S.O. 4710(E) / 4711(E)), both verify. Step 2 (negative): 'The bonus rate is between 0.0833 and 0.2, as the law allows.' nothing saved. Step 3: saved from 1 Dec 2026.",
+    "stories": [
+      "Screens/Pay/Setup"
+    ],
+    "note": "Positive and negative. H13."
+  },
+  {
     "id": "MT-BATB-B1",
     "area": "Batch B: activity log in plain sentences (admin B1, item 29, 17 Nov 2026)",
     "screen": "Settings › Audit log (PLT-16, live)",

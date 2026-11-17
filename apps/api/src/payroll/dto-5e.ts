@@ -42,6 +42,8 @@ export class WorkspacePatchDto {
   otherIncome?: OtherIncomeDto[];
 }
 
+export const LANDLORD_RELATIONSHIPS = ['not_related', 'parent', 'spouse', 'child', 'sibling', 'other_relative'] as const;
+
 export class DeclarationLineDto {
   @Matches(/^[a-z0-9_]{2,30}$/)
   subjectKey!: string;
@@ -60,6 +62,11 @@ export class DeclarationLineDto {
   @trim()
   @Matches(/^[A-Z0-9]{10}$/)
   landlordPan?: string;
+
+  /** H15: how the employee is related to the landlord (Form No. 124). */
+  @IsOptional()
+  @IsIn(LANDLORD_RELATIONSHIPS)
+  landlordRelationship?: (typeof LANDLORD_RELATIONSHIPS)[number];
 
   @IsOptional()
   @Matches(MONTH)

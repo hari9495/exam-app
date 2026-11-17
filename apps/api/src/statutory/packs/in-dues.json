@@ -127,6 +127,472 @@
       "golden": [
         { "name": "December LWF is due 15 January", "fn": "calendar", "input": { "key": "lwf", "month": "2026-12" }, "expected": { "due": "2027-01-15" } }
       ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-AP",
+      "version": "AP-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Andhra Pradesh professional tax: monthly return and payment by the 10th of the next month. Secondary only (https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/); TODO: CA checklist item 3 confirms the date. Labour welfare fund: December contribution by 31 January (secondary, CA item 29).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "pt",
+            "label": "Professional tax (Andhra Pradesh)",
+            "dueDay": 10,
+            "monthOffset": 1
+          },
+          {
+            "key": "lwf",
+            "label": "Labour welfare fund (Andhra Pradesh)",
+            "dueDay": 31,
+            "monthOffset": 1
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "November PT is due 10 December",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2026-11"
+          },
+          "expected": {
+            "due": "2026-12-10"
+          }
+        },
+        {
+          "name": "March PT is due 10 April",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2027-03"
+          },
+          "expected": {
+            "due": "2027-04-10"
+          }
+        },
+        {
+          "name": "December LWF is due 31 January",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2026-12"
+          },
+          "expected": {
+            "due": "2027-01-31"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-GJ",
+      "version": "GJ-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Gujarat professional tax: monthly, within 15 days of the month end (employers with 20 or fewer staff may file yearly, not modelled). Secondary only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/); TODO: CA checklist item 7 confirms the date and the small-employer rule. Labour welfare fund: June and December contributions by 15 July and 15 January (secondary, CA item 31).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "pt",
+            "label": "Professional tax (Gujarat)",
+            "dueDay": 15,
+            "monthOffset": 1
+          },
+          {
+            "key": "lwf",
+            "label": "Labour welfare fund (Gujarat)",
+            "dueDay": 15,
+            "monthOffset": 1
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "November PT is due 15 December",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2026-11"
+          },
+          "expected": {
+            "due": "2026-12-15"
+          }
+        },
+        {
+          "name": "January PT is due 15 February",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2027-01"
+          },
+          "expected": {
+            "due": "2027-02-15"
+          }
+        },
+        {
+          "name": "June LWF is due 15 July",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2026-06"
+          },
+          "expected": {
+            "due": "2026-07-15"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-WB",
+      "version": "WB-2014-v1",
+      "validFrom": "2014-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "West Bengal professional tax: paid within 21 days of the month end; yearly return by 30 April (not modelled here). Secondary only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/); TODO: CA checklist item 6 confirms the due dates under the new schedule. Labour welfare fund: before 15 July and 15 January (secondary, CA item 35).",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "pt",
+            "label": "Professional tax (West Bengal)",
+            "dueDay": 21,
+            "monthOffset": 1
+          },
+          {
+            "key": "lwf",
+            "label": "Labour welfare fund (West Bengal)",
+            "dueDay": 15,
+            "monthOffset": 1
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "September PT is due 21 October",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2026-09"
+          },
+          "expected": {
+            "due": "2026-10-21"
+          }
+        },
+        {
+          "name": "January PT is due 21 February",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2027-01"
+          },
+          "expected": {
+            "due": "2027-02-21"
+          }
+        },
+        {
+          "name": "December LWF is due 15 January",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2026-12"
+          },
+          "expected": {
+            "due": "2027-01-15"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-MP",
+      "version": "MP-2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Madhya Pradesh professional tax: monthly return, within 10 days of the month end. Secondary only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/); TODO: CA checklist item 8.",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "pt",
+            "label": "Professional tax (Madhya Pradesh)",
+            "dueDay": 10,
+            "monthOffset": 1
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "March PT is due 10 April",
+          "fn": "calendar",
+          "input": {
+            "key": "pt",
+            "month": "2027-03"
+          },
+          "expected": {
+            "due": "2027-04-10"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-PB",
+      "version": "PB-2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Punjab Labour Welfare Fund: deducted monthly, paid half-yearly by 15 October (April-September) and 15 April (October-March). Secondary only (https://digiliance.in/labour-welfare-fund). TODO: CA checklist item 33.",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "lwf",
+            "label": "Labour welfare fund (Punjab)",
+            "dueDay": 15,
+            "monthOffset": 1,
+            "byMonth": {
+              "1": {
+                "dueDay": 15,
+                "monthOffset": 3
+              },
+              "2": {
+                "dueDay": 15,
+                "monthOffset": 2
+              },
+              "3": {
+                "dueDay": 15,
+                "monthOffset": 1
+              },
+              "4": {
+                "dueDay": 15,
+                "monthOffset": 6
+              },
+              "5": {
+                "dueDay": 15,
+                "monthOffset": 5
+              },
+              "6": {
+                "dueDay": 15,
+                "monthOffset": 4
+              },
+              "7": {
+                "dueDay": 15,
+                "monthOffset": 3
+              },
+              "8": {
+                "dueDay": 15,
+                "monthOffset": 2
+              },
+              "9": {
+                "dueDay": 15,
+                "monthOffset": 1
+              },
+              "10": {
+                "dueDay": 15,
+                "monthOffset": 6
+              },
+              "11": {
+                "dueDay": 15,
+                "monthOffset": 5
+              },
+              "12": {
+                "dueDay": 15,
+                "monthOffset": 4
+              }
+            }
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "April LWF is due 15 October",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2026-04"
+          },
+          "expected": {
+            "due": "2026-10-15"
+          }
+        },
+        {
+          "name": "September LWF is due 15 October",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2026-09"
+          },
+          "expected": {
+            "due": "2026-10-15"
+          }
+        },
+        {
+          "name": "October LWF is due 15 April",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2026-10"
+          },
+          "expected": {
+            "due": "2027-04-15"
+          }
+        },
+        {
+          "name": "March LWF is due 15 April",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2027-03"
+          },
+          "expected": {
+            "due": "2027-04-15"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-CH",
+      "version": "CH-2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Chandigarh Labour Welfare Fund (Punjab Act as extended): deducted monthly, paid half-yearly by 15 October (April-September) and 15 April (October-March). Secondary only (https://taxguru.in/corporate-law/labour-welfare-fund-2026-payroll-months-amounts-change-state.html). TODO: CA checklist item 34.",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "lwf",
+            "label": "Labour welfare fund (Chandigarh)",
+            "dueDay": 15,
+            "monthOffset": 1,
+            "byMonth": {
+              "1": {
+                "dueDay": 15,
+                "monthOffset": 3
+              },
+              "2": {
+                "dueDay": 15,
+                "monthOffset": 2
+              },
+              "3": {
+                "dueDay": 15,
+                "monthOffset": 1
+              },
+              "4": {
+                "dueDay": 15,
+                "monthOffset": 6
+              },
+              "5": {
+                "dueDay": 15,
+                "monthOffset": 5
+              },
+              "6": {
+                "dueDay": 15,
+                "monthOffset": 4
+              },
+              "7": {
+                "dueDay": 15,
+                "monthOffset": 3
+              },
+              "8": {
+                "dueDay": 15,
+                "monthOffset": 2
+              },
+              "9": {
+                "dueDay": 15,
+                "monthOffset": 1
+              },
+              "10": {
+                "dueDay": 15,
+                "monthOffset": 6
+              },
+              "11": {
+                "dueDay": 15,
+                "monthOffset": 5
+              },
+              "12": {
+                "dueDay": 15,
+                "monthOffset": 4
+              }
+            }
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "June LWF is due 15 October",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2026-06"
+          },
+          "expected": {
+            "due": "2026-10-15"
+          }
+        },
+        {
+          "name": "January LWF is due 15 April",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2027-01"
+          },
+          "expected": {
+            "due": "2027-04-15"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.CALENDAR",
+      "jurisdiction": "IN-OD",
+      "version": "OD-2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Odisha Labour Welfare Fund: June and December contributions before 15 July and 15 January (Form F). Odisha charges no PT from 1 Apr 2026. Secondary only (https://taxguru.in/corporate-law/labour-welfare-fund-2026-payroll-months-amounts-change-state.html). TODO: CA checklist item 36.",
+      "values": {
+        "kind": "calendar",
+        "items": [
+          {
+            "key": "lwf",
+            "label": "Labour welfare fund (Odisha)",
+            "dueDay": 15,
+            "monthOffset": 1
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "June LWF is due 15 July",
+          "fn": "calendar",
+          "input": {
+            "key": "lwf",
+            "month": "2026-06"
+          },
+          "expected": {
+            "due": "2026-07-15"
+          }
+        }
+      ]
     }
   ]
 }

@@ -308,41 +308,44 @@
 }
 /* Stronger focus outline; high contrast has it too ("focus visible everywhere"). */
 :root[data-strong-focus="on"], :root[data-contrast="high"] { --yx-focus-width: 4px; }
+/* High contrast also thickens every control and card border (answers 2394, 2395). */
+:root[data-contrast="high"] { --yx-border-width: 2px; }
 
-/* High contrast theme, beside Light and Dark: black on white, AAA text (7:1 and more), black borders on every control.
-   It wins over a Light or Dark choice while it is on. */
+/* High contrast theme, beside Light and Dark (answer 2395: the india.gov.in style). Black page, white text, yellow
+   headings, links and main buttons, light borders; every text pair is 7:1 or more (AAA). It wins over a Light or Dark
+   choice while it is on. */
 :root[data-contrast="high"], :root[data-contrast="high"] [data-theme] {
-  --yx-color-bg-page: #FFFFFF;
-  --yx-color-bg-surface: #FFFFFF;
-  --yx-color-bg-subtle: #F0F0F0;
-  --yx-color-bg-raised: #FFFFFF;
-  --yx-color-bg-selected: #DCE6FF;
-  --yx-color-bg-inverse: #000000;
-  --yx-color-icon-tile: #F0F0F0;
-  --yx-color-icon-tile-lift: #F0F0F0;
-  --yx-color-border: #000000;
-  --yx-color-border-strong: #000000;
-  --yx-color-border-input: #000000;
-  --yx-color-text: #000000;
-  --yx-color-text-secondary: #1F1F1F;
-  --yx-color-text-muted: #333333;
-  --yx-color-text-disabled: #595959;
-  --yx-color-text-inverse: #FFFFFF;
-  --yx-color-text-on-action: #FFFFFF;
-  --yx-color-action-primary: #00308F;
-  --yx-color-action-primary-hover: #001F5C;
-  --yx-color-action-primary-pressed: #00143D;
-  --yx-color-link: #00308F;
-  --yx-color-focus-ring: #000000;
-  --yx-color-success-text: #0A5A23; --yx-color-success-bg: #FFFFFF; --yx-color-success-border: #0A5A23;
-  --yx-color-warning-text: #6B3D00; --yx-color-warning-bg: #FFFFFF; --yx-color-warning-border: #6B3D00;
-  --yx-color-danger-text: #9B0000;  --yx-color-danger-bg: #FFFFFF;  --yx-color-danger-border: #9B0000;
-  --yx-color-danger-action: #9B0000;
-  --yx-color-info-text: #00308F; --yx-color-info-bg: #FFFFFF; --yx-color-info-border: #00308F;
-  --yx-color-ai-text: #4A1A8C; --yx-color-ai-bg: #FFFFFF; --yx-color-ai-border: #4A1A8C;
-  --yx-shadow-popover: 0 0 0 2px #000000;
-  --yx-shadow-drawer: 0 0 0 2px #000000;
-  --yx-shadow-dialog: 0 0 0 2px #000000;
-  --yx-color-scrim: rgba(0, 0, 0, 0.7);
-  color-scheme: light;
+  --yx-color-bg-page: #000000;
+  --yx-color-bg-surface: #000000;
+  --yx-color-bg-subtle: #000000;
+  --yx-color-bg-raised: #000000;
+  --yx-color-bg-selected: #333300;
+  --yx-color-bg-inverse: #FFFF00;
+  --yx-color-icon-tile: #000000;
+  --yx-color-icon-tile-lift: #FFFFFF;
+  --yx-color-border: #E6E6E6;
+  --yx-color-border-strong: #FFFFFF;
+  --yx-color-border-input: #FFFFFF;
+  --yx-color-text: #FFFFFF;
+  --yx-color-text-secondary: #FFFFFF;
+  --yx-color-text-muted: #E6E6E6;
+  --yx-color-text-disabled: #B3B3B3;
+  --yx-color-text-inverse: #000000;
+  --yx-color-text-on-action: #000000;
+  --yx-color-action-primary: #FFFF00;
+  --yx-color-action-primary-hover: #FFFF66;
+  --yx-color-action-primary-pressed: #E6E600;
+  --yx-color-link: #FFFF00;
+  --yx-color-focus-ring: #FFFF00;
+  --yx-color-success-text: #7CFF7C; --yx-color-success-bg: #000000; --yx-color-success-border: #7CFF7C;
+  --yx-color-warning-text: #FFC266; --yx-color-warning-bg: #000000; --yx-color-warning-border: #FFC266;
+  --yx-color-danger-text: #FF8A8A;  --yx-color-danger-bg: #000000;  --yx-color-danger-border: #FF8A8A;
+  --yx-color-danger-action: #FF8A8A;
+  --yx-color-info-text: #8AD4FF; --yx-color-info-bg: #000000; --yx-color-info-border: #8AD4FF;
+  --yx-color-ai-text: #D9B3FF; --yx-color-ai-bg: #000000; --yx-color-ai-border: #D9B3FF;
+  --yx-shadow-popover: 0 0 0 2px #FFFFFF;
+  --yx-shadow-drawer: 0 0 0 2px #FFFFFF;
+  --yx-shadow-dialog: 0 0 0 2px #FFFFFF;
+  --yx-color-scrim: rgba(0, 0, 0, 0.85);
+  color-scheme: dark;
 }

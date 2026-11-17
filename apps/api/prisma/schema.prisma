@@ -9206,6 +9206,8 @@ model TaxDeclarationLine {
   landlordName     String?   @map("landlord_name") @db.VarChar(200)
   landlordPanEnc   String?   @map("landlord_pan_enc")
   landlordPanLast4 String?   @map("landlord_pan_last4") @db.Char(4)
+  /// H15: Form No. 124 (Income-tax Rules 2026 r.205) asks how the employee is related to the landlord.
+  landlordRelationship String? @map("landlord_relationship") @db.VarChar(20)
   rentFrom         String?   @map("rent_from") @db.Char(7)
   rentTo           String?   @map("rent_to") @db.Char(7)
   metro            Boolean?

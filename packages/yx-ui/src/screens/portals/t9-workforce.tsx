@@ -20,6 +20,7 @@ import { Icon } from '../../components/foundations';
 import { formatDate, formatINR, formatTime } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import { ID_SPECS } from '../../lib/validators';
+import { IN_STATE_OPTIONS } from '../../lib/india-states';
 import {
   alumniAccessEnds,
   checklistPercent,
@@ -615,9 +616,6 @@ const GENDERS = [
   { value: 'other', label: 'Other' },
   { value: 'prefer_not_to_say', label: 'Prefer not to say' },
 ];
-const STATES = [
-  ['IN-AP', 'Andhra Pradesh'], ['IN-AS', 'Assam'], ['IN-BR', 'Bihar'], ['IN-CT', 'Chhattisgarh'], ['IN-DL', 'Delhi'], ['IN-GA', 'Goa'], ['IN-GJ', 'Gujarat'], ['IN-HR', 'Haryana'], ['IN-HP', 'Himachal Pradesh'], ['IN-JH', 'Jharkhand'], ['IN-KA', 'Karnataka'], ['IN-KL', 'Kerala'], ['IN-MP', 'Madhya Pradesh'], ['IN-MH', 'Maharashtra'], ['IN-OR', 'Odisha'], ['IN-PB', 'Punjab'], ['IN-RJ', 'Rajasthan'], ['IN-TN', 'Tamil Nadu'], ['IN-TG', 'Telangana'], ['IN-UP', 'Uttar Pradesh'], ['IN-UT', 'Uttarakhand'], ['IN-WB', 'West Bengal'],
-].map(([value, label]) => ({ value, label }));
 
 type PersonalValue = { dateOfBirth: string; gender: string; addressLine1: string; addressLine2?: string; city: string; stateCode: string; postalCode: string };
 
@@ -669,7 +667,7 @@ export function PersonalDetailsStep({ defaultValue, onSave, tried: triedFirst = 
             <TextField value={v.city} onChange={set('city')} maxLength={100} autoComplete="address-level2" />
           </FormField>
           <FormField id="pd-state" label="State" required error={early.errorOf('pd-state')}>
-            <Select value={v.stateCode || null} onChange={set('stateCode')} options={STATES} searchable placeholder="Choose" />
+            <Select value={v.stateCode || null} onChange={set('stateCode')} options={IN_STATE_OPTIONS} searchable placeholder="Choose" />
           </FormField>
           <FormField id="pd-pin" label="PIN code" required error={early.errorOf('pd-pin')}>
             <TextField value={v.postalCode} onChange={(x) => set('postalCode')(x.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" autoComplete="postal-code" />

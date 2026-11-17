@@ -229,20 +229,20 @@ All new sets go in `apps/api/src/statutory/packs/in.json` (IN.PT / IN.LWF) and `
 |---|---|---|
 | H1 | **PF: new IN.PF version from 2026-09-17** with wageCeiling / epsCeiling 25,000 (EDLI and admin ceilings after CA item 46); goldens at 20,000 and 30,000 basic. Check every place that hard-codes 15,000 (`grep -rn 15000 apps/api/src/payroll`) | M **Done 17 Nov 2026** (branch `fix/yukthix-pf-ceiling-tn-pt`): IN.PF 2026-v2 from 2026-09-17, wage and EPS ceilings 25,000, EDLI and admin as before until item 46, `verify: true`; migration `202617z0000401_pf_ceiling_tn_pt`; arrears proposals raised for months already paid on the old ceiling (checked by each payslip's own period end). |
 | H2 | **TN PT fix**: `deductMonths` [8, 1]; due date Aug → 30 Sep (and Jan → CA item 4); new version, keep the old one dated | S **Done 17 Nov 2026**: IN.PT IN-TN 2026-v2 and IN.CALENDAR TN-2026-v2 from 2026-10-01 (the Apr–Sep 2026 half-year was already deducted in September); August due 30 Sep, January the end of February until item 4. |
-| H3 | **West Bengal PT**: two versions – 2014 schedule to 2026-09-30, new schedule from 2026-10-01; plus calendar (21 days after month end) | M |
-| H4 | **Odisha PT**: explicit "no PT" set from 2026-04-01 and the pre-April schedule for arrears | S |
-| H5 | PT, official-confirmed: **Andhra Pradesh, Gujarat** slabs + calendars | S |
-| H6 | PT, secondary-only, after CA tick: **Madhya Pradesh** (annual liability, 11+1 instalments – needs an `annual` basis in the evaluator), **Assam, Mizoram, Sikkim, Jharkhand (annual, quarterly), Puducherry (half-yearly), Punjab (development tax)** | L |
+| H3 | **West Bengal PT**: two versions – 2014 schedule to 2026-09-30, new schedule from 2026-10-01; plus calendar (21 days after month end) | M **Done 17 Nov 2026** (`feat/yukthix-batch-h`): IN-WB 2014-v1 to 2026-09-30, 2026-v2 from 2026-10-01; calendar 21 days after month end; migration 463. |
+| H4 | **Odisha PT**: explicit "no PT" set from 2026-04-01 and the pre-April schedule for arrears | S **Done**: IN-OD 2026-v1 "none" from 2026-04-01; pre-April schedule not loaded (2381); migration 464. |
+| H5 | PT, official-confirmed: **Andhra Pradesh, Gujarat** slabs + calendars | S **Done**: IN-AP, IN-GJ 2025-v1 and calendars (10th / 15th of the next month); migration 462. |
+| H6 | PT, secondary-only, after CA tick: **Madhya Pradesh** (annual liability, 11+1 instalments – needs an `annual` basis in the evaluator), **Assam, Mizoram, Sikkim, Jharkhand (annual, quarterly), Puducherry (half-yearly), Punjab (development tax)** | L **Part done**: evaluator basis `annual` (lastMonth); MP, AS, MZ, SK (migration 468), MP calendar. AS/MZ/SK have no due date (not found). Waiting: Jharkhand (quarterly dates unclear), Puducherry (deduction months not found), Punjab (2386). |
 | H7 | PT, conflicting, after CA tick: **Kerala, Bihar, Manipur, Nagaland, Tripura, Chhattisgarh, Goa, Meghalaya** | M |
-| H8 | Explicit "no PT" sets for Haryana, UP, Rajasthan, Uttarakhand, HP, Arunachal, J&K, Chandigarh (like IN-DL) so a location in those states shows "none" instead of "no rule" | S |
-| H9 | LWF, secondary-only, after CA tick: **Andhra Pradesh, Gujarat, Punjab, Chandigarh, West Bengal, Odisha** + calendars | M |
-| H10 | LWF **Haryana**: percentage-with-cap contribution (0.2%, cap per CA, employer 2×), monthly – needs a `rate`+`cap` LWF kind in the evaluator | M |
+| H8 | Explicit "no PT" sets for Haryana, UP, Rajasthan, Uttarakhand, HP, Arunachal, J&K, Chandigarh (like IN-DL) so a location in those states shows "none" instead of "no rule" | S **Done**: eight "none" sets; no PT registration asked where none is charged (2382); migration 461. |
+| H9 | LWF, secondary-only, after CA tick: **Andhra Pradesh, Gujarat, Punjab, Chandigarh, West Bengal, Odisha** + calendars | M **Done**: AP, GJ, PB, CH, WB, OD (Odisha split 10/20 assumed) and calendars; migration 469. |
+| H10 | LWF **Haryana**: percentage-with-cap contribution (0.2%, cap per CA, employer 2×), monthly – needs a `rate`+`cap` LWF kind in the evaluator | M **Evaluator done** (rate, cap, employerMultiple; gross earnings, 2384); Haryana data waits for CA item 32. |
 | H11 | LWF conflicting, after CA tick: **Goa, Madhya Pradesh, Chhattisgarh**; **Kerala** per-board model | L |
 | H12 | Fix LWF `validFrom` for MH (2024-03-18?), KA, TN after CA items 25–27 | S |
-| H13 | **IN.BONUS** new CODE version from 2025-11-21 citing S.O. 4710(E) / 4711(E); add the 100 minimum and max(7,000, minimum wage) if the code lacks it | S |
-| H14 | **IN.TAXDED TY2026-27**: fill section numbers (123/Sch XV, 126, 124(3), 124(1)(a), 11 + Sch III Sl. 11, 19(1)); crosswalk rows for 89(1)→157(1), Form 10E→39, 12BB→124, 80C/80D; keep 87A→156 flagged unconfirmed | S |
-| H15 | Form 124 declaration: add "relationship with landlord" field | S |
-| H16 | Minimum wages: Maharashtra (Jul–Dec 2026), Haryana (1 Apr 2026), TN DA, then DL/WB/TS/AP/GJ/UP when sourced | M |
+| H13 | **IN.BONUS** new CODE version from 2025-11-21 citing S.O. 4710(E) / 4711(E); add the 100 minimum and max(7,000, minimum wage) if the code lacks it | S **Done**: IN.BONUS 2025-v2 (CODE) from 2025-11-21; migration 465. |
+| H14 | **IN.TAXDED TY2026-27**: fill section numbers (123/Sch XV, 126, 124(3), 124(1)(a), 11 + Sch III Sl. 11, 19(1)); crosswalk rows for 89(1)→157(1), Form 10E→39, 12BB→124, 80C/80D; keep 87A→156 flagged unconfirmed | S **Done**: crosswalk sections and forms (migration 466; 80E, 24(b) not found), Form No. 124 on the declarations page, "s.123, Sch XV (old 80C)" labels (2388). IN.TAXDED not re-versioned (values unchanged). |
+| H15 | Form 124 declaration: add "relationship with landlord" field | S **Done**: landlord relationship (migration 467), required with the PAN above the limit for 2025 Act workspaces. |
+| H16 | Minimum wages: Maharashtra (Jul–Dec 2026), Haryana (1 Apr 2026), TN DA, then DL/WB/TS/AP/GJ/UP when sourced | M **Waiting** for the official notifications (2387). |
 
 ## Founder answers, batch H (17 Nov 2026, "ok for all"), 2380 to 2389
 - 2380: build H6 and H9 now, marked verify, and the Haryana rate-with-cap evaluator. Wait for the CA on the conflicting rows: H7, the Haryana LWF cap (31, 34 or 35), H11 and H12.
@@ -255,3 +255,19 @@ All new sets go in `apps/api/src/statutory/packs/in.json` (IN.PT / IN.LWF) and `
 - 2387: H16 minimum-wage tables wait for the official gov.in PDFs (MH, HR, the TN DA); no invented rows.
 - 2388: H14 also shows "s.123 (old 80C)" style labels on the declaration screen. The other listed payroll items go in batch H part 2.
 - 2389: Kerala per-board LWF, Kerala local-body PT and Tamil Nadu local bodies outside Chennai wait for the CA (items 5, 40, 4).
+
+## Founder answers, batch H part 2 (18 Nov 2026, "all ok"), 2400 to 2409
+- 2400: the entity's PAN and TAN block run approval. A missing employee PAN stays a per-person warning (TDS at 20 %, s.206AA).
+- 2401: a PT registration blocks approval unless it is "registered" or "applied, awaiting".
+- 2402: these blocks cannot be waived, like the coverage block.
+- 2403: the "PF only below the ceiling" test uses the month's earned PF wage after loss of pay, with no separate switch.
+- 2404: loan perquisite uses new rule set IN.PERQ-LOAN, marked verify. A CA enters the SBI rates per loan type (Rule 3(7)(i)). Medical loans and loans totalling ₹20,000 or less are exempt.
+- 2405: the perquisite is worked out on the maximum outstanding each month. It is an information line on the payslip and goes into TDS and Form 130/123. A company can switch it off only for loans it marks exempt.
+- 2406: flexible benefits are a company-set list, each with a monthly entitlement and "taxable if unclaimed". Unclaimed amounts are paid as taxable in March or at exit. Carry forward is a company setting, default off.
+- 2407: flexible-benefit claims use the expense claims flow (a category linked to the flexible component).
+- 2408: "Lock now" stops new declarations and new proofs; HR can still decide on proofs already sent.
+- 2409: the "Not ready for payroll" view is for HR and payroll (people.view plus payroll keys) within their entity scope; employees never see it.
+- 2396, 2397: Jharkhand quarter months and Puducherry PT months wait for CA items 11 and 18.
+
+## Retiring the old /v2 console (2398, 18 Nov 2026, "all ok")
+Audit every /v2 page → new equivalent or gap; build real gaps kit first; move role landings and redirect old URLs; move candidate /start and /session-ended to the kit; remove the "older screens" link; then delete /v2.
