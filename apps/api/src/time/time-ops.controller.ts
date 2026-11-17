@@ -9,7 +9,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtPlanDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
+import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtPlanDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, RegisterQueryDto, RosterBulkDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
 import { LeaveService } from './leave.service';
 import { RosterPublishDto } from './roster-ops.dto';
 import { NightWorkService } from './night-work.service';
@@ -142,6 +142,14 @@ export class TimeOpsController {
   @Throttle(MODERATE_UPLOAD_THROTTLE)
   rosterCells(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RosterCellsDto) {
     return this.roster.setCells(ctx, this.user(req), dto.cells);
+  }
+
+  /** Batch A B6 (answer 2316): change shift, weekly off or penalty policy for the ticked people from a date. */
+  @Post('roster/bulk')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  rosterBulk(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RosterBulkDto) {
+    return this.roster.bulk(ctx, this.user(req), dto);
   }
 
   @Post('roster/copy')

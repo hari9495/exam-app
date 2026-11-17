@@ -598,4 +598,82 @@ describe('Time batch A', () => {
       expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.punch.count({ where: { employeeId: ids.empEmp } }))).toBe(0);
     });
   });
+
+  // ------------------------------------------------------------------ B6: bulk team changes (answer 2316)
+  describe('B6 bulk team changes', () => {
+    const bulk = (who: Who, x: Record<string, unknown>) => api(who, 'post', '/time/roster/bulk').send(x);
+    const assignments = () => inA((tx) => tx.shiftPatternAssignment.count({ where: { scopeType: 'employee' } }));
+    const cycleOf = async (employeeId: string, from: string) => {
+      const a = await inA((tx) => tx.shiftPatternAssignment.findFirstOrThrow({ where: { scopeType: 'employee', scopeId: employeeId, validFrom: new Date(`${from}T00:00:00Z`) } }));
+      return (await inA((tx) => tx.shiftPattern.findUniqueOrThrow({ where: { id: a.patternId } }))).cycle as (string | null)[];
+    };
+    const monthStart = `${today.slice(0, 7)}-01`;
+    const lastMonth = addDays(monthStart, -1).slice(0, 7);
+    const nextMonth = addDays(`${today.slice(0, 7)}-28`, 7).slice(0, 7);
+    const tomorrow = d(1);
+    beforeAll(async () => {
+      await inA(async (tx) => {
+        const o = { organizationId: org.A.id };
+        for (const [k, code, start, end] of [['s1', 'D1', 540, 1080], ['s2', 'D2', 600, 1140]] as const) {
+          ids[k] = (await tx.shift.create({ data: { ...o, code, name: `Day ${code}` } })).id;
+          await tx.shiftVersion.create({ data: { ...o, shiftId: ids[k], validFrom: new Date('2020-01-01T00:00:00Z'), startMinute: start, endMinute: end } });
+        }
+        // Last month locked for attendance (the D15 tests may have locked it already).
+        if (!(await tx.payPeriod.findFirst({ where: { legalEntityId: ids.entityA, periodStart: new Date(`${lastMonth}-01T00:00:00Z`) } })))
+          await tx.payPeriod.create({ data: { ...o, legalEntityId: ids.entityA, periodStart: new Date(`${lastMonth}-01T00:00:00Z`), periodEnd: new Date(`${addDays(monthStart, -1)}T00:00:00Z`), stage: 'locked', lockedAt: new Date(), reason: 'Batch A B6 test' } });
+      });
+    });
+
+    it('a manager changes the shift of ticked team members from tomorrow: their weekly offs stay; audited', async () => {
+      expect((await bulk('mgr', { employeeIds: [ids.empEmp, ids.peerEmp], from: tomorrow, change: 'shift', shiftId: ids.s1 }).expect(200)).body).toEqual({ changed: 2, from: tomorrow });
+      for (const e of [ids.empEmp, ids.peerEmp]) expect(await cycleOf(e, tomorrow)).toEqual([ids.s1, ids.s1, ids.s1, ids.s1, ids.s1, ids.s1, null]);
+      // One weekly pattern for the same week.
+      const a = await inA((tx) => tx.shiftPatternAssignment.findMany({ where: { scopeType: 'employee', validFrom: new Date(`${tomorrow}T00:00:00Z`) } }));
+      expect(new Set(a.map((x) => x.patternId)).size).toBe(1);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'time.roster.bulk_changed', actorUserId: users.mgr } }))).toBe(1);
+    });
+
+    it('weekly off keeps each shift; the same date replaces the earlier change; the location\'s usual shift needs a shift too', async () => {
+      await bulk('mgr', { employeeIds: [ids.empEmp], from: tomorrow, change: 'weekly_off', weeklyOffs: [6, 7] }).expect(200);
+      expect(await cycleOf(ids.empEmp, tomorrow)).toEqual([ids.s1, ids.s1, ids.s1, ids.s1, ids.s1, null, null]);
+      expect(await inA((tx) => tx.shiftPatternAssignment.count({ where: { scopeType: 'employee', scopeId: ids.empEmp } }))).toBe(1);
+      expect((await bulk('hrAdmin', { employeeIds: [ids.mgrEmp], from: tomorrow, change: 'weekly_off', weeklyOffs: [7] }).expect(400)).body.message).toMatch(/usual shift\. Choose the shift for them too/);
+      await bulk('hrAdmin', { employeeIds: [ids.mgrEmp], from: tomorrow, change: 'weekly_off', weeklyOffs: [7], shiftId: ids.s2 }).expect(200);
+      expect(await cycleOf(ids.mgrEmp, tomorrow)).toEqual([ids.s2, ids.s2, ids.s2, ids.s2, ids.s2, ids.s2, null]);
+    });
+
+    it('a date already past in an open month is allowed; inside the locked month it is refused with nothing saved', async () => {
+      const past = d(-1) < monthStart ? monthStart : d(-1);
+      if (past <= today) await bulk('hrAdmin', { employeeIds: [ids.peerEmp], from: past, change: 'shift', shiftId: ids.s2 }).expect(200);
+      const before = await assignments();
+      expect((await bulk('hrAdmin', { employeeIds: [ids.peerEmp], from: `${lastMonth}-15`, change: 'shift', shiftId: ids.s2 }).expect(409)).body.code).toBe('PERIOD_LOCKED');
+      expect(await assignments()).toBe(before);
+    });
+
+    it('HR changes the penalty policy from the 1st of a month only; the months before keep theirs', async () => {
+      const from = `${nextMonth}-01`;
+      await bulk('hrAdmin', { employeeIds: [ids.empEmp, ids.peerEmp], from, change: 'penalty', lateMarksFree: '1', lateMarkPenalty: '1' }).expect(200);
+      const rows = await inA((tx) => tx.setting.findMany({ where: { scopeType: 'employee', scopeId: ids.empEmp, key: { in: ['attendance.late_marks_free', 'attendance.late_mark_penalty'] } } }));
+      expect(rows.map((r) => [r.key, r.value, r.validFrom?.toISOString().slice(0, 10)]).sort()).toEqual([['attendance.late_mark_penalty', '1', from], ['attendance.late_marks_free', '1', from]]);
+      expect((await bulk('hrAdmin', { employeeIds: [ids.empEmp], from: `${nextMonth}-02`, change: 'penalty', lateMarksFree: '1', lateMarkPenalty: '1' }).expect(400)).body.message).toMatch(/1st of a month/);
+      // A manager plans shifts but cannot change the penalty policy.
+      await bulk('mgr', { employeeIds: [ids.empEmp], from, change: 'penalty', lateMarksFree: '0', lateMarkPenalty: '1' }).expect(403);
+    });
+
+    it('negative: the wrong role, out of scope, one\'s own, another company and bad input are refused with nothing saved', async () => {
+      const before = await assignments();
+      const ok = { employeeIds: [ids.peerEmp], from: tomorrow, change: 'shift', shiftId: ids.s2 };
+      expect([403, 404]).toContain((await bulk('emp', ok)).status);
+      expect([403, 404]).toContain((await bulk('mgr', { ...ok, employeeIds: [ids.hrEmp] })).status);
+      expect([403, 404]).toContain((await bulk('mgr', { ...ok, employeeIds: [ids.mgrEmp] })).status);
+      expect([403, 404]).toContain((await bulk('adminB', ok)).status);
+      // One bad person in the list: nobody changes.
+      expect([403, 404]).toContain((await bulk('mgr', { ...ok, employeeIds: [ids.peerEmp, ids.hrEmp] })).status);
+      for (const bad of [{ employeeIds: [] }, { employeeIds: ['someone'] }, { change: 'everything' }, { from: 'tomorrow' }, { shiftId: undefined }, { change: 'weekly_off', weeklyOffs: [8] }, { change: 'weekly_off', weeklyOffs: [1, 2, 3, 4] }, { extra: 1 }, { employeeIds: [ids.peerEmp, ids.peerEmp] }])
+        await bulk('mgr', { ...ok, ...bad }).expect(400);
+      await bulk('mgr', { ...ok, shiftId: randomUUID() }).expect(400);
+      expect(await assignments()).toBe(before);
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.shiftPatternAssignment.count())).toBe(0);
+    });
+  });
 });

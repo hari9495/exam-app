@@ -726,6 +726,47 @@ export class RosterCellDto {
   value!: string;
 }
 
+/** Batch A B6 (answer 2316): one change for the ticked people of the roster, from a date. */
+export class RosterBulkDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  employeeIds!: string[];
+
+  @IsDateString(DATE)
+  from!: string;
+
+  @IsIn(['shift', 'weekly_off', 'penalty'])
+  change!: 'shift' | 'weekly_off' | 'penalty';
+
+  /** shift: the new shift; weekly_off: the shift for anyone on the location's usual shift. */
+  @IsOptional()
+  @IsUUID()
+  shiftId?: string;
+
+  /** weekly_off: the weekly-off days, 1 = Monday … 7 = Sunday. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  weeklyOffs?: number[];
+
+  /** penalty: late marks a month without a deduction, and what each one over costs (days of pay). */
+  @IsOptional()
+  @IsIn(['0', '1', '2', '3', '4', '5', '6'])
+  lateMarksFree?: string;
+
+  @IsOptional()
+  @IsIn(['0', '0.5', '1'])
+  lateMarkPenalty?: string;
+}
+
 export class RosterCellsDto {
   @IsArray()
   @ArrayMaxSize(200)

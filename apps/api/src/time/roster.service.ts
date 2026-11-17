@@ -7,10 +7,10 @@ import { todayIst } from '../org-structure/org-validation';
 import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
-import { ConsentDto, PatternAssignDto, PatternDto, RosterCellDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto } from './dto';
+import { ConsentDto, PatternAssignDto, PatternDto, RosterBulkDto, RosterCellDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto } from './dto';
 import { ScheduleBook, assertOpen, lockedDates, nightGuard, oshOn } from './schedule';
 import { TimeSetupService, SCOPE_MODEL } from './setup.service';
-import { TIME_KEYS, Facts, asDate, companySetting, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, mustSee, myEmployeeId, settingOn, visibleSql } from './time-core';
+import { TIME_KEYS, Facts, asDate, companySetting, grantCovers, dateOf, factsOn, holidaysFor, hrApprovers, leaveDays, mustSee, myEmployeeId, settingOn, visibleSql } from './time-core';
 import { addDays } from './time-maths';
 import { Conflict, ShiftTimes, mondayOf } from './time-rules';
 import { RosterGuard } from './roster-guard';
@@ -401,6 +401,111 @@ export class RosterService implements OnModuleInit {
         rules: rules && { minRestHours: rules.minRestMinutes / 60, maxDailyHours: rules.dailyMinutes / 60, maxWeeklyHours: rules.weeklyMinutes / 60, maxSpreadOverHours: rules.spreadMinutes / 60, minWeeklyOffs: rules.minWeeklyOffs },
         people: rows,
       };
+    });
+  }
+
+  /**
+   * Batch A B6 (answer 2316): one change for the ticked people from a chosen date, never before the last locked attendance
+   * month (any locked day from that date on refuses it, with nothing saved).
+   *   shift       each person gets the new shift on their working days, keeping their weekly offs (a weekly pattern);
+   *   weekly_off  each person keeps their shift and gets the new weekly-off days (anyone on the location's usual shift,
+   *               which is not a shift record, needs `shiftId` too);
+   *   penalty     the late-mark policy (free marks, cost of each one over) per person from the 1st of a month only, as
+   *               late marks are counted a month at a time; months before keep their policy. Needs attendance.lock.
+   * Shift and weekly off need the planner's reach (their team, or roster.manage in scope). Days already past from the
+   * date are worked out again. All or nothing; audited.
+   */
+  async bulk(ctx: TenantContext, user: ScopeUser, dto: RosterBulkDto) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    const today = todayIst();
+    if (dto.from > addDays(today, 366)) throw new BadRequestException('Choose a date within the next year.');
+    if (dto.change === 'shift' && !dto.shiftId) throw new BadRequestException({ statusCode: 400, message: 'Choose the new shift.', field: 'shiftId' });
+    if (dto.change === 'weekly_off' && !dto.weeklyOffs?.length) throw new BadRequestException({ statusCode: 400, message: 'Choose the weekly-off days.', field: 'weeklyOffs' });
+    if (dto.change === 'penalty' && (dto.lateMarksFree === undefined || dto.lateMarkPenalty === undefined)) throw new BadRequestException({ statusCode: 400, message: 'Choose the free late marks and what each one over costs.', field: 'lateMarksFree' });
+    if (dto.change === 'penalty' && dto.from.slice(8) !== '01') throw new BadRequestException({ statusCode: 400, message: 'A penalty policy change starts on the 1st of a month: late marks are counted a month at a time.', field: 'from' });
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = await this.ownId(tx, c, v);
+      const book = await ScheduleBook.load(tx, org);
+      const people: Facts[] = [];
+      for (const e of dto.employeeIds) {
+        if (dto.change === 'penalty') {
+          if (!(await grantCovers(tx, c, v, own, 'attendance.lock', e, today))) throw new ForbiddenException('Changing the penalty policy needs attendance.lock for each person.');
+          if (e === own) throw new ForbiddenException('Your own penalty policy is changed by another HR admin.');
+        } else await this.mustPlan(tx, c, v, own, e, today);
+        // Never before the last locked attendance month: any locked day of theirs from the date on, or a date on or before
+        // the end of their entity's last locked (or frozen) month, refuses the change.
+        await assertOpen(tx, org, e, dto.from, dto.from > today ? dto.from : today);
+        const f = (await factsOn(tx, org, e, dto.from)) ?? (await factsOn(tx, org, e, today));
+        if (!f) throw new BadRequestException('One of the people is not working here on that date.');
+        const lock = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: f.legalEntityId, payGroupId: null, stage: { not: 'open' }, periodEnd: { gte: asDate(dto.from) } }, orderBy: { periodEnd: 'desc' } });
+        if (lock) throw new ConflictException({ statusCode: 409, code: 'PERIOD_LOCKED', message: `Attendance is locked up to ${new Date(lock.periodEnd).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })}. Choose a date after that.` });
+        people.push(f);
+      }
+      const DAY = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      if (dto.change === 'penalty') {
+        for (const f of people)
+          for (const [key, value] of [['attendance.late_marks_free', dto.lateMarksFree!], ['attendance.late_mark_penalty', dto.lateMarkPenalty!]] as const) {
+            const where = { organizationId: org, key, scopeType: 'employee', scopeId: f.employeeId, validFrom: asDate(dto.from) };
+            const row = await tx.setting.findFirst({ where });
+            if (row) await tx.setting.update({ where: { id: row.id }, data: { value, updatedBy: c.userId ?? null } });
+            else await tx.setting.create({ data: { ...where, value, updatedBy: c.userId ?? null } });
+          }
+        await audit(tx, c, 'time.roster.bulk_changed', 'roster', org, { change: 'penalty', from: dto.from, people: dto.employeeIds, lateMarksFree: dto.lateMarksFree, lateMarkPenalty: dto.lateMarkPenalty });
+        return { changed: people.length, from: dto.from };
+      }
+      if (dto.shiftId && ![...book.shifts.values()].some((s) => s.id === dto.shiftId && s.active)) throw new BadRequestException({ statusCode: 400, message: 'Choose a shift in use.', field: 'shiftId' });
+      const week = Array.from({ length: 7 }, (_, i) => addDays(dto.from, i));
+      const plans: { f: Facts; cycle: (string | null)[] }[] = [];
+      const noShift: string[] = [];
+      for (const f of people) {
+        // The person's week as it stands from the date (the pattern or the location, not one-off roster cells), Monday first.
+        const cycle: (string | null)[] = Array(7).fill(null);
+        for (const on of week) {
+          const wd = (new Date(`${on}T00:00:00Z`).getUTCDay() + 6) % 7;
+          const d = await book.day(f, on, false);
+          if (dto.change === 'shift') cycle[wd] = d.weeklyOff ? null : dto.shiftId!;
+          else cycle[wd] = dto.weeklyOffs!.includes(wd + 1) ? null : (d.shift?.shiftId ?? dto.shiftId ?? null);
+          if (dto.change === 'weekly_off' && !dto.weeklyOffs!.includes(wd + 1) && !d.shift?.shiftId && !dto.shiftId) noShift.push(f.name);
+        }
+        plans.push({ f, cycle });
+      }
+      if (noShift.length) throw new BadRequestException({ statusCode: 400, message: `${[...new Set(noShift)].slice(0, 3).join(', ')} ${new Set(noShift).size === 1 ? 'works' : 'work'} the location's usual shift. Choose the shift for them too.`, field: 'shiftId' });
+      const idle = plans.find((x) => x.cycle.every((c) => c === null));
+      if (idle) throw new BadRequestException(`${idle.f.name} would have no working day left. Keep at least one.`);
+      const patterns = await tx.shiftPattern.findMany({ where: { organizationId: org, kind: 'weekly', active: true } });
+      const changed: { employeeId: string; patternId: string; replaced: string | null }[] = [];
+      for (const { f, cycle } of plans) {
+        // YX-AT-25: the law guard over the first four weeks, as for any pattern.
+        for (let k = 0; k < 28; k++) {
+          const on = addDays(dto.from, k);
+          const id = cycle[(new Date(`${on}T00:00:00Z`).getUTCDay() + 6) % 7];
+          const reason = id ? await nightGuard(tx, org, f, on, book.shiftOn(id, on)) : null;
+          if (reason) throw new ConflictException({ statusCode: 409, code: 'NIGHT_GUARD', message: `${reason} (${fmt(on)}). Nothing was changed.` });
+        }
+        // One weekly pattern per distinct week, reused by everyone with the same week.
+        let p = patterns.find((x) => JSON.stringify(x.cycle) === JSON.stringify(cycle));
+        if (!p) {
+          const codes = [...new Set(cycle.filter((x): x is string => !!x).map((id) => book.shifts.get(id)?.code ?? '?'))].join('/');
+          const offs = cycle.map((x, i) => (x === null ? DAY[i] : null)).filter(Boolean).join(', ');
+          p = await tx.shiftPattern.create({ data: { organizationId: org, name: `${codes} · off ${offs || 'none'}`.slice(0, 60), kind: 'weekly', cycle: cycle as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
+          patterns.push(p);
+          await audit(tx, c, 'time.pattern.created', 'shift_pattern', p.id, { name: p.name, kind: 'weekly', cycle, by: 'roster.bulk' });
+        }
+        const at = { organizationId: org, scopeType: 'employee', scopeId: f.employeeId, validFrom: asDate(dto.from) };
+        const existing = await tx.shiftPatternAssignment.findFirst({ where: at });
+        if (existing) await tx.shiftPatternAssignment.delete({ where: { id: existing.id } });
+        await tx.shiftPatternAssignment.create({ data: { ...at, patternId: p.id, offsetDays: 0, createdBy: c.userId ?? null } });
+        changed.push({ employeeId: f.employeeId, patternId: p.id, replaced: existing?.patternId ?? null });
+      }
+      // Days already past from the date follow the new week now.
+      if (dto.from <= today) {
+        const fresh = await ScheduleBook.load(tx, org);
+        for (const { f } of plans) await this.days.evaluate(tx, c, f.employeeId, dto.from, today, new Date(), fresh);
+      }
+      await audit(tx, c, 'time.roster.bulk_changed', 'roster', org, { change: dto.change, from: dto.from, shiftId: dto.shiftId ?? null, weeklyOffs: dto.weeklyOffs ?? null, people: changed });
+      return { changed: plans.length, from: dto.from };
     });
   }
 
