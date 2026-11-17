@@ -308,18 +308,20 @@
 }
 /* Stronger focus outline; high contrast has it too ("focus visible everywhere"). */
 :root[data-strong-focus="on"], :root[data-contrast="high"] { --yx-focus-width: 4px; }
+/* High contrast also thickens every control and card border (answer 2394: it must be clearly visible on the light theme). */
+:root[data-contrast="high"] { --yx-border-width: 2px; }
 
 /* High contrast theme, beside Light and Dark: black on white, AAA text (7:1 and more), black borders on every control.
    It wins over a Light or Dark choice while it is on. */
 :root[data-contrast="high"], :root[data-contrast="high"] [data-theme] {
   --yx-color-bg-page: #FFFFFF;
   --yx-color-bg-surface: #FFFFFF;
-  --yx-color-bg-subtle: #F0F0F0;
+  --yx-color-bg-subtle: #FFFFFF;
   --yx-color-bg-raised: #FFFFFF;
   --yx-color-bg-selected: #DCE6FF;
   --yx-color-bg-inverse: #000000;
-  --yx-color-icon-tile: #F0F0F0;
-  --yx-color-icon-tile-lift: #F0F0F0;
+  --yx-color-icon-tile: #FFFFFF;
+  --yx-color-icon-tile-lift: #FFFFFF;
   --yx-color-border: #000000;
   --yx-color-border-strong: #000000;
   --yx-color-border-input: #000000;
