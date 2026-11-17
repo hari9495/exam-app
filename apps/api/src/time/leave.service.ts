@@ -9,7 +9,7 @@ import { DayEngine } from './day-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { payOn } from '../payroll/fnf.service';
-import { ApplyLeaveDto, AdjustDto, LeavePlanDto } from './dto';
+import { ApplyLeaveDto, AdjustDto, CancelDaysDto, ExtendLeaveDto, LeavePlanDto } from './dto';
 import {
   Facts,
   LeaveRules,
@@ -46,6 +46,7 @@ import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, 
 
 export const LEAVE_REQUEST = 'leave.request';
 export const LEAVE_CANCEL = 'leave.cancel';
+export const LEAVE_CANCEL_DAYS = 'leave.cancel_days';
 const ACTIVE = ['pending', 'approved', 'cancel_pending'];
 const NAME = Prisma.raw(`concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name)`);
 type Off = { employeeId: string; name: string; on: string; type: string };
@@ -128,7 +129,8 @@ export class LeaveService implements OnModuleInit {
       // Founder (30 Oct 2026): "Send back for changes" (setting leave.send_back, default on).
       sendBack: { allowed: (tx, req) => this.sendBackAllowed(tx, req), apply: (tx, req, reason) => this.sentBack(tx, req, reason) },
     });
-    this.engine.register({ key: LEAVE_CANCEL, label: 'Leave cancellation', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.cancelDecided(tx, req, outcome), requesterLink: () => '/yx/time/leave' });
+    this.engine.register({ key: LEAVE_CANCEL, label: 'Leave cancellation', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome, afterCommit) => this.cancelDecided(tx, req, outcome, afterCommit), requesterLink: () => '/yx/time/leave' });
+    this.engine.register({ key: LEAVE_CANCEL_DAYS, label: 'Leave: cancel some days', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome, afterCommit) => this.cancelDaysDecided(tx, req, outcome, afterCommit), requesterLink: () => '/yx/time/leave' });
   }
 
   viewer(user: ScopeUser): Promise<Viewer> {
@@ -439,7 +441,17 @@ export class LeaveService implements OnModuleInit {
         today,
         year,
         balances,
-        requests: await this.sentBackNotes(tx, org, requests).then((notes) => requests.map((r) => ({ ...this.requestView(r, types.get(r.leaveTypeId), true), sentBack: notes.get(r.id) ?? null }))),
+        requests: await this.sentBackNotes(tx, org, requests).then(async (notes) => {
+          // Batch A D12: approved leave still to come lists its leave days (Cancel some days) and any change waiting.
+          const open = requests.filter((r) => r.status === 'approved' && dateOf(r.toOn) >= today).map((r) => r.id);
+          const dayRows = open.length ? await tx.leaveRequestDay.findMany({ where: { organizationId: org, requestId: { in: open }, active: true, portion: { gt: 0 } }, orderBy: { leaveOn: 'asc' } }) : [];
+          const waiting = open.length ? await tx.leaveChange.findMany({ where: { organizationId: org, requestId: { in: open }, status: 'pending' } }) : [];
+          return requests.map((r) => ({
+            ...this.requestView(r, types.get(r.leaveTypeId), true),
+            sentBack: notes.get(r.id) ?? null,
+            ...(open.includes(r.id) ? { leaveDays: dayRows.filter((d) => d.requestId === r.id).map((d) => ({ on: dateOf(d.leaveOn), portion: num(d.portion) })), changeWaiting: waiting.find((w) => w.requestId === r.id)?.days.map(dateOf) ?? null } : {}),
+          }));
+        }),
         holidays: {
           calendar: cal && limit ? { id: cal.id, name: cal.name, optionalLimit: limit.limit, yearlyLimit: cal.optionalLimit, movedOn: limit.movedOn } : null,
           list: holidays.map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay, chosen: chosen.has(h.id) })),
@@ -490,6 +502,7 @@ export class LeaveService implements OnModuleInit {
       certificate: r.certificate,
       reason: withReason ? r.reason : null,
       wfRequestId: r.wfRequestId,
+      extendsRequestId: r.extendsRequestId,
       createdAt: r.createdAt,
       decidedAt: r.decidedAt,
     };
@@ -768,7 +781,7 @@ export class LeaveService implements OnModuleInit {
     }
   }
 
-  private async cancelDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
+  private async cancelDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected', afterCommit?: (fn: () => Promise<void>) => void) {
     const c: CompanyContext = { organizationId: wf.organizationId, isSuperAdmin: false };
     const r = await tx.leaveRequest.findFirst({ where: { organizationId: wf.organizationId, id: wf.subjectId } });
     if (!r || r.status !== 'cancel_pending') return;
@@ -776,11 +789,11 @@ export class LeaveService implements OnModuleInit {
       await tx.leaveRequest.update({ where: { id: r.id }, data: { status: 'approved', version: { increment: 1 }, updatedAt: new Date() } });
       return;
     }
-    await this.cancelIn(tx, c, r);
+    await this.cancelIn(tx, c, r, afterCommit);
   }
 
   /** Cancels approved leave: reverses the debit (a new ledger entry, YX-LV-01), frees the days, takes back the delegation. */
-  private async cancelIn(tx: Tx, c: CompanyContext, r: Req) {
+  private async cancelIn(tx: Tx, c: CompanyContext, r: Req, afterCommit?: (fn: () => Promise<void>) => void) {
     const from = dateOf(r.fromOn);
     const to = dateOf(r.toOn);
     await tx.leaveRequest.update({ where: { id: r.id }, data: { status: 'cancelled', decidedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
@@ -792,6 +805,159 @@ export class LeaveService implements OnModuleInit {
     const emp = await tx.employee.findFirst({ where: { organizationId: r.organizationId, id: r.employeeId }, select: { userId: true } });
     if (emp?.userId) await this.engine.revokeLeaveDelegations(tx, c, emp.userId, from, to);
     await this.dayEngine.evaluate(tx, c, r.employeeId, from, to);
+    // Answer 2324: the colleagues told about it hear it is off (dates only).
+    await this.tellNoLongerAway(tx, c, r, from === to ? `on ${fmt(from)}` : `from ${rangeText(from, to)}`, afterCommit);
+  }
+
+  // ------------------------------------------------------------------------------------------ D12 cancel some days, extend
+
+  /** The active leave days of a request with their portion (the days "Cancel some days" may pick from). */
+  private async activeDays(tx: Tx, org: string, requestId: string) {
+    return (await tx.leaveRequestDay.findMany({ where: { organizationId: org, requestId, active: true, portion: { gt: 0 } }, orderBy: { leaveOn: 'asc' } })).map((d) => ({ on: dateOf(d.leaveOn), portion: num(d.portion) }));
+  }
+
+  /** Checks the picked days against the request: each an active leave day, not all of them, never a locked month. */
+  private async pickDays(tx: Tx, c: CompanyContext, r: Req, days: string[], fromOn: string | null) {
+    const active = await this.activeDays(tx, c.organizationId, r.id);
+    const byOn = new Map(active.map((d) => [d.on, d]));
+    for (const on of days) {
+      if (!byOn.has(on)) throw new BadRequestException({ statusCode: 400, message: `${fmt(on)} is not a leave day of this request.`, field: 'days' });
+      if (fromOn && on < fromOn) throw new BadRequestException({ statusCode: 400, message: `${fmt(on)} has already been taken. Ask HR to correct it.`, field: 'days' });
+    }
+    if (days.length === active.length) throw new BadRequestException({ statusCode: 400, message: 'That is every day of this leave. Use Ask to cancel instead.', field: 'days' });
+    await assertOpen(tx, c.organizationId, r.employeeId, [...days].sort()[0], [...days].sort().at(-1)!);
+    return days.map((on) => byOn.get(on)!);
+  }
+
+  /**
+   * Batch A D12 (answer 2311): the employee asks to cancel some days not yet taken, up to the leave's last day. It
+   * goes to the approver (P03, leave.cancel_days); approved, the days come back to the balance.
+   */
+  async cancelDays(ctx: TenantContext, user: ScopeUser, id: string, dto: CancelDaysDto) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { f, today } = await this.meFacts(tx, c, c.userId);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`leave:${c.organizationId}:${f.employeeId}`}))`;
+      const r = await tx.leaveRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId: f.employeeId } });
+      if (!r) throw new NotFoundException('No such leave request.');
+      if (r.status !== 'approved') throw new ConflictException('Only approved leave can have days cancelled. Withdraw a request that is still waiting.');
+      if (await tx.leaveChange.findFirst({ where: { organizationId: c.organizationId, requestId: r.id, status: 'pending' }, select: { id: true } })) throw new ConflictException('A change to this leave is already waiting for approval.');
+      const picked = await this.pickDays(tx, c, r, dto.days, today);
+      const t = await tx.leaveType.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.leaveTypeId } });
+      const back = picked.reduce((s, d) => s + d.portion, 0);
+      const ch = await tx.leaveChange.create({ data: { organizationId: c.organizationId, requestId: r.id, employeeId: r.employeeId, kind: 'cancel_days', days: picked.map((d) => asDate(d.on)), reason: dto.reason, raisedBy: c.userId ?? null } });
+      const sub = await this.engine.submit(tx, c, {
+        type: LEAVE_CANCEL_DAYS,
+        subjectType: 'leave_change',
+        subjectId: ch.id,
+        title: `${f.name}: cancel ${daysText(back)} of ${t.name}`,
+        summary: [
+          { label: 'Leave', value: `${t.name}, ${rangeText(dateOf(r.fromOn), dateOf(r.toOn))}` },
+          { label: 'Days to cancel', value: picked.map((d) => fmt(d.on)).join(', ') },
+          { label: 'Days back', value: String(back) },
+          { label: 'Why', value: dto.reason.slice(0, 300) },
+        ],
+        subjectPersonId: f.personId,
+        requesterUserId: c.userId ?? null,
+        raisedByUserId: c.userId ?? null,
+        steps: [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }],
+        payload: {},
+        payloadFields: [],
+        fallbackUserIds: await hrApprovers(tx, c.organizationId, f.employeeId, today, f.userId),
+      });
+      notices.push(...sub.notices);
+      await tx.leaveChange.update({ where: { id: ch.id }, data: { wfRequestId: sub.id } });
+      await audit(tx, c, 'leave.request.days_cancel_requested', 'leave_request', r.id, { changeId: ch.id, days: dto.days });
+      return { id: ch.id, status: 'pending', days: back };
+    });
+    await this.engine.send(ctx, notices);
+    return res;
+  }
+
+  /** Batch A D12: HR in scope cancels any days of approved leave at once, with a reason (audited); never their own. */
+  async hrCancelDays(ctx: TenantContext, user: ScopeUser, employeeId: string, id: string, dto: CancelDaysDto) {
+    const after: (() => Promise<void>)[] = [];
+    const out = await this.forSomeone(ctx, user, employeeId, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`leave:${c.organizationId}:${employeeId}`}))`;
+      const r = await tx.leaveRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId } });
+      if (!r) throw new NotFoundException('No such leave request.');
+      if (r.status !== 'approved') throw new ConflictException('Only approved leave can have days cancelled.');
+      if (await tx.leaveChange.findFirst({ where: { organizationId: c.organizationId, requestId: r.id, status: 'pending' }, select: { id: true } })) throw new ConflictException('A change to this leave is already waiting for approval. Let the approver decide it first.');
+      const picked = await this.pickDays(tx, c, r, dto.days, null);
+      const ch = await tx.leaveChange.create({ data: { organizationId: c.organizationId, requestId: r.id, employeeId, kind: 'cancel_days', days: picked.map((d) => asDate(d.on)), reason: dto.reason, raisedBy: c.userId ?? null, status: 'approved', decidedAt: new Date() } });
+      const back = await this.applyDayCancel(tx, c, r, picked, `cxd:${ch.id}`, (fn) => after.push(fn));
+      await audit(tx, c, 'leave.request.days_cancelled_by_hr', 'leave_request', r.id, { changeId: ch.id, days: dto.days, back, reason: dto.reason });
+      return { id: ch.id, status: 'approved', days: back };
+    });
+    for (const fn of after) await fn();
+    return out;
+  }
+
+  private async cancelDaysDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected', afterCommit?: (fn: () => Promise<void>) => void) {
+    const c: CompanyContext = { organizationId: wf.organizationId, isSuperAdmin: false };
+    const ch = await tx.leaveChange.findFirst({ where: { organizationId: wf.organizationId, id: wf.subjectId } });
+    if (!ch || ch.status !== 'pending') return;
+    await tx.leaveChange.update({ where: { id: ch.id }, data: { status: outcome, decidedAt: new Date() } });
+    if (outcome === 'rejected') return;
+    const r = await tx.leaveRequest.findFirst({ where: { organizationId: wf.organizationId, id: ch.requestId } });
+    if (!r || r.status !== 'approved') return;
+    const want = new Set(ch.days.map((d) => dateOf(d)));
+    const picked = (await this.activeDays(tx, wf.organizationId, r.id)).filter((d) => want.has(d.on));
+    if (picked.length) await this.applyDayCancel(tx, c, r, picked, `cxd:${ch.id}`, afterCommit);
+  }
+
+  /** Frees the picked days: inactive, the balance back (a new ledger entry), the request's days and dates updated. */
+  private async applyDayCancel(tx: Tx, c: CompanyContext, r: Req, picked: { on: string; portion: number }[], periodKey: string, afterCommit?: (fn: () => Promise<void>) => void) {
+    const org = c.organizationId;
+    const back = picked.reduce((s, d) => s + d.portion, 0);
+    await tx.leaveRequestDay.updateMany({ where: { organizationId: org, requestId: r.id, leaveOn: { in: picked.map((d) => asDate(d.on)) } }, data: { active: false } });
+    const left = await this.activeDays(tx, org, r.id);
+    const t = await tx.leaveType.findFirstOrThrow({ where: { organizationId: org, id: r.leaveTypeId } });
+    const ons = picked.map((d) => d.on).sort();
+    if (hasBalance(t.kind)) {
+      await tx.leaveLedgerEntry.create({ data: { organizationId: org, employeeId: r.employeeId, leaveTypeId: r.leaveTypeId, entryOn: asDate(ons[0]), kind: 'cancelled', days: back, requestId: r.id, periodKey, reason: `Cancelled ${ons.map(fmt).join(', ')}: ${t.name}` } });
+    }
+    await tx.leaveRequest.update({ where: { id: r.id }, data: { days: Math.max(0, num(r.days) - back), fromOn: asDate(left[0].on), toOn: asDate(left.at(-1)!.on), version: { increment: 1 }, updatedAt: new Date() } });
+    // shortcut: a leave delegation stays for the whole original range; trimmed per day if approvers ask for it.
+    await this.dayEngine.evaluate(tx, c, r.employeeId, ons[0], ons.at(-1)!);
+    await this.tellNoLongerAway(tx, c, r, `on ${ons.map(fmt).join(', ')}`, afterCommit);
+    return back;
+  }
+
+  /** Answer 2324: colleagues told about this leave hear it is off for those days, with the dates only. */
+  private async tellNoLongerAway(tx: Tx, c: CompanyContext, r: Req, when: string, afterCommit?: (fn: () => Promise<void>) => void) {
+    if (!r.notifyUserIds.length || !afterCommit) return;
+    const emp = await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: r.employeeId }, select: { userId: true, preferredName: true, givenName: true, familyName: true } });
+    const name = emp ? [emp.preferredName ?? emp.givenName, emp.familyName].filter(Boolean).join(' ') : 'A colleague';
+    const text = `${name} is no longer away ${when}.`;
+    const to = r.notifyUserIds.filter((u) => u !== emp?.userId);
+    await audit(tx, c, 'leave.colleagues_told', 'leave_request', r.id, { count: to.length, change: 'no_longer_away' });
+    afterCommit(() => this.notifications.notifySystem({ organizationId: c.organizationId, isSuperAdmin: false }, to, 'leave.colleague_away', { entityType: 'leave_request', entityId: r.id, contextText: text, linkPath: '/yx/home' }, { subject: `${name} is no longer away`, html: `<p>${escapeHtml(text)}</p>` }, emp?.userId ?? null));
+  }
+
+  /**
+   * Batch A D12 (answer 2311): extend approved or waiting leave: a new request of the same type from the day after its
+   * last day, linked to it, through the usual rules and the approver.
+   */
+  async extend(ctx: TenantContext, user: ScopeUser, id: string, dto: ExtendLeaveDto) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { f, today } = await this.meFacts(tx, c, c.userId);
+      const r = await tx.leaveRequest.findFirst({ where: { organizationId: c.organizationId, id, employeeId: f.employeeId } });
+      if (!r) throw new NotFoundException('No such leave request.');
+      if (r.status !== 'approved' && r.status !== 'pending') throw new ConflictException('Only approved or waiting leave can be extended.');
+      const from = addDays(dateOf(r.toOn), 1);
+      if (dto.to < from) throw new BadRequestException({ statusCode: 400, message: `Pick a new last day after ${fmt(dateOf(r.toOn))}.`, field: 'to' });
+      if (r.toHalf === 'first') throw new BadRequestException({ statusCode: 400, message: 'This leave ends at midday. Apply new leave for the days after it.', field: 'to' });
+      const out = await this.applyIn(tx, c, f, today, { leaveTypeId: r.leaveTypeId, from, to: dto.to, fromHalf: 'full', toHalf: dto.toHalf ?? 'full', reason: dto.reason ?? `Extends ${rangeText(dateOf(r.fromOn), dateOf(r.toOn))}`, notifyUserIds: r.notifyUserIds } as ApplyLeaveDto, notices);
+      await tx.leaveRequest.update({ where: { id: out.id }, data: { extendsRequestId: r.id } });
+      await audit(tx, c, 'leave.request.extended', 'leave_request', r.id, { extensionId: out.id, to: dto.to });
+      return { ...out, extends: r.id };
+    });
+    await this.engine.send(ctx, notices);
+    return res;
   }
 
   /** A pending request is withdrawn without approval (US-C-040). */

@@ -58,6 +58,38 @@ export class ApplyLeaveDto extends LeavePlanDto {
   notifyUserIds?: string[];
 }
 
+/** Batch A D12: days of approved leave to cancel, with a reason. */
+export class CancelDaysDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(366)
+  @ArrayUnique()
+  @IsDateString(DATE, { each: true })
+  days!: string[];
+
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** Batch A D12: extend leave to a new last day (a new request linked to it). */
+export class ExtendLeaveDto {
+  @IsDateString(DATE)
+  to!: string;
+
+  @IsOptional()
+  @IsIn(['full', 'first'])
+  toHalf?: 'full' | 'first';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+}
+
 export class ReasonDto {
   @trim()
   @IsString()
