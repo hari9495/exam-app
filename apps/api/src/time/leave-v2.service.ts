@@ -12,7 +12,7 @@ import { entitiesFor, payViewer, withPayScope } from '../payroll/pay-access';
 import { DayEngine } from './day-engine.service';
 import { LeaveService } from './leave.service';
 import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, holidaysFor, hrApprovers, num, rulesFor, leaveYearFor, settingOn, todayIn, visibleSql, type TimeKey } from './time-core';
-import { addDays, daysBetween, leaveYearOf } from './time-maths';
+import { addDays, daysBetween, isWeeklyOff, leaveYearOf } from './time-maths';
 import { cloneToYear, holidayCompOffDue, recountedDay, templateRows } from './holiday-rules';
 import { ScheduleBook, lockedDates } from './schedule';
 import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashTerms, encashWindowOpen, longestRun, toCsv } from './leave-rules';
@@ -1410,7 +1410,10 @@ export class LeaveV2Service implements OnModuleInit {
    * full or half day as booked; approved leave takes it from the balance), their weekly off stays not counted. Requests
    * that ended because every day was a holiday stay ended. Each recount is audited; returns how many.
    */
-  async holidayRemoved(tx: Tx, c: CompanyContext, calendarId: string, on: string, holidayName: string, told: { userId: string; on: string; requestId: string }[]): Promise<number> {
+  async holidayRemoved(tx: Tx, c: CompanyContext, calendarId: string, on: string, holidayName: string, told: { userId: string; on: string; requestId: string }[], also?: { weeklyOff: true; why: string }): Promise<number> {
+    // Batch A item 9 (D11): a day marked as working also counts leave booked over the weekly off again.
+    const kinds = also ? ['holiday', 'weekly_off'] : ['holiday'];
+    const why = also?.why ?? `${holidayName} on ${fmt(on)} is no longer a holiday`;
     const org = c.organizationId;
     const cal = await tx.holidayCalendar.findFirst({ where: { organizationId: org, id: calendarId } });
     if (!cal) return 0;
@@ -1420,7 +1423,7 @@ export class LeaveV2Service implements OnModuleInit {
       JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
       JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
       JOIN employee_assignments a ON a.organization_id = d.organization_id AND a.employee_id = d.employee_id AND a.superseded_at IS NULL AND ${on}::date <@ daterange(a.valid_from, a.valid_to, '[]')
-      WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion = 0 AND d.counted_as = 'holiday' AND d.leave_on = ${on}::date
+      WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion = 0 AND d.counted_as = ANY(${kinds}::text[]) AND d.leave_on = ${on}::date
         AND (a.location_id = ${cal.locationId}::uuid OR (${cal.locationId}::uuid IS NULL AND NOT EXISTS (SELECT 1 FROM holiday_calendars hc WHERE hc.organization_id = a.organization_id AND hc.location_id = a.location_id)))`;
     if (!rows.length) return 0;
     const book = await ScheduleBook.load(tx, org);
@@ -1435,9 +1438,9 @@ export class LeaveV2Service implements OnModuleInit {
       if (!portion) continue;
       const req = await tx.leaveRequest.update({ where: { id: d.requestId }, data: { days: { increment: portion }, version: { increment: 1 }, updatedAt: new Date() } });
       if (d.status !== 'pending' && hasBalance(d.kind)) {
-        await tx.leaveLedgerEntry.create({ data: { organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: asDate(on), kind: 'taken', days: -portion, requestId: d.requestId, periodKey: `hr:${on}:${d.requestId.slice(0, 18)}:${req.version}`, reason: `${holidayName} on ${fmt(on)} is no longer a holiday` } });
+        await tx.leaveLedgerEntry.create({ data: { organizationId: org, employeeId: d.employeeId, leaveTypeId: req.leaveTypeId, entryOn: asDate(on), kind: 'taken', days: -portion, requestId: d.requestId, periodKey: `hr:${on}:${d.requestId.slice(0, 18)}:${req.version}`, reason: why } });
       }
-      await audit(tx, c, 'leave.request.recounted', 'leave_request', d.requestId, { employeeId: d.employeeId, on, days: portion, why: `${holidayName} is no longer a holiday on this date` });
+      await audit(tx, c, 'leave.request.recounted', 'leave_request', d.requestId, { employeeId: d.employeeId, on, days: portion, why: also?.why ?? `${holidayName} is no longer a holiday on this date` });
       await this.dayEngine.evaluate(tx, c, d.employeeId, on, on);
       n++;
       if (d.userId) told.push({ userId: d.userId, on, requestId: d.requestId });
@@ -1450,6 +1453,54 @@ export class LeaveV2Service implements OnModuleInit {
     for (const t of told) {
       const text = `${fmt(t.on)} is no longer a holiday, so your leave that day counts again.`;
       await this.notifications.notifySystem(ctx, [t.userId], 'leave.holiday_removed', { entityType: 'leave_request', entityId: t.requestId, contextText: text, linkPath: '/yx/time/leave' }, { subject: 'Your leave day is no longer a holiday', html: `<p>${escapeHtml(text)}</p>` });
+    }
+  }
+
+  /**
+   * Batch A item 9 (D11): HR marks a holiday or the location's weekly off as a working day, today or later, with a
+   * reason. The day is worked (attendance, leave counting); leave booked over it counts again. Audited.
+   */
+  async markWorkingIn(tx: Tx, c: CompanyContext, calendarId: string, on: string, reason: string, back: { userId: string; on: string; requestId: string }[]) {
+    const org = c.organizationId;
+    const cal = await tx.holidayCalendar.findFirst({ where: { organizationId: org, id: calendarId } });
+    if (!cal) throw new NotFoundException('Not found');
+    if (on < todayIn('Asia/Kolkata')) throw new BadRequestException('Only today or later: earlier days are already in attendance records.');
+    if (await tx.exceptionalWorkingDay.findFirst({ where: { organizationId: org, calendarId, workOn: asDate(on) } })) throw new ConflictException(`${fmt(on)} is already marked as a working day.`);
+    const hol = await tx.holiday.findFirst({ where: { organizationId: org, calendarId, holidayOn: asDate(on) } });
+    // The company calendar serves locations with different weekly offs: any of them may be the one meant.
+    const off = cal.locationId ? isWeeklyOff(on, (await rulesFor(tx, org, cal.locationId, on))(on).weeklyOffs) : true;
+    if (!hol && !off) throw new BadRequestException(`${fmt(on)} is already a working day on ${cal.name}.`);
+    const row = await tx.exceptionalWorkingDay.create({ data: { organizationId: org, calendarId, workOn: asDate(on), reason: reason.trim(), createdBy: c.userId } });
+    const recounted = await this.holidayRemoved(tx, c, calendarId, on, hol?.name ?? 'The weekly off', back, { weeklyOff: true, why: `${fmt(on)} is now a working day (${reason.trim()})` });
+    await audit(tx, c, 'holiday.working_day_marked', 'holiday_calendar', calendarId, { on, reason: reason.trim(), holiday: hol?.name ?? null, leaveRecounted: recounted });
+    return { id: row.id, on, leaveRecounted: recounted };
+  }
+
+  /** D11: a mark removed before the day, only while nobody has leave booked on it there (their leave already counts it). */
+  async unmarkWorkingIn(tx: Tx, c: CompanyContext, id: string) {
+    const org = c.organizationId;
+    const w = await tx.exceptionalWorkingDay.findFirst({ where: { organizationId: org, id } });
+    if (!w) throw new NotFoundException('Not found');
+    const on = dateOf(w.workOn);
+    if (on < todayIn('Asia/Kolkata')) throw new ConflictException('That day has passed, so it stays a working day.');
+    const cal = await tx.holidayCalendar.findFirstOrThrow({ where: { organizationId: org, id: w.calendarId } });
+    const [{ n }] = await tx.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM leave_request_days d
+      JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status = ANY(${WAITING}::text[])
+      JOIN employee_assignments a ON a.organization_id = d.organization_id AND a.employee_id = d.employee_id AND a.superseded_at IS NULL AND ${on}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+      WHERE d.organization_id = ${org}::uuid AND d.active AND d.portion > 0 AND d.leave_on = ${on}::date
+        AND (a.location_id = ${cal.locationId}::uuid OR (${cal.locationId}::uuid IS NULL AND NOT EXISTS (SELECT 1 FROM holiday_calendars hc WHERE hc.organization_id = a.organization_id AND hc.location_id = a.location_id)))`;
+    if (n) throw new ConflictException(`${n === 1 ? 'Someone has' : `${n} people have`} leave on ${fmt(on)} that counts the day. It stays a working day; change that leave first.`);
+    await tx.exceptionalWorkingDay.delete({ where: { id } });
+    await audit(tx, c, 'holiday.working_day_removed', 'holiday_calendar', w.calendarId, { on, reason: w.reason });
+    return { id, on };
+  }
+
+  /** D11: people whose leave counts again because the day is now worked (after the transaction). */
+  async tellWorkingDay(ctx: TenantContext, told: { userId: string; on: string; requestId: string }[]) {
+    for (const t of told) {
+      const text = `${fmt(t.on)} is now a working day, so your leave that day counts.`;
+      await this.notifications.notifySystem(ctx, [t.userId], 'leave.holiday_removed', { entityType: 'leave_request', entityId: t.requestId, contextText: text, linkPath: '/yx/time/leave' }, { subject: 'Your leave day is now a working day', html: `<p>${escapeHtml(text)}</p>` });
     }
   }
 
