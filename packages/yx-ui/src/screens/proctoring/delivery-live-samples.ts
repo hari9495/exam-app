@@ -111,6 +111,7 @@ export const LIVE_INSTITUTIONS: LiveInstitution[] = [
 
 const reg = (id: string, name: string, extra: Partial<LiveRegistrant> = {}): LiveRegistrant => ({
   id,
+  candidateId: `c${id.slice(1)}`,
   name,
   email: `${name.split(' ')[0]!.toLowerCase()}@student.example.in`,
   phone: '9876543210',
@@ -135,7 +136,8 @@ export const LIVE_REGISTRANTS: LiveRegistrant[] = [
   reg('r141', 'Divya Menon', { match: 'Existing candidate', test: 'Completed' }),
   reg('r142', 'Karthik Raman', { cgpa: 5.9, eligible: false, ineligibleReason: 'CGPA below 6.5', test: null }),
   reg('r143', 'Lakshmi Iyer', { institutionId: 'n2', college: 'Kongu Valley Engineering College', branch: 'IT' }),
-  reg('r144', 'Lakshmi I', { rollNumber: '21CS143', institutionId: 'n2', college: 'Kongu Valley Engineering College', match: 'Possible duplicate', duplicateOf: { id: 'r143', name: 'Lakshmi Iyer', email: 'lakshmi@student.example.in' } }),
+  reg('r144', 'Lakshmi I', { rollNumber: '21CS143', institutionId: 'n2', college: 'Kongu Valley Engineering College', email: 'lakshmi.i@mail.example.in', match: 'Possible duplicate', duplicateOf: { id: 'r143', name: 'Lakshmi Iyer', email: 'lakshmi@student.example.in', candidateId: 'c143' } }),
+  reg('r145', 'Arjun N', { email: 'arjun.n@mail.example.in', rollNumber: '21CS140', match: 'Merged', test: 'Revoked', mergedInto: { id: 'r140', name: 'Arjun Nair', email: 'arjun@student.example.in', candidateId: 'c140' } }),
 ];
 
 export const liveCampus = (o: Partial<LiveCampusKit> = {}): LiveCampusKit => ({
@@ -153,9 +155,18 @@ export const liveCampus = (o: Partial<LiveCampusKit> = {}): LiveCampusKit => ({
   institutions: LIVE_INSTITUTIONS,
   onSaveSettings: ok,
   onSaveInstitution: ok,
+  onImportInstitutions: (_csv: string, commit: boolean) =>
+    Promise.resolve({
+      rows: [
+        { line: 2, name: 'Vaigai College of Engineering', code: 'VCE-31', ok: true, problem: null },
+        { line: 3, name: 'Coromandel Institute of Technology', code: 'CIT-TN-014', ok: false, problem: 'The code CIT-TN-014 is already in the list.' },
+      ],
+      added: commit ? 1 : 0,
+    }),
   onSendCoordinatorLink: () => Promise.resolve('latha@cit.example.in'),
   onMerge: ok,
   onNotDuplicate: ok,
+  onOpenCandidate: nothing,
   onCopyLink: ok,
   ...o,
 });

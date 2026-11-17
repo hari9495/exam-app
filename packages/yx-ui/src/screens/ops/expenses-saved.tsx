@@ -31,12 +31,15 @@ export interface SavedExpense {
   merchant: string | null;
   description: string | null;
   receipt: boolean;
+  /** Answer 2252: the amount or date was read from the receipt (checked when it is in a claim). */
+  fromReceipt?: boolean;
   createdAt: string;
 }
 
 export interface SavedExpenseInput {
-  spentOn: string;
-  amount: string;
+  /** Null with a receipt: read from it (answer 2252). */
+  spentOn: string | null;
+  amount: string | null;
   merchant: string | null;
   description: string | null;
   receipt: File | null;
@@ -89,7 +92,10 @@ export function SavedExpensesCard({ live }: { live: LiveSavedExpenses }) {
                   <span className="yx-ops-tile__amount">{money(live.currency, x.amount)}</span>
                 </div>
                 <div className="yx-ops-tile__row">
-                  {x.receipt ? <Badge tone="success">Receipt saved</Badge> : <Badge>No receipt</Badge>}
+                  <span className="yx-ops-row">
+                    {x.receipt ? <Badge tone="success">Receipt saved</Badge> : <Badge>No receipt</Badge>}
+                    {x.fromReceipt && <Badge tone="ai">Read from receipt</Badge>}
+                  </span>
                   <IconButton icon={Trash2} label={`Remove ${what(x)}`} onClick={() => setRemoving(x)} />
                 </div>
               </li>
@@ -134,6 +140,7 @@ export function SavedExpensesCard({ live }: { live: LiveSavedExpenses }) {
 function AddSavedExpense({ open, today, onClose, onAdd }: { open: boolean; today: string; onClose: () => void; onAdd: LiveSavedExpenses['onAdd'] }) {
   const { toast } = useToast();
   const [on, setOn] = useState<Date | null>(day(today));
+  const [dateTouched, setDateTouched] = useState(false);
   const [amt, setAmt] = useState<number | null>(null);
   const [merchant, setMerchant] = useState('');
   const [note, setNote] = useState('');
@@ -143,6 +150,7 @@ function AddSavedExpense({ open, today, onClose, onAdd }: { open: boolean; today
   const [error, setError] = useState<string | null>(null);
   const reset = () => {
     setOn(day(today));
+    setDateTouched(false);
     setAmt(null);
     setMerchant('');
     setNote('');
@@ -153,11 +161,12 @@ function AddSavedExpense({ open, today, onClose, onAdd }: { open: boolean; today
   const future = on ? dayKey(on) > today : false;
   const save = async () => {
     setTried(true);
-    if (!on || future || !amt || amt <= 0) return;
+    // Answer 2252: with a receipt, a date or amount left empty is read from it.
+    if (future || (!file && (!on || !amt)) || (amt != null && amt <= 0)) return;
     setBusy(true);
     setError(null);
     try {
-      await onAdd({ spentOn: dayKey(on), amount: amt.toFixed(2), merchant: merchant.trim() || null, description: note.trim() || null, receipt: file });
+      await onAdd({ spentOn: on ? dayKey(on) : null, amount: amt ? amt.toFixed(2) : null, merchant: merchant.trim() || null, description: note.trim() || null, receipt: file });
       toast({ tone: 'success', title: 'Expense saved', description: 'Claim it when you are ready.' });
       reset();
       onClose();
@@ -189,13 +198,30 @@ function AddSavedExpense({ open, today, onClose, onAdd }: { open: boolean; today
           </InlineAlert>
         )}
         <FormField label="Receipt" helper="A photo or PDF, up to 10 MB. Optional: a bill without one can be declared in the claim.">
-          <FileUpload accept={['.jpg', '.jpeg', '.png', '.pdf']} multiple={false} capture="environment" upload={async (f) => setFile(f)} onItemsChange={(list) => list.length === 0 && setFile(null)} />
+          <FileUpload
+            accept={['.jpg', '.jpeg', '.png', '.pdf']}
+            multiple={false}
+            capture="environment"
+            upload={async (f) => {
+              setFile(f);
+              // Answer 2252: a receipt is read when saved, so the date waits for it unless one was chosen.
+              if (!dateTouched) setOn(null);
+            }}
+            onItemsChange={(list) => list.length === 0 && (setFile(null), !dateTouched && setOn(day(today)))}
+          />
         </FormField>
         <FieldRow>
-          <FormField label="Date on the bill" required error={tried && !on ? 'Choose the date.' : future ? 'A bill cannot be dated in the future.' : undefined}>
-            <DatePicker value={on} onChange={setOn} aria-label="Date on the bill" />
+          <FormField label="Date on the bill" required={!file} optional={Boolean(file)} helper={file ? 'Leave empty to read it from the receipt.' : undefined} error={tried && !file && !on ? 'Choose the date.' : future ? 'A bill cannot be dated in the future.' : undefined}>
+            <DatePicker
+              value={on}
+              onChange={(d) => {
+                setOn(d);
+                setDateTouched(true);
+              }}
+              aria-label="Date on the bill"
+            />
           </FormField>
-          <FormField label="Amount" required error={tried && (!amt || amt <= 0) ? 'Enter the amount.' : undefined}>
+          <FormField label="Amount" required={!file} optional={Boolean(file)} helper={file ? 'Leave empty to read it from the receipt.' : undefined} error={tried && ((!file && !amt) || (amt != null && amt <= 0)) ? 'Enter the amount.' : undefined}>
             <CurrencyField value={amt} onChange={setAmt} allowPaise aria-label="Amount" />
           </FormField>
         </FieldRow>
@@ -244,6 +270,49 @@ function ClaimSavedExpenses({ open, count, drafts, onClose, onClaim }: { open: b
             <TextField value={title} onChange={setTitle} maxLength={150} />
           </FormField>
         )}
+      </div>
+    </ConfirmDialog>
+  );
+}
+
+/**
+ * Answer 2251: "Add saved expenses" from a claim's add-a-line sheet. The ticked ones become lines of this claim, each
+ * with its receipt, and leave the saved list.
+ */
+export function PickSavedExpenses({ items, currency, onClose, onAdd }: { items: SavedExpense[]; currency: string; onClose: () => void; onAdd: (ids: string[]) => Promise<unknown> }) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const [tried, setTried] = useState(false);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="md"
+      title="Add saved expenses"
+      consequence="Each one you tick becomes a line of this claim, with its receipt, and leaves your saved expenses."
+      confirmLabel={picked.length ? `Add ${picked.length} ${picked.length === 1 ? 'expense' : 'expenses'}` : 'Add'}
+      onConfirm={async () => {
+        setTried(true);
+        if (!picked.length) return false;
+        await onAdd(picked);
+        onClose();
+      }}
+    >
+      <div className="yx-ops-stack" data-gap="sm">
+        {tried && !picked.length && (
+          <InlineAlert tone="danger" title="Nothing ticked">
+            Tick the saved expenses to add.
+          </InlineAlert>
+        )}
+        <ul className="yx-ops-stack yx-ops-plain" data-gap="sm" aria-label="Saved expenses">
+          {items.map((x) => (
+            <li key={x.id} className="yx-ops-tile">
+              <div className="yx-ops-tile__row">
+                <Checkbox label={`${what(x)} · ${formatDate(day(x.spentOn))}`} checked={picked.includes(x.id)} onChange={(on) => setPicked((p) => (on ? [...p, x.id] : p.filter((y) => y !== x.id)))} />
+                <span className="yx-ops-tile__amount">{money(currency, x.amount)}</span>
+              </div>
+            </li>
+          ))}
+        </ul>
       </div>
     </ConfirmDialog>
   );

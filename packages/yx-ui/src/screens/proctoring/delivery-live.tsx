@@ -3,9 +3,10 @@
 // and ResultReuseScreen (candidate.tsx) render these when the page passes `live`. Same layout, kit parts and words as the
 // designs; only what the server holds is shown, and the server checks every action again.
 import { useMemo, useRef, useState } from 'react';
-import { Plus, RefreshCw, Send } from 'lucide-react';
+import { Plus, RefreshCw, Send, Upload } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
+import { FileUpload } from '../../components/upload';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Drawer } from '../../components/drawer';
@@ -705,8 +706,17 @@ export interface LiveInstitution {
 
 export type LiveInstitutionInput = Omit<LiveInstitution, 'id'>;
 
+/** POST /asmt/institutions/import (answer 2241). */
+export interface InstitutionImportResult {
+  rows: { line: number; name: string; code: string; ok: boolean; problem: string | null }[];
+  added: number;
+}
+const INSTITUTION_HEADER = 'name,code,city,coordinator_name,coordinator_email,results';
+
 export interface LiveRegistrant {
   id: string;
+  /** The Hire candidate record behind this registration (answer 2242). */
+  candidateId: string;
   name: string;
   email: string;
   phone: string | null;
@@ -719,8 +729,8 @@ export interface LiveRegistrant {
   eligible: boolean;
   ineligibleReason: string | null;
   match: 'New' | 'Existing candidate' | 'Possible duplicate' | 'Merged';
-  duplicateOf: { id: string; name: string; email: string } | null;
-  mergedInto: { id: string; name: string } | null;
+  duplicateOf: { id: string; name: string; email: string; candidateId: string } | null;
+  mergedInto: { id: string; name: string; email: string; candidateId: string } | null;
   test: LiveInvitationStatus | null;
   registeredAt: string;
 }
@@ -748,10 +758,14 @@ export interface LiveCampusKit {
   institutions: LiveInstitution[];
   onSaveSettings: (s: LiveCampusSettings | null) => Promise<void>;
   onSaveInstitution: (id: string | null, d: LiveInstitutionInput) => Promise<void>;
+  /** Answer 2241: a CSV of institutions; `commit` false only checks the rows. */
+  onImportInstitutions: (csv: string, commit: boolean) => Promise<InstitutionImportResult>;
   /** Resolves to the email the link went to. */
   onSendCoordinatorLink: (institutionId: string) => Promise<string>;
   onMerge: (id: string, intoId: string) => Promise<void>;
   onNotDuplicate: (id: string) => Promise<void>;
+  /** Answer 2242: opens a candidate's record in Hire, where candidate records are merged. */
+  onOpenCandidate: (candidateId: string) => void;
   onCopyLink: (url: string) => Promise<void>;
 }
 
@@ -782,6 +796,7 @@ export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveC
   const [openReg, setOpenReg] = useState<string | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [inst, setInst] = useState<{ id: string | null; d: LiveInstitutionInput } | null>(null);
+  const [importing, setImporting] = useState(false);
   const [tried, setTried] = useState(false);
   const { busy, run, error, clearError } = useRun();
   const { done } = useSay();
@@ -799,6 +814,8 @@ export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveC
     );
   const loading = live.state === 'loading';
   const reg = live.registrants.find((r) => r.id === openReg);
+  // Answer 2242: the registration kept (or to keep), whose Hire record the other candidate record is merged into.
+  const keptReg = reg?.mergedInto ?? reg?.duplicateOf ?? null;
   const counted = live.registrants.filter((r) => r.match !== 'Merged');
   const duplicates = counted.filter((r) => r.match === 'Possible duplicate').length;
   const problem = form ? campusProblem(form) : null;
@@ -959,17 +976,22 @@ export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveC
               setInst({ id: r.id, d: { name: r.name, code: r.code, city: r.city, coordinatorName: r.coordinatorName, coordinatorEmail: r.coordinatorEmail, resultsVisibility: r.resultsVisibility, archived: r.archived } });
             }}
             toolbar={
-              <Button
-                size="sm"
-                icon={Plus}
-                onClick={() => {
-                  clearError();
-                  setTried(false);
-                  setInst({ id: null, d: EMPTY_INSTITUTION });
-                }}
-              >
-                Add institution
-              </Button>
+              <>
+                <Button size="sm" icon={Upload} onClick={() => setImporting(true)}>
+                  Import institutions
+                </Button>
+                <Button
+                  size="sm"
+                  icon={Plus}
+                  onClick={() => {
+                    clearError();
+                    setTried(false);
+                    setInst({ id: null, d: EMPTY_INSTITUTION });
+                  }}
+                >
+                  Add institution
+                </Button>
+              </>
             }
             empty={<EmptyState title="No institutions yet." description="Add the colleges you hire from. Students pick their college from this list." />}
           />
@@ -1021,6 +1043,16 @@ export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveC
             )}
             {reg.duplicateOf && <InlineAlert tone="warning">{`Same roll number at the same college as ${reg.duplicateOf.name} (${reg.duplicateOf.email}). Merging keeps ${reg.duplicateOf.name}'s registration; this one stops counting and its untaken invitation is withdrawn.`}</InlineAlert>}
             {reg.mergedInto && <InlineAlert tone="info">{`Merged into ${reg.mergedInto.name}'s registration.`}</InlineAlert>}
+            {keptReg && keptReg.candidateId !== reg.candidateId && (
+              <Card title="Candidate records">
+                <div className="yx-prc-stack">
+                  <p className="yx-prc-small">{`${reg.email} and ${keptReg.email} are two candidate records in Hire. Merging registrations leaves them as they are: merge them in Hire (open ${keptReg.name}, choose Merge and pick ${reg.email}).`}</p>
+                  <div>
+                    <Button onClick={() => live.onOpenCandidate(keptReg.candidateId)}>Merge candidate records in Hire</Button>
+                  </div>
+                </div>
+              </Card>
+            )}
             <DescriptionList
               items={[
                 { label: 'Email', value: reg.email },
@@ -1048,6 +1080,16 @@ export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveC
           setOpenReg(null);
         }}
       />
+      {importing && (
+        <InstitutionImportDrawer
+          onClose={() => setImporting(false)}
+          onImport={live.onImportInstitutions}
+          onDone={(n) => {
+            done(`${n} ${n === 1 ? 'institution' : 'institutions'} added`);
+            setImporting(false);
+          }}
+        />
+      )}
       {inst && (
         <Drawer
           open
@@ -1113,6 +1155,78 @@ export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveC
         </Drawer>
       )}
     </PrcFrame>
+  );
+}
+
+/** Answer 2241: institutions from a CSV. Every row is checked first; only the good rows are added. */
+function InstitutionImportDrawer({ onClose, onImport, onDone }: { onClose: () => void; onImport: LiveCampusKit['onImportInstitutions']; onDone: (n: number) => void }) {
+  const [csv, setCsv] = useState('');
+  const [preview, setPreview] = useState<InstitutionImportResult | null>(null);
+  const [tried, setTried] = useState(false);
+  const { busy, error, run } = useRun();
+  const good = preview?.rows.filter((r) => r.ok).length ?? 0;
+  const edit = (text: string) => {
+    setCsv(text);
+    setPreview(null);
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Import institutions"
+      subtitle="A CSV file with one college per row. You see every row's problem before anything is added."
+      size="lg"
+      dirty={Boolean(csv)}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          {preview && good > 0 ? (
+            <Button variant="primary" loading={busy === 'commit'} onClick={() => void run('commit', async () => onDone((await onImport(csv, true)).added))}>
+              {`Add ${good} ${good === 1 ? 'institution' : 'institutions'}`}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              loading={busy === 'check'}
+              onClick={() => {
+                setTried(true);
+                if (csv.trim()) void run('check', async () => setPreview(await onImport(csv, false)));
+              }}
+            >
+              Check the file
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="yx-prc-stack">
+        {error && (
+          <InlineAlert tone="danger" title="The file was not read">
+            {error}
+          </InlineAlert>
+        )}
+        <p className="yx-prc-small yx-prc-muted">{`Columns: ${INSTITUTION_HEADER}. Name and code are needed; codes are unique in the company. Results: none, counts (the default) or each.`}</p>
+        <FormField id="inst-imp-file" label="CSV file">
+          <FileUpload id="inst-imp-file" upload={async (f) => edit(await f.text())} accept={['.csv']} multiple={false} maxSize={256 * 1024} />
+        </FormField>
+        <FormField id="inst-imp-text" label="Or paste the rows" optional error={tried && !csv.trim() ? 'Choose a CSV file or paste the rows.' : undefined}>
+          <TextArea value={csv} onChange={edit} rows={6} placeholder={INSTITUTION_HEADER} />
+        </FormField>
+        {preview && (
+          <Card title={`${good} of ${preview.rows.length} rows can be added`}>
+            <ul className="yx-prc-plain" aria-label="Rows">
+              {preview.rows.map((r) => (
+                <li key={r.line}>
+                  <span>{`Line ${r.line}: ${r.name || 'no name'}${r.code ? ` (${r.code})` : ''}`}</span>
+                  {r.problem ? <span className="yx-prc-small">{r.problem}</span> : null}
+                  <Badge tone={r.ok ? 'success' : 'danger'}>{r.ok ? 'Ready' : 'Problem'}</Badge>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        )}
+      </div>
+    </Drawer>
   );
 }
 

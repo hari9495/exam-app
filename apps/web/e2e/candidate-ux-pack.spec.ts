@@ -83,12 +83,12 @@ test('a candidate with a +50% accommodation gets more remaining time than the ex
   await expect(page).toHaveURL(/\/welcome$/);
   await page.getByRole('button', { name: /skip practice/i }).click();
   await expect(page.getByText('Section One')).toBeVisible();
-  await page.getByRole('button', { name: 'Enable camera' }).click();
+  await page.getByRole('button', { name: 'Turn on camera' }).click();
   await page.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
   // Set up the response listener before the click that triggers /exam's initial fetch -- attaching
   // it after navigating risks missing the response if it resolves before the listener is registered.
   const currentResponsePromise = page.waitForResponse((response) => response.url().includes('/attempt/current'));
-  await page.getByRole('button', { name: 'Start exam' }).click();
+  await page.getByRole('button', { name: 'Start test' }).click();
   await expect(page).toHaveURL(/\/exam$/);
 
   const currentResponse = await currentResponsePromise;

@@ -216,3 +216,36 @@ describe('EXP-03 review', () => {
     await waitFor(() => expect(p.onFlag).toHaveBeenCalledWith('f1', 'clear', 'Different trip, checked'));
   });
 });
+
+// Answer 2251: "Add saved expenses" in the add-a-line sheet of my own claim.
+describe('add saved expenses from the claim', () => {
+  const SAVED = [
+    { id: 's1', spentOn: '2026-09-14', amount: '640.00', categoryCode: null, merchant: 'Cab to airport', description: null, receipt: true, createdAt: '2026-09-14T03:00:00.000Z' },
+    { id: 's2', spentOn: '2026-09-12', amount: '120.00', categoryCode: null, merchant: 'Auto to client', description: null, receipt: false, createdAt: '2026-09-12T03:00:00.000Z' },
+  ];
+  it('the ticked saved expenses become lines of this claim', async () => {
+    const onAdd = vi.fn(async () => ({}));
+    show(<ClaimComposerScreen live={claim({ startAdd: 'bill', saved: { items: SAVED, onAdd } })} />);
+    expect(screen.getByText('You have 2 saved expenses not yet claimed.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add saved expenses' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add saved expenses' });
+    await ue.click(within(dialog).getByRole('checkbox', { name: /Cab to airport/ }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Add 1 expense' }));
+    await waitFor(() => expect(onAdd).toHaveBeenCalledWith(['s1']));
+  });
+  it('negative: nothing ticked adds nothing; no saved expenses or not my claim shows no button', async () => {
+    const onAdd = vi.fn(async () => ({}));
+    const { unmount } = show(<ClaimComposerScreen live={claim({ startAdd: 'bill', saved: { items: SAVED, onAdd } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Add saved expenses' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add saved expenses' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(within(dialog).getByText('Tick the saved expenses to add.')).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
+    unmount();
+    const r2 = show(<ClaimComposerScreen live={claim({ startAdd: 'bill', saved: { items: [], onAdd } })} />);
+    expect(screen.queryByRole('button', { name: 'Add saved expenses' })).toBeNull();
+    r2.unmount();
+    show(<ClaimComposerScreen live={claim({ startAdd: 'bill', saved: null })} />);
+    expect(screen.queryByRole('button', { name: 'Add saved expenses' })).toBeNull();
+  });
+});

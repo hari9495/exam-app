@@ -53,6 +53,7 @@ describe('ScheduledSweepsWorkerService', () => {
       analytics: { summariseNightly: jest.fn().mockResolvedValue({ rows: 0 }) },
       deletions: { releaseSweep: jest.fn().mockResolvedValue({ companies: 0, released: 0 }) },
       questionReviews: { sweep: jest.fn().mockResolvedValue(0) },
+      staffNotices: { retentionSweep: jest.fn().mockResolvedValue(0) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -91,6 +92,7 @@ describe('ScheduledSweepsWorkerService', () => {
       services.analytics as never,
       services.deletions as never,
       services.questionReviews as never,
+      services.staffNotices as never,
     );
     return { service, queue, connection, services };
   };
@@ -142,6 +144,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'incident-breach-reminders': services.incidents.remindSweep,
       'cs-health-snapshot': services.csFollowup.nightly,
       'staff-invite-expiry': services.staffRoles.expireInvites,
+      'staff-notices-retention': services.staffNotices.retentionSweep,
       'project-burn': services.projects.burnSweep,
       'settings-change-lapse': services.settingNotices.lapseSweep,
       'project-cost': services.projectCost.costSweep,

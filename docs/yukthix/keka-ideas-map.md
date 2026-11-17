@@ -78,6 +78,21 @@ period.
   weeks were approved, then the weeks with hours and status. A week opens in the grid.
 - The design sample has the tab too.
 
+## 2251 and 2252 as built (branch `feat/yukthix-asmt-remainders`, 17 Nov 2026)
+
+- **2251:** the add-a-line sheet of my own claim that I can still change shows "You have N saved expenses not yet
+  claimed" and "Add saved expenses"; the ticked ones become lines of this claim, each with its receipt.
+- **2252:** a receipt added to a saved expense is read when it is saved. A date or amount left empty is filled from it
+  (the where too); typed values stand. If it cannot be read, the save is refused (400) and nothing is kept. Saved
+  expenses with read values show "Read from receipt"; in the claim those lines are checked like any read receipt
+  ("Confirm line"). Migration `202617z0000422_expense_item_receipt_read` keeps what was read on the item.
+- **Tests:** e2e `keka-ideas` (+2); kit saved expenses (+2), claim composer (+2); web expenses pages (+1).
+
+### Questions (from 2305)
+
+2305. **A typed date that differs from the receipt.** The typed value stands when saved; the claim's usual check flags
+      a receipt that reads a different amount or date. *Suggested: keep.*
+
 ## 7. Payslips: months on the left, the payslip on the right
 
 **Added.** On desk, PAY-21 has a tax-year picker (when there is more than one year) and the months of that year on the

@@ -8,8 +8,7 @@ import '../../../lib/monaco-setup';
 import { Play } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Button, FileUpload, FormField, InlineAlert, Select, TextArea } from '@yukthix/ui';
-import { TestRunnerScreen, type LiveRunner, type LiveRunnerQuestion } from '@yukthix/ui/assessments';
-import { CodeOutputPanel } from '../components/CodeOutputPanel';
+import { CodeRunOutput, TestRunnerScreen, type LiveRunner, type LiveRunnerQuestion } from '@yukthix/ui/assessments';
 import { SpokenAnswerRecorder } from '../components/SpokenAnswerRecorder';
 import {
   useAttemptQuery,
@@ -437,13 +436,13 @@ export default function CandidateExamPage() {
               <TextArea rows={2} value={stdinValue} onChange={(v) => setStdinValues((prev) => ({ ...prev, [q.id]: v }))} />
             </FormField>
           ) : null}
-          <div className="flex items-center gap-3">
+          <div>
             <Button icon={Play} loading={runCode.isPending} onClick={handleRun}>
               Run
             </Button>
-            {runResult ? <span className="text-sm text-candidate-text-tertiary">{runResult.runsRemaining} runs left</span> : null}
           </div>
-          <CodeOutputPanel result={runResult} error={runError} />
+          {/* Answer 2234: the run output is the kit's results panel (runs left shown there). */}
+          <CodeRunOutput result={runResult} error={runError} />
         </>
       );
     }

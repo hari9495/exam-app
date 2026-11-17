@@ -168,6 +168,13 @@ describe('Assessments AS-3 part 2: campus kit', () => {
       await api('adminA', 'post', `/asmt/registrants/${ids.dup}/merge`).send({ intoId: ids.first }).expect(200);
       const d = await inOrg(org.A.id, (tx) => tx.asmtRegistrant.findUniqueOrThrow({ where: { id: ids.dup }, include: { invitation: true } }));
       expect([d.mergedIntoId, d.invitation?.status]).toEqual([ids.first, 'revoked']);
+      // Answer 2242: the drawer links to the kept Hire candidate record; the two candidate records stay separate here.
+      const first = await inOrg(org.A.id, (tx) => tx.asmtRegistrant.findUniqueOrThrow({ where: { id: ids.first } }));
+      const rows = ((await api('adminA', 'get', `/asmt/drives/${ids.drive}/campus`).expect(200)).body as { registrants: { id: string; candidateId: string; mergedInto: { candidateId: string } | null }[] }).registrants;
+      const dupRow = rows.find((r) => r.id === ids.dup)!;
+      expect([dupRow.candidateId, dupRow.mergedInto?.candidateId]).toEqual([d.candidateId, first.candidateId]);
+      expect(d.candidateId).not.toBe(first.candidateId);
+      await api('adminB', 'get', `/asmt/drives/${ids.drive}/campus`).expect(404);
       await api('adminA', 'post', `/asmt/registrants/${ids.dup}/merge`).send({ intoId: ids.first }).expect(409);
       await register(student('s5', { rollNumber: '21IT002' })).expect(201);
       await api('adminA', 'post', `/asmt/registrants/${ids.first}/not-duplicate`).expect(404);
