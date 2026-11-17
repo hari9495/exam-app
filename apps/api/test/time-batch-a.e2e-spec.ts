@@ -676,4 +676,30 @@ describe('Time batch A', () => {
       expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.shiftPatternAssignment.count())).toBe(0);
     });
   });
+
+  // ------------------------------------------------------------------ 2325: HR's Cancel some days on the leave card
+  describe('2325 HR cancel some days from the leave card', () => {
+    const mon = (() => { for (let i = 90; i < 97; i++) if (new Date(`${d(i)}T00:00:00Z`).getUTCDay() === 1) return d(i); return d(90); })();
+    beforeAll(async () => {
+      ids.r2325 = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: mon, to: addDays(mon, 2), reason: 'Village festival' }).expect(201)).body.id;
+      const wf = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: ids.r2325 } }));
+      const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: wf.id, status: 'open' } }));
+      await api('mgr', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'approve' }).expect(200);
+    });
+
+    it('HR reads the approved leave with its days, never the reason, and cancels a day from it', async () => {
+      const form = (await api('hrAdmin', 'get', `/time/hr/leave/${ids.empEmp}`).expect(200)).body;
+      const r = form.approved.find((x: { id: string }) => x.id === ids.r2325);
+      expect(r).toMatchObject({ status: 'approved', reason: null, changeWaiting: null, leaveDays: [{ on: mon }, { on: addDays(mon, 1) }, { on: addDays(mon, 2) }] });
+      await api('hrAdmin', 'post', `/time/hr/leave/${ids.empEmp}/requests/${r.id}/cancel-days`).send({ days: [addDays(mon, 2)], reason: 'Festival moved by a day, confirmed' }).expect(201);
+      const after = (await api('hrAdmin', 'get', `/time/hr/leave/${ids.empEmp}`).expect(200)).body.approved.find((x: { id: string }) => x.id === ids.r2325);
+      expect(after.leaveDays).toHaveLength(2);
+    });
+
+    it('negative: the employee, the manager without the key and another company cannot read it', async () => {
+      await api('emp', 'get', `/time/hr/leave/${ids.empEmp}`).expect(403);
+      await api('mgr', 'get', `/time/hr/leave/${ids.empEmp}`).expect(403);
+      expect([403, 404]).toContain((await api('adminB', 'get', `/time/hr/leave/${ids.empEmp}`)).status);
+    });
+  });
 });

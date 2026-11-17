@@ -111,6 +111,8 @@ export interface ApplyForForm {
   today: string;
   balances: LeaveBalanceRow[];
   approval: 'chain' | 'approved';
+  /** Answer 2325: approved leave HR may still change (Cancel some days on HR's leave card). */
+  approved?: LeaveRequestRow[];
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';

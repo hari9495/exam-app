@@ -1728,7 +1728,9 @@ function projectBalance(b: LeaveBalance, on: Date, person = ME.name) {
   return { value, note };
 }
 
-export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg, view: view0 = 'card', correctOpen = false, live, mine }: {
+export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface = 'desk', person: personArg, view: view0 = 'card', correctOpen = false, cancelDaysOpen = false, live, mine }: {
+  /** HR stories (answer 2325): Cancel some days open on the person's approved leave. */
+  cancelDaysOpen?: boolean;
   persona?: 'emp' | 'hr'; adjustOpen?: boolean; surface?: 'desk' | 'phone';
   /** HR: one person's card, or everyone's balances by type (batch A D10). */
   view?: 'card' | 'grid';
@@ -1748,6 +1750,9 @@ export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface =
   const isMe = person === ME.name;
   const who = isMe ? ME : TEAM.find((p) => p.name === person);
   const [adj, setAdj] = useState(adjustOpen);
+  // Answer 2325: HR's view of the person's approved leave, with Cancel some days (the drawer's HR mode).
+  const hrApproved = LEAVE_REQUESTS.filter((r) => r.person === person && r.status === 'Approved');
+  const [hrCancel, setHrCancel] = useState<LeaveRequestRow | null>(cancelDaysOpen ? (hrApproved.find((r) => r.days > 1) ?? null) : null);
   const [apply, setApply] = useState<LeaveCode | null>(null);
   const [viewReq, setViewReq] = useState(false);
   const [projDate, setProjDate] = useState<Date | null>(new Date(2026, 11, 1));
@@ -1794,7 +1799,23 @@ export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface =
         <div className="yx-tim-grid">
           <div data-span="7">{ledgerCard}</div>
           {/* Stacked (below 1024): the projection comes before the long ledger, as on the phone. */}
-          <div data-span="5" style={stacked ? { order: -1 } : undefined}>{projCard}</div>
+          <div data-span="5" style={stacked ? { order: -1 } : undefined}>
+            <div className="yx-tim-stack">
+              {projCard}
+              {persona === 'hr' && hrApproved.length > 0 && (
+                <Card title="Approved leave">
+                  <ul className="yx-tim-list" aria-label="Approved leave">
+                    {hrApproved.map((r) => (
+                      <li key={r.id}>
+                        <span className="yx-tim-list__main"><strong>{r.type} · {span(r.from, r.to)}</strong><span className="yx-tim-muted">{plural(r.days, 'day')}</span></span>
+                        {r.days > 1 && <Button size="sm" onClick={() => setHrCancel(r)}>Cancel some days</Button>}
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -1803,6 +1824,7 @@ export function LeaveCardScreen({ persona = 'emp', adjustOpen = false, surface =
     <>
       {apply && <ApplyLeavePanel key={apply} type={apply} from={new Date(2026, 9, 5)} to={new Date(2026, 9, 5)} open onOpenChange={(o) => !o && setApply(null)} surface={surface} />}
       {viewReq && !phone && lr1 && <LeaveRequestView r={lr1} viewer={reqViewer} open onOpenChange={setViewReq} />}
+      {hrCancel && <CancelSomeDaysDrawer hr days={eachIso(hrCancel.from, hrCancel.to).filter((on) => dayOfIso(on).getDay() !== 0).map((on) => ({ on, portion: 1 }))} today={ymd(TODAY0)} onSend={async () => undefined} onClose={() => setHrCancel(null)} />}
     </>
   );
   if (phone && viewReq && lr1)
@@ -1854,6 +1876,52 @@ function SampleBalanceGridScreen({ correctOpen }: { correctOpen: boolean }) {
         onCorrect={async (x) => setPeople((ps) => ps.map((p) => (p.employeeId === x.employeeId ? { ...p, balances: p.balances.map((b) => (b.leaveTypeId === x.leaveTypeId ? { ...b, balance: x.to } : b)) } : p)))}
       />
     </TimePage>
+  );
+}
+
+/**
+ * Answer 2325: HR's leave card lists the person's approved leave; "Cancel some days" opens the employee's drawer in HR mode
+ * (any day, a reason of at least 10 letters, cancelled at once and audited).
+ */
+function HrApprovedLeave({ employeeId, today, onLoad, onCancelDays, onDone }: { employeeId: string; today: string; onLoad: (employeeId: string) => Promise<LiveRequest[]>; onCancelDays: NonNullable<LiveLeaveCard['onHrCancelDays']>; onDone: () => void }) {
+  const [rows, setRows] = useState<LiveRequest[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [open, setOpen] = useState<LiveRequest | null>(null);
+  const load = () => {
+    setProblem(null);
+    onLoad(employeeId).then(setRows, (e: unknown) => setProblem(e instanceof Error && e.message ? e.message : "Their leave didn't load."));
+  };
+  useEffect(load, [employeeId]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Card title="Approved leave">
+      {problem ? <ErrorState title="Their leave didn't load" description={problem} onRetry={load} /> : !rows ? <LoadingBlock rows={3} /> : rows.length === 0 ? <p className="yx-tim-muted">No approved leave from the last two months on.</p> : (
+        <ul className="yx-tim-list" aria-label="Approved leave">
+          {rows.map((r) => (
+            <li key={r.id}>
+              <span className="yx-tim-list__main">
+                <strong>{r.type?.name ?? 'Leave'} · {isoSpan(r.from, r.to)}</strong>
+                <span className="yx-tim-muted">{r.changeWaiting ? 'A change is waiting for approval' : daysWord(r.days)}</span>
+              </span>
+              {(r.leaveDays?.length ?? 0) > 1 && !r.changeWaiting && <Button size="sm" onClick={() => setOpen(r)}>Cancel some days</Button>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="yx-tim-note">HR can cancel any day at once with a reason; it is saved in the audit trail and the days go back to the balance.</p>
+      {open && open.leaveDays && (
+        <CancelSomeDaysDrawer
+          hr
+          days={open.leaveDays}
+          today={today}
+          onSend={async (x) => {
+            await onCancelDays(employeeId, open.id, x);
+            load();
+            onDone();
+          }}
+          onClose={() => setOpen(null)}
+        />
+      )}
+    </Card>
   );
 }
 
@@ -2473,6 +2541,9 @@ export interface LiveLeaveCard {
   data: HrBalances | null;
   onLedger: (employeeId: string) => Promise<LedgerRow[]>;
   onAdjust: (employeeId: string, input: { leaveTypeId: string; days: number; reason: string }) => Promise<unknown>;
+  /** Answer 2325: the person's approved leave HR may change, and HR's "Cancel some days" (cancelled at once, audited). */
+  onApproved?: (employeeId: string) => Promise<LiveRequest[]>;
+  onHrCancelDays?: (employeeId: string, requestId: string, x: { days: string[]; reason: string }) => Promise<unknown>;
   /** Batch A D10: the balance grid's correction of one cell (absent: no grid). */
   onCorrect?: (x: BalanceCorrection) => Promise<unknown>;
   /** Opens on the grid (the page keeps it in the address, ?view=grid). */
@@ -3218,12 +3289,21 @@ function LiveLeaveCardScreen({ live }: { live: LiveLeaveCard }) {
               <PersonPicker aria-label="Employee" value={person.employeeId} onChange={(v) => v && setPick(v)} people={d.people.map((p) => ({ id: p.employeeId, name: p.name, department: p.code ?? undefined }))} />
             </FormField>
             <BalanceCards live={{ balances: person.balances }} />
-            <Card title="History · every change to the balance">
-              {ledgerError ? (
-                <ErrorState title="The ledger didn't load" description={ledgerError} onRetry={() => load(person.employeeId)} />
-              ) : !rows ? <LoadingBlock rows={4} /> : items.length === 0 ? <p className="yx-tim-muted">No ledger lines yet.</p> : <Timeline aria-label="Leave history" items={items} />}
-              <p className="yx-tim-note">Each balance is the sum of its entries. An adjustment adds a line with your reason; it can't be edited, only reversed by another.</p>
-            </Card>
+            <div className="yx-tim-grid">
+              <div data-span={person.canAdjust && live.onApproved ? '7' : '12'}>
+                <Card title="History · every change to the balance">
+                  {ledgerError ? (
+                    <ErrorState title="The ledger didn't load" description={ledgerError} onRetry={() => load(person.employeeId)} />
+                  ) : !rows ? <LoadingBlock rows={4} /> : items.length === 0 ? <p className="yx-tim-muted">No ledger lines yet.</p> : <Timeline aria-label="Leave history" items={items} />}
+                  <p className="yx-tim-note">Each balance is the sum of its entries. An adjustment adds a line with your reason; it can't be edited, only reversed by another.</p>
+                </Card>
+              </div>
+              {person.canAdjust && live.onApproved && live.onHrCancelDays && (
+                <div data-span="5">
+                  <HrApprovedLeave key={person.employeeId} employeeId={person.employeeId} today={new Date().toISOString().slice(0, 10)} onLoad={live.onApproved} onCancelDays={live.onHrCancelDays} onDone={() => load(person.employeeId)} />
+                </div>
+              )}
+            </div>
           </div>
         ))}
       </LiveStates>

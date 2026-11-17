@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LeaveCardScreen, LeaveReportsScreen, type HrBalances, type LedgerRow, type LeaveReport, type LeaveReportQuery } from '@yukthix/ui/time';
+import { LeaveCardScreen, LeaveReportsScreen, type ApplyForForm, type HrBalances, type LedgerRow, type LeaveReport, type LeaveReportQuery } from '@yukthix/ui/time';
 import { timeState, useTime, useTimeDownload, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 import { useYxPermissions } from '../../../../../lib/yx-org';
@@ -41,6 +41,8 @@ function Reports({ liabilityOnly, canCorrect }: { liabilityOnly: boolean; canCor
           data: balances.data ? { ...balances.data, people: [...balances.data.people].sort((a, b) => Number(b.employeeId === person) - Number(a.employeeId === person)) } : null,
           onLedger: (employeeId) => read<LedgerRow[]>(`/people/${id(employeeId)}/ledger`),
           onAdjust: (employeeId, input) => write(`/people/${id(employeeId)}/adjust`, 'POST', input, true, 'Added to the ledger'),
+          // Answer 2325: HR's Cancel some days on the person's approved leave (the drawer toasts).
+          ...(canCorrect ? { onApproved: async (employeeId: string) => (await read<ApplyForForm>(`/hr/leave/${id(employeeId)}`)).approved ?? [], onHrCancelDays: (employeeId: string, rid: string, x: { days: string[]; reason: string }) => write(`/hr/leave/${id(employeeId)}/requests/${id(rid)}/cancel-days`, 'POST', x, true) } : {}),
           // The dialog says "done" with its own toast (it names the person and the new balance).
           ...(canCorrect ? { onCorrect: (x) => write('/hr/balances/correct', 'POST', x, true), view: grid ? ('grid' as const) : ('card' as const), onView: (v) => router.push(v === 'grid' ? '/yx/time/balances?view=grid' : `/yx/time/balances?person=${id(asked ?? balances.data?.people[0]?.employeeId ?? '')}`) } : {}),
         }}

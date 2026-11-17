@@ -552,6 +552,25 @@ export class LeaveService implements OnModuleInit {
       today,
       balances: await this.balancesIn(tx, c, f, today),
       approval: await this.hrApproval(tx, c, f, today, v, own),
+      approved: await this.approvedForHr(tx, c, f.employeeId, today),
+    }));
+  }
+
+  /**
+   * Answer 2325: the person's approved leave HR may still change (ending from two months back on), with its leave days
+   * and any change waiting, for "Cancel some days" on HR's leave card (POST hr/leave/:employeeId/requests/:id/cancel-days).
+   */
+  private async approvedForHr(tx: Tx, c: CompanyContext, employeeId: string, today: string) {
+    const org = c.organizationId;
+    const rows = await tx.leaveRequest.findMany({ where: { organizationId: org, employeeId, status: 'approved', toOn: { gte: asDate(addDays(today, -62)) } }, orderBy: { fromOn: 'desc' }, take: 20 });
+    const ids = rows.map((r) => r.id);
+    const types = new Map((await this.types(tx, org)).map((t) => [t.id, t]));
+    const days = ids.length ? await tx.leaveRequestDay.findMany({ where: { organizationId: org, requestId: { in: ids }, active: true, portion: { gt: 0 } }, orderBy: { leaveOn: 'asc' } }) : [];
+    const waiting = ids.length ? await tx.leaveChange.findMany({ where: { organizationId: org, requestId: { in: ids }, status: 'pending' } }) : [];
+    return rows.map((r) => ({
+      ...this.requestView(r, types.get(r.leaveTypeId), false),
+      leaveDays: days.filter((d) => d.requestId === r.id).map((d) => ({ on: dateOf(d.leaveOn), portion: num(d.portion) })),
+      changeWaiting: waiting.find((w) => w.requestId === r.id)?.days.map(dateOf) ?? null,
     }));
   }
 
