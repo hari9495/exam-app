@@ -22681,5 +22681,26 @@
       "Screens/Time/TIM-19 · Leave request detail"
     ],
     "note": "Positive and negative. HR's screen for cancelling any day is not built yet (API only, question 2325)."
+  },
+  {
+    "id": "MT-BATB-B1",
+    "area": "Batch B: activity log in plain sentences (admin B1, item 29, 17 Nov 2026)",
+    "screen": "Settings › Audit log (PLT-16, live)",
+    "url": "http://localhost:3000/yx/settings/audit-log",
+    "account": "Admin admin-tester@demo-org.test (audit.view, audit.export); HR hr-tester@demo-org.test for a change and for the refusal; employee arjun@demo-org.test.",
+    "steps": [
+      "As hr-tester: Settings › Time › change 'Maximum weekly hours' and save.",
+      "As admin-tester: open Settings › Audit log, Area = Settings.",
+      "Open the newest entry.",
+      "Press Export CSV and open the file.",
+      "Type From = a later date than To.",
+      "As arjun: open /yx/settings/audit-log directly."
+    ],
+    "expected": "Step 2: the 'What happened' column reads 'Company setting changed by <HR tester's name>.' (no event code in the list). Step 3: the drawer title is the same sentence; 'Event code' shows org.setting.changed; the before and after table shows the old and new hours. Step 4: the CSV has 'What happened' and 'Event code' columns, the same sentence; pay and ID values stay masked. Step 5: 'From is after To, so nothing matches.' and no rows. Step 6: the no-access page; nothing listed.",
+    "stories": [
+      "Screens/Platform/Integrations › PLT-16 · Audit log · live, by area, person and date (S-5)",
+      "PLT-16 · Audit log · live, an entry opened (plain sentence and event code)"
+    ],
+    "note": "Sentences are built on the server from the event code (about 1,500 codes) with hand-written sentences for sign-in and security events; English only (question 2364)."
   }
 ]

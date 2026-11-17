@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { auditSentence } from './audit-sentence';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -216,7 +217,9 @@ export class PayAuditService {
   }
 
   private view(r: Prisma.AuditLogGetPayload<object>, m: { canPay: boolean; canIdentity: boolean }) {
-    return { id: r.id, seq: r.chainSeq?.toString() ?? null, at: r.createdAt, action: r.action, entityType: r.entityType, entityId: r.entityId, actor: r.actorName || r.actorEmail || 'YukthiX system', actorRole: r.actorRole, channel: r.channel, details: maskMetadata(parse(r.metadataJson), m.canPay, m.canIdentity) };
+    const actor = r.actorName || r.actorEmail || 'YukthiX system';
+    const details = maskMetadata(parse(r.metadataJson), m.canPay, m.canIdentity);
+    return { id: r.id, seq: r.chainSeq?.toString() ?? null, at: r.createdAt, action: r.action, sentence: auditSentence(r.action, actor, details), entityType: r.entityType, entityId: r.entityId, actor, actorRole: r.actorRole, channel: r.channel, details };
   }
 
   /** Audit search in scope, newest first, by chain position (YX-AUD-06). */
@@ -246,7 +249,7 @@ export class PayAuditService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const m = this.masks(v);
       const rows = await tx.auditLog.findMany({ where: { AND: [await this.scopeWhere(tx, c, v), this.where(q)] }, orderBy: { chainSeq: 'desc' }, take: 5000 });
-      const lines = ['Position,When,Who,Role,What,Record type,Record,Details', ...rows.map((r) => this.view(r, m)).map((r) => [r.seq, r.at.toISOString(), r.actor, r.actorRole, r.action, r.entityType, r.entityId, r.details].map(csvCell).join(','))];
+      const lines = ['Position,When,Who,Role,What happened,Event code,Record type,Record,Details', ...rows.map((r) => this.view(r, m)).map((r) => [r.seq, r.at.toISOString(), r.actor, r.actorRole, r.sentence, r.action, r.entityType, r.entityId, r.details].map(csvCell).join(','))];
       const file = Buffer.from(`﻿${lines.join('\r\n')}\r\n`, 'utf8');
       await audit(tx, c, 'audit.exported', 'audit_log', c.organizationId, { filters: q, rows: rows.length, sha256: sha256(file), masked: { pay: !m.canPay, identity: !m.canIdentity } });
       return { file, name: `audit-log-${new Date().toISOString().slice(0, 10)}.csv` };
