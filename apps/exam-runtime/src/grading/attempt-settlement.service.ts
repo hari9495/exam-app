@@ -66,7 +66,9 @@ function isAttemptedManual(type: string, answer: { answerText: string | null; an
 // cleared by screenShareState's active:true path. face_mismatch is set by stage-3 face
 // enforcement (attempt.service.ts#applyFaceMismatchEnforcement) when faceMismatchAction is 'pause'
 // or 'block' -- direct action, not strike-based, so it has no strikeLimit escalation of its own.
-export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break';
+// AS-5 part 2: 'proctor' (paused from the live console, with a reason; only a proctor resumes it) and 'face_recheck'
+// (answer 2205: after time above the cap is approved, the candidate's face is checked again before resuming).
+export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break' | 'proctor' | 'face_recheck';
 
 // Mirrors what AttemptService stamps into Attempt.sectionSnapshotJson at attempt-start. Read
 // (rather than re-queried from ExamSection) deliberately: the snapshot is the frozen, per-attempt
@@ -432,7 +434,7 @@ export class AttemptSettlementService {
         .map((answer) => ({ questionId: answer.questionId, marksAwarded: answer.marksAwarded }));
 
       const sectionsForAttempt = toGradableSections(attempt.sectionSnapshotJson, questionIds, weightOverrides);
-      const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent, sectionsForAttempt);
+      const summary = computeResult(await voidIntegritySection(tx, attempt, gradedAnswers), questions, exam.passCriteriaPercent, sectionsForAttempt);
 
       if (
         summary.score === result.score
@@ -491,7 +493,7 @@ export class AttemptSettlementService {
       marksAwarded: answersByQuestionId.get(question.id)?.marksAwarded ?? 0,
     }));
     const sections = toGradableSections(attempt.sectionSnapshotJson, questions.map((question) => question.id));
-    const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent, sections);
+    const summary = computeResult(await voidIntegritySection(tx, attempt, gradedAnswers), questions, exam.passCriteriaPercent, sections);
 
     await tx.result.update({
       where: { attemptId: attempt.id },
@@ -715,6 +717,36 @@ export class AttemptSettlementService {
     return { attempt: updated, strike, event };
   }
 
+  /**
+   * Answer 2265: score a finished attempt again after an integrity decision ("section not counted" final, or overturned
+   * on appeal). Nothing to do before it is scored or while marking is open (finalizing applies the same rule).
+   */
+  async rescoreForIntegrity(tx: Prisma.TransactionClient, attemptId: string): Promise<{ rescored: boolean }> {
+    const attempt = await tx.attempt.findUnique({ where: { id: attemptId }, include: { invitation: { include: { exam: true } }, result: true } });
+    if (!attempt?.result || attempt.status === 'pending_manual_grade') return { rescored: false };
+    const exam = attempt.invitation.exam;
+    const questionIds: string[] = JSON.parse(attempt.questionOrderJson);
+    const questions = await tx.question.findMany({ where: { id: { in: questionIds } }, select: { id: true, marks: true } });
+    const answers = await tx.answer.findMany({ where: { attemptId }, select: { questionId: true, marksAwarded: true } });
+    const graded = answers
+      .filter((a): a is { questionId: string; marksAwarded: number } => a.marksAwarded !== null)
+      .map((a) => ({ questionId: a.questionId, marksAwarded: a.marksAwarded }));
+    const sections = toGradableSections(attempt.sectionSnapshotJson, questionIds);
+    const summary = computeResult(await voidIntegritySection(tx, attempt, graded), questions, exam.passCriteriaPercent, sections);
+    await tx.result.update({ where: { attemptId }, data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail } });
+    await tx.auditLog.create({
+      data: {
+        organizationId: exam.organizationId,
+        actorUserId: null,
+        action: 'result.rescored_for_integrity',
+        entityType: 'attempt',
+        entityId: attemptId,
+        metadataJson: JSON.stringify({ before: { score: attempt.result.score, percentage: attempt.result.percentage, passFail: attempt.result.passFail }, after: summary }),
+      },
+    });
+    return { rescored: true };
+  }
+
   async resumeFromPause(
     tx: Prisma.TransactionClient,
     attempt: Attempt,
@@ -743,4 +775,20 @@ export class AttemptSettlementService {
       .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
     return updated;
   }
+}
+
+/**
+ * Answer 2265: a final "section not counted" verdict (not overturned on appeal) scores that section's answers as zero;
+ * the section still counts toward the maximum, as the verdict's "that section's score is voided" says.
+ */
+export async function voidIntegritySection<T extends { questionId: string; marksAwarded: number }>(
+  tx: Prisma.TransactionClient,
+  attempt: { id: string; sectionSnapshotJson: string },
+  graded: T[],
+): Promise<T[]> {
+  const inc = await tx.integrityIncident.findUnique({ where: { attemptId: attempt.id }, select: { status: true, verdict: true, sectionTitle: true, appeal: { select: { status: true } } } });
+  if (!inc || inc.status !== 'decided' || inc.verdict !== 'section' || !inc.sectionTitle || inc.appeal?.status === 'overturned') return graded;
+  const snapshot = JSON.parse(attempt.sectionSnapshotJson) as SectionSnapshotEntry[];
+  const voided = new Set(snapshot.filter((sec) => sec.title === inc.sectionTitle).flatMap((sec) => sec.questionIds));
+  return graded.map((a) => (voided.has(a.questionId) ? { ...a, marksAwarded: 0 } : a));
 }

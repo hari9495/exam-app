@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import clsx from 'clsx';
 import Editor from '@monaco-editor/react';
 // Side-effect import: points the Monaco loader at self-hosted /monaco/vs before
 // the editor mounts, so a code question works on CDN-blocked exam networks.
@@ -12,8 +11,6 @@ import { Button, FileUpload, FormField, InlineAlert, Select, TextArea } from '@y
 import { TestRunnerScreen, type LiveRunner, type LiveRunnerQuestion } from '@yukthix/ui/assessments';
 import { CodeOutputPanel } from '../components/CodeOutputPanel';
 import { SpokenAnswerRecorder } from '../components/SpokenAnswerRecorder';
-import { ProctoringWarningOverlay, ProctoringBlockOverlay, FaceWarningOverlay } from '../components/ProctoringOverlay';
-import { ScreenShareRequiredOverlay } from '../components/ScreenShareRequiredOverlay';
 import {
   useAttemptQuery,
   useAnswerMutation,
@@ -26,6 +23,8 @@ import {
   useScreenShareState,
   useRunnerActions,
   useCandidateHelp,
+  useFaceRecheck,
+  useProctorMessages,
   RunCodeResult,
 } from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
@@ -38,6 +37,7 @@ import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import { reportClientError } from '../../../lib/client-error-reporter';
 import { AttemptAnswerSummary, AttemptQuestion, AttemptSection, isAttemptStarted } from '../../../lib/types';
 import { monacoLanguageFor } from '../../../lib/monaco-language';
+import { cameraFrame, pauseFor } from '../../../lib/proctoring-pause';
 
 // AS-4a part 2 (answers 2161, 2162): the in-test page is the designed runner (PRC-26). Its sections, review mode,
 // "answer any N" sections, phone question list, pictures and code snippets, calculator, display settings, breaks and
@@ -105,7 +105,6 @@ export default function CandidateExamPage() {
   const attemptState = current && isAttemptStarted(current) ? current : null;
   // AS-4a: a break is a pause the candidate asked for; the runner shows it, not the proctoring overlay.
   const onBreak = attemptState?.status === 'paused' && attemptState.pausedReason === 'break';
-  const isPaused = attemptState?.status === 'paused' && !onBreak;
   const isBlocked = attemptState?.status === 'blocked';
   const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress' && attemptState.status !== 'paused' && !isBlocked);
   const started = attemptState?.status === 'in_progress';
@@ -198,8 +197,21 @@ export default function CandidateExamPage() {
   const webcamResume = useWebcamResume();
   // Stage-3 face 'warn': a non-freezing heads-up while live; dismissing acks it. Pause/block take precedence.
   const ackFaceWarning = useAckFaceWarning();
-  const isFacePause = attemptState?.pausedReason === 'face_mismatch';
   const showFaceWarning = started && Boolean(attemptState?.faceWarningAt);
+  // Answer 2205: the face check after approved extra time.
+  const faceRecheck = useFaceRecheck();
+  const proctorMessages = useProctorMessages();
+  const [faceCheckFailed, setFaceCheckFailed] = useState<string | null>(null);
+  async function handleFaceCheck() {
+    setFaceCheckFailed(null);
+    try {
+      const out = await faceRecheck.mutateAsync(await cameraFrame());
+      if (out.matched === false && out.triesLeft !== 0)
+        setFaceCheckFailed(`That did not match your photo. Face the camera in good light and try again${out.triesLeft ? ` (${out.triesLeft} ${out.triesLeft === 1 ? 'try' : 'tries'} left)` : ''}, or wait for your proctor.`);
+    } catch (error) {
+      setFaceCheckFailed(error instanceof Error && error.message ? error.message : 'We could not use your camera. Check it is not in use by another app.');
+    }
+  }
 
   async function finishSubmit() {
     if (submitAttempt.isPending) return;
@@ -298,11 +310,29 @@ export default function CandidateExamPage() {
     return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
   }
 
-  // The block overlay takes precedence -- a blocked attempt has nothing to resume into. Gated on screenShareRequired
-  // (server-computed, bypass-aware), not captureEnabled.
-  if (screenShareRequired && !screenCapture.active && !isBlocked) {
-    return <ScreenShareRequiredOverlay error={screenCapture.error} onShare={handleShareScreen} pending={isRequestingShare} />;
-  }
+  // Answer 2231: every reason the test stops shows in the designed runner's paused view. A block wins over the share
+  // prompt (there is nothing to resume into); the share prompt is gated on screenShareRequired (bypass-aware).
+  const pause = pauseFor({
+    status: attemptState.status,
+    pausedReason: attemptState.pausedReason,
+    violationReason: lastViolationReason,
+    violationSource: lastViolationSource,
+    webcamViolations: attemptState.webcamViolationCount,
+    browserViolations: attemptState.browserActivityViolationCount,
+    strikeLimit: proctoringConfig?.strikeLimit ?? 3,
+    pauseMessage: attemptState.pauseMessage,
+    faceRecheckTriesLeft: attemptState.faceRecheckTriesLeft,
+    shareNeeded: screenShareRequired && !screenCapture.active && !isBlocked,
+    shareError: screenCapture.error,
+    onShare: () => void handleShareScreen(),
+    sharing: isRequestingShare,
+    onContinue: () => webcamResume.mutate(),
+    continuing: webcamResume.isPending,
+    continueFailed: webcamResume.isError,
+    onFaceCheck: () => void handleFaceCheck(),
+    faceChecking: faceRecheck.isPending,
+    faceCheckFailed,
+  });
 
   const byId = new Map(questions.map((q) => [q.id, q]));
   const saveWithMark = (q: AttemptQuestion, marked: boolean) => {
@@ -482,7 +512,24 @@ export default function CandidateExamPage() {
     proctored,
     proctoringNote: proctored ? [proctoringConfig?.webcamEnabled ? 'Camera on' : null, captureEnabled && screenCapture.active ? 'Screen shared' : null].filter(Boolean).join(' · ') || undefined : undefined,
     seconds: remainingSeconds,
-    status: onBreak ? 'break' : 'running',
+    status: onBreak ? 'break' : pause ? 'paused' : 'running',
+    pause,
+    notice:
+      showFaceWarning && !pause
+        ? {
+            title: 'Identity check warning',
+            message: "Your face didn't clearly match your enrolment photo. Your test is still running: centre yourself and face the camera. Repeated warnings may pause your test.",
+            actionLabel: 'I understand',
+            onAction: () => ackFaceWarning.mutate(),
+            busy: ackFaceWarning.isPending,
+          }
+        : null,
+    // Answer 2269: the proctor's messages; "Got it" marks them read, a reply goes to the proctor's console.
+    messages: {
+      items: attemptState.messages ?? [],
+      onRead: () => proctorMessages.read.mutateAsync(),
+      onReply: (text) => proctorMessages.reply.mutateAsync(text),
+    },
     breakSecondsLeft,
     breaksLeft: run ? Math.max(0, run.breaksAllowed - run.breaksUsed) : 0,
     breakMinutes: run?.breakMinutes ?? 0,
@@ -527,28 +574,7 @@ export default function CandidateExamPage() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {isPaused ? (
-        <ProctoringWarningOverlay
-          // A face_mismatch pause is a direct action, not a strike -- no count. All others show Warning X/Y.
-          strike={isFacePause ? undefined : lastViolationSource === 'browser_activity' ? attemptState.browserActivityViolationCount : attemptState.webcamViolationCount}
-          strikeLimit={isFacePause ? undefined : proctoringConfig?.strikeLimit ?? 3}
-          reason={isFacePause ? 'face_mismatch' : lastViolationReason}
-          onContinue={() => webcamResume.mutate()}
-          continuePending={webcamResume.isPending}
-          continueError={webcamResume.isError}
-        />
-      ) : null}
-      {isBlocked ? <ProctoringBlockOverlay /> : null}
-      {/* Non-freezing warn: only when live (pause/block overlays above take precedence). */}
-      {showFaceWarning && !isPaused && !isBlocked ? <FaceWarningOverlay onDismiss={() => ackFaceWarning.mutate()} dismissPending={ackFaceWarning.isPending} /> : null}
-      <div
-        data-testid="dimmable-content"
-        // `inert` keeps keyboard and screen-reader users out of the content an overlay covers.
-        {...((isPaused || isBlocked ? { inert: '' } : {}) as React.HTMLAttributes<HTMLDivElement>)}
-        className={clsx('flex min-h-0 flex-1 flex-col', (isPaused || isBlocked) && 'pointer-events-none blur-xs select-none')}
-      >
-        <TestRunnerScreen live={live} />
-      </div>
+      <TestRunnerScreen live={live} />
     </div>
   );
 }

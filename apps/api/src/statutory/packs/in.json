@@ -88,6 +88,77 @@
       ]
     },
     {
+      "statute": "IN.PF",
+      "jurisdiction": "IN",
+      "version": "2026-v2",
+      "validFrom": "2026-09-17",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "PF wage ceiling raised from 15,000 to 25,000 a month, notified 17 Sep 2026 (S.O. 5109(E), Code on Social Security 2020); EPS employer maximum 2,083 a month (PIB PRID 2310973, 2313829). The EDLI and admin-charge ceilings were not found and stay as before (TODO: CA checklist item 46 confirms them). Rates as the 2025 version.",
+      "values": {
+        "kind": "pf",
+        "wageCeiling": "25000",
+        "employeeRate": "0.12",
+        "employerRate": "0.12",
+        "epsRate": "0.0833",
+        "epsCeiling": "25000",
+        "epsStopAge": 58,
+        "edliRate": "0.005",
+        "edliCeiling": "15000",
+        "adminRate": "0.005",
+        "adminMinimum": "500",
+        "rounding": "nearest"
+      },
+      "golden": [
+        {
+          "name": "From 17 Sep 2026: basic 20,000 is below the 25,000 ceiling: employee 2,400, EPS 1,666, EPF 734",
+          "fn": "pf",
+          "input": {
+            "pfWage": "20000",
+            "onActualWage": false,
+            "age": 30
+          },
+          "expected": {
+            "employee": "2400",
+            "eps": "1666",
+            "epf": "734",
+            "edli": "75"
+          }
+        },
+        {
+          "name": "From 17 Sep 2026: basic 30,000 on the 25,000 ceiling: employee 3,000, EPS 2,083, EPF 917",
+          "fn": "pf",
+          "input": {
+            "pfWage": "30000",
+            "onActualWage": false,
+            "age": 30
+          },
+          "expected": {
+            "employee": "3000",
+            "eps": "2083",
+            "epf": "917",
+            "edli": "75"
+          }
+        },
+        {
+          "name": "Age 58: no EPS, the whole employer share goes to EPF",
+          "fn": "pf",
+          "input": {
+            "pfWage": "25000",
+            "onActualWage": false,
+            "age": 58
+          },
+          "expected": {
+            "employee": "3000",
+            "eps": "0",
+            "epf": "3000",
+            "edli": "75"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.ESI",
       "jurisdiction": "IN",
       "version": "2019-v1",
@@ -324,6 +395,103 @@
           }
         }
       ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-TN",
+      "version": "2026-v2",
+      "validFrom": "2026-10-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Greater Chennai Corporation, professional tax press release R.D. PT C.No/3555/2026 dated 04.08.2026 (TN Urban Local Bodies Rules 2023 r.277(2)-(3)): deducted from the August and January pay bills; slabs unchanged (rates II/2024-25). Other Tamil Nadu local bodies are not modelled. In force from the half-year starting 1 Oct 2026 (the April-September 2026 half-year was already deducted in September).",
+      "values": {
+        "kind": "pt",
+        "basis": "half_yearly",
+        "deductMonths": [
+          8,
+          1
+        ],
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "21000",
+            "amount": "0"
+          },
+          {
+            "from": "21000.01",
+            "to": "30000",
+            "amount": "180"
+          },
+          {
+            "from": "30000.01",
+            "to": "45000",
+            "amount": "425"
+          },
+          {
+            "from": "45000.01",
+            "to": "60000",
+            "amount": "930"
+          },
+          {
+            "from": "60000.01",
+            "to": "75000",
+            "amount": "1025"
+          },
+          {
+            "from": "75000.01",
+            "to": null,
+            "amount": "1250"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "Half-year income 1,80,000 in January: 1,250",
+          "fn": "pt",
+          "input": {
+            "ptWage": "180000",
+            "month": 1
+          },
+          "expected": {
+            "amount": "1250"
+          }
+        },
+        {
+          "name": "Half-year income 40,000 in August: 425",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000",
+            "month": 8
+          },
+          "expected": {
+            "amount": "425"
+          }
+        },
+        {
+          "name": "September and March are no longer deduction months",
+          "fn": "pt",
+          "input": {
+            "ptWage": "180000",
+            "month": 9
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "March: nothing",
+          "fn": "pt",
+          "input": {
+            "ptWage": "180000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ],
+      "validTo": null
     },
     {
       "statute": "IN.PT",

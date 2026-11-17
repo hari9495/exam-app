@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
@@ -9,6 +10,7 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequireAnyPermission } from '../../rbac/permissions.decorator';
 import { RequireStepUp } from '../../auth/step-up.decorator';
 import { IntegrityReviewService } from './integrity-review.service';
+import { IntegrityReportsService } from './integrity-reports.service';
 
 class VerdictDto {
   @IsIn(['cleared', 'warning', 'section'])
@@ -42,7 +44,25 @@ const REVIEW = ['asmt.proctor', 'asmt.evaluate', 'exam:manage'] as const;
 @Controller('asmt')
 @UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class IntegrityReviewController {
-  constructor(private readonly service: IntegrityReviewService) {}
+  constructor(
+    private readonly service: IntegrityReviewService,
+    private readonly reports: IntegrityReportsService,
+  ) {}
+
+  // AS-5 part 3 (PRC-20): a test's integrity reports, and the same as a workbook (audited).
+  @Get('integrity-reports/:examId')
+  @RequireAnyPermission(...REVIEW)
+  report(@CurrentTenant() ctx: TenantContext, @Param('examId', ParseUUIDPipe) examId: string) {
+    return this.reports.view(ctx, examId);
+  }
+
+  @Get('integrity-reports/:examId/export')
+  @RequireAnyPermission(...REVIEW)
+  async exportReport(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('examId', ParseUUIDPipe) examId: string, @Res({ passthrough: true }) res: Response) {
+    const { file, name } = await this.reports.export(ctx, userId, examId);
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return new StreamableFile(file);
+  }
 
   @Get('integrity')
   @RequireAnyPermission(...REVIEW)
@@ -103,6 +123,33 @@ export class IntegrityReviewController {
   @RequireAnyPermission(...REVIEW)
   appeals(@CurrentTenant() ctx: TenantContext) {
     return this.service.appeals(ctx);
+  }
+
+  // Answer 2262: one frame of the incident's attempt (audited).
+  @Get('integrity/:id/frames/:eventId')
+  @RequireAnyPermission(...REVIEW)
+  incidentFrame(
+    @CurrentTenant() ctx: TenantContext,
+    @CurrentUserId() userId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('eventId', ParseUUIDPipe) eventId: string,
+    @Query('kind') kind: string,
+  ) {
+    if (kind !== 'camera' && kind !== 'screen') throw new BadRequestException('kind must be camera or screen');
+    return this.service.incidentFrame(ctx, userId, id, eventId, kind);
+  }
+
+  // Answer 2268: the latest camera frame of each running attempt, for the live console (proctors).
+  @Get('live/:examId/frames')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
+  liveFrames(@CurrentTenant() ctx: TenantContext, @Param('examId', ParseUUIDPipe) examId: string) {
+    return this.service.liveFrames(ctx, examId);
+  }
+
+  @Get('appeals/:id/evidence')
+  @RequireAnyPermission(...REVIEW)
+  appealEvidence(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.appealEvidence(ctx, userId, id);
   }
 
   @Post('appeals/:id/uphold')

@@ -239,7 +239,7 @@ export function useRunnerActions() {
     endBreak: () => post('/attempt/break/end'),
     sendSurvey: (input: { rating: number; clearInstructions?: boolean; comment?: string; gender?: 'woman' | 'man' | 'another' | 'not_say' }) => post('/attempt/survey', input),
     // AS-5 (answer 2012): appeal an integrity decision.
-    sendAppeal: (text: string) => post('/attempt/appeal', { text }),
+    sendAppeal: (text: string, file?: { fileName: string; dataUri: string } | null) => post('/attempt/appeal', { text, ...(file ? { file } : {}) }),
   };
 }
 
@@ -389,6 +389,33 @@ export function useWebcamResume() {
       withRetry(() => candidateApiFetch('/attempt/webcam-resume', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined)),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
   });
+}
+
+/** Answer 2205: the face check after approved extra time; resumes the test when it matches. */
+export function useFaceRecheck() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (snapshot: string): Promise<{ status: string; matched: boolean | null; triesLeft?: number }> =>
+      candidateApiFetch('/attempt/face-recheck', { method: 'POST', body: JSON.stringify({ snapshot }) }, accessToken ?? undefined),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+}
+
+// Answer 2269: the candidate reads the proctor's messages ("Got it") or replies to them.
+export function useProctorMessages() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  const done = () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] });
+  const read = useMutation({
+    mutationFn: (): Promise<{ read: number }> => candidateApiFetch('/attempt/messages/read', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined),
+    onSuccess: done,
+  });
+  const reply = useMutation({
+    mutationFn: (body: string): Promise<{ id: string }> => candidateApiFetch('/attempt/messages', { method: 'POST', body: JSON.stringify({ body }) }, accessToken ?? undefined),
+    onSuccess: done,
+  });
+  return { read, reply };
 }
 
 // Stage-3 face enforcement 'warn': candidate acknowledges the non-freezing heads-up, clearing

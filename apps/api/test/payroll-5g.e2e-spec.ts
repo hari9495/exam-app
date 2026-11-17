@@ -325,7 +325,9 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect((await api('payAdmin', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(403)).body.message).toMatch(/Someone other/);
     await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(409);
     const arrearsRun = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month, offcycleKind: 'arrears' }).expect(201)).body.id;
-    expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({ runId: arrearsRun }).expect(200)).body).toMatchObject({ status: 'approved', overpaid: '0.00' });
+    // From 17 Sep 2026 the PF ceiling is 25,000: the raise (basic 20,000 to 24,000) owes 480 more employee PF, which is
+    // recovered only with the employee's consent (5g-D6). Under the old 15,000 ceiling both months paid the same PF.
+    expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({ runId: arrearsRun }).expect(200)).body).toMatchObject({ status: 'approved', overpaid: '480.00' });
     const slips = await approveRun(arrearsRun);
     const lines = (await linesOf(slips[0].id)).body.lines as { code: string; amount: string; explanation: string }[];
     expect(lines.find((l) => l.code === 'basic')).toMatchObject({ amount: Number(basic.difference).toFixed(2), explanation: `Arrears for ${month}.` });
@@ -351,7 +353,8 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const ok = (await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(200)).body;
     expect(ok).toMatchObject({ overpaid: '1100.00' });
     // The employee sees and answers only their own plan.
-    expect((await api('emp1', 'get', '/payroll/me/overpayments').expect(200)).body).toEqual([]);
+    // emp1's only plan is the employee PF on their own raise (above); emp3's is not among them.
+    expect((await api('emp1', 'get', '/payroll/me/overpayments').expect(200)).body).toEqual([expect.objectContaining({ origin: 'arrears', status: 'proposed', amount: '480.00', balance: '480.00' })]);
     const mine = (await api('emp3', 'get', '/payroll/me/overpayments').expect(200)).body;
     expect(mine).toEqual([expect.objectContaining({ id: ok.recoveryId, status: 'proposed', amount: '1100.00', balance: '1100.00' })]);
     await api('emp1', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(404);

@@ -42,22 +42,39 @@ export interface LiveTileData {
   id: string;
   name: string;
   status: 'in-progress' | 'paused' | 'waiting' | 'disconnected' | 'submitted' | 'terminated';
-  score: number;
+  /** The integrity score (0-100); a live tile without one gives its level instead (AS-5: from its flags so far). */
+  score?: number;
+  level?: IntegrityLevel;
   flags: number;
   lastFlag?: string;
   lastFlagAi?: boolean;
   question: string;
   secondsLeft: number;
   accommodation?: string;
+  /** Answer 2268: the latest camera frame (a short-lived link); without it the camera placeholder shows. */
+  thumbUrl?: string;
 }
 
-/** Sorted by concern: lowest score first, then most flags, then name. */
-export function sortByConcern<T extends { score: number; flags: number; name: string }>(tiles: T[]): T[] {
-  return [...tiles].sort((a, b) => a.score - b.score || b.flags - a.flags || a.name.localeCompare(b.name));
+/**
+ * Answer 2268: a live integrity score (0-100) from the flags so far: a high flag costs 51 (so any high flag is "high
+ * concern", as before), a medium 12, a low 3. The flags only point a proctor at a tile; they never change a result.
+ */
+export function scoreFromFlags(flags: { severity: string }[]): number {
+  const cost = flags.reduce((n, f) => n + (f.severity === 'high' ? 51 : f.severity === 'medium' ? 12 : f.severity === 'low' ? 3 : 0), 0);
+  return Math.max(0, 100 - cost);
 }
 
-export function filterByRisk<T extends { score: number }>(tiles: T[], risk: 'all' | IntegrityLevel): T[] {
-  return risk === 'all' ? tiles : tiles.filter((t) => integrityLevel(t.score) === risk);
+/** A tile's level: given, or from its score. */
+export const tileLevel = (t: { score?: number; level?: IntegrityLevel }): IntegrityLevel => t.level ?? integrityLevel(t.score ?? 100);
+const LEVEL_RANK: Record<IntegrityLevel, number> = { high: 0, review: 1, clear: 2 };
+
+/** Sorted by concern: lowest score (or highest level) first, then most flags, then name. */
+export function sortByConcern<T extends { score?: number; level?: IntegrityLevel; flags: number; name: string }>(tiles: T[]): T[] {
+  return [...tiles].sort((a, b) => LEVEL_RANK[tileLevel(a)] - LEVEL_RANK[tileLevel(b)] || (a.score ?? 100) - (b.score ?? 100) || b.flags - a.flags || a.name.localeCompare(b.name));
+}
+
+export function filterByRisk<T extends { score?: number; level?: IntegrityLevel }>(tiles: T[], risk: 'all' | IntegrityLevel): T[] {
+  return risk === 'all' ? tiles : tiles.filter((t) => tileLevel(t) === risk);
 }
 
 /** A proctor action (warn / pause / terminate…) needs a reason (YX-PROC-09). */

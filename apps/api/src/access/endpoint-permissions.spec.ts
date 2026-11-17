@@ -87,7 +87,8 @@ const IMPLICIT: Record<string, string[]> = {
   // M05 E1: everyone who claims reads the categories, tiers and their own limits.
   ExpensesController: ['categories', 'tiers', 'myLimits'],
   // M05 E2: the service decides per claim (claimant, approver whose turn it is, expense.claim.view in scope, finance).
-  ExpenseClaimsController: ['home', 'list', 'create', 'get', 'rename', 'receipt', 'addLine', 'updateLine', 'removeLine', 'receiptFile', 'fxProof', 'fxProofFile', 'check', 'submit', 'withdraw', 'approveAmount', 'decide'],
+  // Saved expenses (Keka ideas): the person's own only; the service matches the employee and their own draft claim.
+  ExpenseClaimsController: ['home', 'list', 'create', 'get', 'rename', 'receipt', 'addLine', 'updateLine', 'removeLine', 'receiptFile', 'fxProof', 'fxProofFile', 'check', 'submit', 'withdraw', 'approveAmount', 'decide', 'myItems', 'addItem', 'removeItem', 'claimItems'],
   // E4: the traveller, the approver whose task it is and the travel desk (in scope) are decided per trip or advance.
   ExpenseTripsController: ['list', 'create', 'get', 'update', 'submit', 'cancel', 'addBooking', 'partner', 'removeBooking', 'bookingFile', 'advances', 'request', 'advance', 'amount'],
   ExpenseReportsController: [],

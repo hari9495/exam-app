@@ -1,3 +1,4 @@
+import { readEvidence } from './accommodation.service';
 import { integrityState, type CandidateIntegrity } from './integrity-hold';
 import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
@@ -180,6 +181,10 @@ interface AttemptStateResponse {
   // attempt was already paused before this column shipped (no backfill; see resumeFromPause).
   // The client uses this instead of guessing from the violation counters.
   pausedReason: PauseReason | null;
+  /** AS-5: what the proctor told the candidate when pausing (pausedReason 'proctor'). */
+  pauseMessage?: string | null;
+  /** Answer 2270: face checks left before a proctor takes over (pausedReason 'face_recheck'). */
+  faceRecheckTriesLeft?: number | null;
   // Stage-3 face enforcement 'warn': an unacknowledged non-freezing heads-up (ISO timestamp), or
   // null. Distinct from pausedReason -- warn never pauses, so it can't ride the pause channel.
   faceWarningAt: string | null;
@@ -458,10 +463,9 @@ export class AttemptService {
       const sections = await this.loadSections(tx, settled.sectionSnapshotJson, settled.optionOrderJson);
       const answers = await tx.answer.findMany({ where: { attemptId: settled.id } });
 
-      const unreadMessages = await tx.candidateMessage.findMany({ where: { attemptId: settled.id, readAt: null } });
-      if (unreadMessages.length > 0) {
-        await tx.candidateMessage.updateMany({ where: { attemptId: settled.id, readAt: null }, data: { readAt: new Date() } });
-      }
+      // Answer 2269: the proctor's messages stay unread until the candidate says "Got it" or replies (a GET changes
+      // nothing), so a message is never lost between two polls.
+      const unreadMessages = await tx.candidateMessage.findMany({ where: { attemptId: settled.id, readAt: null, fromCandidate: false }, orderBy: { sentAt: 'asc' } });
       const feedback = await this.buildFeedback(tx, exam, settled);
       const runner = await this.runnerInfo(tx, organizationId, exam, settled);
 
@@ -472,6 +476,8 @@ export class AttemptService {
         webcamViolationCount: settled.webcamViolationCount,
         browserActivityViolationCount: settled.browserActivityViolationCount,
         pausedReason: settled.pausedReason as PauseReason | null,
+        pauseMessage: settled.status === 'paused' && settled.pausedReason === 'proctor' ? await proctorPauseMessage(tx, settled.id) : null,
+        faceRecheckTriesLeft: settled.status === 'paused' && settled.pausedReason === 'face_recheck' ? Math.max(0, FACE_RECHECK_TRIES - (await faceRecheckFailures(tx, settled))) : null,
         faceWarningAt: settled.faceWarningAt ? settled.faceWarningAt.toISOString() : null,
         exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
         screenShareRequired: exam.enableAntiCheating && exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
@@ -596,8 +602,21 @@ export class AttemptService {
    * AS-5 (answer 2012): the candidate appeals an integrity verdict other than "cleared", once, before the company's
    * window closes. The result is held while it is open (integrityState); someone who did not give the verdict decides.
    */
-  async appeal(session: CandidateSession, text: string): Promise<{ ok: true }> {
+  async appeal(session: CandidateSession, text: string, file: { fileName: string; dataUri: string } | null = null): Promise<{ ok: true }> {
     const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    // Answer 2264: the file is checked before anything is stored, and uploaded outside the transaction.
+    const evidence = readEvidence(file);
+    const path = evidence ? await this.blobStorage.upload(`appeal-evidence/${organizationId}/${invitation.id}/${randomUUID()}-${evidence.name}`, evidence.buf, evidence.type) : null;
+    try {
+      return await this.appealIn(organizationId, invitation.id, text, path ? { path, name: evidence!.name, type: evidence!.type } : null);
+    } catch (error) {
+      if (path) await this.blobStorage.deleteByUrl(path).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async appealIn(organizationId: string, invitationId: string, text: string, file: { path: string; name: string; type: string } | null): Promise<{ ok: true }> {
+    const invitation = { id: invitationId };
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } });
       if (!attempt) throw new NotFoundException('No attempt has been started');
@@ -607,7 +626,7 @@ export class AttemptService {
       if (state.integrity.appeal) throw new ConflictException('You have already appealed this decision.');
       if (!state.integrity.canAppeal) throw new BadRequestException('The time to appeal this decision has ended.');
       const incident = await tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: attempt.id }, select: { id: true } });
-      await tx.integrityAppeal.create({ data: { incidentId: incident.id, attemptId: attempt.id, text: text.trim() } });
+      await tx.integrityAppeal.create({ data: { incidentId: incident.id, attemptId: attempt.id, text: text.trim(), evidencePath: file?.path ?? null, evidenceName: file?.name ?? null, evidenceType: file?.type ?? null } });
       return { ok: true as const };
     });
   }
@@ -1843,8 +1862,75 @@ export class AttemptService {
       if (attempt.pausedReason === 'screen_share') {
         throw new BadRequestException('Cannot resume — this attempt is paused pending screen sharing, not a strike');
       }
+      // AS-5: a proctor's pause is lifted by the proctor; a break ends on its own route; a face re-check by checking.
+      if (attempt.pausedReason === 'proctor' || attempt.pausedReason === 'break' || attempt.pausedReason === 'face_recheck') {
+        throw new BadRequestException('This pause is not cleared from here.');
+      }
       const updated = await this.attemptSettlement.resumeFromPause(tx, attempt);
       return { status: updated.status };
+    });
+  }
+
+  /**
+   * Answer 2205: after time above the cap was approved, the candidate's face is checked once against the enrolment photo
+   * before the test resumes. A match resumes; a clear mismatch stays paused (recorded) so they can try again or a proctor
+   * decides; when the check cannot run (no model, no enrolment) it resumes, as every other face check degrades.
+   */
+  async faceRecheck(session: CandidateSession, snapshot: string): Promise<{ status: string; matched: boolean | null; triesLeft?: number }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    const ctx = { organizationId, isSuperAdmin: false };
+    const attempt = await this.tenantPrisma.forTenant(ctx, (tx) => tx.attempt.findUnique({ where: { invitationId: invitation.id } }));
+    if (!attempt) throw new NotFoundException('No attempt has been started');
+    if (attempt.status !== 'paused' || attempt.pausedReason !== 'face_recheck') throw new BadRequestException('No face check is waiting.');
+    // Answer 2270: three tries, then a proctor checks (no more camera checks from the candidate).
+    if ((await this.tenantPrisma.forTenant(ctx, (tx) => faceRecheckFailures(tx, attempt))) >= FACE_RECHECK_TRIES) {
+      throw new BadRequestException('A proctor will check your face. Please wait.');
+    }
+    const parsed = extractBase64FromDataUri(snapshot);
+    const image = parsed ? Buffer.from(parsed.base64, 'base64') : null;
+    if (!image?.length) throw new BadRequestException('The photo was empty. Try again.');
+    const outcome = await this.faceVerification.checkOnce(attempt.id, organizationId, image);
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const current = await tx.attempt.findUniqueOrThrow({ where: { id: attempt.id } });
+      if (current.status !== 'paused' || current.pausedReason !== 'face_recheck') return { status: current.status, matched: null };
+      if (outcome === 'mismatch') {
+        await tx.proctoringEvent.create({ data: { attemptId: attempt.id, eventType: 'face_recheck_failed', severity: getProctoringEventSeverity('face_mismatch'), metadataJson: '{}' } });
+        const triesLeft = Math.max(0, FACE_RECHECK_TRIES - (await faceRecheckFailures(tx, current)));
+        if (triesLeft === 0) {
+          // The hand-off: a high flag on the live console; the proctor checks and resumes or ends.
+          const flag = await tx.proctoringEvent.create({ data: { attemptId: attempt.id, eventType: 'face_recheck_handoff', severity: 'high', metadataJson: JSON.stringify({ tries: FACE_RECHECK_TRIES }) } });
+          this.monitoringGateway.emitProctoringFlag(current.examId, { attemptId: current.id, candidateId: current.candidateId, eventType: flag.eventType, severity: flag.severity, occurredAt: flag.occurredAt });
+        }
+        return { status: 'paused', matched: false, triesLeft };
+      }
+      const updated = await this.attemptSettlement.resumeFromPause(tx, current);
+      return { status: updated.status, matched: outcome === 'match' ? true : null };
+    });
+  }
+
+  /** Answer 2269: the candidate has read the proctor's messages ("Got it"). */
+  async readMessages(session: CandidateSession): Promise<{ read: number }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const r = await tx.candidateMessage.updateMany({ where: { attemptId: attempt.id, fromCandidate: false, readAt: null }, data: { readAt: new Date() } });
+      return { read: r.count };
+    });
+  }
+
+  /** Answer 2269: the candidate's reply to their proctor, only while the test runs (or is paused or blocked). */
+  async replyToProctor(session: CandidateSession, text: string): Promise<{ id: string; sentAt: Date }> {
+    const body = text.trim();
+    if (!body) throw new BadRequestException('Write your message first.');
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      if (!['in_progress', 'paused', 'blocked'].includes(attempt.status)) throw new BadRequestException('Your test has ended, so messages are closed.');
+      await tx.candidateMessage.updateMany({ where: { attemptId: attempt.id, fromCandidate: false, readAt: null }, data: { readAt: new Date() } });
+      const m = await tx.candidateMessage.create({ data: { attemptId: attempt.id, fromCandidate: true, body } });
+      return { id: m.id, sentAt: m.sentAt };
     });
   }
 
@@ -2304,5 +2390,24 @@ export class AttemptService {
   private async broadcastLeaderboard(organizationId: string, examId: string): Promise<void> {
     const rows = await this.leaderboardService.computeRecruiterView({ organizationId, isSuperAdmin: false }, examId);
     this.monitoringGateway.emitLeaderboardUpdate(examId, rows);
+  }
+}
+
+/** Answer 2270: the candidate's face checks per face-check pause. */
+export const FACE_RECHECK_TRIES = 3;
+
+/** Answer 2270: failed face checks since this pause began. */
+async function faceRecheckFailures(tx: Prisma.TransactionClient, attempt: { id: string; pausedAt: Date | null }): Promise<number> {
+  return tx.proctoringEvent.count({ where: { attemptId: attempt.id, eventType: 'face_recheck_failed', ...(attempt.pausedAt ? { occurredAt: { gte: attempt.pausedAt } } : {}) } });
+}
+
+/** AS-5: the message of the proctor's latest pause (kept on the attempt's record as a proctoring event). */
+async function proctorPauseMessage(tx: Prisma.TransactionClient, attemptId: string): Promise<string | null> {
+  const e = await tx.proctoringEvent.findFirst({ where: { attemptId, eventType: 'proctor_paused' }, orderBy: { occurredAt: 'desc' }, select: { metadataJson: true } });
+  try {
+    const m = JSON.parse(e?.metadataJson ?? '{}') as { message?: unknown };
+    return typeof m.message === 'string' && m.message.trim() ? m.message : null;
+  } catch {
+    return null;
   }
 }

@@ -19,7 +19,7 @@ import { Icon, Spinner } from '../../components/foundations';
 import { Badge, AiBadge } from '../../components/display';
 import { Button, IconButton } from '../../components/button';
 import { formatClock } from '../../components/exam';
-import { calcApply, calcUnary, integrityLevel, integrityScore, LEVEL_LABEL, LEVEL_TONE, type CalcFn, type CalcOp, type LiveTileData, type SignalCount } from './proctoring-logic';
+import { calcApply, calcUnary, integrityLevel, tileLevel, integrityScore, LEVEL_LABEL, LEVEL_TONE, type CalcFn, type CalcOp, type LiveTileData, type SignalCount } from './proctoring-logic';
 import './proctoring-kit.css';
 
 /* ---------- Camera / screen placeholders ---------- */
@@ -36,9 +36,16 @@ const CAMERA_TEXT: Record<CameraState, string> = {
 };
 
 /** SVG silhouette with a state line. No real video: a labelled placeholder frame. */
-export function CameraFrame({ state = 'live', label, size = 'md', kind = 'camera' }: { state?: CameraState; label?: string; size?: 'sm' | 'md' | 'lg'; kind?: 'camera' | 'id' | 'room' }) {
+export function CameraFrame({ state = 'live', label, size = 'md', kind = 'camera', src }: { state?: CameraState; label?: string; size?: 'sm' | 'md' | 'lg'; kind?: 'camera' | 'id' | 'room'; src?: string }) {
   const faces = state === 'no-face' || state === 'off' || state === 'connecting' ? 0 : state === 'multiple' ? 2 : 1;
   const alert = state === 'no-face' || state === 'multiple' || state === 'phone';
+  // Answer 2268: a real frame (the live console's latest camera frame) in place of the drawing.
+  if (src)
+    return (
+      <figure className="yx-cam" data-size={size} data-state={state} data-alert={alert || undefined}>
+        <img src={src} alt={`${label ? label + ': ' : ''}latest camera frame`} className="yx-cam__svg yx-cam__img" />
+      </figure>
+    );
   return (
     <figure className="yx-cam" data-size={size} data-state={state} data-alert={alert || undefined}>
       <svg viewBox="0 0 160 100" className="yx-cam__svg" role="img" aria-label={`${label ? label + ': ' : ''}${CAMERA_TEXT[state]}`}>
@@ -229,13 +236,13 @@ const TILE_STATUS: Record<LiveTileData['status'], { label: string; tone: 'succes
 };
 
 export function ProctorTile({ tile, selected, onOpen, index }: { tile: LiveTileData; selected?: boolean; onOpen?: (id: string) => void; index?: number }) {
-  const level = integrityLevel(tile.score);
+  const level = tileLevel(tile);
   const st = TILE_STATUS[tile.status];
   const cam: CameraState = tile.status === 'disconnected' ? 'connecting' : tile.lastFlag?.startsWith('More than one') ? 'multiple' : tile.lastFlag?.startsWith('Face') ? 'no-face' : tile.lastFlag?.startsWith('Phone') ? 'phone' : 'live';
   return (
-    <button type="button" className="yx-ptile" data-level={level} aria-pressed={selected} onClick={() => onOpen?.(tile.id)} aria-label={`${tile.name}, ${st.label}, integrity ${tile.score}, ${tile.flags} flags${index != null ? `, shortcut ${index + 1}` : ''}`}>
+    <button type="button" className="yx-ptile" data-level={level} aria-pressed={selected} onClick={() => onOpen?.(tile.id)} aria-label={`${tile.name}, ${st.label}, ${tile.score != null ? `integrity ${tile.score}` : LEVEL_LABEL[level]}, ${tile.flags} flags${index != null ? `, shortcut ${index + 1}` : ''}`}>
       <div className="yx-ptile__media">
-        <CameraFrame state={cam} size="sm" />
+        <CameraFrame state={cam} size="sm" src={tile.thumbUrl} label={tile.name} />
         <ScreenThumb note={tile.question} />
       </div>
       <div className="yx-ptile__row">
@@ -245,7 +252,7 @@ export function ProctorTile({ tile, selected, onOpen, index }: { tile: LiveTileD
       <div className="yx-ptile__row">
         <Badge tone={st.tone}>{st.label}</Badge>
         <Badge tone={LEVEL_TONE[level]}>
-          {tile.score} · {LEVEL_LABEL[level]}
+          {tile.score != null ? `${tile.score} · ${LEVEL_LABEL[level]}` : LEVEL_LABEL[level]}
         </Badge>
       </div>
       <div className="yx-ptile__row yx-ptile__meta">

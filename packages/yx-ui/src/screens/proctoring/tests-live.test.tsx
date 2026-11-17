@@ -180,4 +180,17 @@ describe('Settings 6.5 collections that need a second approver (answer 2123)', (
   it('negative: rows for a setting that is not a list are ignored', () => {
     expect(timeSettingsListChanges({ 'asmt.retention': [['90']], unknown: [['x']] }, data)).toEqual([]);
   });
+
+  it('2267: a published test offers the live console to a proctor; a draft or a non-proctor does not', async () => {
+    const onLiveConsole = vi.fn();
+    const { unmount } = wrap(<TestBuilderScreen live={liveBuilder({ test: { ...BUILDER_TEST, status: 'published' }, onLiveConsole })} />);
+    await ue.click(screen.getByRole('button', { name: 'Live console' }));
+    expect(onLiveConsole).toHaveBeenCalled();
+    unmount();
+    const draft = wrap(<TestBuilderScreen live={liveBuilder({ test: BUILDER_TEST, onLiveConsole })} />);
+    expect(screen.queryByRole('button', { name: 'Live console' })).toBeNull();
+    draft.unmount();
+    wrap(<TestBuilderScreen live={liveBuilder({ test: { ...BUILDER_TEST, status: 'published' } })} />);
+    expect(screen.queryByRole('button', { name: 'Live console' })).toBeNull();
+  });
 });

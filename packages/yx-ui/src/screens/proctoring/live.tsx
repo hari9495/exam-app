@@ -15,8 +15,9 @@ import { Kbd } from '../../components/foundations';
 import { formatClock } from '../../components/exam';
 import { PrcFrame, type ViewState } from './proctoring-shared';
 import { CameraFrame, FlagTimeline, IdCapture, IntegrityScoreCard, ProctorTile, ScreenThumb } from './proctoring-kit';
-import { filterByRisk, integrityLevel, liveCapacity, proctorActionError, sortByConcern, type IntegrityLevel, type LiveTileData } from './proctoring-logic';
+import { filterByRisk, integrityLevel, liveCapacity, proctorActionError, sortByConcern, type IntegrityLevel, type LiveTileData, tileLevel } from './proctoring-logic';
 import { EVENTS_SNEHA, SIGNALS_SNEHA, WEEK_DAYS, d } from './proctoring-data';
+import { LiveConsoleLiveScreen, type LiveConsole } from './live-console-live';
 
 /* ================================================================== */
 /* PRC-12 · Proctoring settings                                        */
@@ -181,10 +182,13 @@ export interface LiveConsoleProps {
   confirm?: 'terminate' | 'pause' | null;
   missedStart?: boolean;
   state?: ViewState;
+  /** AS-5 (PRC-13): a real test's attempts from the monitoring socket. */
+  live?: LiveConsole;
 }
 
-export function LiveConsoleScreen({ tiles: initial, defaultOpenId = null, defaultRisk = 'all', confirm = null, missedStart = false, state = 'ready' }: LiveConsoleProps) {
-  // PRC-13
+export function LiveConsoleScreen({ tiles: initial, defaultOpenId = null, defaultRisk = 'all', confirm = null, missedStart = false, state = 'ready', live: liveData }: LiveConsoleProps) {
+  // PRC-13; with `live`, a real test (AS-5).
+  if (liveData) return <LiveConsoleLiveScreen live={liveData} />;
   const [tiles, setTiles] = useState(initial);
   const [risk, setRisk] = useState(defaultRisk);
   const [openId, setOpenId] = useState(defaultOpenId);
@@ -281,7 +285,7 @@ export function LiveConsoleScreen({ tiles: initial, defaultOpenId = null, defaul
           onOpenChange={(o) => !o && setOpenId(null)}
           title={open.name}
           subtitle={`${open.question} · ${formatClock(open.secondsLeft)} left`}
-          meta={<Badge tone={integrityLevel(open.score) === 'high' ? 'danger' : integrityLevel(open.score) === 'review' ? 'warning' : 'success'}>Integrity {open.score}</Badge>}
+          meta={<Badge tone={tileLevel(open) === 'high' ? 'danger' : tileLevel(open) === 'review' ? 'warning' : 'success'}>Integrity {open.score}</Badge>}
           footer={
             <>
               <Button icon={Send} onClick={() => act('warn')}>

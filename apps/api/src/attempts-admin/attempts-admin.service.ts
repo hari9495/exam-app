@@ -63,6 +63,21 @@ export class AttemptsAdminService {
     return result;
   }
 
+  /** AS-5 (PRC-13, answer 2006): pause with a reason the record keeps, and an optional message the candidate sees. */
+  async pause(context: TenantContext, attemptId: string, actorUserId: string, reason: string, message: string | null): Promise<{ status: string }> {
+    await this.requireOwnedAttempt(context, attemptId);
+    const result = await this.examRuntime.pause(attemptId, { reason, message, actorUserId });
+    await this.audit.record(context, { actorUserId, action: 'attempt.paused', entityType: 'attempt', entityId: attemptId, metadata: { reason, message } });
+    return result;
+  }
+
+  async resume(context: TenantContext, attemptId: string, actorUserId: string, reason: string): Promise<{ status: string }> {
+    await this.requireOwnedAttempt(context, attemptId);
+    const result = await this.examRuntime.resume(attemptId, { reason, actorUserId });
+    await this.audit.record(context, { actorUserId, action: 'attempt.resumed', entityType: 'attempt', entityId: attemptId, metadata: { reason } });
+    return result;
+  }
+
   async unblock(context: TenantContext, attemptId: string, actorUserId: string): Promise<{ status: string }> {
     await this.requireOwnedAttempt(context, attemptId);
 

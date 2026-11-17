@@ -725,6 +725,18 @@ export interface LiveRunnerQuestion {
   markedForReview: boolean;
 }
 
+export interface LiveRunnerPause {
+  title: string;
+  message: string;
+  /** e.g. "Warning 1/3". */
+  strike?: string | null;
+  /** A quieter line under the message, e.g. that no time is lost. */
+  note?: string | null;
+  action?: { label: string; busyLabel?: string; onClick: () => void; busy?: boolean } | null;
+  /** Why the last try did not work. */
+  error?: string | null;
+}
+
 export interface LiveRunner {
   testName: string;
   candidateName: string;
@@ -736,6 +748,15 @@ export interface LiveRunner {
   /** running; on the candidate's break; paused by the proctor or a check; submitted. */
   status: 'running' | 'break' | 'paused' | 'submitted';
   pausedMessage?: string;
+  /**
+   * Answer 2231: why the test is paused and what the candidate can do (a rule broken, a check, the proctor, screen sharing,
+   * a block). Shown in the designed paused view; without it the plain "paused" text shows.
+   */
+  pause?: LiveRunnerPause | null;
+  /** A heads-up that does not stop the test (e.g. the face did not clearly match); dismissed by the candidate. */
+  notice?: { title: string; message: string; actionLabel: string; onAction: () => void; busy?: boolean } | null;
+  /** Answer 2269: the proctor's unread messages; the candidate says "Got it" or replies (the proctor sees the thread). */
+  messages?: { items: { id: string; body: string }[]; onRead: () => Promise<unknown>; onReply: (text: string) => Promise<unknown> } | null;
   /** While on a break: seconds until it ends on its own. */
   breakSecondsLeft?: number;
   breaksLeft: number;
@@ -905,6 +926,8 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
   const [contrast, setContrast] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [reply, setReply] = useState<string | null>(null);
+  const [replyError, setReplyError] = useState<string | null>(null);
   const act = (key: string, fn?: () => Promise<unknown>) => {
     if (!fn) return;
     setBusy(key);
@@ -943,6 +966,23 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
               End break and continue
             </Button>
           </>
+        ) : live.pause ? (
+          <section className="yx-prc-stack" aria-label={live.pause.title}>
+            <Heading level={2}>{live.pause.title}</Heading>
+            <p className="yx-prc-p">{live.pause.message}</p>
+            {live.pause.strike && <p className="yx-prc-muted yx-prc-small">{live.pause.strike}</p>}
+            {live.pause.action && (
+              <Button variant="primary" loading={live.pause.action.busy} onClick={live.pause.action.onClick}>
+                {live.pause.action.busy && live.pause.action.busyLabel ? live.pause.action.busyLabel : live.pause.action.label}
+              </Button>
+            )}
+            {live.pause.error && (
+              <InlineAlert tone="warning" title="That did not work">
+                {live.pause.error}
+              </InlineAlert>
+            )}
+            <p className="yx-prc-muted yx-prc-small">{live.pause.note ?? 'The timer is stopped. It starts again when the test is resumed.'}</p>
+          </section>
         ) : (
           <>
             {live.pausedMessage && <p className="yx-prc-p">{live.pausedMessage}</p>}
@@ -1079,6 +1119,52 @@ function LiveTestRunnerScreen({ live }: { live: LiveRunner }) {
           </div>
           {live.proctoringNote && <p className="yx-prc-row yx-prc-small yx-prc-muted">{live.proctoringNote}</p>}
           {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          {live.notice && (
+            <InlineAlert tone="warning" title={live.notice.title} actions={<Button size="sm" loading={live.notice.busy} onClick={live.notice.onAction}>{live.notice.actionLabel}</Button>}>
+              {live.notice.message}
+            </InlineAlert>
+          )}
+          {live.messages && live.messages.items.length > 0 && (
+            <InlineAlert
+              tone="info"
+              title={live.messages.items.length > 1 ? `${live.messages.items.length} messages from your proctor` : 'Message from your proctor'}
+              actions={
+                <>
+                  <Button size="sm" loading={busy === 'read'} onClick={() => act('read', live.messages!.onRead)}>
+                    Got it
+                  </Button>
+                  <Button size="sm" onClick={() => setReply('')}>
+                    Reply
+                  </Button>
+                </>
+              }
+            >
+              {live.messages.items.map((m) => (
+                <p key={m.id}>{m.body}</p>
+              ))}
+            </InlineAlert>
+          )}
+          <ConfirmDialog
+            open={reply !== null}
+            onOpenChange={(o) => !o && (setReply(null), setReplyError(null))}
+            title="Reply to your proctor"
+            consequence="Your proctor sees your message in their console. The timer keeps running."
+            confirmLabel="Send"
+            onConfirm={async () => {
+              const text = (reply ?? '').trim();
+              if (!text) {
+                setReplyError('Write your message first.');
+                return false;
+              }
+              setReplyError(null);
+              await live.messages?.onReply(text);
+              setReply(null);
+            }}
+          >
+            <FormField label="Your message" required error={replyError}>
+              <TextArea value={reply ?? ''} onChange={setReply} rows={3} maxLength={1000} />
+            </FormField>
+          </ConfirmDialog>
           {live.finishError && (
             <InlineAlert tone="danger" title="Your test was not submitted">
               <p>{live.finishError} Your answers are saved.</p>
@@ -1353,6 +1439,8 @@ export interface LiveIntegrityDecision {
   appealUntil: string | null;
   canAppeal: boolean;
   appeal: { status: 'open' | 'upheld' | 'overturned'; sentOn: string; decidedOn: string | null; reason: string | null } | null;
+  /** Answer 2262: the flagged moments (times already formatted) and how many frames are kept; never the images. */
+  evidence?: { moments: { at: string; what: string }[]; cameraFrames: number; screenFrames: number };
 }
 
 export interface LiveResult {
@@ -1363,7 +1451,8 @@ export interface LiveResult {
   /** invalidated (AS-5): an integrity decision invalidated the attempt; the decision shows instead of a score. */
   state: 'released' | 'held' | 'pending' | 'invalidated';
   integrity?: LiveIntegrityDecision | null;
-  onAppeal?: (text: string) => Promise<unknown>;
+  /** Answer 2264: the candidate's words and one optional file (PDF, JPG or PNG up to 10 MB). */
+  onAppeal?: (text: string, file?: File | null) => Promise<unknown>;
   /** The inviting company, shown in the frame (never the sample name). */
   companyName?: string;
   /** Released: only what the test shows (pass or fail, score, sections); null when it shows nothing of it. */
@@ -1376,9 +1465,10 @@ export interface LiveResult {
 const DECISION_TITLE = { warning: 'A warning was noted on your test', section: 'Part of your test was not counted', attempt: 'Your test was not counted' } as const;
 
 /** PRC-27's verdict, appeal form, appeal sent and window closed, with a real decision (AS-5). */
-function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAppeal?: (text: string) => Promise<unknown> }) {
+function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAppeal?: (text: string, file?: File | null) => Promise<unknown> }) {
   const [writing, setWriting] = useState(false);
   const [text, setText] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1394,6 +1484,22 @@ function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAp
           ]}
         />
       </Card>
+      {d.evidence && (
+        <Card title="What was recorded">
+          {d.evidence.moments.length ? (
+            <ul className="yx-prc-plain" aria-label="Flagged moments">
+              {d.evidence.moments.map((m, i) => (
+                <li key={i}>
+                  <span>{m.at}</span> <span>{m.what}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="yx-prc-muted">No moments were flagged.</p>
+          )}
+          <p className="yx-prc-muted yx-prc-small">{`${d.evidence.cameraFrames} camera ${d.evidence.cameraFrames === 1 ? 'frame' : 'frames'} and ${d.evidence.screenFrames} screen ${d.evidence.screenFrames === 1 ? 'capture' : 'captures'} are kept as evidence. Every time a reviewer opens one, it is recorded.`}</p>
+        </Card>
+      )}
       {d.canAppeal && !writing && (
         <InlineAlert tone="info" title={`You can appeal until ${d.appealUntil ?? ''}`} actions={<Button variant="primary" onClick={() => setWriting(true)}>Appeal this decision</Button>}>
           A different reviewer will look at your appeal. Your recordings are kept until it is decided.
@@ -1405,6 +1511,15 @@ function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAp
           <FormField label="Why should we look again?" required helper="Explain what happened in your own words" error={tried && text.trim().length < 10 ? 'Write at least 10 characters.' : undefined}>
             <TextArea rows={5} value={text} onChange={setText} maxLength={2000} />
           </FormField>
+          <FormField label="Supporting file" optional helper="One PDF, JPG or PNG, up to 10 MB">
+            <FileUpload
+              accept={['.pdf', '.jpg', '.jpeg', '.png']}
+              maxSize={10 * 1024 * 1024}
+              multiple={false}
+              upload={async (f) => setFile(f)}
+              onItemsChange={(items) => items.length === 0 && setFile(null)}
+            />
+          </FormField>
           <div className="yx-prc-row">
             <Button onClick={() => setWriting(false)}>Cancel</Button>
             <Button
@@ -1415,7 +1530,7 @@ function IntegrityDecisionPart({ d, onAppeal }: { d: LiveIntegrityDecision; onAp
                 if (text.trim().length < 10) return;
                 setBusy(true);
                 setError(null);
-                onAppeal(text.trim())
+                onAppeal(text.trim(), file)
                   .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
                   .finally(() => setBusy(false));
               }}
@@ -1549,8 +1664,123 @@ export function ResultAppealScreen({ state = 'released', live }: { state?: 'rele
 /* PRC-28 · Privacy centre                                             */
 /* ================================================================== */
 
-export function PrivacyCentreScreen({ confirmErase = false, legalHold = false, requested = false }: { confirmErase?: boolean; legalHold?: boolean; requested?: boolean }) {
-  // PRC-28
+/** AS-5 part 3 (PRC-28): what a company holds about the candidate's tests (dates already formatted for the reader). */
+export interface LivePrivacy {
+  state: 'loading' | 'error' | 'ready';
+  onRetry: () => void;
+  brand?: CandidateBrand;
+  company: string;
+  consents: { what: string; test: string; on: string }[];
+  recordings: { frames: number; deleteOn: string | null };
+  face: { kept: boolean; deleteOn: string | null };
+  /** An incident or appeal holds the evidence (legal hold). */
+  held: boolean;
+  request: { status: 'waiting' | 'done'; requestedOn: string; doneOn: string | null; dueOn: string } | null;
+  onErase: () => Promise<unknown>;
+  onDownload: () => Promise<unknown>;
+}
+
+export function PrivacyCentreScreen({ confirmErase = false, legalHold = false, requested = false, live }: { confirmErase?: boolean; legalHold?: boolean; requested?: boolean; live?: LivePrivacy }) {
+  // PRC-28; with `live`, the candidate's own data (AS-5 part 3).
+  if (live) return <LivePrivacyCentreScreen live={live} />;
+  return <SamplePrivacyCentre confirmErase={confirmErase} legalHold={legalHold} requested={requested} />;
+}
+
+function LivePrivacyCentreScreen({ live }: { live: LivePrivacy }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const r = live.request;
+  const waiting = r?.status === 'waiting';
+  const nothing = !live.recordings.frames && !live.face.kept;
+  return (
+    <CandidateFrame page="Privacy centre" brand={live.brand}>
+      <Title>Privacy centre</Title>
+      <p className="yx-prc-muted">What {live.company} holds about your tests, how long, and what you can change.</p>
+      {live.state === 'error' ? (
+        <InlineAlert tone="danger" title="We couldn't load your privacy centre." actions={<Button size="sm" onClick={live.onRetry}>Try again</Button>} />
+      ) : live.state === 'loading' ? (
+        <EmptyState title="Loading…" />
+      ) : (
+        <>
+          {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          <Card title="Consents you gave">
+            {live.consents.length ? (
+              <ul className="yx-prc-plain">
+                {live.consents.map((c, i) => (
+                  <li key={i}>
+                    <span className="yx-prc-stack" data-gap="sm">
+                      <strong>{c.what}</strong>
+                      <span className="yx-prc-small">{`${c.on}, ${c.test}`}</span>
+                    </span>
+                    {!r || r.status === 'done' ? (
+                      <Button size="sm" onClick={() => setOpen(true)} disabled={nothing} aria-label={`Withdraw: ${c.what}`}>
+                        Withdraw
+                      </Button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="yx-prc-muted">You have not started a monitored test yet.</p>
+            )}
+          </Card>
+          <Card title="What we keep and until when">
+            <DescriptionList
+              items={[
+                { label: 'Recordings and clips', value: !live.recordings.frames ? 'None kept' : live.held ? `Kept while a review or appeal is open (legal hold)${live.recordings.deleteOn ? `, then deleted (planned for ${live.recordings.deleteOn})` : ''}` : `Delete on ${live.recordings.deleteOn ?? '—'}` },
+                { label: 'Face template and photo', value: !live.face.kept ? 'None kept' : `Delete on ${live.face.deleteOn ?? '—'}` },
+                { label: 'Answers and score', value: `Kept with your application under ${live.company}'s retention policy` },
+              ]}
+            />
+          </Card>
+          {live.held && waiting && <InlineAlert tone="info">We can't erase your recordings while a review or appeal of your test is open. We will erase them when it closes.</InlineAlert>}
+          {waiting && r ? (
+            <InlineAlert tone="success" title={`Erasure request received on ${r.requestedOn}`}>
+              {`We will erase your recordings, clips and face data by ${r.dueOn} and email you. Your answers and score stay with your application.`}
+            </InlineAlert>
+          ) : r?.status === 'done' ? (
+            <InlineAlert tone="success" title={`Erased on ${r.doneOn ?? r.requestedOn}`}>Your recordings, clips and face data were erased. Your answers and score stay with your application.</InlineAlert>
+          ) : null}
+          <div className="yx-prc-row">
+            <Button
+              icon={Download}
+              loading={busy}
+              onClick={() => {
+                setBusy(true);
+                setError(null);
+                live
+                  .onDownload()
+                  .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
+                  .finally(() => setBusy(false));
+              }}
+            >
+              Download my data
+            </Button>
+            {!waiting && !nothing && (
+              <Button variant="danger" onClick={() => setOpen(true)}>
+                Erase my recordings and face data
+              </Button>
+            )}
+          </div>
+          <ConfirmDialog
+            open={open}
+            onOpenChange={setOpen}
+            title="Erase your recordings and face data?"
+            consequence={`We delete recordings, clips, your face template and photo. This can't be undone. Results already released are not changed; tests you have not taken yet will need a manual ID check.${live.held ? ' A review or appeal is open, so we erase them when it closes.' : ''}`}
+            confirmLabel="Erase my data"
+            destructive
+            onConfirm={async () => {
+              await live.onErase();
+            }}
+          />
+        </>
+      )}
+    </CandidateFrame>
+  );
+}
+
+function SamplePrivacyCentre({ confirmErase, legalHold, requested }: { confirmErase: boolean; legalHold: boolean; requested: boolean }) {
   const [open, setOpen] = useState(confirmErase);
   return (
     <CandidateFrame page="Privacy centre">

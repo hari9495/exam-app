@@ -31,6 +31,8 @@ jest.mock('../../../lib/hooks/useAttempt', () => ({
   useScreenAnalysis: jest.fn(() => ({ mutate: jest.fn() })),
   useRunnerActions: jest.fn(),
   useCandidateHelp: jest.fn(),
+  useFaceRecheck: jest.fn(() => ({ mutateAsync: jest.fn(), isPending: false })),
+  useProctorMessages: jest.fn(() => ({ read: { mutateAsync: jest.fn() }, reply: { mutateAsync: jest.fn() } })),
 }));
 jest.mock('../../../lib/hooks/useScreenCapture', () => ({ useScreenCapture: jest.fn() }));
 jest.mock('../../../lib/client-error-reporter', () => ({ reportClientError: jest.fn() }));
@@ -734,7 +736,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Identity Check Failed')).toBeInTheDocument();
+      expect(screen.getByText('Identity check failed')).toBeInTheDocument();
       // Direct action, not a strike -- the "Warning X/Y" line must not appear.
       expect(screen.queryByText(/warning \d+\/\d+/i)).not.toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: /continue/i }));
@@ -763,7 +765,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Identity Check Warning')).toBeInTheDocument();
+      expect(screen.getByText('Identity check warning')).toBeInTheDocument();
       await userEvent.click(screen.getByRole('button', { name: /i understand/i }));
       expect(ackMutate).toHaveBeenCalled();
     });
@@ -777,8 +779,8 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.queryByText('Identity Check Warning')).not.toBeInTheDocument();
-      expect(screen.getByText('Identity Check Failed')).toBeInTheDocument();
+      expect(screen.queryByText('Identity check warning')).not.toBeInTheDocument();
+      expect(screen.getByText('Identity check failed')).toBeInTheDocument();
     });
   });
 
@@ -799,7 +801,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Tab Switch Detected')).toBeInTheDocument();
+      expect(screen.getByText('Tab switch detected')).toBeInTheDocument();
       expect(screen.getByText('Warning 2/3')).toBeInTheDocument();
     });
 
@@ -817,7 +819,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Face Not Visible')).toBeInTheDocument();
+      expect(screen.getByText('Face not visible')).toBeInTheDocument();
       expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
     });
 
@@ -857,7 +859,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Policy Violation Detected')).toBeInTheDocument();
+      expect(screen.getByText('Policy violation detected')).toBeInTheDocument();
       expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
     });
 
@@ -875,7 +877,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Face Not Visible')).toBeInTheDocument();
+      expect(screen.getByText('Face not visible')).toBeInTheDocument();
       expect(screen.getByText('Warning 1/3')).toBeInTheDocument();
     });
   });
@@ -904,36 +906,23 @@ describe('CandidateExamPage', () => {
     },
   );
 
-  it('keeps the question card mounted underneath the warning overlay instead of replacing the page', () => {
+  // Answer 2231: a pause shows in the designed runner's paused view, in place of the questions (nothing behind it to reach).
+  it.each(['paused', 'blocked'] as const)('shows the pause instead of the questions while %s', (status) => {
     (useAttemptQuery as jest.Mock).mockReturnValue({
-      data: { ...attemptState, status: 'paused', webcamViolationCount: 1 },
+      data: { ...attemptState, status, webcamViolationCount: 1 },
       isError: false,
     });
 
     render(<CandidateExamPage />);
 
-    expect(screen.getByText(/warning 1\/3/i)).toBeInTheDocument();
-    expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
+    expect(screen.queryByText('What is 2 + 2?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Finish test' })).not.toBeInTheDocument();
   });
 
-  it.each(['paused', 'blocked'] as const)(
-    'marks the dimmed content inert (unreachable by keyboard/screen reader) while %s',
-    (status) => {
-      (useAttemptQuery as jest.Mock).mockReturnValue({
-        data: { ...attemptState, status, webcamViolationCount: 3 },
-        isError: false,
-      });
-
-      render(<CandidateExamPage />);
-
-      expect(screen.getByTestId('dimmable-content')).toHaveAttribute('inert');
-    },
-  );
-
-  it('does not mark the content inert while in progress', () => {
+  it('shows the questions while in progress', () => {
     render(<CandidateExamPage />);
 
-    expect(screen.getByTestId('dimmable-content')).not.toHaveAttribute('inert');
+    expect(screen.getByText('What is 2 + 2?')).toBeInTheDocument();
   });
 
   // A bare section title ("test", "S1") tells a first-time candidate nothing, so the label carries the position. A
@@ -1105,7 +1094,6 @@ describe('CandidateExamPage', () => {
 
       expect(screen.getByRole('heading', { name: 'Break' })).toBeInTheDocument();
       expect(screen.queryByText(/warning \d+\/\d+/i)).not.toBeInTheDocument();
-      expect(screen.getByTestId('dimmable-content')).not.toHaveAttribute('inert');
       expect(useCountdown).toHaveBeenLastCalledWith(590, expect.any(Function), false);
       await userEvent.click(screen.getByRole('button', { name: 'End break and continue' }));
       expect(endBreak).toHaveBeenCalled();
@@ -1167,6 +1155,72 @@ describe('CandidateExamPage', () => {
     });
   });
 
+  describe('pauses in the designed runner (answers 2231, 2205)', () => {
+    it("a proctor's pause shows their message; the candidate cannot resume it", () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, status: 'paused', pausedReason: 'proctor', pauseMessage: 'Please clear your desk.' }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.getByText('Message from your proctor: "Please clear your desk."')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Continue' })).not.toBeInTheDocument();
+    });
+
+    it('after approved extra time, checking the face sends one camera frame', async () => {
+      const mutateAsync = jest.fn().mockResolvedValue({ status: 'in_progress', matched: true });
+      (useAttemptModule.useFaceRecheck as jest.Mock).mockReturnValue({ mutateAsync, isPending: false });
+      const stop = jest.fn();
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: jest.fn().mockResolvedValue({ getTracks: () => [{ stop }] }) } });
+      jest.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+      jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+      jest.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,AAAA');
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, status: 'paused', pausedReason: 'face_recheck' }, isError: false });
+      render(<CandidateExamPage />);
+      await userEvent.click(screen.getByRole('button', { name: 'Check and continue' }));
+      await waitFor(() => expect(mutateAsync).toHaveBeenCalledWith('data:image/jpeg;base64,AAAA'));
+      expect(stop).toHaveBeenCalled();
+    });
+
+    it('negative: a face that does not match keeps the test paused and says so', async () => {
+      (useAttemptModule.useFaceRecheck as jest.Mock).mockReturnValue({ mutateAsync: jest.fn().mockResolvedValue({ status: 'paused', matched: false }), isPending: false });
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: jest.fn().mockResolvedValue({ getTracks: () => [{ stop: jest.fn() }] }) } });
+      jest.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+      jest.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+      jest.spyOn(HTMLCanvasElement.prototype, 'toDataURL').mockReturnValue('data:image/jpeg;base64,AAAA');
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, status: 'paused', pausedReason: 'face_recheck' }, isError: false });
+      render(<CandidateExamPage />);
+      await userEvent.click(screen.getByRole('button', { name: 'Check and continue' }));
+      expect(await screen.findByText(/That did not match your photo/)).toBeInTheDocument();
+    });
+
+    it('answer 2270: after 3 tries a proctor checks; no more camera checks are offered', () => {
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, status: 'paused', pausedReason: 'face_recheck', faceRecheckTriesLeft: 0 }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.getByText('A proctor will check your face')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Check and continue' })).not.toBeInTheDocument();
+    });
+
+    it("answer 2269: the proctor's message shows over the question; Got it marks it read; a reply is sent", async () => {
+      const read = jest.fn().mockResolvedValue({ read: 1 });
+      const reply = jest.fn().mockResolvedValue({ id: 'r1' });
+      (useAttemptModule.useProctorMessages as jest.Mock).mockReturnValue({ read: { mutateAsync: read }, reply: { mutateAsync: reply } });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, messages: [{ id: 'm1', body: 'Please keep your face in view.', sentAt: '2026-11-17T05:00:00.000Z' }] }, isError: false });
+      render(<CandidateExamPage />);
+      expect(screen.getByText('Please keep your face in view.')).toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Reply' }));
+      await userEvent.type(screen.getByLabelText(/^Your message/), 'Fixed now.');
+      await userEvent.click(screen.getByRole('button', { name: 'Send' }));
+      await waitFor(() => expect(reply).toHaveBeenCalledWith('Fixed now.'));
+      await userEvent.click(screen.getByRole('button', { name: 'Got it' }));
+      expect(read).toHaveBeenCalled();
+    });
+
+    it('negative: no camera says so instead of hanging', async () => {
+      Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: jest.fn().mockRejectedValue(new Error('Camera blocked.')) } });
+      (useAttemptQuery as jest.Mock).mockReturnValue({ data: { ...attemptState, status: 'paused', pausedReason: 'face_recheck' }, isError: false });
+      render(<CandidateExamPage />);
+      await userEvent.click(screen.getByRole('button', { name: 'Check and continue' }));
+      expect(await screen.findByText('Camera blocked.')).toBeInTheDocument();
+    });
+  });
+
   describe('per-exam proctoring config', () => {
     it('passes the exam proctoring config through to both monitors', async () => {
       const proctoring = { webcamEnabled: false, enforcement: 'warn' as const, strikeLimit: 2, disabledSignals: ['right_click'] };
@@ -1198,7 +1252,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Screen Sharing Required')).toBeInTheDocument();
+      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
       expect(screen.queryByText('What is 2 + 2?')).not.toBeInTheDocument();
     });
 
@@ -1258,7 +1312,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Screen Sharing Required')).toBeInTheDocument();
+      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
       expect(screen.getByText(/choose your entire screen, not a single tab or window/i)).toBeInTheDocument();
     });
 
@@ -1271,9 +1325,9 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Screen Sharing Required')).toBeInTheDocument();
+      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
       expect(screen.getByText(/you dismissed the prompt.*click again/i)).toBeInTheDocument();
-      expect(screen.getByText(/browser or organization may be blocking it.*contact your recruiter/i)).toBeInTheDocument();
+      expect(screen.getByText(/browser or organisation may be blocking it.*contact your recruiter/i)).toBeInTheDocument();
     });
 
     it('tells a blocked candidate to contact their recruiter instead of a dead-end retry, when sharing is unavailable', () => {
@@ -1282,7 +1336,7 @@ describe('CandidateExamPage', () => {
 
       render(<CandidateExamPage />);
 
-      expect(screen.getByText('Screen Sharing Required')).toBeInTheDocument();
+      expect(screen.getByText('Screen sharing required')).toBeInTheDocument();
       expect(screen.getByText(/blocking screen sharing.*contact your recruiter/i)).toBeInTheDocument();
     });
 

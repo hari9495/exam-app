@@ -65,6 +65,8 @@ export interface CandidateLegal {
   privacyNotice: string | null;
   company: string;
   termsHref: string;
+  /** AS-5 part 3 (PRC-28): the candidate's privacy centre. */
+  privacyCentreHref?: string;
 }
 export const CandidateLegalContext = createContext<CandidateLegal | null>(null);
 
@@ -82,6 +84,7 @@ function CandidateLegalLinks() {
       <Link href={legal.termsHref} target="_blank" rel="noopener">
         YukthiX terms of use
       </Link>
+      {legal.privacyCentreHref && <Link href={legal.privacyCentreHref}>Your privacy centre</Link>}
       {legal.privacyNotice && (
         <Dialog open={open} onOpenChange={setOpen} title={`${legal.company} privacy notice`} size="md" footer={<Button onClick={() => setOpen(false)}>Close</Button>}>
           <p className="yx-prc-p yx-prc-notice-text">

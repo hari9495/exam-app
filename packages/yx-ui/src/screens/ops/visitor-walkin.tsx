@@ -111,7 +111,9 @@ export function AddWalkInDrawer({ open, onClose, parts, idCapture = 'on' }: { op
       idAsked && !d.idType && { fieldId: 'wi-idtype', message: 'Choose the ID the visitor showed.' },
       idAsked && !/^[A-Za-z0-9]{4}$/.test(d.last4.trim()) && { fieldId: 'wi-last4', message: 'Enter only the last 4 characters of the ID number.' },
       needs && !needs.inHours && !d.reason.trim() && { fieldId: 'wi-reason', message: `Visitors are allowed ${needs.hours}. Say why they come in now.` },
-      !ticks.notice && { fieldId: 'wi-notice', message: 'Tick that the visitor read and accepted the notice.' },
+      // The notice must be on screen before it can be accepted (and its version sent).
+      !needs && { fieldId: 'wi-notice', message: 'Wait for the notice to show, then let the visitor read it.' },
+      needs && !ticks.notice && { fieldId: 'wi-notice', message: 'Tick that the visitor read and accepted the notice.' },
       needs?.nda && !ticks.nda && { fieldId: 'wi-nda', message: `Tick that the visitor accepted ${needs.nda.title}.` },
       needs?.induction && !ticks.induction && { fieldId: 'wi-induction', message: `Tick that the visitor read ${needs.induction.title}.` },
     ].filter(Boolean) as { fieldId: string; message: string }[],
@@ -198,7 +200,7 @@ export function AddWalkInDrawer({ open, onClose, parts, idCapture = 'on' }: { op
             )}
           </div>
         )}
-        <Checkbox id="wi-notice" checked={ticks.notice} onChange={(notice) => setTicks({ ...ticks, notice })} label="The visitor read and accepted the notice" />
+        <Checkbox id="wi-notice" checked={ticks.notice} onChange={(notice) => setTicks({ ...ticks, notice })} disabled={!needs} label="The visitor read and accepted the notice" description={needs ? undefined : 'Loading the notice…'} />
         {early.errorOf('wi-notice') && <p className="yx-field__error">{early.errorOf('wi-notice')}</p>}
         {needs?.nda && (
           <>

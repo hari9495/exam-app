@@ -1,17 +1,19 @@
 // AS-5 part 1 (answers 2006, 2008, 2012): the designed integrity queue (PRC-16), incident workspace (PRC-17) and appeals
 // (PRC-18) with real data. Only kit parts; the designed sample screens in integrity.tsx hand over when given `live`.
 import { useState } from 'react';
-import { Scale } from 'lucide-react';
+import { Download, Scale } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { DataTable, type TableColumn } from '../../components/table';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
-import { Card, DescriptionList, ObjectHeader, PageHeader } from '../../components/shell';
+import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { BarChart, LineChart } from '../../components/charts';
 import { FormField } from '../../components/field';
 import { TextArea } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { RadioGroup } from '../../components/choice';
 import { SYSTEM_ACTOR, Timeline } from '../../components/timeline';
+import { EvidenceFrame } from './proctoring-kit';
 import { PrcFrame } from './proctoring-shared';
 import { VERDICT_LABEL, type Verdict } from './proctoring-logic';
 
@@ -114,6 +116,8 @@ export interface LiveIncident {
   sections: string[];
   analysis: { flags: { type: string; severity: string; detail: string }[]; narrative: string | null } | null;
   events: { id: string; type: string; severity: string; at: string }[];
+  /** Answer 2262: the frames kept (opened one by one, each opening audited). */
+  frames?: { eventId: string; kind: 'camera' | 'screen'; at: string; what: string; flagged: boolean }[];
   reviewer: { id: string; name: string | null } | null;
   verdict: Verdict | null;
   sectionTitle: string | null;
@@ -140,6 +144,8 @@ export interface LiveIncidentWorkspace {
   onInvalidate: (input: { reason: string; secondReviewerId: string }) => Promise<unknown>;
   onSecondReview: (input: { confirm: boolean; reason: string }) => Promise<unknown>;
   onBack: () => void;
+  /** Answer 2262: opens one frame (audited). */
+  onFrame?: (eventId: string, kind: 'camera' | 'screen') => Promise<unknown>;
 }
 
 function DecisionCard({ live, inc }: { live: LiveIncidentWorkspace; inc: LiveIncident }) {
@@ -290,6 +296,27 @@ export function LiveIncidentWorkspaceScreen({ live }: { live: LiveIncidentWorksp
             )}
             {inc.analysis?.narrative && <p className="yx-prc-p">{inc.analysis.narrative}</p>}
           </Card>
+          {inc.frames && (
+            <Card title="Evidence frames">
+              {inc.frames.length ? (
+                <div className="yx-prc-grid4">
+                  {inc.frames.map((f) => (
+                    <div key={`${f.eventId}-${f.kind}`} className="yx-prc-stack">
+                      <EvidenceFrame at={new Date(f.at).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true })} source={f.kind} label={f.what} flagged={f.flagged} />
+                      {live.onFrame && (
+                        <Button size="sm" onClick={() => void live.onFrame!(f.eventId, f.kind)} aria-label={`View the ${f.kind} frame: ${f.what}`}>
+                          View
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="yx-prc-muted">No camera or screen frames were kept for this attempt.</p>
+              )}
+              <p className="yx-prc-muted yx-prc-small">Your views are audited.</p>
+            </Card>
+          )}
           <Card title="Session events">
             {inc.events.length ? (
               <Timeline aria-label="Session events" items={inc.events.map((e) => ({ id: e.id, actor: { name: SYSTEM_ACTOR }, action: `${e.type.replace(/_/g, ' ')} (${e.severity})`, at: new Date(e.at) }))} />
@@ -347,6 +374,8 @@ export interface LiveAppealRow {
   /** The people who gave the verdict: they may not decide the appeal. */
   excluded: string[];
   text: string;
+  /** Answer 2264: the name of the file sent with the appeal, if any. */
+  evidenceName?: string | null;
   status: 'open' | 'upheld' | 'overturned';
   reason: string | null;
   decidedBy: string | null;
@@ -361,6 +390,8 @@ export interface LiveAppeals {
   onUphold: (id: string, reason: string) => Promise<unknown>;
   /** Asks for the second factor first (the page). */
   onOverturn: (id: string, reason: string) => Promise<unknown>;
+  /** Opens the appeal's file (an audited short-lived link). */
+  onEvidence?: (id: string) => Promise<unknown>;
 }
 
 const APPEAL_COLS: TableColumn<LiveAppealRow>[] = [
@@ -435,6 +466,16 @@ export function LiveAppealsScreen({ live }: { live: LiveAppeals }) {
               />
               <Card title="Candidate's statement">
                 <p className="yx-prc-p">{a.text}</p>
+                {a.evidenceName && (
+                  <div className="yx-prc-row">
+                    <span className="yx-prc-muted yx-prc-small">{`1 file: ${a.evidenceName}`}</span>
+                    {live.onEvidence && (
+                      <Button size="sm" onClick={() => void live.onEvidence!(a.id)}>
+                        View
+                      </Button>
+                    )}
+                  </div>
+                )}
               </Card>
               {a.status === 'open' ? (
                 <AppealDecision key={a.id} live={live} a={a} />
@@ -446,6 +487,125 @@ export function LiveAppealsScreen({ live }: { live: LiveAppeals }) {
             </section>
           )}
         </div>
+      )}
+    </PrcFrame>
+  );
+}
+
+/* ---------------- PRC-20 · integrity reports ---------------- */
+
+export interface LiveIntegrityReportData {
+  test: { id: string; title: string };
+  attempts: number;
+  minSame: number;
+  clusters: { id: string; who: string[]; same: number; timing: string; incident: string }[];
+  sizes: { size: '2' | '3' | '4' | '5+'; clusters: number }[];
+  pairs: { pair: string; question: string; similarity: number }[];
+  agreement: { weeks: { week: string; kappa: number }[]; target: number; markers: { pair: string; moderated: number; of: number }[]; doubleMarked: number };
+}
+export interface LiveIntegrityReports {
+  state: Load;
+  onRetry: () => void;
+  tests: { id: string; title: string }[];
+  onTest: (id: string) => void;
+  data: LiveIntegrityReportData | null;
+  /** The three reports as a workbook (the API records who exported it). */
+  onExport: () => Promise<unknown>;
+}
+
+/** AS-5 part 3 (PRC-20): a real test's collusion clusters, code similarity pairs and marker agreement. */
+export function LiveIntegrityReportsScreen({ live }: { live: LiveIntegrityReports }) {
+  const { busy, error, run } = useAct();
+  const d = live.data;
+  const loading = live.state === 'loading';
+  return (
+    <PrcFrame page="Integrity reports">
+      <PageHeader
+        title="Integrity reports"
+        description={`${d?.test.title ?? 'Test'} · ${d ? `${d.attempts} submitted ${d.attempts === 1 ? 'attempt' : 'attempts'}` : ''} · flags point reviewers at attempts; they never change a score`}
+        actions={
+          <>
+            {live.tests.length > 1 && <Select aria-label="Test" size="sm" value={d?.test.id ?? null} onChange={(v) => v && live.onTest(v)} options={live.tests.map((t) => ({ value: t.id, label: t.title }))} />}
+            <Button icon={Download} loading={busy === 'export'} disabled={!d} onClick={() => void run('export', live.onExport)}>
+              Export XLSX
+            </Button>
+          </>
+        }
+      />
+      {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+      {live.state === 'error' ? (
+        <ErrorState title="We couldn't load the reports." onRetry={live.onRetry} />
+      ) : !d && !loading ? (
+        <EmptyState title="No test to report on yet." description="Reports appear once a test has submitted attempts." />
+      ) : (
+        <Tabs defaultValue="collusion">
+          <TabsList aria-label="Report">
+            <TabsTrigger value="collusion">Collusion</TabsTrigger>
+            <TabsTrigger value="plagiarism">Plagiarism and code similarity</TabsTrigger>
+            <TabsTrigger value="agreement">Inter-rater agreement</TabsTrigger>
+          </TabsList>
+          <TabsContent value="collusion">
+            {d && !d.clusters.length ? (
+              <EmptyState title="No collusion clusters found." description={`Answer-pattern checks ran on ${d.attempts} submitted ${d.attempts === 1 ? 'attempt' : 'attempts'}: no two shared ${d.minSame} or more identical wrong answers.`} />
+            ) : (
+              <div className="yx-prc-stack">
+                <BarChart title="Clusters by size" categories={['2', '3', '4', '5+']} series={[{ name: 'Clusters', values: (d?.sizes ?? []).map((s) => s.clusters) }]} loading={loading} xLabel="Candidates in cluster" />
+                <DataTable
+                  label="Answer-pattern clusters"
+                  columns={[
+                    { key: 'id', header: 'Cluster', type: 'id', value: (r: LiveIntegrityReportData['clusters'][number]) => r.id, width: 100 },
+                    { key: 'who', header: 'Candidates', value: (r: LiveIntegrityReportData['clusters'][number]) => r.who.join(', '), width: 300 },
+                    { key: 'same', header: 'Identical wrong answers', type: 'number', value: (r: LiveIntegrityReportData['clusters'][number]) => r.same, width: 180 },
+                    { key: 'timing', header: 'Timing', value: (r: LiveIntegrityReportData['clusters'][number]) => r.timing, width: 220 },
+                    { key: 'inc', header: 'Incident', value: (r: LiveIntegrityReportData['clusters'][number]) => r.incident, width: 160 },
+                  ]}
+                  rows={d?.clusters ?? []}
+                  getRowId={(r) => r.id}
+                  state={loading ? 'loading' : 'ready'}
+                />
+              </div>
+            )}
+          </TabsContent>
+          <TabsContent value="plagiarism">
+            {d && !d.pairs.length ? (
+              <EmptyState title="No similar code found." description="Code answers are compared with other candidates' answers to the same question when each attempt is analysed." />
+            ) : (
+              <DataTable
+                label="Code similarity pairs"
+                columns={[
+                  { key: 'pair', header: 'Pair', value: (r: LiveIntegrityReportData['pairs'][number]) => r.pair, width: 300 },
+                  { key: 'q', header: 'Question', value: (r: LiveIntegrityReportData['pairs'][number]) => r.question, width: 260 },
+                  { key: 'sim', header: 'Similarity', type: 'number', value: (r: LiveIntegrityReportData['pairs'][number]) => r.similarity, render: (r: LiveIntegrityReportData['pairs'][number]) => `${r.similarity} %`, width: 110 },
+                ]}
+                rows={d?.pairs ?? []}
+                getRowId={(r) => `${r.pair}-${r.question}`}
+                state={loading ? 'loading' : 'ready'}
+              />
+            )}
+          </TabsContent>
+          <TabsContent value="agreement">
+            {d && !d.agreement.doubleMarked ? (
+              <EmptyState title="No answers were marked twice yet." description="Agreement shows once a second marker marks the same answers (Settings: second marker)." />
+            ) : (
+              <div className="yx-prc-grid2">
+                <LineChart title="Evaluator agreement (weighted kappa) by week" categories={(d?.agreement.weeks ?? []).map((w) => w.week)} series={[{ name: d?.test.title ?? 'Test', values: (d?.agreement.weeks ?? []).map((w) => w.kappa) }]} target={{ value: d?.agreement.target ?? 0.7, label: `Target ${(d?.agreement.target ?? 0.7).toFixed(2)}` }} yMin={0} loading={loading} />
+                <Card title="Pairs above the disagreement threshold">
+                  {d?.agreement.markers.length ? (
+                    <ul className="yx-prc-plain">
+                      {d.agreement.markers.map((m) => (
+                        <li key={m.pair}>
+                          <span>{m.pair}</span> <span>{`${m.moderated} of ${m.of} moderated`}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="yx-prc-muted">No answer needed a third marker.</p>
+                  )}
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       )}
     </PrcFrame>
   );

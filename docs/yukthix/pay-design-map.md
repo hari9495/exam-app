@@ -1730,3 +1730,8 @@ reads "authority, order no. X, granted on 18 Sep 2026" (the house date). Migrati
 PAY-11 RetrenchmentOk's sample shows the same wording (no new Pay story). (3) The Time roster's weekly-hours check counts
 call-out hours of on-call slots whose rule says "count towards weekly hours" (see time-design-map.md). Manual tests
 MT-PPL-C-13..15 and MT-TIM-L-39..40.
+
+**Founder answers (17 Nov 2026, "ok for all"), 2281 to 2283 (late corrections):**
+- 2281: keep answer 93. Late injury leave is shown for payroll's review and never paid automatically.
+- 2282: "What the day should have been" on the late-request form becomes a fixed choice (present, half day, a leave type, unpaid).
+- 2283: a correction for a month after the person left goes to their full and final settlement, and shows on the payroll home page until settled.

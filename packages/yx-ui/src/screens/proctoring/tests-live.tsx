@@ -3,7 +3,7 @@
 // layout, kit parts and words as the designs; only what the server holds is shown, and the server checks every action
 // again (a published or started test is locked, the approver is never the author or the one who asked).
 import { useState } from 'react';
-import { Copy, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Copy, MonitorPlay, Pencil, Plus, Trash2 } from 'lucide-react';
 import { ConfirmDialog } from '../../components/overlay';
 import { Select } from '../../components/select';
 import { Button } from '../../components/button';
@@ -113,6 +113,8 @@ export interface LiveTestBuilder {
   onRequestApproval: () => Promise<void>;
   onApprove: () => Promise<void>;
   onPublish: () => Promise<void>;
+  /** Answer 2267: opens the live console (PRC-13) of a published test; absent for people who cannot proctor. */
+  onLiveConsole?: () => void;
 }
 
 export const MODE_WORDS: Record<ProctorMode, { label: string; description: string }> = {
@@ -661,7 +663,18 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
   );
   return (
     <PrcFrame page="Tests">
-      <PageHeader title={t.title} description={`${statusOf(t.status).label} · ${t.sections.length} ${t.sections.length === 1 ? 'section' : 'sections'}`} status={<Badge tone={statusOf(t.status).tone}>{statusOf(t.status).label}</Badge>} />
+      <PageHeader
+        title={t.title}
+        description={`${statusOf(t.status).label} · ${t.sections.length} ${t.sections.length === 1 ? 'section' : 'sections'}`}
+        status={<Badge tone={statusOf(t.status).tone}>{statusOf(t.status).label}</Badge>}
+        actions={
+          t.status !== 'draft' && live.onLiveConsole ? (
+            <Button icon={MonitorPlay} onClick={live.onLiveConsole}>
+              Live console
+            </Button>
+          ) : undefined
+        }
+      />
       {error && <InlineAlert tone="danger" title={error} actions={<Button size="sm" onClick={clearError}>Dismiss</Button>} />}
       <Stepper
         title="Build test"

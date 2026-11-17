@@ -1,3 +1,4 @@
+import { EvidenceDto } from './accommodation.dto';
 import { IsArray, IsBoolean, IsIn, IsISO8601, IsInt, IsOptional, IsString, Max, MaxLength, Min, ValidateNested, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -63,12 +64,26 @@ export class AnswerDto {
   clientSavedAt?: string;
 }
 
+/** Answer 2269: the candidate's reply to their proctor. */
+export class ProctorReplyDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1000)
+  body!: string;
+}
+
 /** AS-5 (answer 2012): the candidate's appeal of an integrity decision, in their own words. */
 export class AppealDto {
   @IsString()
   @MinLength(10)
   @MaxLength(2000)
   text!: string;
+
+  /** Answer 2264: one supporting file (PDF, JPG or PNG up to 10 MB). */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => EvidenceDto)
+  file?: EvidenceDto | null;
 }
 
 /** AS-4a: the optional after-test survey (never affects the score). */

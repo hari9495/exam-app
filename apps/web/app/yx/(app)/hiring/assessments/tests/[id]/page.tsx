@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { TestBuilderScreen, type BuilderTestView, type ProctorMode } from '@yukthix/ui/assessments';
 import { useApi, useApiWrite } from '../../../../../../../lib/yx-hiring';
 import { BANK_BASE, loadState, testRows, type ExamListPage } from '../../../../../../../lib/yx-assessments';
+import { useYxPermissions } from '../../../../../../../lib/yx-org';
 
 // Assessments AS-2 › Test builder (PRC-04, answers 2007, 2008): one test with its sections, the blueprint of its pools,
 // timing, scoring, the proctoring mode, the pre-publish checklist and the approver a big test needs (asmt.high_stakes).
@@ -15,6 +16,7 @@ export default function YxTestBuilderPage() {
   const list = useApi<ExamListPage>('/exams?pageSize=100');
   const defaults = useApi<{ proctorMode: ProctorMode; highStakes: number }>('/asmt/tests/defaults');
   const write = useApiWrite();
+  const perms = useYxPermissions();
   const open = (other: string) => router.push(`${BANK_BASE}/tests/${other}`);
   const t = `/asmt/tests/${id}`;
   return (
@@ -41,6 +43,8 @@ export default function YxTestBuilderPage() {
         onRequestApproval: async () => void (await write('POST', `${t}/approval/request`)),
         onApprove: async () => void (await write('POST', `${t}/approval/approve`)),
         onPublish: async () => void (await write('POST', `/exams/${id}/publish`)),
+        // Answer 2267: proctors (the monitoring socket needs exam:manage) open the test's live console.
+        onLiveConsole: perms.has('exam:manage' as never) ? () => router.push(`${BANK_BASE}/tests/${id}/live`) : undefined,
       }}
     />
   );

@@ -28,8 +28,9 @@ describe('salary structures (§7.3–7.4)', () => {
     expect(b.monthlyCtc.toFixed(2)).toBe('60500.00');
     expect(m(b, 'basic')).toBe('24200.00');
     expect(m(b, 'hra')).toBe('12100.00');
-    expect(m(b, 'pf_employee')).toBe('1800.00');
-    expect(m(b, 'pf_employer')).toBe('1800.00');
+    // October 2026: the PF ceiling is 25,000 (S.O. 5109(E)), so 12% of the whole basic 24,200.
+    expect(m(b, 'pf_employee')).toBe('2904.00');
+    expect(m(b, 'pf_employer')).toBe('2904.00');
     expect(m(b, 'esi_employee')).toBe('0.00');
     expect(m(b, 'pt')).toBe('200.00');
     expect(b.esiCovered).toBe(false);
@@ -58,7 +59,7 @@ describe('salary structures (§7.3–7.4)', () => {
     const b = breakup({ lines: starter, components, options, facts: facts({ state: 'IN-TN' }), rules, fixed: { basic: '30000', hra: '15000', conveyance: '1600', special: '13400' } });
     expect(b.monthlyGross.toFixed(2)).toBe('60000.00');
     expect(m(b, 'pt')).toBe('0.00');
-    expect(b.monthlyCtc.toFixed(2)).toBe('61800.00');
+    expect(b.monthlyCtc.toFixed(2)).toBe('63000.00');
   });
 
   it('flags the Code wage add-back when exclusions pass half of pay (YX-PAY-47)', () => {
@@ -86,7 +87,9 @@ describe('the person record Pay tab (PPL-03, founder 22 Oct 2026)', () => {
 
   it('employer lines show their basis from the rules in force', () => {
     const basis = (statutory: string) => lineBasis(components.find((c) => c.statutory === statutory)!, components, rules, '2026-10-01');
-    expect(basis('pf_employer')).toBe('12% of ₹15,000');
+    expect(basis('pf_employer')).toBe('12% of ₹25,000');
+    // Before 17 Sep 2026 the ceiling was 15,000.
+    expect(lineBasis(components.find((c) => c.statutory === 'pf_employer')!, components, rules, '2026-09-01')).toBe('12% of ₹15,000');
     expect(basis('gratuity_provision')).toMatch(/^4\.81% of /);
     expect(lineBasis(components.find((c) => c.code === 'basic')!, components, rules, '2026-10-01')).toBeNull();
   });

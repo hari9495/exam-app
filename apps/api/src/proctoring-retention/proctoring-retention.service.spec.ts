@@ -18,7 +18,7 @@ describe('ProctoringRetentionService', () => {
     settings = jest.fn().mockResolvedValue([]);
     tenantPrisma = { forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) => fn({ proctoringEvent: { findMany, update }, setting: { findMany: settings } })) };
     blobStorage = { deleteByUrl: jest.fn().mockResolvedValue('deleted') };
-    service = new ProctoringRetentionService(tenantPrisma as never, blobStorage as never);
+    service = new ProctoringRetentionService(tenantPrisma as never, blobStorage as never, { send: jest.fn() } as never);
   });
 
   it('queries only image-bearing events older than the cutoff, as super-admin', async () => {
