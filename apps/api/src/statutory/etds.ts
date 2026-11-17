@@ -53,7 +53,7 @@ const STATE_CODE: Record<string, string> = {
   'IN-KL': '16',
   'IN-MP': '17',
   'IN-MH': '19',
-  'IN-OR': '26',
+  'IN-OD': '26',
   'IN-PB': '28',
   'IN-RJ': '29',
   'IN-TN': '31',

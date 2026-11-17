@@ -23,6 +23,7 @@ import { BarChart } from '../../components/charts';
 import { Stepper } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
+import { IN_STATE_OPTIONS, IN_STATES } from '../../lib/india-states';
 import { Actions, CardGrid, CheckList, Facts, OpsDesk, PhotoPlaceholder, StatusTrail, useSay, type CheckRow } from './ops-kit';
 import { Segment } from '../../components/segment';
 import { belowMinimum, hintText, useMinWage, type MinWageHint } from '../portals/contractor-portal';
@@ -1926,8 +1927,8 @@ export interface ClientEst {
   state: string;
 }
 type Opt = { value: string; label: string };
-const STATE_NAMES: Record<string, string> = { 'IN-TN': 'Tamil Nadu', 'IN-KA': 'Karnataka', 'IN-KL': 'Kerala', 'IN-MH': 'Maharashtra', 'IN-AP': 'Andhra Pradesh', 'IN-TG': 'Telangana', 'IN-DL': 'Delhi', 'IN-GJ': 'Gujarat', 'IN-WB': 'West Bengal', 'IN-UP': 'Uttar Pradesh', 'IN-HR': 'Haryana', 'IN-RJ': 'Rajasthan' };
-const STATE_OPTIONS: Opt[] = Object.entries(STATE_NAMES).map(([value, label]) => ({ value, label }));
+const STATE_NAMES = IN_STATES;
+const STATE_OPTIONS: Opt[] = IN_STATE_OPTIONS;
 
 /** GET contract-labour/client-sites (CL-8, answer 638). */
 export interface ClientSitesData {
