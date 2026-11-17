@@ -82,6 +82,52 @@ export class RangeQueryDto {
   to!: string;
 }
 
+const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn', 'cancel_pending', 'cancelled', 'sent_back', 'resent'] as const;
+const csv = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.split(',').map((x) => x.trim()).filter(Boolean) : value);
+
+/** Batch A item 2 (C2): my full leave history, filtered, a page at a time. */
+export class LeaveHistoryQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(5)
+  @Max(100)
+  pageSize?: number;
+
+  @IsOptional()
+  @Transform(csv)
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  types?: string[];
+
+  @IsOptional()
+  @Transform(csv)
+  @IsArray()
+  @IsIn(LEAVE_STATUSES, { each: true })
+  statuses?: string[];
+
+  @IsOptional()
+  @IsDateString(DATE)
+  from?: string;
+
+  @IsOptional()
+  @IsDateString(DATE)
+  to?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+}
+
 export class MonthQueryDto {
   @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
   month!: string;

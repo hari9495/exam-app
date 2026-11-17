@@ -11,7 +11,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, LeaveHistoryQueryDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
@@ -46,6 +46,12 @@ export class TimeController {
   @Get('me/leave')
   myLeave(@CurrentTenant() ctx: TenantContext) {
     return this.leave.me(ctx);
+  }
+
+  // Batch A item 2 (C2): every request, filtered, a page at a time (the Home shows the last 13 months).
+  @Get('me/leave/history')
+  myLeaveHistory(@CurrentTenant() ctx: TenantContext, @Query() q: LeaveHistoryQueryDto) {
+    return this.leave.history(ctx, q);
   }
 
   @Post('me/leave/preview')

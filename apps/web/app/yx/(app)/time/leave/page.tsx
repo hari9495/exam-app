@@ -2,10 +2,10 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { LeaveHomeScreen, type LeavePlan, type LongAbsenceRow, type MyCompOff, type MyEncashment, type MyLeave, type PersonOption } from '@yukthix/ui/time';
+import { LeaveHomeScreen, type LeaveHistoryPage, type LeavePlan, type LongAbsenceRow, type MyCompOff, type MyEncashment, type MyLeave, type PersonOption } from '@yukthix/ui/time';
 import { apiFetch } from '../../../../../lib/api-client';
 import { useAuth } from '../../../../../lib/auth-context';
-import { timeState, useTime, useTimeWrite } from '../../../../../lib/yx-time';
+import { timeState, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 
 const id = encodeURIComponent;
 
@@ -24,6 +24,7 @@ function MyLeave() {
   const encash = useTime<MyEncashment>('/me/encashment');
   const absence = useTime<{ absence: LongAbsenceRow | null }>('/me/long-absence');
   const write = useTimeWrite();
+  const read = useTimeRead();
   return (
     <LeaveHomeScreen
       live={{
@@ -36,6 +37,16 @@ function MyLeave() {
         onWithdraw: (rid) => write(`/me/leave/${id(rid)}/withdraw`, 'POST', undefined, true, 'Leave request withdrawn'),
         onCancel: (rid, reason) => write(`/me/leave/${id(rid)}/cancel`, 'POST', { reason }, true, 'Cancellation sent to your manager'),
         onChooseHoliday: (hid, choose) => write(`/me/holidays/${id(hid)}/${choose ? 'choose' : 'unchoose'}`, 'POST', undefined, true, choose ? 'Optional holiday taken' : 'Optional holiday given back'),
+        // Batch A item 2 (C2): my full leave history, a page at a time.
+        onHistory: (q) => {
+          const p = new URLSearchParams({ page: String(q.page), pageSize: String(q.pageSize) });
+          if (q.types.length) p.set('types', q.types.join(','));
+          if (q.statuses.length) p.set('statuses', q.statuses.join(','));
+          if (q.from) p.set('from', q.from);
+          if (q.to) p.set('to', q.to);
+          if (q.q) p.set('q', q.q);
+          return read<LeaveHistoryPage>(`/me/leave/history?${p.toString()}`);
+        },
         onFindPeople: (q) => apiFetch(`/workflow/people?q=${id(q)}`, {}, accessToken ?? undefined) as Promise<PersonOption[]>,
         startApplying: apply,
         compOff: { data: compOff.data ?? null, onClaim: (input) => write('/me/comp-off', 'POST', input, true, 'Comp-off claim sent to your manager'), onWithdraw: (cid) => write(`/me/comp-off/${id(cid)}/withdraw`, 'POST', undefined, true, 'Comp-off claim withdrawn') },

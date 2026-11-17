@@ -445,6 +445,34 @@ export class LeaveService implements OnModuleInit {
     });
   }
 
+  /** Batch A item 2 (C2): my full leave history: by type, status, dates touched and reason, newest first. */
+  history(ctx: TenantContext, q: { page?: number; pageSize?: number; types?: string[]; statuses?: string[]; from?: string; to?: string; q?: string }) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { f } = await this.meFacts(tx, c, c.userId);
+      const org = c.organizationId;
+      const page = q.page ?? 1;
+      const pageSize = q.pageSize ?? 25;
+      const where: Prisma.LeaveRequestWhereInput = {
+        organizationId: org,
+        employeeId: f.employeeId,
+        ...(q.types?.length ? { leaveTypeId: { in: q.types } } : {}),
+        ...(q.statuses?.length ? { status: { in: q.statuses } } : {}),
+        // A request is in the range when any of its days is.
+        ...(q.from ? { toOn: { gte: asDate(q.from) } } : {}),
+        ...(q.to ? { fromOn: { lte: asDate(q.to) } } : {}),
+        ...(q.q?.trim() ? { reason: { contains: q.q.trim(), mode: 'insensitive' as const } } : {}),
+      };
+      const [total, rows] = await Promise.all([
+        tx.leaveRequest.count({ where }),
+        tx.leaveRequest.findMany({ where, orderBy: [{ fromOn: 'desc' }, { createdAt: 'desc' }], skip: (page - 1) * pageSize, take: pageSize }),
+      ]);
+      const words = await translated(tx, c, await employeeLanguage(tx, c, f.employeeId), 'leave_type', (await this.types(tx, org)).map((t) => t.id));
+      const types = new Map((await this.types(tx, org)).map((t) => [t.id, { ...t, name: words.get(t.id) ?? t.name }]));
+      const notes = await this.sentBackNotes(tx, org, rows);
+      return { rows: rows.map((r) => ({ ...this.requestView(r, types.get(r.leaveTypeId), true), sentBack: notes.get(r.id) ?? null })), total, page, pageSize };
+    });
+  }
+
   private requestView(r: Req, t: LeaveTypeRow | undefined, withReason: boolean) {
     return {
       id: r.id,

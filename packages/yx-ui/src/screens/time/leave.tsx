@@ -23,6 +23,7 @@ import { formatDate, formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { LivePicker } from '../desk/service-form';
 import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
+import { LeaveHistoryDrawer, type LeaveHistoryPage, type LeaveHistoryQuery } from './leave-history-live';
 import type { ApplyForForm, HrBalances, HrLeaveHome, LeaveRequestDetailView, TeamLeaveHome, LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
@@ -2079,6 +2080,8 @@ export interface LiveLeaveHome {
   absence?: { data: LongAbsenceRow | null; onAskReturn: (id: string, on: string, note: string) => Promise<unknown> };
   /** My leave card (TIM-21 employee). */
   onOpenCard?: () => void;
+  /** Batch A item 2 (C2): my full leave history, a page at a time. */
+  onHistory?: (q: LeaveHistoryQuery) => Promise<LeaveHistoryPage>;
 }
 
 export interface LiveCompOff {
@@ -2238,6 +2241,7 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
     if (live.startApplying) setApply(true);
   }, [live.startApplying]);
   const [open, setOpen] = useState<{ r: LiveRequest; action?: 'withdraw' | 'cancel' } | null>(null);
+  const [history, setHistory] = useState(false);
   // Sent back for changes: Apply leave starts from that request and sends it again.
   const [resend, setResend] = useState<LiveRequest | null>(null);
   const [holidays, setHolidays] = useState(false);
@@ -2303,7 +2307,7 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
             />
             <div className="yx-tim-grid">
               <div data-span="7">
-                <Card title="My requests">
+                <Card title="My requests" actions={live.onHistory ? <Button size="sm" onClick={() => setHistory(true)}>All requests</Button> : undefined}>
                   {d.requests.length === 0 ? (
                     <EmptyState compact title="No leave requests yet" description="Apply for leave and it will show here with its status." action={<Button variant="primary" icon={CalendarPlus} onClick={() => setApply(true)}>Apply leave</Button>} />
                   ) : (
@@ -2354,6 +2358,18 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
             </div>
             {apply && <ApplyLeaveSheet live={{ data: d, live, onClose: () => setApply(false) }} />}
             {resend && <ApplyLeaveSheet key={resend.id} live={{ data: d, live, resend, onClose: () => setResend(null) }} />}
+            {live.onHistory && d && (
+              <LeaveHistoryDrawer
+                open={history}
+                onClose={() => setHistory(false)}
+                types={d.balances.map((b) => ({ id: b.leaveTypeId, name: b.name }))}
+                load={live.onHistory}
+                onOpenRequest={(r) => {
+                  setHistory(false);
+                  setOpen({ r });
+                }}
+              />
+            )}
             {open && <LeaveRequestDetail key={`${open.r.id}-${open.action}`} live={{ r: open.r, data: d, action: open.action, live, onClose: () => setOpen(null), onResend: () => { setOpen(null); setResend(open.r); } }} />}
             {holidays && <OptionalHolidaysSheet live={{ data: d, onChoose: live.onChooseHoliday, onClose: () => setHolidays(false) }} />}
             {sheet === 'comp-off' && live.compOff && <CompOffClaim live={{ ...live.compOff, onClose: () => setSheet(null) }} />}
