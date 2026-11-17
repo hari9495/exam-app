@@ -46,4 +46,11 @@ export class UpdateExamSectionDto extends CreateExamSectionDto {
   @IsInt()
   @Min(1)
   requiredCount?: number | null;
+
+  // Answer 2154: the least percentage of this section's own marks to pass; null clears it.
+  @ValidateIf((o) => o.cutoffPercent !== null && o.cutoffPercent !== undefined)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  cutoffPercent?: number | null;
 }

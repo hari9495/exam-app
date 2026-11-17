@@ -47,3 +47,6 @@ export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, 
 export { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen } from './integrity';
 export type { LiveAppealRow, LiveAppeals, LiveIncident, LiveIncidentRow, LiveIncidentWorkspace, LiveIntegrityQueue } from './integrity-live';
 export type { SystemCheck } from './proctoring-kit';
+
+// AS-6 (answer 2237): the legal links on live candidate pages.
+export { CandidateLegalContext, type CandidateLegal } from './proctoring-shared';

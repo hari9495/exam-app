@@ -681,7 +681,7 @@ export class ExamsService {
       passCriteriaPercent: exam.passCriteriaPercent,
       expectedCandidates: exam.expectedCandidates,
       switches: { enableAntiCheating: exam.enableAntiCheating, webcamProctoringEnabled: exam.webcamProctoringEnabled, webcamAiAnalysisEnabled: exam.webcamAiAnalysisEnabled, screenCaptureEnabled: exam.screenCaptureEnabled },
-      sections: exam.sections.map((x) => ({ title: x.title, weightPercent: x.weightPercent, selectionMode: x.selectionMode, poolSize: x.poolSize, poolDifficulty: x.poolDifficulty, requiredCount: x.requiredCount, questionIds: x.questions.map((q) => q.questionId), tagIds: x.poolTags.map((t) => t.tagId) })),
+      sections: exam.sections.map((x) => ({ title: x.title, weightPercent: x.weightPercent, selectionMode: x.selectionMode, poolSize: x.poolSize, poolDifficulty: x.poolDifficulty, requiredCount: x.requiredCount, cutoffPercent: x.cutoffPercent, questionIds: x.questions.map((q) => q.questionId), tagIds: x.poolTags.map((t) => t.tagId) })),
     });
   }
 
@@ -841,6 +841,7 @@ export class ExamsService {
             targetDurationMinutes: section.targetDurationMinutes,
             weightPercent: section.weightPercent,
             requiredCount: section.requiredCount,
+            cutoffPercent: section.cutoffPercent,
             ...(section.poolTags.length > 0
               ? { poolTags: { create: section.poolTags.map((poolTag) => ({ tagId: poolTag.tagId })) } }
               : {}),
@@ -918,6 +919,7 @@ export class ExamsService {
       && dto.poolTagIds === undefined
       && dto.targetDurationMinutes === undefined
       && dto.requiredCount === undefined
+      && dto.cutoffPercent === undefined
     );
   }
 
@@ -985,6 +987,7 @@ export class ExamsService {
           ...(dto.requiredCount !== undefined
             ? { requiredCount: this.normaliseRequiredCount(dto.requiredCount, nextMode, dto.poolSize ?? section.poolSize, section.questions.length) }
             : {}),
+          ...(dto.cutoffPercent !== undefined ? { cutoffPercent: dto.cutoffPercent } : {}),
         },
         include: { poolTags: true },
       });

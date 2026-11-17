@@ -58,6 +58,8 @@ interface SectionSnapshotEntryShape {
   weightPercent?: number;
   requiredCount?: number | null;
   questionIds: string[];
+  /** Answer 2154: absent on older snapshots (no cut-off). */
+  cutoffPercent?: number | null;
 }
 
 interface CandidateDetailQuestion {
@@ -94,6 +96,9 @@ export interface ReportAnswerFile {
 
 interface CandidateDetailSection extends SectionScore {
   questions: CandidateDetailQuestion[];
+  /** Answer 2154: the section's cut-off as the candidate sat it, and whether they missed it. */
+  cutoffPercent: number | null;
+  cutoffMissed: boolean;
 }
 
 export interface IntegrityFlagDto {
@@ -478,6 +483,7 @@ export class ReportsService {
       );
 
       const sectionSnapshot: SectionSnapshotEntryShape[] = JSON.parse(attempt.sectionSnapshotJson);
+      const missed = (await tx.result.findUnique({ where: { attemptId: row.attemptId as string }, select: { cutoffMissed: true } }))?.cutoffMissed ?? [];
       const allQuestionIds = sectionSnapshot.flatMap((section) => section.questionIds);
       const questions = await tx.question.findMany({
         where: { id: { in: allQuestionIds }, organizationId: context.organizationId as string },
@@ -513,6 +519,8 @@ export class ReportsService {
             maxScore: scoreEntry.maxScore,
             weightPercent: scoreEntry.weightPercent,
             requiredCount: scoreEntry.requiredCount,
+            cutoffPercent: section.cutoffPercent ?? null,
+            cutoffMissed: missed.includes(section.sectionId),
             questions: await Promise.all(
               section.questionIds.map(async (questionId) => {
                 const question = questionsById.get(questionId);

@@ -90,6 +90,8 @@ interface SectionSnapshotEntry {
   // not retroactively rescore a candidate who already sat the exam. null = every question required.
   requiredCount: number | null;
   questionIds: string[];
+  /** Answer 2154: frozen with the weight; null = no cut-off. */
+  cutoffPercent: number | null;
 }
 
 interface AttemptAnswerFileSummary {
@@ -139,6 +141,8 @@ interface AttemptPreviewResponse {
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+  /** AS-6 (answer 2237): the company's privacy notice for applicants (its latest version), linked on candidate pages. */
+  privacyNotice: string | null;
 }
 
 interface AttemptSectionFeedback {
@@ -196,6 +200,8 @@ interface AttemptStateResponse {
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+  /** AS-6 (answer 2237): the company's privacy notice for applicants (its latest version), linked on candidate pages. */
+  privacyNotice: string | null;
 }
 
 /** AS-4a (PRC-26): the calculator, breaks, offline answering and time credit for one attempt. */
@@ -416,6 +422,7 @@ export class AttemptService {
     } = await this.getOrganizationBranding(organizationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const privacyNotice = (await tx.consentNotice.findFirst({ where: { organizationId, purpose: 'application' }, orderBy: { version: 'desc' }, select: { text: true } }))?.text ?? null;
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
         const sections = await tx.examSection.findMany({
@@ -443,6 +450,7 @@ export class AttemptService {
           organizationName,
           organizationLogoUrl,
           organizationPrimaryColor,
+          privacyNotice,
         };
       }
 
@@ -494,6 +502,7 @@ export class AttemptService {
         organizationName,
         organizationLogoUrl,
         organizationPrimaryColor,
+        privacyNotice,
       };
     });
   }
@@ -577,6 +586,8 @@ export class AttemptService {
       if (['in_progress', 'paused', 'blocked'].includes(attempt.status)) throw new BadRequestException('The survey opens after you finish the test.');
       if (await tx.attemptSurvey.findUnique({ where: { attemptId: attempt.id }, select: { id: true } })) throw new ConflictException('You have already answered the survey. Thank you.');
       await tx.attemptSurvey.create({ data: { attemptId: attempt.id, rating: dto.rating, clearInstructions: dto.clearInstructions ?? null, comment: dto.comment?.trim() || null } });
+      // AS-6 (answer 2019): kept apart from the survey and the person, read only as counts per group.
+      if (dto.gender) await tx.attemptSelfDescription.create({ data: { attemptId: attempt.id, gender: dto.gender } });
       return { ok: true as const };
     });
   }
@@ -692,6 +703,7 @@ export class AttemptService {
           weightPercent: section.weightPercent,
           requiredCount: section.requiredCount,
           questionIds,
+          cutoffPercent: section.cutoffPercent ?? null,
         });
       }
 

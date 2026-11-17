@@ -773,7 +773,7 @@ export interface LiveRunner {
   /** After submit: when, how many answered, the result line, and the optional survey. */
   submittedAt?: string;
   resultNote?: ReactNode;
-  survey?: { done: boolean; onSend: (input: { rating: number; clearInstructions?: boolean; comment?: string }) => Promise<unknown> } | null;
+  survey?: { done: boolean; onSend: (input: { rating: number; clearInstructions?: boolean; comment?: string; gender?: 'woman' | 'man' | 'another' | 'not_say' }) => Promise<unknown> } | null;
 }
 
 function SurveyCard({ survey }: { survey: NonNullable<LiveRunner['survey']> }) {
@@ -782,6 +782,7 @@ function SurveyCard({ survey }: { survey: NonNullable<LiveRunner['survey']> }) {
   const [rating, setRating] = useState<string | null>(null);
   const [clear, setClear] = useState<string | null>(null);
   const [comment, setComment] = useState('');
+  const [gender, setGender] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -810,6 +811,10 @@ function SurveyCard({ survey }: { survey: NonNullable<LiveRunner['survey']> }) {
           <FormField label="Anything else?" optional>
             <TextArea rows={3} maxLength={1000} value={comment} onChange={setComment} />
           </FormField>
+          {/* AS-6 (answer 2019): voluntary; only counts per group, never with your name, and only for groups large enough. */}
+          <FormField label="How do you describe yourself?" optional helper="Used only to check that the test is fair to everyone, as counts per group. Never shown with your name.">
+            <RadioGroup aria-label="How do you describe yourself?" orientation="horizontal" value={gender ?? undefined} onChange={setGender} options={[{ value: 'woman', label: 'Woman' }, { value: 'man', label: 'Man' }, { value: 'another', label: 'Another way' }, { value: 'not_say', label: 'Prefer not to say' }]} />
+          </FormField>
           <div className="yx-prc-row">
             <Button onClick={() => setSkipped(true)}>Skip</Button>
             <Button
@@ -821,7 +826,7 @@ function SurveyCard({ survey }: { survey: NonNullable<LiveRunner['survey']> }) {
                 setBusy(true);
                 setError(null);
                 survey
-                  .onSend({ rating: Number(rating), ...(clear ? { clearInstructions: clear === 'yes' } : {}), ...(comment.trim() ? { comment: comment.trim() } : {}) })
+                  .onSend({ rating: Number(rating), ...(clear ? { clearInstructions: clear === 'yes' } : {}), ...(comment.trim() ? { comment: comment.trim() } : {}), ...(gender ? { gender: gender as 'woman' | 'man' | 'another' | 'not_say' } : {}) })
                   .then(() => setSent(true))
                   .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Try again in a moment.'))
                   .finally(() => setBusy(false));
