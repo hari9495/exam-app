@@ -369,6 +369,44 @@ export class SessionsService {
     });
   }
 
+  // Admin A6 (batch B item 20): everyone with an account in this company and whether they can sign in.
+  // 'invited' = active but never signed in; 'off' = sign-in turned off (status deactivated). Two-step = a live factor.
+  async adminListAccounts(context: TenantContext, viewerId: string, filters: { status?: string; search?: string; page?: string; pageSize?: string }) {
+    const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
+    const term = filters.search?.trim();
+    const byStatus: Prisma.UserWhereInput =
+      filters.status === 'off' ? { status: 'deactivated' } : filters.status === 'invited' ? { status: 'active', lastLoginAt: null } : filters.status === 'active' ? { status: 'active', lastLoginAt: { not: null } } : {};
+    const where: Prisma.UserWhereInput = {
+      ...this.tenantWhere(context),
+      role: { not: 'super_admin' },
+      ...byStatus,
+      ...(term ? { OR: [{ email: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }] } : {}),
+    };
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      const [rows, total] = await Promise.all([
+        tx.user.findMany({
+          where,
+          select: { id: true, name: true, email: true, role: true, status: true, lastLoginAt: true, permissionProfile: { select: { name: true } }, authenticators: { where: { revokedAt: null }, select: { id: true }, take: 1 } },
+          orderBy: [{ name: 'asc' }, { id: 'asc' }],
+          skip,
+          take,
+        }),
+        tx.user.count({ where }),
+      ]);
+      const data = rows.map((u) => ({
+        id: u.id,
+        name: u.name || u.email,
+        email: u.email,
+        roleLabel: u.permissionProfile?.name ?? (u.role === 'org_admin' ? 'System Admin' : 'Staff'),
+        status: u.status === 'deactivated' ? ('off' as const) : u.lastLoginAt ? ('active' as const) : ('invited' as const),
+        lastLoginAt: u.lastLoginAt,
+        twoStep: u.authenticators.length > 0,
+        self: u.id === viewerId,
+      }));
+      return buildPaginatedResponse(data, total, page, pageSize);
+    });
+  }
+
   async adminRevoke(context: TenantContext, actorUserId: string, sessionId: string): Promise<void> {
     const count = await this.tenantPrisma.forTenant(context, (tx) =>
       revokeStaffSessions(tx, { id: sessionId, ...this.tenantWhere(context) }, 'admin_revoked'),

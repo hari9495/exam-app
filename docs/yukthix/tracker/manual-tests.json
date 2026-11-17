@@ -22702,5 +22702,31 @@
       "PLT-16 · Audit log · live, an entry opened (plain sentence and event code)"
     ],
     "note": "Sentences are built on the server from the event code (about 1,500 codes) with hand-written sentences for sign-in and security events; English only (question 2364)."
+  },
+  {
+    "id": "MT-BATB-A6",
+    "area": "Batch B: users and sign-in list (admin A6, item 20, answers 2365 and 2366, 17 Nov 2026)",
+    "screen": "Admin › Login activity › Accounts",
+    "url": "http://localhost:3000/yx/admin/login-activity",
+    "account": "Admin admin-tester@demo-org.test (org:manage_users); employee arjun@demo-org.test for the refusal and for being turned off.",
+    "steps": [
+      "As admin-tester: open Login activity, then the Accounts tab.",
+      "Pick Show = Never signed in, then Turned off, then Everyone. Type 'arjun' in Search.",
+      "Look at your own row (admin-tester).",
+      "On Arjun's row press Turn off, then Cancel. Press Turn off again and confirm.",
+      "As Arjun (in another browser): reload any page, then try to sign in.",
+      "As admin-tester: Show = Turned off; on Arjun's row press Turn on and confirm. Arjun signs in again.",
+      "On a 'Never signed in' row press Send link again and confirm.",
+      "Open Settings › Audit log, Area = Access & security.",
+      "As Arjun: open /yx/admin/login-activity directly."
+    ],
+    "expected": "Step 1: a list of everyone with Person, Role, Sign-in (Can sign in / Never signed in / Turned off), Last signed in ('Never' for new accounts), Two-step (On / Off); no page scroll at 1278 x 635. Step 2: the Segment shows one choice at a time and the list follows it; search finds Arjun by name or email. Step 3: no Turn off button on your own row. Step 4: Cancel changes nothing; confirm shows the toast 'Sign-in turned off for Arjun Kulkarni.' and his row says Turned off. Step 5: he is signed out and cannot sign in. Step 6: toast 'Arjun Kulkarni can sign in again.'; he signs in. Step 7: toast 'New sign-in link sent to <email>.' (or a warning toast if the company signs in through its identity provider). Step 8: '<admin> turned off sign-in for \"Arjun Kulkarni\".' and '<admin> turned sign-in back on for \"Arjun Kulkarni\".' Step 9: no Accounts tab and no list of accounts (refused by the API).",
+    "stories": [
+      "Screens/Security/Admin › Login activity · accounts (who can sign in)",
+      "Login activity · accounts · turn off sign-in",
+      "Login activity · accounts · turn off refused",
+      "Login activity · accounts · loading / could not load / nobody matches / phone"
+    ],
+    "note": "API: GET /security/accounts (org:manage_users), turn off and on through POST /users/:id/deactivate and /reactivate (audited; refused for yourself and for the last System Admin); Send link again reuses POST /users/:id/reset-password (answer 2366)."
   }
 ]
