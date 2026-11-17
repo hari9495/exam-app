@@ -183,7 +183,6 @@
     "proctoring: MetricExplorerScreen",
     "proctoring: PrivacyCentreScreen",
     "proctoring: ProctorPlannerScreen",
-    "proctoring: ProctorTile",
     "proctoring: ProctoringSettingsScreen",
     "proctoring: ReportBuilderScreen",
     "proctoring: ReportLibraryScreen",

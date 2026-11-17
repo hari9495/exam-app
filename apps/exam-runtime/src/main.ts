@@ -25,6 +25,8 @@ async function bootstrap() {
   // AS-4b (answer 2011): only an accommodation request may carry one evidence file (10 MB, base64 about 13.4 MB). It is
   // signed in, throttled and one open request at a time; every other route keeps the 1 MB bound. Must run first.
   app.use('/api/v1/attempt/accommodation', json({ limit: EVIDENCE_BODY_LIMIT }));
+  // AS-5 (answer 2264): an appeal may carry one file too (once, in the window).
+  app.use('/api/v1/attempt/appeal', json({ limit: EVIDENCE_BODY_LIMIT }));
   app.use(json({ limit: JSON_BODY_LIMIT }));
   app.use(urlencoded({ extended: true, limit: JSON_BODY_LIMIT }));
   app.use(cookieParser());

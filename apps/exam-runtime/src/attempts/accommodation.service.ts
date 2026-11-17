@@ -54,17 +54,7 @@ export class AccommodationService {
     if (kinds.includes('identity') && !inv.exam.faceVerificationEnabled) throw new BadRequestException('This test has no face check, so no manual check is needed.');
 
     // Evidence: decoded and checked by its first bytes before anything is stored.
-    let evidence: { buf: Buffer; type: string; name: string } | null = null;
-    if (dto.evidence) {
-      const m = /^data:[^;,]*;base64,([A-Za-z0-9+/=\s]+)$/.exec(dto.evidence.dataUri);
-      if (!m) throw new BadRequestException('The file could not be read. Send a PDF, JPG or PNG.');
-      const buf = Buffer.from(m[1]!, 'base64');
-      if (buf.length === 0) throw new BadRequestException('The file is empty.');
-      if (buf.length > EVIDENCE_MAX_BYTES) throw new BadRequestException('The file is larger than 10 MB.');
-      const type = evidenceType(buf);
-      if (!type) throw new BadRequestException('Send a PDF, JPG or PNG.');
-      evidence = { buf, type, name: safeEvidenceName(dto.evidence.fileName) };
-    }
+    const evidence = readEvidence(dto.evidence);
     const ctx = { organizationId: inv.organizationId, isSuperAdmin: false };
     if (await this.tenantPrisma.forTenant(ctx, (tx) => tx.accommodationRequest.count({ where: { invitationId: inv.id, status: 'pending' } })))
       throw new ConflictException('Your earlier request is still being decided. You will hear back before your test.');
@@ -104,4 +94,17 @@ export async function helpOf(tx: { accommodationRequest: { findMany: (a: object)
     approved: [...new Set(rows.flatMap((r) => r.approvedKinds))],
     extraTimePercent,
   };
+}
+
+/** A supporting file (accommodation evidence, an appeal's file): decoded and checked by its first bytes, never trusted by name. */
+export function readEvidence(file: { fileName: string; dataUri: string } | null | undefined): { buf: Buffer; type: string; name: string } | null {
+  if (!file) return null;
+  const m = /^data:[^;,]*;base64,([A-Za-z0-9+/=\s]+)$/.exec(file.dataUri);
+  if (!m) throw new BadRequestException('The file could not be read. Send a PDF, JPG or PNG.');
+  const buf = Buffer.from(m[1]!, 'base64');
+  if (buf.length === 0) throw new BadRequestException('The file is empty.');
+  if (buf.length > EVIDENCE_MAX_BYTES) throw new BadRequestException('The file is larger than 10 MB.');
+  const type = evidenceType(buf);
+  if (!type) throw new BadRequestException('Send a PDF, JPG or PNG.');
+  return { buf, type, name: safeEvidenceName(file.fileName) };
 }

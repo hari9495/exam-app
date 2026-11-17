@@ -105,6 +105,12 @@ export class IntegrityReviewController {
     return this.service.appeals(ctx);
   }
 
+  @Get('appeals/:id/evidence')
+  @RequireAnyPermission(...REVIEW)
+  appealEvidence(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.service.appealEvidence(ctx, userId, id);
+  }
+
   @Post('appeals/:id/uphold')
   @HttpCode(200)
   @RequireAnyPermission(...REVIEW)

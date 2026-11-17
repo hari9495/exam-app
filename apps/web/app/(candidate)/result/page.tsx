@@ -2,7 +2,7 @@
 
 import { ToastProvider } from '@yukthix/ui';
 import { ResultAppealScreen, type LiveResult } from '@yukthix/ui/assessments';
-import { useAttemptQuery, useCandidateBrand, useCandidateCertificate, useRunnerActions } from '../../../lib/hooks/useAttempt';
+import { fileAsDataUri, useAttemptQuery, useCandidateBrand, useCandidateCertificate, useRunnerActions } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
 
 // AS-4a (PRC-27): the designed result page, live: released (only what the test shows) or held for review. AS-5 (answer
@@ -31,7 +31,8 @@ export default function CandidateResultPage() {
           appeal: f.integrity.appeal ? { status: f.integrity.appeal.status, sentOn: day(f.integrity.appeal.sentAt), decidedOn: f.integrity.appeal.decidedAt ? day(f.integrity.appeal.decidedAt) : null, reason: f.integrity.appeal.reason } : null,
         }
       : null,
-    onAppeal: actions.sendAppeal,
+    // Answer 2264: one optional file goes with the appeal (the runtime checks its type and size again).
+    onAppeal: async (text, file) => actions.sendAppeal(text, file ? { fileName: file.name, dataUri: await fileAsDataUri(file) } : null),
     passed: f?.passFail == null ? null : f.passFail === 'pass',
     percentage: f?.percentage ?? null,
     sections: f?.sections ?? null,

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { OwnSessionChangesGuard } from '../auth/own-session.guard';
@@ -6,7 +6,7 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import { ResultsScope, ResultsScopeOf, ScopesResults } from '../rbac/results-scope';
 // Proctor interventions and evaluator grading are sensitive-role actions (P12 §3, YX-IAM-01).
 import { RequireStepUp, SensitiveRoleAction } from '../auth/step-up.decorator';
-import { EndAttemptDto } from './dto/end-attempt.dto';
+import { EndAttemptDto, PauseAttemptDto, ResumeAttemptDto } from './dto/end-attempt.dto';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -34,6 +34,21 @@ export class AttemptsAdminController {
   @RequireStepUp()
   forceSubmit(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: EndAttemptDto) {
     return this.attemptsAdminService.forceSubmit(tenant, id, userId, dto.reason.trim());
+  }
+
+  // AS-5 (PRC-13, answer 2006): pausing and resuming from the live console, each with a reason the record keeps.
+  @Post(':id/pause')
+  @HttpCode(200)
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
+  pause(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PauseAttemptDto) {
+    return this.attemptsAdminService.pause(tenant, id, userId, dto.reason.trim(), dto.message?.trim() || null);
+  }
+
+  @Post(':id/resume')
+  @HttpCode(200)
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
+  resume(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ResumeAttemptDto) {
+    return this.attemptsAdminService.resume(tenant, id, userId, dto.reason.trim());
   }
 
   // AS-0: overturning the proctoring verdict (unblocking) asks for the second factor again.

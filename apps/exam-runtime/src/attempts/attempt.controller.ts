@@ -156,7 +156,7 @@ export class AttemptController {
   @Post('appeal')
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   appeal(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AppealDto) {
-    return this.attemptService.appeal(candidate, dto.text);
+    return this.attemptService.appeal(candidate, dto.text, dto.file ?? null);
   }
 
   @Post('client-error')
@@ -187,6 +187,13 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   faceEnrolment(@CurrentCandidate() candidate: CandidateSession, @Body() dto: FaceEnrolmentDto) {
     return this.attemptService.recordFaceEnrolment(candidate, dto);
+  }
+
+  // AS-5 (answer 2205): the face check after approved extra time.
+  @Post('face-recheck')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  faceRecheck(@CurrentCandidate() candidate: CandidateSession, @Body() dto: WebcamSnapshotDto) {
+    return this.attemptService.faceRecheck(candidate, dto.snapshot);
   }
 
   @Post('webcam-resume')

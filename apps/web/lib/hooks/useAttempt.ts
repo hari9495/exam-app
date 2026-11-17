@@ -239,7 +239,7 @@ export function useRunnerActions() {
     endBreak: () => post('/attempt/break/end'),
     sendSurvey: (input: { rating: number; clearInstructions?: boolean; comment?: string; gender?: 'woman' | 'man' | 'another' | 'not_say' }) => post('/attempt/survey', input),
     // AS-5 (answer 2012): appeal an integrity decision.
-    sendAppeal: (text: string) => post('/attempt/appeal', { text }),
+    sendAppeal: (text: string, file?: { fileName: string; dataUri: string } | null) => post('/attempt/appeal', { text, ...(file ? { file } : {}) }),
   };
 }
 
@@ -387,6 +387,17 @@ export function useWebcamResume() {
   return useMutation({
     mutationFn: (): Promise<{ status: string }> =>
       withRetry(() => candidateApiFetch('/attempt/webcam-resume', { method: 'POST', body: JSON.stringify({}) }, accessToken ?? undefined)),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
+  });
+}
+
+/** Answer 2205: the face check after approved extra time; resumes the test when it matches. */
+export function useFaceRecheck() {
+  const { accessToken } = useCandidateAuth();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (snapshot: string): Promise<{ status: string; matched: boolean | null }> =>
+      candidateApiFetch('/attempt/face-recheck', { method: 'POST', body: JSON.stringify({ snapshot }) }, accessToken ?? undefined),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['attempt', 'current'] }),
   });
 }

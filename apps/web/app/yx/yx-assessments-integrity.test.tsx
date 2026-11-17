@@ -8,10 +8,13 @@ import { useAuth } from '../../lib/auth-context';
 import YxIntegrityQueuePage from './(app)/hiring/assessments/integrity/page';
 import YxIncidentPage from './(app)/hiring/assessments/integrity/[id]/page';
 import YxAppealsPage from './(app)/hiring/assessments/appeals/page';
+import YxLiveConsolePage from './(app)/hiring/assessments/tests/[id]/live/page';
+import { useExamMonitoring } from '../../lib/hooks/useExamMonitoring';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn(), API_BASE: '' }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
+jest.mock('../../lib/hooks/useExamMonitoring', () => ({ useExamMonitoring: jest.fn() }));
 
 // Assessments AS-5 part 1 (answers 2006, 2012): the integrity queue (PRC-16), one incident (PRC-17) and appeals (PRC-18).
 const api = apiFetch as jest.Mock;
@@ -86,4 +89,42 @@ it('negative: the reviewer who gave the verdict sees that someone else decides',
   wrap(<YxAppealsPage />);
   expect(await screen.findByText('You gave this verdict, so someone else decides the appeal.')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Save decision' })).not.toBeInTheDocument();
+});
+
+// AS-5 part 2 (PRC-13): the live console from the monitoring socket; actions go to the attempt routes with a reason.
+describe('live console page', () => {
+  const refresh = jest.fn();
+  beforeEach(() => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'exam-1' });
+    (useExamMonitoring as jest.Mock).mockReturnValue({
+      roster: [
+        { candidateId: 'c1', candidateName: 'Sneha Iyer', invitationId: 'i1', attemptId: 'att-1', status: 'in_progress', online: true, remainingSeconds: 1800, answeredCount: 5, totalQuestions: 20, proctoringBypassed: false },
+        { candidateId: 'c2', candidateName: 'Not Started', invitationId: 'i2', attemptId: null, status: 'invited', online: false, remainingSeconds: null, answeredCount: null, totalQuestions: null, proctoringBypassed: false },
+      ],
+      rosterUpdatedAt: 1,
+      alerts: [{ attemptId: 'att-1', candidateId: 'c1', eventType: 'webcam_multiple_faces', severity: 'high', occurredAt: '2026-11-17T08:23:15.000Z' }],
+      leaderboard: [],
+      connectionStatus: 'connected',
+      joinError: null,
+      refresh,
+    });
+  });
+
+  it('shows started attempts by concern and pauses one with a reason', async () => {
+    wrap(<YxLiveConsolePage />);
+    await userEvent.click(await screen.findByRole('button', { name: /^Sneha Iyer,/ }));
+    expect(screen.queryByText('Not Started')).not.toBeInTheDocument();
+    expect(screen.getByText(/webcam multiple faces \(high\)/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Pause' }));
+    await userEvent.type(screen.getByLabelText(/^Reason/), 'A second person came into the room.');
+    await userEvent.click(screen.getByRole('button', { name: 'Pause test' }));
+    expect(calls).toContain('POST /attempts/att-1/pause {"reason":"A second person came into the room."}');
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it('negative: a join error shows it, with a retry', async () => {
+    (useExamMonitoring as jest.Mock).mockReturnValue({ roster: [], rosterUpdatedAt: null, alerts: [], leaderboard: [], connectionStatus: 'disconnected', joinError: 'You need the proctor key and your second factor.', refresh });
+    wrap(<YxLiveConsolePage />);
+    expect(await screen.findByText('You need the proctor key and your second factor.')).toBeInTheDocument();
+  });
 });

@@ -41,6 +41,34 @@ export class ExamRuntimeInternalClient {
     return response.json();
   }
 
+  /** AS-5 (PRC-13): a proctor pauses a running attempt; the reason and the candidate's message go on its record. */
+  async pause(attemptId: string, payload: { reason: string; message: string | null; actorUserId: string }): Promise<{ status: string }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/pause`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
+  async resume(attemptId: string, payload: { reason: string; actorUserId: string }): Promise<{ status: string }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/resume`, {
+      method: 'POST',
+      headers: { ...this.headers(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
+  /** Answer 2265: score a finished attempt again after an integrity decision. */
+  async rescore(attemptId: string): Promise<{ rescored: boolean }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/rescore`, { method: 'POST', headers: this.headers() });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
   async unblock(attemptId: string): Promise<{ status: string }> {
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/unblock`, {
       method: 'POST',

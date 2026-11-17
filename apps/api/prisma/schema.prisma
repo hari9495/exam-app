@@ -14756,6 +14756,10 @@ model IntegrityAppeal {
   incidentId     String            @unique(map: "integrity_appeals_incident_id_key") @map("incident_id") @db.Uuid
   attemptId      String            @map("attempt_id") @db.Uuid
   text           String            @db.VarChar(2000)
+  /// Answer 2264: one supporting file (private blob), its name and type.
+  evidencePath   String?           @map("evidence_path") @db.Text
+  evidenceName   String?           @map("evidence_name") @db.VarChar(255)
+  evidenceType   String?           @map("evidence_type") @db.VarChar(40)
   /// open | upheld | overturned
   status         String            @default("open") @db.VarChar(10)
   reason         String?           @db.VarChar(2000)

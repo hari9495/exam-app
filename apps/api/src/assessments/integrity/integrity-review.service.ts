@@ -1,7 +1,10 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { AuditService, BlobStorageService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { companySetting } from '../asmt-rules';
+import { EmailService } from '../../email/email.service';
+import { buildCandidateEmailHtml } from '../../candidate-emails/candidate-email-render';
+import { ExamRuntimeInternalClient } from '../../exam-runtime-client/exam-runtime-internal.client';
 
 type Tx = Prisma.TransactionClient;
 export type Verdict = 'cleared' | 'warning' | 'section' | 'attempt';
@@ -22,7 +25,46 @@ const nameOf = (u: { name: string | null; email: string } | null | undefined) =>
  */
 @Injectable()
 export class IntegrityReviewService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  private readonly logger = new Logger(IntegrityReviewService.name);
+
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly email: EmailService,
+    private readonly runtime: ExamRuntimeInternalClient,
+    private readonly blobStorage: BlobStorageService,
+  ) {}
+
+  /**
+   * Answers 2265, 2266: after a final decision, score the attempt again (a section voided, or restored on appeal) and
+   * tell the candidate by email (their email opt-out holds). Both after the decision is saved; a failure is logged and
+   * never undoes the decision (the result page shows it either way).
+   */
+  private async after(ctx: TenantContext, attemptId: string, opts: { rescore: boolean; email: 'verdict' | 'appeal' | null }) {
+    if (opts.rescore) await this.runtime.rescore(attemptId).catch((e) => this.logger.error(`Rescore after an integrity decision failed for ${attemptId}`, e as Error));
+    if (opts.email) await this.tell(ctx, attemptId, opts.email).catch((e) => this.logger.error(`Integrity email failed for ${attemptId}`, e as Error));
+  }
+
+  private async tell(ctx: TenantContext, attemptId: string, kind: 'verdict' | 'appeal') {
+    const d = await this.in(ctx, async (tx) => {
+      const r = await tx.integrityIncident.findUnique({
+        where: { attemptId },
+        select: { verdict: true, sectionTitle: true, reason: true, appealClosesAt: true, appeal: { select: { status: true, reason: true } }, attempt: { select: { invitation: { select: { candidate: { select: { name: true, email: true, emailOptedOutAt: true } }, exam: { select: { title: true } } } } } } },
+      });
+      const org = await tx.organization.findUnique({ where: { id: ctx.organizationId as string }, select: { name: true } });
+      return { r, org };
+    });
+    const c = d.r?.attempt.invitation.candidate;
+    if (!d.r || !c?.email || c.emailOptedOutAt) return;
+    const test = d.r.attempt.invitation.exam.title;
+    const label = { warning: 'a warning was noted on your test', section: `the ${d.r.sectionTitle ?? ''} section was not counted`, attempt: 'your test was not counted', cleared: 'no action' }[d.r.verdict ?? 'cleared'];
+    const lines =
+      kind === 'verdict'
+        ? [`Hi ${c.name},`, '', `A reviewer looked at your session for "${test}". Decision: ${label}.`, '', `Why: ${d.r.reason ?? ''}`, '', d.r.appealClosesAt ? `You can appeal until ${d.r.appealClosesAt.toISOString().slice(0, 10)} from your result page.` : '']
+        : [`Hi ${c.name},`, '', `Your appeal about "${test}" was ${d.r.appeal?.status === 'overturned' ? 'accepted: the decision was overturned' : 'decided: the decision stands'}.`, '', `Reason: ${d.r.appeal?.reason ?? ''}`, '', 'This decision is final.'];
+    const html = buildCandidateEmailHtml({ logoUrl: null, orgName: d.org?.name ?? null, bodyText: lines.join('\n') });
+    const res = await this.email.send({ to: c.email, subject: kind === 'verdict' ? `A decision about your test: ${test}` : `Your appeal: ${test}`, html, organizationId: ctx.organizationId as string });
+    if (!res.success) this.logger.warn(`Integrity email to the candidate of ${attemptId} failed`);
+  }
 
   private in<T>(ctx: TenantContext, fn: (tx: Tx) => Promise<T>) {
     return this.tenantPrisma.forTenant(ctx, fn);
@@ -158,6 +200,12 @@ export class IntegrityReviewService {
   }
 
   async verdict(ctx: TenantContext, userId: string, id: string, input: { verdict: Verdict; reason: string; sectionTitle?: string | null; secondReviewerId?: string | null }) {
+    const out = await this.verdictIn(ctx, userId, id, input);
+    if (out.status === 'decided') await this.after(ctx, out.attemptId, { rescore: input.verdict === 'section', email: input.verdict === 'cleared' ? null : 'verdict' });
+    return { status: out.status, appealClosesAt: out.appealClosesAt };
+  }
+
+  private async verdictIn(ctx: TenantContext, userId: string, id: string, input: { verdict: Verdict; reason: string; sectionTitle?: string | null; secondReviewerId?: string | null }) {
     const reason = reasonOk(input.reason);
     return this.in(ctx, async (tx) => {
       const r = await tx.integrityIncident.findUnique({ where: { id }, select: { status: true, attemptId: true, organizationId: true } });
@@ -179,12 +227,18 @@ export class IntegrityReviewService {
         data: { status: final ? 'decided' : 'second_review', verdict: input.verdict, sectionTitle, reason, decidedBy: userId, decidedAt: now, secondReviewerId: second, appealClosesAt: closes, updatedAt: now },
       });
       await AuditService.recordIn(tx, ctx, { actorUserId: userId, action: final ? 'asmt.incident.decided' : 'asmt.incident.invalidation_proposed', entityType: 'integrity_incident', entityId: id, metadata: { verdict: input.verdict, attemptId: r.attemptId } });
-      return { status: final ? 'decided' : 'second_review', appealClosesAt: closes?.toISOString() ?? null };
+      return { status: final ? 'decided' : 'second_review', appealClosesAt: closes?.toISOString() ?? null, attemptId: r.attemptId };
     });
   }
 
   /** YX-EVAL-01: a second reviewer (never the first) confirms or sends back an attempt invalidation, with a reason. */
   async secondReview(ctx: TenantContext, userId: string, id: string, input: { confirm: boolean; reason: string }) {
+    const out = await this.secondReviewIn(ctx, userId, id, input);
+    if (out.status === 'decided') await this.after(ctx, out.attemptId, { rescore: false, email: 'verdict' });
+    return { status: out.status };
+  }
+
+  private async secondReviewIn(ctx: TenantContext, userId: string, id: string, input: { confirm: boolean; reason: string }) {
     const reason = reasonOk(input.reason);
     return this.in(ctx, async (tx) => {
       const r = await tx.integrityIncident.findUnique({ where: { id }, select: { status: true, decidedBy: true, secondReviewerId: true, organizationId: true, attemptId: true } });
@@ -200,7 +254,7 @@ export class IntegrityReviewService {
         await tx.integrityIncident.update({ where: { id }, data: { status: 'open', verdict: null, sectionTitle: null, reason: null, decidedBy: null, decidedAt: null, secondReviewerId: null, updatedAt: now } });
       }
       await AuditService.recordIn(tx, ctx, { actorUserId: userId, action: input.confirm ? 'asmt.incident.invalidation_confirmed' : 'asmt.incident.invalidation_sent_back', entityType: 'integrity_incident', entityId: id, metadata: { reason, attemptId: r.attemptId } });
-      return { status: input.confirm ? 'decided' : 'open' };
+      return { status: input.confirm ? 'decided' : 'open', attemptId: r.attemptId };
     });
   }
 
@@ -227,6 +281,7 @@ export class IntegrityReviewService {
           // The people who may not decide it (they gave the verdict).
           excluded: [a.incident.decidedBy, a.incident.confirmedBy].filter((x): x is string => Boolean(x)),
           text: a.text,
+          evidenceName: a.evidenceName,
           status: a.status,
           reason: a.reason,
           decidedBy: a.decidedBy ? who.get(a.decidedBy) ?? null : null,
@@ -236,21 +291,37 @@ export class IntegrityReviewService {
     });
   }
 
+  /** Answer 2264: a short-lived link to the appeal's file; each opening is audited. */
+  async appealEvidence(ctx: TenantContext, userId: string, id: string): Promise<{ url: string; name: string }> {
+    const a = await this.in(ctx, (tx) => tx.integrityAppeal.findUnique({ where: { id }, select: { evidencePath: true, evidenceName: true, attemptId: true } }));
+    if (!a) throw new NotFoundException('Appeal not found');
+    if (!a.evidencePath) throw new NotFoundException('No file was sent with this appeal.');
+    const url = (await this.blobStorage.signIfOurs(a.evidencePath)) as string;
+    await this.in(ctx, (tx) => AuditService.recordIn(tx, ctx, { actorUserId: userId, action: 'asmt.appeal.evidence_viewed', entityType: 'integrity_appeal', entityId: id, metadata: { attemptId: a.attemptId } }));
+    return { url, name: a.evidenceName ?? 'file' };
+  }
+
   /**
    * Uphold or overturn, with a reason, by someone who did not give the verdict (also a database trigger). Overturning
    * asks for the second factor (route); the verdict record stays, the appeal says it was overturned.
    */
   async decideAppeal(ctx: TenantContext, userId: string, id: string, input: { decision: 'upheld' | 'overturned'; reason: string }) {
+    const out = await this.decideAppealIn(ctx, userId, id, input);
+    await this.after(ctx, out.attemptId, { rescore: input.decision === 'overturned' && out.verdict === 'section', email: 'appeal' });
+    return { status: out.status };
+  }
+
+  private async decideAppealIn(ctx: TenantContext, userId: string, id: string, input: { decision: 'upheld' | 'overturned'; reason: string }) {
     const reason = reasonOk(input.reason);
     return this.in(ctx, async (tx) => {
-      const a = await tx.integrityAppeal.findUnique({ where: { id }, select: { status: true, attemptId: true, incident: { select: { decidedBy: true, confirmedBy: true } } } });
+      const a = await tx.integrityAppeal.findUnique({ where: { id }, select: { status: true, attemptId: true, incident: { select: { decidedBy: true, confirmedBy: true, verdict: true } } } });
       if (!a) throw new NotFoundException('Appeal not found');
       if (a.status !== 'open') throw new ConflictException('This appeal is decided.');
       if (a.incident.decidedBy === userId || a.incident.confirmedBy === userId) throw new ForbiddenException('An appeal is decided by someone who did not give the verdict.');
       const now = new Date();
       await tx.integrityAppeal.update({ where: { id }, data: { status: input.decision, reason, decidedBy: userId, decidedAt: now } });
       await AuditService.recordIn(tx, ctx, { actorUserId: userId, action: input.decision === 'overturned' ? 'asmt.appeal.overturned' : 'asmt.appeal.upheld', entityType: 'integrity_appeal', entityId: id, metadata: { attemptId: a.attemptId } });
-      return { status: input.decision };
+      return { status: input.decision, attemptId: a.attemptId, verdict: a.incident.verdict };
     });
   }
 }

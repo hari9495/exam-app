@@ -39,13 +39,56 @@ export class InternalController {
       if (!attempt) {
         throw new NotFoundException(`Attempt ${id} not found`);
       }
-      if (attempt.status !== 'in_progress') {
+      // AS-5: a proctor may also end a paused or blocked attempt (from the live console).
+      if (!['in_progress', 'paused', 'blocked'].includes(attempt.status)) {
         throw new BadRequestException(`Attempt ${id} cannot be force-submitted from status "${attempt.status}"`);
       }
       const exam = attempt.invitation.exam;
       return this.attemptSettlement.finalize(tx, exam, attempt, 'force_submitted');
     });
     return { status: finalized.status };
+  }
+
+  /**
+   * AS-5 (PRC-13, answer 2006): a proctor pauses a running attempt. The reason (and what the candidate is told) stay on
+   * the attempt's record as a proctoring event; the timer stops until a proctor resumes it.
+   */
+  @Post('attempts/:id/pause')
+  async pause(@Param('id') id: string, @Body() dto: { reason: string; message?: string | null; actorUserId: string }) {
+    const updated = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { id } });
+      if (!attempt) throw new NotFoundException(`Attempt ${id} not found`);
+      if (attempt.status !== 'in_progress') throw new BadRequestException(`Attempt ${id} cannot be paused from status "${attempt.status}"`);
+      const now = new Date();
+      await tx.proctoringEvent.create({
+        data: { attemptId: id, eventType: 'proctor_paused', severity: 'low', metadataJson: JSON.stringify({ reason: dto.reason, message: dto.message ?? null, by: dto.actorUserId }) },
+      });
+      return tx.attempt.update({ where: { id }, data: { status: 'paused', pausedAt: now, pausedReason: 'proctor' } });
+    });
+    void this.broadcaster
+      .emitAttemptStatus(updated.examId, { attemptId: updated.id, candidateId: updated.candidateId, status: updated.status })
+      .catch(() => undefined);
+    return { status: updated.status };
+  }
+
+  /** AS-5: a proctor resumes their pause (or a face re-check the candidate cannot pass), with a reason on the record. */
+  @Post('attempts/:id/resume')
+  async resume(@Param('id') id: string, @Body() dto: { reason: string; actorUserId: string }) {
+    const updated = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { id } });
+      if (!attempt) throw new NotFoundException(`Attempt ${id} not found`);
+      if (attempt.status !== 'paused' || (attempt.pausedReason !== 'proctor' && attempt.pausedReason !== 'face_recheck'))
+        throw new BadRequestException(`Attempt ${id} is not paused by a proctor or a face check`);
+      await tx.proctoringEvent.create({ data: { attemptId: id, eventType: 'proctor_resumed', severity: 'low', metadataJson: JSON.stringify({ reason: dto.reason, by: dto.actorUserId }) } });
+      return this.attemptSettlement.resumeFromPause(tx, attempt);
+    });
+    return { status: updated.status };
+  }
+
+  /** Answer 2265: score again after an integrity decision (section voided, or restored on appeal). */
+  @Post('attempts/:id/rescore')
+  async rescore(@Param('id') id: string) {
+    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => this.attemptSettlement.rescoreForIntegrity(tx, id));
   }
 
   @Post('attempts/:id/unblock')

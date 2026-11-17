@@ -106,6 +106,7 @@ describe('AttemptSettlementService', () => {
     it('leaves an in-progress attempt untouched if the duration has not elapsed', async () => {
       const attempt = { id: 'attempt-1', status: 'in_progress', startedAt: new Date(), questionOrderJson: '[]' };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn() },
         answer: { findMany: jest.fn() },
         result: { create: jest.fn() },
@@ -123,6 +124,7 @@ describe('AttemptSettlementService', () => {
         id: 'attempt-1', status: 'submitted', startedAt: new Date(Date.now() - 60 * 60_000), questionOrderJson: '[]',
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn() },
         answer: { findMany: jest.fn() },
         result: { create: jest.fn() },
@@ -143,6 +145,7 @@ describe('AttemptSettlementService', () => {
         questionOrderJson: JSON.stringify(['q1']),
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -180,6 +183,7 @@ describe('AttemptSettlementService', () => {
         questionOrderJson: JSON.stringify(['q1']),
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             {
@@ -325,6 +329,7 @@ describe('AttemptSettlementService', () => {
     it('grades an unanswered question as zero marks without creating an answer row', async () => {
       const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -347,6 +352,7 @@ describe('AttemptSettlementService', () => {
     it('writes an atomic attempt.settled audit entry alongside the grading transaction', async () => {
       const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -371,6 +377,7 @@ describe('AttemptSettlementService', () => {
     it('deducts negativeMarks for a wrong selected answer through the full settlement path', async () => {
       const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', marks: 5, negativeMarks: 2, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -401,6 +408,7 @@ describe('AttemptSettlementService', () => {
     it('forgets the attempt in FaceVerificationService once it settles, so its voter map does not leak', async () => {
       const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -416,6 +424,7 @@ describe('AttemptSettlementService', () => {
     it('emits attempt:status to the monitoring gateway after finalizing', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -434,6 +443,7 @@ describe('AttemptSettlementService', () => {
       const attempt = { id: 'attempt-1', questionOrderJson: JSON.stringify(['q1']) };
       const alreadyFinalized = { id: 'attempt-1', status: 'auto_submitted' };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn() },
         answer: { findMany: jest.fn(), update: jest.fn() },
         result: {
@@ -459,6 +469,7 @@ describe('AttemptSettlementService', () => {
     it('triggers proctoring analysis for the finalized attempt without awaiting it', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -474,6 +485,7 @@ describe('AttemptSettlementService', () => {
     it('triggers integrity analysis for the finalized attempt without awaiting it', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -490,6 +502,7 @@ describe('AttemptSettlementService', () => {
     it('calls ApiInternalClient.dispatchWebhook with the settled attempt summary', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -512,6 +525,7 @@ describe('AttemptSettlementService', () => {
     it('triggers integrity analysis even when the attempt is pending_manual_grade (unlike insight, which is skipped)', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] },
@@ -542,6 +556,7 @@ describe('AttemptSettlementService', () => {
       integrityAnalysis.analyze.mockRejectedValue(new Error('should never surface'));
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -559,6 +574,7 @@ describe('AttemptSettlementService', () => {
       attemptAnalysis.analyze.mockRejectedValue(new Error('should never surface'));
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -579,6 +595,7 @@ describe('AttemptSettlementService', () => {
       attemptAnalysis.analyze.mockReturnValue(proctoringAnalysisPromise);
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -603,6 +620,7 @@ describe('AttemptSettlementService', () => {
       attemptAnalysis.analyze.mockRejectedValue(new Error('proctoring analysis unavailable'));
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -620,6 +638,7 @@ describe('AttemptSettlementService', () => {
       attemptInsight.analyze.mockRejectedValue(new Error('should never surface'));
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -636,6 +655,7 @@ describe('AttemptSettlementService', () => {
       broadcaster.emitAttemptStatus.mockRejectedValue(new Error('relay unreachable, should never surface'));
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() },
@@ -651,6 +671,7 @@ describe('AttemptSettlementService', () => {
     it('sets Attempt.status to pending_manual_grade when the attempt contains a code question, leaving its marksAwarded null', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -687,6 +708,7 @@ describe('AttemptSettlementService', () => {
     it('routes an attempted essay question to pending_manual_grade instead of auto-scoring it full marks', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -721,6 +743,7 @@ describe('AttemptSettlementService', () => {
     it('auto-zeroes an essay question the candidate never answered instead of queueing it for a human', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -757,6 +780,7 @@ describe('AttemptSettlementService', () => {
     it('routes an attempted file_upload question (files uploaded) to pending_manual_grade', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -787,6 +811,7 @@ describe('AttemptSettlementService', () => {
     it('routes an attempted spoken question (recording uploaded) to pending_manual_grade', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -817,6 +842,7 @@ describe('AttemptSettlementService', () => {
     it('auto-zeroes a file_upload question with no files uploaded instead of queueing it for a human', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -853,6 +879,7 @@ describe('AttemptSettlementService', () => {
     it('auto-zeroes a code question the candidate never answered instead of queueing it for a human', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }, { id: 'opt-b', isCorrect: false }] },
@@ -893,6 +920,7 @@ describe('AttemptSettlementService', () => {
     it('auto-zeroes an existing code answer row holding only whitespace', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q2', type: 'code', marks: 10, negativeMarks: 0, options: [] }]) },
         answer: {
           findMany: jest.fn().mockResolvedValue([
@@ -920,6 +948,7 @@ describe('AttemptSettlementService', () => {
     it('still queues the attempt when at least one code question WAS attempted, zeroing only the untouched ones', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q2', 'q3']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q2', type: 'code', marks: 10, negativeMarks: 0, options: [] },
@@ -953,6 +982,7 @@ describe('AttemptSettlementService', () => {
     it('does not create an Answer row for a code question that already has one', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([{ id: 'q2', type: 'code', marks: 10, negativeMarks: 0, options: [] }]),
         },
@@ -976,6 +1006,7 @@ describe('AttemptSettlementService', () => {
     it('does not trigger insight generation when the attempt has code questions (data is incomplete until manual grading)', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] },
@@ -1005,6 +1036,7 @@ describe('AttemptSettlementService', () => {
     it('settles normally (no pending_manual_grade) when the attempt has no code questions', async () => {
       const attempt = { id: 'attempt-1', candidateId: 'cand-1', examId: 'exam-1', questionOrderJson: JSON.stringify(['q1']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5, negativeMarks: 0, options: [{ id: 'opt-a', isCorrect: true }] },
@@ -1035,6 +1067,7 @@ describe('AttemptSettlementService', () => {
     it('throws when an attempted code question still has no marksAwarded', async () => {
       const attempt = { id: 'attempt-1', status: 'pending_manual_grade', questionOrderJson: JSON.stringify(['q1', 'q2']) };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5 },
@@ -1066,6 +1099,7 @@ describe('AttemptSettlementService', () => {
         questionOrderJson: JSON.stringify(['q1', 'q2']),
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5 },
@@ -1104,6 +1138,7 @@ describe('AttemptSettlementService', () => {
       ];
       // Ungraded essay -> throws.
       const txUngraded = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue(questions) },
         answer: {
           findMany: jest.fn().mockResolvedValue([
@@ -1123,6 +1158,7 @@ describe('AttemptSettlementService', () => {
 
       // Essay now graded 7/10 -> recompute + settle.
       const txGraded = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue(questions) },
         answer: {
           findMany: jest.fn().mockResolvedValue([
@@ -1152,6 +1188,7 @@ describe('AttemptSettlementService', () => {
         questionOrderJson: JSON.stringify(['q1', 'q2']),
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5 },
@@ -1189,6 +1226,7 @@ describe('AttemptSettlementService', () => {
         questionOrderJson: JSON.stringify(['q1', 'q2']),
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5 },
@@ -1221,6 +1259,7 @@ describe('AttemptSettlementService', () => {
         questionOrderJson: JSON.stringify(['q1', 'q2']),
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5 },
@@ -1250,6 +1289,7 @@ describe('AttemptSettlementService', () => {
         questionOrderJson: JSON.stringify(['q1', 'q2']),
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: {
           findMany: jest.fn().mockResolvedValue([
             { id: 'q1', type: 'single_mcq', marks: 5 },
@@ -1282,6 +1322,7 @@ describe('AttemptSettlementService', () => {
         ]),
       };
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         question: { findMany: jest.fn().mockResolvedValue([
           { id: 'c1', type: 'code', marks: 10, negativeMarks: 0 },
           { id: 'c2', type: 'code', marks: 10, negativeMarks: 0 },
@@ -1325,6 +1366,7 @@ describe('AttemptSettlementService', () => {
 
     function recomputeTx(sectionWeights: { id: string; weightPercent: number }[], attemptStatus = 'submitted') {
       return {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         exam: { findUniqueOrThrow: jest.fn().mockResolvedValue({ passCriteriaPercent: 50 }) },
         examSection: { findMany: jest.fn().mockResolvedValue(sectionWeights) },
         result: {
@@ -1394,6 +1436,7 @@ describe('AttemptSettlementService', () => {
     it('pauses the attempt and logs a medium-severity event on strike 1', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
       } as any;
@@ -1414,6 +1457,7 @@ describe('AttemptSettlementService', () => {
     it('blocks the attempt with high severity on strike 3', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 2 } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'blocked', webcamViolationCount: 3 }) },
       } as any;
@@ -1433,6 +1477,7 @@ describe('AttemptSettlementService', () => {
     it('forgets the attempt in FaceVerificationService when a strike blocks it', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 2 } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'blocked', webcamViolationCount: 3 }) },
       } as any;
@@ -1447,6 +1492,7 @@ describe('AttemptSettlementService', () => {
     it('does not forget the attempt when a strike only pauses it', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
       } as any;
@@ -1460,6 +1506,7 @@ describe('AttemptSettlementService', () => {
       const recordOnlyExam = { ...exam, webcamRecordOnly: true };
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 2 } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, webcamViolationCount: 3 }) },
       } as any;
@@ -1481,6 +1528,7 @@ describe('AttemptSettlementService', () => {
       const recordOnlyExam = { ...exam, webcamRecordOnly: true };
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', browserActivityViolationCount: 2 } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'e1', eventType: 'tab_switch', severity: 'medium' }) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'blocked', browserActivityViolationCount: 3 }) },
       } as any;
@@ -1493,6 +1541,7 @@ describe('AttemptSettlementService', () => {
     it('merges the screenshot overlay into metadataJson directly, alongside snapshot/strike', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
       } as any;
@@ -1512,6 +1561,7 @@ describe('AttemptSettlementService', () => {
     it('maps multiple_faces to the webcam_multiple_faces event type', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', status: 'in_progress', webcamViolationCount: 0 } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, status: 'paused', webcamViolationCount: 1 }) },
       } as any;
@@ -1534,6 +1584,7 @@ describe('AttemptSettlementService', () => {
         status: 'paused', pausedAt: originalPausedAt, pausedReason: 'screen_share',
       } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, webcamViolationCount: 1 }) },
       } as any;
@@ -1562,6 +1613,7 @@ describe('AttemptSettlementService', () => {
         status: 'blocked', pausedAt: null, pausedReason: null,
       } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({}) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, webcamViolationCount: 2 }) },
       } as any;
@@ -1582,6 +1634,7 @@ describe('AttemptSettlementService', () => {
     it('creates the event and adds a strike, pausing the attempt on strike 1', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }),
@@ -1606,6 +1659,7 @@ describe('AttemptSettlementService', () => {
     it('blocks the attempt on strike 3', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 2, status: 'paused' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'right_click', severity: 'low' }),
@@ -1625,6 +1679,7 @@ describe('AttemptSettlementService', () => {
     it('forgets the attempt in FaceVerificationService when a strike blocks it', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 2, status: 'paused' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'right_click', severity: 'low' }),
@@ -1640,6 +1695,7 @@ describe('AttemptSettlementService', () => {
     it('does not forget the attempt when a strike only pauses it', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }),
@@ -1655,6 +1711,7 @@ describe('AttemptSettlementService', () => {
     it('serializes optional metadata to JSON', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'window_blur', severity: 'medium' }) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
       } as any;
@@ -1678,6 +1735,7 @@ describe('AttemptSettlementService', () => {
     it('composes server-authoritative metadata (e.g. an uploaded screenshot URL) in after sanitizing the client metadata, not through it', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
       } as any;
@@ -1704,6 +1762,7 @@ describe('AttemptSettlementService', () => {
     it('logs the event but does not add a strike when the same event type occurred within the last 60 seconds', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 1, status: 'paused' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue({ id: 'evt-earlier', eventType: 'dev_tools_detected', occurredAt: new Date(Date.now() - 2000) }),
           create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'dev_tools_detected', severity: 'high' }),
@@ -1723,6 +1782,7 @@ describe('AttemptSettlementService', () => {
     it('adds a fresh strike when the same event type last occurred more than 60 seconds ago', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 1, status: 'in_progress' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue(null), // the cooldown-window query found nothing that recent
           create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'dev_tools_detected', severity: 'high' }),
@@ -1739,6 +1799,7 @@ describe('AttemptSettlementService', () => {
     it('queries for a recent same-type event scoped to this attempt within the cooldown window', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'copy_paste', severity: 'medium' }) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused' }) },
       } as any;
@@ -1773,6 +1834,7 @@ describe('AttemptSettlementService', () => {
       };
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn((args: any) => Promise.resolve(matchesCooldownWhere(absentRow, args.where) ? absentRow : null)),
           create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'screen_share_stopped', severity: 'high' }),
@@ -1804,6 +1866,7 @@ describe('AttemptSettlementService', () => {
       };
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 1, status: 'paused' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn((args: any) => Promise.resolve(matchesCooldownWhere(priorRightClick, args.where) ? priorRightClick : null)),
           create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'right_click', severity: 'low' }),
@@ -1824,6 +1887,7 @@ describe('AttemptSettlementService', () => {
     it('does not attempt a status transition or increment the strike when the attempt is already blocked', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 3, status: 'blocked' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-4', eventType: 'right_click', severity: 'low' }) },
         attempt: { update: jest.fn() },
       } as any;
@@ -1977,6 +2041,7 @@ describe('AttemptSettlementService', () => {
     it('tags a fresh pause with the browser_activity owner', async () => {
       const attempt = { id: 'attempt-1', examId: 'exam-1', candidateId: 'cand-1', browserActivityViolationCount: 0, status: 'in_progress' } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { findFirst: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'evt-1', eventType: 'tab_switch', severity: 'medium' }) },
         attempt: { update: jest.fn().mockResolvedValue({ ...attempt, browserActivityViolationCount: 1, status: 'paused', pausedReason: 'browser_activity' }) },
       } as any;
@@ -2001,6 +2066,7 @@ describe('AttemptSettlementService', () => {
         browserActivityViolationCount: 1, status: 'paused', pausedAt: originalPausedAt, pausedReason: 'browser_activity',
       } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue(null), // window_blur has no recent same-type event -- this is a fresh strike
           create: jest.fn().mockResolvedValue({ id: 'evt-2', eventType: 'window_blur', severity: 'medium' }),
@@ -2023,6 +2089,7 @@ describe('AttemptSettlementService', () => {
         browserActivityViolationCount: 2, status: 'paused', pausedAt: originalPausedAt, pausedReason: 'browser_activity',
       } as any;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'evt-3', eventType: 'right_click', severity: 'low' }),
@@ -2129,6 +2196,7 @@ describe('AttemptSettlementService', () => {
         proctoringBypassedAt: new Date(),
       } as never;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'e1' }) },
         attempt: { update: jest.fn().mockResolvedValue({ ...(attempt as object), status: 'in_progress' }) },
       } as never;
@@ -2148,6 +2216,7 @@ describe('AttemptSettlementService', () => {
         proctoringBypassedAt: new Date(),
       } as never;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: {
           findFirst: jest.fn().mockResolvedValue(null),
           create: jest.fn().mockResolvedValue({ id: 'e2', eventType: 'tab_switch', severity: 'medium' }),
@@ -2169,6 +2238,7 @@ describe('AttemptSettlementService', () => {
         proctoringBypassedAt: null,
       } as never;
       const tx = {
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null) },
         proctoringEvent: { create: jest.fn().mockResolvedValue({ id: 'e3' }) },
         attempt: { update: jest.fn().mockResolvedValue({ ...(attempt as object), status: 'blocked' }) },
       } as never;

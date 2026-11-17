@@ -382,14 +382,14 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Grid · Tiles sorted by concern | live (gap) | B | `LiveMonitoringPanel` on `/v2/exams/[id]/edit`: roster sorted by status, time left, integrity level, snapshots, live over the monitoring socket. Gap: tiles by concern |
-| HighConcernFilter · Filtered to high concern | live (gap) | B | a status filter; integrity level shown. Gap: a concern filter |
-| TileDetail · Tile detail: timeline, chat, actions | live (gap) | B | `GET /attempts/:id/proctoring-events`, `POST|GET …/message(s)`, `unblock`, `proctoring-bypass` |
-| TerminateConfirm · End attempt: confirmation with reason | live (gap) | B | `POST /attempts/:id/force-submit`. Gap: **no reason** is asked or stored |
-| PauseConfirm · Pause: reason required | design only, feature not built | B | pauses are automatic only (screen share, face, enforcement); no proctor pause route |
+| Grid · Tiles sorted by concern | live (gap) | B | AS-5 part 2: `/yx/hiring/assessments/tests/[id]/live` from the monitoring socket; tiles by concern from their flags. Gap: no integrity score per tile, no camera thumbnails |
+| HighConcernFilter · Filtered to high concern | live | B | AS-5 part 2 |
+| TileDetail · Tile detail: timeline, chat, actions | live (gap) | B | AS-5 part 2: the flags so far, a message to the candidate, pause, resume, end. Gap: no candidate replies in the drawer |
+| TerminateConfirm · End attempt: confirmation with reason | live | B | a reason the record keeps and the second factor (2006); a paused or blocked attempt can be ended too |
+| PauseConfirm · Pause: reason required | live | B | AS-5 part 2: `POST /attempts/:id/pause` and `/resume`, a reason (kept as a proctoring event and in the audit log) and an optional message the candidate sees |
 | MissedStart · Proctor missing: 10-minute fall-back | design only, feature not built | C | no live proctor to miss |
-| Empty · Empty | live (gap) | B | as Grid |
-| Loading · Loading | live (gap) | B | as Grid |
+| Empty · Empty | live | B | AS-5 part 2 |
+| Loading · Loading | live | B | AS-5 part 2 |
 
 #### PRC-14 · Proctor planner
 
@@ -552,7 +552,7 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 | Reconnecting · Reconnecting: answers kept on device | live | B | `/exam` (AS-4a answer queue) |
 | WeakConnection · Weak connection | live (gap) | B | the runner shows the states; the page reports online, reconnecting and offline only |
 | Break · Break between sections | live (gap) | B | breaks per test (`exams.breaks_allowed`), any time. Gap: not tied to section ends |
-| PausedByProctor · Paused by proctor | live (gap) | B | the runner shows paused states (`status: 'paused'`, `pausedReason`). Gap: a proctor cannot pause |
+| PausedByProctor · Paused by proctor | live | B | AS-5 part 2 (2231): every pause shows in the runner's paused view: a proctor's (with their message), a rule broken (strike count, Continue), a face mismatch, the face re-check after approved time (2205), screen sharing and a block |
 | AiAllowed · AI-allowed test: logged assistant | design only, feature not built | B | no AI-allowed tests |
 | Finish · Finish confirmation | live | B | `/exam`; a failed submit says so and offers Try again |
 | Submitted · Submitted and optional survey | live (gap) | B | `/submitted` (`ResultSummary`). Gap: no after-test survey (`survey` on that page: none) |
@@ -1398,6 +1398,41 @@ integrity reports (PRC-20) and the privacy centre (PRC-28).
       *Suggested: an email on a verdict other than cleared and on the appeal decision.*
 
 **Founder answers (16 Nov 2026, "ok for all"), 2261-2266:** 2261 keep (proctors, evaluators, test owners, System Admins review integrity); 2262 snapshots and screen captures on the incident (views audited) and a summary to the candidate, in AS-5 part 3; 2263 court escalation later; 2264 one PDF or image up to 10 MB with an appeal, checked like accommodation evidence; 2265 recalculate the score on a final "section not counted" verdict and restore it if an appeal overturns it; 2266 email the candidate for any verdict except cleared and for the appeal decision.
+
+## AS-5 as built, part 2 (branch `feat/yukthix-assessments-as5`, 17 Nov 2026; answers 2006, 2205, 2231, 2264, 2265, 2266)
+
+- **PRC-13 live console:** `/yx/hiring/assessments/tests/[id]/live` from the monitoring socket: the test's attempts by
+  concern (a level from their flags so far), a risk filter, each attempt's flags, a message to the candidate, and
+  pause, resume and end. Each needs a reason of 10+ characters that the attempt's record keeps (a proctoring event and
+  the audit log); a pause may carry a message the candidate sees; ending asks for the second factor and also works on a
+  paused or blocked attempt. Only a proctor lifts their pause.
+- **2231:** every pause shows in the designed runner's paused view, in place of the questions: a rule broken (with the
+  strike count and Continue), a face mismatch, a proctor's pause, the face re-check, screen sharing (Share my screen)
+  and a block; the face warning is a notice above the question. The older overlays are gone.
+- **2205:** approving time above the cap on a running face-checked test with an enrolment photo pauses it for a face
+  check. The candidate checks one camera frame against the enrolment photo (`POST /attempt/face-recheck`): a match
+  resumes; a clear mismatch stays paused and is recorded (`face_recheck_failed`); a check that cannot run resumes. A
+  proctor may resume it too. The candidate cannot wave it away.
+- **2264:** an appeal may carry one PDF, JPG or PNG up to 10 MB, checked by its first bytes (the accommodation check,
+  now shared); reviewers open it through an audited short-lived link (migration `202617z0000333_asmt_appeal_file`).
+- **2265:** a final "section not counted" verdict scores that section's answers as zero (it still counts toward the
+  maximum); overturning it on appeal restores them. Applied wherever a result is computed and by a rescore after the
+  decision (audited `result.rescored_for_integrity`).
+- **2266:** the candidate is emailed a verdict other than cleared (with the reason and the appeal window) and the appeal
+  outcome; their email opt-out holds; a failure is logged and never undoes the decision.
+- **Tests:** e2e `assessments-as5` (17); runtime unit (795); kit live console (4), integrity (26 with the runner);
+  web `/exam` (85), candidate pages and integrity pages (188), live console page (2).
+
+### Questions (from 2267)
+
+2267. **Opening the live console.** The page is reached by its address (`/tests/[id]/live`); the test page has no link
+      yet. *Suggested: a "Live console" button on a published test for proctors, with AS-6.*
+2268. **An integrity score per tile.** Tiles show a level from the flags so far; the design draws a 0-100 score and
+      camera thumbnails. *Suggested: the score and thumbnails with part 3 (2262's evidence), from the same signals.*
+2269. **Candidate replies.** Messages go to the candidate; their replies do not show in the console drawer.
+      *Suggested: show the thread from the existing messages route in the drawer.*
+2270. **Face re-check retries.** A mismatch keeps the test paused until a match or a proctor resumes it; there is no
+      try limit. *Suggested: after 3 mismatches, tell the candidate a proctor will check and flag it for the console.*
 
 ## AS-6 as built, part 1 (branch `feat/yukthix-assessments-as6`, 17 Nov 2026; answers 2019, 2154, 2165, 2237)
 
