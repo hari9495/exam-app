@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { PAID_SOURCES, knownLeave, lastDayIn, monthOf, paidIn } from './late-corrections';
+import { PAID_SOURCES, correctionPaid, knownLeave, lastDayIn, monthOf, paidIn } from './late-corrections';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -373,14 +373,16 @@ export class PayPeriodsService implements OnModuleInit {
       const org = c.organizationId;
       const ids = await entitiesFor(tx, c, v, 'payroll.run.view');
       const rows = await withPayScope(tx, ids, () => tx.payCorrection.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, status: 'approved', source: { in: PAID_SOURCES } }, orderBy: { workOn: 'asc' }, take: 500 }));
-      const out: { id: string; employeeId: string; name: string; on: string; month: string; fnfId: string | null }[] = [];
+      const out: { id: string; employeeId: string; name: string; on: string; month: string; fnfId: string | null; state: 'waiting' | 'settled' }[] = [];
       for (const x of rows) {
         const last = await lastDayIn(tx, org, x.employeeId, x.legalEntityId);
         if (!last || !x.targetPeriod || monthOf(x.targetPeriod) !== last.slice(0, 7)) continue;
         const f = await withPayScope(tx, [x.legalEntityId], () => tx.fnfSettlement.findFirst({ where: { organizationId: org, employeeId: x.employeeId, legalEntityId: x.legalEntityId }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true } }));
-        if (f?.status === 'settled' || f?.status === 'cancelled') continue;
+        if (f?.status === 'cancelled') continue;
+        // Answer 2300: settled before it was paid: payroll pays it in an off-cycle correction run (once).
+        if (f?.status === 'settled' && ((await correctionPaid(tx, org, x.id)) || (await withPayScope(tx, [x.legalEntityId], () => tx.oneTimePay.findFirst({ where: { organizationId: org, source: 'arrears', sourceRef: x.id, status: 'approved' }, select: { id: true } }))))) continue;
         const e = await tx.employee.findFirst({ where: { organizationId: org, id: x.employeeId }, select: { givenName: true, familyName: true, preferredName: true } });
-        out.push({ id: x.id, employeeId: x.employeeId, name: e ? (e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ')) : 'Former employee', on: dateOf(x.workOn), month: last.slice(0, 7), fnfId: f?.id ?? null });
+        out.push({ id: x.id, employeeId: x.employeeId, name: e ? (e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ')) : 'Former employee', on: dateOf(x.workOn), month: last.slice(0, 7), fnfId: f?.id ?? null, state: f?.status === 'settled' ? 'settled' : 'waiting' });
       }
       return out;
     });

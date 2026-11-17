@@ -313,6 +313,14 @@ export class IntegrityReviewService {
     return { url };
   }
 
+  /** Answer 2277: "opened the live console", once per visit (the page calls this when it opens). */
+  async liveOpened(ctx: TenantContext, userId: string, examId: string): Promise<void> {
+    await this.in(ctx, async (tx) => {
+      if (!(await tx.exam.findFirst({ where: { id: examId }, select: { id: true } }))) throw new NotFoundException('Test not found');
+      await AuditService.recordIn(tx, ctx, { actorUserId: userId, action: 'asmt.live_console.opened', entityType: 'exam', entityId: examId });
+    });
+  }
+
   /**
    * Answer 2268: the latest camera frame of each running attempt of a test, for the live console's tiles (short-lived
    * links). Watching is the proctor's job, so these are not audited one by one (the incident's frames are).

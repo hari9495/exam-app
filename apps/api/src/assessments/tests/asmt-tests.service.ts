@@ -45,6 +45,8 @@ export interface BuilderTest {
   passMark: number;
   expectedCandidates: number | null;
   proctoringMode: ProctorMode | 'custom';
+  /** AS-6 part 2 (answer 2272): candidates may use the approved assistant; every message is logged. */
+  aiAllowed: boolean;
   sections: BuilderSection[];
   checks: PublishCheck[];
   /** Draft and nobody has started it: the builder may change it. */
@@ -156,6 +158,7 @@ export class AsmtTestsService {
         passMark: exam.passCriteriaPercent,
         expectedCandidates: exam.expectedCandidates,
         proctoringMode: modeOf(exam),
+        aiAllowed: exam.aiAllowed,
         sections,
         checks,
         editable: exam.status === 'draft' && started === 0,
@@ -194,6 +197,13 @@ export class AsmtTestsService {
     await this.exams.update(ctx, userId, id, presetOf(mode) as Partial<UpdateExamDto> as UpdateExamDto);
     await this.audit.record(ctx, { actorUserId: userId, action: 'exam.proctoring_mode_set', entityType: 'exam', entityId: id, metadata: { mode } });
     return { mode };
+  }
+
+  /** AS-6 part 2 (answer 2272): the AI-allowed switch (a locked test refuses, as any other change). */
+  async setAiAllowed(ctx: TenantContext, userId: string, id: string, allowed: boolean) {
+    await this.exams.update(ctx, userId, id, { aiAllowed: allowed } as UpdateExamDto);
+    await this.audit.record(ctx, { actorUserId: userId, action: 'exam.ai_allowed_set', entityType: 'exam', entityId: id, metadata: { allowed } });
+    return { aiAllowed: allowed };
   }
 
   /** asmt.high_stakes: ask another person to approve this test as it is now. */

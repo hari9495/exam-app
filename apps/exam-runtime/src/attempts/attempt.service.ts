@@ -223,6 +223,8 @@ export interface RunnerInfo {
   timeCreditCapMinutes: number;
   offlineCreditSeconds: number;
   surveyDone: boolean;
+  /** AS-6 part 2 (answer 2272): the approved assistant is allowed in this test. */
+  aiAllowed: boolean;
 }
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
@@ -513,7 +515,7 @@ export class AttemptService {
     });
   }
 
-  private async runnerInfo(tx: Prisma.TransactionClient, organizationId: string, exam: { calculator: string; breaksAllowed: number; breakMinutes: number }, attempt: Attempt): Promise<RunnerInfo> {
+  private async runnerInfo(tx: Prisma.TransactionClient, organizationId: string, exam: { calculator: string; breaksAllowed: number; breakMinutes: number; aiAllowed?: boolean }, attempt: Attempt): Promise<RunnerInfo> {
     const onBreak = attempt.status === 'paused' && attempt.pausedReason === 'break' && attempt.pausedAt;
     return {
       calculator: (['basic', 'scientific'].includes(exam.calculator) ? exam.calculator : 'none') as RunnerInfo['calculator'],
@@ -525,6 +527,7 @@ export class AttemptService {
       timeCreditCapMinutes: await runnerSetting(tx, organizationId, 'asmt.time_credit_cap'),
       offlineCreditSeconds: Math.round(attempt.offlineCreditMs / 1000),
       surveyDone: Boolean(await tx.attemptSurvey.findUnique({ where: { attemptId: attempt.id }, select: { id: true } })),
+      aiAllowed: Boolean(exam.aiAllowed),
     };
   }
 

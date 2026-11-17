@@ -1769,3 +1769,12 @@ MT-PPL-C-13..15 and MT-TIM-L-39..40.
       it to one with a click.*
 2301. **The employee's leave list.** The employee picks from their own leave balances, so a type they have no balance
       line for is not offered. *Suggested: keep (it is the leave they could have taken).*
+
+### 2300 as built (branch `fix/yukthix-fnf-settled-corrections`)
+
+A correction whose full and final settlement was settled before it was paid stays on PAY-01 as "F&F settled: pay it in
+an off-cycle correction run". "Add to an off-cycle run" (`POST /payroll/corrections/:id/offcycle`, payroll.offcycle.prepare)
+works out its pay with the engine (the same per-component difference as the regular run) and adds it as one-time pay to
+an open off-cycle correction run of the month of the last day (made for the leaver's pay group when there is none),
+then opens that run. Refused while the F&F is open, twice, when a payslip already paid it, or when it changes no pay.
+e2e `payroll-late-corrections` (+1), `payroll-5a` (the settled state); kit +1.

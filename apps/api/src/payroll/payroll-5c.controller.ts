@@ -108,6 +108,14 @@ export class Payroll5cController {
     return this.runs.correctionNotPaid(ctx, this.user(req), id, cid, dto.reason);
   }
 
+  /** Answer 2300: a late correction whose F&F was already settled goes into an off-cycle correction run (one click). */
+  @Post('corrections/:cid/offcycle')
+  @HttpCode(200)
+  @RequirePermissions('payroll.offcycle.prepare')
+  correctionToOffcycle(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('cid', ParseUUIDPipe) cid: string) {
+    return this.runs.correctionToOffcycle(ctx, this.user(req), cid);
+  }
+
   @Post('runs/:id/special-days/corrections/:cid/undo-not-paid')
   @RequirePermissions('payroll.input.manage')
   correctionNotPaidUndo(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('cid', ParseUUIDPipe) cid: string) {

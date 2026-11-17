@@ -245,3 +245,12 @@ backups tier 2).
 2. **Same fix:** Tamil Nadu (Greater Chennai) PT deduction months become August and January, with the due date per the 4 Aug 2026 notice.
 3. **Batch H follows the H1–H16 builder list** in `reference/statutory/india-state-rules-2026-27.md`. Officially confirmed states go first; the rest wait for the CA.
 4. **CA checklist:** section 6 of that file goes out as a document for the CA.
+
+**Founder answers (17 Nov 2026, "ok for all"), 2310 to 2316 (batch A):**
+- 2310: hourly permission limits are a company setting, default 2 per month of up to 2 hours each; permission does not use leave; past the limit the request is refused (no automatic short day).
+- 2311: an employee may ask to cancel days not yet taken, up to the leave's last day; extend is a new linked request; both go to the approver; HR may cancel any day with a reason (audited).
+- 2312: a day with both office and remote punches follows a company setting (office wins / remote wins / first punch), default office wins.
+- 2313: notify up to 10 colleagues, told on approval (not on applying), with the dates only, never the type or reason.
+- 2314: each balance-grid edit needs a reason, is audited and posted as a ledger adjustment, and may not go below the leave type's minimum balance.
+- 2315: LOP reversal for locked months goes through payroll corrections, paid in the next run; for an open month the drawer sends HR to regularisation.
+- 2316: bulk shift, weekly-off and penalty-policy changes apply from a chosen date, never before the last locked attendance month.

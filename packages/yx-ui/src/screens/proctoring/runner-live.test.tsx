@@ -223,4 +223,48 @@ describe('AS-6 candidate pages', () => {
     render(<TestRunnerScreen live={{ ...LIVE_RUNNER, messages: { items: [], onRead: vi.fn(), onReply: vi.fn() } }} />);
     expect(screen.queryByText(/from your proctor/)).toBeNull();
   });
+
+  it('2280: the proctor\'s message shows in the paused view too, with Reply (the timer is not said to run)', async () => {
+    const onReply = vi.fn().mockResolvedValue(undefined);
+    render(<TestRunnerScreen live={{ ...LIVE_RUNNER, status: 'paused', pause: { title: 'Paused by your proctor', message: 'Your proctor paused the test.' }, messages: { items: [{ id: 'm1', body: 'Please show your desk to the camera.' }], onRead: vi.fn(), onReply } }} />);
+    expect(screen.getByText('Please show your desk to the camera.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Reply' }));
+    const d = screen.getByRole('dialog', { name: 'Reply to your proctor' });
+    expect(within(d).queryByText(/timer keeps running/)).not.toBeInTheDocument();
+    await ue.type(within(d).getByLabelText(/^Your message/), 'Done.');
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    expect(onReply).toHaveBeenCalledWith('Done.');
+  });
+
+  it('negative 2280: a pause without messages shows no message box', () => {
+    render(<TestRunnerScreen live={{ ...LIVE_RUNNER, status: 'paused', pause: { title: 'Paused by your proctor', message: 'Your proctor paused the test.' }, messages: { items: [], onRead: vi.fn(), onReply: vi.fn() } }} />);
+    expect(screen.queryByText(/from your proctor/)).toBeNull();
+  });
+
+  it('2272: the approved assistant: asks, shows the conversation and the questions left', async () => {
+    const onAsk = vi.fn().mockResolvedValue(undefined);
+    render(<TestRunnerScreen live={{ ...LIVE_RUNNER, assistant: { log: [{ id: 'a1', role: 'candidate', body: 'How do I count words?' }, { id: 'a2', role: 'assistant', body: 'Use a map.' }], turnsLeft: 19, limit: 20, onAsk } }} />);
+    expect(screen.getByText('Allowed AI assistant · every message is logged')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Assistant conversation' })).getByText('Use a map.')).toBeInTheDocument();
+    expect(screen.getByText('19 of 20 questions left')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Ask' }));
+    expect(screen.getByText('Write your question first.')).toBeInTheDocument();
+    expect(onAsk).not.toHaveBeenCalled();
+    await ue.type(screen.getByLabelText(/^Ask the assistant/), 'And ties?');
+    await ue.click(screen.getByRole('button', { name: 'Ask' }));
+    expect(onAsk).toHaveBeenCalledWith('And ties?');
+  });
+
+  it('negative 2272: no questions left disables asking; a failed answer says why; no assistant without the switch', async () => {
+    const { unmount } = render(<TestRunnerScreen live={{ ...LIVE_RUNNER, assistant: { log: [], turnsLeft: 0, limit: 10, onAsk: vi.fn() } }} />);
+    expect(screen.getByRole('button', { name: 'Ask' })).toBeDisabled();
+    unmount();
+    const { unmount: u2 } = render(<TestRunnerScreen live={{ ...LIVE_RUNNER, assistant: { log: [], turnsLeft: 5, limit: 10, onAsk: vi.fn().mockRejectedValue(new Error('The assistant could not answer just now.')) } }} />);
+    await ue.type(screen.getByLabelText(/^Ask the assistant/), 'Hi');
+    await ue.click(screen.getByRole('button', { name: 'Ask' }));
+    expect(await screen.findByText('The assistant could not answer just now.')).toBeInTheDocument();
+    u2();
+    render(<TestRunnerScreen live={LIVE_RUNNER} />);
+    expect(screen.queryByText(/Allowed AI assistant/)).toBeNull();
+  });
 });

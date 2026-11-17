@@ -12,6 +12,8 @@ export interface PrivacyView {
   consents: { what: string; test: string; at: string }[];
   recordings: { frames: number; deleteOn: string | null };
   face: { kept: boolean; deleteOn: string | null };
+  /** Answer 2279: files sent with accommodation requests; kept until decided, then the company's retention. */
+  accommodation: { files: number; deleteOn: string | null; pending: boolean };
   /** An incident or appeal holds the evidence (legal hold). */
   held: boolean;
   request: { status: 'waiting' | 'done'; requestedAt: string; doneAt: string | null; dueOn: string } | null;
@@ -54,6 +56,8 @@ export class PrivacyService {
       const faces = attempts.map((a) => a.faceEnrolment).filter((f) => f && (f.referenceImagePath || f.embedding));
       const faceAt = faces.map((f) => f!.capturedAt).filter((d): d is Date => d !== null).sort((a, b) => b.getTime() - a.getTime())[0];
       const r = await tx.asmtErasureRequest.findFirst({ where: { candidateId: who.candidateId }, orderBy: { requestedAt: 'desc' } });
+      const acc = await tx.accommodationRequest.findMany({ where: { invitation: { candidateId: who.candidateId }, evidencePath: { not: null } }, select: { status: true, decidedAt: true } });
+      const decided = acc.map((a) => a.decidedAt).filter((d): d is Date => d !== null).sort((a, b) => b.getTime() - a.getTime())[0];
       return {
         company: who.company,
         consents: attempts.flatMap((a) => [
@@ -62,6 +66,7 @@ export class PrivacyService {
         ]),
         recordings: { frames, deleteOn: frames && last ? new Date(last.getTime() + days * DAY).toISOString() : null },
         face: { kept: faces.length > 0, deleteOn: faces.length && faceAt ? new Date(faceAt.getTime() + days * DAY).toISOString() : null },
+        accommodation: { files: acc.length, pending: acc.some((a) => a.status === 'pending'), deleteOn: acc.length && decided ? new Date(decided.getTime() + days * DAY).toISOString() : null },
         held: await onHold(tx, ids),
         request: r ? { status: r.status as 'waiting' | 'done', requestedAt: r.requestedAt.toISOString(), doneAt: r.doneAt?.toISOString() ?? null, dueOn: new Date(r.requestedAt.getTime() + ERASE_WITHIN_DAYS * DAY).toISOString() } : null,
       };
@@ -100,9 +105,13 @@ export class PrivacyService {
           proctoringEvents: { orderBy: { occurredAt: 'asc' }, take: 2000, select: { eventType: true, occurredAt: true } },
           messages: { orderBy: { sentAt: 'asc' }, select: { fromCandidate: true, body: true, sentAt: true } },
           integrityAppeals: { select: { text: true, status: true, createdAt: true } },
+          id: true,
           faceEnrolment: { select: { status: true, consentAt: true, capturedAt: true } },
         },
       });
+      // AS-6 part 2: an AI-allowed test's assistant log is the candidate's data too.
+      const assistant = await tx.asmtAssistantMessage.findMany({ where: { attemptId: { in: attempts.map((a) => a.id) } }, orderBy: { createdAt: 'asc' }, take: 2000, select: { attemptId: true, role: true, body: true, createdAt: true } });
+      const accommodations = await tx.accommodationRequest.findMany({ where: { invitation: { candidateId: who.candidateId } }, orderBy: { createdAt: 'asc' }, select: { status: true, createdAt: true, decidedAt: true, evidenceName: true } });
       return {
         company: who.company,
         exportedAt: new Date().toISOString(),
@@ -117,8 +126,10 @@ export class PrivacyService {
           monitoringEvents: a.proctoringEvents.map((e) => ({ type: e.eventType, at: e.occurredAt })),
           messages: a.messages.map((m) => ({ from: m.fromCandidate ? 'you' : 'proctor', body: m.body, at: m.sentAt })),
           appeals: a.integrityAppeals,
+          assistant: assistant.filter((m) => m.attemptId === a.id).map((m) => ({ from: m.role === 'candidate' ? 'you' : 'assistant', body: m.body, at: m.createdAt })),
         })),
-        note: 'Camera frames and screen captures are not included as images. Your score shows on your result page once the company releases it.',
+        accommodationRequests: accommodations.map((a) => ({ status: a.status, sentAt: a.createdAt, decidedAt: a.decidedAt, file: a.evidenceName })),
+        note: 'Camera frames, screen captures and accommodation files are not included as files. Your score shows on your result page once the company releases it.',
       };
     });
     await this.audit.record(ctx, { actorUserId: null, action: 'candidate.data_exported', entityType: 'candidate', entityId: who.candidateId, metadata: { by: 'candidate' } });

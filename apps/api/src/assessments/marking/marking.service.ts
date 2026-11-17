@@ -46,6 +46,8 @@ export interface MarkingView {
   suggestion: { marks: number; reason: string | null } | null;
   /** Every human-marked answer of this attempt has its final mark: the marking can be finished. */
   attemptReady: boolean;
+  /** AS-6 part 2 (answer 2272): an AI-allowed test's assistant log for this question, and the turns on other questions. */
+  assistant: { turns: { role: 'candidate' | 'assistant'; body: string; at: string }[]; otherTurns: number } | null;
 }
 
 /** Answer 2271: the question's rubric as stored (criteria with marks), or none. */
@@ -103,7 +105,7 @@ export class MarkingService {
   private async load(tx: Tx, org: string, attemptId: string, questionId: string) {
     const a = await tx.attempt.findFirst({
       where: { id: attemptId, organizationId: org },
-      select: { id: true, status: true, candidateId: true, submittedAt: true, invitation: { select: { exam: { select: { title: true } }, candidate: { select: { name: true } } } }, answers: { select: { questionId: true, answerText: true, codeLanguage: true, answerFilesJson: true, marksAwarded: true, question: { select: { text: true, type: true, marks: true, rubric: true } } } } },
+      select: { id: true, status: true, candidateId: true, submittedAt: true, invitation: { select: { exam: { select: { title: true, aiAllowed: true } }, candidate: { select: { name: true } } } }, answers: { select: { questionId: true, answerText: true, codeLanguage: true, answerFilesJson: true, marksAwarded: true, question: { select: { text: true, type: true, marks: true, rubric: true } } } } },
     });
     const ans = a?.answers.find((x) => x.questionId === questionId);
     if (!a || !ans || !MANUAL.includes(ans.question.type)) throw new NotFoundException('Answer not found');
@@ -122,6 +124,8 @@ export class MarkingService {
       const minor = (await minorState(tx, org, a.candidateId, day)).minor;
       const s = mine && !minor ? await tx.answerAiSuggestion.findUnique({ where: { attemptId_questionId: { attemptId, questionId } } }) : null;
       const manual = a.answers.filter((x) => MANUAL.includes(x.question.type));
+      const log = a.invitation.exam.aiAllowed ? await tx.asmtAssistantMessage.findMany({ where: { attemptId }, orderBy: { createdAt: 'asc' }, take: 500 }) : null;
+      const here = log?.filter((m) => m.questionId === questionId) ?? [];
       return {
         attemptId,
         questionId,
@@ -136,6 +140,7 @@ export class MarkingService {
         minor,
         suggestion: s ? { marks: s.marks, reason: s.reason } : null,
         attemptReady: a.status === 'pending_manual_grade' && manual.every((x) => x.marksAwarded !== null),
+        assistant: log ? { turns: here.map((m) => ({ role: m.role as 'candidate' | 'assistant', body: m.body, at: m.createdAt.toISOString() })), otherTurns: log.filter((m) => m.role === 'candidate' && m.questionId !== questionId).length } : null,
       };
     });
   }

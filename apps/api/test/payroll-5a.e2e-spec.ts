@@ -534,7 +534,7 @@ describe('Payroll batch 5a', () => {
       expect(((await api('payAdminB', 'get', '/payroll/leave-types').expect(200)).body as { code: string }[]).some((t) => t.code === 'LWP')).toBe(false);
     });
 
-    it('2283: for someone who left in the locked month the correction goes to their F&F and waits there until it is settled', async () => {
+    it('2283: for someone who left in the locked month the correction goes to their F&F; once settled it shows as settled (2300)', async () => {
       // The leaver's last day was in the locked month, so the next open payroll (this month) no longer pays them.
       await inA((tx) => tx.employment.updateMany({ where: { organizationId: org.A.id, employeeId: ids.leaverEmp }, data: { exitedOn: new Date(`${lockMonth}-20T00:00:00Z`) } }));
       const leaving = (await correct(ids.leaverEmp, `${lockMonth}-11`, 'present').expect(201)).body;
@@ -548,7 +548,7 @@ describe('Payroll batch 5a', () => {
       expect(waiting).toEqual([expect.objectContaining({ id: leaving.id, employeeId: ids.leaverEmp, on: `${lockMonth}-11`, month: lockMonth, fnfId: null })]);
       await api('emp', 'get', '/payroll/corrections/waiting-fnf').expect(403);
       expect((await api('payAdminB', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body).toEqual([]);
-      // Once the full and final settlement is settled it no longer waits.
+      // The full and final settlement is settled before it was paid.
       const em = await inA((tx) => tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.leaverEmp } }));
       const person = await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.leaverEmp } }));
       await inA(async (tx) => {
@@ -556,7 +556,8 @@ describe('Payroll batch 5a', () => {
         const exit = await tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: em.id, employeeId: ids.leaverEmp, personId: person.personId!, exitType: 'resignation', initiatedBy: 'employee', reasonText: 'Moved city', submittedOn: new Date(`${lockMonth}-01T00:00:00Z`), noticePeriod: '0d', standardLwd: new Date(`${lockMonth}-20T00:00:00Z`), approvedLwd: new Date(`${lockMonth}-20T00:00:00Z`), status: 'accepted', acceptedAt: new Date() } });
         await tx.fnfSettlement.create({ data: { organizationId: org.A.id, legalEntityId: ids.entityA, employeeId: ids.leaverEmp, employmentId: em.id, exitCaseId: exit.id, exitType: 'resignation', inputRevision: 1, lwd: new Date(`${lockMonth}-20T00:00:00Z`), deadline: new Date(`${lockMonth}-22T00:00:00Z`), status: 'settled' } });
       });
-      expect((await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body).toEqual([]);
+      // Answer 2300: settled first, it stays listed as settled until payroll adds it to an off-cycle correction run.
+      expect((await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body).toEqual([expect.objectContaining({ id: leaving.id, state: 'settled' })]);
     });
   });
 

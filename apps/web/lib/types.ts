@@ -1600,6 +1600,8 @@ export interface AttemptRunnerInfo {
   timeCreditCapMinutes: number;
   offlineCreditSeconds: number;
   surveyDone: boolean;
+  /** AS-6 part 2 (answer 2272): the approved assistant is allowed in this test. */
+  aiAllowed?: boolean;
 }
 
 export type AttemptCurrent = AttemptPreview | AttemptState;

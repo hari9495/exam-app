@@ -104,3 +104,21 @@ describe('Fairness (live, answers 2019, 2165)', () => {
     expect(onDecide).toHaveBeenCalledWith('r1', 'revise', 'Two items favour one group');
   });
 });
+
+describe('PRC-19 AI-allowed test: assistant log (answer 2272)', () => {
+  it('the marker reads the log for this question and how much was asked elsewhere', () => {
+    wrap(<EvaluatorConsoleScreen live={liveEvaluator({}, { assistant: { turns: [{ role: 'candidate', body: 'List causes of seal failures.', at: '2026-11-17T05:00:00.000Z' }, { role: 'assistant', body: 'Low jaw temperature…', at: '2026-11-17T05:00:05.000Z' }], otherTurns: 2 } })} />);
+    expect(screen.getByText(/Using the approved assistant is not an integrity issue here/)).toBeInTheDocument();
+    expect(screen.getByText('Assistant log for this question · 1 turn')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Assistant log' })).getByText('Low jaw temperature…')).toBeInTheDocument();
+    expect(screen.getByText('2 more questions to the assistant on other questions of this test.')).toBeInTheDocument();
+  });
+
+  it('negative: not used on this question says so; a test that is not AI-allowed shows no log', () => {
+    const { unmount } = wrap(<EvaluatorConsoleScreen live={liveEvaluator({}, { assistant: { turns: [], otherTurns: 0 } })} />);
+    expect(screen.getByText('The candidate did not use the assistant on this question.')).toBeInTheDocument();
+    unmount();
+    wrap(<EvaluatorConsoleScreen live={liveEvaluator({}, { assistant: null })} />);
+    expect(screen.queryByText(/Assistant log/)).toBeNull();
+  });
+});

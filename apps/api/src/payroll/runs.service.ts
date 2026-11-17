@@ -19,7 +19,7 @@ import { addDays } from '../time/time-maths';
 import { PeriodsService as TimePeriodsService } from '../time/periods.service';
 import { ApprovalsEngine, type Notice, type StepSpec } from '../workflow/approvals-engine.service';
 import { ENGINE_VERSION, calculatePayslip, hashOf, type CalcComponent, type Segment, type Snapshot } from './calc';
-import { LISTED_SOURCES, componentDifference, correctionLabel, monthOf, paidCorrections, shouldBeLop, wasLop, withDayChanged } from './late-corrections';
+import { LISTED_SOURCES, PAID_SOURCES, componentDifference, correctionPaid, correctionLabel, monthOf, paidCorrections, shouldBeLop, wasLop, withDayChanged } from './late-corrections';
 import { monthRun } from './month-run';
 import type { ConfirmationDto } from './dto';
 import { principalPart } from './inputs.service';
@@ -1002,19 +1002,61 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const org = c.organizationId;
     const list = await paidCorrections(tx, org, run.legalEntityId, em.employeeId, run.periodStart);
     if (!list.length) return [];
-    const statutory = new Set(components.filter((x) => x.statutory).map((x) => x.code));
-    const types = await tx.leaveType.findMany({ where: { organizationId: org }, select: { name: true, code: true, paid: true } });
     const out: Snapshot['oneTime'] = [];
-    for (const x of list) {
-      const on = dateOf(x.workOn);
-      const delta = shouldBeLop(x, types) - (await wasLop(tx, org, em.employeeId, on));
-      if (!delta) continue;
-      const locked = await this.snapshot(tx, c, await monthRun(tx, org, { id: em.id, legalEntityId: run.legalEntityId }, on.slice(0, 7), run.preparedBy), em.id, rules, undefined, false);
-      const diff = componentDifference(calculatePayslip(locked, rules).lines, calculatePayslip(withDayChanged(locked, delta), rules).lines, statutory);
-      const label = correctionLabel(on, delta, x.decidedAt ? dateOf(x.decidedAt) : null);
-      for (const [code, amount] of diff) out.push({ id: x.id, code, amount: amount.toFixed(2), days: null, label });
-    }
+    for (const x of list) out.push(...(await this.correctionItems(tx, c, run, em, rules, components, x)));
     return out;
+  }
+
+  /** One correction's pay, per earning component: the locked month worked out again with the day as it should have been. */
+  private async correctionItems(tx: Tx, c: CompanyContext, run: Run, em: { id: string; employeeId: string }, rules: RuleSet[], components: { code: string; statutory: string | null }[], x: { id: string; workOn: Date; decidedAt: Date | null; source: string; change: Prisma.JsonValue }): Promise<Snapshot['oneTime']> {
+    const org = c.organizationId;
+    const statutory = new Set(components.filter((k) => k.statutory).map((k) => k.code));
+    const types = await tx.leaveType.findMany({ where: { organizationId: org }, select: { name: true, code: true, paid: true } });
+    const on = dateOf(x.workOn);
+    const delta = shouldBeLop(x, types) - (await wasLop(tx, org, em.employeeId, on));
+    if (!delta) return [];
+    const locked = await this.snapshot(tx, c, await monthRun(tx, org, { id: em.id, legalEntityId: run.legalEntityId }, on.slice(0, 7), run.preparedBy), em.id, rules, undefined, false);
+    const diff = componentDifference(calculatePayslip(locked, rules).lines, calculatePayslip(withDayChanged(locked, delta), rules).lines, statutory);
+    const label = correctionLabel(on, delta, x.decidedAt ? dateOf(x.decidedAt) : null);
+    return [...diff].map(([code, amount]) => ({ id: x.id, code, amount: amount.toFixed(2), days: null, label }));
+  }
+
+  /**
+   * Answer 2300: a late correction of someone whose full and final settlement was settled before it was approved is paid
+   * in an off-cycle correction run of the month of their last day (open, or made now for their pay group), as one-time
+   * pay under the same components (so PF, ESI and tax follow). Once; never if a payslip already paid it.
+   */
+  async correctionToOffcycle(ctx: TenantContext, user: ScopeUser, correctionId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const x = await tx.payCorrection.findFirst({ where: { organizationId: org, id: correctionId, status: 'approved', source: { in: PAID_SOURCES } } });
+      if (!x) throw new NotFoundException('Not found');
+      await requireEntity(tx, c, v, 'payroll.offcycle.prepare', x.legalEntityId);
+      await payScope(tx, [x.legalEntityId]);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`correction:${x.id}`}))`;
+      const f = await tx.fnfSettlement.findFirst({ where: { organizationId: org, employeeId: x.employeeId, legalEntityId: x.legalEntityId }, orderBy: { createdAt: 'desc' } });
+      if (!f || f.status !== 'settled') throw new ConflictException('Their full and final settlement is not settled yet: it pays this correction.');
+      if (await tx.oneTimePay.findFirst({ where: { organizationId: org, source: 'arrears', sourceRef: x.id, status: 'approved' }, select: { id: true } })) throw new ConflictException('This correction is already in an off-cycle run.');
+      if (await correctionPaid(tx, org, x.id)) throw new ConflictException('A payslip already paid this correction.');
+      const month = dateOf(f.lwd).slice(0, 7);
+      const { from, to } = monthRange(month);
+      const member = await tx.payGroupMember.findFirst({ where: { organizationId: org, employmentId: f.employmentId, validFrom: { lte: asDate(to) } }, orderBy: { validFrom: 'desc' } });
+      const group = member ? { id: member.payGroupId } : await tx.payGroup.findFirst({ where: { organizationId: org, legalEntityId: x.legalEntityId, status: 'active' }, orderBy: { createdAt: 'asc' } });
+      if (!group) throw new ConflictException('The person is in no pay group.');
+      let run = await tx.payrollRun.findFirst({ where: { organizationId: org, legalEntityId: x.legalEntityId, payGroupId: group.id, runType: 'offcycle', offcycleKind: 'correction', periodStart: asDate(from), status: { in: ['draft', 'calculated', 'in_review', 'reopened'] } }, orderBy: { createdAt: 'desc' } });
+      if (!run) {
+        run = await tx.payrollRun.create({ data: { organizationId: org, legalEntityId: x.legalEntityId, payGroupId: group.id, periodStart: asDate(from), periodEnd: asDate(to), preparedBy: v.userId!, runType: 'offcycle', offcycleKind: 'correction' } });
+        await audit(tx, c, 'payroll.run.created', 'payroll_run', run.id, { payGroupId: group.id, month, offcycle: 'correction', for: 'late_correction' });
+      }
+      const components = await tx.payComponent.findMany({ where: { organizationId: org }, select: { code: true, statutory: true } });
+      const items = await this.correctionItems(tx, c, run, { id: f.employmentId, employeeId: x.employeeId }, await this.rules.published(), components, x);
+      if (!items.length) throw new ConflictException('This correction changes no pay.');
+      for (const it of items)
+        await tx.oneTimePay.create({ data: { organizationId: org, legalEntityId: x.legalEntityId, employeeId: x.employeeId, employmentId: f.employmentId, componentCode: it.code, amount: it.amount, periodStart: run.periodStart, source: 'arrears', sourceRef: x.id, reason: x.reason.slice(0, 300), label: it.label ?? null, status: 'approved', runId: run.id, createdBy: v.userId! } });
+      await audit(tx, c, 'payroll.correction.to_offcycle', 'pay_correction', x.id, { runId: run.id, items: items.length, employeeId: x.employeeId });
+      return { runId: run.id, items: items.length };
+    }, RUN_TX);
   }
 
   /** Earlier sub-periods of the month (approved): taxable pay, PT wage, basic, HRA and PT, for the run that ends the month. */
