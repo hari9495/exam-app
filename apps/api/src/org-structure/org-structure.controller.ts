@@ -391,7 +391,7 @@ export class OrgStructureController {
   }
 
   @Put('settings')
-  @RequireAnyPermission('org.settings.manage', 'leave.settings.manage', 'expense.policy.manage', 'perf.setup.manage', 'assessments.settings.manage')
+  @RequireAnyPermission('org.settings.manage', 'leave.settings.manage', 'expense.policy.manage', 'perf.setup.manage', 'assessments.settings.manage', 'benefits.settings.manage')
   async setSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettingDto) {
     ownSession(req);
     await this.manageSetting(req, dto.key, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));

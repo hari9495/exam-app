@@ -277,6 +277,22 @@ export class LoanChangeDto {
   reason!: string;
 }
 
+/** D14 (answers 2404, 2405): the loan type the SBI rate is read for, and the company's exempt mark with its reason. */
+export class LoanPerquisiteDto {
+  @IsIn(['housing', 'vehicle', 'education', 'personal', 'other'])
+  purpose!: 'housing' | 'vehicle' | 'education' | 'personal' | 'other';
+
+  /** Exempt: medical treatment of a disease named in Rule 3A (the only exemption a company marks). */
+  @IsBoolean()
+  exempt!: boolean;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(5, 300)
+  reason?: string;
+}
+
 /** PAY-19: a month's court-order deduction paid to the court. */
 export class RemittanceDto {
   @Matches(MONTH)

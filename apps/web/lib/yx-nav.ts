@@ -170,6 +170,8 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '4.8': ['/yx/settings/finance/expenses-and-travel', '/yx/settings/expenses'],
   '4.9': ['/yx/settings/contract-labour'],
   '4.10': ['/yx/payroll/ewa'],
+  // B8/E5: Benefits & FBP, the flexible benefit plan (answer 2411).
+  '4.11': ['/yx/settings/benefits'],
   '5.1': morePage('5.1'),
   '5.2': ['/yx/settings/letters'],
   '5.3': ['/yx/settings/letters'],

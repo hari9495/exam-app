@@ -100,3 +100,5 @@ export type { RepayInput, RepayRoute } from '../payments-live';
 // Compliance (CMP-01, 03, 04, 05, 06, 08, 13 · ops/compliance.tsx): designed screens with `live`.
 export { StatutoryHubScreen, RegistersScreen, Form16BulkScreen, RulesBrowserScreen, ConsultantTdsScreen, MissingIdsScreen } from '../../ops/compliance';
 export type { LiveStatutoryHub, LiveRegisters, LiveForm16, LiveRules, LiveConsultantTds, LiveTdsReturns, LiveChallanSheet, SectionChallan, CertificateImport, LiveMissingIds, CorrectionInput } from '../../ops/compliance-live';
+// Settings 4.11 Benefits & FBP (B8/E5): the designed page with the company's flexible components, and the component sheet.
+export { FlexComponentSheet, fbpSettingsChanges, fbpSettingsPage, type FbpSettingsData, type FlexComponentInput, type FlexComponentView } from '../../settings/benefits-live';

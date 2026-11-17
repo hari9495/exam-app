@@ -64,6 +64,8 @@ export const FNF_COMPONENTS: StarterComponent[] = [
 export const MODULE_COMPONENTS: StarterComponent[] = [
   { code: 'exp_reimb', name: 'Expense reimbursement', kind: 'reimbursement', taxable: false, prorated: false, inCtc: false },
   { code: 'exp_taxable', name: 'Taxable expense reimbursement', kind: 'earning', prorated: false, inCtc: false },
+  // B8/E5: the unclaimed flexible benefit balance, taxable salary (answer 2406).
+  { code: 'fbp_unclaimed', name: 'Unclaimed flexible benefits', kind: 'earning', prorated: false, inCtc: false },
   { code: 'perf_bonus', name: 'Performance bonus', kind: 'earning', ptWage: true, codeExclusion: true, prorated: false, inCtc: false },
   // HIR-12 answer 231: a referral bonus HR marks paid in Hiring › All referrals (taxable; flags as the performance bonus).
   { code: 'referral_bonus', name: 'Referral bonus', kind: 'earning', ptWage: true, codeExclusion: true, prorated: false, inCtc: false },

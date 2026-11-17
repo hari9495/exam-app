@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { projectTax, type TaxInputs, type TaxProjection } from './tax';
-import { Citation, RuleSet, cite, StatutoryError, bonus, codeWage, deductionCap, esi, exitExempt, gratuity, inForce, injury, lwf, maternity, minWage, minWageTableFor, pf, pt, subsistence } from '../statutory/evaluator';
+import { Citation, RuleSet, cite, StatutoryError, bonus, codeWage, deductionCap, esi, exitExempt, gratuity, inForce, injury, loanPerquisite, lwf, maternity, minWage, minWageTableFor, pf, pt, subsistence, type PerqLoanIn } from '../statutory/evaluator';
 
 // The payroll calculation (M03-BUILD-DESIGN §9.4, PAY-3.04 … 3.16): a pure function of one person's month snapshot and the
 // rule sets. It reads no database and no clock, so a payslip can be reproduced from its snapshot with the rule versions it
@@ -83,6 +83,8 @@ export interface Snapshot {
   held: boolean;
   /** Batch 5e: the tax inputs (absent before 5e; then no TDS line). */
   tax?: TaxInputs | null;
+  /** D14: the person's open loans and advances for the loan perquisite (absent before D14; then none). */
+  perqLoans?: PerqLoanIn[];
   /**
    * Batch 5g: an off-cycle run (absent = the regular payslip). `fnf` is the leaver's last pay: salary to the last day plus
    * the settlement items. The others pay only their items: no salary, no monthly PT, LWF or provisions, and TDS is the
@@ -329,6 +331,17 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
         taxable = D(taxable).sub(r.exempt).toFixed(2);
         add({ code: `${code}_exempt`, name: `${nameOf(code, code)} exempt from tax`, kind: 'info', segmentNo: 0, amount: r.exempt, explanation: `${rupees(r.exempt)} is exempt from income tax (${r.section}).`, rule: r.citation });
       }
+    // D14 (answers 2404, 2405): the loan perquisite on the month's maximum outstanding is an information line and taxable:
+    // it joins the year's perquisites (Form 12BA / Form No. 123), not salary. No SBI rate loaded: nothing (the run's checks say so).
+    const perqRs = !itemsOnly && s.perqLoans?.length ? rule('IN.PERQ-LOAN') : null;
+    let perqMonth = ZERO;
+    if (perqRs && s.perqLoans) {
+      const r = loanPerquisite(perqRs, { loans: s.perqLoans });
+      perqMonth = r.total;
+      for (const l of r.lines.filter((x) => x.value.gt(0))) {
+        add({ code: 'loan_perquisite', name: 'Loan perquisite (taxable, not paid)', kind: 'info', segmentNo: 0, amount: l.value, explanation: `Interest benefit on a loan: ${rupees(l.maxOutstanding)}, the most owed this month, × (SBI rate ${l.refRate}% − loan rate ${D(s.perqLoans.find((x) => x.id === l.id)?.ratePct ?? 0).toString()}%) ÷ 12. Counted for income tax; not paid to you.`, rule: r.citation, sourceRef: l.id ?? undefined });
+      }
+    }
     if (itemsOnly) {
       // The extra tax for the year that these items cause (the year's pay with and without them), deducted in full now.
       const t = s.tax;
@@ -340,7 +353,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: extra, explanation: `The year's tax with this payment ${rupees(withItems.tax.total)} less without it ${rupees(without.tax.total)} (${withItems.regime} regime), deducted in full now.`, rule: tdsRs ? cite(tdsRs) : undefined });
     } else {
       const plus = (x: string, y?: string) => D(x).add(y ?? 0).toFixed(2);
-      tax = projectTax(s.tax, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
+      tax = projectTax(perqMonth.gt(0) ? { ...s.tax, perquisites: plus(s.tax.perquisites, perqMonth.toFixed(2)) } : s.tax, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: D(tax.monthTds), explanation: `Tax for the year ${rupees(tax.tax.total)} (${tax.regime} regime) less ${rupees(tax.alreadyDeducted)} already deducted, over ${tax.remainingPeriods} pay ${tax.remainingPeriods === 1 ? 'period' : 'periods'}.`, rule: tdsRs ? cite(tdsRs) : undefined });
     }
   }

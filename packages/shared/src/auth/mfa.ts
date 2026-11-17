@@ -112,6 +112,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'expense.policy.manage',
   // E4: paying advances moves money.
   'expense.payout.manage',
+  // B8/E5: flexible benefit amounts decide what people are paid.
+  'benefits.settings.manage',
   'payroll.offcycle.prepare',
   'payroll.arrears.approve',
   'payroll.fnf.manage',

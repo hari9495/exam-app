@@ -49,6 +49,8 @@ const RUN_TX = { timeout: 600_000 };
 const PERSON_TX = { timeout: 60_000 };
 // PAY-10.08 load test: chunks are worked on side by side (each person is its own transaction, so they never meet).
 const CONCURRENCY = Number(process.env.PAYROLL_CALC_CONCURRENCY ?? 8);
+/** The perquisites payroll writes itself are entered by no person. */
+const SYSTEM_USER = '00000000-0000-0000-0000-000000000000';
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const monthText = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const VIEW: PayKey[] = ['payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve'];
@@ -475,6 +477,15 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     if (pendingOneTime) found.push({ employeeId: null, checkKey: 'one_time_pending', severity: 'warn', message: `${pendingOneTime} one-time payments are still waiting for approval; they are paid when approved.` });
     const pendingLoans = await withPayScope(tx, [run.legalEntityId], () => tx.loan.count({ where: { organizationId: org, employeeId: { in: ids }, status: 'requested' } }));
     if (pendingLoans) found.push({ employeeId: null, checkKey: 'loans_pending', severity: 'warn', message: `${pendingLoans} loan requests are still waiting for approval.` });
+    // D14 (answer 2404): a loan that carries a loan perquisite while its SBI rate is not loaded: nothing is worked out for it.
+    const owed = await withPayScope(tx, [run.legalEntityId], () => tx.loan.findMany({ where: { organizationId: org, employeeId: { in: ids }, status: { in: ['active', 'paused'] }, loanType: { in: ['loan', 'advance'] }, outstanding: { gt: 0 } }, select: { employeeId: true, perqPurpose: true, perqExempt: true, outstanding: true } }));
+    if (owed.length) {
+      const perqRs = inForce(await this.rules.published(), 'IN.PERQ-LOAN', ['IN'], dateOf(run.periodEnd));
+      const rates = (perqRs?.values.rates ?? {}) as Record<string, string | null>;
+      const small = (id: string) => !!perqRs && owed.filter((l) => l.employeeId === id).reduce((t, l) => t.add(l.outstanding), D(0)).lte(D(perqRs.values.exemptAggregate as string));
+      const missing = new Set(owed.filter((l) => !l.perqExempt && (rates[l.perqPurpose] ?? null) === null && !small(l.employeeId)).map((l) => l.employeeId));
+      for (const id of missing) found.push({ employeeId: id, checkKey: 'loan_perq_rates', severity: 'warn', message: `${nameOf(id)}: loan perquisite rates are not loaded, so no loan perquisite is worked out. Ask your CA to load the SBI rates.` });
+    }
     // Approval blocks: open attendance exceptions (YX-LOCK-08, never waived); a crossed coverage threshold not handled (YX-PAY-53).
     const time = this.moduleRef.get(TimePeriodsService, { strict: false });
     const period = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } });
@@ -962,6 +973,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
     const recentDays = recent.reduce((t, x) => t + Number(monthRange(dateOf(x.periodStart).slice(0, 7)).to.slice(8)), 0);
     const courts = itemsOnly || !monthly ? [] : mine(await reads.once('courts', () => tx.courtOrder.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active', priorityDate: { lte: asDate(to) }, OR: [{ endOn: null }, { endOn: { gte: asDate(from) } }] } }))).filter((o) => dateOf(o.priorityDate) <= end && (!o.endOn || dateOf(o.endOn) >= start));
     const loans = itemsOnly || !monthly ? [] : mine(await reads.once('loans', () => tx.loan.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active', firstMonth: { lte: run.periodStart }, outstanding: { gt: 0 }, OR: [{ pausedUntil: null }, { pausedUntil: { lt: run.periodStart } }] }, orderBy: { firstMonth: 'asc' } })));
+    // D14: every disbursed loan or advance still owed (paused ones too) for the loan perquisite; an expense advance is not a loan.
+    // shortcut: the balance before this month's instalment is the month's maximum; a re-run of an approved month reads the balance after it.
+    const perqLoans = itemsOnly || !monthly ? [] : mine(await reads.once('perqLoans', () => tx.loan.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: { in: ['active', 'paused'] }, loanType: { in: ['loan', 'advance'] }, outstanding: { gt: 0 } }, orderBy: { firstMonth: 'asc' } })));
     const carries = itemsOnly || !monthly ? [] : mine(await reads.once('carries', () => tx.payCarryForward.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'open' }, orderBy: { createdAt: 'asc' } })));
     const overpaid = itemsOnly || !monthly ? [] : mine(await reads.once('overpaid', () => tx.overpaymentRecovery.findMany({ where: { organizationId: org, employmentId: { in: ids }, status: 'active' }, orderBy: { createdAt: 'asc' } })));
     const hold = mine(await reads.once('holds', () => tx.payrollWithhold.findMany({ where: { organizationId: org, employmentId: { in: ids }, releasedAt: null } })))[0] ?? null;
@@ -1010,6 +1024,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         carryForwards: carries.map((x) => ({ id: x.id, balance: x.amount.sub(x.recovered).toFixed(2) })),
         ...(overpaid.length ? { overpayments: overpaid.map((x) => { const left = x.amount.sub(x.recovered).sub(x.writtenOff); return { id: x.id, instalment: (offcycle === 'fnf' ? left : x.instalment).toFixed(2), balance: left.toFixed(2) }; }) } : {}),
       },
+      ...(perqLoans.length ? { perqLoans: perqLoans.map((l) => ({ id: l.id, purpose: l.perqPurpose, ratePct: l.interestRate.toFixed(2), maxOutstanding: l.outstanding.toFixed(2), exempt: l.perqExempt })) } : {}),
       options: {
         bonusRate: await option('bonus.rate'),
         bonusPayment: ((await option('bonus.payment')) ?? 'annual') as 'annual' | 'monthly',
@@ -1360,6 +1375,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         const left = Prisma.Decimal.max(D(0), loan.outstanding.sub(principalPart(loan.outstanding, loan.interestRate, D(l.amount))));
         await tx.loan.update({ where: { id: l.id }, data: { outstanding: left, ...(left.lte(0) ? { status: 'closed' } : {}) } });
       }
+      await this.loanPerquisites(tx, org, s, result.lines, now);
       for (const o of result.recoveries.courtOrders) if (!D(o.amount).isZero()) await tx.courtOrder.update({ where: { id: o.id }, data: { remittedTotal: { increment: D(o.amount) } } });
       for (const f of result.recoveries.carryForwards) {
         if (D(f.amount).isZero()) continue;
@@ -1411,6 +1427,23 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** The rule sets of the versions a payslip used (reproduction reads them, never today's). */
+  /**
+   * D14 (answer 2405): an approved payslip's loan perquisite lines go to the year's perquisites (Form 12BA / Form No. 123),
+   * one row per loan and month; a revised payslip replaces the month's rows (dropped loans are cancelled).
+   */
+  private async loanPerquisites(tx: Tx, org: string, s: { employeeId: string; employmentId: string; legalEntityId: string; periodStart: Date }, lines: { code: string; amount: string; explanation: string; sourceRef?: string }[], now: Date) {
+    const month = dateOf(s.periodStart).slice(0, 7);
+    const perq = lines.filter((l) => l.code === 'loan_perquisite' && l.sourceRef && D(l.amount).gt(0));
+    const refs = perq.map((l) => `loan:${l.sourceRef}:${month}`);
+    await tx.perquisite.updateMany({ where: { organizationId: org, employeeId: s.employeeId, kind: 'loan', periodStart: s.periodStart, cancelledAt: null, sourceRef: { notIn: refs } }, data: { cancelledAt: now } });
+    for (const [i, l] of perq.entries()) {
+      const data = { annualValue: D(l.amount), description: `${month}: ${l.explanation}`.slice(0, 300), cancelledAt: null };
+      const old = await tx.perquisite.findFirst({ where: { organizationId: org, sourceRef: refs[i] } });
+      if (old) await tx.perquisite.update({ where: { id: old.id }, data });
+      else await tx.perquisite.create({ data: { ...data, organizationId: org, legalEntityId: s.legalEntityId, employeeId: s.employeeId, employmentId: s.employmentId, taxYear: taxYearOf(month), kind: 'loan', enteredBy: SYSTEM_USER, sourceRef: refs[i], periodStart: s.periodStart } });
+    }
+  }
+
   private async rulesFor(versions: Record<string, string>): Promise<RuleSet[]> {
     const all = await this.rules.published();
     const wanted = Object.entries(versions).map(([k, ver]) => ({ statute: k.split('|')[0], jur: k.split('|')[1], ver }));

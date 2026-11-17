@@ -8951,6 +8951,10 @@ model Loan {
   firstMonth     DateTime  @map("first_month") @db.Date
   outstanding    Decimal   @db.Decimal(14, 2)
   perquisite     Boolean   @default(false)
+  /// D14: the SBI loan type for the loan perquisite (Rule 3(7)(i)), and the company's exempt mark with its reason (medical).
+  perqPurpose      String    @default("personal") @map("perq_purpose") @db.VarChar(10)
+  perqExempt       Boolean   @default(false) @map("perq_exempt")
+  perqExemptReason String?   @map("perq_exempt_reason") @db.VarChar(300)
   reason         String    @db.VarChar(300)
   status         String    @default("requested") @db.VarChar(10)
   pausedUntil    DateTime? @map("paused_until") @db.Date
@@ -9370,6 +9374,9 @@ model Perquisite {
   enteredBy      String    @map("entered_by") @db.Uuid
   cancelledAt    DateTime? @map("cancelled_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// D14: the month payroll wrote it for (the loan perquisite, one row per loan and month: "loan:<id>:<YYYY-MM>").
+  sourceRef      String?   @map("source_ref") @db.VarChar(80)
+  periodStart    DateTime? @map("period_start") @db.Date
 
   @@map("perquisites")
 }
@@ -14936,4 +14943,48 @@ model LeaveChange {
   decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
 
   @@map("leave_changes")
+}
+
+/// B8/E5 (founder answers 2406, 2407): the company's flexible components (Settings 4.11), claimed through an expense category.
+model FlexComponent {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  code                String   @db.VarChar(30)
+  name                String   @db.VarChar(80)
+  monthlyAmount       Decimal  @map("monthly_amount") @db.Decimal(14, 2)
+  taxableIfUnclaimed  Boolean  @default(true) @map("taxable_if_unclaimed")
+  expenseCategoryCode String?  @map("expense_category_code") @db.VarChar(30)
+  active              Boolean  @default(true)
+  version             Int      @default(1)
+  createdBy           String?  @map("created_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, code], map: "flex_components_code_key")
+  @@map("flex_components")
+}
+
+/// B8/E5: one person's component settled for a tax year (March or exit): paid as taxable, carried out or lapsed.
+model FlexSettlement {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  employmentId   String   @map("employment_id") @db.Uuid
+  componentId    String   @map("component_id") @db.Uuid
+  taxYear        String   @map("tax_year") @db.VarChar(7)
+  kind           String   @db.VarChar(8)
+  payMonth       DateTime @map("pay_month") @db.Date
+  entitled       Decimal  @db.Decimal(14, 2)
+  carriedIn      Decimal  @map("carried_in") @db.Decimal(14, 2)
+  claimed        Decimal  @db.Decimal(14, 2)
+  paidTaxable    Decimal  @map("paid_taxable") @db.Decimal(14, 2)
+  carriedOut     Decimal  @map("carried_out") @db.Decimal(14, 2)
+  lapsed         Decimal  @db.Decimal(14, 2)
+  oneTimePayId   String?  @map("one_time_pay_id") @db.Uuid
+  settledBy      String   @map("settled_by") @db.Uuid
+  settledAt      DateTime @default(now()) @map("settled_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, employeeId, componentId, taxYear], map: "flex_settlements_key")
+  @@map("flex_settlements")
 }

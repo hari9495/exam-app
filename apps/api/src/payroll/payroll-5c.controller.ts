@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeBulkDto, OneTimeDto, OneTimeListDto, ReasonDto, RemittanceDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SpecialDaysListDto, SubmitRunDto } from './dto-5c';
+import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanPerquisiteDto, LoanRequestDto, LopInputsDto, OneTimeBulkDto, OneTimeDto, OneTimeListDto, ReasonDto, RemittanceDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SpecialDaysListDto, SubmitRunDto } from './dto-5c';
 import { PayInputsService } from './inputs.service';
 import { PayRunsService } from './runs.service';
 import { LedgerService } from './ledger.service';
@@ -295,6 +295,13 @@ export class Payroll5cController {
   @RequirePermissions('payroll.loan.manage')
   changeLoan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LoanChangeDto) {
     return this.inputs.changeLoan(ctx, this.user(req), id, dto);
+  }
+
+  /** D14: the loan type for the loan perquisite and the exempt mark (medical), with a reason; never your own loan. */
+  @Put('loans/:id/perquisite')
+  @RequirePermissions('payroll.loan.manage')
+  setLoanPerquisite(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LoanPerquisiteDto) {
+    return this.inputs.setLoanPerquisite(ctx, this.user(req), id, dto);
   }
 
   /** PAY-19: each month's deduction for the order and whether it was paid to the court. */

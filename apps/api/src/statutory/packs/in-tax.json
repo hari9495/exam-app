@@ -381,6 +381,27 @@
           }
         }
       ]
+    },
+    {
+      "statute": "IN.PERQ-LOAN",
+      "jurisdiction": "IN",
+      "version": "TY2026-27",
+      "validFrom": "2026-04-01",
+      "validTo": "2027-03-31",
+      "lawVersion": "IT-2025",
+      "verify": true,
+      "source": "Income-tax Rules, Rule 3(7)(i): interest at the SBI rate for the same type of loan on the first day of the year, on the maximum outstanding monthly balance, less the interest charged. Exempt: loans for medical treatment of the diseases in Rule 3A, and loans totalling 20,000 or less (founder answer 2404). TODO: a CA enters the SBI rates per loan type and confirms the 20,000 limit (CA checklist).",
+      "values": {
+        "kind": "loan_perquisite",
+        "rates": { "housing": null, "vehicle": null, "education": null, "personal": null, "other": null },
+        "exemptAggregate": "20000",
+        "medicalExempt": true
+      },
+      "golden": [
+        { "name": "No SBI rate loaded: nothing is worked out", "fn": "loan_perquisite", "input": { "loans": [{ "purpose": "personal", "ratePct": "0", "maxOutstanding": "300000", "exempt": false }] }, "expected": { "total": "0", "ratesMissing": true, "smallTotal": false } },
+        { "name": "Loans totalling 20,000 (the limit): exempt", "fn": "loan_perquisite", "input": { "loans": [{ "purpose": "personal", "ratePct": "0", "maxOutstanding": "20000", "exempt": false }] }, "expected": { "total": "0", "ratesMissing": false, "smallTotal": true } },
+        { "name": "A medical loan: exempt", "fn": "loan_perquisite", "input": { "loans": [{ "purpose": "personal", "ratePct": "0", "maxOutstanding": "300000", "exempt": true }] }, "expected": { "total": "0", "ratesMissing": false, "smallTotal": false } }
+      ]
     }
   ]
 }

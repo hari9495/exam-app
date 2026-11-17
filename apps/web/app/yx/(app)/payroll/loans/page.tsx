@@ -27,6 +27,7 @@ export default function YxPayLoansPage() {
         onRequest: (x) => write('/loans', x),
         onChange: (l, x) => write(`/loans/${encodeURIComponent(l.id)}/schedule-changes`, x),
         onRepayments: (l) => read<LoanRepayments>(`/loans/${encodeURIComponent(l.id)}/repayments`),
+        onPerquisite: (l, x) => write(`/loans/${encodeURIComponent(l.id)}/perquisite`, x, 'PUT'),
       }}
     />
   );

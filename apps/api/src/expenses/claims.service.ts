@@ -8,6 +8,7 @@ import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, started, tenantWi
 import { ApprovalsEngine, type StepSpec } from '../workflow/approvals-engine.service';
 import { FilesService } from '../documents/files.service';
 import { holdersOf, hrApprovers } from '../time/time-core';
+import { flexClaimBlockers } from '../payroll/flex.service';
 import { COMPANY_PAID, checkLimit, dupKey, gstMathsProblem, gstinProblem, itcStatusOf, merchantsAlike, mileageAmount, perDiemAmount, receiptNeed, riskOf, ruleFor, taxablePart, tierFor } from './checks';
 import type { ApproveAmountDto, ClaimDto, LineDto } from './claims-dto';
 import { checkEinvoiceQr, keysFromPem } from './einvoice';
@@ -925,6 +926,8 @@ export class ExpenseClaimsService implements OnModuleInit {
         const b = pd[j].perDiem as { from: string; to: string };
         if (a.from <= b.to && b.from <= a.to) blockers.push({ lineId: pd[j].id, text: `Line ${pd[j].lineNo}: these per-diem days are already on line ${pd[i].lineNo}.` });
       }
+    // B8/E5 (answer 2407): a flexible-benefit category may not take the person's balance below zero.
+    blockers.push(...(await flexClaimBlockers(tx, org, claim, lines)));
     return { lines, blockers, flags };
   }
 

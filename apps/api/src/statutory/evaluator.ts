@@ -554,6 +554,12 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
       if (!amount(sec.single) || !amount(sec.aggregate)) problems.push(`Section ${k}: thresholds are whole rupees or null`);
     }
   }
+  if (rs.values.kind === 'loan_perquisite') {
+    const rates = (v.rates ?? {}) as Record<string, unknown>;
+    for (const k of Object.keys(rates)) if (!(PERQ_PURPOSES as readonly string[]).includes(k)) problems.push(`Loan type ${k} is not one of ${PERQ_PURPOSES.join(', ')}`);
+    for (const k of PERQ_PURPOSES) if (rates[k] !== null && !(typeof rates[k] === 'string' && /^\d{1,2}(\.\d{1,2})?$/.test(rates[k] as string))) problems.push(`The SBI rate for ${k} is a percent a year (like 9.15) or null until loaded`);
+    if (typeof v.exemptAggregate !== 'string' || !/^\d{1,10}$/.test(v.exemptAggregate)) problems.push('exemptAggregate is whole rupees');
+  }
   if (rs.validTo && rs.validTo < rs.validFrom) problems.push('The rule set ends before it starts');
   return problems;
 }
@@ -564,7 +570,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, eosg, f1099_due: f1099Due, pack_manifest: (rs: RuleSet) => ({ requires: (rs.values.requires as string[]).join(' ') }), wps_sif: (rs: RuleSet) => ({ currency: String(rs.values.currency) }), exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, eosg, f1099_due: f1099Due, pack_manifest: (rs: RuleSet) => ({ requires: (rs.values.requires as string[]).join(' ') }), wps_sif: (rs: RuleSet) => ({ currency: String(rs.values.currency) }), exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit, loan_perquisite: loanPerquisite };
 
 // Batch 5h (PAY-8.03, YX-TAX-16): TDS on consultant invoices from the reviewed rule set IN.TDS-NONSAL (kind tds_nonsalary).
 interface NonSalarySection {
@@ -619,6 +625,47 @@ export function tdsNonSalary(
     rate = certificateUsed.lt(base) || certificateUsed.isZero() ? normal : D(i.certificate.rate);
   } else tax = base.mul(normal);
   return { tds: round(tax, 'nearest'), base: money(base), rate: rate.toString(), reason, certificateUsed: money(certificateUsed), returnCode: sec.returnCode, citation: cite(rs) };
+}
+
+// D14 (founder answers 2404, 2405): the perquisite on a concessional loan, Income-tax Rules, Rule 3(7)(i), from the rule set
+// IN.PERQ-LOAN (kind loan_perquisite). Rates are the SBI rates per loan type on the first day of the tax year, entered by a
+// CA; a null rate means "not loaded" and nothing is worked out for that loan (never a guessed rate).
+export const PERQ_PURPOSES = ['housing', 'vehicle', 'education', 'personal', 'other'] as const;
+export interface PerqLoanIn {
+  id?: string;
+  purpose: string;
+  /** The loan's own yearly rate, percent. */
+  ratePct: Prisma.Decimal.Value;
+  /** The most owed on the loan in the month (before the month's instalment). */
+  maxOutstanding: Prisma.Decimal.Value;
+  /** The company marked it exempt (medical treatment, Rule 3A). */
+  exempt: boolean;
+}
+
+/**
+ * One month for one person: no perquisite when the loans add up to the exempt limit or less; else, per loan not marked
+ * exempt, maxOutstanding × (SBI rate − loan rate) / 12 / 100, never below zero, rounded half up to the paisa.
+ */
+export function loanPerquisite(rs: RuleSet, i: { loans: PerqLoanIn[] }) {
+  const v = need(rs, 'loan_perquisite');
+  const rates = (v.rates ?? {}) as Record<string, string | null>;
+  const aggregate = i.loans.reduce((t, l) => t.add(D(l.maxOutstanding)), ZERO);
+  const smallTotal = i.loans.length > 0 && aggregate.lte(D(v.exemptAggregate as string));
+  let ratesMissing = false;
+  const lines = i.loans.map((l) => {
+    const base = { id: l.id ?? null, purpose: l.purpose, maxOutstanding: money(D(l.maxOutstanding)), refRate: null as string | null, value: ZERO };
+    if (smallTotal) return { ...base, reason: 'small_total' as const };
+    if (l.exempt && v.medicalExempt !== false) return { ...base, reason: 'exempt' as const };
+    const ref = rates[l.purpose] ?? null;
+    if (ref === null) {
+      ratesMissing = true;
+      return { ...base, reason: 'rate_not_loaded' as const };
+    }
+    const gap = Prisma.Decimal.max(ZERO, D(ref).sub(D(l.ratePct)));
+    return { ...base, refRate: ref, value: money(D(l.maxOutstanding).mul(gap).div(1200)), reason: gap.isZero() ? ('not_below' as const) : ('charged' as const) };
+  });
+  const total = lines.reduce((t, l) => t.add(l.value), ZERO);
+  return { total, ratesMissing, smallTotal, aggregate: money(aggregate), lines, citation: cite(rs) };
 }
 
 /** Runs one golden case; returns the fields that differ (empty when it passes). */

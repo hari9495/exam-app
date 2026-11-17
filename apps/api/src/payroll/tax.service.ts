@@ -129,7 +129,8 @@ export async function buildTaxInputs(
     ];
     const opening = await tx.openingBalance.findMany({ where: { organizationId: org, employeeId: a.employeeId, fy: taxYear } });
     const head = (h: string) => opening.filter((o) => o.head === h).reduce((t, o) => t.add(o.amount), ZERO);
-    const perqs = await tx.perquisite.findMany({ where: { organizationId: org, employeeId: a.employeeId, taxYear, cancelledAt: null } });
+    // D14: payroll's own monthly rows (the loan perquisite) count for the months before this one; this month's comes from the calculation.
+    const perqs = await tx.perquisite.findMany({ where: { organizationId: org, employeeId: a.employeeId, taxYear, cancelledAt: null, OR: [{ periodStart: null }, { periodStart: { lt: a.periodStart } }] } });
     const outside = await tx.taxPaidOutside.aggregate({ where: { organizationId: org, employeeId: a.employeeId, taxYear, cancelledAt: null }, _sum: { amount: true } });
     const decl = ws ? await tx.taxDeclarationLine.findMany({ where: { organizationId: org, workspaceId: ws.id } }) : [];
     const counted = (l: (typeof decl)[number]) => (proofStage === 'declared' ? l.amount : ['approved', 'partly'].includes(l.proofStatus) ? (l.approvedAmount ?? ZERO) : ZERO);

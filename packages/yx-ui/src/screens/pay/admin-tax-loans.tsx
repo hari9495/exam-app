@@ -16,7 +16,7 @@ import { EntityPicker } from './live/setup';
 import type { LoadState } from './live/types';
 import type { SetupEntity } from './live/types-5b';
 import type { EwaDrawView, EwaPolicyView, EwaRecon, EwaRecoveryMonth } from './live/types-5i';
-import type { LoanChangeInput, LoanRepayments, LoanRequestInput, LoanView, ProofDecision, ProofQueueLine } from './live/types-ops';
+import type { LoanChangeInput, LoanPerquisite, LoanRepayments, LoanRequestInput, LoanView, ProofDecision, ProofQueueLine } from './live/types-ops';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup, Switch } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -97,10 +97,11 @@ type Loan = LoanRow & { pause?: LoanPause };
 const LOAN_PAUSES: Record<string, LoanPause> = { l3: { from: RUN_MONTH, months: 1, reason: 'Medical leave without pay', by: HR_ADMIN.name } };
 
 /**
- * Rule 3(7)(i) as amended in 2025: no perquisite when an employee's loans add up to ₹2,00,000 or less.
+ * Rule 3(7)(i) (founder answer 2404): no perquisite when an employee's loans add up to ₹20,000 or less. The live screen
+ * takes the limit from the rule set IN.PERQ-LOAN; this sample only shows the alert.
  * ponytail: assumes every company rate is below the SBI benchmark rate; compare with the benchmark once rates can exceed it.
  */
-const PERQ_FREE_LIMIT = 2_00_000;
+const PERQ_FREE_LIMIT = 20_000;
 function withPerquisite<T extends LoanRow>(ls: T[]): T[] {
   return ls.map((l) => {
     const aggregate = sumBy(
@@ -147,17 +148,18 @@ const EMPTY_LOAN_FILTERS: FilterValue[] = [
 ];
 
 /** PAY-17 · Loans & advances (T2 / T3): schedule, pre-closure, EMI pause. The app passes `live` (Payroll › Loans and advances). */
-export function LoansScreen(p: { state?: ViewState; openId?: string; action?: 'pause' | 'preclose'; rows?: LoanRow[]; live?: LiveLoans }) {
+export function LoansScreen(p: { state?: ViewState; openId?: string; action?: 'pause' | 'preclose' | 'perquisite'; rows?: LoanRow[]; live?: LiveLoans }) {
   return p.live ? <LiveLoans live={p.live} /> : <SampleLoans {...p} />;
 }
 
-function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?: ViewState; openId?: string; action?: 'pause' | 'preclose'; rows?: LoanRow[] }) {
+function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?: ViewState; openId?: string; action?: 'pause' | 'preclose' | 'perquisite'; rows?: LoanRow[] }) {
   const narrow = useNarrow(599);
   const [view, setView] = useState<ViewState>(state);
   const [list, setList] = useState<Loan[]>(() => withPerquisite(rows.map((l) => ({ ...l, pause: LOAN_PAUSES[l.id] }))));
   const [openKey, setOpenKey] = useState<string | null>(openId ?? null);
   const open = list.find((l) => l.id === openKey) ?? null;
-  const [dialog, setDialog] = useState<'pause' | 'preclose' | 'add' | null>(action ?? null);
+  const [dialog, setDialog] = useState<'pause' | 'preclose' | 'add' | 'perquisite' | null>(action ?? null);
+  const [perqOf, setPerqOf] = useState<Record<string, LoanPerquisite>>({ l3: { purpose: 'vehicle', exempt: false, reason: null } });
   const { toast } = useToast();
   const setNotice = (title: string) => toast({ tone: 'success', title });
   const [pauseMonths, setPauseMonths] = useState<number | null>(1);
@@ -329,7 +331,8 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
                 { label: 'Outstanding', value: formatINR(open.outstanding) },
               ]}
             />
-            {open.perquisite && <InlineAlert tone="info">Loans for this employee add up to more than ₹2,00,000 at a rate below the benchmark, so the interest difference is a taxable perquisite each month (shown on the payslip as an informational line).</InlineAlert>}
+            {open.perquisite && <InlineAlert tone="info">Loans for this employee add up to more than ₹20,000 at a rate below the SBI rate, so the interest difference is a taxable perquisite each month (shown on the payslip as an information line).</InlineAlert>}
+            <LoanPerquisitePanel value={perqOf[open.id] ?? PERQ_DEFAULT} onChange={open.status === 'Closed' ? undefined : () => setDialog('perquisite')} />
             {open.pause && <InlineAlert tone="warning">{pauseText(open.pause)}</InlineAlert>}
             {narrow ? (
               <section className="yx-pay-stack" aria-label="Schedule">
@@ -370,6 +373,7 @@ function SampleLoans({ state = 'ready', openId, action, rows = LOANS }: { state?
           </div>
         )}
       </Drawer>
+      {open && dialog === 'perquisite' && <LoanPerquisiteDialog who={open.employee} value={perqOf[open.id] ?? PERQ_DEFAULT} onClose={() => setDialog(null)} onSave={async (x) => setPerqOf((m) => ({ ...m, [open.id]: x }))} />}
       <Dialog
         open={dialog === 'pause'}
         onOpenChange={(o) => !o && setDialog(null)}
@@ -1574,6 +1578,8 @@ export interface LiveLoans {
   onChange: (loan: LoanView, x: LoanChangeInput) => Promise<unknown>;
   /** GET payroll/loans/:id/repayments (founder answer 5): the schedule and the pre-closure today. */
   onRepayments: (loan: LoanView) => Promise<LoanRepayments>;
+  /** D14: PUT payroll/loans/:id/perquisite, the loan type for the SBI rate and the exempt mark (payroll.loan.manage). */
+  onPerquisite?: (loan: LoanView, x: LoanPerquisite) => Promise<unknown>;
 }
 
 const LIVE_SCHED: Record<LoanRepayments['rows'][number]['status'], string> = { recovered: 'Recovered', paused: 'Paused', scheduled: 'Scheduled' };
@@ -1611,7 +1617,7 @@ function LiveLoans({ live }: { live: LiveLoans }) {
   const all = live.loans ?? [];
   const [openId, setOpenId] = useState<string | null>(null);
   const open = all.find((l) => l.id === openId) ?? null;
-  const [dialog, setDialog] = useState<'pause' | 'reschedule' | 'preclose' | 'add' | null>(null);
+  const [dialog, setDialog] = useState<'pause' | 'reschedule' | 'preclose' | 'add' | 'perquisite' | null>(null);
   const [filters, setFilters] = useState<FilterValue[]>(LIVE_LOAN_FILTERS);
   const [q, setQ] = useState('');
   const [months, setMonths] = useState<LoanRepayments | null | 'error'>(null);
@@ -1627,6 +1633,7 @@ function LiveLoans({ live }: { live: LiveLoans }) {
   const shown = all.filter((l) => filters.every((f) => matchesFilter(f.key === 'status' ? stateOf(l) : typeOf(l), f)) && (!query || live.nameOf(l.employeeId).toLowerCase().includes(query)));
   const openLoans = all.filter((l) => ['requested', 'active', 'paused'].includes(l.status));
   const canChange = (l: LoanView) => live.can.manage && !l.mine && ['active', 'paused'].includes(l.status);
+  const canPerq = (l: LoanView) => !!live.onPerquisite && live.can.manage && !l.mine && !['rejected', 'closed'].includes(l.status);
   const cols: TableColumn<LoanView>[] = [
     { key: 'employee', header: 'Employee', type: 'person', value: (r) => live.nameOf(r.employeeId), person: (r) => ({ name: live.nameOf(r.employeeId), secondary: r.mine ? 'You' : undefined }), width: 210 },
     { key: 'type', header: 'Type', value: typeOf, width: 190 },
@@ -1726,6 +1733,7 @@ function LiveLoans({ live }: { live: LiveLoans }) {
             {open.status === 'requested' && <InlineAlert tone="info">Waiting for approval. The approver decides in Approvals; the first instalment is recovered in {monthName(open.firstMonth)} once approved.</InlineAlert>}
             {open.mine && <InlineAlert tone="info">This is your own loan. Someone else in payroll changes it.</InlineAlert>}
             {open.loanType === 'expense' && <p className="yx-pay-note">An expense advance that was not settled in time, recovered from pay like a salary advance.</p>}
+            {open.perquisite && open.loanType !== 'expense' && <LoanPerquisitePanel value={open.perquisite} onChange={canPerq(open) ? () => setDialog('perquisite') : undefined} />}
             {months && months !== 'error' && <p className="yx-pay-muted">Recovered in payroll so far: {rupees(months.recovered)}.</p>}
             <LiveSchedule data={months} />
           </div>
@@ -1740,8 +1748,73 @@ function LiveLoans({ live }: { live: LiveLoans }) {
       {open && dialog === 'preclose' && (
         <LoanChange loan={open} who={live.nameOf(open.employeeId)} kind="preclose" closing={months && months !== 'error' ? months.closing : null} onClose={() => setDialog(null)} onSave={(x) => live.onChange(open, x)} />
       )}
+      {open && dialog === 'perquisite' && live.onPerquisite && (
+        <LoanPerquisiteDialog who={live.nameOf(open.employeeId)} value={open.perquisite ?? PERQ_DEFAULT} onClose={() => setDialog(null)} onSave={(x) => live.onPerquisite!(open, x)} />
+      )}
       {dialog === 'add' && <AddLoanDrawer onSearch={live.onSearch} onClose={() => setDialog(null)} onSave={live.onRequest} />}
     </PayFrame>
+  );
+}
+
+const PERQ_DEFAULT: LoanPerquisite = { purpose: 'personal', exempt: false, reason: null };
+const PERQ_PURPOSE_TEXT: Record<LoanPerquisite['purpose'], string> = { housing: 'Housing loan', vehicle: 'Vehicle loan', education: 'Education loan', personal: 'Personal loan', other: 'Other loan' };
+
+/** D14 (founder answers 2404, 2405): a loan's perquisite facts in its drawer; Change for payroll (never their own loan). */
+function LoanPerquisitePanel({ value, onChange }: { value: LoanPerquisite; onChange?: () => void }) {
+  return (
+    <section className="yx-pay-stack" aria-label="Loan perquisite">
+      <SectionTitle actions={onChange && <Button size="sm" onClick={onChange} aria-label="Change the loan perquisite">Change</Button>}>Loan perquisite</SectionTitle>
+      <DescriptionList
+        items={[
+          { label: 'SBI rate used', value: PERQ_PURPOSE_TEXT[value.purpose] },
+          { label: 'Exempt', value: value.exempt ? `Yes, medical treatment: ${value.reason ?? ''}` : 'No' },
+        ]}
+      />
+      <p className="yx-pay-note">Each month, the interest saved against the SBI rate on the most owed that month is taxable, shown on the payslip as an information line. Loans for medical treatment, and loans that add up to the small income-tax limit or less, are exempt.</p>
+    </section>
+  );
+}
+
+/** D14: the loan type for the SBI rate (pick one) and the exempt mark with its reason; the only way to switch the perquisite off. */
+function LoanPerquisiteDialog({ who, value, onClose, onSave }: { who: string; value: LoanPerquisite; onClose: () => void; onSave: (x: LoanPerquisite) => Promise<unknown> }) {
+  const [purpose, setPurpose] = useState<LoanPerquisite['purpose']>(value.purpose);
+  const [exempt, setExempt] = useState<'no' | 'yes'>(value.exempt ? 'yes' : 'no');
+  const [reason, setReason] = useState(value.reason ?? '');
+  const errors: FormErrorItem[] = exempt === 'yes' && reason.trim().length < 5 ? [{ fieldId: 'lp-why', message: 'Say why it is exempt, for example the treatment it pays for (at least 5 letters).' }] : [];
+  return (
+    <FormDialog
+      title="Loan perquisite"
+      description={who}
+      confirm="Save"
+      done={`Loan perquisite saved for ${who}.`}
+      errors={errors}
+      onClose={onClose}
+      onSave={() => onSave({ purpose, exempt: exempt === 'yes', reason: exempt === 'yes' ? reason.trim() : null })}
+    >
+      {(errorOf) => (
+        <>
+          <FormField id="lp-purpose" label="SBI rate for" required helper="Your CA loads the SBI rate for each loan type.">
+            <Select value={purpose} onChange={(v) => v && setPurpose(v as LoanPerquisite['purpose'])} options={Object.entries(PERQ_PURPOSE_TEXT).map(([v, label]) => ({ value: v, label }))} />
+          </FormField>
+          <FormField id="lp-exempt" label="Exempt from the perquisite" required>
+            <Segment
+              label="Exempt from the perquisite"
+              value={exempt}
+              onChange={setExempt}
+              options={[
+                { value: 'no', label: 'No' },
+                { value: 'yes', label: 'Yes, medical treatment' },
+              ]}
+            />
+          </FormField>
+          {exempt === 'yes' && (
+            <FormField id="lp-why" label="Reason" required error={errorOf('lp-why')} helper="The treatment it pays for (a disease named in Rule 3A).">
+              <TextArea rows={2} value={reason} onChange={setReason} maxLength={300} />
+            </FormField>
+          )}
+        </>
+      )}
+    </FormDialog>
   );
 }
 
