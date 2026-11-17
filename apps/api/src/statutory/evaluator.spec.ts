@@ -165,7 +165,7 @@ describe('state due dates for PT and LWF (founder item 12, packs/in-dues.json)',
     const all = [...sets, ...dues];
     expect(inForce(all, 'IN.CALENDAR', ['IN-KA'], '2026-09-01')?.version).toBe('KA-2025-v1');
     expect(inForce(all, 'IN.CALENDAR', ['IN'], '2026-09-01')?.jurisdiction).toBe('IN');
-    expect(inForce(all, 'IN.CALENDAR', ['IN-GJ'], '2026-09-01')).toBeNull();
+    expect(inForce(all, 'IN.CALENDAR', ['IN-ML'], '2026-09-01')).toBeNull();
   });
   it('a due day past the month end is the last day (leap year too); the national dates do not move', () => {
     const mh = dues.find((x) => x.jurisdiction === 'IN-MH')!;

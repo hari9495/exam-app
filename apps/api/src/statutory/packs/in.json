@@ -891,6 +891,155 @@
       ]
     },
     {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-AP",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Andhra Pradesh Tax on Professions, Trades, Callings and Employments Act, 1987, First Schedule entry 1 (official): https://apct.gov.in/apportal/AllActs/APPT/APPTSchedule.aspx . Monthly: up to 15,000 nil; 15,001 to 20,000 = 150; above 20,000 = 200. Read 17 Nov 2026; verify until the CA confirms (checklist items 3 and 24).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "15000",
+            "amount": "0"
+          },
+          {
+            "from": "15000.01",
+            "to": "20000",
+            "amount": "150"
+          },
+          {
+            "from": "20000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "15,000: nil (the slab edge)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "15,000.01: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "20,000: 150 (the slab edge)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "20,000.01: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "200"
+          }
+        },
+        {
+          "name": "February is not special: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "90000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-GJ",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Gujarat State Tax on Professions, Traders, Callings and Employments Act, 1976, rate of profession tax (official): https://commercialtax.gujarat.gov.in/vatwebsite/download/schedule/Rate_of_Profession_Tax.pdf . Monthly: up to 12,000 nil; above 12,000 = 200. Read 17 Nov 2026; verify until the CA confirms (checklist items 7 and 24).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "12000",
+            "amount": "0"
+          },
+          {
+            "from": "12000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "12,000: nil (the slab edge)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "12000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "12,000.01: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "12000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "200"
+          }
+        },
+        {
+          "name": "February is not special: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "90000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.LWF",
       "jurisdiction": "IN-KA",
       "version": "2024-v1",
