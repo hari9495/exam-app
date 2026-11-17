@@ -327,11 +327,13 @@ function MyWeekList({ row, pid }: { row: (string | null)[]; pid: string }) {
 }
 
 // TIM-05: the story shows the Hosur plant sample; the app passes `live` (the planner's real week).
-export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial, live, staffLive }: { persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night' | 'notice'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean; live?: LiveRoster; /** The employee's read-only week (the Staff story with real data). */ staffLive?: LiveStaffRoster }) {
-  return live ? <LiveRosterScreen live={live} /> : staffLive ? <LiveStaffRosterScreen live={staffLive} /> : <SampleRosterScreen {...{ persona, status, dialog, state, readOnly, partial }} />;
+export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial, live, staffLive, ticked, bulk }: { /** B6 stories: people already ticked, and a bulk change drawer open. */ ticked?: string[]; bulk?: BulkChange; persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night' | 'notice'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean; live?: LiveRoster; /** The employee's read-only week (the Staff story with real data). */ staffLive?: LiveStaffRoster }) {
+  return live ? <LiveRosterScreen live={live} /> : staffLive ? <LiveStaffRosterScreen live={staffLive} /> : <SampleRosterScreen {...{ persona, status, dialog, state, readOnly, partial, ticked, bulk }} />;
 }
 
-function SampleRosterScreen({ persona, status, dialog, state, readOnly, partial }: { persona: 'mgr' | 'hr' | 'emp'; status: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night' | 'notice'; state: ViewState; readOnly?: boolean; partial?: boolean }) {
+function SampleRosterScreen({ persona, status, dialog, state, readOnly, partial, ticked: ticked0 = [], bulk: bulk0 }: { persona: 'mgr' | 'hr' | 'emp'; status: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night' | 'notice'; state: ViewState; readOnly?: boolean; partial?: boolean; ticked?: string[]; bulk?: BulkChange }) {
+  const [ticked, setTicked] = useState<string[]>(ticked0);
+  const [bulk, setBulk] = useState<BulkChange | undefined>(bulk0);
   const why = useWhy();
   const done = useDone();
   const [dlg, setDlg] = useState(dialog);
@@ -391,6 +393,9 @@ function SampleRosterScreen({ persona, status, dialog, state, readOnly, partial 
           onPublish={() => { setRs('published'); setPublishedOn('today'); done('Roster published', 'Staff are notified.'); }}
           readOnly={staff}
           rules={PLANT_RULES}
+          selectedPeople={ticked}
+          onSelectedPeopleChange={setTicked}
+          bulkActions={() => <BulkButtons hr={persona === 'hr'} onPick={setBulk} />}
         />
         {!staff && <GuardsCard />}
       </div>
@@ -439,9 +444,107 @@ function SampleRosterScreen({ persona, status, dialog, state, readOnly, partial 
         onConfirm={() => { change(copy.next); setSt('ready'); setDlg(undefined); if (copy.filled) done(`${copy.filled} ${copy.filled === 1 ? 'cell' : 'cells'} copied from last week`); }}
       />
       <SwapDialog open={dlg === 'swap' && ready} onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={change} />
+      {bulk && ticked.length > 0 && <BulkChangeDrawer change={bulk} names={PLANT_PEOPLE.filter((p) => ticked.includes(p.id)).map((p) => p.name)} shifts={PLANT_SHIFTS.filter((x) => x.code !== 'OFF').map((x) => ({ id: x.code, label: `${x.name}${x.start ? ` · ${x.start} – ${x.end}` : ''}` }))} onSend={async () => setTicked([])} onClose={() => setBulk(undefined)} />}
       {/* Rule 5: Senthil's Thursday morning starts tomorrow, inside the 24 h notice, so publishing asks why. */}
       <NoticeDialog open={dlg === 'notice'} onOpenChange={(o) => !o && setDlg(undefined)} onPublish={() => { setDlg(undefined); setRs('published'); setPublishedOn('today'); done('Roster published', 'Staff are notified; Senthil is told why his Thursday changed.'); }} />
     </TimePage>
+  );
+}
+
+
+/* =====================================================================
+   TIM-05 · Bulk team changes (batch A B6, founder answer 2316): tick people in the roster, then change their shift,
+   weekly off or late-mark penalty policy from a chosen date. Never before the last locked attendance month (the server
+   refuses it with the reason); a penalty change starts on the 1st of a month.
+   ===================================================================== */
+
+export type BulkChange = 'shift' | 'weekly_off' | 'penalty';
+export interface BulkChangeInput {
+  change: BulkChange;
+  from: string;
+  shiftId?: string;
+  weeklyOffs?: number[];
+  lateMarksFree?: string;
+  lateMarkPenalty?: string;
+}
+const BULK_TITLE: Record<BulkChange, string> = { shift: 'Change shift', weekly_off: 'Change weekly off', penalty: 'Change penalty policy' };
+const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+export function BulkChangeDrawer({ change, names, shifts, onSend, onClose, from: from0 = null }: {
+  change: BulkChange;
+  /** The ticked people's names (the drawer lists up to five). */
+  names: string[];
+  /** Shifts in use, by id. */
+  shifts: { id: string; label: string }[];
+  onSend: (x: BulkChangeInput) => Promise<unknown>;
+  onClose: () => void;
+  from?: Date | null;
+}) {
+  const [from, setFrom] = useState<Date | null>(from0);
+  const [shiftId, setShiftId] = useState<string | null>(null);
+  const [offs, setOffs] = useState<number[]>([7]);
+  const [free, setFree] = useState('3');
+  const [cost, setCost] = useState('0.5');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const errors = [
+    ...(!from ? [{ fieldId: 'bk-from', message: 'Choose the date it starts from.' }] : change === 'penalty' && from.getDate() !== 1 ? [{ fieldId: 'bk-from', message: 'A penalty policy change starts on the 1st of a month.' }] : []),
+    ...(change === 'shift' && !shiftId ? [{ fieldId: 'bk-shift', message: 'Choose the new shift.' }] : []),
+    ...(change === 'weekly_off' && !offs.length ? [{ fieldId: 'bk-offs', message: 'Choose at least one weekly-off day.' }] : change === 'weekly_off' && offs.length > 3 ? [{ fieldId: 'bk-offs', message: 'Choose up to three weekly-off days.' }] : []),
+  ];
+  const shown = useSaveErrors(errors);
+  const who = `${names.length} ${names.length === 1 ? 'person' : 'people'}`;
+  const send = () => {
+    if (errors.length) {
+      shown.reveal();
+      document.getElementById(errors[0].fieldId)?.focus();
+      return;
+    }
+    const input: BulkChangeInput = { change, from: isoOfDate(from!), ...(change === 'shift' ? { shiftId: shiftId! } : change === 'weekly_off' ? { weeklyOffs: [...offs].sort(), ...(shiftId ? { shiftId } : {}) } : { lateMarksFree: free, lateMarkPenalty: cost }) };
+    void run('send', async () => {
+      await onSend(input);
+      toast({ tone: 'success', title: `${BULK_TITLE[change]}: done for ${who}`, description: `From ${formatDate(from!)}.` });
+      onClose();
+    });
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title={BULK_TITLE[change]} subtitle={`${who}: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` and ${names.length - 5} more` : ''}`} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy === 'send'} onClick={send}>Apply to {who}</Button></>}>
+      <div className="yx-tim-form">
+        <ErrorSummary errors={shown.shownErrors} />
+        {error && <InlineAlert tone="danger" title="Nothing was changed">{error}</InlineAlert>}
+        <FormField id="bk-from" label="From" required error={shown.errorOf('bk-from')} helper={change === 'penalty' ? 'The 1st of a month: late marks are counted a month at a time. Months before keep their policy.' : 'Not before the last locked attendance month. Past days from this date are worked out again.'}>
+          <DatePicker value={from} onChange={setFrom} />
+        </FormField>
+        {change === 'shift' && (
+          <FormField id="bk-shift" label="New shift" required error={shown.errorOf('bk-shift')} helper="Each person keeps their own weekly offs.">
+            <Select value={shiftId} onChange={setShiftId} options={shifts.map((s) => ({ value: s.id, label: s.label }))} />
+          </FormField>
+        )}
+        {change === 'weekly_off' && (
+          <>
+            <FormField id="bk-offs" label="Weekly-off days" required error={shown.errorOf('bk-offs')} helper="Up to three. Each person keeps their own shift on the other days.">
+              <div className="yx-tim-stack" role="group" aria-label="Weekly-off days">
+                {WEEKDAY_NAMES.map((n, i) => <Checkbox key={n} label={n} checked={offs.includes(i + 1)} onChange={(on) => setOffs(on ? [...offs, i + 1] : offs.filter((x) => x !== i + 1))} />)}
+              </div>
+            </FormField>
+            <FormField id="bk-shift" label="Shift for anyone on the location's usual shift" optional>
+              <Select value={shiftId} onChange={setShiftId} options={shifts.map((s) => ({ value: s.id, label: s.label }))} />
+            </FormField>
+          </>
+        )}
+        {change === 'penalty' && (
+          <>
+            <FormField label="Late marks a month without a deduction">
+              <Segment label="Free late marks" value={free} onChange={setFree} options={['0', '1', '2', '3', '4', '5', '6'].map((v) => ({ value: v, label: v }))} />
+            </FormField>
+            <FormField label="Each late mark over that costs">
+              <Segment label="Cost of each late mark" value={cost} onChange={setCost} options={[{ value: '0', label: 'Nothing' }, { value: '0.5', label: 'Half a day' }, { value: '1', label: 'A day' }]} />
+            </FormField>
+          </>
+        )}
+        <p className="yx-tim-muted">Saved in the audit trail. It can't start inside a locked attendance month.</p>
+      </div>
+    </Drawer>
   );
 }
 
@@ -475,6 +578,10 @@ export interface LiveRoster {
   openShifts?: LiveOpenShifts;
   /** Where the header's "Auto-roster" goes (TIM-34), for people who plan. */
   autoRosterHref?: string;
+  /** Batch A B6: one change for the ticked people from a date (absent: no row checkboxes). */
+  onBulk?: (x: BulkChangeInput & { employeeIds: string[] }) => Promise<unknown>;
+  /** The viewer may change the penalty policy (attendance.lock); the server checks each person again. */
+  canPenalty?: boolean;
 }
 
 /** TIM-05 Staff (founder decision 29 Oct 2026): the employee's read-only week, with their team's when the company allows it. */
@@ -499,6 +606,17 @@ const CHECK_KIND = { night: 'Night work', holiday: 'Holiday', rest: 'Rest', over
 const LAW_KINDS = ['night', 'licence'];
 
 /** Rule 5: publishing changes to shifts that start sooner than the notice needs a reason; the people are told at once. */
+/** The bulk bar's buttons: shift and weekly off for planners; the penalty policy for HR (attendance.lock). */
+function BulkButtons({ hr, onPick }: { hr: boolean; onPick: (c: BulkChange) => void }) {
+  return (
+    <>
+      <Button size="sm" onClick={() => onPick('shift')}>Change shift</Button>
+      <Button size="sm" onClick={() => onPick('weekly_off')}>Change weekly off</Button>
+      {hr && <Button size="sm" onClick={() => onPick('penalty')}>Change penalty policy</Button>}
+    </>
+  );
+}
+
 function NoticeDialog({ open, onOpenChange, onPublish }: { open: boolean; onOpenChange: (o: boolean) => void; onPublish: (reason: string) => Promise<unknown> | void }) {
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | undefined>();
@@ -561,6 +679,8 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
   const rules: RosterRules = { minRestHours: limits?.minRestHours ?? 11, maxWeeklyHours: limits?.maxWeeklyHours };
   const [notice, setNotice] = useState(false);
   const [offer, setOffer] = useState(false);
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [bulk, setBulk] = useState<BulkChange | undefined>();
   const publish = (reason?: string) =>
     run('publish', async () => {
       try {
@@ -648,6 +768,7 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
               hideStatus
               onPublish={() => void publish()}
               today={isoDate(d.today)}
+              {...(p.onBulk ? { selectedPeople: ticked, onSelectedPeopleChange: setTicked, bulkActions: () => <BulkButtons hr={!!p.canPenalty} onPick={setBulk} /> } : {})}
             />
           ) : (
             <EmptyState title="No one to plan" description="You plan the roster of your own team. HR can give you more people to plan." />
@@ -677,6 +798,18 @@ function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
           />
           {dlg === 'swap' && people.length > 0 && <SwapDialog open onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={change} ctx={swapCtx} />}
           <NoticeDialog open={notice} onOpenChange={setNotice} onPublish={(reason) => publish(reason)} />
+          {bulk && p.onBulk && ticked.length > 0 && (
+            <BulkChangeDrawer
+              change={bulk}
+              names={d.people.filter((x) => ticked.includes(x.id)).map((x) => x.name)}
+              shifts={d.shifts.filter((s) => s.start !== null && s.end !== null).map((s) => ({ id: s.id, label: `${s.name} · ${hhmm(s.start!)} – ${hhmm(s.end!)}` }))}
+              onSend={async (x) => {
+                await p.onBulk!({ ...x, employeeIds: ticked });
+                setTicked([]);
+              }}
+              onClose={() => setBulk(undefined)}
+            />
+          )}
         </div>
       ))}
     </TimePage>

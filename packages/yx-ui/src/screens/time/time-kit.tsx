@@ -29,6 +29,8 @@ import {
   type ClockState,
   type DayCode,
   type Punch,
+  PLACE_LABEL,
+  type WorkPlace,
 } from './time-logic';
 import { AUGUST, LATE_PAYROLL, LOCATIONS, ME, NOW_MIN, OT_ROWS, SEPTEMBER, TODAY, myReports, seesEveryone, timeCounts, timeScope, type TimeUser } from './time-data';
 import './time-kit.css';
@@ -115,6 +117,18 @@ function verdictOf(p: Punch): { label: string; tone: BadgeTone } | null {
   if (p.verdict === 'network') return { label: 'Office network', tone: 'success' };
   return { label: 'Location recorded', tone: 'info' };
 }
+/** A9: where a punch was made. The server stores it; a story punch has it worked out the same way from its checks. */
+export function punchPlace(p: Punch): WorkPlace {
+  if (p.place) return p.place;
+  if (p.refusal) return 'unknown';
+  if (NO_VERDICT.includes(p.source) || p.verdict === 'inside' || p.verdict === 'network') return 'office';
+  return p.verdict === 'field' ? 'remote' : 'unknown';
+}
+/** A9 (answer 2312): a day with both office and remote punches counts as office by default (company setting). */
+export function placeOfDay(punches: Punch[]): WorkPlace {
+  const known = punches.filter((p) => !p.refusal).map(punchPlace).filter((x) => x !== 'unknown');
+  return known.includes('office') ? 'office' : known.length ? 'remote' : 'unknown';
+}
 /** Place text without raw IPs (HR sees them) and with plain device wording. */
 const placeText = (p: Punch, showNetwork: boolean) => {
   // "(on duty)" is already said by the day's header and the source chip.
@@ -162,6 +176,7 @@ export function PunchList({ punches, showMapIndex, showNetwork = false, emptyTex
               <strong>{fmt12(p.time)}</strong> <span className="yx-tim-punches__kind">{KIND_LABEL[p.kind]}</span>
             </span>
             <span className="yx-tim-punches__src">
+              {punchPlace(p) !== 'unknown' && <Badge tone={punchPlace(p) === 'office' ? 'success' : 'info'}>{PLACE_LABEL[punchPlace(p)]}</Badge>}
               {showSource && <Badge tone="neutral">{source}</Badge>}
               {/* Recorded offline and already synced: accepted, so neutral. */}
               {p.offline && <Badge tone="neutral">Synced later</Badge>}
@@ -888,6 +903,8 @@ function dayFence(punches: Punch[]) {
 }
 
 export interface DayCardBodyProps {
+  /** Batch A A9: the day's place by the company's rule (office, remote or unknown); stories work it out. */
+  place?: WorkPlace;
   day: AttendanceDay;
   punches: Punch[];
   shift: { name: string; start: string; end: string; graceMin: number };
@@ -958,9 +975,12 @@ export function DayCardBody({
   hideMap,
   outcome = {},
   lateFree = 3,
+  place,
 }: DayCardBodyProps) {
   // Refused punches are listed with their reason but never counted.
   const punches = listed.filter((p) => !p.refusal);
+  // A9: the server's day place (by the company's rule for mixed days); stories work it out with the default rule.
+  const dayWhere = place ?? placeOfDay(listed);
   const monthLong = day.date.toLocaleDateString('en-IN', { month: 'long' });
   const monthYear = day.date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const openPayroll = latePayrollMonth();
@@ -1057,6 +1077,7 @@ export function DayCardBody({
           <span className="yx-tim-legend__chip" data-code={headCode}>{codeText(headCode)}</span>
           <strong>{DAY_CODE_LABEL[headCode]}</strong>
           {resolved ? <Badge tone="success">Resolved by HR</Badge> : headerNote && <span className="yx-tim-muted yx-tim-daynote">{headerNote}</span>}
+          {dayWhere !== 'unknown' && <Badge tone={dayWhere === 'office' ? 'success' : 'info'}>{dayWhere === 'office' ? 'Worked from the office' : 'Worked remotely'}</Badge>}
         </div>
       )}
       {locked && (

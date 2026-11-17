@@ -9,7 +9,7 @@ import { DayEngine } from './day-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { payOn } from '../payroll/fnf.service';
-import { ApplyLeaveDto, AdjustDto, CancelDaysDto, ExtendLeaveDto, LeavePlanDto } from './dto';
+import { ApplyLeaveDto, AdjustDto, CancelDaysDto, CorrectBalanceDto, ExtendLeaveDto, LeavePlanDto } from './dto';
 import {
   Facts,
   LeaveRules,
@@ -34,7 +34,7 @@ import {
   todayIn,
   visibleSql,
 } from './time-core';
-import { CountedDay, accrualsDue, addDays, applyFloors, countLeaveDays, daysBetween } from './time-maths';
+import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, ceilingLapses, countLeaveDays, daysBetween } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
 import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
@@ -552,6 +552,25 @@ export class LeaveService implements OnModuleInit {
       today,
       balances: await this.balancesIn(tx, c, f, today),
       approval: await this.hrApproval(tx, c, f, today, v, own),
+      approved: await this.approvedForHr(tx, c, f.employeeId, today),
+    }));
+  }
+
+  /**
+   * Answer 2325: the person's approved leave HR may still change (ending from two months back on), with its leave days
+   * and any change waiting, for "Cancel some days" on HR's leave card (POST hr/leave/:employeeId/requests/:id/cancel-days).
+   */
+  private async approvedForHr(tx: Tx, c: CompanyContext, employeeId: string, today: string) {
+    const org = c.organizationId;
+    const rows = await tx.leaveRequest.findMany({ where: { organizationId: org, employeeId, status: 'approved', toOn: { gte: asDate(addDays(today, -62)) } }, orderBy: { fromOn: 'desc' }, take: 20 });
+    const ids = rows.map((r) => r.id);
+    const types = new Map((await this.types(tx, org)).map((t) => [t.id, t]));
+    const days = ids.length ? await tx.leaveRequestDay.findMany({ where: { organizationId: org, requestId: { in: ids }, active: true, portion: { gt: 0 } }, orderBy: { leaveOn: 'asc' } }) : [];
+    const waiting = ids.length ? await tx.leaveChange.findMany({ where: { organizationId: org, requestId: { in: ids }, status: 'pending' } }) : [];
+    return rows.map((r) => ({
+      ...this.requestView(r, types.get(r.leaveTypeId), false),
+      leaveDays: days.filter((d) => d.requestId === r.id).map((d) => ({ on: dateOf(d.leaveOn), portion: num(d.portion) })),
+      changeWaiting: waiting.find((w) => w.requestId === r.id)?.days.map(dateOf) ?? null,
     }));
   }
 
@@ -1237,6 +1256,35 @@ export class LeaveService implements OnModuleInit {
     });
   }
 
+  /**
+   * Batch A D10 (answer 2314): HR corrects one balance in the grid to a new figure. The difference is posted as a ledger
+   * adjustment with HR's reason and audited (before and after); never below the leave type's minimum balance (its
+   * negative limit); never one's own. `from` is the balance HR saw: if it changed since, nothing is saved (409).
+   */
+  async correctBalance(ctx: TenantContext, user: ScopeUser, dto: CorrectBalanceDto) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    if (dto.to === dto.from) throw new BadRequestException('The new balance is the same as now. Change it first.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const own = await this.ownId(tx, c, v);
+      const today = new Date().toISOString().slice(0, 10);
+      if (!(await grantCovers(tx, c, v, own, 'leave.balance.adjust', dto.employeeId, today))) throw new NotFoundException('Not found');
+      if (dto.employeeId === own) throw new ForbiddenException('You cannot correct your own balance. Ask another HR admin.');
+      const t = await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, id: dto.leaveTypeId } });
+      if (!t || !hasBalance(t.kind)) throw new BadRequestException('Choose a leave type that has a balance.');
+      const min = -Number((t.rules as unknown as LeaveRules).negativeLimit ?? 0);
+      if (dto.to < min) throw new BadRequestException({ statusCode: 400, message: `${t.name} can't go below ${min} ${Math.abs(min) === 1 ? 'day' : 'days'}, the leave type's minimum balance.`, field: 'to' });
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`leave:${c.organizationId}:${dto.employeeId}`}))`;
+      const sum = await tx.leaveLedgerEntry.aggregate({ where: { organizationId: c.organizationId, employeeId: dto.employeeId, leaveTypeId: t.id }, _sum: { days: true } });
+      const now = Math.round(num(sum._sum.days) * 100) / 100;
+      if (now !== dto.from) throw new ConflictException({ statusCode: 409, code: 'BALANCE_CHANGED', message: `The ${t.name} balance is now ${now}, not ${dto.from}: it changed since you loaded it. Reload and try again.`, balance: now });
+      const days = Math.round((dto.to - now) * 100) / 100;
+      const e = await tx.leaveLedgerEntry.create({ data: { organizationId: c.organizationId, employeeId: dto.employeeId, leaveTypeId: t.id, entryOn: asDate(today), kind: 'adjustment', days, reason: dto.reason, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.balance.corrected', 'leave_ledger', e.id, { employeeId: dto.employeeId, type: t.code, from: now, to: dto.to, days, reason: dto.reason });
+      return { id: e.id, balance: dto.to, days };
+    });
+  }
+
   /** Optional holidays: choose up to the calendar's N of M (US-C-035). */
   async chooseHoliday(ctx: TenantContext, user: ScopeUser, holidayId: string, choose: boolean) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
@@ -1324,21 +1372,21 @@ export class LeaveService implements OnModuleInit {
         // TIM-27 Absence & notice: a type may keep or stop crediting during a long absence whatever the company says;
         // maternity always counts as service (Maternity Benefit Act), so it never stops crediting.
         const absences = (await tx.longAbsence.findMany({ where: { organizationId: org, employeeId: f.employeeId, toOn: { gte: asDate(year.start) } }, select: { fromOn: true, toOn: true, accrues: true, kind: true } })).filter((a) => a.kind !== 'maternity');
+        // Answer 2342: the credits already posted, and each type's balance now, for the ceiling.
+        const posted = new Set((await tx.leaveLedgerEntry.findMany({ where: { organizationId: org, employeeId: f.employeeId, periodKey: { not: null } }, select: { leaveTypeId: true, periodKey: true } })).map((x) => `${x.leaveTypeId}|${x.periodKey}`));
+        const held = new Map((await tx.leaveLedgerEntry.groupBy({ by: ['leaveTypeId'], where: { organizationId: org, employeeId: f.employeeId }, _sum: { days: true } })).map((g) => [g.leaveTypeId, num(g._sum.days)]));
         const data = policy.lines.flatMap((l) => {
           const t = types.get(l.leaveTypeId);
           if (!t || !t.active || !hasBalance(t.kind) || t.kind === 'comp_off') return [];
-          const own = (t.rules as unknown as LeaveRules).longAbsence;
-          const notEarning = absences.filter((a) => !creditsDuringAbsence(own, a.accrues)).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
-          return accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }).map((d) => ({
-            organizationId: org,
-            employeeId: f.employeeId,
-            leaveTypeId: t.id,
-            entryOn: asDate(d.on),
-            kind: 'accrual',
-            days: d.days,
-            periodKey: d.periodKey,
-            reason: l.frequency === 'monthly' ? `${t.name} credit for ${d.periodKey.slice(8)}` : `${t.name} for the year from ${year.start}`,
-          }));
+          const rules = t.rules as unknown as LeaveRules;
+          const notEarning = absences.filter((a) => !creditsDuringAbsence(rules.longAbsence, a.accrues)).map((a) => ({ from: dateOf(a.fromOn), to: dateOf(a.toOn) }));
+          const due = afterWait(accrualsDue({ ...l, annualDays: ent.get(l.leaveTypeId) ?? l.annualDays }, { yearStart: year.start, joinedOn: f.joinedOn, exitedOn: f.exitedOn, upTo: local, notEarning, ...(year.short ? { yearEnd: year.end } : {}) }), f.joinedOn, rules.accrualWaitMonths ?? 0);
+          const fresh = due.filter((d) => !posted.has(`${t.id}|${d.periodKey}`));
+          const row = (d: { on: string; days: number; periodKey: string }, kind: string, reason: string) => ({ organizationId: org, employeeId: f.employeeId, leaveTypeId: t.id, entryOn: asDate(d.on), kind, days: d.days, periodKey: d.periodKey, reason });
+          return [
+            ...fresh.map((d) => row(d, 'accrual', l.frequency === 'monthly' ? `${t.name} credit for ${d.periodKey.slice(8)}` : `${t.name} for the year from ${year.start}`)),
+            ...ceilingLapses(fresh, held.get(t.id) ?? 0, l.maxBalance).map((d) => row(d, 'lapse', `Over the ${l.maxBalance}-day ceiling for ${t.name}`)),
+          ];
         });
         if (data.length) n += (await tx.leaveLedgerEntry.createMany({ data, skipDuplicates: true })).count;
       }

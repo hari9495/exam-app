@@ -99,6 +99,7 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
       { section: 'Regularisation', key: 'attendance.regularise_monthly_limit', synonyms: ['missed punch', 'attendance fix'] },
       { section: 'WFH and on-duty', key: 'attendance.wfh_monthly_limit', synonyms: ['work from home'] },
       { section: 'WFH and on-duty', key: 'attendance.wfh_same_day' },
+      { section: 'WFH and on-duty', key: 'attendance.day_place_rule', synonyms: ['office or remote', 'hybrid', 'remote'] },
       { section: 'WFH and on-duty', key: 'attendance.presence' },
       { section: 'WFH and on-duty', key: 'attendance.on_duty.ahead_days', synonyms: ['od'] },
       { section: 'WFH and on-duty', key: 'attendance.on_duty.back_days' },

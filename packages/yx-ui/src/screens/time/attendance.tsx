@@ -2285,6 +2285,7 @@ function livePunch(p: PunchRow, zone: string): Punch {
     verdict,
     ...(p.accepted ? {} : { refusal: p.refusal ?? 'Refused' }),
     ...(p.note ? { note: p.note } : {}),
+    ...(p.place ? { place: p.place } : {}),
   };
 }
 
@@ -2449,6 +2450,7 @@ function LiveDayPanel({ load, day, viewer, person, employeeId, approver, monthDa
       <DayCardBody
         day={shown}
         punches={card.punches.map((p) => livePunch(p, card.zone))}
+        place={card.place}
         shift={shift}
         locked={card.locked}
         viewer={viewer}
@@ -2604,7 +2606,7 @@ function viewRows(days: PDay[], d: MyAttendance): DayViewRow[] {
   return days.map((x) => {
     const on = isoOf(x.date);
     const row = d.days.find((r) => r.on === on);
-    return { on, code: x.code, firstIn: at(row?.firstIn), lastOut: at(row?.lastOut), workedMin: row?.workedMinutes ?? null, shiftMin, lateMin: row?.lateMinutes ?? null, note: x.note };
+    return { on, code: x.code, firstIn: at(row?.firstIn), lastOut: at(row?.lastOut), workedMin: row?.workedMinutes ?? null, shiftMin, lateMin: row?.lateMinutes ?? null, note: x.note, place: row?.place };
   });
 }
 

@@ -482,7 +482,7 @@ const TYPE_WORDS: Record<string, string> = { CL: 'Casual leave', SL: 'Sick leave
 /** Non-breaking hyphen in Comp‑off so it never splits across lines. */
 const TYPE_SHORT: Record<string, string> = { CL: 'Casual', SL: 'Sick', EL: 'Earned', CO: 'Comp‑off', LWP: 'Unpaid' };
 const TYPE_NOTE: Record<string, string> = { CO: 'earned for work on an off day', LWP: 'no balance, unpaid' };
-interface Entitlement { code: string; /** Days a year. */ days?: number; /** Plant workers: 1 day per this many days worked. */ perWorked?: number }
+interface Entitlement { code: string; /** Days a year. */ days?: number; /** Plant workers: 1 day per this many days worked. */ perWorked?: number; /** Answer 2342: the most days held (ceiling). */ max?: number | null }
 interface Override { name: string; change: string; from: Date; to?: Date; note?: string; /** Ended early with "End": kept as history. */ ended?: boolean }
 interface PolicyRule { entity?: string; grade?: string; location?: string; empType?: string }
 interface PolicyRow {
@@ -731,6 +731,7 @@ function SampleLeaveTypeEditor({ section = 'counting', statutory = false }: { se
                     <FormField label="Ask for a document when leave is longer than (days)" helper="Leave blank to never ask"><Num initial={null} onDirty={touch} /></FormField>
                     <FormField label="Balance may go below zero by (days)"><Num initial={2} onDirty={touch} /></FormField>
                   </FieldRow>
+                  <FormField label="No credit for the first (months after joining)" helper="0: credits start when they join. Credits in those months are not paid later."><Num initial={0} onDirty={touch} /></FormField>
                   <FormField label="Dates when no one can take it">
                     <div className="yx-tim-stack">
                       {blocked.length === 0 ? (
@@ -887,6 +888,9 @@ function PolicyDrawerBody({ p, isNew, onChange, from, onFrom, today }: { p: Poli
                 <>
                   <FormField label={e.perWorked ? `${TYPE_WORDS[e.code]}: 1 day per how many days worked` : `${TYPE_WORDS[e.code]}: days a year`}>
                     <NumberField value={e.perWorked ?? e.days ?? null} min={0} onChange={(v) => setEnt(e.code, e.perWorked ? { perWorked: v ?? 0 } : { days: v ?? 0 })} />
+                  </FormField>
+                  <FormField label="Most days held (ceiling)" optional helper="Credits over it lapse. Empty: no ceiling.">
+                    <NumberField value={e.max ?? null} min={0} onChange={(v) => setEnt(e.code, { max: v })} />
                   </FormField>
                   <Button size="sm" onClick={() => setEditing(null)}>Done</Button>
                 </>
@@ -2561,6 +2565,9 @@ function LivePolicyDrawer({ d, policy, live, onOpen, onClose }: { d: TimeSetup; 
                           <FormField label="Carry forward up to (days)" optional helper="Empty: all of it.">
                             <NumberField value={l.carryForwardMax} onChange={(v) => setLine(l.leaveTypeId, { carryForwardMax: v })} decimals min={0} max={366} />
                           </FormField>
+                          <FormField label="Most days held (ceiling)" optional helper="Credits over it lapse. Empty: no ceiling.">
+                            <NumberField value={l.maxBalance ?? null} onChange={(v) => setLine(l.leaveTypeId, { maxBalance: v })} decimals min={0.5} max={400} />
+                          </FormField>
                         </FieldRow>
                         <FormField label="Credited">
                           <Segment label={`${t.name} credited`} value={l.frequency} onChange={(v) => setLine(l.leaveTypeId, { frequency: v })} options={[{ value: 'monthly', label: 'Every month' }, { value: 'yearly', label: 'All at the start of the year' }]} />
@@ -2848,6 +2855,9 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
                     <NumberField value={r.negativeLimit} onChange={(v) => set('negativeLimit', v ?? 0)} decimals min={0} max={30} />
                   </FormField>
                 </FieldRow>
+                <FormField id="lt-wait" label="No credit for the first (months after joining)" helper="0: credits start when they join. Credits in those months are not paid later.">
+                  <NumberField value={r.accrualWaitMonths ?? 0} onChange={(v) => set('accrualWaitMonths', v ?? 0)} min={0} max={24} />
+                </FormField>
                 {numField('hrApprovalAboveDays', 'HR approves after the manager above (days)', '0: always. Empty: never.')}
                 <Checkbox label="Medical: the reason and certificate are private to HR" description="Managers and approvers see only the dates and the certificate’s status." checked={r.medical} onChange={(v) => set('medical', v)} />
               </FormSection>

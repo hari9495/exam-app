@@ -44,6 +44,8 @@ export interface LeaveRules {
   medical: boolean;
   /** L6: how far below zero the balance may go. */
   negativeLimit: number;
+  /** Answer 2342 (Oracle O11): no credit in the first N months after joining (0: from the start). */
+  accrualWaitMonths: number;
   /** L5 encashment flag (payroll later). */
   encashable: boolean;
   /** HR approves after the manager when a request is longer than this many days (0: always; null: never). */
@@ -77,7 +79,7 @@ export interface PayStep {
   percent: number;
 }
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null };
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -98,6 +100,7 @@ export function parseRules(input: unknown): LeaveRules {
   if (r.noticeDays !== null && (!Number.isInteger(r.noticeDays) || r.noticeDays < 0 || r.noticeDays > 90)) throw new BadRequestException('Notice is 0 to 90 days.');
   if (r.noticeMode !== 'block' && r.noticeMode !== 'warn') throw new BadRequestException('Choose whether short notice is refused or only flagged.');
   if (!halfStep(r.negativeLimit, 0, 30)) throw new BadRequestException('The balance may go below zero by 0 to 30 days.');
+  if (!Number.isInteger(r.accrualWaitMonths) || r.accrualWaitMonths < 0 || r.accrualWaitMonths > 24) throw new BadRequestException('No credit for the first 0 to 24 months, in whole months.');
   if (r.minDays !== null && r.maxDays !== null && r.minDays > r.maxDays) throw new BadRequestException('The least days per request is more than the most.');
   if (r.maxDaysPerMonth !== null && !halfStep(r.maxDaysPerMonth, 0.5, 31)) throw new BadRequestException('Most days in a month is 0.5 to 31, in half days.');
   if (r.maxDaysPerMonth !== null && r.maxDays !== null && r.maxDays > r.maxDaysPerMonth) throw new BadRequestException(`Most days in one request is more than the monthly limit of ${r.maxDaysPerMonth}. A request that big could never be approved.`);
@@ -150,6 +153,8 @@ export interface PolicyLine {
   rounding: number;
   /** Days carried into the next leave year (null: all); the rest lapses (YX-LV-07). */
   carryForwardMax: number | null;
+  /** Answer 2342 (Oracle O10): the most days held at any time (null: no ceiling); a credit over it lapses at once. */
+  maxBalance?: number | null;
 }
 
 export function parseLines(input: unknown, typeIds: ReadonlySet<string>): PolicyLine[] {
@@ -157,7 +162,7 @@ export function parseLines(input: unknown, typeIds: ReadonlySet<string>): Policy
   const seen = new Set<string>();
   return input.map((x, i) => {
     if (!isObj(x)) throw new BadRequestException(`Line ${i + 1} is not in the expected shape.`);
-    for (const k of Object.keys(x)) if (!['leaveTypeId', 'annualDays', 'frequency', 'proRata', 'rounding', 'carryForwardMax'].includes(k)) throw new BadRequestException(`Line ${i + 1} has an unknown part "${k.slice(0, 20)}".`);
+    for (const k of Object.keys(x)) if (!['leaveTypeId', 'annualDays', 'frequency', 'proRata', 'rounding', 'carryForwardMax', 'maxBalance'].includes(k)) throw new BadRequestException(`Line ${i + 1} has an unknown part "${k.slice(0, 20)}".`);
     const id = String(x.leaveTypeId);
     if (!typeIds.has(id)) throw new BadRequestException(`Line ${i + 1}: choose a leave type of this company.`);
     if (seen.has(id)) throw new BadRequestException('Each leave type appears once in a policy.');
@@ -168,7 +173,10 @@ export function parseLines(input: unknown, typeIds: ReadonlySet<string>): Policy
     if (![0, 0.25, 0.5, 1].includes(x.rounding as number)) throw new BadRequestException(`Line ${i + 1}: round to none, 0.25, 0.5 or 1 day.`);
     const cf = x.carryForwardMax ?? null;
     if (cf !== null && !halfStep(cf, 0, 366)) throw new BadRequestException(`Line ${i + 1}: carry forward is 0 to 366 days.`);
-    return { leaveTypeId: id, annualDays: x.annualDays as number, frequency: x.frequency, proRata: x.proRata, rounding: x.rounding as number, carryForwardMax: cf as number | null };
+    const mx = x.maxBalance ?? null;
+    if (mx !== null && !halfStep(mx, 0.5, 400)) throw new BadRequestException(`Line ${i + 1}: the most days held is 0.5 to 400, in half days.`);
+    if (mx !== null && cf !== null && (cf as number) > (mx as number)) throw new BadRequestException(`Line ${i + 1}: carry forward is more than the most days held.`);
+    return { leaveTypeId: id, annualDays: x.annualDays as number, frequency: x.frequency, proRata: x.proRata, rounding: x.rounding as number, carryForwardMax: cf as number | null, ...(mx !== null ? { maxBalance: mx as number } : {}) };
   });
 }
 

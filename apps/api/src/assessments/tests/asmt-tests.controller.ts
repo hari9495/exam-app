@@ -11,6 +11,14 @@ import { RequirePermissions } from '../../rbac/permissions.decorator';
 import { PROCTOR_MODES, type ProctorMode } from '../asmt-rules';
 import { AsmtTestsService } from './asmt-tests.service';
 
+/** Answer 2307: the reason, needed while a fairness finding on the test is open. */
+export class RestoreTestDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 export class AiAllowedDto {
   @IsBoolean()
   allowed!: boolean;
@@ -118,8 +126,8 @@ export class AsmtTestsController {
   @Post(':id/restore')
   @HttpCode(200)
   @RequirePermissions('exam:manage')
-  restore(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
-    return this.tests.restore(ctx, userId, id);
+  restore(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RestoreTestDto) {
+    return this.tests.restore(ctx, userId, id, dto?.reason);
   }
 
   @Put(':id/proctoring-mode')

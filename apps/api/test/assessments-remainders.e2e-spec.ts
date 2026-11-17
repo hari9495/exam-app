@@ -197,4 +197,35 @@ describe('Assessments remainders', () => {
       expect((await api('writer', 'get', `/asmt/tests/${ids.restored}`).expect(200)).body.status).toBe('archived');
     });
   });
+
+  describe('2307 Restore asks why while a fairness finding is open', () => {
+    let exam = '';
+    beforeAll(async () => {
+      exam = (await api('writer', 'post', '/exams').send({ title: `Fairness retired ${run}` }).expect(201)).body.id as string;
+      await request(http).delete(`/api/v1/exams/${exam}`).set('Authorization', `Bearer ${token.writer}`).expect(200);
+      await inOrg(org.A.id, (tx) => tx.asmtFairnessReview.create({ data: { organizationId: org.A.id, examId: exam, finding: 'Pass rate for women is 70 % of the highest group', openedBy: users.writer, decision: 'retire', reason: 'Gap too wide for now', decidedBy: users.writer, decidedAt: new Date() } }));
+    });
+
+    it('negative: no reason, a short one or a bad body is a 400 and the test stays archived; another company gets 404', async () => {
+      expect((await api('writer', 'get', `/asmt/tests/${exam}`).expect(200)).body.restoreNeedsReason).toBe(true);
+      expect((await api('writer', 'post', `/asmt/tests/${exam}/restore`).expect(400)).body.code).toBe('REASON_NEEDED');
+      await api('writer', 'post', `/asmt/tests/${exam}/restore`).send({ reason: 'too short' }).expect(400);
+      await api('writer', 'post', `/asmt/tests/${exam}/restore`).send({ reason: 42 }).expect(400);
+      await api('writer', 'post', `/asmt/tests/${exam}/restore`).send({ reason: 'Questions fixed and re-checked by the panel', extra: 1 }).expect(400);
+      await api('reader', 'post', `/asmt/tests/${exam}/restore`).send({ reason: 'Questions fixed and re-checked by the panel' }).expect(403);
+      await api('adminB', 'post', `/asmt/tests/${exam}/restore`).send({ reason: 'Questions fixed and re-checked by the panel' }).expect(404);
+      expect((await api('writer', 'get', `/asmt/tests/${exam}`).expect(200)).body.status).toBe('archived');
+    });
+
+    it('with a reason of 10 letters or more it is restored, and the reason is in the audit entry', async () => {
+      expect((await api('writer', 'post', `/asmt/tests/${exam}/restore`).send({ reason: 'Questions fixed and re-checked by the panel' }).expect(200)).body).toEqual({ status: 'draft' });
+      const a = await inOrg(org.A.id, (tx) => tx.auditLog.findFirstOrThrow({ where: { organizationId: org.A.id, action: 'exam.restored', entityId: exam } }));
+      expect(JSON.parse(a.metadataJson ?? '{}')).toMatchObject({ status: 'draft', reason: 'Questions fixed and re-checked by the panel' });
+      // A finding decided "keep" is closed: Restore needs no reason.
+      await request(http).delete(`/api/v1/exams/${exam}`).set('Authorization', `Bearer ${token.writer}`).expect(200);
+      await inOrg(org.A.id, (tx) => tx.asmtFairnessReview.create({ data: { organizationId: org.A.id, examId: exam, finding: 'Re-checked', openedBy: users.writer, openedAt: new Date(Date.now() + 1000), decision: 'keep', reason: 'Within the four-fifths rule now', decidedBy: users.writer, decidedAt: new Date() } }));
+      expect((await api('writer', 'get', `/asmt/tests/${exam}`).expect(200)).body.restoreNeedsReason).toBe(false);
+      await api('writer', 'post', `/asmt/tests/${exam}/restore`).expect(200);
+    });
+  });
 });
