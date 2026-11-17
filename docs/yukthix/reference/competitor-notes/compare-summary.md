@@ -284,3 +284,4 @@ Reference: the Income Tax Department site's Accessibility menu (font size, satur
 - 2331: the menu is on the staff top bar, the sign-in pages, the candidate and careers pages, and the exam screens.
 - 2332: built as its own small batch right after batch A, before batch B.
 - 2333: after it is built, publish a WCAG 2.1 AA conformance statement, with known gaps listed honestly.
+- 2334 (17 Nov 2026, "good"): follow india.gov.in's Accessibility Tools panel as the layout reference: a grid of tiles in groups (Contrast: High contrast / Normal; Text size: Increase / Decrease / Reset; Text spacing and Line height as two separate tiles; Others: Big cursor). Add Big cursor; skip Hide images and the in-site Screen reader. Reduce motion and the stronger focus outline stay. Our own YukthiX design.
