@@ -81,9 +81,9 @@ test('a walk-in candidate registers and starts the exam without an email invite'
   await expect(page).toHaveURL(/\/welcome$/);
   await page.getByRole('button', { name: /skip practice/i }).click();
   await expect(page.getByText(examTitle)).toBeVisible();
-  await page.getByRole('button', { name: 'Enable camera' }).click();
+  await page.getByRole('button', { name: 'Turn on camera' }).click();
   await page.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await page.getByRole('button', { name: 'Start exam' }).click();
+  await page.getByRole('button', { name: 'Start test' }).click();
   await expect(page).toHaveURL(/\/exam$/);
   await expect(page.getByText('Walk-in test question: 2 + 2?')).toBeVisible();
 });

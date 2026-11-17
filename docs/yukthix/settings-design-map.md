@@ -1221,6 +1221,23 @@ Tests: API e2e `settings-s10-security` (6), `webhook-delivery` (the admin confir
       setting.*
 2223. **Live updates.** The bell checks every minute. *Suggested: keep; push later if staff ask.*
 
+## 2221 and 2222 as built (branch `feat/yukthix-asmt-remainders`, 17 Nov 2026)
+
+- **2221:** each CERT-In or DPDP report reminder (the breach clocks, lead hours before each due time) is also a console
+  notice (`breach_report_due`) for the same staff with the incidents key; the email stays.
+- **2222:** read notices are deleted nightly (`staff-notices-retention`, 02:25 IST) once read more than
+  `notices.read_keep_days` ago (platform setting, 90 by default, 30 to 365). Unread notices stay. Migration
+  `202617z0000421_staff_notices_reports_keep`: the job deletes as each staff member in turn, and the database lets a
+  deletion reach only that person's own notices, only read ones, never one read in the last 30 days. Platform access
+  alone deletes nothing.
+- **Tests:** e2e `console-incidents` (+2221 notices, +1 retention: the setting's range, the 30-day floor, only read
+  notices, only the person's own); API unit sweeps (the new job).
+
+### Questions (from 2304)
+
+2304. **Deleting old notices.** The database never deletes a notice read in the last 30 days, whatever the setting.
+      *Suggested: keep the 30-day floor.*
+
 ## 7. Build plan (slices, max 3 builders at once)
 
 Ordered by what every customer needs first: the way in (home), the everyday HR rules (time, leave, payroll, people),

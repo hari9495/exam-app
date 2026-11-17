@@ -69,8 +69,9 @@ function ExpensesHome() {
               drafts: (h?.claims ?? []).filter((c) => c.status === 'draft').map((c) => ({ id: c.id, title: c.title })),
               onAdd: async (x) => {
                 const body = new FormData();
-                body.append('spentOn', x.spentOn);
-                body.append('amount', x.amount);
+                // Answer 2252: left out with a receipt, the date and amount are read from it.
+                if (x.spentOn) body.append('spentOn', x.spentOn);
+                if (x.amount) body.append('amount', x.amount);
                 if (x.merchant) body.append('merchant', x.merchant);
                 if (x.description) body.append('description', x.description);
                 if (x.receipt) body.append('file', x.receipt);

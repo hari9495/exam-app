@@ -78,3 +78,26 @@ describe('Expenses to be claimed (live)', () => {
     expect(screen.getByText('Nothing saved yet.')).toBeInTheDocument();
   });
 });
+
+// Answer 2252: with a receipt, a date or amount left empty is read from it when saved.
+describe('saved receipt read when saved', () => {
+  it('with a receipt the date and amount may be left empty; read ones are marked', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    wrap({ onAdd, items: [{ id: 's3', spentOn: '2026-11-15', amount: '350.00', categoryCode: null, merchant: 'Cafe Kaveri', description: null, receipt: true, fromReceipt: true, createdAt: '2026-11-15T03:00:00.000Z' }] });
+    expect(screen.getByText('Read from receipt')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add an expense' }));
+    await ue.upload(screen.getByLabelText(/Receipt/, { selector: 'input' }), new File(['x'], 'bill.png', { type: 'image/png' }));
+    expect(screen.getAllByText('Leave empty to read it from the receipt.').length).toBe(2);
+    await ue.click(screen.getByRole('button', { name: 'Save expense' }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ spentOn: null, amount: null, receipt: expect.any(File) }));
+  });
+  it('negative: without a receipt both are asked for and nothing is saved', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    wrap({ onAdd });
+    await ue.click(screen.getByRole('button', { name: 'Add an expense' }));
+    expect(screen.queryByText('Leave empty to read it from the receipt.')).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Save expense' }));
+    expect(screen.getByText('Enter the amount.')).toBeInTheDocument();
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+});

@@ -97,6 +97,24 @@ describe('Expenses claims (EXP-01 … 03, the designed screens with live data)',
     await waitFor(() => expect(sent).toEqual([{ version: 1 }]));
   });
 
+  it('my draft claim offers my saved expenses when adding a line; the ticked ones go to the claim (answer 2251)', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c1' });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('add=bill'));
+    const sent: unknown[] = [];
+    route({
+      'GET /expenses/claims/c1': CLAIM,
+      'GET /expenses/categories': [{ id: 'k1', code: 'meals', name: 'Meals', kind: 'spend', receiptAbove: '500', gstEligible: false, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true, version: 1 }],
+      'GET /expenses/me/items': { items: [{ id: 's1', spentOn: '2026-10-08', amount: '640.00', categoryCode: null, merchant: 'Cab to airport', description: null, receipt: true, createdAt: '2026-10-08T03:00:00.000Z' }] },
+      'POST /expenses/claims/c1/items': (_p: string, init: RequestInit) => (sent.push(JSON.parse(String(init.body))), CLAIM),
+    });
+    wrap(<YxClaimPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Add saved expenses' }));
+    const dialog = screen.getByRole('dialog', { name: 'Add saved expenses' });
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: /Cab to airport/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Add 1 expense' }));
+    await waitFor(() => expect(sent).toEqual([{ itemIds: ['s1'] }]));
+  });
+
   it('a claim that is not mine opens as the review, and approving sends the decision', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'c1' });
     const sent: unknown[] = [];

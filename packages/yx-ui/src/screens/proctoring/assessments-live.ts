@@ -34,13 +34,13 @@ export { ResultAppealScreen, TestRunnerScreen, type LiveAssistant, type LiveInte
 // Assessments AS-3 (PRC-07, PRC-21, PRC-32): invitations and drives, the candidate's tests, using an earlier result.
 export { CampusKitScreen, CoordinatorPortalScreen, InvitationsScreen } from './delivery';
 export { CandidatePortalHomeScreen, ResultReuseScreen } from './candidate';
-export { DEFAULT_CAMPUS_SETTINGS, INVITATION_TONE, MY_TEST_BADGE, bulkWords, campusProblem, canRemind, canRevoke, type BulkOutcome, type CampusFieldMode, type CampusResultsVisibility, type LiveCampusKit, type LiveCampusSettings, type LiveCollegeRow, type LiveCoordinator, type LiveCoordinatorView, type LiveInstitution, type LiveInstitutionInput, type LiveRegistrant, type LiveCandidateTestStatus, type LiveDriveRow, type LiveInvitationRow, type LiveInvitationStatus, type LiveInvitations, type LiveMyTest, type LivePortal, type LiveReuse, type LiveReuseOffer } from './delivery-live';
+export { DEFAULT_CAMPUS_SETTINGS, INVITATION_TONE, MY_TEST_BADGE, bulkWords, campusProblem, canRemind, canRevoke, type BulkOutcome, type CampusFieldMode, type CampusResultsVisibility, type InstitutionImportResult, type LiveCampusKit, type LiveCampusSettings, type LiveCollegeRow, type LiveCoordinator, type LiveCoordinatorView, type LiveInstitution, type LiveInstitutionInput, type LiveRegistrant, type LiveCandidateTestStatus, type LiveDriveRow, type LiveInvitationRow, type LiveInvitationStatus, type LiveInvitations, type LiveMyTest, type LivePortal, type LiveReuse, type LiveReuseOffer } from './delivery-live';
 export type { CandidateBrand } from './proctoring-shared';
 // Assessments AS-4b (answers 2011, 2164): help before the test, the accommodation queue and connectivity above the cap.
 export { AccommodationQueueScreen, ConnectivityPanelScreen } from './delivery';
 export { AccommodationRequestScreen } from './candidate';
 export { HELP_LABEL, approvedForYou, type AccommodationView, type CandidateHelpView, type ConnectivityView, type HelpKind, type LiveAccommodationQueue, type LiveAccommodationRequest, type LiveConnectivity } from './before-test-live';
-export { ReadinessCheckScreen, type LiveReadiness } from './candidate';
+export { ReadinessCheckScreen, ReadyToStartScreen, type LiveReadiness, type LiveReadyToStart } from './candidate';
 // AS-4a part 2 (answer 2201): the designed consent (PRC-24) and selfie (PRC-25) on /welcome.
 export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, type ManualIdentityCheck } from './candidate';
 // AS-5 part 1 (answers 2006, 2008, 2012): integrity review and appeals.
@@ -62,3 +62,5 @@ export { CandidateLegalContext, type CandidateLegal } from './proctoring-shared'
 // AS-6 (PRC-19, answers 2019, 2165): marking and fairness.
 export { EvaluatorConsoleScreen, FairnessScreen } from './integrity';
 export type { FairnessData, FairnessRow, LiveEvaluator, LiveFairness, MarkStatus, MarkingItem } from './marking-live';
+// Answer 2234: the candidate's own Run output under the code editor on /exam.
+export { CodeRunOutput, type CodeRun } from './proctoring-kit';

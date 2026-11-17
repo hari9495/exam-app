@@ -151,11 +151,14 @@ export class LineFxDto {
 
 /** Keka ideas (2026-11): a spend saved for later (multipart: the fields as text, the receipt as `file`). */
 export class ExpenseItemDto {
+  /** Answer 2252: may be left out when a receipt is added; it is read from the receipt. */
+  @IsOptional()
   @IsDateString({ strict: true })
-  spentOn!: string;
+  spentOn?: string;
 
+  @IsOptional()
   @Matches(/^\d{1,10}(\.\d{1,2})?$/, { message: 'Enter the amount, for example 1250 or 1250.50.' })
-  amount!: string;
+  amount?: string;
 
   @IsOptional()
   @IsString()

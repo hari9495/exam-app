@@ -80,19 +80,19 @@ test('multi-monitor gates exam start, and a display added mid-exam raises a live
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
   await candidatePage.getByRole('button', { name: /skip practice/i }).click();
-  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('button', { name: 'Turn on camera' }).click();
   await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
 
   // Gate: start refused while a second display is "connected"
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
-  await expect(candidatePage.getByText('Please disconnect additional displays before starting the exam.')).toBeVisible();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
+  await expect(candidatePage.getByText('Please disconnect additional displays before starting the test.')).toBeVisible();
   await expect(candidatePage).toHaveURL(/\/welcome$/);
 
   // "Disconnect" the display and retry -- proceeds into the exam
   await candidatePage.evaluate(() => {
     (window as unknown as { __MOCK_IS_EXTENDED__?: boolean }).__MOCK_IS_EXTENDED__ = false;
   });
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
   await expect(candidatePage.getByText('Screen path: 2 + 2?')).toBeVisible();
 

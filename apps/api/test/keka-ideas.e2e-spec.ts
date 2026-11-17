@@ -10,6 +10,9 @@ import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
+// Answer 2252: the fake receipt reader reads the values from the file name (as in the expenses suites).
+process.env.EXPENSE_OCR_ADAPTER = 'dev-fake';
+
 // Keka ideas (2026-11) end to end against the real database (forced RLS, the app role): "My team today" for a manager
 // (direct reports only), the Time summary of my own weeks, and expenses saved first and claimed later.
 describe('Keka ideas', () => {
@@ -174,6 +177,33 @@ describe('Keka ideas', () => {
       await call('r2', 'post', `/expenses/me/items/${mine}/remove`).expect(200);
       await call('r2', 'post', `/expenses/me/items/${mine}/remove`).expect(404);
       expect((await call('adminB', 'get', '/expenses/me/items').expect(200)).body.items).toEqual([]);
+    });
+
+    // Answer 2252: a saved receipt is read when it is saved; what was left out is filled and checked in the claim.
+    const dmy = (iso: string) => `${iso.slice(8, 10)}-${iso.slice(5, 7)}-${iso.slice(0, 4)}`;
+    const bill = () => Buffer.concat([PNG, Buffer.from(randomUUID())]);
+    it('a receipt saved without the amount and date is read; they are checked on the claim line', async () => {
+      const id = (await call('r1', 'post', '/expenses/me/items').attach('file', bill(), `bill__Cafe Kaveri__Date ${dmy(today)}__Grand Total 350.00.png`).expect(201)).body.id as string;
+      const item = ((await call('r1', 'get', '/expenses/me/items').expect(200)).body.items as { id: string; amount: string; spentOn: string; merchant: string | null; fromReceipt: boolean }[]).find((x) => x.id === id)!;
+      expect([item.amount, item.spentOn, item.fromReceipt]).toEqual(['350.00', today, true]);
+      // Typed values stand and need no check.
+      const typed = (await call('r1', 'post', '/expenses/me/items').field('spentOn', today).field('amount', '99').attach('file', bill(), `bill__Date ${dmy(today)}__Grand Total 350.00.png`).expect(201)).body.id as string;
+      const t = ((await call('r1', 'get', '/expenses/me/items').expect(200)).body.items as { id: string; amount: string; fromReceipt: boolean }[]).find((x) => x.id === typed)!;
+      expect([t.amount, t.fromReceipt]).toEqual(['99.00', false]);
+      const claim = (await call('r1', 'post', `/expenses/claims/${ids.claim}/items`).send({ itemIds: [id, typed] }).expect(200)).body as { lines: { claimed: string; ocr: { confirmed: boolean } | null }[] };
+      expect(claim.lines.filter((l) => l.ocr && ['350.00', '99.00'].includes(l.claimed)).map((l) => [l.claimed, l.ocr!.confirmed]).sort()).toEqual([['350.00', false], ['99.00', true]]);
+    });
+
+    it('negative: an unreadable receipt with nothing typed, or nothing at all, is a 400 and nothing is saved; a non-employee is refused', async () => {
+      const count = () => inA((tx) => tx.expenseItem.count({ where: { organizationId: org.A.id } }));
+      const before = await count();
+      const r = await call('r1', 'post', '/expenses/me/items').attach('file', bill(), 'blank.png').expect(400);
+      expect(r.body.message).toMatch(/could not be read from the receipt/);
+      await call('r1', 'post', '/expenses/me/items').field('amount', '10').attach('file', bill(), 'blank.png').expect(400);
+      await call('r1', 'post', '/expenses/me/items').send({ merchant: 'No values' }).expect(400);
+      await call('r1', 'post', '/expenses/me/items').send({ amount: '10' }).expect(400);
+      await call('fin', 'post', '/expenses/me/items').attach('file', bill(), `bill__Date ${dmy(today)}__Grand Total 50.00.png`).expect(403);
+      expect(await count()).toBe(before);
     });
   });
 });

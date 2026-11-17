@@ -544,6 +544,61 @@ export function CodeAnswer({ language, value, onChange, results, running, onRun,
   );
 }
 
+/** What the runtime returns for one press of Run (answer 2234). */
+export interface CodeRun {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  compileError: string | null;
+  timedOut: boolean;
+  runsRemaining: number;
+}
+
+/**
+ * Answer 2234: the candidate's own Run output in the coding story's results panel, under the editor. `timeoutSeconds`
+ * must match the sandbox's run limit (RUN_TIMEOUT_MS in the runtime's piston client).
+ */
+export function CodeRunOutput({ result, error, timeoutSeconds = 5 }: { result: CodeRun | null; error: string | null; timeoutSeconds?: number }) {
+  const failed = Boolean(error) || (result != null && (result.exitCode !== 0 || result.compileError != null || result.timedOut));
+  return (
+    <div className="yx-code">
+      <div className="yx-code__results" aria-live="polite">
+        {error ? (
+          <>
+            <p className="yx-code__head" data-status="fail">
+              <span><Icon icon={XCircle} /> Couldn't run</span>
+            </p>
+            <pre className="yx-code__out" data-tone="danger">{error}</pre>
+          </>
+        ) : !result ? (
+          <p className="yx-code__detail">Press Run to see your output here.</p>
+        ) : (
+          <>
+            <p className="yx-code__head" data-status={failed ? 'fail' : 'pass'}>
+              <span><Icon icon={failed ? XCircle : CheckCircle2} /> {result.compileError ? 'Did not compile' : result.timedOut ? 'Stopped' : `Exit code ${result.exitCode}`}</span>
+              <span className="yx-code__detail">{`${result.runsRemaining} ${result.runsRemaining === 1 ? 'run' : 'runs'} left`}</span>
+            </p>
+            {result.compileError ? (
+              <pre className="yx-code__out" data-tone="danger">{result.compileError}</pre>
+            ) : (
+              <>
+                {result.stdout && <pre className="yx-code__out" aria-label="Output">{result.stdout}</pre>}
+                {result.stderr && <pre className="yx-code__out" data-tone="danger" aria-label="Errors">{result.stderr}</pre>}
+                {!result.stdout && !result.stderr && !result.timedOut && <p className="yx-code__detail">Your program printed nothing.</p>}
+              </>
+            )}
+            {result.timedOut && (
+              <p className="yx-code__detail" data-tone="warning">
+                {`Your program ran for more than ${timeoutSeconds} seconds and was stopped. This usually means a loop never finishes: check that its condition eventually becomes false.`}
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- QR placeholder ---------- */
 
 /** Deterministic QR-like pattern from a seed (placeholder only; the real code is signed server-side). */

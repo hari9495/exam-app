@@ -14,6 +14,7 @@ import { BLOCK_DATES_DEFAULT, BLOCK_DATES_KEY, MAINTENANCE_SETTINGS } from './ma
 import { PLATFORM } from './platform.service';
 import { HELP_SETTINGS } from '../service-desk/help-centre.service';
 import { BOARD_NUDGE_DEFAULT, BOARD_NUDGE_KEY, LEAD_DEFAULT, LEAD_KEY } from './incidents.service';
+import { NOTICE_KEEP_DEFAULT, NOTICE_KEEP_KEY } from './staff-notices.service';
 import { SALES_REPLY_DEFAULT, SALES_REPLY_KEY } from './sales-assist.service';
 import { ANALYTICS_MIN_DEFAULT, ANALYTICS_MIN_KEY, ANALYTICS_WINDOW_DEFAULT, ANALYTICS_WINDOW_KEY } from './analytics.service';
 import { NUDGE_LIMIT_DEFAULT, NUDGE_LIMIT_KEY, NUDGE_RETURN_DEFAULT, NUDGE_RETURN_KEY } from './nudges.service';
@@ -81,6 +82,8 @@ export const PLATFORM_SETTING_DEFS: Record<string, Def> = {
   // Answer 1261: the help-centre no-result searches (YX-11) and the incident breach reminders (C-8).
   ...Object.fromEntries(Object.entries(HELP_SETTINGS).map(([k, d]) => [k, whole(d.label, d.default, d.min, d.max)])),
   [LEAD_KEY]: whole('Breach reminders: hours before the CERT-In and DPDP due times', LEAD_DEFAULT, 0, 24),
+  // Answer 2222: the console bell's read notices are deleted nightly after this many days.
+  [NOTICE_KEEP_KEY]: whole('Console notices: delete read notices after (days)', NOTICE_KEEP_DEFAULT, 30, 365),
   // C-8 (YX-12): how many nudges one person sees in 7 days at most (0 = none).
   [NUDGE_LIMIT_KEY]: whole('Nudges: the most one person sees in 7 days', NUDGE_LIMIT_DEFAULT, 0, 7),
   // C-8 (YX-13): reply to a Talk to us request within (the drawn 1 business day as hours).

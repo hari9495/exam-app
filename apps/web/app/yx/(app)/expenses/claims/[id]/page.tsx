@@ -2,7 +2,7 @@
 
 import { Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { ClaimComposerScreen, ClaimReviewScreen, EXP_LINKS, type AddKind, type ClaimDetail, type ExpenseCategory, type LiveClaim } from '@yukthix/ui/expenses';
+import { ClaimComposerScreen, ClaimReviewScreen, EXP_LINKS, type AddKind, type ClaimDetail, type ExpenseCategory, type LiveClaim, type SavedExpense } from '@yukthix/ui/expenses';
 import { loadState, todayIst } from '../../../../../../lib/yx-org';
 import { useExp, useExpWrite, useReceiptOpen, useReceiptUrl } from '../../../../../../lib/yx-expenses';
 
@@ -17,6 +17,9 @@ function Claim() {
   const base = `/claims/${encodeURIComponent(id)}`;
   const claim = useExp<ClaimDetail>(base);
   const categories = useExp<ExpenseCategory[]>('/categories');
+  // Answer 2251: my saved expenses, offered when adding a line to my own claim that I can still change.
+  const mine = Boolean(claim.data?.can.own && claim.data.can.edit);
+  const saved = useExp<{ items: SavedExpense[] }>('/me/items', mine);
   const write = useExpWrite();
   const open = useReceiptOpen();
   const thumb = useReceiptUrl();
@@ -46,6 +49,7 @@ function Claim() {
     onApproveAmount: (lineId, amount, reason) => write('PATCH', `${base}/lines/${encodeURIComponent(lineId)}/approve-amount`, { amount, ...(reason ? { reason } : {}) }),
     onDecide: (decision, reason) => write('POST', `${base}/decide`, { decision, ...(reason ? { reason } : {}) }),
     onFlag: (flagId, decision, note) => write('POST', `/flags/${encodeURIComponent(flagId)}`, { decision, note }),
+    saved: mine ? { items: saved.data?.items ?? [], onAdd: (itemIds) => write('POST', `${base}/items`, { itemIds }) } : null,
   };
   return claim.data && !claim.data.can.own ? <ClaimReviewScreen live={live} /> : <ClaimComposerScreen live={live} />;
 }

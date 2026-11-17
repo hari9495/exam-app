@@ -17,6 +17,10 @@ export const incidentRef = (n: number) => `INC-${String(n).padStart(3, '0')}`;
 const istTime = (d: Date) => d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
+/** The due reports of one breach reminder, one line each (email and console notice). */
+const reportLines = (clocks: ('certin' | 'dpdp')[], due: Record<'certin' | 'dpdp', Date>) =>
+  clocks.map((k) => (k === 'certin' ? `CERT-In report due ${istTime(due.certin)} IST` : `DPDP detailed report to the Data Protection Board due ${istTime(due.dpdp)} IST`));
+
 /** Answer 1124: which breach clocks are due for their reminder now (the due time less the lead hours), not yet sent. */
 export function dueReminders(i: { certinRemindedAt: Date | null; dpdpRemindedAt: Date | null }, c: { certinDueAt: Date; dpdpDueAt: Date }, leadHours: number, now: Date) {
   const due: ('certin' | 'dpdp')[] = [];
@@ -186,10 +190,20 @@ export class IncidentsService {
         const to = out.length
           ? await incidentHolders(tx)
           : [];
+        // Answer 2221: each reminder is also a console notice for the same staff (the email stays).
+        for (const w of out)
+          await StaffNoticesService.notify(tx, to.map((u) => u.id), {
+            kind: 'breach_report_due',
+            title: `Breach report due: ${incidentRef(w.incident.number)} ${w.incident.title}`,
+            body: `${w.company} (contained). ${reportLines(w.clocks, w.due).join('. ')}.`,
+            linkPath: '/staff/incidents',
+            entityType: 'platform_incident',
+            entityId: w.incident.id,
+          });
         return { out, to: to.map((u) => u.email) };
       });
       for (const w of work.out) {
-        const lines = w.clocks.map((k) => (k === 'certin' ? `CERT-In report due ${istTime(w.due.certin)} IST` : `DPDP detailed report to the Data Protection Board due ${istTime(w.due.dpdp)} IST`));
+        const lines = reportLines(w.clocks, w.due);
         const subject = `Breach reminder: ${incidentRef(w.incident.number)} ${w.incident.title}`;
         const html = `<p>${esc(`${incidentRef(w.incident.number)} ${w.incident.title} is a security breach of ${w.company} (contained).`)}</p><ul>${lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul><p>Open Console › Incidents to see it.</p>`;
         for (const to of work.to) {

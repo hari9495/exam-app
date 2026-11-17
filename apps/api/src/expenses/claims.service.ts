@@ -91,6 +91,14 @@ export class ExpenseClaimsService implements OnModuleInit {
     return tx.employee.findFirst({ where: { organizationId: org, userId: v.userId }, select: { id: true, personId: true, userId: true } });
   }
 
+  /** The currency of my current legal entity (a saved receipt is read in it); INR when there is no assignment. */
+  private async myCurrency(tx: Tx, org: string, employeeId: string): Promise<string> {
+    const today = asDate(todayIst());
+    const job = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId, supersededAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { validFrom: 'desc' }, select: { legalEntityId: true } });
+    if (!job) return 'INR';
+    return (await tx.legalEntity.findFirst({ where: { organizationId: org, id: job.legalEntityId }, select: { currency: true } }))?.currency ?? 'INR';
+  }
+
   private async access(tx: Tx, c: CompanyContext, v: Viewer, claim: Claim): Promise<Access> {
     const org = c.organizationId;
     const me = await this.myEmployee(tx, org, v);
@@ -328,6 +336,25 @@ export class ExpenseClaimsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ receipts (snap first, §8.1)
 
+  /** Reads a receipt (OCR, and a signed e-invoice QR, which wins). The values are suggestions until confirmed. */
+  private async readReceipt(file: { originalname: string; buffer: Buffer }, mime: string, currency: string) {
+    const read = await this.reader.read(file.buffer, mime, { name: file.originalname, country: 'IN', currency });
+    const qr = read.qr ? checkEinvoiceQr(read.qr, this.qrKeys) : null;
+    const fields: OcrFields = { ...read.fields };
+    let einvoice: string | null = null;
+    if (qr && qr.status !== 'not_einvoice' && qr.fields) {
+      // A signed e-invoice wins over OCR: its values are exact (§13.4). An unverified one only suggests.
+      const conf = qr.status === 'verified' ? 1 : 0.5;
+      fields.gstin = { value: qr.fields.sellerGstin, confidence: conf };
+      fields.invoiceNo = { value: qr.fields.docNo, confidence: conf };
+      if (qr.fields.docDate) fields.date = { value: qr.fields.docDate, confidence: conf };
+      if (qr.fields.total) fields.amount = { value: qr.fields.total, confidence: conf };
+      einvoice = qr.status === 'verified' ? 'verified' : `unverified: ${qr.reason}`;
+    }
+    const ocr = { adapter: read.adapter, fields, confirmed: false, einvoice, billedTo: qr && qr.status !== 'not_einvoice' ? qr.fields?.buyerGstin ?? null : null, irn: qr && qr.status === 'verified' ? qr.fields.irn : null };
+    return { read, fields, einvoice, ocr };
+  }
+
   /**
    * Stores a receipt (virus-scanned before anyone opens it) and reads it. Without lineId it becomes a new draft line
    * pre-filled with the suggestions, which the employee must confirm; with lineId it is attached to that line.
@@ -344,20 +371,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${org}:receipt:${stored.sha256}`}))`;
       const same = await this.liveLineWith(tx, org, { receiptSha256: stored.sha256 }, lineId ?? null);
       if (same) throw new ConflictException({ statusCode: 409, code: 'SAME_RECEIPT', message: same.claimId === id ? 'This receipt is already on this claim.' : 'This receipt is already on another claim. A receipt can be claimed once.' });
-      const read = await this.reader.read(file.buffer, stored.mime, { name: file.originalname, country: 'IN', currency: claim.currency });
-      const qr = read.qr ? checkEinvoiceQr(read.qr, this.qrKeys) : null;
-      const fields: OcrFields = { ...read.fields };
-      let einvoice: string | null = null;
-      if (qr && qr.status !== 'not_einvoice' && qr.fields) {
-        // A signed e-invoice wins over OCR: its values are exact (§13.4). An unverified one only suggests.
-        const conf = qr.status === 'verified' ? 1 : 0.5;
-        fields.gstin = { value: qr.fields.sellerGstin, confidence: conf };
-        fields.invoiceNo = { value: qr.fields.docNo, confidence: conf };
-        if (qr.fields.docDate) fields.date = { value: qr.fields.docDate, confidence: conf };
-        if (qr.fields.total) fields.amount = { value: qr.fields.total, confidence: conf };
-        einvoice = qr.status === 'verified' ? 'verified' : `unverified: ${qr.reason}`;
-      }
-      const ocr = { adapter: read.adapter, fields, confirmed: false, einvoice, billedTo: qr && qr.status !== 'not_einvoice' ? qr.fields?.buyerGstin ?? null : null, irn: qr && qr.status === 'verified' ? qr.fields.irn : null };
+      const { read, fields, einvoice, ocr } = await this.readReceipt(file, stored.mime, claim.currency);
       let line: Line;
       if (lineId) {
         const cur = await tx.expenseLine.findFirst({ where: { organizationId: org, id: lineId, claimId: id, removedAt: null } });
@@ -442,22 +456,24 @@ export class ExpenseClaimsService implements OnModuleInit {
       const me = await this.myEmployee(tx, c.organizationId, v);
       if (!me) return { items: [] };
       const rows = await tx.expenseItem.findMany({ where: { organizationId: c.organizationId, employeeId: me.id, claimedAt: null, removedAt: null }, orderBy: [{ spentOn: 'desc' }, { createdAt: 'desc' }], take: 200 });
-      return { items: rows.map((r) => ({ id: r.id, spentOn: iso(r.spentOn), amount: r.amount.toFixed(2), categoryCode: r.categoryCode, merchant: r.merchant, description: r.description, receipt: Boolean(r.receiptFileId), createdAt: r.createdAt.toISOString() })) };
+      return { items: rows.map((r) => ({ id: r.id, spentOn: iso(r.spentOn), amount: r.amount.toFixed(2), categoryCode: r.categoryCode, merchant: r.merchant, description: r.description, receipt: Boolean(r.receiptFileId), fromReceipt: Boolean(r.ocr && !(r.ocr as { confirmed?: boolean }).confirmed), createdAt: r.createdAt.toISOString() })) };
     });
   }
 
   /** Saves one spend for later (a receipt is optional; the same receipt is never saved or claimed twice). */
-  async addItem(ctx: TenantContext, user: ScopeUser, dto: { spentOn: string; amount: string; categoryCode?: string | null; merchant?: string | null; description?: string | null }, file?: { originalname: string; buffer: Buffer }) {
+  async addItem(ctx: TenantContext, user: ScopeUser, dto: { spentOn?: string; amount?: string; categoryCode?: string | null; merchant?: string | null; description?: string | null }, file?: { originalname: string; buffer: Buffer }) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
-    if (dto.spentOn > todayIst()) throw new BadRequestException('A bill cannot be dated in the future.');
-    if (!(Number(dto.amount) > 0)) throw new BadRequestException('Enter an amount above zero.');
+    // Answer 2252: with a receipt, an amount or date left out is read from it; without one both are needed.
+    if (!file?.buffer?.length && (!dto.spentOn || !dto.amount)) throw new BadRequestException('Enter the date and the amount, or add the receipt to read them from.');
+    if (dto.spentOn && dto.spentOn > todayIst()) throw new BadRequestException('A bill cannot be dated in the future.');
+    if (dto.amount && !(Number(dto.amount) > 0)) throw new BadRequestException('Enter an amount above zero.');
     const v = await this.viewer(user);
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const me = await this.myEmployee(tx, org, v);
       if (!me) throw new ForbiddenException('Only employees can claim expenses.');
       if (dto.categoryCode && !(await tx.expenseCategory.findFirst({ where: { organizationId: org, code: dto.categoryCode, active: true } }))) throw new BadRequestException('Choose an expense category in use.');
-      let stored: { id: string; sha256: string } | null = null;
+      let stored: { id: string; sha256: string; mime: string } | null = null;
       if (file?.buffer?.length) {
         stored = await this.files.storeIn(tx, c, { area: 'expense', name: file.originalname, data: file.buffer, allowedMime: RECEIPT_MIME, maxMb: 10, via: 'self' });
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${org}:receipt:${stored.sha256}`}))`;
@@ -465,8 +481,24 @@ export class ExpenseClaimsService implements OnModuleInit {
         const saved = await tx.expenseItem.findFirst({ where: { organizationId: org, receiptSha256: stored.sha256, claimedAt: null, removedAt: null }, select: { id: true } });
         if (onClaim || saved) throw new ConflictException({ statusCode: 409, code: 'SAME_RECEIPT', message: onClaim ? 'This receipt is already on a claim. A receipt can be claimed once.' : 'This receipt is already in your saved expenses.' });
       }
-      const item = await tx.expenseItem.create({ data: { organizationId: org, employeeId: me.id, spentOn: asDate(dto.spentOn), amount: dto.amount, categoryCode: dto.categoryCode || null, merchant: dto.merchant?.trim() || null, description: dto.description?.trim() || null, receiptFileId: stored?.id ?? null, receiptSha256: stored?.sha256 ?? null } });
-      await audit(tx, c, 'expense.item.saved', 'expense_item', item.id, { receipt: Boolean(stored) });
+      let spentOn = dto.spentOn ?? null;
+      let amount = dto.amount ?? null;
+      let merchant = dto.merchant?.trim() || null;
+      let ocr: Prisma.InputJsonValue | undefined;
+      if (stored && file) {
+        const r = await this.readReceipt(file, stored.mime, await this.myCurrency(tx, org, me.id));
+        const readDate = r.fields.date?.value && r.fields.date.value <= todayIst() ? r.fields.date.value : null;
+        const readAmount = r.fields.amount?.value && Number(r.fields.amount.value) > 0 ? Number(r.fields.amount.value).toFixed(2) : null;
+        // Values the person typed stand; only what they left out is filled. Typed both: the line needs no check.
+        ocr = { ...r.ocr, confirmed: Boolean(dto.spentOn && dto.amount) } as unknown as Prisma.InputJsonValue;
+        spentOn ??= readDate;
+        amount ??= readAmount;
+        merchant ??= r.fields.merchant?.value?.slice(0, 120) || null;
+      }
+      const missing = [...(spentOn ? [] : ['date']), ...(amount ? [] : ['amount'])];
+      if (missing.length) throw new BadRequestException(`The ${missing.join(' and ')} could not be read from the receipt. Enter ${missing.length > 1 ? 'them' : 'it'}.`);
+      const item = await tx.expenseItem.create({ data: { organizationId: org, employeeId: me.id, spentOn: asDate(spentOn!), amount: amount!, categoryCode: dto.categoryCode || null, merchant, description: dto.description?.trim() || null, receiptFileId: stored?.id ?? null, receiptSha256: stored?.sha256 ?? null, ...(ocr ? { ocr } : {}) } });
+      await audit(tx, c, 'expense.item.saved', 'expense_item', item.id, { receipt: Boolean(stored), read: Boolean(ocr) });
       return { id: item.id, fileId: stored?.id ?? null };
     });
     // The virus check runs after the commit, as for a claim's receipt.
@@ -512,6 +544,8 @@ export class ExpenseClaimsService implements OnModuleInit {
             claimed: amount,
             receiptFileId: it.receiptFileId,
             receiptSha256: it.receiptSha256,
+            // Answer 2252: what was read moves with it; read values the person did not type are checked on the line.
+            ...(it.ocr ? { ocr: it.ocr as Prisma.InputJsonValue } : {}),
             // No receipt: a declared bill, as "A bill without a receipt" (the policy check asks for one when needed).
             selfDeclared: !it.receiptFileId,
             dupKey: dupKey(claim.employeeId, spentOn, amount),

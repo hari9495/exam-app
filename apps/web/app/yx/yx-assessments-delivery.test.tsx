@@ -40,8 +40,8 @@ const CAMPUS = {
   drive: { id: 'd1', name: 'Campus TN', status: 'Registration open', orgSlug: 'acme', tests: ['Java L2'] },
   settings: { fields: { phone: 'optional', branch: 'required', graduationYear: 'required', cgpa: 'required' }, branches: [], graduationYear: null, minCgpa: 6.5, cap: null, tellIneligible: true },
   registrants: [
-    { id: 'r1', name: 'Arjun Nair', email: 'arjun@x.in', phone: null, institutionId: 'n1', college: 'Coromandel Institute', rollNumber: '21CS1', branch: 'CSE', graduationYear: 2027, cgpa: 8, eligible: true, ineligibleReason: null, match: 'New', duplicateOf: null, mergedInto: null, test: 'Invited', registeredAt: '2026-11-10T05:00:00.000Z' },
-    { id: 'r2', name: 'Arjun N', email: 'arjun2@x.in', phone: null, institutionId: 'n1', college: 'Coromandel Institute', rollNumber: '21cs1', branch: 'CSE', graduationYear: 2027, cgpa: 8, eligible: true, ineligibleReason: null, match: 'Possible duplicate', duplicateOf: { id: 'r1', name: 'Arjun Nair', email: 'arjun@x.in' }, mergedInto: null, test: 'Invited', registeredAt: '2026-11-11T05:00:00.000Z' },
+    { id: 'r1', candidateId: 'c1', name: 'Arjun Nair', email: 'arjun@x.in', phone: null, institutionId: 'n1', college: 'Coromandel Institute', rollNumber: '21CS1', branch: 'CSE', graduationYear: 2027, cgpa: 8, eligible: true, ineligibleReason: null, match: 'New', duplicateOf: null, mergedInto: null, test: 'Invited', registeredAt: '2026-11-10T05:00:00.000Z' },
+    { id: 'r2', candidateId: 'c2', name: 'Arjun N', email: 'arjun2@x.in', phone: null, institutionId: 'n1', college: 'Coromandel Institute', rollNumber: '21cs1', branch: 'CSE', graduationYear: 2027, cgpa: 8, eligible: true, ineligibleReason: null, match: 'Possible duplicate', duplicateOf: { id: 'r1', name: 'Arjun Nair', email: 'arjun@x.in', candidateId: 'c1' }, mergedInto: null, test: 'Invited', registeredAt: '2026-11-11T05:00:00.000Z' },
   ],
   report: [{ institutionId: 'n1', college: 'Coromandel Institute', registered: 2, eligible: 2, invited: 2, attended: 0, passed: 0 }],
 };
@@ -78,6 +78,7 @@ beforeEach(() => {
     if (path === '/asmt/drives/d1/campus' && !init?.method) return CAMPUS;
     if (path === '/asmt/institutions' && !init?.method) return [{ id: 'n1', name: 'Coromandel Institute', code: 'CIT-14', city: null, coordinatorName: 'Dr. Latha', coordinatorEmail: 'latha@cit.test', resultsVisibility: 'aggregate', archived: false }];
     if (path === '/asmt/drives/d1/coordinator-link') return { sentTo: 'latha@cit.test' };
+    if (path === '/asmt/institutions/import') return { rows: [{ line: 2, name: 'Vaigai College', code: 'VCE-31', ok: true, problem: null }], added: JSON.parse(String(init?.body)).commit ? 1 : 0 };
     return {};
   });
 });
@@ -190,6 +191,26 @@ describe('PRC-07 bulk and new drive; PRC-29 campus kit and coordinator (AS-3 par
     await userEvent.click(screen.getByText('Coromandel Institute'));
     await userEvent.click(screen.getByRole('button', { name: 'Send coordinator link' }));
     expect(calls).toContain('POST /asmt/drives/d1/coordinator-link {"institutionId":"n1"}');
+  });
+
+  it('the drive page imports institutions from a CSV: checked first, then added (answer 2241)', async () => {
+    wrap(<YxDriveCampusPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: /Institutions/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Import institutions' }));
+    await userEvent.click(screen.getByRole('textbox', { name: /Or paste the rows/ }));
+    const csv = 'name,code\nVaigai College,VCE-31';
+    await userEvent.paste(csv);
+    await userEvent.click(screen.getByRole('button', { name: 'Check the file' }));
+    expect(calls).toContain(`POST /asmt/institutions/import ${JSON.stringify({ csv, commit: false })}`);
+    await userEvent.click(await screen.findByRole('button', { name: 'Add 1 institution' }));
+    expect(calls).toContain(`POST /asmt/institutions/import ${JSON.stringify({ csv, commit: true })}`);
+  });
+
+  it('a duplicate registration opens the kept candidate record in Hire to merge them (answer 2242)', async () => {
+    wrap(<YxDriveCampusPage />);
+    await userEvent.click(await screen.findByText('Arjun N'));
+    await userEvent.click(screen.getByRole('button', { name: 'Merge candidate records in Hire' }));
+    expect(push).toHaveBeenCalledWith('/yx/hiring/candidates/c1');
   });
 
   it('the coordinator page shows the college; negative: an expired link says so', async () => {

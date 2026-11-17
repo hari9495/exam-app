@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { ReadinessCheckScreen } from '../candidate';
+import { ReadinessCheckScreen, ReadyToStartScreen } from '../candidate';
 
 const meta: Meta<typeof ReadinessCheckScreen> = { title: 'Screens/Proctoring/PRC-22 · Readiness check and practice', component: ReadinessCheckScreen, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -21,3 +21,12 @@ const LIVE_CHECKS = [
 ];
 export const LiveChecks: S = { name: 'Your computer: one problem blocks the start', render: () => <ReadinessCheckScreen live={{ companyName: 'Kaveri Foods', testTitle: 'Java Backend Developer · L2', checks: LIVE_CHECKS, running: false, onRunAgain: () => {}, onBack: () => {} }} /> };
 export const LiveRunning: S = { name: 'Your computer: checking', render: () => <ReadinessCheckScreen live={{ companyName: 'Kaveri Foods', testTitle: 'Java Backend Developer · L2', checks: LIVE_CHECKS.map((c, i) => ({ ...c, status: i < 2 ? c.status : ('running' as const), fix: undefined })), running: true, onRunAgain: () => {}, onBack: () => {} }} /> };
+
+// Answer 2232: the last step on /welcome, before the test starts.
+export const ReadyToStart: S = { name: 'Ready to start', render: () => <ReadyToStartScreen /> };
+export const ReadyCameraOff: S = { name: 'Ready to start: camera not on yet', render: () => <ReadyToStartScreen state="camera-off" /> };
+export const ReadyCameraBlocked: S = { name: 'Ready to start: camera blocked', render: () => <ReadyToStartScreen state="camera-blocked" /> };
+export const ReadyClosed: S = { name: 'Ready to start: window closed', render: () => <ReadyToStartScreen state="closed" /> };
+export const ReadyNotOpen: S = { name: 'Ready to start: not open yet', render: () => <ReadyToStartScreen state="not-open" /> };
+export const ReadySeb: S = { name: 'Ready to start: Safe Exam Browser required', render: () => <ReadyToStartScreen state="seb" /> };
+export const ReadyProblem: S = { name: 'Ready to start: another display found', render: () => <ReadyToStartScreen state="problem" /> };

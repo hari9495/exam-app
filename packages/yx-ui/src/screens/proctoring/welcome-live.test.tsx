@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { ConsentScreen, IdentityCheckScreen } from './candidate';
+import { ConsentScreen, IdentityCheckScreen, ReadyToStartScreen, type LiveReadyToStart } from './candidate';
 import { LIVE_CONSENT, LIVE_SELFIE } from './runner-live-samples';
 
 // Answer 2201: the designed consent (PRC-24) and selfie (PRC-25) with a real invitation.
@@ -82,5 +82,75 @@ describe('PRC-25 live selfie', () => {
   it('negative: blocked without a manual path says to contact the person who invited them', () => {
     render(<IdentityCheckScreen live={{ ...LIVE_SELFIE, blocked: true }} />);
     expect(screen.getByText(/Contact the person who invited you/)).toBeInTheDocument();
+  });
+});
+
+// Answer 2232: the start card on /welcome as the designed "Ready to start" step.
+const READY: LiveReadyToStart = {
+  companyName: 'Kaveri Foods',
+  candidateName: 'Arjun Nair',
+  testTitle: 'SQL basics',
+  durationMinutes: 40,
+  sections: [{ title: 'SQL', questions: 6 }],
+  instructions: 'Answer every question.',
+  notes: [],
+  window: { state: 'open' },
+  camera: { state: 'on', onTurnOn: () => undefined },
+  problem: null,
+  seb: null,
+  onAccommodation: () => undefined,
+  onReadiness: () => undefined,
+  onMyTests: () => undefined,
+  starting: false,
+  onStart: () => undefined,
+};
+
+describe('PRC-22 live Ready to start', () => {
+  it('shows the test, its sections and instructions; Start starts once the camera is on', async () => {
+    const onStart = vi.fn();
+    render(<ReadyToStartScreen live={{ ...READY, onStart }} />);
+    expect(screen.getByText('40 minutes')).toBeInTheDocument();
+    expect(screen.getAllByText('6 questions')).toHaveLength(2);
+    expect(screen.getByText('Answer every question.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Start test' }));
+    expect(onStart).toHaveBeenCalled();
+  });
+
+  it('negative: with the camera off there is no Start, only Turn on camera', async () => {
+    const onTurnOn = vi.fn();
+    render(<ReadyToStartScreen live={{ ...READY, camera: { state: 'off', onTurnOn } }} />);
+    expect(screen.queryByRole('button', { name: 'Start test' })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    expect(onTurnOn).toHaveBeenCalled();
+  });
+
+  it('negative: a blocked camera says how to allow it; a test without the camera starts straight away', () => {
+    const { rerender } = render(<ReadyToStartScreen live={{ ...READY, camera: { state: 'blocked', onTurnOn: () => undefined } }} />);
+    expect(screen.getByText('Camera blocked')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try the camera again' })).toBeInTheDocument();
+    rerender(<ReadyToStartScreen live={{ ...READY, camera: null }} />);
+    expect(screen.getByRole('button', { name: 'Start test' })).toBeInTheDocument();
+  });
+
+  it('negative: not open yet or closed shows no Start; a problem says why the start did not go ahead', () => {
+    const { rerender } = render(<ReadyToStartScreen live={{ ...READY, window: { state: 'not_open', opensAt: '1 Dec 2026, 2:00 pm' } }} />);
+    expect(screen.getByText(/opens on 1 Dec 2026, 2:00 pm/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start test' })).toBeNull();
+    rerender(<ReadyToStartScreen live={{ ...READY, window: { state: 'closed' } }} />);
+    expect(screen.getByText(/window has closed/)).toBeInTheDocument();
+    rerender(<ReadyToStartScreen live={{ ...READY, problem: 'Please disconnect additional displays before starting the test.' }} />);
+    expect(screen.getByText('Please disconnect additional displays before starting the test.')).toBeInTheDocument();
+  });
+
+  it('Safe Exam Browser replaces Start with the configuration download; an unfinished photo goes back to it', async () => {
+    const onDownload = vi.fn();
+    const onPhoto = vi.fn();
+    const { rerender } = render(<ReadyToStartScreen live={{ ...READY, seb: { onDownload } }} />);
+    expect(screen.queryByRole('button', { name: 'Start test' })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: /Download the configuration/ }));
+    expect(onDownload).toHaveBeenCalled();
+    rerender(<ReadyToStartScreen live={{ ...READY, onPhoto }} />);
+    await ue.click(screen.getByRole('button', { name: 'Continue to the photo check' }));
+    expect(onPhoto).toHaveBeenCalled();
   });
 });
