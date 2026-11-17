@@ -157,3 +157,16 @@ Notes:
 104. Admin C3: workflows (L).
 105. Admin E3: report builder (L).
 106. Admin A1: field-level control (M).
+
+## Founder decision (17 Nov 2026, "ok for all")
+
+Tier 1 is built in seven batches by area, in this order, after the assessments slices:
+- **A. Attendance and leave daily:** 2, 5, 18, 7, 8, 9, plus attendance-leave C4 "Notify colleagues" on Apply leave.
+- **B. Safety:** 1, 29, 20 first, then 3 (recycle bin).
+- **C. Approvals and team:** 4, 17, 26, 6, 15, 16.
+- **D. Timesheet:** 10, 11, 22, 23, 24, 25.
+- **E. Pay and expenses quick wins:** 19, 27, 28.
+- **F. Performance and helpdesk quick wins:** 30, 31, 32, 33, 34, 13.
+- **G. Bigger single pieces:** 12, 14, 21.
+
+Tiers 2 and 3 are decided after tier 1. Attendance-leave E2 (leave clash) is already live and off the list.
