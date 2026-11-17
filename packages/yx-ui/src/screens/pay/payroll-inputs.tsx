@@ -423,10 +423,20 @@ export function LopReversalDrawer({ month, monthOpen, regulariseHref, onSearch, 
           <FormSection title="Days to pay back">
             <div className="yx-pay-stack">
               {days.map((d, i) => (
-                <FieldRow key={i}>
-                  <FormField id={`lopr-day-${i}`} label={`Day ${i + 1}`} required error={errorOf(`lopr-day-${i}`)}>
-                    <DatePicker value={d.on} onChange={(on) => set(i, { on })} min={first} max={last} aria-label={`Day ${i + 1}`} />
-                  </FormField>
+                // One day: the date (and Remove) on a row, the choice under it at full width so the Segment stays on one line.
+                <div key={i} className="yx-pay-stack">
+                  <FieldRow>
+                    <FormField id={`lopr-day-${i}`} label={`Day ${i + 1}`} required error={errorOf(`lopr-day-${i}`)}>
+                      <DatePicker value={d.on} onChange={(on) => set(i, { on })} min={first} max={last} aria-label={`Day ${i + 1}`} />
+                    </FormField>
+                    {days.length > 1 && (
+                      <FormField label="Remove">
+                        <Button onClick={() => setDays(days.filter((_, k) => k !== i))} aria-label={`Remove day ${i + 1}`}>
+                          Remove
+                        </Button>
+                      </FormField>
+                    )}
+                  </FieldRow>
                   <FormField label="It should be">
                     <Segment label={`Day ${i + 1} should be`} value={d.shouldBe} onChange={(shouldBe) => set(i, { shouldBe })} options={kinds} />
                   </FormField>
@@ -435,14 +445,7 @@ export function LopReversalDrawer({ month, monthOpen, regulariseHref, onSearch, 
                       <Select value={d.leave} onChange={(leave) => set(i, { leave })} options={leaveTypes.map((t) => ({ value: t.code, label: t.name }))} placeholder="Choose the leave type" />
                     </FormField>
                   )}
-                  {days.length > 1 && (
-                    <FormField label="Remove">
-                      <Button onClick={() => setDays(days.filter((_, k) => k !== i))} aria-label={`Remove day ${i + 1}`}>
-                        Remove
-                      </Button>
-                    </FormField>
-                  )}
-                </FieldRow>
+                </div>
               ))}
               {days.length < 31 && (
                 <div className="yx-pay-row">
