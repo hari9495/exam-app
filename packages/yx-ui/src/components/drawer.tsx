@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import * as RD from '@radix-ui/react-dialog';
+import { useInertBehind } from '../lib/inert';
 import { X } from 'lucide-react';
 import { IconButton, Button } from './button';
 import { InlineAlert } from './feedback';
@@ -30,6 +31,7 @@ export interface DrawerProps {
 export function Drawer({ open, onOpenChange, title, subtitle, meta, children, footer, size = 'md', dirty, description, notice }: DrawerProps) {
   const [confirming, setConfirming] = useState(false);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
+  useInertBehind(panel);
   const requestClose = (next: boolean) => {
     if (!next && hasOpenPopover(panel)) return;
     if (!next && dirty) {

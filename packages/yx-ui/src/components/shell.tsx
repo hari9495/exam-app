@@ -20,6 +20,7 @@ import {
   type ReactNode,
 } from 'react';
 import * as RD from '@radix-ui/react-dialog';
+import { useInertBehindRef } from '../lib/inert';
 import * as DM from '@radix-ui/react-dropdown-menu';
 import * as RT from '@radix-ui/react-tabs';
 import { Command } from 'cmdk';
@@ -164,6 +165,7 @@ export function AppShell({
   defaultNavOpen = false,
   mainId = 'yx-main',
 }: AppShellProps) {
+  const sheetRef = useInertBehindRef();
   const [collapsed, setCollapsed] = useControlled(panelCollapsed, defaultPanelCollapsed, onPanelCollapsedChange);
   const [sheetOpen, setSheetOpen] = useState(defaultNavOpen);
   const ctx = useMemo<ShellContextValue>(
@@ -259,6 +261,7 @@ export function AppShell({
             <RD.Portal>
               <RD.Overlay className="yx-shell__scrim" />
               <RD.Content
+                ref={sheetRef}
                 className="yx-shell__sheet"
                 aria-describedby={undefined}
                 tabIndex={-1}
@@ -726,6 +729,7 @@ export function CommandPalette({
   onQueryChange,
   loading = false,
 }: CommandPaletteProps) {
+  const paletteRef = useInertBehindRef();
   const [open, setOpen] = useControlled(openProp, defaultOpen, onOpenChange);
   const [q, setQState] = useState(defaultSearch);
   const setQ = (v: string) => {
@@ -773,6 +777,7 @@ export function CommandPalette({
       <RD.Portal>
         <RD.Overlay className="yx-palette__scrim" />
         <RD.Content
+          ref={paletteRef}
           className="yx-palette"
           aria-describedby={undefined}
           // Focus the search box with the cursor after the text; Radix would select it all and the next key would wipe it.

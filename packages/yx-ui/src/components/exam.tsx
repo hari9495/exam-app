@@ -1,5 +1,6 @@
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import * as RD from '@radix-ui/react-dialog';
+import { useInertBehindRef } from '../lib/inert';
 import { Check, CheckCircle2, Clock, CloudOff, Flag, ListOrdered, Video } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatTime } from '../lib/format';
@@ -431,6 +432,7 @@ export function ExamShell({
   defaultListOpen = false,
   banner,
 }: ExamShellProps) {
+  const confirmRef = useInertBehindRef();
   const [openState, setOpenState] = useState(defaultFinishOpen);
   const [listOpen, setListOpen] = useState(defaultListOpen);
   const open = finishOpen ?? openState;
@@ -491,7 +493,7 @@ export function ExamShell({
       <RD.Root open={open} onOpenChange={setOpen}>
         <RD.Portal>
           <RD.Overlay className="yx-exam-confirm__scrim" />
-          <RD.Content className="yx-exam-confirm">
+          <RD.Content ref={confirmRef} className="yx-exam-confirm">
             <RD.Title className="yx-exam-confirm__title">Finish the test?</RD.Title>
             <RD.Description asChild>
               <div className="yx-exam-confirm__body">
