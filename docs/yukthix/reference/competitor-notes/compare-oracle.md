@@ -65,6 +65,7 @@ Sizes: S (days), M (1–2 weeks), L (3+ weeks). Pick key: **Build**, **Later**, 
 |---|---|---|---|---|---|
 | O27 | One organisation can be several things at once: legal entity + payroll unit + cost centre, with extra details per role | Yes | Separate lists | **Later**. Our separate lists work; revisit when a customer needs it | M |
 | O28 | Per country: payroll rules, statutory codes and currency, with several legal employers under it | Fusion: yes | India only | **Build** when the first non-India customer signs (already the agreed multi-country approach) | L |
+| O29 | Buy leave: an employee buys extra days through a salary deduction, beside encashment | Yes (net calculation, "Accrual Buy") | Encashment only | **Later** | S |
 
 ## 7. Already as good as or better than Oracle (keep)
 - Audit: date-tracked history, as-of views, a hash-chained audit log, payslip snapshots (audit verdict: best area).

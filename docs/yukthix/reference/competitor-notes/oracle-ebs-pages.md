@@ -146,7 +146,45 @@ Ideas for YukthiX:
   module and to costing.
 - PE2: an "entry history" view: every pay-input change on the person, by date.
 
-## 8. Not reached yet, for session 3
+## 8. Session 3 (17 Nov 2026, 10–11 PM): hands-on tests with create rights
+
+Test records created, all named "YX TEST":
+- position `9901.YX TEST Analyst` (shared, Accounts Payable, CL900.Clerk, FTE 2, headcount 2, permit recruiting,
+  probation 6 months);
+- requisition `YX TEST Req 1` with vacancy `YX TEST Vac 1`.
+
+**T1, vacancy over headcount: not blocked.**
+- A vacancy with **3 openings** on a position with **headcount 2** saved with no warning.
+- Picking the position filled the vacancy's organization and job, and Oracle asked "use the location of the new
+  position?".
+- A requisition must be saved before its vacancy can be added.
+- Lesson for YukthiX (O4): **warn, and with a company setting block**, when openings exceed the seat's free
+  headcount. Oracle EBS leaves this to budgets and position control, which most customers never set up.
+
+**T2, back-dated pay: could not run.**
+- Payroll periods in this training system only run to about 2015.
+- Opening one payroll's period dates raised a flexfield error (Time Definition value missing).
+- Lesson: we keep the theory from section 3 (per-element recalculation events and retro components). Use Oracle's
+  docs for the run output.
+
+**T3, building a leave plan from scratch: needs four set-up records first.**
+- An accrual plan must point to an **absence type** that is not used by any other plan, and units must match.
+- The absence type needs an **associated element** (pay item) with an input value, plus an element link for
+  eligibility. Only then can the plan, its bands and its formulas be saved.
+- The absence type itself has: category, "allow absence overlaps" yes or no, units (hours or days), balance
+  increasing or decreasing, and a list of **reasons**.
+- Lesson: YukthiX creating a leave type in one screen (rules, balance and pay effect together) is a real advantage.
+  Keep it, and offer ready-made templates (D2).
+
+**T4, an existing plan with service bands (Vacation), read only.**
+- Bands (years of service → annual rate / maximum carry-over / ceiling): 0–3 → 80 h / 40; 3–5 → 96 / 40;
+  5–10 → 120 / 45; 10–20 → 160 / 50; 20–50 → 200 / 60. The ceiling is left empty.
+- **Net calculation rules**: Carried Over Vacation adds; Paid Vacation subtracts; **VC Accrual Buy adds; VC Accrual
+  Sell subtracts.** Employees can buy extra leave or sell leave back, and each moves the balance by date earned.
+- Lesson for YukthiX: add "buy leave" (salary deduction for extra days) beside our existing encashment ("sell").
+  This is new idea O29, Later.
+
+## 9. Not reached yet
 
 - **Approval rules (AME, Approvals Management Engine):** needs the "Approvals Management Business Analyst"
   responsibility, which this login does not have.
