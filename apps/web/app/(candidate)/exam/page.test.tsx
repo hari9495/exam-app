@@ -585,7 +585,7 @@ describe('CandidateExamPage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
 
     expect(await screen.findByText('hi')).toBeInTheDocument();
-    expect(screen.getByText('Exit code: 0')).toBeInTheDocument();
+    expect(screen.getByText('Exit code 0')).toBeInTheDocument();
   });
 
   it('shows the runs-remaining count next to the Run button after a run', async () => {
@@ -688,7 +688,7 @@ describe('CandidateExamPage', () => {
 
     expect(screen.getByText('Write a function that subtracts two numbers.')).toBeInTheDocument();
     expect(screen.queryByText('question one output')).not.toBeInTheDocument();
-    expect(screen.queryByText('Exit code: 0')).not.toBeInTheDocument();
+    expect(screen.queryByText('Exit code 0')).not.toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
 

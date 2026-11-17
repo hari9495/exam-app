@@ -224,3 +224,37 @@ describe('AS-6 candidate pages', () => {
     expect(screen.queryByText(/from your proctor/)).toBeNull();
   });
 });
+
+// Answer 2234: the Run output under the code editor, in the coding story's results panel.
+import { CodeRunOutput } from './proctoring-kit';
+describe('CodeRunOutput', () => {
+  const RUN = { stdout: 'hello\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 9 };
+  it('before any run asks the candidate to press Run; a run shows its exit code, output and runs left', () => {
+    const { rerender } = render(<CodeRunOutput result={null} error={null} />);
+    expect(screen.getByText('Press Run to see your output here.')).toBeInTheDocument();
+    rerender(<CodeRunOutput result={RUN} error={null} />);
+    expect(screen.getByText('Exit code 0')).toBeInTheDocument();
+    expect(screen.getByLabelText('Output')).toHaveTextContent('hello');
+    expect(screen.getByText('9 runs left')).toBeInTheDocument();
+  });
+  it('negative: an error wins over a stale result; a failing run shows its errors, a compile error replaces the output', () => {
+    const { rerender } = render(<CodeRunOutput result={RUN} error="You have used all 10 runs." />);
+    expect(screen.getByText("Couldn't run")).toBeInTheDocument();
+    expect(screen.getByText('You have used all 10 runs.')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Output')).toBeNull();
+    rerender(<CodeRunOutput result={{ ...RUN, stdout: '', stderr: 'boom', exitCode: 1 }} error={null} />);
+    expect(screen.getByText('Exit code 1').closest('p')).toHaveAttribute('data-status', 'fail');
+    expect(screen.getByLabelText('Errors')).toHaveTextContent('boom');
+    rerender(<CodeRunOutput result={{ ...RUN, compileError: 'cannot find symbol', exitCode: 1 }} error={null} />);
+    expect(screen.getByText('Did not compile')).toBeInTheDocument();
+    expect(screen.getByText('cannot find symbol')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Output')).toBeNull();
+  });
+  it('negative: a run stopped for time names the limit and the likely cause; one printing nothing says so', () => {
+    const { rerender } = render(<CodeRunOutput result={{ ...RUN, stdout: '', exitCode: 137, timedOut: true, runsRemaining: 1 }} error={null} />);
+    expect(screen.getByText(/more than 5 seconds/)).toBeInTheDocument();
+    expect(screen.getByText('1 run left')).toBeInTheDocument();
+    rerender(<CodeRunOutput result={{ ...RUN, stdout: '' }} error={null} />);
+    expect(screen.getByText('Your program printed nothing.')).toBeInTheDocument();
+  });
+});

@@ -62,3 +62,5 @@ export { CandidateLegalContext, type CandidateLegal } from './proctoring-shared'
 // AS-6 (PRC-19, answers 2019, 2165): marking and fairness.
 export { EvaluatorConsoleScreen, FairnessScreen } from './integrity';
 export type { FairnessData, FairnessRow, LiveEvaluator, LiveFairness, MarkStatus, MarkingItem } from './marking-live';
+// Answer 2234: the candidate's own Run output under the code editor on /exam.
+export { CodeRunOutput, type CodeRun } from './proctoring-kit';
