@@ -145,6 +145,32 @@ describe('Periods (TIM-11 live)', () => {
 describe('My timesheet (TIM-15 live)', () => {
   const sheet = (data: MyTimesheet, o: Partial<LiveTimesheet> = {}): LiveTimesheet => ({ state: 'ready', data, week: data.week, today: TODAY, onWeek: vi.fn(), onSave: ok(), onSubmit: ok(), onWithdraw: ok(), ...o });
 
+  // Keka ideas (2026-11): Time summary.
+  it('Time summary: hours per week of the year and each week with its status; a week opens in the grid', async () => {
+    const onYear = vi.fn();
+    const live = sheet(MY_TIMESHEET, { summary: { state: 'ready', onYear, data: { year: 2026, years: [2026, 2025], weeks: [{ week: '2026-09-21', totalMinutes: 2400, status: 'approved' }, { week: '2026-09-28', totalMinutes: 1980, status: 'pending' }] } } });
+    render(<TimesheetScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: 'Time summary' }));
+    expect(screen.getByText('73 hours in 2026 · 1 of 2 weeks approved')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for approval')).toBeInTheDocument();
+    await ue.click(screen.getByRole('combobox', { name: 'Year' }));
+    await ue.click(screen.getByRole('option', { name: '2025' }));
+    expect(onYear).toHaveBeenCalledWith(2025);
+    await ue.click(screen.getByText('Approved'));
+    expect(live.onWeek).toHaveBeenCalledWith('2026-09-21');
+    expect(screen.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true');
+  });
+
+  it('negative: a year with no timesheets says so; without the summary there are no tabs', async () => {
+    const { unmount } = render(<TimesheetScreen live={sheet(MY_TIMESHEET, { summary: { state: 'ready', onYear: vi.fn(), data: { year: 2026, years: [2026], weeks: [] } } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Time summary' }));
+    expect(screen.getAllByText('No timesheets in 2026 yet.').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('combobox', { name: 'Year' })).toBeNull();
+    unmount();
+    render(<TimesheetScreen live={sheet(MY_TIMESHEET)} />);
+    expect(screen.queryByRole('tab', { name: 'Time summary' })).toBeNull();
+  });
+
   it('saves a draft with a toast and submits the week after saving it', async () => {
     const live = sheet(MY_TIMESHEET);
     render(<TimesheetScreen live={live} />);

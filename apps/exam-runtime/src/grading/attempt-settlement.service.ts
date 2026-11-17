@@ -81,6 +81,8 @@ interface SectionSnapshotEntry {
   weightPercent: number;
   requiredCount: number | null;
   questionIds: string[];
+  /** Answer 2154: frozen at the start, like the weight. Absent on older snapshots: no cut-off. */
+  cutoffPercent?: number | null;
 }
 
 // Attempts that STARTED before section weighting shipped carry a snapshot with no weightPercent
@@ -117,6 +119,7 @@ function toGradableSections(
     // "all required", never as 0, which would score every section out of nothing.
     requiredCount: section.requiredCount ?? null,
     questionIds: section.questionIds,
+    cutoffPercent: section.cutoffPercent ?? null,
   }));
 }
 
@@ -294,6 +297,7 @@ export class AttemptSettlementService {
         maxScore: summary.maxScore,
         percentage: summary.percentage,
         passFail: hasManualQuestions ? null : summary.passFail,
+        cutoffMissed: hasManualQuestions ? [] : summary.cutoffMissed,
       },
     });
 
@@ -442,7 +446,7 @@ export class AttemptSettlementService {
       }
       await tx.result.update({
         where: { attemptId: attempt.id },
-        data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail },
+        data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail, cutoffMissed: summary.cutoffMissed },
       });
       updated += 1;
     }
@@ -493,7 +497,7 @@ export class AttemptSettlementService {
 
     await tx.result.update({
       where: { attemptId: attempt.id },
-      data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail },
+      data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail, cutoffMissed: summary.cutoffMissed },
     });
 
     const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status: 'submitted' } });

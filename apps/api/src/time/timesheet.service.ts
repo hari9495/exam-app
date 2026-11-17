@@ -84,6 +84,25 @@ export class TimesheetService implements OnModuleInit {
     });
   }
 
+  /**
+   * Keka ideas (2026-11), Time summary: my weeks of a year with their hours and status (weeks starting that year), and the
+   * years I have timesheets in. My own record only.
+   */
+  summary(ctx: TenantContext, year: number) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await myEmployeeId(tx, org, c.userId);
+      const sheets = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: me, weekStart: { gte: asDate(`${year}-01-01`), lte: asDate(`${year}-12-31`) } }, orderBy: { weekStart: 'asc' }, select: { weekStart: true, status: true, totalMinutes: true } });
+      const years = await tx.$queryRaw<{ y: number }[]>`SELECT DISTINCT extract(year FROM week_start)::int AS y FROM timesheets WHERE organization_id = ${org}::uuid AND employee_id = ${me}::uuid ORDER BY 1 DESC`;
+      const thisYear = Number(todayIst().slice(0, 4));
+      return {
+        year,
+        years: [...new Set([thisYear, ...years.map((r) => r.y)])].sort((x, y) => y - x),
+        weeks: sheets.map((s) => ({ week: dateOf(s.weekStart), status: s.status, totalMinutes: s.totalMinutes })),
+      };
+    });
+  }
+
   /** Saves the week as a draft (a rejected week becomes a draft again). Hours on locked days never change. */
   async save(ctx: TenantContext, user: ScopeUser, weekIn: string, lines: TimesheetLineDto[]) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');

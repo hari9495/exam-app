@@ -23,6 +23,7 @@ import { Actions, CameraFrame, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage
 import { checkLine, flagText, fxFlagged, fxVariancePct, mileageAmount, perDiemAmount, recoveryInstalments, reductionText, settlement } from './ops-rules';
 import type { ListState } from './helpdesk';
 import { CardLinesCard, LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, type LiveClaim, type LiveHome } from './expenses-live';
+import { SavedExpensesCard, type LiveSavedExpenses } from './expenses-saved';
 import { Segment } from '../../components/segment';
 import { LiveAdvanceRecord, LiveAdvancesList, LiveTripRecord, LiveTripsList, type LiveAdvance, type LiveAdvances, type LiveTrip, type LiveTrips } from './expenses-travel-live';
 import type { ApprovalStatus, Claim, ExpenseLine, PaymentStatus } from './expenses-data';
@@ -66,6 +67,8 @@ export interface ExpensesHomeProps {
   naming?: boolean;
   /** EXP-08: company card lines waiting for the employee to explain. */
   cardLines?: number;
+  /** Keka ideas (2026-11): the saved expenses waiting to be claimed (the design's sample ones). */
+  saved?: boolean;
 }
 export interface TeamClaimsProps {
   today: string;
@@ -85,6 +88,21 @@ function SampleTeamClaims({ today, state = 'ready', over: startOver = false }: T
   return <LiveTeamClaims live={{ state: state === 'no-access' ? 'no-access' : 'ready', onRetry: () => {}, team, today, month, onMonth: setMonth, over, onOver: setOver, onOpen: () => {} }} />;
 }
 
+/** Keka ideas: the design's saved expenses (two with a receipt, one declared). */
+const SAMPLE_SAVED: LiveSavedExpenses = {
+  currency: 'INR',
+  today: '2026-09-29',
+  drafts: [{ id: 'dr1', title: 'Hosur plant audit' }],
+  items: [
+    { id: 's1', spentOn: '2026-09-28', amount: '640.00', categoryCode: null, merchant: 'Ola cab to the airport', description: null, receipt: true, createdAt: '2026-09-28T03:00:00.000Z' },
+    { id: 's2', spentOn: '2026-09-26', amount: '1850.00', categoryCode: null, merchant: 'Lunch with distributor', description: null, receipt: true, createdAt: '2026-09-26T09:00:00.000Z' },
+    { id: 's3', spentOn: '2026-09-24', amount: '120.00', categoryCode: null, merchant: 'Auto to the client office', description: null, receipt: false, createdAt: '2026-09-24T09:00:00.000Z' },
+  ],
+  onAdd: async () => {},
+  onRemove: async () => {},
+  onClaim: async () => {},
+};
+
 /** EXP-01 Expenses home. The live app passes `live` (employee, approver or finance view). */
 export function ExpensesHomeScreen(props: ExpensesHomeProps | { live: LiveHome }) {
   return 'live' in props ? <LiveExpensesHome live={props.live} /> : <SampleExpensesHome {...props} />;
@@ -94,7 +112,8 @@ const VIEWS = [
   { value: 'mgr', label: 'Waiting for me' },
   { value: 'fin', label: 'Finance' },
 ];
-function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready', views, naming, cardLines }: ExpensesHomeProps) {
+function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready', views, naming, cardLines, saved }: ExpensesHomeProps) {
+  const savedCard = saved ? <SavedExpensesCard live={SAMPLE_SAVED} /> : null;
   const switcher = views ? <Segment label="Show" value={persona} onChange={() => {}} options={VIEWS} /> : null;
   const dialog = naming ? <NewClaimDialog open onClose={() => {}} onStart={async () => {}} /> : null;
   const pending = claims.filter((c) => c.status === 'Submitted' || (c.status !== 'Rejected' && c.payment !== 'Paid' && c.payment !== 'Not due'));
@@ -145,6 +164,7 @@ function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, t
           <Button icon={Plane}>Request a trip</Button>
           <Button icon={Car}>Add mileage</Button>
         </Actions>
+        {savedCard}
         <h2 className="yx-ops-card__title">My claims</h2>
         {claimList}
       </PhoneFrame>
@@ -225,7 +245,16 @@ function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, t
       />
       {switcher}
       <Workspace
-        main={<Card title="My claims">{claimList}</Card>}
+        main={
+          savedCard ? (
+            <div className="yx-ops-stack">
+              {savedCard}
+              <Card title="My claims">{claimList}</Card>
+            </div>
+          ) : (
+            <Card title="My claims">{claimList}</Card>
+          )
+        }
         rail={
           <>
             <MoneyLead label="You will receive" amount={toReceive} sub="Approved claims are paid in the next payroll unless finance pays sooner" />

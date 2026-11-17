@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CalendarPlus, CheckSquare, CircleDot, FileText, HelpCircle, MessageSquare, Receipt, Ticket, UserRound, Users, Wand2 } from 'lucide-react';
+import { CalendarCheck, CalendarPlus, CheckSquare, CircleDot, FileText, HelpCircle, House, MessageSquare, Receipt, Ticket, UserRound, Users, Wand2 } from 'lucide-react';
 import { useKeySequences, type PaletteGroup, type PaletteItem } from '@yukthix/ui';
 import { SCREEN_RAIL } from '@yukthix/ui/frame';
 import { activeLink, type NavArea } from './yx-nav';
@@ -71,10 +71,17 @@ export function buildPalette(p: PaletteInput): { groups: PaletteGroup[]; targets
   const leave = p.self ? link('my-leave') : undefined;
   const approvals = link('approvals');
   const expenses = p.self ? link('expenses') : undefined;
+  // Keka ideas (2026-11): more actions started from search; each opens the sheet its own page already has.
+  const attendance = p.self ? link('my-attendance') : undefined;
+  const desk = p.help ? link('desk-help') : undefined;
   const actions: PaletteItem[] = [
     ...(leave ? [item({ id: 'act:leave', label: 'Apply leave', secondary: 'Opens the request sheet', icon: CalendarPlus, shortcut: 'N L', keywords: ['leave', 'time off', 'holiday'] }, { href: `${leave.href}?apply=1` })] : []),
+    ...(attendance ? [item({ id: 'act:regularise', label: 'Regularise a day', secondary: 'Fix a missed or wrong punch', icon: CalendarCheck, keywords: ['regularise', 'regularize', 'missed punch', 'attendance', 'correction'] }, { href: `${attendance.href}?request=regularise` })] : []),
+    ...(attendance ? [item({ id: 'act:wfh', label: 'Request work from home', secondary: 'Opens the request sheet', icon: House, keywords: ['wfh', 'work from home', 'remote'] }, { href: `${attendance.href}?request=wfh` })] : []),
     ...(approvals ? [item({ id: 'act:approve', label: 'Approve requests', secondary: p.waiting ? `Approvals · ${p.waiting} waiting` : 'Approvals · nothing waiting', icon: CheckSquare, keywords: ['approve', 'approvals', 'leave', 'expense'] }, { href: approvals.href })] : []),
     ...(expenses ? [item({ id: 'act:expense', label: 'New expense claim', secondary: 'Opens the request sheet', icon: Receipt, shortcut: 'N E', keywords: ['expense', 'claim', 'receipt', 'bill'] }, { href: `${expenses.href}?new=1` })] : []),
+    ...(expenses ? [item({ id: 'act:save-expense', label: 'Add an expense', secondary: 'Save it now, claim it later', icon: Receipt, keywords: ['expense', 'receipt', 'save', 'bill', 'spend'] }, { href: `${expenses.href}?save=1` })] : []),
+    ...(desk ? [item({ id: 'act:ticket', label: 'Raise a ticket', secondary: 'Ask HR, IT or finance', icon: Ticket, keywords: ['ticket', 'helpdesk', 'help desk', 'issue', 'query'] }, { href: `${desk.href}?new=1` })] : []),
   ];
   if (leave) shortcuts['N L'] = `${leave.href}?apply=1`;
   if (expenses) shortcuts['N E'] = `${expenses.href}?new=1`;

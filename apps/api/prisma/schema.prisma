@@ -889,6 +889,8 @@ model ExamSection {
   // 2026-08-05-answer-any-n-design.md. Publish enforces 1 <= requiredCount <= M and that all
   // candidate questions carry equal marks.
   requiredCount         Int?                  @map("required_count")
+  /// Answer 2154: the least percentage of this section's own marks to pass; null = none.
+  cutoffPercent         Int?                  @map("cutoff_percent")
   exam                  Exam                  @relation(fields: [examId], references: [id], onDelete: Cascade)
   questions             ExamSectionQuestion[]
   poolTags              ExamSectionPoolTag[]
@@ -1195,6 +1197,67 @@ model Answer {
   @@map("answers")
 }
 
+/// AS-6 (PRC-19): one person's mark on one answer. Rounds 1 and 2 are the blind markers, 3 the moderator. Never changed.
+model AnswerMark {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// Filled by the database from the attempt (asmt_org_from_attempt).
+  organizationId String?  @map("organization_id") @db.Uuid
+  attemptId      String   @map("attempt_id") @db.Uuid
+  questionId     String   @map("question_id") @db.Uuid
+  markerUserId   String   @map("marker_user_id") @db.Uuid
+  round          Int      @db.SmallInt
+  marks          Int
+  feedback       String?  @db.VarChar(2000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([attemptId, questionId, markerUserId], map: "answer_marks_marker_key")
+  @@unique([attemptId, questionId, round], map: "answer_marks_round_key")
+  @@map("answer_marks")
+}
+
+/// AS-6 (PRC-19): the AI's suggested mark, shown only to someone who has marked the answer; never for an under-18.
+model AnswerAiSuggestion {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  attemptId      String   @map("attempt_id") @db.Uuid
+  questionId     String   @map("question_id") @db.Uuid
+  marks          Int
+  reason         String?  @db.VarChar(2000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([attemptId, questionId], map: "answer_ai_suggestions_answer_key")
+  @@map("answer_ai_suggestions")
+}
+
+/// AS-6 (answer 2019): a candidate's voluntary self-description after a test; used only in aggregate.
+model AttemptSelfDescription {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String?  @map("organization_id") @db.Uuid
+  attemptId      String   @unique(map: "attempt_self_descriptions_attempt_key") @map("attempt_id") @db.Uuid
+  /// woman | man | another | not_say
+  gender         String   @db.VarChar(16)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("attempt_self_descriptions")
+}
+
+/// AS-6 (answer 2019): the review a fairness finding opens: keep (with a reason), revise or retire the test.
+model AsmtFairnessReview {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  examId         String    @map("exam_id") @db.Uuid
+  finding        String    @db.VarChar(500)
+  openedBy       String    @map("opened_by") @db.Uuid
+  openedAt       DateTime  @default(now()) @map("opened_at") @db.Timestamptz(3)
+  decision       String?   @db.VarChar(10)
+  reason         String?   @db.VarChar(2000)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+
+  @@index([organizationId])
+  @@map("asmt_fairness_reviews")
+}
+
 model CodeAnswerReview {
   id             String   @id @default(uuid()) @db.Uuid
   answerId       String   @unique @map("answer_id") @db.Uuid
@@ -1223,6 +1286,8 @@ model Result {
   // Blob path of the generated pass certificate, minted lazily on first download (recruiter or
   // candidate) and reused thereafter.
   certificatePath String?   @map("certificate_path") @db.VarChar(1000)
+  /// Answer 2154: the sections whose cut-off this attempt missed (any of them fails it).
+  cutoffMissed    String[]  @default([]) @map("cutoff_missed") @db.Uuid
   attempt         Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
@@ -9671,6 +9736,26 @@ model ExpenseLine {
   confirmed        Boolean   @default(true)
 
   @@map("expense_lines")
+}
+
+/// Keka ideas (2026-11): a spend saved first and claimed later (picked into a claim, it becomes that claim's line).
+model ExpenseItem {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  spentOn        DateTime  @map("spent_on") @db.Date
+  amount         Decimal   @db.Decimal(14, 2)
+  categoryCode   String?   @map("category_code") @db.VarChar(30)
+  merchant       String?   @db.VarChar(120)
+  description    String?   @db.VarChar(500)
+  receiptFileId  String?   @map("receipt_file_id") @db.Uuid
+  receiptSha256  String?   @map("receipt_sha256") @db.Char(64)
+  claimedLineId  String?   @map("claimed_line_id") @db.Uuid
+  claimedAt      DateTime? @map("claimed_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("expense_items")
 }
 
 model ExpenseLineChange {

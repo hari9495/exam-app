@@ -130,3 +130,6 @@
 /* Answer 2201: the candidate's own camera in the selfie step. */
 .yx-prc-selfie { margin: 0; aspect-ratio: 4 / 3; max-height: calc(var(--yx-space-16) * 6); display: flex; justify-content: center; align-items: center; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); overflow: hidden; }
 .yx-prc-selfie video { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* AS-6 (answer 2237): the company privacy notice keeps its own line breaks. */
+.yx-prc-notice-text { white-space: pre-wrap; }

@@ -1284,6 +1284,10 @@ const assessments: SettingsPageDef = {
         { key: 'asmt.cooldown', label: 'Wait between attempts', kind: 'number', value: 7, unit: 'days', min: 0, max: 90, starter: true, scope: INHERITED },
         { key: 'asmt.exposure_cap', label: 'Show one question to at most', kind: 'percent', value: 30, min: 5, max: 100, unit: '% of candidates', helper: 'Counted over the last 30 days, so questions don’t leak.', starter: true, scope: 'Company', synonyms: ['question leak', 'exposure'] },
         { key: 'asmt.high_stakes', label: 'A test for more people than this needs an approver', kind: 'number', value: 500, unit: 'candidates', min: 50, starter: true, helper: 'Certification tests always need an approver.', scope: 'Company' },
+        // AS-6 (PRC-19): marking.
+        { key: 'asmt.blind_marking', label: 'Blind marking', kind: 'toggle', value: true, helper: 'Markers do not see who wrote the answer.', starter: true, scope: 'Company', synonyms: ['blind', 'anonymous marking'] },
+        { key: 'asmt.second_marker', label: 'A second marker for written answers', kind: 'toggle', value: false, helper: 'Two blind marks; far apart, a third person moderates.', starter: true, scope: 'Company', synonyms: ['double marking', 'moderation'] },
+        { key: 'asmt.moderation_gap', label: 'Moderate when two marks differ by more than', kind: 'select', value: '25 %', options: ['10 %', '20 %', '25 %', '33 %', '50 %'], helper: 'A share of the question’s marks.', starter: true, scope: 'Company' },
       ],
     },
     {
@@ -1346,6 +1350,8 @@ const assessments: SettingsPageDef = {
           helper: 'Moved automatically only when no cheating was flagged. Nobody is rejected automatically.',
         },
         { key: 'asmt.bias_response', label: 'When a question seems unfair to one group', kind: 'radio', value: 'Alert and require review', options: ['Alert and require review', 'Suspend the question until cleared'], starter: true, scope: 'Company' },
+        // AS-6 (answer 2019): fairness from voluntary answers, shown only for groups at least this large.
+        { key: 'asmt.fairness_min_group', label: 'Show a group in fairness checks from', kind: 'select', value: '30', options: ['5', '10', '20', '30', '50', '100'], unit: 'answers', helper: 'Smaller groups are hidden so no one can be picked out.', starter: true, scope: 'Company', synonyms: ['fairness', 'adverse impact', 'bias'] },
       ],
     },
   ],

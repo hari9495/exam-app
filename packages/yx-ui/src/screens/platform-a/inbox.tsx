@@ -1,6 +1,7 @@
 // Notifications, approvals, request sheet, my requests, delegation (PLT-03…07; APX-D §1.1 Approvals).
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import { ArrowLeft, ArrowLeftRight, BellOff, Briefcase, CalendarDays, CalendarPlus, Check, CheckCheck, ChevronLeft, ChevronRight, Clock, FileText, Laptop, Mail, MailOpen, MoreHorizontal, Plus, Receipt, Settings as SettingsIcon, Wallet } from 'lucide-react';
+import { Segment } from '../../components/segment';
 import { PageHeader, Card, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel, Avatar } from '../../components/display';
@@ -366,6 +367,13 @@ export function NotificationsInboxPhone(props: NotificationsInboxProps) {
 
 /* ================================================================ PLT-04 Approvals inbox */
 
+/** The kinds of request in a list with how many of each, most first (then by name). */
+export function approvalKinds(rows: { type: string }[]): { kind: string; count: number }[] {
+  const by = new Map<string, number>();
+  for (const r of rows) by.set(r.type, (by.get(r.type) ?? 0) + 1);
+  return [...by.entries()].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind));
+}
+
 export type ApprovalTab = 'waiting' | 'delegated' | 'sent' | 'history';
 
 const APPROVAL_TYPES = ['Leave', 'Expense', 'Timesheet', 'Regularisation', 'Bank change', 'Access request', 'Offer'];
@@ -710,7 +718,12 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
   const today = live?.today ?? TODAY;
   const mine = items.filter((r) => !r.onBehalfOf);
   const delegated = items.filter((r) => r.onBehalfOf);
-  const rows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : history;
+  const tabRows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : history;
+  // Keka ideas (2026-11): the kinds waiting in this tab, with counts, as one pick-one control (All or one kind).
+  const [kind, setKind] = useState<string>('all');
+  const kinds = approvalKinds(tabRows);
+  const shownKind = kinds.some((k) => k.kind === kind) ? kind : 'all';
+  const rows = shownKind === 'all' ? tabRows : tabRows.filter((r) => r.type === shownKind);
   const current = [...items, ...sent, ...history].find((r) => r.id === open) ?? null;
   const decide = (ids: string[], text: string) => {
     const next = rows.filter((r) => !ids.includes(r.id));
@@ -779,6 +792,16 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         ]}
         tab={tab}
         onTabChange={setTab}
+        beforeTable={
+          kinds.length > 1 ? (
+            <Segment
+              label="Kind of request"
+              value={shownKind}
+              onChange={setKind}
+              options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
+            />
+          ) : undefined
+        }
         label="Approval requests"
         columns={approvalColumns(!actionable, today, Boolean(live))}
         rows={rows}

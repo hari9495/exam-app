@@ -22359,5 +22359,133 @@
       "ConsoleNotices"
     ],
     "note": "Positive and negative. The removal notice needs a kept group past its day: covered by the API tests."
+  },
+  {
+    "id": "MT-KEKA-1",
+    "area": "Keka ideas (17 Nov 2026)",
+    "screen": "Ctrl K actions; Approvals kinds; manager Home › My team today",
+    "url": "http://localhost:3000/yx/home",
+    "account": "An employee with a manager role (panel@ in the demo org), and an employee with no reports.",
+    "steps": [
+      "Press Ctrl K: look at Actions; pick Regularise a day, then Raise a ticket, then Add an expense.",
+      "Open Approvals: pick each kind in the row above the list, then All.",
+      "As the manager: Home › My team today: pick each group; nudge someone not in yet.",
+      "As the employee with no reports: Home."
+    ],
+    "expected": "Step 1: each opens its sheet; only actions the person may do are listed. Step 2: the list shows only that kind; the counts match. Step 3: each group lists its people; a nudge says it was sent and stays done. Step 4: no My team today card.",
+    "stories": [
+      "Screens/Platform/PLT-20 · Command palette",
+      "Screens/Platform/PLT-04 · Approvals inbox",
+      "Screens/Platform/PLT-02 · Role homes"
+    ],
+    "note": "Positive and negative. Keka ideas 1, 2, 3."
+  },
+  {
+    "id": "MT-KEKA-2",
+    "area": "Keka ideas (17 Nov 2026)",
+    "screen": "Expenses home › Expenses to be claimed",
+    "url": "http://localhost:3000/yx/expenses",
+    "account": "An employee of the demo org with expenses set up.",
+    "steps": [
+      "Add an expense with no amount, then with an amount and a receipt.",
+      "Add the same receipt again.",
+      "Tick two saved expenses; Claim selected into a new claim with no name, then named.",
+      "Save another and put it into a draft claim; remove one with Cancel first, then confirm."
+    ],
+    "expected": "Step 1: the amount is asked; then saved (toast). Step 2: refused, already saved. Step 3: the name is asked; then the claim opens with two lines, the receipt on its line; the saved list is empty. Step 4: added to the draft; removed after confirming.",
+    "stories": [
+      "Screens/Expenses/EXP-01 · Expenses home"
+    ],
+    "note": "Positive and negative. Keka idea 4."
+  },
+  {
+    "id": "MT-KEKA-3",
+    "area": "Keka ideas (17 Nov 2026)",
+    "screen": "My timesheet › Time summary; Payslips; Approvals › Profile change",
+    "url": "http://localhost:3000/yx/time/timesheet",
+    "account": "An employee with timesheets and payslips in two tax years; an HR approver of identity and bank changes.",
+    "steps": [
+      "My timesheet › Time summary: change the year; open a week.",
+      "Payslips: pick a month on the left; change the tax year.",
+      "As an employee: send a bank change. As HR: open Approvals, pick Profile change, open it.",
+      "As the employee who sent it: open Approvals."
+    ],
+    "expected": "Step 1: a bar per week and the weeks with status; the week opens in the grid. Step 2: that payslip on the right; the other year's months. Step 3: it is listed under Profile change and opens the change page to decide. Step 4: not in their own inbox.",
+    "stories": [
+      "Screens/Time/TIM-15 · Timesheets",
+      "Screens/Pay/PAY-21 · Payslip viewer"
+    ],
+    "note": "Positive and negative. Keka ideas 5, 6, 7."
+  },
+  {
+    "id": "MT-AS6-1",
+    "area": "Marking and fairness: answers 2019, 2154, 2165, 2237 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Tests › a test › Scoring (section cut-offs)",
+    "url": "http://localhost:3000/yx/hiring/assessments/tests",
+    "account": "A test writer (exam:manage) in the demo org.",
+    "steps": [
+      "Open a draft test with two sections; in Scoring, set a cut-off of 60 % on the second section.",
+      "Try 0 and 101.",
+      "Publish; take the test answering the first section right and the second wrong; open the candidate report."
+    ],
+    "expected": "Step 1: saved (toast). Step 2: refused with a message. Step 3: the total passes but the result is Fail; the second section says \"Cut-off not met\".",
+    "stories": [
+      "Screens/Proctoring/PRC-04 · Test builder",
+      "Screens/Proctoring/PRC-06 · Candidate score report"
+    ],
+    "note": "Positive and negative. Answer 2154."
+  },
+  {
+    "id": "MT-AS6-2",
+    "area": "Marking and fairness: answers 2019, 2154, 2165, 2237 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Marking (PRC-19)",
+    "url": "http://localhost:3000/yx/hiring/assessments/marking",
+    "account": "Two evaluators (asmt.evaluate) and a third person who marks; a candidate who answered an essay. Settings › Assessments: second marker on.",
+    "steps": [
+      "As evaluator 1: open Marking; press Save mark with no marks; then enter 11 on a 10-mark question.",
+      "Enter 2 and save; press Show the AI suggestion.",
+      "As evaluator 2: open the same answer; enter 8 and save.",
+      "As the third person: open it, read the two marks, enter 5 and save; press Finish marking this attempt.",
+      "Mark an essay by a candidate whose date of birth makes them under 18."
+    ],
+    "expected": "Step 1: no name, only \"Candidate XXXX\"; both refused. Step 2: saved; the suggestion shows only now. Step 3: no suggestion before saving; then \"Marks differ\". Step 4: \"The two blind marks were 2 and 8\"; final 5; finishing asks for the second factor and the result appears. Step 5: \"Under-18 test-taker: human marking only, no AI suggestion.\" and no suggestion button.",
+    "stories": [
+      "Screens/Proctoring/PRC-19 · Evaluator console"
+    ],
+    "note": "Positive and negative. Blind, double marking, moderation, under-18."
+  },
+  {
+    "id": "MT-AS6-3",
+    "area": "Marking and fairness: answers 2019, 2154, 2165, 2237 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Fairness; candidate survey",
+    "url": "http://localhost:3000/yx/hiring/assessments/fairness",
+    "account": "A test writer; a results reader (asmt.results.view); candidates who answered the end-of-test survey. Settings › Assessments: fairness minimum group 5 (for the demo).",
+    "steps": [
+      "As candidates: finish the test; in the survey, choose a rating and, for some, how they describe themselves; one chooses Prefer not to say; one skips it.",
+      "As the reader: open Fairness and pick the test.",
+      "As the test writer: press Open review task; press it again; Decide with a 5-character reason, then with a proper reason."
+    ],
+    "expected": "Step 2: groups with pass rates; a group under the minimum says \"Under 5\"; no names anywhere; the survey summary shows only from 5 answers; the reader has no review button. Step 3: the review opens once; a short reason is refused; the decision and reason show (toast).",
+    "stories": [
+      "Screens/Proctoring/Extra · Fairness analytics",
+      "Screens/Proctoring/PRC-26 · Test runner"
+    ],
+    "note": "Positive and negative. Answers 2019, 2165."
+  },
+  {
+    "id": "MT-AS6-4",
+    "area": "Marking and fairness: answers 2019, 2154, 2165, 2237 (17 Nov 2026)",
+    "screen": "Candidate › Welcome and Your result (legal links)",
+    "url": "http://localhost:3000/welcome",
+    "account": "A candidate invited by a company with an applicant privacy notice; another by a company without one.",
+    "steps": [
+      "Open the invitation; look at the foot of the page; open the privacy notice; open YukthiX terms of use.",
+      "Repeat for the company without a notice."
+    ],
+    "expected": "Step 1: \"{company} privacy notice\" opens the notice text in a dialog; the terms open in a new tab. Step 2: only the terms link.",
+    "stories": [
+      "Screens/Proctoring/PRC-27 · Result and appeal"
+    ],
+    "note": "Positive and negative. Answer 2237."
   }
 ]

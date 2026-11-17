@@ -135,6 +135,25 @@ describe('PAY-21 / PAY-40 · Me › Payslips (live)', () => {
     expect((await screen.findAllByText('Query withdrawn')).length).toBeGreaterThan(0);
   });
 
+  // Keka ideas (2026-11): a tax year picker and its months beside the payslip; choosing a month opens it.
+  it('lists the tax year months beside the payslip; another month or year opens its payslip', async () => {
+    const older = { ...MY_PAYSLIPS[1]!, id: 's9', month: '2026-03' };
+    render(<PayslipViewerScreen live={live({ payslips: [...MY_PAYSLIPS, older] })} />);
+    const months = screen.getByRole('navigation', { name: 'Payslips by month' });
+    expect(within(months).getByRole('button', { name: /September 2026/ })).toHaveAttribute('aria-current', 'true');
+    expect(within(months).queryByRole('button', { name: /March 2026/ })).toBeNull();
+    await ue.click(within(months).getByRole('button', { name: /August 2026/ }));
+    expect(screen.getByRole('heading', { name: 'Payslip for August 2026' })).toBeInTheDocument();
+    await ue.click(within(months).getByRole('combobox', { name: 'Tax year' }));
+    await ue.click(screen.getByRole('option', { name: 'Tax year 2025-26' }));
+    expect(screen.getByRole('heading', { name: 'Payslip for March 2026' })).toBeInTheDocument();
+  });
+
+  it('negative: one tax year shows no year picker', () => {
+    render(<PayslipViewerScreen live={live()} />);
+    expect(within(screen.getByRole('navigation', { name: 'Payslips by month' })).queryByRole('combobox')).toBeNull();
+  });
+
   it('an off-cycle payslip has no "why different" and the PDF downloads with a toast', async () => {
     const onPdf = fn();
     render(<PayslipViewerScreen live={live({ payslips: [{ ...MY_PAYSLIPS[0], runType: 'offcycle' }, MY_PAYSLIPS[1]], onPdf })} />);

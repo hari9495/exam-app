@@ -453,13 +453,14 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Blind · Blind marking, not scored yet | live (gap) | B | `GradingQueuePanel` (`GET /exams/:id/pending-grading`, `POST …/answers/:qid/grade`, `finalize-manual-grade`). Gap: names are shown (`blind`: none) |
-| ScoredWithAi · Scored: AI suggestion revealed | live (gap) | B | AI code review per answer (`…/code-review`, regenerate). Gap: none for essays; shown before marking, not after |
-| Moderation · Disagreement: moderation | design only, feature not built | B | one marker only (`moderat` hits are rate limits) |
+| Blind · Blind marking, not scored yet | live | B | AS-6: `/yx/hiring/assessments/marking`, blind by `asmt.blind_marking` (default on) |
+| ScoredWithAi · Scored: AI suggestion revealed | live | B | AS-6: essays and code, only after the marker's own mark (`POST /asmt/marking/:attempt/:question/suggestion`) |
+| Moderation · Disagreement: moderation | live | B | AS-6: `asmt.second_marker`, `asmt.moderation_gap`; a third person's mark is final |
 | Code · Code response | live (gap) | B | code answers with Piston runs, auto-graded tests (`grading/code-autograde.service.ts`) and AI review |
-| AiAllowed · AI-allowed test: assistant log | design only, feature not built | B | no AI-allowed tests |
-| Minor · Under-18: human only | design only, feature not built | B | no age on the candidate side of tests |
-| NotBlind · Blind mode off | live (gap) | B | today's marking (names shown) |
+| AiAllowed · AI-allowed test: assistant log | design only, feature not built | B | AS-6 part 2 (question 2272) |
+| Minor · Under-18: human only | live | B | AS-6: `minorState` from the candidate's sealed date of birth; the suggestion is refused |
+| NotBlind · Blind mode off | live | B | AS-6: names shown when `asmt.blind_marking` is off |
+| Live · blind, not marked yet; marked, AI suggestion shown; moderator; under-18, human only; code answer; nothing to mark | live | B | AS-6 live stories |
 
 #### PRC-20 · Integrity reports
 
@@ -620,9 +621,10 @@ YukthiX keys with the older ones kept as aliases (the same pattern as `ats-keys.
 
 | story (sub-page) | verdict | bucket | note |
 |---|---|---|---|
-| Finding · Adverse-impact finding | design only, feature not built | B | `adverse.?impact|four.?fifths`: none. Hire's bias audits (HIR-23) store outside audit reports; they do not compute pass rates (question 2019) |
-| NoFinding · No finding | design only, feature not built | B | as above |
-| ValiditySuppressed · Predictive validity suppressed (small sample) | design only, feature not built | B | as above |
+| Finding · Adverse-impact finding | live | B | AS-6: four-fifths rule on voluntary answers, groups below `asmt.fairness_min_group` hidden |
+| NoFinding · No finding | live | B | AS-6 |
+| ValiditySuppressed · Predictive validity suppressed (small sample) | design only, feature not built | B | predictive validity needs hire outcomes: later |
+| Live · finding, open a review; review open; no finding, survey hidden | live | B | AS-6 (answers 2019, 2165): `/yx/hiring/assessments/fairness` |
 
 #### Extra · ID manual review queue
 
@@ -1395,6 +1397,8 @@ integrity reports (PRC-20) and the privacy centre (PRC-28).
 2266. **Telling the candidate.** The decision and the appeal outcome show on `/result`; no email is sent.
       *Suggested: an email on a verdict other than cleared and on the appeal decision.*
 
+**Founder answers (16 Nov 2026, "ok for all"), 2261-2266:** 2261 keep (proctors, evaluators, test owners, System Admins review integrity); 2262 snapshots and screen captures on the incident (views audited) and a summary to the candidate, in AS-5 part 3; 2263 court escalation later; 2264 one PDF or image up to 10 MB with an appeal, checked like accommodation evidence; 2265 recalculate the score on a final "section not counted" verdict and restore it if an appeal overturns it; 2266 email the candidate for any verdict except cleared and for the appeal decision.
+
 ## AS-5 as built, part 2 (branch `feat/yukthix-assessments-as5`, 17 Nov 2026; answers 2006, 2205, 2231, 2264, 2265, 2266)
 
 - **PRC-13 live console:** `/yx/hiring/assessments/tests/[id]/live` from the monitoring socket: the test's attempts by
@@ -1429,3 +1433,53 @@ integrity reports (PRC-20) and the privacy centre (PRC-28).
       *Suggested: show the thread from the existing messages route in the drawer.*
 2270. **Face re-check retries.** A mismatch keeps the test paused until a match or a proctor resumes it; there is no
       try limit. *Suggested: after 3 mismatches, tell the candidate a proctor will check and flag it for the console.*
+
+## AS-6 as built, part 1 (branch `feat/yukthix-assessments-as6`, 17 Nov 2026; answers 2019, 2154, 2165, 2237)
+
+Marking and fairness. Part 2 is the AI-allowed test (PRC-12 switch, the logged assistant in PRC-26, the assistant log
+for markers in PRC-19): it needs PRC-12 live (AS-5 part 2) and the designed runner on `/exam` (AS-4a part 2, 2161),
+so it was not built here (question 2272).
+
+- **Data:** migration `202617z0000371_asmt_marking_fairness`. `exam_sections.cutoff_percent` (1 to 100, empty = no
+  cut-off); `results.cutoff_missed` (the sections whose cut-off was missed); `answer_marks` (one row per marker per
+  answer, round 1 to 3, the app cannot change or delete a mark); `answer_ai_suggestions` (one per answer, cached);
+  `attempt_self_descriptions` (voluntary, one per attempt); `asmt_fairness_reviews` (one open review per test, decided
+  keep / revise / retire with a reason of 10+ characters). Forced RLS, the company filled from the attempt.
+- **Section cut-offs (2154):** set per section in the test builder's Scoring step; part of the approval fingerprint
+  and the clone. The section snapshot taken at start carries the cut-off, so a later edit never changes a running
+  attempt. An attempt fails if any section is below its cut-off, even when the total passes; the candidate report
+  shows "Cut-off not met" on that section.
+- **PRC-19 marking:** `/yx/hiring/assessments/marking` (`asmt.evaluate` or `exam:manage`). Essay, code, file and spoken
+  answers waiting for a human. Blind by default (`asmt.blind_marking`, on): the marker sees "Candidate 7F3A", not the
+  name. The AI suggestion (essay and code only) is offered only after the marker has saved their own mark, and never
+  for an under-18 test-taker (human marking only). Double marking (`asmt.second_marker`, off by default): two blind
+  marks; if they differ by more than `asmt.moderation_gap` (default 25 % of the question's marks) a third person
+  moderates and sees both marks; otherwise the average is final. The final mark is written to the answer; "Finish
+  marking this attempt" settles the result (second factor, as before). Every mark is audited.
+- **Fairness (2019):** `/yx/hiring/assessments/fairness` (test owners, `exam:manage`, `asmt.results.view`). Pass rates
+  by how test-takers describe themselves, asked once, optionally, in the end-of-test survey (Woman, Man, Another way,
+  Prefer not to say; "prefer not to say" is left out). A group smaller than `asmt.fairness_min_group` (default 30)
+  shows "Under 30", never a number. A group whose pass rate is below four fifths of the best shown group is a
+  finding; a finding needs two shown groups. "Open review task" records the finding; the owner decides keep, revise
+  or retire with a reason. Only test owners and `exam:manage` open or decide.
+- **Survey summary (2165):** on the same page per test: answers, average rating and the share who found the
+  instructions clear; hidden below 5 answers.
+- **Privacy links (2237):** every designed candidate page shows "{company} privacy notice" (the company's latest
+  applicant notice, in a dialog) and "YukthiX terms of use" (`/yx/legal/terms`). `/attempt/current` returns the notice.
+- **Settings 6.5:** blind marking, second marker, moderation gap, fairness minimum group (Assessments).
+- **Tests:** e2e `assessments-as6` (14: cut-offs, blind and double marking with moderation, the suggestion only after my mark and never for an under-18, fairness groups hidden below the minimum, one review decided once, the survey summary, the privacy notice); API unit (marking rules 3, fairness rules 3); runtime unit (cut-offs +2, result and snapshot shape); kit `marking-live` (5), `runner-live` (+2: survey self-description, legal links); web marking and fairness pages (4), nav (+2 cases).
+
+### Questions (from 2271)
+
+2271. **Rubrics.** Questions have no rubric, so a marker gives one mark out of the question's marks. *Suggested: a
+      rubric per essay and code question (criteria with marks) in the question bank, marked criterion by criterion
+      in PRC-19.*
+2272. **AI-allowed tests.** Not built in part 1 (see above). *Suggested: build it as AS-6 part 2 after AS-5 part 2
+      (PRC-12 live) and AS-4a part 2 (designed runner): a test switch, the assistant in the runner with every message
+      logged, AI-assistance flags off for that test, the log shown to markers.*
+2273. **What "retire" does.** Deciding "retire" is recorded only; the test is not archived. *Suggested: retiring also
+      archives the test (with the usual confirmation), so no new invitations go out.*
+2274. **Statistics on a finding.** The four-fifths rule only; no significance test. *Suggested: add a simple
+      two-proportion test and show "may be chance" when the groups are small, later with the analysis tab (2152).*
+2275. **Other groups.** Only gender is asked. *Suggested: keep to gender until a customer asks; any new group is
+      voluntary, with "prefer not to say", and the same minimum.*

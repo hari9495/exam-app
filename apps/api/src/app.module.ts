@@ -34,6 +34,7 @@ import { QuestionsModule } from './questions/questions.module';
 import { ExamsModule } from './exams/exams.module';
 import { AsmtDeliveryModule } from './assessments/delivery/delivery.module';
 import { AsmtCampusModule } from './assessments/campus/campus.module';
+import { AsmtMarkingModule } from './assessments/marking/marking.module';
 import { BeforeTestModule } from './assessments/before-test/before-test.module';
 import { AssessmentsModule } from './assessments/assessments.module';
 import { CandidatesModule } from './candidates/candidates.module';
@@ -153,6 +154,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     ExamsModule,
     AsmtDeliveryModule,
     AsmtCampusModule,
+    AsmtMarkingModule,
     BeforeTestModule,
     AssessmentsModule,
     CandidatesModule,

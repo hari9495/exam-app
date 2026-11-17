@@ -1,0 +1,172 @@
+# Compare summary: all areas (Keka, Zoho People, YukthiX)
+
+Draft of 17 Nov 2026, for the founder. One line per area, then one build order across all areas. Row ids point into
+the area files:
+- `compare-attendance-leave.md`;
+- `compare-timesheet-projects.md`;
+- `compare-approvals-team.md`;
+- `compare-expenses-pay.md`;
+- `compare-performance.md`;
+- `compare-helpdesk-engage.md`;
+- `compare-people-lifecycle.md`;
+- `compare-admin-platform.md`.
+
+The YukthiX column in every file was checked in code on `test/yukthix-main`. Size: S, M or L.
+
+## Picks per area
+
+| Area | Rows | Keep ours | Take | Mix | Skip | Top 3 to build |
+|---|---|---|---|---|---|---|
+| Attendance and leave | 42 | 14 | 20 | 6 | 1 | Leave C2 full history; Attendance A1 / A2 list view and day panel; Attendance B4 hourly permission |
+| Timesheet and projects | 34 | 15 | 14 | 3 | 2 | A5 "Not sent" weeks; B1 approval drill-down; A3 copy last week |
+| Approvals and notifications | 14 | 8 | 5 | 1 | 0 | A8 HR view of all pending approvals; A3 bulk reject; A2 three-column desk |
+| Team view (manager) | 11 | 2 | 8 | 0 | 1 | C7 bulk penalty waiver; C3 team calendar dots; C5 negligence bands |
+| Expenses and travel | 15 | 11 | 4 | 0 | 0 | A4 "Waiting on" column; A7 past-claim filters; A2 "Save and add another" |
+| Pay, tax and payroll | 22 | 17 | 4 | 0 | 1 | B12 sign in again before salary; B7 declaration window cards; B3 salary timeline |
+| Performance | 18 | 9 | 7 | 2 | 0 | A4 "no goals" with Remind; A2 progress summary; B2 quick actions and private notes |
+| Helpdesk and HR letters | 13 | 10 | 3 | 0 | 0 | A10 POSH cases live; A7 ask your manager; A4 first-response column |
+| Engagement | 9 | 1 | 5 | 1 | 2 | C1 announcements; C5 praise wall; C4 surveys |
+| Org and people records | 15 | 12 | 2 | 0 | 1 | A4 company documents with expiry; A7 "About me"; A2 "Go to top" |
+| Onboarding and exit | 15 | 15 | 0 | 0 | 0 | B2 grade and type rules; B4 Aadhaar e-sign; B5 background-check vendor |
+| Admin and data safety | 19 | 6 | 10 | 3 | 0 | B4 sign in again; B2 recycle bin everywhere; A6 users and sign-in list |
+| Home, navigation and reports | 13 | 5 | 7 | 1 | 0 | E1 / E2 reports library with schedules; D3 "last used" slot; D6 moved-page stubs |
+| **All** | **240** | **125** | **89** | **17** | **8** | |
+
+Notes:
+- "Take" counts Take K and Take Z together.
+- One attendance row (E1, team today) was "being built" and is now merged, so it has no pick.
+- Attendance E2 (leave clash for the approver) is a Take K in its file, but the code audit found it live. It is not
+  in the order below.
+- YukthiX keeps its own way in about half the rows. It is far ahead on payroll, statutory work, onboarding and exit,
+  expenses, and project cost and billing. The gaps are mostly daily-use views (lists, filters, nudges), engagement, and
+  admin safety nets.
+
+## Build order across all areas
+
+### 1. Must for daily use
+
+1. Pay B12 and Admin B4: sign in again before salary pages (S).
+2. Attendance and leave C2: full leave history (S).
+3. Admin B2: recycle bin across YukthiX (L).
+4. Approvals A8: HR view of all pending approvals, with reassign (M).
+5. Attendance and leave A1 / A2: list view and day panel (M).
+6. Team C7: bulk waive late-mark penalties before payroll (M).
+7. Attendance and leave B4: hourly permission (M).
+8. Attendance and leave D15: LOP reversal (M).
+9. Attendance and leave D11: exceptional working days (S).
+10. Timesheet A5: "Not sent" weeks list (S).
+11. Timesheet B1: approval drill-down (M).
+12. Engagement C1: announcements (M).
+13. Helpdesk A10: POSH cases live (M).
+14. Admin E1 / E2: reports library with scheduled emails (L).
+15. Team C3: team calendar dots and legend (S).
+16. Team C5: negligence hour bands and breaks (M).
+17. Approvals A3: bulk reject (S).
+18. Attendance and leave A3: requests tab (S).
+19. Pay B7: declaration window cards (S).
+20. Admin A6: users and sign-in list (M).
+21. People A4: company documents in folders with expiry (M).
+22. Timesheet A3: copy last week (S).
+23. Timesheet A14: daily nudge (S).
+24. Timesheet B3: billable and non-billable totals (S).
+25. Timesheet A8: request leave from the week (S).
+26. Approvals A2: three-column desk (M).
+27. Expenses A4: "Waiting on" column (S).
+28. Expenses A7: past-claim filters (S).
+29. Admin B1: activity log in plain sentences (S).
+30. Performance A4: "no goals" list with Remind (S).
+31. Performance A2: progress summary (S).
+32. Performance B2: quick actions and private notes (S).
+33. Helpdesk A7: ask your manager (S).
+34. Helpdesk A4: first-response column (S).
+
+### 2. Depth
+
+35. Attendance and leave B6: bulk shift, weekly off and penalty changes (M).
+36. Attendance and leave A9: office or remote label on each punch (M).
+37. Attendance and leave D12: partial cancel and extend (M).
+38. Attendance and leave D10: editable balance grid (S).
+39. Attendance and leave D2 / D3 / D6 / D8: policy gallery, levels, clubbing, request limits (M).
+40. Attendance and leave D9: comp-off auto credit and expiry (S).
+41. Admin A2: modules list, on / off and order (M).
+42. Admin A3: rule-based groups (M).
+43. People B2: onboarding rules by grade and type (S).
+44. Admin A5: pick a person per module (M).
+45. Admin B3: scheduled backups (M).
+46. Admin B5: import and export log (M).
+47. Admin E4: headcount and attrition (M).
+48. Team C6: leave overview cards (M).
+49. Approvals A6: filter chips (S).
+50. Approvals A4: "Decided by me" tab (S).
+51. Notifications B3: Home nudges (S).
+52. Notifications B2: WhatsApp and push choice (M).
+53. Team C2: peers view (S).
+54. Team C11: manager approves internal moves (S).
+55. Timesheet A10 / A11: my projects with my hours (S).
+56. Timesheet A9 / C4: tasks with assignees and a board (M).
+57. Timesheet C2: actions pending and who is on leave (M).
+58. Timesheet C10: per-project settings (M).
+59. Timesheet B4: second approval level (M).
+60. Timesheet C11: hours reports (M).
+61. Timesheet A2: view switch (S).
+62. Timesheet A6: activity card (S).
+63. Pay B3: salary timeline (S).
+64. Pay B1: pay summary (S).
+65. Pay B4: download the year (S).
+66. Expenses A2: "Save and add another" (S).
+67. Expenses A6: advance rules (S).
+68. Performance D3: "What is expected of me" page (M).
+69. Performance D1 / D2: skills profile and matrix live (L).
+70. Performance B1: agenda templates and calendar sync (M).
+71. Performance A3: goal templates and import (M).
+72. Performance C2: bell-curve guide (S).
+73. Engagement C5: praise wall (M).
+74. Engagement C4: surveys (L).
+75. Engagement C3: polls (M).
+76. Engagement C6: new joiners (S).
+77. Helpdesk A5: satisfaction filter (S).
+78. Helpdesk B1: bonafide letter template (S).
+79. Home D2: choose Home widgets (S).
+80. Home D3: "last used" slot (S).
+81. Home D5: quick create (M).
+82. Home D6: moved-page stubs (S).
+83. Admin A4: settings and work-page cross-links (S).
+84. Admin C1: renaming terms and Hindi screens (L).
+85. Home D8: phone screens live (L).
+86. People A2: "Go to top" (S).
+87. People A7: "About me" (S).
+
+### 3. Later
+
+88. Attendance and leave A5: me vs team stats (S).
+89. Attendance and leave C3: leave charts (S).
+90. Attendance and leave D14: calendar sync (M).
+91. Team C4: leaderboards (M).
+92. Team C9: team reports in the library (L, with item 14).
+93. Approvals A9: WhatsApp approvals (M).
+94. Timesheet A7: attach a file (S).
+95. Timesheet B5: phone approvals (M).
+96. Timesheet C3: add several people at once (S).
+97. Expenses A15: phone capture live (M).
+98. Expenses A3: receipt reading switched on (S).
+99. Performance D4: learning (L).
+100. Engagement C2: feed (L).
+101. People B4: Aadhaar e-sign (M).
+102. People B5: background-check vendor link (M).
+103. Admin C2: custom forms (L).
+104. Admin C3: workflows (L).
+105. Admin E3: report builder (L).
+106. Admin A1: field-level control (M).
+
+## Founder decision (17 Nov 2026, "ok for all")
+
+Tier 1 is built in seven batches by area, in this order, after the assessments slices:
+- **A. Attendance and leave daily:** 2, 5, 18, 7, 8, 9, plus attendance-leave C4 "Notify colleagues" on Apply leave.
+- **B. Safety:** 1, 29, 20 first, then 3 (recycle bin).
+- **C. Approvals and team:** 4, 17, 26, 6, 15, 16.
+- **D. Timesheet:** 10, 11, 22, 23, 24, 25.
+- **E. Pay and expenses quick wins:** 19, 27, 28.
+- **F. Performance and helpdesk quick wins:** 30, 31, 32, 33, 34, 13.
+- **G. Bigger single pieces:** 12, 14, 21.
+
+Tiers 2 and 3 are decided after tier 1. Attendance-leave E2 (leave clash) is already live and off the list.

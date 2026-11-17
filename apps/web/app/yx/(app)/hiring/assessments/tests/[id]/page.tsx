@@ -30,6 +30,8 @@ export default function YxTestBuilderPage() {
         onOpen: open,
         onSaveDetails: async (d) => void (await write('PATCH', `/exams/${id}`, { title: d.title, durationMinutes: d.durationMinutes, passCriteriaPercent: d.passMark, expectedCandidates: d.expectedCandidates })),
         onSetMode: async (mode) => void (await write('PUT', `${t}/proctoring-mode`, { mode })),
+        // Answer 2154: a section's cut-off (the older section route, which locks a published or started test).
+        onSetCutoff: async (sectionId, percent) => void (await write('PATCH', `/exams/${id}/sections/${sectionId}`, { cutoffPercent: percent })),
         onEditSections: () => router.push(`/v2/exams/${id}/edit`),
         onRequestApproval: async () => void (await write('POST', `${t}/approval/request`)),
         onApprove: async () => void (await write('POST', `${t}/approval/approve`)),

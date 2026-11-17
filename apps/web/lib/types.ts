@@ -1517,6 +1517,8 @@ export interface AttemptPreview {
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+  /** AS-6 (answer 2237): the company's privacy notice for applicants (latest version); absent on an older runtime. */
+  privacyNotice?: string | null;
 }
 
 export interface AttemptSectionFeedback {
@@ -1580,6 +1582,8 @@ export interface AttemptState {
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+  /** AS-6 (answer 2237): the company's privacy notice for applicants (latest version); absent on an older runtime. */
+  privacyNotice?: string | null;
 }
 
 export interface AttemptRunnerInfo {

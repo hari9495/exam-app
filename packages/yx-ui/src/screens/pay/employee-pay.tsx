@@ -182,6 +182,47 @@ function EmpFrame({
   );
 }
 
+/** Keka ideas (2026-11): the tax year's payslips as a month list beside the payslip, newest first. */
+export interface PayslipMonth {
+  id: string;
+  label: string;
+  net: number;
+  /** "Off-cycle" and the like. */
+  note?: string;
+}
+
+export function PayslipMonths({ years, year, onYear, months, selectedId, onSelect }: { years: string[]; year: string; onYear: (y: string) => void; months: PayslipMonth[]; selectedId: string | null; onSelect: (id: string) => void }) {
+  return (
+    <nav className="yx-pay-months__list" aria-label="Payslips by month">
+      {years.length > 1 ? (
+        <Select aria-label="Tax year" value={year} onChange={(v) => v && onYear(v)} options={years.map((y) => ({ value: y, label: `Tax year ${y}` }))} />
+      ) : (
+        <p className="yx-pay-muted">Tax year {year}</p>
+      )}
+      <ul>
+        {months.map((m) => (
+          <li key={m.id}>
+            <Button fullWidth className="yx-pay-months__item" aria-current={m.id === selectedId ? 'true' : undefined} onClick={() => onSelect(m.id)}>
+              <span>
+                {m.label}
+                {m.note ? <span className="yx-pay-muted"> · {m.note}</span> : null}
+              </span>
+              <Amount value={m.net} />
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
+
+/** The tax year (April to March) of a month, as "2026-27". */
+export function taxYearOf(month: string): string {
+  const y = Number(month.slice(0, 4));
+  const start = Number(month.slice(5, 7)) >= 4 ? y : y - 1;
+  return `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+}
+
 /** Drawer on desktop, bottom sheet on phone. */
 function Sheet({ layout, open, onOpenChange, title, subtitle, children, footer }: { layout: Layout; open: boolean; onOpenChange: (o: boolean) => void; title: string; subtitle?: string; children: ReactNode; footer?: ReactNode }) {
   if (layout === 'phone')
@@ -351,11 +392,13 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
   const body = past ? (
     <div className="yx-pay-stack">
       <MoneySummary period={past.period} net={past.net} gross={past.gross} deductions={past.gross - past.net} payDate={past.paidOn} status={<Badge tone="success">Paid</Badge>} />
-      <div className="yx-pay-row">
-        <Button icon={ChevronLeft} onClick={() => setPast(null)}>
-          Back to September 2026
-        </Button>
-      </div>
+      {phone && (
+        <div className="yx-pay-row">
+          <Button icon={ChevronLeft} onClick={() => setPast(null)}>
+            Back to September 2026
+          </Button>
+        </div>
+      )}
     </div>
   ) : variant === 'not-published' ? (
       aug ? (
@@ -446,20 +489,22 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
               />
               <p className="yx-pay-note">April–September. Gross includes the {formatINR(MY_MAY_REFERRAL_BONUS)} referral bonus paid in May.</p>
             </Card>
-            <Card title="Earlier payslips">
-              <ul className="yx-pay-cards">
-                {PAYSLIP_HISTORY.slice(1).map((p) => (
-                  <li key={p.id}>
-                    <div className="yx-pay-cards__row">
-                      <Button size="sm" icon={FileText} onClick={() => setPast(p)}>
-                        {p.period}
-                      </Button>
-                      <Amount value={p.net} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+            {phone && (
+              <Card title="Earlier payslips">
+                <ul className="yx-pay-cards">
+                  {PAYSLIP_HISTORY.slice(1).map((p) => (
+                    <li key={p.id}>
+                      <div className="yx-pay-cards__row">
+                        <Button size="sm" icon={FileText} onClick={() => setPast(p)}>
+                          {p.period}
+                        </Button>
+                        <Amount value={p.net} />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
           </div>
         </div>
       </div>
@@ -474,7 +519,21 @@ function SamplePayslipViewer({ layout = 'desktop', variant = 'default', state = 
         />
       )}
       <StateBlock state={state} rows={6} errorTitle="We couldn't load your payslip.">
-        {body}
+        {phone || variant === 'not-published' ? (
+          body
+        ) : (
+          <div className="yx-pay-months">
+            <PayslipMonths
+              years={['2026-27']}
+              year="2026-27"
+              onYear={() => {}}
+              months={PAYSLIP_HISTORY.map((p) => ({ id: p.id, label: p.period, net: p.id === 'sep' ? net : p.net }))}
+              selectedId={past?.id ?? 'sep'}
+              onSelect={(id) => setPast(id === 'sep' ? null : (PAYSLIP_HISTORY.find((p) => p.id === id) ?? null))}
+            />
+            {body}
+          </div>
+        )}
       </StateBlock>
       <Sheet
         layout={layout}
@@ -1867,6 +1926,10 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
   const slips = live.payslips ?? [];
   const [openId, setOpenId] = useState<string | null>(null);
   const slip = slips.find((s) => s.id === openId) ?? slips[0] ?? null;
+  // Keka ideas: the tax years with payslips, newest first; the month list shows the open payslip's year.
+  const years = [...new Set(slips.map((x) => taxYearOf(x.month)))].sort().reverse();
+  const year = slip ? taxYearOf(slip.month) : (years[0] ?? '');
+  const inYear = slips.filter((x) => taxYearOf(x.month) === year).sort((x, y) => y.month.localeCompare(x.month) || (x.runType === 'offcycle' ? 1 : -1));
   const [details, setDetails] = useState<Record<string, PayslipDetail>>({});
   const [why, setWhy] = useState(false);
   const [query, setQuery] = useState<string | null>(null);
@@ -1926,6 +1989,15 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
         {!slip ? (
           <EmptyState title="No payslips yet." description="Payroll publishes payslips after the run is approved and paid. You get a notification in the app." />
         ) : (
+          <div className="yx-pay-months">
+          <PayslipMonths
+            years={years}
+            year={year}
+            onYear={(y) => setOpenId(slips.filter((x) => taxYearOf(x.month) === y).sort((x, z) => z.month.localeCompare(x.month))[0]?.id ?? null)}
+            months={inYear.map((x) => ({ id: x.id, label: monthName(x.month), net: num(x.net), ...(x.runType === 'offcycle' ? { note: 'Off-cycle' } : {}) }))}
+            selectedId={slip.id}
+            onSelect={setOpenId}
+          />
           <div className="yx-pay-stack">
             {error && (
               <InlineAlert tone="danger" title="That did not work">
@@ -2022,28 +2094,9 @@ function LivePayslipViewer({ live }: { live: LivePayslips }) {
                     {monthName(fyStart)} to {monthName(slip.month)}, {ytd.length} {ytd.length === 1 ? 'payslip' : 'payslips'}.
                   </p>
                 </Card>
-                {slips.length > 1 && (
-                  <Card title="Other payslips">
-                    <ul className="yx-pay-cards">
-                      {slips
-                        .filter((x) => x.id !== slip.id)
-                        .slice(0, 12)
-                        .map((x) => (
-                          <li key={x.id}>
-                            <div className="yx-pay-cards__row">
-                              <Button size="sm" icon={FileText} onClick={() => setOpenId(x.id)} aria-label={`Open payslip for ${monthName(x.month)}${x.runType === 'offcycle' ? ' (off-cycle)' : ''}`}>
-                                {monthName(x.month)}
-                                {x.runType === 'offcycle' ? ' · off-cycle' : ''}
-                              </Button>
-                              <span>{rupees(x.net)}</span>
-                            </div>
-                          </li>
-                        ))}
-                    </ul>
-                  </Card>
-                )}
               </div>
             </div>
+          </div>
           </div>
         )}
       </PayPageState>

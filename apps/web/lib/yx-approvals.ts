@@ -1,5 +1,6 @@
 import type { ApprovalRow } from '@yukthix/ui/frame';
 import type { ApprovalHistory, ApprovalTask } from '@yukthix/ui/desk';
+import type { ProfileRequest } from '@yukthix/ui/access';
 import { formatDate } from '@yukthix/ui';
 
 // PLT-04 Approvals on the P03 engine: the engine's rows as the designed inbox shows them.
@@ -108,4 +109,35 @@ export function teamRow(h: TeamDecision): ApprovalRow {
       { id: 'd', label: verb, status: h.decision === 'rejected' ? 'rejected' : 'done', approver: h.by ?? '', at: new Date(h.at), ...(h.reason ? { comment: h.reason } : {}) },
     ],
   };
+}
+
+/** The kind the approvals inbox files identity, bank and legal-name changes under (PPL-32). */
+export const PROFILE_CHANGE = 'Profile change';
+
+/**
+ * Keka ideas (2026-11): an identity, bank or legal-name change waiting for HR shows in the approvals inbox under its own
+ * kind. It is decided on its own page (a fresh second factor, the proof, the cooling period), so the row only opens it.
+ * Only pending requests someone else raised: nobody approves their own change (the API refuses it too).
+ */
+export function profileRows(rows: ProfileRequest[]): ApprovalRow[] {
+  return rows
+    .filter((r) => r.status === 'pending' && !r.mine)
+    .map((r) => ({
+      id: `profile:${r.id}`,
+      ref: ref(r.id),
+      type: PROFILE_CHANGE,
+      requester: r.employeeName ?? '',
+      requesterRole: '',
+      summary: `${r.label} change`,
+      detail: r.requestedBy && r.requestedBy !== r.employeeName ? `Raised by ${r.requestedBy}` : 'Raised by the employee',
+      submitted: new Date(r.requestedAt),
+      due: null,
+      step: 'HR approval',
+      lowRisk: false,
+      policy: { ok: true },
+      status: 'Waiting',
+      context: [...(r.reason ? [`Reason: ${r.reason}`] : []), 'Decided on the change page: it asks for a fresh second factor and shows the proof.'],
+      decideAt: '/yx/people/profile-requests',
+      canSendBack: false,
+    }));
 }

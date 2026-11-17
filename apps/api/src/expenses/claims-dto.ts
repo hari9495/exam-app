@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 
 // Expenses batch E2 request bodies (M05-BUILD-DESIGN §18 "Claims"). Amounts travel as decimal strings.
 
@@ -147,6 +147,38 @@ export class LineFxDto {
   @IsOptional()
   @Matches(/^\d{1,10}(\.\d{1,8})?$/)
   rate?: string;
+}
+
+/** Keka ideas (2026-11): a spend saved for later (multipart: the fields as text, the receipt as `file`). */
+export class ExpenseItemDto {
+  @IsDateString({ strict: true })
+  spentOn!: string;
+
+  @Matches(/^\d{1,10}(\.\d{1,2})?$/, { message: 'Enter the amount, for example 1250 or 1250.50.' })
+  amount!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  categoryCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  merchant?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string | null;
+}
+
+export class ClaimItemsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  itemIds!: string[];
 }
 
 export class LineDto {
