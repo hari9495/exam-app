@@ -1266,3 +1266,21 @@ night allowance switch.
 ## Founder answers, 3 Nov 2026 (device follow-ups, "all good")
 Keep as built: (1) the web clock-in rule switch is guarded by `leave.settings.manage` held company-wide, every change
 audited as a control change; (2) managers do not get the computer-approval notice; HR decides.
+
+## As built: Tier 1 batch A (attendance and leave daily), Nov 2026
+
+Founder answers 2310–2316 (compare-summary.md); builder questions 2320 onwards. E2e for all of batch A:
+`apps/api/test/time-batch-a.e2e-spec.ts` (two companies, forced RLS, the app role; each item positive and negative).
+
+| Item | Design (Storybook) | Live | Rules and settings | API |
+|---|---|---|---|---|
+| C2 full leave history | TIM-17 · My requests › All requests (LeaveHistoryDrawer) | My leave | All years, a page at a time, filter by type, status, dates, reason; the Home keeps 13 months | GET /time/me/leave/history |
+| A1–A3 month as list or table, requests tab | Extra · Attendance calendar (List, Table, Requests tab); kit RowButton for the list rows | My attendance | Times in the person's zone; worked bar against the shift | GET /time/me/attendance |
+| D11 exceptional working days | TIM-24 holiday calendars · Mark a day as working | Time › Setup › Holidays | Today or later, a reason; leave over the day recounts; removable only while no leave counts it | POST /time/setup/calendars/:id/working-days, POST /time/setup/working-days/:id/remove |
+| B4 hourly permission | TIM-07 · Hourly permission, · monthly limit used | My attendance › New request | attendance.permission.monthly_limit (2), attendance.permission.max_minutes (120); on-duty date window (2320); never leave, never a regularisation; approved time joins the day's hours so the day stays present | POST /time/me/permission (self) |
+| D15 reverse loss of pay | PAY-04 · Reverse loss of pay, locked month / open month | Payroll › Inputs › Loss of pay (attendance.lock only) | Locked or frozen month: one HR correction per day, approved by payroll.correction.approve, paid next regular run, all or none; open month: link to regularisation (409 MONTH_OPEN) | POST /payroll/corrections/lop-reversal (attendance.lock) |
+| C4 notify colleagues | TIM-18 · Notify colleagues | Apply leave (self only, 2323) | Up to 10 active colleagues; told on approval only, dates only (leave.colleague_away) | ApplyLeaveDto.notifyUserIds |
+| D12 cancel some days, extend | TIM-19 · Employee · cancel some days, · extend (CancelSomeDaysDrawer, ExtendLeaveDrawer) | My leave › a request | Days not yet taken, not every day, one change waiting; HR any day at once with a reason (API only, 2325); extend = new linked request from the day after; colleagues told "no longer away" (2324) | POST /time/me/leave/:id/cancel-days, POST /time/me/leave/:id/extend, POST /time/hr/leave/:employeeId/requests/:id/cancel-days (leave.balance.adjust) |
+
+Checked at 1278 × 635 in Storybook by script (17 Nov 2026): TIM-07's five-option type Segment is one row (398 px in a
+481 px drawer); the reverse-LOP drawer's per-day Segment is one row after moving it under the date; blocks 16 px apart. TIM-19's Cancel some days and Extend drawers: no scroll, 16 px gaps.

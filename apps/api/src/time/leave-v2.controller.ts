@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
@@ -10,7 +10,7 @@ import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
-import { ApplyLeaveDto, LeavePlanDto } from './dto';
+import { ApplyLeaveDto, CancelDaysDto, LeavePlanDto } from './dto';
 import { BlockDateDto, BlockPlanDto, CompOffClaimDto, DateNoteDto, EncashDto, FeedDecideDto, FeedDto, LongAbsenceCheckDto, LongAbsenceDto, PauseDto, ReportQueryDto } from './leave-v2.dto';
 
 // Leave v2 routes. Permissions (P02 YX-SEC-01), checked on the server for every row:
@@ -134,6 +134,15 @@ export class LeaveV2Controller {
   @RequirePermissions('leave.balance.adjust')
   previewFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) id: string, @Body() dto: LeavePlanDto) {
     return this.leave.previewFor(ctx, this.user(req), id, dto);
+  }
+
+  /** Batch A D12 (answer 2311): HR in scope cancels any days of someone's approved leave at once, with a reason (audited). */
+  @Post('hr/leave/:employeeId/requests/:id/cancel-days')
+  @RequirePermissions('leave.balance.adjust')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  hrCancelDays(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelDaysDto) {
+    if (dto.reason.trim().length < 10) throw new BadRequestException({ statusCode: 400, message: 'Give HR\u2019s reason in a sentence (at least 10 letters).', field: 'reason' });
+    return this.leave.hrCancelDays(ctx, this.user(req), employeeId, id, dto);
   }
 
   /** Founder decision 2: HR applies leave for someone in scope; notice follows leave.notice.on_behalf (skip by default). */

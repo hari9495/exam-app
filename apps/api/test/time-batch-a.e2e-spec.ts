@@ -425,4 +425,84 @@ describe('Time batch A', () => {
       expect(await told(users.mgr)).toHaveLength(0);
     });
   });
+
+  // ------------------------------------------------------------------ D12: cancel some days, extend (answers 2311, 2324)
+  describe('D12 cancel some days and extend', () => {
+    const decide = (who: Who, taskId: string, decision: 'approve' | 'reject') => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision });
+    const taskFor = async (subjectId: string, requestType: string) => {
+      const wf = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId, requestType }, orderBy: { createdAt: 'desc' } }));
+      return (await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: wf.id, status: 'open' } }))).id;
+    };
+    const told = async () => (await inA((tx) => tx.userNotification.findMany({ where: { recipientUserId: users.peer, type: 'leave.colleague_away', entityId: ids.d12 }, orderBy: { createdAt: 'asc' } }))).map((n) => n.contextText ?? '');
+    // Monday to Wednesday, two weeks out (no Sunday in between).
+    const mon = (() => { for (let i = 60; i < 67; i++) if (new Date(`${d(i)}T00:00:00Z`).getUTCDay() === 1) return d(i); return d(60); })();
+    const [w1, w2, w3] = [mon, addDays(mon, 1), addDays(mon, 2)];
+    const changes = () => inA((tx) => tx.leaveChange.count({ where: { requestId: ids.d12 } }));
+    beforeAll(async () => {
+      ids.d12 = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: w1, to: w3, reason: 'Trip home', notifyUserIds: [users.peer] }).expect(201)).body.id;
+      await decide('mgr', await taskFor(ids.d12, 'leave.request'), 'approve').expect(200);
+    });
+
+    it('negative: not mine, another company, a day not in the leave, every day, bad input: refused, nothing saved', async () => {
+      const path = `/time/me/leave/${ids.d12}/cancel-days`;
+      await api('peer', 'post', path).send({ days: [w3], reason: 'Back early' }).expect(404);
+      await api('empB', 'post', path).send({ days: [w3], reason: 'Back early' }).expect(404);
+      expect((await api('emp', 'post', path).send({ days: [addDays(w3, 1)], reason: 'Back early' }).expect(400)).body.message).toMatch(/is not a leave day of this request/);
+      expect((await api('emp', 'post', path).send({ days: [w1, w2, w3], reason: 'Back early' }).expect(400)).body.message).toBe('That is every day of this leave. Use Ask to cancel instead.');
+      await api('emp', 'post', path).send({ days: [], reason: 'Back early' }).expect(400);
+      await api('emp', 'post', path).send({ days: ['tomorrow'], reason: 'Back early' }).expect(400);
+      await api('emp', 'post', path).send({ days: [w3, w3], reason: 'Back early' }).expect(400);
+      expect(await changes()).toBe(0);
+    });
+
+    it('the employee cancels the last day: it goes to the approver; approved, the day comes back and colleagues hear it', async () => {
+      const ch = (await api('emp', 'post', `/time/me/leave/${ids.d12}/cancel-days`).send({ days: [w3], reason: 'Back early' }).expect(201)).body;
+      expect(ch).toMatchObject({ status: 'pending', days: 1 });
+      await api('emp', 'post', `/time/me/leave/${ids.d12}/cancel-days`).send({ days: [w2], reason: 'Back early' }).expect(409);
+      const mine = (await api('emp', 'get', '/time/me/leave').expect(200)).body.requests.find((r: { id: string }) => r.id === ids.d12);
+      expect(mine).toMatchObject({ changeWaiting: [w3], leaveDays: [{ on: w1 }, { on: w2 }, { on: w3 }] });
+      await decide('mgr', await taskFor(ch.id, 'leave.cancel_days'), 'approve').expect(200);
+      const r = await inA((tx) => tx.leaveRequest.findUniqueOrThrow({ where: { id: ids.d12 } }));
+      expect({ days: Number(r.days), to: r.toOn.toISOString().slice(0, 10), status: r.status }).toEqual({ days: 2, to: w2, status: 'approved' });
+      expect(await inA((tx) => tx.leaveLedgerEntry.count({ where: { requestId: ids.d12, kind: 'cancelled' } }))).toBe(1);
+      const t = await told();
+      expect(t).toHaveLength(2);
+      expect(t[1]).toMatch(/is no longer away on /);
+      expect(t[1]).not.toMatch(/Earned|Trip/);
+    });
+
+    it('HR cancels a day at once with a reason (audited); the wrong role, another company and a short reason are refused', async () => {
+      const path = `/time/hr/leave/${ids.empEmp}/requests/${ids.d12}/cancel-days`;
+      await api('emp', 'post', path).send({ days: [w1], reason: 'Recorded by mistake on the day' }).expect(403);
+      // Another company: refused, and the leave is untouched.
+      expect([403, 404]).toContain((await api('adminB', 'post', path).send({ days: [w1], reason: 'Recorded by mistake on the day' })).status);
+      await api('hrAdmin', 'post', path).send({ days: [w1], reason: 'short' }).expect(400);
+      const out = (await api('hrAdmin', 'post', path).send({ days: [w1], reason: 'Came in for the audit that day' }).expect(201)).body;
+      expect(out).toMatchObject({ status: 'approved', days: 1 });
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'leave.request.days_cancelled_by_hr', entityId: ids.d12 } }))).toBe(1);
+      const r = await inA((tx) => tx.leaveRequest.findUniqueOrThrow({ where: { id: ids.d12 } }));
+      expect([Number(r.days), r.fromOn.toISOString().slice(0, 10)]).toEqual([1, w2]);
+      expect((await told()).at(-1)).toMatch(/is no longer away on /);
+    });
+
+    it('extend is a new linked request to the approver; a day before the end, not mine or another company are refused', async () => {
+      await api('emp', 'post', `/time/me/leave/${ids.d12}/extend`).send({ to: w2 }).expect(400);
+      await api('peer', 'post', `/time/me/leave/${ids.d12}/extend`).send({ to: addDays(w2, 2) }).expect(404);
+      await api('empB', 'post', `/time/me/leave/${ids.d12}/extend`).send({ to: addDays(w2, 2) }).expect(404);
+      await api('emp', 'post', `/time/me/leave/${ids.d12}/extend`).send({ to: 'later' }).expect(400);
+      const x = (await api('emp', 'post', `/time/me/leave/${ids.d12}/extend`).send({ to: addDays(w2, 2) }).expect(201)).body;
+      const r = await inA((tx) => tx.leaveRequest.findUniqueOrThrow({ where: { id: x.id } }));
+      expect({ from: r.fromOn.toISOString().slice(0, 10), status: r.status, extendsRequestId: r.extendsRequestId, type: r.leaveTypeId }).toEqual({ from: w3, status: 'pending', extendsRequestId: ids.d12, type: ids.EL });
+      await api('emp', 'post', `/time/me/leave/${x.id}/withdraw`).expect(200);
+    });
+
+    it('cancelling the whole leave tells the colleagues it is off too (answer 2324)', async () => {
+      await api('emp', 'post', `/time/me/leave/${ids.d12}/cancel`).send({ reason: 'Trip called off' }).expect(200);
+      await decide('mgr', await taskFor(ids.d12, 'leave.cancel'), 'approve').expect(200);
+      const t = await told();
+      expect(t).toHaveLength(4);
+      expect(t[3]).toMatch(/is no longer away (on|from) /);
+      expect(t[3]).not.toMatch(/Trip/);
+    });
+  });
 });

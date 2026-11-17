@@ -1689,3 +1689,8 @@ so it was not built here (question 2272).
       a fairness finding. *Suggested: keep, with the audit; ask for a reason on Restore if a finding is open.*
 2308. **The question picker's reach.** It shows the newest 50 matching questions. *Suggested: keep; paging when a bank
       grows past it.*
+
+**Founder answers (17 Nov 2026, "ok for all"), 2306 to 2308:**
+- 2306: a test archived before 17 Nov 2026 comes back as a draft; publishing runs the checklist again.
+- 2307: Restore stays audited; while a fairness finding on the test is open, Restore asks for a reason (to build: small follow-up).
+- 2308: the question picker shows the newest 50 matches; add paging when a bank grows past that.

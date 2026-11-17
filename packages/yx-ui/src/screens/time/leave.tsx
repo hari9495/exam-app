@@ -236,7 +236,110 @@ export function BalanceCards({ compact, balances = BALANCES, person = ME.name, o
    TIM-19 · Leave request view (drawer on desktop, inline on phone)
    ===================================================================== */
 
-type ReqAction = 'withdraw' | 'cancel' | 'report' | 'approve' | 'sendback' | 'reject';
+type ReqAction = 'withdraw' | 'cancel' | 'report' | 'approve' | 'sendback' | 'reject' | 'cancel_days' | 'extend';
+
+/* ---------- TIM-19 · Cancel some days and Extend (batch A D12, answer 2311) ---------- */
+
+const eachIso = (from: Date, to: Date) => { const out: string[] = []; for (let d = new Date(from); d <= to; d = addDays(d, 1)) out.push(ymd(d)); return out; };
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dayOfIso = (s: string) => new Date(Number(s.slice(0, 4)), Number(s.slice(5, 7)) - 1, Number(s.slice(8, 10)));
+
+/**
+ * Cancel some days of approved leave: a checklist of its leave days. The employee picks days not yet taken (days before
+ * today are shown as taken) and it goes to the approver; HR (`hr`) may pick any day and must give a reason.
+ */
+export function CancelSomeDaysDrawer({ days, today, hr = false, approver = 'your manager', onSend, onClose }: { days: { on: string; portion: number }[]; today: string; hr?: boolean; approver?: string; onSend: (x: { days: string[]; reason: string }) => Promise<unknown>; onClose: () => void }) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const open = days.filter((d) => hr || d.on >= today);
+  const back = days.filter((d) => picked.includes(d.on)).reduce((s, d) => s + d.portion, 0);
+  const errors = [
+    ...(!picked.length ? [{ fieldId: 'cd-days', message: 'Pick at least one day to cancel.' }] : picked.length === days.length ? [{ fieldId: 'cd-days', message: 'That is every day of this leave. Use Ask to cancel instead.' }] : []),
+    ...(reason.trim().length < (hr ? 10 : 3) ? [{ fieldId: 'cd-why', message: hr ? 'Give the reason in a sentence (at least 10 letters).' : 'Say why you are cancelling these days.' }] : []),
+  ];
+  const shown = useSaveErrors(errors);
+  const send = () => {
+    if (errors.length) {
+      shown.reveal();
+      document.getElementById(errors[0].fieldId)?.focus();
+      return;
+    }
+    void run('send', async () => {
+      await onSend({ days: [...picked].sort(), reason: reason.trim() });
+      toast({ tone: 'success', title: hr ? `${plural(back, 'day')} cancelled` : `Sent to ${approver}`, description: hr ? 'The days are back in the balance. Saved in the audit trail.' : `Once approved, ${plural(back, 'day')} ${back === 1 ? 'goes' : 'go'} back to the balance.` });
+      onClose();
+    });
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Cancel some days" subtitle={hr ? 'Cancelled at once; saved in the audit trail' : `Goes to ${approver} for approval`} dirty={picked.length > 0 || Boolean(reason)} footer={<DrawerFoot main={<Button variant="danger" loading={busy === 'send'} onClick={send}>{hr ? 'Cancel these days' : 'Send to approver'}</Button>} rest={<Button onClick={onClose}>Keep leave</Button>} />}>
+      <div className="yx-tim-form">
+        <ErrorSummary errors={shown.shownErrors} />
+        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+        <FormField id="cd-days" label="Days to cancel" required error={shown.errorOf('cd-days')} helper={hr ? 'HR can cancel any day of this leave.' : 'Days already taken cannot be cancelled here; ask HR.'}>
+          <div className="yx-tim-stack" role="group" aria-label="Days to cancel">
+            {days.map((d) => {
+              const taken = !open.some((o) => o.on === d.on);
+              return (
+                <Checkbox
+                  key={d.on}
+                  label={`${formatDate(dayOfIso(d.on))}${d.portion < 1 ? ' · half day' : ''}`}
+                  description={taken ? 'Already taken' : dayOfIso(d.on).toLocaleDateString('en-IN', { weekday: 'long' })}
+                  disabled={taken}
+                  checked={picked.includes(d.on)}
+                  onChange={(on) => setPicked(on ? [...picked, d.on] : picked.filter((x) => x !== d.on))}
+                />
+              );
+            })}
+          </div>
+        </FormField>
+        <FormField id="cd-why" label="Why" required error={shown.errorOf('cd-why')}>
+          <TextArea rows={2} value={reason} onChange={setReason} maxLength={500} placeholder="For example: back from the trip two days early" />
+        </FormField>
+        <p className="yx-tim-muted">{picked.length ? `${plural(back, 'day')} back to the balance${hr ? '' : ' once approved'}.` : 'Pick the days to see what comes back.'}</p>
+      </div>
+    </Drawer>
+  );
+}
+
+/** Extend leave: a new last day; it goes as a new request of the same type, linked to this one, to the approver. */
+export function ExtendLeaveDrawer({ lastDay, typeName, approver = 'your manager', onSend, onClose }: { lastDay: string; typeName: string; approver?: string; onSend: (x: { to: string; toHalf: 'full' | 'first'; reason?: string }) => Promise<unknown>; onClose: () => void }) {
+  const [to, setTo] = useState<Date | null>(null);
+  const [toHalf, setToHalf] = useState<'full' | 'first'>('full');
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const first = addDays(dayOfIso(lastDay), 1);
+  const errors = !to ? [{ fieldId: 'ex-to', message: 'Choose the new last day.' }] : ymd(to) < ymd(first) ? [{ fieldId: 'ex-to', message: `Choose a day after ${formatDate(dayOfIso(lastDay))}.` }] : [];
+  const shown = useSaveErrors(errors);
+  const send = () => {
+    if (errors.length) {
+      shown.reveal();
+      document.getElementById('ex-to')?.focus();
+      return;
+    }
+    void run('send', async () => {
+      await onSend({ to: ymd(to!), toHalf, ...(reason.trim() ? { reason: reason.trim() } : {}) });
+      toast({ tone: 'success', title: `Extension sent to ${approver}`, description: `${typeName} from ${formatDate(first)} to ${formatDate(to!)}, linked to this leave.` });
+      onClose();
+    });
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title="Extend leave" subtitle={`A new ${typeName.toLowerCase()} request from ${formatDate(first)}, linked to this one`} dirty={Boolean(to || reason)} footer={<DrawerFoot main={<Button variant="primary" loading={busy === 'send'} onClick={send}>Send request</Button>} rest={<Button onClick={onClose}>Cancel</Button>} />}>
+      <div className="yx-tim-form">
+        <ErrorSummary errors={shown.shownErrors} />
+        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
+        <FieldRow>
+          <FormField id="ex-to" label="New last day" required error={shown.errorOf('ex-to')}><DatePicker value={to} onChange={setTo} min={first} aria-label="New last day" /></FormField>
+          <FormField label="Last day"><Select value={toHalf} onChange={(v) => v && setToHalf(v as 'full' | 'first')} options={[{ value: 'full', label: 'Full day' }, { value: 'first', label: 'First half only' }]} /></FormField>
+        </FieldRow>
+        <FormField id="ex-why" label="Reason" optional><TextArea rows={2} value={reason} onChange={setReason} maxLength={1000} /></FormField>
+        <p className="yx-tim-muted">The usual leave rules and your balance apply. {approver[0].toUpperCase() + approver.slice(1)} approves it like any leave.</p>
+      </div>
+    </Drawer>
+  );
+}
 
 export function LeaveRequestView({
   r: rIn,
@@ -349,7 +452,7 @@ export function LeaveRequestView({
   } else if (r.status === 'Pending') footer = <DrawerFoot main={<Button variant="danger" onClick={() => setDlg('withdraw')}>Withdraw request</Button>} />;
   else if (r.status === 'Sent back') footer = <DrawerFoot main={<Button variant="primary" onClick={() => setResend(true)}>Change and send again</Button>} rest={<Button onClick={() => setDlg('withdraw')}>Withdraw</Button>} />;
   else if (r.status === 'Approved' && past) footer = <DrawerFoot hint="Leave already taken" main={<Button onClick={() => setDlg('report')}>Report an error</Button>} />;
-  else if (r.status === 'Approved') footer = <DrawerFoot main={<Button variant="danger" onClick={() => setDlg('cancel')}>Ask to cancel</Button>} />;
+  else if (r.status === 'Approved') footer = <DrawerFoot main={<Button variant="danger" onClick={() => setDlg('cancel')}>Ask to cancel</Button>} rest={<><Button onClick={() => setDlg('cancel_days')}>Cancel some days</Button><Button onClick={() => setDlg('extend')}>Extend</Button></>} />;
 
   const noteField = (label: string, placeholder: string, error: string) => (
     <FormField label={label} required error={tried && !note.trim() ? error : null}><TextArea rows={2} value={note} placeholder={placeholder} onChange={setNote} /></FormField>
@@ -357,6 +460,9 @@ export function LeaveRequestView({
   const dialogs = (
     <>
       <ApplyLeavePanel open={resend} onOpenChange={setResend} type={leaveCodeOf(r.type)} from={r.from} to={r.to} />
+      {/* Batch A D12: the request's working days (Sundays are off in the sample company). */}
+      {dlg === 'cancel_days' && <CancelSomeDaysDrawer days={eachIso(r.from, r.to).filter((on) => dayOfIso(on).getDay() !== 0).map((on) => ({ on, portion: 1 }))} today={ymd(TODAY0)} approver={r.approver} onSend={async () => undefined} onClose={() => { close(); }} />}
+      {dlg === 'extend' && <ExtendLeaveDrawer lastDay={ymd(r.to)} typeName={r.type} approver={r.approver} onSend={async () => undefined} onClose={() => { close(); }} />}
       <ConfirmDialog open={dlg === 'withdraw'} onOpenChange={(o) => !o && close()} title="Withdraw this request?" consequence={r.status === 'Sent back' ? 'It was sent back, so it holds no days. Withdrawn, it stays in your history.' : `It hasn't been approved yet, so it's withdrawn at once and your ${plural(r.days, 'pending day')} ${r.days === 1 ? 'returns' : 'return'} to your balance.`} confirmLabel="Withdraw request" cancelLabel="Keep request" destructive onConfirm={() => { close(); finish('Request withdrawn', 'withdraw'); }} />
       <ConfirmDialog open={dlg === 'cancel'} onOpenChange={(o) => !o && close()} title="Ask to cancel approved leave?" consequence={locked ? `${monthName(r.from)} payroll is locked, so this becomes a late correction: any loss of pay is reversed in the next payroll.` : `${r.approver} needs to approve the cancellation. Once approved, the ${plural(r.days, 'day')} ${r.days === 1 ? 'goes' : 'go'} back to your balance.`} confirmLabel="Send cancellation" cancelLabel="Keep leave" destructive onConfirm={() => { close(); finish(`Cancellation sent to ${r.approver}`, 'cancel'); }} />
       <ConfirmDialog open={dlg === 'report'} onOpenChange={(o) => !o && close()} title="Report an error in this leave?" consequence={`This leave was already taken, so it goes to HR as an attendance correction. ${locked ? `${monthName(r.from)} payroll is locked: the change lands in the next payroll.` : `Fixed before ${monthName(r.from)} locks, the change lands in ${monthName(r.from)} pay; after that, in ${monthName(nextMonth)} pay.`}`} confirmLabel="Send to HR" onConfirm={() => { setTried(true); if (!note.trim()) return false; close(); finish('Sent to HR as an attendance correction', 'report'); }}>
@@ -376,7 +482,7 @@ export function LeaveRequestView({
   if (inline) return <div className="yx-tim-stack">{body}{footer && <div className="yx-tim-sheet-actions">{footer}</div>}{dialogs}</div>;
   return (
     <>
-      <Drawer open={open} onOpenChange={(o) => onOpenChange?.(o)} title={`${r.type} · ${r.person}`} subtitle={dates} footer={footer ?? <Button onClick={() => onOpenChange?.(false)}>Close</Button>}>{body}</Drawer>
+      <Drawer open={open && dlg !== 'cancel_days' && dlg !== 'extend'} onOpenChange={(o) => onOpenChange?.(o)} title={`${r.type} · ${r.person}`} subtitle={dates} footer={footer ?? <Button onClick={() => onOpenChange?.(false)}>Close</Button>}>{body}</Drawer>
       {dialogs}
     </>
   );
@@ -2109,6 +2215,9 @@ export interface LiveLeaveHome {
   onApply: (input: LeaveInput) => Promise<unknown>;
   onWithdraw: (id: string) => Promise<unknown>;
   onCancel: (id: string, reason: string) => Promise<unknown>;
+  /** Batch A D12: ask to cancel some days of approved leave (to the approver), and extend leave (a new linked request). */
+  onCancelDays?: (id: string, x: { days: string[]; reason: string }) => Promise<unknown>;
+  onExtend?: (id: string, x: { to: string; toHalf: 'full' | 'first'; reason?: string }) => Promise<unknown>;
   /** A request sent back for changes, changed and sent again (a new request; the server checks every rule again). */
   onResend?: (id: string, input: LeaveInput) => Promise<unknown>;
   onChooseHoliday: (holidayId: string, choose: boolean) => Promise<unknown>;
@@ -2442,7 +2551,7 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
 type LiveRequestProps = { r: LiveRequest; data: MyLeave; action?: 'withdraw' | 'cancel'; live: LiveLeaveHome; onClose: () => void; /** Sent back: open Apply leave from this request. */ onResend?: () => void };
 /** TIM-19 in the app: the request in a drawer; withdraw (pending) or ask to cancel with a reason (approved). */
 function LiveLeaveRequestView({ r, data, action, live, onClose, onResend }: LiveRequestProps) {
-  const [dlg, setDlg] = useState<'withdraw' | 'cancel' | undefined>(action);
+  const [dlg, setDlg] = useState<'withdraw' | 'cancel' | 'cancel_days' | 'extend' | undefined>(action);
   const [note, setNote] = useState('');
   const [tried, setTried] = useState(false);
   const bal = data.balances.find((b) => b.leaveTypeId === r.type?.id);
@@ -2454,7 +2563,7 @@ function LiveLeaveRequestView({ r, data, action, live, onClose, onResend }: Live
   const footer =
     r.status === 'pending' ? <DrawerFoot rest={<Button onClick={onClose}>Close</Button>} main={<Button variant="danger" onClick={() => setDlg('withdraw')}>Withdraw request</Button>} />
     : r.status === 'sent_back' && onResend && live.onResend ? <DrawerFoot main={<Button variant="primary" onClick={onResend}>Change and send again</Button>} rest={<><Button onClick={() => setDlg('withdraw')}>Withdraw</Button><Button onClick={onClose}>Close</Button></>} />
-    : cancellable(r, data.today) ? <DrawerFoot rest={<Button onClick={onClose}>Close</Button>} main={<Button variant="danger" onClick={() => setDlg('cancel')}>Ask to cancel</Button>} />
+    : cancellable(r, data.today) ? <DrawerFoot rest={<>{r.leaveDays && live.onCancelDays && !r.changeWaiting && r.leaveDays.length > 1 && <Button onClick={() => setDlg('cancel_days')}>Cancel some days</Button>}{r.leaveDays && live.onExtend && r.toHalf === 'full' && <Button onClick={() => setDlg('extend')}>Extend</Button>}<Button onClick={onClose}>Close</Button></>} main={<Button variant="danger" onClick={() => setDlg('cancel')}>Ask to cancel</Button>} />
     : <DrawerFoot hint={`${LEAVE_STATUS[r.status].label}${r.decidedAt ? ` on ${formatDate(new Date(r.decidedAt))}` : ''}`} rest={<Button onClick={onClose}>Close</Button>} />;
   return (
     <>
@@ -2473,11 +2582,14 @@ function LiveLeaveRequestView({ r, data, action, live, onClose, onResend }: Live
             ]}
           />
           {r.sentBack && <InlineAlert tone="warning" title={`${r.sentBack.by ?? 'Your approver'} sent it back for changes`}>{r.sentBack.reason}</InlineAlert>}
+          {r.changeWaiting && <InlineAlert tone="info" title="Cancel some days: waiting for approval">{r.changeWaiting.map((on) => formatDate(dayOfIso(on))).join(', ')}</InlineAlert>}
           <p><strong>Reason:</strong> {r.reason || 'None given'}</p>
           {r.certificate !== 'none' && <div className="yx-tim-row"><Badge tone={r.certificate === 'verified' ? 'success' : 'neutral'}>{r.certificate === 'verified' ? 'Certificate verified by HR' : 'Certificate to give HR'}</Badge></div>}
           <p className="yx-tim-muted">Sent {formatDate(new Date(r.createdAt || Date.now()))}{r.decidedAt ? ` · decided ${formatDate(new Date(r.decidedAt))}` : ''}</p>
         </div>
       </Drawer>
+      {dlg === 'cancel_days' && r.leaveDays && live.onCancelDays && <CancelSomeDaysDrawer days={r.leaveDays} today={data.today} onSend={(x) => live.onCancelDays!(r.id, x)} onClose={onClose} />}
+      {dlg === 'extend' && live.onExtend && <ExtendLeaveDrawer lastDay={r.to} typeName={r.type?.name ?? 'Leave'} onSend={(x) => live.onExtend!(r.id, x)} onClose={onClose} />}
       <ConfirmDialog
         open={dlg === 'withdraw'}
         onOpenChange={(o) => !o && close()}
