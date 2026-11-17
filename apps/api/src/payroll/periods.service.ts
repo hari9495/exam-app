@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { PAID_SOURCES, knownLeave, lastDayIn, monthOf, paidIn } from './late-corrections';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -362,6 +363,34 @@ export class PayPeriodsService implements OnModuleInit {
    * PAY-04 "Period frozen · late request only": the stage of a month per legal entity the person enters pay inputs for,
    * so the LOP input shows a frozen or locked month before anyone types.
    */
+  /**
+   * Answer 2283 (PAY-01): approved late corrections of people who have left, paid by their full and final settlement,
+   * until it is settled. Payroll in scope of the entity (payroll.run.view).
+   */
+  async waitingForFnf(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'payroll.run.view');
+      const rows = await withPayScope(tx, ids, () => tx.payCorrection.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, status: 'approved', source: { in: PAID_SOURCES } }, orderBy: { workOn: 'asc' }, take: 500 }));
+      const out: { id: string; employeeId: string; name: string; on: string; month: string; fnfId: string | null }[] = [];
+      for (const x of rows) {
+        const last = await lastDayIn(tx, org, x.employeeId, x.legalEntityId);
+        if (!last || !x.targetPeriod || monthOf(x.targetPeriod) !== last.slice(0, 7)) continue;
+        const f = await withPayScope(tx, [x.legalEntityId], () => tx.fnfSettlement.findFirst({ where: { organizationId: org, employeeId: x.employeeId, legalEntityId: x.legalEntityId }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true } }));
+        if (f?.status === 'settled' || f?.status === 'cancelled') continue;
+        const e = await tx.employee.findFirst({ where: { organizationId: org, id: x.employeeId }, select: { givenName: true, familyName: true, preferredName: true } });
+        out.push({ id: x.id, employeeId: x.employeeId, name: e ? (e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ')) : 'Former employee', on: dateOf(x.workOn), month: last.slice(0, 7), fnfId: f?.id ?? null });
+      }
+      return out;
+    });
+  }
+
+  /** Answer 2282: active leave types, names and codes only. */
+  leaveTypes(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, (tx, c) => tx.leaveType.findMany({ where: { organizationId: c.organizationId, active: true }, select: { code: true, name: true }, orderBy: { name: 'asc' } }));
+  }
+
   async inputStages(ctx: TenantContext, user: ScopeUser, month: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -428,6 +457,7 @@ export class PayPeriodsService implements OnModuleInit {
     notices: Notice[],
   ) {
     const org = c.organizationId;
+    if (!(await knownLeave(tx, org, a.dto.shouldBe))) throw new BadRequestException('That leave type is not one of your company’s. Choose one from the list.');
     if (await tx.payCorrection.findFirst({ where: { organizationId: org, employeeId: a.employeeId, workOn: asDate(a.dto.on), status: 'pending' } })) throw new ConflictException('A correction for that day is already waiting for approval.');
     const row = await tx.payCorrection.create({
       data: { organizationId: org, legalEntityId: a.entityId, employeeId: a.employeeId, payPeriodId: a.period.id, workOn: asDate(a.dto.on), kind: a.dto.kind, source: a.source, change: { shouldBe: a.dto.shouldBe }, reason: a.dto.reason, createdBy: c.userId ?? null },
@@ -462,9 +492,11 @@ export class PayPeriodsService implements OnModuleInit {
     const x = await tx.payCorrection.findFirst({ where: { organizationId: org, id: wf.subjectId } });
     if (!x || x.status !== 'pending') return;
     // YX-LOCK-03: the locked month never changes; the correction waits for the next open payroll month (arrears, 5g).
-    const target = outcome === 'approved' ? await this.nextOpenMonth(tx, org, x.legalEntityId, dateOf(x.workOn).slice(0, 7)) : null;
+    // Answer 2283: for someone who has left (or leaves first), their full and final settlement pays it.
+    const paid = outcome === 'approved' ? await paidIn(tx, org, x.employeeId, x.legalEntityId, await this.nextOpenMonth(tx, org, x.legalEntityId, dateOf(x.workOn).slice(0, 7))) : null;
+    const target = paid?.month ?? null;
     await tx.payCorrection.update({ where: { id: x.id }, data: { status: outcome, decidedAt: new Date(), targetPeriod: target ? asDate(`${target}-01`) : null } });
-    await audit(tx, { organizationId: org, isSuperAdmin: false }, `payroll.correction.${outcome}`, 'pay_correction', x.id, { employeeId: x.employeeId, legalEntityId: x.legalEntityId, paidIn: target });
+    await audit(tx, { organizationId: org, isSuperAdmin: false }, `payroll.correction.${outcome}`, 'pay_correction', x.id, { employeeId: x.employeeId, legalEntityId: x.legalEntityId, paidIn: target, fnf: paid?.fnf ?? false });
   }
 
   // ------------------------------------------------------------------------------------------ device batches (PAY-1.04)
@@ -554,7 +586,7 @@ export class PayPeriodsService implements OnModuleInit {
           opened++;
           continue;
         }
-        const target = await this.nextOpenMonth(tx, org, entityId, on.slice(0, 7));
+        const target = (await paidIn(tx, org, employeeId, entityId, await this.nextOpenMonth(tx, org, entityId, on.slice(0, 7)))).month;
         await tx.payCorrection.create({
           data: { organizationId: org, legalEntityId: entityId, employeeId, payPeriodId: period.id, workOn: asDate(on), kind: 'punches', source: 'device_backfill', change: { punches: rows.map((r) => ({ at: r.punchedAt.toISOString(), kind: r.kind })) }, reason, status: 'approved', backfillId: b.id, targetPeriod: asDate(`${target}-01`), createdBy: v.userId, decidedAt: new Date() },
         });

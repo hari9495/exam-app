@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsDefined, IsEmail, IsIn, IsISO8601, IsObject, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsDefined, IsEmail, IsISO8601, IsIn, IsObject, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -76,10 +76,13 @@ export class LateCorrectionDto {
   @IsIn(['attendance', 'leave'])
   kind!: 'attendance' | 'leave';
 
-  /** What it should have been: "present", "half_day", "on_leave", or a leave type's name. */
+  /**
+   * Answer 2282: what the day should have been, a fixed choice: "present", "half_day", "unpaid" or "leave:<leave type
+   * code>" (the leave type is checked against the company's).
+   */
   @trim()
   @IsString()
-  @Length(2, 120)
+  @Matches(/^(present|half_day|unpaid|leave:[A-Za-z0-9_-]{1,20})$/, { message: 'Choose what the day should have been: present, half day, a leave type or unpaid.' })
   shouldBe!: string;
 
   @trim()

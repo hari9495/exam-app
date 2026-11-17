@@ -1741,3 +1741,31 @@ MT-PPL-C-13..15 and MT-TIM-L-39..40.
 - 2289: EDLI and admin-charge ceilings stay at ₹15,000 until the CA confirms checklist item 46; then a new rule version, with "verify" turned off.
 - 2290: the entity-settings bug (saved for a legal entity, never takes effect) is fixed separately on test main (`fix/yukthix-entity-settings`).
 - 2291 (17 Nov 2026, "ok for all"): the bonus, loan-rules, follow-ups and reports e2e suites turn the second-person rule off for their own company through `test/fixtures/payroll-second-person.ts`; the rule stays on by default and is covered by `settings-s3-payroll` and `settings-s7-moves`.
+
+**Founder answers (17 Nov 2026, "ok for all"), 2300 and 2301:**
+- 2300: a correction approved after the F&F was settled is listed as "F&F settled: pay in an off-cycle correction run", added in one click.
+- 2301: the employee's Leave choice lists only leave types they hold a balance for.
+
+## Late corrections, round 2, as built (branch `fix/yukthix-late-corrections-2`, 17 Nov 2026; answers 2282, 2283)
+
+- **2282 A fixed choice:** "What the day should have been" on both late-request forms (the employee's TIM-07 request
+  and payroll's PAY-04 late request) is Present, Half day, Unpaid or Leave (one of the company's leave types, listed by
+  `GET /payroll/leave-types` for payroll and from the person's own leave balances for the employee). The server takes
+  only `present`, `half_day`, `unpaid` or `leave:<code>` of an existing leave type; anything else is refused (400).
+  Older free-text corrections are still read as before.
+- **2283 After leaving:** a correction approved for someone whose last day (left, or an accepted exit's approved last
+  day) is before the next open payroll month goes to the month of the last day: their full and final settlement pays it
+  (also when that month's regular payslip was already paid: the F&F payment run carries it). Late device batches follow
+  the same rule. PAY-01 lists these as "Waiting for F&F" (`GET /payroll/corrections/waiting-fnf`, payroll in scope)
+  until the settlement is settled or cancelled.
+- **Tests:** e2e `payroll-5a` (+2: refused and accepted choices, leave types per company; routing to the F&F, the
+  waiting list, gone once settled, an employee refused, another company empty); API unit (+2); kit (+4: both forms'
+  leave choice, no Leave without company leave types, the home's waiting list).
+
+### Questions (from 2300)
+
+2300. **F&F already settled.** If the F&F was settled before the correction was approved, nothing pays it now (it is
+      no longer listed). *Suggested: list it as "F&F settled: pay by an off-cycle correction run" and let payroll add
+      it to one with a click.*
+2301. **The employee's leave list.** The employee picks from their own leave balances, so a type they have no balance
+      line for is not offered. *Suggested: keep (it is the leave they could have taken).*

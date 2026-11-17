@@ -18,6 +18,8 @@ function YxMyAttendanceInner() {
   const [month, setMonth] = useState(todayIndia().slice(0, 7));
   const att = useTime<MyAttendance>(`/me/attendance?month=${today ? todayIndia().slice(0, 7) : month}`);
   const night = useTime<MyNightWork>(today ? null : '/me/night-work');
+  // Answer 2282: a late request may say which leave the day was (the person's own leave types).
+  const leave = useTime<{ balances: { code: string; name: string }[] }>(today ? null : '/me/leave');
   const write = useTimeWrite();
   const read = useTimeRead();
   const other = useOtherWrite();
@@ -44,6 +46,7 @@ function YxMyAttendanceInner() {
     onWithdrawOtPlan: (pid) => write(`/me/overtime/plans/${encodeURIComponent(pid)}/withdraw`),
     // TIM-07: a day of a frozen or locked month goes as a late correction (manager, HR, payroll), paid next payroll.
     onLateCorrection: (input) => other('/payroll/me/late-corrections', input),
+    leaveTypes: (leave.data?.balances ?? []).map((b) => ({ code: b.code, name: b.name })),
     defaultRequest: request === 'wfh' || request === 'regularise' ? request : undefined,
     night: night.data ?? null,
     onNightOptIn: (optIn) => write('/me/night-work/opt-in', 'PUT', { optIn }),

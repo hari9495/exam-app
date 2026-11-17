@@ -28,6 +28,8 @@ export default function YxPayrollHomePage() {
   const readinessByPath = usePays<RunReadiness>(readinessPaths);
   // PF, ESI, PT and TDS due this month: only with statutory.filing.view (the server checks it and the entities again).
   const canDues = perms.has('statutory.filing.view');
+  // Answer 2283: late corrections of people who have left, waiting for their F&F.
+  const waitingFnf = usePay<{ id: string; name: string; on: string; month: string; fnfId: string | null }[]>(perms.has('payroll.run.view') ? '/corrections/waiting-fnf' : null);
   const dues = useApi<HomeDues[]>(canDues ? `/statutory/home-dues?month=${sp.month}${sp.entity ? `&${sp.entity}` : ''}` : null);
   // Groups are named with their legal entity: two entities may each have a "Monthly staff".
   const named = groups.data?.map((g) => ({ ...g, name: `${g.name} · ${entities.data?.find((e) => e.id === g.legalEntityId)?.shortName ?? ''}` })) ?? null;
@@ -44,6 +46,8 @@ export default function YxPayrollHomePage() {
         readiness: readiness.data ?? null,
         readinessByRun: Object.fromEntries(Object.values(readinessByPath).map((r) => [r.run.id, r])),
         dues: !canDues || dues.isError ? undefined : (dues.data ?? null),
+        waitingForFnf: waitingFnf.data ?? null,
+        fnfHref: () => '/yx/payroll/fnf',
         calendar: month ? { cutOff: month.cutOff, payDate: month.payDate } : null,
         canPrepare: perms.has('payroll.run.prepare'),
         canOffcycle: perms.has('payroll.offcycle.prepare'),

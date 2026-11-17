@@ -663,6 +663,8 @@ export interface LiveAttendanceRequest {
   onWfh?: (input: WfhInput) => Promise<unknown>;
   /** TIM-07 LateRequest: a day of a frozen or locked month goes as a late correction (manager, HR, payroll; paid next payroll). */
   onLateCorrection?: (input: LateCorrectionInput) => Promise<unknown>;
+  /** Answer 2282: the company's leave types, for "it was this leave" on a late request. */
+  leaveTypes?: { code: string; name: string }[];
   onClose: () => void;
 }
 
@@ -712,6 +714,9 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
   const nothing = type !== 'regularise' || !day ? null : pending ? `${when} already has a request waiting` : ['weekly_off', 'holiday', 'leave'].includes(day.status) ? `${when} is ${day.status === 'leave' ? 'on approved leave' : day.status === 'holiday' ? 'a holiday' : 'a weekly off'}: nothing to fix` : null;
   // A day of a frozen or locked month goes as a late request (P08 Q4), up to the company's limit in days.
   const late = type === 'regularise' && !!on && !!live.onLateCorrection && (d.locked ?? []).includes(on);
+  // Answer 2282: what the day should have been, a fixed choice (the server accepts only these).
+  const [shouldBe, setShouldBe] = useState<'present' | 'half_day' | 'leave' | 'unpaid'>('present');
+  const [lateLeave, setLateLeave] = useState<string | null>(null);
   const tooLate = late && d.lateRequestMaxDays !== undefined && (isoDay(d.today).getTime() - isoDay(on!).getTime()) / 86_400_000 > d.lateRequestMaxDays;
   const otMin = Math.round((otHours ?? 0) * 60);
   const otAhead = d.otAheadDays ?? 30;
@@ -733,6 +738,7 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
     ...(od && (!odFrom || !odTo) ? [{ fieldId: !odFrom ? 'ar-from' : 'ar-to', message: 'Enter the From and To times' }] : []),
     ...(od && odFrom && odTo && odTo <= odFrom ? [{ fieldId: 'ar-to', message: 'Enter a To time after From' }] : []),
     ...(od && odFrom && odTo && odTo > odFrom && minuteOf(odTo)! - minuteOf(odFrom)! < 30 ? [{ fieldId: 'ar-to', message: 'On duty is at least 30 minutes' }] : []),
+    ...(late && shouldBe === 'leave' && !lateLeave ? [{ fieldId: 'ar-leave', message: 'Choose the leave type' }] : []),
     ...(!reason.trim() ? [{ fieldId: 'ar-reason', message: 'Enter a reason' }] : late && reason.trim().length < 10 ? [{ fieldId: 'ar-reason', message: 'Give the reason in a sentence (at least 10 letters).' }] : []),
   ];
   const early = useTooEarly(errors);
@@ -745,7 +751,7 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
       if (type === 'ot') await live.onOtPlan!({ on, minutes: otMin, takeAs, reason: reason.trim() });
       else if (od) await live.onOnDuty!({ on, inMinute: minuteOf(odFrom)!, outMinute: minuteOf(odTo)!, place: where.trim(), reason: reason.trim(), ...(live.resend ? { resendOf: live.resend.id } : {}) });
       else if (type === 'wfh') await live.onWfh!({ on, reason: reason.trim() });
-      else if (late) await live.onLateCorrection!({ on, kind: 'attendance', shouldBe: after, reason: reason.trim() });
+      else if (late) await live.onLateCorrection!({ on, kind: 'attendance', shouldBe: shouldBe === 'leave' ? `leave:${lateLeave}` : shouldBe, reason: reason.trim() });
       else await live.onFix({ on, kind: LIVE_FIX[fix], ...(needIn ? { inMinute: minuteOf(inT)! } : {}), ...(needOut ? { outMinute: minuteOf(outT)! } : {}), reason: reason.trim() });
       toast({ tone: 'success', title: late ? 'Sent to your manager, then HR and payroll' : hr ? 'Sent to your manager, then HR' : 'Sent to your manager', description: `${type === 'ot' ? 'Overtime pre-approval' : od ? 'On duty' : type === 'wfh' ? 'Work from home' : late ? 'Late request' : 'Regularisation'} for ${when}. You will get a notification when it is decided.` });
       live.onClose();
@@ -781,6 +787,16 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
         <FormField id="ar-date" label="Date" required error={early.errorOf('ar-date')} helper={type === 'ot' ? `Today or up to ${otAhead} days ahead. Overtime already worked is claimed on My overtime.` : od ? `Up to ${odWindow.aheadDays} days ahead or ${odWindow.backDays} days back.` : type === 'wfh' ? 'Pick the day you will work from home.' : late ? `${monthName} is locked, so this goes as a late request.` : 'Pick the day to fix.'}>
           <DatePicker value={date} onChange={setDate} min={type === 'wfh' || type === 'ot' ? today : undefined} max={type === 'regularise' ? today : undefined} aria-label="Date" />
         </FormField>
+        {late && (
+          <FormField id="ar-should" label="What the day should have been" required>
+            <Segment label="What the day should have been" value={shouldBe} onChange={(v) => setShouldBe(v)} options={[{ value: 'present' as const, label: 'Present' }, { value: 'half_day' as const, label: 'Half day' }, ...(live.leaveTypes?.length ? [{ value: 'leave' as const, label: 'Leave' }] : []), { value: 'unpaid' as const, label: 'Unpaid' }]} />
+          </FormField>
+        )}
+        {late && shouldBe === 'leave' && (
+          <FormField id="ar-leave" label="Leave type" required error={early.errorOf('ar-leave')}>
+            <Select value={lateLeave} onChange={setLateLeave} options={(live.leaveTypes ?? []).map((t) => ({ value: t.code, label: t.name }))} placeholder="Choose the leave type" />
+          </FormField>
+        )}
         {type === 'ot' && (
           <FieldRow>
             <FormField id="ar-ot" label="Planned OT (hours)" required error={early.errorOf('ar-ot')} helper="Min 0.5 h, in quarter hours"><NumberField decimals value={otHours} onChange={setOtHours} placeholder="e.g. 1.25" /></FormField>
