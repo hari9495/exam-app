@@ -255,3 +255,19 @@ All new sets go in `apps/api/src/statutory/packs/in.json` (IN.PT / IN.LWF) and `
 - 2387: H16 minimum-wage tables wait for the official gov.in PDFs (MH, HR, the TN DA); no invented rows.
 - 2388: H14 also shows "s.123 (old 80C)" style labels on the declaration screen. The other listed payroll items go in batch H part 2.
 - 2389: Kerala per-board LWF, Kerala local-body PT and Tamil Nadu local bodies outside Chennai wait for the CA (items 5, 40, 4).
+
+## Founder answers, batch H part 2 (18 Nov 2026, "all ok"), 2400 to 2409
+- 2400: the entity's PAN and TAN block run approval. A missing employee PAN stays a per-person warning (TDS at 20 %, s.206AA).
+- 2401: a PT registration blocks approval unless it is "registered" or "applied, awaiting".
+- 2402: these blocks cannot be waived, like the coverage block.
+- 2403: the "PF only below the ceiling" test uses the month's earned PF wage after loss of pay, with no separate switch.
+- 2404: loan perquisite uses new rule set IN.PERQ-LOAN, marked verify. A CA enters the SBI rates per loan type (Rule 3(7)(i)). Medical loans and loans totalling ₹20,000 or less are exempt.
+- 2405: the perquisite is worked out on the maximum outstanding each month. It is an information line on the payslip and goes into TDS and Form 130/123. A company can switch it off only for loans it marks exempt.
+- 2406: flexible benefits are a company-set list, each with a monthly entitlement and "taxable if unclaimed". Unclaimed amounts are paid as taxable in March or at exit. Carry forward is a company setting, default off.
+- 2407: flexible-benefit claims use the expense claims flow (a category linked to the flexible component).
+- 2408: "Lock now" stops new declarations and new proofs; HR can still decide on proofs already sent.
+- 2409: the "Not ready for payroll" view is for HR and payroll (people.view plus payroll keys) within their entity scope; employees never see it.
+- 2396, 2397: Jharkhand quarter months and Puducherry PT months wait for CA items 11 and 18.
+
+## Retiring the old /v2 console (2398, 18 Nov 2026, "all ok")
+Audit every /v2 page → new equivalent or gap; build real gaps kit first; move role landings and redirect old URLs; move candidate /start and /session-ended to the kit; remove the "older screens" link; then delete /v2.
