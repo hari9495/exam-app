@@ -2,6 +2,7 @@ import { humanizeHttpError, NetworkError } from './http-error-message';
 import { goTo } from './navigate';
 import { withNextHere } from './safe-next';
 import { noteNotFound } from './yx-not-found';
+import { SALARY_RECHECK_MESSAGE, salaryCheck } from './salary-check';
 
 // Exported for public, unauthenticated pages (e.g. the candidate apply/status pages) that hit
 // the backend with plain fetch instead of apiFetch -- there's no access token to attach.
@@ -29,23 +30,8 @@ export function setStepUpHandler(handler: (() => Promise<boolean>) | null) {
   stepUpHandler = handler;
 }
 
-// Answer 2370: "Confirm it's you" was cancelled on a salary page (the API's salary re-check, batch B item 1). Pages then
-// show "Confirm it's you to see salary details" with Try again (the kit's SalaryCheckContext), not "no access".
-export const SALARY_RECHECK_MESSAGE = 'Confirm it is you to open salary details.';
-let salaryCheckCancelled = false;
-const salaryCheckListeners = new Set<() => void>();
-export const salaryCheck = {
-  get: () => salaryCheckCancelled,
-  set(cancelled: boolean) {
-    if (cancelled === salaryCheckCancelled) return;
-    salaryCheckCancelled = cancelled;
-    salaryCheckListeners.forEach((l) => l());
-  },
-  subscribe(listener: () => void) {
-    salaryCheckListeners.add(listener);
-    return () => void salaryCheckListeners.delete(listener);
-  },
-};
+// Answer 2370: the cancelled-salary-check store lives in its own module (pages read it even where api-client is mocked).
+export { SALARY_RECHECK_MESSAGE, salaryCheck };
 
 // A 401 from these means a wrong credential or code, not an expired session: refreshing is
 // pointless there (and /auth/refresh would recurse into its own handler).

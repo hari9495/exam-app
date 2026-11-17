@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AccessRequestContext, NotFoundReferenceContext, SalaryCheckContext, useToast, type AccessRequestSent } from '@yukthix/ui';
-import { apiFetch, salaryCheck } from './api-client';
+import { apiFetch } from './api-client';
+import { salaryCheck } from './salary-check';
 import { useAuth } from './auth-context';
 import { useNotFoundReference } from './yx-not-found';
 
