@@ -1,17 +1,7 @@
-// The console each staff role lands in. Mirrors the post-login redirect (see roleToLandingPath in
-// lib/staff-routing.ts, used by the v2 login), so login, impersonation (Login as), and
-// return-to-admin all send a role to the same place.
+import { roleToLandingPath } from './staff-routing';
+
+// The console each staff role lands in: the same place as the post-login redirect (roleToLandingPath), so login,
+// impersonation (Login as) and return-to-admin all send a role to the same place.
 export function staffLandingPath(role: string | null | undefined): string {
-  switch (role) {
-    case 'super_admin':
-      return '/v2/organizations';
-    case 'org_admin':
-      return '/v2/users';
-    case 'panel':
-      return '/v2/panel/reports';
-    case 'auditor':
-      return '/v2/reports'; // compliance viewer lands on results
-    default:
-      return '/v2/today'; // recruiter
-  }
+  return roleToLandingPath(role ?? undefined);
 }
