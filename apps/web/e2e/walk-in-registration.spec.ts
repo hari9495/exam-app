@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import { skipPreV2Console } from './fixtures/pre-v2';
+import { addSectionWithQuestion } from './fixtures/sections';
 
 skipPreV2Console('walk-in-registration.spec.ts');
 
@@ -33,12 +34,7 @@ test('a walk-in candidate registers and starts the exam without an email invite'
   await page.getByLabel('Enable walk-in registration for this exam').click();
   await page.getByRole('button', { name: 'Save details' }).click();
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /Walk-in test question: 2 \+ 2\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /Walk-in test question: 2 \+ 2\?/);
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
   await expect(page.getByText('Walk-in').first()).toBeVisible();
@@ -106,12 +102,7 @@ test('registering twice with the same email for the same exam resumes rather tha
   // ponytail: exams.service.ts's publish() rejects exams with no sections/questions
   // (BadRequestException), so this exam needs at least one question before Publish
   // will succeed -- reuse the question the first test in this file already created.
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /Walk-in test question: 2 \+ 2\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /Walk-in test question: 2 \+ 2\?/);
 
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);

@@ -238,6 +238,9 @@ model User {
   name                   String?              @db.VarChar(1000)
   timeZone               String?              @map("time_zone") @db.VarChar(1000)
   emailSignature         String?              @map("email_signature") @db.Text
+  // The person's Accessibility menu choices (answers 2330 to 2334): contrast, text size, spacing, cursor, motion,
+  // focus, links. Validated by AccessibilityPrefsDto; null = the defaults. Only the "me" endpoints read or write it.
+  accessibility          Json?
   // Notification email cadence: 'immediate' (default = one email per event, today's behavior),
   // 'daily' (batched into one daily digest by the digest sweep), or 'off' (no notification emails at
   // all; the in-app bell is unaffected). lastDigestSentAt anchors the once-per-day digest sweep.

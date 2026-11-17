@@ -7,6 +7,7 @@ import { Icon, Spinner } from './foundations';
 import { Button } from './button';
 import { Checkbox } from './choice';
 import { PoweredBy } from './brand';
+import { AccessibilityMenu } from './accessibility';
 import { Drawer } from './drawer';
 
 /* ------------------------------------------------------------------ */
@@ -450,6 +451,8 @@ export function ExamShell({
           </div>
         </div>
         <div className="yx-exam__status">
+          {/* Answer 2331: the exam screens carry the Accessibility menu (kept in this browser). */}
+          <AccessibilityMenu />
           <AutosaveIndicator status={saveStatus} savedAt={savedAt} />
           {/* Answer 2161: on a phone the numbers sit behind this button instead of beside the question. */}
           <Button className="yx-exam__qlist" size="sm" icon={ListOrdered} onClick={() => setListOpen(true)} aria-haspopup="dialog">

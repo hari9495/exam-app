@@ -89,7 +89,64 @@ Ideas for YukthiX (we have legal entities, branches and departments as separate 
 - M2: (Fusion) a **legislative data group** per country: payroll rules, statutory codes and currency per country,
   with several legal employers under it. This is the base for multi-country.
 
-## 5. Not reached in session 1, for session 2
+## 5. Payroll set-up (Payroll menu: Description, Consolidation, Payment Methods, GL Flexfield Map, RetroPay Set, Update Payroll Run)
+
+**Payroll (a pay group):**
+- Period type (weekly, semi-month, calendar month), first period end date, and how many years of periods to
+  generate.
+- **Date offsets** from the period end: check (pay) date, scheduled run, **cut-off** for inputs, and **payslip
+  release** date.
+- Default payment method and consolidation set (payrolls run together).
+- **Default costing account and a suspense account**: costs with no valid account go to suspense, not lost.
+- Negative payment allowed; **multiple assignments** (one person, two jobs, one payslip).
+- Period Dates lists every period with its own status (Open or Closed) and its own check and run dates.
+
+**GL Flexfield Map:** per payroll and ledger, each payroll costing segment maps to a GL chart-of-accounts segment.
+That is how pay costs post to finance.
+
+**RetroPay Set:** rules of the form *balance* (for example Regular Wages year-to-date) → *retro element* (Retro
+Regular Wages) → input value. RetroPay recalculates past periods and pays the difference through the retro
+element. (Fusion and later EBS use per-element "retro components" instead, see section 3.)
+
+Ideas for YukthiX:
+- PY1: per pay group, an input **cut-off** date and a **payslip release** date, separate from the pay date. Inputs
+  after the cut-off roll to next month automatically, with a notice.
+- PY2: a **suspense cost centre**: pay never fails to cost; finance clears suspense later.
+- PY3: a GL mapping screen: our cost centre and component → the customer's GL account codes. Feeds the costing and GL
+  export in the Enterprise batch.
+- PY4: one person with two concurrent jobs (multiple assignments) on one payslip. This is rare in India, so it is
+  tier 3.
+
+## 6. Recruitment (Requisition and Vacancy)
+
+A **requisition** (raised by a person, dated) holds one or more **vacancies**. Each vacancy has:
+- category, **openings** (headcount) and a status (approved, etc.);
+- what it is for: organization, job, **position**, grade, group and location;
+- a recruiter;
+- a **budget measurement**, for example FTE or "percent full time".
+
+Ideas for YukthiX (Hire has jobs and openings):
+- RC1: a vacancy can point at a Position seat (P2), so filling it fills the seat, and the position's headcount
+  budget limits how many openings can be approved.
+- RC2: a budget measurement on the opening (FTE).
+
+## 7. People and assignment (People, Enter and Maintain)
+
+- The **person** record (name, identification, person type, personal, employment, office, applicant, background,
+  rehire, medical, benefits tabs) is separate from the **assignment**: organization, job, position, grade,
+  payroll, location, status, vacancy, collective agreement, salary basis, supervisor, probation and notice period.
+- Both are date-tracked; the effective-date block on every screen shows from and to.
+- **Assignment "Others"** opens 25 linked screens, for example Costing, Budgets, Entry History, Extra Information
+  and Grade Step.
+- **Assignment costing:** a percentage split across cost codes, date-effective. For example, 60 % to one cost
+  centre and 40 % to a project. This is the base for cost allocation.
+
+Ideas for YukthiX:
+- PE1: split a person's cost across cost centres or projects by percentage, from a date. This links to the projects
+  module and to costing.
+- PE2: an "entry history" view: every pay-input change on the person, by date.
+
+## 8. Not reached yet, for session 3
 
 - **Approval rules (AME, Approvals Management Engine):** needs the "Approvals Management Business Analyst"
   responsibility, which this login does not have.
