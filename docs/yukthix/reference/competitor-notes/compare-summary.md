@@ -170,3 +170,27 @@ Tier 1 is built in seven batches by area, in this order, after the assessments s
 - **G. Bigger single pieces:** 12, 14, 21.
 
 Tiers 2 and 3 are decided after tier 1. Attendance-leave E2 (leave clash) is already live and off the list.
+
+## Payroll (Zoho Payroll compare, 17 Nov 2026)
+
+From `compare-payroll.md` (Zoho Payroll India trial, Keka My Finances, YukthiX code). 66 rows; 64 have a pick (two
+point to `compare-expenses-pay.md`).
+
+| Keep ours | Take Z | Mix | Skip |
+|---|---|---|---|
+| 42 | 10 | 11 | 1 |
+
+YukthiX is ahead on runs, filings, arrears, bonus, F&F and controls. Zoho is ahead on statutory breadth (every PT and
+LWF state, loan perquisites, flexible benefits, the new Act's section names).
+
+Top 5 must-builds. They do not fit batches A to G, so they go in a new batch:
+
+- **H. Payroll:**
+  1. D4: PT rule files for every PT state (M).
+  2. D14: loan perquisite worked out into TDS (M).
+  3. D10: new Income Tax Act section numbers with the old ones in brackets (S).
+  4. B2: "PF only below the ₹15,000 ceiling" component flag (S).
+  5. A2: block run approval when the entity's TAN, PAN or a PT registration is missing (S).
+
+The rest of the payroll Must tier (B8 / E5 flexible benefits, D5 LWF states, E1 open and lock declaration windows,
+A3 "Not ready for payroll" on People, E2 HR declares on behalf) follows in batch H after these five.
