@@ -20,6 +20,8 @@ export interface CalcComponent {
   name: string;
   kind: 'earning' | 'deduction' | 'employer' | 'reimbursement' | 'info';
   pfWage: boolean;
+  /** B2: with pfWage, part of the PF wage only while the rest of the month's PF wage is below the ceiling. */
+  pfBelowCeiling?: boolean;
   esiWage: boolean;
   ptWage: boolean;
   gratuityWage: boolean;
@@ -204,6 +206,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   }
 
   // 3. Wage bases from flags; the Code wage add-back (YX-PAY-47).
+  const pfEarned = (seg: number, below: boolean) => lines.filter((l) => l.kind === 'earning' && l.segmentNo === seg && comps.get(l.code)?.pfWage === true && !!comps.get(l.code)?.pfBelowCeiling === below).reduce((t, l) => t.add(l.amount), ZERO);
   const earned = (flag: keyof CalcComponent, seg?: number) => lines.filter((l) => l.kind === 'earning' && (seg === undefined || l.segmentNo === seg) && comps.get(l.code)?.[flag] === true).reduce((t, l) => t.add(l.amount), ZERO);
   // shortcut: the Code wage add-back tests a whole month's pay, so the regular run does it; item-only off-cycles skip it.
   const codeRs = itemsOnly ? null : rule('IN.WAGES-CODE');
@@ -240,7 +243,10 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       const f = D(g.days).div(monthDays);
       const v = pfRs.values as Record<string, string>;
       const scaled: RuleSet = { ...pfRs, values: { ...pfRs.values, wageCeiling: D(v.wageCeiling).mul(f).toFixed(2), epsCeiling: D(v.epsCeiling).mul(f).toFixed(2), edliCeiling: D(v.edliCeiling).mul(f).toFixed(2) } };
-      const wage = earned('pfWage', i).add(addBack.mul(g.days).div(segDays || 1));
+      // B2 (answer 2403): a "below the ceiling" component counts only while the rest of the PF wage (earned, after loss of
+      // pay) is under this part's ceiling.
+      const always = pfEarned(i, false).add(addBack.mul(g.days).div(segDays || 1));
+      const wage = always.lt(D(scaled.values.wageCeiling as string)) ? always.add(pfEarned(i, true)) : always;
       const r = pf(scaled, { pfWage: wage, onActualWage: s.profile.pfOnActualWage, age: s.profile.age });
       emp = emp.add(r.employee);
       edli = edli.add(r.edli);

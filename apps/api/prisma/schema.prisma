@@ -8405,6 +8405,8 @@ model PayComponent {
   kind           String    @db.VarChar(14)
   taxable        Boolean   @default(true)
   pfWage         Boolean   @default(false) @map("pf_wage")
+  /// B2 (batch H part 2): with pf_wage, counted only while the month's other PF wage is below the PF ceiling.
+  pfBelowCeiling Boolean   @default(false) @map("pf_below_ceiling")
   esiWage        Boolean   @default(false) @map("esi_wage")
   ptWage         Boolean   @default(false) @map("pt_wage")
   gratuityWage   Boolean   @default(false) @map("gratuity_wage")
@@ -9164,6 +9166,23 @@ model PayslipLink {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("payslip_links")
+}
+
+/// Batch H part 2 E1: HR opens or locks a legal entity's declaration or proof window early, or goes back to the dates.
+/// Append-only; the latest row per (entity, tax year, window) wins. RLS in migration 202617z0000472.
+model TaxWindowAction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  taxYear        String   @map("tax_year") @db.Char(7)
+  window         String   @db.VarChar(12)
+  action         String   @db.VarChar(5)
+  reason         String   @db.VarChar(300)
+  createdBy      String   @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, legalEntityId, taxYear, window, createdAt(sort: Desc)], map: "tax_window_actions_lookup_idx")
+  @@map("tax_window_actions")
 }
 
 // ---- M03 payroll batch 5e (migration 20261101000000_payroll_5e): income tax. RLS and the pay guard live in the migration.

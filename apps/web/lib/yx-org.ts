@@ -170,6 +170,8 @@ export const YX_KEYS = [
   'payroll.query.handle',
   'payroll.document.issue',
   'tax.proof.verify',
+  // Batch H part 2 E2: Declare for an employee.
+  'tax.regime.override',
   'statutory.filing.download',
   'statutory.register.sign',
   'statutory.advisory.review',

@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { EwaRequestScreen, IncentiveStatementScreen, LoanRequestScreen, MyPayDocumentsScreen, NomineeDrawer, PayBandScreen, PayslipViewerScreen, TaxWorkspaceScreen, payDiff, previewEmi, type LiveEwaRequest, type LiveLoanRequest, type LivePayslips, type LiveTax, type LoanRules, type MyTaxWorkspace } from './employee-pay';
+import { EwaRequestScreen, IncentiveStatementScreen, LoanRequestScreen, MyPayDocumentsScreen, NomineeDrawer, PayBandScreen, PayslipViewerScreen, TaxOnBehalfScreen, TaxWorkspaceScreen, payDiff, previewEmi, type LiveEwaRequest, type LiveLoanRequest, type LivePayslips, type LiveTax, type LoanRules, type MyTaxWorkspace } from './employee-pay';
 import { DETAIL, MY_PAYSLIPS, PREVIOUS } from './live/fixtures-5j';
 import { DECLARATIONS, LOANS } from './live/fixtures-ops';
 import { PAY_DOCUMENTS } from './live/fixtures-5ab';
@@ -290,6 +290,37 @@ describe('PAY-22 / PAY-41 · Me › Tax (live)', () => {
     render(<TaxWorkspaceScreen live={live({ tab: 'declarations', workspace: { ...locked, regimeRequest: { ...req, status: 'rejected' } } })} />);
     expect(screen.getByText(/HR did not approve your last request/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ask HR to change regime' })).toBeInTheDocument();
+  });
+
+  it('E2: HR declares for an employee: their lines show, a new line is sent; with the window closed nothing can be added', async () => {
+    const onDeclare = fn();
+    const base = { state: 'ready' as const, onSearch: fn(), person: { id: 'p9', name: 'Murugan S' }, onPerson: fn(), onDeclare };
+    const { unmount } = render(<TaxOnBehalfScreen live={{ ...base, declarations: { ...DECLARATIONS, canDeclare: true } }} />);
+    expect(screen.getByRole('table', { name: 'Declarations of Murugan S' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add declaration' }));
+    await ue.click(within(drawer()).getByRole('combobox', { name: /What/ }));
+    await ue.click(await screen.findByRole('option', { name: /Health insurance, self and family/ }));
+    await ue.type(within(drawer()).getByRole('textbox', { name: /Amount for the year/ }), '25000');
+    await ue.click(within(drawer()).getByRole('button', { name: 'Save declaration' }));
+    await waitFor(() => expect(onDeclare).toHaveBeenCalledWith({ subjectKey: 'sec80d_self', amount: '25000' }));
+    unmount();
+    render(<TaxOnBehalfScreen live={{ ...base, declarations: { ...DECLARATIONS, canDeclare: false } }} />);
+    expect(screen.queryByRole('button', { name: 'Add declaration' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Change/ })).not.toBeInTheDocument();
+  });
+
+  it('E1: the window cards show OPEN or Closed; locked by HR, declaring is off and the note says HR locked it', () => {
+    const windows = [
+      { key: 'declarations' as const, open: false, from: '2026-04-01', to: '2099-01-31', by: 'hr_lock' as const },
+      { key: 'proofs' as const, open: true, from: '2026-04-01', to: '2099-01-31', by: 'hr_open' as const },
+    ];
+    render(<TaxWorkspaceScreen live={live({ tab: 'declarations', workspace: { ...WS, canDeclare: false, windows } })} />);
+    const list = screen.getByRole('list', { name: 'Tax windows' });
+    expect(within(list).getByText('OPEN')).toBeInTheDocument();
+    expect(within(list).getByText(/locked by HR/)).toBeInTheDocument();
+    expect(within(list).getByText(/opened early by HR/)).toBeInTheDocument();
+    expect(screen.getByText(/HR locked them/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add declaration' })).not.toBeInTheDocument();
   });
 
   it('declare rent: it asks for the months and the city and sends the monthly rent', async () => {

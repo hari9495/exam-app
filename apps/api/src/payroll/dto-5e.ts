@@ -284,3 +284,22 @@ export class IssueCertificateDto {
   @Type(() => ConfirmationDto)
   confirmation!: ConfirmationDto;
 }
+
+/** E1 (batch H part 2): HR opens or locks a window early, or goes back to the company dates; a reason each time. */
+export class TaxWindowActionDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @IsIn(['declarations', 'proofs'])
+  window!: 'declarations' | 'proofs';
+
+  @IsIn(['open', 'lock', 'dates'])
+  action!: 'open' | 'lock' | 'dates';
+
+  @trim()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(300)
+  reason!: string;
+}
+

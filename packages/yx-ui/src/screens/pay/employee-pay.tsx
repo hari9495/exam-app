@@ -42,6 +42,7 @@ import {
   MoneySummary,
   MyPayFrame,
   PartnerLink,
+  PayFrame,
   RangeMarker,
   SectionTitle,
   StateBlock,
@@ -2193,6 +2194,102 @@ function QueryDrawer({ slip, period, lines, lineCode, onClose, onSend }: { slip:
 
 /* ------------------------------------------------------------------ PAY-22 + PAY-41 live: Me › Tax, Me › Tax declarations */
 
+/** A tax window as the employee sees it: open or not, its dates, and whether HR opened or locked it early. */
+export interface TaxWindow {
+  key: 'declarations' | 'proofs';
+  open: boolean;
+  from: string;
+  to: string;
+  by: 'dates' | 'hr_open' | 'hr_lock';
+}
+
+const WINDOW_TITLE: Record<TaxWindow['key'], string> = { declarations: 'Declarations', proofs: 'Proofs of investment' };
+/** E1: one card per window with an OPEN tag (expenses-pay B7, Keka's window cards). */
+export function TaxWindowCards({ windows }: { windows: TaxWindow[] }) {
+  return (
+    <div className="yx-pay-windows" role="list" aria-label="Tax windows">
+      {windows.map((w) => (
+        <Card key={w.key} role="listitem" title={WINDOW_TITLE[w.key]} actions={<Badge tone={w.open ? 'success' : 'neutral'}>{w.open ? 'OPEN' : 'Closed'}</Badge>}>
+          <p className="yx-pay-note">
+            {dateText(w.from)} to {dateText(w.to)}
+            {w.by === 'hr_open' ? ' · opened early by HR' : w.by === 'hr_lock' ? ' · locked by HR' : ''}
+          </p>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+/** E2 (batch H part 2): HR declares for an employee without a login (GET / POST tax/employees/:id/declarations). */
+export interface LiveTaxOnBehalf {
+  state: LoadState;
+  onRetry?: () => void;
+  onSearch: (q: string) => Promise<PersonHit[]>;
+  person: PersonHit | null;
+  onPerson: (p: PersonHit) => void;
+  /** The chosen person's declarations, with whether the window is open now. */
+  declarations: (MyDeclarations & { canDeclare: boolean; windows?: TaxWindow[] }) | null;
+  onDeclare: (line: DeclarationInput) => Promise<unknown>;
+}
+
+export function TaxOnBehalfScreen({ live }: { live: LiveTaxOnBehalf }) {
+  const d = live.declarations;
+  const [editing, setEditing] = useState<DeclarationLine | 'new' | null>(null);
+  const verified = (l: DeclarationLine) => ['approved', 'partly'].includes(l.proofStatus);
+  return (
+    <PayFrame page="tax">
+      <PageHeader title="Declare for an employee" description="For people without a login: their tax declarations, entered by HR with the same checks and window as their own. Each change is recorded as made on their behalf. Your own declarations are made in Me › Tax." />
+      <div className="yx-pay-stack">
+        <FindPerson id="tb-person" label="Employee" value={live.person} onChange={live.onPerson} onSearch={live.onSearch} />
+        {live.person && live.state === 'loading' && <Skeleton height={200} />}
+        {live.person && live.state === 'error' && (
+          <InlineAlert tone="danger" title="Their declarations could not be loaded" actions={live.onRetry && <Button size="sm" onClick={live.onRetry}>Try again</Button>}>
+            You may not handle tax for this person, or they have no current employment in your entities.
+          </InlineAlert>
+        )}
+        {live.person && d && (
+          <>
+            {d.windows && d.windows.length > 0 && <TaxWindowCards windows={d.windows} />}
+            {!d.lines.length ? (
+              <EmptyState compact title="Nothing declared yet." description={`Declare rent, investments and insurance for ${live.person.name}.`} />
+            ) : (
+              <PlainTable
+                label={`Declarations of ${live.person.name}`}
+                rows={d.lines}
+                getRowId={(l) => l.id}
+                columns={[
+                  { key: 'item', header: 'Item and section', cell: (l) => <strong>{subjectText(l.subjectKey, l.section)}</strong> },
+                  { key: 'amount', header: 'Declared', num: true, cell: (l) => `${rupees(l.amount)}${l.subjectKey === 'hra' ? ' a month' : ''}` },
+                  { key: 'proof', header: 'Proof', cell: (l) => proofBadge(l.proofStatus) },
+                  {
+                    key: 'act',
+                    header: <span className="yx-visually-hidden">Actions</span>,
+                    cell: (l) =>
+                      d.canDeclare && !verified(l) && (
+                        <Button size="sm" onClick={() => setEditing(l)} aria-label={`Change ${subjectText(l.subjectKey, l.section)}`}>
+                          Change
+                        </Button>
+                      ),
+                  },
+                ]}
+              />
+            )}
+            {d.canDeclare && d.subjects.some((x) => !d.lines.some((l) => l.subjectKey === x.key)) && (
+              <div className="yx-pay-row">
+                <Button icon={Plus} onClick={() => setEditing('new')}>
+                  Add declaration
+                </Button>
+                <span className="yx-pay-note">{d.form}.</span>
+              </div>
+            )}
+            {editing && <DeclareDrawer line={editing === 'new' ? null : editing} subjects={d.subjects.filter((x) => editing !== 'new' || !d.lines.some((l) => l.subjectKey === x.key))} taxYear={d.taxYear} onClose={() => setEditing(null)} onSave={live.onDeclare} />}
+          </>
+        )}
+      </div>
+    </PayFrame>
+  );
+}
+
 /** GET tax/me/workspace. */
 export interface MyTaxWorkspace {
   id?: string;
@@ -2206,6 +2303,8 @@ export interface MyTaxWorkspace {
   canChooseRegime?: boolean;
   canDeclare?: boolean;
   canSendProofs?: boolean;
+  /** E1 (batch H part 2): the declaration and proof windows, by the company dates or as HR opened or locked them. */
+  windows?: TaxWindow[];
   /** Founder answer 3: the latest "ask HR to change my regime" request (Approvals). */
   regimeRequest?: { id: string; from: 'new' | 'old'; to: 'new' | 'old'; reason: string; status: 'pending' | 'approved' | 'rejected'; requestedAt: string; decidedAt: string | null } | null;
   /** PAY-22 NoPan: the latest PAN link confirmation sent to payroll (waiting, or the last decision). */
@@ -2677,9 +2776,10 @@ function TaxDeclarations({ live, w }: { live: LiveTax; w: MyTaxWorkspace }) {
         {askHr && <AskHrRegime w={w} onClose={() => setAskHr(false)} onSend={live.onRegimeRequest} />}
         {w.regime === 'new' && <p className="yx-pay-note">In the new regime, the declarations below don't reduce your tax. Keep them if you might switch.</p>}
       </section>
+      {w.windows && w.windows.length > 0 && <TaxWindowCards windows={w.windows} />}
       {d && !open && (
         <InlineAlert tone="info" title="Declarations are closed">
-          They closed on {dateText(d.proofCutoff)}. Anything else is claimed in your own tax return.
+          {w.windows?.find((x) => x.key === 'declarations')?.by === 'hr_lock' ? 'HR locked them.' : `They closed on ${dateText(d.proofCutoff)}.`} Anything else is claimed in your own tax return.
         </InlineAlert>
       )}
       {d && !d.lines.length && <EmptyState compact title="Nothing declared yet." description="Declare rent, investments and insurance to lower the tax taken from your pay." />}

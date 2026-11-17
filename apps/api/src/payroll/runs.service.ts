@@ -12,7 +12,7 @@ import { lapsedWorkPermits } from '../people/work-auth.service';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { StatutoryRulesService } from '../statutory/statutory.service';
-import { StatutoryError, empDefaults, esiCovered, inForce, type RuleSet } from '../statutory/evaluator';
+import { StatutoryError, empDefaults, esiCovered, inForce, ptCharged, type RuleSet } from '../statutory/evaluator';
 import { asDate, dateOf, factsOn, monthRange, settingOn } from '../time/time-core';
 import { subPeriods } from './frequency';
 import { addDays } from '../time/time-maths';
@@ -206,6 +206,35 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const ids = (await entitiesFor(tx, c, v, 'payroll.run.prepare')).filter((id) => !entityId || id === entityId);
       await payScope(tx, ids);
       return this.notReadyIn(tx, c.organizationId, ids, month);
+    }, RUN_TX);
+  }
+
+  /**
+   * A3 (batch H part 2, answer 2409): who is not ready for payroll today, for the People directory: current employees
+   * of the entities the viewer prepares runs for, with what is missing (a salary, a salary bank account, a PAN). The
+   * same checks as a run's; nothing about amounts. Null without payroll.run.prepare or when acting for someone.
+   */
+  async notReadyPeople(ctx: TenantContext, user: ScopeUser, entityId?: string | null): Promise<{ employeeId: string; missing: ('salary' | 'bank' | 'pan')[] }[] | null> {
+    const v = await this.viewer(user);
+    if (!v.grants.has('payroll.run.prepare') || v.actingForOther) return null;
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = (await entitiesFor(tx, c, v, 'payroll.run.prepare')).filter((id) => !entityId || id === entityId);
+      if (!ids.length) return [];
+      await payScope(tx, ids);
+      const today = asDate(todayIst());
+      const ems = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, joinedOn: { lte: today }, OR: [{ exitedOn: null }, { exitedOn: { gte: today } }] }, select: { id: true, employeeId: true } });
+      if (!ems.length) return [];
+      const comps = new Set((await tx.compensation.findMany({ where: { organizationId: org, employmentId: { in: ems.map((e) => e.id) }, supersededAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, select: { employmentId: true } })).map((x) => x.employmentId));
+      const people = ems.map((e) => e.employeeId);
+      const banks = new Set((await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: people }, purpose: 'salary', validTo: null }, select: { employeeId: true } })).map((x) => x.employeeId));
+      const pans = new Set((await tx.employeeIdentifiers.findMany({ where: { organizationId: org, employeeId: { in: people }, panHash: { not: null } }, select: { employeeId: true } })).map((x) => x.employeeId));
+      const out: { employeeId: string; missing: ('salary' | 'bank' | 'pan')[] }[] = [];
+      for (const e of ems) {
+        const missing = [...(comps.has(e.id) ? [] : (['salary'] as const)), ...(banks.has(e.employeeId) ? [] : (['bank'] as const)), ...(pans.has(e.employeeId) ? [] : (['pan'] as const))];
+        if (missing.length) out.push({ employeeId: e.employeeId, missing });
+      }
+      return out;
     }, RUN_TX);
   }
 
@@ -458,6 +487,10 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       const reg = await tx.statutoryRegistration.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, statute: cv.statute, status: { in: ['on', 'applied_awaited'] } } });
       if (!reg) found.push({ employeeId: null, checkKey: `coverage_${cv.statute}`, severity: 'block', blocks: 'approval', waivable: false, message: `The entity has ${cv.headcount} people and is covered by ${cv.statute}, but no registration is recorded.` });
     }
+    // A2 (answers 2400-2402): approval waits for the entity's TAN and PAN, and for a PT registration ("registered" or
+    // "applied, awaiting") in each state where someone in this run works and the state's PT rule in force charges PT.
+    // Never waived. A person's own missing PAN stays the warning above.
+    for (const g of await approvalGaps(tx, org, run, members, await this.rules.published())) found.push({ employeeId: null, severity: 'block', blocks: 'approval', waivable: false, ...g });
     // PAY-11 Retrenchment: retrenchment lines in this run need the government's permission recorded in People › Exits
     // when the establishment is at the IN.IR threshold; approval waits for it (never waived; the held lines say so too).
     if (run.offcycleKind === 'fnf') {
@@ -869,7 +902,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       if (!loc) throw new NotReady('assignment', 'The job has no work location.');
       segments.push({ from: sFrom, to: sTo, days: Number(sTo.slice(8)) - Number(sFrom.slice(8)) + 1, lines: pl.map((l) => ({ code: codes.get(l.componentId)!, monthly: l.monthly.toFixed(2) })), payBasis: pkg.payBasis as Segment['payBasis'], rate: pkg.rate?.toFixed(2) ?? null, otMultiplier: pkg.otMultiplier?.toFixed(2) ?? null, holidayMultiplier: pkg.holidayMultiplier?.toFixed(2) ?? null, state: loc.state, zone: loc.minWageZone, skill: asg.skillClass ?? null, changeId: comp.changeId });
     }
-    const components: CalcComponent[] = allComponents.map((x) => ({ code: x.code, name: x.name, kind: x.kind as CalcComponent['kind'], pfWage: x.pfWage, esiWage: x.esiWage, ptWage: x.ptWage, gratuityWage: x.gratuityWage, bonusWage: x.bonusWage, codeWagePart: x.codeWagePart, codeExclusion: x.codeExclusion, prorated: x.prorated, rounding: x.rounding as CalcComponent['rounding'], statutory: x.statutory, taxable: x.taxable }));
+    const components: CalcComponent[] = allComponents.map((x) => ({ code: x.code, name: x.name, kind: x.kind as CalcComponent['kind'], pfWage: x.pfWage, pfBelowCeiling: x.pfBelowCeiling, esiWage: x.esiWage, ptWage: x.ptWage, gratuityWage: x.gratuityWage, bonusWage: x.bonusWage, codeWagePart: x.codeWagePart, codeExclusion: x.codeExclusion, prorated: x.prorated, rounding: x.rounding as CalcComponent['rounding'], statutory: x.statutory, taxable: x.taxable }));
     // Attendance: the frozen feed, or the manual LOP of an assumed-present group (D1).
     const period = await reads.once('period', () => tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: run.legalEntityId, payGroupId: null, periodStart: run.periodStart } }));
     const feeds = period ? await reads.once('feed', () => tx.payrollFeedRow.findMany({ where: { organizationId: org, payPeriodId: period.id, employeeId: { in: ems.map((x) => x.employeeId) }, supersededAt: null }, orderBy: { frozenAt: 'desc' } })) : [];
@@ -1419,4 +1452,32 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
 
 
 
+}
+
+/**
+ * A2: what the entity must have on record before a run is approved: its TAN and PAN, and a PT registration in every
+ * state that charges PT where a member works at the period end (their statutory profile's PT state, else their place).
+ */
+export async function approvalGaps(tx: Tx, org: string, run: Pick<Run, 'legalEntityId' | 'periodEnd'>, members: { employmentId: string }[], rules: RuleSet[]): Promise<{ checkKey: string; message: string }[]> {
+  const out: { checkKey: string; message: string }[] = [];
+  const end = dateOf(run.periodEnd);
+  const ent = await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: run.legalEntityId }, select: { tan: true, pan: true, country: true } });
+  if (ent.country !== 'IN') return out; // India's deductor and PT rules only
+  if (!ent.tan) out.push({ checkKey: 'entity_tan_missing', message: "The entity's TAN is not recorded (Payroll · Setup · Deductor details). Tax cannot be deposited without it." });
+  if (!ent.pan) out.push({ checkKey: 'entity_pan_missing', message: "The entity's PAN is not recorded (Payroll · Setup · Deductor details)." });
+  const employmentIds = members.map((m) => m.employmentId);
+  if (!employmentIds.length) return out;
+  const when = { validFrom: { lte: run.periodEnd }, OR: [{ validTo: null }, { validTo: { gte: run.periodEnd } }] };
+  const profiles = await withPayScope(tx, [run.legalEntityId], () => tx.employeeStatutory.findMany({ where: { organizationId: org, employmentId: { in: employmentIds }, ...when }, select: { employmentId: true, ptState: true } }));
+  const asgs = await tx.employeeAssignment.findMany({ where: { organizationId: org, employmentId: { in: employmentIds }, supersededAt: null, validFrom: { lte: run.periodEnd } }, orderBy: { validFrom: 'desc' }, select: { employmentId: true, locationId: true } });
+  const locs = new Map((await tx.location.findMany({ where: { organizationId: org, id: { in: [...new Set(asgs.map((a) => a.locationId))] } }, select: { id: true, state: true } })).map((l) => [l.id, l.state]));
+  const states = new Set<string>();
+  for (const id of employmentIds) {
+    const st = profiles.find((p) => p.employmentId === id)?.ptState ?? locs.get(asgs.find((a) => a.employmentId === id)?.locationId ?? '');
+    if (st) states.add(st);
+  }
+  const regs = await tx.statutoryRegistration.findMany({ where: { organizationId: org, legalEntityId: run.legalEntityId, statute: 'IN.PT', status: { in: ['on', 'applied_awaited'] } }, select: { state: true } });
+  for (const st of [...states].sort())
+    if (ptCharged(rules, st, end) && !regs.some((r) => r.state === st)) out.push({ checkKey: `pt_registration_${st}`, message: `People in this run work in ${st}, which charges professional tax, but the entity's PT registration there is not recorded (Payroll · Setup · Registrations).` });
+  return out;
 }

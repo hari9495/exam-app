@@ -12,7 +12,7 @@ import { inForce } from '../statutory/evaluator';
 import { asDate, dateOf } from '../time/time-core';
 import type { CalcComponent, Segment } from './calc';
 import type { ConfirmationDto } from './dto';
-import type { DeclarationLineDto, Form12bDecisionDto, Form12bDto, PerquisiteDto, ProofDecisionDto, RegimeRequestDto, ResidencyRequestDto, WorkspacePatchDto } from './dto-5e';
+import type { DeclarationLineDto, TaxWindowActionDto, Form12bDecisionDto, Form12bDto, PerquisiteDto, ProofDecisionDto, RegimeRequestDto, ResidencyRequestDto, WorkspacePatchDto } from './dto-5e';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
 import { dayMonYear } from './loan-rules';
 import { PayDocumentsService } from './documents.service';
@@ -60,6 +60,30 @@ export async function taxDates(tx: Tx, c: CompanyContext, legalEntityId: string,
     proofCutoff: `${y + 1}-${await settingFor(tx, c, 'tax.proof_cutoff', lev)}`,
   };
 }
+
+export type TaxWindowKey = 'declarations' | 'proofs';
+export interface TaxWindowView {
+  key: TaxWindowKey;
+  open: boolean;
+  from: string;
+  to: string;
+  by: 'dates' | 'hr_open' | 'hr_lock';
+}
+/**
+ * E1 (batch H part 2): the declaration window (from the tax year's start to the proof cut-off) and the proof window
+ * (the company dates), each as HR last set it: opened early, locked, or back to the dates (answer 2408).
+ */
+export async function taxWindows(tx: Tx, org: string, legalEntityId: string, taxYear: string, dates: Awaited<ReturnType<typeof taxDates>>, today: string): Promise<TaxWindowView[]> {
+  const base: Record<TaxWindowKey, { from: string; to: string }> = { declarations: { from: `${taxYear.slice(0, 4)}-04-01`, to: dates.proofCutoff }, proofs: { from: dates.proofWindowOpens, to: dates.proofCutoff } };
+  const acts = await tx.taxWindowAction.findMany({ where: { organizationId: org, legalEntityId, taxYear }, orderBy: { createdAt: 'desc' }, select: { window: true, action: true } });
+  return (['declarations', 'proofs'] as const).map((key) => {
+    const a = acts.find((x) => x.window === key)?.action;
+    const by = a === 'open' ? 'hr_open' : a === 'lock' ? 'hr_lock' : 'dates';
+    return { key, ...base[key], by, open: by === 'dates' ? today >= base[key].from && today <= base[key].to : by === 'hr_open' };
+  });
+}
+/** Why a window refuses (409): locked by HR, not open yet, or closed. */
+const closedText = (w: TaxWindowView, what: string, today: string) => (w.by === 'hr_lock' ? `HR has locked ${what.toLowerCase()} for now.` : today < w.from ? `${what} open on ${dayMonYear(w.from)}.` : `${what} closed on ${dayMonYear(w.to)}.`);
 
 const monthsBetween = (from: string, to: string) => (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5, 7)) - Number(from.slice(5, 7));
 
@@ -227,12 +251,17 @@ export class TaxService implements OnModuleInit {
 
   /** The signed-in person's current employment and its workspace for this tax year (made on first use). */
   private async ownWorkspace(tx: Tx, c: CompanyContext) {
+    return this.workspaceOf(tx, c, await this.mine(tx), null);
+  }
+
+  /** The current tax year's workspace of a current employment (made on first use), with its dates and windows. */
+  private async workspaceOf(tx: Tx, c: CompanyContext, employeeIds: string[], entityIds: string[] | null) {
     const today = todayIst();
     const e = await tx.employment.findFirst({
-      where: { organizationId: c.organizationId, employeeId: { in: await this.mine(tx) }, joinedOn: { lte: asDate(today) }, OR: [{ exitedOn: null }, { exitedOn: { gte: asDate(today) } }] },
+      where: { organizationId: c.organizationId, employeeId: { in: employeeIds }, ...(entityIds ? { legalEntityId: { in: entityIds } } : {}), joinedOn: { lte: asDate(today) }, OR: [{ exitedOn: null }, { exitedOn: { gte: asDate(today) } }] },
       orderBy: { joinedOn: 'desc' },
     });
-    if (!e) throw new NotFoundException('You have no current employment here.');
+    if (!e) throw new NotFoundException(entityIds ? 'Not found' : 'You have no current employment here.');
     const taxYear = taxYearOf(today.slice(0, 7));
     const where = { organizationId: c.organizationId, employmentId: e.id, taxYear };
     // The tax page asks for several things at once on a first visit: insert-if-absent, so the parallel calls don't collide.
@@ -242,7 +271,8 @@ export class TaxService implements OnModuleInit {
         skipDuplicates: true,
       });
     const ws = (await tx.taxWorkspace.findFirst({ where }))!;
-    return { ws, dates: await taxDates(tx, c, e.legalEntityId, taxYear), today };
+    const dates = await taxDates(tx, c, e.legalEntityId, taxYear);
+    return { ws, dates, today, windows: await taxWindows(tx, c.organizationId, e.legalEntityId, taxYear, dates, today) };
   }
 
   /** A workspace the key reaches (pay guard opened to those entities), never the viewer's own. */
@@ -255,7 +285,7 @@ export class TaxService implements OnModuleInit {
     return ws;
   }
 
-  private view(ws: Workspace, dates?: Awaited<ReturnType<typeof taxDates>>, today?: string) {
+  private view(ws: Workspace, dates?: Awaited<ReturnType<typeof taxDates>>, today?: string, windows?: TaxWindowView[]) {
     return {
       id: ws.id,
       employeeId: ws.employeeId,
@@ -273,7 +303,9 @@ export class TaxService implements OnModuleInit {
       panStatus: ws.panStatus,
       otherIncome: ws.otherIncome,
       ...(dates && today
-        ? { dates, canChooseRegime: today <= dates.regimeCutoff, canDeclare: today <= dates.proofCutoff, canSendProofs: today >= dates.proofWindowOpens && today <= dates.proofCutoff }
+        ? windows
+          ? { dates, windows, canChooseRegime: today <= dates.regimeCutoff, canDeclare: windows[0].open, canSendProofs: windows[1].open }
+          : { dates, canChooseRegime: today <= dates.regimeCutoff, canDeclare: today <= dates.proofCutoff, canSendProofs: today >= dates.proofWindowOpens && today <= dates.proofCutoff }
         : {}),
     };
   }
@@ -283,8 +315,8 @@ export class TaxService implements OnModuleInit {
   async myWorkspace(ctx: TenantContext, user: ScopeUser) {
     await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const { ws, dates, today } = await this.ownWorkspace(tx, c);
-      return { ...this.view(ws, dates, today), ...(await this.requestsOf(tx, ws)) };
+      const { ws, dates, today, windows } = await this.ownWorkspace(tx, c);
+      return { ...this.view(ws, dates, today, windows), ...(await this.requestsOf(tx, ws)) };
     });
   }
 
@@ -701,64 +733,101 @@ export class TaxService implements OnModuleInit {
     await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { ws, dates, today } = await this.ownWorkspace(tx, c);
-      const lines = await tx.taxDeclarationLine.findMany({ where: { organizationId: c.organizationId, workspaceId: ws.id }, orderBy: { subjectKey: 'asc' } });
-      const { keys } = await this.subjectKeys(today);
-      const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: [...keys, 'salary_declaration'] } } });
-      return {
-        taxYear: ws.taxYear,
-        proofWindowOpens: dates.proofWindowOpens,
-        proofCutoff: dates.proofCutoff,
-        subjects: [...keys].map((k) => ({ key: k, section: labels.find((x) => x.subjectKey === k)?.section ?? null })),
-        // H14: the declaration form of the workspace's law (Form 12BB, or Form No. 124 under the 2025 Act), from the crosswalk.
-        form: labels.find((x) => x.subjectKey === 'salary_declaration')?.form ?? (ws.lawVersion === 'IT-2025' ? 'Form No. 124' : 'Form 12BB'),
-        lines: lines.map((l) => ({ ...this.lineView(l), section: labels.find((x) => x.subjectKey === l.subjectKey)?.section ?? null })),
-      };
+      return this.declarationsView(tx, c, ws, dates, today);
     });
   }
 
-  /** Declares (or changes) lines until the proof cut-off; a line with an approved proof is not changed. Amount 0 drops it. */
+  /**
+   * E2 (batch H part 2): HR declares for an employee (staff without a login), under tax.regime.override, in the
+   * entities they reach; never their own. The same checks and the same window as the employee; audited "on behalf of".
+   */
+  private async behalfWorkspace(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string) {
+    if ((await this.mine(tx)).includes(employeeId)) throw new ForbiddenException('Someone else handles your own tax.');
+    const ids = await entitiesFor(tx, c, v, 'tax.regime.override');
+    await payScope(tx, ids);
+    return this.workspaceOf(tx, c, [employeeId], ids);
+  }
+
+  async declarationsFor(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { ws, dates, today, windows } = await this.behalfWorkspace(tx, c, v, employeeId);
+      return { ...(await this.declarationsView(tx, c, ws, dates, today)), canDeclare: windows[0].open, windows };
+    });
+  }
+
+  async declareFor(ctx: TenantContext, user: ScopeUser, employeeId: string, rows: DeclarationLineDto[]) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { ws, today, windows } = await this.behalfWorkspace(tx, c, v, employeeId);
+      if (!windows[0].open) throw new ConflictException(closedText(windows[0], 'Declarations', today));
+      return this.saveLines(tx, c, ws, today, rows, v.userId!);
+    });
+  }
+
+  private async declarationsView(tx: Tx, c: CompanyContext, ws: Workspace, dates: Awaited<ReturnType<typeof taxDates>>, today: string) {
+    const lines = await tx.taxDeclarationLine.findMany({ where: { organizationId: c.organizationId, workspaceId: ws.id }, orderBy: { subjectKey: 'asc' } });
+    const { keys } = await this.subjectKeys(today);
+    const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: [...keys, 'salary_declaration'] } } });
+    return {
+      taxYear: ws.taxYear,
+      proofWindowOpens: dates.proofWindowOpens,
+      proofCutoff: dates.proofCutoff,
+      subjects: [...keys].map((k) => ({ key: k, section: labels.find((x) => x.subjectKey === k)?.section ?? null })),
+      // H14: the declaration form of the workspace's law (Form 12BB, or Form No. 124 under the 2025 Act), from the crosswalk.
+      form: labels.find((x) => x.subjectKey === 'salary_declaration')?.form ?? (ws.lawVersion === 'IT-2025' ? 'Form No. 124' : 'Form 12BB'),
+      lines: lines.map((l) => ({ ...this.lineView(l), section: labels.find((x) => x.subjectKey === l.subjectKey)?.section ?? null })),
+    };
+  }
+
+  /** Declares (or changes) lines while the declaration window is open; a line with an approved proof is not changed. Amount 0 drops it. */
   async declare(ctx: TenantContext, user: ScopeUser, rows: DeclarationLineDto[]) {
     await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const org = c.organizationId;
-      const { ws, dates, today } = await this.ownWorkspace(tx, c);
-      if (today > dates.proofCutoff) throw new ConflictException(`Declarations closed on ${dates.proofCutoff}.`);
-      const { keys, landlordPanAbove } = await this.subjectKeys(today);
-      const y = Number(ws.taxYear.slice(0, 4));
-      for (const r of rows) {
-        if (!keys.has(r.subjectKey)) throw new BadRequestException(`${r.subjectKey} is not something you can declare.`);
-        const old = await tx.taxDeclarationLine.findFirst({ where: { organizationId: org, workspaceId: ws.id, subjectKey: r.subjectKey } });
-        if (old && ['approved', 'partly'].includes(old.proofStatus)) throw new ConflictException(`${r.subjectKey} has a verified proof and is not changed.`);
-        let pan: { enc: string; last4: string } | null = null;
-        if (r.subjectKey === 'hra') {
-          if (!r.rentFrom || !r.rentTo || r.metro === undefined || r.rentFrom > r.rentTo || r.rentFrom < `${y}-04` || r.rentTo > `${y + 1}-03`)
-            throw new BadRequestException('Rent needs the months you pay it in this tax year and whether the city is a metro.');
-          const yearly = D(r.amount).mul(monthsBetween(r.rentFrom, r.rentTo) + 1);
-          if (yearly.gt(landlordPanAbove) && !r.landlordPan) throw new BadRequestException(`Rent above ₹${landlordPanAbove.toFixed(0)} a year needs your landlord's PAN.`);
-          // H15: Form No. 124 (Income-tax Rules 2026 r.205) also asks how you are related to the landlord.
-          if (ws.lawVersion === 'IT-2025' && yearly.gt(landlordPanAbove) && !r.landlordRelationship) throw new BadRequestException(`Rent above ₹${landlordPanAbove.toFixed(0)} a year needs how you are related to your landlord.`);
-          if (r.landlordPan) {
-            if (!PAN.test(r.landlordPan)) throw new BadRequestException("The landlord's PAN looks like ABCDE1234F.");
-            pan = { enc: sealValue(this.crypto, org, ws.employeeId, r.landlordPan), last4: r.landlordPan.slice(-4) };
-          }
-        }
-        const data = {
-          amount: D(r.amount),
-          landlordName: r.landlordName ?? null,
-          landlordPanEnc: pan?.enc ?? null,
-          landlordPanLast4: pan?.last4 ?? null,
-          landlordRelationship: r.subjectKey === 'hra' ? (r.landlordRelationship ?? null) : null,
-          rentFrom: r.subjectKey === 'hra' ? r.rentFrom! : null,
-          rentTo: r.subjectKey === 'hra' ? r.rentTo! : null,
-          metro: r.subjectKey === 'hra' ? !!r.metro : null,
-          updatedAt: new Date(),
-        };
-        if (old) await tx.taxDeclarationLine.update({ where: { id: old.id }, data: { ...data, ...(old.proofStatus === 'rejected' ? { proofStatus: 'none' } : {}) } });
-        else await tx.taxDeclarationLine.create({ data: { organizationId: org, legalEntityId: ws.legalEntityId, employeeId: ws.employeeId, workspaceId: ws.id, subjectKey: r.subjectKey, ...data } });
-      }
-      await audit(tx, c, 'tax.declaration.saved', 'tax_workspace', ws.id, { lines: rows.map((r) => r.subjectKey) });
-      return { saved: rows.length };
+      const { ws, today, windows } = await this.ownWorkspace(tx, c);
+      if (!windows[0].open) throw new ConflictException(closedText(windows[0], 'Declarations', today));
+      return this.saveLines(tx, c, ws, today, rows, null);
     });
+  }
+
+  /** The declaration lines of a workspace, checked the same way for the employee and for HR on their behalf (E2). */
+  private async saveLines(tx: Tx, c: CompanyContext, ws: Workspace, today: string, rows: DeclarationLineDto[], onBehalfBy: string | null) {
+    const org = c.organizationId;
+    const { keys, landlordPanAbove } = await this.subjectKeys(today);
+    const y = Number(ws.taxYear.slice(0, 4));
+    for (const r of rows) {
+      if (!keys.has(r.subjectKey)) throw new BadRequestException(`${r.subjectKey} is not something you can declare.`);
+      const old = await tx.taxDeclarationLine.findFirst({ where: { organizationId: org, workspaceId: ws.id, subjectKey: r.subjectKey } });
+      if (old && ['approved', 'partly'].includes(old.proofStatus)) throw new ConflictException(`${r.subjectKey} has a verified proof and is not changed.`);
+      let pan: { enc: string; last4: string } | null = null;
+      if (r.subjectKey === 'hra') {
+        if (!r.rentFrom || !r.rentTo || r.metro === undefined || r.rentFrom > r.rentTo || r.rentFrom < `${y}-04` || r.rentTo > `${y + 1}-03`)
+          throw new BadRequestException('Rent needs the months you pay it in this tax year and whether the city is a metro.');
+        const yearly = D(r.amount).mul(monthsBetween(r.rentFrom, r.rentTo) + 1);
+        if (yearly.gt(landlordPanAbove) && !r.landlordPan) throw new BadRequestException(`Rent above ₹${landlordPanAbove.toFixed(0)} a year needs your landlord's PAN.`);
+        // H15: Form No. 124 (Income-tax Rules 2026 r.205) also asks how you are related to the landlord.
+        if (ws.lawVersion === 'IT-2025' && yearly.gt(landlordPanAbove) && !r.landlordRelationship) throw new BadRequestException(`Rent above ₹${landlordPanAbove.toFixed(0)} a year needs how you are related to your landlord.`);
+        if (r.landlordPan) {
+          if (!PAN.test(r.landlordPan)) throw new BadRequestException("The landlord's PAN looks like ABCDE1234F.");
+          pan = { enc: sealValue(this.crypto, org, ws.employeeId, r.landlordPan), last4: r.landlordPan.slice(-4) };
+        }
+      }
+      const data = {
+        amount: D(r.amount),
+        landlordName: r.landlordName ?? null,
+        landlordPanEnc: pan?.enc ?? null,
+        landlordPanLast4: pan?.last4 ?? null,
+        landlordRelationship: r.subjectKey === 'hra' ? (r.landlordRelationship ?? null) : null,
+        rentFrom: r.subjectKey === 'hra' ? r.rentFrom! : null,
+        rentTo: r.subjectKey === 'hra' ? r.rentTo! : null,
+        metro: r.subjectKey === 'hra' ? !!r.metro : null,
+        updatedAt: new Date(),
+      };
+      if (old) await tx.taxDeclarationLine.update({ where: { id: old.id }, data: { ...data, ...(old.proofStatus === 'rejected' ? { proofStatus: 'none' } : {}) } });
+      else await tx.taxDeclarationLine.create({ data: { organizationId: org, legalEntityId: ws.legalEntityId, employeeId: ws.employeeId, workspaceId: ws.id, subjectKey: r.subjectKey, ...data } });
+    }
+    await audit(tx, c, 'tax.declaration.saved', 'tax_workspace', ws.id, { lines: rows.map((r) => r.subjectKey), ...(onBehalfBy ? { onBehalfOf: ws.employeeId } : {}) });
+    return { saved: rows.length };
   }
 
   /** A proof for one line, in the proof window (PDF, PNG or JPEG, checked by content); stored encrypted with its hash. */
@@ -768,8 +837,9 @@ export class TaxService implements OnModuleInit {
     const type = PROOF_TYPES.find(([, is]) => is(file.buffer))?.[0];
     if (!type) throw new BadRequestException('A proof is a PDF, PNG or JPEG file.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const { ws, dates, today } = await this.ownWorkspace(tx, c);
-      if (today < dates.proofWindowOpens || today > dates.proofCutoff) throw new ConflictException(`Proofs are sent from ${dates.proofWindowOpens} to ${dates.proofCutoff}.`);
+      const { ws, today, windows } = await this.ownWorkspace(tx, c);
+      // E1: HR may open or lock the proof window early (answer 2408: proofs already sent are still decided).
+      if (!windows[1].open) throw new ConflictException(closedText(windows[1], 'Proofs', today));
       const l = await tx.taxDeclarationLine.findFirst({ where: { organizationId: c.organizationId, workspaceId: ws.id, id: lineId } });
       if (!l) throw new NotFoundException('Not found');
       if (['approved', 'partly'].includes(l.proofStatus)) throw new ConflictException('This line is already verified.');
@@ -1006,6 +1076,33 @@ export class TaxService implements OnModuleInit {
       if (!n.count) throw new ConflictException('This Form 12B is not waiting for a check.');
       await audit(tx, c, 'tax.form12b.verified', 'form12b_submission', f.id, { employeeId: f.employeeId, taxYear: f.taxYear, status, gross: f.gross.toFixed(2), tds: f.tds.toFixed(2) });
       return this.form12bView(await tx.form12bSubmission.findFirstOrThrow({ where: { id: f.id } }));
+    });
+  }
+
+  /** E1: this tax year's windows for each entity HR may override in (tax.regime.override). */
+  async windowsAdmin(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => this.windowRows(tx, c, await entitiesFor(tx, c, v, 'tax.regime.override')));
+  }
+
+  private async windowRows(tx: Tx, c: CompanyContext, entityIds: string[]) {
+    const today = todayIst();
+    const taxYear = taxYearOf(today.slice(0, 7));
+    const ents = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, id: { in: entityIds }, archivedAt: null, country: 'IN' }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+    const out: (TaxWindowView & { legalEntityId: string; entityName: string; taxYear: string })[] = [];
+    for (const e of ents) for (const w of await taxWindows(tx, c.organizationId, e.id, taxYear, await taxDates(tx, c, e.id, taxYear), today)) out.push({ ...w, legalEntityId: e.id, entityName: e.name, taxYear });
+    return out;
+  }
+
+  /** E1 (answer 2408): open or lock a window now, or go back to the dates; kept with the reason and audited. */
+  async setWindow(ctx: TenantContext, user: ScopeUser, dto: TaxWindowActionDto) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await requireEntity(tx, c, v, 'tax.regime.override', dto.legalEntityId);
+      const taxYear = taxYearOf(todayIst().slice(0, 7));
+      await tx.taxWindowAction.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, taxYear, window: dto.window, action: dto.action, reason: dto.reason, createdBy: v.userId! } });
+      await audit(tx, c, 'tax.window.changed', 'legal_entity', dto.legalEntityId, { taxYear, window: dto.window, action: dto.action, reason: dto.reason });
+      return this.windowRows(tx, c, [dto.legalEntityId]);
     });
   }
 

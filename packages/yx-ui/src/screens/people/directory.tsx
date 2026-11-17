@@ -1,4 +1,5 @@
 // PPL-01 Employee directory · PPL-02 Org chart · PPL-08 Team page (M01 §3.2, §3.10; P02 Q4 directory fields; P01 YX-ORG-26).
+import { FilterToggle } from '../../components/filter-toggle';
 import { useEffect, useMemo, useState } from 'react';
 import { CalendarClock, Check, Download, Mail, Phone, Plus, Upload, UserPlus } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
@@ -178,6 +179,11 @@ export interface LiveDirectory {
   onExport?: (ids: string[] | null, columns: string[], format: 'csv' | 'xlsx') => void;
   views?: { list: DirectorySavedView[]; onSave: (name: string, shared: boolean, state: DirectoryViewState) => void };
   onRetry?: () => void;
+  /**
+   * A3 (batch H part 2): employees not ready for payroll (row id -> what is missing, in plain words, e.g. "no salary
+   * bank account"), for HR and payroll who prepare runs; left out for everyone else.
+   */
+  notReady?: Record<string, string[]>;
 }
 
 const ALL_VIEW: DirectoryViewState = { kind: 'Employee', filters: [], q: '', quick: null };
@@ -192,6 +198,8 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
   const [openId, setOpenId] = useState<string | null>(defaultOpenId ?? null);
   const [quick, setQuick] = useState<Quick | null>(null);
   const [columns, setColumns] = useState<ColumnState | undefined>(undefined);
+  const [onlyNotReady, setOnlyNotReady] = useState(false);
+  const notReady = persona === 'hr' ? live?.notReady : undefined;
   const [selected, setSelected] = useState<string[]>([]);
   // Columns kept for one persona never carry over to another (HR adds Status and ID after Name).
   useEffect(() => setColumns(undefined), [persona]);
@@ -204,17 +212,22 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
       (r) =>
         (kind === 'All persons' || r.kind === kind) &&
         quickMatch(r, quick, me) &&
+        (!onlyNotReady || !!notReady?.[r.id]) &&
         (!s || [r.name, r.code, r.email, r.phone].some((x) => (x ?? '').toLowerCase().includes(s))) &&
         filters.every((f) => matchesFilter(f.key === 'department' ? departmentsOf(r) : (r as unknown as Record<string, unknown>)[f.key], f)),
     );
-  }, [rows, kind, filters, q, quick, me]);
+  }, [rows, kind, filters, q, quick, me, onlyNotReady, notReady]);
   const kinds = live ? FILTERS.filter((f) => live.cards[f]) : FILTERS;
   const countOf = (f: WorkforceFilter) => (live ? live.cards[f]?.count ?? 0 : f === 'All persons' ? (rows.length ? DISTINCT_PERSONS : 0) : rows.filter((r) => r.kind === f).length);
   const deltaOf = (f: WorkforceFilter) => (live ? live.cards[f]?.delta ?? null : SINCE_AUGUST[f]);
   const since = live ? live.sinceMonth : 'August';
   const open = rows.find((r) => r.id === openId) ?? null;
-  const filtered = filters.length > 0 || q !== '' || quick !== null;
-  const cols = directoryColumns(persona, kind);
+  const filtered = filters.length > 0 || q !== '' || quick !== null || onlyNotReady;
+  // A3: the person's name line says what payroll still needs.
+  const cols = directoryColumns(persona, kind).map((c) =>
+    c.key === 'name' && notReady ? { ...c, person: (r: WorkforceRow) => ({ name: r.name, secondary: notReady[r.id] ? `Not ready for payroll: ${notReady[r.id].join(', ')}` : r.role }) } : c,
+  );
+  const notReadyCount = notReady ? rows.filter((r) => notReady[r.id]).length : 0;
   const fields = live ? fieldsFor(rows) : FIELDS;
   const views = live?.views;
   const apply = (v: DirectoryViewState) => {
@@ -271,6 +284,13 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
         <p className="yx-ppl__sub">{personsLine(live ? live.persons ?? { roles: rows.length, people: rows.length } : { roles: rows.length, people: DISTINCT_PERSONS })}</p>
       )}
       {persona !== 'hr' && me && <QuickChips value={quick} onChange={setQuick} />}
+      {notReady && (
+        <div className="yx-ppl__sub">
+          <FilterToggle pressed={onlyNotReady} onPressedChange={setOnlyNotReady}>
+            Not ready for payroll ({notReadyCount})
+          </FilterToggle>
+        </div>
+      )}
       {state === 'no-access' ? (
         <NoAccessState what="the directory" grantedBy="your HR admin" />
       ) : state === 'error' ? (
@@ -289,6 +309,7 @@ export function DirectoryScreen({ persona, rows, defaultFilter = 'Employee', sta
             setFilters([]);
             setQ('');
             setQuick(null);
+            setOnlyNotReady(false);
           }}
           empty={<EmptyState title="No people yet" description={live && !live.onImport ? 'Add your first employee.' : 'Add your first employee or import a list from Excel.'} action={addLabel ? <Button variant="primary" onClick={add}>{addLabel}</Button> : undefined} />}
           defaultColumnState={columns ?? { hidden: ['joined'] }}

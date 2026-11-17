@@ -63,6 +63,10 @@ export {
   previewEmi,
   monthName,
   subjectText,
+  TaxOnBehalfScreen,
+  TaxWindowCards,
+  type LiveTaxOnBehalf,
+  type TaxWindow,
   type LivePayslips,
   type PayDiffRow,
   type LiveTax,
@@ -82,7 +86,7 @@ export {
   type MyPayBand,
   type LiveMyPayDocuments,
 } from '../employee-pay';
-export { LoansScreen, ProofQueueScreen, EwaAdminScreen, PayrollReportsScreen, type LiveLoans, type LiveProofQueue, type ProofStatusFilter, type Form12bRow, type ResidencyRow, type PanLinkRow, type LiveEwaAdmin } from '../admin-tax-loans';
+export { LoansScreen, ProofQueueScreen, EwaAdminScreen, PayrollReportsScreen, type LiveLoans, type LiveProofQueue, type ProofStatusFilter, type Form12bRow, type ResidencyRow, type PanLinkRow, type LiveEwaAdmin, type AdminTaxWindow, type TaxWindowAction } from '../admin-tax-loans';
 // PAY-11 · Off-cycle run (design with `live`): a new off-cycle run, and an off-cycle run's page.
 export { OffCycleRunScreen } from '../offcycle';
 export type { LiveOffCycleRun, OffcycleItem } from '../offcycle-run-live';

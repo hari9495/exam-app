@@ -14,6 +14,7 @@ import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file'
 import { StatutoryRulesService } from '../src/statutory/statutory.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { payReady } from './fixtures/pay-ready';
 
 // Batch H: state payroll rules as dated rule data (docs/yukthix/reference/statutory/india-state-rules-2026-27.md §7).
 // Every new set is verify (a CA checks it before go-live). Positive and negative paths per item.
@@ -36,6 +37,12 @@ describe('Payroll: state statutory rules (batch H)', () => {
   const emp: Record<string, string> = {};
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
+  // Pay tables (declarations) are behind the pay guard: read them with the entity's pay scope.
+  const scopedA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
+    inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return fn(tx);
+    });
   const addPlace = (state: string, code: string) =>
     inA(async (tx) => (await tx.location.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, name: `${state} office`, code, address: {}, country: 'IN', state, timezone: 'Asia/Kolkata' } })).id);
 
@@ -141,6 +148,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
   const calcMonth = (month: string) => (runs[month] ??= calcOnce(month));
   const calcOnce = async (month: string) => {
     const runId = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month }).expect(201)).body.id as string;
+    ids[`run-${month}`] = runId;
     const ready = (await api('payAdmin', 'get', `/payroll/runs/${runId}/readiness`).expect(200)).body;
     for (const b of ready.checks.filter((c: { checkKey: string; waived: boolean }) => c.checkKey === 'bank_missing' && !c.waived))
       await api('payAdmin', 'post', `/payroll/runs/${runId}/validations/${b.id}/waive`).send({ reason: 'Bank details come next week' }).expect(200);
@@ -284,7 +292,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
     it('negatives: someone with no employment gets 404; a subject the rules do not list is a 400 and nothing is saved', async () => {
       await api('payAdminB', 'get', '/tax/me/declarations').expect(404);
       await api('emp1', 'post', '/tax/me/declarations').send({ lines: [{ subjectKey: 'sec80zz', amount: '1000.00' }] }).expect(400);
-      expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
+      expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
     });
   });
 
@@ -293,7 +301,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
     it('negatives: rent above 1,00,000 a year without the relationship, or with one not on the list, is a 400 and nothing is saved', async () => {
       expect((await api('emp1', 'post', '/tax/me/declarations').send(rent({})).expect(400)).body.message).toBe('Rent above ₹100000 a year needs how you are related to your landlord.');
       await api('emp1', 'post', '/tax/me/declarations').send(rent({ landlordRelationship: 'uncle' })).expect(400);
-      expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
+      expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
     });
     it('with it the line is saved and shown back; another company cannot see it', async () => {
       await api('emp1', 'post', '/tax/me/declarations').send(rent({ landlordRelationship: 'parent' })).expect(200);
@@ -330,6 +338,121 @@ describe('Payroll: state statutory rules (batch H)', () => {
       expect(await rulesOf('IN.LWF', 'IN-OD')).toEqual([expect.objectContaining({ verify: true, source: expect.stringMatching(/split \(10 and 20\) is assumed/) })]);
       const pb = (await rulesOf('IN.CALENDAR', 'IN-PB'))[0];
       expect(pb).toMatchObject({ version: 'PB-2025-v1', verify: true });
+    });
+  });
+
+  describe('A2 (batch H part 2): approval waits for the TAN, PAN and PT registrations', () => {
+    it('the October run lists what is missing: TAN, PAN, and PT registration only in states that charge PT', async () => {
+      await calcMonth('2026-10');
+      const runId = ids['run-2026-10'];
+      const checks = ((await api('payAdmin', 'get', `/payroll/runs/${runId}/readiness`).expect(200)).body.checks as { checkKey: string; severity: string; waivable?: boolean }[]).map((c) => c.checkKey);
+      expect(checks).toEqual(expect.arrayContaining(['entity_tan_missing', 'entity_pan_missing', 'pt_registration_IN-AP', 'pt_registration_IN-WB', 'pt_registration_IN-MP']));
+      // Haryana and Odisha charge none; Karnataka (emp1) charges PT.
+      expect(checks.filter((k) => ['pt_registration_IN-HR', 'pt_registration_IN-OD'].includes(k))).toEqual([]);
+      expect(checks).toContain('pt_registration_IN-KA');
+    });
+
+    it('negatives: submitting is refused (409) and nothing moves; an employee may not submit; the block cannot be waived', async () => {
+      const runId = ids['run-2026-10'];
+      for (const f of (await api('payAdmin', 'get', `/payroll/runs/${runId}/variances`).expect(200)).body as { id: string }[]) await api('payAdmin', 'post', `/payroll/runs/${runId}/variances/${f.id}/ack`).send({}).expect(200);
+      const refused = await api('payAdmin', 'post', `/payroll/runs/${runId}/submit`).send({}).expect(409);
+      for (const part of [/TAN is not recorded/, /PAN is not recorded/, /IN-AP, which charges professional tax/]) expect(refused.body.message).toMatch(part);
+      expect(refused.body.message).not.toMatch(/IN-HR|IN-OD/);
+      expect((await api('payAdmin', 'get', `/payroll/runs/${runId}`).expect(200)).body.status).toBe('calculated');
+      await api('emp1', 'post', `/payroll/runs/${runId}/submit`).send({}).expect(403);
+      const tan = ((await api('payAdmin', 'get', `/payroll/runs/${runId}/readiness`).expect(200)).body.checks as { id: string; checkKey: string }[]).find((c) => c.checkKey === 'entity_tan_missing')!;
+      expect((await api('payAdmin', 'post', `/payroll/runs/${runId}/validations/${tan.id}/waive`).send({ reason: 'Later' })).status).toBeGreaterThanOrEqual(400);
+    });
+
+    it('with the TAN, PAN and registrations recorded, the run can be submitted', async () => {
+      await payReady(tenantPrisma, org.A.id, ids.entity);
+      await api('payAdmin', 'post', `/payroll/runs/${ids['run-2026-10']}/submit`).send({}).expect(200);
+    });
+  });
+
+  describe('B2 (batch H part 2): a component that is PF wage only below the ceiling', () => {
+    const body = (extra: Record<string, unknown>) => ({ code: `site_allow_${run.slice(0, 4)}`, name: 'Site allowance', kind: 'earning', taxable: true, esiWage: true, ptWage: true, ...extra });
+    it('negatives: "below the ceiling" without PF wage is a 400 and nothing is saved; an employee is refused', async () => {
+      expect((await api('payAdmin', 'post', '/payroll/components').send(body({ pfWage: false, pfBelowCeiling: true })).expect(400)).body.message).toMatch(/kind of PF wage/);
+      expect(await inA((tx) => tx.payComponent.count({ where: { organizationId: org.A.id, code: body({}).code } }))).toBe(0);
+      await api('emp1', 'post', '/payroll/components').send(body({ pfWage: true, pfBelowCeiling: true })).expect(403);
+    });
+    it('saved with both, it reads back; another company does not see it', async () => {
+      const c = (await api('payAdmin', 'post', '/payroll/components').send(body({ pfWage: true, pfBelowCeiling: true })).expect(201)).body;
+      expect(c).toMatchObject({ pfWage: true, pfBelowCeiling: true });
+      expect(((await api('payAdminB', 'get', '/payroll/components').expect(200)).body as { code: string }[]).some((x) => x.code === c.code)).toBe(false);
+      // Back to always PF wage.
+      expect((await api('payAdmin', 'patch', `/payroll/components/${c.id}`).send({ ...body({ pfWage: true, pfBelowCeiling: false }), version: c.version }).expect(200)).body).toMatchObject({ pfWage: true, pfBelowCeiling: false });
+    });
+  });
+
+  describe('E1 (batch H part 2): HR opens or locks the declaration and proof windows', () => {
+    type W = { legalEntityId: string; key: string; open: boolean; by: string };
+    const mine = (rows: W[], key: string) => rows.find((w) => w.legalEntityId === ids.entity && w.key === key)!;
+    const ws = async () => (await api('emp1', 'get', '/tax/me/workspace').expect(200)).body as { windows: W[]; canDeclare: boolean; canSendProofs: boolean };
+    it('by the dates in November: declarations open, proofs not yet (they open on 1 Jan)', async () => {
+      const rows = (await api('payAdmin', 'get', '/tax/windows').expect(200)).body as W[];
+      expect([mine(rows, 'declarations'), mine(rows, 'proofs')]).toMatchObject([{ open: true, by: 'dates' }, { open: false, by: 'dates' }]);
+      expect(await ws()).toMatchObject({ canDeclare: true, canSendProofs: false });
+    });
+    it('negatives: an employee is refused, another company gets 404, a bad action or short reason is a 400; nothing is kept', async () => {
+      const send = (who: Who, extra: Record<string, unknown>) => api(who, 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'proofs', action: 'open', reason: 'Year-end rush', ...extra });
+      await send('emp1', {}).expect(403);
+      await send('payAdminB', {}).expect(404);
+      await send('payAdmin', { action: 'close' }).expect(400);
+      await send('payAdmin', { reason: 'no' }).expect(400);
+      expect(await inA((tx) => tx.taxWindowAction.count({ where: { legalEntityId: ids.entity } }))).toBe(0);
+    });
+    it('HR opens proofs early and locks declarations: the employee sees both, and a declaration is refused (409) with nothing saved', async () => {
+      await api('payAdmin', 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'proofs', action: 'open', reason: 'Year-end rush, open early' }).expect(200);
+      const locked = (await api('payAdmin', 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'declarations', action: 'lock', reason: 'Projection freeze for December' }).expect(200)).body as W[];
+      expect(mine(locked, 'declarations')).toMatchObject({ open: false, by: 'hr_lock' });
+      expect(await ws()).toMatchObject({ canDeclare: false, canSendProofs: true });
+      const before = await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }));
+      expect((await api('emp1', 'post', '/tax/me/declarations').send({ lines: [{ subjectKey: 'sec80c', amount: '50000.00' }] }).expect(409)).body.message).toBe('HR has locked declarations for now.');
+      expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(before);
+    });
+    it('back to the dates: declarations open again; every change is kept and audited', async () => {
+      await api('payAdmin', 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'declarations', action: 'dates', reason: 'Freeze over' }).expect(200);
+      expect((await ws()).canDeclare).toBe(true);
+      expect(await inA((tx) => tx.taxWindowAction.count({ where: { legalEntityId: ids.entity } }))).toBe(3);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'tax.window.changed', entityId: ids.entity } }))).toBe(3);
+    });
+  });
+
+  describe('E2 (batch H part 2): HR declares for an employee without a login', () => {
+    const path = () => `/tax/employees/${emp['IN-AP']}/declarations`;
+    it('HR declares 80C for the Andhra Pradesh employee; it shows on their declarations and the audit says on behalf of', async () => {
+      await api('payAdmin', 'post', path()).send({ lines: [{ subjectKey: 'sec80c', amount: '50000.00' }] }).expect(200);
+      const d = (await api('payAdmin', 'get', path()).expect(200)).body as { form: string; canDeclare: boolean; lines: { subjectKey: string; amount: string }[] };
+      expect(d).toMatchObject({ form: 'Form No. 124', canDeclare: true });
+      expect(d.lines).toEqual([expect.objectContaining({ subjectKey: 'sec80c', amount: '50000.00' })]);
+      const log = await inA((tx) => tx.auditLog.findFirst({ where: { action: 'tax.declaration.saved', metadataJson: { contains: emp['IN-AP'] } } }));
+      expect(JSON.parse(log!.metadataJson!)).toMatchObject({ lines: ['sec80c'], onBehalfOf: emp['IN-AP'] });
+    });
+    it('negatives: an employee is refused, another company gets 404, a bad subject is a 400 and nothing more is saved', async () => {
+      await api('emp1', 'post', path()).send({ lines: [{ subjectKey: 'sec80c', amount: '1.00' }] }).expect(403);
+      await api('payAdminB', 'get', path()).expect(404);
+      await api('payAdminB', 'post', path()).send({ lines: [{ subjectKey: 'sec80c', amount: '1.00' }] }).expect(404);
+      await api('payAdmin', 'post', path()).send({ lines: [{ subjectKey: 'lottery', amount: '1.00' }] }).expect(400);
+      expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: emp['IN-AP'] } }))).toBe(1);
+    });
+  });
+
+  describe('A3 (batch H part 2): not ready for payroll, for the People directory', () => {
+    type NR = { employeeId: string; missing: string[] };
+    it('lists each current employee with what is missing (salary on record, no bank, no PAN), keyed as the directory rows', async () => {
+      const rows = (await api('payAdmin', 'get', '/payroll/not-ready-people').expect(200)).body as NR[];
+      expect(rows.find((r) => r.employeeId === emp['IN-AP'])).toEqual({ employeeId: emp['IN-AP'], missing: ['bank', 'pan'] });
+      const workforce = (await api('adminA', 'get', '/people/workforce').expect(200)).body as { rows: { id: string; name: string }[] };
+      expect(workforce.rows.some((r) => r.id === emp['IN-AP'])).toBe(true);
+      // An entity filter the viewer does not reach is a 400 for a bad id and nothing for another company's.
+      await api('payAdmin', 'get', '/payroll/not-ready-people?legalEntityId=nope').expect(400);
+    });
+    it('negatives: an employee is refused; another company sees none of these people', async () => {
+      await api('emp1', 'get', '/payroll/not-ready-people').expect(403);
+      const b = (await api('payAdminB', 'get', '/payroll/not-ready-people').expect(200)).body as NR[];
+      expect(b.some((r) => Object.values(emp).includes(r.employeeId))).toBe(false);
     });
   });
 });

@@ -152,6 +152,8 @@ export class ComponentDto {
 
   @IsOptional() @IsBoolean() taxable?: boolean;
   @IsOptional() @IsBoolean() pfWage?: boolean;
+  /** B2: PF wage only while the rest of the PF wage is below the ceiling (needs pfWage). */
+  @IsOptional() @IsBoolean() pfBelowCeiling?: boolean;
   @IsOptional() @IsBoolean() esiWage?: boolean;
   @IsOptional() @IsBoolean() ptWage?: boolean;
   @IsOptional() @IsBoolean() gratuityWage?: boolean;

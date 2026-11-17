@@ -8,13 +8,14 @@ export default function YxPayComponentsPage() {
   const rows = usePay<PayComponent[]>('/components');
   const write = usePayWrite();
   const body = (c: ComponentInput) => {
-    const { code, name, kind, taxable, pfWage, esiWage, ptWage, gratuityWage, bonusWage, codeWagePart, codeExclusion, prorated, onPayslip, inCtc, rounding, status, version } = c;
+    const { code, name, kind, taxable, pfWage, pfBelowCeiling, esiWage, ptWage, gratuityWage, bonusWage, codeWagePart, codeExclusion, prorated, onPayslip, inCtc, rounding, status, version } = c;
     return {
       code,
       name,
       kind,
       taxable,
       pfWage,
+      pfBelowCeiling: !!pfWage && !!pfBelowCeiling,
       esiWage,
       ptWage,
       gratuityWage,

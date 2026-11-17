@@ -23012,5 +23012,98 @@
       "Screens/Security/SEC-02 · Legal notices › Accessibility statement"
     ],
     "note": "Text from docs/yukthix/accessibility-statement.md (now marked published)."
+  },
+  {
+    "id": "MT-BATH2-01",
+    "area": "Pay: batch H part 2 (18 Nov 2026)",
+    "screen": "Payroll · Runs (submit for approval)",
+    "url": "http://localhost:3000/yx/payroll/runs",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh); admin@demo-org.test for the entity details.",
+    "steps": [
+      "As admin, clear Kaveri Foods Pvt Ltd's TAN in Settings · Legal entities (note it first).",
+      "As payroll, calculate the current month's run and press Submit for approval.",
+      "Put the TAN back; press Submit again.",
+      "Negative: add a location in Gujarat with one employee, without a Gujarat PT registration, recalculate and submit."
+    ],
+    "expected": "Step 2: refused, 'The entity's TAN is not recorded (Payroll · Setup · Deductor details). Tax cannot be deposited without it.'; the readiness list shows it as a block that cannot be waived. Step 3: submitted. Step 4: refused, 'People in this run work in IN-GJ, which charges professional tax, but the entity's PT registration there is not recorded'. A Haryana or Odisha place never asks.",
+    "stories": [
+      "Screens/Pay/Runs"
+    ],
+    "note": "Positive and negative. A2, answers 2400-2402."
+  },
+  {
+    "id": "MT-BATH2-02",
+    "area": "Pay: batch H part 2 (18 Nov 2026)",
+    "screen": "Payroll · Component library",
+    "url": "http://localhost:3000/yx/payroll/components",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh).",
+    "steps": [
+      "Open Special allowance; Part of PF wage: choose 'Below the ceiling'; Save component; confirm the in-use warning.",
+      "Check the PF column of the table.",
+      "Open Provident fund (employee).",
+      "Recalculate a run for someone with basic below 25,000 and for someone with basic 25,000 or more."
+    ],
+    "expected": "Step 1: toast 'Special allowance saved.' Step 2: 'Below ceiling'. Step 3: the PF choice is shown but cannot be changed (statutory). Step 4: the first person's PF wage includes the special allowance (up to the ceiling); the second's does not.",
+    "stories": [
+      "Inputs/Forms",
+      "Screens/Pay/PAY-14"
+    ],
+    "note": "Positive and negative. B2, answer 2403."
+  },
+  {
+    "id": "MT-BATH2-03",
+    "area": "Pay: batch H part 2 (18 Nov 2026)",
+    "screen": "Payroll · Tax centre (windows) and Me · Tax declarations",
+    "url": "http://localhost:3000/yx/payroll/proofs",
+    "account": "payroll@demo-org.test (tax.regime.override); arjun@demo-org.test (employee).",
+    "steps": [
+      "As payroll, in 'Declaration and proof windows', press 'Open now: proofs'; press Open now with no reason; then give 'Year-end rush' and confirm.",
+      "Press 'Lock now: declarations' with reason 'Projection freeze'.",
+      "As Arjun, open Me · Tax declarations.",
+      "As Arjun, try to add a declaration.",
+      "As payroll, press 'Use the dates: declarations' with a reason."
+    ],
+    "expected": "Step 1: 'Say why, in a few words.' first; then toast 'Opened. Employees can send them now.' and the Proofs card shows OPEN · opened early by HR. Step 3: the cards show Declarations Closed · locked by HR, Proofs OPEN; 'Declarations are closed' says HR locked them. Step 4: no Add declaration button (the API would refuse 'HR has locked declarations for now.'). Step 5: back to the dates; Arjun can declare again.",
+    "stories": [
+      "Screens/Pay/PAY-22 · Tax workspace",
+      "Screens/Pay/PAY-23"
+    ],
+    "note": "Positive and negative. E1, answer 2408."
+  },
+  {
+    "id": "MT-BATH2-04",
+    "area": "Pay: batch H part 2 (18 Nov 2026)",
+    "screen": "Payroll · Declare for an employee",
+    "url": "http://localhost:3000/yx/payroll/tax-declare",
+    "account": "payroll@demo-org.test (tax.regime.override).",
+    "steps": [
+      "Search for an employee without a login; choose them.",
+      "Add declaration: Investments and payments, 50,000; save.",
+      "Negative: search for yourself (if you have an employee record) and choose yourself.",
+      "Negative: as arjun@demo-org.test open the page URL."
+    ],
+    "expected": "Step 2: toast 'Declaration saved...'; the line shows with 's.123, Sch XV (old 80C)'. Step 3: their declarations could not be loaded (the API refuses your own). Step 4: not in the menu; the API refuses.",
+    "stories": [
+      "Screens/Pay/PAY-22 · Tax workspace"
+    ],
+    "note": "Positive and negative. E2."
+  },
+  {
+    "id": "MT-BATH2-05",
+    "area": "Pay: batch H part 2 (18 Nov 2026)",
+    "screen": "People · Directory",
+    "url": "http://localhost:3000/yx/people/directory",
+    "account": "payroll@demo-org.test (payroll.run.prepare); hr@demo-org.test; arjun@demo-org.test.",
+    "steps": [
+      "As payroll (or HR with run preparation), press 'Not ready for payroll (N)'.",
+      "Read a listed person's name line.",
+      "Press the toggle again.",
+      "Negative: as Arjun, open the directory."
+    ],
+    "expected": "Step 1: only people missing a salary, a salary bank account or a PAN. Step 2: 'Not ready for payroll: no salary bank account, no PAN' (what applies). Step 3: everyone again. Step 4: no toggle and no such lines.",
+    "stories": [
+      "Screens/People/PPL-01"
+    ],
+    "note": "Positive and negative. A3, answer 2409. The toggle is not kept in saved views."
   }
 ]

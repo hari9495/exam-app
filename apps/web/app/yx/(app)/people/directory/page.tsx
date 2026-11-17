@@ -12,6 +12,7 @@ import { loadState, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
 import { chartPeople, useChangeOptions, usePeople, usePeopleWrite } from '../../../../../lib/yx-people';
 import { usePdfPost } from '../../../../../lib/yx-lifecycle';
 import { useScope } from '../../../../../lib/yx-shell';
+import { useApi } from '../../../../../lib/yx-pay-5j';
 
 interface Ref {
   id: string;
@@ -51,6 +52,8 @@ const id = encodeURIComponent;
 const delta = (now: number, prev: number | null) => (prev === null ? null : now - prev);
 
 /** API rows → the designed screen's rows (names as shown; fields the person may not see stay empty). */
+const MISSING = { salary: 'no salary', bank: 'no salary bank account', pan: 'no PAN' } as const;
+
 function toRow(r: Row): WorkforceRow {
   return {
     id: r.id,
@@ -102,6 +105,9 @@ export default function YxDirectoryPage() {
   const options = useChangeOptions(useMemo(() => chartPeople(chart.data), [chart.data]), perms.has('employee.salary.manage'), canHire);
   const entities = useOrg<LegalEntity[]>('/legal-entities', canHire);
 
+  // A3 (batch H part 2): who is not ready for payroll, for those who prepare runs (the API decides the entities).
+  const notReadyRows = useApi<{ employeeId: string; missing: ('salary' | 'bank' | 'pan')[] }[]>(perms.has('payroll.run.prepare') ? `/payroll/not-ready-people${scope.entity ? `?legalEntityId=${id(scope.entity)}` : ''}` : null);
+  const notReady = useMemo(() => (notReadyRows.data ? Object.fromEntries(notReadyRows.data.map((r) => [r.employeeId, r.missing.map((m) => MISSING[m])])) : undefined), [notReadyRows.data]);
   const d = data.data;
   const rows = useMemo(() => (d?.rows ?? []).map(toRow), [d]);
   const own = d?.me ? d.rows.find((r) => r.id === d.me!.id) : undefined;
@@ -145,6 +151,7 @@ export default function YxDirectoryPage() {
         ),
     },
     onRetry: () => void data.refetch(),
+    ...(notReady ? { notReady } : {}),
   };
   // Wait for the grants too: the columns depend on them.
   const state = data.isError ? loadState(data) : d && (perms.isSuccess || perms.isError) ? 'ready' : 'loading';

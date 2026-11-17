@@ -11,6 +11,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
+import { payReady } from './fixtures/pay-ready';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -135,6 +136,8 @@ describe('Payroll batch 5e (income tax)', () => {
       ids.desig = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
     });
+    // Batch H A2: approval needs the entity's TAN, PAN and PT registrations.
+    await payReady(tenantPrisma, org.A.id, ids.entity);
     const hire = async (who: Who, code: string) =>
       (
         await api('adminA', 'post', '/people/employees')

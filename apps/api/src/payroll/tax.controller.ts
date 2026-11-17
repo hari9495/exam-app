@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, RegimeRequestDto, RegimeWhatIfDto, ResidencyRequestDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
+import { CertificateDto, CertificateListDto, DeclarationsDto, Form12bDecisionDto, Form12bDto, Form12bQueueDto, IssueCertificateDto, PanStatusDto, PerquisiteDto, ProofDecisionDto, ProofQueueDto, RegimeOverrideDto, RegimeRequestDto, RegimeWhatIfDto, ResidencyRequestDto, TaxWindowActionDto, WorkspaceListDto, WorkspacePatchDto } from './dto-5e';
 import { TaxService } from './tax.service';
 
 // Payroll batch 5e, income tax (M03-BUILD-DESIGN §14.5). Every route declares its key (YX-SEC-01) or is the signed-in
@@ -134,6 +134,33 @@ export class TaxController {
   @RequirePermissions('tax.workspace.view')
   workspaces(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: WorkspaceListDto) {
     return this.tax.workspaces(ctx, this.user(req), q.employeeId);
+  }
+
+  /** E2 (batch H part 2): HR declares for an employee (staff without a login). */
+  @Get('employees/:employeeId/declarations')
+  @RequirePermissions('tax.regime.override')
+  declarationsFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.tax.declarationsFor(ctx, this.user(req), employeeId);
+  }
+
+  @Post('employees/:employeeId/declarations')
+  @HttpCode(200)
+  @RequirePermissions('tax.regime.override')
+  declareFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Body() dto: DeclarationsDto) {
+    return this.tax.declareFor(ctx, this.user(req), employeeId, dto.lines);
+  }
+
+  @Get('windows')
+  @RequirePermissions('tax.regime.override')
+  windows(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.tax.windowsAdmin(ctx, this.user(req));
+  }
+
+  @Post('windows')
+  @HttpCode(200)
+  @RequirePermissions('tax.regime.override')
+  setWindow(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TaxWindowActionDto) {
+    return this.tax.setWindow(ctx, this.user(req), dto);
   }
 
   @Post('workspaces/:id/regime')
