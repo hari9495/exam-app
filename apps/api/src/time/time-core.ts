@@ -377,8 +377,11 @@ export async function holidaysFor(tx: Tx, org: string, locationId: string, from:
   const map = new Map<string, HolidayOn>();
   if (!cal) return { map, calendarId: null };
   const rows = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(from), lte: asDate(to) } } });
+  // Batch A item 9 (D11): a day HR marked as working is not a holiday (nor a substitute day off).
+  const working = new Set((await tx.exceptionalWorkingDay.findMany({ where: { organizationId: org, calendarId: cal.id, workOn: { gte: asDate(addDays(from, -14)), lte: asDate(addDays(to, 14)) } }, select: { workOn: true } })).map((w) => iso(w.workOn)));
   const chosen = employeeId ? new Set((await tx.optionalHolidayChoice.findMany({ where: { organizationId: org, employeeId, holidayId: { in: rows.map((r) => r.id) } } })).map((x) => x.holidayId)) : new Set<string>();
   for (const h of rows) {
+    if (working.has(iso(h.holidayOn))) continue;
     if ((h.kind === 'optional' || h.kind === 'restricted') && !chosen.has(h.id)) continue;
     map.set(iso(h.holidayOn), { name: h.name, halfDay: h.halfDay, openHalf: cal.halfDayOpenHalf as 'first' | 'second' });
   }
@@ -388,7 +391,7 @@ export async function holidaysFor(tx: Tx, org: string, locationId: string, from:
     const back = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(addDays(from, -14)), lte: asDate(addDays(to, 14)) } } });
     const ruleOn = await rulesFor(tx, org, locationId, addDays(to, 14));
     const subs = substituteDays(back.map((h) => ({ on: iso(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })), (d) => isWeeklyOff(d, ruleOn(d).weeklyOffs));
-    for (const s of subs) if (s.on >= from && s.on <= to && !map.has(s.on)) map.set(s.on, { name: s.name, halfDay: false, openHalf: cal.halfDayOpenHalf as 'first' | 'second' });
+    for (const s of subs) if (s.on >= from && s.on <= to && !map.has(s.on) && !working.has(s.on)) map.set(s.on, { name: s.name, halfDay: false, openHalf: cal.halfDayOpenHalf as 'first' | 'second' });
   }
   return { map, calendarId: cal.id };
 }
@@ -401,6 +404,13 @@ export interface LocationRule extends DayRule {
 }
 
 export const DEFAULT_RULE: LocationRule = { shiftName: 'General', shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted', alsoAllowed: [] };
+
+/** Batch A item 9 (D11): the dates marked as working on the location's holiday calendar (its own, else the company's). */
+export async function workingDaysFor(tx: Tx, org: string, locationId: string): Promise<Set<string>> {
+  const cal = (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId }, select: { id: true } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null }, select: { id: true } }));
+  if (!cal) return new Set();
+  return new Set((await tx.exceptionalWorkingDay.findMany({ where: { organizationId: org, calendarId: cal.id }, select: { workOn: true } })).map((w) => iso(w.workOn)));
+}
 
 /** The location's dated rules in force on each date of a range (the latest valid_from on or before the date). */
 export async function rulesFor(tx: Tx, org: string, locationId: string, to: string): Promise<(on: string) => LocationRule> {

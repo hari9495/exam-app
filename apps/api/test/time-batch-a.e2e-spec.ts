@@ -189,4 +189,63 @@ describe('Time batch A', () => {
       await api('emp', 'get', '/time/me/attendance?month=2026-13').expect(400);
     });
   });
+
+  // ------------------------------------------------------------------ item 9 (D11): exceptional working days
+  describe('D11 exceptional working days', () => {
+    // The location has no rule of its own, so the default applies: Sunday is the weekly off.
+    const sundayFrom = (n: number) => { for (let i = n; i < n + 7; i++) if (new Date(`${d(i)}T00:00:00Z`).getUTCDay() === 0) return d(i); return d(n); };
+    const sunday = sundayFrom(2);
+    const saturday = addDays(sunday, -1);
+    const monday = addDays(sunday, 1);
+    let cal: string;
+    let req: string;
+    let mark: string;
+    beforeAll(async () => {
+      cal = (await api('hrAdmin', 'post', '/time/setup/calendars').send({ name: 'Bengaluru holidays', locationId: ids.locA, optionalLimit: 2 }).expect(201)).body.id;
+      // Approved leave over Saturday and Sunday: Saturday is leave, the Sunday weekly off is not counted.
+      req = await inA(async (tx) => {
+        const o = { organizationId: org.A.id };
+        const r = await tx.leaveRequest.create({ data: { ...o, employeeId: ids.empEmp, leaveTypeId: ids.cl, fromOn: new Date(`${saturday}T00:00:00Z`), toOn: new Date(`${sunday}T00:00:00Z`), days: 1, status: 'approved', reason: 'Family visit' } });
+        await tx.leaveRequestDay.createMany({ data: [
+          { ...o, requestId: r.id, employeeId: ids.empEmp, leaveOn: new Date(`${saturday}T00:00:00Z`), part: 'full', portion: 1, countedAs: 'leave' },
+          { ...o, requestId: r.id, employeeId: ids.empEmp, leaveOn: new Date(`${sunday}T00:00:00Z`), part: 'full', portion: 0, countedAs: 'weekly_off' },
+        ] });
+        return r.id;
+      });
+    });
+
+    it('HR marks the Sunday as worked: the leave counts it from the balance, it shows on the calendar, and it is audited', async () => {
+      const out = (await api('hrAdmin', 'post', `/time/setup/calendars/${cal}/working-days`).send({ on: sunday, reason: 'Make-up day for the Diwali bridge' }).expect(201)).body;
+      expect(out).toMatchObject({ on: sunday, leaveRecounted: 1 });
+      mark = out.id;
+      const r = await inA((tx) => tx.leaveRequest.findUniqueOrThrow({ where: { id: req } }));
+      expect(Number(r.days)).toBe(2);
+      const day = await inA((tx) => tx.leaveRequestDay.findFirstOrThrow({ where: { requestId: req, leaveOn: new Date(`${sunday}T00:00:00Z`) } }));
+      expect({ portion: Number(day.portion), countedAs: day.countedAs }).toEqual({ portion: 1, countedAs: 'leave' });
+      expect(await inA((tx) => tx.leaveLedgerEntry.count({ where: { requestId: req, kind: 'taken', entryOn: new Date(`${sunday}T00:00:00Z`) } }))).toBe(1);
+      expect(await inA((tx) => tx.auditLog.count({ where: { entityId: cal, action: 'holiday.working_day_marked' } }))).toBe(1);
+      const setup = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body;
+      expect(setup.calendars.find((c: { id: string }) => c.id === cal).workingDays).toEqual([{ id: mark, on: sunday, reason: 'Make-up day for the Diwali bridge' }]);
+    });
+
+    it('negative: a past day, a plain working day, the same day twice, a short reason, an employee, another company', async () => {
+      await api('hrAdmin', 'post', `/time/setup/calendars/${cal}/working-days`).send({ on: d(-1), reason: 'Too late for this' }).expect(400);
+      await api('hrAdmin', 'post', `/time/setup/calendars/${cal}/working-days`).send({ on: monday, reason: 'Already a working day' }).expect(400);
+      await api('hrAdmin', 'post', `/time/setup/calendars/${cal}/working-days`).send({ on: sunday, reason: 'Make-up day again' }).expect(409);
+      await api('hrAdmin', 'post', `/time/setup/calendars/${cal}/working-days`).send({ on: addDays(sunday, 7), reason: 'no' }).expect(400);
+      await api('emp', 'post', `/time/setup/calendars/${cal}/working-days`).send({ on: addDays(sunday, 7), reason: 'Make-up day' }).expect(403);
+      await api('adminB', 'post', `/time/setup/calendars/${cal}/working-days`).send({ on: addDays(sunday, 7), reason: 'Make-up day' }).expect(404);
+      // The leave already counts the day: the mark stays.
+      expect((await api('hrAdmin', 'post', `/time/setup/working-days/${mark}/remove`).expect(409)).body.message).toMatch(/counts the day/);
+    });
+
+    it('a mark no leave counts can be removed before the day; the day is off again', async () => {
+      const later = addDays(sunday, 7);
+      const id = (await api('hrAdmin', 'post', `/time/setup/calendars/${cal}/working-days`).send({ on: later, reason: 'Stock count Sunday' }).expect(201)).body.id;
+      await api('hrAdmin', 'post', `/time/setup/working-days/${id}/remove`).expect(200);
+      const setup = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body;
+      expect(setup.calendars.find((c: { id: string }) => c.id === cal).workingDays.map((w: { on: string }) => w.on)).toEqual([sunday]);
+      expect(await inA((tx) => tx.auditLog.count({ where: { entityId: cal, action: 'holiday.working_day_removed' } }))).toBe(1);
+    });
+  });
 });

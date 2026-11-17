@@ -1300,6 +1300,21 @@ model AsmtAssistantMessage {
   @@map("asmt_assistant_messages")
 }
 
+/// Batch A item 9 (D11): a holiday or weekly off marked as a working day on a holiday calendar (today or later).
+model ExceptionalWorkingDay {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  calendarId     String   @map("calendar_id") @db.Uuid
+  workOn         DateTime @map("work_on") @db.Date
+  reason         String   @db.VarChar(300)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([calendarId, workOn], map: "exceptional_working_days_calendar_on_key")
+  @@index([organizationId])
+  @@map("exceptional_working_days")
+}
+
 model CodeAnswerReview {
   id             String   @id @default(uuid()) @db.Uuid
   answerId       String   @unique @map("answer_id") @db.Uuid

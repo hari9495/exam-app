@@ -128,6 +128,17 @@ export class LeaveHistoryQueryDto {
   q?: string;
 }
 
+/** Batch A item 9 (D11): a holiday or weekly off marked as a working day. */
+export class WorkingDayDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsString()
+  @MinLength(5, { message: 'Say why the day is worked (at least 5 characters).' })
+  @MaxLength(300)
+  reason!: string;
+}
+
 export class MonthQueryDto {
   @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
   month!: string;

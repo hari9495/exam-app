@@ -11,7 +11,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, LeaveHistoryQueryDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, LeaveHistoryQueryDto, WorkingDayDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
@@ -306,6 +306,23 @@ export class TimeController {
     await this.v2.tellHolidayAdded(ctx, told);
     await this.v2.tellHolidayRemoved(ctx, back);
     return out;
+  }
+
+  // Batch A item 9 (D11): a holiday or weekly off marked as a working day; leave booked that day counts again.
+  @Post('setup/calendars/:id/working-days')
+  @RequirePermissions('leave.settings.manage')
+  async markWorkingDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkingDayDto) {
+    const back: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.markWorkingIn(tx, c, id, dto.on, dto.reason, back));
+    await this.v2.tellWorkingDay(ctx, back);
+    return out;
+  }
+
+  @Post('setup/working-days/:id/remove')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  unmarkWorkingDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.unmarkWorkingIn(tx, c, id));
   }
 
   @Post('setup/holiday-drafts/:id/remove')

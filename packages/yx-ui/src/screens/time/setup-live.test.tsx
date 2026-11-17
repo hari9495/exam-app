@@ -207,6 +207,36 @@ describe('TIM-26 Holiday calendars, live', () => {
     await waitFor(() => expect(live.onChangeHoliday).toHaveBeenCalledWith('h1', '2026-11-01'));
   });
 
+  it('D11: a holiday is marked as a working day with a reason; the mark is listed and can be removed', async () => {
+    const live = { ...cals({ calendars: [{ ...TIME_SETUP.calendars[0]!, workingDays: [{ id: 'w1', on: '2026-11-08', reason: 'Stock count Sunday' }] }] }), onMarkWorking: vi.fn(async () => ({})), onUnmarkWorking: vi.fn(async () => ({})) };
+    wrap(<HolidayCalendarsScreen live={live} />);
+    const table = screen.getByRole('table', { name: 'Bengaluru head office holidays' });
+    await ue.click(within(table).getAllByRole('button', { name: /Actions|More/ })[0]!);
+    await ue.click(screen.getByRole('menuitem', { name: 'Mark as working day' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.type(within(dialog).getByLabelText(/^Why it is worked/), 'Make-up day for the Diwali bridge');
+    await ue.click(within(dialog).getByRole('button', { name: 'Mark as working' }));
+    await waitFor(() => expect(live.onMarkWorking).toHaveBeenCalledWith('cal-blr', { on: '2026-11-01', reason: 'Make-up day for the Diwali bridge' }));
+    const list = screen.getByRole('list', { name: 'Bengaluru head office working days' });
+    expect(within(list).getByText('Stock count Sunday')).toBeInTheDocument();
+    await ue.click(within(list).getByRole('button', { name: 'Remove' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Remove' }));
+    await waitFor(() => expect(live.onUnmarkWorking).toHaveBeenCalledWith('w1'));
+  });
+
+  it('negative D11: no date or a short reason sends nothing and says why', async () => {
+    const live = { ...cals(), onMarkWorking: vi.fn(async () => ({})), onUnmarkWorking: vi.fn() };
+    wrap(<HolidayCalendarsScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Mark a day as working' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.type(within(dialog).getByLabelText(/^Why it is worked/), 'no');
+    await ue.click(within(dialog).getByRole('button', { name: 'Mark as working' }));
+    expect(within(dialog).getByText('Choose the date.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Say why the day is worked (at least 5 characters).')).toBeInTheDocument();
+    expect(live.onMarkWorking).not.toHaveBeenCalled();
+    expect(screen.getByText('No holiday or weekly off is marked as a working day.')).toBeInTheDocument();
+  });
+
   it('a location with a state template starts from it (or one by one)', async () => {
     const live = cals({ templates: { 'loc-hosur': 'Tamil Nadu' } });
     wrap(<HolidayCalendarsScreen live={live} />);
