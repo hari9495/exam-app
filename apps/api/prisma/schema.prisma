@@ -9778,6 +9778,8 @@ model ExpenseItem {
   claimedAt      DateTime? @map("claimed_at") @db.Timestamptz(3)
   removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Answer 2252: what was read from the receipt when it was saved (moves to the claim line).
+  ocr            Json?
 
   @@map("expense_items")
 }

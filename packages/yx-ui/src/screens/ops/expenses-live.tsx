@@ -28,7 +28,7 @@ import { dayKey } from '../../lib/dates';
 import { errorText } from '../org/org-kit';
 import { useAct } from '../growth/perf-live';
 import { Actions, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, Workspace } from './ops-kit';
-import { SavedExpensesCard, type LiveSavedExpenses } from './expenses-saved';
+import { PickSavedExpenses, SavedExpensesCard, type LiveSavedExpenses, type SavedExpense } from './expenses-saved';
 import { FLAG_TEXT, PAYMENT, PAY_MODE, STATUS, amount, approvalSteps, cutText, day, lineChecks, money, moneyInput, monthName, paise, paymentText, prevMonthOf, sumMoney, toLineInput, type LoadState } from './expenses-live-data';
 import type { AdvanceSummary, ClaimDetail, ClaimLine, ClaimSummary, ExpenseCategory, ExpenseHome, LineInput, ToPayData, TripSummary } from '../expenses/live/types';
 
@@ -380,6 +380,8 @@ export interface LiveClaim {
   onApproveAmount: (lineId: string, amount: string, reason: string) => Promise<unknown>;
   onDecide: (decision: 'approve' | 'reject' | 'send_back', reason: string) => Promise<unknown>;
   onFlag: (flagId: string, decision: 'clear' | 'confirm', note: string) => Promise<unknown>;
+  /** Answer 2251: my saved expenses, offered in the add-a-line sheet of my own editable claim (absent otherwise). */
+  saved?: { items: SavedExpense[]; onAdd: (ids: string[]) => Promise<unknown> } | null;
 }
 
 const catName = (cats: ExpenseCategory[], code: string) => {
@@ -541,6 +543,7 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
   const [igst, setIgst] = useState(line?.gst?.igst ?? '');
   const [failed, setFailed] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pickSaved, setPickSaved] = useState(false);
   const { toast } = useAct();
   const low = new Set(line?.ocr?.lowConfidence ?? []);
   const said = (k: string) => (low.has(k) ? 'Please check: read with low confidence' : f[k as keyof typeof f] ? 'Read from the receipt' : undefined);
@@ -606,6 +609,26 @@ function LineSheet({ phone, line, start, categories, today, currency, onClose, l
     <div className="yx-ops-stack">
       {v.showErrors && <ErrorSummary errors={v.shownErrors} />}
       {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      {!line && live.saved && live.saved.items.length > 0 && (
+        <div className="yx-ops-row" data-between>
+          <span className="yx-ops-muted">{`You have ${live.saved.items.length} saved ${live.saved.items.length === 1 ? 'expense' : 'expenses'} not yet claimed.`}</span>
+          <Button size="sm" icon={Receipt} onClick={() => setPickSaved(true)}>
+            Add saved expenses
+          </Button>
+        </div>
+      )}
+      {pickSaved && live.saved && (
+        <PickSavedExpenses
+          items={live.saved.items}
+          currency={currency}
+          onClose={() => setPickSaved(false)}
+          onAdd={async (ids) => {
+            await live.saved!.onAdd(ids);
+            toast({ tone: 'success', title: `${ids.length} ${ids.length === 1 ? 'line' : 'lines'} added` });
+            onClose();
+          }}
+        />
+      )}
       {!line && (
         <FormField label="What are you adding?">
           <RadioGroup value={kind} onChange={(x) => (setKind(x as AddKind), setCode(null), setDeclared(x === 'bill'))} options={KINDS} />
