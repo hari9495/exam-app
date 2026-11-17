@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ResultAppealScreen, TestRunnerScreen, type LiveRunner } from './candidate';
 import { LIVE_RESULT, LIVE_RUNNER } from './runner-live-samples';
+import { CandidateLegalContext } from './proctoring-shared';
 
 // AS-4a (PRC-26, PRC-27): the designed runner and result page with a real attempt.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -166,5 +167,37 @@ describe('PRC-26 live runner: answer 2161 and 2162', () => {
     render(<Runner calculator="basic" />);
     await ue.click(screen.getByRole('button', { name: 'Calculator' }));
     expect(screen.queryByRole('button', { name: 'sine' })).not.toBeInTheDocument();
+  });
+});
+
+// AS-6 (answers 2019, 2237): the voluntary self-description in the survey, and the legal links on candidate pages.
+describe('AS-6 candidate pages', () => {
+  it('the survey sends how the candidate describes themselves only when they choose one', async () => {
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    render(<TestRunnerScreen live={{ ...LIVE_RUNNER, status: 'submitted', survey: { done: false, onSend } }} />);
+    await ue.click(screen.getByRole('button', { name: 'Start survey' }));
+    await ue.click(screen.getByRole('radio', { name: '4' }));
+    await ue.click(screen.getByRole('radio', { name: 'Prefer not to say' }));
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onSend).toHaveBeenCalledWith({ rating: 4, gender: 'not_say' });
+  });
+
+  it('the result page shows the company privacy notice and the YukthiX terms; negative: no notice, no notice button', async () => {
+    const { unmount } = render(
+      <CandidateLegalContext.Provider value={{ privacyNotice: 'We keep your test for 90 days.', company: 'Acme', termsHref: '/yx/legal/terms' }}>
+        <ResultAppealScreen live={{ ...LIVE_RESULT, companyName: 'Acme' }} />
+      </CandidateLegalContext.Provider>,
+    );
+    expect(screen.getByRole('link', { name: 'YukthiX terms of use' })).toHaveAttribute('href', '/yx/legal/terms');
+    await ue.click(screen.getByRole('button', { name: 'Acme privacy notice' }));
+    expect(within(screen.getByRole('dialog')).getByText('We keep your test for 90 days.')).toBeInTheDocument();
+    unmount();
+    render(
+      <CandidateLegalContext.Provider value={{ privacyNotice: null, company: 'Acme', termsHref: '/yx/legal/terms' }}>
+        <ResultAppealScreen live={{ ...LIVE_RESULT, companyName: 'Acme' }} />
+      </CandidateLegalContext.Provider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Acme privacy notice' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'YukthiX terms of use' })).toBeInTheDocument();
   });
 });

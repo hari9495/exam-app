@@ -83,7 +83,7 @@ function CandidateLegalLinks() {
         YukthiX terms of use
       </Link>
       {legal.privacyNotice && (
-        <Dialog open={open} onOpenChange={setOpen} title={`${legal.company} privacy notice`} size="lg" footer={<Button onClick={() => setOpen(false)}>Close</Button>}>
+        <Dialog open={open} onOpenChange={setOpen} title={`${legal.company} privacy notice`} size="md" footer={<Button onClick={() => setOpen(false)}>Close</Button>}>
           <p className="yx-prc-p yx-prc-notice-text">
             {legal.privacyNotice}
           </p>

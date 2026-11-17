@@ -163,7 +163,7 @@ describe('AttemptSettlementService', () => {
 
       expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { isCorrect: true, marksAwarded: 5 } });
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: 'pass' },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: 'pass', cutoffMissed: [] },
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({
         where: { id: 'attempt-1' },
@@ -244,7 +244,7 @@ describe('AttemptSettlementService', () => {
 
       // Full marks on the 20%-weighted section, nothing on the 80% one -> 20%, not the flat 50%.
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 20, passFail: 'fail' },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 20, passFail: 'fail', cutoffMissed: [] },
       });
     });
 
@@ -283,7 +283,7 @@ describe('AttemptSettlementService', () => {
 
       // Flat: 5 of 10 raw marks = 50%, exactly what this attempt was started under.
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 50, passFail: 'pass' },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 50, passFail: 'pass', cutoffMissed: [] },
       });
     });
 
@@ -298,7 +298,7 @@ describe('AttemptSettlementService', () => {
       await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
 
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 50, passFail: 'pass' },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 10, percentage: 50, passFail: 'pass', cutoffMissed: [] },
       });
     });
 
@@ -316,7 +316,7 @@ describe('AttemptSettlementService', () => {
 
       // q1 correct (5), q2 unanswered (0). Best 1 of 2 = 5 out of 5 = 100%.
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: 'pass' },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: 'pass', cutoffMissed: [] },
       });
     });
   });
@@ -336,7 +336,7 @@ describe('AttemptSettlementService', () => {
 
       expect(tx.answer.update).not.toHaveBeenCalled();
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' },
+        data: { attemptId: 'attempt-1', score: 0, maxScore: 5, percentage: 0, passFail: 'fail', cutoffMissed: [] },
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({
         where: { id: 'attempt-1' },
@@ -391,7 +391,7 @@ describe('AttemptSettlementService', () => {
 
       expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { isCorrect: false, marksAwarded: -2 } });
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' },
+        data: { attemptId: 'attempt-1', score: 0, maxScore: 5, percentage: 0, passFail: 'fail', cutoffMissed: [] },
       });
     });
 
@@ -675,7 +675,7 @@ describe('AttemptSettlementService', () => {
       expect(tx.answer.update).toHaveBeenCalledTimes(1);
       expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { isCorrect: true, marksAwarded: 5 } });
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: null },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: null, cutoffMissed: [] },
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({
         where: { id: 'attempt-1' },
@@ -713,7 +713,7 @@ describe('AttemptSettlementService', () => {
       expect(tx.answer.update).toHaveBeenCalledWith({ where: { id: 'answer-1' }, data: { isCorrect: true, marksAwarded: 5 } });
       // Essay excluded from the auto-scored total; passFail deferred.
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: null },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 5, percentage: 100, passFail: null, cutoffMissed: [] },
       });
       expect(result.status).toBe('pending_manual_grade');
     });
@@ -750,7 +750,7 @@ describe('AttemptSettlementService', () => {
       // Nothing left for a human -> settles outright, essay marks count toward maxScore.
       expect(result.status).toBe('submitted');
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail' },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail', cutoffMissed: [] },
       });
     });
 
@@ -846,7 +846,7 @@ describe('AttemptSettlementService', () => {
       });
       expect(result.status).toBe('submitted');
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail' },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail', cutoffMissed: [] },
       });
     });
 
@@ -886,7 +886,7 @@ describe('AttemptSettlementService', () => {
       // and the code question's 10 marks count toward maxScore rather than being deferred.
       expect(result.status).toBe('submitted');
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail' },
+        data: { attemptId: 'attempt-1', score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail', cutoffMissed: [] },
       });
     });
 
@@ -1019,7 +1019,7 @@ describe('AttemptSettlementService', () => {
       const result = await service.finalize(tx as unknown as Prisma.TransactionClient, exam, attempt as any, 'submitted');
 
       expect(tx.result.create).toHaveBeenCalledWith({
-        data: { attemptId: 'attempt-1', score: 0, maxScore: 5, percentage: 0, passFail: 'fail' },
+        data: { attemptId: 'attempt-1', score: 0, maxScore: 5, percentage: 0, passFail: 'fail', cutoffMissed: [] },
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({
         where: { id: 'attempt-1' },
@@ -1088,7 +1088,7 @@ describe('AttemptSettlementService', () => {
       expect(finalized.status).toBe('submitted');
       expect(tx.result.update).toHaveBeenCalledWith({
         where: { attemptId: 'attempt-1' },
-        data: { score: 13, maxScore: 15, percentage: expect.closeTo((13 / 15) * 100, 5), passFail: 'pass' },
+        data: { score: 13, maxScore: 15, percentage: expect.closeTo((13 / 15) * 100, 5), passFail: 'pass', cutoffMissed: [] },
       });
       expect(tx.attempt.update).toHaveBeenCalledWith({ where: { id: 'attempt-1' }, data: { status: 'submitted' } });
     });
@@ -1139,7 +1139,7 @@ describe('AttemptSettlementService', () => {
       expect(finalized.status).toBe('submitted');
       expect(txGraded.result.update).toHaveBeenCalledWith({
         where: { attemptId: 'attempt-1' },
-        data: { score: 12, maxScore: 15, percentage: expect.closeTo((12 / 15) * 100, 5), passFail: 'pass' },
+        data: { score: 12, maxScore: 15, percentage: expect.closeTo((12 / 15) * 100, 5), passFail: 'pass', cutoffMissed: [] },
       });
     });
 
@@ -1179,7 +1179,7 @@ describe('AttemptSettlementService', () => {
       expect(finalized.status).toBe('submitted');
       expect(tx.result.update).toHaveBeenCalledWith({
         where: { attemptId: 'attempt-1' },
-        data: { score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail' },
+        data: { score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail', cutoffMissed: [] },
       });
     });
 
@@ -1211,7 +1211,7 @@ describe('AttemptSettlementService', () => {
       expect(finalized.status).toBe('submitted');
       expect(tx.result.update).toHaveBeenCalledWith({
         where: { attemptId: 'attempt-1' },
-        data: { score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail' },
+        data: { score: 5, maxScore: 15, percentage: expect.closeTo((5 / 15) * 100, 5), passFail: 'fail', cutoffMissed: [] },
       });
     });
 
@@ -1353,7 +1353,7 @@ describe('AttemptSettlementService', () => {
       expect(result).toEqual({ updated: 1 });
       expect(tx.result.update).toHaveBeenCalledWith({
         where: { attemptId: 'attempt-1' },
-        data: { score: 5, maxScore: 10, percentage: 80, passFail: 'pass' },
+        data: { score: 5, maxScore: 10, percentage: 80, passFail: 'pass', cutoffMissed: [] },
       });
     });
 

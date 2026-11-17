@@ -176,8 +176,6 @@
     "proctoring: CapacityPlannerScreen",
     "proctoring: CompanyAuditScreen",
     "proctoring: DashboardBuilderScreen",
-    "proctoring: EvaluatorConsoleScreen",
-    "proctoring: FairnessScreen",
     "proctoring: IdReviewQueueScreen",
     "proctoring: IntegrityReportsScreen",
     "proctoring: InvigilatorAppScreen",
