@@ -421,6 +421,8 @@ export class UsersService {
         action: status === 'deactivated' ? 'user.deactivated' : 'user.reactivated',
         entityType: 'user',
         entityId: targetUserId,
+        // Names the person in the activity log's sentence (admin B1).
+        metadata: { name: target.name || target.email },
       });
       return updated;
     });

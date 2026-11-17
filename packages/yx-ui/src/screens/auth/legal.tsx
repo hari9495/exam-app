@@ -52,6 +52,33 @@ const OSS_COLUMNS: TableColumn<OpenSourceComponent>[] = [
   { key: 'licence', header: 'Licence', value: (r) => r.licence, sortable: true },
 ];
 
+interface Gap {
+  id: string;
+  where: string;
+  what: string;
+  wcag: string;
+  plan: string;
+}
+
+// Answer 2352: the statement's honest list (G-1, the page behind an open dialog, was fixed by answer 2356).
+const GAPS: Gap[] = [
+  { id: 'G-2', where: 'Charts', what: 'Not yet checked that every chart has a text or table version of its numbers.', wcag: '1.1.1', plan: 'Check each chart; add a table view where missing.' },
+  { id: 'G-3', where: 'Rich text editor, org chart, roster grid', what: 'Complex widgets not yet tested with a screen reader.', wcag: '2.1.1, 4.1.2', plan: 'A one-time NVDA pass, then fixes.' },
+  { id: 'G-4', where: 'Whole app', what: 'No manual screen-reader (NVDA, JAWS or VoiceOver) pass has been done yet; only automated checks.', wcag: 'All', plan: 'NVDA pass on the main flows.' },
+  { id: 'G-5', where: 'Screens at 150 % text', what: 'Only the main page frames were measured at 150 %. Parts drawn with fixed sizes do not grow with the text-size setting (browser zoom still enlarges them).', wcag: '1.4.4, 1.4.10', plan: 'Measure every screen at 150 %; move fixed sizes to the shared sizes.' },
+  { id: 'G-6', where: 'High contrast', what: 'There is one high-contrast look (dark on light); a dark high-contrast look is not built. Your device’s own high-contrast mode still works.', wcag: 'Beyond AA', plan: 'A dark high-contrast look, later.' },
+  { id: 'G-7', where: 'Older pages', what: 'The older exam console and older candidate pages are not built from the kit and do not have the Accessibility menu.', wcag: 'Various', plan: 'Being replaced by YukthiX screens.' },
+  { id: 'G-8', where: 'Documents', what: 'Generated PDFs (payslips, letters, reports) are not tagged for screen readers.', wcag: '1.3.1', plan: 'Tagged PDFs, later.' },
+  { id: 'G-9', where: 'Proctored tests', what: 'Camera and screen checks depend on the browser; a candidate who needs another way asks through an accommodation request (extra time, a reader, breaks).', wcag: '2.2.1', plan: 'Already offered: accommodation requests.' },
+];
+const GAP_COLUMNS: TableColumn<Gap>[] = [
+  { key: 'id', header: 'Gap', type: 'id', value: (r) => r.id, width: 80 },
+  { key: 'where', header: 'Where', value: (r) => r.where, width: 200 },
+  { key: 'what', header: 'What', value: (r) => r.what },
+  { key: 'wcag', header: 'WCAG', value: (r) => r.wcag, width: 110 },
+  { key: 'plan', header: 'Plan', value: (r) => r.plan, width: 240 },
+];
+
 export function LegalNoticeScreen({ doc, contactEmail = null, components = [], signInHref = '/yx/sign-in' }: LegalNoticeScreenProps) {
   const lang = useContext(AuthLanguageContext);
   const contact = contactEmail ? (
@@ -59,7 +86,7 @@ export function LegalNoticeScreen({ doc, contactEmail = null, components = [], s
   ) : (
     'the address YukthiX publishes here before go-live (until then, ask your company’s HR team)'
   );
-  const drafting = doc !== 'openSource' && (
+  const drafting = doc !== 'openSource' && doc !== 'accessibility' && (
     <InlineAlert tone="info" title="Being finalised">
       The full text is reviewed by our lawyers before YukthiX goes live. This page says what it covers and how to reach us.
     </InlineAlert>
@@ -110,14 +137,37 @@ export function LegalNoticeScreen({ doc, contactEmail = null, components = [], s
         )}
         {doc === 'accessibility' && (
           <>
+            {/* Answer 2352: the approved statement (docs/yukthix/accessibility-statement.md), 17 Nov 2026. */}
             <Section title="Our target">
-              <p>We build YukthiX to meet WCAG 2.1 level AA. Every screen in our design library is checked automatically for accessibility problems, and screens work with a keyboard and a screen reader.</p>
+              <p>YukthiX aims to conform to the Web Content Accessibility Guidelines (WCAG) 2.1, level AA. Today we partly conform: most of what we check passes, and the parts that do not are listed below. Nothing here has been checked by an independent auditor yet.</p>
+              <p>This statement covers the YukthiX web app: the staff app, the sign-in pages, the careers and candidate pages, and the test (exam) screens. It does not yet cover the older exam console, the older candidate pages outside the YukthiX design, or documents we generate (payslips, letters and reports as PDF).</p>
             </Section>
-            <Section title="What is still open">
-              <p>An independent audit is planned before public launch. Its date, scope and any known problems will be listed here.</p>
+            <Section title="What you can change yourself: the Accessibility menu">
+              <p>Every page in scope has an Accessibility button (the person icon): on the staff top bar, on the sign-in pages, on the careers and candidate pages, and on the test screen. A company cannot turn it off. It offers:</p>
+              <ul className="yx-legal__list">
+                <li>Contrast: Normal or High contrast (black on white, text at 7:1 or more, black borders, underlined links, a thick focus outline).</li>
+                <li>Text size: Bigger, Smaller and Normal, in five steps from 90 % to 150 %. Pages wrap to fit; at the larger steps some pages scroll.</li>
+                <li>Text spacing (letter and word spacing) and Line height (1.5 times the text, with space between paragraphs), as WCAG 1.4.12 describes.</li>
+                <li>Big cursor, Reduce motion (as well as your device’s own setting, which we always follow), Stronger focus outline and Underline links.</li>
+                <li>Reset all.</li>
+              </ul>
+              <p>Signed in, your choices are saved on your account and follow you to every device. Signed out, they are kept in this browser. Your browser’s zoom, your device’s high-contrast mode and your own screen reader keep working too.</p>
             </Section>
-            <Section title="If something doesn’t work for you">
-              <p>Tell your company’s HR team, or write to {contact}.</p>
+            <Section title="How we check">
+              <ul className="yx-legal__list">
+                <li>Every screen is built from one design-system kit, and its rules are checked by automated tests on every change: every control looks clickable, pick-one choices are a proper radio group, and spacing comes from shared tokens.</li>
+                <li>Automated WCAG 2.1 A and AA checks (axe-core) run over the key screens: sign-in, the staff app shell and home, careers, the candidate portal, the test runner and the Accessibility menu. Colour contrast is checked on the design library in light and dark.</li>
+                <li>Text size at 100 % and 150 % is measured by a script on the main page frames: no overlapping blocks and no sideways scroll.</li>
+              </ul>
+            </Section>
+            <Section title="Known gaps">
+              <DataTable label="Known accessibility gaps" columns={GAP_COLUMNS} rows={GAPS} getRowId={(r) => r.id} rowNoun={['gap', 'gaps']} />
+            </Section>
+            <Section title="Feedback and contact">
+              <p>If something does not work for you, tell your company’s HR team, or write to {contact}. We aim to reply within 5 working days.</p>
+            </Section>
+            <Section title="Preparation of this statement">
+              <p>Prepared on 17 Nov 2026 by the YukthiX team from automated tests and our own review. It is reviewed every six months and after an independent audit.</p>
             </Section>
           </>
         )}

@@ -45,10 +45,17 @@ export class MfaRequiredException extends ForbiddenException {
 }
 
 export class StepUpRequiredException extends ForbiddenException {
-  constructor() {
-    super({ statusCode: 403, code: STEP_UP_REQUIRED_CODE, message: 'Confirm it is you with your second factor to continue.' });
+  constructor(message = 'Confirm it is you with your second factor to continue.') {
+    super({ statusCode: 403, code: STEP_UP_REQUIRED_CODE, message });
   }
 }
+
+// Batch B item 1 (pay B12 / admin B4, answers 2360-2363): routes that run on these keys show or change other people's
+// pay, so they need a recent "Confirm it's you" when the company keeps the salary re-check on (the default). Own-pay keys
+// (*.own) and payroll queries are not salary pages; employees' own pay pages are not gated (answer 2361).
+export const isSalaryKey = (key: string) =>
+  !key.endsWith('.own') && key !== 'payroll.query.handle' && (key.startsWith('employee.salary.') || key.startsWith('pay.range.') || key.startsWith('payroll.'));
+export const SALARY_RECHECK_MESSAGE = 'Confirm it is you to open salary details.';
 
 // For handlers whose step-up need depends on the request body (e.g. a user edit that changes a
 // role): the same check PermissionsGuard applies to @RequireStepUp handlers.
@@ -112,6 +119,7 @@ export class PermissionsGuard implements CanActivate {
     // like a recruiter; they change nothing, OwnSessionChangesGuard).
     if (scopesResults) request.resultsScope = user.actingSuperAdmin ? { mode: 'all' } : scopeFrom(granted, user.userId);
     await this.checkMfa(user, usedKeys, sensitiveAction);
+    await this.checkSalaryRecheck(user, usedKeys);
     // Security fix (answer keys): a route that returns questions learns whether this person writes tests or questions.
     // Never while acting for someone else (YukthiX staff or impersonation read without the keys).
     if (this.reflector.get<boolean>(SHOWS_ANSWER_KEYS, handler) === true) {
@@ -174,6 +182,16 @@ export class PermissionsGuard implements CanActivate {
   // YX-IAM-01: a sensitive-role permission (or a company requiring MFA for everyone) needs an AAL2
   // session once the enrolment grace has passed. YukthiX staff are a sensitive role whatever the
   // handler. No session state (never issued by JwtStrategy) fails closed.
+  // Batch B item 1: salary pages need a recent "Confirm it's you" while the company keeps the re-check on.
+  // Its own method so the e2e fixtures can leave it to the suite that tests it (test/fixtures/salary-recheck.ts).
+  async checkSalaryRecheck(user: RequestUser, usedKeys: string[]): Promise<void> {
+    if (!user.organizationId || !usedKeys.some(isSalaryKey)) return;
+    const policy = await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId);
+    if (policy.salaryRecheck && !(user.session && stepUpSatisfied(user.session, Date.now(), policy.salaryRecheckMinutes * 60))) {
+      throw new StepUpRequiredException(SALARY_RECHECK_MESSAGE);
+    }
+  }
+
   private async checkMfa(user: RequestUser, keys: string[], sensitiveAction: boolean): Promise<void> {
     if (user.session && mfaSatisfied(user.session)) {
       return;

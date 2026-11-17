@@ -228,6 +228,26 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
         </fieldset>
       </FormSection>
 
+      <FormSection title="Salary pages" description="On a shared computer, nobody else should see pay. People who open other people's salary, pay runs or pay ranges confirm it's them again with their passkey or app.">
+        <Switch
+          id="sec-salary"
+          label="Confirm it's you again before salary pages"
+          description="Their own payslips are not affected. People without a passkey or app are asked to set one up first."
+          checked={draft.salaryRecheck}
+          onChange={(salaryRecheck) => set({ salaryRecheck })}
+        />
+        {draft.salaryRecheck && (
+          <FormField label="Ask again after" helper="Minutes since they last confirmed it's them. YukthiX maximum: 15 minutes.">
+            <Segment
+              label="Ask again after"
+              options={[5, 10, 15].map((m) => ({ value: m, label: `${m} min` }))}
+              value={draft.salaryRecheckMinutes}
+              onChange={(salaryRecheckMinutes) => set({ salaryRecheckMinutes })}
+            />
+          </FormField>
+        )}
+      </FormSection>
+
       <FormSection title="Sign in with a one-time code" description="A code by email or text instead of a password. Off unless you turn it on.">
         <fieldset className="yx-auth__fieldset">
           <legend>Send codes by</legend>

@@ -6,7 +6,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from './current-tenant.decorator';
 import { SessionsService, resolveClientMeta } from './sessions.service';
-import { LoginEventsQueryDto, MyLoginHistoryQueryDto, SessionsQueryDto, UnlockAccountDto } from './dto/session-queries.dto';
+import { AccountsQueryDto, LoginEventsQueryDto, MyLoginHistoryQueryDto, SessionsQueryDto, UnlockAccountDto } from './dto/session-queries.dto';
 import { RequireStepUp } from './step-up.decorator';
 
 interface RequestUser {
@@ -60,6 +60,13 @@ export class SessionsController {
   @RequirePermissions('org:manage_users')
   adminList(@CurrentTenant() ctx: TenantContext, @Query() query: SessionsQueryDto) {
     return this.sessions.adminListSessions(ctx, query);
+  }
+
+  // Admin A6 (batch B item 20, answer 2365): Login activity › Accounts, for the people who manage accounts.
+  @Get('security/accounts')
+  @RequirePermissions('org:manage_users')
+  accounts(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() query: AccountsQueryDto) {
+    return this.sessions.adminListAccounts(ctx, this.self(req).userId, query);
   }
 
   @Delete('security/sessions/:id')

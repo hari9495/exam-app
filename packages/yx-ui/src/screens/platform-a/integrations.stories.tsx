@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { userEvent, within } from 'storybook/test';
 import { at, d } from './platform-data';
 import {
   AuditLogScreen, BillingScreen, DevelopersScreen, IntegrationsScreen, SupportAccessScreen,
@@ -68,10 +69,11 @@ const AUDIT: AuditRow[] = [
 export const PLT16List: S = { name: 'PLT-16 · Audit log', render: () => <AuditLogScreen rows={AUDIT} /> };
 // Settings S-5 (answer 1563): the company audit log, live.
 const LIVE_AUDIT = [
-  { id: 'l1', at: '2026-11-13T05:20:00Z', action: 'org.setting.changed', entityType: 'setting', entityId: 's1', actor: 'Lakshmi Venkatesan', actorRole: 'org_admin', details: { key: 'attendance.grace_minutes', from: '15', to: '10' } },
-  { id: 'l2', at: '2026-11-12T11:02:00Z', action: 'employee.updated', entityType: 'employee', entityId: 'e1', actor: 'Suresh Pillai', actorRole: 'org_admin', details: { before: { bankAccount: '•••• (hidden)' }, after: { bankAccount: '•••• (hidden)' } } },
+  { id: 'l1', at: '2026-11-13T05:20:00Z', action: 'org.setting.changed', sentence: 'Company setting changed by Lakshmi Venkatesan.', entityType: 'setting', entityId: 's1', actor: 'Lakshmi Venkatesan', actorRole: 'org_admin', details: { key: 'attendance.grace_minutes', from: '15', to: '10' } },
+  { id: 'l2', at: '2026-11-12T11:02:00Z', action: 'employee.updated', sentence: 'Employee "Ravi Kumar" changed by Suresh Pillai.', entityType: 'employee', entityId: 'e1', actor: 'Suresh Pillai', actorRole: 'org_admin', details: { before: { bankAccount: '•••• (hidden)' }, after: { bankAccount: '•••• (hidden)' } } },
 ];
 export const PLT16Live: S = { name: 'PLT-16 · Audit log · live, by area, person and date (S-5)', render: () => <AuditLogScreen rows={[]} live={{ state: 'ready', onRetry: () => {}, entries: LIVE_AUDIT, areas: [{ value: 'settings', label: 'Settings' }, { value: 'people', label: 'People' }], filters: { area: 'settings' }, onFilters: () => {}, onOpenPayroll: () => {} }} /> };
+export const PLT16LiveOpen: S = { name: 'PLT-16 · Audit log · live, an entry opened (plain sentence and event code)', render: () => <AuditLogScreen rows={[]} live={{ state: 'ready', onRetry: () => {}, entries: LIVE_AUDIT, areas: [], filters: {}, onFilters: () => {} }} />, play: async ({ canvasElement }) => { await userEvent.click(await within(canvasElement).findByText('Company setting changed by Lakshmi Venkatesan.')); } };
 export const PLT16Diff: S = { name: 'PLT-16 · Audit log · diff viewer', render: () => <AuditLogScreen rows={AUDIT} openId="au1" /> };
 export const PLT16Masked: S = { name: 'PLT-16 · Audit log · diff masked for reader', render: () => <AuditLogScreen rows={AUDIT} openId="au5" masked /> };
 export const PLT16Broken: S = { name: 'PLT-16 · Audit log · chain check failed', render: () => <AuditLogScreen rows={AUDIT} chain="broken" /> };

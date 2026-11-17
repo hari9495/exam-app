@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { LoginActivityScreen, ANY_FAILURE, NO_FILTERS, type LoginActivityFilters, type LoginEventRow, type Page, type PersonOption, type SessionRow } from '@yukthix/ui/auth';
+import { useToast } from '@yukthix/ui';
+import { LoginActivityScreen, ANY_FAILURE, NO_FILTERS, type AccountFilter, type AccountRow, type LoginActivityFilters, type LoginActivityTab, type LoginEventRow, type Page, type PersonOption, type SessionRow } from '@yukthix/ui/auth';
 import { useAuth } from '../../../../../lib/auth-context';
 import { apiFetch } from '../../../../../lib/api-client';
 import type { PaginatedResponse, StaffUser } from '../../../../../lib/types';
@@ -17,7 +18,12 @@ export default function YxLoginActivityPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState<'events' | 'sessions'>('events');
+  const { toast } = useToast();
+  const [tab, setTab] = useState<LoginActivityTab>('events');
+  // Admin A6 (batch B item 20): the Accounts tab, for org:manage_users (the API refuses others; then no tab).
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
+  const [accountSearch, setAccountSearch] = useState('');
+  const [accountsPage, setAccountsPage] = useState(1);
   const [filters, setFilters] = useState<LoginActivityFilters>(NO_FILTERS);
   const [eventsPage, setEventsPage] = useState(1);
   const [sessionsPage, setSessionsPage] = useState(1);
@@ -43,6 +49,9 @@ export default function YxLoginActivityPage() {
   const since = new Date(Math.floor((Date.now() - DAY_MS) / 60_000) * 60_000).toISOString();
   const failed = useQuery(get<Page<LoginEventRow>>(['failed', since], `/security/login-events${qs({ result: ANY_FAILURE, from: since, pageSize: 1 })}`));
   const sessions = useQuery(get<Page<SessionRow>>(['sessions', sessionsPage], `/security/sessions${qs({ page: sessionsPage, pageSize: 25 })}`));
+  const accountsPath = `/security/accounts${qs({ status: accountFilter, search: accountSearch.trim() || undefined, page: accountsPage, pageSize: 25 })}`;
+  const accounts = useQuery(get<Page<AccountRow>>(['accounts', accountsPath], accountsPath));
+  const accountsRefused = (accounts.error as { status?: number } | null)?.status === 403;
   const users = useQuery(get<PaginatedResponse<StaffUser>>(['users', peopleSearch], `/users${qs({ pageSize: 25, search: peopleSearch || undefined })}`));
   const matches = (users.data?.data ?? []).map((u) => ({ id: u.id, name: u.name || u.email, email: u.email }));
   const people = chosen && !matches.some((p) => p.id === chosen.id) ? [chosen, ...matches] : matches;
@@ -80,6 +89,28 @@ export default function YxLoginActivityPage() {
             }
           : undefined
       }
+      accounts={accountsRefused ? undefined : (accounts.data ?? null)}
+      accountsState={accounts.isError ? 'error' : accounts.data ? 'ready' : 'loading'}
+      accountFilter={accountFilter}
+      onAccountFilter={(f) => {
+        setAccountFilter(f);
+        setAccountsPage(1);
+      }}
+      accountSearch={accountSearch}
+      onAccountSearch={(q) => {
+        setAccountSearch(q);
+        setAccountsPage(1);
+      }}
+      onAccountsPage={setAccountsPage}
+      onSetSignIn={async (row, on) => {
+        await apiFetch(`/users/${encodeURIComponent(row.id)}/${on ? 'reactivate' : 'deactivate'}`, { method: 'POST' }, token);
+        await queryClient.invalidateQueries({ queryKey: ['yx', 'admin'] });
+        toast({ title: on ? `${row.name} can sign in again.` : `Sign-in turned off for ${row.name}.`, tone: 'success' });
+      }}
+      onResendLink={async (row) => {
+        const res = (await apiFetch(`/users/${encodeURIComponent(row.id)}/reset-password`, { method: 'POST' }, token)) as { emailSent?: boolean };
+        toast(res?.emailSent === false ? { title: `No link was sent to ${row.email}.`, description: 'Your company signs in through its identity provider, or the email could not be sent.', tone: 'warning' } : { title: `New sign-in link sent to ${row.email}.`, tone: 'success' });
+      }}
       onRetry={() => void queryClient.invalidateQueries({ queryKey: ['yx', 'admin'] })}
       noAccess={eventsError?.status === 403 && eventsError.code !== 'MFA_REQUIRED'}
     />

@@ -22872,5 +22872,145 @@
       "Screens/Pay/Setup"
     ],
     "note": "Positive and negative. H13."
+  },
+  {
+    "id": "MT-BATB-B1",
+    "area": "Batch B: activity log in plain sentences (admin B1, item 29, 17 Nov 2026)",
+    "screen": "Settings › Audit log (PLT-16, live)",
+    "url": "http://localhost:3000/yx/settings/audit-log",
+    "account": "Admin admin-tester@demo-org.test (audit.view, audit.export); HR hr-tester@demo-org.test for a change and for the refusal; employee arjun@demo-org.test.",
+    "steps": [
+      "As hr-tester: Settings › Time › change 'Maximum weekly hours' and save.",
+      "As admin-tester: open Settings › Audit log, Area = Settings.",
+      "Open the newest entry.",
+      "Press Export CSV and open the file.",
+      "Type From = a later date than To.",
+      "As arjun: open /yx/settings/audit-log directly."
+    ],
+    "expected": "Step 2: the 'What happened' column reads 'Company setting changed by <HR tester's name>.' (no event code in the list). Step 3: the drawer title is the same sentence; 'Event code' shows org.setting.changed; the before and after table shows the old and new hours. Step 4: the CSV has 'What happened' and 'Event code' columns, the same sentence; pay and ID values stay masked. Step 5: 'From is after To, so nothing matches.' and no rows. Step 6: the no-access page; nothing listed.",
+    "stories": [
+      "Screens/Platform/Integrations › PLT-16 · Audit log · live, by area, person and date (S-5)",
+      "PLT-16 · Audit log · live, an entry opened (plain sentence and event code)"
+    ],
+    "note": "Sentences are built on the server from the event code (about 1,500 codes) with hand-written sentences for sign-in and security events; English only (question 2364)."
+  },
+  {
+    "id": "MT-BATB-A6",
+    "area": "Batch B: users and sign-in list (admin A6, item 20, answers 2365 and 2366, 17 Nov 2026)",
+    "screen": "Admin › Login activity › Accounts",
+    "url": "http://localhost:3000/yx/admin/login-activity",
+    "account": "Admin admin-tester@demo-org.test (org:manage_users); employee arjun@demo-org.test for the refusal and for being turned off.",
+    "steps": [
+      "As admin-tester: open Login activity, then the Accounts tab.",
+      "Pick Show = Never signed in, then Turned off, then Everyone. Type 'arjun' in Search.",
+      "Look at your own row (admin-tester).",
+      "On Arjun's row press Turn off, then Cancel. Press Turn off again and confirm.",
+      "As Arjun (in another browser): reload any page, then try to sign in.",
+      "As admin-tester: Show = Turned off; on Arjun's row press Turn on and confirm. Arjun signs in again.",
+      "On a 'Never signed in' row press Send link again and confirm.",
+      "Open Settings › Audit log, Area = Access & security.",
+      "As Arjun: open /yx/admin/login-activity directly."
+    ],
+    "expected": "Step 1: a list of everyone with Person, Role, Sign-in (Can sign in / Never signed in / Turned off), Last signed in ('Never' for new accounts), Two-step (On / Off); no page scroll at 1278 x 635. Step 2: the Segment shows one choice at a time and the list follows it; search finds Arjun by name or email. Step 3: no Turn off button on your own row. Step 4: Cancel changes nothing; confirm shows the toast 'Sign-in turned off for Arjun Kulkarni.' and his row says Turned off. Step 5: he is signed out and cannot sign in. Step 6: toast 'Arjun Kulkarni can sign in again.'; he signs in. Step 7: toast 'New sign-in link sent to <email>.' (or a warning toast if the company signs in through its identity provider). Step 8: '<admin> turned off sign-in for \"Arjun Kulkarni\".' and '<admin> turned sign-in back on for \"Arjun Kulkarni\".' Step 9: no Accounts tab and no list of accounts (refused by the API).",
+    "stories": [
+      "Screens/Security/Admin › Login activity · accounts (who can sign in)",
+      "Login activity · accounts · turn off sign-in",
+      "Login activity · accounts · turn off refused",
+      "Login activity · accounts · loading / could not load / nobody matches / phone"
+    ],
+    "note": "API: GET /security/accounts (org:manage_users), turn off and on through POST /users/:id/deactivate and /reactivate (audited; refused for yourself and for the last System Admin); Send link again reuses POST /users/:id/reset-password (answer 2366)."
+  },
+  {
+    "id": "MT-BATB-B12",
+    "area": "Batch B: confirm it's you again before salary pages (pay B12 / admin B4, item 1, answers 2360-2363, 17 Nov 2026)",
+    "screen": "Settings › Security (2.3) › Salary pages; any payroll or salary page",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "Payroll payroll-tester@demo-org.test (needs a passkey or authenticator app); Admin admin-tester@demo-org.test (security settings); employee arjun@demo-org.test (own payslips).",
+    "steps": [
+      "As payroll-tester (signed in more than 15 minutes ago, or freshly signed in): open Payroll › Pay runs.",
+      "In 'Confirm it's you' press Cancel.",
+      "Open Payroll › Pay runs again and confirm with your passkey or app.",
+      "Move between payroll pages for a few minutes; then wait 16 minutes and open Payroll › Pay runs again.",
+      "As admin-tester: Settings › Security › Salary pages: pick 'Ask again after' = 5 min, Save changes and confirm it's you.",
+      "As payroll-tester: confirm, wait 6 minutes, open any payroll page.",
+      "As admin-tester: turn off 'Confirm it's you again before salary pages' and save. As payroll-tester: open a payroll page.",
+      "As admin-tester: turn it back on, 15 min, save. Open Settings › Audit log, Area = Access & security.",
+      "As arjun: open My payslips (own pay).",
+      "As a payroll user with no passkey or app: open Payroll › Pay runs."
+    ],
+    "expected": "Step 1: the 'Confirm it's you' dialog opens before any pay figure shows. Step 2: the page shows no pay data; it says 'Confirm it's you to see salary details' with a Try again button (answer 2370), not 'You don't have access'. Try again opens the dialog again; confirming loads the page. Open another page you really cannot open: it still says 'You don't have access'. Step 3: the page loads. Step 4: no second ask within 15 minutes; after 16 minutes the dialog opens again. Step 5: toast that the settings were saved; the Segment shows one choice at a time (5 / 10 / 15 min). Step 6: the dialog opens again after 5 minutes. Step 7: the page opens with no dialog. Step 8: 'Security policy changed by <admin>.' entries for each change, with salaryRecheck before and after. Step 9: payslips open with no dialog (own pay is not gated, answer 2361). Step 10: the dialog says no second step is set up and links to My security (answer 2360).",
+    "stories": [
+      "Screens/Security/Admin › 2.3 Security (Salary pages section)",
+      "2.3 Security · salary pages, ask again after 5 min",
+      "2.3 Security · salary pages re-check off",
+      "Screens/Security/Confirm it’s you › Step-up · passkey and app / nothing set up",
+      "Screens/Security/Confirm it’s you › Step-up · cancelled on a salary page"
+    ],
+    "note": "Server rule in PermissionsGuard: routes on employee.salary.*, pay.range.* and payroll.* keys (not *.own, not payroll.query.handle) need a step-up within the company's window (default 15, allowed 5/10/15). Settings tenant_security_policies.salary_recheck / salary_recheck_minutes (migration 202617z0000451)."
+  },
+  {
+    "id": "MT-BATB-B2",
+    "area": "Batch B: recycle bin across YukthiX (admin B2, item 3, answers 2367-2369, 17 Nov 2026)",
+    "screen": "Settings › Recycle bin",
+    "url": "http://localhost:3000/yx/settings/recycle-bin",
+    "account": "HR hr-tester@demo-org.test (org.settings.manage); Admin admin-tester@demo-org.test; employee arjun@demo-org.test for the refusal.",
+    "steps": [
+      "As hr-tester: Settings › Organisation › Designations: add 'Test role B2', then delete it. Also delete a test location and a candidate email template you added for this test.",
+      "Open Settings › Recycle bin. Filter Area = Organisation; then search 'Test role'.",
+      "On 'Test role B2' press Restore, then Cancel; press Restore again and confirm.",
+      "Open Designations.",
+      "Delete 'Test role B2' again; add a new designation with the same name 'Test role B2'. In the recycle bin press Restore on the deleted one and confirm.",
+      "Press Delete for good on it, confirm, and confirm it's you with your passkey or app.",
+      "Change 'Keep deleted items for' to 30 days.",
+      "Change it to 45 days through the API (PUT /org/settings, key recycle_bin.keep_days, value 45).",
+      "Open /v2/settings/recycle-bin.",
+      "As arjun: open /yx/settings/recycle-bin directly.",
+      "Open Settings › Audit log, Area = Settings and Organisation."
+    ],
+    "expected": "Step 1: each delete works as before. Step 2: each record shows Name, What (Designation / Location / Email template), Area, 'Deleted <date> by <name>' and 'Deleted for good on' 180 days later; hiring's deleted candidates and jobs show too (30 days). No page scroll at 1278 x 635. Step 3: Cancel changes nothing; confirm shows the toast 'Test role B2 is back.' and it leaves the bin. Step 4: the designation is back with its old code. Step 5: the restore is refused: 'It cannot come back: a record with the same name or code exists now. Rename or delete that one first.'; it stays in the bin. Step 6: the dialog asks you to confirm it's you; then the toast 'Test role B2 is deleted for good.' Step 7: toast 'Deleted items are now kept for 30 days.'; the dates in 'Deleted for good on' move. Step 8: 400, nothing changes. Step 9: you land on Settings › Recycle bin. Step 10: no Recycle bin in the menu; the page says you don't have access to the recycle bin. Step 11: entries for the delete, the restore and the delete for good.",
+    "stories": [
+      "Screens/Settings/Recycle bin › Recycle bin · deleted records",
+      "Recycle bin · restore, confirm / restore refused (name taken) / delete for good, confirm",
+      "Recycle bin · keep days read-only / empty / loading / could not load / no access / phone"
+    ],
+    "note": "First wave (answer 2367, narrowed): designations, departments, grades, employment types, cost centres, locations, and candidate email / SMS / WhatsApp templates, plus hiring's existing soft-deleted candidates, jobs, pipelines and walk-in groups. Other areas join by adding a kind and one toBin() call. Hiring keeps its own 30 days."
+  },
+  {
+    "id": "MT-BATB-2356",
+    "area": "Accessibility: the page behind an open dialog is inert (answer 2356, gap G-1, 17 Nov 2026)",
+    "screen": "Any dialog, drawer or sheet (for example Home › Ctrl K, People › a person › Edit, a ConfirmDialog)",
+    "url": "http://localhost:3000/yx/home",
+    "account": "Employee arjun@demo-org.test; HR hr-tester@demo-org.test. Use the keyboard and, if you can, NVDA.",
+    "steps": [
+      "Press Ctrl K (the search palette). Press Tab and Shift+Tab many times.",
+      "With NVDA on, press Insert+F7 (elements list) while the palette is open.",
+      "Close it with Escape; press Tab.",
+      "As hr-tester: open a person and a drawer (for example Edit). Inside it open a date picker or a select.",
+      "Open a delete button's confirm dialog over the drawer; Cancel; close the drawer."
+    ],
+    "expected": "Step 1: focus stays inside the palette; nothing behind it is reached. Step 2: only the palette's own controls are listed. Step 3: the page works again and focus returns where it was. Step 4: the picker and select open and work (they are not made inert). Step 5: the drawer is usable again after Cancel; after closing it the page is fully usable. Automated: the axe kit guard has no aria-hidden-focus entries left (a11y-guard.known.json is empty).",
+    "stories": [
+      "Screens/Platform/Shell and home › PLT-01 / PLT-18 / PLT-20 states with a dialog open",
+      "Screens/Proctoring › PRC-21 Reschedule, PRC-26 Finish",
+      "Exam › Finish confirmation"
+    ],
+    "note": "Kit: useInertBehind (lib/inert.ts, aria-hidden's inertOthers) in Dialog, Drawer, BottomSheet, the app shell's phone menu, the command palette and the exam Finish dialog."
+  },
+  {
+    "id": "MT-BATB-2352",
+    "area": "Accessibility statement published (answer 2352, 17 Nov 2026)",
+    "screen": "Legal › Accessibility statement",
+    "url": "http://localhost:3000/yx/legal/accessibility",
+    "account": "Not signed in.",
+    "steps": [
+      "Open the page from the sign-in footer link 'Accessibility'.",
+      "Read the Known gaps table and the Feedback and contact section.",
+      "On a host where NEXT_PUBLIC_YX_PRIVACY_EMAIL is not set, open the page again."
+    ],
+    "expected": "Step 1: the approved statement: Our target (WCAG 2.1 AA, partly conforms), What you can change yourself (the Accessibility menu), How we check, Known gaps, Feedback and contact, Preparation (17 Nov 2026); no 'Being finalised' note. Step 2: gaps G-2 to G-9 (no G-1); the contact is accessibility@ the same domain as the privacy contact and opens an email. Step 3: the page says the address is published before go-live instead of an address.",
+    "stories": [
+      "Screens/Security/SEC-02 · Legal notices › Accessibility statement"
+    ],
+    "note": "Text from docs/yukthix/accessibility-statement.md (now marked published)."
   }
 ]

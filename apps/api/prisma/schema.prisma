@@ -462,6 +462,9 @@ model TenantSecurityPolicy {
   // "Continue with Google / Microsoft" (YukthiX's platform OIDC apps); off unless the company turns it on
   googleSignIn           Boolean      @default(false) @map("google_sign_in")
   microsoftSignIn        Boolean      @default(false) @map("microsoft_sign_in")
+  // Batch B item 1 (answers 2360-2363): confirm it's you again before salary pages, after 5, 10 or 15 minutes
+  salaryRecheck          Boolean      @default(true) @map("salary_recheck")
+  salaryRecheckMinutes   Int          @default(15) @map("salary_recheck_minutes")
   updatedAt              DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   updatedByUserId        String?      @map("updated_by_user_id") @db.Uuid
 
@@ -5432,6 +5435,21 @@ model SdPrivacySettings {
   updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@map("sd_privacy_settings")
+}
+
+// Batch B item 3 (admin B2): a deleted record kept as it was, restorable with the same id until the company's keep days pass.
+model RecycleBinItem {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  kind           String   @db.VarChar(40)
+  entityId       String   @map("entity_id") @db.Uuid
+  label          String   @db.VarChar(200)
+  data           Json
+  deletedBy      String?  @map("deleted_by") @db.Uuid
+  deletedAt      DateTime @default(now()) @map("deleted_at") @db.Timestamptz(3)
+
+  @@index([organizationId, deletedAt(sort: Desc)], map: "recycle_bin_items_org_deleted_idx")
+  @@map("recycle_bin_items")
 }
 
 model SdRecycleBin {

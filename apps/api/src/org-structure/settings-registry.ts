@@ -76,6 +76,8 @@ export const PAYROLL_APPROVAL_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 export const SETTINGS: Readonly<Record<string, SettingDef>> = {
+  // Batch B item 3 (answer 2368): how long the recycle bin keeps deleted items; shortening applies from the next nightly run.
+  'recycle_bin.keep_days': { label: 'Keep deleted items in the recycle bin for (days)', scopes: ['tenant'], dated: false, values: ['30', '60', '90', '180', '365'], default: '180' },
   // Answer 1325: payroll setting changes wait for a second person (turning it off loosens a control: the access key too).
   // Answer 1523: days a waiting payroll setting change may wait before it lapses.
   [LAPSE_DAYS_KEY]: { label: 'A payroll setting change nobody decides lapses after (days)', scopes: ['tenant'], dated: false, values: ['7', '14', '21', '30'], default: '14' },
