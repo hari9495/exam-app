@@ -6,6 +6,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { IncidentsService } from '../src/platform/incidents.service';
+import { StaffNoticesService } from '../src/platform/staff-notices.service';
 import { markSteppedUp } from './fixtures/step-up';
 import { giveStaffRoles, rolesWithout } from './fixtures/staff-roles';
 
@@ -217,6 +218,16 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       const row = find((await api('staff', 'get', '/platform/incidents').expect(200)).body, title);
       expect(row.breach!.certinRemindedAt).not.toBeNull();
       expect(row.breach!.dpdpRemindedAt).toBeNull();
+      // Answer 2221: the same reminder is a console notice for the same staff (the email stays); none without the key.
+      type Notices = { items: { kind: string; title: string; body: string }[] };
+      const reports = async (who: string) => {
+        const r = await api(who, 'get', '/platform/notices');
+        return r.status === 200 ? (r.body as Notices).items.filter((n) => n.kind === 'breach_report_due' && n.title.includes(title)) : [];
+      };
+      const [a, b] = [await reports('staff'), await reports('staff2')];
+      expect([a.length, b.length]).toEqual([1, 1]);
+      expect(a[0]!.body).toMatch(/CERT-In report due/);
+      expect(await reports('staffNoKey')).toEqual([]);
       sent.length = 0;
       await incidents.remindSweep(new Date(contained + 6 * 3_600_000));
       expect(sent.filter((m) => m.subject.includes(title))).toEqual([]);
@@ -260,7 +271,8 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       // Not for a company account; and the database lets nobody read across, even with platform access.
       await api('adminA', 'get', '/platform/notices').expect(403);
       expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.staffNotice.count({ where: { title: `Tell the Data Protection Board now: C8I A ${run}` } }))).toBe(0);
-      await expect(tenantPrisma.forTenant(SUPER, (tx) => tx.staffNotice.deleteMany({ where: { recipientUserId: users.staff } }))).rejects.toThrow(/permission denied/);
+      // Answer 2222: platform access deletes nothing (only the nightly job, as each person, removes their old read ones).
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.staffNotice.deleteMany({ where: { recipientUserId: users.staff } }))).count).toBe(0);
       await expect(tenantPrisma.forTenant(SUPER, (tx) => tx.staffNotice.createMany({ data: [{ recipientUserId: users.adminA!, kind: 'board_notice_due', title: 'x', body: 'x' }] }))).rejects.toThrow(/row-level security/);
       sent.length = 0;
       await incidents.boardNoticeSweep(new Date(t0 + 30 * 60_000));
@@ -272,6 +284,30 @@ describe('Console C-8 YX-10: incidents and breach reminders', () => {
       expect((await again('staff2')).filter((n) => !n.read).length).toBe(1);
       expect((await again('staff')).map((n) => n.read).sort()).toEqual([false, true]);
       expect((await reminders()) - before).toBe(2);
+    });
+
+    // Answer 2222: read notices are deleted after notices.read_keep_days (90 by default; never under 30); unread ones stay.
+    it('read notices past the keep days are deleted nightly; unread and recent ones stay; the setting is 30 to 365', async () => {
+      const asMe = (u: string) => <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: false, userId: u }, fn);
+      const count = (u: string) => asMe(u)((tx) => tx.staffNotice.count({ where: { recipientUserId: u } }));
+      const readOnes = (u: string) => asMe(u)((tx) => tx.staffNotice.findMany({ where: { recipientUserId: u, readAt: { not: null } }, select: { id: true } }));
+      const old = (await readOnes(users.staff!)).map((n) => n.id);
+      expect(old.length).toBeGreaterThan(0);
+      // Negative: a notice read just now cannot be deleted even by its owner (the database keeps 30 days at least).
+      expect((await asMe(users.staff!)((tx) => tx.staffNotice.deleteMany({ where: { id: { in: old } } }))).count).toBe(0);
+      const notices = app.get(StaffNoticesService);
+      expect(await notices.purgeRead([users.staff!], 1)).toBe(0);
+      await asMe(users.staff!)((tx) => tx.staffNotice.updateMany({ where: { id: { in: old } }, data: { readAt: new Date(Date.now() - 100 * 86_400_000) } }));
+      const [mine, theirs] = [await count(users.staff!), await count(users.staff2!)];
+      await markSteppedUp(tenantPrisma, token.staff!);
+      await api('staff', 'put', '/platform/settings/notices.read_keep_days').send({ value: '20', reason: 'Testing notice retention' }).expect(400);
+      await api('staff', 'put', '/platform/settings/notices.read_keep_days').send({ value: '120', reason: 'Testing notice retention' }).expect(200);
+      await notices.retentionSweep();
+      expect(await count(users.staff!)).toBe(mine);
+      await api('staff', 'put', '/platform/settings/notices.read_keep_days').send({ value: '90', reason: 'Testing notice retention' }).expect(200);
+      expect(await notices.retentionSweep()).toBeGreaterThanOrEqual(old.length);
+      expect(await count(users.staff!)).toBe(mine - old.length);
+      expect(await count(users.staff2!)).toBe(theirs);
     });
 
     it('Rule 7: marking the first notice needs the incidents or contain key and the security key; audited; then the reminders stop', async () => {

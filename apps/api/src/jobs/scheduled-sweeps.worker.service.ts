@@ -31,6 +31,7 @@ import { AssistantService } from '../help/assistant/assistant.service';
 import { IncidentsService } from '../platform/incidents.service';
 import { CsFollowupService } from '../platform/cs-followup.service';
 import { StaffRolesService } from '../platform/staff-roles.service';
+import { StaffNoticesService } from '../platform/staff-notices.service';
 import { AnalyticsService } from '../platform/analytics.service';
 import { CompanyDeletionService } from '../platform/company-deletion.service';
 import { QuestionReviewNudgesService } from '../questions/bank/review-nudges.service';
@@ -89,6 +90,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     analytics: AnalyticsService,
     deletions: CompanyDeletionService,
     questionReviews: QuestionReviewNudgesService,
+    staffNotices: StaffNoticesService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -134,6 +136,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'incident-breach-reminders': () => incidents.remindSweep(),
       'cs-health-snapshot': () => csFollowup.nightly(),
       'staff-invite-expiry': () => staffRoles.expireInvites(),
+      // Answer 2222.
+      'staff-notices-retention': () => staffNotices.retentionSweep(),
       'settings-change-lapse': () => settingNotices.lapseSweep(),
       // Console 1216.
       'analytics-summary': () => analytics.summariseNightly(),

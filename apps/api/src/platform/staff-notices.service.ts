@@ -1,9 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 
 type Tx = Prisma.TransactionClient;
-export type StaffNoticeKind = 'kept_records_removed' | 'board_notice_due';
+
+/** Answer 2222: read notices are deleted after this many days (platform setting; the database keeps 30 at least). */
+export const NOTICE_KEEP_KEY = 'notices.read_keep_days';
+export const NOTICE_KEEP_DEFAULT = 90;
+export type StaffNoticeKind = 'kept_records_removed' | 'board_notice_due' | 'breach_report_due';
 export interface StaffNoticeInput {
   kind: StaffNoticeKind;
   title: string;
@@ -20,7 +24,23 @@ export interface StaffNoticeInput {
  */
 @Injectable()
 export class StaffNoticesService {
+  private readonly logger = new Logger(StaffNoticesService.name);
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
+
+  /** Answer 2222 (nightly): read notices past notices.read_keep_days are deleted, for every staff member. */
+  async retentionSweep(now = new Date()): Promise<number> {
+    try {
+      const { days, staff } = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
+        const v = Number((await tx.platformSetting.findUnique({ where: { key: NOTICE_KEEP_KEY } }))?.value);
+        const users = await tx.user.findMany({ where: { organizationId: null, role: 'super_admin' }, select: { id: true } });
+        return { days: Number.isInteger(v) && v >= 30 ? v : NOTICE_KEEP_DEFAULT, staff: users.map((u) => u.id) };
+      });
+      return await this.purgeRead(staff, days, now);
+    } catch (e) {
+      this.logger.warn(`notice retention failed: ${e instanceof Error ? e.message : String(e)}`);
+      return 0;
+    }
+  }
 
   /** Inside a platform transaction: one notice per staff member. createMany: the writer may not read the rows back.
    *  skipDuplicates: a repeat Board nudge while the last one is unread adds nothing (partial unique index, migration 322). */
@@ -56,6 +76,18 @@ export class StaffNoticesService {
       if (!n.readAt) await tx.staffNotice.updateMany({ where: { id, recipientUserId: userId, readAt: null }, data: { readAt: new Date() } });
       return { unread: await tx.staffNotice.count({ where: { recipientUserId: userId, readAt: null } }) };
     });
+  }
+
+  /**
+   * Answer 2222 (nightly): each staff member's read notices older than `keepDays` are deleted, as that person (the
+   * database allows only their own read notices, never one read in the last 30 days). Unread notices stay.
+   */
+  async purgeRead(staffUserIds: string[], keepDays: number, now = new Date()): Promise<number> {
+    const before = new Date(now.getTime() - Math.max(30, keepDays) * 86_400_000);
+    let removed = 0;
+    for (const userId of staffUserIds)
+      removed += (await this.asMe(userId, (tx) => tx.staffNotice.deleteMany({ where: { recipientUserId: userId, readAt: { not: null, lt: before } } }))).count;
+    return removed;
   }
 
   async markAllRead(userId: string) {
