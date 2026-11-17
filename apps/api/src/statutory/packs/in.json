@@ -1927,6 +1927,250 @@
       ]
     },
     {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-AP",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Andhra Pradesh Labour Welfare Fund: 30 employee and 70 employer a year, with December pay. Secondary only (https://hrengage.ai/compliance/lwf ; https://www.incorpx.io/blog/labour-welfare-fund-state-wise-rates-due-dates); one outlier lists 10/30. TODO: CA checklist item 29.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          12
+        ],
+        "employee": "30",
+        "employer": "70"
+      },
+      "golden": [
+        {
+          "name": "December: 30 and 70",
+          "fn": "lwf",
+          "input": {
+            "month": 12
+          },
+          "expected": {
+            "employee": "30",
+            "employer": "70"
+          }
+        },
+        {
+          "name": "November: nothing",
+          "fn": "lwf",
+          "input": {
+            "month": 11
+          },
+          "expected": {
+            "employee": "0",
+            "employer": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-GJ",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Gujarat Labour Welfare Fund: 6 employee and 12 employer a half-year, with June and December pay. Secondary only (https://digiliance.in/labour-welfare-fund ; https://hrengage.ai/compliance/lwf). A wage ceiling (15,000) is claimed by one source and not applied. TODO: CA checklist item 31.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          6,
+          12
+        ],
+        "employee": "6",
+        "employer": "12"
+      },
+      "golden": [
+        {
+          "name": "June: 6 and 12",
+          "fn": "lwf",
+          "input": {
+            "month": 6
+          },
+          "expected": {
+            "employee": "6",
+            "employer": "12"
+          }
+        },
+        {
+          "name": "July: nothing",
+          "fn": "lwf",
+          "input": {
+            "month": 7
+          },
+          "expected": {
+            "employee": "0",
+            "employer": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-PB",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Punjab Labour Welfare Fund Act 1965 s.9A: 5 employee and 20 employer a month, remitted half-yearly. Secondary only (https://digiliance.in/labour-welfare-fund ; https://hrengage.ai/compliance/lwf). TODO: CA checklist item 33.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "employee": "5",
+        "employer": "20"
+      },
+      "golden": [
+        {
+          "name": "Any month: 5 and 20",
+          "fn": "lwf",
+          "input": {
+            "month": 4
+          },
+          "expected": {
+            "employee": "5",
+            "employer": "20"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-CH",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Chandigarh: Punjab Labour Welfare Fund Act 1965 s.9A(2) as extended; 5 employee and 20 employer a month, remitted half-yearly. Secondary only (https://taxguru.in/corporate-law/labour-welfare-fund-2026-payroll-months-amounts-change-state.html). TODO: CA checklist item 34.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "employee": "5",
+        "employer": "20"
+      },
+      "golden": [
+        {
+          "name": "Any month: 5 and 20",
+          "fn": "lwf",
+          "input": {
+            "month": 11
+          },
+          "expected": {
+            "employee": "5",
+            "employer": "20"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-WB",
+      "version": "2024-v1",
+      "validFrom": "2024-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "West Bengal Labour Welfare Fund Act 1974 s.9(3), Notification Labr/576641/2024 in force 1 Jan 2024: 3 employee and 30 employer a half-year, for those on the register on 30 June and 31 December. Secondary only (https://taxguru.in/corporate-law/labour-welfare-fund-2026-payroll-months-amounts-change-state.html). TODO: CA checklist item 35.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          6,
+          12
+        ],
+        "employee": "3",
+        "employer": "30"
+      },
+      "golden": [
+        {
+          "name": "December: 3 and 30",
+          "fn": "lwf",
+          "input": {
+            "month": 12
+          },
+          "expected": {
+            "employee": "3",
+            "employer": "30"
+          }
+        },
+        {
+          "name": "March: nothing",
+          "fn": "lwf",
+          "input": {
+            "month": 3
+          },
+          "expected": {
+            "employee": "0",
+            "employer": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-OD",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Odisha Labour Welfare Fund Rules 2015 r.6: 20 employee and 40 employer a year, paid half-yearly for 30 June and 31 December. The per half-year split (10 and 20) is assumed, not stated. Secondary only (https://taxguru.in/corporate-law/labour-welfare-fund-2026-payroll-months-amounts-change-state.html). TODO: CA checklist item 36.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          6,
+          12
+        ],
+        "employee": "10",
+        "employer": "20"
+      },
+      "golden": [
+        {
+          "name": "June: 10 and 20 (half of the year, assumed)",
+          "fn": "lwf",
+          "input": {
+            "month": 6
+          },
+          "expected": {
+            "employee": "10",
+            "employer": "20"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.MW",
       "jurisdiction": "IN",
       "version": "2019-v1",

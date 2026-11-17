@@ -419,9 +419,11 @@ export function penalty(rs: RuleSet, i: { item: string; amount: Prisma.Decimal.V
 /** When a monthly return or deposit is due (YYYY-MM-DD) for a wage month. */
 export function due(rs: RuleSet, i: { key: string; month: string }) {
   const v = need(rs, 'calendar');
-  const item = (v.items as { key: string; dueDay: number; monthOffset: number; march?: { dueDay: number; monthOffset: number } }[]).find((x) => x.key === i.key);
+  type Due = { dueDay: number; monthOffset: number };
+  const item = (v.items as (Due & { key: string; march?: Due; byMonth?: Record<string, Due> })[]).find((x) => x.key === i.key);
   if (!item) throw new StatutoryError(`No due date for ${i.key}`);
-  const rule = item.march && i.month.endsWith('-03') ? item.march : item;
+  // byMonth (H9): a wage month's own date, for amounts paid once a half-year (Punjab LWF: April-September by 15 October).
+  const rule = item.byMonth?.[String(Number(i.month.slice(5)))] ?? (item.march && i.month.endsWith('-03') ? item.march : item);
   const d = new Date(`${i.month}-01T00:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + rule.monthOffset);
   // A due day past the month's end (31 for "the last day") is that month's last day.

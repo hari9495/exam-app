@@ -87,6 +87,16 @@ describe('batch H: state PT rule data', () => {
     expect(lwf(one('IN.LWF', 'IN-MH'), { month: 6 }).employee.toFixed(0)).toBe('25');
   });
 
+  it('H9: LWF for AP, GJ, PB, CH, WB, OD is verify with its CA item; Punjab half-yearly dates per wage month', () => {
+    for (const [j, item] of [['IN-AP', 29], ['IN-GJ', 31], ['IN-PB', 33], ['IN-CH', 34], ['IN-WB', 35], ['IN-OD', 36]] as const) expect(one('IN.LWF', j)).toMatchObject({ verify: true, source: expect.stringContaining(`CA checklist item ${item}`) });
+    const dues = (JSON.parse(readFileSync(join(__dirname, 'packs', 'in-dues.json'), 'utf8')) as { ruleSets: RuleSet[] }).ruleSets;
+    const pb = dues.find((x) => x.jurisdiction === 'IN-PB')!;
+    expect(['2026-04', '2026-09', '2026-10', '2026-12', '2027-01', '2027-03'].map((m) => due(pb, { key: 'lwf', month: m }).due)).toEqual(['2026-10-15', '2026-10-15', '2027-04-15', '2027-04-15', '2027-04-15', '2027-04-15']);
+    // A year of Punjab LWF is 60 and 240.
+    const year = Array.from({ length: 12 }, (_, i) => lwf(one('IN.LWF', 'IN-PB'), { month: i + 1 })).reduce((t, r) => [t[0] + Number(r.employee), t[1] + Number(r.employer)], [0, 0]);
+    expect(year).toEqual([60, 240]);
+  });
+
   it('H4: Odisha charges no PT from 1 Apr 2026; before that there is no rule loaded (question 2381)', () => {
     expect(noPt(sets, 'IN-OD', '2026-04-01')).toBe(true);
     expect(noPt(sets, 'IN-OD', '2026-03-31')).toBe(false);

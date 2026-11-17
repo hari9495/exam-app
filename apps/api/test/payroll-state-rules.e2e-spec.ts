@@ -32,7 +32,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
   // The states a person is paid in (one each); every batch H item reads the same two runs (September and October 2026).
-  const STATES = ['IN-HR', 'IN-AP', 'IN-GJ', 'IN-WB', 'IN-OD', 'IN-MP', 'IN-MZ', 'IN-SK'];
+  const STATES = ['IN-HR', 'IN-AP', 'IN-GJ', 'IN-WB', 'IN-OD', 'IN-MP', 'IN-MZ', 'IN-SK', 'IN-PB'];
   const emp: Record<string, string> = {};
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
@@ -315,6 +315,21 @@ describe('Payroll: state statutory rules (batch H)', () => {
         expect((await rulesOf('IN.PT', j))[0]).toMatchObject({ verify: true, source: expect.stringMatching(/Due date not found/) });
         expect(await rulesOf('IN.CALENDAR', j)).toEqual([]);
       }
+    });
+  });
+
+  describe('H9: labour welfare fund in six more states', () => {
+    const amount = (r: Pt, code: string) => r.lines.find((l) => l.code === code)?.amount ?? null;
+    it('October: Punjab deducts 5 and the employer pays 20 every month; Gujarat and West Bengal (June and December only) nothing', async () => {
+      const oct = await calcMonth('2026-10');
+      expect([amount(oct[emp['IN-PB']], 'lwf_employee'), amount(oct[emp['IN-PB']], 'lwf_employer')]).toEqual(['5.00', '20.00']);
+      expect(oct[emp['IN-PB']].versions['IN.LWF|IN-PB']).toBe('2025-v1');
+      for (const st of ['IN-GJ', 'IN-WB', 'IN-AP']) expect(amount(oct[emp[st]], 'lwf_employee')).toBeNull();
+    });
+    it('the rules browser shows them verify, with the Punjab half-yearly due dates', async () => {
+      expect(await rulesOf('IN.LWF', 'IN-OD')).toEqual([expect.objectContaining({ verify: true, source: expect.stringMatching(/split \(10 and 20\) is assumed/) })]);
+      const pb = (await rulesOf('IN.CALENDAR', 'IN-PB'))[0];
+      expect(pb).toMatchObject({ version: 'PB-2025-v1', verify: true });
     });
   });
 });
