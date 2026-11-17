@@ -14,7 +14,7 @@ import { useRun } from '../org/org-kit';
 import { PayFormDrawer, PayPageState, fromPaise, paise, rupees, sumMoney } from './consultants';
 import type { LoadState } from './live/types';
 import type { MyPayslip, PayslipDetail, PayslipLine } from './live/types-5j';
-import type { DeclarationInput, DeclarationLine, LoanApproval, LoanRequestInput, LoanView, MyCertificate, MyDeclarations, PayslipQueryView } from './live/types-ops';
+import type { DeclarationInput, DeclarationLine, LandlordRelationship, LoanApproval, LoanRequestInput, LoanView, MyCertificate, MyDeclarations, PayslipQueryView } from './live/types-ops';
 import type { EwaDrawView, MyEwa, MyIncentives } from './live/types-5i';
 import type { PayDocument } from './live/types';
 import { FindPerson, type PersonHit } from './equity';
@@ -2335,7 +2335,19 @@ const SUBJECT: Record<string, string> = {
   sec80e: 'Education loan interest (80E)',
   sec24b: 'Home loan interest (24(b))',
 };
-export const subjectText = (key: string, section?: string | null) => SUBJECT[key] ?? (section ? `${key} (${section})` : key);
+/** H15: the Form No. 124 choices for how the employee is related to the landlord. */
+export const LANDLORD_RELATION: Record<LandlordRelationship, string> = { not_related: 'Not related', parent: 'Parent', spouse: 'Husband or wife', child: 'Son or daughter', sibling: 'Brother or sister', other_relative: 'Other relative' };
+const LANDLORD_RELATION_OPTIONS = (Object.keys(LANDLORD_RELATION) as LandlordRelationship[]).map((value) => ({ value, label: LANDLORD_RELATION[value] }));
+/**
+ * A declaration subject's label. With the section of the workspace's law from the API (H14), the plain name and that
+ * section, e.g. "Investments and payments · s.123, Sch XV (old 80C)"; without one (or not yet confirmed), the name with
+ * the old section.
+ */
+export const subjectText = (key: string, section?: string | null) => {
+  const label = SUBJECT[key];
+  if (!section || section === 'verify number') return label ?? key;
+  return `${label ? label.slice(0, label.lastIndexOf(' (')) : key} · ${section}`;
+};
 const PROOF_STATE: Record<string, { label: string; tone: BadgeTone }> = {
   none: { label: 'No proof yet', tone: 'neutral' },
   pending: { label: 'Proof being checked', tone: 'warning' },
@@ -2734,6 +2746,7 @@ function DeclareDrawer({ line, subjects, taxYear, onClose, onSave }: { line: Dec
   const [metro, setMetro] = useState<'yes' | 'no'>(line?.metro ? 'yes' : 'no');
   const [landlord, setLandlord] = useState(line?.landlordName ?? '');
   const [pan, setPan] = useState('');
+  const [relation, setRelation] = useState<LandlordRelationship | null>(line?.landlordRelationship ?? null);
   const y = Number(taxYear.slice(0, 4));
   const hra = key === 'hra';
   const errors: FormErrorItem[] = [
@@ -2755,7 +2768,7 @@ function DeclareDrawer({ line, subjects, taxYear, onClose, onSave }: { line: Dec
         onSave({
           subjectKey: key!,
           amount: amount.trim(),
-          ...(hra ? { rentFrom: from, rentTo: to, metro: metro === 'yes', ...(landlord.trim() ? { landlordName: landlord.trim() } : {}), ...(pan.trim() ? { landlordPan: pan.trim().toUpperCase() } : {}) } : {}),
+          ...(hra ? { rentFrom: from, rentTo: to, metro: metro === 'yes', ...(landlord.trim() ? { landlordName: landlord.trim() } : {}), ...(pan.trim() ? { landlordPan: pan.trim().toUpperCase() } : {}), ...(relation ? { landlordRelationship: relation } : {}) } : {}),
         })
       }
     >
@@ -2796,6 +2809,9 @@ function DeclareDrawer({ line, subjects, taxYear, onClose, onSave }: { line: Dec
               </FormField>
               <FormField id="dc-pan" label="Landlord's PAN" optional helper="Needed when the rent is more than ₹1,00,000 a year." error={errorOf('dc-pan')}>
                 <TextField value={pan} onChange={setPan} maxLength={10} autoCapitalize="characters" />
+              </FormField>
+              <FormField id="dc-relation" label="How you are related to the landlord" optional helper="Needed with the PAN when the rent is more than ₹1,00,000 a year.">
+                <Select value={relation} onChange={(v) => setRelation((v as LandlordRelationship | null) ?? null)} placeholder="Choose" options={LANDLORD_RELATION_OPTIONS} />
               </FormField>
             </>
           )}

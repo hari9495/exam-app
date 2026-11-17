@@ -36,7 +36,7 @@ test('declarations and proofs, an advance, a payment mode, registers and advisor
   await expect(arjun.getByRole('heading', { name: 'My tax declarations' })).toBeVisible({ timeout: 30_000 });
   await arjun.getByRole('button', { name: 'Declare' }).click();
   await arjun.getByRole('combobox', { name: /What/ }).click();
-  await arjun.getByRole('option', { name: 'Investments and payments (80C)' }).click();
+  await arjun.getByRole('option', { name: 'Investments and payments · s.123, Sch XV (old 80C)' }).click();
   await arjun.getByRole('textbox', { name: /Amount for the year/ }).fill('50000');
   await arjun.getByRole('button', { name: 'Save' }).click();
   const row = arjun.getByRole('row', { name: /Investments and payments/ });
