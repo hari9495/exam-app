@@ -8933,6 +8933,10 @@ model Loan {
   firstMonth     DateTime  @map("first_month") @db.Date
   outstanding    Decimal   @db.Decimal(14, 2)
   perquisite     Boolean   @default(false)
+  /// D14: the SBI loan type for the loan perquisite (Rule 3(7)(i)), and the company's exempt mark with its reason (medical).
+  perqPurpose      String    @default("personal") @map("perq_purpose") @db.VarChar(10)
+  perqExempt       Boolean   @default(false) @map("perq_exempt")
+  perqExemptReason String?   @map("perq_exempt_reason") @db.VarChar(300)
   reason         String    @db.VarChar(300)
   status         String    @default("requested") @db.VarChar(10)
   pausedUntil    DateTime? @map("paused_until") @db.Date
@@ -9352,6 +9356,9 @@ model Perquisite {
   enteredBy      String    @map("entered_by") @db.Uuid
   cancelledAt    DateTime? @map("cancelled_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// D14: the month payroll wrote it for (the loan perquisite, one row per loan and month: "loan:<id>:<YYYY-MM>").
+  sourceRef      String?   @map("source_ref") @db.VarChar(80)
+  periodStart    DateTime? @map("period_start") @db.Date
 
   @@map("perquisites")
 }

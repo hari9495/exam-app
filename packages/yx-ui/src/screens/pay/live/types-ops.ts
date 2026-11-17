@@ -58,6 +58,15 @@ export interface LoanView {
   mine: boolean;
   /** PAY-18: the person's own request's approval steps (only on their own loans). */
   approval?: LoanApproval;
+  /** D14: the loan type the SBI rate is read for, and the company's exempt mark (medical treatment) with its reason. */
+  perquisite?: LoanPerquisite;
+}
+
+/** D14 (founder answers 2404, 2405): GET payroll/loans' `perquisite`, and the body of PUT payroll/loans/:id/perquisite. */
+export interface LoanPerquisite {
+  purpose: 'housing' | 'vehicle' | 'education' | 'personal' | 'other';
+  exempt: boolean;
+  reason: string | null;
 }
 
 /** The approvals engine's route of one's own loan request: each step's state, who decided it and when, or who it waits for. */

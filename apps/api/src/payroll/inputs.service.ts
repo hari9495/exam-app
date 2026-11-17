@@ -8,7 +8,7 @@ import type { ScopeUser, Viewer } from '../access/scope';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { fillInjuryDays } from './injury-days';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
-import { CourtOrderDto, HoldDto, HoldReleaseDto, LoanChangeDto, LoanRequestDto, LopRowDto, OneTimeDto, SpecialDaysDto } from './dto-5c';
+import { CourtOrderDto, HoldDto, HoldReleaseDto, LoanChangeDto, LoanPerquisiteDto, LoanRequestDto, LopRowDto, OneTimeDto, SpecialDaysDto } from './dto-5c';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
 import { inr, payOn } from './fnf.service';
 import { closingInterest, dayMonYear, interestFrom, loanRoom, loanSchedule, maxMonthsOf } from './loan-rules';
@@ -492,6 +492,7 @@ export class PayInputsService implements OnModuleInit {
         firstMonth: dateOf(l.firstMonth).slice(0, 7),
         status: l.status,
         pausedUntil: l.pausedUntil ? dateOf(l.pausedUntil).slice(0, 7) : null,
+        perquisite: { purpose: l.perqPurpose, exempt: l.perqExempt, reason: l.perqExemptReason },
         mine: l.employeeId === me?.id,
         ...(l.employeeId === me?.id && l.wfRequestId && routes.has(l.wfRequestId) ? { approval: routes.get(l.wfRequestId) } : {}),
       }));
@@ -568,6 +569,27 @@ export class PayInputsService implements OnModuleInit {
       await tx.loanScheduleChange.create({ data: { organizationId: c.organizationId, legalEntityId: l.legalEntityId, employeeId: l.employeeId, loanId: id, kind: dto.kind, detail: { pauseUntil: dto.pauseUntil ?? null, emi: dto.emi ?? null, outstandingBefore: l.outstanding.toFixed(2), ...settled }, reason: dto.reason, changedBy: v.userId! } });
       await audit(tx, c, 'payroll.loan.changed', 'loan', id, { kind: dto.kind, reason: dto.reason, outstandingBefore: l.outstanding.toFixed(2), ...settled });
       return { id, kind: dto.kind, ...settled };
+    });
+  }
+
+  /**
+   * D14 (answers 2404, 2405): the loan type the SBI rate is read for, and the exempt mark. A company switches the loan
+   * perquisite off only by marking the loan exempt (medical treatment, Rule 3A), with a reason. Audited before and after.
+   */
+  async setLoanPerquisite(ctx: TenantContext, user: ScopeUser, id: string, dto: LoanPerquisiteDto) {
+    if (dto.exempt && !dto.reason) throw new BadRequestException('Say why the loan is exempt, for example the treatment it pays for (Rule 3A).');
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await payScope(tx, await entitiesFor(tx, c, v, 'payroll.loan.manage'));
+      const l = await tx.loan.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!l) throw new NotFoundException('Not found');
+      if (await this.isSelf(tx, c.organizationId, v, l.employeeId)) throw new ForbiddenException('Someone else changes your own loan.');
+      if (l.loanType === 'expense') throw new ConflictException('An expense advance carries no loan perquisite.');
+      if (['rejected', 'closed'].includes(l.status)) throw new ConflictException(`A ${l.status} loan is not changed.`);
+      const after = { purpose: dto.purpose, exempt: dto.exempt, reason: dto.exempt ? dto.reason! : null };
+      await tx.loan.update({ where: { id }, data: { perqPurpose: after.purpose, perqExempt: after.exempt, perqExemptReason: after.reason } });
+      await audit(tx, c, 'payroll.loan.perquisite_changed', 'loan', id, { before: { purpose: l.perqPurpose, exempt: l.perqExempt, reason: l.perqExemptReason }, after });
+      return { id, ...after };
     });
   }
 

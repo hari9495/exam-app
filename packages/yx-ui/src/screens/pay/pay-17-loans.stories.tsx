@@ -10,6 +10,7 @@ export const Record: S = { name: 'Loan record · EMI schedule', args: { openId: 
 export const Paused: S = { name: 'EMIs paused', args: { openId: 'l3' } };
 export const PauseDialog: S = { name: 'Pause EMIs with reason', args: { openId: 'l1', action: 'pause' } };
 export const PreClose: S = { name: 'Pre-closure', args: { openId: 'l6', action: 'preclose' } };
+export const Perquisite: S = { name: 'Loan perquisite · SBI rate and exempt mark (D14)', args: { openId: 'l1', action: 'perquisite' } };
 export const Empty: S = { name: 'Empty', args: { rows: [] } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const LoadError: S = { name: 'Error · retry', args: { state: 'error' } };

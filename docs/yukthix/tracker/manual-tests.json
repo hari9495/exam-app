@@ -22965,5 +22965,25 @@
       "Screens/People/PPL-01"
     ],
     "note": "Positive and negative. A3, answer 2409. The toggle is not kept in saved views."
+  },
+  {
+    "id": "MT-BATH3-01",
+    "area": "Pay: batch H part 3 (18 Nov 2026)",
+    "screen": "Payroll · Loans and advances (loan perquisite)",
+    "url": "http://localhost:3000/yx/payroll/loans",
+    "account": "payroll@demo-org.test (Payroll Admin - Suresh, payroll.loan.manage); arjun@demo-org.test (employee).",
+    "steps": [
+      "As payroll, open an active loan of at least ₹50,000 and look at the Loan perquisite block.",
+      "Press Change, choose 'Yes, medical treatment', leave Reason empty and press Save.",
+      "Type 'Surgery for a parent' as the reason and press Save.",
+      "Press Change again, choose SBI rate for 'Vehicle loan', Exempt 'No', Save.",
+      "Calculate the current month's run for that person and open the readiness checks and the payslip.",
+      "Negative: as Arjun, open the same loan in My pay (or call PUT /api/v1/payroll/loans/<id>/perquisite)."
+    ],
+    "expected": "Step 1: 'SBI rate used: Personal loan', 'Exempt: No'. Step 2: not saved; 'Say why it is exempt…' under Reason and the cursor in Reason. Step 3: toast 'Loan perquisite saved for …'; Exempt shows 'Yes, medical treatment: Surgery for a parent'. Step 4: saved, reason cleared. Step 5: a warning 'loan perquisite rates are not loaded, so no loan perquisite is worked out. Ask your CA to load the SBI rates.'; the payslip has no loan perquisite line (no rate is ever guessed). Step 6: no Change button; the API answers 403.",
+    "stories": [
+      "Screens/Pay/PAY-17 · Loans and advances"
+    ],
+    "note": "Positive and negative. D14, answers 2404-2405. The line with an amount appears only after a CA publishes SBI rates in a new IN.PERQ-LOAN version."
   }
 ]

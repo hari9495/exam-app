@@ -137,6 +137,39 @@ describe('PAY-17 · Payroll › Loans and advances (live)', () => {
     expect(screen.queryByText('Salary advance')).not.toBeInTheDocument();
   });
 
+  it('D14: the loan perquisite: exempt needs a reason (pressed too early: error and focus), then the loan type and mark are sent', async () => {
+    const onPerquisite = fn();
+    const loans = [{ ...LOANS[0]!, perquisite: { purpose: 'personal' as const, exempt: false, reason: null } }];
+    render(<LoansScreen live={live({ loans, onPerquisite })} />);
+    await ue.click(screen.getByRole('button', { name: 'Change the loan of Arjun Kulkarni' }));
+    const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByText('Personal loan')).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('button', { name: 'Change the loan perquisite' }));
+    const d = await screen.findByRole('dialog', { name: 'Loan perquisite' });
+    await ue.click(within(d).getByRole('radio', { name: 'Yes, medical treatment' }));
+    await ue.click(within(d).getByRole('button', { name: 'Save' }));
+    expect(onPerquisite).not.toHaveBeenCalled();
+    expect(within(d).getByRole('textbox', { name: /Reason/ })).toHaveFocus();
+    expect(within(d).getByText(/Say why it is exempt/)).toBeInTheDocument();
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Surgery for a parent');
+    await ue.click(within(d).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(onPerquisite).toHaveBeenCalledWith(loans[0], { purpose: 'personal', exempt: true, reason: 'Surgery for a parent' }));
+    expect((await screen.findAllByText('Loan perquisite saved for Arjun Kulkarni.')).length).toBeGreaterThan(0);
+  });
+
+  it('D14: no Change on one’s own loan, without the key, or with no perquisite call', async () => {
+    const loans = [{ ...LOANS[0]!, perquisite: { purpose: 'vehicle' as const, exempt: true, reason: 'Cancer treatment' } }];
+    const { unmount } = render(<LoansScreen live={live({ loans: [{ ...loans[0]!, mine: true }], onPerquisite: fn() })} />);
+    await ue.click(screen.getByText('Arjun Kulkarni'));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('Yes, medical treatment: Cancer treatment')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('button', { name: 'Change the loan perquisite' })).not.toBeInTheDocument();
+    unmount();
+    render(<LoansScreen live={live({ loans })} />);
+    await ue.click(screen.getByRole('button', { name: 'Change the loan of Arjun Kulkarni' }));
+    expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Change the loan perquisite' })).not.toBeInTheDocument();
+  });
+
   it('without payroll.loan.manage there is no Add loan and no Change; no access shows who grants it', () => {
     const { unmount } = render(<LoansScreen live={live({ can: { manage: false } })} />);
     expect(screen.queryByRole('button', { name: 'Add loan' })).not.toBeInTheDocument();
