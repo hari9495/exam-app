@@ -77,6 +77,7 @@ describe('notification catalog', () => {
       'expense.card.update',
       'time.web_device.requested',
       'nudge.reminder',
+      'leave.colleague_away',
       'perf.goal.checkin_due',
       'perf.feedback.received',
       'perf.feedback.requested',

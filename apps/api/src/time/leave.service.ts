@@ -6,6 +6,8 @@ import { employeeLanguage, translated } from '../global/global-data';
 import { Viewer, buildViewer, has, implicitSql, tenantWide, type ScopeUser, inEntitySql } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { payOn } from '../payroll/fnf.service';
 import { ApplyLeaveDto, AdjustDto, LeavePlanDto } from './dto';
 import {
@@ -110,6 +112,7 @@ export class LeaveService implements OnModuleInit {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly engine: ApprovalsEngine,
     private readonly dayEngine: DayEngine,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -120,7 +123,7 @@ export class LeaveService implements OnModuleInit {
       risk: 'normal',
       quickApprove: true,
       autoActions: false,
-      onDecided: (tx, req, outcome) => this.requestDecided(tx, req, outcome),
+      onDecided: (tx, req, outcome, afterCommit) => this.requestDecided(tx, req, outcome, afterCommit),
       requesterLink: () => '/yx/time/leave',
       // Founder (30 Oct 2026): "Send back for changes" (setting leave.send_back, default on).
       sendBack: { allowed: (tx, req) => this.sendBackAllowed(tx, req), apply: (tx, req, reason) => this.sentBack(tx, req, reason) },
@@ -591,6 +594,10 @@ export class LeaveService implements OnModuleInit {
         if (dto.delegateUserId === c.userId) p.blocks.push('Choose someone other than yourself to approve while you are away.');
         else if (!(await tx.user.findFirst({ where: { organizationId: org, id: dto.delegateUserId, status: 'active' }, select: { id: true } }))) p.blocks.push('Choose an active colleague to approve while you are away.');
       }
+      // Batch A C4 (answer 2313): colleagues to tell on approval: active people of this company, never the person on leave.
+      const notify = dto.notifyUserIds ?? [];
+      if (notify.includes(f.userId ?? '')) p.blocks.push('You do not need to tell yourself. Remove your own name from Notify colleagues.');
+      else if (notify.length && (await tx.user.count({ where: { organizationId: org, id: { in: notify }, status: 'active' } })) !== notify.length) p.blocks.push('Choose active colleagues of your company to notify.');
       if (p.blocks.length) throw new BadRequestException({ statusCode: 400, code: 'LEAVE_RULES', message: p.blocks[0], blocks: p.blocks });
       const atOnce = raiser ? (await this.hrApproval(tx, c, f, today, raiser.v, raiser.own)) === 'approved' : false;
       const reason = dto.reason?.trim() || null;
@@ -607,6 +614,7 @@ export class LeaveService implements OnModuleInit {
           reason,
           certificate: p.certificateNeeded || dto.certificate ? 'pending' : 'none',
           delegateUserId: dto.delegateUserId ?? null,
+          notifyUserIds: dto.notifyUserIds ?? [],
           raisedBy: c.userId ?? null,
           expectedOn: p.type.kind === 'maternity' && dto.expectedOn ? asDate(dto.expectedOn) : null,
           maternityCase: p.type.kind === 'maternity' ? (dto.maternityCase ?? null) : null,
@@ -721,7 +729,7 @@ export class LeaveService implements OnModuleInit {
   }
 
   /** P03 effect, exactly once in the decision's transaction (YX-WF-10): the ledger debit, delegation, attendance. */
-  private async requestDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
+  private async requestDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected', afterCommit?: (fn: () => Promise<void>) => void) {
     const c: CompanyContext = { organizationId: wf.organizationId, isSuperAdmin: false };
     const r = await tx.leaveRequest.findFirst({ where: { organizationId: wf.organizationId, id: wf.subjectId } });
     if (!r || r.status !== 'pending') return;
@@ -747,6 +755,17 @@ export class LeaveService implements OnModuleInit {
     const manages = await tx.employeeAssignment.count({ where: { organizationId: r.organizationId, managerEmployeeId: r.employeeId, supersededAt: null, validFrom: { lte: r.toOn }, OR: [{ validTo: null }, { validTo: { gte: r.fromOn } }] } });
     if (emp?.userId && fullDay && (r.delegateUserId || manages)) await this.engine.delegateForLeave(tx, c, emp.userId, from, to, r.delegateUserId);
     await this.dayEngine.evaluate(tx, c, r.employeeId, from, to);
+    // Batch A C4 (answer 2313): the colleagues named are told now, on approval, with the dates only (never the type or reason).
+    if (r.notifyUserIds.length && afterCommit) {
+      const person = await tx.employee.findFirst({ where: { organizationId: r.organizationId, id: r.employeeId }, select: { preferredName: true, givenName: true, familyName: true } });
+      const name = person ? [person.preferredName ?? person.givenName, person.familyName].filter(Boolean).join(' ') : 'A colleague';
+      const text = `${name} is away ${from === to ? 'on' : 'from'} ${rangeText(from, to)}.`;
+      const to_ = r.notifyUserIds.filter((u) => u !== emp?.userId);
+      await audit(tx, c, 'leave.colleagues_told', 'leave_request', r.id, { count: to_.length });
+      afterCommit(() =>
+        this.notifications.notifySystem({ organizationId: r.organizationId, isSuperAdmin: false }, to_, 'leave.colleague_away', { entityType: 'leave_request', entityId: r.id, contextText: text, linkPath: '/yx/home' }, { subject: `${name} is away`, html: `<p>${escapeHtml(text)}</p>` }, emp?.userId ?? null),
+      );
+    }
   }
 
   private async cancelDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {

@@ -370,4 +370,59 @@ describe('Time batch A', () => {
       expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.payCorrection.count({ where: { employeeId: ids.lopEmp } }))).toBe(0);
     });
   });
+
+  // ------------------------------------------------------------------ C4: notify colleagues on approval
+  describe('C4 notify colleagues', () => {
+    const decide = (who: Who, taskId: string, decision: 'approve' | 'reject', reason?: string) => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, ...(reason ? { reason } : {}) });
+    const leaveTask = async (requestId: string) => {
+      const wf = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: requestId } }));
+      return (await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: wf.id, status: 'open' } }))).id;
+    };
+    const told = (userId: string) => inA((tx) => tx.userNotification.findMany({ where: { recipientUserId: userId, type: 'leave.colleague_away' } }));
+    const weekday = (n: number) => { for (let i = n; i < n + 7; i++) if (new Date(`${d(i)}T00:00:00Z`).getUTCDay() !== 0) return d(i); return d(n); };
+    const leaves = () => inA((tx) => tx.leaveRequest.count({ where: { employeeId: ids.empEmp } }));
+    beforeAll(async () => {
+      ids.EL = (await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'EL', name: 'Earned leave', kind: 'earned', paid: true }).expect(201)).body.id;
+      ids.elPolicy = (await api('hrAdmin', 'post', '/time/setup/policies').send({ name: `Staff ${run}` }).expect(201)).body.id;
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.elPolicy}/versions`).send({ validFrom: '2025-01-01', lines: [{ leaveTypeId: ids.EL, annualDays: 12, frequency: 'yearly', proRata: false, rounding: 0.5, carryForwardMax: 0 }] }).expect(201);
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.elPolicy}/assign`).send({ scopeType: 'legal_entity', scopeId: ids.entityA, validFrom: '2025-01-01' }).expect(201);
+      await api('hrAdmin', 'post', `/time/people/${ids.empEmp}/adjust`).send({ leaveTypeId: ids.EL, days: 10, reason: 'Opening balance' }).expect(201);
+    });
+
+    it('negative: more than 10, yourself, someone of another company or not an id are refused with nothing saved', async () => {
+      const before = await leaves();
+      const on = weekday(40);
+      const body = (notifyUserIds: unknown) => ({ leaveTypeId: ids.EL, from: on, to: on, reason: 'Family function', notifyUserIds });
+      await api('emp', 'post', '/time/me/leave').send(body(Array.from({ length: 11 }, () => randomUUID()))).expect(400);
+      expect((await api('emp', 'post', '/time/me/leave').send(body([users.emp])).expect(400)).body.message).toMatch(/do not need to tell yourself/);
+      expect((await api('emp', 'post', '/time/me/leave').send(body([users.empB])).expect(400)).body.message).toBe('Choose active colleagues of your company to notify.');
+      await api('emp', 'post', '/time/me/leave').send(body(['not-an-id'])).expect(400);
+      await api('emp', 'post', '/time/me/leave').send(body([users.peer, users.peer])).expect(400);
+      expect(await leaves()).toBe(before);
+    });
+
+    it('nobody is told on applying; on approval the colleagues get the dates only, never the type or reason', async () => {
+      const on = weekday(45);
+      const r = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: on, to: on, reason: 'Secret family function', notifyUserIds: [users.peer, users.hrAdmin] }).expect(201)).body;
+      expect(await told(users.peer)).toHaveLength(0);
+      await decide('mgr', await leaveTask(r.id), 'approve').expect(200);
+      for (const u of [users.peer, users.hrAdmin]) {
+        const n = await told(u);
+        expect(n).toHaveLength(1);
+        expect(n[0].contextText).toMatch(/is away on /);
+        expect(n[0].contextText).not.toMatch(/Earned|Secret|leave/i);
+      }
+      // Not named: not told; another company sees nothing.
+      expect(await told(users.mgr)).toHaveLength(0);
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.userNotification.count({ where: { type: 'leave.colleague_away' } }))).toBe(0);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'leave.colleagues_told', entityId: r.id } }))).toBe(1);
+    });
+
+    it('turned down: nobody is told', async () => {
+      const on = weekday(50);
+      const r = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: on, to: on, notifyUserIds: [users.mgr] }).expect(201)).body;
+      await decide('mgr', await leaveTask(r.id), 'reject', 'Audit week').expect(200);
+      expect(await told(users.mgr)).toHaveLength(0);
+    });
+  });
 });

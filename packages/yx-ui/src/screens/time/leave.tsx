@@ -4,7 +4,7 @@ import { CalendarPlus, ChevronLeft, ChevronRight, Download, Minus, Plus } from '
 import { PhoneFrame } from '../_kit/frames';
 import { Segment } from '../people/people-kit';
 import { Button, IconButton } from '../../components/button';
-import { Badge, DayDate, PersonLabel } from '../../components/display';
+import { Badge, DayDate, PersonLabel, Tag } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog, Dialog } from '../../components/overlay';
@@ -13,7 +13,7 @@ import { type TableColumn } from '../../components/table';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { NumberField, TextArea } from '../../components/inputs';
 import { ErrorSummary, FieldRow, FormField, useSaveErrors, useTooEarly } from '../../components/field';
-import { PersonPicker, Select } from '../../components/select';
+import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker, DateRangePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
 import { Calendar, TeamCalendar, type CalendarEvent, type TeamAbsence } from '../../components/calendar';
@@ -383,7 +383,7 @@ export function LeaveRequestView({
 }
 
 /* =====================================================================
-   TIM-18 · Apply leave (range with halves, live effect, delegate, notice warning)
+   TIM-18 · Apply leave (range with halves, live effect, delegate, notify colleagues, notice warning)
    ===================================================================== */
 
 export interface ApplyLeaveProps {
@@ -396,6 +396,8 @@ export interface ApplyLeaveProps {
   self?: string;
   blocked?: boolean;
   sandwich?: 'none' | 'sandwich' | 'always';
+  /** Batch A C4: colleagues already chosen under Notify colleagues (stories). */
+  notify?: string[];
 }
 
 /** Default range Fri 23 – Mon 26 Oct: clear of Divya's own pending 12–13 Oct, with the 4th Saturday and Sunday in between. */
@@ -413,7 +415,7 @@ export interface LeaveDraft { type: LeaveCode; from: Date | null; to: Date | nul
 const countFor = (type: LeaveCode, from: Date, to: Date, fh: Half, th: Half, sandwich: ApplyLeaveProps['sandwich']) =>
   countLeaveDays({ from, to, fromHalf: fh, toHalf: th, holidays: holidayDates, weeklyOffDays: [0], weeklyOffDates: ALT_SAT, sandwich: type === 'CL' || type === 'CO' ? 'none' : sandwich ?? 'sandwich' });
 
-export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: to0 = DEFAULT_TO, fromHalf: fh0 = 'full', toHalf: th0 = 'full', blocked = false, sandwich = 'sandwich', phone, person = ME.name, own = person === ME.name, onDraft, onOpenRequest }: Omit<ApplyLeaveProps, 'self'> & { phone?: boolean; /** Whose leave (HR or a manager applying for someone). */ person?: string; /** The person is applying for themselves. */ own?: boolean; onDraft?: (d: LeaveDraft) => void; onOpenRequest?: (r: LeaveRequestRow) => void }) {
+export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: to0 = DEFAULT_TO, fromHalf: fh0 = 'full', toHalf: th0 = 'full', blocked = false, sandwich = 'sandwich', notify: notify0 = [], phone, person = ME.name, own = person === ME.name, onDraft, onOpenRequest }: Omit<ApplyLeaveProps, 'self'> & { phone?: boolean; /** Whose leave (HR or a manager applying for someone). */ person?: string; /** The person is applying for themselves. */ own?: boolean; onDraft?: (d: LeaveDraft) => void; onOpenRequest?: (r: LeaveRequestRow) => void }) {
   const [type, setType] = useState<LeaveCode>(t0);
   const [range, setRange] = useState({ from: f0 as Date | null, to: to0 as Date | null });
   const [fh, setFh] = useState<Half>(fh0);
@@ -424,6 +426,8 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
     setReason(reasonFor(t, person));
   };
   const [delegate, setDelegate] = useState(true);
+  // Batch A C4: colleagues told on approval (dates only).
+  const [notify, setNotify] = useState<string[]>(notify0);
   // null = not picked yet: the first report who is in on those dates.
   const [delegateTo, setDelegateTo] = useState<string | null>(null);
   const dateId = useId();
@@ -550,6 +554,11 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
         </FieldRow>
         <FormField id="apply-reason" label="Reason" required><TextArea rows={2} value={reason} onChange={setReason} /></FormField>
         {type === 'SL' && <div id={certId}><FormField label="Medical certificate" helper="Needed for more than 2 days. Only HR sees the file; your manager sees whether it's attached and verified."><FileUpload upload={async () => {}} accept={['application/pdf', 'image/jpeg', 'image/png']} /></FormField></div>}
+        {own && (
+          <FormField id="apply-notify" label="Notify colleagues" optional helper={NOTIFY_HELP} error={notify.length > NOTIFY_MAX ? `Choose up to ${NOTIFY_MAX} people.` : undefined}>
+            <MultiSelect aria-label="Notify colleagues" searchable placeholder="Choose people" value={notify} onChange={setNotify} options={TEAM.filter((t) => t.name !== person).slice(0, 14).map((t) => ({ value: t.name, label: t.name, description: t.role }))} />
+          </FormField>
+        )}
         {own && isLead && <Checkbox label="Delegate my approvals while I'm away" checked={delegate} onChange={setDelegate} />}
         {own && isLead && delegate && (
           <FormField label="Delegate to" error={delegateOff ? `${delegateOff.text} is off then too. Pick someone who is in.` : undefined}>
@@ -589,6 +598,40 @@ export function ApplyLeaveForm({ type: t0 = 'EL', from: f0 = DEFAULT_FROM, to: t
 /** Apply leave in a drawer (desk) or bottom sheet (phone): Send is blocked while the form has errors; sent shows what happens next. */
 type PickPerson = { id: string; name: string; role: string; department: string };
 /** People to apply for, keyed by name: a manager's own reports, or everyone for HR. */
+/** Batch A C4 (answer 2313): up to 10 colleagues, told on approval with the dates only. */
+const NOTIFY_MAX = 10;
+const NOTIFY_HELP = `Up to ${NOTIFY_MAX} people. They are told when the leave is approved, with the dates only, never the type or the reason.`;
+
+/** Live: find colleagues one at a time; the chosen ones show as tags to remove. */
+function NotifyColleagues({ value, onChange, onFind }: { value: { id: string; name: string }[]; onChange: (v: { id: string; name: string }[]) => void; onFind: (q: string) => Promise<LivePersonOption[]> }) {
+  const [names, setNames] = useState<Record<string, string>>({});
+  return (
+    <div className="yx-tim-stack">
+      {value.length < NOTIFY_MAX ? (
+        <LivePicker
+          kind="people"
+          label="Colleague to notify"
+          value={null}
+          names={names}
+          onChange={(id) => id && !value.some((p) => p.id === id) && onChange([...value, { id, name: names[id] ?? 'Colleague' }])}
+          onPick={(_k, q) => onFind(q).then((r) => (setNames((n) => ({ ...n, ...Object.fromEntries(r.map((p) => [p.id, p.label])) })), r))}
+        />
+      ) : (
+        <p className="yx-tim-muted">{NOTIFY_MAX} people chosen, the most you can notify.</p>
+      )}
+      {value.length > 0 && (
+        <div className="yx-tim-row" aria-label="Colleagues to notify">
+          {value.map((p) => (
+            <Tag key={p.id} onRemove={() => onChange(value.filter((x) => x.id !== p.id))} removeLabel={`Remove ${p.name}`}>
+              {p.name}
+            </Tag>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const pickPeople = (hr: boolean): PickPerson[] => (hr ? TEAM : myReports()).map((t) => ({ id: t.name, name: t.name, role: t.role, department: `${t.dept} · ${t.location}` }));
 
 /**
@@ -2504,6 +2547,7 @@ function LiveApplyLeavePanel({ data, live, forSomeone, resend, onClose }: { data
   const [expectedOn, setExpectedOn] = useState<Date | null>(null);
   const [mCase, setMCase] = useState<MaternityCase>('birth');
   const [delegate, setDelegate] = useState<string | null>(null);
+  const [notify, setNotify] = useState<{ id: string; name: string }[]>([]);
   const [certificate, setCertificate] = useState(false);
   const [plan, setPlan] = useState<LeavePlan | null>(null);
   const { busy, error, run } = useRun();
@@ -2571,7 +2615,7 @@ function LiveApplyLeavePanel({ data, live, forSomeone, resend, onClose }: { data
       return;
     }
     void run('apply', async () => {
-      const input = { leaveTypeId: typeId!, from: f, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined, ...extra };
+      const input = { leaveTypeId: typeId!, from: f, to: end, fromHalf, toHalf, reason: reason.trim() || undefined, delegateUserId: delegate ?? undefined, certificate: certificate || undefined, ...(!forSomeone && notify.length ? { notifyUserIds: notify.map((p) => p.id) } : {}), ...extra };
       if (forSomeone && target) {
         await forSomeone.onApply(target.employee.id, input);
         toast({ tone: 'success', title: plan?.approval === 'approved' ? `Leave approved for ${target.employee.name}` : `Leave applied for ${target.employee.name} · sent for approval` });
@@ -2648,6 +2692,11 @@ function LiveApplyLeavePanel({ data, live, forSomeone, resend, onClose }: { data
           {plan?.certificateNeeded && (
             <FormField id="lv-cert" label="Medical certificate" error={errorOf('lv-cert')}>
               <Checkbox label={their('I will give a certificate to HR', 'They will give a certificate to HR')} description={their("Only HR sees it; your manager sees only whether it's in and verified.", "Only HR sees it; their manager sees only whether it's in and verified.")} checked={certificate} onChange={setCertificate} />
+            </FormField>
+          )}
+          {!forSomeone && (
+            <FormField id="lv-notify" label="Notify colleagues" optional helper={NOTIFY_HELP}>
+              <NotifyColleagues value={notify} onChange={setNotify} onFind={(q) => live!.onFindPeople(q)} />
             </FormField>
           )}
           {!forSomeone && (

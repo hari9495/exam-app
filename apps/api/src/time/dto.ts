@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, ValidateNested, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsISO8601, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, ValidateNested, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsISO8601, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const DATE = { strict: true } as const;
@@ -48,6 +48,14 @@ export class ApplyLeaveDto extends LeavePlanDto {
   @IsOptional()
   @IsBoolean()
   certificate?: boolean;
+
+  /** Batch A C4 (answer 2313): up to 10 colleagues told on approval, with the dates only. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  notifyUserIds?: string[];
 }
 
 export class ReasonDto {

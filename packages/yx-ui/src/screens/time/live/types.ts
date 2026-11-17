@@ -71,6 +71,8 @@ export interface LeaveInput {
   reason?: string;
   delegateUserId?: string;
   certificate?: boolean;
+  /** Batch A C4: up to 10 colleagues told on approval, with the dates only. */
+  notifyUserIds?: string[];
   expectedOn?: string;
   maternityCase?: MaternityCase;
 }
