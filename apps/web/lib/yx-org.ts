@@ -116,6 +116,8 @@ export const YX_KEYS = [
   'asset.manage',
   // M05 expenses E1.
   'expense.policy.manage',
+  // B8/E5: Settings 4.11 Benefits & FBP.
+  'benefits.settings.manage',
   'expense.policy.view',
   // HLP-10 / HLP-11 company policies.
   'policy.manage',

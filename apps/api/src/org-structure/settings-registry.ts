@@ -49,6 +49,8 @@ export function moduleSettingKey(key: string): string | null {
   if (LEAVE_PAGE_KEYS.has(key)) return 'leave.settings.manage';
   if (key.startsWith('expense.')) return 'expense.policy.manage';
   if (key.startsWith('perf.')) return 'perf.setup.manage';
+  // B8/E5 (answer 2406): the flexible benefit settings on Settings 4.11.
+  if (key.startsWith('benefits.')) return 'benefits.settings.manage';
   // Assessments AS-2 (Settings 6.5): test owners and System admins with the assessments settings key.
   if (key.startsWith('asmt.')) return 'assessments.settings.manage';
   return null;
@@ -659,6 +661,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'payroll.payslip_email': { label: 'Email payslips as password-protected PDFs', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'payroll.one_time_review_above': { label: 'One-time pay above this amount needs approval', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '10000', '25000', '50000', '100000'], default: '50000' },
   // Founder decision 8 (29 Oct 2026): a loan or advance is capped at months of gross pay, and only after probation by default.
+  // B8/E5 (founder answer 2406): what happens to a flexible benefit balance left unclaimed at the end of the tax year: paid
+  // as taxable salary in March (the default) or carried into the next year. At exit it is always paid.
+  'benefits.fbp.unclaimed': { label: 'Unclaimed flexible benefit balance at year end', scopes: ['tenant'], dated: false, values: ['pay', 'carry'], default: 'pay' },
   'payroll.loan.max_gross_months': { label: 'A loan or advance may be at most (months of gross pay)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['none', '1', '2', '3', '4', '6', '12'], default: '2' },
   'payroll.loan.after_probation': { label: 'Who may ask for a loan or advance', scopes: ['tenant', 'legal_entity'], dated: false, values: ['confirmed', 'everyone'], default: 'confirmed' },
   // Founder answer 1 (30 Oct 2026): the yearly interest rate is the company's, per loan type; employees never type it.

@@ -5,6 +5,7 @@ import { SETTINGS_GROUPS } from './settings-groups';
 import { PAY_SETTINGS, pendingOnPage, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
 import { RegistrationSheet } from '../ops/contract';
+import { FlexComponentSheet } from './benefits-live';
 import './settings.css';
 
 const meta: Meta = {
@@ -41,6 +42,16 @@ export const P4_10: S = { name: '4.10 Earned wage access', render: () => <Settin
 export const P4_10_ReadOnly: S = { name: '4.10 Earned wage access · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.10" readOnly /> };
 export const P4_11: S = { name: '4.11 Benefits & FBP', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.11" /> };
 export const P4_11_ReadOnly: S = { name: '4.11 Benefits & FBP · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.11" readOnly /> };
+export const P4_11_FlexComponent: S = {
+  name: '4.11 Benefits & FBP · flexible component (B8/E5)',
+  render: () => (
+    <>
+      <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="4.11" />
+      <FlexComponentSheet initial={{ id: 'f1', code: 'phone', name: 'Phone and internet', monthlyAmount: '1500.00', taxableIfUnclaimed: true, expenseCategoryCode: 'phone_internet', active: true, version: 1 }} categories={[{ code: 'phone_internet', name: 'Phone and internet' }, { code: 'meals', name: 'Meals' }]} onClose={() => undefined} onSave={async () => undefined} />
+    </>
+  ),
+};
+export const P4_11_FlexComponentNew: S = { name: '4.11 Benefits & FBP · add flexible component (B8/E5)', render: () => <FlexComponentSheet initial={null} categories={[{ code: 'phone_internet', name: 'Phone and internet' }]} onClose={() => undefined} onSave={async () => undefined} /> };
 
 // S-3 (answers 1323 to 1325): the Payroll & Statutory pages with the company's settings. `page` picks one (0 to 2). A
 // change waits for a second person while the company switch is on (the default).

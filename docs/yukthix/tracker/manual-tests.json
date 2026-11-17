@@ -23125,5 +23125,45 @@
       "Screens/Security/SEC-02 · Legal notices › Accessibility statement"
     ],
     "note": "Text from docs/yukthix/accessibility-statement.md (now marked published)."
+  },
+  {
+    "id": "MT-BATH3-02",
+    "area": "Pay: batch H part 3 (18 Nov 2026)",
+    "screen": "Settings · Benefits & FBP (4.11, flexible benefits)",
+    "url": "http://localhost:3000/yx/settings/benefits",
+    "account": "admin@demo-org.test (org admin: benefits.settings.manage); hr-tester@demo-org.test without the key for the refusal.",
+    "steps": [
+      "Open the page: only the 'Flexible benefit plan (FBP)' section shows; no insurance, NPS or marketplace sample rows.",
+      "Press Add component; press Add component again with everything empty.",
+      "Fill Name 'Phone and internet', Code 'phone', Entitlement ₹1,500, Claimed under 'Phone and internet', Paid as taxable salary; Add.",
+      "Add another component with the same expense category.",
+      "Edit Phone and internet: change the amount to 1,600 and save; then set it back.",
+      "Change 'Unclaimed balance at year end' to 'Carry forward to the next year' and save; then back to March.",
+      "Negative: sign in as hr-tester and open the page."
+    ],
+    "expected": "Step 2: not saved; 'Enter the name people see…' under Name and the cursor in Name. Step 3: toast 'Phone and internet added.'; the row shows ₹1,500, Phone and internet, Paid as taxable salary, Offered. Step 4: refused, 'That expense category is already linked to Phone and internet.' Step 5: saved; the code field cannot be changed. Step 6: 'Benefits settings saved'. Step 7: no access (the API answers 403).",
+    "stories": [
+      "Screens/Settings/Group 4 · Payroll & Statutory"
+    ],
+    "note": "Positive and negative. B8/E5, answers 2406, 2407, 2411."
+  },
+  {
+    "id": "MT-BATH3-03",
+    "area": "Pay: batch H part 3 (18 Nov 2026)",
+    "screen": "Expenses · My claims (a flexible benefit claim) and the March settlement",
+    "url": "http://localhost:3000/yx/me/expenses",
+    "account": "arjun@demo-org.test (employee); payroll@demo-org.test (payroll.input.manage) for the settlement API.",
+    "steps": [
+      "With 'Phone and internet' set up at ₹1,500 a month (MT-BATH3-02), as Arjun call GET /api/v1/benefits/flex/me.",
+      "As Arjun, make a claim with one 'Phone and internet' bill of the balance plus ₹0.01 and press Check / Submit.",
+      "Change the bill to exactly the balance and submit.",
+      "As payroll, POST /api/v1/benefits/flex/settlements {\"kind\":\"year_end\",\"taxYear\":\"2026-27\",\"employeeId\":\"<Arjun>\"} while the claim still waits; decide it; send again; send a third time.",
+      "Negative: as Arjun, POST the same settlement."
+    ],
+    "expected": "Step 1: entitled = ₹1,500 × months worked this tax year. Step 2: blocked, 'your Phone and internet balance for 2026-27 is ₹…; claim at most that.' Step 3: submitted. Step 4: first refused, 'claims of ₹… still wait for a decision'; then one taxable one-time pay 'Unclaimed flexible benefits' in March 2027 for what is left; the third time settles nothing. Step 5: 403.",
+    "stories": [
+      "Screens/Settings/Group 4 · Payroll & Statutory"
+    ],
+    "note": "Positive and negative. B8/E5. The employee ledger page has no design yet (question 2455), so steps 1 and 4 use the API."
   }
 ]

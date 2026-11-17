@@ -368,8 +368,9 @@ File: `packages/yx-ui/src/screens/settings/settings-g4.stories.tsx`.
 | P4_9_Registration · 4.9 Contract labour · registration (CL-5) | live | contract-labour map: `RegistrationSheet` on /yx/settings/contract-labour; `POST/PUT contract-labour/registrations` |
 | P4_10 · 4.10 Earned wage access | live (gap) | /yx/payroll/ewa (`EwaAdminScreen`, `EwaPolicy`); partner and fees: unsure |
 | P4_10_ReadOnly · 4.10 Earned wage access · read-only | live (gap) | read-only: the page passes `canManage` |
-| P4_11 · 4.11 Benefits & FBP | design only, feature not built | searched `insurance|fbp|flexible benefit|employer nps` in apps/api/src: only accidents, letter fields and the country pack; no benefits tables |
-| P4_11_ReadOnly · 4.11 Benefits & FBP · read-only | design only, feature not built | as the page |
+| P4_11 · 4.11 Benefits & FBP | live in part (B8/E5, 18 Nov 2026): /yx/settings/benefits | the FBP section only: `ben.fbp_heads` (flexible components, GET/POST/PUT /benefits/flex/*, benefits.settings.manage) and `ben.fbp_sweep` (company setting benefits.fbp.unclaimed, pay in March by default or carry). Insurance plans, enrolment, employer NPS and marketplaces: gap, feature not built (left out, never sample values) |
+| P4_11_ReadOnly · 4.11 Benefits & FBP · read-only | live in part | without benefits.settings.manage, or while acting for someone else |
+| P4_11_FlexComponent / P4_11_FlexComponentNew · flexible component sheet | live (B8/E5) | Add and Edit on the components list |
 | PayLive · Payroll page · live with the company settings (S-3) | live | the three S-3 pages with sample company values (`page` 0 to 2): Starter default chips, the legal limits naming the Act, Send for approval |
 | PayLiveWaiting · Payroll policies · live, a change waiting for a second person (1325) | live | two changes waiting: one from someone else (Approve, Reject), one of the viewer's own (Withdraw only) |
 
