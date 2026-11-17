@@ -1,7 +1,8 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen } from './integrity';
+import { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen, IntegrityReportsScreen } from './integrity';
+import type { LiveIntegrityReportData } from './integrity-live';
 import { ResultAppealScreen } from './candidate';
 import type { LiveIncidentWorkspace } from './integrity-live';
 import { LIVE_APPEAL_ROWS, LIVE_DECISION, LIVE_INCIDENT, LIVE_INCIDENT_ROWS, LIVE_REVIEWERS, ME } from './integrity-live-samples';
@@ -198,5 +199,43 @@ describe('evidence frames and the candidate summary (answer 2262)', () => {
     expect(screen.getByRole('list', { name: 'Flagged moments' })).toHaveTextContent('10:32:05 am webcam multiple faces');
     expect(screen.getByText(/3 camera frames and 1 screen capture are kept as evidence/)).toBeInTheDocument();
     expect(screen.queryByRole('img', { name: /frame/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('PRC-20 live integrity reports', () => {
+  const DATA: LiveIntegrityReportData = {
+    test: { id: 't1', title: 'Campus aptitude 2026' },
+    attempts: 3,
+    minSame: 5,
+    clusters: [{ id: 'CL-01', who: ['Rahul Deshpande', 'Harish Gowda'], same: 5, timing: 'Started within 4 min', incident: 'Not raised' }],
+    sizes: [{ size: '2', clusters: 1 }, { size: '3', clusters: 0 }, { size: '4', clusters: 0 }, { size: '5+', clusters: 0 }],
+    pairs: [{ pair: 'Rahul Deshpande · Harish Gowda', question: 'Reverse a list', similarity: 91 }],
+    agreement: { weeks: [{ week: 'W47', kappa: 0.74 }], target: 0.7, markers: [{ pair: 'Arvind Swamy · Farah Siddiqui', moderated: 1, of: 3 }], doubleMarked: 3 },
+  };
+  const reports = (over = {}) => ({ state: 'ready' as const, onRetry: vi.fn(), tests: [{ id: 't1', title: 'Campus aptitude 2026' }], onTest: vi.fn(), data: DATA, onExport: vi.fn().mockResolvedValue(undefined), ...over });
+
+  it('shows the clusters, the similar code and the marker pairs; Export asks for the workbook', async () => {
+    const live = reports();
+    render(<IntegrityReportsScreen live={live} />);
+    expect(screen.getByText('Rahul Deshpande, Harish Gowda')).toBeInTheDocument();
+    await ue.click(screen.getByRole('tab', { name: 'Plagiarism and code similarity' }));
+    expect(screen.getByText('91 %')).toBeInTheDocument();
+    await ue.click(screen.getByRole('tab', { name: 'Inter-rater agreement' }));
+    expect(screen.getByText('1 of 3 moderated')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Export XLSX' }));
+    expect(live.onExport).toHaveBeenCalled();
+  });
+
+  it('negative: nothing found says what was checked; a failed export says why', async () => {
+    const live = reports({ data: { ...DATA, clusters: [], pairs: [], agreement: { ...DATA.agreement, weeks: [], markers: [], doubleMarked: 0 } }, onExport: vi.fn().mockRejectedValue(new Error('You do not have access to this test.')) });
+    render(<IntegrityReportsScreen live={live} />);
+    expect(screen.getByText('No collusion clusters found.')).toBeInTheDocument();
+    expect(screen.getByText(/no two shared 5 or more identical wrong answers/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('tab', { name: 'Plagiarism and code similarity' }));
+    expect(screen.getByText('No similar code found.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('tab', { name: 'Inter-rater agreement' }));
+    expect(screen.getByText('No answers were marked twice yet.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Export XLSX' }));
+    expect(await screen.findByText('You do not have access to this test.')).toBeInTheDocument();
   });
 });

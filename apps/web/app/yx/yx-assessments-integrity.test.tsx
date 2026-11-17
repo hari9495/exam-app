@@ -3,12 +3,13 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
 import { useParams, useRouter } from 'next/navigation';
-import { apiFetch } from '../../lib/api-client';
+import { apiFetch, apiFetchBlob } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxIntegrityQueuePage from './(app)/hiring/assessments/integrity/page';
 import YxIncidentPage from './(app)/hiring/assessments/integrity/[id]/page';
 import YxAppealsPage from './(app)/hiring/assessments/appeals/page';
 import YxLiveConsolePage from './(app)/hiring/assessments/tests/[id]/live/page';
+import YxIntegrityReportsPage from './(app)/hiring/assessments/integrity-reports/page';
 import { useExamMonitoring } from '../../lib/hooks/useExamMonitoring';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
@@ -46,6 +47,9 @@ beforeEach(() => {
     if (path === '/asmt/integrity/i1') return INC;
     if (path === '/asmt/integrity/reviewers') return [{ id: 'u-gopal', name: 'Gopal Menon' }];
     if (path === '/asmt/appeals') return [APPEAL];
+    if (path === '/exams?pageSize=100') return { data: [{ id: 'exam-1', title: 'Campus aptitude 2026' }], total: 1 };
+    if (path === '/asmt/integrity-reports/exam-1')
+      return { test: { id: 'exam-1', title: 'Campus aptitude 2026' }, attempts: 3, minSame: 5, clusters: [{ id: 'CL-01', who: ['Rahul Deshpande', 'Harish Gowda'], same: 5, timing: 'Started within 4 min', incident: 'Not raised' }], sizes: [], pairs: [], agreement: { weeks: [], target: 0.7, markers: [], doubleMarked: 0 } };
     if (path === '/asmt/live/exam-1/frames') return [{ attemptId: 'att-1', url: 'https://blob.test/att-1.jpg', at: '2026-11-17T08:20:00.000Z' }];
     if (path === '/attempts/att-1/messages') return [{ id: 'm1', fromCandidate: true, body: 'Sorry, fixed now.', sentAt: '2026-11-17T08:24:00.000Z', readAt: null }];
     return {};
@@ -134,4 +138,16 @@ describe('live console page', () => {
     wrap(<YxLiveConsolePage />);
     expect(await screen.findByText('You need the proctor key and your second factor.')).toBeInTheDocument();
   });
+});
+
+// AS-5 part 3 (PRC-20): the first test's reports; the export downloads the workbook.
+it('integrity reports: the first test\'s clusters; Export downloads the workbook', async () => {
+  (apiFetchBlob as jest.Mock).mockResolvedValue({ blob: new Blob(['PK']), filename: 'integrity-reports-exam-1.xlsx' });
+  const createObjectURL = jest.fn(() => 'blob:x');
+  Object.assign(URL, { createObjectURL, revokeObjectURL: jest.fn() });
+  wrap(<YxIntegrityReportsPage />);
+  expect(await screen.findByText('Rahul Deshpande, Harish Gowda')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Export XLSX' }));
+  expect(apiFetchBlob).toHaveBeenCalledWith('/asmt/integrity-reports/exam-1/export', {}, expect.anything());
+  expect(createObjectURL).toHaveBeenCalled();
 });

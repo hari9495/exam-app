@@ -177,7 +177,6 @@
     "proctoring: CompanyAuditScreen",
     "proctoring: DashboardBuilderScreen",
     "proctoring: IdReviewQueueScreen",
-    "proctoring: IntegrityReportsScreen",
     "proctoring: InvigilatorAppScreen",
     "proctoring: MetricCatalogueScreen",
     "proctoring: MetricExplorerScreen",

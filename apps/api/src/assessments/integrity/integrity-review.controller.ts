@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
@@ -9,6 +10,7 @@ import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { RequireAnyPermission } from '../../rbac/permissions.decorator';
 import { RequireStepUp } from '../../auth/step-up.decorator';
 import { IntegrityReviewService } from './integrity-review.service';
+import { IntegrityReportsService } from './integrity-reports.service';
 
 class VerdictDto {
   @IsIn(['cleared', 'warning', 'section'])
@@ -42,7 +44,25 @@ const REVIEW = ['asmt.proctor', 'asmt.evaluate', 'exam:manage'] as const;
 @Controller('asmt')
 @UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class IntegrityReviewController {
-  constructor(private readonly service: IntegrityReviewService) {}
+  constructor(
+    private readonly service: IntegrityReviewService,
+    private readonly reports: IntegrityReportsService,
+  ) {}
+
+  // AS-5 part 3 (PRC-20): a test's integrity reports, and the same as a workbook (audited).
+  @Get('integrity-reports/:examId')
+  @RequireAnyPermission(...REVIEW)
+  report(@CurrentTenant() ctx: TenantContext, @Param('examId', ParseUUIDPipe) examId: string) {
+    return this.reports.view(ctx, examId);
+  }
+
+  @Get('integrity-reports/:examId/export')
+  @RequireAnyPermission(...REVIEW)
+  async exportReport(@CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('examId', ParseUUIDPipe) examId: string, @Res({ passthrough: true }) res: Response) {
+    const { file, name } = await this.reports.export(ctx, userId, examId);
+    res.set({ 'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'Content-Disposition': `attachment; filename="${name}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return new StreamableFile(file);
+  }
 
   @Get('integrity')
   @RequireAnyPermission(...REVIEW)

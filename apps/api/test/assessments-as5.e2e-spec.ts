@@ -382,6 +382,62 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     expect(JSON.stringify(fb)).not.toContain('webcam-snapshots/');
   });
 
+  // PRC-20: collusion from identical wrong answers, code similarity from the analysis, agreement from double marks.
+  it('PRC-20: a test\'s integrity reports; the export is audited; a results reader and another company see nothing', async () => {
+    const qs: string[] = [];
+    for (let i = 0; i < 5; i++)
+      qs.push((await asApproved(await api('adminA', 'post', '/questions').send({ type: 'single_mcq', text: `Report q${i} ${run}?`, difficulty: 'easy', marks: 4, options: [{ text: 'A', isCorrect: true }, { text: 'B', isCorrect: false }, { text: 'C', isCorrect: false }] }).expect(201))).body.id);
+    const exam = (await api('adminA', 'post', '/exams').send({ title: `AS5 reports ${run}` }).expect(201)).body.id;
+    const section = (await api('adminA', 'post', `/exams/${exam}/sections`).send({ title: 'Aptitude' }).expect(201)).body.id;
+    await request(http).put(`/api/v1/exams/${exam}/sections/${section}/questions`).set('Authorization', `Bearer ${token.adminA}`).send({ questionIds: qs }).expect(200);
+    await api('adminA', 'post', `/exams/${exam}/publish`).expect(201);
+    const take = async (name: string) => {
+      const c = (await api('adminA', 'post', '/candidates').send({ email: `rep-${randomUUID().slice(0, 8)}@as5.test`, name }).expect(201)).body.id;
+      const inv = (await api('adminA', 'post', `/exams/${exam}/invitations`).send({ candidateIds: [c] }).expect(201)).body.created[0];
+      const ct = (await request(runtimeHttp).post('/api/v1/candidate-auth/redeem').send({ token: inv.token }).expect(200)).body.accessToken as string;
+      const attemptId = (await cand(ct, 'post', '/attempt/start').send({ consent: true }).expect(201)).body.id as string;
+      await cand(ct, 'post', '/attempt/submit').send({}).expect(201);
+      return attemptId;
+    };
+    const [a1, a2, a3] = [await take('Rahul Deshpande'), await take('Harish Gowda'), await take('Keerthi Varma')];
+    // Two picked the same wrong option on all five; the third picked a different wrong one.
+    await inOrg(org.A.id, async (tx) => {
+      for (const q of qs) {
+        for (const [att, pick] of [[a1, 'opt-b'], [a2, 'opt-b'], [a3, 'opt-c']] as const)
+          await tx.answer.upsert({ where: { attemptId_questionId: { attemptId: att, questionId: q } }, create: { attemptId: att, questionId: q, selectedOptionIdsJson: JSON.stringify([`${pick}-${q}`]), isCorrect: false }, update: { selectedOptionIdsJson: JSON.stringify([`${pick}-${q}`]), isCorrect: false } });
+      }
+      await tx.integrityAnalysis.upsert({ where: { attemptId: a1 }, create: { attemptId: a1, status: 'done', level: 'review', flagsJson: JSON.stringify([{ type: 'similarity_match', severity: 'high', questionId: qs[0], counterpartAttemptId: a2, similarity: 0.91 }]) }, update: { flagsJson: JSON.stringify([{ type: 'similarity_match', severity: 'high', questionId: qs[0], counterpartAttemptId: a2, similarity: 0.91 }]) } });
+      await tx.answerMark.createMany({ data: [
+        { attemptId: a1, questionId: qs[0]!, markerUserId: users.proctor, round: 1, marks: 4 },
+        { attemptId: a1, questionId: qs[0]!, markerUserId: users.evaluator, round: 2, marks: 4 },
+        { attemptId: a1, questionId: qs[1]!, markerUserId: users.proctor, round: 1, marks: 0 },
+        { attemptId: a1, questionId: qs[1]!, markerUserId: users.evaluator, round: 2, marks: 4 },
+        { attemptId: a1, questionId: qs[1]!, markerUserId: users.adminA, round: 3, marks: 2 },
+        { attemptId: a2, questionId: qs[0]!, markerUserId: users.proctor, round: 1, marks: 2 },
+        { attemptId: a2, questionId: qs[0]!, markerUserId: users.evaluator, round: 2, marks: 2 },
+      ] });
+    });
+    const v = (await api('proctor', 'get', `/asmt/integrity-reports/${exam}`).expect(200)).body;
+    expect(v).toMatchObject({ attempts: 3, minSame: 5 });
+    expect(v.clusters).toEqual([expect.objectContaining({ id: 'CL-01', same: 5, incident: 'Not raised' })]);
+    expect([...v.clusters[0].who].sort()).toEqual(['Harish Gowda', 'Rahul Deshpande']);
+    expect(v.sizes.find((x: { size: string }) => x.size === '2').clusters).toBe(1);
+    expect(v.pairs).toEqual([expect.objectContaining({ similarity: 91 })]);
+    expect(v.agreement.doubleMarked).toBe(3);
+    expect(v.agreement.weeks).toHaveLength(1);
+    expect(v.agreement.markers).toEqual([expect.objectContaining({ moderated: 1, of: 3 })]);
+    await api('reader', 'get', `/asmt/integrity-reports/${exam}`).expect(403);
+    await api('adminB', 'get', `/asmt/integrity-reports/${exam}`).expect(404);
+    const file = await api('proctor', 'get', `/asmt/integrity-reports/${exam}/export`).buffer(true).parse((res, done) => {
+      const parts: Buffer[] = [];
+      res.on('data', (c: Buffer) => parts.push(c));
+      res.on('end', () => done(null, Buffer.concat(parts)));
+    }).expect(200);
+    expect(file.headers['content-type']).toContain('spreadsheetml');
+    expect((file.body as Buffer).subarray(0, 2).toString()).toBe('PK');
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: exam, action: 'asmt.integrity_report.exported' } }))).toBe(1);
+  });
+
   it('negative: approving time above the cap does not pause a test without face checks', async () => {
     const r = await running(false);
     const credit = await inOrg(org.A.id, (tx) => tx.connectivityCredit.create({ data: { attemptId: r.attemptId, lostMs: 120_000 } }));
