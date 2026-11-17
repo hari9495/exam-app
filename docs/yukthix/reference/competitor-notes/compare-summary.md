@@ -194,3 +194,20 @@ Top 5 must-builds. They do not fit batches A to G, so they go in a new batch:
 
 The rest of the payroll Must tier (B8 / E5 flexible benefits, D5 LWF states, E1 open and lock declaration windows,
 A3 "Not ready for payroll" on People, E2 HR declares on behalf) follows in batch H after these five.
+
+## Founder decision (17 Nov 2026, "ok for all"): payroll and multi-country
+
+- **Batch H (Payroll statutory) moves before batch C.** The order is now A, B, H, C, D, E, F, G. H covers:
+  - PT rule files for every PT state;
+  - the loan perquisite in TDS;
+  - the new Income Tax Act section names;
+  - the "PF only below ₹15,000" component flag;
+  - blocking pay-run approval when PAN, TAN or PT registration is missing.
+
+  LWF for every state and the bonus minimum wage per state go into H too.
+- **Multi-country:**
+  - HR works in any country, with per-country rule packs, currencies and time zones.
+  - Payroll stays India-first; other countries connect to local payroll or EOR partners.
+  - The Oracle pass covers multi-country (entities, countries, currencies) next to the six enterprise areas.
+- **Enterprise batch:** gaps from the enterprise readiness check (costing and GL, retro pay, approval rules, position management, absence depth, audit history) become an "Enterprise" batch after tier 1, or earlier for a big customer.
+- **India rule files marked "verify":** they must be checked by a CA before any real company goes live on payroll.
