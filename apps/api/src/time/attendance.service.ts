@@ -7,8 +7,8 @@ import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { DayEngine } from './day-engine.service';
-import { OnDutyDto, PunchDto, RegulariseDto, WfhDto } from './dto';
-import { clockText, onDutyProblem, overlaps } from './on-duty-rules';
+import { OnDutyDto, PermissionDto, PunchDto, RegulariseDto, WfhDto } from './dto';
+import { clockText, minutesText, onDutyProblem, overlaps, permissionProblem } from './on-duty-rules';
 import { TIME_KEYS, asDate, dateOf, factsOn, holdersOf, holidaysFor, hrApprovers, leaveDays, monthRange, mustSee, myEmployeeId, rulesFor, settingOn, todayIn, visibleSql, type Facts } from './time-core';
 import { teamTodayState } from './team-today';
 import { addDays, checkInVerdict, fencesOf, ipInRanges, minutesInto, type Fence } from './time-maths';
@@ -28,6 +28,9 @@ import { describeDevice } from '../email/account-emails';
 export const REGULARISE = 'attendance.regularise';
 export const WFH = 'attendance.wfh';
 export const ON_DUTY = 'attendance.on_duty';
+export const PERMISSION = 'attendance.permission';
+/** Requests that are not a fix of the day: they never count towards, or block, regularisation. */
+const NOT_FIX = ['wfh', 'on_duty', 'permission'];
 const KIND_TEXT: Record<string, string> = { missed_in: 'Missed check-in', missed_out: 'Missed check-out', wrong_time: 'Wrong time', full_day: 'Present all day' };
 const ALREADY: Record<PunchDto['kind'], string> = { in: 'Already checked in', out: 'Already checked out', break_start: 'Break already started', break_end: 'Break already ended' };
 const DONE: Record<PunchDto['kind'], string> = { in: 'Checked in', out: 'Checked out', break_start: 'Break started', break_end: 'Break ended' };
@@ -60,6 +63,7 @@ export class AttendanceService implements OnModuleInit {
   onModuleInit() {
     this.engine.register({ key: REGULARISE, label: 'Attendance fix', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
     this.engine.register({ key: WFH, label: 'Work from home', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
+    this.engine.register({ key: PERMISSION, label: 'Hourly permission', risk: 'normal', quickApprove: true, autoActions: false, onDecided: (tx, req, outcome) => this.decided(tx, req, outcome), requesterLink: () => '/yx/time/attendance' });
     this.engine.register({
       key: ON_DUTY,
       label: 'On duty',
@@ -160,7 +164,7 @@ export class AttendanceService implements OnModuleInit {
       const days = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { workOn: 'asc' } });
       const requests = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(addDays(from, -31)) } }, orderBy: { workOn: 'desc' }, take: 60 });
       const limit = Number(await settingOn(tx, c, 'attendance.regularise_monthly_limit', f, today));
-      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: { not: 'wfh' }, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(`${today.slice(0, 7)}-01`), lte: asDate(today) } } });
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: { notIn: NOT_FIX }, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(`${today.slice(0, 7)}-01`), lte: asDate(today) } } });
       const thisMonth = monthRange(today.slice(0, 7));
       const wfhUsed = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: 'wfh', status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(thisMonth.from), lte: asDate(thisMonth.to) } } });
       const opens = await settingOn(tx, c, 'attendance.check_in_opens_minutes', f, today);
@@ -190,6 +194,8 @@ export class AttendanceService implements OnModuleInit {
         // Work from home (TIM-07): this month's days asked for or approved, and whether today is an approved one.
         wfh: { limit: Number(await settingOn(tx, c, 'attendance.wfh_monthly_limit', f, today)), used: wfhUsed },
         onDuty: { aheadDays: Number(await settingOn(tx, c, 'attendance.on_duty.ahead_days', f, today)), backDays: Number(await settingOn(tx, c, 'attendance.on_duty.back_days', f, today)) },
+        // Batch A item 7 (B4): hourly permissions this month (asked for or approved) and the company's limits.
+        permission: { limit: Number(await settingOn(tx, c, 'attendance.permission.monthly_limit', f, today)), maxMinutes: Number(await settingOn(tx, c, 'attendance.permission.max_minutes', f, today)), used: await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: 'permission', status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(thisMonth.from), lte: asDate(thisMonth.to) } } }) },
         // TIM-07 Ot: overtime asked for ahead (waiting ones show with the requests; withdrawn on My attendance).
         otPlans: (await tx.overtimePlan.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: { gte: asDate(addDays(today, -31)) } }, orderBy: { workOn: 'desc' }, take: 30 })).map((x) => ({ id: x.id, on: dateOf(x.workOn), minutes: x.plannedMinutes, takeAs: x.takeAs, reason: x.reason, status: x.status })),
         otAheadDays: Number(await settingOn(tx, c, 'attendance.overtime.plan_ahead_days', f, today)),
@@ -324,9 +330,9 @@ export class AttendanceService implements OnModuleInit {
       if (needIn && dto.inMinute === undefined) throw new BadRequestException('Give the time you started.');
       if (needOut && dto.outMinute === undefined) throw new BadRequestException('Give the time you finished.');
       if (dto.kind === 'wrong_time' && dto.outMinute! <= dto.inMinute!) throw new BadRequestException('The finish time is before the start time.');
-      if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: { not: 'wfh' }, status: 'pending' } })) throw new ConflictException('A fix for that day is already waiting for approval.');
+      if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: { notIn: NOT_FIX }, status: 'pending' } })) throw new ConflictException('A fix for that day is already waiting for approval.');
       const limit = Number(await settingOn(tx, c, 'attendance.regularise_monthly_limit', f, dto.on));
-      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: { not: 'wfh' }, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(monthRange(dto.on.slice(0, 7)).from), lte: asDate(monthRange(dto.on.slice(0, 7)).to) } } });
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: { notIn: NOT_FIX }, status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(monthRange(dto.on.slice(0, 7)).from), lte: asDate(monthRange(dto.on.slice(0, 7)).to) } } });
       const r = await tx.attendanceRequest.create({
         data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: dto.kind, inMinute: needIn ? dto.inMinute! : null, outMinute: needOut ? dto.outMinute! : null, reason: dto.reason, raisedBy: c.userId ?? null },
       });
@@ -480,6 +486,73 @@ export class AttendanceService implements OnModuleInit {
       await tx.attendanceRequest.update({ where: { id: r.id }, data: { wfRequestId: sub.id } });
       await audit(tx, c, 'attendance.on_duty.submitted', 'attendance_request', r.id, { employeeId: f.employeeId, on: dto.on, inMinute: dto.inMinute, outMinute: dto.outMinute, place: dto.place, ...(old ? { resendOf: old.id } : {}) });
       return { id: r.id, status: (await tx.attendanceRequest.findFirstOrThrow({ where: { id: r.id } })).status };
+    });
+    await this.engine.send(ctx, notices);
+    return res;
+  }
+
+  /**
+   * Hourly permission (batch A item 7, attendance-leave B4, answer 2310): a from and to time on one working day, through
+   * P03 to the manager. It never uses leave. The company sets how many a month (attendance.permission.monthly_limit,
+   * default 2) and how long each (attendance.permission.max_minutes, default 120); past either it is refused with the
+   * reason. Approved, its time joins the day's hours in the day engine, so the day stays present.
+   */
+  async requestPermission(ctx: TenantContext, user: ScopeUser, dto: PermissionDto) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const notices: Notice[] = [];
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { f: now, today } = await this.meFacts(tx, c);
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${now.employeeId}`}))`;
+      const f = await factsOn(tx, org, now.employeeId, dto.on);
+      if (!f || dto.on < f.joinedOn || (f.exitedOn && dto.on > f.exitedOn)) throw new BadRequestException('You are not working here on that day.');
+      const month = monthRange(dto.on.slice(0, 7));
+      const used = await tx.attendanceRequest.count({ where: { organizationId: org, employeeId: f.employeeId, kind: 'permission', status: { in: ['pending', 'approved'] }, workOn: { gte: asDate(month.from), lte: asDate(month.to) } } });
+      const limit = Number(await settingOn(tx, c, 'attendance.permission.monthly_limit', f, dto.on));
+      const maxMinutes = Number(await settingOn(tx, c, 'attendance.permission.max_minutes', f, dto.on));
+      const monthName = new Date(`${dto.on}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+      const problem = permissionProblem({ on: dto.on, today, aheadDays: Number(await settingOn(tx, c, 'attendance.on_duty.ahead_days', f, today)), backDays: Number(await settingOn(tx, c, 'attendance.on_duty.back_days', f, today)), inMinute: dto.inMinute, outMinute: dto.outMinute, maxMinutes, limit, used, month: monthName });
+      if (problem) {
+        const body = { statusCode: problem.status, message: problem.message, field: problem.field };
+        throw problem.status === 409 ? new ConflictException(body) : new BadRequestException(body);
+      }
+      if ((await (await ScheduleBook.load(tx, org)).day(f, dto.on)).weeklyOff) throw new BadRequestException({ statusCode: 400, message: `${fmt(dto.on)} is your weekly off: no permission needed.`, field: 'on' });
+      const holiday = (await holidaysFor(tx, org, f.locationId, dto.on, dto.on, f.employeeId)).map.get(dto.on);
+      if (holiday && !holiday.halfDay) throw new BadRequestException({ statusCode: 400, message: `${fmt(dto.on)} is a holiday (${holiday.name}): no permission needed.`, field: 'on' });
+      if ((await lockedDates(tx, org, f.employeeId, dto.on, dto.on)).size) throw new ConflictException(`${fmt(dto.on)} is in a locked month. Ask HR to record a correction.`);
+      const leave = await tx.$queryRaw<{ part: string }[]>`
+        SELECT d.part FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
+        WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND d.active AND d.portion > 0 AND d.leave_on = ${dto.on}::date
+          AND r.status IN ('pending', 'approved', 'cancel_pending') LIMIT 1`;
+      if (leave[0]?.part === 'full') throw new ConflictException(`You have leave on ${fmt(dto.on)}: no permission needed.`);
+      const same = await tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'permission', status: { in: ['pending', 'approved'] } } });
+      const clash = same.find((x) => overlaps({ inMinute: x.inMinute!, outMinute: x.outMinute! }, dto));
+      if (clash) throw new ConflictException(`You already asked for permission on ${fmt(dto.on)} from ${clockText(clash.inMinute!)} to ${clockText(clash.outMinute!)}.`);
+      const r = await tx.attendanceRequest.create({ data: { organizationId: org, employeeId: f.employeeId, workOn: asDate(dto.on), kind: 'permission', inMinute: dto.inMinute, outMinute: dto.outMinute, reason: dto.reason, raisedBy: c.userId ?? null } });
+      const hr = await hrApprovers(tx, org, f.employeeId, today, f.userId);
+      const sub = await this.engine.submit(tx, c, {
+        type: PERMISSION,
+        subjectType: 'attendance_request',
+        subjectId: r.id,
+        title: `${f.name}: permission on ${fmt(dto.on)}`,
+        summary: [
+          { label: 'Day', value: fmt(dto.on) },
+          { label: 'Time', value: `${clockText(dto.inMinute)} to ${clockText(dto.outMinute)} (${minutesText(dto.outMinute - dto.inMinute)})` },
+          { label: 'Permissions this month', value: `${used + 1} of ${limit}` },
+          { label: 'Why', value: dto.reason.slice(0, 300) },
+        ],
+        subjectPersonId: f.personId,
+        requesterUserId: c.userId ?? null,
+        raisedByUserId: c.userId ?? null,
+        steps: [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24 }],
+        payload: {},
+        payloadFields: [],
+        fallbackUserIds: hr,
+      });
+      notices.push(...sub.notices);
+      await tx.attendanceRequest.update({ where: { id: r.id }, data: { wfRequestId: sub.id } });
+      await audit(tx, c, 'attendance.permission.submitted', 'attendance_request', r.id, { employeeId: f.employeeId, on: dto.on, inMinute: dto.inMinute, outMinute: dto.outMinute, used: used + 1, limit });
+      return { id: r.id, status: (await tx.attendanceRequest.findFirstOrThrow({ where: { id: r.id } })).status, used: used + 1, limit };
     });
     await this.engine.send(ctx, notices);
     return res;

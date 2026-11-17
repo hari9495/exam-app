@@ -195,7 +195,7 @@ export class AttendanceOpsService {
         ? await tx.$queryRaw<{ employeeId: string; on: string; status: string | null; st: string; resolutionId: string | null; total: number }[]>`
           SELECT x.*, count(*) OVER()::int AS total FROM (
             SELECT d.employee_id::text AS "employeeId", d.work_on::text AS on, d.status,
-                   CASE WHEN EXISTS (SELECT 1 FROM attendance_requests q WHERE q.organization_id = d.organization_id AND q.employee_id = d.employee_id AND q.work_on = d.work_on AND q.kind <> 'wfh' AND q.status = 'pending') THEN 'Request pending' ELSE 'Open' END AS st,
+                   CASE WHEN EXISTS (SELECT 1 FROM attendance_requests q WHERE q.organization_id = d.organization_id AND q.employee_id = d.employee_id AND q.work_on = d.work_on AND q.kind NOT IN ('wfh', 'permission') AND q.status = 'pending') THEN 'Request pending' ELSE 'Open' END AS st,
                    NULL::text AS "resolutionId"
             FROM attendance_days d
             WHERE d.organization_id = ${org}::uuid AND d.employee_id = ANY(${ids}::uuid[]) AND d.work_on BETWEEN ${from}::date AND ${last}::date
@@ -215,7 +215,7 @@ export class AttendanceOpsService {
       const days = found.length ? await tx.attendanceDay.findMany({ where: { organizationId: org, OR: found.filter((r) => r.status).map((r) => ({ employeeId: r.employeeId, workOn: asDate(r.on) })) } }) : [];
       const resolutions = found.some((r) => r.resolutionId) ? await tx.attendanceResolution.findMany({ where: { organizationId: org, id: { in: found.map((r) => r.resolutionId).filter((x): x is string => Boolean(x)) } } }) : [];
       const [requests, nudges, tasks] = await Promise.all([
-        tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: { in: pageIds }, workOn: { gte: asDate(from), lte: asDate(to) }, kind: { not: 'wfh' }, status: 'pending' } }),
+        tx.attendanceRequest.findMany({ where: { organizationId: org, employeeId: { in: pageIds }, workOn: { gte: asDate(from), lte: asDate(to) }, kind: { notIn: ['wfh', 'permission'] }, status: 'pending' } }),
         tx.nudge.groupBy({ by: ['employeeId'], where: { organizationId: org, employeeId: { in: pageIds }, item: 'check_in', onDay: { gte: asDate(from), lte: asDate(to) } }, _count: { _all: true } }),
         v.userId ? tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: v.userId, status: 'open' }, select: { id: true, requestId: true } }) : Promise.resolve([]),
       ]);
@@ -294,7 +294,7 @@ export class AttendanceOpsService {
         if (!f || d.on < f.joinedOn || (f.exitedOn && d.on > f.exitedOn)) throw new BadRequestException(`${f?.name ?? 'This person'} was not working here on ${fmt(d.on)}.`);
         if (d.on >= todayIn(f.zone)) throw new BadRequestException(`${fmt(d.on)} is not over yet, so ${f.name}'s day is read only until tomorrow.`);
         if ((await lockedDates(tx, org, d.employeeId, d.on, d.on)).size) throw new ConflictException({ statusCode: 409, code: 'PERIOD_LOCKED', message: `${fmt(d.on)} is in a frozen or locked month. Record a correction for the next payroll instead.` });
-        if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: d.employeeId, workOn: asDate(d.on), kind: { not: 'wfh' }, status: 'pending' }, select: { id: true } })) throw new ConflictException(`${f.name} asked to fix ${fmt(d.on)}. Approve or reject that request first.`);
+        if (await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId: d.employeeId, workOn: asDate(d.on), kind: { notIn: ['wfh', 'permission'] }, status: 'pending' }, select: { id: true } })) throw new ConflictException(`${f.name} asked to fix ${fmt(d.on)}. Approve or reject that request first.`);
         const day = await tx.attendanceDay.findUnique({ where: { organizationId_employeeId_workOn: { organizationId: org, employeeId: d.employeeId, workOn: asDate(d.on) } } });
         if (day && NOT_RESOLVABLE[day.status]) throw new ConflictException(`${fmt(d.on)} ${NOT_RESOLVABLE[day.status]} for ${f.name}; there is nothing to resolve.`);
         // Bulk "mark present" leaves days that already count as worked untouched.

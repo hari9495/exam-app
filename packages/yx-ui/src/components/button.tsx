@@ -146,3 +146,15 @@ export const Link = forwardRef<HTMLAnchorElement, LinkProps>(function Link({ asC
   const Comp = asChild ? Slot : 'a';
   return <Comp ref={ref} className={cx('yx-link', className)} data-tone={tone} {...rest} />;
 });
+
+export interface RowButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  children: ReactNode;
+}
+
+/**
+ * A whole list row people press to open it (a day, a request): bordered at rest, a fill on hover, a pointer and a focus
+ * ring. Children lay out left to right and wrap; put the main text first and badges or meters last.
+ */
+export const RowButton = forwardRef<HTMLButtonElement, RowButtonProps>(function RowButton({ className, type = 'button', ...rest }, ref) {
+  return <button ref={ref} type={type} className={cx('yx-row-button', className)} {...rest} />;
+});

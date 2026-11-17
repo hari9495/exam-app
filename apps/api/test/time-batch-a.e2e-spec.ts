@@ -23,7 +23,7 @@ describe('Time batch A', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hrAdmin' | 'mgr' | 'emp' | 'peer' | 'empB';
+  type Who = 'adminA' | 'adminB' | 'hrAdmin' | 'mgr' | 'emp' | 'peer' | 'empB' | 'payApprover';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -63,6 +63,7 @@ describe('Time batch A', () => {
       ['emp', 'A', 'panel', null],
       ['peer', 'A', 'panel', null],
       ['empB', 'B', 'panel', null],
+      ['payApprover', 'A', 'panel', ['payroll.correction.approve']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -246,6 +247,182 @@ describe('Time batch A', () => {
       const setup = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body;
       expect(setup.calendars.find((c: { id: string }) => c.id === cal).workingDays.map((w: { on: string }) => w.on)).toEqual([sunday]);
       expect(await inA((tx) => tx.auditLog.count({ where: { entityId: cal, action: 'holiday.working_day_removed' } }))).toBe(1);
+    });
+  });
+
+  // ------------------------------------------------------------------ item 7 (B4): hourly permission
+  describe('B4 hourly permission', () => {
+    const decide = (who: Who, taskId: string, decision: 'approve' | 'reject', reason?: string) => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, ...(reason ? { reason } : {}) });
+    const taskOf = async (requestId: string) => {
+      const r = await inA((tx) => tx.attendanceRequest.findFirstOrThrow({ where: { id: requestId } }));
+      return (await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: r.wfRequestId!, status: 'open' } }))).id;
+    };
+    const sun = (on: string) => new Date(`${on}T00:00:00Z`).getUTCDay() === 0;
+    // The default shift is 9:30 am to 6:30 pm with Sunday off; the people joined three days ago.
+    const past = [d(-1), d(-2)].find((x) => !sun(x))!;
+    const body = (over: Record<string, unknown> = {}) => ({ on: past, inMinute: 990, outMinute: 1110, reason: 'Bank visit', ...over });
+    const count = () => inA((tx) => tx.attendanceRequest.count({ where: { employeeId: ids.empEmp, kind: 'permission' } }));
+
+    it('negative: bad input, too long, a weekly off and acting outside the rules are refused with nothing saved', async () => {
+      const before = await count();
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ outMinute: 990 })).expect(400)).body.message).toBe('Enter a To time after From.');
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ inMinute: 960 })).expect(400)).body.message).toBe('A permission can be at most 2 hours. Apply for leave for a longer time.');
+      await api('emp', 'post', '/time/me/permission').send(body({ inMinute: 1500 })).expect(400);
+      await api('emp', 'post', '/time/me/permission').send(body({ reason: '' })).expect(400);
+      await api('emp', 'post', '/time/me/permission').send(body({ extra: 1 })).expect(400);
+      await api('emp', 'post', '/time/me/permission').send(body({ on: 'yesterday' })).expect(400);
+      // Two weeks out: the D11 tests above use the Sunday of the coming week.
+      const sunday = [15, 16, 17, 18, 19, 20, 21].map((n) => d(n)).find(sun)!;
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ on: sunday })).expect(400)).body.message).toMatch(/weekly off/);
+      expect(await count()).toBe(before);
+    });
+
+    it('goes to the manager; approved, the short day stays present and no leave is used', async () => {
+      // In 9:30 am, out 4:30 pm: 6.5 hours worked, a half day on its own.
+      await inA((tx) => tx.punch.createMany({ data: [
+        { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(`${past}T04:00:00Z`), workOn: new Date(`${past}T00:00:00Z`), kind: 'in', accepted: true, verdict: 'no_fence' },
+        { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(`${past}T11:00:00Z`), workOn: new Date(`${past}T00:00:00Z`), kind: 'out', accepted: true, verdict: 'no_fence' },
+      ] }));
+      const leaveBefore = await inA((tx) => tx.leaveRequest.count({ where: { employeeId: ids.empEmp } }));
+      const r = (await api('emp', 'post', '/time/me/permission').send(body()).expect(201)).body;
+      expect(r).toMatchObject({ status: 'pending', used: 1, limit: 2 });
+      // The same time again overlaps.
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ inMinute: 1020, outMinute: 1080 })).expect(409)).body.message).toMatch(/already asked for permission .* from 4:30 pm to 6:30 pm/);
+      const task = await taskOf(r.id);
+      // Not the manager, or another company: never sees the task.
+      await decide('peer', task, 'approve').expect(404);
+      await decide('emp', task, 'approve').expect(404);
+      await decide('empB', task, 'approve').expect(404);
+      await decide('mgr', task, 'approve').expect(200);
+      const day = await inA((tx) => tx.attendanceDay.findFirstOrThrow({ where: { employeeId: ids.empEmp, workOn: new Date(`${past}T00:00:00Z`) } }));
+      expect(day.status).toBe('present');
+      expect(await inA((tx) => tx.leaveRequest.count({ where: { employeeId: ids.empEmp } }))).toBe(leaveBefore);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'attendance.permission.submitted', entityId: r.id } }))).toBe(1);
+      const me = (await api('emp', 'get', `/time/me/attendance?month=${past.slice(0, 7)}`).expect(200)).body;
+      expect(me.requests.find((x: { id: string }) => x.id === r.id)).toMatchObject({ kind: 'permission', status: 'approved', inMinute: 990, outMinute: 1110 });
+      expect(me.permission).toMatchObject({ limit: 2, maxMinutes: 120 });
+      // Another company and a colleague see none of it.
+      expect((await api('empB', 'get', `/time/me/attendance?month=${past.slice(0, 7)}`).expect(200)).body.requests).toEqual([]);
+      expect((await api('peer', 'get', `/time/me/attendance?month=${past.slice(0, 7)}`).expect(200)).body.requests.map((x: { id: string }) => x.id)).not.toContain(r.id);
+    });
+
+    it('past the monthly limit it is refused with the reason; the company can change the limit', async () => {
+      // A month with at least three working days in the next 30.
+      const ahead = Array.from({ length: 30 }, (_, i) => d(i + 1)).filter((x) => !sun(x));
+      const month = [...new Set(ahead.map((x) => x.slice(0, 7)))].find((m) => ahead.filter((x) => x.startsWith(m)).length >= 4)!;
+      const days = ahead.filter((x) => x.startsWith(month));
+      let used = month === past.slice(0, 7) ? 1 : 0;
+      let k = 0;
+      while (used < 2) { await api('emp', 'post', '/time/me/permission').send(body({ on: days[k++] })).expect(201); used++; }
+      const name = new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+      const before = await count();
+      expect((await api('emp', 'post', '/time/me/permission').send(body({ on: days[k] })).expect(409)).body.message).toBe(`You have used all 2 permissions for ${name}. Apply for leave instead.`);
+      expect(await count()).toBe(before);
+      await api('emp', 'put', '/org/settings').send({ key: 'attendance.permission.monthly_limit', value: '3', scopeType: 'tenant' }).expect(403);
+      await api('adminA', 'put', '/org/settings').send({ key: 'attendance.permission.monthly_limit', value: '3', scopeType: 'tenant' }).expect(200);
+      await api('emp', 'post', '/time/me/permission').send(body({ on: days[k] })).expect(201);
+      await api('adminA', 'put', '/org/settings').send({ key: 'attendance.permission.monthly_limit', value: '2', scopeType: 'tenant' }).expect(200);
+    });
+  });
+
+  // ------------------------------------------------------------------ item 8 (D15): LOP reversal through HR corrections
+  describe('D15 reverse loss of pay', () => {
+    // Last month, locked for payroll; someone who worked all of it.
+    const last = addDays(`${today.slice(0, 7)}-01`, -1).slice(0, 7);
+    const body = (over: Record<string, unknown> = {}) => ({ employeeId: ids.lopEmp, days: [{ on: `${last}-10`, shouldBe: 'present' }, { on: `${last}-11`, shouldBe: 'half_day' }], reason: 'Was on site at the supplier both days', ...over });
+    const corrections = () => inA((tx) => tx.payCorrection.count({ where: { employeeId: ids.lopEmp } }));
+    beforeAll(async () => {
+      ids.lopEmp = (
+        await api('adminA', 'post', '/people/employees')
+          .send({ legalEntityId: ids.entityA, status: 'confirmed', reason: 'Joined', givenName: 'Lop', familyName: run, joinedOn: d(-70), workEmail: `lop@bata-${run}.test`, assignment: { locationId: ids.locA, departmentId: ids.deptA, designationId: ids.desigA, employmentTypeId: ids.permA, managerEmployeeId: null } })
+          .expect(201)
+      ).body.id;
+      await inA((tx) => tx.payPeriod.create({ data: { organizationId: org.A.id, legalEntityId: ids.entityA, periodStart: new Date(`${last}-01T00:00:00Z`), periodEnd: new Date(`${addDays(`${today.slice(0, 7)}-01`, -1)}T00:00:00Z`), stage: 'locked', lockedAt: new Date(), reason: 'Batch A test' } }));
+    });
+
+    it('negative: the wrong role, another company, bad input and an open month are refused with nothing saved', async () => {
+      await api('emp', 'post', '/payroll/corrections/lop-reversal').send(body()).expect(403);
+      await api('mgr', 'post', '/payroll/corrections/lop-reversal').send(body()).expect(403);
+      await api('adminB', 'post', '/payroll/corrections/lop-reversal').send(body()).expect(404);
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${last}-10`, shouldBe: 'unpaid' }] })).expect(400);
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [] })).expect(400);
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ reason: 'short' })).expect(400);
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ extra: 1 })).expect(400);
+      expect((await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${last}-10`, shouldBe: 'present' }, { on: `${last}-10`, shouldBe: 'half_day' }] })).expect(400)).body.message).toBe('Each day can be listed once.');
+      expect((await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${last}-10`, shouldBe: 'present' }, { on: `${today.slice(0, 7)}-01`, shouldBe: 'present' }] })).expect(400)).body.message).toBe('Pick days of one month at a time.');
+      // An open month goes to regularisation instead.
+      const open = (await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${today.slice(0, 7)}-01`, shouldBe: 'present' }] })).expect(409)).body;
+      expect(open).toMatchObject({ code: 'MONTH_OPEN', message: expect.stringMatching(/is still open\. Fix the days in regularisation instead\./) });
+      expect(await corrections()).toBe(0);
+    });
+
+    it('HR reverses two days of the locked month: one HR correction each for payroll to approve, audited', async () => {
+      const r = (await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body()).expect(201)).body;
+      expect(r).toMatchObject({ count: 2, status: 'pending' });
+      const rows = await inA((tx) => tx.payCorrection.findMany({ where: { employeeId: ids.lopEmp }, orderBy: { workOn: 'asc' } }));
+      expect(rows.map((x) => [x.workOn.toISOString().slice(0, 10), (x.change as { shouldBe: string }).shouldBe, x.source, x.status])).toEqual([[`${last}-10`, 'present', 'hr', 'pending'], [`${last}-11`, 'half_day', 'hr', 'pending']]);
+      expect(rows.every((x) => x.wfRequestId)).toBe(true);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.lop_reversal.submitted', entityId: ids.lopEmp } }))).toBe(1);
+      // The same day again is already waiting.
+      await api('hrAdmin', 'post', '/payroll/corrections/lop-reversal').send(body({ days: [{ on: `${last}-10`, shouldBe: 'present' }] })).expect(409);
+      expect(await corrections()).toBe(2);
+      // Another company sees none of it.
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.payCorrection.count({ where: { employeeId: ids.lopEmp } }))).toBe(0);
+    });
+  });
+
+  // ------------------------------------------------------------------ C4: notify colleagues on approval
+  describe('C4 notify colleagues', () => {
+    const decide = (who: Who, taskId: string, decision: 'approve' | 'reject', reason?: string) => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, ...(reason ? { reason } : {}) });
+    const leaveTask = async (requestId: string) => {
+      const wf = await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { subjectId: requestId } }));
+      return (await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { requestId: wf.id, status: 'open' } }))).id;
+    };
+    const told = (userId: string) => inA((tx) => tx.userNotification.findMany({ where: { recipientUserId: userId, type: 'leave.colleague_away' } }));
+    const weekday = (n: number) => { for (let i = n; i < n + 7; i++) if (new Date(`${d(i)}T00:00:00Z`).getUTCDay() !== 0) return d(i); return d(n); };
+    const leaves = () => inA((tx) => tx.leaveRequest.count({ where: { employeeId: ids.empEmp } }));
+    beforeAll(async () => {
+      ids.EL = (await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'EL', name: 'Earned leave', kind: 'earned', paid: true }).expect(201)).body.id;
+      ids.elPolicy = (await api('hrAdmin', 'post', '/time/setup/policies').send({ name: `Staff ${run}` }).expect(201)).body.id;
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.elPolicy}/versions`).send({ validFrom: '2025-01-01', lines: [{ leaveTypeId: ids.EL, annualDays: 12, frequency: 'yearly', proRata: false, rounding: 0.5, carryForwardMax: 0 }] }).expect(201);
+      await api('hrAdmin', 'post', `/time/setup/policies/${ids.elPolicy}/assign`).send({ scopeType: 'legal_entity', scopeId: ids.entityA, validFrom: '2025-01-01' }).expect(201);
+      await api('hrAdmin', 'post', `/time/people/${ids.empEmp}/adjust`).send({ leaveTypeId: ids.EL, days: 10, reason: 'Opening balance' }).expect(201);
+    });
+
+    it('negative: more than 10, yourself, someone of another company or not an id are refused with nothing saved', async () => {
+      const before = await leaves();
+      const on = weekday(40);
+      const body = (notifyUserIds: unknown) => ({ leaveTypeId: ids.EL, from: on, to: on, reason: 'Family function', notifyUserIds });
+      await api('emp', 'post', '/time/me/leave').send(body(Array.from({ length: 11 }, () => randomUUID()))).expect(400);
+      expect((await api('emp', 'post', '/time/me/leave').send(body([users.emp])).expect(400)).body.message).toMatch(/do not need to tell yourself/);
+      expect((await api('emp', 'post', '/time/me/leave').send(body([users.empB])).expect(400)).body.message).toBe('Choose active colleagues of your company to notify.');
+      await api('emp', 'post', '/time/me/leave').send(body(['not-an-id'])).expect(400);
+      await api('emp', 'post', '/time/me/leave').send(body([users.peer, users.peer])).expect(400);
+      expect(await leaves()).toBe(before);
+    });
+
+    it('nobody is told on applying; on approval the colleagues get the dates only, never the type or reason', async () => {
+      const on = weekday(45);
+      const r = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: on, to: on, reason: 'Secret family function', notifyUserIds: [users.peer, users.hrAdmin] }).expect(201)).body;
+      expect(await told(users.peer)).toHaveLength(0);
+      await decide('mgr', await leaveTask(r.id), 'approve').expect(200);
+      for (const u of [users.peer, users.hrAdmin]) {
+        const n = await told(u);
+        expect(n).toHaveLength(1);
+        expect(n[0].contextText).toMatch(/is away on /);
+        expect(n[0].contextText).not.toMatch(/Earned|Secret|leave/i);
+      }
+      // Not named: not told; another company sees nothing.
+      expect(await told(users.mgr)).toHaveLength(0);
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.userNotification.count({ where: { type: 'leave.colleague_away' } }))).toBe(0);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'leave.colleagues_told', entityId: r.id } }))).toBe(1);
+    });
+
+    it('turned down: nobody is told', async () => {
+      const on = weekday(50);
+      const r = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: on, to: on, notifyUserIds: [users.mgr] }).expect(201)).body;
+      await decide('mgr', await leaveTask(r.id), 'reject', 'Audit week').expect(200);
+      expect(await told(users.mgr)).toHaveLength(0);
     });
   });
 });

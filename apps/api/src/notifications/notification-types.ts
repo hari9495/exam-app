@@ -139,6 +139,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // PLT-02 Team today: a manager or HR reminded you about something still waiting (today: checking in).
   { type: 'time.web_device.requested', group: 'approvals', label: 'Someone asked HR to approve a computer for web clock-in' },
   { type: 'nudge.reminder', group: 'reminders', label: 'Your manager or HR reminded you about something waiting' },
+  // Batch A C4 (answer 2313): a colleague named you to be told when their leave was approved (dates only).
+  { type: 'leave.colleague_away', group: 'reminders', label: 'A colleague who named you will be away (dates only)' },
   // M05 E3: payment of approved claims.
   { type: 'expense.payment.update', group: 'reminders', label: 'An expense claim was paid, or its payment did not go through' },
   // EXP-08: a company card line to explain, and its reminders.

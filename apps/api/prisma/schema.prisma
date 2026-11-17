@@ -5986,6 +5986,8 @@ model LeaveRequest {
   reason            String?   @db.VarChar(1000)
   certificate       String    @default("none") @db.VarChar(8)
   delegateUserId    String?   @map("delegate_user_id") @db.Uuid
+  /// Batch A C4: colleagues told on approval (dates only, never the type or reason); at most 10.
+  notifyUserIds     String[]  @default([]) @map("notify_user_ids") @db.Uuid
   wfRequestId       String?   @map("wf_request_id") @db.Uuid
   cancelWfRequestId String?   @map("cancel_wf_request_id") @db.Uuid
   expectedOn        DateTime? @map("expected_on") @db.Date

@@ -6,6 +6,7 @@ import { payState, usePay, usePayRead, usePayWrite } from '../../../../../lib/yx
 import { usePeopleSearch } from '../../../../../lib/yx-pay-5b';
 import { useNames } from '../../../../../lib/yx-pay-5j';
 import { todayIndia } from '../../../../../lib/yx-time';
+import { useYxPermissions } from '../../../../../lib/yx-org';
 
 // Payroll › Inputs: the designed PAY-05 one-time pay screen with PAY-04 loss of pay and PAY-06 salary holds as tabs.
 export default function YxPayInputsPage() {
@@ -22,6 +23,8 @@ export default function YxPayInputsPage() {
   const read = usePayRead();
   const search = usePeopleSearch();
   const nameOf = useNames();
+  // Batch A item 8: only HR who records attendance corrections (attendance.lock) sees Reverse loss of pay; the API checks too.
+  const canReverse = useYxPermissions().has('attendance.lock');
   return (
     <OneTimePayScreen
       live={{
@@ -39,6 +42,9 @@ export default function YxPayInputsPage() {
           stage,
           onLateRequest: (x) => write('/input-corrections', x),
           leaveTypes: leaveTypes.data ?? [],
+          // Batch A item 8 (D15): HR reverses LOP of a locked month (paid next run); an open month goes to regularisation.
+          onReverseLop: canReverse ? (x) => write('/corrections/lop-reversal', x) : undefined,
+          regulariseHref: '/yx/time/exceptions',
         },
         oneTime: {
           rows: oneTime.data ?? null,

@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { Fingerprint, Plus, Smartphone, Trash2 } from 'lucide-react';
-import { Button, IconButton } from './button';
+import { Button, IconButton, RowButton } from './button';
 import { FormField, ErrorSummary } from './field';
 import { CurrencyField, MaskedField, TextField, TimeField } from './inputs';
 import { Checkbox, MethodCards } from './choice';
@@ -34,6 +34,17 @@ describe('Button', () => {
   it('icon button uses its label as accessible name', () => {
     render(<IconButton icon={Trash2} label="Delete row" />);
     expect(screen.getByRole('button', { name: 'Delete row' })).toBeInTheDocument();
+  });
+  it('row button is a keyboard-reachable button that opens on Enter', async () => {
+    const onClick = vi.fn();
+    render(<RowButton aria-label="3 Nov 2026: Present" onClick={onClick}><span>3 Nov 2026</span></RowButton>);
+    const b = screen.getByRole('button', { name: '3 Nov 2026: Present' });
+    expect(b).toHaveAttribute('type', 'button');
+    expect(b).toHaveClass('yx-row-button');
+    await userEvent.tab();
+    expect(b).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 });
 

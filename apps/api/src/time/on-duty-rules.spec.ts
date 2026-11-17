@@ -1,5 +1,5 @@
 import { evaluateDay, instantAt, type DayInput } from './time-maths';
-import { clockText, onDutyProblem, overlaps } from './on-duty-rules';
+import { clockText, minutesText, onDutyProblem, overlaps, permissionProblem } from './on-duty-rules';
 
 // TIM-03 / TIM-07 OnDuty (Nov 2026): the request's rules and how an approved on-duty day counts.
 
@@ -64,5 +64,25 @@ describe('an approved on-duty day in the day engine', () => {
     const r = evaluateDay({ ...base, leave: 'first', onDuty: { inMinute: 840, outMinute: 1110 } });
     expect(r.status).toBe('present');
     expect(r.leavePart).toBe('first');
+  });
+});
+
+describe('hourly permission rules (batch A item 7, answer 2310)', () => {
+  const base = { on: '2026-11-17', today: '2026-11-17', aheadDays: 30, backDays: 60, inMinute: 960, outMinute: 1080, maxMinutes: 120, limit: 2, used: 0, month: 'November' };
+  it('accepts up to the longest length and within the monthly count', () => {
+    expect(permissionProblem(base)).toBeNull();
+    expect(permissionProblem({ ...base, used: 1 })).toBeNull();
+  });
+  it('refuses one minute over the length, a backwards time, and a day outside the window', () => {
+    expect(permissionProblem({ ...base, outMinute: 1081 })).toMatchObject({ status: 400, field: 'times', message: expect.stringContaining('at most 2 hours') });
+    expect(permissionProblem({ ...base, outMinute: 960 })).toMatchObject({ status: 400, field: 'times' });
+    expect(permissionProblem({ ...base, on: '2026-12-18' })).toMatchObject({ status: 400, field: 'on' });
+  });
+  it('refuses past the monthly count with the reason (409)', () => {
+    expect(permissionProblem({ ...base, used: 2 })).toMatchObject({ status: 409, message: 'You have used all 2 permissions for November. Apply for leave instead.' });
+    expect(permissionProblem({ ...base, limit: 0 })).toMatchObject({ status: 409, message: expect.stringContaining('does not allow') });
+  });
+  it('words lengths plainly', () => {
+    expect([minutesText(60), minutesText(120), minutesText(90)]).toEqual(['1 hour', '2 hours', '90 minutes']);
   });
 });
