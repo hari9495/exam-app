@@ -667,6 +667,230 @@
       ]
     },
     {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-HR",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Haryana levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Haryana: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-UP",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Uttar Pradesh levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Uttar Pradesh: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-RJ",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Rajasthan levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Rajasthan: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-UK",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Uttarakhand levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Uttarakhand: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-HP",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Himachal Pradesh levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Himachal Pradesh: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-AR",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Arunachal Pradesh levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Arunachal Pradesh: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-JK",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Jammu and Kashmir levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Jammu and Kashmir: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-CH",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Chandigarh levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Chandigarh: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.LWF",
       "jurisdiction": "IN-KA",
       "version": "2024-v1",

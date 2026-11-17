@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import fc from 'fast-check';
 import { Prisma } from '@prisma/client';
-import { checkShape, due, esi, inForce, minWage, minWageTableFor, pf, pt, runGolden, tds, type GoldenCase, type RuleSet } from './evaluator';
+import { checkShape, due, esi, inForce, minWage, minWageTableFor, noPt, pf, pt, runGolden, tds, type GoldenCase, type RuleSet } from './evaluator';
 
 // PAY-2.02 / 2.03: every golden case of the India pack passes; the migration that loads the pack carries every rule set
 // of the JSON (no drift); shape checks; property tests over the statutory maths (§16.3).
@@ -43,6 +43,17 @@ describe('India pack (P07)', () => {
     expect(inForce(sets, 'IN.TDS', ['IN'], '2026-03-31')!.version).toBe('FY2025-26');
     expect(inForce(sets, 'IN.TDS', ['IN'], '2026-04-01')!.version).toBe('TY2026-27');
     expect(inForce(sets, 'IN.PT', ['IN-KA', 'IN'], '2026-10-01')!.jurisdiction).toBe('IN-KA');
+  });
+});
+
+describe('batch H: state PT rule data', () => {
+  it('H8: the no-PT states have an explicit none set (verify, CA item 23); a charging or unmodelled state is not "none"', () => {
+    for (const j of ['IN-DL', 'IN-HR', 'IN-UP', 'IN-RJ', 'IN-UK', 'IN-HP', 'IN-AR', 'IN-JK', 'IN-CH']) expect({ j, none: noPt(sets, j, '2026-11-17') }).toEqual({ j, none: true });
+    for (const j of ['IN-HR', 'IN-UP', 'IN-RJ', 'IN-UK', 'IN-HP', 'IN-AR', 'IN-JK', 'IN-CH']) expect(one('IN.PT', j)).toMatchObject({ verify: true, source: expect.stringMatching(/CA checklist item 23/) });
+    expect(noPt(sets, 'IN-KA', '2026-11-17')).toBe(false);
+    expect(noPt(sets, 'IN-ML', '2026-11-17')).toBe(false);
+    // Before the set's start there is no rule, so no "none" either.
+    expect(noPt(sets, 'IN-HR', '2025-03-31')).toBe(false);
   });
 });
 

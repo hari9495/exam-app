@@ -61,6 +61,12 @@ describe('setupMissing (CMP-01)', () => {
     expect(await setupMissing(tx(regs, 'BLRP12345E', ['IN-KA']), 'o', 'e', rules)).toEqual([]);
     expect(await setupMissing(tx(regs, 'BLRP12345E', ['IN-KA', 'IN-MH']), 'o', 'e', rules)).toEqual(['IN.PT IN-MH']);
   });
+  it('2382: a state whose PT rule in force charges none (Haryana) asks for no PT registration; its LWF still does', async () => {
+    const none = { statute: 'IN.PT', jurisdiction: 'IN-HR', version: '2025-v1', validFrom: '2025-04-01', verify: true, values: { kind: 'pt', basis: 'monthly', annualCap: '0', slabs: [] } } as RuleSet;
+    const hrLwf = { statute: 'IN.LWF', jurisdiction: 'IN-HR' } as unknown as RuleSet;
+    const regs = [{ statute: 'IN.PF', state: '' }, { statute: 'IN.ESI', state: '' }];
+    expect(await setupMissing(tx(regs, 'BLRP12345E', ['IN-HR']), 'o', 'e', [...rules, none, hrLwf])).toEqual(['IN.LWF IN-HR']);
+  });
 });
 
 describe('deskTaskSeats (CMP-08)', () => {

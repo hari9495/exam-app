@@ -8,7 +8,7 @@ import type { ScopeUser, Viewer } from '../access/scope';
 import { asDate, dateOf } from '../time/time-core';
 import { addDays } from '../time/time-maths';
 import { StatutoryRulesService } from '../statutory/statutory.service';
-import { coverage, inForce } from '../statutory/evaluator';
+import { coverage, inForce, noPt } from '../statutory/evaluator';
 import { LayoutDto, LegalOptionDto, MemberDto, PayGroupDto, RegistrationsDto } from './dto-5b';
 import { entitiesFor, payViewer, requireEntity, requireSelf } from './pay-access';
 import { SAMPLE_VALUES, renderPayslipPdf } from './payslip-pdf';
@@ -91,7 +91,10 @@ export class PaySetupService {
     }
     // TDS is deducted by every employer paying salary: the TAN (deductor) must be on file.
     if (!entity.tan) missing.push('IN.TDS: the entity TAN (deductor details, set on the legal entity)');
+    // 2382: a state whose PT rule in force charges none (Delhi, Haryana, Odisha from April 2026) needs no PT registration.
+    const sets = await this.rules.published();
     for (const s of await this.states(tx, org, entityId)) {
+      if (noPt(sets, s, todayIst())) continue;
       if (!regs.some((r) => r.statute === 'IN.PT' && r.state === s)) missing.push(`IN.PT ${s}: say whether the entity is registered`);
     }
     return { complete: missing.length === 0, missing };
