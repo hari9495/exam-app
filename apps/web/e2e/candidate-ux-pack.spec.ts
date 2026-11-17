@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import { skipPreV2Console } from './fixtures/pre-v2';
+import { addSectionWithQuestion } from './fixtures/sections';
 
 skipPreV2Console('candidate-ux-pack.spec.ts');
 
@@ -43,12 +44,7 @@ test('a candidate with a +50% accommodation gets more remaining time than the ex
   await page.getByRole('option', { name: /per-section breakdown/i }).click();
   await page.getByRole('button', { name: 'Save details' }).click();
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /UX pack e2e question\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /UX pack e2e question\?/);
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
 

@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import { skipPreV2Console } from './fixtures/pre-v2';
+import { addSectionWithQuestion } from './fixtures/sections';
 
 skipPreV2Console('screen-share-detection.spec.ts');
 
@@ -30,12 +31,7 @@ test('multi-monitor gates exam start, and a display added mid-exam raises a live
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /Screen path: 2 \+ 2\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /Screen path: 2 \+ 2\?/);
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
 
