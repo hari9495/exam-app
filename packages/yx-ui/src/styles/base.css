@@ -56,6 +56,8 @@ a[href]:hover { text-decoration-thickness: var(--yx-focus-width); }
 :root:is([data-strong-focus="on"], [data-contrast="high"]) :focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring) !important; outline-offset: var(--yx-space-half) !important; }
 /* Underline links (and high contrast: colour is never the only signal). */
 :root:is([data-underline-links="on"], [data-contrast="high"]) a[href] { text-decoration-line: underline !important; }
+/* High contrast (answer 2395): headings in yellow, as on india.gov.in. */
+:root[data-contrast="high"] :is(h1, h2, h3) { color: var(--yx-color-link) !important; }
 /* Big cursor: the arrow everywhere, the hand on what can be pressed, the text bar where you type. */
 :root[data-big-cursor="on"],
 :root[data-big-cursor="on"] * { cursor: var(--yx-cursor-big) !important; }
