@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { ItemAnalysisScreen, QuestionBankScreen, QuestionEditorScreen, QuestionReviewQueueScreen } from './bank-tests';
-import { codeProblems, missingAlt } from './bank-live';
+import { codeProblems, missingAlt, rubricProblems } from './bank-live';
 import { BANK_QUESTION, BANK_QUESTION_IMAGE, BANK_QUESTION_MAJOR, CODE_QUESTION, PREVIEW_IMAGE, REVIEW_CHANGES, REVIEW_TRANSLATIONS, liveBank, liveEditor, liveItems, liveReviews } from './bank-live-samples';
 
 // AS-1: the designed question bank screens with live data (answers 2009, 2010, 2017).
@@ -21,6 +21,23 @@ describe('PRC-01 question bank (live)', () => {
     expect(onLoadStats).toHaveBeenCalledWith('q1');
     expect(await screen.findByText('Provisional statistics')).toBeInTheDocument();
     expect(screen.getByText('0.41')).toBeInTheDocument();
+  });
+
+  it('answer 2224: a retired question approved before is restored; negative: a never-approved one has no Restore, a refusal says why', async () => {
+    const onRestore = vi.fn().mockRejectedValueOnce(new Error('This question is not retired.')).mockResolvedValueOnce({});
+    const { unmount } = wrap(<QuestionBankScreen live={liveBank({ onRestore })} />);
+    await ue.click(within(screen.getByRole('table', { name: 'Questions' })).getByText('Which document records a CCP deviation?'));
+    await ue.click(await screen.findByRole('button', { name: 'Restore' }));
+    expect((await screen.findAllByText('This question is not retired.')).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Restore' }));
+    expect(onRestore).toHaveBeenLastCalledWith('q4');
+    expect((await screen.findAllByText('Question restored')).length).toBeGreaterThan(0);
+    unmount();
+    const rows = liveBank().rows.map((r) => (r.id === 'q4' ? { ...r, wasApproved: false } : r));
+    wrap(<QuestionBankScreen live={liveBank({ rows, onRestore })} />);
+    await ue.click(within(screen.getByRole('table', { name: 'Questions' })).getByText('Which document records a CCP deviation?'));
+    expect(await screen.findByText(/It was never approved/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
   });
 
   it('Add question opens a new question; the packs tab says which starter packs are on', async () => {
@@ -231,6 +248,38 @@ describe('bank follow-ups (live)', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     expect(onSave.mock.calls[0]![0].codeTests).toHaveLength(3);
     expect(onSave.mock.calls[0]![0].codeTests[2]).toMatchObject({ expectedStdout: '42', hidden: true });
+  });
+
+  it('2271: a code question gets a rubric whose criteria add up to its marks, saved with the question', async () => {
+    const onSave = vi.fn().mockResolvedValue({ saved: 'draft' });
+    const question = { ...CODE_QUESTION, content: { ...CODE_QUESTION.content, marks: 10 } };
+    wrap(<QuestionEditorScreen live={liveEditor({ question, stats: null, onSave })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Answer key' }));
+    const box = screen.getByRole('region', { name: 'Rubric' });
+    await ue.click(within(box).getByRole('button', { name: 'Add criterion' }));
+    await ue.click(within(box).getByRole('button', { name: 'Add criterion' }));
+    await ue.type(within(box).getByRole('textbox', { name: 'Criterion 1' }), 'Correct output');
+    await ue.type(within(box).getByRole('textbox', { name: 'Criterion 2' }), 'Readable code');
+    const m1 = within(box).getByRole('textbox', { name: 'Marks for criterion 1' });
+    await ue.clear(m1);
+    await ue.type(m1, '6');
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(within(box).getByText('The criteria add up to 7 marks; the question is worth 10.')).toBeInTheDocument();
+    const m2 = within(box).getByRole('textbox', { name: 'Marks for criterion 2' });
+    await ue.clear(m2);
+    await ue.type(m2, '4');
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave.mock.calls[0]![0].rubric).toEqual([{ criterion: 'Correct output', marks: 6 }, { criterion: 'Readable code', marks: 4 }]);
+  });
+
+  it('2271 negative: unnamed, repeated or part-mark criteria are refused; no rubric is fine', () => {
+    const base = { ...CODE_QUESTION.content, marks: 4 };
+    expect(rubricProblems({ ...base, rubric: [] })).toEqual([]);
+    expect(rubricProblems({ ...base, rubric: [{ criterion: '', marks: 4 }] })).toEqual(['Name every criterion.']);
+    expect(rubricProblems({ ...base, rubric: [{ criterion: 'A', marks: 2 }, { criterion: 'a', marks: 2 }] })).toEqual(['Each criterion is named once.']);
+    expect(rubricProblems({ ...base, rubric: [{ criterion: 'A', marks: 3.5 }, { criterion: 'B', marks: 0.5 }] })).toEqual(['Each criterion is worth at least 1 whole mark.']);
   });
 
   it('2125 negative: no test, no expected output, no language or every test hidden is not saved', async () => {

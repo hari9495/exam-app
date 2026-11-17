@@ -49,7 +49,7 @@ it('the queue decides a request item by item and opens the evidence', async () =
   expect(open).toHaveBeenCalledWith('https://blob/letter.pdf', '_blank', 'noopener');
   await userEvent.click(screen.getByRole('checkbox', { name: /25 % extra time/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Approve 1 of 2' }));
-  expect(calls).toContain('POST /asmt/accommodations/r1/decide {"approvedKinds":["reader"],"extraTimePercent":null,"message":null}');
+  expect(calls).toContain('POST /asmt/accommodations/r1/decide {"approvedKinds":["reader"],"extraTimePercent":null,"extraBreaks":null,"breakMinutes":null,"message":null}');
   open.mockRestore();
 });
 

@@ -98,6 +98,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'asmt.time_credit_cap': { label: 'Tests: automatic time credit cap (minutes per attempt)', scopes: ['tenant'], dated: false, values: ['0', '5', '10', '15', '20', '30'], default: '10' },
   // AS-3 (answer 2013, PRC-32): a candidate may use an earlier result on the same test within this many months (0: never).
   'asmt.result_reuse_months': { label: 'Tests: an earlier result may be used again for (months; 0 = never)', scopes: ['tenant'], dated: false, values: ['0', '3', '6', '12'], default: '6', labels: { '0': 'Never', '3': '3 months', '6': '6 months', '12': '12 months' } },
+  // Answers 2121, 2151: AI drafts questions and tests (always drafts a person reviews); a company may switch it off.
+  'asmt.ai_generation': { label: 'Tests: AI drafts questions and tests from a job description', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   // AS-6 (PRC-19, answer 2019): marking and fairness.
   'asmt.blind_marking': { label: 'Tests: markers do not see who wrote the answer', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'asmt.second_marker': { label: 'Tests: a second marker marks each written answer blind', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },

@@ -11,7 +11,7 @@ export const BANK_ROWS: BankRow[] = [
   { id: 'q1', text: 'Which Java Stream operation is lazy and returns a new stream?', type: 'single_mcq', topic: 'Java streams', collection: 'Backend L2', difficulty: 'medium', status: 'approved', version: 2, openChange: null, languages: ['en', 'hi'], aiDrafted: false, updatedAt: at(10) },
   { id: 'q2', text: 'Explain how you would reduce food-safety deviations on a packing line.', type: 'essay', topic: 'Food safety', collection: 'Food safety', difficulty: 'medium', status: 'in_review', version: 1, openChange: { state: 'in_review', kind: 'new' }, languages: ['en'], aiDrafted: false, updatedAt: at(12) },
   { id: 'q3', text: 'A dispatch van covers 180 km in 3 hours. At the same speed, how far in 5 hours?', type: 'single_mcq', topic: 'Speed and distance', collection: 'Campus aptitude', difficulty: 'easy', status: 'draft', version: 1, openChange: null, languages: ['en'], aiDrafted: true, updatedAt: at(14) },
-  { id: 'q4', text: 'Which document records a CCP deviation?', type: 'single_mcq', topic: 'Food safety', collection: 'Food safety', difficulty: 'hard', status: 'retired', version: 1, openChange: null, languages: ['en'], aiDrafted: false, updatedAt: at(2) },
+  { id: 'q4', text: 'Which document records a CCP deviation?', type: 'single_mcq', topic: 'Food safety', collection: 'Food safety', difficulty: 'hard', status: 'retired', version: 1, openChange: null, languages: ['en'], aiDrafted: false, wasApproved: true, updatedAt: at(2) },
 ];
 
 export const ITEM_STATS: ItemStats = {
@@ -29,7 +29,7 @@ export const ITEM_STATS: ItemStats = {
 };
 
 export function liveBank(over: Partial<LiveBank> = {}): LiveBank {
-  return { state: 'ready', onRetry: () => undefined, rows: BANK_ROWS, stats: { q1: { responses: 142, percentCorrect: 62 } }, settings: BANK_SETTINGS, onOpen: () => undefined, onImport: () => Promise.resolve({ created: 3, errors: [{ row: 5, message: 'Mark one option correct.' }] }), onDownloadTemplate: ok, onDraftWithAi: ok, onSubmit: ok, onRetire: ok, onLoadStats: () => Promise.resolve(ITEM_STATS), ...over };
+  return { state: 'ready', onRetry: () => undefined, rows: BANK_ROWS, stats: { q1: { responses: 142, percentCorrect: 62 } }, settings: BANK_SETTINGS, onOpen: () => undefined, onImport: () => Promise.resolve({ created: 3, errors: [{ row: 5, message: 'Mark one option correct.' }] }), onDownloadTemplate: ok, onDraftWithAi: ok, onSubmit: ok, onRetire: ok, onRestore: ok, onLoadStats: () => Promise.resolve(ITEM_STATS), ...over };
 }
 
 const MCQ: BankContent = {

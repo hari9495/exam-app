@@ -26,6 +26,25 @@ export interface QuestionContent {
   options: { text: string; isCorrect: boolean; imageUrl?: string | null }[];
   optionAlts?: (string | null)[];
   codeTests?: { stdin?: string; expectedStdout: string; weight?: number; hidden?: boolean }[];
+  /** Answer 2271: criteria with marks for a written or code answer; they add up to the question's marks. */
+  rubric?: { criterion: string; marks: number }[];
+}
+
+/** Answer 2271: the question types a person marks with a rubric. */
+export const RUBRIC_TYPES = ['essay', 'code'];
+
+/** Why a rubric cannot be saved, or null: only essay and code, at most 10 named criteria, whole marks adding up. */
+export function rubricProblem(c: QuestionContent): string | null {
+  const r = c.rubric ?? [];
+  if (!r.length) return null;
+  if (!RUBRIC_TYPES.includes(c.type)) return 'Only written (essay) and code questions have a rubric.';
+  if (r.length > 10) return 'A rubric has at most 10 criteria.';
+  const names = r.map((x) => norm(x.criterion).toLowerCase());
+  if (names.some((n) => !n)) return 'Name every criterion.';
+  if (new Set(names).size !== names.length) return 'Each criterion is named once.';
+  if (r.some((x) => !Number.isInteger(x.marks) || x.marks < 1)) return 'Each criterion is worth at least 1 whole mark.';
+  const sum = r.reduce((t, x) => t + x.marks, 0);
+  return sum === c.marks ? null : `The criteria add up to ${sum} marks; the question is worth ${c.marks}.`;
 }
 
 const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').trim();
@@ -37,7 +56,7 @@ const norm = (s: string | null | undefined) => (s ?? '').replace(/\s+/g, ' ').tr
 export function normalized(c: QuestionContent): QuestionContent {
   const alts = (c.optionAlts ?? []).map((a) => (a ?? '').trim() || null);
   while (alts.length && alts[alts.length - 1] === null) alts.pop();
-  return { ...c, negativeMarks: c.negativeMarks ?? 0, partialCredit: c.partialCredit ?? false, topic: c.topic?.trim() || null, category: c.category?.trim() || null, tags: c.tags ?? [], imageUrl: c.imageUrl || null, imageAlt: c.imageAlt?.trim() || null, optionAlts: alts };
+  return { ...c, negativeMarks: c.negativeMarks ?? 0, partialCredit: c.partialCredit ?? false, topic: c.topic?.trim() || null, category: c.category?.trim() || null, tags: c.tags ?? [], imageUrl: c.imageUrl || null, imageAlt: c.imageAlt?.trim() || null, optionAlts: alts, rubric: (c.rubric ?? []).map((x) => ({ criterion: norm(x.criterion), marks: x.marks })) };
 }
 
 /**
@@ -65,6 +84,7 @@ export function changedFields(before: QuestionContent, after: QuestionContent): 
   for (const k of ['marks', 'negativeMarks', 'difficulty', 'topic', 'category', 'imageUrl', 'imageAlt'] as const) if (!same(before[k], after[k])) out.push(k);
   if (!same([...(before.tags ?? [])].sort(), [...(after.tags ?? [])].sort())) out.push('tags');
   if (!same(before.optionAlts ?? [], after.optionAlts ?? [])) out.push('optionAlts');
+  if (!same(before.rubric ?? [], after.rubric ?? [])) out.push('rubric');
   return out;
 }
 

@@ -31,7 +31,7 @@ export default function YxMarkingPage() {
         },
         position: row ? { index: Math.min(at, rows.length - 1), total: rows.length } : null,
         item: row ? (item.data ?? null) : null,
-        onMark: async (marks, feedback) => void (await write('POST', `${path}/mark`, { marks, ...(feedback ? { feedback } : {}) })),
+        onMark: async (marks, feedback, criteria) => void (await write('POST', `${path}/mark`, { marks, ...(feedback ? { feedback } : {}), ...(criteria ? { criteria } : {}) })),
         onSuggest: async () => void (await write('POST', `${path}/suggestion`)),
         onNext: () => setAt((i) => (rows.length ? (i + 1) % rows.length : 0)),
         onFinish: async () => void (await write('POST', `/attempts/${row!.attemptId}/finalize-manual-grade`)),

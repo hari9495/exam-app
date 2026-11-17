@@ -43,6 +43,10 @@ export const BUILDER_WAITING: BuilderTestView = {
   approval: { ...BUILDER_TEST.approval, requestedBy: 'Meera Iyer', requestedAt: '2026-11-15T09:30:00.000Z', canApprove: true },
 };
 
+/** Answer 2151: what the AI found in a job description, one skill not in the library yet. */
+export const JD_PLAN = { level: 'hard' as const, skills: [{ name: 'Java streams', tagId: 'k1', percent: 50 }, { name: 'SQL joins', tagId: 'k2', percent: 30 }, { name: 'Spring', tagId: null, percent: 20 }] };
+export const COMPANY_SKILLS = [{ id: 'k1', name: 'Java streams' }, { id: 'k2', name: 'SQL joins' }, { id: 'k3', name: 'Spring Boot' }];
+
 export function liveBuilder(over: Partial<LiveTestBuilder> = {}): LiveTestBuilder {
   return {
     state: 'ready',

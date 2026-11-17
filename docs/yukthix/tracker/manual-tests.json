@@ -22514,5 +22514,61 @@
       "Screens/Proctoring/PRC-27 · Result and appeal"
     ],
     "note": "Positive and negative. Answer 2237."
+  },
+  {
+    "id": "MT-ASFU-1",
+    "area": "Assessment follow-ups: answers 2151, 2153, 2158, 2202, 2204, 2224, 2271, 2273 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Question bank (Restore) and question editor (Rubric)",
+    "url": "http://localhost:3000/yx/hiring/assessments/questions",
+    "account": "A bank writer (asmt.bank.manage) and a second bank writer who reviews.",
+    "steps": [
+      "Retire an approved question; open it from the list; press Restore.",
+      "Open a retired question that was never approved.",
+      "New essay question worth 10: in Answer key, add two criteria worth 4 and 3; save. Change 3 to 6; save; submit; the second writer approves."
+    ],
+    "expected": "Step 1: toast 'Question restored'; it is Approved again. Step 2: no Restore; it says to open it and send it for review. Step 3: first save refused ('add up to 7 marks; the question is worth 10'); then saved; the review shows Rubric as a changed field.",
+    "stories": [
+      "Screens/Proctoring/PRC-01 · Question bank",
+      "Screens/Proctoring/PRC-02 · Question editor"
+    ],
+    "note": "Positive and negative. Answers 2224, 2271."
+  },
+  {
+    "id": "MT-ASFU-2",
+    "area": "Assessment follow-ups: answers 2151, 2153, 2158, 2202, 2204, 2224, 2271, 2273 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Tests (job description, Sections, Blueprint, approval)",
+    "url": "http://localhost:3000/yx/hiring/assessments/tests",
+    "account": "Two test writers (asmt.test.manage); Settings › Assessments AI-drafted questions on, then off.",
+    "steps": [
+      "Build from job description: paste a job description; Find the skills; map or remove a skill not in your library; name the test; Create draft test.",
+      "In the draft: Sections step: rename a section, change a weight, add one, remove one. Blueprint: change a pool's draw and difficulty; save.",
+      "Set expected candidates above the approver threshold; ask for approval. Sign in as the other writer: look at the bell.",
+      "Switch AI-drafted questions off; open Tests again."
+    ],
+    "expected": "Step 1: an unmapped skill blocks creating; then a draft opens with one pool section per skill. Step 2: each save shows a toast; the total weight badge updates. Step 3: the other writer has 'A test waits for your approval' linking to the test; the asker has none. Step 4: no 'Build from job description' tab.",
+    "stories": [
+      "Screens/Proctoring/PRC-04 · Test builder"
+    ],
+    "note": "Positive and negative. Answers 2151, 2153, 2158."
+  },
+  {
+    "id": "MT-ASFU-3",
+    "area": "Assessment follow-ups: answers 2151, 2153, 2158, 2202, 2204, 2224, 2271, 2273 (17 Nov 2026)",
+    "screen": "Hire › Assessments › Accommodations; candidate test; Marking; Fairness",
+    "url": "http://localhost:3000/yx/hiring/assessments/accommodations",
+    "account": "A candidate asking for breaks and proctoring changes; a test writer; a marker; Fairness with a finding.",
+    "steps": [
+      "As the writer: open the request; Approve all without changing anything, then choose 2 extra breaks of 20 min and approve.",
+      "As the candidate: check the email; start the test; open the breaks.",
+      "Mark an essay with a rubric: leave a criterion empty; then mark each criterion.",
+      "Fairness: Decide the open review: choose Retire the test, read the dialog, save with a reason."
+    ],
+    "expected": "Step 1: approved (toast). Step 2: the email names the breaks and 'proctoring that does not watch where you look'; the runner allows the test's breaks plus 2 of 20 minutes; no head-turn warnings. Step 3: refused ('Mark ...'); then the total shows and saves. Step 4: the dialog says retiring archives the test; afterwards the test is archived.",
+    "stories": [
+      "Screens/Proctoring/PRC-11 · Accommodation review queue",
+      "Screens/Proctoring/PRC-19 · Evaluator console",
+      "Screens/Proctoring/Extra · Fairness analytics"
+    ],
+    "note": "Positive and negative. Answers 2202, 2204, 2271, 2273."
   }
 ]

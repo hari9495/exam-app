@@ -35,6 +35,11 @@ export default function YxTestBuilderPage() {
         // Answer 2154: a section's cut-off (the older section route, which locks a published or started test).
         onSetCutoff: async (sectionId, percent) => void (await write('PATCH', `/exams/${id}/sections/${sectionId}`, { cutoffPercent: percent })),
         onEditSections: () => router.push(`/v2/exams/${id}/edit`),
+        // Answer 2153: the designed Sections and Blueprint steps edit sections on the existing routes.
+        onAddSection: async (title) => void (await write('POST', `/exams/${id}/sections`, { title })),
+        onSaveSection: async (sectionId, v) => void (await write('PATCH', `/exams/${id}/sections/${sectionId}`, v)),
+        onDeleteSection: async (sectionId) => void (await write('DELETE', `/exams/${id}/sections/${sectionId}`)),
+        onSavePool: async (sectionId, v) => void (await write('PATCH', `/exams/${id}/sections/${sectionId}`, { poolSize: v.poolSize, ...(v.poolDifficulty ? { poolDifficulty: v.poolDifficulty } : {}) })),
         onRequestApproval: async () => void (await write('POST', `${t}/approval/request`)),
         onApprove: async () => void (await write('POST', `${t}/approval/approve`)),
         onPublish: async () => void (await write('POST', `/exams/${id}/publish`)),

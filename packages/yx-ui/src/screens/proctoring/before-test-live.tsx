@@ -13,6 +13,7 @@ import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsList, TabsTr
 import { FormField } from '../../components/field';
 import { TextArea } from '../../components/inputs';
 import { Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { Checkbox } from '../../components/choice';
 import { FileUpload } from '../../components/upload';
 import { ConfirmDialog } from '../../components/overlay';
@@ -40,7 +41,9 @@ export const HELP_LABEL: Record<HelpKind, string> = {
 /** What a candidate may ask for on the request form (the manual identity check is asked for from the consent step). */
 const ASKABLE: HelpKind[] = ['time', 'breaks', 'reader', 'font', 'separate', 'profile'];
 /** Applied by YukthiX on approval; the others are noted for the test owner to arrange. */
-const AUTOMATIC: HelpKind[] = ['time', 'reader', 'font', 'identity'];
+const AUTOMATIC: HelpKind[] = ['time', 'breaks', 'reader', 'font', 'profile', 'identity'];
+/** Answer 2202: what approval changes on the invitation itself, so only before the test starts. */
+const BEFORE_START: HelpKind[] = ['time', 'breaks', 'profile'];
 
 const STATUS: Record<string, { label: string; tone: 'warning' | 'success' | 'info' | 'danger' }> = {
   pending: { label: 'New', tone: 'warning' },
@@ -49,7 +52,10 @@ const STATUS: Record<string, { label: string; tone: 'warning' | 'success' | 'inf
   declined: { label: 'Declined', tone: 'danger' },
 };
 const statusOf = (s: string) => STATUS[s] ?? { label: s, tone: 'info' as const };
-const words = (kinds: string[], pct?: number | null) => kinds.map((k) => (k === 'time' && pct ? `${pct} % extra time` : (HELP_LABEL[k as HelpKind] ?? k))).join(', ');
+const words = (kinds: string[], pct?: number | null, breaks?: { n: number | null; minutes: number | null }) =>
+  kinds
+    .map((k) => (k === 'time' && pct ? `${pct} % extra time` : k === 'breaks' && breaks?.n ? `${breaks.n} extra break${breaks.n === 1 ? '' : 's'} of ${breaks.minutes} min` : k === 'profile' ? 'No gaze flags (proctoring)' : (HELP_LABEL[k as HelpKind] ?? k)))
+    .join(', ');
 
 /* ------------------------------------------------------------------ PRC-11 · accommodation queue */
 
@@ -64,6 +70,8 @@ export interface AccommodationView {
   status: string;
   approvedKinds: string[];
   grantedExtraTimePercent: number | null;
+  grantedExtraBreaks?: number | null;
+  grantedBreakMinutes?: number | null;
   message: string | null;
   createdAt: string;
   decidedAt: string | null;
@@ -78,7 +86,7 @@ export interface LiveAccommodationQueue {
   onTab: (t: 'pending' | 'decided') => void;
   rows: AccommodationView[];
   onOpenEvidence: (id: string) => Promise<void>;
-  onDecide: (id: string, d: { approvedKinds: string[]; extraTimePercent: number | null; message: string | null }) => Promise<void>;
+  onDecide: (id: string, d: { approvedKinds: string[]; extraTimePercent: number | null; extraBreaks?: number | null; breakMinutes?: number | null; message: string | null }) => Promise<void>;
 }
 
 export function LiveAccommodationQueueScreen({ live }: { live: LiveAccommodationQueue }) {
@@ -119,13 +127,16 @@ export function LiveAccommodationQueueScreen({ live }: { live: LiveAccommodation
 
 function AccommodationDrawer({ row, live, onClose }: { row: AccommodationView; live: LiveAccommodationQueue; onClose: () => void }) {
   const decided = row.status !== 'pending';
-  const [approved, setApproved] = useState<string[]>(decided ? row.approvedKinds : row.kinds.filter((k) => !(k === 'time' && row.started)));
+  const [approved, setApproved] = useState<string[]>(decided ? row.approvedKinds : row.kinds.filter((k) => !(BEFORE_START.includes(k as HelpKind) && row.started)));
   const [pct, setPct] = useState<string | null>(String(row.extraTimePercent ?? 25));
+  const [extraBreaks, setExtraBreaks] = useState(1);
+  const [breakMinutes, setBreakMinutes] = useState(15);
   const [message, setMessage] = useState(row.message ?? '');
   const { busy, run, error } = useRun();
   const { done } = useSay();
   const decide = async (kinds: string[]) => {
-    if (await run('decide', () => live.onDecide(row.id, { approvedKinds: kinds, extraTimePercent: kinds.includes('time') ? Number(pct) : null, message: message.trim() || null }))) {
+    const b = kinds.includes('breaks');
+    if (await run('decide', () => live.onDecide(row.id, { approvedKinds: kinds, extraTimePercent: kinds.includes('time') ? Number(pct) : null, extraBreaks: b ? extraBreaks : null, breakMinutes: b ? breakMinutes : null, message: message.trim() || null }))) {
       done(kinds.length === 0 ? 'Request declined' : kinds.length === row.kinds.length ? 'Request approved' : 'Request partly approved');
       onClose();
     }
@@ -154,7 +165,7 @@ function AccommodationDrawer({ row, live, onClose }: { row: AccommodationView; l
         {error && <InlineAlert tone="danger" title={error} />}
         {decided ? (
           <InlineAlert tone={statusOf(row.status).tone === 'danger' ? 'warning' : 'success'} title={`${statusOf(row.status).label}${row.decidedBy ? ` by ${row.decidedBy}` : ''}`}>
-            {row.approvedKinds.length ? `Approved: ${words(row.approvedKinds, row.grantedExtraTimePercent)}.` : 'Nothing approved.'} {row.decidedAt ? `On ${formatDate(new Date(row.decidedAt))}.` : ''}
+            {row.approvedKinds.length ? `Approved: ${words(row.approvedKinds, row.grantedExtraTimePercent, { n: row.grantedExtraBreaks ?? null, minutes: row.grantedBreakMinutes ?? null })}.` : 'Nothing approved.'} {row.decidedAt ? `On ${formatDate(new Date(row.decidedAt))}.` : ''}
           </InlineAlert>
         ) : (
           <FormField label="Approve each adjustment">
@@ -163,7 +174,8 @@ function AccommodationDrawer({ row, live, onClose }: { row: AccommodationView; l
                 <Checkbox
                   key={k}
                   label={words([k], k === 'time' ? row.extraTimePercent : null)}
-                  description={k === 'time' && row.started ? 'The test has started: extra time can no longer change.' : AUTOMATIC.includes(k as HelpKind) ? 'Applied automatically' : 'Noted for you to arrange'}
+                  description={BEFORE_START.includes(k as HelpKind) && row.started ? 'The test has started: this can no longer change.' : k === 'profile' ? 'Applied automatically: looking away, looking down and head turns are not flagged' : AUTOMATIC.includes(k as HelpKind) ? 'Applied automatically' : 'Noted for you to arrange'}
+                  disabled={BEFORE_START.includes(k as HelpKind) && row.started}
                   checked={approved.includes(k)}
                   onChange={(c) => setApproved(c ? [...approved, k] : approved.filter((x) => x !== k))}
                 />
@@ -175,6 +187,12 @@ function AccommodationDrawer({ row, live, onClose }: { row: AccommodationView; l
           <FormField label="Extra time to approve">
             <Select value={pct} onChange={setPct} options={[{ value: '25', label: '25 %' }, { value: '50', label: '50 %' }, { value: '100', label: '100 %' }]} />
           </FormField>
+        )}
+        {!decided && approved.includes('breaks') && (
+          <div className="yx-prc-stack" data-gap="sm">
+            <Segment label="Extra breaks" options={[1, 2, 3].map((n) => ({ value: n, label: String(n) }))} value={extraBreaks} onChange={setExtraBreaks} />
+            <Segment label="Length of each break" options={[10, 15, 20, 30].map((n) => ({ value: n, label: `${n} min` }))} value={breakMinutes} onChange={setBreakMinutes} />
+          </div>
         )}
         <DescriptionList
           items={[
@@ -193,7 +211,7 @@ function AccommodationDrawer({ row, live, onClose }: { row: AccommodationView; l
               ),
             },
             { label: 'Submitted', value: formatDate(new Date(row.createdAt)) },
-            { label: 'What changes automatically', value: 'Extra time on the invitation; screen-reader mode, larger font and the manual identity check shown to the candidate' },
+            { label: 'What changes automatically', value: 'Extra time, extra breaks and the no-gaze proctoring profile on the invitation; screen-reader mode, larger font and the manual identity check shown to the candidate. The candidate gets an email with the decision.' },
           ]}
         />
         <FormField label="Message to the candidate" optional helper="Tell them exactly what was approved">

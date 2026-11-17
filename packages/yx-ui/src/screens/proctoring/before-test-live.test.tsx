@@ -19,16 +19,27 @@ describe('PRC-11 accommodation queue (live)', () => {
     await ue.click(within(screen.getByRole('table', { name: 'Accommodation requests' })).getByText('Deepa Pillai'));
     expect(screen.getByText('Low vision; I use NVDA.')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Approve all' }));
-    expect(onDecide).toHaveBeenCalledWith('r1', { approvedKinds: ['time', 'reader'], extraTimePercent: 25, message: null });
+    expect(onDecide).toHaveBeenCalledWith('r1', { approvedKinds: ['time', 'reader'], extraTimePercent: 25, extraBreaks: null, breakMinutes: null, message: null });
   });
 
   it('negative: a started test cannot get extra time: it is not ticked; approving sends the rest', async () => {
     const onDecide = vi.fn().mockResolvedValue(undefined);
     wrap(<AccommodationQueueScreen live={liveAccommodations({ onDecide })} />);
     await ue.click(within(screen.getByRole('table', { name: 'Accommodation requests' })).getByText('Karthik Krishnan'));
-    expect(screen.getByText('The test has started: extra time can no longer change.')).toBeInTheDocument();
+    expect(screen.getByText('The test has started: this can no longer change.')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Approve 1 of 2' }));
-    expect(onDecide).toHaveBeenCalledWith('r2', { approvedKinds: ['separate'], extraTimePercent: null, message: null });
+    expect(onDecide).toHaveBeenCalledWith('r2', { approvedKinds: ['separate'], extraTimePercent: null, extraBreaks: null, breakMinutes: null, message: null });
+  });
+
+  it('answer 2202: approving breaks sends how many and how long; the no-gaze profile is applied automatically', async () => {
+    const onDecide = vi.fn().mockResolvedValue(undefined);
+    wrap(<AccommodationQueueScreen live={liveAccommodations({ onDecide })} />);
+    await ue.click(within(screen.getByRole('table', { name: 'Accommodation requests' })).getByText('Meera Joseph'));
+    expect(screen.getByText(/looking away, looking down and head turns are not flagged/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('radio', { name: '2' }));
+    await ue.click(screen.getByRole('radio', { name: '20 min' }));
+    await ue.click(screen.getByRole('button', { name: 'Approve all' }));
+    expect(onDecide).toHaveBeenCalledWith('r3', { approvedKinds: ['breaks', 'profile'], extraTimePercent: null, extraBreaks: 2, breakMinutes: 20, message: null });
   });
 
   it('negative: a refused decision shows the reason in the drawer', async () => {
