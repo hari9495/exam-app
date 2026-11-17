@@ -550,4 +550,52 @@ describe('Time batch A', () => {
       expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.leaveLedgerEntry.count({ where: { leaveTypeId: ids.d10 } }))).toBe(0);
     });
   });
+
+  // ------------------------------------------------------------------ A9: office or remote per punch (answer 2312)
+  describe('A9 office or remote per punch', () => {
+    const INSIDE = { lat: 12.9717, lng: 77.5947, accuracyM: 20 };
+    const OUTSIDE = { lat: 12.9716, lng: 77.6126, accuracyM: 20 };
+    const setRule = (who: Who, value: string) => api(who, 'put', '/org/settings').send({ key: 'attendance.day_place_rule', value, scopeType: 'tenant' });
+    const lastPunch = (employeeId: string) => inA((tx) => tx.punch.findFirstOrThrow({ where: { employeeId }, orderBy: { createdAt: 'desc' } }));
+    let on = '';
+
+    it('each punch stores its place at punch time: inside the office is office, clocking in from home is remote, refused is unknown', async () => {
+      expect((await api('emp', 'post', '/time/me/punch').send({ kind: 'in', ...INSIDE }).expect(200)).body).toMatchObject({ accepted: true });
+      const office = await lastPunch(ids.empEmp);
+      expect(office.workPlace).toBe('office');
+      on = office.workOn.toISOString().slice(0, 10);
+      expect((await api('peer', 'post', '/time/me/punch').send({ kind: 'in', wfh: true, ...OUTSIDE }).expect(200)).body).toMatchObject({ accepted: true });
+      expect((await lastPunch(ids.peerEmp)).workPlace).toBe('remote');
+      expect((await api('emp', 'post', '/time/me/punch').send({ kind: 'out', ...OUTSIDE }).expect(200)).body).toMatchObject({ accepted: false });
+      expect((await lastPunch(ids.empEmp)).workPlace).toBe('unknown');
+    });
+
+    it('a day with both follows the company setting: office wins by default, then remote wins, then the first punch', async () => {
+      // An earlier remote punch on the same day (clocked in from home in the morning, then came to the office).
+      await inA((tx) => tx.punch.create({ data: { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(Date.now() - 3 * 3600_000), workOn: new Date(`${on}T00:00:00Z`), kind: 'break_end', source: 'web', accepted: true, verdict: 'field', workPlace: 'remote' } }));
+      const card = async () => (await api('mgr', 'get', `/time/people/${ids.empEmp}/days/${on}`).expect(200)).body;
+      const c = await card();
+      expect(c.place).toBe('office');
+      expect(c.punches.map((p: { place: string }) => p.place)).toEqual(['remote', 'office', 'unknown']);
+      await setRule('adminA', 'remote_wins').expect(200);
+      expect((await card()).place).toBe('remote');
+      await setRule('adminA', 'first_punch').expect(200);
+      expect((await card()).place).toBe('remote');
+      // My month's list rows carry the day's place too.
+      const mine = (await api('emp', 'get', `/time/me/attendance?month=${on.slice(0, 7)}`).expect(200)).body;
+      expect(mine.days.find((x: { on: string }) => x.on === on)?.place).toBe('remote');
+      expect(mine.punches.every((p: { place?: string }) => typeof p.place === 'string')).toBe(true);
+      await setRule('adminA', 'office_wins').expect(200);
+      expect((await api('mgr', 'get', `/time/people/${ids.empEmp}/attendance?month=${on.slice(0, 7)}`).expect(200)).body.days.find((x: { on: string }) => x.on === on)?.place).toBe('office');
+    });
+
+    it('negative: the wrong role cannot change the rule, a bad value is a 400, other people and another company see nothing', async () => {
+      await setRule('emp', 'remote_wins').expect(403);
+      await setRule('adminA', 'whoever_is_louder').expect(400);
+      expect(await inA((tx) => tx.setting.findFirst({ where: { key: 'attendance.day_place_rule' } }).then((x) => x?.value))).toBe('office_wins');
+      expect([403, 404]).toContain((await api('peer', 'get', `/time/people/${ids.empEmp}/days/${on}`)).status);
+      expect([403, 404]).toContain((await api('empB', 'get', `/time/people/${ids.empEmp}/days/${on}`)).status);
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.punch.count({ where: { employeeId: ids.empEmp } }))).toBe(0);
+    });
+  });
 });

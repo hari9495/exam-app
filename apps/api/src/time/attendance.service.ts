@@ -18,7 +18,7 @@ import { PeriodsService } from './periods.service';
 import { grantCovers, inReportingLine } from './time-core';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
-import { workOnForPunch } from './time-rules';
+import { dayPlace, placeOf, workOnForPunch, type DayPlaceRule, type WorkPlace } from './time-rules';
 import { describeDevice } from '../email/account-emails';
 
 // M02 Part B basics: web punches with the geofence / allowed-network check (Q6, YX-AT-01, every refused attempt
@@ -143,7 +143,21 @@ export class AttendanceService implements OnModuleInit {
   }
 
   private punchView(p: Prisma.PunchGetPayload<object>, names: Map<string, string>) {
-    return { id: p.id, kind: p.kind, at: p.punchedAt, source: p.source, accepted: p.accepted, refusal: p.refusal, verdict: p.verdict, distanceM: p.distanceM, accuracyM: p.accuracyM, note: p.note, where: p.locationId ? (names.get(p.locationId) ?? null) : null };
+    return { id: p.id, kind: p.kind, at: p.punchedAt, source: p.source, accepted: p.accepted, refusal: p.refusal, verdict: p.verdict, distanceM: p.distanceM, accuracyM: p.accuracyM, note: p.note, where: p.locationId ? (names.get(p.locationId) ?? null) : null, place: this.placeOfRow(p) };
+  }
+
+  /** A9: the place stored at punch time; punches from before it was stored are worked out the same way from their verdict. */
+  private placeOfRow(p: Pick<Prisma.PunchGetPayload<object>, 'workPlace' | 'source' | 'verdict' | 'accepted'>): WorkPlace {
+    return (p.workPlace as WorkPlace | null) ?? placeOf(p);
+  }
+
+  /** A9 (answer 2312): each day's office / remote / unknown from its accepted punches, by the company's rule for mixed days. */
+  private async dayPlaces(tx: Tx, c: CompanyContext, f: Facts, from: string, to: string): Promise<Map<string, WorkPlace>> {
+    const rule = (await settingOn(tx, c, 'attendance.day_place_rule', f, to)) as DayPlaceRule;
+    const rows = await tx.punch.findMany({ where: { organizationId: c.organizationId, employeeId: f.employeeId, accepted: true, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { punchedAt: 'asc' }, select: { workOn: true, workPlace: true, source: true, verdict: true, accepted: true } });
+    const by = new Map<string, WorkPlace[]>();
+    for (const r of rows) by.set(dateOf(r.workOn), [...(by.get(dateOf(r.workOn)) ?? []), this.placeOfRow(r)]);
+    return new Map([...by].map(([on, list]) => [on, dayPlace(list, rule)]));
   }
 
   /**
@@ -188,7 +202,7 @@ export class AttendanceService implements OnModuleInit {
         // Working or on a break: the next punch closes the day (a break still open ends at check-out).
         next: accepted.length && accepted[accepted.length - 1].kind !== 'out' ? 'out' : 'in',
         onBreak: accepted.at(-1)?.kind === 'break_start',
-        days: days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised })),
+        days: await this.dayPlaces(tx, c, f, from, to).then((places) => days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised, place: places.get(dateOf(d.workOn)) ?? 'unknown' }))),
         requests: await this.withSentBack(tx, org, requests).then((notes) => requests.map((r) => ({ id: r.id, on: dateOf(r.workOn), kind: r.kind, inMinute: r.inMinute, outMinute: r.outMinute, reason: r.reason, status: r.status, place: r.place, sentBack: notes.get(r.id) ?? null }))),
         regularise: { limit, used },
         // Work from home (TIM-07): this month's days asked for or approved, and whether today is an approved one.
@@ -302,6 +316,7 @@ export class AttendanceService implements OnModuleInit {
         accuracyM: p.pin?.accuracyM === undefined ? null : Math.round(p.pin.accuracyM),
         distanceM: v.distanceM,
         verdict: v.verdict,
+        workPlace: placeOf({ source: p.source, verdict: v.verdict, accepted: v.accepted }),
         locationId: v.locationId,
         ip: p.ip?.slice(0, 45) ?? null,
         device: p.device?.slice(0, 200) ?? null,
@@ -802,7 +817,7 @@ export class AttendanceService implements OnModuleInit {
         employee: { id: f.employeeId, name: f.name, code: f.code, role: role?.name ?? null, location: place?.name ?? null },
         today,
         zone: f.zone,
-        days: days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised })),
+        days: await this.dayPlaces(tx, c, f, from, to).then((places) => days.map((d) => ({ on: dateOf(d.workOn), status: d.status, leavePart: d.leavePart, firstIn: d.firstIn, lastOut: d.lastOut, workedMinutes: d.workedMinutes, lateMinutes: d.lateMinutes, regularised: d.regularised, place: places.get(dateOf(d.workOn)) ?? 'unknown' }))),
         requests: fixes.filter((r) => r.status === 'pending').map((r) => ({ id: r.id, on: dateOf(r.workOn), kind: r.kind, status: r.status })),
         locked: from <= today ? [...(await lockedDates(tx, org, employeeId, from, to < today ? to : today))].sort() : [],
         present: days.reduce((n, d) => n + (d.status === 'present' ? 1 : d.status === 'half_day' ? 0.5 : 0), 0),
@@ -851,6 +866,8 @@ export class AttendanceService implements OnModuleInit {
         day: day ? { status: day.status, leavePart: day.leavePart, workedMinutes: day.workedMinutes, lateMinutes: day.lateMinutes, regularised: day.regularised } : null,
         // The raw network address is not shown (it identifies a home connection); the verdict says enough.
         punches: punches.map((p) => ({ ...this.punchView(p, names), minute: minutesInto(on, f.zone, p.punchedAt) })),
+        // A9: the day's place by the company's rule for a day with both office and remote punches.
+        place: (await this.dayPlaces(tx, c, f, on, on)).get(on) ?? 'unknown',
       };
     });
   }

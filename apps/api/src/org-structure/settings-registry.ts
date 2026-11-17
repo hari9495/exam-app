@@ -570,6 +570,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'attendance.on_duty.send_back': { label: 'Managers can send on duty back for changes', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   // Extra · My attendance today, ChoseWfh (30 Oct 2026): someone outside the office may clock in as work from home on the
   // day; the request goes to their manager as usual, and if it is not approved those punches no longer count.
+  // Batch A A9 (answer 2312): each punch is office, remote or unknown; a day with both counts as office (default), remote,
+  // or whichever came first.
+  'attendance.day_place_rule': { label: 'A day with both office and remote punches counts as', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['office_wins', 'remote_wins', 'first_punch'], default: 'office_wins' },
   'attendance.wfh_same_day': { label: 'Clock in as work from home on the day (sent for approval)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   // Extra · My attendance today, ShiftNotStarted: check-in opens this long before the shift starts (any: no limit).
   'attendance.check_in_opens_minutes': { label: 'Check-in opens before the shift starts (minutes)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['any', '15', '30', '60', '90', '120', '180'], default: 'any' },
