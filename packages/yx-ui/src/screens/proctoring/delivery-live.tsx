@@ -715,6 +715,8 @@ const INSTITUTION_HEADER = 'name,code,city,coordinator_name,coordinator_email,re
 
 export interface LiveRegistrant {
   id: string;
+  /** The Hire candidate record behind this registration (answer 2242). */
+  candidateId: string;
   name: string;
   email: string;
   phone: string | null;
@@ -727,8 +729,8 @@ export interface LiveRegistrant {
   eligible: boolean;
   ineligibleReason: string | null;
   match: 'New' | 'Existing candidate' | 'Possible duplicate' | 'Merged';
-  duplicateOf: { id: string; name: string; email: string } | null;
-  mergedInto: { id: string; name: string } | null;
+  duplicateOf: { id: string; name: string; email: string; candidateId: string } | null;
+  mergedInto: { id: string; name: string; email: string; candidateId: string } | null;
   test: LiveInvitationStatus | null;
   registeredAt: string;
 }
@@ -762,6 +764,8 @@ export interface LiveCampusKit {
   onSendCoordinatorLink: (institutionId: string) => Promise<string>;
   onMerge: (id: string, intoId: string) => Promise<void>;
   onNotDuplicate: (id: string) => Promise<void>;
+  /** Answer 2242: opens a candidate's record in Hire, where candidate records are merged. */
+  onOpenCandidate: (candidateId: string) => void;
   onCopyLink: (url: string) => Promise<void>;
 }
 
@@ -810,6 +814,8 @@ export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveC
     );
   const loading = live.state === 'loading';
   const reg = live.registrants.find((r) => r.id === openReg);
+  // Answer 2242: the registration kept (or to keep), whose Hire record the other candidate record is merged into.
+  const keptReg = reg?.mergedInto ?? reg?.duplicateOf ?? null;
   const counted = live.registrants.filter((r) => r.match !== 'Merged');
   const duplicates = counted.filter((r) => r.match === 'Possible duplicate').length;
   const problem = form ? campusProblem(form) : null;
@@ -1037,6 +1043,16 @@ export function LiveCampusKitScreen({ live, tab = 'registrants' }: { live: LiveC
             )}
             {reg.duplicateOf && <InlineAlert tone="warning">{`Same roll number at the same college as ${reg.duplicateOf.name} (${reg.duplicateOf.email}). Merging keeps ${reg.duplicateOf.name}'s registration; this one stops counting and its untaken invitation is withdrawn.`}</InlineAlert>}
             {reg.mergedInto && <InlineAlert tone="info">{`Merged into ${reg.mergedInto.name}'s registration.`}</InlineAlert>}
+            {keptReg && keptReg.candidateId !== reg.candidateId && (
+              <Card title="Candidate records">
+                <div className="yx-prc-stack">
+                  <p className="yx-prc-small">{`${reg.email} and ${keptReg.email} are two candidate records in Hire. Merging registrations leaves them as they are: merge them in Hire (open ${keptReg.name}, choose Merge and pick ${reg.email}).`}</p>
+                  <div>
+                    <Button onClick={() => live.onOpenCandidate(keptReg.candidateId)}>Merge candidate records in Hire</Button>
+                  </div>
+                </div>
+              </Card>
+            )}
             <DescriptionList
               items={[
                 { label: 'Email', value: reg.email },

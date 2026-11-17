@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { CampusKitScreen, type InstitutionImportResult, type LiveCampusSettings, type LiveCollegeRow, type LiveDriveRow, type LiveInstitution, type LiveRegistrant } from '@yukthix/ui/assessments';
 import { useApi, useApiWrite } from '../../../../../../../lib/yx-hiring';
 import { loadState } from '../../../../../../../lib/yx-assessments';
@@ -17,6 +17,7 @@ interface CampusView {
 // No admit cards. People who invite candidates (the API checks every call).
 export default function YxDriveCampusPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const view = useApi<CampusView>(`/asmt/drives/${id}/campus`);
   const institutions = useApi<LiveInstitution[]>('/asmt/institutions');
   const write = useApiWrite();
@@ -51,6 +52,8 @@ export default function YxDriveCampusPage() {
         onNotDuplicate: async (regId) => {
           await write('POST', `/asmt/registrants/${regId}/not-duplicate`);
         },
+        // Answer 2242: candidate records are merged in Hire, from the kept candidate's record.
+        onOpenCandidate: (candidateId) => router.push(`/yx/hiring/candidates/${encodeURIComponent(candidateId)}`),
         onCopyLink: (url) => navigator.clipboard.writeText(url),
       }}
     />

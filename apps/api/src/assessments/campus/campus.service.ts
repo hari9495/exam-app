@@ -40,6 +40,8 @@ export interface InstitutionRow {
 
 export interface RegistrantRow {
   id: string;
+  /** Answer 2242: the Hire candidate record behind this registration (merged in Hire, not here). */
+  candidateId: string;
   name: string;
   email: string;
   phone: string | null;
@@ -52,8 +54,8 @@ export interface RegistrantRow {
   eligible: boolean;
   ineligibleReason: string | null;
   match: 'New' | 'Existing candidate' | 'Possible duplicate' | 'Merged';
-  duplicateOf: { id: string; name: string; email: string } | null;
-  mergedInto: { id: string; name: string } | null;
+  duplicateOf: { id: string; name: string; email: string; candidateId: string } | null;
+  mergedInto: { id: string; name: string; email: string; candidateId: string } | null;
   test: string | null;
   registeredAt: string;
 }
@@ -95,6 +97,7 @@ const RUNNING = ['in_progress', 'paused'];
 type Tx = Prisma.TransactionClient;
 const registrantSelect = {
   id: true,
+  candidateId: true,
   name: true,
   email: true,
   phone: true,
@@ -108,8 +111,8 @@ const registrantSelect = {
   matchedExisting: true,
   createdAt: true,
   institution: { select: { name: true } },
-  duplicateOf: { select: { id: true, name: true, email: true, mergedIntoId: true } },
-  mergedInto: { select: { id: true, name: true } },
+  duplicateOf: { select: { id: true, name: true, email: true, mergedIntoId: true, candidateId: true } },
+  mergedInto: { select: { id: true, name: true, email: true, candidateId: true } },
   invitation: { select: { status: true, expiresAt: true, attempt: { select: { status: true, result: { select: { passFail: true, releaseOverride: true } } } } } },
 } satisfies Prisma.AsmtRegistrantSelect;
 type RegistrantRecord = Prisma.AsmtRegistrantGetPayload<{ select: typeof registrantSelect }>;
@@ -249,6 +252,7 @@ export class CampusService {
         settings: readCampus(g.campusSettings),
         registrants: rows.map((r) => ({
           id: r.id,
+          candidateId: r.candidateId,
           name: r.name,
           email: r.email,
           phone: r.phone,
@@ -261,7 +265,7 @@ export class CampusService {
           eligible: r.eligible,
           ineligibleReason: r.ineligibleReason,
           match: r.mergedInto ? 'Merged' : r.duplicateOf && !r.duplicateOf.mergedIntoId ? 'Possible duplicate' : r.matchedExisting ? 'Existing candidate' : 'New',
-          duplicateOf: r.duplicateOf && !r.duplicateOf.mergedIntoId ? { id: r.duplicateOf.id, name: r.duplicateOf.name, email: r.duplicateOf.email } : null,
+          duplicateOf: r.duplicateOf && !r.duplicateOf.mergedIntoId ? { id: r.duplicateOf.id, name: r.duplicateOf.name, email: r.duplicateOf.email, candidateId: r.duplicateOf.candidateId } : null,
           mergedInto: r.mergedInto,
           test: testState(r, now),
           registeredAt: r.createdAt.toISOString(),

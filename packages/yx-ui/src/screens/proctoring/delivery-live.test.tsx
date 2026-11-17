@@ -252,6 +252,28 @@ describe('PRC-29 campus kit (live)', () => {
   });
 });
 
+describe('PRC-29 candidate records after a merge (live, answer 2242)', () => {
+  it('a duplicate or merged registration links to the kept candidate record in Hire', async () => {
+    const onOpenCandidate = vi.fn();
+    wrap(<CampusKitScreen live={liveCampus({ onOpenCandidate })} />);
+    await ue.click(screen.getByText('Arjun N'));
+    expect(screen.getByText(/arjun.n@mail.example.in and arjun@student.example.in are two candidate records in Hire/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Merge candidate records in Hire' }));
+    expect(onOpenCandidate).toHaveBeenCalledWith('c140');
+  });
+
+  it('negative: a registration with no duplicate, or one on the same candidate record, has no link', async () => {
+    const same = liveCampus().registrants.map((r) => (r.id === 'r144' ? { ...r, candidateId: 'c143' } : r));
+    wrap(<CampusKitScreen live={liveCampus({ registrants: same })} />);
+    await ue.click(screen.getByText('Divya Menon'));
+    expect(screen.queryByRole('button', { name: 'Merge candidate records in Hire' })).toBeNull();
+    await ue.keyboard('{Escape}');
+    await ue.click(screen.getByText('Lakshmi I'));
+    expect(screen.getByRole('button', { name: 'Merge into Lakshmi Iyer' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Merge candidate records in Hire' })).toBeNull();
+  });
+});
+
 describe('PRC-29 import institutions (live, answer 2241)', () => {
   it('checks the pasted rows first, then adds only the good ones', async () => {
     const onImportInstitutions = vi.fn().mockResolvedValueOnce({ rows: [{ line: 2, name: 'Vaigai College', code: 'VCE-31', ok: true, problem: null }, { line: 3, name: 'Copy', code: 'CIT-1', ok: false, problem: 'The code CIT-1 is already in the list.' }], added: 0 }).mockResolvedValueOnce({ rows: [], added: 1 });
