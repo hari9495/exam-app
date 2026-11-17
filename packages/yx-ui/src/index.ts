@@ -47,6 +47,7 @@ export * from './components/accessibility';
 export * from './lib/dates';
 export * from './lib/rules';
 export * from './lib/format';
+export * from './lib/india-states';
 export * from './lib/validators';
 export * from './lib/table';
 export { cx } from './lib/cx';

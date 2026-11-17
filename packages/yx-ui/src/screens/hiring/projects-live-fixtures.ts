@@ -135,7 +135,7 @@ export const LIVE_BILLING: import('./billing-live').LiveBillingData = {
     { id: 'hours:p1:e3:held', client: 'Nilgiri Retail Pvt Ltd', clientState: 'IN-TN', project: 'NRP-WEB', projectId: 'p1', source: 'Timesheet hours', detail: 'Sana Nizami, 40 h × ₹2,200', hours: 40, amount: '88000.00', held: 'waiting for client approval' },
     { id: 'expense:x1', client: 'Nilgiri Retail Pvt Ltd', clientState: 'IN-TN', project: 'NRP-WEB', projectId: 'p1', source: 'Expense rebill', detail: 'Travel to client, 2026-10-10', hours: null, amount: '4860.00', held: null },
     { id: 'milestone:m1', client: 'Coromandel Logistics Ltd', clientState: 'IN-KA', project: 'CLL-WMS', projectId: 'p2', source: 'Milestone', detail: 'Integration live in 3 warehouses (40%)', hours: null, amount: '1200000.00', held: 'waiting for client acceptance' },
-    { id: 'retainer:p3:2026-10', client: 'Deccan Pharma Pvt Ltd', clientState: 'IN-TG', project: 'DPH-QMS', projectId: 'p3', source: 'Retainer', detail: 'October 2026 retainer', hours: null, amount: '120000.00', held: null },
+    { id: 'retainer:p3:2026-10', client: 'Deccan Pharma Pvt Ltd', clientState: 'IN-TS', project: 'DPH-QMS', projectId: 'p3', source: 'Retainer', detail: 'October 2026 retainer', hours: null, amount: '120000.00', held: null },
   ],
   drafts: [],
 };

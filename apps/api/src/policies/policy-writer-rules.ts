@@ -2,6 +2,7 @@
 // policy states come from the questionnaire answers as rule lines, never from the AI; the law check compares those
 // numbers with the dated law tables (statutory_rule_sets). The AI (or a YukthiX starter) writes only the prose clauses,
 // which are cleaned to plain text and may not state numbers. Only the questionnaire answers ever reach the AI.
+import { IN_STATES } from '../org-structure/org-validation';
 import { cleanHtml, htmlToText, textToHtml } from '../service-desk/rich-text';
 
 export const POLICY_TYPES = ['leave', 'work_from_home', 'notice', 'conduct', 'posh'] as const;
@@ -16,15 +17,8 @@ export const TARGET: Record<PolicyType, { title: string; category: string }> = {
   posh: { title: 'Prevention of sexual harassment (POSH) policy', category: 'Conduct' },
 };
 
-export const STATES: Record<string, string> = {
-  'IN-AP': 'Andhra Pradesh', 'IN-AR': 'Arunachal Pradesh', 'IN-AS': 'Assam', 'IN-BR': 'Bihar', 'IN-CT': 'Chhattisgarh', 'IN-GA': 'Goa',
-  'IN-GJ': 'Gujarat', 'IN-HR': 'Haryana', 'IN-HP': 'Himachal Pradesh', 'IN-JH': 'Jharkhand', 'IN-KA': 'Karnataka', 'IN-KL': 'Kerala',
-  'IN-MP': 'Madhya Pradesh', 'IN-MH': 'Maharashtra', 'IN-MN': 'Manipur', 'IN-ML': 'Meghalaya', 'IN-MZ': 'Mizoram', 'IN-NL': 'Nagaland',
-  'IN-OR': 'Odisha', 'IN-PB': 'Punjab', 'IN-RJ': 'Rajasthan', 'IN-SK': 'Sikkim', 'IN-TN': 'Tamil Nadu', 'IN-TS': 'Telangana',
-  'IN-TR': 'Tripura', 'IN-UP': 'Uttar Pradesh', 'IN-UT': 'Uttarakhand', 'IN-WB': 'West Bengal', 'IN-AN': 'Andaman and Nicobar Islands',
-  'IN-CH': 'Chandigarh', 'IN-DH': 'Dadra and Nagar Haveli and Daman and Diu', 'IN-DL': 'Delhi', 'IN-JK': 'Jammu and Kashmir',
-  'IN-LA': 'Ladakh', 'IN-LD': 'Lakshadweep', 'IN-PY': 'Puducherry',
-};
+// The states the writer offers: the one list the API validates places with (ISO 3166-2:IN, 2020 codes).
+export const STATES: Readonly<Record<string, string>> = IN_STATES;
 
 export const PATTERNS: Record<string, string> = { office: 'Office hours only', shift: 'Office and plant shifts, including nights' };
 
