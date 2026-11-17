@@ -4,7 +4,7 @@ export { ItemAnalysisScreen, QuestionBankScreen, QuestionEditorScreen, QuestionR
 
 // AS-2 (answers 2007, 2008): the test builder and the score report.
 
-export { MODE_WORDS, poolShort, type BuilderTestView, type LiveScoreReport, type LiveTestBuilder, type ProctorMode, type TestCheck, type TestDetails, type TestListRow, type TestSection } from './tests-live';
+export { MODE_WORDS, poolShort, type BuilderTestView, type ChoiceFilter, type QuestionChoice, type LiveScoreReport, type LiveTestBuilder, type ProctorMode, type TestCheck, type TestDetails, type TestListRow, type TestSection } from './tests-live';
 export {
   LANGUAGE_NAME,
   STATUS_LABEL,

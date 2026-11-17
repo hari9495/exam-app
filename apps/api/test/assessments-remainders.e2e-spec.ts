@@ -4,6 +4,7 @@ import * as argon2 from 'argon2';
 import { randomUUID } from 'crypto';
 import { bootAdminApp } from './dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
+import { asApproved } from './fixtures/approved-question';
 
 // Assessments remainders (answers 2241, 2285, 2286, 2287), end to end against the real database (forced RLS, the app
 // role): each with the right role, the wrong role refused, another company seeing nothing and bad input saving nothing.
@@ -19,7 +20,8 @@ describe('Assessments remainders', () => {
   type Who = 'adminA' | 'adminB' | 'writer' | 'reader';
   const token = {} as Record<Who, string>;
   const users = {} as Record<Who, string>;
-  const api = (who: Who, method: 'get' | 'post' | 'put', path: string) => request(http)[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const ids: Record<string, string> = {};
+  const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(http)[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inOrg = <T>(o: string, fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: o, isSuperAdmin: false }, fn);
   const SUPER = { organizationId: null, isSuperAdmin: true };
 
@@ -54,6 +56,7 @@ describe('Assessments remainders', () => {
         const all = Object.values(users);
         for (const o of [org.A.id, org.B.id]) {
           await tx.asmtInstitution.deleteMany({ where: { organizationId: o } });
+          await tx.exam.updateMany({ where: { organizationId: o }, data: { status: 'draft' } });
           await tx.exam.deleteMany({ where: { organizationId: o } });
           await tx.question.deleteMany({ where: { organizationId: o } });
           await tx.tag.deleteMany({ where: { organizationId: o } });
@@ -106,6 +109,92 @@ describe('Assessments remainders', () => {
       expect(((await api('adminB', 'post', '/asmt/institutions/import').send({ csv: 'name,code\nB College,CIT-14', commit: true }).expect(200)).body as { added: number }).added).toBe(1);
       expect(((await api('adminB', 'get', '/asmt/institutions').expect(200)).body as { code: string }[]).map((r) => r.code)).toEqual(['CIT-14']);
       expect(await codes(org.A.id)).toEqual(['CIT-14', 'KVEC-22']);
+    });
+  });
+  describe('2284 the Sections step pickers', () => {
+    const q = async (text: string, difficulty: string, tag: string) =>
+      (await asApproved(await api('adminA', 'post', '/questions').send({ type: 'single_mcq', text, difficulty, marks: 2, tags: [tag], options: [{ text: 'Yes', isCorrect: true }, { text: 'No', isCorrect: false }] }).expect(201))).body.id as string;
+
+    beforeAll(async () => {
+      ids.q1 = await q(`<p>Streams ${run} one</p>`, 'easy', `java-${run}`);
+      ids.q2 = await q(`<p>Streams ${run} two</p>`, 'hard', `java-${run}`);
+      ids.q3 = await q(`<p>Joins ${run}</p>`, 'easy', `sql-${run}`);
+      ids.exam = (await api('writer', 'post', '/exams').send({ title: `Pickers ${run}` }).expect(201)).body.id;
+      ids.s1 = (await api('writer', 'post', `/exams/${ids.exam}/sections`).send({ title: 'Java' }).expect(201)).body.id;
+      ids.s2 = (await api('writer', 'post', `/exams/${ids.exam}/sections`).send({ title: 'SQL' }).expect(201)).body.id;
+      await api('writer', 'put', `/exams/${ids.exam}/sections/${ids.s2}/questions`).send({ questionIds: [ids.q3] }).expect(200);
+    });
+
+    it('a test writer searches the bank (text only, no answer key) and saves a section; one in another section is not offered', async () => {
+      const path = `/asmt/tests/${ids.exam}/sections/${ids.s1}/question-choices`;
+      const all = (await api('writer', 'get', `${path}?search=${run}`).expect(200)).body as { chosen: unknown[]; choices: Record<string, unknown>[] };
+      expect(all.chosen).toEqual([]);
+      expect(all.choices.map((c) => c.id).sort()).toEqual([ids.q1, ids.q2].sort());
+      expect(all.choices.find((c) => c.id === ids.q1)).toEqual({ id: ids.q1, text: `Streams ${run} one`, type: 'single_mcq', difficulty: 'easy', marks: 2, skills: [`java-${run}`] });
+      expect(JSON.stringify(all)).not.toMatch(/isCorrect|options/);
+      const hard = (await api('writer', 'get', `${path}?search=${run}&difficulty=hard`).expect(200)).body as { choices: { id: string }[] };
+      expect(hard.choices.map((c) => c.id)).toEqual([ids.q2]);
+      await api('writer', 'put', `/exams/${ids.exam}/sections/${ids.s1}/questions`).send({ questionIds: [ids.q1] }).expect(200);
+      const after = (await api('writer', 'get', `${path}?search=${run}`).expect(200)).body as { chosen: { id: string }[]; choices: { id: string }[] };
+      expect([after.chosen.map((c) => c.id), after.choices.map((c) => c.id)]).toEqual([[ids.q1], [ids.q2]]);
+    });
+
+    it('a pool section takes its skills from the step; the builder names them with their ids', async () => {
+      const tag = (await api('adminA', 'get', '/tags').expect(200)).body as { id: string; name: string }[];
+      const java = tag.find((t) => t.name === `java-${run}`)!.id;
+      await api('writer', 'patch', `/exams/${ids.exam}/sections/${ids.s1}`).send({ selectionMode: 'pool', poolTagIds: [java], poolSize: 2 }).expect(200);
+      const view = (await api('writer', 'get', `/asmt/tests/${ids.exam}`).expect(200)).body as { sections: { id: string; poolTagIds: string[]; poolTags: string[]; available: number }[] };
+      expect(view.sections.find((s) => s.id === ids.s1)).toMatchObject({ poolTagIds: [java], poolTags: [`java-${run}`], available: 2 });
+    });
+
+    it('negative: the wrong role is refused, another company sees nothing, bad filters are a 400', async () => {
+      const path = `/asmt/tests/${ids.exam}/sections/${ids.s1}/question-choices`;
+      await api('reader', 'get', path).expect(403);
+      await api('adminB', 'get', path).expect(404);
+      await api('writer', 'get', `/asmt/tests/${ids.exam}/sections/${randomUUID()}/question-choices`).expect(404);
+      await api('writer', 'get', `${path}?difficulty=impossible`).expect(400);
+      await api('writer', 'get', `${path}?tagId=not-a-uuid`).expect(400);
+      await api('writer', 'get', `/asmt/tests/${ids.exam}/sections/nope/question-choices`).expect(400);
+    });
+  });
+  describe('2285 skill names for the tests key', () => {
+    it('a test writer reads the skill names (id and name only) without the bank key', async () => {
+      const rows = (await api('writer', 'get', '/asmt/tests/skills').expect(200)).body as Record<string, unknown>[];
+      expect(rows.map((r) => r.name)).toEqual(expect.arrayContaining([`java-${run}`, `sql-${run}`]));
+      expect(rows.every((r) => Object.keys(r).sort().join() === 'id,name')).toBe(true);
+    });
+
+    it('negative: the bank route stays the bank key\'s; the wrong role is refused; another company sees none of these', async () => {
+      await api('writer', 'get', '/tags').expect(403);
+      await api('reader', 'get', '/asmt/tests/skills').expect(403);
+      const b = (await api('adminB', 'get', '/asmt/tests/skills').expect(200)).body as { name: string }[];
+      expect(b.some((r) => r.name.includes(run))).toBe(false);
+    });
+  });
+  describe('2287 Restore an archived test', () => {
+    it('a test writer restores an archived draft as a draft and a published test as published, audited', async () => {
+      const draft = (await api('writer', 'post', '/exams').send({ title: `Archived draft ${run}` }).expect(201)).body.id as string;
+      await request(http).delete(`/api/v1/exams/${draft}`).set('Authorization', `Bearer ${token.writer}`).expect(200);
+      expect((await api('writer', 'post', `/asmt/tests/${draft}/restore`).expect(200)).body).toEqual({ status: 'draft' });
+      const pub = (await api('writer', 'post', '/exams').send({ title: `Archived live ${run}` }).expect(201)).body.id as string;
+      const sec = (await api('writer', 'post', `/exams/${pub}/sections`).send({ title: 'One' }).expect(201)).body.id;
+      await api('writer', 'put', `/exams/${pub}/sections/${sec}/questions`).send({ questionIds: [ids.q2] }).expect(200);
+      await api('writer', 'post', `/exams/${pub}/publish`).expect(201);
+      await request(http).delete(`/api/v1/exams/${pub}`).set('Authorization', `Bearer ${token.writer}`).expect(200);
+      expect((await api('writer', 'get', `/asmt/tests/${pub}`).expect(200)).body.status).toBe('archived');
+      expect((await api('writer', 'post', `/asmt/tests/${pub}/restore`).expect(200)).body).toEqual({ status: 'published' });
+      const audit = await inOrg(org.A.id, (tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: 'exam.restored', entityId: { in: [draft, pub] } }, select: { actorUserId: true } }));
+      expect(audit.map((a) => a.actorUserId)).toEqual([users.writer, users.writer]);
+      ids.restored = pub;
+    });
+
+    it('negative: a test that is not archived is a 409; the wrong role is refused; another company gets 404; a bad id is a 400', async () => {
+      await api('writer', 'post', `/asmt/tests/${ids.restored}/restore`).expect(409);
+      await request(http).delete(`/api/v1/exams/${ids.restored}`).set('Authorization', `Bearer ${token.writer}`).expect(200);
+      await api('reader', 'post', `/asmt/tests/${ids.restored}/restore`).expect(403);
+      await api('adminB', 'post', `/asmt/tests/${ids.restored}/restore`).expect(404);
+      await api('writer', 'post', '/asmt/tests/not-a-uuid/restore').expect(400);
+      expect((await api('writer', 'get', `/asmt/tests/${ids.restored}`).expect(200)).body.status).toBe('archived');
     });
   });
 });

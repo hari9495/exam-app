@@ -9,7 +9,6 @@ import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
 import { ExamDetailsForm } from '../../ExamDetailsForm';
 import { WalkInShareCard } from '../../../../../../components/WalkInShareCard';
-import { ExamSectionsPanel } from '../../ExamSectionsPanel';
 import { LiveMonitoringPanel } from '../../LiveMonitoringPanel';
 import { GradingQueuePanel } from '../../GradingQueuePanel';
 import { LeaderboardPanel } from '../../LeaderboardPanel';
@@ -150,7 +149,16 @@ export default function V2EditExamPage() {
           />
         </div>
       )}
-      {activeTab === 'sections' && <ExamSectionsPanel examId={exam.id} />}
+      {/* Answer 2284: the older section editor is retired; sections, questions and pools are edited in the test builder. */}
+      {activeTab === 'sections' && (
+        <p style={{ fontSize: 14 }}>
+          Sections, their questions and pools are now edited in the{' '}
+          <Link href={`/yx/hiring/assessments/tests/${exam.id}`} style={{ color: 'var(--org-primary)', fontWeight: 500 }}>
+            test builder
+          </Link>
+          .
+        </p>
+      )}
       {activeTab === 'candidates' && <CandidatesPanel examId={exam.id} />}
       {activeTab === 'live' && (
         <LiveMonitoringPanel

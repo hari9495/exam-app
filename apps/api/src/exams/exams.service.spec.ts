@@ -789,7 +789,7 @@ describe('ExamsService', () => {
   it('archives an exam by setting status to archived', async () => {
     const tx = {
       exam: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
         update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'archived' }),
       },
     };
@@ -798,7 +798,7 @@ describe('ExamsService', () => {
     const result = await service.archive(context, 'user-1', 'exam-1');
 
     expect(result.status).toBe('archived');
-    expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { status: 'archived' } });
+    expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { status: 'archived', archivedFrom: 'published' } });
     expect(audit.record).toHaveBeenCalledWith(context, {
       actorUserId: 'user-1', action: 'exam.archived', entityType: 'exam', entityId: 'exam-1',
     });
