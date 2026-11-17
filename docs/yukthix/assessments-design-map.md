@@ -1587,3 +1587,32 @@ so it was not built here (question 2272).
 - 2293: the assistant sees the conversation only, not the question or the marking.
 - 2294: under-18 candidates may take AI-allowed tests; the company decides by whom it invites.
 - 2295: a test's report shows the AI credits it used, built with AS-7 billing.
+
+## Assessment remainders as built, part 1 (branch `feat/yukthix-asmt-remainders`, 17 Nov 2026; answers 2232, 2234, 2241, 2242)
+
+- **2232 Ready to start:** `/welcome`'s last step is PRC-22's designed "Ready to start" (`ReadyToStartScreen` live): the
+  test, its sections, instructions, what was approved, Ask for help / Check your computer / My tests, then the camera
+  (Turn on camera; blocked says how to allow it), Safe Exam Browser's configuration instead of Start when needed, and
+  Start test. Not open yet and closed show no Start. The older card and `CameraPreview` are gone.
+- **2234 Run output:** the kit's `CodeRunOutput` (the coding story's results panel: exit code, output, errors, compile
+  error, the 5-second limit, runs left) sits under Monaco on `/exam`; the older `CodeOutputPanel` is gone.
+- **2241 Import institutions:** "Import institutions" on the campus kit opens a drawer (a CSV file or pasted rows).
+  `POST /asmt/institutions/import` (`candidate:manage`): columns `name, code, city, coordinator_name,
+  coordinator_email, results` (none, counts, each; counts by default); up to 500 rows; every row is checked first, then
+  "Add N institutions" adds the good ones in one go, audited `institution.imported`. A code already in the company's
+  list, or twice in the file, is refused for that row.
+- **2242 Candidate records:** a merged or possible-duplicate registration whose Hire candidate record differs from the
+  kept one shows "Merge candidate records in Hire", opening the kept candidate's record, where Merge joins them.
+  Registrant rows now carry `candidateId` (and the kept registration's).
+- **Tests:** e2e `assessments-remainders` (2241: 2) and `assessments-as3b` (+2242 checks); kit `welcome-live` (+5),
+  `runner-live` (+3), `delivery-live` (+4); web `/welcome` (41, moved to the new step), `/exam` (87),
+  `yx-assessments-delivery` (+2). The older Playwright golden paths only had their button names updated (not run).
+- **Not built yet (next):** 2284 question and skills pickers, 2285 skill names for the tests key, 2286 AI mark per rubric
+  criterion, 2287 Restore an archived test.
+
+### Questions (from 2302)
+
+2302. **Importing an institution that is already there.** A row whose code is already in the list is refused, not
+      updated. *Suggested: keep; an "update the ones already there" choice if recruiters ask.*
+2303. **Candidate merge from a drive.** The drawer opens the kept candidate in Hire; the recruiter picks the other
+      record there. *Suggested: keep; open Hire's merge with the other record already chosen if it is used often.*
