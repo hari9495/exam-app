@@ -211,3 +211,18 @@ A3 "Not ready for payroll" on People, E2 HR declares on behalf) follows in batch
   - The Oracle pass covers multi-country (entities, countries, currencies) next to the six enterprise areas.
 - **Enterprise batch:** gaps from the enterprise readiness check (costing and GL, retro pay, approval rules, position management, absence depth, audit history) become an "Enterprise" batch after tier 1, or earlier for a big customer.
 - **India rule files marked "verify":** they must be checked by a CA before any real company goes live on payroll.
+
+## Founder decision (17 Nov 2026, "ok for all"): GLPI ideas
+
+- **Added to batch F (helpdesk quick wins):** GLPI 4, 8 and 10 from `glpi-docs.md`:
+  - requester chase with auto-solve after N days with no reply (S);
+  - OLA team targets on tickets (S);
+  - rule export and import (S).
+- **New "IT assets" batch, with the Enterprise batch after tier 1:** GLPI 1, 2, 3, 5, 6 and 7:
+  - helpdesk IT asset register (L);
+  - warranty and finance per asset (M);
+  - asset booking (M);
+  - vendor contracts and suppliers (M);
+  - software licence seats (M);
+  - ticket and change costs rolling into budgets (M).
+- **GLPI 9:** notification templates in more languages, with the Hindi/locale work (Admin C1).
