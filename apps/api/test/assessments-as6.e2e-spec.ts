@@ -192,7 +192,7 @@ describe('Assessments AS-6: marking and fairness', () => {
     it('first mark, then the suggestion (asked once, kept); the same marker cannot mark twice', async () => {
       expect((await api('m1', 'post', `/asmt/marking/${ids.adult}/${ids.essay}/mark`).send({ marks: 2, feedback: 'Thin' }).expect(200)).body).toEqual({ round: 1, final: null, status: 'needs_second' });
       await api('m1', 'post', `/asmt/marking/${ids.adult}/${ids.essay}/mark`).send({ marks: 3 }).expect(409);
-      expect((await api('m1', 'post', `/asmt/marking/${ids.adult}/${ids.essay}/suggestion`).expect(200)).body).toEqual({ marks: 6, reason: 'Names the method and the owner.' });
+      expect((await api('m1', 'post', `/asmt/marking/${ids.adult}/${ids.essay}/suggestion`).expect(200)).body).toEqual({ marks: 6, reason: 'Names the method and the owner.', criteria: null });
       await api('m1', 'post', `/asmt/marking/${ids.adult}/${ids.essay}/suggestion`).expect(200);
       expect(aiCalls).toHaveLength(1);
       const v = (await api('m1', 'get', `/asmt/marking/${ids.adult}/${ids.essay}`).expect(200)).body;

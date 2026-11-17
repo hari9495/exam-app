@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
@@ -49,6 +49,8 @@ function route() {
     if (path === '/exams/e1/duplicate') return { id: 'e8' };
     if (path === '/reports/e1/candidates/c1/report') return REPORT;
     if (path === '/exams/e1') return { title: TEST.title, passCriteriaPercent: 60 };
+    if (path === '/asmt/tests/skills') return [{ id: 'k1', name: 'Java' }];
+    if (path.startsWith('/asmt/tests/e1/sections/s1/question-choices')) return { chosen: [], choices: [{ id: 'q7', text: 'What is a stream?', type: 'single_mcq', difficulty: 'easy', marks: 2, skills: ['Java'] }] };
     return {};
   });
 }
@@ -102,11 +104,35 @@ it('the builder shows the checklist and approves for the second person', async (
   expect(calls).toContain('POST /asmt/tests/e1/approval/approve');
 });
 
+it('the Sections step picks bank questions and saves them on the section (answer 2284); no link to the older editor', async () => {
+  wrap(<YxTestBuilderPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Questions' }));
+  const d = await screen.findByRole('dialog', { name: 'Questions in Java' });
+  await userEvent.click(await within(d).findByRole('button', { name: /^Add: What is a stream/ }));
+  await userEvent.click(within(d).getByRole('button', { name: 'Save 1 question' }));
+  expect(calls).toContain('GET /asmt/tests/e1/sections/s1/question-choices');
+  expect(calls).toContain('PUT /exams/e1/sections/s1/questions {"questionIds":["q7"]}');
+  expect(push).not.toHaveBeenCalledWith(expect.stringContaining('/v2/exams'));
+  // Answer 2285: the skills come from the tests key's route, not the bank's.
+  expect(calls).toContain('GET /asmt/tests/skills');
+  expect(calls).not.toContain('GET /tags');
+});
+
+it('an archived test is restored from the builder (answer 2287)', async () => {
+  const base = api.getMockImplementation()!;
+  api.mockImplementation(async (path: string, init?: RequestInit) => (path === '/asmt/tests/e1' && !init?.method ? { ...TEST, status: 'archived', editable: false } : base(path, init)));
+  wrap(<YxTestBuilderPage />);
+  await userEvent.click(await screen.findByRole('button', { name: 'Restore' }));
+  await userEvent.click(within(screen.getByRole('dialog', { name: /Restore/ })).getByRole('button', { name: 'Restore' }));
+  await waitFor(() => expect(calls).toContain('POST /asmt/tests/e1/restore'));
+});
+
 it('negative: a refused approval shows the reason and nothing else is sent', async () => {
   api.mockImplementation(async (path: string, init?: RequestInit) => {
     calls.push(`${init?.method ?? 'GET'} ${path}`);
     if (path === '/asmt/tests/e1/approval/approve') throw new Error('Another person approves this test: not the one who asked, and not its author.');
     if (path === '/asmt/tests/e1') return TEST;
+    if (path === '/asmt/tests/skills') return [];
     return { data: [] };
   });
   wrap(<YxTestBuilderPage />);

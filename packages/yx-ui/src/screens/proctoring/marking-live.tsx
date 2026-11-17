@@ -37,7 +37,8 @@ export interface MarkingItem {
   mine: { marks: number; feedback: string | null; round: number; criteria?: number[] | null } | null;
   toModerate: { a: number; b: number } | null;
   minor: boolean;
-  suggestion: { marks: number; reason: string | null } | null;
+  /** Answer 2286: with a rubric, `criteria` is the suggestion per criterion (rubric order). */
+  suggestion: { marks: number; reason: string | null; criteria?: { marks: number; reason: string }[] | null } | null;
   attemptReady: boolean;
   /** AS-6 part 2 (answer 2272): an AI-allowed test's assistant log for this question (null: not an AI-allowed test). */
   assistant?: { turns: { role: 'candidate' | 'assistant'; body: string; at: string }[]; otherTurns: number } | null;
@@ -224,6 +225,16 @@ export function LiveEvaluatorScreen({ live }: { live: LiveEvaluator }) {
                 <span className="yx-prc-row yx-prc-small">
                   <AiBadge /> {`Suggested ${it.suggestion.marks} / ${max} from the text only. Advisory; your mark counts.`}
                 </span>
+                {it.suggestion.criteria?.length ? (
+                  <ul className="yx-prc-plain" aria-label="AI suggestion per criterion">
+                    {it.suggestion.criteria.map((c, i) => (
+                      <li key={i}>
+                        <span className="yx-prc-small">{`${it.question.rubric?.[i]?.criterion ?? `Criterion ${i + 1}`}: ${c.marks} / ${it.question.rubric?.[i]?.marks ?? '?'}`}</span>
+                        {c.reason && <span className="yx-prc-small yx-prc-muted">{c.reason}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
                 {it.suggestion.reason && <span className="yx-prc-small yx-prc-muted">{it.suggestion.reason}</span>}
               </span>
             ) : it.question.type === 'code' || it.question.type === 'essay' ? (

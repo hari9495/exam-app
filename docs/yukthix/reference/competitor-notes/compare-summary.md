@@ -261,3 +261,27 @@ backups tier 2).
 - 2322: in the reversal drawer HR types the days; it does not yet list the person's LOP days of that month. Suggested answer: add the list later from the locked month's attendance (read-only), keep typing as the fallback.
 - 2323: "Notify colleagues" is offered when people apply for themselves, not when HR or a manager applies on someone's behalf. Suggested answer: keep it for self only.
 - 2324: colleagues are told on approval only; if the leave is later cancelled they are not told again. Suggested answer: tell them "no longer away" on a cancel, same dates-only rule (small follow-up).
+
+**Founder answers (17 Nov 2026, "ok for all"), 2320 to 2324 (batch A part 2):**
+- 2320: hourly permission uses the on-duty date window (30 days ahead, 60 back); its own settings only if HR asks.
+- 2321: the LOP reversal sends all days in one call, so one bad day saves none.
+- 2322: the reversal drawer will list the person's loss-of-pay days to pick from, later.
+- 2323: "Notify colleagues" is offered only when applying for yourself.
+- 2324: when approved leave with notified colleagues is cancelled (fully or some days), they are told "no longer away", dates only.
+
+## Accessibility batch (founder request, 17 Nov 2026; answers 2330 to 2333, "ok for all")
+
+Reference: the Income Tax Department site's Accessibility menu (font size, saturation, screen reader, high contrast, basic HTML, invert colours).
+
+- 2330: build an Accessibility menu with
+  1. text size (5 steps, about 90 % to 150 %, scaling the --yx-text-* tokens; the no-scroll rule relaxes at the larger steps);
+  2. a High contrast theme beside Light and Dark;
+  3. a Reduce motion switch (as well as the OS setting);
+  4. reading spacing (line and letter spacing, underlined links);
+  5. a stronger focus outline;
+  6. Reset.
+  Choices are saved per person (follow them across devices), and a company can never turn them off. Plus automated WCAG 2.1 AA checks (axe) in the kit guards and a one-time NVDA pass on the main flows. Skipped: an in-site screen reader button, saturation, invert colours, basic HTML view (the OS and the user's own screen reader do these better; colour is never the only signal).
+- 2331: the menu is on the staff top bar, the sign-in pages, the candidate and careers pages, and the exam screens.
+- 2332: built as its own small batch right after batch A, before batch B.
+- 2333: after it is built, publish a WCAG 2.1 AA conformance statement, with known gaps listed honestly.
+- 2334 (17 Nov 2026, "good"): follow india.gov.in's Accessibility Tools panel as the layout reference: a grid of tiles in groups (Contrast: High contrast / Normal; Text size: Increase / Decrease / Reset; Text spacing and Line height as two separate tiles; Others: Big cursor). Add Big cursor; skip Hide images and the in-site Screen reader. Reduce motion and the stronger focus outline stay. Our own YukthiX design.

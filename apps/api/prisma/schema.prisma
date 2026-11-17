@@ -799,6 +799,8 @@ model Exam {
   aiAllowed                     Boolean       @default(false) @map("ai_allowed")
   instructions                  String?       @db.Text
   status                        String        @default("draft") @db.VarChar(1000)
+  /// Answer 2287: the status before archiving, so Restore brings it back as it was (null: a draft).
+  archivedFrom                  String?       @map("archived_from") @db.VarChar(20)
   durationMinutes               Int           @default(60) @map("duration_minutes")
   passCriteriaPercent           Int           @default(40) @map("pass_criteria_percent")
   randomizeOrder                Boolean       @default(false) @map("randomize_order")
@@ -1234,6 +1236,8 @@ model AnswerAiSuggestion {
   marks          Int
   reason         String?  @db.VarChar(2000)
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Answer 2286: with a rubric, the suggestion per criterion ({ marks, reason } in the rubric's order).
+  criteria       Json?
 
   @@unique([attemptId, questionId], map: "answer_ai_suggestions_answer_key")
   @@map("answer_ai_suggestions")

@@ -633,10 +633,26 @@ export class ExamsService {
       if (!existing) {
         throw new NotFoundException(`Exam ${id} not found`);
       }
-      return tx.exam.update({ where: { id }, data: { status: 'archived' } });
+      // Answer 2287: what it was is kept, so Restore brings it back as it was.
+      return tx.exam.update({ where: { id }, data: { status: 'archived', ...(existing.status === 'archived' ? {} : { archivedFrom: existing.status === 'published' ? 'published' : 'draft' }) } });
     });
     await this.audit.record(context, { actorUserId, action: 'exam.archived', entityType: 'exam', entityId: id });
     return archived;
+  }
+
+  /** Answer 2287: an archived test comes back as it was before archiving (a draft when that is not known), audited. */
+  async restore(context: TenantContext, actorUserId: string, id: string): Promise<{ status: string }> {
+    const status = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const existing = await tx.exam.findFirst({ where: { id, organizationId: context.organizationId as string }, select: { status: true, archivedFrom: true } });
+      if (!existing) throw new NotFoundException(`Exam ${id} not found`);
+      if (existing.status !== 'archived') throw new ConflictException('This test is not archived.');
+      const back = existing.archivedFrom === 'published' ? 'published' : 'draft';
+      const n = await tx.exam.updateMany({ where: { id, status: 'archived' }, data: { status: back, archivedFrom: null } });
+      if (!n.count) throw new ConflictException('This test is not archived.');
+      return back;
+    });
+    await this.audit.record(context, { actorUserId, action: 'exam.restored', entityType: 'exam', entityId: id, metadata: { status } });
+    return { status };
   }
 
   async publish(context: TenantContext, actorUserId: string, id: string): Promise<Exam> {
