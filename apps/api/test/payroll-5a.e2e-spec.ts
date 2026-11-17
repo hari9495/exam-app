@@ -509,6 +509,57 @@ describe('Payroll batch 5a', () => {
 
   // ------------------------------------------------------------------------------------------ audit (PAY-1.05 … 1.08)
 
+  // ------------------------------------------------------------------------------------------ late corrections, round 2
+
+  describe('late corrections: a fixed choice (2282) and the leaver\'s F&F (2283)', () => {
+    const correct = (employeeId: string, on: string, shouldBe: string) =>
+      api('hrAdmin', 'post', '/payroll/corrections').send({ employeeId, on, kind: 'attendance', shouldBe, reason: 'Recorded late by the site office' });
+    const approve = async (id: string) => {
+      const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { organizationId: org.A.id, assigneeUserId: users.payAdmin, status: 'open' }, orderBy: { createdAt: 'desc' } }));
+      await api('payAdmin', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'approve' }).expect(200);
+      return inA((tx) => tx.payCorrection.findFirstOrThrow({ where: { id } }));
+    };
+
+    it('2282: what the day should have been is present, half day, unpaid or a company leave type; anything else is refused', async () => {
+      await inA((tx) => tx.leaveType.create({ data: { organizationId: org.A.id, code: 'LWP', name: 'Leave without pay', kind: 'lop', paid: false } }));
+      for (const bad of ['Present all day', 'on_leave', 'absent', 'leave:', 'leave:CL; drop'])
+        expect((await correct(ids.empEmp, `${lockMonth}-03`, bad).expect(400)).body.message).toEqual(expect.arrayContaining([expect.stringMatching(/Choose what the day should have been/)]));
+      expect((await correct(ids.empEmp, `${lockMonth}-03`, 'leave:NOPE').expect(400)).body.message).toMatch(/not one of your company/);
+      expect(await inA((tx) => tx.payCorrection.count({ where: { employeeId: ids.empEmp, workOn: new Date(`${lockMonth}-03T00:00:00Z`) } }))).toBe(0);
+      const ok = (await correct(ids.empEmp, `${lockMonth}-03`, 'leave:lwp').expect(201)).body;
+      expect((await inA((tx) => tx.payCorrection.findFirstOrThrow({ where: { id: ok.id } }))).change).toEqual({ shouldBe: 'leave:lwp' });
+      // Payroll's own list of leave types for the late request; another company's person and an employee get none.
+      expect((await api('payAdmin', 'get', '/payroll/leave-types').expect(200)).body).toEqual(expect.arrayContaining([{ code: 'LWP', name: 'Leave without pay' }]));
+      await api('emp', 'get', '/payroll/leave-types').expect(403);
+      expect(((await api('payAdminB', 'get', '/payroll/leave-types').expect(200)).body as { code: string }[]).some((t) => t.code === 'LWP')).toBe(false);
+    });
+
+    it('2283: for someone who left in the locked month the correction goes to their F&F and waits there until it is settled', async () => {
+      // The leaver's last day was in the locked month, so the next open payroll (this month) no longer pays them.
+      await inA((tx) => tx.employment.updateMany({ where: { organizationId: org.A.id, employeeId: ids.leaverEmp }, data: { exitedOn: new Date(`${lockMonth}-20T00:00:00Z`) } }));
+      const leaving = (await correct(ids.leaverEmp, `${lockMonth}-11`, 'present').expect(201)).body;
+      const done = await approve(leaving.id);
+      expect(done.targetPeriod!.toISOString().slice(0, 7)).toBe(lockMonth);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.correction.approved', entityId: leaving.id, metadataJson: { contains: '"fnf":true' } } }))).toBe(1);
+      // Negative: someone still employed is paid in the next open month as before, and is not waiting for an F&F.
+      const staying = (await correct(ids.empEmp, `${lockMonth}-12`, 'present').expect(201)).body;
+      expect((await approve(staying.id)).targetPeriod!.toISOString().slice(0, 7)).not.toBe(lockMonth);
+      const waiting = (await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body as { id: string; employeeId: string; on: string; month: string; fnfId: string | null }[];
+      expect(waiting).toEqual([expect.objectContaining({ id: leaving.id, employeeId: ids.leaverEmp, on: `${lockMonth}-11`, month: lockMonth, fnfId: null })]);
+      await api('emp', 'get', '/payroll/corrections/waiting-fnf').expect(403);
+      expect((await api('payAdminB', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body).toEqual([]);
+      // Once the full and final settlement is settled it no longer waits.
+      const em = await inA((tx) => tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.leaverEmp } }));
+      const person = await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.leaverEmp } }));
+      await inA(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entityA}}`}, true)`;
+        const exit = await tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: em.id, employeeId: ids.leaverEmp, personId: person.personId!, exitType: 'resignation', initiatedBy: 'employee', reasonText: 'Moved city', submittedOn: new Date(`${lockMonth}-01T00:00:00Z`), noticePeriod: '0d', standardLwd: new Date(`${lockMonth}-20T00:00:00Z`), approvedLwd: new Date(`${lockMonth}-20T00:00:00Z`), status: 'accepted', acceptedAt: new Date() } });
+        await tx.fnfSettlement.create({ data: { organizationId: org.A.id, legalEntityId: ids.entityA, employeeId: ids.leaverEmp, employmentId: em.id, exitCaseId: exit.id, exitType: 'resignation', inputRevision: 1, lwd: new Date(`${lockMonth}-20T00:00:00Z`), deadline: new Date(`${lockMonth}-22T00:00:00Z`), status: 'settled' } });
+      });
+      expect((await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body).toEqual([]);
+    });
+  });
+
   describe('the audit log', () => {
     it('search in scope with masked pay values, a business-only timeline and an audited export', async () => {
       await inA((tx) => tx.auditLog.create({ data: { organizationId: org.A.id, actorUserId: users.payAdmin, action: 'employee.salary.changed', entityType: 'employee', entityId: ids.empEmp, metadataJson: JSON.stringify({ legalEntityId: ids.entityA, annualCtc: '780000', bank: { accountNumber: '123456789012' } }) } }));

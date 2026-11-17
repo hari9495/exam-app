@@ -2184,6 +2184,8 @@ export interface LiveMyAttendance {
   onWithdrawOtPlan?: (id: string) => Promise<unknown>;
   /** TIM-07 LateRequest: a day of a frozen or locked month goes as a late correction, paid in the next payroll. */
   onLateCorrection?: (input: LateCorrectionInput) => Promise<unknown>;
+  /** Answer 2282: the company's leave types for a late request's "it was this leave". */
+  leaveTypes?: { code: string; name: string }[];
   /** Open the request sheet at once (Home's "Request work from home" links here). */
   defaultRequest?: 'wfh' | 'regularise';
   /** Night work (founder decisions 9 Oct 2026): shown when loaded. */
@@ -2554,7 +2556,7 @@ function useLiveRequests(live: LiveMyAttendance) {
   const first: ReqType | null = canRegularise ? 'regularise' : live.onWfh ? 'wfh' : live.onOnDuty ? 'on_duty' : live.onOtPlan ? 'ot' : null;
   const node = (
     <>
-      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, resend: req.resend, canRegularise, onFix: live.onFix, onWfh: live.onWfh, onOnDuty: live.onOnDuty, onOtPlan: live.onOtPlan, onLateCorrection: live.onLateCorrection, onClose: () => setReq(null) }} />}
+      {req && d && <AttendanceRequestSheet key={req.n} live={{ data: d, type: req.type, on: req.on, resend: req.resend, canRegularise, onFix: live.onFix, onWfh: live.onWfh, onOnDuty: live.onOnDuty, onOtPlan: live.onOtPlan, onLateCorrection: live.onLateCorrection, leaveTypes: live.leaveTypes, onClose: () => setReq(null) }} />}
       <ConfirmDialog
         open={!!plan}
         onOpenChange={(o) => !o && setPlan(null)}

@@ -97,6 +97,8 @@ export interface LiveInputs {
     stage?: string | null;
     /** PAY-04 late request for a day of a frozen or locked month; someone else approves it (POST input-corrections). */
     onLateRequest?: (x: { employeeId: string; on: string; kind: 'attendance'; shouldBe: string; reason: string }) => Promise<unknown>;
+    /** Answer 2282: the company's leave types, so a late request can say "it was this leave". */
+    leaveTypes?: { code: string; name: string }[];
   };
   oneTime: {
     rows: OneTimeItem[] | null;
@@ -352,10 +354,12 @@ function LopDrawer({ live, days, onClose, onSaved }: { live: LiveInputs; days: n
   );
 }
 
+/** Answer 2282: what the day should have been is a fixed choice (the server accepts only these). */
 const SHOULD_BE: { value: string; label: string }[] = [
-  { value: 'absent', label: 'Unpaid day (LOP)' },
+  { value: 'unpaid', label: 'Unpaid day (LOP)' },
   { value: 'present', label: 'Paid day (reverse LOP)' },
   { value: 'half_day', label: 'Half day' },
+  { value: 'leave', label: 'Leave' },
 ];
 const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -363,13 +367,16 @@ const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padSt
 function LateRequestDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: () => void; onSaved: (text: string) => void }) {
   const [who, setWho] = useState<PersonHit | null>(null);
   const [on, setOn] = useState<Date | null>(null);
-  const [shouldBe, setShouldBe] = useState('absent');
+  const [shouldBe, setShouldBe] = useState('unpaid');
+  const [leave, setLeave] = useState<string | null>(null);
+  const kinds = live.lop.leaveTypes?.length ? SHOULD_BE : SHOULD_BE.filter((o) => o.value !== 'leave');
   const [reason, setReason] = useState('');
   const { busy, error, run } = useRun();
   const first = new Date(`${live.month}-01T00:00:00`);
   const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
   const errors = [
     ...(!who ? [{ fieldId: 'late-who', message: 'Choose the person.' }] : []),
+    ...(shouldBe === 'leave' && !leave ? [{ fieldId: 'late-leave', message: 'Choose the leave type.' }] : []),
     ...(!on ? [{ fieldId: 'late-on', message: `Choose the day in ${monthName(live.month)}.` }] : []),
     ...(reason.trim().length < 10 ? [{ fieldId: 'late-why', message: 'Say why, in at least 10 characters.' }] : []),
   ];
@@ -393,7 +400,7 @@ function LateRequestDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClo
                 return;
               }
               void run('late', async () => {
-                await live.lop.onLateRequest!({ employeeId: who!.id, on: isoDay(on!), kind: 'attendance', shouldBe, reason: reason.trim() });
+                await live.lop.onLateRequest!({ employeeId: who!.id, on: isoDay(on!), kind: 'attendance', shouldBe: shouldBe === 'leave' ? `leave:${leave}` : shouldBe, reason: reason.trim() });
                 onSaved(`Late request for ${who!.name} sent for approval`);
                 onClose();
               });
@@ -416,8 +423,13 @@ function LateRequestDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClo
           <DatePicker value={on} onChange={setOn} min={first} max={last} />
         </FormField>
         <FormField id="late-should" label="It should be">
-          <Segment label="It should be" value={shouldBe} onChange={setShouldBe} options={SHOULD_BE} />
+          <Segment label="It should be" value={shouldBe} onChange={setShouldBe} options={kinds} />
         </FormField>
+        {shouldBe === 'leave' && (
+          <FormField id="late-leave" label="Leave type" required error={shown.errorOf('late-leave')}>
+            <Select value={leave} onChange={setLeave} options={(live.lop.leaveTypes ?? []).map((t) => ({ value: t.code, label: t.name }))} placeholder="Choose the leave type" />
+          </FormField>
+        )}
         <FormField id="late-why" label="Reason" required error={shown.errorOf('late-why')} helper="Saved with the request and in the audit trail.">
           <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
         </FormField>

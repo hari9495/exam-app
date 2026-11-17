@@ -1615,3 +1615,9 @@ so it was not built here (question 2272).
       the company decides by inviting.*
 2295. **Cost.** Each answer is one AI credit; a big drive could use many. *Suggested: show the credits a test used on
       its report, with AS-7 billing.*
+
+**Founder answers (17 Nov 2026, "ok for all"), 2292 to 2295 (AI-allowed tests):**
+- 2292: an AI-allowed test turns off only the copy, paste and code-paste flags; tab switches, faces and screen analysis stay. A future "answer reads like AI" flag applies only to tests that are not AI-allowed.
+- 2293: the assistant sees the conversation only, not the question or the marking.
+- 2294: under-18 candidates may take AI-allowed tests; the company decides by whom it invites.
+- 2295: a test's report shows the AI credits it used, built with AS-7 billing.

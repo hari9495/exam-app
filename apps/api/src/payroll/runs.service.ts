@@ -964,7 +964,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}) })),
         // Late corrections approved after their month locked, paid in this regular run (PAY-1.03 / 1.04).
         // An F&F run paying the leaver's last salary pays them too (no regular run follows for that person).
-        ...(late && (run.runType === 'regular' || offcycle === 'fnf') && monthly && !itemsOnly ? await this.lateCorrectionItems(tx, c, run, em, rules, allComponents) : []),
+        // Answer 2283: the F&F run pays it even when the last month's regular payslip was already approved (items only).
+        ...(late && (run.runType === 'regular' ? monthly && !itemsOnly : run.offcycleKind === 'fnf') ? await this.lateCorrectionItems(tx, c, run, em, rules, allComponents) : []),
       ],
       // HLP-12 answer 65: a row filled from leave may be 0 days (the leave was cancelled); inFeed: already unpaid in the feed.
       special: special.filter((x) => x.days.gt(0)).map((x) => ({ kind: x.kind as 'suspension' | 'maternity' | 'injury', days: x.days.toFixed(2), daysBefore: x.daysBefore, inFeedDays: x.inFeedDays.toFixed(2) })),
