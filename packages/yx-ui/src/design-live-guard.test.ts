@@ -88,7 +88,8 @@ const LIVE_COPY = new Set<string>();
 for (const f of files(SCREENS, (p) => p.endsWith('.stories.tsx'))) {
   const src = parse(f);
   const title = /title:\s*['"`]([^'"`]+)/.exec(src.text)?.[1] ?? '';
-  const copy = /\bLive\b/.test(title);
+  // A copy's title has a segment that starts with "Live" ("Hiring/Live · ..."); "PRC-13 · Live console" is a design.
+  const copy = /\/Live\b/.test(title);
   for (const name of used(src))
     if (!SCREEN_AREA.has(name)) continue;
     else if (copy) LIVE_COPY.add(name);

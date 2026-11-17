@@ -45,5 +45,9 @@ export { ReadinessCheckScreen, type LiveReadiness } from './candidate';
 export { ConsentScreen, IdentityCheckScreen, type LiveConsent, type LiveSelfie, type ManualIdentityCheck } from './candidate';
 // AS-5 part 1 (answers 2006, 2008, 2012): integrity review and appeals.
 export { AppealsScreen, IncidentWorkspaceScreen, IntegrityQueueScreen } from './integrity';
+// AS-5 part 2 (PRC-13): the live console.
+export { LiveConsoleScreen } from './live';
+export type { LiveConsole } from './live-console-live';
+export type { LiveTileData } from './proctoring-logic';
 export type { LiveAppealRow, LiveAppeals, LiveIncident, LiveIncidentRow, LiveIncidentWorkspace, LiveIntegrityQueue } from './integrity-live';
 export type { SystemCheck } from './proctoring-kit';

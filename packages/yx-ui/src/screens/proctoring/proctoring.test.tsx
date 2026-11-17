@@ -49,7 +49,7 @@ describe('live console', () => {
   it('sorts by concern and filters by risk', () => {
     const sorted = sortByConcern(LIVE_TILES);
     expect(sorted[0].name).toBe('Sneha Iyer');
-    expect(filterByRisk(LIVE_TILES, 'high').every((t) => t.score < 50)).toBe(true);
+    expect(filterByRisk(LIVE_TILES, 'high').every((t) => (t.score ?? 100) < 50)).toBe(true);
     expect(filterByRisk(LIVE_TILES, 'all')).toHaveLength(LIVE_TILES.length);
   });
   it('requires a reason for proctor actions (YX-PROC-09)', () => {

@@ -19,7 +19,7 @@ import { Icon, Spinner } from '../../components/foundations';
 import { Badge, AiBadge } from '../../components/display';
 import { Button, IconButton } from '../../components/button';
 import { formatClock } from '../../components/exam';
-import { calcApply, calcUnary, integrityLevel, integrityScore, LEVEL_LABEL, LEVEL_TONE, type CalcFn, type CalcOp, type LiveTileData, type SignalCount } from './proctoring-logic';
+import { calcApply, calcUnary, integrityLevel, tileLevel, integrityScore, LEVEL_LABEL, LEVEL_TONE, type CalcFn, type CalcOp, type LiveTileData, type SignalCount } from './proctoring-logic';
 import './proctoring-kit.css';
 
 /* ---------- Camera / screen placeholders ---------- */
@@ -229,11 +229,11 @@ const TILE_STATUS: Record<LiveTileData['status'], { label: string; tone: 'succes
 };
 
 export function ProctorTile({ tile, selected, onOpen, index }: { tile: LiveTileData; selected?: boolean; onOpen?: (id: string) => void; index?: number }) {
-  const level = integrityLevel(tile.score);
+  const level = tileLevel(tile);
   const st = TILE_STATUS[tile.status];
   const cam: CameraState = tile.status === 'disconnected' ? 'connecting' : tile.lastFlag?.startsWith('More than one') ? 'multiple' : tile.lastFlag?.startsWith('Face') ? 'no-face' : tile.lastFlag?.startsWith('Phone') ? 'phone' : 'live';
   return (
-    <button type="button" className="yx-ptile" data-level={level} aria-pressed={selected} onClick={() => onOpen?.(tile.id)} aria-label={`${tile.name}, ${st.label}, integrity ${tile.score}, ${tile.flags} flags${index != null ? `, shortcut ${index + 1}` : ''}`}>
+    <button type="button" className="yx-ptile" data-level={level} aria-pressed={selected} onClick={() => onOpen?.(tile.id)} aria-label={`${tile.name}, ${st.label}, ${tile.score != null ? `integrity ${tile.score}` : LEVEL_LABEL[level]}, ${tile.flags} flags${index != null ? `, shortcut ${index + 1}` : ''}`}>
       <div className="yx-ptile__media">
         <CameraFrame state={cam} size="sm" />
         <ScreenThumb note={tile.question} />
@@ -245,7 +245,7 @@ export function ProctorTile({ tile, selected, onOpen, index }: { tile: LiveTileD
       <div className="yx-ptile__row">
         <Badge tone={st.tone}>{st.label}</Badge>
         <Badge tone={LEVEL_TONE[level]}>
-          {tile.score} · {LEVEL_LABEL[level]}
+          {tile.score != null ? `${tile.score} · ${LEVEL_LABEL[level]}` : LEVEL_LABEL[level]}
         </Badge>
       </div>
       <div className="yx-ptile__row yx-ptile__meta">
