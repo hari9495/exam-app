@@ -1568,3 +1568,10 @@ so it was not built here (question 2272).
       *Suggested: list it with its own delete date and include it in the erasure, in AS-6 part 2.*
 2280. **A message while paused.** The proctor's message shows above the question; in the paused view only the pause
       message shows. *Suggested: show unread messages in the paused view too.*
+
+**Founder answers (17 Nov 2026, "ok for all"), 2276 to 2280:**
+- 2276: keep the collusion threshold fixed (5 identical wrong answers, 5 % common-answer cut-off); a Settings 6.5 value only when a company asks.
+- 2277: keep incident frames audited per view; the live console records "opened the live console" once per visit.
+- 2278: keep Withdraw = erasure of recordings and face data; a "no monitoring for future tests" choice only if a customer asks.
+- 2279: the privacy centre lists accommodation evidence with its own delete date, and the erasure includes it (AS-6 part 2).
+- 2280: show unread proctor messages in the paused view too.

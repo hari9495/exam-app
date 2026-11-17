@@ -1735,3 +1735,8 @@ MT-PPL-C-13..15 and MT-TIM-L-39..40.
 - 2281: keep answer 93. Late injury leave is shown for payroll's review and never paid automatically.
 - 2282: "What the day should have been" on the late-request form becomes a fixed choice (present, half day, a leave type, unpaid).
 - 2283: a correction for a month after the person left goes to their full and final settlement, and shows on the payroll home page until settled.
+
+**Founder answers (17 Nov 2026, "ok for all"), 2288 to 2290 (PF ceiling and Tamil Nadu PT):**
+- 2288: Tamil Nadu's new PT months (August / January) start with the half-year from 1 Oct 2026; January 2027 is the first new deduction.
+- 2289: EDLI and admin-charge ceilings stay at ₹15,000 until the CA confirms checklist item 46; then a new rule version, with "verify" turned off.
+- 2290: the entity-settings bug (saved for a legal entity, never takes effect) is fixed separately on test main (`fix/yukthix-entity-settings`).
