@@ -1575,3 +1575,9 @@ so it was not built here (question 2272).
 - 2278: keep Withdraw = erasure of recordings and face data; a "no monitoring for future tests" choice only if a customer asks.
 - 2279: the privacy centre lists accommodation evidence with its own delete date, and the erasure includes it (AS-6 part 2).
 - 2280: show unread proctor messages in the paused view too.
+
+**Founder answers (17 Nov 2026, "ok for all"), 2284 to 2287:**
+- 2284: add a question picker and a skills picker to the designed Sections step, then retire the older editor.
+- 2285: the tests key may read skill names (names only).
+- 2286: the AI suggests a mark per rubric criterion when the question has a rubric, still only after the marker's own mark.
+- 2287: "Restore" on an archived test for test writers, audited, like the question bank's.

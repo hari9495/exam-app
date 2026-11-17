@@ -1741,3 +1741,7 @@ MT-PPL-C-13..15 and MT-TIM-L-39..40.
 - 2289: EDLI and admin-charge ceilings stay at ₹15,000 until the CA confirms checklist item 46; then a new rule version, with "verify" turned off.
 - 2290: the entity-settings bug (saved for a legal entity, never takes effect) is fixed separately on test main (`fix/yukthix-entity-settings`).
 - 2291 (17 Nov 2026, "ok for all"): the bonus, loan-rules, follow-ups and reports e2e suites turn the second-person rule off for their own company through `test/fixtures/payroll-second-person.ts`; the rule stays on by default and is covered by `settings-s3-payroll` and `settings-s7-moves`.
+
+**Founder answers (17 Nov 2026, "ok for all"), 2300 and 2301:**
+- 2300: a correction approved after the F&F was settled is listed as "F&F settled: pay in an off-cycle correction run", added in one click.
+- 2301: the employee's Leave choice lists only leave types they hold a balance for.
