@@ -381,11 +381,14 @@ describe('Time follow-ups', () => {
         expect((await api('hr', 'post', `/time/setup/holidays/${x.id}/date`).send({ on: d(40) }).expect(200)).body.leaveReturned).toBe(1);
         return x.id;
       };
-      const first = await land(d(43));
+      // A holiday moves only within its own year, so both starting dates are in d(40)'s year: 3 and 4 days after it, or,
+      // when that crosses 31 December, 7 and 8 days before it (clear of the leave on d(39) to d(41)).
+      const away = (n: number) => (d(44).slice(0, 4) === d(40).slice(0, 4) ? d(40 + n) : d(40 - n - 4));
+      const first = await land(away(3));
       expect(await days()).toBe(before - 1);
       expect((await api('hr', 'post', `/time/setup/holidays/${first}/remove`).expect(200)).body.leaveRecounted).toBe(1);
       expect(await days()).toBe(before);
-      await land(d(44));
+      await land(away(4));
       expect(await days()).toBe(before - 1);
       const credits = await inA((tx) => tx.leaveLedgerEntry.findMany({ where: { requestId: id, entryOn: asDate(d(40)), kind: 'cancelled' } }));
       expect(credits).toHaveLength(2);
