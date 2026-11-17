@@ -281,8 +281,29 @@ describe('TIM-07 late request to a locked month (live)', () => {
     expect(screen.getAllByText('Give the reason in a sentence (at least 10 letters).').length).toBeGreaterThan(0);
     await ue.type(screen.getByRole('textbox', { name: /Reason/ }), ' but I was on site all day');
     await ue.click(screen.getByRole('button', { name: 'Send request' }));
-    await waitFor(() => expect(onLate).toHaveBeenCalledWith(expect.objectContaining({ on: '2026-10-20', kind: 'attendance', shouldBe: 'Present all day' })));
+    // Answer 2282: what the day should have been is a fixed choice; present by default.
+    await waitFor(() => expect(onLate).toHaveBeenCalledWith(expect.objectContaining({ on: '2026-10-20', kind: 'attendance', shouldBe: 'present' })));
     expect(onFix).not.toHaveBeenCalled();
+  });
+
+  it('answer 2282: the day may have been a leave of the company list; negative: Leave without a type sends nothing', async () => {
+    const onLate = ok();
+    render(<AttendanceRequestSheet live={{ data, type: 'regularise', on: '2026-10-20', onFix: ok(), onLateCorrection: onLate, leaveTypes: [{ code: 'CL', name: 'Casual leave' }, { code: 'LWP', name: 'Leave without pay' }], onClose: vi.fn() }} />);
+    await ue.click(screen.getByRole('radio', { name: 'Leave' }));
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'I was on casual leave that day, approved by phone');
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(screen.getAllByText('Choose the leave type').length).toBeGreaterThan(0);
+    expect(onLate).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('combobox', { name: /Leave type/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Casual leave' }));
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onLate).toHaveBeenCalledWith(expect.objectContaining({ shouldBe: 'leave:CL' })));
+  });
+
+  it('negative: without company leave types there is no Leave choice', () => {
+    render(<AttendanceRequestSheet live={{ data, type: 'regularise', on: '2026-10-20', onFix: ok(), onLateCorrection: ok(), onClose: vi.fn() }} />);
+    expect(screen.getByRole('radio', { name: 'Unpaid' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Leave' })).toBeNull();
   });
 });
 

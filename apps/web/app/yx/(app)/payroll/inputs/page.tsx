@@ -16,6 +16,8 @@ export default function YxPayInputsPage() {
   const stage = !stages.data ? null : stages.data.length && stages.data.every((x) => x.stage !== 'open') ? stages.data[0].stage : 'open';
   const oneTime = usePay<OneTimeItem[]>(`/one-time-pays?month=${month}`);
   const holds = usePay<HoldRow[]>('/holds');
+  // Answer 2282: a late request may say which leave the day was.
+  const leaveTypes = usePay<{ code: string; name: string }[]>('/leave-types');
   const write = usePayWrite();
   const read = usePayRead();
   const search = usePeopleSearch();
@@ -36,6 +38,7 @@ export default function YxPayInputsPage() {
           onSave: (rows, source) => write(`/lop-inputs/${month}`, { rows, source }, 'PUT'),
           stage,
           onLateRequest: (x) => write('/input-corrections', x),
+          leaveTypes: leaveTypes.data ?? [],
         },
         oneTime: {
           rows: oneTime.data ?? null,

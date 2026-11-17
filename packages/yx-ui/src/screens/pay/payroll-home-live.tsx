@@ -5,7 +5,7 @@
 // every call again (keys, entity scope).
 import { useMemo, useState } from 'react';
 import { AlertCircle, AlertTriangle, Plus } from 'lucide-react';
-import { Button } from '../../components/button';
+import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
@@ -112,6 +112,10 @@ export interface LivePayrollHome {
   onOpen: (id: string) => void;
   /** PAY-11: "Start off-cycle run" opens the designed off-cycle run page (else the drawer's off-cycle choice). */
   onNewOffcycle?: () => void;
+  /** Answer 2283: late corrections of people who have left, paid by their full and final settlement (until settled). */
+  waitingForFnf?: { id: string; name: string; on: string; month: string; fnfId: string | null }[] | null;
+  /** Opens the leaver's full and final settlement. */
+  fnfHref?: (fnfId: string) => string;
 }
 
 /** This month's run: the first regular run of the month that is not void (the top bar narrows it to one company). */
@@ -306,6 +310,26 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
                       );
                     })}
                     {findings.length > 4 && <li className="yx-pay-muted">{plural(findings.length - 4, 'more kind of check', 'more kinds of check')} in the run.</li>}
+                  </ul>
+                )}
+                {(live.waitingForFnf ?? []).length > 0 && (
+                  <ul className="yx-pay-findings" aria-label="Waiting for F&F">
+                    {live.waitingForFnf!.map((x) => (
+                      <li key={x.id} data-sev="warn">
+                        <Icon icon={AlertTriangle} label="Waiting" />
+                        <div>
+                          <p className="yx-pay-findings__title">{`${x.name}: late correction for ${x.on}`}</p>
+                          <p className="yx-pay-findings__desc">
+                            <Badge tone="warning">Waiting for F&F</Badge> {`They have left: their full and final settlement (${monthLabel(x.month)}) pays it.`}
+                          </p>
+                        </div>
+                        {x.fnfId && live.fnfHref && (
+                          <div className="yx-pay-findings__acts">
+                            <Link href={live.fnfHref(x.fnfId)}>Open F&F</Link>
+                          </div>
+                        )}
+                      </li>
+                    ))}
                   </ul>
                 )}
               </div>

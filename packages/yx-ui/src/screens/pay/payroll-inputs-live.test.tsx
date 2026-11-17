@@ -176,6 +176,25 @@ describe('Payroll › Inputs (PAY-04 … 06 live)', () => {
     expect((await screen.findAllByText('Late request for Sridhar Fernandes sent for approval')).length).toBeGreaterThan(0);
   });
 
+  it('answer 2282: a late request may say the day was a leave from the company list (sent as leave:<code>)', async () => {
+    const onLateRequest = ok();
+    const live = inputs({ tab: 'lop', lop: { ...inputs().lop, stage: 'frozen', onLateRequest, leaveTypes: [{ code: 'LWP', name: 'Leave without pay' }] } });
+    render(<OneTimePayScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Late request' }));
+    const d = screen.getByRole('dialog');
+    await pick('Sridhar Fernandes');
+    await ue.type(within(d).getByLabelText(/^Day/), '14/9/2026');
+    await ue.click(within(d).getByRole('radio', { name: 'Leave' }));
+    await ue.type(within(d).getByRole('textbox', { name: /Reason/ }), 'Was on leave without pay, recorded late');
+    await ue.click(within(d).getByRole('button', { name: 'Send for approval' }));
+    expect(within(d).getAllByText('Choose the leave type.').length).toBeGreaterThan(0);
+    expect(onLateRequest).not.toHaveBeenCalled();
+    await ue.click(within(d).getByRole('combobox', { name: /Leave type/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Leave without pay' }));
+    await ue.click(within(d).getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() => expect(onLateRequest).toHaveBeenCalledWith(expect.objectContaining({ shouldBe: 'leave:LWP' })));
+  });
+
   it('PAY-04: an open month keeps inline entry; a frozen month without the request action says whom to ask', () => {
     const { unmount } = render(<OneTimePayScreen live={inputs({ tab: 'lop', lop: { ...inputs().lop, stage: 'open' } })} />);
     expect(screen.getByRole('button', { name: 'Save LOP' })).toBeInTheDocument();
