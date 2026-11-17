@@ -109,6 +109,8 @@ export interface PayComponent {
   kind: ComponentKind;
   taxable: boolean;
   pfWage: boolean;
+  /** B2: with pfWage, counts only while the month's other PF wage is below the PF ceiling. */
+  pfBelowCeiling?: boolean;
   esiWage: boolean;
   ptWage: boolean;
   gratuityWage: boolean;

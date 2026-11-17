@@ -989,6 +989,13 @@ const FLAGS: [FlagKey, string, string, string, number][] = [
   ['onPayslip', 'Shown on payslip', '', 'Payslip', 84],
   ['inCtc', 'Part of the CTC', '', 'In CTC', 76],
 ];
+type PfMode = 'no' | 'yes' | 'below';
+const PF_MODES: { value: PfMode; label: string }[] = [
+  { value: 'no', label: 'No' },
+  { value: 'yes', label: 'Yes' },
+  { value: 'below', label: 'Below the ceiling' },
+];
+const pfModeOf = (c: Pick<PayComponent, 'pfWage' | 'pfBelowCeiling'>): PfMode => (!c.pfWage ? 'no' : c.pfBelowCeiling ? 'below' : 'yes');
 const blankComponent = (): ComponentInput => ({
   code: '',
   name: '',
@@ -1040,7 +1047,7 @@ export function LiveComponentLibraryScreen({ live: p }: { live: LiveComponentLib
         ]
       : [],
   );
-  const flagsChanged = !!edit && !!draft && FLAGS.some(([k]) => edit[k] !== draft[k]);
+  const flagsChanged = !!edit && !!draft && (FLAGS.some(([k]) => edit[k] !== draft[k]) || !!edit.pfBelowCeiling !== !!draft.pfBelowCeiling);
   const save = () =>
     draft &&
     void run('save', async () => {
@@ -1049,18 +1056,19 @@ export function LiveComponentLibraryScreen({ live: p }: { live: LiveComponentLib
       close();
       early.reset();
     });
-  const flagsOf = (r: PayComponent) => FLAGS.filter(([k]) => r[k]).map(([, , , short]) => short).join(' · ') || 'No flags';
+  const flagsOf = (r: PayComponent) => FLAGS.filter(([k]) => r[k]).map(([k, , , short]) => (k === 'pfWage' && r.pfBelowCeiling ? 'PF below ceiling' : short)).join(' · ') || 'No flags';
+  const flagText = (r: PayComponent, k: FlagKey, yes: string) => (k === 'pfWage' && r.pfBelowCeiling ? 'Below ceiling' : r[k] ? yes : null);
   const nameCol: TableColumn<PayComponent> = { key: 'name', header: 'Component', value: (r) => r.name, render: (r) => <span>{r.name} {r.statutory && <Badge>Statutory</Badge>}</span>, width: 180 };
   const typeCol: TableColumn<PayComponent> = { key: 'type', header: 'Type', value: (r) => KIND[r.kind], groupable: true, width: 170 };
   const statusCol: TableColumn<PayComponent> = { key: 'status', header: 'Status', value: (r) => (r.status === 'active' ? 'Active' : 'Retired'), width: 96 };
   const cols: TableColumn<PayComponent>[] = compact
     ? [nameCol, { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 120 }, typeCol, { key: 'flags', header: 'Flags set', value: flagsOf }, statusCol]
-    : [nameCol, { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 110 }, typeCol, ...FLAGS.map(([k, , , short, width]): TableColumn<PayComponent> => ({ key: k, header: short, value: (r) => (r[k] ? 'Yes' : '—'), width })), statusCol];
+    : [nameCol, { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 110 }, typeCol, ...FLAGS.map(([k, , , short, width]): TableColumn<PayComponent> => ({ key: k, header: short, value: (r) => flagText(r, k, 'Yes') ?? '—', width })), statusCol];
   const exportCols: TableColumn<PayComponent>[] = [
     { key: 'name', header: 'Component', value: (r) => r.name },
     { key: 'code', header: 'Code', value: (r) => r.code },
     { key: 'type', header: 'Type', value: (r) => KIND[r.kind] },
-    ...FLAGS.map(([k, label]): TableColumn<PayComponent> => ({ key: k, header: label, value: (r) => (r[k] ? 'Yes' : 'No') })),
+    ...FLAGS.map(([k, label]): TableColumn<PayComponent> => ({ key: k, header: label, value: (r) => flagText(r, k, 'Yes') ?? 'No' })),
     { key: 'status', header: 'Status', value: (r) => r.status },
   ];
   const starter = () =>
@@ -1159,9 +1167,16 @@ export function LiveComponentLibraryScreen({ live: p }: { live: LiveComponentLib
               </FormField>
             )}
             <FormSection title="Flags">
-              {FLAGS.map(([k, label, desc]) => (
-                <Checkbox key={k} label={label} description={desc || undefined} checked={draft[k]} onChange={(c) => setDraft({ ...draft, [k]: c })} disabled={statutory && k !== 'onPayslip'} />
-              ))}
+              {FLAGS.map(([k, label, desc]) =>
+                k === 'pfWage' ? (
+                  // B2: a pick-one of three (Zoho's "Yes, if the PF wage is below the ceiling").
+                  <FormField key={k} id="pc-pf" label={label} helper="Below the ceiling: counted only while the rest of the month's PF wage is under the PF ceiling.">
+                    <Segment label={label} value={pfModeOf(draft)} onChange={(m) => setDraft({ ...draft, pfWage: m !== 'no', pfBelowCeiling: m === 'below' })} options={PF_MODES} disabled={statutory} />
+                  </FormField>
+                ) : (
+                  <Checkbox key={k} label={label} description={desc || undefined} checked={draft[k]} onChange={(c) => setDraft({ ...draft, [k]: c })} disabled={statutory && k !== 'onPayslip'} />
+                ),
+              )}
             </FormSection>
             <FormField id="pc-status" label="Status">
               <Segment label="Status" value={draft.status} onChange={(s) => setDraft({ ...draft, status: s })} options={[{ value: 'active', label: 'Active' }, { value: 'retired', label: 'Retired' }]} />

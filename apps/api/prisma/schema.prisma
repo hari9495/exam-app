@@ -8387,6 +8387,8 @@ model PayComponent {
   kind           String    @db.VarChar(14)
   taxable        Boolean   @default(true)
   pfWage         Boolean   @default(false) @map("pf_wage")
+  /// B2 (batch H part 2): with pf_wage, counted only while the month's other PF wage is below the PF ceiling.
+  pfBelowCeiling Boolean   @default(false) @map("pf_below_ceiling")
   esiWage        Boolean   @default(false) @map("esi_wage")
   ptWage         Boolean   @default(false) @map("pt_wage")
   gratuityWage   Boolean   @default(false) @map("gratuity_wage")

@@ -363,4 +363,20 @@ describe('Payroll: state statutory rules (batch H)', () => {
       await api('payAdmin', 'post', `/payroll/runs/${ids['run-2026-10']}/submit`).send({}).expect(200);
     });
   });
+
+  describe('B2 (batch H part 2): a component that is PF wage only below the ceiling', () => {
+    const body = (extra: Record<string, unknown>) => ({ code: `site_allow_${run.slice(0, 4)}`, name: 'Site allowance', kind: 'earning', taxable: true, esiWage: true, ptWage: true, ...extra });
+    it('negatives: "below the ceiling" without PF wage is a 400 and nothing is saved; an employee is refused', async () => {
+      expect((await api('payAdmin', 'post', '/payroll/components').send(body({ pfWage: false, pfBelowCeiling: true })).expect(400)).body.message).toMatch(/kind of PF wage/);
+      expect(await inA((tx) => tx.payComponent.count({ where: { organizationId: org.A.id, code: body({}).code } }))).toBe(0);
+      await api('emp1', 'post', '/payroll/components').send(body({ pfWage: true, pfBelowCeiling: true })).expect(403);
+    });
+    it('saved with both, it reads back; another company does not see it', async () => {
+      const c = (await api('payAdmin', 'post', '/payroll/components').send(body({ pfWage: true, pfBelowCeiling: true })).expect(201)).body;
+      expect(c).toMatchObject({ pfWage: true, pfBelowCeiling: true });
+      expect(((await api('payAdminB', 'get', '/payroll/components').expect(200)).body as { code: string }[]).some((x) => x.code === c.code)).toBe(false);
+      // Back to always PF wage.
+      expect((await api('payAdmin', 'patch', `/payroll/components/${c.id}`).send({ ...body({ pfWage: true, pfBelowCeiling: false }), version: c.version }).expect(200)).body).toMatchObject({ pfWage: true, pfBelowCeiling: false });
+    });
+  });
 });

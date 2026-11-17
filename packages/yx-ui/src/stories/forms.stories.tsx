@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { Segment } from '../components/segment';
 import { useState } from 'react';
 import { Fingerprint, KeyRound, Search, Smartphone } from 'lucide-react';
 import { Button } from '../components/button';
@@ -125,6 +126,9 @@ export const Choices: StoryObj = {
           </FormField>
           <Switch label="Allow employees to download payslips" description="Takes effect immediately" defaultChecked />
           <Switch label="Weekend check-in" disabled />
+          <FormField label="Part of PF wage" helper="Segment: one choice of 2 to 4. Disabled on a statutory component.">
+            <Segment label="Part of PF wage" value="yes" onChange={() => undefined} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }, { value: 'below', label: 'Below the ceiling' }]} disabled />
+          </FormField>
         </Section>
       </Stack>
     );

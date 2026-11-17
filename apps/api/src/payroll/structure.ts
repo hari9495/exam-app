@@ -19,6 +19,8 @@ export interface ComponentDef {
   name: string;
   kind: 'earning' | 'deduction' | 'employer' | 'reimbursement' | 'info';
   pfWage: boolean;
+  /** B2: with pfWage, part of the PF wage only while the rest of the month's PF wage is below the ceiling. */
+  pfBelowCeiling?: boolean;
   esiWage: boolean;
   ptWage: boolean;
   gratuityWage: boolean;
@@ -161,7 +163,10 @@ export function breakup(a: { lines: Line[]; components: ComponentDef[]; options:
         };
         const cw = codeRs ? codeWage(codeRs, { wageParts: sum('codeWagePart'), exclusions: sum('codeExclusion') }) : null;
         addBack = cw ? D(cw.codeWage).sub(sum('codeWagePart')) : ZERO;
-        const pfWage = sum('pfWage').add(addBack);
+        // B2: a "below the ceiling" component counts only while the rest of the PF wage is under the ceiling.
+        const pfPart = (below: boolean) => [...values.entries()].filter(([c]) => comps.get(c)!.kind === 'earning' && comps.get(c)!.pfWage && !!comps.get(c)!.pfBelowCeiling === below).reduce((s, [, v]) => s.add(v), ZERO);
+        const pfAlways = pfPart(false).add(addBack);
+        const pfWage = pfRs && pfAlways.lt(D(String(pfRs.values.wageCeiling))) ? pfAlways.add(pfPart(true)) : pfAlways;
         if (fn === 'code_wage') return cw ? D(cw.codeWage) : sum('codeWagePart');
         if (fn === 'pf_employee' || fn === 'pf_employer') {
           if (!a.facts.pf) return ZERO;

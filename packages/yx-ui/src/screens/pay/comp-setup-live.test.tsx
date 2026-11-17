@@ -278,8 +278,21 @@ describe('Component library (PAY-14 live)', () => {
     await ue.click(screen.getByText('Provident fund (employee)'));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Statutory component')).toBeInTheDocument();
-    expect(within(dialog).getByRole('checkbox', { name: /Part of PF wage/ })).toBeDisabled();
+    for (const r of within(within(dialog).getByRole('radiogroup', { name: /Part of PF wage/ })).getAllByRole('radio')) expect(r).toBeDisabled();
     expect(within(dialog).getByRole('checkbox', { name: /Shown on payslip/ })).toBeEnabled();
+  });
+
+  it('B2: PF wage is a pick-one of No, Yes and Below the ceiling; the choice is sent (after the in-use warning)', async () => {
+    const live = libLive();
+    render(<ComponentLibraryScreen live={live} />);
+    await ue.click(screen.getByText(COMPONENTS.find((c) => !c.statutory && c.kind === 'earning' && !c.pfWage)!.name));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('radio', { name: 'Below the ceiling' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save component' }));
+    // A component already on payslips asks first (a flag changes from the next run).
+    const ask = await screen.findByRole('dialog', { name: /Change the flags/ });
+    await ue.click(within(ask).getByRole('button', { name: 'Save component' }));
+    await waitFor(() => expect(live.onSave).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ pfWage: true, pfBelowCeiling: true })));
   });
 
   it('Save pressed with nothing filled names the fields; filled, it adds the component', async () => {

@@ -31,7 +31,7 @@ const YEARS = (dob: Date, on: string) => {
 };
 
 type ComponentRow = Prisma.PayComponentGetPayload<object>;
-const def = (c: ComponentRow): ComponentDef => ({ id: c.id, code: c.code, name: c.name, kind: c.kind as ComponentDef['kind'], pfWage: c.pfWage, esiWage: c.esiWage, ptWage: c.ptWage, gratuityWage: c.gratuityWage, bonusWage: c.bonusWage, codeWagePart: c.codeWagePart, codeExclusion: c.codeExclusion, inCtc: c.inCtc, rounding: c.rounding as ComponentDef['rounding'], statutory: c.statutory });
+const def = (c: ComponentRow): ComponentDef => ({ id: c.id, code: c.code, name: c.name, kind: c.kind as ComponentDef['kind'], pfWage: c.pfWage, pfBelowCeiling: c.pfBelowCeiling, esiWage: c.esiWage, ptWage: c.ptWage, gratuityWage: c.gratuityWage, bonusWage: c.bonusWage, codeWagePart: c.codeWagePart, codeExclusion: c.codeExclusion, inCtc: c.inCtc, rounding: c.rounding as ComponentDef['rounding'], statutory: c.statutory });
 
 /** The minimum-wage notes shown with a breakup (YX-PAY-22, 5b-D1). */
 const mwWarnings = (b: ReturnType<typeof breakup>) => [
@@ -89,8 +89,9 @@ export class PayStructuresService {
 
   private flags(dto: ComponentDto) {
     if (dto.codeWagePart && dto.codeExclusion) throw new BadRequestException('A component is either part of the Code wage or an exclusion, not both.');
+    if (dto.pfBelowCeiling && !dto.pfWage) throw new BadRequestException('"Only below the PF ceiling" is a kind of PF wage: set the component as PF wage too.');
     const proration = dto.prorationText ? plain(() => checkFormula(dto.prorationText!, new Set(PAY_VARIABLES))) : null;
-    return { name: dto.name, kind: dto.kind, taxable: dto.taxable ?? true, pfWage: !!dto.pfWage, esiWage: !!dto.esiWage, ptWage: !!dto.ptWage, gratuityWage: !!dto.gratuityWage, bonusWage: !!dto.bonusWage, codeWagePart: !!dto.codeWagePart, codeExclusion: !!dto.codeExclusion, prorated: dto.prorated ?? true, onPayslip: dto.onPayslip ?? true, inCtc: dto.inCtc ?? true, prorationText: dto.prorationText ?? null, prorationAst: proration ? (proration.ast as unknown as Prisma.InputJsonValue) : Prisma.DbNull, rounding: dto.rounding ?? 'rupee', ledger: dto.ledger ?? null };
+    return { name: dto.name, kind: dto.kind, taxable: dto.taxable ?? true, pfWage: !!dto.pfWage, pfBelowCeiling: !!dto.pfBelowCeiling, esiWage: !!dto.esiWage, ptWage: !!dto.ptWage, gratuityWage: !!dto.gratuityWage, bonusWage: !!dto.bonusWage, codeWagePart: !!dto.codeWagePart, codeExclusion: !!dto.codeExclusion, prorated: dto.prorated ?? true, onPayslip: dto.onPayslip ?? true, inCtc: dto.inCtc ?? true, prorationText: dto.prorationText ?? null, prorationAst: proration ? (proration.ast as unknown as Prisma.InputJsonValue) : Prisma.DbNull, rounding: dto.rounding ?? 'rupee', ledger: dto.ledger ?? null };
   }
 
   createComponent(ctx: TenantContext, user: ScopeUser, dto: ComponentDto) {
