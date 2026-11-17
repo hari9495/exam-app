@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { TaxWindowCards, TaxWorkspaceScreen } from './employee-pay';
+import { TaxOnBehalfScreen, TaxWindowCards, TaxWorkspaceScreen } from './employee-pay';
+import { DECLARATIONS } from './live/fixtures-ops';
 
 const meta: Meta<typeof TaxWorkspaceScreen> = { title: 'Screens/Pay/PAY-22 · Tax workspace', component: TaxWorkspaceScreen, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -27,6 +28,22 @@ export const WindowCards: S = {
         { key: 'declarations', open: true, from: '2026-04-01', to: '2027-02-28', by: 'dates' },
         { key: 'proofs', open: false, from: '2027-01-01', to: '2027-02-28', by: 'hr_lock' },
       ]}
+    />
+  ),
+};
+/** E2 (batch H part 2): HR declares for an employee without a login (Payroll › Tax centre). */
+export const OnBehalf: S = {
+  name: 'HR declares for an employee (E2)',
+  render: () => (
+    <TaxOnBehalfScreen
+      live={{
+        state: 'ready',
+        onSearch: async () => [{ id: 'p9', name: 'Murugan S', employeeCode: 'KF-0311' }],
+        person: { id: 'p9', name: 'Murugan S', employeeCode: 'KF-0311' },
+        onPerson: () => undefined,
+        declarations: { ...DECLARATIONS, canDeclare: true, windows: [{ key: 'declarations', open: true, from: '2026-04-01', to: '2027-02-28', by: 'dates' }] },
+        onDeclare: async () => undefined,
+      }}
     />
   ),
 };

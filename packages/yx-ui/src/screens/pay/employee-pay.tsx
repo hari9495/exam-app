@@ -42,6 +42,7 @@ import {
   MoneySummary,
   MyPayFrame,
   PartnerLink,
+  PayFrame,
   RangeMarker,
   SectionTitle,
   StateBlock,
@@ -2216,6 +2217,76 @@ export function TaxWindowCards({ windows }: { windows: TaxWindow[] }) {
         </Card>
       ))}
     </div>
+  );
+}
+
+/** E2 (batch H part 2): HR declares for an employee without a login (GET / POST tax/employees/:id/declarations). */
+export interface LiveTaxOnBehalf {
+  state: LoadState;
+  onRetry?: () => void;
+  onSearch: (q: string) => Promise<PersonHit[]>;
+  person: PersonHit | null;
+  onPerson: (p: PersonHit) => void;
+  /** The chosen person's declarations, with whether the window is open now. */
+  declarations: (MyDeclarations & { canDeclare: boolean; windows?: TaxWindow[] }) | null;
+  onDeclare: (line: DeclarationInput) => Promise<unknown>;
+}
+
+export function TaxOnBehalfScreen({ live }: { live: LiveTaxOnBehalf }) {
+  const d = live.declarations;
+  const [editing, setEditing] = useState<DeclarationLine | 'new' | null>(null);
+  const verified = (l: DeclarationLine) => ['approved', 'partly'].includes(l.proofStatus);
+  return (
+    <PayFrame page="tax">
+      <PageHeader title="Declare for an employee" description="For people without a login: their tax declarations, entered by HR with the same checks and window as their own. Each change is recorded as made on their behalf. Your own declarations are made in Me › Tax." />
+      <div className="yx-pay-stack">
+        <FindPerson id="tb-person" label="Employee" value={live.person} onChange={live.onPerson} onSearch={live.onSearch} />
+        {live.person && live.state === 'loading' && <Skeleton height={200} />}
+        {live.person && live.state === 'error' && (
+          <InlineAlert tone="danger" title="Their declarations could not be loaded" actions={live.onRetry && <Button size="sm" onClick={live.onRetry}>Try again</Button>}>
+            You may not handle tax for this person, or they have no current employment in your entities.
+          </InlineAlert>
+        )}
+        {live.person && d && (
+          <>
+            {d.windows && d.windows.length > 0 && <TaxWindowCards windows={d.windows} />}
+            {!d.lines.length ? (
+              <EmptyState compact title="Nothing declared yet." description={`Declare rent, investments and insurance for ${live.person.name}.`} />
+            ) : (
+              <PlainTable
+                label={`Declarations of ${live.person.name}`}
+                rows={d.lines}
+                getRowId={(l) => l.id}
+                columns={[
+                  { key: 'item', header: 'Item and section', cell: (l) => <strong>{subjectText(l.subjectKey, l.section)}</strong> },
+                  { key: 'amount', header: 'Declared', num: true, cell: (l) => `${rupees(l.amount)}${l.subjectKey === 'hra' ? ' a month' : ''}` },
+                  { key: 'proof', header: 'Proof', cell: (l) => proofBadge(l.proofStatus) },
+                  {
+                    key: 'act',
+                    header: <span className="yx-visually-hidden">Actions</span>,
+                    cell: (l) =>
+                      d.canDeclare && !verified(l) && (
+                        <Button size="sm" onClick={() => setEditing(l)} aria-label={`Change ${subjectText(l.subjectKey, l.section)}`}>
+                          Change
+                        </Button>
+                      ),
+                  },
+                ]}
+              />
+            )}
+            {d.canDeclare && d.subjects.some((x) => !d.lines.some((l) => l.subjectKey === x.key)) && (
+              <div className="yx-pay-row">
+                <Button icon={Plus} onClick={() => setEditing('new')}>
+                  Add declaration
+                </Button>
+                <span className="yx-pay-note">{d.form}.</span>
+              </div>
+            )}
+            {editing && <DeclareDrawer line={editing === 'new' ? null : editing} subjects={d.subjects.filter((x) => editing !== 'new' || !d.lines.some((l) => l.subjectKey === x.key))} taxYear={d.taxYear} onClose={() => setEditing(null)} onSave={live.onDeclare} />}
+          </>
+        )}
+      </div>
+    </PayFrame>
   );
 }
 

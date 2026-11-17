@@ -251,12 +251,17 @@ export class TaxService implements OnModuleInit {
 
   /** The signed-in person's current employment and its workspace for this tax year (made on first use). */
   private async ownWorkspace(tx: Tx, c: CompanyContext) {
+    return this.workspaceOf(tx, c, await this.mine(tx), null);
+  }
+
+  /** The current tax year's workspace of a current employment (made on first use), with its dates and windows. */
+  private async workspaceOf(tx: Tx, c: CompanyContext, employeeIds: string[], entityIds: string[] | null) {
     const today = todayIst();
     const e = await tx.employment.findFirst({
-      where: { organizationId: c.organizationId, employeeId: { in: await this.mine(tx) }, joinedOn: { lte: asDate(today) }, OR: [{ exitedOn: null }, { exitedOn: { gte: asDate(today) } }] },
+      where: { organizationId: c.organizationId, employeeId: { in: employeeIds }, ...(entityIds ? { legalEntityId: { in: entityIds } } : {}), joinedOn: { lte: asDate(today) }, OR: [{ exitedOn: null }, { exitedOn: { gte: asDate(today) } }] },
       orderBy: { joinedOn: 'desc' },
     });
-    if (!e) throw new NotFoundException('You have no current employment here.');
+    if (!e) throw new NotFoundException(entityIds ? 'Not found' : 'You have no current employment here.');
     const taxYear = taxYearOf(today.slice(0, 7));
     const where = { organizationId: c.organizationId, employmentId: e.id, taxYear };
     // The tax page asks for several things at once on a first visit: insert-if-absent, so the parallel calls don't collide.
@@ -728,19 +733,51 @@ export class TaxService implements OnModuleInit {
     await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { ws, dates, today } = await this.ownWorkspace(tx, c);
-      const lines = await tx.taxDeclarationLine.findMany({ where: { organizationId: c.organizationId, workspaceId: ws.id }, orderBy: { subjectKey: 'asc' } });
-      const { keys } = await this.subjectKeys(today);
-      const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: [...keys, 'salary_declaration'] } } });
-      return {
-        taxYear: ws.taxYear,
-        proofWindowOpens: dates.proofWindowOpens,
-        proofCutoff: dates.proofCutoff,
-        subjects: [...keys].map((k) => ({ key: k, section: labels.find((x) => x.subjectKey === k)?.section ?? null })),
-        // H14: the declaration form of the workspace's law (Form 12BB, or Form No. 124 under the 2025 Act), from the crosswalk.
-        form: labels.find((x) => x.subjectKey === 'salary_declaration')?.form ?? (ws.lawVersion === 'IT-2025' ? 'Form No. 124' : 'Form 12BB'),
-        lines: lines.map((l) => ({ ...this.lineView(l), section: labels.find((x) => x.subjectKey === l.subjectKey)?.section ?? null })),
-      };
+      return this.declarationsView(tx, c, ws, dates, today);
     });
+  }
+
+  /**
+   * E2 (batch H part 2): HR declares for an employee (staff without a login), under tax.regime.override, in the
+   * entities they reach; never their own. The same checks and the same window as the employee; audited "on behalf of".
+   */
+  private async behalfWorkspace(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string) {
+    if ((await this.mine(tx)).includes(employeeId)) throw new ForbiddenException('Someone else handles your own tax.');
+    const ids = await entitiesFor(tx, c, v, 'tax.regime.override');
+    await payScope(tx, ids);
+    return this.workspaceOf(tx, c, [employeeId], ids);
+  }
+
+  async declarationsFor(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { ws, dates, today, windows } = await this.behalfWorkspace(tx, c, v, employeeId);
+      return { ...(await this.declarationsView(tx, c, ws, dates, today)), canDeclare: windows[0].open, windows };
+    });
+  }
+
+  async declareFor(ctx: TenantContext, user: ScopeUser, employeeId: string, rows: DeclarationLineDto[]) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { ws, today, windows } = await this.behalfWorkspace(tx, c, v, employeeId);
+      if (!windows[0].open) throw new ConflictException(closedText(windows[0], 'Declarations', today));
+      return this.saveLines(tx, c, ws, today, rows, v.userId!);
+    });
+  }
+
+  private async declarationsView(tx: Tx, c: CompanyContext, ws: Workspace, dates: Awaited<ReturnType<typeof taxDates>>, today: string) {
+    const lines = await tx.taxDeclarationLine.findMany({ where: { organizationId: c.organizationId, workspaceId: ws.id }, orderBy: { subjectKey: 'asc' } });
+    const { keys } = await this.subjectKeys(today);
+    const labels = await tx.statutoryLawCrosswalk.findMany({ where: { lawVersion: ws.lawVersion, subjectKey: { in: [...keys, 'salary_declaration'] } } });
+    return {
+      taxYear: ws.taxYear,
+      proofWindowOpens: dates.proofWindowOpens,
+      proofCutoff: dates.proofCutoff,
+      subjects: [...keys].map((k) => ({ key: k, section: labels.find((x) => x.subjectKey === k)?.section ?? null })),
+      // H14: the declaration form of the workspace's law (Form 12BB, or Form No. 124 under the 2025 Act), from the crosswalk.
+      form: labels.find((x) => x.subjectKey === 'salary_declaration')?.form ?? (ws.lawVersion === 'IT-2025' ? 'Form No. 124' : 'Form 12BB'),
+      lines: lines.map((l) => ({ ...this.lineView(l), section: labels.find((x) => x.subjectKey === l.subjectKey)?.section ?? null })),
+    };
   }
 
   /** Declares (or changes) lines while the declaration window is open; a line with an approved proof is not changed. Amount 0 drops it. */

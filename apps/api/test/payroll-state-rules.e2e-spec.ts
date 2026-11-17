@@ -37,6 +37,12 @@ describe('Payroll: state statutory rules (batch H)', () => {
   const emp: Record<string, string> = {};
   const api = (who: Who, method: 'get' | 'post' | 'put' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
+  // Pay tables (declarations) are behind the pay guard: read them with the entity's pay scope.
+  const scopedA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
+    inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return fn(tx);
+    });
   const addPlace = (state: string, code: string) =>
     inA(async (tx) => (await tx.location.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, name: `${state} office`, code, address: {}, country: 'IN', state, timezone: 'Asia/Kolkata' } })).id);
 
@@ -286,7 +292,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
     it('negatives: someone with no employment gets 404; a subject the rules do not list is a 400 and nothing is saved', async () => {
       await api('payAdminB', 'get', '/tax/me/declarations').expect(404);
       await api('emp1', 'post', '/tax/me/declarations').send({ lines: [{ subjectKey: 'sec80zz', amount: '1000.00' }] }).expect(400);
-      expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
+      expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
     });
   });
 
@@ -295,7 +301,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
     it('negatives: rent above 1,00,000 a year without the relationship, or with one not on the list, is a 400 and nothing is saved', async () => {
       expect((await api('emp1', 'post', '/tax/me/declarations').send(rent({})).expect(400)).body.message).toBe('Rent above ₹100000 a year needs how you are related to your landlord.');
       await api('emp1', 'post', '/tax/me/declarations').send(rent({ landlordRelationship: 'uncle' })).expect(400);
-      expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
+      expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(0);
     });
     it('with it the line is saved and shown back; another company cannot see it', async () => {
       await api('emp1', 'post', '/tax/me/declarations').send(rent({ landlordRelationship: 'parent' })).expect(200);
@@ -402,15 +408,34 @@ describe('Payroll: state statutory rules (batch H)', () => {
       const locked = (await api('payAdmin', 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'declarations', action: 'lock', reason: 'Projection freeze for December' }).expect(200)).body as W[];
       expect(mine(locked, 'declarations')).toMatchObject({ open: false, by: 'hr_lock' });
       expect(await ws()).toMatchObject({ canDeclare: false, canSendProofs: true });
-      const before = await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }));
+      const before = await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }));
       expect((await api('emp1', 'post', '/tax/me/declarations').send({ lines: [{ subjectKey: 'sec80c', amount: '50000.00' }] }).expect(409)).body.message).toBe('HR has locked declarations for now.');
-      expect(await inA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(before);
+      expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: ids.emp1 } }))).toBe(before);
     });
     it('back to the dates: declarations open again; every change is kept and audited', async () => {
       await api('payAdmin', 'post', '/tax/windows').send({ legalEntityId: ids.entity, window: 'declarations', action: 'dates', reason: 'Freeze over' }).expect(200);
       expect((await ws()).canDeclare).toBe(true);
       expect(await inA((tx) => tx.taxWindowAction.count({ where: { legalEntityId: ids.entity } }))).toBe(3);
       expect(await inA((tx) => tx.auditLog.count({ where: { action: 'tax.window.changed', entityId: ids.entity } }))).toBe(3);
+    });
+  });
+
+  describe('E2 (batch H part 2): HR declares for an employee without a login', () => {
+    const path = () => `/tax/employees/${emp['IN-AP']}/declarations`;
+    it('HR declares 80C for the Andhra Pradesh employee; it shows on their declarations and the audit says on behalf of', async () => {
+      await api('payAdmin', 'post', path()).send({ lines: [{ subjectKey: 'sec80c', amount: '50000.00' }] }).expect(200);
+      const d = (await api('payAdmin', 'get', path()).expect(200)).body as { form: string; canDeclare: boolean; lines: { subjectKey: string; amount: string }[] };
+      expect(d).toMatchObject({ form: 'Form No. 124', canDeclare: true });
+      expect(d.lines).toEqual([expect.objectContaining({ subjectKey: 'sec80c', amount: '50000.00' })]);
+      const log = await inA((tx) => tx.auditLog.findFirst({ where: { action: 'tax.declaration.saved', metadataJson: { contains: emp['IN-AP'] } } }));
+      expect(JSON.parse(log!.metadataJson!)).toMatchObject({ lines: ['sec80c'], onBehalfOf: emp['IN-AP'] });
+    });
+    it('negatives: an employee is refused, another company gets 404, a bad subject is a 400 and nothing more is saved', async () => {
+      await api('emp1', 'post', path()).send({ lines: [{ subjectKey: 'sec80c', amount: '1.00' }] }).expect(403);
+      await api('payAdminB', 'get', path()).expect(404);
+      await api('payAdminB', 'post', path()).send({ lines: [{ subjectKey: 'sec80c', amount: '1.00' }] }).expect(404);
+      await api('payAdmin', 'post', path()).send({ lines: [{ subjectKey: 'lottery', amount: '1.00' }] }).expect(400);
+      expect(await scopedA((tx) => tx.taxDeclarationLine.count({ where: { employeeId: emp['IN-AP'] } }))).toBe(1);
     });
   });
 });

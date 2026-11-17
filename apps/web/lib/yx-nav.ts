@@ -352,6 +352,8 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(has('payroll.equity.manage'), L('pay-equity', 'Equity', '/yx/payroll/equity')),
             ...when(any('consultant.manage', 'consultant.invoice.approve'), L('pay-consultants', 'Consultants', '/yx/payroll/consultants')),
             ...when(has('tax.proof.verify'), L('pay-proofs', 'Tax centre', '/yx/payroll/proofs')),
+            // Batch H part 2 E2: HR declares for an employee without a login.
+            ...when(has('tax.regime.override'), L('pay-tax-declare', 'Declare for an employee', '/yx/payroll/tax-declare')),
           ]),
           ...sec('Loans, recoveries & EWA', [
             ...when(has('payroll.loan.manage'), L('pay-loans', 'Loans and advances', '/yx/payroll/loans')),

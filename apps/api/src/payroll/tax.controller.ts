@@ -136,6 +136,20 @@ export class TaxController {
     return this.tax.workspaces(ctx, this.user(req), q.employeeId);
   }
 
+  /** E2 (batch H part 2): HR declares for an employee (staff without a login). */
+  @Get('employees/:employeeId/declarations')
+  @RequirePermissions('tax.regime.override')
+  declarationsFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.tax.declarationsFor(ctx, this.user(req), employeeId);
+  }
+
+  @Post('employees/:employeeId/declarations')
+  @HttpCode(200)
+  @RequirePermissions('tax.regime.override')
+  declareFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Body() dto: DeclarationsDto) {
+    return this.tax.declareFor(ctx, this.user(req), employeeId, dto.lines);
+  }
+
   @Get('windows')
   @RequirePermissions('tax.regime.override')
   windows(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
