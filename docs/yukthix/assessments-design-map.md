@@ -1581,3 +1581,9 @@ so it was not built here (question 2272).
 - 2285: the tests key may read skill names (names only).
 - 2286: the AI suggests a mark per rubric criterion when the question has a rubric, still only after the marker's own mark.
 - 2287: "Restore" on an archived test for test writers, audited, like the question bank's.
+
+**Founder answers (17 Nov 2026, "ok for all"), 2292 to 2295 (AI-allowed tests):**
+- 2292: an AI-allowed test turns off only the copy, paste and code-paste flags; tab switches, faces and screen analysis stay. A future "answer reads like AI" flag applies only to tests that are not AI-allowed.
+- 2293: the assistant sees the conversation only, not the question or the marking.
+- 2294: under-18 candidates may take AI-allowed tests; the company decides by whom it invites.
+- 2295: a test's report shows the AI credits it used, built with AS-7 billing.
