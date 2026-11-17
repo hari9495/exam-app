@@ -322,7 +322,8 @@ describe('Payroll batch 5c', () => {
     const one = (await api('approver1', 'get', `/payroll/payslips/${ids.slip1}`).expect(200)).body;
     const codes = one.lines.map((l: { code: string }) => l.code);
     expect(codes).toEqual(expect.arrayContaining(['basic', 'pf_employee', 'pt', 'bonus', 'court_attachment', 'held']));
-    expect(one.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ amount: '1800.00', rule: { statute: 'IN.PF' } });
+    // From 17 Sep 2026 the PF ceiling is 25,000 (S.O. 5109(E)): 12% of the whole basic 24,200.
+    expect(one.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ amount: '2904.00', rule: { statute: 'IN.PF' } });
     const two = (await api('payAdmin', 'get', `/payroll/payslips/${ids.slip2}`).expect(200)).body;
     expect(two.lines.find((l: { code: string }) => l.code === 'loan_emi')).toMatchObject({ amount: '3000.00' });
     expect(two.lines.find((l: { code: string }) => l.code === 'basic').explanation).toMatch(/unpaid days/);

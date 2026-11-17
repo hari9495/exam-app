@@ -403,7 +403,7 @@ export function StatutorySetupScreen({ entity, registrations, tab = 'registratio
                   value={pfBasis}
                   onChange={setPfBasis}
                   options={[
-                    { value: 'ceiling', label: 'PF wage up to the ceiling (₹15,000)' },
+                    { value: 'ceiling', label: 'PF wage up to the ceiling (₹25,000 from 17 Sep 2026; ₹15,000 before)' },
                     { value: 'actual', label: 'Actual PF wage', description: 'Employer share on actual wage too' },
                   ]}
                 />

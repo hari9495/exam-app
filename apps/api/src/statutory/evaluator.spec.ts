@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
 import fc from 'fast-check';
 import { Prisma } from '@prisma/client';
@@ -27,8 +27,10 @@ describe('India pack (P07)', () => {
     }
   });
 
-  it('the payroll 5b migration loads exactly these rule sets (no drift between the pack and the database)', () => {
-    const sql = readFileSync(join(__dirname, '..', '..', 'prisma', 'migrations', '20261027000000_payroll_5b', 'migration.sql'), 'utf8');
+  it('the migrations load every rule set of the pack (no drift between the pack and the database)', () => {
+    // The pack loaded with payroll 5b; later versions (a new ceiling, a state's new months) come in their own migration.
+    const dir = join(__dirname, '..', '..', 'prisma', 'migrations');
+    const sql = readdirSync(dir).map((m) => (existsSync(join(dir, m, 'migration.sql')) ? readFileSync(join(dir, m, 'migration.sql'), 'utf8') : '')).join('\n');
     for (const rs of sets) expect(sql).toContain(`'${rs.statute}', '${rs.jurisdiction}', '${rs.version}'`);
   });
 

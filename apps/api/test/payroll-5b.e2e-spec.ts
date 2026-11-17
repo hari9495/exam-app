@@ -278,7 +278,8 @@ describe('Payroll batch 5b', () => {
     const p = (await api('payAdmin', 'post', '/payroll/compensations/preview').send(body).expect(200)).body;
     // 5c-D2: no skill class on the job yet, so the state table's lowest class is used, with a warning.
     expect(p).toMatchObject({ monthlyCtc: '60500.00', warnings: [expect.stringMatching(/No skill class/)] });
-    expect(p.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ monthly: '1800.00', citation: { statute: 'IN.PF' } });
+    // From 17 Sep 2026 the PF ceiling is 25,000 (S.O. 5109(E)): 12% of the whole basic 24,200.
+    expect(p.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ monthly: '2904.00', citation: { statute: 'IN.PF' } });
 
     // PAY-12: nothing paid yet, so no arrears; an hourly or daily basis needs its rate (then it is worked out).
     expect(p.arrears).toEqual([]);
@@ -314,7 +315,7 @@ describe('Payroll batch 5b', () => {
     // PPL-03 Pay tab (founder 22 Oct 2026): the lines the CTC counts total the header CTC; employer lines carry their basis.
     const counted = (mine.lines as { annual: string; inCtc: boolean }[]).filter((l) => l.inCtc).reduce((s, l) => s + Number(l.annual), 0);
     expect(Math.abs(counted - Number(mine.annualCtc))).toBeLessThan(0.5);
-    expect(mine.lines.find((l: { code: string }) => l.code === 'pf_employer')).toMatchObject({ inCtc: true, basis: '12% of ₹15,000' });
+    expect(mine.lines.find((l: { code: string }) => l.code === 'pf_employer')).toMatchObject({ inCtc: true, basis: '12% of ₹25,000' }); // the PF ceiling from 17 Sep 2026 (S.O. 5109(E))
     expect(mine.lines.find((l: { code: string }) => l.code === 'gratuity_provision')).toMatchObject({ inCtc: false });
     const seen = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
     expect(seen.changeId).toBe(ch.changeId);
