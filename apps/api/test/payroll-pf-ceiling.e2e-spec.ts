@@ -12,6 +12,7 @@ import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 import { StatutoryRulesService } from '../src/statutory/statutory.service';
+import { payReady } from './fixtures/pay-ready';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -156,6 +157,8 @@ describe('Payroll: the PF ceiling from 17 Sep 2026', () => {
       ids.desig = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
     });
+    // Batch H A2: approval needs the entity's TAN, PAN and PT registrations.
+    await payReady(tenantPrisma, org.A.id, ids.entity);
     const hire = async (who: Who, code: string, joinedOn: string) =>
       (
         await api('adminA', 'post', '/people/employees')

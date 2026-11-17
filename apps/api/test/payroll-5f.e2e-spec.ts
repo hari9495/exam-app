@@ -14,6 +14,7 @@ import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { hashValue, sealValue } from '../src/people/profile.service';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
 import { FH } from '../src/statutory/etds';
+import { payReady } from './fixtures/pay-ready';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -157,6 +158,8 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
       ids.desig = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
     });
+    // Batch H A2: approval needs the entity's TAN, PAN and PT registrations.
+    await payReady(tenantPrisma, org.A.id, ids.entity);
     const hire = async (who: Who, code: string) =>
       (
         await api('adminA', 'post', '/people/employees')
@@ -265,8 +268,9 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
     expect(hub.cards.map((c: { statute: string; state: string | null }) => `${c.statute}${c.state ? `:${c.state}` : ''}`)).toEqual(expect.arrayContaining(['IN.PF', 'IN.ESI', 'IN.PT:IN-KA']));
     expect(hub.cards.find((c: { statute: string }) => c.statute === 'IN.PF')).toMatchObject({ status: 'not_generated', dueOn: expect.stringMatching(/-15$/) });
     expect(Number(hub.tds.amount)).toBeGreaterThan(0);
-    // CMP-01 SetupNeeded: nothing is registered yet; PT and LWF only for the states the entity is in.
-    expect(hub.setupMissing).toEqual(['IN.PF', 'IN.ESI', 'IN.TDS', 'IN.PT IN-KA', 'IN.LWF IN-KA']);
+    // CMP-01 SetupNeeded: only PT is registered (approval needs it, batch H A2) and the TAN is on the entity; PF, ESI and
+    // LWF are not recorded yet, LWF only for the states the entity is in.
+    expect(hub.setupMissing).toEqual(['IN.PF', 'IN.ESI', 'IN.LWF IN-KA']);
     await inA((tx) => tx.statutoryRegistration.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, statute: 'IN.PF', status: 'off' } }));
     expect((await api('payAdmin', 'get', `/statutory/hub?entityId=${ids.entity}&month=${month}`).expect(200)).body.setupMissing).not.toContain('IN.PF');
     await api('payAdmin', 'get', `/statutory/hub?entityId=${ids.entity}&month=2026-13`).expect(400);
@@ -464,8 +468,8 @@ describe('Payroll batch 5f (statutory files, returns, registers)', () => {
       expect(again.completeness.months.some((m: { missing: boolean }) => m.missing)).toBe(false);
       await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/reconcile`).expect(200);
     }
-    // 5f-D1: the official e-TDS file needs the deductor's details first.
-    expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/file`).expect(400)).body.problems).toEqual(expect.arrayContaining([expect.stringMatching(/TAN/)]));
+    // 5f-D1: the official e-TDS file needs the deductor's details first (the TAN is already on the entity: approval needs it).
+    expect((await api('payAdmin', 'post', `/statutory/tds-returns/${ret.id}/file`).expect(400)).body.problems).toEqual(expect.arrayContaining([expect.stringMatching(/registered address/), expect.stringMatching(/person responsible/)]));
     await inA(async (tx) => {
       await tx.legalEntity.update({
         where: { id: ids.entity },

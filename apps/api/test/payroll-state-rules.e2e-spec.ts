@@ -14,6 +14,7 @@ import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file'
 import { StatutoryRulesService } from '../src/statutory/statutory.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { payReady } from './fixtures/pay-ready';
 
 // Batch H: state payroll rules as dated rule data (docs/yukthix/reference/statutory/india-state-rules-2026-27.md §7).
 // Every new set is verify (a CA checks it before go-live). Positive and negative paths per item.
@@ -141,6 +142,7 @@ describe('Payroll: state statutory rules (batch H)', () => {
   const calcMonth = (month: string) => (runs[month] ??= calcOnce(month));
   const calcOnce = async (month: string) => {
     const runId = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month }).expect(201)).body.id as string;
+    ids[`run-${month}`] = runId;
     const ready = (await api('payAdmin', 'get', `/payroll/runs/${runId}/readiness`).expect(200)).body;
     for (const b of ready.checks.filter((c: { checkKey: string; waived: boolean }) => c.checkKey === 'bank_missing' && !c.waived))
       await api('payAdmin', 'post', `/payroll/runs/${runId}/validations/${b.id}/waive`).send({ reason: 'Bank details come next week' }).expect(200);
@@ -330,6 +332,35 @@ describe('Payroll: state statutory rules (batch H)', () => {
       expect(await rulesOf('IN.LWF', 'IN-OD')).toEqual([expect.objectContaining({ verify: true, source: expect.stringMatching(/split \(10 and 20\) is assumed/) })]);
       const pb = (await rulesOf('IN.CALENDAR', 'IN-PB'))[0];
       expect(pb).toMatchObject({ version: 'PB-2025-v1', verify: true });
+    });
+  });
+
+  describe('A2 (batch H part 2): approval waits for the TAN, PAN and PT registrations', () => {
+    it('the October run lists what is missing: TAN, PAN, and PT registration only in states that charge PT', async () => {
+      await calcMonth('2026-10');
+      const runId = ids['run-2026-10'];
+      const checks = ((await api('payAdmin', 'get', `/payroll/runs/${runId}/readiness`).expect(200)).body.checks as { checkKey: string; severity: string; waivable?: boolean }[]).map((c) => c.checkKey);
+      expect(checks).toEqual(expect.arrayContaining(['entity_tan_missing', 'entity_pan_missing', 'pt_registration_IN-AP', 'pt_registration_IN-WB', 'pt_registration_IN-MP']));
+      // Haryana and Odisha charge none; Karnataka (emp1) charges PT.
+      expect(checks.filter((k) => ['pt_registration_IN-HR', 'pt_registration_IN-OD'].includes(k))).toEqual([]);
+      expect(checks).toContain('pt_registration_IN-KA');
+    });
+
+    it('negatives: submitting is refused (409) and nothing moves; an employee may not submit; the block cannot be waived', async () => {
+      const runId = ids['run-2026-10'];
+      for (const f of (await api('payAdmin', 'get', `/payroll/runs/${runId}/variances`).expect(200)).body as { id: string }[]) await api('payAdmin', 'post', `/payroll/runs/${runId}/variances/${f.id}/ack`).send({}).expect(200);
+      const refused = await api('payAdmin', 'post', `/payroll/runs/${runId}/submit`).send({}).expect(409);
+      for (const part of [/TAN is not recorded/, /PAN is not recorded/, /IN-AP, which charges professional tax/]) expect(refused.body.message).toMatch(part);
+      expect(refused.body.message).not.toMatch(/IN-HR|IN-OD/);
+      expect((await api('payAdmin', 'get', `/payroll/runs/${runId}`).expect(200)).body.status).toBe('calculated');
+      await api('emp1', 'post', `/payroll/runs/${runId}/submit`).send({}).expect(403);
+      const tan = ((await api('payAdmin', 'get', `/payroll/runs/${runId}/readiness`).expect(200)).body.checks as { id: string; checkKey: string }[]).find((c) => c.checkKey === 'entity_tan_missing')!;
+      expect((await api('payAdmin', 'post', `/payroll/runs/${runId}/validations/${tan.id}/waive`).send({ reason: 'Later' })).status).toBeGreaterThanOrEqual(400);
+    });
+
+    it('with the TAN, PAN and registrations recorded, the run can be submitted', async () => {
+      await payReady(tenantPrisma, org.A.id, ids.entity);
+      await api('payAdmin', 'post', `/payroll/runs/${ids['run-2026-10']}/submit`).send({}).expect(200);
     });
   });
 });

@@ -20,6 +20,7 @@ import { FnfService, moneyText } from '../src/payroll/fnf.service';
 import { MODULE_COMPONENTS } from '../src/payroll/starter';
 import { serviceYears } from '../src/statutory/evaluator';
 import type { CompanyContext } from '../src/org-structure/org-structure.service';
+import { payReady } from './fixtures/pay-ready';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -197,6 +198,8 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
       ids.desig = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
     });
+    // Batch H A2: approval needs the entity's TAN, PAN and PT registrations.
+    await payReady(tenantPrisma, org.A.id, ids.entity);
     const hire = async (who: Who, code: string, joinedOn: string) =>
       (
         await api('adminA', 'post', '/people/employees')

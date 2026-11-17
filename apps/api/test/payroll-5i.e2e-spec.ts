@@ -12,6 +12,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
+import { payReady } from './fixtures/pay-ready';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -142,6 +143,8 @@ describe('Payroll batch 5i', () => {
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
       ids.uae = (await tx.legalEntity.create({ data: { ...o, name: 'Pay5I Gulf', shortName: `P5IAE-${run}`, country: 'AE', currency: 'AED' } })).id;
     });
+    // Batch H A2: approval needs the entity's TAN, PAN and PT registrations.
+    await payReady(tenantPrisma, org.A.id, ids.entity);
     const hire = async (who: Who, code: string, joinedOn: string) => {
       const res = await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, employeeCode: code, joinedOn, userId: users[who], workEmail: `${who}@pay5i-${run}.test`, assignment: { locationId: ids.loc, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null, skillClass: 'skilled' } });
       if (res.status !== 201) throw new Error(`hire ${who}: ${JSON.stringify(res.body)}`);

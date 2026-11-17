@@ -52,6 +52,12 @@ export function noPt(sets: readonly RuleSet[], state: string, on: string): boole
   return !!rs && rs.values.kind === 'pt' && !((rs.values.slabs as unknown[] | undefined) ?? []).length;
 }
 
+/** The state's PT rule in force charges PT (it has slabs): an entity with people there must be registered (A2). */
+export function ptCharged(sets: readonly RuleSet[], state: string, on: string): boolean {
+  const rs = inForce(sets, 'IN.PT', [state], on);
+  return !!rs && rs.values.kind === 'pt' && !!((rs.values.slabs as unknown[] | undefined) ?? []).length;
+}
+
 type V = Record<string, unknown>;
 const need = (rs: RuleSet, kind: string) => {
   if (rs.values.kind !== kind) throw new StatutoryError(`${rs.statute} ${rs.jurisdiction} ${rs.version} is not a ${kind} rule set`);
