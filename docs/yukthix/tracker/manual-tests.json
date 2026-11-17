@@ -22874,7 +22874,6 @@
     "note": "Positive and negative. H13."
   },
   {
-<<<<<<< HEAD
     "id": "MT-BATH2-01",
     "area": "Pay: batch H part 2 (18 Nov 2026)",
     "screen": "Payroll · Runs (submit for approval)",
@@ -22986,7 +22985,8 @@
       "Screens/Pay/PAY-17 · Loans and advances"
     ],
     "note": "Positive and negative. D14, answers 2404-2405. The line with an amount appears only after a CA publishes SBI rates in a new IN.PERQ-LOAN version."
-=======
+  },
+  {
     "id": "MT-BATB-B1",
     "area": "Batch B: activity log in plain sentences (admin B1, item 29, 17 Nov 2026)",
     "screen": "Settings › Audit log (PLT-16, live)",
@@ -23125,6 +23125,5 @@
       "Screens/Security/SEC-02 · Legal notices › Accessibility statement"
     ],
     "note": "Text from docs/yukthix/accessibility-statement.md (now marked published)."
->>>>>>> test/yukthix-main
   }
 ]
