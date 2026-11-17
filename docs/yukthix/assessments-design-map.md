@@ -1510,7 +1510,7 @@ so it was not built here (question 2272).
   `202617z0000391_asmt_erasure_requests`, one waiting per candidate). The nightly proctoring-retention job erases the
   frames, captures and face data once nothing holds them, emails the candidate (unless opted out) and audits it;
   scores stay.
-- **Tests:** e2e `assessments-as5` (23); API rules (integrity reports 6); kit live console, runner, integrity,
+- **Tests:** e2e `assessments-as5` (22); API rules (integrity reports 6); kit live console, runner, integrity,
   reports and privacy; web `/exam`, `/privacy`, live console, integrity reports pages; guards (known list shrank by 2).
 
 ### Questions (from 2276)
