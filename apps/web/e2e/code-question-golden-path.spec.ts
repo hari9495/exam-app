@@ -76,12 +76,12 @@ test('candidate writes and submits code, recruiter grades and finalizes the atte
   });
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
-  // The welcome page always shows the practice step first -- "Enable camera" only renders
+  // The welcome page always shows the practice step first -- "Turn on camera" only renders
   // once practice is skipped/completed.
   await candidatePage.getByRole('button', { name: /skip practice/i }).click();
-  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('button', { name: 'Turn on camera' }).click();
   await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
 
   await expect(candidatePage.getByText('Write a function that reverses a string.')).toBeVisible();
@@ -191,9 +191,9 @@ test('candidate must pick a language for a Fixed multi-language question before 
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
   await candidatePage.getByRole('button', { name: /skip practice/i }).click();
-  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('button', { name: 'Turn on camera' }).click();
   await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
 
   await expect(candidatePage.getByText(questionText)).toBeVisible();

@@ -73,9 +73,9 @@ test('candidate redeems an invitation, takes an exam, and submits', async ({ pag
   await expect(page).toHaveURL(/\/welcome$/);
   await page.getByRole('button', { name: /skip practice/i }).click();
   await expect(page.getByText(examTitle)).toBeVisible();
-  await page.getByRole('button', { name: 'Enable camera' }).click();
+  await page.getByRole('button', { name: 'Turn on camera' }).click();
   await page.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await page.getByRole('button', { name: 'Start exam' }).click();
+  await page.getByRole('button', { name: 'Start test' }).click();
   await expect(page).toHaveURL(/\/exam$/);
 
   await expect(page.getByText('What is the capital of France?')).toBeVisible();
@@ -177,9 +177,9 @@ test('candidate sees the pause and block overlays when the backend reports pause
   await page.goto(`/start?token=${token}`);
   await expect(page).toHaveURL(/\/welcome$/);
   await page.getByRole('button', { name: /skip practice/i }).click();
-  await page.getByRole('button', { name: 'Enable camera' }).click();
+  await page.getByRole('button', { name: 'Turn on camera' }).click();
   await page.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await page.getByRole('button', { name: 'Start exam' }).click();
+  await page.getByRole('button', { name: 'Start test' }).click();
   await expect(page).toHaveURL(/\/exam$/);
 
   await expect(page.getByText('Warning 1/3')).toBeVisible({ timeout: 35_000 });

@@ -170,10 +170,8 @@ export interface LiveReadyToStart {
   notes: string[];
   /** Whether the test can be started now; "not_open" names when it opens. */
   window: { state: 'open' | 'not_open' | 'closed'; opensAt?: string | null };
-  /** The page's live camera preview (null when the test does not use the camera). */
-  camera: ReactNode | null;
-  /** The camera is on (or not needed): Start is offered. */
-  cameraReady: boolean;
+  /** The camera, turned on here just before the start (null when the test does not use it). Start waits for 'on'. */
+  camera: { state: 'off' | 'checking' | 'on' | 'blocked'; onTurnOn: () => void } | null;
   /** Why the last Start did not go ahead (another display, a browser without screen sharing). */
   problem: string | null;
   /** The test runs only inside Safe Exam Browser: its configuration file, instead of Start. */
@@ -200,8 +198,7 @@ const READY_SAMPLE: LiveReadyToStart = {
   instructions: 'Answer every question. You can mark questions for review and come back to them before you submit.',
   notes: ['Approved for you: 25 % extra time'],
   window: { state: 'open' },
-  camera: <CameraFrame state="live" label="Your camera" size="md" />,
-  cameraReady: true,
+  camera: { state: 'on', onTurnOn: () => undefined },
   problem: null,
   seb: null,
   onAccommodation: () => undefined,
@@ -212,14 +209,15 @@ const READY_SAMPLE: LiveReadyToStart = {
 };
 
 /** PRC-22 Ready to start; with `live`, the candidate's own test (answer 2232). */
-export function ReadyToStartScreen(props: { state?: 'ready' | 'camera-off' | 'not-open' | 'closed' | 'seb' | 'problem' } | { live: LiveReadyToStart }) {
+export function ReadyToStartScreen(props: { state?: 'ready' | 'camera-off' | 'camera-blocked' | 'not-open' | 'closed' | 'seb' | 'problem' } | { live: LiveReadyToStart }) {
   if ('live' in props) return <LiveReadyToStartScreen live={props.live} />;
   const s = props.state ?? 'ready';
   return (
     <LiveReadyToStartScreen
       live={{
         ...READY_SAMPLE,
-        ...(s === 'camera-off' ? { camera: <CameraFrame state="connecting" label="Your camera" size="md" />, cameraReady: false } : {}),
+        ...(s === 'camera-off' ? { camera: { state: 'off' as const, onTurnOn: () => undefined } } : {}),
+        ...(s === 'camera-blocked' ? { camera: { state: 'blocked' as const, onTurnOn: () => undefined } } : {}),
         ...(s === 'not-open' ? { window: { state: 'not_open' as const, opensAt: 'Thu 1 Oct 2026, 2:00 pm' } } : {}),
         ...(s === 'closed' ? { window: { state: 'closed' as const } } : {}),
         ...(s === 'seb' ? { seb: { onDownload: () => undefined } } : {}),
@@ -228,6 +226,8 @@ export function ReadyToStartScreen(props: { state?: 'ready' | 'camera-off' | 'no
     />
   );
 }
+
+const CAMERA_FRAME = { off: 'off', checking: 'connecting', on: 'live', blocked: 'off' } as const;
 
 function LiveReadyToStartScreen({ live }: { live: LiveReadyToStart }) {
   const total = live.sections.reduce((n, s) => n + s.questions, 0);
@@ -300,7 +300,21 @@ function LiveReadyToStartScreen({ live }: { live: LiveReadyToStart }) {
             )
           ) : (
             <>
-              {live.camera && <figure className="yx-prc-selfie">{live.camera}</figure>}
+              {live.camera && (
+                <div className="yx-prc-stack">
+                  <CameraFrame state={CAMERA_FRAME[live.camera.state]} label="Your camera" size="md" />
+                  {live.camera.state === 'blocked' && (
+                    <InlineAlert tone="danger" title="Camera blocked">
+                      Allow camera access in your browser's address bar, then try again.
+                    </InlineAlert>
+                  )}
+                  {live.camera.state !== 'on' && (
+                    <Button loading={live.camera.state === 'checking'} onClick={live.camera.onTurnOn}>
+                      {live.camera.state === 'blocked' ? 'Try the camera again' : 'Turn on camera'}
+                    </Button>
+                  )}
+                </div>
+              )}
               {live.problem && <InlineAlert tone="danger" title="Not started">{live.problem}</InlineAlert>}
               {live.seb ? (
                 <Card title="Safe Exam Browser required">
@@ -320,7 +334,7 @@ function LiveReadyToStartScreen({ live }: { live: LiveReadyToStart }) {
                 <Button variant="primary" onClick={live.onPhoto}>
                   Continue to the photo check
                 </Button>
-              ) : live.cameraReady ? (
+              ) : !live.camera || live.camera.state === 'on' ? (
                 <Button variant="primary" loading={live.starting} onClick={live.onStart}>
                   Start test
                 </Button>

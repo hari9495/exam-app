@@ -25,6 +25,8 @@ export const LiveRunning: S = { name: 'Your computer: checking', render: () => <
 // Answer 2232: the last step on /welcome, before the test starts.
 export const ReadyToStart: S = { name: 'Ready to start', render: () => <ReadyToStartScreen /> };
 export const ReadyCameraOff: S = { name: 'Ready to start: camera not on yet', render: () => <ReadyToStartScreen state="camera-off" /> };
+export const ReadyCameraBlocked: S = { name: 'Ready to start: camera blocked', render: () => <ReadyToStartScreen state="camera-blocked" /> };
+export const ReadyClosed: S = { name: 'Ready to start: window closed', render: () => <ReadyToStartScreen state="closed" /> };
 export const ReadyNotOpen: S = { name: 'Ready to start: not open yet', render: () => <ReadyToStartScreen state="not-open" /> };
 export const ReadySeb: S = { name: 'Ready to start: Safe Exam Browser required', render: () => <ReadyToStartScreen state="seb" /> };
 export const ReadyProblem: S = { name: 'Ready to start: another display found', render: () => <ReadyToStartScreen state="problem" /> };

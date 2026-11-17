@@ -117,7 +117,7 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
 
-    expect(screen.getByText(/Hi, Ada Lovelace/)).toBeInTheDocument();
+    expect(screen.getByText(/Hi Ada Lovelace/)).toBeInTheDocument();
   });
 
   it('starts the attempt and navigates to /exam', async () => {
@@ -131,8 +131,8 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
@@ -152,8 +152,8 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     await waitFor(() => expect(mockToast).toHaveBeenCalledWith('This exam must be started inside Safe Exam Browser.', 'error'));
@@ -223,7 +223,7 @@ describe('CandidateWelcomePage', () => {
     await skipPractice();
 
     expect(screen.getByText(/opens on/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start test' })).not.toBeInTheDocument();
   });
 
   it('shows a closed message when schedulingWindowState is closed', async () => {
@@ -244,8 +244,8 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
 
-    expect(screen.getByText(/availability window has closed/i)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+    expect(screen.getByText(/window has closed/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start test' })).not.toBeInTheDocument();
   });
 
   it('shows the normal Start button when schedulingWindowState is open', async () => {
@@ -266,9 +266,9 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
 
-    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Start test' })).toBeInTheDocument();
   });
 
   it('shows the normal Start button when schedulingWindowState is null (non-scheduled exam)', async () => {
@@ -285,9 +285,9 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
 
-    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Start test' })).toBeInTheDocument();
   });
 
   it('requires camera permission before Start exam is available', async () => {
@@ -302,12 +302,12 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
 
-    expect(screen.queryByRole('button', { name: /start exam/i })).not.toBeInTheDocument();
-    const enableButton = screen.getByRole('button', { name: /enable camera/i });
+    expect(screen.queryByRole('button', { name: /start test/i })).not.toBeInTheDocument();
+    const enableButton = screen.getByRole('button', { name: /turn on camera/i });
     await userEvent.click(enableButton);
 
     expect(getUserMedia).toHaveBeenCalledWith({ video: true });
-    expect(await screen.findByRole('button', { name: /start exam/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /start test/i })).toBeInTheDocument();
   });
 
   it('shows a blocked state and a retry action when camera access is denied', async () => {
@@ -321,11 +321,11 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: /enable camera/i }));
+    await userEvent.click(screen.getByRole('button', { name: /turn on camera/i }));
 
-    expect(await screen.findByText('Camera access blocked')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Retry camera access' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /start exam/i })).not.toBeInTheDocument();
+    expect(await screen.findByText('Camera blocked')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try the camera again' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /start test/i })).not.toBeInTheDocument();
   });
 
   it('shows Start exam once the camera is granted', async () => {
@@ -338,10 +338,10 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
 
-    expect(await screen.findByText('Camera connected')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Start exam' })).toBeInTheDocument();
+    expect(await screen.findByRole('img', { name: 'Your camera: Camera on' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start test' })).toBeInTheDocument();
   });
 
   it('negative: consent cannot be given without agreeing to the recording', async () => {
@@ -370,7 +370,7 @@ describe('CandidateWelcomePage', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Say no and see my options' }));
 
     expect(screen.getByText(/cannot be taken without the recording/)).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start test' })).not.toBeInTheDocument();
   });
 
   it('blocks starting outside Safe Exam Browser when the exam requires lockdown', async () => {
@@ -390,9 +390,9 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
 
-    expect(await screen.findByText('Safe Exam Browser Required')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /download exam configuration/i })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+    expect(await screen.findByText('Safe Exam Browser required')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /download the configuration/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Start test' })).not.toBeInTheDocument();
   });
 
   it('negative: consent waits for the close-all-apps attestation too', async () => {
@@ -421,9 +421,9 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
 
-    expect(await screen.findByRole('button', { name: 'Start exam' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Start test' })).toBeEnabled();
   });
 
   it('shows a section/question-count breakdown when the preview includes sections', async () => {
@@ -443,7 +443,7 @@ describe('CandidateWelcomePage', () => {
     expect(screen.getByText('5 questions')).toBeInTheDocument();
     expect(screen.getByText('Coding')).toBeInTheDocument();
     expect(screen.getByText('2 questions')).toBeInTheDocument();
-    expect(screen.getByText('7 questions total')).toBeInTheDocument();
+    expect(screen.getByText('7 questions')).toBeInTheDocument();
   });
 
   it('uses singular "question total" when the breakdown totals exactly one question', async () => {
@@ -459,7 +459,7 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
 
-    expect(screen.getByText('1 question total')).toBeInTheDocument();
+    expect(screen.getAllByText('1 question')).toHaveLength(2);
   });
 
   function setIsExtended(value: boolean | undefined) {
@@ -478,10 +478,10 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
-    expect(screen.getByText('Please disconnect additional displays before starting the exam.')).toBeInTheDocument();
+    expect(screen.getByText('Please disconnect additional displays before starting the test.')).toBeInTheDocument();
     expect(mutateAsync).not.toHaveBeenCalled();
   });
 
@@ -497,12 +497,12 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
     expect(mutateAsync).not.toHaveBeenCalled();
 
     setIsExtended(false);
-    await userEvent.click(screen.getByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Start test' }));
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
   });
 
@@ -518,8 +518,8 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
   });
@@ -542,10 +542,10 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
-    expect(screen.queryByText('Please disconnect additional displays before starting the exam.')).not.toBeInTheDocument();
+    expect(screen.queryByText('Please disconnect additional displays before starting the test.')).not.toBeInTheDocument();
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
   });
 
@@ -568,11 +568,11 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
     expect(
-      screen.getByText('This exam records your screen, which this browser does not support. Please use desktop Chrome, Edge or Firefox on a computer.'),
+      screen.getByText('This test records your screen, which this browser does not support. Please use desktop Chrome, Edge or Firefox on a computer.'),
     ).toBeInTheDocument();
     expect(mutateAsync).not.toHaveBeenCalled();
     expect(push).not.toHaveBeenCalledWith('/exam');
@@ -599,8 +599,8 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(screen.getByRole('button', { name: 'Enable camera' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Turn on camera' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
@@ -624,7 +624,7 @@ describe('CandidateWelcomePage', () => {
 
     render(<CandidateWelcomePage />);
     await skipPractice();
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
     expect(screen.queryByText(/does not support/i)).not.toBeInTheDocument();
@@ -682,8 +682,8 @@ describe('CandidateWelcomePage', () => {
     render(<CandidateWelcomePage />);
     await skipPractice();
 
-    expect(screen.queryByRole('button', { name: /enable camera/i })).not.toBeInTheDocument();
-    await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+    expect(screen.queryByRole('button', { name: /turn on camera/i })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
     await waitFor(() => expect(mutateAsync).toHaveBeenCalled());
   });
@@ -737,7 +737,7 @@ describe('CandidateWelcomePage', () => {
       // Nothing may be recorded yet -- there is no attempt.
       expect(enrol).not.toHaveBeenCalled();
 
-      await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
       await waitFor(() => expect(enrol).toHaveBeenCalled());
       expect(order).toEqual(['start', 'enrol']);
@@ -757,7 +757,7 @@ describe('CandidateWelcomePage', () => {
       });
 
       await declineThePhoto();
-      await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
       await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
       expect(mockToast).not.toHaveBeenCalled();
@@ -773,7 +773,7 @@ describe('CandidateWelcomePage', () => {
       (useFaceEnrolment as jest.Mock).mockReturnValue({ mutateAsync: enrol, isPending: false });
 
       await declineThePhoto();
-      await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
       await waitFor(() => expect(mockToast).toHaveBeenCalled());
       expect(enrol).not.toHaveBeenCalled();
@@ -795,7 +795,7 @@ describe('CandidateWelcomePage', () => {
 
       // AS-4b (PRC-24): the manual path is offered instead of a dead end; the Start button stays hidden.
       expect(screen.getByText('This test needs a photo check')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Start test' })).not.toBeInTheDocument();
     });
 
     it('AS-4b: asking for a manual check sends it; once asked it says so', async () => {
@@ -840,7 +840,7 @@ describe('CandidateWelcomePage', () => {
 
       expect(screen.getByRole('heading', { name: 'Check your identity' })).toBeInTheDocument();
       expect(screen.getByLabelText('Your camera')).toBeInTheDocument();
-      expect(screen.queryByRole('button', { name: 'Start exam' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Start test' })).not.toBeInTheDocument();
     });
 
     // The enrolment POST runs after start resolves, so startAttempt.isPending is already false
@@ -853,8 +853,8 @@ describe('CandidateWelcomePage', () => {
 
       await declineThePhoto();
 
-      const button = await screen.findByRole('button', { name: 'Starting…' });
-      expect(button).toBeDisabled();
+      const button = await screen.findByRole('button', { name: 'Start test' });
+      expect(button).toHaveAttribute('aria-busy', 'true');
     });
 
     it('posts no enrolment at all for an exam nobody configured face verification on', async () => {
@@ -880,7 +880,7 @@ describe('CandidateWelcomePage', () => {
       expect(screen.queryByRole('checkbox', { name: /face checks/i })).not.toBeInTheDocument();
       await agreeConsent();
       expect(screen.queryByRole('heading', { name: 'Check your identity' })).not.toBeInTheDocument();
-      await userEvent.click(await screen.findByRole('button', { name: 'Start exam' }));
+      await userEvent.click(await screen.findByRole('button', { name: 'Start test' }));
 
       await waitFor(() => expect(push).toHaveBeenCalledWith('/exam'));
       expect(enrol).not.toHaveBeenCalled();

@@ -2,13 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Info } from 'lucide-react';
-import { CandidateButton } from '../components/CandidateButton';
-import { CameraPreview } from '../components/CameraPreview';
 import { PracticeStep } from '../components/PracticeStep';
 import { FaceEnrolmentStep, EnrolmentPolicy, FaceEnrolmentPayload } from '../components/FaceEnrolmentStep';
 import { useAskForHelp, useAttemptQuery, useCandidateHelp, useFaceEnrolment, useReuseOffer, useStartAttempt } from '../../../lib/hooks/useAttempt';
-import { ConsentScreen, approvedForYou, type LiveConsent, type ManualIdentityCheck } from '@yukthix/ui/assessments';
+import { ConsentScreen, ReadyToStartScreen, approvedForYou, type LiveConsent, type LiveReadyToStart, type ManualIdentityCheck } from '@yukthix/ui/assessments';
 import { isAttemptStarted } from '../../../lib/types';
 import { useToast } from '../../../components/ui';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
@@ -212,139 +209,43 @@ export default function CandidateWelcomePage() {
     }
   }
 
-  return (
-    <div className="mx-auto flex flex-1 max-w-xl flex-col justify-center gap-6 p-8">
-      <div className="candidate-rise rounded-lg border border-candidate-border bg-white p-6 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_10px_28px_-18px_rgba(16,24,40,0.20)]">
-        <p className="mb-1 text-xs font-bold uppercase tracking-wide text-candidate-primary">
-          Hi, {current.candidateName} — you&apos;re invited to
-        </p>
-        <h1 className="mb-3 font-display text-xl font-bold text-candidate-text">{current.exam.title}</h1>
-        <p className="mb-3 text-sm">
-          <a href="/my-tests" className="text-candidate-primary underline">
-            See all my tests
-          </a>
-        </p>
-        <p className="mb-4 text-sm text-candidate-text-secondary">Duration: {current.exam.durationMinutes} minutes</p>
-        {approvedLine ? <p className="mb-4 rounded-md border border-candidate-border p-3 text-sm text-candidate-text-secondary">{approvedLine}.</p> : null}
-        {manualCheckApproved && faceVerificationRequired ? (
-          <p className="mb-4 rounded-md border border-candidate-border p-3 text-sm text-candidate-text-secondary">A manual identity check was approved for you: no photo is needed to start.</p>
-        ) : null}
-        {current.sections.length > 0 ? (
-          <div className="mb-4 rounded-md border border-candidate-border p-3">
-            <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">What&apos;s In This Exam</h2>
-            <ul className="text-sm text-candidate-text-secondary">
-              {current.sections.map((section) => (
-                <li key={section.title} className="flex justify-between py-0.5">
-                  <span>{section.title}</span>
-                  <span>{section.questionCount} question{section.questionCount === 1 ? '' : 's'}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-1.5 text-xs text-candidate-text-tertiary">
-              {(() => {
-                const total = current.sections.reduce((sum, section) => sum + section.questionCount, 0);
-                return `${total} question${total === 1 ? '' : 's'} total`;
-              })()}
-            </p>
-          </div>
-        ) : null}
-
-        {current.schedulingWindowState === 'not_open' ? (
-          <div className="rounded-md border border-candidate-border bg-candidate-bg p-3 text-sm text-candidate-text-secondary">
-            This exam opens on {new Date(current.exam.availabilityWindowStart as string).toLocaleString()}. Come back then to start.
-          </div>
-        ) : current.schedulingWindowState === 'closed' ? (
-          <div className="rounded-md border border-candidate-danger-border bg-candidate-danger-bg p-3 text-sm text-candidate-danger">
-            This exam&apos;s availability window has closed. Please contact the recruiter who invited you.
-          </div>
-        ) : (
-          <>
-            {current.exam.instructions ? (
-              <div className="mb-3 rounded-md border border-candidate-border p-3">
-                <h2 className="mb-1.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
-                  <Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                  Instructions
-                </h2>
-                <p className="whitespace-pre-wrap text-sm text-candidate-text-secondary">{current.exam.instructions}</p>
-              </div>
-            ) : null}
-
-            {/* AS-4b (answer 2011, PRC-23): help is asked for before the test; approved changes apply on the day. */}
-            <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-candidate-border p-3 text-sm text-candidate-text-secondary">
-              <span>Need extra time, screen-reader mode or other help to take this test?</span>
-              <button type="button" className="shrink-0 rounded-sm border border-candidate-border bg-white px-3 py-1.5 font-medium text-candidate-text" onClick={() => router.push('/accommodation')}>
-                Ask for an accommodation
-              </button>
-            </div>
-            {/* AS-4b (PRC-22): check the computer before the test. */}
-            <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-candidate-border p-3 text-sm text-candidate-text-secondary">
-              <span>Check your camera, displays and connection before you start.</span>
-              <button type="button" className="shrink-0 rounded-sm border border-candidate-border bg-white px-3 py-1.5 font-medium text-candidate-text" onClick={() => router.push('/readiness')}>
-                Check your computer
-              </button>
-            </div>
-            {/* Consent was given on the designed step (PRC-24); the camera is turned on here, just before the start. */}
-            {proctoring?.webcamEnabled !== false ? (
-              <div className="mb-4 rounded-md border border-candidate-border p-3">
-                <CameraPreview status={cameraStatus} onEnable={handleEnableCamera} />
-              </div>
-            ) : null}
-
-            {multiMonitorBlocked ? (
-              <div className="mb-3 rounded-md border border-candidate-danger-border bg-candidate-danger-bg p-3 text-sm text-candidate-danger">
-                Please disconnect additional displays before starting the exam.
-              </div>
-            ) : null}
-
-            {screenShareUnsupported ? (
-              <div className="mb-3 rounded-md border border-candidate-danger-border bg-candidate-danger-bg p-3 text-sm text-candidate-danger">
-                This exam records your screen, which this browser does not support. Please use desktop Chrome, Edge or Firefox on a computer.
-              </div>
-            ) : null}
-
-            {sebGateActive ? (
-              <div className="mb-3 rounded-md border border-candidate-border p-3">
-                <h2 className="mb-1.5 text-xs font-bold uppercase tracking-wide text-candidate-text-secondary">
-                  Safe Exam Browser Required
-                </h2>
-                <p className="mb-2 text-xs text-candidate-text-secondary">
-                  This exam can only be taken inside Safe Exam Browser, which locks your computer to the exam and closes
-                  other applications while you take it.
-                </p>
-                <ol className="mb-3 list-decimal pl-4 text-xs text-candidate-text-secondary">
-                  <li>
-                    Install Safe Exam Browser from{' '}
-                    <a href="https://safeexambrowser.org/download_en.html" target="_blank" rel="noreferrer" className="underline">
-                      safeexambrowser.org
-                    </a>
-                  </li>
-                  <li>Download your exam configuration below</li>
-                  <li>Open the downloaded file — Safe Exam Browser will bring you back to this page, ready to start</li>
-                </ol>
-                <CandidateButton onClick={handleDownloadSebConfig} className="w-full">
-                  Download exam configuration (.seb)
-                </CandidateButton>
-              </div>
-            ) : faceVerificationRequired && faceStatus === 'pending' && !manualCheckApproved ? (
-              // The photo step was not finished (e.g. the page came back to here): go back through it.
-              <CandidateButton onClick={() => setStep('consent')} className="w-full">
-                Continue to the photo check
-              </CandidateButton>
-            ) : proctoring?.webcamEnabled === false || cameraStatus === 'granted' ? (
-              <CandidateButton
-                onClick={handleStart}
-                // faceEnrolment.isPending matters because the enrolment POST now runs AFTER
-                // start resolves: without it the button re-enables mid-flight and a second
-                // click would try to start the attempt all over again.
-                disabled={startAttempt.isPending || faceEnrolment.isPending}
-                className="w-full"
-              >
-                {startAttempt.isPending || faceEnrolment.isPending ? 'Starting…' : 'Start exam'}
-              </CandidateButton>
-            ) : null}
-          </>
-        )}
-      </div>
-    </div>
-  );
+  // Answer 2232: the designed "Ready to start" step (PRC-22) in place of the older start card.
+  const ready: LiveReadyToStart = {
+    companyName: current.organizationName ?? '',
+    candidateName: current.candidateName,
+    testTitle: current.exam.title,
+    durationMinutes: current.exam.durationMinutes,
+    sections: current.sections.map((section) => ({ title: section.title, questions: section.questionCount })),
+    instructions: current.exam.instructions ?? null,
+    notes: [
+      ...(approvedLine ? [`${approvedLine}.`] : []),
+      ...(manualCheckApproved && faceVerificationRequired ? ['A manual identity check was approved for you: no photo is needed to start.'] : []),
+    ],
+    window:
+      current.schedulingWindowState === 'not_open'
+        ? { state: 'not_open', opensAt: current.exam.availabilityWindowStart ? new Date(current.exam.availabilityWindowStart).toLocaleString() : null }
+        : current.schedulingWindowState === 'closed'
+          ? { state: 'closed' }
+          : { state: 'open' },
+    camera:
+      proctoring?.webcamEnabled === false
+        ? null
+        : { state: cameraStatus === 'granted' ? 'on' : cameraStatus === 'checking' ? 'checking' : cameraStatus === 'denied' ? 'blocked' : 'off', onTurnOn: handleEnableCamera },
+    problem: multiMonitorBlocked
+      ? 'Please disconnect additional displays before starting the test.'
+      : screenShareUnsupported
+        ? 'This test records your screen, which this browser does not support. Please use desktop Chrome, Edge or Firefox on a computer.'
+        : null,
+    seb: sebGateActive ? { onDownload: handleDownloadSebConfig } : null,
+    // The photo step was not finished (e.g. the page came back to here): go back through it.
+    onPhoto: faceVerificationRequired && faceStatus === 'pending' && !manualCheckApproved ? () => setStep('consent') : undefined,
+    onAccommodation: () => router.push('/accommodation'),
+    onReadiness: () => router.push('/readiness'),
+    onMyTests: () => router.push('/my-tests'),
+    // faceEnrolment.isPending matters because the enrolment POST runs AFTER start resolves: without it the button
+    // re-enables mid-flight and a second click would try to start the attempt all over again.
+    starting: startAttempt.isPending || faceEnrolment.isPending,
+    onStart: handleStart,
+  };
+  return <ReadyToStartScreen live={ready} />;
 }
