@@ -136,6 +136,8 @@ describe('Visitors slice 2 pages (live)', () => {
     await ue.type(within(d).getByLabelText(/^Mobile/), '9000011111');
     await ue.click(within(d).getByRole('combobox', { name: 'Visiting' }));
     await ue.click(await screen.findByRole('option', { name: /Anita Desai/ }));
+    // The notice loads after the details (debounced); the tick is offered once it shows.
+    await waitFor(() => expect(within(d).getByRole('checkbox', { name: 'The visitor read and accepted the notice' })).toBeEnabled());
     await ue.click(within(d).getByRole('checkbox', { name: 'The visitor read and accepted the notice' }));
     await ue.click(within(d).getByRole('button', { name: 'Ask the host' }));
     await waitFor(() => expect(calls).toContainEqual(['POST', '/visitors/walk-ins', expect.objectContaining({ locationId: 'maa', hostUserId: 'h1', name: 'Mohan Lal', noticeVersion: 'v-1' })]));
