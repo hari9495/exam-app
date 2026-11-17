@@ -1650,3 +1650,36 @@ so it was not built here (question 2272).
       updated. *Suggested: keep; an "update the ones already there" choice if recruiters ask.*
 2303. **Candidate merge from a drive.** The drawer opens the kept candidate in Hire; the recruiter picks the other
       record there. *Suggested: keep; open Hire's merge with the other record already chosen if it is used often.*
+
+## Assessment remainders as built, part 2 (branch `feat/yukthix-asmt-remainders-2`, 17 Nov 2026; answers 2284-2287)
+
+- **2284 Pickers:** each section in the designed Sections step has "Questions" (or "Skills" for a pool). The drawer's
+  Segment chooses "Chosen questions" (the section's chosen questions, and the bank's live questions searched by words,
+  difficulty and skill: Add / Take out) or "Pool by skill" (skills, how many are drawn, difficulty). Saving uses the
+  existing section routes (a published or started test stays locked). `GET
+  /asmt/tests/:id/sections/:sectionId/question-choices` (`exam:manage`) returns question text, type, difficulty, marks
+  and skills, never the answer key, and leaves out questions in another section of the test. The older editor is
+  retired: the builder no longer links to it, the `/v2` edit page's Sections tab points to the builder, and
+  `ExamSectionsPanel` and `SectionQuestionPicker` are removed.
+- **2285 Skill names:** `GET /asmt/tests/skills` (`exam:manage`): the skills as id and name only. The builder and the
+  job-description mapping use it; `/tags` stays the bank key's.
+- **2286 AI per criterion:** with a rubric, the AI suggests a mark and a reason per criterion, each held to its own
+  maximum; the total is their sum; still only after the marker's own mark and never for an under-18. Migration
+  `202617z0000423_asmt_ai_suggestion_criteria`. PRC-19 lists the criteria.
+- **2287 Restore:** an archived test shows "This test is archived" and, for test writers, Restore (with a
+  confirmation). `POST /asmt/tests/:id/restore` brings it back as it was before archiving (migration
+  `202617z0000424_exam_archived_from` keeps that; tests archived earlier come back as drafts), audited `exam.restored`.
+  The tests list now shows archived tests too.
+- **Tests:** e2e `assessments-remainders` (+7: pickers 3, skills 2, restore 2), `assessments-followups` (+2286 checks),
+  `assessments-as6` (suggestion shape); API unit `mark-suggestion.client` (3); kit `tests-live` (+5), `marking-live`
+  (+2); web `yx-assessments-tests` (+2). The older Playwright golden paths still click the `/v2` "Sections &
+  Questions" tab's editor; they were not run and will need the builder.
+
+### Questions (from 2306)
+
+2306. **Restoring a test archived before today.** What it was before archiving was not kept until now, so it comes back
+      as a draft (publishing it runs the checklist again). *Suggested: keep.*
+2307. **Restoring after a fairness "retire".** Restore is open to any test writer, even when the test was retired after
+      a fairness finding. *Suggested: keep, with the audit; ask for a reason on Restore if a finding is open.*
+2308. **The question picker's reach.** It shows the newest 50 matching questions. *Suggested: keep; paging when a bank
+      grows past it.*
