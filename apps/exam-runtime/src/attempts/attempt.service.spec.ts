@@ -518,6 +518,7 @@ describe('AttemptService', () => {
         messages: [],
         feedback: null,
         runner: { calculator: 'none', breaksAllowed: undefined, breaksUsed: undefined, breakMinutes: undefined, breakEndsAt: null, offlineMinutes: 5, timeCreditCapMinutes: 10, offlineCreditSeconds: NaN, surveyDone: false },
+        pauseMessage: null,
         faceWarningAt: null,
         organizationName: 'Acme Corp',
         organizationLogoUrl: null,

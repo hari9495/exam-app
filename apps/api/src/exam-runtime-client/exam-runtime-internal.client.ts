@@ -62,6 +62,13 @@ export class ExamRuntimeInternalClient {
     return response.json();
   }
 
+  /** Answer 2265: score a finished attempt again after an integrity decision. */
+  async rescore(attemptId: string): Promise<{ rescored: boolean }> {
+    const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/rescore`, { method: 'POST', headers: this.headers() });
+    await this.throwIfNotOk(response);
+    return response.json();
+  }
+
   async unblock(attemptId: string): Promise<{ status: string }> {
     const response = await this.fetchWithTimeout(`${this.baseUrl()}/api/v1/internal/attempts/${attemptId}/unblock`, {
       method: 'POST',

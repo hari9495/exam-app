@@ -25,6 +25,7 @@ describe('Assessments AS-5: integrity review and appeals', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let planId: string;
+  const sent: { to: string; subject: string }[] = [];
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
   const run = randomUUID().slice(0, 8);
   const PASSWORD = 'Corr3ct-Horse-Battery';
@@ -71,7 +72,14 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     (await inOrg(org.A.id, (tx) => tx.proctoringEvent.count({ where: { attemptId } }))) > 0;
 
   beforeAll(async () => {
-    adminApp = await bootAdminApp((b) => b.overrideProvider(EmailService).useValue({ send: jest.fn().mockResolvedValue({ success: true }) }));
+    adminApp = await bootAdminApp((b) =>
+      b.overrideProvider(EmailService).useValue({
+        send: jest.fn(async (m: { to: string; subject: string }) => {
+          sent.push({ to: m.to, subject: m.subject });
+          return { success: true };
+        }),
+      }),
+    );
     ({ app: runtimeApp } = await bootRuntimeApp());
     http = adminApp.getHttpServer();
     runtimeHttp = runtimeApp.getHttpServer();
@@ -306,5 +314,50 @@ describe('Assessments AS-5: integrity review and appeals', () => {
     const credit = await inOrg(org.A.id, (tx) => tx.connectivityCredit.create({ data: { attemptId: r.attemptId, lostMs: 120_000 } }));
     await api('adminA', 'post', `/asmt/connectivity/${credit.id}/approve`).send({ reason: 'Area-wide outage confirmed.' }).expect(200);
     expect((await cand(r.ct, 'get', '/attempt/current').expect(200)).body).toMatchObject({ status: 'paused', pausedReason: 'face_recheck' });
+  });
+
+  // Answers 2265, 2266: a final "section not counted" voids that section's marks (the section still counts toward the
+  // maximum); overturning it on appeal restores them; the candidate is emailed the decision and the appeal outcome.
+  it('a section verdict voids its marks and emails the candidate; an overturn restores them', async () => {
+    const r = await running();
+    const right = await inOrg(org.A.id, (tx) => tx.questionOption.findFirstOrThrow({ where: { questionId: ids.q, isCorrect: true }, select: { id: true } }));
+    await cand(r.ct, 'post', '/attempt/answer').send({ questionId: ids.q, selectedOptionIds: [right.id], clientSavedAt: new Date().toISOString() }).expect(201);
+    await cand(r.ct, 'post', '/attempt/submit').send({}).expect(201);
+    const before = await inOrg(org.A.id, (tx) => tx.result.findUniqueOrThrow({ where: { attemptId: r.attemptId } }));
+    expect(before.score).toBe(10);
+    await flag(r.attemptId, 'review');
+    const inc = (await inOrg(org.A.id, (tx) => tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: r.attemptId } }))).id;
+    sent.length = 0;
+    await api('proctor', 'post', `/asmt/integrity/${inc}/verdict`).send({ verdict: 'section', sectionTitle: 'Java', reason: 'Code 91 % similar to another candidate in this test.' }).expect(200);
+    const voided = await inOrg(org.A.id, (tx) => tx.result.findUniqueOrThrow({ where: { attemptId: r.attemptId } }));
+    expect([voided.score, voided.maxScore, voided.percentage, voided.passFail]).toEqual([0, 10, 0, 'fail']);
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: r.attemptId, action: 'result.rescored_for_integrity' } }))).toBe(1);
+    expect(sent.map((m) => m.subject)).toEqual([expect.stringContaining('A decision about your test')]);
+    await cand(r.ct, 'post', '/attempt/appeal').send({ text: 'I wrote this code myself in my college project.' }).expect(201);
+    const appeal = (await inOrg(org.A.id, (tx) => tx.integrityAppeal.findFirstOrThrow({ where: { attemptId: r.attemptId } }))).id;
+    await markSteppedUp(tenantPrisma, token.evaluator);
+    sent.length = 0;
+    await api('evaluator', 'post', `/asmt/appeals/${appeal}/overturn`).send({ reason: 'The git history shows the code was written in March.' }).expect(200);
+    const restored = await inOrg(org.A.id, (tx) => tx.result.findUniqueOrThrow({ where: { attemptId: r.attemptId } }));
+    expect([restored.score, restored.percentage]).toEqual([10, before.percentage]);
+    expect(sent.map((m) => m.subject)).toEqual([expect.stringContaining('Your appeal')]);
+  });
+
+  it('negative: a cleared verdict sends no email and changes no score; an opted-out candidate gets no email', async () => {
+    const r = await submitted();
+    await flag(r.attemptId, 'review');
+    const inc = (await inOrg(org.A.id, (tx) => tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: r.attemptId } }))).id;
+    sent.length = 0;
+    await api('proctor', 'post', `/asmt/integrity/${inc}/verdict`).send({ verdict: 'cleared', reason: 'Looked at every frame; nothing wrong.' }).expect(200);
+    expect(sent).toEqual([]);
+    expect(await inOrg(org.A.id, (tx) => tx.auditLog.count({ where: { entityId: r.attemptId, action: 'result.rescored_for_integrity' } }))).toBe(0);
+    const o = await submitted();
+    const candId = (await inOrg(org.A.id, (tx) => tx.attempt.findUniqueOrThrow({ where: { id: o.attemptId }, select: { candidateId: true } }))).candidateId;
+    await inOrg(org.A.id, (tx) => tx.candidate.update({ where: { id: candId }, data: { emailOptedOutAt: new Date() } }));
+    await flag(o.attemptId, 'review');
+    const oi = (await inOrg(org.A.id, (tx) => tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: o.attemptId } }))).id;
+    sent.length = 0;
+    await api('proctor', 'post', `/asmt/integrity/${oi}/verdict`).send({ verdict: 'warning', reason: 'A second voice was heard twice.' }).expect(200);
+    expect(sent).toEqual([]);
   });
 });

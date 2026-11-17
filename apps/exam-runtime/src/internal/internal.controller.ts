@@ -85,6 +85,12 @@ export class InternalController {
     return { status: updated.status };
   }
 
+  /** Answer 2265: score again after an integrity decision (section voided, or restored on appeal). */
+  @Post('attempts/:id/rescore')
+  async rescore(@Param('id') id: string) {
+    return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => this.attemptSettlement.rescoreForIntegrity(tx, id));
+  }
+
   @Post('attempts/:id/unblock')
   async unblock(@Param('id') id: string) {
     const updated = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
