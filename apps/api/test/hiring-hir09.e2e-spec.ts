@@ -12,6 +12,7 @@ import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { pdfText } from './fixtures/pdf-text';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { markSteppedUp } from './fixtures/step-up';
 import { OfferBuilderService } from '../src/offers/offer-builder.service';
 
 // HIR-09 offer builder and HIR-29 conditions end to end against the real database (forced RLS, the app role). A recruiter
@@ -118,6 +119,8 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
       const permissionProfileId = keys ? (await at(o)((tx) => tx.permissionProfile.create({ data: { organizationId: o, name: `${who}-${run}`, permissionsJson: JSON.stringify(keys) } }))).id : null;
       users[who] = (await at(o)((tx) => tx.user.create({ data: { organizationId: o, email: `${who}@hir09-${run}.test`, name: `${who} ${run}`, passwordHash, role, permissionProfileId } }))).id;
       token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org[k].slug, email: `${who}@hir09-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
+      // Batch B item 1: payroll and salary routes need a recent "Confirm it's you" (the salary re-check).
+      await markSteppedUp(tenantPrisma, token[who]!);
     }
     await inA(async (tx) => {
       const o = { organizationId: org.A.id };

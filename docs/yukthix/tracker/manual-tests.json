@@ -22728,5 +22728,32 @@
       "Login activity · accounts · loading / could not load / nobody matches / phone"
     ],
     "note": "API: GET /security/accounts (org:manage_users), turn off and on through POST /users/:id/deactivate and /reactivate (audited; refused for yourself and for the last System Admin); Send link again reuses POST /users/:id/reset-password (answer 2366)."
+  },
+  {
+    "id": "MT-BATB-B12",
+    "area": "Batch B: confirm it's you again before salary pages (pay B12 / admin B4, item 1, answers 2360-2363, 17 Nov 2026)",
+    "screen": "Settings › Security (2.3) › Salary pages; any payroll or salary page",
+    "url": "http://localhost:3000/yx/settings/security",
+    "account": "Payroll payroll-tester@demo-org.test (needs a passkey or authenticator app); Admin admin-tester@demo-org.test (security settings); employee arjun@demo-org.test (own payslips).",
+    "steps": [
+      "As payroll-tester (signed in more than 15 minutes ago, or freshly signed in): open Payroll › Pay runs.",
+      "In 'Confirm it's you' press Cancel.",
+      "Open Payroll › Pay runs again and confirm with your passkey or app.",
+      "Move between payroll pages for a few minutes; then wait 16 minutes and open Payroll › Pay runs again.",
+      "As admin-tester: Settings › Security › Salary pages: pick 'Ask again after' = 5 min, Save changes and confirm it's you.",
+      "As payroll-tester: confirm, wait 6 minutes, open any payroll page.",
+      "As admin-tester: turn off 'Confirm it's you again before salary pages' and save. As payroll-tester: open a payroll page.",
+      "As admin-tester: turn it back on, 15 min, save. Open Settings › Audit log, Area = Access & security.",
+      "As arjun: open My payslips (own pay).",
+      "As a payroll user with no passkey or app: open Payroll › Pay runs."
+    ],
+    "expected": "Step 1: the 'Confirm it's you' dialog opens before any pay figure shows. Step 2: the page shows no pay data (an error or no-access state), nothing else changes. Step 3: the page loads. Step 4: no second ask within 15 minutes; after 16 minutes the dialog opens again. Step 5: toast that the settings were saved; the Segment shows one choice at a time (5 / 10 / 15 min). Step 6: the dialog opens again after 5 minutes. Step 7: the page opens with no dialog. Step 8: 'Security policy changed by <admin>.' entries for each change, with salaryRecheck before and after. Step 9: payslips open with no dialog (own pay is not gated, answer 2361). Step 10: the dialog says no second step is set up and links to My security (answer 2360).",
+    "stories": [
+      "Screens/Security/Admin › 2.3 Security (Salary pages section)",
+      "2.3 Security · salary pages, ask again after 5 min",
+      "2.3 Security · salary pages re-check off",
+      "Screens/Security/Confirm it’s you › Step-up · passkey and app / nothing set up"
+    ],
+    "note": "Server rule in PermissionsGuard: routes on employee.salary.*, pay.range.* and payroll.* keys (not *.own, not payroll.query.handle) need a step-up within the company's window (default 15, allowed 5/10/15). Settings tenant_security_policies.salary_recheck / salary_recheck_minutes (migration 202617z0000451)."
   }
 ]

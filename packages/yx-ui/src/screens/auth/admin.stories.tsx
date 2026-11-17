@@ -175,6 +175,9 @@ export const SecuritySettingsDomains: S = {
     />
   ),
 };
+// Batch B item 1 (pay B12 / admin B4): confirm it's you again before salary pages, after 5, 10 or 15 minutes.
+export const SecuritySettingsSalaryShort: S = { name: '2.3 Security · salary pages, ask again after 5 min', render: () => <Settings policy={{ ...POLICY, salaryRecheckMinutes: 5 }} /> };
+export const SecuritySettingsSalaryOff: S = { name: '2.3 Security · salary pages re-check off', render: () => <Settings policy={{ ...POLICY, salaryRecheck: false }} /> };
 export const SecuritySettingsNoProviders: S = { name: '2.3 Security · no identity providers', render: () => <Settings providers={[]} /> };
 export const SecuritySettingsLoading: S = { name: '2.3 Security · loading', render: () => <Settings state="loading" policy={null} floor={null} /> };
 export const SecuritySettingsError: S = { name: '2.3 Security · could not load', render: () => <Settings state="error" policy={null} floor={null} onRetry={() => {}} /> };

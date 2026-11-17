@@ -462,6 +462,9 @@ model TenantSecurityPolicy {
   // "Continue with Google / Microsoft" (YukthiX's platform OIDC apps); off unless the company turns it on
   googleSignIn           Boolean      @default(false) @map("google_sign_in")
   microsoftSignIn        Boolean      @default(false) @map("microsoft_sign_in")
+  // Batch B item 1 (answers 2360-2363): confirm it's you again before salary pages, after 5, 10 or 15 minutes
+  salaryRecheck          Boolean      @default(true) @map("salary_recheck")
+  salaryRecheckMinutes   Int          @default(15) @map("salary_recheck_minutes")
   updatedAt              DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   updatedByUserId        String?      @map("updated_by_user_id") @db.Uuid
 

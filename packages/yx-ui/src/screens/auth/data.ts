@@ -133,6 +133,8 @@ export const FLOOR: SecurityFloor = {
 };
 
 export const POLICY: SecurityPolicy = {
+  salaryRecheck: true,
+  salaryRecheckMinutes: 15,
   mfaScope: 'sensitive_roles',
   allowedFactors: ['passkey', 'totp'],
   sessionIdleMinutes: null,
