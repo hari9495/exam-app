@@ -56,6 +56,8 @@ export type { Score as PipelineScore } from '../hiring-kit';
 export { SettingsGroupScreen, SettingsHomeScreen, SettingsPageScreen, type LiveSettingsNav, type LiveSettingsPage } from '../../settings/settings-screens';
 export { SETTINGS_GROUPS } from '../../settings/settings-groups';
 export { hiringSettingsPage, hiringSettingsChanges, type HiringSettingsData } from '../../settings/hiring-live';
+// Answer 2424: the pass certificate section on Settings 6.5 Assessments.
+export { CertificateCard, type CertificateCardProps, type CertificateTemplateInput, type CertificateTemplateView } from '../../settings/certificate-card';
 // HIR-10 and HIR-20: the designed BGV tracker and Talent CRM (hiring-offers.tsx), live with their `live` prop (the
 // pools stand-in is gone).
 export { BgvTrackerScreen, TalentCrmScreen, type BgvResultInput, type LiveBgv, type LiveBgvCheck, type LiveBgvJoiner, type LivePool, type LivePoolMember, type LivePostingJob, type LiveTalentCrm, type LiveCrm } from '../hiring-offers';

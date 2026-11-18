@@ -27320,5 +27320,31 @@
                               "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring"
                     ],
                     "note": "Positive and negative (kit hiring-live.test.tsx; API interview-hours.spec.ts and retire-v2-settings.e2e-spec.ts). Old /v2 hours are copied by migration 202617z0000541. Holidays only in the old /v2 list are listed by apps/api/scripts/v2-holiday-compare.ts (none on the local databases) and never added to a calendar automatically."
+          },
+          {
+                    "id": "MT-V2-ASMT-CERT",
+                    "area": "Retire /v2: pass certificate on Settings 6.5 Assessments (answer 2424, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Assessments",
+                    "url": "http://localhost:3000/yx/settings/talent/assessments",
+                    "account": "Admin admin-tester@demo-org.test (assessments settings); a candidate who passed a test with certificates on; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Assessments. Find the 'Pass certificate' section.",
+                              "Press Edit certificate. Clear the Title and press Save certificate.",
+                              "Enter the title 'Certificate of Merit', add 'Signed by' Meenakshi Sundaram and save.",
+                              "Open the passing candidate's report and download the certificate.",
+                              "Edit again, untick 'Use this wording' and save. Download the certificate again.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/certificate.",
+                              "Start acting as another person and open Settings › Assessments.",
+                              "As arjun: open /yx/settings/talent/assessments."
+                    ],
+                    "expected": "Step 1: the section shows 'Standard wording', the title, the text and 'No name'; no page scroll at 1278 x 635 apart from the settings list itself. Step 2: 'Enter the title.' under Title, the cursor is there, nothing saved, the button is never greyed out. Step 3: a 5-second toast 'Certificate saved'; the section shows 'Your wording'. Step 4: the PDF has the new title and the signatory name. Step 5: the section says your wording is off; the PDF has the standard wording. Step 6: one entry per save with before and after. Step 7: Settings › Assessments. Step 8: the section shows without Edit certificate. Step 9: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate, standard wording",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · edit pass certificate",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate, view only"
+                    ],
+                    "note": "Positive and negative (kit certificate-card.test.tsx; web yx-settings-s8.test.tsx; API retire-v2-settings.e2e-spec.ts). The certificate API now audits before and after."
           }
 ]

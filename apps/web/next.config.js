@@ -69,6 +69,8 @@ const nextConfig = {
       '/v2/whatsapp-templates': '/yx/settings/hiring',
       // Answers 2423 and 2510: business hours are the interview hours on Settings 6.1 Hiring (holidays: the holiday calendars).
       '/v2/settings/business-hours': '/yx/settings/hiring',
+      // Answer 2424: the pass certificate is a section on Settings 6.5 Assessments.
+      '/v2/settings/certificate': '/yx/settings/talent/assessments',
       // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
       '/v2/reports': '/yx/hiring/assessments/tests',
       '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',

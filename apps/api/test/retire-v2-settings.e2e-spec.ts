@@ -107,4 +107,29 @@ describe('Retired /v2 settings in YukthiX Settings', () => {
       expect((await call('adminA', 'get', '/hiring/settings').expect(200)).body.values).toMatchObject({ 'hiring.interview_hours.from': '10:00', 'hiring.interview_hours.to': '18:30' });
     });
   });
+
+  // Answer 2424: the pass certificate section on 6.5 Assessments.
+  describe('6.5 pass certificate (2424)', () => {
+    it('reads the standard wording, saves the company copy (audited before and after); the other company keeps the standard', async () => {
+      expect((await call('adminA', 'get', '/certificate-template').expect(200)).body).toMatchObject({ isDefault: true, enabled: true });
+      await call('adminA', 'put', '/certificate-template').send({ title: 'Certificate of Merit', bodyText: 'Well done {{candidateName}}', signatoryName: 'Meenakshi', enabled: true }).expect(200);
+      await call('adminA', 'put', '/certificate-template').send({ title: 'Certificate of Merit', bodyText: 'Well done', enabled: false }).expect(200);
+      expect((await call('adminA', 'get', '/certificate-template').expect(200)).body).toEqual({ title: 'Certificate of Merit', bodyText: 'Well done', signatoryName: null, enabled: false, isDefault: false });
+      const logs = await at('A', (tx) => tx.auditLog.findMany({ where: { action: 'certificate_template.saved' }, orderBy: { createdAt: 'asc' } }));
+      expect(logs.map((l) => JSON.parse(l.metadataJson ?? '{}'))).toEqual([
+        { before: null, after: { title: 'Certificate of Merit', bodyText: 'Well done {{candidateName}}', signatoryName: 'Meenakshi', enabled: true } },
+        { before: { title: 'Certificate of Merit', bodyText: 'Well done {{candidateName}}', signatoryName: 'Meenakshi', enabled: true }, after: { title: 'Certificate of Merit', bodyText: 'Well done', signatoryName: null, enabled: false } },
+      ]);
+      expect((await call('adminB', 'get', '/certificate-template').expect(200)).body.isDefault).toBe(true);
+    });
+
+    it('negative: an empty title, too long a text, no key, acting for someone else', async () => {
+      await call('adminA', 'put', '/certificate-template').send({ title: '', bodyText: 'x' }).expect(400);
+      await call('adminA', 'put', '/certificate-template').send({ title: 'T', bodyText: 'x'.repeat(4001) }).expect(400);
+      await call('plainA', 'get', '/certificate-template').expect(403);
+      await call('plainA', 'put', '/certificate-template').send({ title: 'T', bodyText: 'x' }).expect(403);
+      await call('acting', 'put', '/certificate-template').send({ title: 'T', bodyText: 'x' }).expect(403);
+      expect((await call('adminA', 'get', '/certificate-template').expect(200)).body.title).toBe('Certificate of Merit');
+    });
+  });
 });

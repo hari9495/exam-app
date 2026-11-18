@@ -5,6 +5,7 @@ import { SETTINGS_GROUPS } from './settings-groups';
 import { StageTargetsSheet } from '../hiring/job-settings';
 import { ScorecardTemplateSheet } from '../hiring/scorecard-template-sheet';
 import { StageMessageSheet, type StageMessageView } from '../hiring/stage-message-sheet';
+import { CertificateCard, type CertificateTemplateView } from './certificate-card';
 import { InvoiceSeriesSheet } from '../hiring/staffing-sheets';
 import type { ScorecardTemplateView } from '../hiring/live/types';
 import type { SettingsPageDef } from './settings-types';
@@ -130,3 +131,10 @@ export const P6_4: S = { name: '6.4 Learning', render: () => <SettingsPageScreen
 export const P6_4_ReadOnly: S = { name: '6.4 Learning · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.4" readOnly /> };
 export const P6_5: S = { name: '6.5 Assessments', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.5" /> };
 export const P6_5_ReadOnly: S = { name: '6.5 Assessments · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.5" readOnly /> };
+// Answer 2424 (retiring /v2): the pass certificate section on 6.5 Assessments, and its edit sheet.
+const CERT: CertificateTemplateView = { title: 'Certificate of Achievement', bodyText: 'This is to certify that {{candidateName}} has successfully passed {{examTitle}} at {{orgName}}, achieving a score of {{scorePercent}}% on {{date}}.', signatoryName: 'Meenakshi Sundaram', enabled: true, isDefault: false };
+const cert = (template: CertificateTemplateView, canEdit = true, defaultOpen = false) => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.5" live={{ page: SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '6.5')!, canEdit, lastChange: null, state: 'ready', onSave: noop, extra: <CertificateCard template={template} canEdit={canEdit} onSave={noop} defaultOpen={defaultOpen} /> }} />;
+export const P6_5_Certificate: S = { name: '6.5 Assessments · pass certificate', render: () => cert(CERT) };
+export const P6_5_CertificateStandard: S = { name: '6.5 Assessments · pass certificate, standard wording', render: () => cert({ ...CERT, signatoryName: null, isDefault: true }) };
+export const P6_5_CertificateEdit: S = { name: '6.5 Assessments · edit pass certificate', render: () => cert(CERT, true, true) };
+export const P6_5_CertificateView: S = { name: '6.5 Assessments · pass certificate, view only', render: () => cert({ ...CERT, enabled: false }, false) };

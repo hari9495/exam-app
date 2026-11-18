@@ -38,6 +38,7 @@ const routes = (perms: string[]) =>
     if (init?.method === 'PUT' || init?.method === 'POST') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), { pending: true });
     if (path.startsWith('/rbac/me/permissions')) return perms;
     if (path === '/documents/types') return DOC_TYPES;
+    if (path === '/certificate-template') return { title: 'Certificate of Achievement', bodyText: 'This is to certify that {{candidateName}} passed.', signatoryName: null, enabled: true, isDefault: true };
     if (path === '/org/settings') return { registry: REGISTRY, limits: {}, pending: [], overrides: [] };
     if (path === '/org/legal-entities') return [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }];
     if (path === '/org/locations') return [{ id: 'l1', name: 'Hosur plant' }];
@@ -92,6 +93,37 @@ describe('Settings S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
     show(YxTalentSettingsPage, 'expenses-and-travel');
     expect(await screen.findByText(/You don't have access to/)).toBeInTheDocument();
     expect(screen.queryByText(/finance check of claims/)).toBeNull();
+  });
+
+  it('6.5 Pass certificate (answer 2424): the assessments key edits the wording in a sheet, saved through its API with a toast', async () => {
+    routes(['assessments.settings.manage']);
+    show(YxTalentSettingsPage, 'assessments');
+    expect(await screen.findByText('Pass certificate')).toBeInTheDocument();
+    expect(screen.getByText('Standard wording')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Edit certificate' }));
+    const sheet = await screen.findByRole('dialog');
+    await ue.clear(within(sheet).getByLabelText(/^Title/));
+    await ue.click(within(sheet).getByRole('button', { name: 'Save certificate' }));
+    expect(within(sheet).getByText('Enter the title.')).toBeInTheDocument();
+    expect(calls).toEqual([]);
+    await ue.type(within(sheet).getByLabelText(/^Title/), 'Certificate of Merit');
+    await ue.type(within(sheet).getByLabelText(/^Signed by/), 'Meenakshi Sundaram');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save certificate' }));
+    await waitFor(() => expect(calls).toEqual([['PUT /certificate-template', { title: 'Certificate of Merit', bodyText: 'This is to certify that {{candidateName}} passed.', signatoryName: 'Meenakshi Sundaram', enabled: true }]]));
+    expect((await screen.findAllByText('Certificate saved')).length).toBeGreaterThan(0);
+  });
+
+  it('negative (6.5): without an assessments key there is no certificate section; while acting it is view only', async () => {
+    routes(['org.settings.manage']);
+    const { unmount } = show(YxTalentSettingsPage, 'assessments');
+    expect(await screen.findAllByText(/Assessments/)).not.toHaveLength(0);
+    expect(screen.queryByText('Pass certificate')).toBeNull();
+    unmount();
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 't', impersonating: true });
+    routes(['assessments.settings.manage']);
+    show(YxTalentSettingsPage, 'assessments');
+    expect(await screen.findByText('Pass certificate')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit certificate' })).toBeNull();
   });
 
   it('5.4 Notifications: HR turns notification emails off, saved at once; the wording editor is linked', async () => {
