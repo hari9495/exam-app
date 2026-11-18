@@ -475,3 +475,4 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2577: private notes about a person are seen only by their author (never the person, HR or the next manager), are never used in reviews, can be edited or deleted, at most 1,000 characters, and are included in the person's data-access export when the law needs it. Suggested answer: yes.
 - 2578: POSH cases are built on the speak-up case store (a POSH kind), seen only by the company's Internal Committee members, with the POSH Act timers (notice, 90-day inquiry, report, employer action). The IC members are an HR setting per workplace. Suggested answer: yes.
 - 2579: re-wire only `FeedbackTasksScreen` and `PeerFormScreen` in batch F; the other seven performance live copies go with the review and comp work. Suggested answer: yes.
+- Founder answers (18 Nov 2026, "ok for all"): 2570-2579 approved exactly as suggested above.
