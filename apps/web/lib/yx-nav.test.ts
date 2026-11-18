@@ -30,6 +30,11 @@ describe('buildNav: areas', () => {
     expect(all.filter((l) => l.href.startsWith('/v2')).map((l) => l.label)).toEqual(['Assessments & more (older screens)']);
     const hiringOnly = nav(['pipeline:manage', 'candidate:manage']).flatMap((a) => a.sections.flatMap((s) => s.items));
     expect(hiringOnly.filter((l) => l.href.startsWith('/v2'))).toEqual([]);
+    // Answer 2437: a results reader's Test results is the YukthiX page (no longer the older screens); test writers use the Results tab.
+    const reader = nav(['pipeline:manage', 'results:view']).flatMap((a) => a.sections.flatMap((s) => s.items));
+    expect(reader.filter((l) => l.id === 'hiring-results').map((l) => [l.label, l.href])).toEqual([['Test results', '/yx/hiring/assessments/results']]);
+    expect(reader.some((l) => l.href.startsWith('/v2'))).toBe(false);
+    expect(all.some((l) => l.id === 'hiring-results')).toBe(false);
     expect(labels(nav(['pipeline:manage', 'candidate:view']), 'hire')).toEqual(['Jobs & requisitions', 'Requisitions', 'Interviews', 'Candidates & talent CRM', 'Talent CRM', 'Referrals', 'Vendors', 'All referrals', 'Bias audits']);
   });
 

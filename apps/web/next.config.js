@@ -55,6 +55,13 @@ const nextConfig = {
       '/v2/referrals': '/yx/hiring/referrals/all',
       '/v2/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
       '/v2/panel/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
+      // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
+      '/v2/reports': '/yx/hiring/assessments/tests',
+      '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',
+      '/v2/reports/:examId/compare': '/yx/hiring/assessments/tests/:examId?tab=results',
+      '/v2/panel/reports': '/yx/hiring/assessments/results',
+      '/v2/panel/reports/:examId': '/yx/hiring/assessments/results?test=:examId',
+      '/v2/panel/reports/:examId/compare': '/yx/hiring/assessments/results?test=:examId',
     };
     const direct = (r) => ({ ...r, destination: v2Moved[r.destination] ?? r.destination });
     return [

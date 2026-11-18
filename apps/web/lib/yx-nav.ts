@@ -438,7 +438,8 @@ export function buildNav(n: NavInput): NavArea[] {
           // HIR-10: HR with the background-check key (Special data; the API checks the joiner's scope).
           ...when(has('lifecycle.bgv.manage'), L('hiring-bgv', 'Background checks', '/yx/hiring/bgv')),
           ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
-          ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
+          // Answer 2437: results readers (interviewers, hiring managers) see test results here; test writers on each test's Results tab.
+          ...when(any('results:view', 'asmt.results.view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results', '/yx/hiring/assessments/results')),
           ]),
           // Answer 2001 (AS-1 follow-ups): Hire › Assessments, for bank writers (the YukthiX key or its older alias), only when
           // the company has assessments on. Tests, delivery and results join as their designed screens go live.
