@@ -528,3 +528,4 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2610: items 14 (reports library with scheduled emails) and 21 (company documents in folders with expiry) were in the old batch G. Suggested answer: build them as G4 after Learning, before Enterprise.
 - 2611: CMP-02 Statutory set-up stays not live. Registrations are live in Payroll set-up and the filing mode needs a partner connector. Suggested answer: keep it parked with the payroll partner work.
 - 2612: 2594 (private notes in the data-access export) and 2595 (email chase for customers of an external desk) stay out of G, as the founder said. Suggested answer: yes.
+- Founder answers (19 Nov 2026, "ok for all"): 2600-2612 approved exactly as suggested above.
