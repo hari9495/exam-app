@@ -421,3 +421,5 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
   - 2522: moved templates come in switched on (preview recorded as seen by the system).
   - 2523: the 6.1 e-sign switch changes the Letters offer templates under the hiring settings key until the issue step, then it moves to Letters only.
   - 2524: until offers are issued as P05 letters, the offer email is built from the letter text and extra letter fields drop out. "Issue offers as real P05 letters with OTP e-accept" is scheduled right after batch C.
+- 2525 (18 Nov 2026, "ok"): the reassign reason must be at least 10 characters (same as late-mark waivers).
+- 2526 (18 Nov 2026, "ok"): "Everyone's pending" works by company or legal entity only; a location-only grant sees nothing.
