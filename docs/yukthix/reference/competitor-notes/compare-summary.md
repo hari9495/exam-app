@@ -449,3 +449,29 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2559: HR can still decline an open request after the month is locked (it changes no pay and closes the request); waiving and asking are refused after the lock. Suggested answer: keep.
 - 2560: a declined day can be asked again with a new reason; HR sees it as a new request. Suggested answer: keep.
 - Found while building B1: the person's notice for a reduced or rejected timesheet line failed (the bell row's id was the week's date, not a UUID), so nobody was told. Fixed: it now points at the timesheet.
+
+**Batch E built (18 Nov 2026, answers 2550 to 2556).** A4 "Waiting on" on the EXP-01 claim tiles and the Team claims column; A7 past-claim filters on My claims (`GET /expenses/me/claims`, 25 a page, filters in the address); B7 checked (live since batch H E1) with a manual test; the PAY-01 "payroll not set up" first-use piece is live.
+
+**Batch F (performance and helpdesk quick wins) plan, builder (18 Nov 2026).** Items 30, 31, 32, 33, 34 and 13, plus GLPI 4, 8 and 10.
+- Item → screen or kit piece:
+  - 34 Helpdesk A4 first-response column → HLP-02 Agent desk ticket list (and HLP-07 My cases), a "First response" column from the SLA engine's first-response target (met, due, breached).
+  - GLPI 4 requester chase → HLP-03 Ticket workspace (a "Waiting for the requester" pending reason) and the desk settings; a job that reminds in business hours, then solves the ticket.
+  - GLPI 8 OLA team targets → desk settings (per team first-response and resolution targets) and HLP-03's SLA panel and HLP-05 SLA dashboard, next to the customer SLA.
+  - 33 Helpdesk A7 ask your manager → a category setting "answered by the requester's manager" and HLP-01 Help centre's raise form ("Your manager answers this"); the manager answers from HLP-07 My cases.
+  - GLPI 10 rule export and import → desk settings: export a desk's rules as a file; import with a dry-run preview.
+  - 30 Performance A4 "no goals" with Remind → PRF-01 home (manager) and PRF-02 team tab: "No goals" and "Not updated" lists with a once-a-day Remind.
+  - 31 Performance A2 progress summary → PRF-02 My goals and team tab: an average and status pills with counts on top (kit first).
+  - 32 Performance B2 quick actions and private notes → PRF-08 Quick feedback: a quick-actions rail and private notes about a person (a new table).
+  - 13 Helpdesk A10 POSH cases live → CMP-11 POSH case workspace, the POSH complaint form and the IC console.
+- Designed, not-live screens in this area made live (2411): `PoshCaseScreen`, `PoshComplaintScreen`, `IcConsoleScreen` and their `ErrorCase` / `LoadingCase` states (item 13); the performance live copies `FeedbackTasksScreen` and `PeerFormScreen` re-wired with B2 (feedback area). The other seven live copies wait for the review and comp work; the Engage and Learning screens stay with batch G.
+- Order: 34 → GLPI 4 → GLPI 8 → 33 → GLPI 10 → 30 → 31 → 32 → 13.
+- 2570: the first-response column shows the target time, then Met or Breached; a ticket with no SLA shows "—". Suggested answer: yes.
+- 2571: the requester chase is a desk setting, on by default: a reminder each business day while the ticket waits for the requester, at most 3, then the ticket is solved after 5 business days with no reply; the requester can reopen it within the desk's reopen window. Suggested answer: yes.
+- 2572: OLA targets are per team (agent group), off until a desk sets them; they never pause or change the customer SLA, and breaches show on HLP-05. Suggested answer: yes.
+- 2573: "Answered by the requester's manager" is a per-category setting; with no manager the ticket goes to the desk; confidential categories (POSH, speak-up, ethics) can never route to a manager. Suggested answer: yes.
+- 2574: rule export and import covers a desk's rules, SLA and OLA policies, categories and templates (never people or tickets); import matches by name, shows a dry run first, needs the desk settings key and is audited. Suggested answer: yes.
+- 2575: "No goals" is people with no goal in the current goal period; "Not updated" is no check-in for 30 days (a company setting, default 30). Remind goes at most once a day per person. Suggested answer: yes.
+- 2576: the progress average uses goal weights where set, else a simple average; the pills count on track, at risk, off track and done. Suggested answer: yes.
+- 2577: private notes about a person are seen only by their author (never the person, HR or the next manager), are never used in reviews, can be edited or deleted, at most 1,000 characters, and are included in the person's data-access export when the law needs it. Suggested answer: yes.
+- 2578: POSH cases are built on the speak-up case store (a POSH kind), seen only by the company's Internal Committee members, with the POSH Act timers (notice, 90-day inquiry, report, employer action). The IC members are an HR setting per workplace. Suggested answer: yes.
+- 2579: re-wire only `FeedbackTasksScreen` and `PeerFormScreen` in batch F; the other seven performance live copies go with the review and comp work. Suggested answer: yes.
