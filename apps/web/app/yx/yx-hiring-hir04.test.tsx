@@ -94,6 +94,30 @@ describe('HIR-04 pipeline board page', () => {
     expect((await screen.findAllByText('Priya Raman moved to Interview'))[0]).toBeInTheDocument();
   });
 
+  it('answer 2434: a move whose stage asks before sending offers the email; Send posts it as written, then the SMS is offered', async () => {
+    const moved = { entry: {}, pendingMessage: { templateId: 't1', subject: 'Interview', body: 'Hi {{candidateName}}' }, pendingSmsMessage: { templateId: null, body: 'Hi' } };
+    const posted = serve(['pipeline:manage', 'results:view'], (path) => (path === '/hiring/entries/e1/move' ? moved : path.startsWith('/pipeline/entries/') || path.startsWith('/hiring/entries/e1/stage-message') ? {} : undefined));
+    wrap(<YxHiringPipelinePage />);
+    await ue.click(await screen.findByRole('button', { name: 'Move Priya Raman' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Interview' }));
+    let d = await screen.findByRole('dialog', { name: 'Send the Email message to Priya Raman?' });
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(posted).toContainEqual(['/pipeline/entries/e1/messages', { templateId: 't1', subject: 'Interview', body: 'Hi {{candidateName}}' }]));
+    d = await screen.findByRole('dialog', { name: 'Send the SMS message to Priya Raman?' });
+    await ue.click(within(d).getByRole('button', { name: "Don't send" }));
+    await waitFor(() => expect(posted).toContainEqual(['/hiring/entries/e1/stage-message/skip', { channel: 'sms', templateId: null }]));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('answer 2434 negative: a move with nothing to ask shows no question', async () => {
+    serve(['pipeline:manage', 'results:view'], (path) => (path === '/hiring/entries/e1/move' ? { entry: {} } : undefined));
+    wrap(<YxHiringPipelinePage />);
+    await ue.click(await screen.findByRole('button', { name: 'Move Priya Raman' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Interview' }));
+    expect((await screen.findAllByText('Priya Raman moved to Interview'))[0]).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('rejecting needs a reason; the API answer decides the toast (not emailed, undo)', async () => {
     const posted = serve(['pipeline:manage', 'results:view'], (path) => (path === '/hiring/entries/e2/reject' ? { rejected: true, messageSentAt: null, undoUntil: '2026-11-10T06:00:00.000Z', emailing: false } : undefined));
     wrap(<YxHiringPipelinePage />);

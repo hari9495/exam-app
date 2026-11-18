@@ -159,4 +159,31 @@ describe('Retired /v2 settings in YukthiX Settings', () => {
       expect((await call('adminA', 'get', '/organizations/branding').expect(200)).body.primaryColor).toBe('#1F6F5C');
     });
   });
+
+  // Answer 2434 follow-up: the board's "ask before sending" prompt, answered "Don't send".
+  describe('board stage message prompt: skip (2434)', () => {
+    const entry: Record<string, string> = {};
+    beforeAll(async () => {
+      for (const k of ['A', 'B'])
+        entry[k] = await at(k, async (tx) => {
+          const job = await tx.job.create({ data: { organizationId: org[k]!, title: `Prompt ${run}`, status: 'open', createdById: users[`admin${k}`]! } });
+          const cand = await tx.candidate.create({ data: { organizationId: org[k]!, email: `cand-${k.toLowerCase()}-${run}@rv2.test`, name: `Cand ${k}` } });
+          return (await tx.pipelineEntry.create({ data: { organizationId: org[k]!, jobId: job.id, candidateId: cand.id, enteredVia: 'manual' } })).id;
+        });
+    });
+
+    it('records a skipped message with its channel and template', async () => {
+      expect((await call('adminA', 'post', `/hiring/entries/${entry.A}/stage-message/skip`).send({ channel: 'sms', templateId: null }).expect(200)).body).toEqual({ skipped: true });
+      const logs = await at('A', (tx) => tx.auditLog.findMany({ where: { action: 'ats.stage_message.skipped', entityId: entry.A! } }));
+      expect(logs.map((l) => JSON.parse(l.metadataJson ?? '{}'))).toEqual([{ channel: 'sms', templateId: null }]);
+    });
+
+    it('negative: a bad channel, no pipeline key, acting for someone else, another company’s application', async () => {
+      await call('adminA', 'post', `/hiring/entries/${entry.A}/stage-message/skip`).send({ channel: 'fax' }).expect(400);
+      await call('plainA', 'post', `/hiring/entries/${entry.A}/stage-message/skip`).send({ channel: 'email' }).expect(403);
+      await call('acting', 'post', `/hiring/entries/${entry.A}/stage-message/skip`).send({ channel: 'email' }).expect(403);
+      await call('adminA', 'post', `/hiring/entries/${entry.B}/stage-message/skip`).send({ channel: 'email' }).expect(404);
+      expect(await at('B', (tx) => tx.auditLog.count({ where: { action: 'ats.stage_message.skipped' } }))).toBe(0);
+    });
+  });
 });

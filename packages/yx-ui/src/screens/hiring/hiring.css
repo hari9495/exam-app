@@ -131,3 +131,4 @@
 .yx-hire-clip { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .yx-hire-clip2 { display: flex; flex-direction: column; min-width: 0; }
 .yx-hire-clip2 > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.yx-hire-prewrap { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }

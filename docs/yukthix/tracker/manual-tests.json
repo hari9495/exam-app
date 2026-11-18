@@ -27369,5 +27369,28 @@
                               "Screens/Settings/Group 1 · Organisation › 1.1 Company & branding · logo and colour (live)"
                     ],
                     "note": "Positive and negative (kit settings-branding.test.tsx; web yx-settings-s7.test.tsx; API retire-v2-settings.e2e-spec.ts and organizations.service.spec.ts). Logos and careers banners are now checked by their bytes; SVG is refused (it can carry script). The /v2 accent colour, text colour and sign-in watermark are not used by any YukthiX page, so they are not on 1.1."
+          },
+          {
+                    "id": "MT-V2-HIRE-ASK-FIRST",
+                    "area": "Retire /v2: 'Ask before sending' stage messages on the job board (answer 2434 follow-up, 18 Nov 2026)",
+                    "screen": "Hiring › Jobs › a job › Pipeline",
+                    "url": "http://localhost:3000/yx/hiring/jobs",
+                    "account": "Recruiter or admin admin-tester@demo-org.test (pipeline key); a job with a candidate in Applied; Mailpit at http://localhost:8025.",
+                    "steps": [
+                              "In Settings › Hiring › Stage message templates, set the Interview stage's email to 'Ask before sending' and save.",
+                              "Open the job's pipeline and move a candidate from Applied to Interview.",
+                              "Press Edit first, clear the message and press Send edited message.",
+                              "Type a short message and press Send edited message.",
+                              "Move another candidate to Interview and press Don't send.",
+                              "Move a candidate to a stage with no 'ask' message.",
+                              "Open Settings › Audit log.",
+                              "Act as another person and open the same pipeline."
+                    ],
+                    "expected": "Step 2: a question 'Send the Email message to <name>?' with the subject and message. Step 3: 'Enter the message.' and the cursor in Message; nothing sent. Step 4: a 5-second toast 'Email sent to <name>'; the email is in Mailpit and on the candidate's messages. Step 5: a toast 'Email not sent'; nothing in Mailpit. Step 6: no question. Step 7: the sent email and an 'ats.stage_message.skipped' entry for the skip. Step 8: the board is read-only; nothing to send.",
+                    "stories": [
+                              "Screens/Hiring/HIR-04 · Pipeline board › Ask before sending · email after a move",
+                              "Screens/Hiring/HIR-04 · Pipeline board › Ask before sending · SMS"
+                    ],
+                    "note": "Positive and negative (kit stage-message-prompt.test.tsx; web yx-hiring-hir04.test.tsx; API retire-v2-settings.e2e-spec.ts). One question per channel (email, SMS, WhatsApp); closing the question counts as Don't send. Only the board asks; the candidate record's 'Move to next stage' does not yet."
           }
 ]

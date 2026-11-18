@@ -42,6 +42,7 @@ export { DraftScorecardReview, NotetakerConsentPanel, type DraftRating, type Liv
 // Settings 6.1 shows templates read-only; this old page stays until template editing is drawn (answer 345).
 export { ScorecardTemplateSheet, asPerCent, type ScorecardTemplateSheetProps } from '../scorecard-template-sheet';
 // Answer 2434: the stage message templates (email, SMS, WhatsApp) on 6.1.
+export { StageMessagePrompt, type PendingStageMessage, type StageMessagePromptProps } from '../stage-message-prompt';
 export { StageMessageSheet, CHANNEL_LABEL, SENDING_LABEL, stageMessageRow, type MessageChannel, type MessageSending, type StageMessageInput, type StageMessageSheetProps, type StageMessageView } from '../stage-message-sheet';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.
 export { AllReferralsScreen, RecruitingCostsScreen, ReferralsScreen, type AllReferral, type LiveAllReferrals, type CostEntry, type CostInput, type LiveRecruitingCosts, type LiveReferrals, type ReferInput, type ReferJob, type Referral } from '../hiring-plan';
