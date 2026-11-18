@@ -517,7 +517,7 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Leave v2 (29 Oct 2026). Company choices with a default; HR overrides per company, entity or location.
   // Leave during the notice period: allowed with no change to the last day, allowed and the last day moves by the
   // leave days, or only sick and unpaid leave.
-  'leave.notice_period.leave': { label: 'Leave during the notice period', scopes: ['tenant', 'legal_entity'], dated: false, values: ['no_change', 'extends_last_day', 'sick_and_unpaid_only'], default: 'no_change' },
+  'leave.notice_period.leave': { label: 'Leave during the notice period', scopes: ['tenant', 'legal_entity'], dated: false, values: ['no_change', 'extends_last_day', 'sick_and_unpaid_only', 'unpaid', 'blocked'], default: 'no_change' },
   // Leave while on probation: every type, casual / sick / unpaid only, or unpaid only.
   'leave.probation.leave': { label: 'Leave while on probation', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['all', 'casual_sick_unpaid', 'unpaid_only'], default: 'all' },
   // Company block dates: planned leave on them is refused, or allowed with a warning to the approver.

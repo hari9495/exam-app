@@ -321,7 +321,7 @@ function RegulariseDrawer({ date, kind, onClose, onSent, today, used }: { date: 
   const needIn = how === 'in' || how === 'full' || how === 'wrong';
   const needOut = !inProgress && (how === 'out' || how === 'full' || how === 'wrong');
   const timesOk = how === 'wrong' ? !!(inT || (needOut && outT)) : (!needIn || !!inT) && (!needOut || !!outT);
-  const missing = !day ? 'Choose the date.' : !timesOk ? 'Enter the actual time.' : !reason.trim() ? 'Add a reason.' : null;
+  const missing = !day ? 'Choose the date.' : !timesOk ? 'Enter the actual time.' : reason.trim().length < 10 ? 'Say why, in at least 10 characters.' : null;
   const was = (t?: string) => (t ? fmt12(t) : 'none');
   const change = [inT && `in ${was(rec.in)} → ${fmt12(inT)}`, needOut && outT && `out ${was(rec.out)} → ${fmt12(outT)}`].filter(Boolean).join(', ');
   const recordedText = `Recorded: ${rec.in ? `in ${fmt12(rec.in)}` : 'no check-in'} · ${rec.out ? `out ${fmt12(rec.out)}` : inProgress ? 'still clocked in' : 'no check-out'}`;
@@ -368,7 +368,7 @@ function RegulariseDrawer({ date, kind, onClose, onSent, today, used }: { date: 
             <TimeField value={outT} onChange={setOutT} placeholder="e.g. 6:35 pm" />
           </FormField>
         )}
-        <FormField id="rg-reason" label="Reason" required error={tried && !reason.trim() ? 'Add a reason' : null}>
+        <FormField id="rg-reason" label="Reason" required error={tried && reason.trim().length < 10 ? (reason.trim() ? 'Say why, in at least 10 characters' : 'Add a reason') : null}>
           <TextArea value={reason} onChange={setReason} rows={3} placeholder={REASON_EXAMPLE[how]} />
         </FormField>
         {day && change && (
@@ -2356,6 +2356,7 @@ function liveClock(d: MyAttendance, now: Date, getLocation: LiveMyAttendance['ge
     // DeviceNotApproved: "Ask HR to approve" this computer, where the page can send the request.
     alternatives: [...(d.wfhSameDay && d.mode === 'punch' ? ['wfh' as const] : []), 'retry', 'regularise', ...(onAskDevice ? ['ask_hr' as const] : [])],
     deviceApproved: d.device?.approved ?? true,
+    reclockIn: d.shift.reclockIn ?? false,
     deviceRequested: d.device?.requested ?? false,
     defaultWorkMode: d.wfhPendingToday ? 'wfh' : 'office',
     wfhAsk: { approver: d.manager ?? 'your manager', used: d.wfh.used, limit: d.wfh.limit },

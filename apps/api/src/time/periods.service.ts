@@ -387,7 +387,8 @@ export class PeriodsService {
     const ids = people.map((p) => p.id);
     const days = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } } });
     const leavePaid = await tx.$queryRaw<{ employeeId: string; on: string; paid: boolean }[]>`
-      SELECT d.employee_id::text AS "employeeId", d.leave_on::text AS on, bool_and(t.paid) AS paid FROM leave_request_days d
+      -- Answer 2477: whether the type is paid on each leave day (its version in force that day); unpaid during notice pays nothing.
+      SELECT d.employee_id::text AS "employeeId", d.leave_on::text AS on, bool_and(coalesce((SELECT v.paid FROM leave_type_versions v WHERE v.organization_id = r.organization_id AND v.leave_type_id = r.leave_type_id AND v.valid_from <= d.leave_on ORDER BY v.valid_from DESC LIMIT 1), t.paid) AND NOT r.unpaid_in_notice) AS paid FROM leave_request_days d
       JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
       JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
       WHERE d.organization_id = ${org}::uuid AND d.employee_id = ANY(${ids}::uuid[]) AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${from}::date AND ${to}::date

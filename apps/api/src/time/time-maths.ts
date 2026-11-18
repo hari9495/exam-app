@@ -279,6 +279,8 @@ export interface Fence {
   lng: number | null;
   radiusM: number | null;
   ipRanges: readonly string[];
+  /** Answer 2477: the office Wi-Fi names (SSIDs) of the location. */
+  wifiNames?: readonly string[];
 }
 
 export interface GeoPoint {
@@ -300,10 +302,11 @@ export function geoPointsOf(l: { name: string; geoPoints?: unknown; geoLat: unkn
 }
 
 /** One fence per point (a punch inside any of them is inside); a location with no point still carries its networks. */
-export function fencesOf(l: { id: string; name: string; geoPoints?: unknown; geoLat: unknown; geoLng: unknown; geoRadiusM: number | null; ipRanges: string[] }): Fence[] {
+export function fencesOf(l: { id: string; name: string; geoPoints?: unknown; geoLat: unknown; geoLng: unknown; geoRadiusM: number | null; ipRanges: string[]; wifiNames?: string[] }): Fence[] {
   const points = geoPointsOf(l);
-  if (!points.length) return [{ locationId: l.id, name: l.name, lat: null, lng: null, radiusM: null, ipRanges: l.ipRanges }];
-  return points.map((p) => ({ locationId: l.id, name: l.name, ...(points.length > 1 ? { point: p.name } : {}), lat: p.lat, lng: p.lng, radiusM: p.radiusM, ipRanges: l.ipRanges }));
+  const wifi = l.wifiNames?.length ? { wifiNames: l.wifiNames } : {};
+  if (!points.length) return [{ locationId: l.id, name: l.name, lat: null, lng: null, radiusM: null, ipRanges: l.ipRanges, ...wifi }];
+  return points.map((p) => ({ locationId: l.id, name: l.name, ...(points.length > 1 ? { point: p.name } : {}), lat: p.lat, lng: p.lng, radiusM: p.radiusM, ipRanges: l.ipRanges, ...wifi }));
 }
 
 export interface CheckInVerdict {
@@ -319,9 +322,11 @@ export interface CheckInVerdict {
  * Q6 / YX-AT-01 / 23: restricted locations accept a punch inside any allowed geofence or from an allowed network;
  * field locations record where it was and accept it. A location with neither a fence nor a network accepts it.
  */
-export function checkInVerdict(i: { fences: readonly Fence[]; pin: { lat: number; lng: number; accuracyM: number } | null; ip: string | null; mode: 'restricted' | 'field'; maxAccuracyM?: number }): CheckInVerdict {
+export function checkInVerdict(i: { fences: readonly Fence[]; pin: { lat: number; lng: number; accuracyM: number } | null; ip: string | null; mode: 'restricted' | 'field'; maxAccuracyM?: number; /** Answer 2477: the Wi-Fi name the phone app is on. */ wifi?: string | null }): CheckInVerdict {
   const maxAcc = i.maxAccuracyM ?? 150;
-  const net = i.fences.find((f) => ipInRanges(i.ip, f.ipRanges));
+  // shortcut: a Wi-Fi name is as easy to copy as an office network address; it is office evidence like the IP check, never stronger.
+  const ssid = i.wifi?.trim().toLowerCase() ?? '';
+  const net = i.fences.find((f) => ipInRanges(i.ip, f.ipRanges)) ?? (ssid ? i.fences.find((f) => (f.wifiNames ?? []).some((w) => w.toLowerCase() === ssid)) : undefined);
   const geo = i.fences.filter((f) => f.lat !== null && f.lng !== null && f.radiusM);
   // TIM-31 Multi: inside any point counts (the closest one that contains the pin); otherwise the point whose edge is nearest.
   const measured = i.pin ? geo.map((f) => ({ f, d: distanceM(i.pin!, { lat: f.lat!, lng: f.lng! }) })) : [];
@@ -330,7 +335,7 @@ export function checkInVerdict(i: { fences: readonly Fence[]; pin: { lat: number
   const place = (f: Fence) => (f.point ? `${f.name} · ${f.point}` : f.name);
   if (inside && i.pin!.accuracyM <= maxAcc) return { accepted: true, verdict: 'inside', distanceM: inside.d, locationId: inside.f.locationId, message: `Inside ${place(inside.f)}` };
   if (net) return { accepted: true, verdict: 'network', distanceM: nearest?.d ?? null, locationId: net.locationId, message: `On the ${net.name} network` };
-  if (!geo.length && !i.fences.some((f) => f.ipRanges.length)) return { accepted: true, verdict: 'no_fence', distanceM: null, locationId: null, message: 'Checked in' };
+  if (!geo.length && !i.fences.some((f) => f.ipRanges.length || f.wifiNames?.length)) return { accepted: true, verdict: 'no_fence', distanceM: null, locationId: null, message: 'Checked in' };
   if (i.mode === 'field') return { accepted: true, verdict: 'field', distanceM: nearest?.d ?? null, locationId: nearest?.f.locationId ?? null, message: 'Checked in, location recorded' };
   if (!i.pin) return { accepted: false, verdict: 'no_location', distanceM: null, locationId: null, message: 'Turn on location for this site, or connect to the office network.' };
   if (i.pin.accuracyM > maxAcc) return { accepted: false, verdict: 'coarse', distanceM: nearest?.d ?? null, locationId: nearest?.f.locationId ?? null, message: `Location accuracy ${Math.round(i.pin.accuracyM)} m. Move outdoors or near a window and try again` };
@@ -343,6 +348,8 @@ export const formatDistance = (m: number) => (m < 1000 ? `${m} m` : `${(m / 1000
 // ------------------------------------------------------------------------------------------ the day engine
 
 export interface DayRule {
+  /** Answer 2477: clocking in again after clocking out is allowed; worked time is the sum of the in→out sessions. */
+  reclockIn?: boolean;
   shiftStart: number;
   shiftEnd: number;
   graceMinutes: number;
@@ -477,9 +484,24 @@ export function breakMinutes(punches: readonly { at: Date; kind: PunchKind }[], 
  * off is the larger of the breaks punched and the shift's break rule (Q3: `breakMinutes` above `breakAboveMinutes`), so
  * a short punched break never lowers the rule's break, and a long one is never counted twice.
  */
-export function netWorked(punches: readonly { at: Date; kind: PunchKind }[], firstIn: Date, lastOut: Date, r: Pick<DayRule, 'breakMinutes' | 'breakAboveMinutes'>): number {
-  const gross = Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
+export function netWorked(punches: readonly { at: Date; kind: PunchKind }[], firstIn: Date, lastOut: Date, r: Pick<DayRule, 'breakMinutes' | 'breakAboveMinutes' | 'reclockIn'>): number {
+  // Answer 2477: with clocking in again on, the time between an out and the next in is not worked.
+  const gross = r.reclockIn ? Math.floor(sessionMs(punches.filter((p) => p.at >= firstIn && p.at <= lastOut)) / 60_000) : Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
   return Math.max(0, gross - Math.max(breakMinutes(punches, firstIn, lastOut), gross > r.breakAboveMinutes ? r.breakMinutes : 0));
+}
+
+/** Milliseconds inside the day's in→out sessions (an in while already in, or an out with none open, is ignored). */
+export function sessionMs(punches: readonly { at: Date; kind: PunchKind }[]): number {
+  let total = 0;
+  let open: number | null = null;
+  for (const p of [...punches].filter((x) => x.kind === 'in' || x.kind === 'out').sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    if (p.kind === 'in' && open === null) open = p.at.getTime();
+    else if (p.kind === 'out' && open !== null) {
+      total += p.at.getTime() - open;
+      open = null;
+    }
+  }
+  return total;
 }
 
 export interface DayResult {
@@ -572,7 +594,7 @@ export function evaluateDay(i: DayInput): DayResult {
   if (!firstIn && !lastOut) return { ...none, status: dayOver ? 'absent' : 'not_started', leavePart, regularised };
   if (!firstIn) return { ...none, status: 'missing_in', leavePart, lastOut, regularised };
   if (!lastOut) return { ...none, status: dayOver ? 'missing_out' : 'not_started', leavePart, firstIn, lateMinutes: late, regularised };
-  const worked = netWorked(i.punches, firstIn, lastOut, r);
+  const worked = netWorked(i.punches, firstIn, lastOut, fixedTimes || od ? { ...r, reclockIn: false } : r);
   let status: DayStatus = worked >= r.fullDayMinutes * halfFactor ? 'present' : worked >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
   // Flexi, company setting "short only when core hours are missed": in by core start (with grace) and out after core end is present.
   if (r.kind === 'flexi' && i.flexi?.short === 'core_hours' && !offHalf && r.coreStart != null && r.coreEnd != null && minutesInto(i.on, i.zone, firstIn) <= fromStart(r, r.coreStart) + r.graceMinutes && minutesInto(i.on, i.zone, lastOut) >= fromStart(r, r.coreEnd)) status = 'present';

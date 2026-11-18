@@ -7,7 +7,7 @@ import { isCidr, todayIst } from '../org-structure/org-validation';
 import { SETTINGS, locationValuesInForce, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
-import { DEFAULT_RULE, LeaveRules, asDate, dateOf, factoriesActFrom, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum, yearChangeFor } from './time-core';
+import { DEFAULT_RULE, LeaveRules, asDate, dateOf, factoriesActFrom, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum, typeOn, yearChangeFor } from './time-core';
 import { leaveYearWith, monthsIn, shortYearEnd, statutoryProblem, yearChangeProblem } from './leave-rules';
 import { addDays, geoPointsOf, type GeoPoint } from './time-maths';
 
@@ -79,6 +79,8 @@ export class TimeSetupService {
       const faExclusions = [...faLatest.values()].filter((r) => r.value === 'not_covered').map((r) => ({ scopeType: r.scopeType, name: faNames.get(r.scopeId) ?? 'Archived record' }));
       const today = todayIst();
       const grades = await tx.grade.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+      // Answer 2477: who may take a leave type, by employment type.
+      const employmentTypes = await tx.employmentType.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
       const working = await tx.exceptionalWorkingDay.findMany({ where: { organizationId: org }, orderBy: { workOn: 'asc' } });
       const [moveRows, drafts, feedWaiting] = await Promise.all([
         tx.setting.findMany({ where: { organizationId: org, key: MOVE_KEY } }),
@@ -95,7 +97,9 @@ export class TimeSetupService {
       return {
         today,
         injuryLeave: { code: injury, missing: !types.some((t) => t.code.toUpperCase() === injury.toUpperCase()) },
-        types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version, statutory: law[t.kind as keyof typeof law] ?? null })),
+        types: await Promise.all(types.map(async (t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version, statutory: law[t.kind as keyof typeof law] ?? null,
+          // Answer 2477: the dated versions, newest first (a waiting one shows its date).
+          versions: (await tx.leaveTypeVersion.findMany({ where: { organizationId: org, leaveTypeId: t.id }, orderBy: { validFrom: 'desc' }, take: 20 })).map((v) => ({ validFrom: dateOf(v.validFrom), paid: v.paid, rules: parseRules(v.rules) })) }))),
         maternity: await maternityValues(tx, today),
         policies: policies.map((p) => ({
           id: p.id,
@@ -139,6 +143,7 @@ export class TimeSetupService {
             points: geoPointsOf(l),
             updatedAt: l.updatedAt,
             ipRanges: l.ipRanges,
+            wifiNames: l.wifiNames,
             registeredFactory: l.registeredFactory,
             // Answer 151: the location's own setting value: "mark it as a registered factory", or "no longer needed".
             factoriesAct: { covered: fa.covered, source: fa.source, scopeType: fa.scopeType, exclusions: l.registeredFactory ? faExclusions : [], locationSetting: faOwn.get(l.id) ?? null },
@@ -148,6 +153,7 @@ export class TimeSetupService {
         }),
         entities,
         grades,
+        employmentTypes,
         ...(await this.coverage(tx, org, today, assignments, policies)),
         noticeDefault,
         // TIM-27: the company values a type follows until it sets its own (named in the editor's helpers).
@@ -220,7 +226,7 @@ export class TimeSetupService {
   }
 
   private ruleView(r: Prisma.LocationAttendanceRuleGetPayload<object>) {
-    return { validFrom: dateOf(r.validFrom), shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs, checkIn: r.checkIn, alsoAllowed: r.alsoAllowed, starter: false };
+    return { validFrom: dateOf(r.validFrom), shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs, checkIn: r.checkIn, alsoAllowed: r.alsoAllowed, reclockIn: r.reclockIn, starter: false };
   }
 
   async scopeNames(tx: Tx, org: string, scopes: { type: string; id: string }[]): Promise<Map<string, string>> {
@@ -246,6 +252,8 @@ export class TimeSetupService {
       const rules = await this.checkType(tx, c, dto);
       if (await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, code: dto.code } })) throw new ConflictException(`The code ${dto.code} is already used.`);
       const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, kind: dto.kind, paid: dto.paid, colour: dto.colour ?? 'blue', rules: rules as unknown as Prisma.InputJsonValue, active: dto.active ?? true, createdBy: c.userId ?? null } });
+      // Answer 2477: version 1, in force from the start.
+      await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, validFrom: asDate('2000-01-01'), rules: rules as unknown as Prisma.InputJsonValue, paid: dto.paid, createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules });
       return { id: t.id };
     });
@@ -270,6 +278,7 @@ export class TimeSetupService {
       if (await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, code } })) throw new ConflictException(`A leave type with the code ${code} already exists. Open it from Leave types to change it.`);
       const rules = parseRules({ noticeDays: 0 });
       const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code, name: 'Injury leave', kind: 'lop', paid: false, colour: 'red', rules: rules as unknown as Prisma.InputJsonValue, active: true, createdBy: c.userId ?? null } });
+      await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, validFrom: asDate('2000-01-01'), rules: rules as unknown as Prisma.InputJsonValue, paid: false, createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules, via: 'add_injury_leave' });
       return { id: t.id, code };
     });
@@ -284,9 +293,24 @@ export class TimeSetupService {
       // G1 (gap pass T1): the leave type screen does not show pay steps yet, so an edit that leaves them out keeps them.
       const old = t.rules as Record<string, unknown>;
       const rules = await this.checkType(tx, c, { ...dto, rules: { paySteps: old.paySteps ?? null, payWindow: old.payWindow ?? 'leave_year', ...(dto.rules ?? {}) } });
-      await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, paid: dto.paid, colour: dto.colour ?? t.colour, rules: rules as unknown as Prisma.InputJsonValue, active: dto.active ?? t.active, version: { increment: 1 }, updatedAt: new Date() } });
-      await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, from: { name: t.name, paid: t.paid, rules: t.rules, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active } });
-      return { id: t.id };
+      // Answer 2477: the rules and pay are dated. A change from today applies now; one dated ahead waits as a new version
+      // (or replaces the one already waiting on that date). Versions in force never change, so past leave keeps its rules.
+      const today = todayIst();
+      const from = dto.validFrom ?? today;
+      if (from < today) throw new BadRequestException('A change applies from today or a later date. Earlier leave keeps the rules it had.');
+      const org = c.organizationId;
+      const now = await typeOn(tx, org, t, from);
+      const waiting = await tx.leaveTypeVersion.findFirst({ where: { organizationId: org, leaveTypeId: t.id, validFrom: asDate(from) } });
+      const changed = JSON.stringify(parseRules(now.rules)) !== JSON.stringify(rules) || now.paid !== dto.paid;
+      if (changed || waiting) {
+        if (waiting && from > today) await tx.leaveTypeVersion.update({ where: { id: waiting.id }, data: { rules: rules as unknown as Prisma.InputJsonValue, paid: dto.paid, createdBy: c.userId ?? null } });
+        else if (waiting) throw new ConflictException('The rules already changed today. A further change applies from tomorrow or later.');
+        else await tx.leaveTypeVersion.create({ data: { organizationId: org, leaveTypeId: t.id, validFrom: asDate(from), rules: rules as unknown as Prisma.InputJsonValue, paid: dto.paid, createdBy: c.userId ?? null } });
+      }
+      const applyNow = from <= today;
+      await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, colour: dto.colour ?? t.colour, active: dto.active ?? t.active, ...(applyNow ? { paid: dto.paid, rules: rules as unknown as Prisma.InputJsonValue } : {}), version: { increment: 1 }, updatedAt: new Date() } });
+      await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, validFrom: from, from: { name: t.name, paid: now.paid, rules: now.rules, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active } });
+      return { id: t.id, validFrom: from };
     });
   }
 
@@ -414,14 +438,15 @@ export class TimeSetupService {
       if (dto.shiftStart === dto.shiftEnd) throw new BadRequestException('The shift ends at a different time from when it starts.');
       const at = { organizationId: org, locationId, validFrom: asDate(dto.validFrom) };
       if (await tx.locationAttendanceRule.findFirst({ where: at })) throw new ConflictException('There is already a change from that date. Choose another date.');
-      const r = await tx.locationAttendanceRule.create({ data: { ...at, shiftName: dto.shiftName ?? 'General', shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs as unknown as Prisma.InputJsonValue, checkIn: dto.checkIn, createdBy: c.userId ?? null } });
-      await audit(tx, c, 'attendance.rule.added', 'location', locationId, { validFrom: dto.validFrom, shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs, checkIn: dto.checkIn });
+      const r = await tx.locationAttendanceRule.create({ data: { ...at, shiftName: dto.shiftName ?? 'General', shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs as unknown as Prisma.InputJsonValue, checkIn: dto.checkIn, reclockIn: dto.reclockIn ?? false, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'attendance.rule.added', 'location', locationId, { validFrom: dto.validFrom, shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs, checkIn: dto.checkIn, reclockIn: dto.reclockIn ?? false });
       return { id: r.id };
     });
   }
 
   /** TIM-31: the office networks of a location (the same field Settings › Locations edits), each line a valid range. */
-  setNetworks(ctx: TenantContext, user: ScopeUser, locationId: string, input: string[]) {
+  setNetworks(ctx: TenantContext, user: ScopeUser, locationId: string, input: string[], wifi?: string[]) {
+    const wifiNames = wifi === undefined ? undefined : [...new Set(wifi.map((w) => w.trim()).filter(Boolean))];
     const lines = input.map((r) => r.trim());
     const bad = lines.findIndex((r) => r !== '' && !isCidr(r));
     if (bad >= 0) throw new BadRequestException(`Line ${bad + 1}: ${lines[bad]} is not a valid range. Each part must be 0–255, e.g. 10.20.4.0/24.`);
@@ -429,9 +454,9 @@ export class TimeSetupService {
     return this.run(ctx, user, true, async (tx, c) => {
       const row = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: locationId, archivedAt: null } });
       if (!row) throw new NotFoundException('No such location.');
-      await tx.location.update({ where: { id: locationId }, data: { ipRanges } });
-      await audit(tx, c, 'org.location.networks_changed', 'location', locationId, { before: row.ipRanges, after: ipRanges });
-      return { id: locationId, ipRanges };
+      await tx.location.update({ where: { id: locationId }, data: { ipRanges, ...(wifiNames ? { wifiNames } : {}) } });
+      await audit(tx, c, 'org.location.networks_changed', 'location', locationId, { before: { ipRanges: row.ipRanges, wifiNames: row.wifiNames }, after: { ipRanges, wifiNames: wifiNames ?? row.wifiNames } });
+      return { id: locationId, ipRanges, wifiNames: wifiNames ?? row.wifiNames };
     });
   }
 

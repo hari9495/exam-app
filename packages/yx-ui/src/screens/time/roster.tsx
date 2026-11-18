@@ -1369,7 +1369,7 @@ const hrs = (m: number) => Math.round((m / 60) * 100) / 100;
  * The form as the design has it (TIM-06): `end` is the shift's end, or a split's first part end; a split's second part
  * is `p2From`–`p2To`. Flexi adds core hours and overtime after hours worked (empty: the full day).
  */
-interface ShiftForm { kind: LiveShiftKind; code: string; name: string; colour: string; night: boolean; start: string | null; end: string | null; coreFrom: string | null; coreTo: string | null; otAfter: number | null; p2From: string | null; p2To: string | null; grace: number | null; full: number | null; half: number | null; breakRule: 'fixed' | 'none'; brk: number | null; brkAbove: number | null; from: Date | null }
+interface ShiftForm { kind: LiveShiftKind; code: string; name: string; colour: string; night: boolean; reclockIn: boolean; start: string | null; end: string | null; coreFrom: string | null; coreTo: string | null; otAfter: number | null; p2From: string | null; p2To: string | null; grace: number | null; full: number | null; half: number | null; breakRule: 'fixed' | 'none'; brk: number | null; brkAbove: number | null; from: Date | null }
 type LiveShiftKind = NonNullable<ShiftRow['kind']>;
 const KIND_LABEL: Record<LiveShiftKind, string> = { fixed: 'Fixed', flexi: 'Flexi with core hours', split: 'Split' };
 const hhmmOr = (m: number | null | undefined, fallback: string) => (m == null ? fallback : fromMinute(m));
@@ -1383,6 +1383,7 @@ const formOf = (s: ShiftRow | null, today: string): ShiftForm => {
     name: s?.name ?? '',
     colour: s?.colour ?? 'blue',
     night: s?.night ?? false,
+    reclockIn: s?.reclockIn ?? false,
     start: v ? fromMinute(v.start) : '09:00',
     end: v ? fromMinute(split ? (v.firstEnd ?? v.end) : v.end) : '17:30',
     coreFrom: hhmmOr(v?.coreStart, '11:00'),
@@ -1474,16 +1475,16 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
   };
   const save = () => {
     if (errors.length) return saveErrors.reveal();
-    const detailsChanged = row && (f.name.trim() !== row.name || f.colour !== row.colour || f.night !== row.night);
+    const detailsChanged = row && (f.name.trim() !== row.name || f.colour !== row.colour || f.night !== row.night || f.reclockIn !== Boolean(row.reclockIn));
     const timed = (x: ShiftForm) => JSON.stringify([x.start, x.end, x.grace, x.full, x.half, x.breakRule, x.brk, x.brkAbove, ...(flexi ? [x.coreFrom, x.coreTo, x.otAfter] : []), ...(split ? [x.p2From, x.p2To] : [])]);
     const timesChanged = row && timed(f) !== timed(base);
     if (row && !detailsChanged && !timesChanged) return why('Nothing has changed yet')();
     void run('save', async () => {
       if (!row) {
-        await p.onCreateShift({ code: f.code, name: f.name.trim(), colour: f.colour, night: f.night, ...(f.kind !== 'fixed' ? { kind: f.kind } : {}), ...times });
+        await p.onCreateShift({ code: f.code, name: f.name.trim(), colour: f.colour, night: f.night, reclockIn: f.reclockIn, ...(f.kind !== 'fixed' ? { kind: f.kind } : {}), ...times });
         setSel(`code:${f.code}`);
       } else {
-        if (detailsChanged) await p.onShiftDetails(row.id, { name: f.name.trim(), colour: f.colour, night: f.night, active: row.active });
+        if (detailsChanged) await p.onShiftDetails(row.id, { name: f.name.trim(), colour: f.colour, night: f.night, active: row.active, reclockIn: f.reclockIn });
         if (timesChanged) await p.onShiftTimes(row.id, times);
       }
       setBase(f);
@@ -1544,7 +1545,7 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
                     <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{s.name}</strong><span className="yx-tim-muted">{s.code} · {s.kind && s.kind !== 'fixed' ? `${KIND_LABEL[s.kind]} · ` : ''}{when}{s.active ? '' : ' · not in use'}</span></span>
                     <span className="yx-tim-row" style={{ flexShrink: 0, justifyContent: 'flex-end' }}>
                       <Button size="sm" onClick={why(current ? 'You are editing this shift' : dirty && 'Save or discard your changes first', () => open(s.id))}>{current ? 'Editing' : 'Edit'}</Button>
-                      <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, () => p.onShiftDetails(s.id, { name: s.name, colour: s.colour, night: s.night, active: !s.active }))}>{s.active ? 'Stop using' : 'Use again'}</Button>
+                      <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, () => p.onShiftDetails(s.id, { name: s.name, colour: s.colour, night: s.night, active: !s.active, reclockIn: Boolean(s.reclockIn) }))}>{s.active ? 'Stop using' : 'Use again'}</Button>
                     </span>
                   </li>
                 );
@@ -1613,6 +1614,8 @@ function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
         <FormSection title="Allowances">
           <Switch label="Night allowance" description="Counts this shift for the night allowance in payroll" checked={f.night} onChange={(v) => set({ night: v })} />
           {(f.night || overnight) && <InlineAlert tone="info" title="Night window for women (law)">The legal night window is 7 pm – 6 am. Women can be rostered on a shift touching it only with written consent and every safeguard in date (Night work tab). The allowance is for pay only; consent checks always use 7 pm – 6 am.</InlineAlert>}
+          {/* Answer 2477: off by default (split days and field visits turn it on). */}
+          <Switch label="Clock in again after clocking out" description="People on this shift may clock in again the same day; worked time is the sum of the in and out sessions." checked={f.reclockIn} onChange={(v) => set({ reclockIn: v })} />
         </FormSection>
         <FormSection title="When it applies">
           <FormField id="sh-from" label="Effective from" required helper={isNew ? 'The shift can be used from this date.' : 'New times and rules apply from this date. Earlier days keep the old rules.'} error={errorOf('sh-from')}>

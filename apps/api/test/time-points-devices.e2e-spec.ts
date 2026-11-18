@@ -169,6 +169,44 @@ describe('Time: check-in points and approved computers', () => {
     expect(me.punches.filter((p: { accepted: boolean }) => !p.accepted)).toHaveLength(1);
   });
 
+  // ------------------------------------------------------------------------------------------ answer 2477
+
+  it('office Wi-Fi names: HR saves them with the networks (audited); wrong role, another company and bad input refused', async () => {
+    const path = `/time/setup/locations/${ids.locA}/networks`;
+    await api('emp', 'post', path).send({ ipRanges: [], wifiNames: ['KF-Hosur'] }).expect(403);
+    await api('adminB', 'post', path).send({ ipRanges: [], wifiNames: ['KF-Hosur'] }).expect(404);
+    await api('hrAdmin', 'post', path).send({ ipRanges: [], wifiNames: ['x'.repeat(33)] }).expect(400);
+    await api('hrAdmin', 'post', path).send({ ipRanges: [], wifiNames: [''] }).expect(400);
+    expect((await locA()).wifiNames).toEqual([]);
+    expect((await api('hrAdmin', 'post', path).send({ ipRanges: [], wifiNames: [' KF-Hosur ', 'KF-Hosur', 'KF-Guest'] }).expect(200)).body.wifiNames).toEqual(['KF-Hosur', 'KF-Guest']);
+    expect((await locA()).wifiNames).toEqual(['KF-Hosur', 'KF-Guest']);
+    // Sending only the networks keeps the Wi-Fi names.
+    await api('hrAdmin', 'post', path).send({ ipRanges: [] }).expect(200);
+    expect((await locA()).wifiNames).toEqual(['KF-Hosur', 'KF-Guest']);
+    expect((await auditOf('org.location.networks_changed')).some((a) => /KF-Guest/.test(a.metadataJson ?? ''))).toBe(true);
+    expect((await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.location.findFirst({ where: { id: ids.locB } })))!.wifiNames).toEqual([]);
+  });
+
+  it('clock in again: refused after clocking out while off (the default); allowed once HR turns it on for the place', async () => {
+    const month = new Date().toISOString().slice(0, 7);
+    await api('emp', 'post', '/time/me/punch').send({ kind: 'out', ...ANNEXE, accuracyM: 20 }).expect(200);
+    const refused = await api('emp', 'post', '/time/me/punch').send({ kind: 'in', ...ANNEXE, accuracyM: 20 }).expect(409);
+    expect(refused.body.message).toBe("You have already clocked out today. To change today's times, regularise the day.");
+    expect((await api('emp', 'get', `/time/me/attendance?month=${month}`).expect(200)).body.shift.reclockIn).toBe(false);
+    const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+    const rule = { validFrom: today, shiftStart: 0, shiftEnd: 1439, graceMinutes: 0, weeklyOffs: [], checkIn: 'restricted', reclockIn: true };
+    await api('emp', 'post', `/time/setup/locations/${ids.locA}/rule`).send(rule).expect(403);
+    await api('adminB', 'post', `/time/setup/locations/${ids.locA}/rule`).send(rule).expect(404);
+    await api('hrAdmin', 'post', `/time/setup/locations/${ids.locA}/rule`).send({ ...rule, reclockIn: 'yes' }).expect(400);
+    await api('hrAdmin', 'post', `/time/setup/locations/${ids.locA}/rule`).send(rule).expect(201);
+    expect((await locA()).rule).toMatchObject({ reclockIn: true });
+    expect((await api('emp', 'get', `/time/me/attendance?month=${month}`).expect(200)).body.shift.reclockIn).toBe(true);
+    expect((await api('emp', 'post', '/time/me/punch').send({ kind: 'in', ...ANNEXE, accuracyM: 20 }).expect(200)).body).toMatchObject({ accepted: true });
+    // The place is still checked on the second clock-in.
+    await api('emp', 'post', '/time/me/punch').send({ kind: 'out', ...ANNEXE, accuracyM: 20 }).expect(200);
+    expect((await api('emp', 'post', '/time/me/punch').send({ kind: 'in', lat: 12.9, lng: 77.95, accuracyM: 20 }).expect(200)).body).toMatchObject({ accepted: false, verdict: 'outside' });
+  });
+
   // ------------------------------------------------------------------------------------------ DeviceNotApproved
 
   it('off by default: any computer clocks in, and there is nothing to ask for', async () => {

@@ -448,6 +448,8 @@ export function timeSettingsPage(design: SettingsPageDef, data: TimeSettingsData
       scope: n ? `Company · own value at ${n} ${n === 1 ? 'place' : 'places'} (Company rules)` : 'Company',
       ...(limit ? { legal: { value: limit.max ?? limit.min!, kind: limit.max != null ? ('max' as const) : ('min' as const), statute: limit.act } } : {}),
       ...(d.guard && !data.canGuard ? { locked: 'Changed by whoever manages access (Roles & access).' } : {}),
+      // Answer 2477: a guarded setting (phone binding, approved computers) is turned on only after a confirm.
+      ...(d.guard ? { sensitive: true } : {}),
       ...(d.dated ? { helper: 'A change applies from today. Earlier days keep the value they had.' } : {}),
     };
     const labels = Object.fromEntries(d.values.map((o) => [o, d.labels?.[o] ?? pretty(p.key, o)]));

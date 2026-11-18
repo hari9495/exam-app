@@ -345,7 +345,7 @@ describe('Time ops: attendance, overtime, periods', () => {
       const me = (await api('emp', 'get', `/time/me/attendance?month=${lockMonth}`).expect(200)).body;
       expect(me.locked).toContain(L(16));
       expect(me.lateRequestMaxDays).toBe(60);
-      await api('emp', 'post', '/time/me/regularise').send({ on: L(16), kind: 'full_day', reason: 'Was on site' }).expect(409);
+      await api('emp', 'post', '/time/me/regularise').send({ on: L(16), kind: 'full_day', reason: 'Was on site all day' }).expect(409);
       expect((await api('emp', 'post', '/payroll/me/late-corrections').send({ on: L(16), kind: 'attendance', shouldBe: 'present', reason: 'I was at the client site all day' }).expect(201)).body.stage).toBe('frozen');
     });
 

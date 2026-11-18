@@ -177,16 +177,18 @@ describe('Small features: breaks, work from home, pay on Home, nudge', () => {
 
   describe('request work from home', () => {
     it('checks the day: today or later, a working day, one request a day', async () => {
-      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(-1), reason: 'Plumber' }).expect(400)).body.message).toBe('Pick today or a later date.');
-      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(2), reason: 'Plumber' }).expect(400)).body.message).toMatch(/is your weekly off\.$/);
+      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(-1), reason: 'Plumber visit at home' }).expect(400)).body.message).toBe('Pick today or a later date.');
+      expect((await api('emp', 'post', '/time/me/wfh').send({ on: d(2), reason: 'Plumber visit at home' }).expect(400)).body.message).toMatch(/is your weekly off\.$/);
       await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: '' }).expect(400);
+      // Answer 2477: a reason of at least 10 characters, shown to the approver as "Why".
+      expect((await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Plumber 1' }).expect(400)).body.message).toEqual(['Please say why, in at least 10 characters, so your manager can check it.']);
     });
 
     it('goes to the manager only; the person sees it in My requests; no one else can see or touch it', async () => {
       const r = (await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Plumber visit at home in the morning' }).expect(201)).body;
       expect(r).toMatchObject({ status: 'pending', hrStep: false });
       ids.wfh = r.id;
-      await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Again' }).expect(409);
+      await api('emp', 'post', '/time/me/wfh').send({ on: today, reason: 'Asking again for this day' }).expect(409);
       const mine = (await api('emp', 'get', '/workflow/approvals/mine').expect(200)).body as { title: string; status: string }[];
       expect(mine.find((x) => x.title.includes('work from home'))).toMatchObject({ status: 'pending' });
       const me = (await api('emp', 'get', `/time/me/attendance?month=${today.slice(0, 7)}`).expect(200)).body;

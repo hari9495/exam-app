@@ -361,10 +361,11 @@ describe('Time and leave batch 1', () => {
 
     it('a fix goes to the manager; beyond the monthly limit HR approves too; approval re-evaluates the day', async () => {
       await api('emp', 'post', '/time/me/regularise').send({ on: d(1), kind: 'full_day', reason: 'x' }).expect(400);
-      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'missed_out', reason: 'Forgot' }).expect(400);
+      expect((await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Was there' }).expect(400)).body.message).toEqual(['Please say why, in at least 10 characters, so your manager can check it.']);
+      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'missed_out', reason: 'Forgot to clock out' }).expect(400);
       const r = (await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Client visit all day' }).expect(201)).body;
       expect(r.hrStep).toBe(false);
-      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Again' }).expect(409);
+      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Asking again for this day' }).expect(409);
       const t = (await inbox('boss')).find((x) => x.title.includes('fix'))!;
       await decide('boss', t.taskId, 'approve').expect(200);
       const day = await inA((tx) => tx.attendanceDay.findFirst({ where: { organizationId: org.A.id, employeeId: ids.empEmp, workOn: new Date(`${d(-1)}T00:00:00Z`) } }));

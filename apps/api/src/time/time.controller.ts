@@ -418,7 +418,7 @@ export class TimeController {
   @HttpCode(200)
   @RequirePermissions('leave.settings.manage')
   setNetworks(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NetworksDto) {
-    return this.setup.setNetworks(ctx, this.user(req), id, dto.ipRanges);
+    return this.setup.setNetworks(ctx, this.user(req), id, dto.ipRanges, dto.wifiNames);
   }
 
   /** TIM-31 Multi: the location's check-in points (inside any one is inside); a stale updatedAt answers 409. */

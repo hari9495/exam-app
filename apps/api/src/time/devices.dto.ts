@@ -195,6 +195,12 @@ export class PhonePunchItemDto extends DevicePunchDto {
   @Min(0)
   @Max(100_000)
   accuracyM?: number;
+
+  /** Answer 2477: the Wi-Fi name (SSID) the phone is on, checked against the location's office Wi-Fi names. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  wifi?: string;
 }
 
 export class PhonePunchDto extends PhonePunchItemDto {
