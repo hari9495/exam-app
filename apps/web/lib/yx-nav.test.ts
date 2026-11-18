@@ -25,9 +25,9 @@ describe('buildNav: areas', () => {
     for (const unbuilt of ['assess', 'learning', 'analytics', 'engage', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
   });
 
-  it('YukthiX Hiring for hiring; the exam tools not yet in YukthiX are one link to the older screens (19 Oct 2026)', () => {
-    const all = nav(['exam:manage', 'pipeline:manage', 'candidate:manage']).flatMap((a) => a.sections.flatMap((s) => s.items));
-    expect(all.filter((l) => l.href.startsWith('/v2')).map((l) => l.label)).toEqual(['Assessments & more (older screens)']);
+  it('YukthiX Hiring for hiring; no menu link leads to the older /v2 screens (decision 2398, step 5)', () => {
+    const all = nav(['exam:manage', 'pipeline:manage', 'candidate:manage', 'question_bank:manage', 'results:view']).flatMap((a) => a.sections.flatMap((s) => s.items));
+    expect(all.filter((l) => l.href.startsWith('/v2'))).toEqual([]);
     const hiringOnly = nav(['pipeline:manage', 'candidate:manage']).flatMap((a) => a.sections.flatMap((s) => s.items));
     expect(hiringOnly.filter((l) => l.href.startsWith('/v2'))).toEqual([]);
     // Answer 2437: a results reader's Test results is the YukthiX page (no longer the older screens); test writers use the Results tab.
