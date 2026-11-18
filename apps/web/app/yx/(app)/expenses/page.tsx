@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ExpensesHomeScreen, EXP_LINKS, type AdvanceSummary, type ClaimSummary, type ExpenseHome, type MyCardLines, type SavedExpense, type ToPayData, type TripSummary } from '@yukthix/ui/expenses';
+import { ExpensesHomeScreen, EXP_LINKS, claimQuery, parseClaimQuery, type AdvanceSummary, type ClaimSummary, type ExpenseHome, type MyCardLines, type MyClaimsPage, type SavedExpense, type ToPayData, type TripSummary } from '@yukthix/ui/expenses';
 import { loadState, todayIst, useYxPermissions } from '../../../../lib/yx-org';
 import { useExp, useExpWrite } from '../../../../lib/yx-expenses';
 import { useScopeParams, withParams } from '../../../../lib/yx-shell';
@@ -17,6 +17,9 @@ function ExpensesHome() {
   const startNew = useSearchParams()?.get('new') === '1';
   // ?save=1: the "Add an expense" action (Ctrl K) opens the saved-expense drawer.
   const startAdd = useSearchParams()?.get('save') === '1';
+  // Batch E A7 (2553): the past-claim filters live in the address (?status=&sentFrom=&q=&page=), so a list can be shared.
+  const search = useSearchParams();
+  const filter = parseClaimQuery(new URLSearchParams(search?.toString() ?? ''));
   // Drop ?new=1 once read, so asking again (N E) changes the address and opens the dialog again.
   useEffect(() => {
     if (startNew) router.replace(EXP_LINKS.home, { scroll: false });
@@ -38,6 +41,7 @@ function ExpensesHome() {
   const write = useExpWrite();
   // Keka ideas (2026-11): expenses saved first, claimed later (my own only).
   const saved = useExp<{ items: SavedExpense[] }>('/me/items', Boolean(h));
+  const myClaims = useExp<MyClaimsPage>(`/me/claims${claimQuery(filter)}`, Boolean(h));
   const someApprovals = (trips.data?.trips.length ?? 0) + (advances.data?.advances.length ?? 0) > 0;
   return (
     <ExpensesHomeScreen
@@ -59,6 +63,12 @@ function ExpensesHome() {
         onRequestTrip: () => router.push(`${EXP_LINKS.trips}?new=1`),
         onGo: (href) => router.push(href),
         cardLines: cardLines.data?.lines.length ?? null,
+        myClaims: {
+          ...filter,
+          state: loadState(myClaims),
+          data: myClaims.data ?? null,
+          onChange: (next) => router.replace(`${EXP_LINKS.home}${claimQuery(next)}`, { scroll: false }),
+        },
         startNew,
         saved: saved.data
           ? {

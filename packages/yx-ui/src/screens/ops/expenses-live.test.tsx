@@ -4,7 +4,7 @@ import type { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { ClaimComposerScreen, ClaimReviewScreen, ExpensesHomeScreen } from './expenses';
-import type { LiveClaim, LiveHome } from './expenses-live';
+import { claimQuery, parseClaimQuery, type LiveClaim, type LiveHome, type LiveMyClaims } from './expenses-live';
 import { approvalSteps, cutText, lineChecks, money, moneyInput, paise, sumMoney, toLineInput } from './expenses-live-data';
 import { CATEGORIES, DRAFT, FINANCE, HOME, LINES, OPEN_ADVANCE, READ_LINE, SUBMITTED, TO_PAY_DATA, TRIP_WAITING } from './expenses-live-samples';
 
@@ -116,6 +116,43 @@ describe('EXP-01 home', () => {
     expect(p.onOpen).toHaveBeenCalledWith('c1042');
     await ue.click(screen.getByRole('button', { name: 'Open to-pay queue' }));
     expect(p.onGo).toHaveBeenCalledWith('/yx/expenses/to-pay');
+  });
+});
+
+// Batch E A4 / A7 (answers 2551, 2553, 2556): who a claim waits on, and the past-claim filters.
+describe('EXP-01 batch E: waiting on and past-claim filters', () => {
+  const page = (claims = HOME.claims, total = claims.length) => ({ claims, total, page: 1, pageSize: 25 });
+  const my = (over: Partial<LiveMyClaims> = {}): LiveMyClaims => ({ filters: [], q: '', page: 1, onChange: vi.fn(), state: 'ready', data: page(), ...over });
+
+  it('each claim tile says who it waits on; none for a claim waiting on no one', () => {
+    const claims = [{ ...HOME.claims[0]!, waitingOn: 'Asha Rao and 2 more' }, { ...HOME.claims[1]!, waitingOn: null }];
+    show(<ExpensesHomeScreen live={home({ home: { ...HOME, claims, team: null, waitingForMe: 0, toReview: null } })} />);
+    expect(screen.getByText('Waiting on Asha Rao and 2 more')).toBeInTheDocument();
+    expect(screen.getAllByText(/^Waiting on/)).toHaveLength(1);
+  });
+
+  it('filters: adding a Status filter asks for page 1 with it; the list and its pages come from the filtered reply', async () => {
+    const onChange = vi.fn();
+    show(<ExpensesHomeScreen live={home({ myClaims: my({ onChange, data: page([{ ...HOME.claims[0]!, waitingOn: 'Finance (payment)' }], 60), page: 1 }) })} />);
+    expect(screen.getByText('Waiting on Finance (payment)')).toBeInTheDocument();
+    expect(screen.getByRole('navigation', { name: 'Pages' })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Filter' }));
+    await ue.click(await screen.findByRole('menuitem', { name: 'Status' }));
+    // Controlled by the page: the new Status filter goes up with page 1 (the page puts it in the address).
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ page: 1, filters: [expect.objectContaining({ key: 'status', type: 'multi' })] })));
+  });
+
+  it('negative: nothing matching says so (not "no claims yet"); an error offers a retry; the query round-trips through the address', () => {
+    const a = show(<ExpensesHomeScreen live={home({ myClaims: my({ q: 'zzz', data: page([]) }) })} />);
+    expect(screen.getByText('No claims match these filters.')).toBeInTheDocument();
+    a.unmount();
+    show(<ExpensesHomeScreen live={home({ myClaims: my({ state: 'error', data: null }) })} />);
+    expect(screen.getByText("We couldn't load your claims.")).toBeInTheDocument();
+    const f = { filters: [{ key: 'status', type: 'multi' as const, values: ['approved', 'rejected'] }, { key: 'sent', type: 'date' as const, from: '2026-09-01', to: null }], q: 'Lunch', page: 2 };
+    expect(claimQuery(f)).toBe('?status=approved%2Crejected&sentFrom=2026-09-01&q=Lunch&page=2');
+    expect(parseClaimQuery(new URLSearchParams(claimQuery(f).slice(1)))).toEqual(f);
+    // Junk in the address is dropped, never sent.
+    expect(parseClaimQuery(new URLSearchParams('status=paid,approved&sentFrom=1-1&page=-3&q=x'))).toEqual({ filters: [{ key: 'status', type: 'multi', values: ['approved'] }], q: 'x', page: 1 });
   });
 });
 

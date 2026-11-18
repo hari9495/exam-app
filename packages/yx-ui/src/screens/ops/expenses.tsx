@@ -22,7 +22,9 @@ import { formatDate, formatINR } from '../../lib/format';
 import { Actions, CameraFrame, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, StatusTrail, Workspace, useSay, type CameraState } from './ops-kit';
 import { checkLine, flagText, fxFlagged, fxVariancePct, mileageAmount, perDiemAmount, recoveryInstalments, reductionText, settlement } from './ops-rules';
 import type { ListState } from './helpdesk';
-import { CardLinesCard, LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, type LiveClaim, type LiveHome } from './expenses-live';
+import { CLAIM_FILTERS, CardLinesCard, LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, type LiveClaim, type LiveHome } from './expenses-live';
+import { FilterBar } from '../../components/filters';
+import type { FilterValue } from '../../lib/table';
 import { SavedExpensesCard, type LiveSavedExpenses } from './expenses-saved';
 import { Segment } from '../../components/segment';
 import { LiveAdvanceRecord, LiveAdvancesList, LiveTripRecord, LiveTripsList, type LiveAdvance, type LiveAdvances, type LiveTrip, type LiveTrips } from './expenses-travel-live';
@@ -69,6 +71,8 @@ export interface ExpensesHomeProps {
   cardLines?: number;
   /** Keka ideas (2026-11): the saved expenses waiting to be claimed (the design's sample ones). */
   saved?: boolean;
+  /** Batch E A7: the past-claim filters as they start (a story with a status picked). */
+  filters?: FilterValue[];
 }
 export interface TeamClaimsProps {
   today: string;
@@ -112,7 +116,14 @@ const VIEWS = [
   { value: 'mgr', label: 'Waiting for me' },
   { value: 'fin', label: 'Finance' },
 ];
-function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready', views, naming, cardLines, saved }: ExpensesHomeProps) {
+function SampleExpensesHome({ device = 'desk', persona = 'emp', claims: allClaims, toPay, today, state = 'ready', views, naming, cardLines, saved, filters: startFilters }: ExpensesHomeProps) {
+  // Batch E A7 (design): the past-claim filters; the sample filters its own claims by status and title.
+  const [filters, setFilters] = useState<FilterValue[]>(startFilters ?? []);
+  const [q, setQ] = useState('');
+  const STATUS_KEY: Record<string, string> = { Submitted: 'submitted', Approved: 'approved', 'Partly approved': 'partly_approved', Rejected: 'rejected', 'Sent back': 'sent_back', Draft: 'draft' };
+  const picked = filters.find((f) => f.key === 'status' && f.type === 'multi');
+  const claims = allClaims.filter((c) => (!picked || picked.type !== 'multi' || !picked.values.length || picked.values.includes(STATUS_KEY[c.status] ?? '')) && c.title.toLowerCase().includes(q.trim().toLowerCase()));
+  const filterBar = device === 'phone' ? null : <FilterBar fields={CLAIM_FILTERS} value={filters} onChange={setFilters} search={q} onSearchChange={setQ} searchPlaceholder="Search claims" />;
   const savedCard = saved ? <SavedExpensesCard live={SAMPLE_SAVED} /> : null;
   const switcher = views ? <Segment label="Show" value={persona} onChange={() => {}} options={VIEWS} /> : null;
   const dialog = naming ? <NewClaimDialog open onClose={() => {}} onStart={async () => {}} /> : null;
@@ -126,6 +137,8 @@ function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, t
       </div>
     ) : state === 'error' ? (
       <ErrorState title="We couldn't load your claims." description="Try again in a moment." onRetry={() => {}} reference="EXP-HOME-118" />
+    ) : state !== 'empty' && claims.length === 0 && allClaims.length > 0 ? (
+      <EmptyState compact title="No claims match these filters." description="Clear a filter or search for another title." />
     ) : state === 'empty' || claims.length === 0 ? (
       <EmptyState compact title="No claims yet." description="Snap a receipt to start one. Each receipt becomes a line." action={<Button variant="primary" icon={Camera}>Snap a receipt</Button>} />
     ) : (
@@ -147,6 +160,7 @@ function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, t
               </div>
               {cut && <span className="yx-ops-muted">{reductionText(lineApproved(cut), cut.amount, cut.reason)}</span>}
               {c.status === 'Rejected' && <span className="yx-ops-muted">Rejected: {c.lines[0].reason}</span>}
+              {c.waitingOn && <span className="yx-ops-muted">Waiting on {c.waitingOn}</span>}
             </li>
           );
         })}
@@ -249,10 +263,10 @@ function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, t
           savedCard ? (
             <div className="yx-ops-stack">
               {savedCard}
-              <Card title="My claims">{claimList}</Card>
+              <Card title="My claims"><div className="yx-ops-stack">{filterBar}{claimList}</div></Card>
             </div>
           ) : (
-            <Card title="My claims">{claimList}</Card>
+            <Card title="My claims"><div className="yx-ops-stack">{filterBar}{claimList}</div></Card>
           )
         }
         rail={

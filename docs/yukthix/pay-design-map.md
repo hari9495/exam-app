@@ -1778,3 +1778,11 @@ works out its pay with the engine (the same per-component difference as the regu
 an open off-cycle correction run of the month of the last day (made for the leaver's pay group when there is none),
 then opens that run. Refused while the F&F is open, twice, when a payslip already paid it, or when it changes no pay.
 e2e `payroll-late-corrections` (+1), `payroll-5a` (the settled state); kit +1.
+
+## Batch E (18 Nov 2026, answers 2550, 2555)
+
+- B7 declaration window cards: already live since batch H part 2 E1 (`TaxWindowCards` on PAY-22 and Declare for an
+  employee); checked, manual test MT-E-B7.
+- PAY-01 "Empty · payroll not set up": the live payroll home now renders the designed `FirstUse` piece (it takes a
+  `help` action); `pay: FirstUse` left design-live-guard.known.json. RunReadinessScreen and GroupHealthScreen stay for
+  the payroll and benefits batches; MobileExpensesScreen and MobilePayTabScreen with the mobile app.

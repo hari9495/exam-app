@@ -27574,5 +27574,77 @@
                               "Screens/Time/TIM-11 · Periods"
                     ],
                     "note": "Positive and negative (time-ops e2e: own team only, outside the team / a peer / another company 404, short reason and wrong month 400, acting for someone else 403, repeats skipped and said, HR told, decline HR-only with reason and once, waive answers the request, both sides told, audited, locked month 409 for asking while HR can still decline; kit time-ops-live: manager ask with field error, declined day asked again, locked read only, HR decline). New table late_mark_waiver_requests (RLS, support excluded, no delete)."
+          },
+          {
+                    "id": "MT-E-A4-WAITING-ON",
+                    "area": "Batch E A4: who a claim waits on (answers 2551, 2552, 2556, 18 Nov 2026)",
+                    "screen": "Expenses home (EXP-01), My claims; Expenses › Team claims",
+                    "url": "http://localhost:3000/yx/expenses",
+                    "account": "An employee with claims in each state (sent and waiting on the manager, sent back, approved and unpaid, paid, draft); their manager (panel@, Divya).",
+                    "steps": [
+                              "As the employee open Expenses. Read each claim tile.",
+                              "As the manager open Expenses › Team claims.",
+                              "Approve the employee's waiting claim as the manager, then open the employee's Expenses again.",
+                              "Negative: check a draft, a paid claim and a rejected claim."
+                    ],
+                    "expected": "Step 1: a sent claim says 'Waiting on <manager's name>' ('… and N more' when several hold the step); a shared step says 'HR' or 'Finance'; a sent-back claim says 'Waiting on You'; approved and unpaid says 'Waiting on Finance (payment)'. Step 2: a 'Waiting on' column with the same, the person's own name for a sent-back claim. Step 3: the tile moves to the next step's approver, or 'Finance (payment)'. Step 4: no 'Waiting on' line for a draft, a paid or a rejected claim. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Expenses/EXP-01 · Expenses home"
+                    ],
+                    "note": "Positive and negative (API home-rules.spec waitingOnText: person, and N more, shared role, claimant, finance for payment, none; expenses-r2 e2e: the claimant's and the manager's lists name the manager; kit expenses-live and expenses-round2 tests)."
+          },
+          {
+                    "id": "MT-E-A7-PAST-CLAIM-FILTERS",
+                    "area": "Batch E A7: past-claim filters (answer 2553, 18 Nov 2026)",
+                    "screen": "Expenses home (EXP-01), My claims",
+                    "url": "http://localhost:3000/yx/expenses",
+                    "account": "An employee with more than 25 claims across statuses, some paid (seed a few if needed).",
+                    "steps": [
+                              "Open Expenses. Press Filter › Status, tick Approved and Partly approved.",
+                              "Add 'Sent between' for last month, then 'Paid between'. Type part of a title in Search claims.",
+                              "Copy the page address into a new tab.",
+                              "Go to page 2 with the pages control.",
+                              "Negative: filter to a status you have none of; type junk in the address (?status=paid&page=-3); sign in as another employee with the same address."
+                    ],
+                    "expected": "Step 1: chips show the filter; the list shows only those statuses, 25 a page, newest first. Step 2: each filter narrows the list; dates are India days. Step 3: the same filtered list opens. Step 4: the next 25. Step 5: 'No claims match these filters.' with a hint (not 'No claims yet'); junk in the address is ignored; another employee only ever sees their own claims. No page scroll at 1278 x 635 with one page of tiles.",
+                    "stories": [
+                              "Screens/Expenses/EXP-01 · Expenses home"
+                    ],
+                    "note": "Positive and negative (expenses-r2 e2e GET /expenses/me/claims: status, title search, sent and paid dates, page 2, only my own for a peer / manager / other company, bad input 400; kit: Status filter asks for page 1, no match, error, address round trip with junk dropped). Claims have no number, so the search looks in the title."
+          },
+          {
+                    "id": "MT-E-B7-TAX-WINDOW-CARDS",
+                    "area": "Batch E B7: declaration and proof window cards (answer 2550; built in batch H part 2 E1)",
+                    "screen": "Me › Tax (PAY-22), Declarations tab; HR: Declare for an employee",
+                    "url": "http://localhost:3000/yx/me/tax",
+                    "account": "An employee with a current employment; HR with the tax window keys (opens or locks windows).",
+                    "steps": [
+                              "As the employee open Me › Tax › Declarations.",
+                              "As HR lock the declaration window early (Payroll › Proofs › windows), then open it again early.",
+                              "As the employee refresh Me › Tax.",
+                              "Negative: with the window locked try to add a declaration."
+                    ],
+                    "expected": "Step 1: one card per window (Declarations, Proofs) with its dates and an OPEN tag when open, Closed otherwise. Step 3: the card says 'locked by HR' or 'opened early by HR'. Step 4: no Add declaration button; the note says HR locked them. Same cards on HR's Declare for an employee.",
+                    "stories": [
+                              "Screens/Pay/PAY-22 · Tax workspace"
+                    ],
+                    "note": "Checked in batch E: already live (commit 4f01b811b), API returns windows on the workspace, kit employee-pay test 'E1: the window cards show OPEN or Closed'. No code change."
+          },
+          {
+                    "id": "MT-E-PAY01-FIRST-USE",
+                    "area": "Batch E (answer 2555): Payroll home 'payroll not set up' first-use state live",
+                    "screen": "Payroll home (PAY-01)",
+                    "url": "http://localhost:3000/yx/payroll",
+                    "account": "A payroll admin in a company (or entity) with no pay group yet; another with pay groups.",
+                    "steps": [
+                              "As the admin of the company with no pay group open Payroll.",
+                              "Press 'What you need before you start', then Close; press 'Set up payroll'.",
+                              "Negative: open Payroll in the company that has pay groups."
+                    ],
+                    "expected": "Step 1: 'Payroll isn't set up for this entity yet.' with the set-up line, a primary 'Set up payroll' and a bordered 'What you need before you start'; no Start payroll or off-cycle buttons. Step 2: the checklist dialog opens and closes; Set up payroll opens statutory set-up. Step 3: no first-use state; the run and checks show.",
+                    "stories": [
+                              "Screens/Pay/PAY-01 · Payroll home"
+                    ],
+                    "note": "The live page now renders the designed FirstUse piece (left design-live-guard.known.json)."
           }
 ]

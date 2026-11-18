@@ -57,6 +57,10 @@ describe('Team claims (EXP-01 drill)', () => {
     const table = screen.getByRole('table', { name: 'Team claims' });
     expect(within(table).getByText('Pune plant audit')).toBeInTheDocument();
     expect(within(table).getAllByRole('button', { name: 'Open' })).toHaveLength(3); // the sent-back claim is not the manager's to open
+    // Batch E A4 (2552): who each claim waits on, the claimant for one sent back.
+    expect(within(table).getByRole('columnheader', { name: /Waiting on/ })).toBeInTheDocument();
+    expect(within(table).getByText('Asha Rao and 1 more')).toBeInTheDocument();
+    expect(within(table).getAllByText('Finance (payment)')).toHaveLength(2);
     expect(screen.getByText('₹39,444.00')).toBeInTheDocument();
     await ue.click(within(table).getAllByRole('button', { name: 'Open' })[0]!);
     expect(p.onOpen).toHaveBeenCalledWith(TEAM.claims[0]!.id);

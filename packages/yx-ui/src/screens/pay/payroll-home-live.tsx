@@ -23,7 +23,7 @@ import { formatDate, groupIndian } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { DueBadge } from '../time/time-kit';
 import { dateText } from '../time/live/kit';
-import { DueDateStrip, RunStageTrack, SectionTitle, StateBlock, type DueItem, type RunStage } from './pay-kit';
+import { DueDateStrip, FirstUse, RunStageTrack, SectionTitle, StateBlock, type DueItem, type RunStage } from './pay-kit';
 import { CoveragePanel, FrequencyRunsScreen, GroupRunRows, type CoverageRow as DesignCoverageRow } from './payroll-run';
 import { RunStatusBadge, runName } from './live/runs';
 import { statuteText } from './live/setup';
@@ -244,7 +244,8 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
       </Dialog>
       <LiveStates state={live.state} onRetry={live.onRetry} what="payroll">
         {notSetUp ? (
-          <EmptyState
+          // Batch E (answer 2555): the designed first-use piece, the same one the PAY-01 "payroll not set up" story shows.
+          <FirstUse
             title="Payroll isn't set up for this entity yet."
             description="Set up registrations, pay group, salary template and bank format. It takes about 30 minutes; you can save and come back."
             action={

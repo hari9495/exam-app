@@ -442,3 +442,14 @@ Keep as built: (1) lines marked "Company card" are never paid to the employee (a
 (2) card statements need company-wide `expense.payout.manage` (entity-scoped finance later if needed); (3) personal spend
 starts the salary recovery as soon as the employee confirms; (4) a foreign-currency card line is explained by adding it to
 a claim with the rate; (5) "Remove card" comes later; (6) the employee's card-lines page reads "Pay › Expenses".
+
+## Batch E (18 Nov 2026, answers 2551 to 2553, 2556)
+
+- A4 "Waiting on": EXP-01 claim tiles (drawn and live) say who each claim waits on; Team claims has a "Waiting on"
+  column. Rule `waitingOnText` (home-rules.ts): the open step's holder ("… and N more" when several), the role for a
+  shared step ("HR", "Finance"), the claimant when sent back ("You" to themselves), "Finance (payment)" when approved and
+  unpaid; none otherwise. Returned on `GET /expenses/claims` (every view) and the team list.
+- A7 past-claim filters: EXP-01 My claims has the kit FilterBar (Status, Sent between, Paid between, title search),
+  25 a page, filters in the page address. API `GET /expenses/me/claims` (own claims only; bad input 400). New stories
+  "Employee · past claims filtered (approved)" and "Employee · no claims match the filters". Claims have no number, so
+  the search is by title.

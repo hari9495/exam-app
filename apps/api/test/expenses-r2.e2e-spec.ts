@@ -223,4 +223,34 @@ describe('Expenses round 2', () => {
     expect(after.recovery).toMatchObject({ scheduled: true, total: '1000.00' });
     expect(after.recovery.instalments.map((i: { amount: string; status: string }) => [i.amount, i.status])).toEqual([['334.00', 'scheduled'], ['334.00', 'scheduled'], ['332.00', 'scheduled']]);
   });
+
+  // Batch E A4 / A7 (answers 2551 to 2553, 2556): who a claim waits on, and the past-claim filters.
+  it('batch E: a claim says who it waits on (claimant and manager lists); my claims filter by status, dates and title, 25 a page', async () => {
+    type Row = { id: string; status: string; waitingOn: string | null };
+    const mine = (await api('ravi', 'get', '/claims?view=mine').expect(200)).body.claims as Row[];
+    expect(mine.find((x) => x.id === ids.claim)).toMatchObject({ status: 'submitted', waitingOn: `mgr ${run}` });
+    const team = (await api('mgr', 'get', '/claims?view=team').expect(200)).body.claims as Row[];
+    expect(team.find((x) => x.id === ids.claim)!.waitingOn).toBe(`mgr ${run}`);
+    // A draft waits on no one.
+    const draft = (await api('sita', 'get', '/claims?view=mine').expect(200)).body.claims as Row[];
+    expect(draft.every((x) => x.waitingOn === null)).toBe(true);
+
+    const q = (who: Who, query: string) => api(who, 'get', `/me/claims${query}`);
+    const all = (await q('ravi', '').expect(200)).body as { claims: Row[]; total: number; page: number; pageSize: number };
+    expect(all).toMatchObject({ page: 1, pageSize: 25 });
+    expect(all.total).toBeGreaterThanOrEqual(1);
+    expect(all.claims.find((x) => x.id === ids.claim)!.waitingOn).toBe(`mgr ${run}`);
+    expect((await q('ravi', '?status=submitted&q=LUNCH').expect(200)).body.claims.map((x: Row) => x.id)).toContain(ids.claim);
+    expect((await q('ravi', '?status=draft,rejected').expect(200)).body.claims.map((x: Row) => x.id)).not.toContain(ids.claim);
+    expect((await q('ravi', `?sentFrom=${today}&sentTo=${today}`).expect(200)).body.claims.map((x: Row) => x.id)).toContain(ids.claim);
+    expect((await q('ravi', `?sentFrom=${d(1)}`).expect(200)).body.total).toBe(0);
+    expect((await q('ravi', `?paidFrom=${d(-30)}`).expect(200)).body.claims.map((x: Row) => x.id)).not.toContain(ids.claim);
+    expect((await q('ravi', '?q=no-such-claim').expect(200)).body.total).toBe(0);
+    expect((await q('ravi', '?page=2').expect(200)).body.claims).toEqual([]);
+    // Only my own: a peer, the manager and another company never see Neha's claim here.
+    for (const who of ['sita', 'mgr', 'adminB'] as const) expect((await q(who, '').expect(200)).body.claims.map((x: Row) => x.id)).not.toContain(ids.claim);
+    // Bad input.
+    for (const bad of ['?status=paid', '?sentFrom=1-1-2026', `?sentFrom=${today}&sentTo=${d(-1)}`, '?page=0', '?page=x', `?q=${'x'.repeat(101)}`, '?other=1']) await q('ravi', bad).expect(400);
+  });
 });
+

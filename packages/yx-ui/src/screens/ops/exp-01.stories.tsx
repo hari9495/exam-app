@@ -11,6 +11,9 @@ const base = { claims: MY_CLAIMS, toPay: TO_PAY, today: TODAY };
 
 export const Employee: S = { name: 'Employee (my claims)', render: () => <ExpensesHomeScreen {...base} /> };
 // Keka ideas (2026-11): expenses saved first, claimed later.
+// Batch E A4 / A7 (answers 2551, 2553): who a claim waits on, and the past-claim filters.
+export const EmployeeFiltered: S = { name: 'Employee · past claims filtered (approved)', render: () => <ExpensesHomeScreen {...base} filters={[{ key: 'status', type: 'multi', values: ['approved', 'partly_approved'] }]} /> };
+export const EmployeeNoMatch: S = { name: 'Employee · no claims match the filters', render: () => <ExpensesHomeScreen {...base} filters={[{ key: 'status', type: 'multi', values: ['sent_back'] }]} /> };
 export const EmployeeSaved: S = { name: 'Employee · expenses to be claimed', render: () => <ExpensesHomeScreen {...base} saved /> };
 export const Manager: S = { name: 'Manager (waiting for me)', render: () => <ExpensesHomeScreen {...base} persona="mgr" /> };
 export const Finance: S = { name: 'Finance (to pay)', render: () => <ExpensesHomeScreen {...base} persona="fin" /> };

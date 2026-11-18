@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ApproveAmountDto, ClaimDto, ClaimItemsDto, DecideDto, ExpenseItemDto, FlagDto, LineDto, ListQueryDto, ReceiptQueryDto, SubmitDto } from './claims-dto';
+import { ApproveAmountDto, ClaimDto, ClaimItemsDto, DecideDto, ExpenseItemDto, FlagDto, LineDto, ListQueryDto, MyClaimsQueryDto, ReceiptQueryDto, SubmitDto } from './claims-dto';
 import { ExpenseClaimsService } from './claims.service';
 
 // Expenses batch E2 (M05-BUILD-DESIGN §18 "Claims"). Every route is open to the implicit grants: the service decides
@@ -30,6 +30,12 @@ export class ExpenseClaimsController {
   @Get('me/home')
   home(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.claims.home(ctx, this.user(req));
+  }
+
+  /** Batch E A7: my own claims, filtered and paged (the past-claim filters). */
+  @Get('me/claims')
+  mine(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MyClaimsQueryDto) {
+    return this.claims.mine(ctx, this.user(req), q);
   }
 
   @Get('claims')

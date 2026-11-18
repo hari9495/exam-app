@@ -52,7 +52,6 @@
     "ops: PoshCaseScreen",
     "ops: PoshComplaintScreen",
     "ops: StatutorySetupScreen",
-    "pay: FirstUse",
     "pay: GroupHealthScreen",
     "pay: RunReadinessScreen",
     "people: AssetAcknowledgePhone",
