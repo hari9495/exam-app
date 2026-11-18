@@ -1,5 +1,5 @@
 import { DayRule, evaluateDay, instantAt } from './time-maths';
-import { compOffDays, daysWorked, eligibilityWindow, maternityChecks, mondayOf, overlapsNight, otSettlement, overtimeFor, patternCell, payOfDay, quarterOf, resolveDay, restConflicts, scheduledMinutes, workOnForPunch, type ShiftTimes } from './time-rules';
+import { compOffDays, daysWorked, eligibilityWindow, maternityChecks, mondayOf, overlapsNight, otSettlement, overtimeFor, patternCell, payOfDay, quarterOf, resolveDay, restConflicts, scheduledMinutes, teamDot, workOnForPunch, type ShiftTimes } from './time-rules';
 
 const Z = 'Asia/Kolkata';
 const rule = (start: number, end: number): DayRule => ({ shiftStart: start, shiftEnd: end, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300 });
@@ -185,5 +185,20 @@ describe('Timesheet mode (D1, YX-AT-09)', () => {
     expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: 0 }).status).toBe('absent');
     expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: null }).status).toBe('no_timesheet');
     expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: 480, weeklyOff: true }).status).toBe('weekly_off');
+  });
+});
+
+// Batch C item 15: a team calendar dot from the day's status, late minutes and place.
+describe('team calendar dots', () => {
+  it('present, late, remote, half day, absent and missing; leave, holidays and weekly offs have none', () => {
+    expect(teamDot('present', 0, 'office')).toBe('present');
+    expect(teamDot('present', null, 'unknown')).toBe('present');
+    expect(teamDot('present', 1, 'remote')).toBe('late');
+    expect(teamDot('present', 0, 'remote')).toBe('remote');
+    expect(teamDot('half_day', 20, 'office')).toBe('half_day');
+    expect(teamDot('absent', null, 'unknown')).toBe('absent');
+    expect(teamDot('missing_in', null, 'unknown')).toBe('missing');
+    expect(teamDot('missing_out', null, 'office')).toBe('missing');
+    for (const s of ['leave', 'holiday', 'weekly_off', 'not_started', 'strike']) expect(teamDot(s, null, 'unknown')).toBeNull();
   });
 });

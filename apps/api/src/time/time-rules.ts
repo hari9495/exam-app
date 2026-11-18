@@ -321,3 +321,14 @@ export function dayPlace(places: readonly WorkPlace[], rule: DayPlaceRule): Work
   const wins = rule === 'office_wins' ? 'office' : 'remote';
   return known.includes(wins) ? wins : known[0]!;
 }
+
+/** Batch C item 15: a team calendar dot. Leave, holidays and weekly offs already show as chips and shading; no dot. */
+export type TeamDot = 'present' | 'late' | 'remote' | 'half_day' | 'absent' | 'missing';
+export function teamDot(status: string, lateMinutes: number | null, place: WorkPlace): TeamDot | null {
+  if (status === 'absent') return 'absent';
+  if (status === 'missing_in' || status === 'missing_out') return 'missing';
+  if (status === 'half_day') return 'half_day';
+  if (status !== 'present') return null;
+  if ((lateMinutes ?? 0) > 0) return 'late';
+  return place === 'remote' ? 'remote' : 'present';
+}

@@ -291,6 +291,21 @@ describe('Time and leave batch 1', () => {
       const muster = async (who: Who) => ((await api(who, 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body.people as { id: string }[]).map((p) => p.id).sort();
       expect(await muster('emp')).toEqual([ids.empEmp]);
       expect(await muster('mgr')).toEqual([ids.empEmp, ids.mgrEmp, ids.peerEmp].sort());
+      // Batch C item 15 (answer 2509): attendance dots only for the viewer's own reporting line, up to today.
+      const day = new Date(Date.now()).toISOString().slice(0, 10);
+      const at = new Date(`${day}T00:00:00Z`);
+      await inA((tx) => tx.attendanceDay.upsert({ where: { organizationId_employeeId_workOn: { organizationId: org.A.id, employeeId: ids.empEmp!, workOn: at } }, create: { organizationId: org.A.id, employeeId: ids.empEmp!, workOn: at, mode: 'punch', status: 'present', lateMinutes: 15, workedMinutes: 480 }, update: { status: 'present', lateMinutes: 15 } }));
+      type Row = { id: string; attendance?: { on: string; dot: string }[] };
+      const rows = async (who: Who) => (await api(who, 'get', `/time/team/calendar?from=${day}&to=${d(30)}`).expect(200)).body.people as Row[];
+      const mgrRows = await rows('mgr');
+      expect(mgrRows.find((r) => r.id === ids.empEmp)?.attendance).toEqual([{ on: day, dot: 'late' }]);
+      // Their own row and a peer outside their line: no dots.
+      expect(mgrRows.find((r) => r.id === ids.mgrEmp)?.attendance).toBeUndefined();
+      // HR with leave.view company-wide sees the people but no dots (not their team); the employee sees none either.
+      expect((await rows('hrExec')).find((r) => r.id === ids.empEmp)?.attendance).toBeUndefined();
+      expect((await rows('emp')).every((r) => r.attendance === undefined)).toBe(true);
+      // Another company never sees A's people.
+      expect((await rows('empB')).some((r) => r.id === ids.empEmp)).toBe(false);
     });
 
     it('a medical reason is Special: never to the manager or the approval card; HR with leave.medical.view reads it, audited', async () => {

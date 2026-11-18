@@ -1792,9 +1792,70 @@ export interface DayCardScreenProps {
   person?: string;
   /** WithNote: a note kept with the day's first punch, shown under it in the punch list. */
   punchNote?: string;
+  /** Batch C item 15: the designed day card with a real person's month and day (a manager from the team calendar). */
+  live?: LiveDayCardScreen;
 }
 
-export function DayCardScreen({ persona = 'emp', day = 22, person, punchNote }: DayCardScreenProps) {
+/** TIM-03 live: one person's day, opened from the team calendar's dot. The server checks the manager's scope (404 otherwise). */
+export interface LiveDayCardScreen {
+  state: LoadState;
+  onRetry?: () => void;
+  data: PersonAttendance | null;
+  /** The day open ("2026-11-12"). */
+  on: string;
+  /** Another day of the month (its cell clicked). */
+  onDay: (on: string) => void;
+  onOpenDay: (on: string) => Promise<DayCard>;
+  /** Closing the card goes back where it was opened from. */
+  backHref: string;
+  backLabel: string;
+  onClose: () => void;
+}
+
+export function DayCardScreen(props: DayCardScreenProps) {
+  return props.live ? <LiveDayCard live={props.live} /> : <SampleDayCard {...props} />;
+}
+
+function LiveDayCard({ live }: { live: LiveDayCardScreen }) {
+  const d = live.data;
+  const month = live.on.slice(0, 7);
+  const pending = new Set((d?.requests ?? []).filter((r) => r.kind !== 'wfh').map((r) => r.on));
+  const days = d ? liveMonth(month, d.days, d.today, pending) : [];
+  const open = days.find((x) => isoOf(x.date) === live.on) ?? null;
+  const who = d?.employee.name ?? '';
+  const narrow = useNarrow();
+  return (
+    <TimePage active="Leave calendar">
+      <PageHeader
+        title={d ? `${who} · ${monthLong(month)}` : 'Day card'}
+        description={d ? [d.employee.role, d.employee.location].filter(Boolean).join(' · ') : undefined}
+        actions={<Button asChild><a href={live.backHref}>{live.backLabel}</a></Button>}
+      />
+      <LiveStates state={live.state} onRetry={live.onRetry} what={`${who || 'this person'}'s day`}>
+        {d && <AttendanceMonth month={isoDay(`${month}-01`)} days={days} compact={narrow} selected={open?.date} onDayClick={(x) => live.onDay(isoOf(x.date))} />}
+      </LiveStates>
+      <Drawer open={!!open && !!d} onOpenChange={(o) => !o && live.onClose()} title={open ? <DayDate date={open.date} /> : ''} subtitle={`${who} · reports to you`} size="lg">
+        {open && d && (
+          <DayPanel
+            key={live.on}
+            live={{
+              load: () => live.onOpenDay(live.on),
+              day: open,
+              viewer: 'mgr',
+              person: who,
+              employeeId: d.employee.id,
+              approver: 'you',
+              monthDays: days,
+              fallbackShift: d.shift.start !== null && d.shift.end !== null ? { name: d.shift.name ?? 'Shift', start: hm(d.shift.start), end: hm(d.shift.end), graceMin: 0 } : { name: 'No shift', start: '00:00', end: '00:00', graceMin: 0 },
+            }}
+          />
+        )}
+      </Drawer>
+    </TimePage>
+  );
+}
+
+function SampleDayCard({ persona = 'emp', day = 22, person, punchNote }: DayCardScreenProps) {
   const who = person ?? (persona === 'mgr' ? 'Meera Krishnan' : ME.name);
   const days = monthFor(who);
   const d = days[day - 1];

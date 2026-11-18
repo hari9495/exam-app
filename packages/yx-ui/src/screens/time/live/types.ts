@@ -302,7 +302,7 @@ export interface TeamCalendar {
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; me: boolean; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[] }[];
+  people: { id: string; name: string; code: string | null; me: boolean; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[]; attendance?: { on: string; dot: 'present' | 'late' | 'remote' | 'half_day' | 'absent' | 'missing' }[] }[];
 }
 
 export interface Muster {

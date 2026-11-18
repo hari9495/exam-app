@@ -27332,5 +27332,26 @@
                               "Forms · Segment, vertical"
                     ],
                     "note": "Positive and negative (kit inbox.test.tsx: desk columns, kind filter, decide in the pane, 1440 desk vs 1439 drawer). Measured headless at 1440 x 900: columns 176/480/384 px with 16 px gaps, no overflow; 1278 x 635 inbox, everyone, bulk dialog and reassign drawer: no page scroll, no touching blocks."
+          },
+          {
+                    "id": "MT-C15-TEAM-DOTS",
+                    "area": "Batch C item 15: team calendar dots and legend; the day card live (answer 2509, 18 Nov 2026)",
+                    "screen": "Time › Leave calendar (TIM-20) and the day card (TIM-03)",
+                    "url": "http://localhost:3000/yx/time/team",
+                    "account": "Manager panel@demo-org.test (Divya, 7 reports); HR hr-tester@demo-org.test; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As Divya: open Time › Leave calendar (People × days).",
+                              "Point at a dot, then click a dot of one of her reports.",
+                              "In the day card, click another day of the month, then close the card.",
+                              "As HR: open Time › Leave calendar.",
+                              "As Divya: open /yx/time/team/day?person=<an employee id outside her team>&on=<a past date>.",
+                              "As Arjun: open Time › Leave calendar if shown."
+                    ],
+                    "expected": "Step 1: each report's worked days up to today show a dot: Present (filled green), Late (ring), Worked from home (square), Half day (half filled), Absent (filled red), Missing punch (dashed ring); leave stays a chip; the legend lists only the kinds on screen; her own row has no dots. No page scroll at 1278 x 635. Step 2: the tooltip names the person, date and kind; the dot looks clickable (hover border, pointer, focus ring) and opens the designed day card: her month with that day open in the drawer (punches, shift, late marks). Step 3: the drawer shows that day; closing goes back to the leave calendar. Step 4: people and leave as before, no dots (answer 2509: peers and HR come with C2). Step 5: no access, nothing about the person. Step 6: no dots.",
+                    "stories": [
+                              "Screens/Time/TIM-20 · Team leave calendar · Manager · people × days, with attendance dots and legend",
+                              "Screens/Time/TIM-03 · Day card"
+                    ],
+                    "note": "Positive and negative (kit leave-live.test.tsx: legend, dot opens the card, non-team none, dots-only shows the grid; attendance-live.test.tsx: DayCardScreen live and 404; API time-rules.spec teamDot; time-leave.e2e: manager sees dots for the report only, not own row, HR none, employee none, other company none). DayCardScreen left the design-live-guard known list."
           }
 ]
