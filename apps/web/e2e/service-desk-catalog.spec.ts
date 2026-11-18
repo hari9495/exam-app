@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { approveRequest } from './fixtures/approvals';
 import { signIn } from './fixtures/sign-in';
 
 // M14 Service Desk, phase 3b-2 batch 1 (SD-2.03 … SD-2.05). Main flow on the seeded Kaveri Foods demo: Arjun orders a
@@ -16,15 +17,10 @@ async function choose(page: Page, scope: ReturnType<Page['getByRole']>, combobox
 }
 
 async function approveIn(page: Page, title: RegExp) {
-  await page.goto('/yx/approvals');
-  const cards = page.locator('section').filter({ has: page.getByRole('heading', { name: title }) });
-  await expect(cards.first()).toBeVisible();
-  const before = await cards.count();
-  // Approvers see the summary the request gives them (the newest request is last).
-  const card = cards.last();
-  await expect(card.getByText('Cost centre that pays')).toBeVisible();
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(cards).toHaveCount(before - 1);
+  // Approvers see the summary the request gives them in the open request (Approvals is a table).
+  await approveRequest(page, title, async (open) => {
+    await expect(open).toContainText('Cost centre that pays');
+  });
 }
 
 test('order a New laptop → manager approves → cost-centre owner approves → tasks for IT and Admin', async ({ browser }) => {
@@ -71,8 +67,10 @@ test('order a New laptop → manager approves → cost-centre owner approves →
   await approveIn(owner, /New laptop for Arjun Kulkarni/);
 
   // 4. Arjun's request now waits on the IT team and the Admin team, each with its own task.
-  await follow.click();
-  await expect(arjun.getByRole('heading', { name: 'What you ordered' })).toBeVisible();
+  // The "Follow" link went with the order's confirmation; the request is in his tickets.
+  await arjun.goto('/yx/desk/help');
+  await arjun.getByRole('list', { name: 'My tickets' }).getByRole('listitem').filter({ hasText: number }).getByRole('link').click();
+  await expect(arjun.getByRole('heading', { name: 'What you ordered' })).toBeVisible({ timeout: 30_000 });
   await expect(arjun.getByText(/Prepare and set up the laptop: to do/)).toBeVisible();
   await expect(arjun.getByText(/Deliver the laptop and collect the old one: to do/)).toBeVisible();
   await expect(arjun.getByRole('list', { name: 'Stages of New laptop' }).getByText('Being done')).toBeVisible();
