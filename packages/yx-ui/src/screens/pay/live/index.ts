@@ -102,5 +102,7 @@ export { StatutoryHubScreen, RegistersScreen, Form16BulkScreen, RulesBrowserScre
 export type { LiveStatutoryHub, LiveRegisters, LiveForm16, LiveRules, LiveConsultantTds, LiveTdsReturns, LiveChallanSheet, SectionChallan, CertificateImport, LiveMissingIds, CorrectionInput } from '../../ops/compliance-live';
 // Settings 4.11 Benefits & FBP (B8/E5): the designed page with the company's flexible components, and the component sheet.
 export { FlexComponentSheet, fbpSettingsChanges, fbpSettingsPage, type FbpSettingsData, type FlexComponentInput, type FlexComponentView } from '../../settings/benefits-live';
+// Payroll budget (founder decision 21 Oct 2026): the monthly budget behind the finance Home's "Payroll cost vs budget".
+export { PayrollBudgetScreen, type PayrollBudgetScreenProps, type PayrollBudget, type BudgetMonth } from '../budget';
 // PAY-59 My flexible benefits and PAY-60 Flexible benefit settlement (answer 2455): designed screens with `live`.
 export { MyFlexBenefitsScreen, FlexSettlementScreen, FlexLedgerTable, type LiveMyFlexBenefits, type LiveFlexSettlement, type FlexLedgerView, type FlexLedgerRowView, type FlexOverview, type FlexSettlementPerson, type FlexSettleResult } from '../flex-benefits';
