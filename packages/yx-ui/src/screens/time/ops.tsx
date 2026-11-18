@@ -515,25 +515,37 @@ function weekData(o: number, storyStatus: TimesheetStatus): WeekData {
 const addWeeks = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * n);
 /** "6 Sep 2026": the house date, always with the year. */
 const dayMonth = formatDate;
+/**
+ * TIM-15 "Copy last week" (answer 2533): fills only this week's empty cells, only on the `open` days (working days up to
+ * today, not locked), from last week's hours of the same project and task; a project not in `allowed` (no longer
+ * allocated) is skipped. Daily notes are never copied. Returns the new lines and the days that changed.
+ */
+export function copyWeekInto(lines: TimesheetLine[], from: TimesheetLine[], open: number[], allowed: (projectId: string | null) => boolean = () => true): [TimesheetLine[], number[]] {
+  const changed = new Set<number>();
+  const fill = (hours: (number | null)[], src: (number | null)[]) =>
+    hours.map((h, i) => {
+      if (h != null || src[i] == null || !src[i] || !open.includes(i)) return h;
+      changed.add(i);
+      return src[i];
+    });
+  const usable = from.filter((x) => x.projectId && allowed(x.projectId));
+  const out = lines.map((l) => {
+    const src = usable.find((x) => x.projectId === l.projectId && x.taskId === l.taskId);
+    return src ? { ...l, hours: fill(l.hours, src.hours) } : l;
+  });
+  usable
+    .filter((x) => !lines.some((l) => l.projectId === x.projectId && l.taskId === x.taskId))
+    .forEach((x) => {
+      const hours = fill(Array(7).fill(null), x.hours);
+      if (hours.some((h) => h != null)) out.push({ ...x, id: `cp-${x.id}`, hours, comments: Array(7).fill('') });
+    });
+  return [out, [...changed].sort()];
+}
+
 /** Fills this week's empty cells before `LOCK_FROM` from last week's hours. Returns the new lines and the days that changed. */
 function copyLastWeek(lines: TimesheetLine[]): [TimesheetLine[], number[]] {
   const open = TS_DAYS.map((_, i) => i).filter((i) => new Date(THIS_MONDAY.getFullYear(), THIS_MONDAY.getMonth(), THIS_MONDAY.getDate() + i) < LOCK_FROM && TS_DAYS[i].expected > 0);
-  const changed = new Set<number>();
-  const fill = (hours: (number | null)[], from: (number | null)[]) =>
-    hours.map((h, i) => {
-      if (h != null || from[i] == null || !open.includes(i)) return h;
-      changed.add(i);
-      return from[i];
-    });
-  const out = lines.map((l) => {
-    const src = LAST_LINES.find((x) => x.projectId === l.projectId && x.taskId === l.taskId);
-    return src ? { ...l, hours: fill(l.hours, src.hours) } : l;
-  });
-  LAST_LINES.filter((x) => !lines.some((l) => l.projectId === x.projectId && l.taskId === x.taskId)).forEach((x) => {
-    const hours = fill(Array(7).fill(null), x.hours);
-    if (hours.some((h) => h != null)) out.push({ ...x, id: `cp-${x.id}`, hours });
-  });
-  return [out, [...changed].sort()];
+  return copyWeekInto(lines, LAST_LINES, open);
 }
 
 /* ---------- live: /time/timesheet (TIM-15) ---------- */
@@ -554,6 +566,8 @@ export interface LiveTimesheet {
   prefill?: LivePrefill;
   /** Keka ideas (2026-11): the Time summary view (GET /time/me/timesheet/summary). */
   summary?: { state: LoadState; data: { year: number; years: number[]; weeks: TimeSummaryWeek[] } | null; onYear: (year: number) => void };
+  /** Batch D A3: last week's sheet, loaded while this week is shown (for "Copy last week"). */
+  lastWeek?: MyTimesheet | null;
 }
 const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
 const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
@@ -585,6 +599,22 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
     setProblems([]);
     live.onWeek(week);
   };
+  // Batch D A3 (answer 2533): as drawn, into this week's empty cells, working days up to today, still-allocated projects.
+  const copyLast = () => {
+    if (!d || !live.lastWeek) return;
+    const from: TimesheetLine[] = live.lastWeek.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)) }));
+    const open = d.days.map((x, i) => (!x.holiday && x.leave !== 'full' && !x.locked && x.on <= live.today ? i : -1)).filter((i) => i >= 0);
+    const active = new Set(d.projects.filter((x) => x.active).map((x) => x.id));
+    const [ls, changed] = copyWeekInto(lines, from, open, (pid) => active.has(pid ?? ''));
+    setLines(ls);
+    const after = isoPlus(live.today, 1);
+    toast({
+      tone: changed.length ? 'success' : 'default',
+      title: changed.length
+        ? `Copied ${changed.map((i) => isoDate(d.days[i]!.on)).join(', ')} from ${weekRange(live.lastWeek.week)} into empty cells.${after <= isoPlus(d.week, 6) ? ` Days from ${isoDate(after)} fill in on the day.` : ''} Save the draft to keep them.`
+        : 'Nothing to copy: the open days already have hours, or last week has none for your current projects.',
+    });
+  };
   const send = () => {
     const p = checkTimesheet(lines, 24, noteRule).map((x) => x.message);
     setProblems(p);
@@ -615,6 +645,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             // At this week the arrow stays and says why.
             onNextWeek={() => (d.week >= thisWeek ? toast({ title: 'Next week opens on Monday.' }) : go(isoPlus(d.week, 7)))}
             onThisWeek={d.week < isoPlus(thisWeek, -7) ? () => go(thisWeek) : undefined}
+            onCopyLastWeek={editable && d.week === thisWeek && live.lastWeek ? copyLast : undefined}
             onSaveDraft={editable ? () => void run('save', async () => { await live.onSave(d.week, input()); toast({ tone: 'success', title: `Draft saved for ${weekRange(d.week)}.` }); }) : undefined}
             saving={busy === 'save'}
             today={localDay(live.today)}

@@ -27430,5 +27430,25 @@
                               "Screens/People/PPL-29 · Letter templates · Live"
                     ],
                     "note": "Positive and negative (API hiring-hir09.e2e: issued P05 letter with every field and the entity signatory, missing signatory / field refused with nothing issued, employee 403, no offer-pay key 403, other company 404, public letter by link only, verify page, wrong code 401 and expired code 401 with nothing saved, code single use, decline path, a failed email keeps the same letter number, audit letter.requested / letter.issued / offer.sent / offer.accepted / offer.declined; hir28 / offer-letters / lifecycle-6b / 6e / careers e2e; kit t9-09-live and hiring-live; web yx-careers-public). Letters of candidates are not in People › Letters (they are on the offer). The template's 'needs approval' is not asked for offers (the offer route is the approval)."
+          },
+          {
+                    "id": "MT-D-A3-COPY-LAST-WEEK",
+                    "area": "Batch D A3: copy last week on My timesheet (answer 2533, 18 Nov 2026)",
+                    "screen": "Time › My timesheet (TIM-15), Week tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "An employee allocated to a project with a timesheet last week (for example arjun@demo-org.test).",
+                    "steps": [
+                              "Open My timesheet on this week, with some hours already typed on Monday and an empty Tuesday up to today.",
+                              "Press Copy last week.",
+                              "Look at the days after today, a holiday or leave day, and any project you are no longer allocated to.",
+                              "Look at the daily notes of the copied days.",
+                              "Press Save draft and reload.",
+                              "Negative: go to last week (Previous week), and to a week already sent for approval."
+                    ],
+                    "expected": "Step 2: 5-second toast 'Copied <days> from <last week> into empty cells. Days from <tomorrow> fill in on the day. Save the draft to keep them.' Only empty cells up to today are filled; hours you typed stay. Step 3: future days, holidays, leave days, locked days and projects you are no longer on stay empty. Step 4: notes are not copied (each day still needs its own note if the company asks for one). Step 5: the copied hours stay. Step 6: no Copy last week button on another week or on a sent week. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · My timesheet"
+                    ],
+                    "note": "Positive and negative (kit ops-live.test: only empty cells, open days up to today, current projects only, notes not copied, no button on another week / a sent week / before last week loads). The live page loads last week's sheet while this week is shown; no API change."
           }
 ]

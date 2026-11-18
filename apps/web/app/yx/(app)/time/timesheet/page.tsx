@@ -10,6 +10,9 @@ export default function YxTimesheetPage() {
   const today = todayIndia();
   const [week, setWeek] = useState(mondayOf(today));
   const sheet = useTime<MyTimesheet>(`/me/timesheet?week=${week}`);
+  // Batch D A3: last week's sheet while this week is shown, for "Copy last week".
+  const thisWeek = mondayOf(today);
+  const lastWeek = useTime<MyTimesheet>(week === thisWeek ? `/me/timesheet?week=${mondayOf(new Date(Date.parse(`${thisWeek}T00:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10))}` : null);
   // Keka ideas: the Time summary of a year (my own weeks).
   const [year, setYear] = useState(Number(today.slice(0, 4)));
   const summary = useTime<{ year: number; years: number[]; weeks: TimeSummaryWeek[] }>(`/me/timesheet/summary?year=${year}`);
@@ -31,6 +34,7 @@ export default function YxTimesheetPage() {
         data: sheet.data ?? null,
         week,
         today,
+        lastWeek: lastWeek.data ?? null,
         onWeek: setWeek,
         onSave: (w, lines) => write('/me/timesheet', 'PUT', { week: w, lines }),
         onSubmit: (w) => write('/me/timesheet/submit', 'POST', { week: w }, true, 'Week sent to the project manager'),

@@ -195,6 +195,44 @@ describe('My timesheet (TIM-15 live)', () => {
     expect(live.onWeek).toHaveBeenCalledWith('2026-10-19');
   });
 
+  it('A3 copy last week (answer 2533): only empty cells, only open days up to today, only current projects; notes never copied', async () => {
+    const data: MyTimesheet = { ...MY_TIMESHEET, lines: [{ id: 'tl1', projectId: 'pr1', activity: 'Documentation', billable: false, minutes: [240, 0, 0, 0, 0, 0, 0], comments: ['Mon note', '', '', '', '', '', ''] }] };
+    const lastWeek: MyTimesheet = {
+      ...MY_TIMESHEET,
+      week: '2026-10-19',
+      lines: [
+        { id: 'l1', projectId: 'pr1', activity: 'Documentation', billable: false, minutes: [480, 480, 480, 480, 480, 0, 0], comments: ['old', 'old', 'old', 'old', 'old', '', ''] },
+        { id: 'l2', projectId: 'pr2', activity: 'Installation', billable: true, minutes: [0, 0, 300, 0, 0, 0, 0] },
+        { id: 'l3', projectId: 'gone', activity: 'Old work', billable: true, minutes: [480, 480, 480, 0, 0, 0, 0] },
+      ],
+    };
+    const live = sheet(data, { lastWeek });
+    render(<TimesheetScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Copy last week' }));
+    expect((await screen.findAllByText(/^Copied 27 Oct 2026, 28 Oct 2026 from 19 Oct 2026 – 25 Oct 2026 into empty cells\. Days from 29 Oct 2026 fill in on the day\./))[0]).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(live.onSave).toHaveBeenCalled());
+    const saved = (live.onSave as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { projectId: string; minutes: number[]; comments: string[] }[];
+    expect(saved.map((l) => [l.projectId, l.minutes])).toEqual([
+      ['pr1', [240, 480, 480, 0, 0, 0, 0]],
+      ['pr2', [0, 0, 300, 0, 0, 0, 0]],
+    ]);
+    expect(saved[0]!.comments).toEqual(['Mon note', '', '', '', '', '', '']);
+    expect(saved[1]!.comments.every((c) => c === '')).toBe(true);
+  });
+
+  it('negative: no copy button on another week, on a sent week, or before last week has loaded', async () => {
+    const lastWeek = { ...MY_TIMESHEET, week: '2026-10-19' };
+    const a = render(<TimesheetScreen live={sheet({ ...MY_TIMESHEET, week: '2026-10-19' }, { lastWeek })} />);
+    expect(screen.queryByRole('button', { name: 'Copy last week' })).toBeNull();
+    a.unmount();
+    const b = render(<TimesheetScreen live={sheet({ ...MY_TIMESHEET, sheet: { id: 'ts1', status: 'pending', totalMinutes: 1200 } }, { lastWeek })} />);
+    expect(screen.queryByRole('button', { name: 'Copy last week' })).toBeNull();
+    b.unmount();
+    render(<TimesheetScreen live={sheet(MY_TIMESHEET)} />);
+    expect(screen.queryByRole('button', { name: 'Copy last week' })).toBeNull();
+  });
+
   it('a sent week can be recalled, and locked days are named', async () => {
     const data: MyTimesheet = { ...MY_TIMESHEET, sheet: { id: 'ts1', status: 'pending', totalMinutes: 1200 }, days: MY_TIMESHEET.days.map((x, i) => ({ ...x, locked: i < 2 })) };
     const live = sheet(data);
