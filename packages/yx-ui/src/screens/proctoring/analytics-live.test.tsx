@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { HiringDashboardScreen, type LiveHiringDashboard } from './analytics-live';
 
 const live = (over: Partial<LiveHiringDashboard> = {}): LiveHiringDashboard => ({
@@ -29,5 +29,30 @@ describe('Hiring dashboard (ANL-02 Recruiter, answer 2432)', () => {
     expect(screen.queryByText(/Cost per hire/)).toBeNull();
     expect(screen.getByText('No hires in the last 90 days')).toBeTruthy();
     expect(screen.getByText('No offers answered in the last 90 days')).toBeTruthy();
+  });
+});
+
+describe('ANL-08 Schedules, live: the weekly hiring digest (answer 2428)', () => {
+  const people = [{ id: 'u1', name: 'Meera Iyer' }, { id: 'u2', name: 'Suresh Pillai' }];
+  it('lists the digest with its recipients; turning it on without recipients is refused in the dialog, then saved', async () => {
+    const { SchedulesScreen } = await import('./analytics');
+    const { ToastProvider } = await import('../../components/notify');
+    const userEvent = (await import('@testing-library/user-event')).default;
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ToastProvider>
+        <SchedulesScreen live={{ state: 'ready', onRetry: () => undefined, digest: { enabled: false, recipientIds: [], lastSentAt: null }, people, onSave }} />
+      </ToastProvider>,
+    );
+    expect(screen.getByText('No one yet')).toBeTruthy();
+    expect(screen.getByText('Off')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    await userEvent.click(screen.getByRole('switch', { name: /Send the weekly digest/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText('Choose at least one person to send it to.')).toBeTruthy();
+    await userEvent.click(screen.getByRole('switch', { name: /Send the weekly digest/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Save schedule' }));
+    expect(onSave).toHaveBeenCalledWith({ enabled: false, recipientIds: [] });
   });
 });

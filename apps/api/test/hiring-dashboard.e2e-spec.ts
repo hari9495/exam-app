@@ -20,6 +20,7 @@ describe('Hiring dashboard figures (ANL-02)', () => {
   const org: Record<string, string> = {};
   let planId = '';
   const api = (who: string, path: string) => request(app.getHttpServer()).get(`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const patch = (who: string, path: string) => request(app.getHttpServer()).patch(`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const at = <T>(k: string, fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org[k]!, isSuperAdmin: false }, fn);
 
   beforeAll(async () => {
@@ -56,5 +57,20 @@ describe('Hiring dashboard figures (ANL-02)', () => {
   it('negative: refused without results:view; a bad date is a 400', async () => {
     await api('plainA', '/analytics/hiring').expect(403);
     await api('adminA', '/analytics/hiring?from=not-a-date').expect(400);
+  });
+
+  // Answer 2428 (ANL-08 Report schedules): the weekly hiring digest settings, with when it last went out.
+  it('the digest: the company admin reads it (never sent yet) and turns it on for a colleague', async () => {
+    expect((await api('adminA', '/organizations/scheduled-report-settings').expect(200)).body).toEqual({ enabled: false, recipientUserIds: [], lastSentAt: null });
+    expect((await patch('adminA', '/organizations/scheduled-report-settings').send({ enabled: true, recipientUserIds: [users.plainA] }).expect(200)).body).toEqual({ enabled: true, recipientUserIds: [users.plainA] });
+    expect((await api('adminA', '/organizations/scheduled-report-settings').expect(200)).body).toMatchObject({ enabled: true, recipientUserIds: [users.plainA] });
+  });
+
+  it('negative: no recipients, another company’s person, or no settings key are refused; B never sees A’s digest', async () => {
+    await patch('adminA', '/organizations/scheduled-report-settings').send({ enabled: true, recipientUserIds: [] }).expect(400);
+    await patch('adminA', '/organizations/scheduled-report-settings').send({ enabled: true, recipientUserIds: [users.adminB] }).expect(400);
+    await api('plainA', '/organizations/scheduled-report-settings').expect(403);
+    await patch('plainA', '/organizations/scheduled-report-settings').send({ enabled: false }).expect(403);
+    expect((await api('adminB', '/organizations/scheduled-report-settings').expect(200)).body).toMatchObject({ enabled: false, recipientUserIds: [] });
   });
 });

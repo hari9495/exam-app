@@ -184,8 +184,6 @@
     "proctoring: ProctoringSettingsScreen",
     "proctoring: ReportBuilderScreen",
     "proctoring: ReportLibraryScreen",
-    "proctoring: RoleDashboardScreen",
-    "proctoring: SchedulesScreen",
     "proctoring: SlotCalendarScreen",
     "proctoring: TestCentresScreen",
     "settings: AccessDeniedState",

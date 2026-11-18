@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { NoAccessState } from '@yukthix/ui';
-import { HiringDashboardScreen, type HiringPeriod, type LiveHiringDashboard } from '@yukthix/ui/assessments';
+import { RoleDashboardScreen, type HiringPeriod, type LiveHiringDashboard } from '@yukthix/ui/assessments';
 import { useApi, useHiring } from '../../../../../lib/yx-hiring';
 import { quarterOf, quarterSpend, type ApiCost } from '../../../../../lib/yx-hiring-costs';
 import { useYxPermissions } from '../../../../../lib/yx-org';
@@ -11,6 +12,7 @@ import { useYxPermissions } from '../../../../../lib/yx-org';
 // /v2 recruiting overview and hiring analytics. The API checks results:view; cost per hire only with the costs key.
 type Overview = { from: string; to: string; hires: number };
 export default function YxHiringDashboardPage() {
+  const router = useRouter();
   const [period, setPeriod] = useState<HiringPeriod>('90');
   const perms = useYxPermissions();
   const reader = perms.has('results:view' as never);
@@ -22,7 +24,7 @@ export default function YxHiringDashboardPage() {
   if (perms.isSuccess && !reader) return <NoAccessState grantedBy="HR" what="the hiring dashboard" />;
   const months = overview.data ? quarterOf(overview.data.from, overview.data.to).months : [];
   return (
-    <HiringDashboardScreen
+    <RoleDashboardScreen
       live={{
         state: data.isError ? 'error' : data.data ? 'ready' : 'loading',
         onRetry: () => void data.refetch(),
@@ -30,6 +32,7 @@ export default function YxHiringDashboardPage() {
         onPeriod: setPeriod,
         data: data.data ?? null,
         costPerHire: costsKey ? (overview.data && costs.data ? { spend: quarterSpend(costs.data, months), hires: overview.data.hires } : null) : undefined,
+        onSchedule: perms.has('org:manage_settings' as never) ? () => router.push('/yx/hiring/schedules') : undefined,
         links: { jobs: '/yx/hiring/jobs', candidates: '/yx/hiring/candidates', ...(costsKey ? { costs: '/yx/hiring/costs' } : {}) },
       }}
     />

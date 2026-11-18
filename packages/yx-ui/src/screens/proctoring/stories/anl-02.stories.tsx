@@ -24,7 +24,7 @@ export const Loading: S = { args: { loading: true } };
 export const ManagerPhone: S = { name: 'Manager cards · phone (wave 6)', args: { role: 'manager' }, globals: { viewport: { value: 'mobile2', isRotated: false } } };
 
 // Answer 2432: the Recruiter dashboard, live (Hire › Dashboard).
-import { HiringDashboardScreen, type LiveHiringDashboard } from '../analytics-live';
+import { type LiveHiringDashboard } from '../analytics-live';
 const hiring = (over: Partial<LiveHiringDashboard> = {}): LiveHiringDashboard => ({
   state: 'ready',
   onRetry: () => undefined,
@@ -35,8 +35,8 @@ const hiring = (over: Partial<LiveHiringDashboard> = {}): LiveHiringDashboard =>
   links: { jobs: '#jobs', candidates: '#candidates', costs: '#costs' },
   ...over,
 });
-export const LiveHiring: S = { name: 'Live · Hiring dashboard', render: () => <HiringDashboardScreen live={hiring()} /> };
-export const LiveHiringNoCosts: S = { name: 'Live · Hiring dashboard without the costs key', render: () => <HiringDashboardScreen live={hiring({ costPerHire: undefined, links: { jobs: '#jobs', candidates: '#candidates' } })} /> };
-export const LiveHiringEmpty: S = { name: 'Live · Hiring dashboard, nothing yet', render: () => <HiringDashboardScreen live={hiring({ data: { openJobs: 0, timeToHire: { medianDays: null, hiredCount: 0 }, offers: { accepted: 0, declined: 0 }, funnel: [], sources: [] }, costPerHire: { spend: 0, hires: 0 } })} /> };
-export const LiveHiringLoading: S = { name: 'Live · Hiring dashboard, loading', render: () => <HiringDashboardScreen live={hiring({ state: 'loading', data: null })} /> };
-export const LiveHiringError: S = { name: 'Live · Hiring dashboard, could not load', render: () => <HiringDashboardScreen live={hiring({ state: 'error', data: null })} /> };
+export const LiveHiring: S = { name: 'Live · Hiring dashboard', render: () => <RoleDashboardScreen live={hiring()} /> };
+export const LiveHiringNoCosts: S = { name: 'Live · Hiring dashboard without the costs key', render: () => <RoleDashboardScreen live={hiring({ costPerHire: undefined, links: { jobs: '#jobs', candidates: '#candidates' } })} /> };
+export const LiveHiringEmpty: S = { name: 'Live · Hiring dashboard, nothing yet', render: () => <RoleDashboardScreen live={hiring({ data: { openJobs: 0, timeToHire: { medianDays: null, hiredCount: 0 }, offers: { accepted: 0, declined: 0 }, funnel: [], sources: [] }, costPerHire: { spend: 0, hires: 0 } })} /> };
+export const LiveHiringLoading: S = { name: 'Live · Hiring dashboard, loading', render: () => <RoleDashboardScreen live={hiring({ state: 'loading', data: null })} /> };
+export const LiveHiringError: S = { name: 'Live · Hiring dashboard, could not load', render: () => <RoleDashboardScreen live={hiring({ state: 'error', data: null })} /> };

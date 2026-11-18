@@ -991,11 +991,11 @@ export class OrganizationsService {
     return { remindersEnabled: org.remindersEnabled };
   }
 
-  async getScheduledReportSettings(context: TenantContext): Promise<{ enabled: boolean; recipientUserIds: string[] }> {
+  async getScheduledReportSettings(context: TenantContext): Promise<{ enabled: boolean; recipientUserIds: string[]; lastSentAt: Date | null }> {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { scheduledReportEnabled: true, scheduledReportRecipientsJson: true },
+      select: { scheduledReportEnabled: true, scheduledReportRecipientsJson: true, scheduledReportLastSentAt: true },
     });
     let recipientUserIds: string[] = [];
     if (org?.scheduledReportRecipientsJson) {
@@ -1006,7 +1006,8 @@ export class OrganizationsService {
         recipientUserIds = [];
       }
     }
-    return { enabled: org?.scheduledReportEnabled ?? false, recipientUserIds };
+    // Answer 2428 (ANL-08): when the digest last went out, for the Schedules list.
+    return { enabled: org?.scheduledReportEnabled ?? false, recipientUserIds, lastSentAt: org?.scheduledReportLastSentAt ?? null };
   }
 
   async updateScheduledReportSettings(
