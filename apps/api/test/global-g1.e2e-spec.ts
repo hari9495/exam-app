@@ -175,8 +175,14 @@ describe('Global core G1 (country packs, languages, translations, pay steps, Add
       expect(await rules()).toMatchObject({ paySteps: steps, payWindow: 'rolling_12_months' });
       await api('hrAdmin', 'put', `/time/setup/types/${ids.SL}`).send({ code: 'SL', name: 'Sick leave', kind: 'sick', paid: true, rules: { medical: true } }).expect(200);
       expect(await rules()).toMatchObject({ paySteps: steps, payWindow: 'rolling_12_months', medical: true });
-      await api('hrAdmin', 'put', `/time/setup/types/${ids.SL}`).send({ code: 'SL', name: 'Sick leave', kind: 'sick', paid: true, rules: { paySteps: null } }).expect(200);
-      expect((await rules()).paySteps).toBeNull();
+      // Answer 2477 (dated leave type versions): the rules changed once today, so a further change today is refused and
+      // the next one applies from tomorrow; today's leave keeps today's steps, and tomorrow's version has none.
+      await api('hrAdmin', 'put', `/time/setup/types/${ids.SL}`).send({ code: 'SL', name: 'Sick leave', kind: 'sick', paid: true, rules: { paySteps: null } }).expect(409);
+      const tomorrow = new Date(Date.now() + (5.5 + 24) * 3_600_000).toISOString().slice(0, 10);
+      await api('hrAdmin', 'put', `/time/setup/types/${ids.SL}`).send({ code: 'SL', name: 'Sick leave', kind: 'sick', paid: true, rules: { paySteps: null }, validFrom: tomorrow }).expect(200);
+      expect((await rules()).paySteps).toEqual(steps);
+      const versions = (await api('hrAdmin', 'get', '/time/setup').expect(200)).body.types.find((t: { id: string }) => t.id === ids.SL).versions as { validFrom: string; rules: { paySteps: unknown } }[];
+      expect(versions.find((v) => v.validFrom === tomorrow)?.rules.paySteps).toBeNull();
       await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'UL', name: 'Unpaid', kind: 'other', paid: false, rules: { paySteps: steps } }).expect(400);
       await api('hrAdmin', 'post', '/time/setup/types').send({ code: 'XL', name: 'X', kind: 'other', paid: true, rules: { paySteps: [{ days: 5, percent: 120 }] } }).expect(400);
     });
