@@ -406,3 +406,12 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2508: frequent breaks are a setting, default more than 3 breaks or 60+ minutes a day. Where clock-in-again is off, the report says breaks are not recorded.
 - 2509: team calendar dots are for the manager's own team now; peers come with C2 (tier 2).
 - 2510: interview hours become one setting on 6.1 plus the company holiday calendars. Before the old holiday list is dropped, every date found only in the old list is reported to the founder; none are added automatically.
+- 2511 to 2517 (18 Nov 2026, "ok for all"), retiring the /v2 console (builder 2's half):
+  - 2511: pending old approval_requests move into P03 at their current step with the same approvers; the move is re-runnable, keyed on the old id. Approved and rejected requests stay read-only.
+  - 2512: the old job open/close gate in pipeline.service is replaced by P03 'ats.requisition'; ApprovalsService.submit/decide are then dropped.
+  - 2513: drip members without talent-pool consent never move into a pool. Each drip becomes a DRAFT HIR-20 campaign (templates, pool and steps, waits = delayDays) with no members; active drip enrolments end as 'migrated'.
+  - 2514: drip stage auto-enrol is dropped and noted on the migrated draft; add it back only if asked.
+  - 2515: each offer template becomes a P05 'offer' letter template (same text, mapped fields, e-sign → "person signs"), re-runnable, and the HIR-09 builder lists them. Issuing the offer as a P05 letter with OTP e-accept is a separate next step.
+  - 2516: the order is system logs and user search, then approvals and campaigns, then offer templates.
+  - 2517: /v2/system-logs sends company admins to /yx/settings/audit-log.
+- PR #221 (test/yukthix-main → main): the founder asked whether merging affects the present code. It doesn't. The repo has no deploy workflow, hooks or environments; only CI runs.
