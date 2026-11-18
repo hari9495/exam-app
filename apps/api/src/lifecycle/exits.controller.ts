@@ -204,6 +204,13 @@ export class ExitsController {
     return this.offboarding.assets(ctx, this.user(req));
   }
 
+  /** Who an asset can be issued to: current employees, name only. IT holds asset.manage without any employee grant. */
+  @Get('assets/people')
+  @RequirePermissions('asset.manage')
+  assetPeople(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.offboarding.assetPeople(ctx, this.user(req));
+  }
+
   @Post('assets')
   @RequirePermissions('asset.manage')
   addAsset(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AssetDto) {
