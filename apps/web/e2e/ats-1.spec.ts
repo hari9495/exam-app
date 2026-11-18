@@ -12,15 +12,16 @@ test('the jobs list moved to Hiring › Jobs: redirect, create, open', async ({ 
   await page.waitForURL(/\/yx\/hiring\/jobs$/, { timeout: 30_000 });
   await expect(page.getByRole('heading', { name: 'Jobs', level: 1 })).toBeVisible({ timeout: 30_000 });
   const title = `Stores assistant ${Date.now().toString(36)}`;
-  await page.getByRole('button', { name: 'New job' }).click();
-  const d = page.getByRole('dialog');
+  await page.getByRole('button', { name: 'Create job' }).click();
+  const d = page.getByRole('dialog', { name: 'Create job' });
   await d.getByRole('textbox', { name: /Job title/ }).fill(title);
-  await d.getByRole('button', { name: 'Create' }).click();
+  await d.getByRole('button', { name: 'Create job' }).click();
   await expect(d).toHaveCount(0, { timeout: 30_000 });
   await page.getByRole('textbox', { name: 'Search jobs' }).fill(title);
   const row = page.getByRole('row', { name: new RegExp(title) });
   await expect(row).toBeVisible({ timeout: 30_000 });
-  await row.getByRole('button', { name: 'Open' }).click();
+  await expect(row).toContainText('Open'); // a new job is open
+  await row.getByRole('cell', { name: new RegExp(title) }).click(); // the row opens the job
   await page.waitForURL(/\/yx\/hiring\/jobs\/[0-9a-f-]+$/, { timeout: 30_000 }); // AT5: the YukthiX job workspace
   await expect(page.getByText(title).first()).toBeVisible({ timeout: 30_000 });
 });
