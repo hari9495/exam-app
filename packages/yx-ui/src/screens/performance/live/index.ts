@@ -14,6 +14,7 @@ export { PerformanceHomeScreen, MyGoalsScreen, CompanyGoalMapScreen, GoalCheckIn
 export { CycleSetupScreen, CycleControlRoomScreen, ReviewWorkspaceScreen, ReviewAcknowledgeScreen } from '../../growth/perf-reviews';
 export { PERF_LINKS, checkinInput, type LiveHome, type LiveMyGoals, type LiveGoalMap } from '../../growth/perf-goals-live';
 export { GoalGapsCard, type GoalGaps, type GoalGapPerson } from '../../growth/goal-gaps';
+export { FeedbackRail, PrivateNotesDrawer, type LivePersonNotes, type PersonNote } from '../../growth/feedback-rail';
 export { scoreSoFar, type LiveCycleSetup, type LiveControlRoom, type LiveReviewWorkspace, type LiveAcknowledge, type StagePerson } from '../../growth/perf-reviews-live';
 export { toGoal, type GoalItem, type PerfHome } from '../../growth/perf-live-data';
 export { CompCyclesScreen, type CompCyclesScreenProps } from './comp';

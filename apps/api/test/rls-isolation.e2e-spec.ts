@@ -85,7 +85,9 @@ const LATER_SUPPORT_EXCLUDED = [
   'expense_cards', 'expense_card_lines', 'expense_card_mappings', 'expense_card_statements',
   'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots',
   // Batch C item 6: late-mark penalty waivers (they change pay); answer 2527: a manager's requests for them.
-  'late_mark_waivers', 'late_mark_waiver_requests'];
+  'late_mark_waivers', 'late_mark_waiver_requests',
+  // Batch F item 32: private notes about a colleague (author only, also a RESTRICTIVE author_only policy).
+  'perf_person_notes'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

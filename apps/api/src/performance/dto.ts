@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Performance batch PM1 request bodies (M06-BUILD-DESIGN §19 "Set-up").
 
@@ -408,6 +408,24 @@ export class GoalListDto {
 export class PeriodQueryDto {
   @IsUUID()
   period!: string;
+}
+
+/** Batch F item 32 (answer 2577): a private note about a colleague (1 to 1,000 characters). */
+export class PersonNoteDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1000)
+  text!: string;
+}
+
+export class NewPersonNoteDto extends PersonNoteDto {
+  @IsUUID()
+  employeeId!: string;
+}
+
+export class PersonNotesQueryDto {
+  @IsUUID()
+  employeeId!: string;
 }
 
 /** Batch F item 30: remind a person of my team to add, or to update, their goals. */

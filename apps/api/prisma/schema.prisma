@@ -10614,6 +10614,20 @@ model KeyResult {
   @@map("key_results")
 }
 
+/// Batch F item 32 (answer 2577): a private note about a colleague; the author alone sees it (RLS author_only).
+model PerfPersonNote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  authorUserId   String   @map("author_user_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  text           String   @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, authorUserId, employeeId], map: "perf_person_notes_author_idx")
+  @@map("perf_person_notes")
+}
+
 model GoalCheckin {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid

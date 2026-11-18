@@ -151,3 +151,6 @@
 @media (max-width: 767px) {
   .yx-growth-kr-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }
+/* Batch F item 32: the page with a quick-actions rail on the right (stacked below on narrow screens). */
+.yx-growth-rail { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--yx-space-16) * 4); gap: var(--yx-space-4); align-items: start; }
+@media (max-width: 1100px) { .yx-growth-rail { grid-template-columns: minmax(0, 1fr); } }
