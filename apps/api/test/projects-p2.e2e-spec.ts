@@ -347,4 +347,22 @@ describe('Projects P-2 line approvals', () => {
     await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'timesheet.reminder.cutoff_day', value: 'off' }] }).expect(want(200));
     expect(await ts.cutoffReminders(org.A.id, at(addDays(thu, 7), '10:30'))).toBe(0);
   });
+
+  it('batch D B1 / 2538: each line carries its days and its person, so the page can regroup by person; only my own lines', async () => {
+    // The manager's week from the A14 test (2 h on NRP on Wednesday), sent: NRP's lines go to PM A.
+    await api('mgr', 'post', '/time/me/timesheet/submit').send({ week }).expect(want(200));
+    type Line = { id: string; hours: number; days: number[] };
+    const items = ((await api('pmA', 'get', '/time/line-approvals').expect(want(200))).body.groups as { items: { employeeId: string; lines: Line[] }[] }[]).flatMap((g) => g.items);
+    expect(items.find((i) => i.employeeId === ids.mgrEmp)!.lines).toEqual([expect.objectContaining({ hours: 2, days: [0, 0, 2, 0, 0, 0, 0] })]);
+    const lines = items.flatMap((i) => i.lines);
+    for (const l of lines) expect(l.days.reduce((a, b) => a + b, 0)).toBeCloseTo(l.hours);
+    // Never widened: every line listed is waiting for PM A; PM B and the person see none of these.
+    const rows = await inA((tx) => tx.timesheetLine.findMany({ where: { id: { in: lines.map((l) => l.id) } } }));
+    expect(rows.length).toBe(lines.length);
+    expect(rows.every((r) => r.status === 'pending' && r.approverUserIds.includes(users.pmA!))).toBe(true);
+    const others = async (who: Who) => ((await api(who, 'get', '/time/line-approvals').expect(200)).body.groups as { items: { lines: Line[] }[] }[]).flatMap((g) => g.items.flatMap((i) => i.lines.map((l) => l.id)));
+    for (const who of ['pmB', 'mgr', 'emp'] as const) expect((await others(who)).filter((id) => lines.some((l) => l.id === id))).toEqual([]);
+    await api('acting', 'get', '/time/line-approvals').expect(403);
+  });
 });
+

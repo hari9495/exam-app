@@ -103,4 +103,39 @@ describe('PRJ-02 Timesheet approvals (live)', () => {
     await ue.click(screen.getByRole('tab', { name: 'Not sent' }));
     expect(screen.getByText('Everyone has sent their weeks.')).toBeInTheDocument();
   });
+
+  // Batch D B1 (answer 2538): By person only regroups the lines already waiting for me; the week opens into days and tasks.
+  it('By person regroups the same lines (never more); bulk and decisions still go line by line', async () => {
+    const l = live();
+    show(<TimesheetApprovalsScreen live={l} />);
+    const cards = () => screen.getAllByRole('article').map((a) => a.getAttribute('aria-label')).sort();
+    const before = cards();
+    await ue.click(screen.getByRole('radio', { name: 'By person' }));
+    expect(cards()).toEqual(before);
+    const priya = screen.getByRole('region', { name: /^Priya Nair, Week of 2 Nov 2026/ });
+    expect(within(priya).getAllByRole('article')).toHaveLength(1);
+    expect(screen.getByRole('region', { name: /^Priya Nair, Week of 26 Oct 2026/ })).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: /^NRP-WEB/ })).toBeNull();
+    expect(within(priya).getByText('NRP-WEB · allocated 40 h a week')).toBeInTheDocument();
+    expect(screen.getByText(/Booked outside Meera Iyer's allocation on NRP-WEB/)).toBeInTheDocument();
+    await ue.click(within(priya).getByRole('button', { name: 'Approve 1 within allocation' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Approve 2 lines' }));
+    expect(l.onBulk).toHaveBeenCalledWith([{ lineId: 'l1', version: 2 }, { lineId: 'l2', version: 2 }]);
+  });
+
+  it('a week opens into its days and a day into its tasks, in place', async () => {
+    show(<TimesheetApprovalsScreen live={live()} />);
+    const nrp = screen.getByRole('region', { name: /^NRP-WEB, Week of/ });
+    await ue.click(within(nrp).getByRole('button', { name: 'Week by day · 74 h' }));
+    await ue.click(within(nrp).getByRole('button', { name: 'Thu 5 Nov 2026 · 16 h' }));
+    const tasks = within(within(nrp).getByRole('list', { name: 'Tasks on Thu 5 Nov 2026' })).getAllByRole('listitem');
+    expect(tasks.map((t) => t.textContent)).toEqual(['BuildPriya Nair6 h', 'TestingPriya Nair2 h', 'BuildRohit Bhat4 h', 'TestingMeera Iyer4 h']);
+  });
+
+  it('negative: lines without days (an older reply) show no drill-down, and the cards still work', () => {
+    const data = { ...LIVE_LINE_APPROVALS, groups: LIVE_LINE_APPROVALS.groups.map((g) => ({ ...g, items: g.items.map((i) => ({ ...i, lines: i.lines.map(({ days: _d, ...x }) => x) })) })) };
+    show(<TimesheetApprovalsScreen live={live({ data })} />);
+    expect(screen.queryByRole('button', { name: /Week by day/ })).toBeNull();
+    expect(screen.getAllByRole('article').length).toBe(4);
+  });
 });

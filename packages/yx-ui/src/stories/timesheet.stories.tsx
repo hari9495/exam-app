@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { TimesheetGrid, type TimesheetDay, type TimesheetLine, type TimesheetProject, type TimesheetStatus } from '../components/timesheet';
+import { TimesheetGrid, TimesheetWeekDrill, type DrillLine, type TimesheetDay, type TimesheetLine, type TimesheetProject, type TimesheetStatus } from '../components/timesheet';
 
 const meta: Meta = { title: 'Data/Timesheet (M12)', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -144,3 +144,12 @@ export const PhoneDayList: StoryObj = {
   globals: { viewport: { value: 'mobile2', isRotated: false } },
   render: () => <Sheet layout="auto" />,
 };
+
+// Batch D B1: the approver's week → day → task drill-down (read only; deciding stays on the approval cards).
+const DRILL: DrillLine[] = [
+  { id: 'd1', label: 'ACME-WEB · Development', secondary: 'Priya Nair', days: [6, 7, 5, 8, 6, 0, 0] },
+  { id: 'd2', label: 'ACME-WEB · Testing', secondary: 'Priya Nair', days: [2, 1, 3, 0, 2, 0, 0] },
+  { id: 'd3', label: 'ACME-WEB · Development', secondary: 'Rohit Bhat', days: [8, 8, 0, 8, 8, 2, 0] },
+];
+export const DrillClosed: StoryObj = { name: 'Approver drill-down · week', render: () => <div style={{ padding: 'var(--yx-space-6)' }}><TimesheetWeekDrill weekStart={WEEK} lines={DRILL} /></div> };
+export const DrillDay: StoryObj = { name: 'Approver drill-down · day open with its tasks', render: () => <div style={{ padding: 'var(--yx-space-6)' }}><TimesheetWeekDrill weekStart={WEEK} lines={DRILL} defaultOpen defaultDays={[2]} /></div> };

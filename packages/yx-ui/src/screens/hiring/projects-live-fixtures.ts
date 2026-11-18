@@ -54,9 +54,9 @@ export const LIVE_LINE_APPROVALS: import('./projects').LiveApprovalsData = {
       week: '2026-11-02',
       clientApproval: 'Nilgiri Retail',
       items: [
-        { id: 's1:p1', timesheetId: 's1', employee: 'Priya Nair', allocationPercent: 100, allocatedHours: 40, unallocated: false, bulk: true, lines: [{ id: 'l1', task: 'Build', hours: 34, billable: true, version: 2 }, { id: 'l2', task: 'Testing', hours: 6, billable: true, version: 2 }] },
-        { id: 's2:p1', timesheetId: 's2', employee: 'Rohit Bhat', allocationPercent: 50, allocatedHours: 20, unallocated: false, bulk: false, lines: [{ id: 'l3', task: 'Build', hours: 26, billable: true, comments: ['', 'Release week', '', '', '', '', ''], version: 2 }] },
-        { id: 's3:p1', timesheetId: 's3', employee: 'Meera Iyer', allocationPercent: null, allocatedHours: 0, unallocated: true, bulk: false, lines: [{ id: 'l4', task: 'Testing', hours: 8, billable: true, version: 2 }] },
+        { id: 's1:p1', timesheetId: 's1', employeeId: 'e1', employee: 'Priya Nair', allocationPercent: 100, allocatedHours: 40, unallocated: false, bulk: true, lines: [{ id: 'l1', task: 'Build', hours: 34, billable: true, days: [8, 8, 6, 6, 6, 0, 0], version: 2 }, { id: 'l2', task: 'Testing', hours: 6, billable: true, days: [0, 0, 2, 2, 2, 0, 0], version: 2 }] },
+        { id: 's2:p1', timesheetId: 's2', employeeId: 'e2', employee: 'Rohit Bhat', allocationPercent: 50, allocatedHours: 20, unallocated: false, bulk: false, lines: [{ id: 'l3', task: 'Build', hours: 26, billable: true, comments: ['', 'Release week', '', '', '', '', ''], days: [6, 8, 4, 4, 4, 0, 0], version: 2 }] },
+        { id: 's3:p1', timesheetId: 's3', employeeId: 'e4', employee: 'Meera Iyer', allocationPercent: null, allocatedHours: 0, unallocated: true, bulk: false, lines: [{ id: 'l4', task: 'Testing', hours: 8, billable: true, days: [0, 0, 0, 4, 4, 0, 0], version: 2 }] },
       ],
     },
     {
@@ -65,7 +65,7 @@ export const LIVE_LINE_APPROVALS: import('./projects').LiveApprovalsData = {
       projectName: 'Audit readiness',
       week: '2026-10-26',
       clientApproval: null,
-      items: [{ id: 's4:p3', timesheetId: 's4', employee: 'Priya Nair', allocationPercent: 20, allocatedHours: 8, unallocated: false, bulk: true, lines: [{ id: 'l5', task: null, hours: 6, billable: false, version: 2 }] }],
+      items: [{ id: 's4:p3', timesheetId: 's4', employeeId: 'e1', employee: 'Priya Nair', allocationPercent: 20, allocatedHours: 8, unallocated: false, bulk: true, lines: [{ id: 'l5', task: null, hours: 6, billable: false, days: [2, 2, 2, 0, 0, 0, 0], version: 2 }] }],
     },
   ],
 };

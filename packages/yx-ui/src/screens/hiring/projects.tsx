@@ -11,6 +11,7 @@ import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
 import { TimesheetApprovalCard } from '../../components/notify';
+import { TimesheetWeekDrill } from '../../components/timesheet';
 import { BarChart, CapacityHeatmap, Gauge, type CapacityPerson } from '../../components/charts';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
@@ -811,7 +812,7 @@ export interface LiveApprovalsData {
     week: string;
     /** 1408: the client who approves this project's hours after the PM (null: none). */
     clientApproval: string | null;
-    items: { id: string; timesheetId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; lines: { id: string; task: string | null; hours: number; billable: boolean; /** Answer 1787: a comment per day. */ comments?: string[]; version: number }[] }[];
+    items: { id: string; timesheetId: string; /** Batch D B1: the person (By person regroups these same lines). */ employeeId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; lines: { id: string; task: string | null; hours: number; billable: boolean; /** Answer 1787: a comment per day. */ comments?: string[]; /** B1: hours Monday to Sunday. */ days?: number[]; version: number }[] }[];
   }[];
 }
 export type LiveLineDecision = { lineId: string; status: 'approved' | 'reduced' | 'rejected'; hours?: number; reason?: string; version: number };
@@ -823,6 +824,8 @@ export interface LiveTimesheetApprovals {
   onBulk: (items: { lineId: string; version: number }[]) => Promise<void>;
   /** Story: the bulk confirmation open for the first group. */
   defaultBulk?: boolean;
+  /** Story: start grouped by person (batch D B1). */
+  defaultBy?: 'project' | 'person';
   /** Batch D answer 2535: people on my projects with weeks not sent (GET /time/line-approvals/not-sent). */
   notSent?: { state: 'ready' | 'loading' | 'error'; data: { people: NotSentPerson[] } | null; onRetry?: () => void; onRemind: (employeeId: string) => Promise<void> };
 }
@@ -885,20 +888,42 @@ export interface TimesheetApprovalsProps {
   clientApproval?: boolean;
   state?: ListState;
   bulkConfirm?: boolean;
+  /** Batch D B1 (drawn): start grouped by person. */
+  by?: 'project' | 'person';
   live?: LiveTimesheetApprovals;
 }
 
-function ApprovalGroups({ groups, onBulk, done }: { groups: ApprovalGroup[]; onBulk: (ids: string[]) => void; done: string[] }) {
+/** Batch D B1: "By project" or "By person", one pick (answer 2538: the switch only regroups the lines already shown). */
+type ApprovalsBy = 'project' | 'person';
+function BySwitch({ by, onChange }: { by: ApprovalsBy; onChange: (v: ApprovalsBy) => void }) {
+  return <Segment label="Group the lines" value={by} onChange={onChange} options={[{ value: 'project', label: 'By project' }, { value: 'person', label: 'By person' }]} />;
+}
+
+/** B1: the same items keyed by project and week, or by person and week. Never adds an item (2538). */
+export function regroupApprovals<I extends { person: string; project: string; week: string }>(items: I[], by: ApprovalsBy): { key: string; title: string; week: string; items: I[] }[] {
+  const out = new Map<string, { key: string; title: string; week: string; items: I[] }>();
+  for (const i of items) {
+    const title = by === 'project' ? i.project : i.person;
+    const key = `${title}:${i.week}`;
+    if (!out.has(key)) out.set(key, { key, title, week: i.week, items: [] });
+    out.get(key)!.items.push(i);
+  }
+  return [...out.values()];
+}
+
+function ApprovalGroups({ groups, by, onBulk, done }: { groups: ApprovalGroup[]; by: ApprovalsBy; onBulk: (ids: string[]) => void; done: string[] }) {
+  const all = groups.flatMap((g) => g.items.filter((i) => !done.includes(i.id)).map((i) => ({ ...i, person: i.employee, project: g.project, week: g.week, weekStart: g.weekStart })));
   return (
     <>
-      {groups.map((g) => {
-        const items = g.items.filter((i) => !done.includes(i.id));
+      {regroupApprovals(all, by).map((g) => {
+        const items = g.items;
         const eligible = items.filter((i) => bulkEligible({ id: i.id, hours: i.lines.reduce((s, l) => s + l.hours, 0), allocatedHours: i.allocatedHours }));
+        const weekStart = items[0]?.weekStart;
         return (
-          <section key={g.project} className="yx-hire-stack" aria-label={`${g.project}, ${g.week}`}>
+          <section key={g.key} className="yx-hire-stack" aria-label={`${g.title}, ${g.week}`}>
             <div className="yx-hire-row">
               <div>
-                <Text weight="semibold">{g.project}</Text>
+                <Text weight="semibold">{g.title}</Text>
                 <Text as="div" size="sm" tone="secondary">
                   {g.week} · {items.length} waiting
                 </Text>
@@ -909,20 +934,15 @@ function ApprovalGroups({ groups, onBulk, done }: { groups: ApprovalGroup[]; onB
                 </Button>
               )}
             </div>
-            {items.length === 0 ? (
-              <Text size="sm" tone="secondary">
-                All approved for this week.
-              </Text>
-            ) : (
-              <div className="yx-hire-approvals">
-                {items.map((i) => (
-                  <div key={i.id} className="yx-hire-stack">
-                    {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
-                    <TimesheetApprovalCard employee={{ name: i.employee, secondary: `${i.role} · allocated ${i.allocatedHours} h` }} weekLabel={g.week} lines={i.lines} onApprove={() => {}} onSendBack={() => {}} />
-                  </div>
-                ))}
-              </div>
-            )}
+            {weekStart && <TimesheetWeekDrill weekStart={new Date(`${weekStart}T00:00:00`)} lines={items.flatMap((i) => i.lines.map((l) => ({ id: l.id, label: by === 'project' ? (l.task ?? 'No task') : `${l.project}${l.task ? ` · ${l.task}` : ''}`, secondary: by === 'project' ? i.employee : undefined, days: l.days ?? [] })))} />}
+            <div className="yx-hire-approvals">
+              {items.map((i) => (
+                <div key={i.id} className="yx-hire-stack">
+                  {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
+                  <TimesheetApprovalCard employee={{ name: i.employee, secondary: by === 'project' ? `${i.role} · allocated ${i.allocatedHours} h` : `${i.project.split(' · ')[0]} · allocated ${i.allocatedHours} h` }} weekLabel={g.week} lines={i.lines} onApprove={() => {}} onSendBack={() => {}} />
+                </div>
+              ))}
+            </div>
           </section>
         );
       })}
@@ -938,9 +958,10 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
   const { toast } = useToast();
   const [project, setProject] = useState<string>('all');
   const [week, setWeek] = useState<string>('all');
+  const [by, setBy] = useState<ApprovalsBy>(live.defaultBy ?? 'project');
   const [bulk, setBulk] = useState<{ key: string; items: { lineId: string; version: number }[] } | null>(() => {
     const g = live.defaultBulk ? d?.groups[0] : undefined;
-    return g ? { key: `${g.projectId}:${g.week}`, items: g.items.filter((i) => i.bulk).flatMap((i) => i.lines.map((l) => ({ lineId: l.id, version: l.version }))) } : null;
+    return g ? { key: `project:${g.projectId}:${g.week}`, items: g.items.filter((i) => i.bulk).flatMap((i) => i.lines.map((l) => ({ lineId: l.id, version: l.version }))) } : null;
   });
   const [failed, setFailed] = useState<string | null>(null);
   const act = async (fn: () => Promise<void>, done: string) => {
@@ -960,10 +981,11 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
     <ProjectsFrame active="Timesheet approvals">
       <PageHeader
         title="Timesheet approvals"
-        description="Grouped by project and week. Approve, reduce or reject lines with a reason the employee sees. Weeks within the allocation can be approved in bulk."
+        description="By project or by person, a week at a time. Open a week to see its days and tasks. Approve, reduce or reject lines with a reason the employee sees; weeks within the allocation can be approved in bulk."
         facts={
           d && d.groups.length > 0 ? (
             <div className="yx-hire-actions">
+              <BySwitch by={by} onChange={setBy} />
               <Select aria-label="Project" value={project} onChange={(v) => setProject(v ?? 'all')} options={[{ value: 'all', label: 'All my projects' }, ...projects.map(([id, code]) => ({ value: id, label: code }))]} />
               <Select aria-label="Week" value={week} onChange={(v) => setWeek(v ?? 'all')} options={[{ value: 'all', label: 'All weeks' }, ...weeks.map((w) => ({ value: w, label: weekOf(w) }))]} />
             </div>
@@ -1000,16 +1022,19 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
         ) : groups.length === 0 ? (
           <EmptyState title="You're all caught up." description="No timesheet lines are waiting for your approval." />
         ) : (
-          groups.map((g) => {
+          regroupApprovals(
+            groups.flatMap((g) => g.items.map((i) => ({ ...i, person: i.employeeId, project: g.projectId, week: g.week, code: g.project, projectName: g.projectName }))),
+            by,
+          ).map((g) => {
             const eligible = g.items.filter((i) => i.bulk);
-            const key = `${g.projectId}:${g.week}`;
+            const first = g.items[0]!;
+            const key = `${by}:${g.key}`;
+            const drill = g.items.flatMap((i) => i.lines.map((l) => ({ id: l.id, label: by === 'project' ? (l.task ?? 'No task') : `${i.code}${l.task ? ` · ${l.task}` : ''}`, secondary: by === 'project' ? i.employee : undefined, days: l.days ?? [] })));
             return (
-              <section key={key} className="yx-hire-stack" aria-label={`${g.project}, ${weekOf(g.week)}`}>
+              <section key={key} className="yx-hire-stack" aria-label={`${by === 'project' ? first.code : first.employee}, ${weekOf(g.week)}`}>
                 <div className="yx-hire-row">
                   <div>
-                    <Text weight="semibold">
-                      {g.project} · {g.projectName}
-                    </Text>
+                    <Text weight="semibold">{by === 'project' ? `${first.code} · ${first.projectName}` : first.employee}</Text>
                     <Text as="div" size="sm" tone="secondary">
                       {weekOf(g.week)} · {g.items.length} waiting
                     </Text>
@@ -1020,15 +1045,16 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
                     </Button>
                   )}
                 </div>
+                {drill.every((l) => l.days.length === 7) && <TimesheetWeekDrill weekStart={new Date(`${g.week}T00:00:00`)} lines={drill} />}
                 <div className="yx-hire-approvals">
                   {g.items.map((i) => (
                     <div key={i.id} className="yx-hire-stack">
                       {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
-                      {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation. Approve it on its own; it is never approved in bulk.</InlineAlert>}
+                      {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation{by === 'person' ? ` on ${i.code}` : ''}. Approve it on its own; it is never approved in bulk.</InlineAlert>}
                       <TimesheetApprovalCard
-                        employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
+                        employee={{ name: i.employee, secondary: `${by === 'person' ? `${i.code} · ` : ''}${i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project'}` }}
                         weekLabel={weekOf(g.week)}
-                        lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable, comments: l.comments }))}
+                        lines={i.lines.map((l) => ({ id: l.id, project: i.code, task: l.task ?? undefined, hours: l.hours, billable: l.billable, comments: l.comments }))}
                         onApprove={(decisions) =>
                           void act(
                             () => live.onDecide(i.lines.map((l) => { const x = decisions[l.id]!; return { lineId: l.id, version: l.version, status: x.status, ...(x.status === 'reduced' ? { hours: x.hours, reason: x.reason } : x.status === 'rejected' ? { reason: x.reason } : {}) }; })),
@@ -1062,22 +1088,24 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
 }
 
 // PRJ-02
-export function TimesheetApprovalsScreen({ groups = [], clientApproval = false, state = 'ready', bulkConfirm = false, notSent, live }: TimesheetApprovalsProps) {
+export function TimesheetApprovalsScreen({ groups = [], clientApproval = false, state = 'ready', bulkConfirm = false, notSent, by, live }: TimesheetApprovalsProps) {
   if (live) return <LiveTimesheetApprovalsView live={live} />;
-  return <DrawnTimesheetApprovals groups={groups} clientApproval={clientApproval} state={state} bulkConfirm={bulkConfirm} notSent={notSent} />;
+  return <DrawnTimesheetApprovals groups={groups} clientApproval={clientApproval} state={state} bulkConfirm={bulkConfirm} notSent={notSent} defaultBy={by} />;
 }
 
-function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm, notSent }: { groups: ApprovalGroup[]; clientApproval: boolean; state: ListState; bulkConfirm: boolean; notSent?: NotSentPerson[] }) {
+function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm, notSent, defaultBy = 'project' }: { groups: ApprovalGroup[]; clientApproval: boolean; state: ListState; bulkConfirm: boolean; notSent?: NotSentPerson[]; defaultBy?: ApprovalsBy }) {
   const [done, setDone] = useState<string[]>([]);
+  const [by, setBy] = useState<ApprovalsBy>(defaultBy);
   const [pending, setPending] = useState<string[] | null>(bulkConfirm ? groups[0].items.filter((i) => bulkEligible({ id: i.id, hours: i.lines.reduce((s, l) => s + l.hours, 0), allocatedHours: i.allocatedHours })).map((i) => i.id) : null);
   const total = groups.reduce((s, g) => s + g.items.length, 0) - done.length;
   return (
     <ProjectsFrame active="Timesheet approvals">
       <PageHeader
         title="Timesheet approvals"
-        description="Grouped by project and week. Approve, reduce or reject lines with a reason the employee sees. Weeks within the allocation can be approved in bulk."
+        description="By project or by person, a week at a time. Open a week to see its days and tasks. Approve, reduce or reject lines with a reason the employee sees; weeks within the allocation can be approved in bulk."
         facts={
           <div className="yx-hire-actions">
+            <BySwitch by={by} onChange={setBy} />
             <Select aria-label="Project" value="all" onChange={() => {}} options={[{ value: 'all', label: 'All my projects' }, { value: 'p1', label: 'NRP-WEB' }, { value: 'p2', label: 'CLL-WMS' }]} />
             <Select aria-label="Week" value="w39" onChange={() => {}} options={[{ value: 'w39', label: 'Week of 21 Sep 2026' }, { value: 'w38', label: 'Week of 14 Sep 2026' }]} />
           </div>
@@ -1096,7 +1124,7 @@ function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm, n
         ) : total <= 0 || groups.length === 0 ? (
           <EmptyState title="You're all caught up." description="No timesheets are waiting for your approval. Reminders go out on Friday and missing weeks are nudged on Monday." />
         ) : (
-          <ApprovalGroups groups={groups} onBulk={setPending} done={done} />
+          <ApprovalGroups groups={groups} by={by} onBulk={setPending} done={done} />
         )}
       </WaitingOrNotSent>
       <span className="yx-visually-hidden" aria-live="polite">

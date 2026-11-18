@@ -437,6 +437,15 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-ts__table th.yx-ts__col-day { text-align: center; }
 .yx-ts__col-total { width: calc(var(--yx-space-16) + var(--yx-space-4)); text-align: right !important; white-space: nowrap; }
 .yx-ts__col-remove { width: var(--yx-space-10); }
+/* Batch D B1: the approver's week → day → task drill-down. */
+.yx-ts-drill { display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-2); }
+.yx-ts-drill__days, .yx-ts-drill__tasks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-ts-drill__days { padding-left: var(--yx-space-4); }
+.yx-ts-drill__day { display: flex; flex-direction: column; align-items: flex-start; gap: var(--yx-space-2); }
+.yx-ts-drill__tasks { padding-left: var(--yx-space-4); min-width: calc(var(--yx-space-16) * 5); }
+.yx-ts-drill__task { display: flex; justify-content: space-between; gap: var(--yx-space-4); font-size: var(--yx-text-sm); }
+.yx-ts-drill__what { display: flex; flex-direction: column; min-width: 0; }
+.yx-ts-drill__hours { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .yx-ts__col-day[data-kind="weekend"], .yx-ts__col-day[data-kind="holiday"], .yx-ts__col-day[data-kind="leave"] { background: var(--yx-color-bg-subtle); }
 .yx-ts__table th.yx-ts__col-day[data-invalid] { color: var(--yx-color-danger-text); }
 .yx-ts__dayname { display: block; color: var(--yx-color-text); font-weight: var(--yx-weight-semibold); white-space: nowrap; }
