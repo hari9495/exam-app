@@ -78,7 +78,9 @@ import {
   TrackerDto,
   UpdateSlaPolicyDto,
   UpdateTaskDto,
+  DeskImportDto,
 } from './dto';
+import { DeskTransferService } from './desk-transfer.service';
 import { MyDesksQueryDto } from './dto-esm';
 import { MeService } from './me.service';
 import { SlaService } from './sla.service';
@@ -106,7 +108,25 @@ export class DeskSetupController {
   constructor(
     private readonly access: DeskAccessService,
     private readonly desks: DesksService,
+    private readonly transfer: DeskTransferService,
   ) {}
+
+  // Batch F GLPI 10 (answer 2574): a desk's set-up as a file, and importing one (a dry run first).
+  @Get('desks/:id/export')
+  @RequirePermissions('desk.settings.manage')
+  async exportSetup(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    return this.transfer.export(await this.access.actor(req, t), id);
+  }
+
+  @Post('desks/:id/import')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  @RequirePermissions('desk.settings.manage')
+  async importSetup(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DeskImportDto) {
+    assertOwnSession(req);
+    return this.transfer.import(await this.access.actor(req, t), id, dto.file, Boolean(dto.dryRun));
+  }
 
   @Get('desks')
   @RequireAnyPermission(...DESK_LIST)

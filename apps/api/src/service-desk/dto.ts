@@ -286,6 +286,16 @@ export class CategoryDto {
   answeredBy?: 'desk' | 'manager';
 }
 
+/** Batch F GLPI 10 (answer 2574): a desk set-up file to import; dryRun says what would happen and writes nothing. */
+export class DeskImportDto {
+  @IsObject()
+  file!: Record<string, unknown>;
+
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+}
+
 /** Batch F item 33: the manager's answer to a question from their team; `solve` marks it solved. */
 export class ManagerAnswerDto {
   @Text(1, 20000)

@@ -10,6 +10,7 @@ import { NumberField, TextArea, TextField, TimeField } from '../../components/in
 import { Checkbox, Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
+import { DeskSetupTransfer, type LiveDeskTransfer } from './setup-transfer';
 import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Dialog } from '../../components/overlay';
@@ -90,6 +91,8 @@ export interface DeskSetupScreenProps {
   /** 3b-2 batch 1 tabs, built by the page (each only for people who hold its key). */
   catalog?: ReactNode;
   rules?: ReactNode;
+  /** Batch F GLPI 10 (answer 2574): copy this desk's set-up as a file, and import one (desk.settings.manage). */
+  transfer?: LiveDeskTransfer;
   /** 3b-2 batch 2 tabs (lifecycles, schedules, live chat, organisation), each only for people who hold its key. */
   more?: { value: string; label: string; node: ReactNode }[];
   banners?: BannerSetupProps;
@@ -243,6 +246,7 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
           {props.banners && <TabsTrigger value="banners">Banners</TabsTrigger>}
           {props.catalog && <TabsTrigger value="catalog">Catalogue</TabsTrigger>}
           {props.rules && <TabsTrigger value="rules">Rules</TabsTrigger>}
+          {props.transfer && props.detail?.canSetUp && <TabsTrigger value="transfer">Copy set-up</TabsTrigger>}
           {props.more?.map((m) => (
             <TabsTrigger key={m.value} value={m.value}>
               {m.label}
@@ -308,6 +312,7 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
         )}
         {props.catalog && <TabsContent value="catalog">{props.catalog}</TabsContent>}
         {props.rules && <TabsContent value="rules">{props.rules}</TabsContent>}
+        {props.transfer && props.detail?.canSetUp && <TabsContent value="transfer"><DeskSetupTransfer live={props.transfer} /></TabsContent>}
         {props.more?.map((m) => (
           <TabsContent key={m.value} value={m.value}>
             {m.node}

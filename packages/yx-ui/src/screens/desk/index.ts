@@ -24,6 +24,7 @@ export { activityOf, type LiveTicket } from '../ops/helpdesk-ticket-live';
 export { SlaDashboardScreen } from '../ops/helpdesk';
 export { REPORT_COLUMNS, numText, npsText, type LiveSla, type SlaReportTab, type SlaDays } from '../ops/helpdesk-sla-live';
 export { DeskSetupScreen, type DeskSetupScreenProps } from './setup';
+export { DeskSetupTransfer, type DeskImportItem, type LiveDeskTransfer } from './setup-transfer';
 export { DeskPage, STATE_LABEL, PRIORITY_LABEL, OPEN_STATES, fillCanned, minutesText, when, browserTimeZone, CopyValue } from './desk-kit';
 export { TicketWorkRail, SlaCard, TasksCard, FamilyCard, SideCard, RemindCard, MaskedCard, ResolveDialog, EscalateDialog, TaskListCard, type TicketWorkProps } from './work';
 export { SlaTab, WorkSetupTab, DuplicatesCard, type SlaTabProps, type WorkSetupProps, type PolicyInput } from './setup-sla';

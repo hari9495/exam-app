@@ -639,5 +639,43 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       await expect(system((tx) => tx.sdCategory.create({ data: { organizationId: org.A.id, deskId: ids.it, name: `Db ${run}`, sensitive: true, answeredBy: 'manager' } }))).rejects.toThrow();
     });
   });
+
+  // Batch F GLPI 10 (answer 2574): a desk's set-up out of one company and into another, a dry run first.
+  describe('desk set-up export and import', () => {
+    type Item = { kind: string; name: string; outcome: string; note: string | null };
+    it('exports rules, policies, categories and templates (never tickets); imports by name with a dry run; refuses others', async () => {
+      await api('agent', 'get', `/desk/desks/${ids.it}/export`).expect(403);
+      await api('adminB', 'get', `/desk/desks/${ids.it}/export`).expect((r) => expect([403, 404]).toContain(r.status));
+      const file = (await api('deskAdmin', 'get', `/desk/desks/${ids.it}/export`).expect(200)).body;
+      expect(file).toMatchObject({ format: 'yukthix-desk-setup', version: 1 });
+      expect(Object.keys(file).sort()).toEqual(['categories', 'desk', 'exportedAt', 'format', 'rules', 'slaPolicies', 'templates', 'version']);
+      expect(file.categories.some((c: { name: string; answeredBy: string }) => c.name === `Laptop policy ${run}` && c.answeredBy === 'manager')).toBe(true);
+      expect(JSON.stringify(file)).not.toContain(org.A.id);
+      // Bad files are refused.
+      await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file: { format: 'other' } }).expect(400);
+      await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file: { ...file, categories: Array.from({ length: 501 }, (_, i) => ({ name: `c${i}` })) } }).expect(400);
+      await api('adminB', 'post', `/desk/desks/${ids.it}/import`).send({ file, dryRun: true }).expect((r) => expect([403, 404]).toContain(r.status));
+      // Dry run: says what would happen, writes nothing.
+      const before = await system((tx) => tx.sdCategory.count({ where: { deskId: ids.itB } }), org.B.id);
+      const dry = (await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file, dryRun: true }).expect(200)).body as { dryRun: boolean; items: Item[] };
+      expect(dry.dryRun).toBe(true);
+      expect(dry.items.find((x) => x.kind === 'category' && x.name === `Laptop policy ${run}`)!.outcome).toBe('add');
+      expect(dry.items.filter((x) => x.outcome === 'skip').length).toBeGreaterThan(0);
+      expect(await system((tx) => tx.sdCategory.count({ where: { deskId: ids.itB } }), org.B.id)).toBe(before);
+      // Import: added by name; a rule naming the other company's records fails with a reason, the rest go on.
+      const done = (await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file }).expect(200)).body as { items: Item[] };
+      expect(done.items.find((x) => x.kind === 'category' && x.name === `Laptop policy ${run}`)!.outcome).toBe('added');
+      const cat = await system((tx) => tx.sdCategory.findFirstOrThrow({ where: { deskId: ids.itB, name: `Laptop policy ${run}` } }), org.B.id);
+      expect(cat.answeredBy).toBe('manager');
+      const rule = done.items.find((x) => x.kind === 'rule' && x.name === 'Declassify');
+      if (rule) expect(rule.outcome).toBe('failed');
+      expect(await system((tx) => tx.rule.count({ where: { scopeId: ids.itB, status: 'active' } }), org.B.id)).toBe(0);
+      // Again: everything is already there.
+      const again = (await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file }).expect(200)).body as { items: Item[] };
+      expect(again.items.filter((x) => x.outcome === 'added')).toEqual([]);
+      expect(await system((tx) => tx.auditLog.count({ where: { entityId: ids.itB, action: 'desk.setup.imported' } }), org.B.id)).toBe(2);
+      expect(await system((tx) => tx.auditLog.count({ where: { entityId: ids.it, action: 'desk.setup.exported' } }))).toBe(1);
+    });
+  });
 });
 
