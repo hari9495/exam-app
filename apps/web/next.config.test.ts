@@ -96,6 +96,7 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
   it.each([
     ['/v2/users', '/yx/settings/access'],
     ['/v2/audit-log', '/yx/settings/audit-log'],
+    ['/v2/system-logs', '/yx/settings/audit-log'],
     ['/v2/data-rights', '/yx/hiring/retention'],
     ['/v2/settings/roles', '/yx/settings/access'],
     ['/v2/settings/permission-profiles', '/yx/settings/access'],
@@ -130,7 +131,7 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
   });
 
   it('gap pages stay (2438): their addresses are not redirected away yet', () => {
-    for (const gap of ['/v2/surveys', '/v2/system-logs', '/v2/settings/branding'])
+    for (const gap of ['/v2/surveys', '/v2/settings/branding'])
       expect(redirects.some((r) => r.source === gap)).toBe(false);
   });
 });

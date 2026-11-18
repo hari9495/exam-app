@@ -63,6 +63,8 @@ export const KEY_WORDS: Record<string, string> = {
   'platform.nudges.write': 'Write and approve the in-app nudges for each feature switch',
   'platform.sales.work': 'Work the sales-assist queue',
   'platform.analytics.view': 'See product analytics (counts only)',
+  'platform.systemlogs.view': 'Read the system logs (errors and warnings)',
+  'platform.users.search': 'Find a user across companies',
 };
 
 /** Answer 1173: how many times a day the invitation may be sent again to one person (platform setting). */

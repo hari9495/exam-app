@@ -29,6 +29,8 @@ export type { LiveCustomerSuccess, CsHealthRow, CsMessageRow, CsSettingRow, CsFo
 export { WhatsNewConsoleScreen, newsInput, NEWS_AUDIENCES, type WhatsNewConsoleScreenProps, type NewsEntryRow, type NewsInput } from './whats-new';
 export { SupportSessionsScreen, type SupportSessionsScreenProps } from './support';
 export { PlatformAuditScreen, type PlatformAuditScreenProps } from './audit';
+// Retire /v2 (answers 2421, 2431): system logs and a user search across companies.
+export { SystemLogsScreen, UserSearchScreen, type SystemLogsScreenProps, type SystemLogEntry, type LogService, type LogSeverity, type UserSearchScreenProps, type FoundUser } from './lookups';
 export { LIFECYCLE_LABEL, SUPPORT_LABEL, actionWords, ConsolePage } from './console-kit';
 // Batch 4: YukthiX support
 export { SupportDeskQueueScreen, SupportDeskTicketScreen, TenantPanel, textToParagraphs, sessionWords, type SupportDeskQueueScreenProps, type SupportDeskTicketScreenProps, type DeskQueueRow, type DeskConsoleTicket, type DeskConsoleMessage, type DeskTenantPanel, type DeskConsoleSession } from './support-desk';

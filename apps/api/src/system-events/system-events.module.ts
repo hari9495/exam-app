@@ -1,11 +1,10 @@
 import { Module } from '@nestjs/common';
-import { SystemEventsController } from './system-events.controller';
-import { SystemEventsQueryService } from './system-events-query.service';
 import { SystemEventsRetentionService } from './system-events-retention.service';
 
+// The company-side /system-events list is retired (answer 2421): system logs are read in the staff console only
+// (GET /platform/system-logs). This module keeps the daily prune.
 @Module({
-  controllers: [SystemEventsController],
-  providers: [SystemEventsQueryService, SystemEventsRetentionService],
+  providers: [SystemEventsRetentionService],
   exports: [SystemEventsRetentionService], // ScheduledSweepsModule dispatches the daily prune
 })
 export class SystemEventsQueryModule {}
