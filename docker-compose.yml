@@ -16,9 +16,10 @@ services:
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      # Slower check (16 Nov 2026): under heavy parallel test load a 5 s check timed out and each crash followed one.
+      interval: 30s
+      timeout: 20s
+      retries: 5
   redis:
     image: redis:7-alpine
     ports:
