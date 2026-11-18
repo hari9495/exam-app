@@ -12,6 +12,8 @@ import { Ticket, TicketsService } from './tickets.service';
 import { assetsOf } from './asset-pick';
 import { fieldsFor, raiseFieldsOf, shownFields } from './ticket-fields';
 import { checkPlace } from './facilities.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 
 // The requester's side (M14 §6.1 implicit role, YX-SD-16): raise, follow, reply and add watchers. No permission key:
 // every route works only on the person's own records (requester, requested-for or watcher) and never returns internal
@@ -30,6 +32,7 @@ export class RequesterService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly tickets: TicketsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   who(req: Request, tenant: TenantContext): Requester {
@@ -127,7 +130,7 @@ export class RequesterService {
         attachmentTypes: d.attachmentTypes,
         attachmentMaxMb: d.attachmentMaxMb,
         types: types.filter((t) => t.deskId === d.id).map((t) => ({ id: t.id, name: t.name })),
-        categories: cats.filter((c) => c.deskId === d.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive })),
+        categories: cats.filter((c) => c.deskId === d.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive, answeredBy: c.answeredBy })),
         closed: closed.get(d.id) ?? null,
         // Answer 1662: an IT desk asks "Which device?" when the person has one assigned.
         askDevice: d.kind === 'it' && hasDevice,
@@ -187,7 +190,95 @@ export class RequesterService {
         appId: dto.appId,
       });
     });
-    return { id: t.id, number: t.number };
+    const routed = await this.toManager(r, t);
+    return { id: t.id, number: t.number, ...(routed ? { answeredBy: routed } : {}) };
+  }
+
+  // ------------------------------------------------------------------------------------------ ask your manager (item 33)
+
+  /**
+   * Batch F item 33 (answer 2573): a ticket whose category is "answered by the requester's manager" goes to the manager of
+   * the person it is for (today's reporting line, a login, never the person raising it). With no manager the desk answers.
+   */
+  private async toManager(r: Requester, t: Ticket): Promise<'manager' | 'desk' | null> {
+    if (!t.categoryId) return null;
+    const out = await this.tx(r, async (tx) => {
+      const org = r.ctx.organizationId;
+      const cat = await tx.sdCategory.findFirst({ where: { organizationId: org, id: t.categoryId! }, select: { answeredBy: true, sensitive: true, privateByDefault: true } });
+      if (cat?.answeredBy !== 'manager' || cat.sensitive || cat.privateByDefault || t.sensitive || t.private) return null;
+      const today = todayIst();
+      const emp = await tx.employee.findFirst({ where: { organizationId: org, personId: t.requestedForPersonId ?? t.requesterPersonId }, select: { id: true } });
+      const job = emp ? await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: emp.id, supersededAt: null, validFrom: { lte: new Date(`${today}T00:00:00Z`) }, OR: [{ validTo: null }, { validTo: { gte: new Date(`${today}T00:00:00Z`) } }] }, orderBy: { validFrom: 'desc' }, select: { managerEmployeeId: true } }) : null;
+      const mgr = job?.managerEmployeeId ? await tx.employee.findFirst({ where: { organizationId: org, id: job.managerEmployeeId }, select: { userId: true } }) : null;
+      const user = mgr?.userId ? await tx.user.findFirst({ where: { organizationId: org, id: mgr.userId, status: 'active' }, select: { id: true } }) : null;
+      if (!user || user.id === r.userId) {
+        await this.tickets.event(tx, t, 'routed_to_desk', null, null, { by: r.userId, reason: 'No manager to answer it, so the desk answers', requesterVisible: false });
+        return { kind: 'desk' as const, userId: null };
+      }
+      await tx.sdTicket.update({ where: { id: t.id }, data: { answerUserId: user.id } });
+      await this.tickets.event(tx, t, 'routed_to_manager', null, user.id, { by: r.userId, reason: 'Answered by the manager', requesterVisible: false });
+      await audit(tx, { ctx: r.ctx, userId: r.userId } as unknown as DeskActor, 'desk.ticket.routed_to_manager', 'sd_ticket', t.id, { number: t.number });
+      return { kind: 'manager' as const, userId: user.id };
+    });
+    if (out?.kind === 'manager')
+      await this.notifications
+        .notifySystem(r.ctx as TenantContext, [out.userId!], 'desk.ticket.asked_manager', { entityType: 'sd_ticket', entityId: t.id, contextText: `A question from your team: ${t.number} · ${t.subject}`, linkPath: `/yx/desk/my-cases?asked=${t.id}` }, { subject: 'A question from your team', html: `<p>Someone in your team asked a question that you answer: ${escapeHtml(t.number)}. Open My cases in YukthiX to answer it.</p>` })
+        .catch(() => undefined);
+    return out?.kind ?? null;
+  }
+
+  /** The tickets my team asked me to answer (open first, then the last 30 days' answered ones). */
+  async asked(r: Requester) {
+    if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
+    const org = r.ctx.organizationId;
+    return this.tx(r, async (tx) => {
+      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, answerUserId: r.userId, mergedIntoId: null, OR: [{ systemState: { notIn: ['solved', 'closed'] } }, { updatedAt: { gte: new Date(Date.now() - 30 * 86_400_000) } }] }, orderBy: [{ createdAt: 'desc' }], take: 100 });
+      const people = await tx.person.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.requestedForPersonId ?? t.requesterPersonId) } }, select: { id: true, givenName: true, familyName: true, preferredName: true } });
+      const cats = await tx.sdCategory.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.categoryId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+      const name = (id: string) => { const p = people.find((x) => x.id === id); return p ? [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' ') : ''; };
+      return rows.map((t) => ({ id: t.id, number: t.number, subject: t.subject, person: name(t.requestedForPersonId ?? t.requesterPersonId), category: cats.find((c) => c.id === t.categoryId)?.name ?? null, answered: Boolean(t.firstResponseAt), done: ['solved', 'closed'].includes(t.systemState), createdAt: t.createdAt }));
+    });
+  }
+
+  private async askedTicket(tx: Tx, r: Requester, id: string) {
+    const t = await tx.sdTicket.findFirst({ where: { organizationId: r.ctx.organizationId, id, answerUserId: r.userId } });
+    if (!t) throw new NotFoundException('No such question.');
+    return t;
+  }
+
+  /** One question: what the person wrote and the replies so far (never the desk's notes). */
+  async askedOne(r: Requester, id: string) {
+    if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
+    const org = r.ctx.organizationId;
+    return this.tx(r, async (tx) => {
+      const t = await this.askedTicket(tx, r, id);
+      const messages = await tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, kind: 'reply' }, orderBy: { createdAt: 'asc' }, select: { id: true, side: true, bodyText: true, createdAt: true } });
+      return { id: t.id, number: t.number, subject: t.subject, done: ['solved', 'closed'].includes(t.systemState), messages: messages.map((m) => ({ id: m.id, fromMe: m.side === 'agent', text: m.bodyText, at: m.createdAt })) };
+    });
+  }
+
+  /** The manager answers (a reply the person sees), and may mark it solved; once solved or closed it is read only. */
+  async answer(r: Requester, id: string, text: string, solve: boolean) {
+    if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
+    const org = r.ctx.organizationId;
+    return this.tx(r, async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sd-answer:${id}`}))`;
+      const t = await this.askedTicket(tx, r, id);
+      if (['solved', 'closed'].includes(t.systemState)) throw new ConflictException('This question is already solved. The person can reply to reopen it.');
+      const bodyHtml = textToHtml(text);
+      await tx.sdTicketMessage.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'reply', side: 'agent', authorUserId: r.userId, bodyHtml, bodyText: htmlToText(bodyHtml), channel: 'agent' } });
+      let after = await tx.sdTicket.update({ where: { id: t.id }, data: { firstResponseAt: t.firstResponseAt ?? new Date(), version: { increment: 1 }, updatedAt: new Date() } });
+      if (solve) {
+        const s = await tx.sdStatus.findFirst({ where: { organizationId: org, deskId: t.deskId, systemState: 'solved', active: true, OR: [{ ticketTypeId: t.typeId }, { ticketTypeId: null }] }, orderBy: [{ ticketTypeId: { sort: 'asc', nulls: 'last' } }, { sortOrder: 'asc' }] });
+        if (s) {
+          after = await tx.sdTicket.update({ where: { id: t.id }, data: { statusId: s.id, resolvedAt: new Date(), version: { increment: 1 } } });
+          await this.tickets.event(tx, t, 'status_changed', t.statusId, s.id, { by: r.userId, reason: 'Answered by the manager', requesterVisible: true });
+        }
+      }
+      await audit(tx, { ctx: r.ctx, userId: r.userId } as unknown as DeskActor, 'desk.ticket.manager_answered', 'sd_ticket', t.id, { number: t.number, solved: solve });
+      await this.tickets.sla.sync(tx, t.id);
+      return { id: after.id, solved: ['solved', 'closed'].includes(after.systemState) };
+    });
   }
 
   /**
@@ -281,7 +372,8 @@ export class RequesterService {
       const due = await this.tickets.sla.requesterDue(tx, org, t.id);
       const desk0 = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { reopenWindowDays: true, requesterCanReopen: true } });
       const reopenUntil = t.systemState === 'solved' && t.resolvedAt && desk0.requesterCanReopen ? new Date(t.resolvedAt.getTime() + desk0.reopenWindowDays * 86_400_000) : null;
-      const events = await tx.sdTicketEvent.findMany({ where: { organizationId: org, ticketId: t.id, requesterVisible: true, kind: 'status_changed' }, orderBy: { at: 'asc' } });
+      // GLPI 4: the desk's reminders while it waits for the person show beside the status changes.
+      const events = await tx.sdTicketEvent.findMany({ where: { organizationId: org, ticketId: t.id, requesterVisible: true, kind: { in: ['status_changed', 'requester_chased'] } }, orderBy: { at: 'asc' } });
       const [status, desk] = await Promise.all([tx.sdStatus.findFirst({ where: { organizationId: org, id: t.statusId } }), tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId } })]);
       const labels = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, deskId: t.deskId } })).map((s) => [s.id, s.label]));
       const people = await this.tickets.personNames(tx, org, [t.requesterPersonId, t.requestedForPersonId, ...messages.map((m) => m.authorPersonId)]);
@@ -322,7 +414,7 @@ export class RequesterService {
           createdAt: m.createdAt,
         })),
         attachments: files.map((x) => this.tickets.attachmentView(x)),
-        history: events.map((e) => ({ at: e.at, from: e.fromValue ? (labels.get(e.fromValue) ?? null) : null, to: e.toValue ? (labels.get(e.toValue) ?? null) : null })),
+        history: events.map((e) => (e.kind === 'requester_chased' ? { at: e.at, from: null, to: null, note: e.reason } : { at: e.at, from: e.fromValue ? (labels.get(e.fromValue) ?? null) : null, to: e.toValue ? (labels.get(e.toValue) ?? null) : null })),
       };
     });
   }

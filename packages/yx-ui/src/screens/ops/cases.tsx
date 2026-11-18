@@ -26,7 +26,8 @@ import { addDays, formatAccessCode, showCauseDue, type ClockItem } from './ops-r
 import type { AnonMessage, CaseRow, CaseType } from './helpdesk-data';
 import type { Device, ListState } from './helpdesk';
 import { LiveCheckReport, LiveSpeakUp, type LiveCheckReport as LiveCheckReportProps, type LiveSpeakUp as LiveSpeakUpProps } from './helpdesk-speakup-live';
-import { LiveCaseList, LiveCaseWorkspace, LiveEthicsDesk, LiveMyCases, type LiveCaseList as LiveCaseListProps, type LiveCaseWorkspace as LiveCaseWorkspaceProps, type LiveEthicsDesk as LiveEthicsDeskProps, type LiveMyCases as LiveMyCasesProps } from './cases-live';
+import { AskedQuestions, LiveCaseList, LiveCaseWorkspace, LiveEthicsDesk, LiveMyCases, type LiveCaseList as LiveCaseListProps, type LiveCaseWorkspace as LiveCaseWorkspaceProps, type LiveEthicsDesk as LiveEthicsDeskProps, type LiveMyCases as LiveMyCasesProps } from './cases-live';
+import type { AskedQuestion, AskedQuestionDetail } from '../desk/types';
 
 const LOCATIONS = [
   { value: 'blr', label: 'Bengaluru head office' },
@@ -311,6 +312,8 @@ export interface MyCasesScreenProps {
   replyOpen?: boolean;
   replied?: boolean;
   extensionRequested?: boolean;
+  /** Batch F item 33 (answer 2573): a manager's questions from their team; 'answer' opens one to answer. */
+  asked?: 'list' | 'answer';
 }
 export function ShowCauseReply({ notice, today, replied, extensionRequested }: { notice: ShowCause; today: Date; replied?: boolean; extensionRequested?: boolean }) {
   const [ext, setExt] = useState(!!extensionRequested);
@@ -358,8 +361,9 @@ export function ShowCauseReply({ notice, today, replied, extensionRequested }: {
 export function MyCasesScreen(props: MyCasesScreenProps | { live: LiveMyCasesProps }) {
   return 'live' in props ? <LiveMyCases live={props.live} /> : <SampleMyCases {...props} />;
 }
-function SampleMyCases({ device = 'desk', cases, showCause, today, state = 'ready', replyOpen, replied, extensionRequested }: MyCasesScreenProps) {
+function SampleMyCases({ device = 'desk', cases, showCause, today, state = 'ready', replyOpen, replied, extensionRequested, asked }: MyCasesScreenProps) {
   const [open, setOpen] = useState(!!replyOpen || !!replied);
+  const [askedOpen, setAskedOpen] = useState<string | null>(asked === 'answer' ? 'q1' : null);
   const columns: TableColumn<MyCase>[] = [
     { key: 'id', header: 'Case', type: 'id', value: (c) => c.id },
     { key: 'type', header: 'Type', value: (c) => c.type },
@@ -437,12 +441,20 @@ function SampleMyCases({ device = 'desk', cases, showCause, today, state = 'read
         empty={<EmptyState title="You're not part of any case." description="If you want to raise something, use Speak up." action={<Button icon={Megaphone}>Speak up</Button>} />}
         rowButtons={(c) => (c.status === 'Action needed' ? <Button size="sm" onClick={() => setOpen(true)}>Reply</Button> : null)}
       />
+      {asked && <AskedQuestions asked={{ rows: SAMPLE_ASKED, openId: askedOpen, onOpen: setAskedOpen, detail: askedOpen ? SAMPLE_ASKED_DETAIL : null, onAnswer: async () => {} }} />}
       <Drawer open={open} onOpenChange={setOpen} size="lg" title={`Reply to show-cause notice · ${showCause.caseId}`} subtitle="Confidential. Only the case team sees your reply." footer={footer}>
         {sheet}
       </Drawer>
     </OpsDesk>
   );
 }
+
+/** Batch F item 33 (design): two questions from the manager's team, one waiting. */
+const SAMPLE_ASKED: AskedQuestion[] = [
+  { id: 'q1', number: 'HR-2304', subject: 'Can I take my laptop home over the long weekend?', person: 'Arjun Kulkarni', category: 'Laptop policy', answered: false, done: false, createdAt: '2026-09-28T04:30:00Z' },
+  { id: 'q2', number: 'HR-2297', subject: 'Which training budget do I use for the AWS course?', person: 'Meera Nair', category: 'Training budget', answered: true, done: true, createdAt: '2026-09-24T06:00:00Z' },
+];
+const SAMPLE_ASKED_DETAIL: AskedQuestionDetail = { id: 'q1', number: 'HR-2304', subject: 'Can I take my laptop home over the long weekend?', done: false, messages: [{ id: 'm1', fromMe: false, text: 'I want to finish the audit report from home on Saturday.', at: '2026-09-28T04:30:00Z' }] };
 
 /* =========================================================================================
  * HLP-08 · Case list + case workspace (case team) (T3, D)

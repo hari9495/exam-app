@@ -600,4 +600,44 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       await api('deskAdmin', 'post', '/desk/rules').send({ deskId: ids.it, name: 'Hook', trigger: { type: 'created' }, actions: [{ type: 'webhook', webhookId: randomUUID() }] }).expect(400);
     });
   });
+
+  // Batch F item 33 (answer 2573): a category answered by the requester's manager.
+  describe('ask your manager', () => {
+    it('routes to the manager; the manager answers and solves; never for confidential categories; with no manager the desk answers', async () => {
+      const cat = (await api('deskAdmin', 'post', `/desk/desks/${ids.it}/categories`).send({ name: `Laptop policy ${run}`, answeredBy: 'manager' }).expect(201)).body.id as string;
+      await api('agent', 'post', `/desk/desks/${ids.it}/categories`).send({ name: `Nope ${run}`, answeredBy: 'manager' }).expect(403);
+      await api('deskAdmin', 'post', `/desk/desks/${ids.it}/categories`).send({ name: `Secret ask ${run}`, sensitive: true, answeredBy: 'manager' }).expect(400);
+      await api('deskAdmin', 'post', `/desk/desks/${ids.it}/categories`).send({ name: `Bad ${run}`, answeredBy: 'boss' }).expect(400);
+      // The help centre says who answers.
+      const desks = (await api('emp', 'get', '/desk/my/desks').expect(200)).body as { id: string; categories: { id: string; answeredBy: string }[] }[];
+      expect(desks.find((d) => d.id === ids.it)!.categories.find((c) => c.id === cat)!.answeredBy).toBe('manager');
+      const t = (await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, categoryId: cat, subject: `Can I take my laptop home? ${run}`, description: 'For the weekend.' }).expect(201)).body;
+      expect(t.answeredBy).toBe('manager');
+      expect((await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t.id } }))).answerUserId).toBe(users.mgr);
+      // Only the manager sees it as a question; another manager, the person and another company get nothing.
+      expect(((await api('mgr', 'get', '/desk/my/asked').expect(200)).body as { id: string }[]).map((x) => x.id)).toContain(t.id);
+      for (const who of ['boss', 'emp', 'empB'] as const) {
+        expect(((await api(who, 'get', '/desk/my/asked').expect(200)).body as { id: string }[]).map((x) => x.id)).not.toContain(t.id);
+        await api(who, 'get', `/desk/my/asked/${t.id}`).expect(404);
+        await api(who, 'post', `/desk/my/asked/${t.id}/answer`).send({ text: 'Yes' }).expect(404);
+      }
+      expect((await api('mgr', 'get', `/desk/my/asked/${t.id}`).expect(200)).body).toMatchObject({ number: t.number, done: false, messages: [{ fromMe: false, text: expect.stringContaining('For the weekend') }] });
+      await api('mgr', 'post', `/desk/my/asked/${t.id}/answer`).send({ text: '' }).expect(400);
+      await api('mgr', 'post', `/desk/my/asked/${t.id}/answer`).send({ text: 'Yes, keep it locked in the boot.', solve: true }).expect(200);
+      const after = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t.id } }));
+      expect(after.systemState).toBe('solved');
+      expect(after.firstResponseAt).not.toBeNull();
+      await api('mgr', 'post', `/desk/my/asked/${t.id}/answer`).send({ text: 'Again' }).expect(409);
+      // The person sees the manager's answer as a reply.
+      expect(JSON.stringify((await api('emp', 'get', `/desk/my/tickets/${t.id}`).expect(200)).body)).toContain('locked in the boot');
+      expect(await system((tx) => tx.auditLog.count({ where: { entityId: t.id, action: { in: ['desk.ticket.routed_to_manager', 'desk.ticket.manager_answered'] } } }))).toBe(2);
+      // The boss has no manager: the desk answers.
+      const u = (await api('boss', 'post', '/desk/my/tickets').send({ deskId: ids.it, categoryId: cat, subject: `Laptop home ${run}`, description: 'Same.' }).expect(201)).body;
+      expect(u.answeredBy).toBe('desk');
+      expect((await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: u.id } }))).answerUserId).toBeNull();
+      // The database refuses a confidential category answered by a manager.
+      await expect(system((tx) => tx.sdCategory.create({ data: { organizationId: org.A.id, deskId: ids.it, name: `Db ${run}`, sensitive: true, answeredBy: 'manager' } }))).rejects.toThrow();
+    });
+  });
 });
+

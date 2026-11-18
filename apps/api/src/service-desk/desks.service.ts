@@ -183,7 +183,7 @@ export class DesksService {
         desk: this.deskView(desk),
         types: types.map((t) => ({ id: t.id, kind: t.kind, name: t.name, active: t.active, sortOrder: t.sortOrder })),
         statuses: statuses.map((s) => ({ id: s.id, label: s.label, systemState: s.systemState, ticketTypeId: s.ticketTypeId, sortOrder: s.sortOrder, active: s.active })),
-        categories: categories.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive, defaultGroupId: c.defaultGroupId, defaultPriority: c.defaultPriority, active: c.active, sortOrder: c.sortOrder })),
+        categories: categories.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive, privateByDefault: c.privateByDefault, answeredBy: c.answeredBy, defaultGroupId: c.defaultGroupId, defaultPriority: c.defaultPriority, active: c.active, sortOrder: c.sortOrder })),
         groups: groups.map((g) => ({ id: g.id, name: g.name, tier: g.tier, assignmentMethod: g.assignmentMethod, maxOpenPerAgent: g.maxOpenPerAgent, active: g.active, memberIds: limited ? [] : groupMembers.filter((m) => m.groupId === g.id).map((m) => m.userId) })),
         matrix: matrix.map((m) => ({ impact: m.impact, urgency: m.urgency, priority: m.priority })),
         members: shown.map((m) => ({
@@ -432,6 +432,9 @@ export class DesksService {
           if (categoryId && (await tx.sdCategory.findFirst({ where: { organizationId: org, parentId: categoryId }, select: { id: true } }))) throw new BadRequestException('This category has sub-categories, so it stays top-level.');
         }
         if (dto.defaultGroupId && !(await tx.sdGroup.findFirst({ where: { organizationId: org, deskId, id: dto.defaultGroupId }, select: { id: true } }))) throw new BadRequestException('No such group on this desk.');
+        // Answer 2573: a confidential category is never answered by a manager.
+        const was = categoryId ? await tx.sdCategory.findFirst({ where: { organizationId: org, deskId, id: categoryId } }) : null;
+        if ((dto.answeredBy ?? was?.answeredBy) === 'manager' && ((dto.sensitive ?? was?.sensitive ?? false) || Boolean(was?.privateByDefault))) throw new BadRequestException('A sensitive or private category is always answered by the desk, never by a manager.');
         let id = categoryId;
         if (id) {
           const res = await tx.sdCategory.updateMany({ where: { organizationId: org, deskId, id }, data: dto });

@@ -4189,6 +4189,8 @@ model SdCategory {
   defaultPriority  Int?     @map("default_priority") @db.SmallInt
   /// SD-2.25: skills an agent needs for tickets in this category.
   skills           String[] @default([])
+  /// Batch F item 33 (answer 2573): 'desk' or 'manager' (the requester's manager answers; never for confidential ones).
+  answeredBy       String   @default("desk") @map("answered_by") @db.VarChar(8)
   active           Boolean  @default(true)
   sortOrder        Int      @default(0) @map("sort_order")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -4320,6 +4322,8 @@ model SdTicket {
   language             String?                  @db.VarChar(8)
   /// Founder decision 9 Oct 2026: waiting for the best-matched agent until then (the desk sweep falls back after).
   routingWaitUntil     DateTime?                @map("routing_wait_until") @db.Timestamptz(3)
+  /// Batch F item 33 (answer 2573): the requester's manager who answers this ticket (from its category).
+  answerUserId         String?                  @map("answer_user_id") @db.Uuid
   version              Int                      @default(1)
   search               Unsupported("tsvector")?
   createdBy            String?                  @map("created_by") @db.Uuid

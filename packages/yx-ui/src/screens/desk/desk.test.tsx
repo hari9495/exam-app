@@ -261,6 +261,22 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(Object.keys(onUpdateDesk.mock.calls[1][0]).sort()).toEqual(['autoCloseDays', 'chaseEnabled', 'chaseMax', 'chaseSolveDays', 'ratingReasons', 'reopenWindowDays', 'requesterCanReopen']);
   });
 
+  // Batch F item 33 (answer 2573): who answers a category; a sensitive one is always the desk.
+  it('categories: "Who answers" is a single choice; a sensitive category is always the desk', async () => {
+    const onSaveCategory = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="categories" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={onSaveCategory} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Laptop policy');
+    await ue.click(screen.getByRole('radio', { name: 'The requester’s manager' }));
+    await ue.click(screen.getByRole('button', { name: 'Add category' }));
+    await waitFor(() => expect(onSaveCategory).toHaveBeenCalledWith(null, expect.objectContaining({ name: 'Laptop policy', answeredBy: 'manager', sensitive: false })));
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Grievance');
+    await ue.click(screen.getByRole('radio', { name: 'The requester’s manager' }));
+    await ue.click(screen.getByRole('checkbox', { name: /Sensitive/ }));
+    expect(screen.getByText('A sensitive category is always answered by the desk.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add category' }));
+    await waitFor(() => expect(onSaveCategory).toHaveBeenLastCalledWith(null, expect.objectContaining({ name: 'Grievance', answeredBy: 'desk', sensitive: true })));
+  });
+
   // Batch F GLPI 4 (answer 2571): the requester chase on the Requesters tab.
   it('settings: the requester chase saves its numbers; too few solve days is a field error and nothing is saved; off saves only the switch', async () => {
     const onUpdateDesk = ok();

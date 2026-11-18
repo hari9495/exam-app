@@ -279,6 +279,21 @@ export class CategoryDto {
   @ArrayMaxSize(10)
   @Matches(/^[a-z0-9][a-z0-9 _-]{0,39}$/, { each: true, message: 'A skill is a short lower-case word, for example network.' })
   skills?: string[];
+
+  /** Batch F item 33 (answer 2573): who answers tickets of this category. */
+  @IsOptional()
+  @IsIn(['desk', 'manager'])
+  answeredBy?: 'desk' | 'manager';
+}
+
+/** Batch F item 33: the manager's answer to a question from their team; `solve` marks it solved. */
+export class ManagerAnswerDto {
+  @Text(1, 20000)
+  text!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  solve?: boolean;
 }
 
 export class TicketTypeDto {

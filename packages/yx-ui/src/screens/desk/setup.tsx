@@ -64,7 +64,7 @@ export interface DeskSetupScreenProps {
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
   onEndMember: (memberId: string) => Promise<void>;
   onSaveGroup: (id: string | null, input: { name: string; assignmentMethod: DeskGroup['assignmentMethod']; maxOpenPerAgent: number | null; memberIds: string[]; active: boolean }) => Promise<void>;
-  onSaveCategory: (id: string | null, input: { name: string; parentId: string | null; sensitive: boolean; defaultGroupId: string | null; active: boolean }) => Promise<void>;
+  onSaveCategory: (id: string | null, input: { name: string; parentId: string | null; sensitive: boolean; defaultGroupId: string | null; active: boolean; answeredBy?: 'desk' | 'manager' }) => Promise<void>;
   onSaveType: (id: string | null, input: { name: string; kind?: 'incident' | 'request' | 'question'; active?: boolean }) => Promise<void>;
   onSaveStatus: (id: string | null, input: { label: string; systemState?: SystemState; active?: boolean }) => Promise<void>;
   onSaveMatrix: (cells: { impact: number; urgency: number; priority: number }[]) => Promise<void>;
@@ -486,6 +486,8 @@ function CategoriesTab(props: TabProps) {
   const [parentId, setParentId] = useState<string | null>(null);
   const [sensitive, setSensitive] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(d.groups[0]?.id ?? null);
+  // Batch F item 33 (answer 2573): the requester's manager may answer a category; never a sensitive one.
+  const [answeredBy, setAnsweredBy] = useState<'desk' | 'manager'>('desk');
   const { busy, error, run } = useRun();
   const early = useTooEarly(!name.trim() ? [{ fieldId: 'dc-name', message: 'Name the category.' }] : []);
   const top = d.categories.filter((c) => !c.parentId);
@@ -501,6 +503,7 @@ function CategoriesTab(props: TabProps) {
               <span className="yx-ops-list__sub">
                 {d.groups.find((g) => g.id === c.defaultGroupId)?.name ?? 'No group'}
                 {c.sensitive ? ' · sensitive: agents only' : ''}
+                {c.answeredBy === 'manager' ? ' · answered by the requester’s manager' : ''}
                 {c.active ? '' : ' · off'}
               </span>
             </span>
@@ -524,9 +527,12 @@ function CategoriesTab(props: TabProps) {
             <FormField label="Group that gets these tickets">
               <Select value={groupId} onChange={setGroupId} clearable options={d.groups.map((g) => ({ value: g.id, label: g.name }))} />
             </FormField>
-            <Checkbox checked={sensitive} onChange={setSensitive} label="Sensitive" description="Tickets in it are seen only by this desk’s agents and leads, never by admins." />
+            <Checkbox checked={sensitive} onChange={(v) => { setSensitive(v); if (v) setAnsweredBy('desk'); }} label="Sensitive" description="Tickets in it are seen only by this desk’s agents and leads, never by admins." />
+            <FormField label="Who answers" helper={sensitive ? 'A sensitive category is always answered by the desk.' : 'With no manager, the desk answers. The desk can still see these tickets.'}>
+              <Segment label="Who answers" value={answeredBy} disabled={sensitive} onChange={setAnsweredBy} options={[{ value: 'desk', label: 'The desk' }, { value: 'manager', label: 'The requester’s manager' }]} />
+            </FormField>
             <div className="yx-ops-row">
-              <Button variant="primary" loading={busy === 'add'} onClick={() => !early.stop() && void run('add', async () => { await props.onSaveCategory(null, { name: name.trim(), parentId, sensitive, defaultGroupId: groupId, active: true }); setName(''); })}>
+              <Button variant="primary" loading={busy === 'add'} onClick={() => !early.stop() && void run('add', async () => { await props.onSaveCategory(null, { name: name.trim(), parentId, sensitive, defaultGroupId: groupId, active: true, answeredBy: sensitive ? 'desk' : answeredBy }); setName(''); setAnsweredBy('desk'); })}>
                 Add category
               </Button>
             </div>

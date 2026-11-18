@@ -14,6 +14,7 @@ import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession, companyOf } from './desk-access';
 import { DirectoryService } from './directory.service';
 import { KbArticleQueryDto, KbClickDto, KbFeedbackDto, KbPageQueryDto, KbSearchDto } from './dto-kb';
+import { ManagerAnswerDto } from './dto';
 import { ConsoleLinkDto, ConsoleMessageDto, ConsoleQueueDto, ConsoleResolveDto, LinkAnswerDto, LinkCommentDto, PrivacyRequestDto, RatingDto, SignUpDto, SupportAccessDto, SupportRaiseDto, SupportReplyDto } from './dto-ops';
 import { KbService } from './kb.service';
 import { PortalService } from './portal.service';
@@ -82,6 +83,24 @@ export class MyHelpController {
   @HttpCode(200)
   kbClick(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: KbClickDto) {
     return this.kb.employeeClick(this.requesters.who(req, t), dto.q, dto.articleId);
+  }
+
+  // Batch F item 33 (answer 2573): questions my team asked me to answer (their category goes to the manager).
+  @Get('asked')
+  asked(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.requesters.asked(this.requesters.who(req, t));
+  }
+
+  @Get('asked/:id')
+  askedOne(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.requesters.askedOne(this.requesters.who(req, t), id);
+  }
+
+  @Post('asked/:id/answer')
+  @HttpCode(200)
+  @Throttle(PUBLIC_API_THROTTLE)
+  answer(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ManagerAnswerDto) {
+    return this.requesters.answer(this.requesters.who(req, t), id, dto.text, Boolean(dto.solve));
   }
 
   /** US-B-108: the requester rates their own solved ticket. */

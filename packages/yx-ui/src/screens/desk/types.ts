@@ -71,6 +71,9 @@ export interface DeskCategory {
   defaultPriority: number | null;
   active: boolean;
   sortOrder: number;
+  /** Batch F item 33 (answer 2573): who answers its tickets (absent on an older API: the desk). */
+  answeredBy?: 'desk' | 'manager';
+  privateByDefault?: boolean;
 }
 export interface DeskGroup {
   id: string;
@@ -387,7 +390,27 @@ export interface RaiseDesk {
   attachmentTypes: string[];
   attachmentMaxMb: number;
   types: { id: string; name: string }[];
-  categories: { id: string; name: string; parentId: string | null; sensitive: boolean }[];
+  /** Batch F item 33: answeredBy 'manager' — the person's manager answers (the form says so). */
+  categories: { id: string; name: string; parentId: string | null; sensitive: boolean; answeredBy?: 'desk' | 'manager' }[];
+}
+
+/** Batch F item 33 (answer 2573): a question from my team that I answer as their manager (GET /desk/my/asked). */
+export interface AskedQuestion {
+  id: string;
+  number: string;
+  subject: string;
+  person: string;
+  category: string | null;
+  answered: boolean;
+  done: boolean;
+  createdAt: string;
+}
+export interface AskedQuestionDetail {
+  id: string;
+  number: string;
+  subject: string;
+  done: boolean;
+  messages: { id: string; fromMe: boolean; text: string; at: string }[];
 }
 
 export interface MyTicketRow {
@@ -438,7 +461,8 @@ export interface MyTicket {
   targetPaused?: boolean;
   messages: { id: string; side: 'agent' | 'requester' | 'system'; author: string; mine: boolean; bodyHtml: string; createdAt: string }[];
   attachments: Attachment[];
-  history: { at: string; from: string | null; to: string | null }[];
+  /** GLPI 4: `note` is a reminder while the desk waits for the person (no status change). */
+  history: { at: string; from: string | null; to: string | null; note?: string | null }[];
   /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
   rating?: number | null;
   canRate?: boolean;

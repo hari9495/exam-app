@@ -27704,5 +27704,25 @@
                               "Screens/Helpdesk/HLP-03 · Ticket workspace"
                     ],
                     "note": "Positive and negative (service-desk-batch2 e2e: SLA kind refuses it 400, agent 403, starts on a team, hand-off cancels, reply keeps it, SLA unchanged, dashboard teams, labels name the team; kit helpdesk-sla-live and helpdesk-ticket-live). Migration 202617z0000582 widens the metric checks."
+          },
+          {
+                    "id": "MT-F-33-ASK-YOUR-MANAGER",
+                    "area": "Batch F item 33: ask your manager (answer 2573, 18 Nov 2026)",
+                    "screen": "Desk set-up › Categories; Help centre (HLP-01) raise form; My cases (HLP-07) › Questions from your team",
+                    "url": "http://localhost:3000/yx/desk/my-cases",
+                    "account": "A desk admin; an employee with a manager (e.g. a report of panel@ Divya); the manager (panel@); a top manager with no manager.",
+                    "steps": [
+                              "As the desk admin add a category 'Laptop policy' with Who answers = The requester's manager.",
+                              "Try the same with Sensitive ticked.",
+                              "As the employee open Help centre, raise a ticket on that desk and pick 'Laptop policy'.",
+                              "As the manager open My cases (bell link). Open the question, press 'Answer and mark solved' with nothing written; then write an answer and press it again.",
+                              "As the employee open the ticket.",
+                              "Negative: as another manager and as the employee open My cases; raise the same topic as someone with no manager; answer an already solved question."
+                    ],
+                    "expected": "Step 1: the list says 'answered by the requester's manager'. Step 2: Who answers greys out with 'A sensitive category is always answered by the desk' and it saves as the desk (the API refuses 400 otherwise). Step 3: the topic says 'Your manager answers' and the field helper explains it. Step 4: a card 'Questions from your team (1 open)'; the empty answer says 'Write your answer first.' and takes focus; then a 5-second toast 'Answer sent and marked solved.' Step 5: the manager's answer shows as a reply, status Resolved; replying reopens it for the desk. Step 6: no card for others (404 on the question); with no manager the desk gets it; a solved one is read only (409). Audit: desk.ticket.routed_to_manager, desk.ticket.manager_answered.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-07 · My cases"
+                    ],
+                    "note": "Positive and negative (service-desk-esm e2e: agent 403, sensitive 400, bad value 400, help centre shows answeredBy, routed to the manager, others / person / other company 404, empty 400, answer and solve, again 409, person sees the reply, audited, no manager = desk, DB check; kit cases-live and desk tests). Migrations 202617z0000591 (column and checks) and 202617z0000592 (the asked manager may reply without a desk seat)."
           }
 ]
