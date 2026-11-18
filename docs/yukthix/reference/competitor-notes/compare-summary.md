@@ -372,3 +372,12 @@ Reference: the Income Tax Department site's Accessibility menu (font size, satur
 - 2459: the year-end settlement is allowed only from the March pay month.
 - 2460: the exit settlement starts automatically when F&F is handed off.
 - 2461: FBP claims are taxable under the new regime (also added to the CA checklist).
+
+## Old branch audit (18 Nov 2026; founder answers 2471 to 2476, "ok for all")
+Audit of 69 local branches not in test main: 54 already in (by content or merged PRs), 9 redone later, 0 abandoned, 6 with missing work.
+- 2471: merge feat/yukthix-postgres (health check 30s / 20s / 5) now.
+- 2472: bring back the founder's testing record and docs from feat/yukthix-workspace (C:\D-drive\exam-app-ws). That means GO-LIVE-PLAN, the build designs, review/HANDOFF-2026-10-12-manual-testing.md, review/DESIGN-AUDIT-2026-10-15.md, GLOBAL-HCM-GAP-PASS.md and the side-by-side screenshots, plus manual-tests.json with 231 test results, hand-merged by test ID.
+- 2473: port feat/yukthix-payroll-budget (#203) into test main now, as a small item (new migration name).
+- 2474: port feat/yukthix-learning (#210) during the Engage and Learn batch, instead of rebuilding it.
+- 2475: list each time piece from feat/yukthix-time-parity (#195) and feat/yukthix-reclockin (#212) and say whether a later decision replaced it; the founder then chooses which to rebuild. The pieces are geofence location fences, Wi-Fi names, device binding, dated leave type versions, hourly leave and re-clock-in.
+- 2476: close the 15 safe old PRs after #221 merges (#220, #219, #216, #214, #209, #208, #207, #206, #205, #204, #202, #201, #200, #197, #194). Keep #203, #210, #195 and #212 open until ported. Leave Dependabot #173–177 open.
