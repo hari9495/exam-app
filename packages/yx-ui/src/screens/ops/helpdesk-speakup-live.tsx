@@ -897,8 +897,12 @@ export interface SpeakUpSetupData {
     /** Answer 2591 (Internal Committee only; null on members added before it was asked). */
     woman?: boolean | null;
     termEndsOn?: string | null;
+    /** Answer 2592: a workplace's own Internal Committee; null or missing is the company committee. */
+    locationId?: string | null;
   }[];
   users: { id: string; name: string; email: string }[];
+  /** Answer 2592: the workplaces that may have their own Internal Committee. */
+  locations?: { id: string; name: string }[];
   settings: {
     anonymous: string;
     ackDays: number;
@@ -916,6 +920,7 @@ export interface LiveSpeakUpSetup {
     role?: "member" | "presiding" | "external";
     woman?: boolean;
     termEndsOn?: string;
+    locationId?: string;
   }) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   /** Settings › Company rules. */
@@ -970,6 +975,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
     "member",
   );
   const [woman, setWoman] = useState<"yes" | "no" | null>(null);
+  const [committee, setCommittee] = useState<string>("company");
   const [termEnds, setTermEnds] = useState<Date | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1000,6 +1006,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
       </OpsDesk>
     );
   const d = live.data;
+  const placeOf = (id: string | null) => (id ? (d?.locations?.find((l) => l.id === id)?.name ?? "A workplace") : "Whole company");
   const add = async () => {
     if (early.stop() || !adding) return;
     setBusy(true);
@@ -1009,7 +1016,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
         team: adding,
         userId: userId!,
         ...(adding === "ic" || adding === "ir" ? { role } : {}),
-        ...(adding === "ic" ? { woman: woman === "yes", termEndsOn: isoDay(termEnds!) } : {}),
+        ...(adding === "ic" ? { woman: woman === "yes", termEndsOn: isoDay(termEnds!), ...(committee !== "company" ? { locationId: committee } : {}) } : {}),
       });
       toast({
         tone: "success",
@@ -1021,6 +1028,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
       setRole("member");
       setWoman(null);
       setTermEnds(null);
+      setCommittee("company");
       early.reset();
     } catch (e) {
       setError(errorText(e));
@@ -1092,7 +1100,9 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                   <div className="yx-ops-stack">
                     <p className="yx-ops-muted">{t.note}</p>
                     {t.team === "ic" && rows.length > 0 && (() => {
-                      const issues = recordedIcIssues(rows.map((r) => ({ name: r.name, role: r.role, woman: r.woman ?? null, since: r.addedAt.slice(0, 10), termEndsOn: r.termEndsOn ?? null })), today);
+                      // Answer 2592: each committee (the company's, a workplace's) is checked on its own.
+                      const ids = [...new Set(rows.map((r) => r.locationId ?? null))];
+                      const issues = ids.flatMap((id) => recordedIcIssues(rows.filter((r) => (r.locationId ?? null) === id).map((r) => ({ name: r.name, role: r.role, woman: r.woman ?? null, since: r.addedAt.slice(0, 10), termEndsOn: r.termEndsOn ?? null })), today).map((i) => (ids.length > 1 ? `${placeOf(id)}: ${i}` : i)));
                       return issues.length > 0 ? <InlineAlert tone="warning" title="Committee not complete">{issues.join(". ")}.</InlineAlert> : null;
                     })()}
                     <DataTable
@@ -1114,6 +1124,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                         },
                         ...(t.team === "ic"
                           ? [
+                              { key: "committee", header: "Committee", value: (r: SpeakUpSetupData["members"][number]) => placeOf(r.locationId ?? null) },
                               { key: "woman", header: "Woman", value: (r: SpeakUpSetupData["members"][number]) => (r.woman == null ? "Not recorded" : r.woman ? "Yes" : "No") },
                               { key: "term", header: "Term ends", value: (r: SpeakUpSetupData["members"][number]) => r.termEndsOn ?? "", render: (r: SpeakUpSetupData["members"][number]) => (r.termEndsOn ? formatDate(new Date(`${r.termEndsOn}T00:00:00`)) : "Not recorded") },
                             ]
@@ -1251,6 +1262,11 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
           )}
           {adding === "ic" && (
             <>
+              {(d?.locations ?? []).length > 0 && (
+                <FormField label="Committee" helper="A workplace's own committee takes the complaints from that workplace; the others go to the company committee.">
+                  <Select value={committee} onChange={(v) => setCommittee(v ?? "company")} options={[{ value: "company", label: "Whole company" }, ...(d?.locations ?? []).map((l) => ({ value: l.id, label: l.name }))]} />
+                </FormField>
+              )}
               <FormField id="ss-woman" label="Is this member a woman?" required helper="At least half the committee must be women, and a woman presides." error={early.errorOf("ss-woman")}>
                 <Segment label="Is this member a woman?" value={woman} onChange={(v) => setWoman(v)} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} />
               </FormField>

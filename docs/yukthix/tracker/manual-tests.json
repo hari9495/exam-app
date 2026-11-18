@@ -27844,5 +27844,26 @@
                               "Screens/Compliance/CMP-09 · IC console"
                     ],
                     "note": "Positive and negative (service-desk-hlp06 e2e 11/11: missing woman or term 400, term today or beyond 3 years 400, a non-boolean 400, woman on another list 400, a man presiding 400, saved and returned; hlp07-09 13/13; kit set-up and console tests). Migration 611 adds woman and term_ends_on to speakup_team_members (Internal Committee only, checked in the database). No new table."
+          },
+          {
+                    "id": "MT-G1-2592-IC-PER-WORKPLACE",
+                    "area": "Batch G1 answer 2592: one company Internal Committee plus optional committees per workplace (19 Nov 2026)",
+                    "screen": "Helpdesk › Speak-up set-up › Internal Committee (POSH); Helpdesk › Speak up › Sexual harassment; Helpdesk › Internal Committee",
+                    "url": "http://localhost:3000/yx/desk/speakup-setup",
+                    "account": "The company admin; two employees for committees; an employee who files; a member of only the company committee.",
+                    "steps": [
+                              "As the company admin press Add on the Internal Committee card, choose Committee 'Hosur plant', a woman presiding officer with a term end, and Add. Add the same person to the Hosur committee again.",
+                              "Try a second presiding officer on the Hosur committee.",
+                              "Look at the Internal Committee card: the Committee column and the warnings.",
+                              "As an employee file a sexual harassment complaint with workplace Hosur plant; then one with another workplace.",
+                              "As the Hosur member open Helpdesk › Internal Committee and the first complaint; as a company-only member try to open the first complaint by its address.",
+                              "As a member of both committees open the console."
+                    ],
+                    "expected": "Step 1: toast '… added'; the second time 'This person is already on that committee.'. Step 2: 'This committee already has a presiding officer. Remove them first.'. Step 3: each row says Whole company or Hosur plant; warnings name the committee, e.g. 'Hosur plant: Add one external member'. Step 4: both filed; the Hosur one goes only to the Hosur committee, the other to the company committee. Step 5: the Hosur member sees the Hosur complaint and the console titled 'Internal Committee · Hosur plant'; the company-only member gets Not found. Step 6: 'Internal Committees · <company>' with a Committee column and each committee's checks. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-06 · Speak-up filing",
+                              "Screens/Compliance/CMP-09 · IC console"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e: a workplace on another list 400, unknown workplace 400, same person twice 409, second presiding 409, routing by workplace and fallback to the company, the case keeps its committee, outsiders 404, console per member; kit set-up and console tests). Migration 612: speakup_team_members.location_id (Internal Committee only) with the live key per committee, speakup_cases.ic_location_id. The presiding officer who signs a case's report is the one of that case's committee."
           }
 ]

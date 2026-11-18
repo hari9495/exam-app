@@ -138,6 +138,13 @@ export class SpeakupService {
     if (dto.locationId && !(await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId }, select: { id: true } }))) throw new BadRequestException('Choose one of the company’s locations.');
     const teams = await this.teams(tx, org);
     if (dto.aboutUserId && !Object.values(teams).some((t) => t.includes(dto.aboutUserId!))) throw new BadRequestException('Choose one of the case officers in the list.');
+    // Answer 2592: a POSH complaint goes to its workplace's committee when there is one, else to the company's.
+    let icLocationId: string | null = null;
+    if (dto.kind === 'posh') {
+      const ic = await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, select: { userId: true, locationId: true } });
+      icLocationId = dto.locationId && ic.some((m) => m.locationId === dto.locationId) ? dto.locationId : null;
+      teams.ic = ic.filter((m) => m.locationId === icLocationId).map((m) => m.userId);
+    }
     const r = route(dto.kind, teams, dto.aboutUserId ?? null);
     if (!r)
       throw new ConflictException(
@@ -174,6 +181,7 @@ export class SpeakupService {
         ackDueOn: day(addDays(today, s.ackDays)),
         decideDueOn: decideDays ? day(addDays(today, decideDays)) : null,
         ruleSet: rs?.label ?? null,
+        icLocationId,
       },
     });
     await tx.speakupCaseMember.createMany({ data: r.members.map((userId) => ({ organizationId: org, caseId: row.id, userId })) });
@@ -418,14 +426,24 @@ export class SpeakupService {
    * Batch F item 13 (answer 2578): the Internal Committee as its own members see it (CMP-09 console): who sits on it and
    * in what role. Anyone not on the committee gets "not found". The complaints come from the case list (case members).
    */
+  /** CMP-11 (batch F item 13; answers 2591, 2592): the committees this person sits on, for their members only. */
   async icCommittee(ctx: TenantContext) {
     return this.tx(ctx, async (tx, c) => {
       const org = c.organizationId;
-      const rows = await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, orderBy: { addedAt: 'asc' } });
-      if (!c.userId || !rows.some((r) => r.userId === c.userId)) throw new NotFoundException('Not found');
+      const all = await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, orderBy: { addedAt: 'asc' } });
+      const mine = new Set(all.filter((r) => r.userId === c.userId).map((r) => r.locationId));
+      if (!c.userId || !mine.size) throw new NotFoundException('Not found');
+      const rows = all.filter((r) => mine.has(r.locationId));
       const users = await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.userId) } }, select: { id: true, name: true, email: true } });
+      const places = await tx.location.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.locationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
       const org0 = await tx.organization.findFirst({ where: { id: org }, select: { name: true } });
-      return { company: org0?.name ?? '', members: rows.map((r) => ({ id: r.id, name: users.find((u) => u.id === r.userId)?.name ?? users.find((u) => u.id === r.userId)?.email ?? 'Former user', role: r.role as 'presiding' | 'member' | 'external', since: isoDay(r.addedAt), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null })) };
+      return {
+        company: org0?.name ?? '',
+        members: rows.map((r) => {
+          const u = users.find((x) => x.id === r.userId);
+          return { id: r.id, name: u?.name ?? u?.email ?? 'Former user', role: r.role as 'presiding' | 'member' | 'external', since: isoDay(r.addedAt), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null, committeeId: r.locationId, committee: r.locationId ? (places.find((p) => p.id === r.locationId)?.name ?? 'A workplace') : 'Whole company' };
+        }),
+      };
     });
   }
 
@@ -437,7 +455,8 @@ export class SpeakupService {
       const name = (id: string) => users.find((u) => u.id === id)?.name ?? users.find((u) => u.id === id)?.email ?? 'Former user';
       const s = await this.settings(tx, c);
       return {
-        members: rows.map((r) => ({ id: r.id, team: r.team, userId: r.userId, name: name(r.userId), role: r.role, addedAt: r.addedAt.toISOString(), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null })),
+        members: rows.map((r) => ({ id: r.id, team: r.team, userId: r.userId, name: name(r.userId), role: r.role, addedAt: r.addedAt.toISOString(), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null, locationId: r.locationId })),
+        locations: await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
         users: users.map((u) => ({ id: u.id, name: u.name ?? u.email, email: u.email })),
         settings: { anonymous: s.anonymous, ackDays: s.ackDays, grievance: s.grievance, whistleblower: s.ethics },
       };
@@ -448,7 +467,10 @@ export class SpeakupService {
     return this.tx(ctx, async (tx, c) => {
       const org = c.organizationId;
       if (!(await tx.user.findFirst({ where: { organizationId: org, id: dto.userId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active person of this company.');
-      if (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: dto.team, userId: dto.userId, removedAt: null }, select: { id: true } })) throw new ConflictException('This person is already on that list.');
+      if (dto.locationId && dto.team !== 'ic') throw new BadRequestException('Only the Internal Committee can be set up per workplace.');
+      if (dto.locationId && !(await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId, archivedAt: null }, select: { id: true } }))) throw new BadRequestException('Choose one of the company’s workplaces.');
+      const committee = dto.team === 'ic' ? (dto.locationId ?? null) : null;
+      if (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: dto.team, userId: dto.userId, removedAt: null, locationId: committee }, select: { id: true } })) throw new ConflictException(dto.team === 'ic' ? 'This person is already on that committee.' : 'This person is already on that list.');
       // The IC has a presiding officer and an external member; the IR team may have an outside lawyer (HLP-13 decision 1).
       const role = dto.team === 'ic' ? (dto.role ?? 'member') : dto.team === 'ir' && dto.role === 'external' ? 'external' : 'member';
       // Answer 2591: the committee list records who is a woman and when each term ends (the POSH Act checks).
@@ -460,10 +482,10 @@ export class SpeakupService {
         if (dto.termEndsOn.slice(0, 10) > addDays(today, 3 * 365 + 1)) throw new BadRequestException('A term is at most 3 years.');
         if (role === 'presiding' && !dto.woman) throw new BadRequestException('The presiding officer must be a senior woman employee.');
       } else if (dto.woman !== undefined || dto.termEndsOn) throw new BadRequestException('Woman and term end are asked only for the Internal Committee.');
-      if (role === 'presiding' && (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: 'ic', role: 'presiding', removedAt: null }, select: { id: true } }))) throw new ConflictException('The Internal Committee already has a presiding officer. Remove them first.');
-      const ic = dto.team === 'ic' ? { woman: dto.woman!, termEndsOn: day(dto.termEndsOn!.slice(0, 10)) } : {};
+      if (role === 'presiding' && (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: 'ic', role: 'presiding', removedAt: null, locationId: committee }, select: { id: true } }))) throw new ConflictException('This committee already has a presiding officer. Remove them first.');
+      const ic = dto.team === 'ic' ? { woman: dto.woman!, termEndsOn: day(dto.termEndsOn!.slice(0, 10)), locationId: committee } : {};
       const m = await tx.speakupTeamMember.create({ data: { organizationId: org, team: dto.team, userId: dto.userId, role, addedBy: c.userId ?? null, ...ic } });
-      await audit(tx, c, 'speakup.team_member_added', 'speakup_team_member', m.id, { team: dto.team, userId: dto.userId, role, ...(dto.team === 'ic' ? { woman: dto.woman, termEndsOn: dto.termEndsOn!.slice(0, 10) } : {}) });
+      await audit(tx, c, 'speakup.team_member_added', 'speakup_team_member', m.id, { team: dto.team, userId: dto.userId, role, ...(dto.team === 'ic' ? { woman: dto.woman, termEndsOn: dto.termEndsOn!.slice(0, 10), locationId: committee } : {}) });
       return { id: m.id };
     });
   }

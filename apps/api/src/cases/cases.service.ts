@@ -206,7 +206,7 @@ export class CasesService {
       const today = todayIst();
       const me = c.userId!;
       const { dates, source } = await this.dates(tx, l, today);
-      const ic = await tx.speakupTeamMember.findMany({ where: { organizationId: c.organizationId, team: 'ic', removedAt: null }, select: { userId: true, role: true } });
+      const ic = await tx.speakupTeamMember.findMany({ where: { organizationId: c.organizationId, team: 'ic', removedAt: null, locationId: row.icLocationId }, select: { userId: true, role: true } });
       const presidingId = ic.find((m) => m.role === 'presiding')?.userId ?? null;
       const externals = new Set((await tx.speakupTeamMember.findMany({ where: { organizationId: c.organizationId, role: 'external', removedAt: null }, select: { userId: true } })).map((m) => m.userId));
       const msgs = await tx.speakupMessage.findMany({ where: { organizationId: c.organizationId, caseId: row.id }, orderBy: { sentAt: 'asc' } });
@@ -493,7 +493,7 @@ export class CasesService {
       const l = await this.memberCase(tx, c, id);
       this.open(l);
       this.poshCase(l);
-      const presiding = await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ic', role: 'presiding', removedAt: null, userId: c.userId! }, select: { id: true } });
+      const presiding = await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ic', role: 'presiding', removedAt: null, userId: c.userId!, locationId: l.row.icLocationId }, select: { id: true } });
       if (!presiding) throw new ForbiddenException({ statusCode: 403, code: 'CASE_NOT_PRESIDING', message: 'Only the presiding officer signs the report.' });
       if (l.f.ic.status !== 'draft') throw new ConflictException('There is no draft report to sign.');
       const agree = [...l.members.keys()].filter((u) => l.f.ic.votes.get(u)?.vote === 'agree').length;

@@ -202,6 +202,38 @@ describe('HLP-06 speak-up filing', () => {
     await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding', ...IC }).expect(201);
   });
 
+  it('answer 2592: a workplace committee takes that workplace’s POSH complaints; others go to the company committee; each committee’s presiding and console are its own', async () => {
+    const loc = await inA(async (tx) => {
+      const e = await tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'HLP06 Foods', shortName: `H6${run.slice(0, 4).toUpperCase()}`, isDefault: true } });
+      return (await tx.location.create({ data: { organizationId: org.A.id, legalEntityId: e.id, name: 'Hosur plant', code: 'HSR', address: {}, country: 'IN', state: 'IN-TN', timezone: 'Asia/Kolkata' } })).id;
+    });
+    const add = (body: object) => api('adminA', 'post', '/setup/members').send({ team: 'ic', ...IC, ...body });
+    await api('adminA', 'post', '/setup/members').send({ team: 'ethics', userId: users.chair, locationId: loc }).expect(400);
+    await add({ userId: users.ethics2, locationId: '00000000-0000-4000-8000-000000000000' }).expect(400);
+    await add({ userId: users.ethics2, role: 'presiding', locationId: loc }).expect(201);
+    await add({ userId: users.ethics2, locationId: loc }).expect(409);
+    await add({ userId: users.chair, role: 'presiding', locationId: loc }).expect(409);
+    // ic1 presides the company committee and may sit on the workplace's too.
+    await add({ userId: users.ic1, locationId: loc }).expect(201);
+    const setup = (await api('adminA', 'get', '/setup').expect(200)).body;
+    expect(setup.locations).toEqual(expect.arrayContaining([{ id: loc, name: 'Hosur plant' }]));
+    expect(setup.members.filter((m: { team: string; locationId: string | null }) => m.team === 'ic' && m.locationId === loc)).toHaveLength(2);
+    const at = (await api('divya', 'post', '/reports').send({ kind: 'posh', summary: 'Unwelcome remarks at the plant canteen.', locationId: loc }).expect(201)).body;
+    expect(await inA((tx) => tx.speakupCase.findFirstOrThrow({ where: { id: at.id }, select: { icLocationId: true } }))).toEqual({ icLocationId: loc });
+    expect((await inA((tx) => tx.speakupCaseMember.findMany({ where: { caseId: at.id }, select: { userId: true } }))).map((m) => m.userId).sort()).toEqual([users.ethics2, users.ic1].sort());
+    await api('ethics2', 'get', `/cases/${at.id}`).expect(200);
+    await api('chair', 'get', `/cases/${at.id}`).expect(404);
+    const co = (await api('divya', 'post', '/reports').send({ kind: 'posh', summary: 'Unwelcome remarks in the head office.' }).expect(201)).body;
+    expect((await inA((tx) => tx.speakupCaseMember.findMany({ where: { caseId: co.id }, select: { userId: true } }))).map((m) => m.userId)).toEqual([users.ic1]);
+    await api('ethics2', 'get', `/cases/${co.id}`).expect(404);
+    const mine = (await api('ethics2', 'get', '/ic').expect(200)).body.members;
+    expect(mine.map((m: { committee: string }) => m.committee)).toEqual(['Hosur plant', 'Hosur plant']);
+    const both = (await api('ic1', 'get', '/ic').expect(200)).body.members;
+    expect(new Set(both.map((m: { committee: string }) => m.committee))).toEqual(new Set(['Whole company', 'Hosur plant']));
+    // Leave only the company committee for the tests after this one.
+    for (const m of setup.members.filter((x: { team: string; locationId: string | null }) => x.team === 'ic' && x.locationId === loc)) await api('adminA', 'post', `/setup/members/${m.id}/remove`).expect(201);
+  });
+
   it('CMP-11 (batch F item 13): the Internal Committee console is for its members only; their POSH complaints carry the filing day; the menu count too', async () => {
     const ic = (await api('ic1', 'get', '/ic').expect(200)).body;
     expect(ic.company).toBe('HLP06 Org A');
@@ -210,7 +242,7 @@ describe('HLP-06 speak-up filing', () => {
     const rows = (await request(server()).get('/api/v1/desk/cases').set('Authorization', `Bearer ${token.ic1}`).expect(200)).body as { kind: string; ref: string; filedOn: string }[];
     expect(rows.find((c) => c.ref === 'POSH-0001')).toMatchObject({ kind: 'posh', filedOn: today });
     const counts = (who: Who) => request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token[who]}`).expect(200).then((r) => r.body);
-    expect((await counts('ic1')).icComplaints).toBe(1);
+    expect((await counts('ic1')).icComplaints).toBe(3); // POSH-0001, and the two filed in the answer 2592 test
     expect((await counts('divya')).icComplaints).toBeUndefined();
     expect((await counts('ethics1')).icComplaints).toBeUndefined();
   });

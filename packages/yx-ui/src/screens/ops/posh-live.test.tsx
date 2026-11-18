@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { IcConsoleScreen, PoshComplaintScreen } from './posh';
-import { IC_NO_EXTERNAL, IC_WRONG, liveIcConsole, livePoshFiling } from './posh-live-samples';
+import { IC_NO_EXTERNAL, IC_TWO_COMMITTEES, IC_WRONG, liveIcConsole, livePoshFiling } from './posh-live-samples';
 
 // Batch F item 13: CMP-10 POSH complaint and CMP-11 Internal Committee console, live. Positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -97,6 +97,13 @@ describe('CMP-11 Internal Committee console (live)', () => {
     expect(screen.getByText(/Adv. Shobha Rao: tenure ended/)).toBeInTheDocument();
     expect(screen.getByText(/Kavitha Srinivasan: woman or term end not recorded/)).toBeInTheDocument();
     expect(screen.getByText('Ended')).toBeInTheDocument();
+  });
+
+  it('answer 2592: each committee is checked on its own and named', () => {
+    show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ members: IC_TWO_COMMITTEES })} />);
+    expect(screen.getByText(/Hosur plant: Add one external member/)).toBeInTheDocument();
+    expect(screen.queryByText(/Whole company: Add one external member/)).toBeNull();
+    expect(screen.getAllByText('Hosur plant').length).toBeGreaterThan(0);
   });
 
   it('lists the complaints and opens one', async () => {

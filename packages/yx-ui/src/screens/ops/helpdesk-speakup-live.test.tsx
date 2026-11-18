@@ -170,6 +170,24 @@ describe('HLP-06 Speak-up set-up (live)', () => {
     expect(screen.getByText(/Lakshmi Venkatesan: woman or term end not recorded/)).toBeInTheDocument();
   });
 
+  it('answer 2592: a member can be added to a workplace committee; each committee is checked on its own', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    const base = liveSetup({ onAdd, start: { adding: 'ic' } });
+    show(<SpeakUpSetupScreen live={{ ...base, data: { ...base.data!, members: [...base.data!.members, { id: 'h1', team: 'ic', userId: 'u-divya', name: 'Divya Raghunathan', role: 'presiding', addedAt: '2026-11-01T05:00:00Z', woman: true, termEndsOn: '2029-10-31', locationId: 'loc-hsr' }] } }} />);
+    expect(screen.getByText(/Hosur plant: Add one external member/)).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Person/ }));
+    await ue.click(await screen.findByRole('option', { name: /Joseph Mathew/ }));
+    await ue.click(within(dialog).getByRole('combobox', { name: /Committee/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Hosur plant' }));
+    await ue.click(within(dialog).getByRole('radio', { name: 'No' }));
+    const next = new Date();
+    next.setFullYear(next.getFullYear() + 1);
+    await ue.type(within(dialog).getByRole('textbox', { name: /Term ends/ }), `${String(next.getDate()).padStart(2, '0')}/${String(next.getMonth() + 1).padStart(2, '0')}/${next.getFullYear()}{Enter}`);
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ team: 'ic', role: 'member', woman: false, locationId: 'loc-hsr' }));
+  });
+
   it('no access without the key', () => {
     show(<SpeakUpSetupScreen live={liveSetup({ state: 'no-access' })} />);
     expect(screen.getByText(/HR does not/)).toBeInTheDocument();

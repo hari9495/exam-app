@@ -111,4 +111,9 @@ export class TeamMemberDto {
   @IsOptional()
   @IsDateString({ strict: true })
   termEndsOn?: string;
+
+  /** Answer 2592: a workplace's own committee (Internal Committee only); left out for the company committee. */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 }

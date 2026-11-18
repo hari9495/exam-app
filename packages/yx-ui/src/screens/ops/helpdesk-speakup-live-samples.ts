@@ -81,6 +81,7 @@ export function liveSetup(over: Partial<LiveSpeakUpSetup> = {}): LiveSpeakUpSetu
         { id: 'm7', team: 'ir', userId: 'u-harish', name: 'Harish Bhat', role: 'member', addedAt: '2026-11-04T05:00:00Z' },
         { id: 'm8', team: 'ir', userId: 'u-rohini', name: 'Adv. Rohini Kamath', role: 'external', addedAt: '2026-11-04T05:00:00Z' },
       ],
+      locations: [{ id: 'loc-blr', name: 'Bengaluru head office' }, { id: 'loc-hsr', name: 'Hosur plant' }],
       users: [
         { id: 'u-rekha', name: 'Rekha Iyengar', email: 'rekha@kaverifoods.in' },
         { id: 'u-divya', name: 'Divya Raghunathan', email: 'divya@kaverifoods.in' },

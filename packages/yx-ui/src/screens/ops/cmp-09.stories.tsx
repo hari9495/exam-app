@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { IcConsoleScreen } from './posh';
 import { AWARENESS_LOG, IC_MEMBERS, POSH_CASES } from './cases-data';
 import { TODAY } from '../_kit/data';
-import { IC_NO_EXTERNAL, IC_WRONG, liveIcConsole } from './posh-live-samples';
+import { IC_NO_EXTERNAL, IC_TWO_COMMITTEES, IC_WRONG, liveIcConsole } from './posh-live-samples';
 
 const meta: Meta = { title: 'Screens/Compliance/CMP-09 · IC console', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -21,3 +21,4 @@ export const MemberConsole: S = { name: 'Committee member · committee and compl
 export const MemberNoExternal: S = { name: 'Committee member · no external member', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ members: IC_NO_EXTERNAL })} /> };
 export const MemberLoading: S = { name: 'Committee member · loading', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ state: 'loading', members: [], cases: [] })} /> };
 export const MemberRulesBroken: S = { name: 'Committee member · presiding not a woman, a term over, details missing', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ members: IC_WRONG })} /> };
+export const MemberTwoCommittees: S = { name: 'Committee member · company and workplace committees', render: () => <IcConsoleScreen today={TODAY} live={liveIcConsole({ members: IC_TWO_COMMITTEES })} /> };

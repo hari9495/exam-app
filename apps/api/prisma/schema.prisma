@@ -13150,6 +13150,8 @@ model SpeakupTeamMember {
   /// Answer 2591 (Internal Committee only): a woman member, and the day the term ends (at most 3 years).
   woman          Boolean?
   termEndsOn     DateTime? @map("term_ends_on") @db.Date
+  /// Answer 2592 (Internal Committee only): the workplace's own committee; null is the company committee.
+  locationId     String?   @map("location_id") @db.Uuid
   addedBy        String?   @map("added_by") @db.Uuid
   addedAt        DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
   removedBy      String?   @map("removed_by") @db.Uuid
@@ -13196,6 +13198,8 @@ model SpeakupCase {
   ruleClause         String?   @map("rule_clause") @db.VarChar(200)
   /// HLP-08 answer 55: "hr" (opened by HR) or "manager" (a manager's report, a draft until HR decides).
   source             String    @default("hr") @db.VarChar(8)
+  /// Answer 2592: the Internal Committee a POSH complaint went to (a workplace's; null is the company committee).
+  icLocationId       String?   @map("ic_location_id") @db.Uuid
 
   @@unique([organizationId, kind, number], map: "speakup_cases_number_key")
   @@map("speakup_cases")

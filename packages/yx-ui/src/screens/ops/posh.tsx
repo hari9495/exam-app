@@ -54,7 +54,8 @@ export interface LiveIcConsole {
   onRetry?: () => void;
   company: string;
   /** Answer 2591: woman and term end (null on members added before they were asked). */
-  members: { id: string; name: string; role: 'presiding' | 'member' | 'external'; since: string; woman: boolean | null; termEndsOn: string | null }[];
+  /** Answer 2592: the committees this member sits on (the company's, a workplace's); committeeId null is the company's. */
+  members: { id: string; name: string; role: 'presiding' | 'member' | 'external'; since: string; woman: boolean | null; termEndsOn: string | null; committeeId: string | null; committee: string }[];
   /** The POSH complaints this member is on (the case list, POSH only). */
   cases: { id: string; ref: string; filedOn: string | null; location: string; stage: string; next: { label: string; on: string | null } | null; overdue: boolean; status: string }[];
   onOpen: (caseId: string) => void;
@@ -66,14 +67,16 @@ const ROLE_WORDS = { presiding: 'Presiding officer', member: 'Member', external:
 function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date }) {
   if (live.state === 'no-access') return <RestrictedNotFound area="compliance" />;
   const open = live.cases.filter((c) => c.status !== 'closed');
-  // Answer 2591: presiding woman, at least half women, one external member, terms not over.
-  const issues = recordedIcIssues(live.members, today);
+  // Answer 2591: presiding woman, at least half women, one external member, terms not over; answer 2592: per committee.
+  const committees = [...new Map(live.members.map((m) => [m.committeeId, m.committee])).entries()];
+  const several = committees.length > 1;
+  const issues = committees.flatMap(([id, name]) => recordedIcIssues(live.members.filter((m) => m.committeeId === id), today).map((i) => (several ? `${name}: ${i}` : i)));
   const over90 = open.filter((c) => c.filedOn && addDays(new Date(`${c.filedOn}T00:00:00`), 90) < today).length;
   return (
     <OpsDesk area="compliance" active="POSH" member>
       <Confidential note="Confidential. Visible to Internal Committee members only. System admins and support can't open it. Every view is logged.">
         <ObjectHeader
-          name={`Internal Committee · ${live.company}`}
+          name={several ? `Internal Committees · ${live.company}` : `Internal Committee · ${committees[0]?.[0] ? committees[0][1] : live.company}`}
           icon={Users}
           status={live.state !== 'ready' ? undefined : issues.length ? <Badge tone="danger">Committee not complete</Badge> : <Badge tone="success">Committee complete</Badge>}
           facts={[
@@ -99,6 +102,7 @@ function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date
                 state={live.state === 'loading' ? 'loading' : 'ready'}
                 columns={[
                   { key: 'n', header: 'Member', type: 'person', value: (m: LiveIcConsole['members'][number]) => m.name, person: (m) => ({ name: m.name, secondary: ROLE_WORDS[m.role] }) },
+                  ...(several ? [{ key: 'c', header: 'Committee', value: (m: LiveIcConsole['members'][number]) => m.committee }] : []),
                   { key: 's', header: 'On the committee since', type: 'date', value: (m) => new Date(`${m.since}T00:00:00`) },
                   { key: 'w', header: 'Woman', value: (m) => (m.woman === null ? 'Not recorded' : m.woman ? 'Yes' : 'No') },
                   { key: 't', header: 'Term ends', value: (m) => m.termEndsOn ?? '', render: (m) => (m.termEndsOn ? <span className="yx-ops-row">{formatDate(new Date(`${m.termEndsOn}T00:00:00`))}{m.termEndsOn < isoToday(today) && <Badge tone="danger">Ended</Badge>}</span> : 'Not recorded') },
