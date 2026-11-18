@@ -252,7 +252,7 @@ export function MultiSelect<V extends string = string>({
             <span key={o.value} className="yx-select__chip">
               {o.label}
               {!disabled && (
-                <button type="button" className="yx-select__chip-remove" aria-label={`Remove ${o.label}`} onClick={() => toggle(o.value)}>
+                <button type="button" className="yx-select__chip-remove" aria-label={`Remove ${o.label}`} title={`Remove ${o.label}`} onClick={() => toggle(o.value)}>
                   <Icon icon={X} size="sm" />
                 </button>
               )}
