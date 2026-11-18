@@ -141,8 +141,10 @@ export function LiveCycleSetupScreen({ live, defaultStep }: { live: LiveCycleSet
   });
   /** Saves the draft and its 360° set-up; returns the saved cycle. */
   const save = async () => {
-    const c = await live.onSave(input(), id);
-    await live.onPeer(c.id, with360 ? { minNominees: min360!, maxNominees: max360!, dueOn: toDay(due360)! } : null);
+    const saved = await live.onSave(input(), id);
+    // Turning 360° on or off bumps the cycle's version; launch with the one the server returned.
+    const peer = (await live.onPeer(saved.id, with360 ? { minNominees: min360!, maxNominees: max360!, dueOn: toDay(due360)! } : null)) as { version?: number } | undefined;
+    const c = typeof peer?.version === 'number' ? { ...saved, version: peer.version } : saved;
     setId(c.id);
     setVersion(c.version);
     return c;
