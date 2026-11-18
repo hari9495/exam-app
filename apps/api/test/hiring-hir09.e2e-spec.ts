@@ -563,6 +563,16 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     expect(declined.metadataJson).toContain(lb[0].id);
     // A declined offer's letter is still the candidate's to read by the link.
     await pub('get', `/offers/${tb}/letter`).expect(200);
+
+    // Answer 2542: once HR makes the joiner, the accepted offer letter shows with their letters (linked, not copied).
+    const joiner = (await api('hr', 'post', `/lifecycle/ready-to-onboard/${ids.d4}`).send({ givenName: 'Cand', familyName: 'd4', joiningOn: plus(30), legalEntityId: ids.entity, locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm }).expect(201)).body;
+    const pb = await inA((tx) => tx.preboarding.findFirstOrThrow({ where: { offerId: ids.d4 } }));
+    expect(joiner).toBeTruthy();
+    const mine = await inA((tx) => letters.lettersOf(tx, org.A.id, pb.personId));
+    expect(mine.letters).toEqual([expect.objectContaining({ id: l.id, referenceNo: l.referenceNo, letterType: 'offer', acceptedAt: expect.any(String) })]);
+    expect((await inA((tx) => tx.letterIssue.findFirstOrThrow({ where: { id: l.id } }))).personId).toBeNull();
+    // The declined offer's letter never becomes anyone's, and another person never sees this one.
+    expect(await inA((tx) => letters.acceptedOfferLetterIds(tx, org.A.id, randomUUID()))).toEqual([]);
   });
 
   it('an older text offer stays readable as version 0, also after its first CTC version', async () => {

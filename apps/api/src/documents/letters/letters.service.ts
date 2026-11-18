@@ -1077,8 +1077,19 @@ export class LettersService implements OnModuleInit {
     });
   }
 
+  /**
+   * Answer 2542: the offer letter a joiner accepted as a candidate is theirs too (their joiner record's offer). It is shown
+   * with their letters by that link, never copied: an issued letter never changes, so it keeps its candidate.
+   */
+  async acceptedOfferLetterIds(tx: Tx, org: string, personId: string) {
+    const offers = (await tx.preboarding.findMany({ where: { organizationId: org, personId, offerId: { not: null } }, select: { offerId: true } })).map((p) => p.offerId!);
+    if (!offers.length) return [];
+    return (await tx.letterIssue.findMany({ where: { organizationId: org, subjectType: 'offer', subjectId: { in: offers }, candidateId: { not: null }, status: 'issued', acceptedAt: { not: null } }, select: { id: true } })).map((l) => l.id);
+  }
+
   async lettersOf(tx: Tx, org: string, personId: string) {
-    const rows = await tx.letterIssue.findMany({ where: { organizationId: org, personId, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' } });
+    const offerLetters = await this.acceptedOfferLetterIds(tx, org, personId);
+    const rows = await tx.letterIssue.findMany({ where: { organizationId: org, status: { in: ['issued', 'superseded'] }, OR: [{ personId }, { id: { in: offerLetters } }] }, orderBy: { issuedAt: 'desc' } });
     const srs = await tx.signatureRequest.findMany({ where: { organizationId: org, personId, letterIssueId: { in: rows.map((r) => r.id) } } });
     const consent = await tx.consentRecord.findFirst({ where: { organizationId: org, personId, purpose: 'esign', withdrawnAt: null }, select: { id: true } });
     const sizes = new Map((await tx.file.findMany({ where: { organizationId: org, id: { in: rows.flatMap((r) => (r.fileId ? [r.fileId] : [])) } }, select: { id: true, size: true } })).map((f) => [f.id, f.size]));
@@ -1096,9 +1107,13 @@ export class LettersService implements OnModuleInit {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const l = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id } });
-      // A candidate's offer letter is read on the offer (Hiring), never here.
-      if (!l || !l.personId) throw new NotFoundException('No such letter.');
+      if (!l) throw new NotFoundException('No such letter.');
       const own = await ownOf(tx, c, v);
+      // A candidate's offer letter: only the joiner who accepted it reads it here (answer 2542); HR reads it on the offer.
+      if (!l.personId) {
+        if (!own.personId || v.actingForOther || !(await this.acceptedOfferLetterIds(tx, c.organizationId, own.personId)).includes(l.id)) throw new NotFoundException('No such letter.');
+        return this.letterFile(tx, c, l, which, 'self');
+      }
       const self = own.personId === l.personId;
       if (!self && !(await reachesPerson(tx, c, v, 'letter.issue', l.personId, own))) throw new ForbiddenException('You cannot see this letter.');
       if (self && !['issued', 'superseded'].includes(l.status)) throw new NotFoundException('No such letter.');
