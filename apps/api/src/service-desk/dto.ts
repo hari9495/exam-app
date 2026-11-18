@@ -1404,7 +1404,7 @@ export class ReadsQueryDto {
 
 // ---- SLA (SD-1.14 to SD-1.17) ----
 
-export const SLA_METRIC_LIST = ['assign', 'first_response', 'next_response', 'resolution', 'group', 'task'] as const;
+export const SLA_METRIC_LIST = ['assign', 'first_response', 'next_response', 'resolution', 'group', 'group_response', 'task'] as const;
 export const MILESTONE_ACTION_LIST = ['notify_assignee', 'notify_group_leads', 'notify_desk_leads', 'raise_priority', 'move_to_group'] as const;
 
 export class MilestoneActionDto {

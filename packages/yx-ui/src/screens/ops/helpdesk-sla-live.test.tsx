@@ -17,6 +17,19 @@ describe('HLP-05 SLA dashboard (live)', () => {
     expect(screen.getByRole('link', { name: /View 42 open tickets/ })).toHaveAttribute('href', '#tickets');
   });
 
+  // Batch F GLPI 8 (answer 2572): team targets (OLA) by team, only once a desk has them.
+  it('team targets show kept and missed per team; with none set there is no card', () => {
+    const teams = [{ groupId: 'g1', name: 'Payroll team', response: { kept: 4, missed: 1 }, handOff: { kept: 3, missed: 0 }, tasks: { kept: 0, missed: 0 } }];
+    const { unmount } = render(<SlaDashboardScreen live={liveSla({ sla: { ...SLA, teams } })} />);
+    const table = screen.getByRole('table', { name: 'Team targets' });
+    expect(within(table).getByText('1 missed · 4 of 5 on time')).toBeInTheDocument();
+    expect(within(table).getByText('3 of 3 on time')).toBeInTheDocument();
+    expect(within(table).getByText('—')).toBeInTheDocument();
+    unmount();
+    render(<SlaDashboardScreen live={liveSla({ sla: { ...SLA, teams: [] } })} />);
+    expect(screen.queryByRole('table', { name: 'Team targets' })).toBeNull();
+  });
+
   it('a figure with nothing to count says so in words, not 0', () => {
     render(<SlaDashboardScreen live={liveSla({ sla: { ...SLA, firstResponseMetPct: null, articlePct: null } })} />);
     expect(screen.getByText('No first responses due in this period')).toBeInTheDocument();

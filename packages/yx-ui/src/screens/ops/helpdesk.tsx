@@ -23,7 +23,7 @@ import { RichTextEditor } from '../../components/editor';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { Actions, CardGrid, Facts, FirstResponseBadge, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
+import { Actions, CardGrid, Facts, FirstResponseBadge, OpsDesk, SlaBadge, TeamTargetsTable, Workspace, useSay } from './ops-kit';
 import { ackPercent, slaState, ticketCloseInfo } from './ops-rules';
 import type { KbArticle, PolicyRow, Ticket, TicketStatus } from './helpdesk-data';
 import { LiveHelpCentre, type LiveHelp } from './helpdesk-live';
@@ -706,6 +706,8 @@ function SampleTicketWorkspace({ ticket, messages, macros, articles, activity, t
                   { label: 'Priority', value: ticket.priority },
                   { label: 'Assignee', value: ticket.assignee ?? 'Unassigned' },
                   { label: 'First response', value: <SlaBadge elapsedMin={ticket.firstResponse.elapsed} targetMin={ticket.firstResponse.target} met={ticket.firstResponse.met} /> },
+                  // Batch F GLPI 8 (answer 2572): the team's own target, next to the requester's SLA.
+                  { label: 'Team targets', value: <SlaBadge label="Team first response" elapsedMin={Math.min(ticket.firstResponse.elapsed, 60)} targetMin={120} met={ticket.firstResponse.met} /> },
                 ]}
               />
             </Card>
@@ -940,6 +942,15 @@ function SampleSlaDashboard({ tickets, loading, empty }: SlaDashboardScreenProps
           </CardGrid>
           <Card title={`At risk or breached (${atRisk.length})`}>
             <DataTable label="At risk or breached tickets" columns={ticketColumns().filter((c) => ['id', 'subject', 'queue', 'sla', 'assignee'].includes(c.key))} rows={atRisk} getRowId={(t) => t.id} state={loading ? 'loading' : 'ready'} empty={<EmptyState compact title="Nothing at risk right now." />} rowButtons={() => <Button size="sm">Reassign</Button>} />
+          </Card>
+          <Card title="Team targets (OLA)">
+            <TeamTargetsTable
+              loading={loading}
+              rows={[
+                { groupId: 'g1', name: 'Payroll team', response: { kept: 41, missed: 3 }, handOff: { kept: 38, missed: 1 }, tasks: { kept: 6, missed: 0 } },
+                { groupId: 'g2', name: 'IT field support', response: { kept: 52, missed: 0 }, handOff: { kept: 47, missed: 2 }, tasks: { kept: 0, missed: 0 } },
+              ]}
+            />
           </Card>
           <Card title="Agent load">
             <DataTable

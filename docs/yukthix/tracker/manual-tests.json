@@ -27684,5 +27684,25 @@
                               "Screens/Helpdesk/HLP-03 · Ticket workspace"
                     ],
                     "note": "Positive and negative (unit requester-chase.spec: business days, weekends and holidays, at most N, solve, catch-up; service-desk-batch2 e2e: defaults, bad settings 400, agent 403, waiting day not counted, one reminder a day, repeat run none, solved after 5 days, audited, chase off none; kit desk.test: field error and focus, saved values, off sends only the switch)."
+          },
+          {
+                    "id": "MT-F-GLPI8-TEAM-TARGETS",
+                    "area": "Batch F GLPI 8: team targets (OLA) per team: first response and hand-off (answer 2572, 18 Nov 2026)",
+                    "screen": "Helpdesk › Desk set-up › Response targets; Ticket workspace (HLP-03) details; SLA dashboard (HLP-05)",
+                    "url": "http://localhost:3000/yx/desk/setup",
+                    "account": "A desk admin (desk.sla.manage); two agents in two teams (groups) of the desk; a desk lead with reports.",
+                    "steps": [
+                              "As the desk admin open Response targets, press 'Add team targets (OLA)', add 'Team first response' 30 min and 'Team hand-off' 60 min for every priority, save.",
+                              "As the lead give a new ticket to team A. Open it as an agent.",
+                              "Move it to team B before anyone answers; reply as a team B agent.",
+                              "Open the SLA dashboard for today.",
+                              "Negative: try to add 'Team first response' to a response target (SLA) policy; open the ticket as the requester; open the dashboard on a desk with no team targets."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast. Step 2: Details shows 'Team targets' with 'Team first response · Team A: 30 min left' beside First response. Step 3: team A's clock stops (not kept by them), team B's starts and is Met after the reply; the requester's First response and Resolution SLA are unchanged. Step 4: 'Team targets (OLA)' lists each team with 'N of M on time' per measure, missed ones in red. Step 5: the SLA policy refuses the measure (400); the requester never sees team targets; no Team targets card when none are set.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-05 · SLA dashboard",
+                              "Screens/Helpdesk/HLP-03 · Ticket workspace"
+                    ],
+                    "note": "Positive and negative (service-desk-batch2 e2e: SLA kind refuses it 400, agent 403, starts on a team, hand-off cancels, reply keeps it, SLA unchanged, dashboard teams, labels name the team; kit helpdesk-sla-live and helpdesk-ticket-live). Migration 202617z0000582 widens the metric checks."
           }
 ]

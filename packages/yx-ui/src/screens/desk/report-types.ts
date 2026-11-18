@@ -216,6 +216,8 @@ export interface SlaDashboard {
   queues: { deskId: string; name: string; met: number; breached: number }[];
   weeks: { week: string; metPct: number | null }[];
   firstResponseWeeks: { week: string; metPct: number | null }[];
+  /** Batch F GLPI 8: team targets (OLA) by team for the period; empty when no desk set any (absent on an older API). */
+  teams?: { groupId: string | null; name: string; response: { kept: number; missed: number }; handOff: { kept: number; missed: number }; tasks: { kept: number; missed: number } }[];
   agents: { userId: string; name: string; desks: string; open: number; atRisk: number; rating: number | null }[];
   atRisk: SlaAtRiskRow[];
 }

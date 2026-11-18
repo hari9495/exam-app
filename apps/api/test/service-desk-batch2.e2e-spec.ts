@@ -547,6 +547,32 @@ describe('Service Desk batch 2 (M14 §5.7, §6.3, §7, §8, §15.2)', () => {
       await api('agent2', 'patch', `/desk/tasks/${task.id}`).send({ version: 1, state: 'done' }).expect(200);
       expect((await timers(t.id)).find((x) => x.taskId === task.id)?.state).toBe('met');
     });
+
+    // Batch F GLPI 8 (answer 2572): a team's first response (internal TTO) next to its hand-off time; never the SLA.
+    it('team first response (OLA): starts when a team gets the ticket, kept by an agent reply, ends on a hand-off; on the dashboard', async () => {
+      await api('adminA', 'post', `/desk/desks/${ids.desk}/sla-policies`).send({ name: 'A team targets', kind: 'sla', scope: { match: 'all', rules: [] }, calendarSource: 'desk', targets: [{ metric: 'group_response', minutes: [30, 30, 30, 30] }] }).expect(400);
+      await api('agent1', 'post', `/desk/desks/${ids.desk}/sla-policies`).send({ name: 'A team targets', kind: 'ola', scope: { match: 'all', rules: [] }, calendarSource: 'desk', targets: [{ metric: 'group_response', minutes: [30, 30, 30, 30] }] }).expect(403);
+      await api('adminA', 'post', `/desk/desks/${ids.desk}/sla-policies`).send({ name: 'A team targets', kind: 'ola', scope: { match: 'all', rules: [] }, calendarSource: 'desk', targets: [{ metric: 'group', minutes: [60, 60, 60, 60] }, { metric: 'group_response', minutes: [30, 30, 30, 30] }] }).expect(201);
+      const t = await raise('Projector dead', 'Board room 3.');
+      const slaBefore = (await timers(t.id)).filter((x) => x.kind === 'sla').map((x) => [x.metric, x.targetSeconds]);
+      await api('lead', 'patch', `/desk/tickets/${t.id}`).send({ version: (await ticket(t.id)).version, groupId: ids.group }).expect(200);
+      const resp = () => timers(t.id).then((xs) => xs.filter((x) => x.kind === 'ola' && x.metric === 'group_response'));
+      expect((await resp()).map((x) => [x.groupId, x.state])).toEqual([[ids.group, 'running']]);
+      // Handed to another team before answering: not kept by the first team; the new team's clock starts.
+      const g3 = (await api('adminA', 'post', `/desk/desks/${ids.desk}/groups`).send({ name: `AV ${run}`, assignmentMethod: 'manual', memberIds: [users.agent1] }).expect(201)).body;
+      await api('lead', 'patch', `/desk/tickets/${t.id}`).send({ version: (await ticket(t.id)).version, groupId: g3.id }).expect(200);
+      expect((await resp()).map((x) => [x.groupId, x.state])).toEqual([[ids.group, 'cancelled'], [g3.id, 'running']]);
+      // An agent reply keeps it.
+      await api('agent1', 'post', `/desk/tickets/${t.id}/messages`).send({ kind: 'reply', bodyHtml: '<p>On my way.</p>', mentions: [], attachmentIds: [] }).expect(201);
+      expect((await resp()).find((x) => x.groupId === g3.id)!.state).toBe('met');
+      // The requester's SLA is unchanged by the team targets.
+      expect((await timers(t.id)).filter((x) => x.kind === 'sla').map((x) => [x.metric, x.targetSeconds])).toEqual(expect.arrayContaining(slaBefore));
+      const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+      const dash = (await api('lead', 'get', `/desk/reports/sla?from=${today}&to=${today}&deskId=${ids.desk}`).expect(200)).body as { teams: { groupId: string; response: { kept: number; missed: number } }[] };
+      expect(dash.teams.find((x) => x.groupId === g3.id)!.response).toEqual({ kept: 1, missed: 0 });
+      const view = (await api('agent1', 'get', `/desk/tickets/${t.id}/work`).expect(200)).body.sla as { kind: string; label: string }[];
+      expect(view.filter((x) => x.kind === 'ola' && x.label.startsWith('Team first response')).map((x) => x.label)).toEqual(['Team first response (OLA) · IT help desk team', `Team first response (OLA) · AV ${run}`]);
+    });
   });
 
   describe('security review fixes (batch 2)', () => {
