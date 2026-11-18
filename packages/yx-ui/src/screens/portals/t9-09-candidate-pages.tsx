@@ -455,6 +455,8 @@ export interface OfferView {
   pdfUrl: string | null;
   /** HIR-09 answer 337: the company's letter asks for an electronic signature (a one-time code by email). */
   esign?: boolean;
+  /** M10 D4: the offer was issued as a numbered company letter (its reference, printed on the letter). */
+  letter?: { referenceNo: string | null } | null;
 }
 
 export interface LiveOfferAccept {
@@ -536,6 +538,7 @@ export function OfferAcceptScreen({ brand, state, offer, live }: { brand: Candid
         <Fact label="Pay" value={offer.compensation} />
         <Fact label="Start date" value={formatDate(offer.startDate)} />
         <Fact label="Answer by" value={formatDate(offer.expiresAt)} tone={status === 'expired' ? 'danger' : undefined} />
+        {offer.letter?.referenceNo && <Fact label="Letter" value={offer.letter.referenceNo} />}
       </FactRow>
       {offer.pdfUrl && (
         <div>

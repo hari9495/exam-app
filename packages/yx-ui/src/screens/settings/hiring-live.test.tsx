@@ -264,27 +264,22 @@ describe('Settings 6.1 Hiring (live)', () => {
     // An unchanged rule sends nothing.
     expect(hiringSettingsChanges({}, { 'hire.referral_rules': [['All roles', '₹25,000', '90 days', '']] }, DATA)).toEqual([]);
   });
-  it('HIR-09 answers 332, 334, 337: the band approver (a named person too), the clawback basis and e-signed letters', async () => {
+  it('HIR-09 answers 332, 334, 2523: the band approver (a named person too) and the clawback basis; e-sign is on Letter templates only', async () => {
     const data: HiringSettingsData = {
       ...DATA,
       values: { ...DATA.values, 'hiring.offer.band_approver': 'hr_head', 'hiring.offer.clawback_basis': 'full' },
       defaults: { ...DATA.defaults, 'hiring.offer.band_approver': 'hr_head', 'hiring.offer.clawback_basis': 'full' },
       offerApprovers: [{ id: 'u9', name: 'Meenakshi Sundaram' }],
-      offerLetters: [{ id: 't1', name: 'Offer letter', esign: false }, { id: 't2', name: 'Plant offer', esign: true }],
     };
     const page = hiringSettingsPage(design, data);
     const field = (k: string) => page.sections.flatMap((x) => x.settings).find((d) => d.key === k)!;
     expect(field('hire.band_approver')).toMatchObject({ value: 'hr_head', options: ['hr_head', 'hiring_manager', 'u9'], optionLabels: expect.objectContaining({ u9: 'Meenakshi Sundaram' }) });
     expect(field('hire.clawback_basis')).toMatchObject({ value: 'full', optionLabels: expect.objectContaining({ pro_rata: 'The part for the months not served' }) });
-    expect(field('hire.offer_esign')).toMatchObject({ value: ['t2'], optionLabels: { t1: 'Offer letter', t2: 'Plant offer' } });
-    expect(hiringSettingsChanges({ 'hire.band_approver': 'u9', 'hire.clawback_basis': 'pro_rata', 'hire.offer_esign': ['t1'] }, {}, data)).toEqual([
+    expect(hiringSettingsChanges({ 'hire.band_approver': 'u9', 'hire.clawback_basis': 'pro_rata' }, {}, data)).toEqual([
       { key: 'hiring.offer.band_approver', value: 'u9' },
       { key: 'hiring.offer.clawback_basis', value: 'pro_rata' },
-      { key: 'offer_template.esign', value: 't1:on' },
-      { key: 'offer_template.esign', value: 't2:off' },
     ]);
-    // Unchanged e-sign choice: nothing to save; a company with no offer letters gets no e-sign field.
-    expect(hiringSettingsChanges({ 'hire.offer_esign': ['t2'] }, {}, data)).toEqual([]);
-    expect(hiringSettingsPage(design, { ...data, offerLetters: [] }).sections.flatMap((x) => x.settings).some((d) => d.key === 'hire.offer_esign')).toBe(false);
+    // Answer 2523: the e-sign switch moved to Settings › Letter templates ("person signs"); 6.1 has no e-sign field.
+    expect(page.sections.flatMap((x) => x.settings).some((d) => d.key === 'hire.offer_esign')).toBe(false);
   });
 });

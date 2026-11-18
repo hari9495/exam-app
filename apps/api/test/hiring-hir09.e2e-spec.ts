@@ -1,3 +1,5 @@
+// M10 D4: offers from Letters templates are issued as P05 letters (PDFs from the dev-fake converter when Gotenberg is not set).
+process.env.LETTER_PDF_CONVERTER = 'dev-fake';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -5,7 +7,10 @@ import * as argon2 from 'argon2';
 import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import type Redis from 'ioredis';
-import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { BlobStorageService, OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { LettersService } from '../src/documents/letters/letters.service';
+import { buildDocx } from '../src/documents/letters/docx';
+import { FilesService } from '../src/documents/files.service';
 import { AppModule } from '../src/app.module';
 import { OfferTemplatesToLetters } from '../src/offers/offer-letters';
 import { EmailService } from '../src/email/email.service';
@@ -142,7 +147,7 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     // The job: G6 in the entity, hired for by mgr.
     ids.job = (await api('rec', 'post', '/jobs').send({ title: 'Senior QA Engineer' }).expect(201)).body.id;
     await inA((tx) => tx.job.update({ where: { id: ids.job }, data: { legalEntityId: ids.entity, gradeId: ids.g6, locationId: ids.blr, hiringManagerId: users.mgr } }));
-    for (const k of ['joseph', 'fatima', 'arun', 'old', 'esign', 'other']) await entry(k);
+    for (const k of ['joseph', 'fatima', 'arun', 'old', 'esign', 'other', 'd4', 'd4b']) await entry(k);
     ids.jobB = (await api('recB', 'post', '/jobs').send({ title: 'Other company job' }).expect(201)).body.id;
     // The company's offer chain: one step; the sender is also listed and must be taken out.
     await api('adminA', 'put', '/organizations/approvals/chains/offer').send({ enabled: true, steps: [{ name: 'Hiring head', approverType: 'users', approverUserIds: [users.rec, users.rec2] }] }).expect(200);
@@ -385,8 +390,10 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     email.send.mockClear();
     expect((await api('rec', 'post', `/hiring/offers/${ids.o5}/remind`).expect(200)).body.kind).toBe('offer');
     expect(email.send.mock.calls.find(([x]) => x.to === `esign-${run}@mail.test`)![0].subject).toMatch(/waiting for your answer/);
-    // Answer 337: the settings page lists each offer letter with its e-sign switch.
-    expect((await api('adminA', 'get', '/hiring/settings').expect(200)).body.offerLetters).toEqual(expect.arrayContaining([expect.objectContaining({ id: tplE.id, esign: true })]));
+    // Answer 2523: the e-sign switch is the letter template's "person signs" only; 6.1 no longer lists offer letters.
+    const settings = (await api('adminA', 'get', '/hiring/settings').expect(200)).body;
+    expect(settings.offerLetters).toBeUndefined();
+    await api('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'offer_template.esign', value: `${tplE.id}:off` }] }).expect(400);
     const t = await tokenOf(ids.o5);
     expect((await pub('get', `/offers/${t}`).expect(200)).body.esign).toBe(true);
     expect((await pub('post', `/offers/${t}/respond`).send({ action: 'accept' }).expect(400)).body.code).toBe('ESIGN_DISCLOSURE');
@@ -425,6 +432,129 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     await api('rec', 'get', `/offers/${ids.o1}/acceptance-copy`).expect(404);
     await api('rec', 'post', `/offers/${ids.o1}/acceptance-copy`).expect(409);
     expect((await record('rec', ids.o1)).sealedCopy).toBeNull();
+  });
+
+  it('M10 D4: the offer is issued as a P05 letter (all fields, the entity signatory), e-accepted with a one-time code; refusals save nothing', async () => {
+    const letters = app.get(LettersService);
+    const crypto = new OrgSecretsCryptoService();
+    const redis = app.get<Redis>(LOGIN_PROTECTION_REDIS);
+    // The company's offer letter in Letters: every offer field, the signatory, and "person signs" on.
+    const text = 'Dear {{first_name}}, {{legal_entity}} offers {{employee_name}} the role of {{designation}} in {{department}} at {{location}} from {{joining_date}}. Pay: {{offer_ctc}}. Answer by {{offer_expiry}}: {{offer_link}}. {{signatory_name}}, {{signatory_title}}. {{reference_no}}';
+    const made = await inA(async (tx) => {
+      const buf = buildDocx([{ runs: [{ text }] }]);
+      return letters.insertTemplate(tx, { organizationId: org.A.id, isSuperAdmin: false, userId: users.adminA }, { letterType: 'offer', name: `Signed offer ${run}`, legalEntityId: ids.entity, requiresApproval: false, personSigns: true, companyDsc: false, onePerPerson: false, source: 'editor', fileName: 'offer.docx', buf, fields: letters.checkTemplate(buf), status: 'active', previewViewedAt: new Date() });
+    });
+    await app.get(FilesService).scan(org.A.id, made.fileId);
+    const tpl = made.t;
+    const approved = async (k: string) => {
+      const id = (await api('rec', 'post', '/hiring/offers').send(draft(ids[k], { templateId: tpl.id })).expect(201)).body.id as string;
+      await api('rec', 'post', `/hiring/offers/${id}/submit`).expect(200);
+      await decide(id, 'rec2');
+      return id;
+    };
+    ids.d4 = await approved('d4');
+    const lettersOf = (offerId: string) => inA((tx) => tx.letterIssue.findMany({ where: { subjectType: 'offer', subjectId: offerId }, orderBy: { createdAt: 'asc' } }));
+
+    // No signatory for the entity yet: refused with where to fix it; nothing issued, nothing sent.
+    email.send.mockClear();
+    const missing = (await api('rec', 'post', `/offers/${ids.d4}/send`).expect(400)).body;
+    expect(missing).toMatchObject({ code: 'LETTER_FIELDS_MISSING' });
+    expect(missing.message).toMatch(/Name who signs for their legal entity first/);
+    expect(await lettersOf(ids.d4)).toHaveLength(0);
+    expect(email.send).not.toHaveBeenCalled();
+    expect((await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: ids.d4 } }))).status).toBe('approved');
+    await inA((tx) => tx.signatory.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, userId: users.hrHead, title: 'Head of HR' } }));
+
+    // Refused: an employee (403), the recruiter without offer pay (the letter prints pay), another company (404).
+    await api('emp', 'post', `/offers/${ids.d4}/send`).expect(403);
+    await api('noPay', 'post', `/offers/${ids.d4}/send`).expect(403);
+    await api('recB', 'post', `/offers/${ids.d4}/send`).expect(404);
+    expect(await lettersOf(ids.d4)).toHaveLength(0);
+
+    // A field the job does not give yet is named, never left blank in the letter.
+    expect((await api('rec', 'post', `/offers/${ids.d4}/send`).expect(400)).body.message).toBe('This letter cannot be made yet. Missing: department.');
+    expect(await lettersOf(ids.d4)).toHaveLength(0);
+    await inA((tx) => tx.job.update({ where: { id: ids.job }, data: { departmentId: ids.dept } }));
+    const sent = (await api('rec', 'post', `/offers/${ids.d4}/send`).expect(201)).body;
+    expect(sent).toMatchObject({ status: 'sent', esign: true, pdfPath: null });
+    const [l] = await lettersOf(ids.d4);
+    expect(l).toMatchObject({ status: 'issued', letterType: 'offer', personId: null, candidateId: sent.candidateId, legalEntityId: ids.entity, personSigns: true, requestedBy: users.rec });
+    // Numbered in the entity's offer series (the e-sign test's offer above took the first number).
+    expect(l.referenceNo).toMatch(/^KO[A-Z0-9]{4}\/OFR\/\d{4}\/\d{6}$/);
+    const n = Number(l.referenceNo!.slice(-6));
+    expect(l.signatoryId).toBeTruthy();
+    // Every field filled from the offer, the job, its entity and the signatory.
+    const data = JSON.parse(crypto.decrypt(l.dataEnc));
+    const t = await tokenOf(ids.d4);
+    expect(data).toMatchObject({ first_name: 'Cand', employee_name: 'Cand d4', legal_entity: 'Kaveri Offers Pvt Ltd', designation: 'Senior QA Engineer', department: 'Quality', location: 'Bengaluru', signatory_name: `hrHead ${run}`, signatory_title: 'Head of HR', personal_email: `d4-${run}@mail.test` });
+    expect(data.offer_link).toMatch(new RegExp(`/yx/offer/${t}$`));
+    expect(data.offer_ctc).toBeTruthy();
+    // The candidate's email carries the issued letter.
+    const mail = email.send.mock.calls.map(([m]) => m as { to: string; subject: string; attachments?: { filename: string; content: Buffer }[] }).find((m) => m.to === `d4-${run}@mail.test`)!;
+    expect(mail.subject).toBe('Your offer from Kaveri Offers Pvt Ltd for Senior QA Engineer');
+    expect(mail.attachments![0].filename).toBe(`${l.referenceNo!.replace(/\//g, '-')}.pdf`);
+    expect(mail.attachments![0].content.subarray(0, 5).toString()).toBe('%PDF-');
+    // The candidate's page: the letter's reference, and the issued PDF by the link only.
+    expect((await pub('get', `/offers/${t}`).expect(200)).body).toMatchObject({ status: 'sent', esign: true, letter: { referenceNo: l.referenceNo } });
+    const pdf = await pub('get', `/offers/${t}/letter`).buffer(true).parse((res, cb) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); }).expect(200);
+    expect(pdf.headers['content-type']).toBe('application/pdf');
+    expect((pdf.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+    await pub('get', `/offers/${randomUUID()}/letter`).expect(404);
+    // Anyone may check it on the verify page (the candidate's name, current); the People register never lists it.
+    expect(await letters.verify(l.verifyCode!)).toMatchObject({ company: 'Kaveri Offers Pvt Ltd', name: 'Cand d4', status: 'current' });
+    await api('adminA', 'get', `/letters/${l.id}/file`).expect(404);
+    await api('adminB', 'get', `/letters/${l.id}/file`).expect(404);
+    expect((await record('rec', ids.d4)).letter).toMatchObject({ referenceNo: l.referenceNo, status: 'issued' });
+    await api('recB', 'get', `/hiring/offers/${ids.d4}`).expect(404);
+
+    // A wrong code and an expired code are refused; nothing is saved.
+    expect((await pub('post', `/offers/${t}/esign-code`).expect(200)).body.sent).toBe(true);
+    const code = await codeFor(`d4-${run}@mail.test`);
+    await pub('post', `/offers/${t}/respond`).send({ action: 'accept', disclosureAccepted: true, code: code === '000000' ? '111111' : '000000' }).expect(401);
+    let o = await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: ids.d4 } }));
+    expect(o).toMatchObject({ status: 'sent', esignEvidence: null, respondedAt: null });
+    expect((await lettersOf(ids.d4))[0].acceptedAt).toBeNull();
+    // The right code: signed and accepted once; the letter records the acceptance and its sealed copy.
+    await pub('post', `/offers/${t}/respond`).send({ action: 'accept', disclosureAccepted: true, code }).expect(201);
+    // Single use: the same code cannot answer again.
+    await pub('post', `/offers/${t}/respond`).send({ action: 'accept', disclosureAccepted: true, code }).expect(409);
+    o = await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: ids.d4 } }));
+    expect(o.status).toBe('accepted');
+    expect(o.esignEvidence).toMatchObject({ letterSha256: l.sha256, referenceNo: l.referenceNo, assurance: 'one-time code' });
+    const after = (await lettersOf(ids.d4))[0];
+    expect(after.acceptedAt).toBeTruthy();
+    expect(after.acceptanceFileId).toBe(o.acceptanceFileId);
+    const audits = await inA((tx) => tx.auditLog.findMany({ where: { OR: [{ entityId: ids.d4 }, { entityId: l.id }] }, select: { action: true, metadataJson: true } }));
+    const acts = audits.map((a) => a.action);
+    expect(acts).toEqual(expect.arrayContaining(['letter.requested', 'letter.issued', 'offer.sent', 'offer.accepted', 'offer.esign_copy_made']));
+    expect(audits.find((a) => a.action === 'offer.sent')!.metadataJson).toContain(l.referenceNo!);
+    expect(audits.find((a) => a.action === 'offer.accepted')!.metadataJson).toContain(l.id);
+    expect(acts.filter((a) => a === 'offer.accepted')).toHaveLength(1);
+
+    // The second offer: a failed email keeps its letter (Send again never numbers it twice), an expired code is refused,
+    // then the candidate declines (no code needed); the letter is never accepted.
+    ids.d4b = await approved('d4b');
+    email.send.mockImplementationOnce(async () => ({ success: false }));
+    expect((await api('rec', 'post', `/offers/${ids.d4b}/send`).expect(201)).body.status).toBe('approved');
+    await api('rec', 'post', `/offers/${ids.d4b}/send`).expect(201);
+    const lb = await lettersOf(ids.d4b);
+    expect(lb).toHaveLength(1);
+    expect(Number(lb[0].referenceNo!.slice(-6))).toBe(n + 1);
+    const tb = await tokenOf(ids.d4b);
+    expect((await pub('post', `/offers/${tb}/esign-code`).expect(200)).body.sent).toBe(true);
+    const codeB = await codeFor(`d4b-${run}@mail.test`);
+    await redis.del(`offer-esign:${ids.d4b}`); // the code's five minutes are up
+    await pub('post', `/offers/${tb}/respond`).send({ action: 'accept', disclosureAccepted: true, code: codeB }).expect(401);
+    expect((await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: ids.d4b } }))).status).toBe('sent');
+    expect((await pub('post', `/offers/${tb}/respond`).send({ action: 'decline' }).expect(201)).body).toEqual({ status: 'declined' });
+    await pub('post', `/offers/${tb}/respond`).send({ action: 'accept', disclosureAccepted: true, code: codeB }).expect(409);
+    const ob = await inA((tx) => tx.offer.findFirstOrThrow({ where: { id: ids.d4b } }));
+    expect(ob).toMatchObject({ status: 'declined', esignEvidence: null, acceptanceFileId: null });
+    expect((await lettersOf(ids.d4b))[0].acceptedAt).toBeNull();
+    const declined = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { entityId: ids.d4b, action: 'offer.declined' } }));
+    expect(declined.metadataJson).toContain(lb[0].id);
+    // A declined offer's letter is still the candidate's to read by the link.
+    await pub('get', `/offers/${tb}/letter`).expect(200);
   });
 
   it('an older text offer stays readable as version 0, also after its first CTC version', async () => {

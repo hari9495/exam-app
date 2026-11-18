@@ -34,8 +34,9 @@ import type { OfferConditionDto, OfferCreateDto, OfferDraftDto, OfferPayDto, Off
 //              'ats.offer'; an offer ABOVE the grade range adds one step whose approver is the company setting
 //              hiring.offer.band_approver (default the HR head). The person who sends it for approval never approves.
 //              No chain and no extra step: approved at once (the older auto-pass)
-//   letter     the company's offer template; e-sign only when the template switches it on (copied at send); accepting by
-//              the link stays the default
+//   letter     a Letters 'offer' template, issued at send as a P05 letter (M10 D4: numbered, the entity's signatory signs,
+//              every field filled); e-sign (an emailed one-time code) when the template's "person signs" is on (copied at
+//              send); accepting by the link stays the default
 //   conditions open until met or waived with a reason; the company's starting list is a setting (one a line)
 // Every write is refused while acting for someone else (the controller), audited without amounts.
 
@@ -58,7 +59,7 @@ const ACTIVITY: Record<string, (m: Record<string, unknown>) => string> = {
   'ats.offer.auto_approved': () => 'sent the offer; no approval was needed',
   'ats.offer.approved': () => 'offer approved',
   'ats.offer.turned_down': () => 'offer turned down by an approver; back to draft',
-  'offer.sent': () => 'sent the offer to the candidate',
+  'offer.sent': (m) => (m.referenceNo ? `issued offer letter ${m.referenceNo} and sent it to the candidate` : 'sent the offer to the candidate'),
   'offer.send_failed': () => 'the offer email could not be sent',
   'offer.accepted': (m) => (m.esign ? 'the candidate signed and accepted the offer' : 'the candidate accepted the offer by the link'),
   'offer.declined': () => 'the candidate declined the offer',
@@ -459,6 +460,8 @@ export class OfferBuilderService implements OnModuleInit {
       const conditions = await tx.offerCondition.findMany({ where: { organizationId: org, offerId }, orderBy: [{ dueOn: 'asc' }, { createdAt: 'asc' }] });
       const logs = await tx.auditLog.findMany({ where: { organizationId: org, entityType: 'offer', entityId: offerId }, orderBy: { createdAt: 'desc' }, take: 50, select: { id: true, action: true, actorName: true, createdAt: true, metadataJson: true } });
       const joiner = await tx.preboarding.findFirst({ where: { organizationId: org, offerId, status: { not: 'cancelled' } }, select: { id: true, status: true } });
+      // M10 D4: the P05 letter the offer was issued as (the latest; an earlier version's is superseded).
+      const letter = await tx.letterIssue.findFirst({ where: { organizationId: org, subjectType: 'offer', subjectId: offerId, status: { in: ['issued', 'superseded'] } }, orderBy: { createdAt: 'desc' }, select: { referenceNo: true, status: true, acceptedAt: true } });
       const meta = (s: string | null) => {
         try {
           return s ? (JSON.parse(s) as Record<string, unknown>) : {};
@@ -509,6 +512,7 @@ export class OfferBuilderService implements OnModuleInit {
         approval: route ? { requestId: route.id, status: route.status, steps: route.steps.map((s) => ({ name: s.name, state: s.state, approvers: [...new Set([...s.approvers.map((a) => a.name), ...s.waitingFor])].filter(Boolean) })), myTaskId: myTask?.id ?? null } : null,
         activity: logs.map((l) => ({ id: l.id, actor: l.actorName ?? (l.action.startsWith('offer.accepted') || l.action === 'offer.declined' ? o.pipelineEntry.candidate.name : 'YukthiX'), action: (ACTIVITY[l.action] ?? (() => l.action))(meta(l.metadataJson)), at: l.createdAt })),
         joiner,
+        letter: letter ? { referenceNo: letter.referenceNo, status: letter.status, acceptedAt: letter.acceptedAt } : null,
         // Answer 377: the sealed copy of an e-signed acceptance (missing = it could not be made; HR makes it again).
         sealedCopy: o.status === 'accepted' && o.esign && o.esignEvidence ? (o.acceptanceFileId ? 'made' : 'missing') : null,
       };

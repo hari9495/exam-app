@@ -4,6 +4,10 @@ import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { FilesService } from '../documents/files.service';
 import { LettersService } from '../documents/letters/letters.service';
 import { buildDocx, docxBlocks, type Block } from '../documents/letters/docx';
+import { FIELDS, longDate } from '../documents/letters/fields';
+import { settingFor } from '../people/probation';
+import { todayIst } from '../org-structure/org-validation';
+import type { CompanyContext } from '../org-structure/org-structure.service';
 
 type Tx = Prisma.TransactionClient;
 const PLATFORM = { organizationId: null, isSuperAdmin: true };
@@ -48,6 +52,74 @@ export function offerEmailText(blocks: Block[]): { subject: string; body: string
   const subject = at >= 0 ? back(lines[at].replace(SUBJECT, '')).trim() : '';
   const rest = at >= 0 ? [...lines.slice(0, at), ...lines.slice(at + (lines[at + 1] === '' ? 2 : 1))] : lines;
   return { subject: subject || 'Your offer from {{orgName}} for {{jobTitle}}', body: back(rest.join('\n')).trim() };
+}
+
+type OfferForLetter = Prisma.OfferGetPayload<{ include: { pipelineEntry: { include: { candidate: true; job: true } } } }>;
+
+/**
+ * M10 D4 (answer 2524, next step): the letter fields of a candidate's offer, for issuing it as a P05 letter. The candidate
+ * is not a person yet, so the values come from the offer, its current version (the work location), the job and its legal
+ * entity. Fields a candidate cannot have (employee code, F&F, pay revisions) stay blank: a template that uses one is
+ * refused with the fields named (missingFields), never sent with a gap. The signatory is added by LettersService.issueOffer.
+ */
+export async function offerLetterData(tx: Tx, c: CompanyContext, o: OfferForLetter, link: string): Promise<{ data: Record<string, string | boolean>; legalEntityId: string }> {
+  const org = c.organizationId;
+  const job = o.pipelineEntry.job;
+  const cand = o.pipelineEntry.candidate;
+  const ver = o.currentVersion ? await tx.offerVersion.findFirst({ where: { organizationId: org, offerId: o.id, version: o.currentVersion }, select: { locationId: true } }) : null;
+  const locationId = ver?.locationId ?? job.locationId;
+  const loc = locationId ? await tx.location.findFirst({ where: { organizationId: org, id: locationId }, select: { name: true, legalEntityId: true } }) : null;
+  const legalEntityId = job.legalEntityId ?? loc?.legalEntityId ?? null;
+  if (!legalEntityId) throw new BadRequestException('The offer letter is issued by a legal entity. Set the job’s legal entity (or a work location) first.');
+  const [entity, orgRow, dept, desig, mgr] = await Promise.all([
+    tx.legalEntity.findFirst({ where: { organizationId: org, id: legalEntityId }, select: { name: true, registeredAddress: true, cin: true } }),
+    tx.organization.findUnique({ where: { id: org }, select: { name: true } }),
+    job.departmentId ? tx.department.findFirst({ where: { organizationId: org, id: job.departmentId }, select: { name: true } }) : null,
+    job.designationId ? tx.designation.findFirst({ where: { organizationId: org, id: job.designationId }, select: { name: true } }) : null,
+    job.hiringManagerId ? tx.user.findFirst({ where: { organizationId: org, id: job.hiringManagerId }, select: { name: true } }) : null,
+  ]);
+  const reg = entity?.registeredAddress as { lines?: string[]; city?: string; postalCode?: string | null } | null | undefined;
+  const [first, ...rest] = cand.name.trim().split(/\s+/);
+  const blank = Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, f.flag ? false : ''])) as Record<string, string | boolean>;
+  return {
+    legalEntityId,
+    data: {
+      ...blank,
+      employee_name: cand.name.trim(),
+      first_name: first ?? '',
+      last_name: rest.join(' '),
+      designation: desig?.name ?? job.title,
+      department: dept?.name ?? job.department ?? '',
+      location: loc?.name ?? '',
+      employment_type: job.employmentType ?? '',
+      manager_name: mgr?.name ?? '',
+      joining_date: longDate(o.startDate.toISOString().slice(0, 10)),
+      probation_months: await settingFor(tx, c, 'probation.default_months', { legalEntityId }),
+      probation: true,
+      legal_entity: entity?.name ?? '',
+      legal_entity_address: reg ? [...(reg.lines ?? []), [reg.city, reg.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '',
+      legal_entity_cin: entity?.cin ?? '',
+      company_name: orgRow?.name ?? '',
+      reference_no: 'Given when issued',
+      today: longDate(todayIst()),
+      personal_email: cand.email,
+      offer_ctc: o.compensation,
+      offer_expiry: longDate(todayIst(o.expiresAt)),
+      offer_link: link,
+    },
+  };
+}
+
+/**
+ * The Letters 'offer' template an offer is issued from: its own template, or, for an offer drafted before the move
+ * (answer 2515), the switched-on letter template its older offer template became. Null: the older email-from-text send.
+ */
+export async function offerLetterTemplate(tx: Tx, org: string, templateId: string | null) {
+  if (!templateId) return null;
+  const own = await tx.letterTemplate.findFirst({ where: { organizationId: org, id: templateId, letterType: 'offer' } });
+  if (own) return own;
+  const old = await tx.offerTemplate.findFirst({ where: { organizationId: org, id: templateId }, select: { letterTemplateId: true } });
+  return old?.letterTemplateId ? tx.letterTemplate.findFirst({ where: { organizationId: org, id: old.letterTemplateId, letterType: 'offer', status: 'active' } }) : null;
 }
 
 export type OfferLetterChoice = { value: string; label: string; esign: boolean; subject: string; body: string };

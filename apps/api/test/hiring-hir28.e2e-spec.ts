@@ -1,3 +1,5 @@
+// M10 D4: offers from Letters templates are issued as P05 letters (PDFs from the dev-fake converter when Gotenberg is not set).
+process.env.LETTER_PDF_CONVERTER = 'dev-fake';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';

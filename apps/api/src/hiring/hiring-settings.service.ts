@@ -14,7 +14,6 @@ import { biasLaw, coveredPlace } from './bias-audit';
 /** Answer 332: the band approver may be a named person who holds the offer-pay key (they decide on pay). */
 const OFFER_PAY_KEY = 'ats.offer.compensation.view';
 const NONE = '00000000-0000-0000-0000-000000000000';
-const LETTER_ESIGN = 'offer_template.esign';
 
 /**
  * Settings 6.1 Hiring: the company hiring settings the design has a place for (answers 291, 302 and 341). Every value is a scoped company setting with a default (org-settings.service), audited there
@@ -170,8 +169,6 @@ export class HiringSettingsService {
           const locs = await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { name: true, state: true, address: true } });
           return locs.filter((l) => coveredPlace(law, { state: l.state, city: (l.address as { city?: string } | null)?.city ?? null })).map((l) => l.name);
         })(),
-        // Answer 2515: the offer letters are the switched-on Letters 'offer' templates; e-sign is their "person signs".
-        offerLetters: (await tx.letterTemplate.findMany({ where: { organizationId: org, letterType: 'offer', status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true, personSigns: true } })).map((t) => ({ id: t.id, name: t.name, esign: t.personSigns })),
         values,
         defaults: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
         choices: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
@@ -198,13 +195,7 @@ export class HiringSettingsService {
   async save(ctx: TenantContext, user: ScopeUser, changes: { key: string; value: string }[]) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     if (!(await this.canEdit(user))) throw new ForbiddenException('Only people with the hiring settings key for the whole company can change these settings.');
-    // Answer 337: an offer letter's e-sign switch rides along as 'offer_template.esign' = '<template id>:on|off'.
-    const letters = changes.filter((ch) => ch.key === LETTER_ESIGN).map((ch) => {
-      const m = /^([0-9a-f-]{36}):(on|off)$/i.exec(ch.value);
-      if (!m) throw new BadRequestException('An offer letter switch is "<letter>:on" or "<letter>:off".');
-      return { id: m[1]!, esign: m[2] === 'on' };
-    });
-    changes = changes.filter((ch) => ch.key !== LETTER_ESIGN);
+    // Answer 2523: an offer letter's e-sign is its "person signs" in Settings › Letter templates only (not on this page).
     const seen = new Set<string>();
     for (const ch of changes) {
       if (!(HIRING_SETTING_KEYS as readonly string[]).includes(ch.key)) throw new BadRequestException(`${ch.key} is not a hiring setting on this page.`);
@@ -222,16 +213,6 @@ export class HiringSettingsService {
         const ok = /^[0-9a-f-]{36}$/i.test(approver.value) && (await tx.user.findFirst({ where: { organizationId: c.organizationId, id: approver.value, status: 'active' }, select: { id: true } }));
         if (!ok) throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
         if (!(await holdersOf(tx, c.organizationId, OFFER_PAY_KEY, NONE, todayIst())).includes(approver.value)) throw new BadRequestException('That person cannot see offer pay, so cannot approve it. Choose someone with the offer-pay key.');
-      });
-    if (letters.length)
-      await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-        for (const l of letters) {
-          const t = await tx.letterTemplate.findFirst({ where: { organizationId: c.organizationId, id: l.id, letterType: 'offer', status: 'active' }, select: { id: true, personSigns: true, name: true } });
-          if (!t) throw new NotFoundException('That offer letter is not one of your company’s.');
-          if (t.personSigns === l.esign) continue;
-          await tx.letterTemplate.update({ where: { id: t.id }, data: { personSigns: l.esign } });
-          await audit(tx, c, 'letter.template.person_signs', 'letter_template', t.id, { name: t.name, before: t.personSigns, after: l.esign });
-        }
       });
     for (const ch of changes) await this.settings.set(ctx, { key: ch.key, scopeType: 'tenant', value: ch.value } as Parameters<OrgSettingsService['set']>[1]);
     return this.read(ctx, user);

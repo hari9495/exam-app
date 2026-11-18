@@ -27400,5 +27400,35 @@
                               "Screens/Time/TIM-16 · Attendance reports · Short hours and breaks · manager"
                     ],
                     "note": "Positive and negative (API time-rules.spec: band limits, breaks from break punches and clock-in-again gaps, frequent rule; time-ops.e2e: bands, breaks null while clock-in-again is off, counted when on, setting changes the frequent days, employee none, other company none, bad month 400; kit time-ops-live: columns, not-recorded row and note, empty). Settings: attendance.short_hours.band1/2/3 (4/6/8 h), attendance.frequent_breaks.count (3) and .minutes (60), per company, entity or location."
+          },
+          {
+                    "id": "MT-2524-OFFER-ISSUE",
+                    "area": "Hire: offers issued as P05 letters with OTP e-accept (M10 D4, answers 2515 / 2523 / 2524, 18 Nov 2026)",
+                    "screen": "Hire › offer (HIR-09 / HIR-28 send); candidate offer page /yx/offer/<link> (T9-09); Settings › Letter templates (5.2); Settings › Hiring (6.1)",
+                    "url": "http://localhost:3000/yx/settings/letters",
+                    "account": "Admin admin-tester@demo-org.test (letter templates, signatories); recruiter@demo-org.test (offers, holds the offer-pay key); a recruiter without the offer-pay key; arjun@demo-org.test (employee); the candidate's mailbox in Mailpit (http://localhost:8025).",
+                    "steps": [
+                              "As admin: Settings › Letter templates. Open an active 'offer' template, check 'The person' is 'Accepts it' (the helper says the candidate signs with a one-time code). Note the legal entity's signatory under Signatories.",
+                              "As admin: Settings › Hiring (6.1). Look for 'Offer letters the candidate signs electronically'.",
+                              "As recruiter: make an offer for a candidate on a job of that legal entity with that Letter, send it for approval, have it approved, then press Send.",
+                              "Negative: before step 3, remove the entity's signatory (or use a job with no department while the template uses {{department}}) and press Send.",
+                              "Negative: as the recruiter without the offer-pay key, press Send on an approved offer whose letter shows pay.",
+                              "Open Mailpit: the candidate's email.",
+                              "Open the offer link from the email (or the candidate's own page › View offer). Press 'Download the offer letter'.",
+                              "Open the verify link printed on the letter (QR / check line).",
+                              "On the offer page: tick the agreement, press 'Email me a code', enter a wrong 6-digit code and press 'Sign and accept'.",
+                              "Enter the right code from the email and press 'Sign and accept'. Press it again (or reload and try again).",
+                              "As recruiter: open the offer in Hire. Look at Activity and the letter reference; download the sealed copy.",
+                              "Decline path: send a second offer, open its link, press Decline and confirm.",
+                              "Older offer: open an offer drafted before this change (text letter, no Letters template) and press Send.",
+                              "As admin of another company (or arjun@demo-org.test): open /yx/hiring/offers/<id of step 3>."
+                    ],
+                    "expected": "Step 1: 'Accepts it' with the one-time-code helper on offer templates. Step 2: no e-sign field on 6.1 any more (answer 2523). Step 3: 5-second toast; the offer is Sent. Step 4: refused with a plain message naming what is missing ('Name who signs for their legal entity first: Settings › Letter templates.' or 'Missing: department.'); the offer stays Approved; no email, no letter number used. Step 5: refused ('This offer letter shows pay: sending it needs ats.offer.compensation.view.'). Step 6: subject 'Your offer from <legal entity> for <job>'; the PDF attachment is named like KO…-OFR-2026-000001.pdf; the letter shows every field filled (name, designation, department, location, joining day, pay, accept-by date, the link), the reference number, the check line and the signatory's name, title and signature image. Step 7: the page shows Pay, Start date, Answer by and 'Letter <reference>'; the download is the same issued PDF. Step 8: the public check page shows the legal entity, 'Offer letter', the candidate's name and 'current'. Step 9: 'That code is not right or has expired. Ask for a new one.'; still open, nothing saved. Step 10: 'Offer accepted' toast; the second try says the offer is no longer available. Step 11: Activity 'issued offer letter <reference> and sent it to the candidate', 'the candidate signed and accepted the offer', 'the sealed copy … was made'; the sealed copy has the letter pages and the acceptance page (time, IP, device, one-time code, the letter's fingerprint). Step 12: 'Offer declined' toast; the offer shows Declined; the letter is never marked accepted. Step 13: it is sent as before (email text and its own PDF). Step 14: not found / no access.",
+                    "stories": [
+                              "Screens/Portals/T9-09 · Careers and candidate pages › Offer · issued company letter, sign with a code",
+                              "Screens/Portals/T9-09 · Careers and candidate pages › Offer · sign with a code (e-sign on)",
+                              "Screens/People/PPL-29 · Letter templates · Live"
+                    ],
+                    "note": "Positive and negative (API hiring-hir09.e2e: issued P05 letter with every field and the entity signatory, missing signatory / field refused with nothing issued, employee 403, no offer-pay key 403, other company 404, public letter by link only, verify page, wrong code 401 and expired code 401 with nothing saved, code single use, decline path, a failed email keeps the same letter number, audit letter.requested / letter.issued / offer.sent / offer.accepted / offer.declined; hir28 / offer-letters / lifecycle-6b / 6e / careers e2e; kit t9-09-live and hiring-live; web yx-careers-public). Letters of candidates are not in People › Letters (they are on the offer). The template's 'needs approval' is not asked for offers (the offer route is the approval)."
           }
 ]

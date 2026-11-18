@@ -1026,6 +1026,8 @@ export interface PublicOffer {
   pdfUrl: string | null;
   /** HIR-09: the company's letter asks for an e-signature (a one-time code by email). */
   esign?: boolean;
+  /** M10 D4: issued as a numbered company letter, downloaded from GET /public/offers/:token/letter. */
+  letter?: { referenceNo: string | null } | null;
 }
 
 export type InterviewStatus = 'proposed' | 'confirmed' | 'declined' | 'reschedule_requested' | 'cancelled';

@@ -7781,7 +7781,10 @@ model LetterIssue {
   templateVersion  Int       @map("template_version")
   letterType       String    @map("letter_type") @db.VarChar(40)
   title            String    @db.VarChar(150)
-  personId         String    @map("person_id") @db.Uuid
+  /// Null for a candidate's offer letter (candidateId instead; exactly one of the two, a database check).
+  personId         String?   @map("person_id") @db.Uuid
+  /// Answer 2524 next step: an offer issued as a letter to a candidate who is not a person yet.
+  candidateId      String?   @map("candidate_id") @db.Uuid
   /// The employment the letter is for ("one per person" counts per employment); null while the person is still joining.
   employmentId     String?   @map("employment_id") @db.Uuid
   legalEntityId    String    @map("legal_entity_id") @db.Uuid
@@ -7815,6 +7818,8 @@ model LetterIssue {
   issuedAt         DateTime? @map("issued_at") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  @@index([organizationId, candidateId], map: "letter_issues_candidate_idx")
+  @@index([organizationId, subjectType, subjectId], map: "letter_issues_subject_idx")
   @@map("letter_issues")
 }
 

@@ -88,9 +88,9 @@ export class OffersController {
 
   @Post('offers/:id/send')
   @RequirePermissions('pipeline:manage')
-  sendOffer(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Req() req: Request) {
+  async sendOffer(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Req() req: Request) {
     assertOwnSession(req);
-    return this.offers.sendOffer(tenant, userId, id);
+    return this.offers.sendOffer(tenant, userId, id, { seesPay: await this.builder.canSeePay(req.user as ScopeUser) });
   }
 
   @Post('offers/:id/withdraw')
