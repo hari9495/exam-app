@@ -94,7 +94,7 @@ export { TIME_REGISTRY_SAMPLE } from '../../settings/time-settings-sample';
 export { MappingRulesScreen, type LiveMappingRules } from '../projects-billing';
 export type { LiveMappingRule, MappingRuleInput, MappingRulesData, MappingTestResult } from '../mapping-live';
 // Projects P-2 (answers 1406 to 1408, 1442): the designed PRJ-02 timesheet approvals, live with `live`.
-export { TimesheetApprovalsScreen, type LiveApprovalsData, type LiveLineDecision, type LiveTimesheetApprovals } from '../projects';
+export { TimesheetApprovalsScreen, type LiveApprovalsData, type LiveLineDecision, type LiveTimesheetApprovals, type NotSentPerson } from '../projects';
 // Projects P-4 (answers 1411, 1417, 1418, 1541): PRJ-03 capacity and PRJ-07 resource requests, live with `live`.
 export { CapacityBoardScreen, type LiveCapacity, type LiveCapacityData, type LiveTimesheetRow } from '../projects';
 export { BenchRequestsScreen } from '../projects-billing';

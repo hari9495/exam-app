@@ -27,4 +27,6 @@ export const CommentOptional: S = { name: 'Comments · optional (company setting
 export const PhoneComments: S = { name: 'Phone · a comment under each day', args: { layout: 'days', noteRule: RULE, initialLines: COMMENTED }, ...phone };
 
 // Keka ideas (2026-11): Time summary, a bar per week across the year, then each week with its hours and status.
+// Batch D A5 (answer 2534): past weeks not sent, with sent-back ones and a locked month.
+export const NotSent: S = { name: 'Not sent · past weeks to send', args: { view: 'not-sent' } };
 export const TimeSummary: S = { name: 'Time summary · hours per week this year', args: { view: 'summary' } };

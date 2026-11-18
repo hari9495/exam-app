@@ -9,7 +9,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtPlanDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, RegisterQueryDto, RosterBulkDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
+import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtPlanDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, RegisterQueryDto, RosterBulkDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto, NotSentQueryDto } from './dto';
 import { LeaveService } from './leave.service';
 import { RosterPublishDto } from './roster-ops.dto';
 import { NightWorkService } from './night-work.service';
@@ -267,6 +267,12 @@ export class TimeOpsController {
   @Get('me/timesheet/summary')
   myYear(@CurrentTenant() ctx: TenantContext, @Query() q: YearQueryDto) {
     return this.timesheets.summary(ctx, Number(q.year));
+  }
+
+  // Batch D A5 (answer 2534): my past weeks never sent (none saved, a draft, or sent back); `weeks` up to 52 ("Show older").
+  @Get('me/timesheet/not-sent')
+  myNotSent(@CurrentTenant() ctx: TenantContext, @Query() q: NotSentQueryDto) {
+    return this.timesheets.notSent(ctx, q.weeks ? Number(q.weeks) : undefined);
   }
 
   @Put('me/timesheet')

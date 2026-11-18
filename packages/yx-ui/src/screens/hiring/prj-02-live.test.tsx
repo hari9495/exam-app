@@ -78,4 +78,29 @@ describe('PRJ-02 Timesheet approvals (live)', () => {
     show(<TimesheetApprovalsScreen live={live({ state: 'no-access', data: null })} />);
     expect(screen.getByText("You don't have access to timesheet approvals")).toBeInTheDocument();
   });
+  it('batch D 2535: the Not sent tab lists people with weeks owed and reminds once a day; a refusal shows, nothing changes', async () => {
+    const people = [
+      { employeeId: 'e1', name: 'Arjun Mehta', projects: ['NRP-WEB'], weeks: [{ week: '2026-09-21', status: 'sent_back' as const, totalMinutes: 2280, locked: false }, { week: '2026-09-07', status: 'not_started' as const, totalMinutes: 0, locked: false }], remindedAt: null, canRemind: true },
+      { employeeId: 'e2', name: 'Kavya Iyer', projects: ['CLL-WMS'], weeks: [{ week: '2026-09-14', status: 'draft' as const, totalMinutes: 960, locked: false }], remindedAt: '2026-09-28T04:30:00.000Z', canRemind: false },
+    ];
+    const onRemind = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Arjun Mehta was reminded in the last day. Try again tomorrow.'));
+    show(<TimesheetApprovalsScreen live={live({ notSent: { state: 'ready', data: { people }, onRemind } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Not sent (2)' }));
+    expect(screen.getByText('Arjun Mehta')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reminded today' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Remind' }));
+    expect(onRemind).toHaveBeenCalledWith('e1');
+    expect((await screen.findAllByText('Reminder sent to Arjun Mehta'))[0]).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Remind' }));
+    expect(await screen.findByText('Arjun Mehta was reminded in the last day. Try again tomorrow.')).toBeInTheDocument();
+  });
+
+  it('negative: without the list there is no Not sent tab; an empty list says everyone has sent', async () => {
+    const a = show(<TimesheetApprovalsScreen live={live()} />);
+    expect(screen.queryByRole('tab', { name: /Not sent/ })).toBeNull();
+    a.unmount();
+    show(<TimesheetApprovalsScreen live={live({ notSent: { state: 'ready', data: { people: [] }, onRemind: vi.fn() } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Not sent' }));
+    expect(screen.getByText('Everyone has sent their weeks.')).toBeInTheDocument();
+  });
 });

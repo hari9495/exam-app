@@ -250,4 +250,35 @@ describe('Projects P-2 line approvals', () => {
     // Every decision is audited.
     expect(await inA((tx) => tx.auditLog.count({ where: { action: { startsWith: 'time.timesheet_line.' } } }))).toBe(4); // reduced, bulk-approved, rejected, approved
   });
+  it('batch D A5 / 2535: my weeks not sent, the project manager’s Not sent list and a once-a-day reminder; refusals', async () => {
+    // peer worked on NRP for the four weeks before this one (the allocation ends last Sunday).
+    await api('pmA', 'post', `/projects/${ids.nrp}/allocations`).send({ employeeId: ids.peerEmp, fromOn: addDays(week, -28), toOn: addDays(week, -1), percent: 50 }).expect(want(201));
+    // A draft of two weeks ago; nothing at all for the others.
+    await api('peer', 'put', '/time/me/timesheet').send({ week: addDays(week, -14), lines: [{ projectId: ids.nrp, activity: null, billable: true, minutes: [240, 0, 0, 0, 0, 0, 0] }] }).expect(want(200));
+    const mine = (await api('peer', 'get', '/time/me/timesheet/not-sent').expect(200)).body.weeks as { week: string; status: string; totalMinutes: number }[];
+    expect(mine.map((w) => w.week).every((w) => w >= addDays(week, -28) && w <= addDays(week, -7))).toBe(true);
+    expect(mine.find((w) => w.week === addDays(week, -14))).toMatchObject({ status: 'draft', totalMinutes: 240 });
+    expect(mine.some((w) => w.status === 'not_started')).toBe(true);
+    // This week is not due yet; emp (allocated only from this week, not on a timesheet attendance mode) has none.
+    expect(mine.some((w) => w.week === week)).toBe(false);
+    expect((await api('emp', 'get', '/time/me/timesheet/not-sent').expect(200)).body.weeks).toEqual([]);
+    await api('peer', 'get', '/time/me/timesheet/not-sent?weeks=99').expect(400);
+    // The project manager of NRP sees peer with NRP; pmB (KAV) sees nobody.
+    const list = (await api('pmA', 'get', '/time/line-approvals/not-sent').expect(200)).body.people as { employeeId: string; projects: string[]; weeks: unknown[]; canRemind: boolean }[];
+    expect(list).toEqual([expect.objectContaining({ employeeId: ids.peerEmp, projects: ['NRP'], canRemind: true })]);
+    expect(list[0]!.weeks).toHaveLength(mine.length);
+    expect((await api('pmB', 'get', '/time/line-approvals/not-sent').expect(200)).body.people).toEqual([]);
+    // Remind: once a day per person; never someone outside my projects, never while acting for someone else.
+    await api('pmB', 'post', `/time/line-approvals/not-sent/${ids.peerEmp}/remind`).expect(404);
+    await api('acting', 'post', `/time/line-approvals/not-sent/${ids.peerEmp}/remind`).expect(403);
+    notify.mockClear();
+    expect((await api('pmA', 'post', `/time/line-approvals/not-sent/${ids.peerEmp}/remind`).expect(200)).body).toMatchObject({ reminded: true, weeks: mine.length });
+    expect(notify.mock.calls.some((c) => (c[1] as string[]).includes(users.peer!) && c[2] === 'timesheet.not_sent')).toBe(true);
+    expect((await api('pmA', 'post', `/time/line-approvals/not-sent/${ids.peerEmp}/remind`).expect(409)).body.message).toMatch(/reminded in the last day/);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'timesheet.not_sent_reminded', entityId: ids.peerEmp } }))).toBe(1);
+    expect((await api('pmA', 'get', '/time/line-approvals/not-sent').expect(200)).body.people[0].canRemind).toBe(false);
+    // Once sent, the week leaves both lists.
+    await api('peer', 'post', '/time/me/timesheet/submit').send({ week: addDays(week, -14) }).expect(want(200));
+    expect(((await api('peer', 'get', '/time/me/timesheet/not-sent').expect(200)).body.weeks as { week: string }[]).some((w) => w.week === addDays(week, -14))).toBe(false);
+  });
 });

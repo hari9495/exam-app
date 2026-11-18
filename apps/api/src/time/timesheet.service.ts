@@ -26,6 +26,11 @@ import { escapeHtml } from '../notifications/notification-email-render';
 export const TIMESHEET = 'time.timesheet';
 const fmt = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 const hours = (m: number) => `${Math.round((m / 60) * 100) / 100} h`;
+/** Batch D A5 (answer 2534): the weeks looked at by default; "Show older" asks for up to a year. */
+export const NOT_SENT_WEEKS = 12;
+/** Answer 2535: a manager's reminder about weeks not sent goes at most once a day per person. */
+const REMIND_GAP_MS = 20 * 3_600_000;
+export type NotSentWeek = { week: string; status: 'not_started' | 'draft' | 'sent_back'; totalMinutes: number; locked: boolean };
 
 @Injectable()
 export class TimesheetService implements OnModuleInit {
@@ -101,6 +106,95 @@ export class TimesheetService implements OnModuleInit {
         weeks: sheets.map((s) => ({ week: dateOf(s.weekStart), status: s.status, totalMinutes: s.totalMinutes })),
       };
     });
+  }
+
+  // ------------------------------------------------------------------------------------------ weeks not sent (batch D A5)
+
+  /**
+   * Answer 2534: a person's past weeks (ended before this week) that were never sent: none saved, a draft, or sent back.
+   * A week counts when the person was employed, was on a timesheet (attendance mode 'timesheet') or allocated to a project
+   * that week (`projectIds`: only those projects, the manager's view), and had at least one working day Monday to Friday
+   * that was not a holiday or full-day leave. A week whose days are all in locked months is shown read-only.
+   */
+  async notSentOf(tx: Tx, c: CompanyContext, employeeId: string, weeks: number, projectIds?: string[]): Promise<NotSentWeek[]> {
+    const org = c.organizationId;
+    const last = addDays(mondayOf(todayIst()), -7);
+    const first = addDays(last, -7 * (weeks - 1));
+    const end = addDays(last, 6);
+    const sheets = await tx.timesheet.findMany({ where: { organizationId: org, employeeId, weekStart: { gte: asDate(first), lte: asDate(last) } }, select: { weekStart: true, status: true, totalMinutes: true } });
+    const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, employeeId, tentative: false, ...(projectIds ? { projectId: { in: projectIds } } : {}), fromOn: { lte: asDate(end) }, OR: [{ toOn: null }, { toOn: { gte: asDate(first) } }] }, select: { fromOn: true, toOn: true } });
+    if (projectIds && !allocs.length) return [];
+    const now = (await factsOn(tx, org, employeeId, todayIst())) ?? (await factsOn(tx, org, employeeId, end));
+    if (!now) return [];
+    const hol = (await holidaysFor(tx, org, now.locationId, first, end, employeeId)).map;
+    const leave = await leaveDays(tx, org, employeeId, first, end);
+    const locked = await lockedDates(tx, org, employeeId, first, end);
+    const out: NotSentWeek[] = [];
+    for (let w = last; w >= first; w = addDays(w, -7)) {
+      const s = sheets.find((x) => dateOf(x.weekStart) === w);
+      if (s && (s.status === 'pending' || s.status === 'approved')) continue;
+      const f = (await factsOn(tx, org, employeeId, w)) ?? (await factsOn(tx, org, employeeId, addDays(w, 4)));
+      if (!f) continue; // not employed that week (before joining or after leaving)
+      const allocated = allocs.some((a) => dateOf(a.fromOn) <= addDays(w, 6) && (!a.toOn || dateOf(a.toOn) >= w));
+      if (!allocated && (projectIds || (await settingOn(tx, c, 'attendance.mode', f, w)) !== 'timesheet')) continue;
+      const working = [0, 1, 2, 3, 4].map((k) => addDays(w, k)).filter((d) => !hol.has(d) && leave.get(d) !== 'full');
+      if (!working.length) continue;
+      out.push({ week: w, status: !s ? 'not_started' : s.status === 'rejected' ? 'sent_back' : 'draft', totalMinutes: s?.totalMinutes ?? 0, locked: [0, 1, 2, 3, 4, 5, 6].every((k) => locked.has(addDays(w, k))) });
+    }
+    return out;
+  }
+
+  /** My weeks not sent (A5): the last `weeks` weeks (12 by default, a year at most). */
+  notSent(ctx: TenantContext, weeks = NOT_SENT_WEEKS) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => ({ weeks: await this.notSentOf(tx, c, await myEmployeeId(tx, c.organizationId, c.userId), Math.min(Math.max(weeks, 1), 52)) }));
+  }
+
+  /** Answer 2535: the people on my projects (I am their project manager) with weeks not sent, for those projects only. */
+  private async teamNotSentIn(tx: Tx, c: CompanyContext, userId: string) {
+    const org = c.organizationId;
+    const mine = await tx.timesheetProject.findMany({ where: { organizationId: org, managerUserId: userId, active: true }, select: { id: true, code: true } });
+    if (!mine.length) return [];
+    const first = addDays(mondayOf(todayIst()), -7 * NOT_SENT_WEEKS);
+    const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, tentative: false, projectId: { in: mine.map((p) => p.id) }, OR: [{ toOn: null }, { toOn: { gte: asDate(first) } }] }, select: { employeeId: true, projectId: true } });
+    const me = await tx.employee.findFirst({ where: { organizationId: org, userId }, select: { id: true } });
+    const people = [...new Set(allocs.map((a) => a.employeeId))].filter((e) => e !== me?.id);
+    const out = [];
+    for (const employeeId of people) {
+      const projectIds = [...new Set(allocs.filter((a) => a.employeeId === employeeId).map((a) => a.projectId))];
+      const weeks = await this.notSentOf(tx, c, employeeId, NOT_SENT_WEEKS, projectIds);
+      if (!weeks.length) continue;
+      const f = await factsOn(tx, org, employeeId, todayIst());
+      const e = f ? null : await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { givenName: true, familyName: true, preferredName: true } });
+      const last = await tx.auditLog.findFirst({ where: { organizationId: org, entityType: 'employee', entityId: employeeId, action: 'timesheet.not_sent_reminded' }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
+      out.push({ employeeId, name: f?.name ?? [e?.preferredName || e?.givenName, e?.familyName].filter(Boolean).join(' '), userId: f?.userId ?? null, projects: mine.filter((p) => projectIds.includes(p.id)).map((p) => p.code), weeks, remindedAt: last?.createdAt ?? null });
+    }
+    return out.sort((a, b) => b.weeks.length - a.weeks.length || a.name.localeCompare(b.name));
+  }
+
+  teamNotSent(ctx: TenantContext, user: ScopeUser) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => ({ people: (await this.teamNotSentIn(tx, c, user.userId!)).map(({ userId: _u, ...p }) => ({ ...p, canRemind: Boolean(_u) && (!p.remindedAt || Date.now() - p.remindedAt.getTime() > REMIND_GAP_MS) })) }));
+  }
+
+  /** Answer 2535: the project manager reminds one person about their weeks not sent: at most once a day per person; audited. */
+  async remindNotSent(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    const prep = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const p = (await this.teamNotSentIn(tx, c, user.userId!)).find((x) => x.employeeId === employeeId);
+      if (!p) throw new NotFoundException('This person has no weeks to send on your projects.');
+      if (!p.userId) throw new ConflictException(`${p.name} has no YukthiX sign-in to remind.`);
+      // Claimed in the same transaction (under a lock), so two clicks never send two reminders.
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`ts-remind:${c.organizationId}:${employeeId}`}))`;
+      const last = await tx.auditLog.findFirst({ where: { organizationId: c.organizationId, entityType: 'employee', entityId: employeeId, action: 'timesheet.not_sent_reminded', createdAt: { gt: new Date(Date.now() - REMIND_GAP_MS) } }, select: { id: true } });
+      if (last) throw new ConflictException(`${p.name} was reminded in the last day. Try again tomorrow.`);
+      await audit(tx, c, 'timesheet.not_sent_reminded', 'employee', employeeId, { weeks: p.weeks.map((w) => w.week), projects: p.projects });
+      return p;
+    });
+    const list = prep.weeks.map((w) => `the week of ${fmt(w.week)}`).join(', ');
+    const text = `Please send your timesheet for ${list} (${prep.projects.join(', ')}). Payroll needs full weeks.`;
+    await this.notifications
+      .notifySystem(ctx, [prep.userId!], 'timesheet.not_sent', { entityType: 'employee', entityId: employeeId, contextText: text.slice(0, 300), linkPath: '/yx/time/timesheet' }, { subject: 'Timesheet weeks not sent yet', html: `<p>${escapeHtml(text)}</p>` }, user.userId ?? null)
+      .catch(() => undefined);
+    return { reminded: true, weeks: prep.weeks.length };
   }
 
   /** Saves the week as a draft (a rejected week becomes a draft again). Hours on locked days never change. */

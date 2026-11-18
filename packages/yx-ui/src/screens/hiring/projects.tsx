@@ -807,9 +807,64 @@ export interface LiveTimesheetApprovals {
   onBulk: (items: { lineId: string; version: number }[]) => Promise<void>;
   /** Story: the bulk confirmation open for the first group. */
   defaultBulk?: boolean;
+  /** Batch D answer 2535: people on my projects with weeks not sent (GET /time/line-approvals/not-sent). */
+  notSent?: { state: 'ready' | 'loading' | 'error'; data: { people: NotSentPerson[] } | null; onRetry?: () => void; onRemind: (employeeId: string) => Promise<void> };
+}
+
+/** Batch D answer 2535: a person on my projects with past weeks not sent (for those projects only). */
+export interface NotSentPerson {
+  employeeId: string;
+  name: string;
+  projects: string[];
+  weeks: { week: string; status: 'not_started' | 'draft' | 'sent_back'; totalMinutes: number; locked: boolean }[];
+  remindedAt: string | null;
+  /** False when reminded in the last day, or the person has no sign-in. */
+  canRemind: boolean;
+}
+
+/** PRJ-02 Not sent: who still owes weeks on my projects, with a once-a-day Remind. */
+export function NotSentPeople({ people, onRemind }: { people: NotSentPerson[]; onRemind?: (p: NotSentPerson) => void }) {
+  const columns: TableColumn<NotSentPerson>[] = [
+    { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.projects.join(', ') }) },
+    { key: 'weeks', header: 'Weeks not sent', type: 'number', value: (r) => r.weeks.length },
+    { key: 'oldest', header: 'Oldest', value: (r) => `Week of ${formatDate(new Date(`${r.weeks[r.weeks.length - 1]!.week}T00:00:00`))}` },
+    { key: 'sentBack', header: 'Sent back', type: 'number', value: (r) => r.weeks.filter((w) => w.status === 'sent_back').length },
+    { key: 'reminded', header: 'Last reminded', value: (r) => (r.remindedAt ? formatDate(new Date(r.remindedAt)) : '—') },
+  ];
+  return (
+    <div className="yx-hire-stack">
+      <Text size="sm" tone="secondary">
+        People on your projects with past weeks they have not sent. Payroll needs full weeks. A reminder goes at most once a day per person.
+      </Text>
+      {people.length === 0 ? (
+        <EmptyState title="Everyone has sent their weeks." description="People on your projects who still owe a week appear here." />
+      ) : (
+        <DataTable label="People with weeks not sent" rows={people} columns={columns} getRowId={(r) => r.employeeId} rowButtons={(r) => (onRemind ? <Button size="sm" disabled={!r.canRemind} onClick={() => onRemind(r)}>{r.canRemind ? 'Remind' : 'Reminded today'}</Button> : null)} />
+      )}
+    </div>
+  );
+}
+
+/** "Waiting for me" and, for a project manager, "Not sent (n)" (answer 2535); without the list, just the waiting lines. */
+function WaitingOrNotSent({ notSent, children }: { notSent?: { count: number | null; body: ReactNode }; children: ReactNode }) {
+  if (!notSent) return <>{children}</>;
+  return (
+    <Tabs defaultValue="waiting">
+      <TabsList aria-label="Timesheet approvals views">
+        <TabsTrigger value="waiting">Waiting for me</TabsTrigger>
+        <TabsTrigger value="not-sent">{notSent.count ? `Not sent (${notSent.count})` : 'Not sent'}</TabsTrigger>
+      </TabsList>
+      <TabsContent value="waiting">
+        <div className="yx-hire-stack">{children}</div>
+      </TabsContent>
+      <TabsContent value="not-sent">{notSent.body}</TabsContent>
+    </Tabs>
+  );
 }
 
 export interface TimesheetApprovalsProps {
+  /** Batch D answer 2535 (drawn): the Not sent tab's people. */
+  notSent?: NotSentPerson[];
   groups?: ApprovalGroup[];
   clientApproval?: boolean;
   state?: ListState;
@@ -901,63 +956,79 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
       />
       {clients.length > 0 && <InlineAlert tone="info">{clients.join(', ')}: approved lines then go to the client in the client portal before they can be billed.</InlineAlert>}
       {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
-      {live.state === 'loading' || (!d && live.state === 'ready') ? (
-        <div className="yx-hire-approvals">
-          {[0, 1].map((i) => (
-            <Skeleton key={i} height={260} />
-          ))}
-        </div>
-      ) : live.state === 'error' ? (
-        <ErrorState title="Couldn't load timesheets" description="Check your connection and try again. Nothing was approved." onRetry={live.onRetry ?? (() => {})} />
-      ) : live.state === 'no-access' ? (
-        <NoAccessState what="timesheet approvals" grantedBy="your System Admin" />
-      ) : groups.length === 0 ? (
-        <EmptyState title="You're all caught up." description="No timesheet lines are waiting for your approval." />
-      ) : (
-        groups.map((g) => {
-          const eligible = g.items.filter((i) => i.bulk);
-          const key = `${g.projectId}:${g.week}`;
-          return (
-            <section key={key} className="yx-hire-stack" aria-label={`${g.project}, ${weekOf(g.week)}`}>
-              <div className="yx-hire-row">
-                <div>
-                  <Text weight="semibold">
-                    {g.project} · {g.projectName}
-                  </Text>
-                  <Text as="div" size="sm" tone="secondary">
-                    {weekOf(g.week)} · {g.items.length} waiting
-                  </Text>
-                </div>
-                {eligible.length > 0 && (
-                  <Button icon={CheckCheck} onClick={() => setBulk({ key, items: eligible.flatMap((i) => i.lines.map((l) => ({ lineId: l.id, version: l.version }))) })}>
-                    Approve {eligible.length} within allocation
-                  </Button>
-                )}
-              </div>
-              <div className="yx-hire-approvals">
-                {g.items.map((i) => (
-                  <div key={i.id} className="yx-hire-stack">
-                    {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
-                    {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation. Approve it on its own; it is never approved in bulk.</InlineAlert>}
-                    <TimesheetApprovalCard
-                      employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
-                      weekLabel={weekOf(g.week)}
-                      lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable, comments: l.comments }))}
-                      onApprove={(decisions) =>
-                        void act(
-                          () => live.onDecide(i.lines.map((l) => { const x = decisions[l.id]!; return { lineId: l.id, version: l.version, status: x.status, ...(x.status === 'reduced' ? { hours: x.hours, reason: x.reason } : x.status === 'rejected' ? { reason: x.reason } : {}) }; })),
-                          `${i.employee}: decided`,
-                        )
-                      }
-                      onSendBack={(reason) => void act(() => live.onDecide(i.lines.map((l) => ({ lineId: l.id, version: l.version, status: 'rejected', reason }))), `${i.employee}: sent back`)}
-                    />
+      <WaitingOrNotSent
+        notSent={
+          live.notSent && live.state === 'ready'
+            ? {
+                count: live.notSent.data?.people.length ?? null,
+                body:
+                  live.notSent.state === 'loading' || !live.notSent.data ? (
+                    live.notSent.state === 'error' ? <ErrorState title="Couldn't load the weeks not sent" description="Check your connection and try again." onRetry={live.notSent.onRetry ?? (() => {})} /> : <Skeleton height={200} />
+                  ) : (
+                    <NotSentPeople people={live.notSent.data.people} onRemind={(p) => void act(() => live.notSent!.onRemind(p.employeeId), `Reminder sent to ${p.name}`)} />
+                  ),
+              }
+            : undefined
+        }
+      >
+        {live.state === 'loading' || (!d && live.state === 'ready') ? (
+          <div className="yx-hire-approvals">
+            {[0, 1].map((i) => (
+              <Skeleton key={i} height={260} />
+            ))}
+          </div>
+        ) : live.state === 'error' ? (
+          <ErrorState title="Couldn't load timesheets" description="Check your connection and try again. Nothing was approved." onRetry={live.onRetry ?? (() => {})} />
+        ) : live.state === 'no-access' ? (
+          <NoAccessState what="timesheet approvals" grantedBy="your System Admin" />
+        ) : groups.length === 0 ? (
+          <EmptyState title="You're all caught up." description="No timesheet lines are waiting for your approval." />
+        ) : (
+          groups.map((g) => {
+            const eligible = g.items.filter((i) => i.bulk);
+            const key = `${g.projectId}:${g.week}`;
+            return (
+              <section key={key} className="yx-hire-stack" aria-label={`${g.project}, ${weekOf(g.week)}`}>
+                <div className="yx-hire-row">
+                  <div>
+                    <Text weight="semibold">
+                      {g.project} · {g.projectName}
+                    </Text>
+                    <Text as="div" size="sm" tone="secondary">
+                      {weekOf(g.week)} · {g.items.length} waiting
+                    </Text>
                   </div>
-                ))}
-              </div>
-            </section>
-          );
-        })
-      )}
+                  {eligible.length > 0 && (
+                    <Button icon={CheckCheck} onClick={() => setBulk({ key, items: eligible.flatMap((i) => i.lines.map((l) => ({ lineId: l.id, version: l.version }))) })}>
+                      Approve {eligible.length} within allocation
+                    </Button>
+                  )}
+                </div>
+                <div className="yx-hire-approvals">
+                  {g.items.map((i) => (
+                    <div key={i.id} className="yx-hire-stack">
+                      {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
+                      {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation. Approve it on its own; it is never approved in bulk.</InlineAlert>}
+                      <TimesheetApprovalCard
+                        employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
+                        weekLabel={weekOf(g.week)}
+                        lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable, comments: l.comments }))}
+                        onApprove={(decisions) =>
+                          void act(
+                            () => live.onDecide(i.lines.map((l) => { const x = decisions[l.id]!; return { lineId: l.id, version: l.version, status: x.status, ...(x.status === 'reduced' ? { hours: x.hours, reason: x.reason } : x.status === 'rejected' ? { reason: x.reason } : {}) }; })),
+                            `${i.employee}: decided`,
+                          )
+                        }
+                        onSendBack={(reason) => void act(() => live.onDecide(i.lines.map((l) => ({ lineId: l.id, version: l.version, status: 'rejected', reason }))), `${i.employee}: sent back`)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })
+        )}
+      </WaitingOrNotSent>
       <ConfirmDialog
         open={bulk != null}
         onOpenChange={(o) => !o && setBulk(null)}
@@ -975,12 +1046,12 @@ function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) 
 }
 
 // PRJ-02
-export function TimesheetApprovalsScreen({ groups = [], clientApproval = false, state = 'ready', bulkConfirm = false, live }: TimesheetApprovalsProps) {
+export function TimesheetApprovalsScreen({ groups = [], clientApproval = false, state = 'ready', bulkConfirm = false, notSent, live }: TimesheetApprovalsProps) {
   if (live) return <LiveTimesheetApprovalsView live={live} />;
-  return <DrawnTimesheetApprovals groups={groups} clientApproval={clientApproval} state={state} bulkConfirm={bulkConfirm} />;
+  return <DrawnTimesheetApprovals groups={groups} clientApproval={clientApproval} state={state} bulkConfirm={bulkConfirm} notSent={notSent} />;
 }
 
-function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm }: { groups: ApprovalGroup[]; clientApproval: boolean; state: ListState; bulkConfirm: boolean }) {
+function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm, notSent }: { groups: ApprovalGroup[]; clientApproval: boolean; state: ListState; bulkConfirm: boolean; notSent?: NotSentPerson[] }) {
   const [done, setDone] = useState<string[]>([]);
   const [pending, setPending] = useState<string[] | null>(bulkConfirm ? groups[0].items.filter((i) => bulkEligible({ id: i.id, hours: i.lines.reduce((s, l) => s + l.hours, 0), allocatedHours: i.allocatedHours })).map((i) => i.id) : null);
   const total = groups.reduce((s, g) => s + g.items.length, 0) - done.length;
@@ -997,19 +1068,21 @@ function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm }:
         }
       />
       {clientApproval && <InlineAlert tone="info">NRP-WEB needs client approval after yours: approved lines go to Rekha Balan in the client portal before they can be billed.</InlineAlert>}
-      {state === 'loading' ? (
-        <div className="yx-hire-approvals">
-          {[0, 1].map((i) => (
-            <Skeleton key={i} height={260} />
-          ))}
-        </div>
-      ) : state === 'error' ? (
-        <ErrorState title="Couldn't load timesheets" description="Check your connection and try again. Nothing was approved." onRetry={() => {}} reference="TSA-7781" />
-      ) : total <= 0 || groups.length === 0 ? (
-        <EmptyState title="You're all caught up." description="No timesheets are waiting for your approval. Reminders go out on Friday and missing weeks are nudged on Monday." />
-      ) : (
-        <ApprovalGroups groups={groups} onBulk={setPending} done={done} />
-      )}
+      <WaitingOrNotSent notSent={notSent ? { count: notSent.length, body: <NotSentPeople people={notSent} onRemind={() => {}} /> } : undefined}>
+        {state === 'loading' ? (
+          <div className="yx-hire-approvals">
+            {[0, 1].map((i) => (
+              <Skeleton key={i} height={260} />
+            ))}
+          </div>
+        ) : state === 'error' ? (
+          <ErrorState title="Couldn't load timesheets" description="Check your connection and try again. Nothing was approved." onRetry={() => {}} reference="TSA-7781" />
+        ) : total <= 0 || groups.length === 0 ? (
+          <EmptyState title="You're all caught up." description="No timesheets are waiting for your approval. Reminders go out on Friday and missing weeks are nudged on Monday." />
+        ) : (
+          <ApprovalGroups groups={groups} onBulk={setPending} done={done} />
+        )}
+      </WaitingOrNotSent>
       <span className="yx-visually-hidden" aria-live="polite">
         {done.length ? `${done.length} timesheets approved` : ''}
       </span>

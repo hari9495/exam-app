@@ -12,6 +12,11 @@ const PHONE = { viewport: { value: 'mobile2', isRotated: false } };
 export const ByProjectWeek: S = { name: 'PM · grouped by project and week', render: () => <TimesheetApprovalsScreen groups={APPROVAL_GROUPS} /> };
 export const ClientApproval: S = { name: 'Client approval after PM', render: () => <TimesheetApprovalsScreen groups={APPROVAL_GROUPS} clientApproval /> };
 export const BulkConfirm: S = { name: 'Bulk approve within allocation', render: () => <TimesheetApprovalsScreen groups={APPROVAL_GROUPS} bulkConfirm /> };
+const NOT_SENT = [
+  { employeeId: 'e1', name: 'Arjun Mehta', projects: ['NRP-WEB'], weeks: [{ week: '2026-09-21', status: 'sent_back' as const, totalMinutes: 2280, locked: false }, { week: '2026-09-07', status: 'not_started' as const, totalMinutes: 0, locked: false }], remindedAt: null, canRemind: true },
+  { employeeId: 'e2', name: 'Kavya Iyer', projects: ['CLL-WMS'], weeks: [{ week: '2026-09-14', status: 'draft' as const, totalMinutes: 960, locked: false }], remindedAt: '2026-09-28T04:30:00.000Z', canRemind: false },
+];
+export const NotSent: S = { name: 'PM · Not sent tab (batch D 2535)', render: () => <TimesheetApprovalsScreen groups={APPROVAL_GROUPS} notSent={NOT_SENT} /> };
 export const Empty: S = { name: 'Empty · all caught up', render: () => <TimesheetApprovalsScreen groups={[]} /> };
 export const Loading: S = { name: 'Loading', render: () => <TimesheetApprovalsScreen groups={APPROVAL_GROUPS} state="loading" /> };
 export const Error: S = { name: 'Error', render: () => <TimesheetApprovalsScreen groups={APPROVAL_GROUPS} state="error" /> };

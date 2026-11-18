@@ -27450,5 +27450,28 @@
                               "Screens/Time/TIM-15 · My timesheet"
                     ],
                     "note": "Positive and negative (kit ops-live.test: only empty cells, open days up to today, current projects only, notes not copied, no button on another week / a sent week / before last week loads). The live page loads last week's sheet while this week is shown; no API change."
+          },
+          {
+                    "id": "MT-D-A5-NOT-SENT",
+                    "area": "Batch D A5 and 2535: weeks not sent, for the person and their project manager (answers 2534, 2535, 18 Nov 2026)",
+                    "screen": "Time › My timesheet (TIM-15), Not sent tab; Projects › Timesheet approvals (PRJ-02), Not sent tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "An employee allocated to a project for past weeks (some never sent, one saved as a draft, one sent back); that project's manager; a manager of another project; arjun@demo-org.test.",
+                    "steps": [
+                              "As the employee: My timesheet › Not sent.",
+                              "Press Open week on a row.",
+                              "Back on Not sent, press Show older.",
+                              "Send one of the weeks, then open Not sent again.",
+                              "As the project manager: Projects › Timesheet approvals › Not sent.",
+                              "Press Remind on a person; press it again (or reload and try).",
+                              "Negative: as a manager of another project, open Timesheet approvals › Not sent.",
+                              "Negative: an employee with no project and not on a timesheet: My timesheet › Not sent."
+                    ],
+                    "expected": "Step 1: past weeks (never this week) newest first: 'Nothing saved', 'Draft, not sent' with hours saved, or 'Sent back'; weeks before joining, weeks without work days (all holidays or leave) and weeks with no allocation are not listed; a week in a locked month says 'Month locked: ask HR for a correction' and has no Open week. Step 2: the Week tab opens on that week. Step 3: up to a year of weeks. Step 4: the sent week has gone. Step 5: each person on your projects with weeks owed (only for your projects), weeks not sent, the oldest, how many were sent back and when last reminded. Step 6: 5-second toast 'Reminder sent to <name>'; the person gets a bell and email naming the weeks; the second try is refused ('… was reminded in the last day. Try again tomorrow.') and the button says 'Reminded today'. Step 7: 'Everyone has sent their weeks.' (nobody from other projects). Step 8: 'Every past week is sent.' No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Not sent · past weeks to send",
+                              "Screens/Hiring/PRJ-02 · Timesheet approvals › PM · Not sent tab (batch D 2535)"
+                    ],
+                    "note": "Positive and negative (API projects-p2.e2e: draft and nothing-saved weeks listed, this week never, an employee with none, weeks=99 400, the PM's list only for their projects, another PM empty, remind 404 for another PM, 403 acting for someone, once a day 409, audited, a sent week leaves the list; kit ops-live and prj-02-live)."
           }
 ]

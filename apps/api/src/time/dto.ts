@@ -1045,6 +1045,13 @@ export class YearQueryDto {
   year!: string;
 }
 
+/** Batch D A5: how many past weeks to look at (12 by default, a year at most). */
+export class NotSentQueryDto {
+  @IsOptional()
+  @Matches(/^([1-9]|[1-4]\d|5[0-2])$/, { message: 'weeks is 1 to 52' })
+  weeks?: string;
+}
+
 export class YearEntityQueryDto extends YearQueryDto {
   @IsOptional()
   @IsUUID()

@@ -548,6 +548,46 @@ function copyLastWeek(lines: TimesheetLine[]): [TimesheetLine[], number[]] {
   return copyWeekInto(lines, LAST_LINES, open);
 }
 
+/* ---------- batch D A5: weeks not sent (TIM-15 "Not sent" tab) ---------- */
+
+/** A past week never sent (answer 2534): none saved, a draft, or sent back; a week in a locked month is read-only. */
+export type NotSentWeek = { week: string; status: 'not_started' | 'draft' | 'sent_back'; totalMinutes: number; locked: boolean };
+const NOT_SENT_LABEL: Record<NotSentWeek['status'], { label: string; tone: 'warning' | 'danger' | 'neutral' }> = {
+  not_started: { label: 'Nothing saved', tone: 'warning' },
+  draft: { label: 'Draft, not sent', tone: 'neutral' },
+  sent_back: { label: 'Sent back', tone: 'danger' },
+};
+
+/** TIM-15 Not sent: the person's past weeks to send, newest first; "Open week" goes to the grid; payroll needs full weeks. */
+export function NotSentWeeks({ weeks, onOpenWeek, onShowOlder }: { weeks: NotSentWeek[]; onOpenWeek: (week: string) => void; /** The last 12 weeks are shown; this asks for up to a year. */ onShowOlder?: () => void }) {
+  const columns: TableColumn<NotSentWeek & { id: string }>[] = [
+    { key: 'week', header: 'Week', value: (r) => `${formatDate(new Date(`${r.week}T00:00:00`))} – ${formatDate(new Date(new Date(`${r.week}T00:00:00`).getTime() + 6 * 864e5))}` },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => NOT_SENT_LABEL[r.status].label, statusTone: (v) => Object.values(NOT_SENT_LABEL).find((x) => x.label === v)?.tone ?? 'neutral' },
+    { key: 'hours', header: 'Hours saved', type: 'number', value: (r) => (r.totalMinutes ? Math.round((r.totalMinutes / 60) * 10) / 10 : null) },
+    { key: 'note', header: 'Note', value: (r) => (r.locked ? 'Month locked: ask HR for a correction' : '') },
+  ];
+  return (
+    <div className="yx-tim-stack">
+      <p className="yx-tim-muted">Past weeks you have not sent yet. Payroll needs full weeks, so send each one.</p>
+      {weeks.length === 0 ? (
+        <EmptyState title="Every past week is sent." description="Weeks you still have to send appear here, with any your project manager sent back." />
+      ) : (
+        <DataTable label="Weeks not sent" rows={weeks.map((w) => ({ ...w, id: w.week }))} columns={columns} getRowId={(r) => r.id} rowButtons={(r) => (r.locked ? null : <Button size="sm" onClick={() => onOpenWeek(r.week)}>Open week</Button>)} />
+      )}
+      {onShowOlder && (
+        <div>
+          <Button size="sm" onClick={onShowOlder}>Show older</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+const SAMPLE_NOT_SENT: NotSentWeek[] = [
+  { week: '2026-09-21', status: 'sent_back', totalMinutes: 2280, locked: false },
+  { week: '2026-09-07', status: 'draft', totalMinutes: 960, locked: false },
+  { week: '2026-08-24', status: 'not_started', totalMinutes: 0, locked: true },
+];
+
 /* ---------- live: /time/timesheet (TIM-15) ---------- */
 
 /** Me › Timesheet: the person's own weeks, saved as a draft and sent to the project manager (P03). */
@@ -568,6 +608,8 @@ export interface LiveTimesheet {
   summary?: { state: LoadState; data: { year: number; years: number[]; weeks: TimeSummaryWeek[] } | null; onYear: (year: number) => void };
   /** Batch D A3: last week's sheet, loaded while this week is shown (for "Copy last week"). */
   lastWeek?: MyTimesheet | null;
+  /** Batch D A5: my weeks not sent (GET /time/me/timesheet/not-sent); `onShowOlder` asks for a year. */
+  notSent?: { state: LoadState; data: { weeks: NotSentWeek[] } | null; onShowOlder?: () => void };
 }
 const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
 const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
@@ -700,8 +742,25 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
           <TabsList aria-label="My timesheet views">
             <TabsTrigger value="week">Week</TabsTrigger>
             <TabsTrigger value="summary">Time summary</TabsTrigger>
+            {live.notSent && <TabsTrigger value="not-sent">{`Not sent${live.notSent.data?.weeks.length ? ` (${live.notSent.data.weeks.length})` : ''}`}</TabsTrigger>}
           </TabsList>
           <TabsContent value="week">{gate}</TabsContent>
+          {live.notSent && (
+            <TabsContent value="not-sent">
+              <LiveGate state={live.notSent.state} what="your weeks not sent">
+                {live.notSent.data && (
+                  <NotSentWeeks
+                    weeks={live.notSent.data.weeks}
+                    onShowOlder={live.notSent.onShowOlder}
+                    onOpenWeek={(w) => {
+                      setView('week');
+                      go(w);
+                    }}
+                  />
+                )}
+              </LiveGate>
+            </TabsContent>
+          )}
           <TabsContent value="summary">
             <LiveGate state={live.summary.state} what="your time summary">
               {live.summary.data && (
@@ -726,7 +785,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   );
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, view, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** Keka ideas: open on the Time summary. */ view?: 'week' | 'summary'; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
+export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, view, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** Keka ideas: open on the Time summary. */ view?: 'week' | 'summary' | 'not-sent'; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
   if (live) return <LiveTimesheetScreen live={live} />;
   return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} view={view} />;
 }
@@ -738,7 +797,7 @@ const SAMPLE_WEEKS: TimeSummaryWeek[] = Array.from({ length: 38 }, (_, i) => {
   return { week, totalMinutes: [2400, 2280, 2520, 2400, 1920, 2400, 2700][i % 7]!, status: i === 37 ? 'pending' : i === 30 ? 'rejected' : 'approved' };
 });
 
-function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule, view = 'week' }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule; view?: 'week' | 'summary' }) {
+function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule, view = 'week' }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule; view?: 'week' | 'summary' | 'not-sent' }) {
   const { toast } = useToast();
   const [tab, setTab] = useState<string>(view);
   // `status` is for the week the story opens on: a draft is this week, locked is the August week, every other status is last week.
@@ -868,7 +927,11 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
         <TabsList aria-label="My timesheet views">
           <TabsTrigger value="week">Week</TabsTrigger>
           <TabsTrigger value="summary">Time summary</TabsTrigger>
+          <TabsTrigger value="not-sent">{`Not sent (${SAMPLE_NOT_SENT.length})`}</TabsTrigger>
         </TabsList>
+        <TabsContent value="not-sent">
+          <NotSentWeeks weeks={SAMPLE_NOT_SENT} onShowOlder={() => {}} onOpenWeek={(w) => { setTab('week'); go(Math.round((new Date(`${w}T00:00:00`).getTime() - THIS_MONDAY.getTime()) / (7 * 864e5))); }} />
+        </TabsContent>
         <TabsContent value="week">
           <div className="yx-tim-stack">
             {correctionAlert}

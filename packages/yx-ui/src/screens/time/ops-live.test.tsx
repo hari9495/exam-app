@@ -233,6 +233,29 @@ describe('My timesheet (TIM-15 live)', () => {
     expect(screen.queryByRole('button', { name: 'Copy last week' })).toBeNull();
   });
 
+  it('A5 Not sent (answer 2534): past weeks to send, newest first; Open week goes to the grid; Show older asks for more', async () => {
+    const onShowOlder = vi.fn();
+    const live = sheet(MY_TIMESHEET, { summary: { state: 'ready', onYear: vi.fn(), data: { year: 2026, years: [2026], weeks: [] } }, notSent: { state: 'ready', onShowOlder, data: { weeks: [{ week: '2026-10-19', status: 'sent_back', totalMinutes: 2280, locked: false }, { week: '2026-09-28', status: 'not_started', totalMinutes: 0, locked: true }] } } });
+    render(<TimesheetScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: 'Not sent (2)' }));
+    expect(screen.getByText('Sent back')).toBeInTheDocument();
+    expect(screen.getByText('Month locked: ask HR for a correction')).toBeInTheDocument();
+    // A locked week has no Open week (it needs a correction).
+    expect(screen.getAllByRole('button', { name: 'Open week' })).toHaveLength(1);
+    await ue.click(screen.getByRole('button', { name: 'Open week' }));
+    expect(live.onWeek).toHaveBeenCalledWith('2026-10-19');
+    expect(screen.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true');
+    await ue.click(screen.getByRole('tab', { name: 'Not sent (2)' }));
+    await ue.click(screen.getByRole('button', { name: 'Show older' }));
+    expect(onShowOlder).toHaveBeenCalled();
+  });
+
+  it('negative: every week sent says so', async () => {
+    render(<TimesheetScreen live={sheet(MY_TIMESHEET, { summary: { state: 'ready', onYear: vi.fn(), data: { year: 2026, years: [2026], weeks: [] } }, notSent: { state: 'ready', data: { weeks: [] } } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Not sent' }));
+    expect(screen.getAllByText('Every past week is sent.').length).toBeGreaterThan(0);
+  });
+
   it('a sent week can be recalled, and locked days are named', async () => {
     const data: MyTimesheet = { ...MY_TIMESHEET, sheet: { id: 'ts1', status: 'pending', totalMinutes: 1200 }, days: MY_TIMESHEET.days.map((x, i) => ({ ...x, locked: i < 2 })) };
     const live = sheet(data);
