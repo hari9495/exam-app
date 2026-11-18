@@ -157,3 +157,64 @@ it('negative: an integrity check still running reads "Under review"; none reads 
   expect(scoreReport({ ...REPORT, integrityAnalysis: { status: 'pending', level: null } }).integrity).toBe('Under review');
   expect(scoreReport({ ...REPORT, integrityAnalysis: null }).integrity).toBe('Not checked');
 });
+
+// Answer 2437: the Results tab of a published test and the readers' Test results page (the older /v2 results retire).
+describe('test results', () => {
+  const ROWS = [
+    { invitationId: 'i1', candidateId: 'c1', attemptId: 'a1', candidateName: 'Arjun Nair', status: 'submitted', percentage: 72.5, passFail: 'pass', integrityLevel: 'clear', submittedAt: '2026-11-14T06:22:00.000Z' },
+    { invitationId: 'i2', candidateId: 'c2', attemptId: 'a2', candidateName: 'Divya Menon', status: 'submitted', percentage: 41, passFail: 'fail', integrityLevel: 'review', submittedAt: '2026-11-14T07:00:00.000Z' },
+  ];
+  const published = () =>
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${path}${init?.body ? ` ${String(init.body)}` : ''}`);
+      if (path === '/asmt/tests/e1') return { ...TEST, status: 'published', editable: false };
+      if (path === '/exams/e1/results') return ROWS;
+      if (path === '/exams/e1/results/summary') return { totalCandidates: 2, settledCount: 2, passRate: 50, averagePercentage: 56.8, resultsReleaseMode: 'manual' };
+      if (path === '/exams/e1/results/release') return { released: 2 };
+      if (path === '/asmt/tests/skills') return [];
+      if (path === '/asmt/tests/defaults') return { proctorMode: 'ai', highStakes: 500 };
+      if (path === '/exams?pageSize=100') return { data: [{ id: 'e1', title: TEST.title, status: 'published', createdAt: TEST.createdAt }, { id: 'e2', title: 'Draft test', status: 'draft', createdAt: TEST.createdAt }] };
+      return {};
+    });
+
+  it('a test writer who reads results gets a Results tab: rows, a row opens the score report, release asks first', async () => {
+    (useYxPermissions as jest.Mock).mockReturnValue(new Set(['exam:manage', 'results:view']));
+    published();
+    wrap(<YxTestBuilderPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: /Results/ }));
+    await userEvent.click(await screen.findByText('Divya Menon'));
+    expect(push).toHaveBeenCalledWith('/yx/hiring/assessments/reports/e1/c2');
+    await userEvent.click(screen.getByRole('button', { name: 'Release results' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Release' }));
+    await waitFor(() => expect(calls).toContain('POST /exams/e1/results/release {"notify":false}'));
+  });
+
+  it('negative: without a results key the test page has no Results tab and never asks for results', async () => {
+    published();
+    wrap(<YxTestBuilderPage />);
+    expect(await screen.findByRole('heading', { name: TEST.title, level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: /Results/ })).toBeNull();
+    expect(calls.some((c) => c.includes('/results'))).toBe(false);
+  });
+
+  it("a reader's Test results lists published tests only; the chosen test's rows show, with no Release", async () => {
+    const YxTestResultsPage = (await import('./(app)/hiring/assessments/results/page')).default;
+    const { useSearchParams } = jest.requireMock('next/navigation') as { useSearchParams: jest.Mock };
+    useSearchParams.mockReturnValue(new URLSearchParams('test=e1'));
+    (useYxPermissions as jest.Mock).mockReturnValue(new Set(['results:view']));
+    published();
+    wrap(<YxTestResultsPage />);
+    expect(await screen.findByText('Arjun Nair')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Release results' })).toBeNull();
+    useSearchParams.mockReturnValue(undefined);
+  });
+
+  it('negative: someone without a results key is told who gives access, and nothing is fetched', async () => {
+    const YxTestResultsPage = (await import('./(app)/hiring/assessments/results/page')).default;
+    (useYxPermissions as jest.Mock).mockReturnValue(Object.assign(new Set<string>(), { isSuccess: true }));
+    published();
+    wrap(<YxTestResultsPage />);
+    expect(await screen.findByText(/HR/)).toBeInTheDocument();
+    expect(calls).toEqual([]);
+  });
+});

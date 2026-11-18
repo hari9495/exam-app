@@ -107,3 +107,25 @@ export function liveReport(over: Partial<LiveScoreReport> = {}): LiveScoreReport
     ...over,
   };
 }
+
+// Answer 2437: the Results tab of a published test.
+export const RESULT_ROWS: import('./tests-results').TestResultRow[] = [
+  { invitationId: 'inv-1', candidateId: 'c-1', attemptId: 'a-1', candidateName: 'Ananya Iyer', status: 'submitted', percentage: 82.5, passFail: 'pass', integrityLevel: 'clear', submittedAt: '2026-11-14T11:20:00+05:30' },
+  { invitationId: 'inv-2', candidateId: 'c-2', attemptId: 'a-2', candidateName: 'Rahul Menon', status: 'submitted', percentage: 54, passFail: 'fail', integrityLevel: 'review', submittedAt: '2026-11-14T12:05:00+05:30' },
+  { invitationId: 'inv-3', candidateId: 'c-3', attemptId: 'a-3', candidateName: 'Fatima Sheikh', status: 'pending_manual_grade', percentage: null, passFail: null, integrityLevel: 'high_concern', submittedAt: '2026-11-15T09:40:00+05:30' },
+  { invitationId: 'inv-4', candidateId: 'c-4', attemptId: null, candidateName: 'Vikram Rao', status: 'invited', percentage: null, passFail: null, integrityLevel: null, submittedAt: null },
+];
+export const liveResults = (over: Partial<import('./tests-results').LiveTestResults> = {}): import('./tests-results').LiveTestResults => ({
+  state: 'ready',
+  onRetry: () => undefined,
+  summary: { totalCandidates: 4, settledCount: 2, passRate: 50, averagePercentage: 68.3, resultsReleaseMode: 'manual' },
+  rows: RESULT_ROWS,
+  onOpen: () => undefined,
+  onExport: () => Promise.resolve(),
+  onRelease: () => Promise.resolve({ released: 2 }),
+  onCompare: (ids) =>
+    Promise.resolve(
+      RESULT_ROWS.filter((r) => ids.includes(r.invitationId)).map((r) => ({ invitationId: r.invitationId, candidateName: r.candidateName, percentage: r.percentage, passFail: r.passFail, integrityLevel: r.integrityLevel, sections: [{ title: 'Aptitude', percentage: r.percentage }, { title: 'Java', percentage: r.percentage == null ? null : r.percentage - 5 }] })),
+    ),
+  ...over,
+});

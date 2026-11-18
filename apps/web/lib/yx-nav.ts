@@ -407,8 +407,8 @@ export function buildNav(n: NavInput): NavArea[] {
   };
 
   // M10 AT1: hiring, for holders of the hiring keys (founder D2); never in a support session (D14). YukthiX Hiring is
-  // the only hiring app (founder decision 15 Oct 2026). Assessments, campaigns and the other exam tools are not in YukthiX
-  // yet: recruiters now land here, so one link reaches them in the older screens until they are redesigned (19 Oct).
+  // the only hiring app (founder decision 15 Oct 2026). Decision 2398 (step 5): no link to the older /v2 screens; test
+  // results are each test's Results tab, or Test results for readers.
   const hire: NavArea = {
     id: 'hire',
     title: 'Hiring',
@@ -437,8 +437,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
           // HIR-10: HR with the background-check key (Special data; the API checks the joiner's scope).
           ...when(has('lifecycle.bgv.manage'), L('hiring-bgv', 'Background checks', '/yx/hiring/bgv')),
-          ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
-          ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
+          // Answer 2437: results readers (interviewers, hiring managers) see test results here; test writers on each test's Results tab.
+          ...when(any('results:view', 'asmt.results.view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results', '/yx/hiring/assessments/results')),
           ]),
           // Answer 2001 (AS-1 follow-ups): Hire › Assessments, for bank writers (the YukthiX key or its older alias), only when
           // the company has assessments on. Tests, delivery and results join as their designed screens go live.

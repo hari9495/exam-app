@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TestBuilderScreen } from '../bank-tests';
-import { BUILDER_TEST, BUILDER_WAITING, COMPANY_SKILLS, JD_PLAN, liveBuilder } from '../tests-live-samples';
+import { BUILDER_TEST, BUILDER_WAITING, COMPANY_SKILLS, JD_PLAN, liveBuilder, liveResults } from '../tests-live-samples';
 
 const meta: Meta<typeof TestBuilderScreen> = { title: 'Screens/Proctoring/PRC-04 · Test builder', component: TestBuilderScreen, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -26,3 +26,9 @@ export const LiveFromJd: S = { name: 'Build from a job description (answer 2151)
 export const LiveStart: S = { name: 'Start from one of our tests', render: () => <TestBuilderScreen live={liveBuilder({ test: null })} /> };
 // Answer 2307: an archived test with a fairness finding still open: Restore asks why (at least 10 letters).
 export const LiveRestoreWithFinding: S = { name: 'Archived after a fairness finding: Restore asks why', render: () => <TestBuilderScreen live={liveBuilder({ onRestore: () => Promise.resolve(), test: { ...BUILDER_TEST, status: 'archived', editable: false, restoreNeedsReason: true } })} /> };
+// Answer 2437: the Results tab of a published test (in place of the older results list and compare page).
+const published = { ...BUILDER_TEST, status: 'published', editable: false };
+export const LiveResults: S = { name: 'Published test: Results tab', render: () => <TestBuilderScreen live={liveBuilder({ test: published, tab: 'results', results: liveResults() })} /> };
+export const LiveResultsEmpty: S = { name: 'Published test: Results tab, no one yet', render: () => <TestBuilderScreen live={liveBuilder({ test: published, tab: 'results', results: liveResults({ rows: [], summary: null }) })} /> };
+export const LiveResultsLoading: S = { name: 'Published test: Results tab, loading', render: () => <TestBuilderScreen live={liveBuilder({ test: published, tab: 'results', results: liveResults({ state: 'loading', rows: [] }) })} /> };
+export const LiveResultsError: S = { name: 'Published test: Results tab, could not load', render: () => <TestBuilderScreen live={liveBuilder({ test: published, tab: 'results', results: liveResults({ state: 'error', rows: [] }) })} /> };

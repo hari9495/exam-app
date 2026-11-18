@@ -17,6 +17,7 @@ import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { RadioGroup, Switch } from '../../components/choice';
 import { REVIEW_ID, Stepper } from '../../components/stepper';
+import { TestResultsPanel, type LiveTestResults } from './tests-results';
 import { BarChart } from '../../components/charts';
 import { formatDate } from '../../lib/format';
 import { useRun } from '../org/org-kit';
@@ -147,6 +148,10 @@ export interface LiveTestBuilder {
   onRestore?: (reason?: string) => Promise<void>;
   /** Answer 2267: opens the live console (PRC-13) of a published test; absent for people who cannot proctor. */
   onLiveConsole?: () => void;
+  /** Answer 2437: the Results tab of a published or archived test; absent for people who cannot read results. */
+  results?: LiveTestResults;
+  /** The tab to open on (old results links open Results). */
+  tab?: 'build' | 'results';
 }
 
 export const MODE_WORDS: Record<ProctorMode, { label: string; description: string }> = {
@@ -898,20 +903,50 @@ export function LiveTestBuilderScreen({ live }: { live: LiveTestBuilder }) {
           </FormField>
         )}
       </ConfirmDialog>
-      <Stepper
-        title="Build test"
-        steps={steps}
-        current={step}
-        onCurrentChange={setStep}
-        review={{ title: 'Pre-publish checklist', description: 'Publishing locks the test. Copy it to make a new version.', note: checklist }}
-        finishLabel="Publish"
-        finishing={busy === 'publish'}
-        onFinish={() => {
-          if (t.status !== 'draft') return say('This test is already published.');
-          if (blocked.length) return say(blocked[0]!.problem ?? 'Fix the checklist first.');
-          void act('publish', live.onPublish, 'Test published');
-        }}
-      />
+      {live.results && t.status !== 'draft' ? (
+        <Tabs defaultValue={live.tab ?? 'build'}>
+          <TabsList aria-label="Test">
+            <TabsTrigger value="build">Build</TabsTrigger>
+            <TabsTrigger value="results" count={live.results.rows.length}>
+              Results
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="build">
+          <Stepper
+            title="Build test"
+            steps={steps}
+            current={step}
+            onCurrentChange={setStep}
+            review={{ title: 'Pre-publish checklist', description: 'Publishing locks the test. Copy it to make a new version.', note: checklist }}
+            finishLabel="Publish"
+            finishing={busy === 'publish'}
+            onFinish={() => {
+              if (t.status !== 'draft') return say('This test is already published.');
+              if (blocked.length) return say(blocked[0]!.problem ?? 'Fix the checklist first.');
+              void act('publish', live.onPublish, 'Test published');
+            }}
+          />
+          </TabsContent>
+          <TabsContent value="results">
+            <TestResultsPanel live={live.results} />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <Stepper
+          title="Build test"
+          steps={steps}
+          current={step}
+          onCurrentChange={setStep}
+          review={{ title: 'Pre-publish checklist', description: 'Publishing locks the test. Copy it to make a new version.', note: checklist }}
+          finishLabel="Publish"
+          finishing={busy === 'publish'}
+          onFinish={() => {
+            if (t.status !== 'draft') return say('This test is already published.');
+            if (blocked.length) return say(blocked[0]!.problem ?? 'Fix the checklist first.');
+            void act('publish', live.onPublish, 'Test published');
+          }}
+        />
+      )}
     </PrcFrame>
   );
 }
