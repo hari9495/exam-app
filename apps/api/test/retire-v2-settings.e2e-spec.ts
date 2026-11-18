@@ -217,4 +217,31 @@ describe('Retired /v2 settings in YukthiX Settings', () => {
       expect((await call('adminA', 'get', '/org-sender-addresses').expect(200)).body).toEqual([expect.objectContaining({ id: made.id, label: 'Careers', isDefault: true })]);
     });
   });
+
+  // Answer 2425: candidate and job custom fields on /yx/settings/custom-fields.
+  describe('custom fields for candidates and jobs (2425)', () => {
+    it('a candidate field is made, changed and archived, each audited with before and after; the other company never sees it', async () => {
+      const made = (await call('adminA', 'post', '/custom-fields').send({ entityType: 'candidate', label: 'Notice period', fieldType: 'number', required: true, showOnApply: true }).expect(201)).body;
+      await call('adminA', 'patch', `/custom-fields/${made.id}`).send({ label: 'Notice period (days)', required: false }).expect(200);
+      await call('adminA', 'delete', `/custom-fields/${made.id}`).expect(200);
+      const logs = await at('A', (tx) => tx.auditLog.findMany({ where: { entityId: made.id }, orderBy: { createdAt: 'asc' } }));
+      expect(logs.map((l) => l.action)).toEqual(['custom_field.created', 'custom_field.updated', 'custom_field.archived']);
+      const upd = JSON.parse(logs[1]!.metadataJson ?? '{}');
+      expect(upd.before).toMatchObject({ label: 'Notice period', required: true, showOnApply: true });
+      expect(upd.after).toMatchObject({ label: 'Notice period (days)', required: false });
+      expect((await call('adminB', 'get', '/custom-fields?entityType=candidate').expect(200)).body).toEqual([]);
+    });
+
+    it('negative: an employee field cannot be reached here, bad input, no key, acting, another company', async () => {
+      const emp = (await call('adminA', 'post', '/people/custom-fields').send({ entityType: 'employee', label: 'Shoe size', fieldType: 'text' }).expect(201)).body;
+      await call('adminA', 'patch', `/custom-fields/${emp.id}`).send({ label: 'Hacked' }).expect(404);
+      await call('adminA', 'post', '/custom-fields').send({ entityType: 'employee', label: 'X', fieldType: 'text' }).expect(400);
+      await call('adminA', 'post', '/custom-fields').send({ entityType: 'job', label: 'Grade', fieldType: 'select', options: [] }).expect(400);
+      await call('plainA', 'post', '/custom-fields').send({ entityType: 'job', label: 'Y', fieldType: 'text' }).expect(403);
+      await call('acting', 'post', '/custom-fields').send({ entityType: 'job', label: 'Z', fieldType: 'text' }).expect(403);
+      const job = (await call('adminA', 'post', '/custom-fields').send({ entityType: 'job', label: 'Cost centre', fieldType: 'text' }).expect(201)).body;
+      await call('adminB', 'patch', `/custom-fields/${job.id}`).send({ label: 'Taken' }).expect(404);
+      expect((await call('adminA', 'get', '/custom-fields?entityType=job').expect(200)).body.map((f: { label: string }) => f.label)).toEqual(['Cost centre']);
+    });
+  });
 });

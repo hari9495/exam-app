@@ -23,7 +23,7 @@ export { DeclarationsSwitch, DisabilityDeclaration, type DeclarationsPage, type 
 export { InternationalBankPhone, InternationalBankTab, type LiveIntlBank, type LiveSplit, type SplitLineInput } from '../people/record';
 export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
-export { CustomFieldsDrawer, EmployeeFieldsScreen, CLASS_LABEL as CUSTOM_CLASS_LABEL, customValueText, type DataClass, type EmployeeFieldDef, type EmployeeFieldsScreenProps, type RecordCustomField } from '../people/custom-fields';
+export { CustomFieldsDrawer, EmployeeFieldsScreen, CLASS_LABEL as CUSTOM_CLASS_LABEL, customValueText, type DataClass, type EmployeeFieldDef, type EmployeeFieldsScreenProps, type FieldEntity, type RecordCustomField } from '../people/custom-fields';
 export type { CustomField as RecordCustomRow } from '../people/record';
 export { ContactsDrawer, FamilyDrawer, type EmergencyContact, type FamilyMember, type Nomination, type RecordFamily } from '../people/family';
 // PPL-02 Org chart and PPL-08 My team with live data.

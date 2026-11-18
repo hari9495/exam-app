@@ -27418,5 +27418,29 @@
                               "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · approval email, view only"
                     ],
                     "note": "Positive and negative (kit hiring-emails.test.tsx; web yx-settings-s8.test.tsx; API retire-v2-settings.e2e-spec.ts and the template service specs). The three APIs now refuse changes while acting; interview and approval saves are audited with before and after; approval wording is limited to 300 / 10,000 characters. Hiring approval emails apply to the old job and offer approval chains, which answers 2511-2512 move into P03 approvals."
+          },
+          {
+                    "id": "MT-V2-CUSTOM-FIELDS-ENTITY",
+                    "area": "Retire /v2: candidate and job custom fields on Settings › Custom fields (answer 2425, 18 Nov 2026)",
+                    "screen": "Settings › People & Access › Custom fields",
+                    "url": "http://localhost:3000/yx/settings/custom-fields",
+                    "account": "Admin admin-tester@demo-org.test (company settings and HR settings); hr@demo-org.test (HR settings only).",
+                    "steps": [
+                              "As admin: open Settings › Custom fields. Find 'Fields for' with Employees, Candidates and Jobs.",
+                              "Choose Candidates. Press Add custom field, leave the name empty and press Add field.",
+                              "Name it 'Notice period (days)', type Number, tick 'Must be filled in' and 'Ask on the application form', and add it.",
+                              "Open a job's careers page and start an application.",
+                              "Choose Jobs, add 'Cost centre' (must be filled in), then open Hiring › Jobs › Add job.",
+                              "Remove the Cost centre field and confirm.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/custom-fields.",
+                              "As hr@demo-org.test: open the page. As admin acting as another person: open it and choose Candidates."
+                    ],
+                    "expected": "Step 1: the switch shows, Employees chosen, with the employee fields as before; no page scroll at 1278 x 635. Step 2: 'Give the field a name.' and nothing saved. Step 3: the field shows with Must be filled in Yes and On the application form Yes. Step 4: the form asks for the notice period and will not send without it. Step 5: the new job form asks for the cost centre. Step 6: it leaves the job form; values already saved are kept. Step 7: one entry for each add, change and removal with before and after. Step 8: Settings › Custom fields. Step 9: HR sees only the employee fields (no switch); acting shows the candidate fields without Add, Edit or Remove.",
+                    "stories": [
+                              "Screens/People/PPL-03 · Person record › Settings · custom fields (candidates)",
+                              "Screens/People/PPL-03 · Person record › Settings · custom fields (jobs, view only)"
+                    ],
+                    "note": "Positive and negative (kit custom-fields.test.tsx; web yx-org-pages.test.tsx; API retire-v2-settings.e2e-spec.ts and custom-fields.service.spec.ts). Field definition changes are now audited with before and after (they were not before), and the candidate and job API refuses changes while acting."
           }
 ]

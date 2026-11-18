@@ -174,6 +174,38 @@ describe('/yx/settings/custom-fields (PPL-03 Additional details)', () => {
     await waitFor(() => expect(create).toHaveBeenCalledWith({ entityType: 'employee', label: 'Forklift licence number', fieldType: 'text', dataClass: 'internal' }));
   });
 
+  it('answer 2425: the switch shows candidate fields from the hiring API; adding one posts it with required and the application form', async () => {
+    const create = jest.fn().mockResolvedValue({});
+    route({
+      'GET /people/custom-fields': [FIELD],
+      'GET /custom-fields': (p: string) => (p.includes('entityType=candidate') ? [{ id: 'c1', label: 'Notice period', fieldType: 'number', options: null, required: true, showOnApply: true, dataClass: 'internal' }] : []),
+      'POST /custom-fields': (_p: string, init: RequestInit) => create(JSON.parse(String(init.body))),
+      [`GET ${PERMS_PATH}`]: ['org.settings.manage', 'org:manage_settings'],
+    });
+    wrap(<YxCustomFieldsPage />);
+    await userEvent.click(await screen.findByRole('radio', { name: 'Candidates' }));
+    expect(await screen.findByText('Notice period')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add custom field' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Name/ }), 'Current CTC');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Must be filled in' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith({ entityType: 'candidate', label: 'Current CTC', fieldType: 'text', required: true, showOnApply: false }));
+  });
+
+  it('answer 2425 negative: without the company settings key there is no switch; acting, the candidate list is view only', async () => {
+    route({ 'GET /people/custom-fields': [FIELD], [`GET ${PERMS_PATH}`]: ['org.settings.manage'] });
+    const { unmount } = wrap(<YxCustomFieldsPage />);
+    expect(await screen.findByRole('table')).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Candidates' })).toBeNull();
+    unmount();
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', impersonating: true, actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+    route({ 'GET /people/custom-fields': [FIELD], 'GET /custom-fields': [], [`GET ${PERMS_PATH}`]: ['org.settings.manage', 'org:manage_settings'] });
+    wrap(<YxCustomFieldsPage />);
+    await userEvent.click(await screen.findByRole('radio', { name: 'Jobs' }));
+    expect(await screen.findByText('Job fields')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add custom field' })).toBeNull();
+  });
+
   it('a 403 shows no access', async () => {
     route({ 'GET /people/custom-fields': forbidden(), [`GET ${PERMS_PATH}`]: [] });
     wrap(<YxCustomFieldsPage />);
