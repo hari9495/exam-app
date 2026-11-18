@@ -186,4 +186,35 @@ describe('Retired /v2 settings in YukthiX Settings', () => {
       expect(await at('B', (tx) => tx.auditLog.count({ where: { action: 'ats.stage_message.skipped' } }))).toBe(0);
     });
   });
+
+  // Answer 2429: the hiring emails on Settings 5.4 Notifications.
+  describe('5.4 hiring emails (2429)', () => {
+    it('interview email: the list carries the standard wording; the company copy is audited with before and after', async () => {
+      const list = (await call('adminA', 'get', '/interview-email-templates').expect(200)).body as { eventType: string; subject: string | null; defaultSubject: string }[];
+      expect(list.find((e) => e.eventType === 'invite')).toMatchObject({ subject: null, defaultSubject: expect.stringContaining('Interview invitation') });
+      await call('adminA', 'put', '/interview-email-templates/invite').send({ subject: 'You are invited', body: 'Hi {{candidateName}}', enabled: true }).expect(200);
+      await call('adminA', 'put', '/interview-email-templates/invite').send({ subject: 'You are invited', body: 'Hello', enabled: false }).expect(200);
+      const logs = await at('A', (tx) => tx.auditLog.findMany({ where: { action: 'interview_email_template.saved' }, orderBy: { createdAt: 'asc' } }));
+      expect(logs.map((l) => JSON.parse(l.metadataJson ?? '{}'))).toEqual([
+        { eventType: 'invite', before: null, after: { subject: 'You are invited', body: 'Hi {{candidateName}}', enabled: true } },
+        { eventType: 'invite', before: { subject: 'You are invited', body: 'Hi {{candidateName}}', enabled: true }, after: { subject: 'You are invited', body: 'Hello', enabled: false } },
+      ]);
+      expect((await call('adminB', 'get', '/interview-email-templates').expect(200)).body.find((e: { eventType: string }) => e.eventType === 'invite').subject).toBeNull();
+    });
+
+    it('approval email and sender address: saved by the admin; bad input, no key and acting are refused; another company cannot touch them', async () => {
+      await call('adminA', 'put', '/approval-email-templates/approval.requested').send({ subject: '{{actorName}} asks you', body: 'Open {{link}}' }).expect(200);
+      await call('adminA', 'put', '/approval-email-templates/approval.requested').send({ subject: '', body: 'x' }).expect(400);
+      await call('adminA', 'put', '/approval-email-templates/approval.unknown').send({ subject: 'S', body: 'B' }).expect(400);
+      await call('plainA', 'put', '/approval-email-templates/approval.requested').send({ subject: 'S', body: 'B' }).expect(403);
+      await call('acting', 'put', '/interview-email-templates/invite').send({ subject: 'S', body: 'B' }).expect(403);
+      const made = (await call('adminA', 'post', '/org-sender-addresses').send({ label: 'Careers', address: `careers-${run}@rv2.test`, isDefault: true }).expect(201)).body;
+      await call('adminA', 'post', '/org-sender-addresses').send({ label: 'Bad', address: 'not-an-email' }).expect(400);
+      await call('plainA', 'post', '/org-sender-addresses').send({ label: 'X', address: `x-${run}@rv2.test` }).expect(403);
+      await call('acting', 'post', '/org-sender-addresses').send({ label: 'X', address: `y-${run}@rv2.test` }).expect(403);
+      await call('adminB', 'patch', `/org-sender-addresses/${made.id}`).send({ label: 'Taken' }).expect(404);
+      await call('adminB', 'delete', `/org-sender-addresses/${made.id}`).expect(404);
+      expect((await call('adminA', 'get', '/org-sender-addresses').expect(200)).body).toEqual([expect.objectContaining({ id: made.id, label: 'Careers', isDefault: true })]);
+    });
+  });
 });

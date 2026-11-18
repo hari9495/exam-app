@@ -263,6 +263,52 @@ const notifications: SettingsPageDef = {
         { key: 'ntf.templates', label: 'Email and in-app wording', kind: 'link', linkScreenId: 'PLT-13', linkLabel: 'Edit notification wording', helper: 'Typed variables, preview, test send and reset to default.', synonyms: ['notification template', 'email text'] },
       ],
     },
+    // Answer 2429 (retiring /v2): the addresses recruiters send from, and the wording of the interview and approval emails.
+    {
+      title: 'Hiring emails',
+      settings: [
+        {
+          key: 'ntf.sender_addresses',
+          label: 'Addresses recruiters send from',
+          kind: 'list',
+          columns: ['Name', 'Address', 'Default'],
+          rows: [
+            ['Kaveri Foods Careers', 'careers@kaverifoods.in', 'Yes'],
+            ['Hosur plant hiring', 'hosur.jobs@kaverifoods.in', ''],
+          ],
+          addLabel: 'Add address',
+          helper: 'A recruiter picks one when they email a candidate. The default is used when they do not.',
+          synonyms: ['sender address', 'from address', 'reply address'],
+        },
+        {
+          key: 'ntf.interview_emails',
+          label: 'Interview emails',
+          kind: 'list',
+          columns: ['Email', 'Subject', 'Wording'],
+          rows: [
+            ['Invitation to the candidate', 'Interview invitation: {{jobTitle}} at {{orgName}}', 'Standard'],
+            ['Panel assignment', 'Interview panel assignment: {{candidateName}} for {{jobTitle}}', 'Standard'],
+            ['Interview cancelled', 'Interview cancelled: {{jobTitle}}', 'Yours'],
+          ],
+          fixedRows: true,
+          helper: 'Sent when an interview is proposed, confirmed, declined, moved or cancelled. Times and links are added for you.',
+          synonyms: ['interview invite', 'interview email', 'calendar invite'],
+        },
+        {
+          key: 'ntf.approval_emails',
+          label: 'Hiring approval emails',
+          kind: 'list',
+          columns: ['Email', 'Subject', 'Wording'],
+          rows: [
+            ['Approval requested', 'Standard email', 'Standard'],
+            ['Approved', 'Standard email', 'Standard'],
+          ],
+          fixedRows: true,
+          helper: 'Sent to approvers and to the person who asked, for job and offer approvals.',
+          synonyms: ['approval email', 'requisition approval'],
+        },
+      ],
+    },
     {
       title: 'Digests and quiet hours',
       settings: [

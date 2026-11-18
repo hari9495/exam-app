@@ -4,7 +4,7 @@ import { ApprovalEmailTemplatesService } from './approval-email-templates.servic
 describe('ApprovalEmailTemplatesService', () => {
   let service: ApprovalEmailTemplatesService;
   let tenantPrisma: { forTenant: jest.Mock };
-  let tx: { approvalEmailTemplate: { findMany: jest.Mock; upsert: jest.Mock } };
+  let tx: { approvalEmailTemplate: { findMany: jest.Mock; findUnique: jest.Mock; upsert: jest.Mock } };
   let audit: { record: jest.Mock };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -12,6 +12,7 @@ describe('ApprovalEmailTemplatesService', () => {
     tx = {
       approvalEmailTemplate: {
         findMany: jest.fn().mockResolvedValue([]),
+        findUnique: jest.fn().mockResolvedValue(null),
         upsert: jest.fn().mockResolvedValue({
           id: 'tmpl-1',
           organizationId: 'org-1',
@@ -104,7 +105,8 @@ describe('ApprovalEmailTemplatesService', () => {
         action: 'approval_email_template.saved',
         entityType: 'approval_email_template',
         entityId: row.id,
-        metadata: { eventType: 'approval.requested' },
+        // Answer 2429: with before and after.
+        metadata: { eventType: 'approval.requested', before: null, after: { subject: row.subject, body: row.body, enabled: row.enabled } },
       });
     });
   });

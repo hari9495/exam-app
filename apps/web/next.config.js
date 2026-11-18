@@ -73,6 +73,10 @@ const nextConfig = {
       '/v2/settings/certificate': '/yx/settings/talent/assessments',
       // Answer 2422: logo and brand colour are on Settings 1.1 Company & branding.
       '/v2/settings/branding': '/yx/settings/org/company-and-branding',
+      // Answer 2429: approval, interview and sender emails are the Hiring emails on Settings 5.4 Notifications.
+      '/v2/settings/approval-emails': '/yx/settings/documents/notifications',
+      '/v2/settings/interview-emails': '/yx/settings/documents/notifications',
+      '/v2/settings/sender-addresses': '/yx/settings/documents/notifications',
       // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
       '/v2/reports': '/yx/hiring/assessments/tests',
       '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',

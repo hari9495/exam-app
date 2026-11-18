@@ -27392,5 +27392,31 @@
                               "Screens/Hiring/HIR-04 · Pipeline board › Ask before sending · SMS"
                     ],
                     "note": "Positive and negative (kit stage-message-prompt.test.tsx; web yx-hiring-hir04.test.tsx; API retire-v2-settings.e2e-spec.ts). One question per channel (email, SMS, WhatsApp); closing the question counts as Don't send. Only the board asks; the candidate record's 'Move to next stage' does not yet."
+          },
+          {
+                    "id": "MT-V2-NTF-HIRING-EMAILS",
+                    "area": "Retire /v2: approval, interview and sender emails on Settings 5.4 Notifications (answer 2429, 18 Nov 2026)",
+                    "screen": "Settings › Documents & Communication › Notifications",
+                    "url": "http://localhost:3000/yx/settings/documents/notifications",
+                    "account": "Admin admin-tester@demo-org.test (company settings, pipeline and approvals keys); hr@demo-org.test (HR settings only); Mailpit at http://localhost:8025.",
+                    "steps": [
+                              "As admin: open Settings › Notifications. Find 'Hiring emails'.",
+                              "Press Add address. Enter the name 'Plant hiring' and the address 'plant-hiring' (no @) and press Save address.",
+                              "Correct the address to plant.hiring@demo-org.test, tick 'Use when the recruiter does not choose' and save.",
+                              "Press Edit on 'Invitation to the candidate'. Clear the Subject and press Save wording.",
+                              "Write your own subject and save. Then schedule an interview for a candidate and open the email in Mailpit.",
+                              "Press Edit on 'Approval requested', write a subject and message with {{actorName}} and {{link}}, and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/approval-emails, /v2/settings/interview-emails and /v2/settings/sender-addresses.",
+                              "As hr@demo-org.test: open the page. As admin acting as another person: open it."
+                    ],
+                    "expected": "Step 1: three lists (addresses recruiters send from, interview emails, hiring approval emails) with Standard or Yours; no page scroll at 1278 x 635 beyond the settings list. Step 2: 'Enter an email address, like careers@yourcompany.in.' and nothing saved. Step 3: a 5-second toast 'Sender address saved'; it shows Default Yes. Step 4: 'Enter the subject.', the cursor in Subject, nothing saved. Step 5: toast 'Email wording saved'; the candidate's invitation uses your subject. Step 6: saved; approvers get your wording. Step 7: one entry per change with before and after. Step 8: Settings › Notifications. Step 9: HR sees no hiring email lists; acting shows the lists without Add or Edit.",
+                    "stories": [
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · add sender address",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · edit sender address",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · interview email (standard wording)",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · approval email, view only"
+                    ],
+                    "note": "Positive and negative (kit hiring-emails.test.tsx; web yx-settings-s8.test.tsx; API retire-v2-settings.e2e-spec.ts and the template service specs). The three APIs now refuse changes while acting; interview and approval saves are audited with before and after; approval wording is limited to 300 / 10,000 characters. Hiring approval emails apply to the old job and offer approval chains, which answers 2511-2512 move into P03 approvals."
           }
 ]

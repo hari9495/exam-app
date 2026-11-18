@@ -35,9 +35,12 @@ const DOC_TYPES = [
 ];
 const routes = (perms: string[]) =>
   api.mockImplementation(async (path: string, init?: RequestInit) => {
-    if (init?.method === 'PUT' || init?.method === 'POST') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), { pending: true });
+    if (init?.method === 'PUT' || init?.method === 'POST' || init?.method === 'PATCH') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), { pending: true });
     if (path.startsWith('/rbac/me/permissions')) return perms;
     if (path === '/documents/types') return DOC_TYPES;
+    if (path === '/org-sender-addresses') return [{ id: 's1', label: 'Kaveri Careers', address: 'careers@kaveri.test', isDefault: true }];
+    if (path === '/interview-email-templates') return [{ eventType: 'invite', subject: null, body: null, enabled: true, defaultSubject: 'Interview invitation', defaultBody: 'Hi {{candidateName}}' }];
+    if (path === '/approval-email-templates') return [{ eventType: 'approval.requested', subject: null, body: null, enabled: true }];
     if (path === '/certificate-template') return { title: 'Certificate of Achievement', bodyText: 'This is to certify that {{candidateName}} passed.', signatoryName: null, enabled: true, isDefault: true };
     if (path === '/org/settings') return { registry: REGISTRY, limits: {}, pending: [], overrides: [] };
     if (path === '/org/legal-entities') return [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }];
@@ -124,6 +127,39 @@ describe('Settings S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
     show(YxTalentSettingsPage, 'assessments');
     expect(await screen.findByText('Pass certificate')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Edit certificate' })).toBeNull();
+  });
+
+  it('5.4 hiring emails (answer 2429): sender addresses, interview and approval emails are listed and changed in their sheets', async () => {
+    routes(['org.settings.manage', 'org:manage_settings', 'pipeline:manage', 'approvals:configure']);
+    show(YxDocumentsSettingsPage, 'notifications');
+    expect(await screen.findByText('Kaveri Careers')).toBeInTheDocument();
+    expect(await screen.findByText('Invitation to the candidate')).toBeInTheDocument();
+    expect(await screen.findByText('Approval requested')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Edit Invitation to the candidate' }));
+    let sheet = await screen.findByRole('dialog');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save wording' }));
+    await waitFor(() => expect(calls).toEqual([['PUT /interview-email-templates/invite', { subject: 'Interview invitation', body: 'Hi {{candidateName}}', enabled: true }]]));
+    calls.length = 0;
+    await ue.click(screen.getByRole('button', { name: 'Add address' }));
+    sheet = await screen.findByRole('dialog');
+    await ue.type(within(sheet).getByLabelText(/^Name/), 'Plant hiring');
+    await ue.type(within(sheet).getByLabelText(/^Address/), 'plant@kaveri.test');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save address' }));
+    await waitFor(() => expect(calls).toEqual([['POST /org-sender-addresses', { label: 'Plant hiring', address: 'plant@kaveri.test', isDefault: false }]]));
+  });
+
+  it('negative (5.4 hiring emails): without the keys the lists are not shown; while acting there is no Add or Edit', async () => {
+    routes(['org.settings.manage']);
+    const { unmount } = show(YxDocumentsSettingsPage, 'notifications');
+    expect(await screen.findByText(/also send them by email/)).toBeInTheDocument();
+    expect(screen.queryByText('Addresses recruiters send from')).toBeNull();
+    unmount();
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 't', impersonating: true });
+    routes(['org.settings.manage', 'org:manage_settings', 'pipeline:manage']);
+    show(YxDocumentsSettingsPage, 'notifications');
+    expect(await screen.findByText('Kaveri Careers')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add address' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit Invitation to the candidate' })).toBeNull();
   });
 
   it('5.4 Notifications: HR turns notification emails off, saved at once; the wording editor is linked', async () => {
