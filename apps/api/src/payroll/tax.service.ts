@@ -1162,6 +1162,10 @@ export class TaxService implements OnModuleInit {
 
   async addPerquisite(ctx: TenantContext, user: ScopeUser, dto: PerquisiteDto) {
     const v = await this.viewer(user);
+    // Answer 2454: payroll works the loan perquisite out itself (D14) for a year its rule set covers; a hand entry would count it twice.
+    if (dto.kind === 'loan' && inForce(await this.rules.published(), 'IN.PERQ-LOAN', ['IN'], `${dto.taxYear.slice(0, 4)}-04-01`)) {
+      throw new ConflictException('Payroll works out the loan perquisite itself for this year, so it is not entered by hand. Mark a loan exempt on the Loans page instead.');
+    }
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const y = Number(dto.taxYear.slice(0, 4));
       const e = await tx.employment.findFirst({
