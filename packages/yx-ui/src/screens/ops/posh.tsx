@@ -20,7 +20,7 @@ import { PageBanner } from '../../components/notify';
 import { StatCard } from '../../components/charts';
 import { formatDate } from '../../lib/format';
 import { Actions, CardGrid, ClockPanel, Confidential, Facts, MembersList, OpsDesk, StatusTrail, Workspace, useSay, type CaseMember } from './ops-kit';
-import { addDays, icIssues, poshClock, poshFilingWindow, type IcMember } from './ops-rules';
+import { addDays, icIssues, poshClock, poshFilingWindow, recordedIcIssues, type IcMember } from './ops-rules';
 import { RestrictedNotFound } from './cases';
 import type { Device } from './helpdesk';
 
@@ -53,19 +53,21 @@ export interface LiveIcConsole {
   state: 'ready' | 'loading' | 'error' | 'no-access';
   onRetry?: () => void;
   company: string;
-  members: { id: string; name: string; role: 'presiding' | 'member' | 'external'; since: string }[];
+  /** Answer 2591: woman and term end (null on members added before they were asked). */
+  members: { id: string; name: string; role: 'presiding' | 'member' | 'external'; since: string; woman: boolean | null; termEndsOn: string | null }[];
   /** The POSH complaints this member is on (the case list, POSH only). */
   cases: { id: string; ref: string; filedOn: string | null; location: string; stage: string; next: { label: string; on: string | null } | null; overdue: boolean; status: string }[];
   onOpen: (caseId: string) => void;
 }
 
+const isoToday = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const ROLE_WORDS = { presiding: 'Presiding officer', member: 'Member', external: 'External member (NGO / legal)' } as const;
 
 function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date }) {
   if (live.state === 'no-access') return <RestrictedNotFound area="compliance" />;
   const open = live.cases.filter((c) => c.status !== 'closed');
-  // The roles the app records today; woman members and tenure are checked by HR in the committee set-up (question 2590).
-  const issues = [...(!live.members.some((m) => m.role === 'presiding') ? ['Name a presiding officer'] : []), ...(!live.members.some((m) => m.role === 'external') ? ['Add one external member'] : [])];
+  // Answer 2591: presiding woman, at least half women, one external member, terms not over.
+  const issues = recordedIcIssues(live.members, today);
   const over90 = open.filter((c) => c.filedOn && addDays(new Date(`${c.filedOn}T00:00:00`), 90) < today).length;
   return (
     <OpsDesk area="compliance" active="POSH" member>
@@ -98,6 +100,8 @@ function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date
                 columns={[
                   { key: 'n', header: 'Member', type: 'person', value: (m: LiveIcConsole['members'][number]) => m.name, person: (m) => ({ name: m.name, secondary: ROLE_WORDS[m.role] }) },
                   { key: 's', header: 'On the committee since', type: 'date', value: (m) => new Date(`${m.since}T00:00:00`) },
+                  { key: 'w', header: 'Woman', value: (m) => (m.woman === null ? 'Not recorded' : m.woman ? 'Yes' : 'No') },
+                  { key: 't', header: 'Term ends', value: (m) => m.termEndsOn ?? '', render: (m) => (m.termEndsOn ? <span className="yx-ops-row">{formatDate(new Date(`${m.termEndsOn}T00:00:00`))}{m.termEndsOn < isoToday(today) && <Badge tone="danger">Ended</Badge>}</span> : 'Not recorded') },
                 ]}
                 rows={live.members}
                 getRowId={(m) => m.id}

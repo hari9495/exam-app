@@ -39,6 +39,7 @@ import {
   useSay,
 } from "./ops-kit";
 import { AnonThread } from "./cases";
+import { recordedIcIssues } from "./ops-rules";
 
 export type SpeakUpKindLive = "grievance" | "whistleblower" | "posh";
 export type SpeakUpTeam = "grievance" | "ethics" | "ic" | "escalation" | "safety" | "ir";
@@ -883,6 +884,8 @@ export function LiveCheckReport({ live }: { live: LiveCheckReport }) {
 
 /* ---------------- Set-up: who receives reports (speakup.setup.manage) ---------------- */
 
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 export interface SpeakUpSetupData {
   members: {
     id: string;
@@ -891,6 +894,9 @@ export interface SpeakUpSetupData {
     name: string;
     role: "member" | "presiding" | "external";
     addedAt: string;
+    /** Answer 2591 (Internal Committee only; null on members added before it was asked). */
+    woman?: boolean | null;
+    termEndsOn?: string | null;
   }[];
   users: { id: string; name: string; email: string }[];
   settings: {
@@ -908,6 +914,8 @@ export interface LiveSpeakUpSetup {
     team: SpeakUpTeam;
     userId: string;
     role?: "member" | "presiding" | "external";
+    woman?: boolean;
+    termEndsOn?: string;
   }) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
   /** Settings › Company rules. */
@@ -961,12 +969,20 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
   const [role, setRole] = useState<"member" | "presiding" | "external">(
     "member",
   );
+  const [woman, setWoman] = useState<"yes" | "no" | null>(null);
+  const [termEnds, setTermEnds] = useState<Date | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useSay();
-  const early = useTooEarly(
-    userId ? [] : [{ fieldId: "ss-user", message: "Choose who to add." }],
-  );
+  const today = new Date();
+  const maxTerm = new Date(today.getFullYear() + 3, today.getMonth(), today.getDate());
+  // Answer 2591: the committee list asks whether the member is a woman and when the term ends (at most 3 years).
+  const early = useTooEarly([
+    ...(userId ? [] : [{ fieldId: "ss-user", message: "Choose who to add." }]),
+    ...(adding === "ic" && !woman ? [{ fieldId: "ss-woman", message: "Say whether this member is a woman." }] : []),
+    ...(adding === "ic" && !termEnds ? [{ fieldId: "ss-term", message: "Choose the day their term ends." }] : []),
+    ...(adding === "ic" && role === "presiding" && woman === "no" ? [{ fieldId: "ss-woman", message: "The presiding officer must be a senior woman employee." }] : []),
+  ]);
   useEffect(() => {
     if (live.start?.tooEarly) early.stop();
     // Stories only.
@@ -993,6 +1009,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
         team: adding,
         userId: userId!,
         ...(adding === "ic" || adding === "ir" ? { role } : {}),
+        ...(adding === "ic" ? { woman: woman === "yes", termEndsOn: isoDay(termEnds!) } : {}),
       });
       toast({
         tone: "success",
@@ -1002,6 +1019,8 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
       setAdding(null);
       setUserId(null);
       setRole("member");
+      setWoman(null);
+      setTermEnds(null);
       early.reset();
     } catch (e) {
       setError(errorText(e));
@@ -1072,6 +1091,10 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                 >
                   <div className="yx-ops-stack">
                     <p className="yx-ops-muted">{t.note}</p>
+                    {t.team === "ic" && rows.length > 0 && (() => {
+                      const issues = recordedIcIssues(rows.map((r) => ({ name: r.name, role: r.role, woman: r.woman ?? null, since: r.addedAt.slice(0, 10), termEndsOn: r.termEndsOn ?? null })), today);
+                      return issues.length > 0 ? <InlineAlert tone="warning" title="Committee not complete">{issues.join(". ")}.</InlineAlert> : null;
+                    })()}
                     <DataTable
                       label={t.title}
                       columns={[
@@ -1089,6 +1112,12 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                               ? "Outside lawyer"
                               : ROLE_LABEL[r.role],
                         },
+                        ...(t.team === "ic"
+                          ? [
+                              { key: "woman", header: "Woman", value: (r: SpeakUpSetupData["members"][number]) => (r.woman == null ? "Not recorded" : r.woman ? "Yes" : "No") },
+                              { key: "term", header: "Term ends", value: (r: SpeakUpSetupData["members"][number]) => r.termEndsOn ?? "", render: (r: SpeakUpSetupData["members"][number]) => (r.termEndsOn ? formatDate(new Date(`${r.termEndsOn}T00:00:00`)) : "Not recorded") },
+                            ]
+                          : []),
                       ]}
                       rows={rows}
                       getRowId={(r) => r.id}
@@ -1219,6 +1248,16 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                 ]}
               />
             </FormField>
+          )}
+          {adding === "ic" && (
+            <>
+              <FormField id="ss-woman" label="Is this member a woman?" required helper="At least half the committee must be women, and a woman presides." error={early.errorOf("ss-woman")}>
+                <Segment label="Is this member a woman?" value={woman} onChange={(v) => setWoman(v)} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} />
+              </FormField>
+              <FormField id="ss-term" label="Term ends" required helper="At most 3 years from today." error={early.errorOf("ss-term")}>
+                <DatePicker value={termEnds} onChange={setTermEnds} min={new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)} max={maxTerm} />
+              </FormField>
+            </>
           )}
         </div>
       </Dialog>

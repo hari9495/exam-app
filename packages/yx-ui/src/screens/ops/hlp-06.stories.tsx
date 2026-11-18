@@ -42,3 +42,5 @@ export const SetupUnfinished: S = { name: 'Set-up · Internal Committee and Esca
 export const SetupAddIc: S = { name: 'Set-up · add to the Internal Committee', render: () => setup({ start: { adding: 'ic' } }) };
 export const SetupTooEarly: S = { name: 'Set-up · Add pressed with nobody chosen', render: () => setup({ start: { adding: 'ethics', tooEarly: true } }) };
 export const SetupNoAccess: S = { name: 'Set-up · no access (HR without the key)', render: () => setup({ state: 'no-access' }) };
+// Answer 2591: the committee list asks whether a member is a woman and when the term ends, and warns what is wrong.
+export const SetupIcNotComplete: S = { name: 'Set-up · Internal Committee not complete', render: () => { const b = liveSetup(); return <SpeakUpSetupScreen live={{ ...b, data: { ...b.data!, members: b.data!.members.map((m) => (m.team === 'ic' && m.role === 'presiding' ? { ...m, woman: null, termEndsOn: null } : m)) } }} />; } };

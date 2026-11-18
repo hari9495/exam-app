@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { IcConsoleScreen, PoshComplaintScreen } from './posh';
-import { IC_NO_EXTERNAL, liveIcConsole, livePoshFiling } from './posh-live-samples';
+import { IC_NO_EXTERNAL, IC_WRONG, liveIcConsole, livePoshFiling } from './posh-live-samples';
 
 // Batch F item 13: CMP-10 POSH complaint and CMP-11 Internal Committee console, live. Positive and negative.
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -89,6 +89,14 @@ describe('CMP-11 Internal Committee console (live)', () => {
   it('flags a committee with no external member', () => {
     show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ members: IC_NO_EXTERNAL })} />);
     expect(screen.getByText(/Committee not complete: Add one external member/)).toBeInTheDocument();
+  });
+
+  it('answer 2591: a man presiding, a term over and missing details are each named', () => {
+    show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ members: IC_WRONG })} />);
+    expect(screen.getByText(/Presiding officer must be a senior woman employee/)).toBeInTheDocument();
+    expect(screen.getByText(/Adv. Shobha Rao: tenure ended/)).toBeInTheDocument();
+    expect(screen.getByText(/Kavitha Srinivasan: woman or term end not recorded/)).toBeInTheDocument();
+    expect(screen.getByText('Ended')).toBeInTheDocument();
   });
 
   it('lists the complaints and opens one', async () => {

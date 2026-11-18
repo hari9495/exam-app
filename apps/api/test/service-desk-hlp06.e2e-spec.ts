@@ -36,6 +36,8 @@ describe('HLP-06 speak-up filing', () => {
   const api = (who: Who, method: 'get' | 'post', path: string) => request(server())[method](`/api/v1/desk/speakup${path}`).set('Authorization', `Bearer ${token[who]}`);
   const pub = (path: string) => request(server()).post(`/api/v1/desk/speakup/public${path}`);
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+  // Answer 2591: the committee list asks whether a member is a woman and when the term ends.
+  const IC = { woman: true, termEndsOn: new Date(Date.now() + 330 * 60_000 + 2 * 365 * 86_400_000).toISOString().slice(0, 10) };
   const shift = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const setting = (key: string, value: string) =>
@@ -109,9 +111,9 @@ describe('HLP-06 speak-up filing', () => {
     await api('hr', 'post', '/setup/members').send({ team: 'ethics', userId: users.hr }).expect(403);
     await api('adminA', 'post', '/setup/members').send({ team: 'board', userId: users.ethics1 }).expect(400);
     await api('adminA', 'post', '/setup/members').send({ team: 'ethics', userId: users.adminB }).expect(400);
-    for (const [team, who, role] of [['ethics', 'ethics1'], ['ethics', 'ethics2'], ['ic', 'ic1', 'presiding'], ['escalation', 'chair']] as const) await api('adminA', 'post', '/setup/members').send({ team, userId: users[who], ...(role ? { role } : {}) }).expect(201);
+    for (const [team, who, role] of [['ethics', 'ethics1'], ['ethics', 'ethics2'], ['ic', 'ic1', 'presiding'], ['escalation', 'chair']] as const) await api('adminA', 'post', '/setup/members').send({ team, userId: users[who], ...(role ? { role } : {}), ...(team === 'ic' ? IC : {}) }).expect(201);
     await api('adminA', 'post', '/setup/members').send({ team: 'ethics', userId: users.ethics1 }).expect(409);
-    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, role: 'presiding' }).expect(409);
+    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, role: 'presiding', ...IC }).expect(409);
     const form = (await api('divya', 'get', '/form').expect(200)).body;
     expect(form.ready).toEqual({ grievance: true, whistleblower: true, posh: true });
     expect(form.posh).toMatchObject({ filingMonths: 3, extensionMonths: 3, source: 'IN.POSH 2013-v2 (verify)' });
@@ -178,13 +180,32 @@ describe('HLP-06 speak-up filing', () => {
     const ic = (await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { team: string }) => m.team === 'ic');
     await api('adminA', 'post', `/setup/members/${ic.id}/remove`).expect(201);
     expect((await api('divya', 'post', '/reports').send({ kind: 'posh', summary: 'Repeated unwelcome remarks by a colleague in meetings.' }).expect(409)).body.code).toBe('SPEAKUP_NO_IC');
-    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding' }).expect(201);
+    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding', ...IC }).expect(201);
+  });
+
+  it('answer 2591: the committee list needs woman and term end (at most 3 years, after today); a man cannot preside; other lists refuse them', async () => {
+    const add = (body: object) => api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, ...body });
+    await add({}).expect(400);
+    await add({ woman: true }).expect(400);
+    await add({ woman: true, termEndsOn: today }).expect(400);
+    await add({ woman: true, termEndsOn: shift(3 * 365 + 5) }).expect(400);
+    await add({ woman: 'yes', termEndsOn: shift(30) }).expect(400);
+    await api('adminA', 'post', '/setup/members').send({ team: 'escalation', userId: users.divya, woman: true }).expect(400);
+    const ok = (await add({ woman: false, termEndsOn: shift(365) }).expect(201)).body;
+    const row = (await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { id: string }) => m.id === ok.id);
+    expect(row).toMatchObject({ team: 'ic', role: 'member', woman: false, termEndsOn: shift(365) });
+    await api('adminA', 'post', `/setup/members/${ok.id}/remove`).expect(201);
+    // Removing the presiding officer first so a man may be tried as presiding.
+    const po = (await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { team: string; role: string }) => m.team === 'ic' && m.role === 'presiding');
+    await api('adminA', 'post', `/setup/members/${po.id}/remove`).expect(201);
+    expect((await add({ role: 'presiding', woman: false, termEndsOn: shift(365) }).expect(400)).body.message).toMatch(/senior woman/);
+    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding', ...IC }).expect(201);
   });
 
   it('CMP-11 (batch F item 13): the Internal Committee console is for its members only; their POSH complaints carry the filing day; the menu count too', async () => {
     const ic = (await api('ic1', 'get', '/ic').expect(200)).body;
     expect(ic.company).toBe('HLP06 Org A');
-    expect(ic.members).toEqual([expect.objectContaining({ role: 'presiding', name: `ic1 ${run}`, since: today })]);
+    expect(ic.members).toEqual([expect.objectContaining({ role: 'presiding', name: `ic1 ${run}`, since: today, woman: true, termEndsOn: IC.termEndsOn })]);
     for (const who of ['divya', 'hr', 'adminA', 'ethics1', 'adminB'] as const) await api(who, 'get', '/ic').expect(404);
     const rows = (await request(server()).get('/api/v1/desk/cases').set('Authorization', `Bearer ${token.ic1}`).expect(200)).body as { kind: string; ref: string; filedOn: string }[];
     expect(rows.find((c) => c.ref === 'POSH-0001')).toMatchObject({ kind: 'posh', filedOn: today });

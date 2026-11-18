@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
@@ -140,6 +140,34 @@ describe('HLP-06 Speak-up set-up (live)', () => {
     unmount();
     show(<SpeakUpSetupScreen live={base} />);
     expect(screen.queryByText('Set-up is not finished')).not.toBeInTheDocument();
+  });
+
+  it('answer 2591: adding to the IC asks whether she is a woman and when the term ends; a man cannot preside', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    show(<SpeakUpSetupScreen live={liveSetup({ onAdd, start: { adding: 'ic' } })} />);
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Person/ }));
+    await ue.click(await screen.findByRole('option', { name: /Divya Raghunathan/ }));
+    await ue.click(within(dialog).getByRole('radio', { name: /Presiding officer/ }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(await screen.findByText('Say whether this member is a woman.')).toBeInTheDocument();
+    expect(screen.getByText('Choose the day their term ends.')).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('radio', { name: 'No' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(await screen.findByText('The presiding officer must be a senior woman employee.')).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('radio', { name: 'Yes' }));
+    const next = new Date();
+    next.setFullYear(next.getFullYear() + 2);
+    const dd = `${String(next.getDate()).padStart(2, '0')}/${String(next.getMonth() + 1).padStart(2, '0')}/${next.getFullYear()}`;
+    await ue.type(within(dialog).getByRole('textbox', { name: /Term ends/ }), `${dd}{Enter}`);
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ team: 'ic', role: 'presiding', woman: true, termEndsOn: `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}` }));
+  });
+
+  it('answer 2591: the IC card warns when a member has no woman or term end recorded', () => {
+    const base = liveSetup();
+    show(<SpeakUpSetupScreen live={{ ...base, data: { ...base.data!, members: base.data!.members.map((m) => (m.team === 'ic' && m.role === 'presiding' ? { ...m, woman: null, termEndsOn: null } : m)) } }} />);
+    expect(screen.getByText(/Lakshmi Venkatesan: woman or term end not recorded/)).toBeInTheDocument();
   });
 
   it('no access without the key', () => {

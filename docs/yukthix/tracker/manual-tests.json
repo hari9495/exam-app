@@ -27823,5 +27823,26 @@
                               "Screens/Compliance/CMP-09 · IC console"
                     ],
                     "note": "Positive and negative (service-desk-hlp06 e2e 10/10: GET /desk/speakup/ic for members only, 404 for the filer, HR, the admin, the ethics officer and another company; case list carries filedOn; menu count icComplaints only for members; kit posh-live test 10/10). No new table: the complaint is a speak-up report of kind posh. Annual report and awareness tabs and woman/tenure checks are not live yet (questions 2590-2592)."
+          },
+          {
+                    "id": "MT-G1-2591-IC-WOMAN-TERM",
+                    "area": "Batch G1 answer 2591: Internal Committee members record woman and term end; set-up and console warn (19 Nov 2026)",
+                    "screen": "Helpdesk › Speak-up set-up › Internal Committee (POSH) › Add; Helpdesk › Internal Committee",
+                    "url": "http://localhost:3000/yx/desk/speakup-setup",
+                    "account": "The company admin (speakup.setup.manage); an Internal Committee member; HR admin.",
+                    "steps": [
+                              "As the company admin open Speak-up set-up and press Add on the Internal Committee card. Choose a person and press Add with nothing else filled.",
+                              "Choose Presiding officer, 'Is this member a woman?' No, a term end, and press Add.",
+                              "Choose Yes; try a term end more than 3 years away (the calendar stops at 3 years); choose one 2 years away and Add.",
+                              "Add a man as a member with a 1-year term. Look at the IC card and the Internal Committee console as a member.",
+                              "Using a member added before 19 Nov (no woman or term recorded), open the IC card and the console.",
+                              "As HR (no speakup.setup.manage) open Speak-up set-up."
+                    ],
+                    "expected": "Step 1: 'Say whether this member is a woman.' and 'Choose the day their term ends.' under the fields; nothing saved. Step 2: 'The presiding officer must be a senior woman employee.'; nothing saved (the server refuses it too). Step 3: a 5-second toast '… added'; the table shows Woman Yes and the term end. Step 4: columns Woman and Term ends; when fewer than half are women the card and console say 'At least half the members must be women'; an ended term shows 'Ended' and '…: tenure ended on …'. Step 5: '…: woman or term end not recorded'. Step 6: no access. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-06 · Speak-up filing",
+                              "Screens/Compliance/CMP-09 · IC console"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e 11/11: missing woman or term 400, term today or beyond 3 years 400, a non-boolean 400, woman on another list 400, a man presiding 400, saved and returned; hlp07-09 13/13; kit set-up and console tests). Migration 611 adds woman and term_ends_on to speakup_team_members (Internal Committee only, checked in the database). No new table."
           }
 ]

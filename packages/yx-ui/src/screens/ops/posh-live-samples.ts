@@ -14,9 +14,10 @@ export const livePoshFiling = (over: Partial<LivePoshFiling> = {}): LivePoshFili
 });
 
 const MEMBERS: LiveIcConsole['members'] = [
-  { id: 'm1', name: 'Dr. Anuradha Menon', role: 'presiding', since: '2025-04-01' },
-  { id: 'm2', name: 'Adv. Shobha Rao', role: 'external', since: '2025-04-01' },
-  { id: 'm3', name: 'Kavitha Srinivasan', role: 'member', since: '2025-06-12' },
+  { id: 'm1', name: 'Dr. Anuradha Menon', role: 'presiding', since: '2025-04-01', woman: true, termEndsOn: '2028-03-31' },
+  { id: 'm2', name: 'Adv. Shobha Rao', role: 'external', since: '2025-04-01', woman: true, termEndsOn: '2028-03-31' },
+  { id: 'm3', name: 'Kavitha Srinivasan', role: 'member', since: '2025-06-12', woman: true, termEndsOn: '2028-03-31' },
+  { id: 'm4', name: 'Joseph Mathew', role: 'member', since: '2025-06-12', woman: false, termEndsOn: '2028-03-31' },
 ];
 
 export const liveIcConsole = (over: Partial<LiveIcConsole> = {}): LiveIcConsole => ({
@@ -32,3 +33,9 @@ export const liveIcConsole = (over: Partial<LiveIcConsole> = {}): LiveIcConsole 
 });
 
 export const IC_NO_EXTERNAL = MEMBERS.filter((m) => m.role !== 'external');
+/** Answer 2591: a man presiding, a term over, and a member added before woman and term end were asked. */
+export const IC_WRONG: LiveIcConsole['members'] = [
+  { id: 'm1', name: 'Joseph Mathew', role: 'presiding', since: '2025-04-01', woman: false, termEndsOn: '2028-03-31' },
+  { id: 'm2', name: 'Adv. Shobha Rao', role: 'external', since: '2023-04-01', woman: true, termEndsOn: '2026-03-31' },
+  { id: 'm3', name: 'Kavitha Srinivasan', role: 'member', since: '2025-06-12', woman: null, termEndsOn: null },
+];

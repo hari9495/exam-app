@@ -13147,6 +13147,9 @@ model SpeakupTeamMember {
   team           String    @db.VarChar(12)
   userId         String    @map("user_id") @db.Uuid
   role           String    @default("member") @db.VarChar(12)
+  /// Answer 2591 (Internal Committee only): a woman member, and the day the term ends (at most 3 years).
+  woman          Boolean?
+  termEndsOn     DateTime? @map("term_ends_on") @db.Date
   addedBy        String?   @map("added_by") @db.Uuid
   addedAt        DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
   removedBy      String?   @map("removed_by") @db.Uuid

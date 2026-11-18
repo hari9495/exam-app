@@ -425,7 +425,7 @@ export class SpeakupService {
       if (!c.userId || !rows.some((r) => r.userId === c.userId)) throw new NotFoundException('Not found');
       const users = await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.userId) } }, select: { id: true, name: true, email: true } });
       const org0 = await tx.organization.findFirst({ where: { id: org }, select: { name: true } });
-      return { company: org0?.name ?? '', members: rows.map((r) => ({ id: r.id, name: users.find((u) => u.id === r.userId)?.name ?? users.find((u) => u.id === r.userId)?.email ?? 'Former user', role: r.role as 'presiding' | 'member' | 'external', since: isoDay(r.addedAt) })) };
+      return { company: org0?.name ?? '', members: rows.map((r) => ({ id: r.id, name: users.find((u) => u.id === r.userId)?.name ?? users.find((u) => u.id === r.userId)?.email ?? 'Former user', role: r.role as 'presiding' | 'member' | 'external', since: isoDay(r.addedAt), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null })) };
     });
   }
 
@@ -437,7 +437,7 @@ export class SpeakupService {
       const name = (id: string) => users.find((u) => u.id === id)?.name ?? users.find((u) => u.id === id)?.email ?? 'Former user';
       const s = await this.settings(tx, c);
       return {
-        members: rows.map((r) => ({ id: r.id, team: r.team, userId: r.userId, name: name(r.userId), role: r.role, addedAt: r.addedAt.toISOString() })),
+        members: rows.map((r) => ({ id: r.id, team: r.team, userId: r.userId, name: name(r.userId), role: r.role, addedAt: r.addedAt.toISOString(), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null })),
         users: users.map((u) => ({ id: u.id, name: u.name ?? u.email, email: u.email })),
         settings: { anonymous: s.anonymous, ackDays: s.ackDays, grievance: s.grievance, whistleblower: s.ethics },
       };
@@ -451,9 +451,19 @@ export class SpeakupService {
       if (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: dto.team, userId: dto.userId, removedAt: null }, select: { id: true } })) throw new ConflictException('This person is already on that list.');
       // The IC has a presiding officer and an external member; the IR team may have an outside lawyer (HLP-13 decision 1).
       const role = dto.team === 'ic' ? (dto.role ?? 'member') : dto.team === 'ir' && dto.role === 'external' ? 'external' : 'member';
+      // Answer 2591: the committee list records who is a woman and when each term ends (the POSH Act checks).
+      if (dto.team === 'ic') {
+        if (dto.woman === undefined) throw new BadRequestException('Say whether this member is a woman.');
+        if (!dto.termEndsOn) throw new BadRequestException('Choose the day their term ends.');
+        const today = todayIst();
+        if (dto.termEndsOn.slice(0, 10) <= today) throw new BadRequestException('The term must end after today.');
+        if (dto.termEndsOn.slice(0, 10) > addDays(today, 3 * 365 + 1)) throw new BadRequestException('A term is at most 3 years.');
+        if (role === 'presiding' && !dto.woman) throw new BadRequestException('The presiding officer must be a senior woman employee.');
+      } else if (dto.woman !== undefined || dto.termEndsOn) throw new BadRequestException('Woman and term end are asked only for the Internal Committee.');
       if (role === 'presiding' && (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: 'ic', role: 'presiding', removedAt: null }, select: { id: true } }))) throw new ConflictException('The Internal Committee already has a presiding officer. Remove them first.');
-      const m = await tx.speakupTeamMember.create({ data: { organizationId: org, team: dto.team, userId: dto.userId, role, addedBy: c.userId ?? null } });
-      await audit(tx, c, 'speakup.team_member_added', 'speakup_team_member', m.id, { team: dto.team, userId: dto.userId, role });
+      const ic = dto.team === 'ic' ? { woman: dto.woman!, termEndsOn: day(dto.termEndsOn!.slice(0, 10)) } : {};
+      const m = await tx.speakupTeamMember.create({ data: { organizationId: org, team: dto.team, userId: dto.userId, role, addedBy: c.userId ?? null, ...ic } });
+      await audit(tx, c, 'speakup.team_member_added', 'speakup_team_member', m.id, { team: dto.team, userId: dto.userId, role, ...(dto.team === 'ic' ? { woman: dto.woman, termEndsOn: dto.termEndsOn!.slice(0, 10) } : {}) });
       return { id: m.id };
     });
   }

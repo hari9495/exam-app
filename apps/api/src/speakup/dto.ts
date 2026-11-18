@@ -102,4 +102,13 @@ export class TeamMemberDto {
   @IsOptional()
   @IsIn(['member', 'presiding', 'external'])
   role?: 'member' | 'presiding' | 'external';
+
+  /** Answer 2591: Internal Committee only, and required there. */
+  @IsOptional()
+  @IsBoolean()
+  woman?: boolean;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  termEndsOn?: string;
 }
