@@ -147,6 +147,8 @@ export interface CaseListRow {
   next: { label: string; on: string | null } | null;
   overdue: boolean;
   status: CaseStatus;
+  /** CMP-11 (batch F item 13): the day the complaint was filed (the 90-day inquiry runs from it). */
+  filedOn?: string | null;
 }
 
 export interface CaseTeamMember {

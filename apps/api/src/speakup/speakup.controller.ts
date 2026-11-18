@@ -66,6 +66,13 @@ export class SpeakupController {
     return this.speakup.teamReply(ctx, id, dto.body);
   }
 
+  // Batch F item 13 (answer 2578): the committee, for its own members only (others: 404).
+  @Get('ic')
+  icCommittee(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.speakup.icCommittee(ctx);
+  }
+
   @Get('setup')
   @RequirePermissions('speakup.setup.manage')
   setup(@CurrentTenant() ctx: TenantContext) {

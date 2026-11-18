@@ -12,6 +12,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { safeName } from '../service-desk/attachments.service';
 import { SPEAKUP_TEAMS, type AnonymousReportDto, type ReportDto, type SpeakupKind, type SpeakupTeam, type TeamMemberDto } from './dto';
+import { isoDay } from '../cases/case-rules';
 import { addDays, anonymousAllowed, caseNumber, newReplyCode, poshLate, readCode, route, showCode } from './speakup-rules';
 
 // HLP-06 speak-up filing (rules: docs/yukthix/helpdesk-design-map.md section 4e). Named reports come from the signed-in
@@ -412,6 +413,21 @@ export class SpeakupService {
   }
 
   // ------------------------------------------------------------------------------------------ set-up (speakup.setup.manage)
+
+  /**
+   * Batch F item 13 (answer 2578): the Internal Committee as its own members see it (CMP-09 console): who sits on it and
+   * in what role. Anyone not on the committee gets "not found". The complaints come from the case list (case members).
+   */
+  async icCommittee(ctx: TenantContext) {
+    return this.tx(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const rows = await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, orderBy: { addedAt: 'asc' } });
+      if (!c.userId || !rows.some((r) => r.userId === c.userId)) throw new NotFoundException('Not found');
+      const users = await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.userId) } }, select: { id: true, name: true, email: true } });
+      const org0 = await tx.organization.findFirst({ where: { id: org }, select: { name: true } });
+      return { company: org0?.name ?? '', members: rows.map((r) => ({ id: r.id, name: users.find((u) => u.id === r.userId)?.name ?? users.find((u) => u.id === r.userId)?.email ?? 'Former user', role: r.role as 'presiding' | 'member' | 'external', since: isoDay(r.addedAt) })) };
+    });
+  }
 
   async setup(ctx: TenantContext) {
     return this.tx(ctx, async (tx, c) => {

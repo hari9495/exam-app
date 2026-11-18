@@ -27801,5 +27801,27 @@
                               "Screens/Performance/PRF-07 · 360° nominations"
                     ],
                     "note": "Positive and negative (performance-pm2 e2e: author only for read, change and delete; the person, manager's manager, HR and another company see nothing; the database hides it from a company session; never about yourself 403; blank, too long, unknown field 400; audit without text; kit feedback-rail test). New table perf_person_notes (RLS tenant + RESTRICTIVE author_only + support excluded) in rls-isolation. FeedbackTasksScreen and PeerFormScreen are designed screens now (left the live-copy list)."
+          },
+          {
+                    "id": "MT-F-13-POSH-COMPLAINT-IC-CONSOLE",
+                    "area": "Batch F item 13: POSH complaint (CMP-10) and Internal Committee console (CMP-11) live (answer 2578, 18 Nov 2026)",
+                    "screen": "Helpdesk › Speak up › Sexual harassment › Continue to the complaint form (/yx/desk/posh); Helpdesk › Internal Committee (/yx/desk/ic)",
+                    "url": "http://localhost:3000/yx/desk/posh",
+                    "account": "An employee (not on the committee); an Internal Committee member (set in Speak-up set-up, list Internal Committee); HR admin; the company admin.",
+                    "steps": [
+                              "As the company admin, in Speak-up set-up remove every Internal Committee member. As the employee open Speak up › Sexual harassment › Continue to the complaint form.",
+                              "Put the committee back (one presiding officer). As the employee open the form again and press File complaint with nothing filled.",
+                              "Choose 'On her behalf' and press File complaint again.",
+                              "Pick a date more than 6 months ago.",
+                              "Pick a date about 4 months ago and leave the reason empty; then fill it, choose the workplace, who it is about, what happened, add one PDF, and file.",
+                              "As the committee member open Helpdesk › Internal Committee: Committee tab, then Complaints; press Open on the new complaint.",
+                              "As the employee, HR and the company admin look for Internal Committee in the menu and open /yx/desk/ic directly."
+                    ],
+                    "expected": "Step 1: 'The Internal Committee is not set up yet' with the Local Committee advice; no File button. Step 2: each field says what is missing under it (date, workplace, who, what happened) and focus moves to the first; nothing sent. Step 3: 'Write her name.' and 'Say how you know her.'. Step 4: red warning and a Raise a grievance button; File complaint sends nothing. Step 5: 'Tell the committee why…' until filled; then 'Your complaint is with the Internal Committee', reference POSH-000n, and the committee's clock. Step 6: the members with their roles and dates, 'Committee complete' (or 'not complete' without a presiding officer or an external member); the complaint with filed date, next due and 'Inquiry by' 90 days on; Open goes to the case workspace. Step 7: no menu item, and the page says Not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Compliance/CMP-10 · POSH complaint filing",
+                              "Screens/Compliance/CMP-09 · IC console"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e 10/10: GET /desk/speakup/ic for members only, 404 for the filer, HR, the admin, the ethics officer and another company; case list carries filedOn; menu count icComplaints only for members; kit posh-live test 10/10). No new table: the complaint is a speak-up report of kind posh. Annual report and awareness tabs and woman/tenure checks are not live yet (questions 2590-2592)."
           }
 ]

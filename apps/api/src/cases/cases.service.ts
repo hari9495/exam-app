@@ -170,6 +170,8 @@ export class CasesService {
           id: row.id,
           ref: this.ref(row),
           kind: KIND[row.kind]!,
+          // Batch F item 13: the CMP-09 console counts the 90-day inquiry from the filing day.
+          filedOn: isoDay(row.filedAt),
           subject: this.subject(row),
           location: locs.find((x) => x.id === row.locationId)?.name ?? '—',
           stage: this.stage(row, f).stage,

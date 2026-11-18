@@ -47,7 +47,94 @@ export interface IcConsoleScreenProps {
   persona?: 'ic' | 'hr' | 'none';
   tab?: 'committee' | 'cases' | 'report' | 'awareness';
 }
-export function IcConsoleScreen({ members, cases, awareness, today, persona = 'ic', tab = 'committee' }: IcConsoleScreenProps) {
+
+/** Batch F item 13 (answer 2578): the console with live data, for the committee's own members (others: not found). */
+export interface LiveIcConsole {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry?: () => void;
+  company: string;
+  members: { id: string; name: string; role: 'presiding' | 'member' | 'external'; since: string }[];
+  /** The POSH complaints this member is on (the case list, POSH only). */
+  cases: { id: string; ref: string; filedOn: string | null; location: string; stage: string; next: { label: string; on: string | null } | null; overdue: boolean; status: string }[];
+  onOpen: (caseId: string) => void;
+}
+
+const ROLE_WORDS = { presiding: 'Presiding officer', member: 'Member', external: 'External member (NGO / legal)' } as const;
+
+function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date }) {
+  if (live.state === 'no-access') return <RestrictedNotFound area="compliance" />;
+  const open = live.cases.filter((c) => c.status !== 'closed');
+  // The roles the app records today; woman members and tenure are checked by HR in the committee set-up (question 2590).
+  const issues = [...(!live.members.some((m) => m.role === 'presiding') ? ['Name a presiding officer'] : []), ...(!live.members.some((m) => m.role === 'external') ? ['Add one external member'] : [])];
+  const over90 = open.filter((c) => c.filedOn && addDays(new Date(`${c.filedOn}T00:00:00`), 90) < today).length;
+  return (
+    <OpsDesk area="compliance" active="POSH" member>
+      <Confidential note="Confidential. Visible to Internal Committee members only. System admins and support can't open it. Every view is logged.">
+        <ObjectHeader
+          name={`Internal Committee · ${live.company}`}
+          icon={Users}
+          status={live.state !== 'ready' ? undefined : issues.length ? <Badge tone="danger">Committee not complete</Badge> : <Badge tone="success">Committee complete</Badge>}
+          facts={[
+            { label: 'Members', value: live.members.length },
+            { label: 'Open complaints', value: open.length },
+            { label: 'Past 90 days', value: over90 },
+          ]}
+        />
+        {live.state === 'ready' && issues.length > 0 && <PageBanner tone="danger">{`Committee not complete: ${issues.join('; ')}. Your System Admin sets the committee up.`}</PageBanner>}
+        {live.state === 'error' ? (
+          <EmptyState title="We couldn't load the committee" description="Try again in a moment." action={<Button onClick={live.onRetry}>Try again</Button>} />
+        ) : (
+          <Tabs defaultValue="committee">
+            <TabsList aria-label="IC console">
+              <TabsTrigger value="committee">Committee</TabsTrigger>
+              <TabsTrigger value="cases" count={open.length}>
+                Complaints
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="committee">
+              <DataTable
+                label="Committee members"
+                state={live.state === 'loading' ? 'loading' : 'ready'}
+                columns={[
+                  { key: 'n', header: 'Member', type: 'person', value: (m: LiveIcConsole['members'][number]) => m.name, person: (m) => ({ name: m.name, secondary: ROLE_WORDS[m.role] }) },
+                  { key: 's', header: 'On the committee since', type: 'date', value: (m) => new Date(`${m.since}T00:00:00`) },
+                ]}
+                rows={live.members}
+                getRowId={(m) => m.id}
+              />
+              <p className="yx-ops-muted">Rules from the P07 POSH parameters: senior woman presiding, at least half women, one external member, tenure up to 3 years.</p>
+            </TabsContent>
+            <TabsContent value="cases">
+              <DataTable
+                label="POSH complaints"
+                state={live.state === 'loading' ? 'loading' : 'ready'}
+                columns={[
+                  { key: 'id', header: 'Case', type: 'id', value: (c: LiveIcConsole['cases'][number]) => c.ref },
+                  { key: 'f', header: 'Filed', type: 'date', value: (c) => (c.filedOn ? new Date(`${c.filedOn}T00:00:00`) : null) },
+                  { key: 'w', header: 'Workplace', value: (c) => c.location },
+                  { key: 's', header: 'Stage', value: (c) => c.stage },
+                  { key: 'd', header: 'Next due', value: (c) => c.next?.on ?? '', render: (c) => (c.next?.on ? <span className="yx-ops-row">{formatDate(new Date(`${c.next.on}T00:00:00`))}{c.overdue && <Badge tone="danger">Overdue</Badge>}</span> : '—') },
+                  { key: 'i', header: 'Inquiry by', value: (c) => c.filedOn ?? '', render: (c) => (c.filedOn ? formatDate(addDays(new Date(`${c.filedOn}T00:00:00`), 90)) : '—') },
+                ]}
+                rows={live.cases}
+                getRowId={(c) => c.id}
+                onRowClick={(c) => live.onOpen(c.id)}
+                rowButtons={(c) => <Button size="sm" onClick={() => live.onOpen(c.id)}>Open</Button>}
+                empty={<EmptyState compact title="No complaints." />}
+              />
+            </TabsContent>
+          </Tabs>
+        )}
+      </Confidential>
+    </OpsDesk>
+  );
+}
+
+export function IcConsoleScreen(props: IcConsoleScreenProps | { live: LiveIcConsole; today: Date }) {
+  return 'live' in props ? <LiveIcConsoleScreen live={props.live} today={props.today} /> : <SampleIcConsole {...props} />;
+}
+
+function SampleIcConsole({ members, cases, awareness, today, persona = 'ic', tab = 'committee' }: IcConsoleScreenProps) {
   const [current, setCurrent] = useState(tab);
   const [logOpen, setLogOpen] = useState(false);
   const [attended, setAttended] = useState<number | null>(null);
@@ -231,26 +318,103 @@ export interface PoshFilingScreenProps {
   onBehalf?: boolean;
   filed?: boolean;
   alumni?: boolean;
+  /** Batch F item 13 (answer 2578): the live filing, through the speak-up route as a POSH complaint. */
+  live?: LivePoshFiling;
 }
-export function PoshComplaintScreen({ device = 'desk', today, incidentDate = null, onBehalf, filed, alumni }: PoshFilingScreenProps) {
+
+/** The live POSH filing: the company's workplaces, whether its Internal Committee is set up, and filing. */
+export interface LivePoshFiling {
+  company: string;
+  icReady: boolean;
+  locations: { id: string; name: string }[];
+  onFile: (input: PoshFilingInput) => Promise<{ id: string; reference: string }>;
+  /** Evidence goes to the filed complaint (stored encrypted, scanned). */
+  onUpload?: (reportId: string, file: File) => Promise<void>;
+  onGrievance?: () => void;
+}
+export interface PoshFilingInput {
+  summary: string;
+  happenedOn: string;
+  locationId: string | null;
+  involved: string;
+  outsideName?: string;
+  witnesses?: string;
+}
+
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export function PoshComplaintScreen({ device = 'desk', today, incidentDate = null, onBehalf, filed, alumni, live }: PoshFilingScreenProps) {
   const [incident, setIncident] = useState<Date | null>(incidentDate);
   const [who, setWho] = useState(onBehalf ? 'behalf' : 'self');
   const [conc, setConc] = useState(false);
-  const [place, setPlace] = useState<string | null>('blr');
+  const [place, setPlace] = useState<string | null>(live ? null : 'blr');
+  const [herName, setHerName] = useState('');
+  const [relation, setRelation] = useState('');
+  const [late, setLate] = useState('');
+  const [about, setAbout] = useState('');
+  const [outside, setOutside] = useState(false);
+  const [what, setWhat] = useState('');
+  const [witnesses, setWitnesses] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const [tried, setTried] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [reference, setReference] = useState<string | null>(filed && !live ? 'POSH-0008' : null);
   const windowState = incident ? poshFilingWindow(incident, today) : null;
   const { say } = useSay();
-  const file = () => say(windowState === 'out-of-window' && "This is more than 6 months after the incident, so the committee can't take it as a POSH complaint. You can still raise a grievance.");
-  const body = filed ? (
+  // Batch F item 13: the fields the live filing needs, each said under its field when missing.
+  const errors: Record<string, string | null> = {
+    'posh-her': who === 'behalf' && !herName.trim() ? 'Write her name.' : null,
+    'posh-rel': who === 'behalf' && !relation.trim() ? 'Say how you know her.' : null,
+    'posh-when': !incident ? 'Choose the date it happened.' : null,
+    'posh-place': !place ? 'Choose the workplace.' : null,
+    'posh-late': windowState === 'extension-needed' && late.trim().length < 10 ? 'Tell the committee why, in at least 10 characters.' : null,
+    'posh-about': !about.trim() ? 'Say who the complaint is about.' : null,
+    'posh-what': what.trim().length < 10 ? 'Describe what happened, in at least 10 characters.' : null,
+  };
+  const err = (id: string) => (tried && live ? errors[id] : null);
+  const file = async () => {
+    if (!live) return say(windowState === 'out-of-window' && "This is more than 6 months after the incident, so the committee can't take it as a POSH complaint. You can still raise a grievance.");
+    setTried(true);
+    if (windowState === 'out-of-window') return say("This is more than 6 months after the incident, so the committee can't take it as a POSH complaint. You can still raise a grievance.");
+    const first = Object.entries(errors).find(([, v]) => v);
+    if (first) return void setTimeout(() => document.getElementById(first[0])?.focus(), 0);
+    setSending(true);
+    setFailed(null);
+    try {
+      // The speak-up record has one free-text summary: who filed, the late reason and conciliation travel inside it.
+      const lines = [
+        what.trim(),
+        who === 'behalf' ? `Filed on behalf of ${herName.trim()} (${relation.trim()}).` : null,
+        windowState === 'extension-needed' ? `Why it was not filed earlier: ${late.trim()}` : null,
+        conc ? 'She asks to try conciliation first (not a money settlement).' : null,
+      ].filter(Boolean);
+      const out = await live.onFile({ summary: lines.join('\n\n'), happenedOn: iso(incident!), locationId: place === 'other' ? null : place, involved: about.trim(), ...(outside ? { outsideName: about.trim() } : {}), ...(witnesses.trim() ? { witnesses: witnesses.trim() } : {}) });
+      for (const f of files) await live.onUpload?.(out.id, f);
+      setReference(out.reference);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'Not filed. Nothing was sent; try again.');
+    } finally {
+      setSending(false);
+    }
+  };
+  const places = live ? [...live.locations.map((l) => ({ value: l.id, label: l.name })), { value: 'other', label: 'Outside office (work travel, client site)' }] : [{ value: 'blr', label: 'Bengaluru head office' }, { value: 'maa', label: 'Chennai office' }, { value: 'hsr', label: 'Hosur plant' }, { value: 'other', label: 'Outside office (work travel, client site)' }];
+  const body = reference ? (
     <div className="yx-ops-stack">
       <InlineAlert tone="success" title="Your complaint is with the Internal Committee">
-        Reference POSH-0008. Only the committee members on your case can see it. HR and your manager are not told.
+        Reference {reference}. Only the committee members on your case can see it. HR and your manager are not told.
       </InlineAlert>
       <ClockPanel title="What the committee must do" today={today} items={poshClock(today).slice(0, 2)} source="Time limits from P07 POSH parameters" />
       <p className="yx-ops-muted">You'll get “You have an update on a confidential matter” when something changes. Details are only in the app.</p>
     </div>
+  ) : live && !live.icReady ? (
+    <InlineAlert tone="warning" title="The Internal Committee is not set up yet">
+      The app cannot take this complaint until your company names its Internal Committee. You can complain in writing to the Local Committee of your district. Tell your System Admin the committee is missing.
+    </InlineAlert>
   ) : (
     <div className="yx-ops-stack">
-      {alumni && <InlineAlert tone="info">You have left Kaveri Foods. You can still file within the legal window; you'll follow the case through your alumni login.</InlineAlert>}
+      {failed && <InlineAlert tone="danger" title="Not filed">{failed}</InlineAlert>}
+      {alumni && <InlineAlert tone="info">You have left {live?.company ?? 'Kaveri Foods'}. You can still file within the legal window; you'll follow the case through your alumni login.</InlineAlert>}
       <FormField label="Who is filing?" required>
         <RadioGroup
           value={who}
@@ -263,20 +427,20 @@ export function PoshComplaintScreen({ device = 'desk', today, incidentDate = nul
       </FormField>
       {who === 'behalf' && (
         <FieldRow>
-          <FormField label="Her name" required>
-            <TextField />
+          <FormField id="posh-her" label="Her name" required error={err('posh-her')}>
+            <TextField value={herName} onChange={setHerName} maxLength={150} />
           </FormField>
-          <FormField label="Your relationship to her" required>
-            <TextField />
+          <FormField id="posh-rel" label="Your relationship to her" required error={err('posh-rel')}>
+            <TextField value={relation} onChange={setRelation} maxLength={100} />
           </FormField>
         </FieldRow>
       )}
       <FieldRow>
-        <FormField label="When did it happen?" required helper="If it happened more than once, the most recent date">
+        <FormField id="posh-when" label="When did it happen?" required helper="If it happened more than once, the most recent date" error={err('posh-when')}>
           <DatePicker value={incident} onChange={setIncident} max={today} />
         </FormField>
-        <FormField label="Workplace" required>
-          <Select value={place} onChange={setPlace} options={[{ value: 'blr', label: 'Bengaluru head office' }, { value: 'maa', label: 'Chennai office' }, { value: 'hsr', label: 'Hosur plant' }, { value: 'other', label: 'Outside office (work travel, client site)' }]} />
+        <FormField id="posh-place" label="Workplace" required error={err('posh-place')}>
+          <Select value={place} onChange={setPlace} options={places} />
         </FormField>
       </FieldRow>
       {windowState === 'extension-needed' && (
@@ -284,35 +448,40 @@ export function PoshComplaintScreen({ device = 'desk', today, incidentDate = nul
           The committee can accept it up to 3 more months if there was a reason you couldn't file earlier. Tell them the reason below.
         </InlineAlert>
       )}
-      {windowState === 'out-of-window' && <InlineAlert tone="danger">This is more than 6 months after the incident. The committee can't take it as a POSH complaint; you can still raise a grievance.</InlineAlert>}
+      {windowState === 'out-of-window' && (
+        <InlineAlert tone="danger" actions={live?.onGrievance ? <Button size="sm" onClick={live.onGrievance}>Raise a grievance</Button> : undefined}>
+          This is more than 6 months after the incident. The committee can't take it as a POSH complaint; you can still raise a grievance.
+        </InlineAlert>
+      )}
       {windowState === 'extension-needed' && (
-        <FormField label="Why you couldn't file earlier" required>
-          <TextArea rows={3} />
+        <FormField id="posh-late" label="Why you couldn't file earlier" required error={err('posh-late')}>
+          <TextArea value={late} onChange={setLate} rows={3} maxLength={1000} />
         </FormField>
       )}
-      <FormField label="Who is the complaint about?" required helper="They are told only when the committee sends the formal notice.">
-        <TextField />
+      <FormField id="posh-about" label="Who is the complaint about?" required helper="They are told only when the committee sends the formal notice." error={err('posh-about')}>
+        <TextField value={about} onChange={setAbout} maxLength={150} />
       </FormField>
-      <Checkbox label="They are not a Kaveri Foods employee" description="A contractor, vendor, client or visitor. The committee coordinates with their employer." />
-      <FormField label="What happened" required>
-        <TextArea rows={6} />
+      <Checkbox checked={outside} onChange={setOutside} label={`They are not a ${live?.company ?? 'Kaveri Foods'} employee`} description="A contractor, vendor, client or visitor. The committee coordinates with their employer." />
+      <FormField id="posh-what" label="What happened" required error={err('posh-what')}>
+        <TextArea value={what} onChange={setWhat} rows={6} maxLength={8000} />
       </FormField>
       <FormField label="Witnesses" optional>
-        <TextField />
+        <TextField value={witnesses} onChange={setWitnesses} maxLength={300} />
       </FormField>
       <FormField label="Evidence" optional helper="Messages, photos, documents. Stored encrypted.">
-        <FileUpload multiple upload={async () => {}} />
+        <FileUpload multiple upload={async (f) => void setFiles((x) => [...x, f])} />
       </FormField>
       <Checkbox checked={conc} onChange={setConc} label="I want to try conciliation first" description="Only if you ask. It can't be based on a money settlement. You can still ask for an inquiry later." />
     </div>
   );
+  const fileButton = !reference && (!live || live.icReady);
   if (device === 'phone')
     return (
       <PhoneFrame tab="me" title="Complaint to the Internal Committee" back={<IconButton icon={ArrowLeft} label="Back" />} hideTabs>
         <p className="yx-ops-muted">Only committee members on your case see this. Every view is logged.</p>
         {body}
-        {!filed && (
-          <Button variant="primary" icon={Send} fullWidth onClick={file}>
+        {fileButton && (
+          <Button variant="primary" icon={Send} fullWidth loading={sending} onClick={() => void file()}>
             File complaint
           </Button>
         )}
@@ -323,10 +492,10 @@ export function PoshComplaintScreen({ device = 'desk', today, incidentDate = nul
       <PageHeader title="Complaint to the Internal Committee" description="Sexual harassment at work. Filed only with the Internal Committee; HR does not see it." />
       <Card
         footer={
-          !filed && (
+          fileButton && (
             <Actions end>
-              <Button>Save draft</Button>
-              <Button variant="primary" icon={Send} onClick={file}>
+              {!live && <Button>Save draft</Button>}
+              <Button variant="primary" icon={Send} loading={sending} onClick={() => void file()}>
                 File complaint
               </Button>
             </Actions>

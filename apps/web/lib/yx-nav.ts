@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue' | 'casesOpen' | 'ethicsReports' | 'changesAsked';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue' | 'casesOpen' | 'ethicsReports' | 'icComplaints' | 'changesAsked';
 
 export interface NavLink {
   id: string;
@@ -49,6 +49,8 @@ export interface NavInput {
   changesAsked?: boolean;
   /** HLP-09: on the ethics or escalation list. */
   ethicsDesk?: boolean;
+  /** CMP-11 (batch F item 13): a member of the Internal Committee (the server decides, via the counts). */
+  icMember?: boolean;
   /** Founder answer 511: on an interview panel (the server decides): Interviews shows without any hiring key. */
   panellist?: boolean;
   /** The company turned the staffing desk on (Settings › Staffing desk; the server decides). */
@@ -517,6 +519,7 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(!support && manager, L('desk-report-misconduct', 'Report misconduct', '/yx/desk/report-misconduct')),
           ...when(!support && Boolean(n.caseTeam), L('desk-cases', 'Cases', '/yx/desk/cases', 'casesOpen')),
           ...when(!support && Boolean(n.ethicsDesk), L('desk-ethics', 'Ethics desk', '/yx/desk/ethics', 'ethicsReports')),
+          ...when(!support && Boolean(n.icMember), L('desk-ic', 'Internal Committee', '/yx/desk/ic', 'icComplaints')),
           ...when(has('speakup.setup.manage'), L('desk-speakup-setup', 'Speak-up set-up', '/yx/desk/speakup-setup')),
           ...when(any('policy.manage', 'policy.publish'), L('desk-policy-admin', 'Policy admin', '/yx/desk/policy-admin')),
           // HLP-14: a policy manager drafts a policy from a questionnaire (the company's AI, or a starter when AI is off).
@@ -675,7 +678,7 @@ export function activeLink(areas: NavArea[], pathname: string): { area: NavArea;
 
 /** Every page of the menu, as if one person held every key: names a page the viewer's own menu has no entry for. */
 let every: NavArea[] | null = null;
-const everyPage = () => (every ??= buildNav({ has: () => true, role: null, support: false, employee: true, manager: true, history: true, clearance: true, tasks: true, firstDays: true, samePerson: true, designated: true, caseTeam: true, ethicsDesk: true }));
+const everyPage = () => (every ??= buildNav({ has: () => true, role: null, support: false, employee: true, manager: true, history: true, clearance: true, tasks: true, firstDays: true, samePerson: true, designated: true, caseTeam: true, ethicsDesk: true, icMember: true }));
 
 /**
  * The page for the breadcrumb and the menu highlight (walk-through 3 Nov 2026). The viewer's own deepest entry, unless a

@@ -181,6 +181,19 @@ describe('HLP-06 speak-up filing', () => {
     await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding' }).expect(201);
   });
 
+  it('CMP-11 (batch F item 13): the Internal Committee console is for its members only; their POSH complaints carry the filing day; the menu count too', async () => {
+    const ic = (await api('ic1', 'get', '/ic').expect(200)).body;
+    expect(ic.company).toBe('HLP06 Org A');
+    expect(ic.members).toEqual([expect.objectContaining({ role: 'presiding', name: `ic1 ${run}`, since: today })]);
+    for (const who of ['divya', 'hr', 'adminA', 'ethics1', 'adminB'] as const) await api(who, 'get', '/ic').expect(404);
+    const rows = (await request(server()).get('/api/v1/desk/cases').set('Authorization', `Bearer ${token.ic1}`).expect(200)).body as { kind: string; ref: string; filedOn: string }[];
+    expect(rows.find((c) => c.ref === 'POSH-0001')).toMatchObject({ kind: 'posh', filedOn: today });
+    const counts = (who: Who) => request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token[who]}`).expect(200).then((r) => r.body);
+    expect((await counts('ic1')).icComplaints).toBe(1);
+    expect((await counts('divya')).icComplaints).toBeUndefined();
+    expect((await counts('ethics1')).icComplaints).toBeUndefined();
+  });
+
   it('check my report: wrong codes are counted; the right code shows the team reply; the reporter replies; files attach', async () => {
     await clearTries();
     const wrong = (await pub('/check').send({ org: org.A.slug, code: 'AAAA-BBBB-CCCC-DDDD' }).expect(404)).body;

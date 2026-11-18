@@ -462,6 +462,8 @@ export class WorkspaceService {
         // Founder answer 73: managers' misconduct reports waiting for this HR person (in scope) count on Cases too.
         if (keys.has('case.disciplinary.raise')) out.casesOpen = (out.casesOpen ?? 0) + (await this.service(CasesService).reportsWaiting(tx, c, user));
         if (lists.has('ethics') || lists.has('escalation')) out.ethicsReports = await open('whistleblower');
+        // CMP-11 (batch F item 13): the Internal Committee console shows only to the committee's own members.
+        if (lists.has('ic')) out.icComplaints = await open('posh');
       }
       // ITSM answer 1953: Changes shows to the change board, application owners and approvers of a change (the count is
       // the changes still open that they are asked about; absent for everyone else). The page checks again.

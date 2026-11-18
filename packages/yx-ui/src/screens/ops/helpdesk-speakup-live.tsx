@@ -147,6 +147,8 @@ export interface LiveSpeakUp {
   checkHref: string;
   /** HLP-12: the accident report (the fourth choice sends people there). */
   accidentHref?: string;
+  /** CMP-10: the designed POSH complaint form (batch F item 13); without it the complaint is filed here. */
+  poshHref?: string;
   today: Date;
   /** Stories and tests only. */
   start?: {
@@ -469,7 +471,7 @@ function LiveSpeakUpForm({
           tone="info"
           title="This goes to the Internal Committee"
           actions={
-            <Button size="sm" onClick={() => setPoshForm(true)}>
+            <Button size="sm" onClick={() => (live.poshHref ? window.location.assign(live.poshHref) : setPoshForm(true))}>
               Continue to the complaint form
             </Button>
           }
