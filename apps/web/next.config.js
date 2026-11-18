@@ -29,7 +29,37 @@ const nextConfig = {
   },
   async redirects() {
     const routes = ['/dashboard', '/exams', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
+    // Decision 2398 (answers 2420-2438): each /v2 page with a YukthiX equivalent redirects there, so old bookmarks keep
+    // working. Gap pages stay until their new page exists (2438). Older addresses that pointed at one of these /v2 pages
+    // go straight to the new page (no double hop).
+    const v2Moved = {
+      '/v2/users': '/yx/settings/access',
+      '/v2/audit-log': '/yx/settings/audit-log',
+      '/v2/data-rights': '/yx/hiring/retention',
+      '/v2/settings/roles': '/yx/settings/access',
+      '/v2/settings/permission-profiles': '/yx/settings/access',
+      '/v2/settings/sso': '/yx/settings/identity-providers',
+      '/v2/settings/billing': '/yx/settings/account/plan-and-add-ons',
+      '/v2/settings/integrations': '/yx/settings/integrations/integrations',
+      '/v2/settings/recycle-bin': '/yx/settings/recycle-bin',
+      '/v2/calendar': '/yx/settings/integrations/calendar-and-chat',
+      '/v2/today': '/yx/home',
+      '/v2/exams': '/yx/hiring/assessments/tests',
+      '/v2/exams/new': '/yx/hiring/assessments/tests',
+      '/v2/exams/:id/edit': '/yx/hiring/assessments/tests/:id',
+      '/v2/exams/:id/preview': '/yx/hiring/assessments/tests/:id',
+      // A walk-in group's drives are its campus drive page; a single old drive goes to the invitations and drives list.
+      '/v2/walk-in-groups': '/yx/hiring/assessments/invitations',
+      '/v2/walk-in-groups/:groupId/drives': '/yx/hiring/assessments/drives/:groupId',
+      '/v2/drives/:driveId': '/yx/hiring/assessments/invitations',
+      '/v2/referrals': '/yx/hiring/referrals/all',
+      '/v2/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
+      '/v2/panel/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
+    };
+    const direct = (r) => ({ ...r, destination: v2Moved[r.destination] ?? r.destination });
     return [
+      ...Object.entries(v2Moved).map(([source, destination]) => ({ source, destination, permanent: false })),
+      ...[
       // PPL-30 (founder 26 Oct 2026): My letters is part of Me › Documents and letters.
       { source: '/yx/me/letters', destination: '/yx/me/documents', permanent: false },
       // M10 AT1 / AT5 (founder D1): the jobs list and each job's workspace are YukthiX Hiring pages.
@@ -118,6 +148,7 @@ const nextConfig = {
       { source: '/reports/:examId', destination: '/v2/panel/reports/:examId', permanent: false },
       { source: '/reports/:examId/compare', destination: '/v2/panel/reports/:examId/compare', permanent: false },
       { source: '/reports/:examId/candidates/:candidateId', destination: '/v2/panel/reports/:examId/candidates/:candidateId', permanent: false },
+      ].map(direct),
     ];
   },
 };

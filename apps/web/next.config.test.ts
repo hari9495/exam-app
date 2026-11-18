@@ -85,3 +85,43 @@ describe('scorecard templates moved to Settings 6.1', () => {
     expect(await config.redirects()).toContainEqual({ source: '/yx/hiring/scorecards', destination: '/yx/settings/hiring', permanent: true });
   });
 });
+
+// Decision 2398 (answers 2420-2438): /v2 pages with a YukthiX equivalent redirect there; gap pages stay until built.
+describe('retiring /v2: old bookmarks reach the new pages', () => {
+  let redirects: Redirect[];
+  beforeAll(async () => {
+    redirects = await config.redirects();
+  });
+
+  it.each([
+    ['/v2/users', '/yx/settings/access'],
+    ['/v2/audit-log', '/yx/settings/audit-log'],
+    ['/v2/data-rights', '/yx/hiring/retention'],
+    ['/v2/settings/roles', '/yx/settings/access'],
+    ['/v2/settings/permission-profiles', '/yx/settings/access'],
+    ['/v2/settings/sso', '/yx/settings/identity-providers'],
+    ['/v2/today', '/yx/home'],
+    ['/v2/exams', '/yx/hiring/assessments/tests'],
+    ['/v2/exams/:id/edit', '/yx/hiring/assessments/tests/:id'],
+    ['/v2/exams/:id/preview', '/yx/hiring/assessments/tests/:id'],
+    ['/v2/walk-in-groups/:groupId/drives', '/yx/hiring/assessments/drives/:groupId'],
+    ['/v2/referrals', '/yx/hiring/referrals/all'],
+    ['/v2/panel/reports/:examId/candidates/:candidateId', '/yx/hiring/assessments/reports/:examId/:candidateId'],
+    ['/users', '/yx/settings/access'],
+    ['/exams/:id/edit', '/yx/hiring/assessments/tests/:id'],
+    ['/reports/:examId/candidates/:candidateId', '/yx/hiring/assessments/reports/:examId/:candidateId'],
+  ])('%s goes to %s', (source, destination) => {
+    expect(redirects).toContainEqual({ source, destination, permanent: false });
+  });
+
+  it('never chains: no destination is itself redirected, and each source is listed once', () => {
+    const sources = redirects.map((r) => r.source);
+    expect(new Set(sources).size).toBe(sources.length);
+    for (const r of redirects) expect(sources).not.toContain(r.destination.split('?')[0]);
+  });
+
+  it('gap pages stay (2438): their addresses are not redirected away yet', () => {
+    for (const gap of ['/v2/dashboard', '/v2/analytics/hiring', '/v2/surveys', '/v2/system-logs', '/v2/settings/branding', '/v2/panel/reports'])
+      expect(redirects.some((r) => r.source === gap)).toBe(false);
+  });
+});
