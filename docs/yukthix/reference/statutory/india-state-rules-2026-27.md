@@ -218,6 +218,8 @@ Income tax
 52. [ ] 87A → s.156 (YukthiX) – not confirmed.
 53. [ ] IN.PENALTY still cites 1961 sections for TY 2026-27.
 54. [ ] Form 124 landlord-relationship field – not in YukthiX.
+55. [ ] Loan perquisite small-loan exemption (founder answer 2450): YukthiX uses loans totalling **₹20,000** or less (IN.PERQ-LOAN exemptAggregate, Rule 3(7)(i)); confirm whether it is ₹20,000 or **₹2,00,000** for TY 2026-27. It is one rule value; also load the SBI rate per loan type.
+56. [ ] Flexible benefit (FBP) claims under the new regime (founder answer 2461): YukthiX treats them as **taxable** in the new regime; confirm, say which FBP components (if any) stay exempt in the old regime, and where the taxable claims are shown (payslip, Form 16 / Form 130).
 
 ---
 
