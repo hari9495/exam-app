@@ -140,6 +140,25 @@ export class UpdateDeskDto {
   @Max(90)
   autoCloseDays?: number | null;
 
+  /** Batch F GLPI 4 (answer 2571): chase a requester who does not answer. */
+  @IsOptional()
+  @IsBoolean()
+  chaseEnabled?: boolean;
+
+  /** Reminders at most (0 to 10), one a business day. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  chaseMax?: number;
+
+  /** Business days with no reply before the ticket is solved (1 to 30, more than the reminders). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  chaseSolveDays?: number;
+
   /** Minutes a new ticket waits for its best-matched agent before routing falls back (0: at once). */
   @IsOptional()
   @IsInt()

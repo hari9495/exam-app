@@ -25,6 +25,10 @@ export interface DeskSummary {
   reopenWindowDays?: number;
   requesterCanReopen?: boolean;
   autoCloseDays?: number | null;
+  /** Batch F GLPI 4 (answer 2571): chase a requester who does not answer (default on, 3 reminders, solved after 5 business days). */
+  chaseEnabled?: boolean;
+  chaseMax?: number;
+  chaseSolveDays?: number;
   /** Minutes a new ticket waits for its best-matched agent before routing falls back (default 2). */
   routingWaitMinutes?: number;
   /** HLP-05b: a clock is at risk once this share (%) of its target is used (50, 60, 70, 80 or 90; default 80). */

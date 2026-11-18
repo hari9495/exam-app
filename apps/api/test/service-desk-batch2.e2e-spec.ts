@@ -314,6 +314,50 @@ describe('Service Desk batch 2 (M14 §5.7, §6.3, §7, §8, §15.2)', () => {
       expect(await work.autoClose()).toBeGreaterThanOrEqual(1);
       expect((await ticket(ids.taskTicket)).systemState).toBe('closed');
     });
+
+    // Batch F GLPI 4 (answer 2571): a ticket waiting for the requester is chased each business day, then solved.
+    it('chases a requester who does not answer: one reminder a business day, at most the desk’s number, then solved; settings checked', async () => {
+      const deskVersion = async () => (await api('adminA', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk.version;
+      expect((await api('adminA', 'get', `/desk/desks/${ids.desk}`).expect(200)).body.desk).toMatchObject({ chaseEnabled: true, chaseMax: 3, chaseSolveDays: 5 });
+      await api('adminA', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), chaseSolveDays: 3 }).expect(400);
+      await api('adminA', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), chaseMax: 11 }).expect(400);
+      await api('agent1', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), chaseEnabled: false }).expect(403);
+      // Round the clock for this test (the desk's own calendar would make the day count depend on today's weekday).
+      const calendarId = (await system((tx) => tx.sdDesk.findFirstOrThrow({ where: { id: ids.desk } }))).calendarId;
+      await system((tx) => tx.sdDesk.update({ where: { id: ids.desk }, data: { calendarId: null } }));
+      const t = await raise(`Need the old payslips ${run}`, 'From 2024.');
+      await api('agent1', 'patch', `/desk/tickets/${t.id}`).send({ version: (await ticket(t.id)).version, statusId: status('Waiting on requester') }).expect(200);
+      // Waiting since now; the job runs at chosen times after it (with no desk calendar, round the clock in UTC: the next
+      // UTC midnight starts business day 1).
+      const since = (await system((tx) => tx.sdTicketEvent.findFirstOrThrow({ where: { ticketId: t.id, kind: 'status_changed' }, orderBy: { at: 'desc' } }))).at;
+      const midnight = new Date(Date.parse(`${since.toISOString().slice(0, 10)}T00:00:00Z`) + 86_400_000);
+      const chased = () => system((tx) => tx.sdTicketEvent.count({ where: { ticketId: t.id, kind: 'requester_chased' } }));
+      // The waiting day itself never counts; today counts once it has begun.
+      await work.chaseRequesters(new Date(Math.min(since.getTime() + 60_000, midnight.getTime() - 1)));
+      expect(await chased()).toBe(0);
+      await work.chaseRequesters(new Date(midnight.getTime() + 3600_000));
+      expect(await chased()).toBe(1);
+      const ev = await system((tx) => tx.sdTicketEvent.findFirstOrThrow({ where: { ticketId: t.id, kind: 'requester_chased' } }));
+      expect(ev).toMatchObject({ requesterVisible: true, toValue: '1' });
+      // A repeat run the same day sends nothing more.
+      await work.chaseRequesters(new Date(midnight.getTime() + 2 * 3600_000));
+      expect(await chased()).toBe(1);
+      expect(await system((tx) => tx.auditLog.count({ where: { entityId: t.id, action: 'desk.ticket.requester_chased' } }))).toBe(1);
+      // After 5 business days with no reply: solved, and the requester may reply to reopen.
+      await work.chaseRequesters(new Date(midnight.getTime() + 5 * 86_400_000));
+      expect((await ticket(t.id)).systemState).toBe('solved');
+      expect(await system((tx) => tx.auditLog.count({ where: { entityId: t.id, action: 'desk.ticket.auto_solved' } }))).toBe(1);
+
+      // A requester reply ends the wait; a desk that does not chase never chases.
+      const u = await raise(`Laptop bag strap ${run}`, 'Broken.');
+      await api('agent1', 'patch', `/desk/tickets/${u.id}`).send({ version: (await ticket(u.id)).version, statusId: status('Waiting on requester') }).expect(200);
+      await api('adminA', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), chaseEnabled: false }).expect(200);
+      await work.chaseRequesters(new Date(midnight.getTime() + 6 * 86_400_000));
+      expect(await system((tx) => tx.sdTicketEvent.count({ where: { ticketId: u.id, kind: 'requester_chased' } }))).toBe(0);
+      expect((await ticket(u.id)).systemState).toBe('pending');
+      await api('adminA', 'patch', `/desk/desks/${ids.desk}`).send({ version: await deskVersion(), chaseEnabled: true }).expect(200);
+      await system((tx) => tx.sdDesk.update({ where: { id: ids.desk }, data: { calendarId } }));
+    });
   });
 
   describe('reminders, snooze and the iCal feed (SD-1.11)', () => {

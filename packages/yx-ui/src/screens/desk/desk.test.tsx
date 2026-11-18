@@ -258,7 +258,30 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(screen.queryByLabelText(/Desk name/)).toBeNull();
     await ue.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(2));
-    expect(Object.keys(onUpdateDesk.mock.calls[1][0]).sort()).toEqual(['autoCloseDays', 'ratingReasons', 'reopenWindowDays', 'requesterCanReopen']);
+    expect(Object.keys(onUpdateDesk.mock.calls[1][0]).sort()).toEqual(['autoCloseDays', 'chaseEnabled', 'chaseMax', 'chaseSolveDays', 'ratingReasons', 'reopenWindowDays', 'requesterCanReopen']);
+  });
+
+  // Batch F GLPI 4 (answer 2571): the requester chase on the Requesters tab.
+  it('settings: the requester chase saves its numbers; too few solve days is a field error and nothing is saved; off saves only the switch', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    await ue.click(screen.getByRole('tab', { name: 'Requesters' }));
+    const days = screen.getByLabelText(/Solve after/);
+    await ue.clear(days);
+    await ue.type(days, '2');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    expect(await screen.findByText('Solve after more business days than the number of reminders.')).toBeInTheDocument();
+    expect(onUpdateDesk).not.toHaveBeenCalled();
+    await ue.clear(days);
+    await ue.type(days, '7');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledWith(expect.objectContaining({ chaseEnabled: true, chaseMax: 3, chaseSolveDays: 7 })));
+    await ue.click(screen.getByLabelText(/Remind requesters/));
+    expect(screen.queryByLabelText(/Solve after/)).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(2));
+    expect(onUpdateDesk.mock.calls[1][0]).toMatchObject({ chaseEnabled: false });
+    expect(onUpdateDesk.mock.calls[1][0]).not.toHaveProperty('chaseMax');
   });
 
   it('settings: the at-risk point of a desk is a Segment of 50 to 90 %, saved with the other settings and a toast', async () => {

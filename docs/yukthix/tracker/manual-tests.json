@@ -27664,5 +27664,25 @@
                               "Screens/Helpdesk/HLP-02 · Agent desk"
                     ],
                     "note": "Positive and negative (service-desk-hlp02 e2e: unanswered null, answered Met, breached-before-reply Breached, other company none; kit helpdesk-desk-live: Met, Breached, running clock, dash)."
+          },
+          {
+                    "id": "MT-F-GLPI4-REQUESTER-CHASE",
+                    "area": "Batch F GLPI 4: chase a requester who does not answer (answer 2571, 18 Nov 2026)",
+                    "screen": "Helpdesk › Desk set-up › Settings › Requesters; Ticket workspace (HLP-03) timeline; requester's ticket page",
+                    "url": "http://localhost:3000/yx/desk/setup",
+                    "account": "A desk admin (desk.settings.manage); an agent of the desk; an employee requester.",
+                    "steps": [
+                              "As the desk admin open Settings › Requesters. Check 'Remind requesters who do not answer, then solve the ticket' is on with 3 reminders and 5 business days.",
+                              "Set 'Solve after' to 2 and press Save settings.",
+                              "Set it back to 5 and save.",
+                              "As the agent move a ticket to 'Waiting on requester'. After the next business day starts (or in a test company, wait for the 15-minute job), open the ticket.",
+                              "As the requester open the ticket and the bell.",
+                              "Negative: the requester replies; switch the chase off on another desk and leave a ticket waiting."
+                    ],
+                    "expected": "Step 2: a field error 'Solve after more business days than the number of reminders.' takes focus; nothing is saved. Step 3: a 5-second toast 'Desk settings saved.' Step 4: the timeline shows 'Reminder sent to the requester' once a business day, at most 3; after 5 business days the ticket is Resolved with 'Solved after 5 business days with no reply'. Step 5: the requester sees the reminder on the ticket and a bell notice (neutral words for a sensitive ticket); they can reply to reopen within the reopen days. Step 6: a reply ends the chase; with the chase off no reminder is sent. Audit: desk.ticket.requester_chased, desk.ticket.auto_solved.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-03 · Ticket workspace"
+                    ],
+                    "note": "Positive and negative (unit requester-chase.spec: business days, weekends and holidays, at most N, solve, catch-up; service-desk-batch2 e2e: defaults, bad settings 400, agent 403, waiting day not counted, one reminder a day, repeat run none, solved after 5 days, audited, chase off none; kit desk.test: field error and focus, saved values, off sends only the switch)."
           }
 ]

@@ -58,7 +58,7 @@ export interface DeskSetupScreenProps {
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
   /** Answers 1641, 1650: add or change one of the desk's own ticket fields. */
   onSaveField?: (id: string | null, input: DeskFieldInput) => Promise<unknown>;
-  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons' | 'closedMessage'>> & { nextNumber?: number }) => Promise<void>;
+  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'chaseEnabled' | 'chaseMax' | 'chaseSolveDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons' | 'closedMessage'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
@@ -796,6 +796,12 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
   const [reopenDays, setReopenDays] = useState<number | null>(x.reopenWindowDays ?? 7);
   const [canReopen, setCanReopen] = useState(x.requesterCanReopen ?? true);
   const [closeDays, setCloseDays] = useState<number | null>(x.autoCloseDays === undefined ? 3 : x.autoCloseDays);
+  // Batch F GLPI 4 (answer 2571): chase a requester who does not answer.
+  const [chase, setChase] = useState(x.chaseEnabled ?? true);
+  const [chaseMax, setChaseMax] = useState<number | null>(x.chaseMax ?? 3);
+  const [chaseDays, setChaseDays] = useState<number | null>(x.chaseSolveDays ?? 5);
+  const [tried, setTried] = useState(false);
+  const chaseError = chase && (chaseMax ?? 0) >= (chaseDays ?? 0) ? 'Solve after more business days than the number of reminders.' : null;
   const [waitMinutes, setWaitMinutes] = useState<number | null>(x.routingWaitMinutes ?? 2);
   const [atRisk, setAtRisk] = useState(String(x.atRiskPercent ?? 80));
   const [reasons, setReasons] = useState((x.ratingReasons ?? []).join('\n'));
@@ -804,7 +810,10 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
   const { toast } = useToast();
   const can = props.detail.canSetUp;
   const tickets = props.part === 'tickets';
-  const save = () =>
+  const save = () => {
+    setTried(true);
+    // Never a disabled button: pressed with the chase days too few, the field says why and takes focus.
+    if (!tickets && chaseError) return void setTimeout(() => document.getElementById('desk-chase-days')?.focus(), 0);
     void run('save', async () => {
       await props.onUpdateDesk(
         tickets
@@ -826,12 +835,15 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
               requesterCanReopen: canReopen,
               reopenWindowDays: reopenDays ?? 7,
               autoCloseDays: closeDays,
+              chaseEnabled: chase,
+              ...(chase ? { chaseMax: chaseMax ?? 3, chaseSolveDays: chaseDays ?? 5 } : {}),
               ratingReasons: reasons.split('\n').map((r) => r.trim()).filter(Boolean),
               ...(closedMessage.trim() && closedMessage.trim() !== x.closedMessage ? { closedMessage: closedMessage.trim() } : {}),
             },
       );
       toast({ tone: 'success', title: 'Desk settings saved.' });
     });
+  };
   return (
     <div className="yx-ops-stack">
       <ReadOnly show={!can} />
@@ -886,6 +898,17 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
               <NumberField value={closeDays} onChange={setCloseDays} min={1} max={90} disabled={!can} />
             </FormField>
           </span>
+          <Switch label="Remind requesters who do not answer, then solve the ticket" checked={chase} onChange={setChase} disabled={!can} />
+          {chase && (
+            <span className="yx-ops-row">
+              <FormField label="Reminders, one a business day" helper="While a ticket waits for the requester. 0: none, solve only.">
+                <NumberField value={chaseMax} onChange={setChaseMax} min={0} max={10} disabled={!can} />
+              </FormField>
+              <FormField id="desk-chase-days" label="Solve after (business days with no reply)" helper="The requester can reply to reopen it within the reopen days." error={tried ? chaseError : null}>
+                <NumberField value={chaseDays} onChange={setChaseDays} min={1} max={30} disabled={!can} />
+              </FormField>
+            </span>
+          )}
           <FormField label="Message while closed" helper="The help centre and portal show it outside business hours. {opens} becomes the next opening time. Tickets people raise themselves then are marked “Raised outside hours” (not ones agents log).">
             <TextField value={closedMessage} onChange={setClosedMessage} maxLength={300} disabled={!can} />
           </FormField>

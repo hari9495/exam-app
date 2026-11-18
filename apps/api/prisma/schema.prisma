@@ -4080,6 +4080,11 @@ model SdDesk {
   routingWaitMinutes Int      @default(2) @map("routing_wait_minutes") @db.SmallInt
   /// HLP-05b: a clock is "at risk" once this share (%) of its target is used: 50, 60, 70, 80 or 90.
   atRiskPercent      Int      @default(80) @map("at_risk_percent") @db.SmallInt
+  /// Batch F GLPI 4 (answer 2571): chase a requester who does not answer: a reminder each business day while a ticket
+  /// waits for them, at most chaseMax, then solved after chaseSolveDays business days with no reply.
+  chaseEnabled       Boolean  @default(true) @map("chase_enabled")
+  chaseMax           Int      @default(3) @map("chase_max") @db.SmallInt
+  chaseSolveDays     Int      @default(5) @map("chase_solve_days") @db.SmallInt
   /// SD-2.10: desks this desk may move tickets to.
   forwardTo          String[] @default([]) @map("forward_to") @db.Uuid
   /// Answer 1643: the preset reasons a requester may pick after the stars (at most 12).
