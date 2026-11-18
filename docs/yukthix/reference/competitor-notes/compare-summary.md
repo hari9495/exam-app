@@ -324,3 +324,16 @@ Reference: the Income Tax Department site's Accessibility menu (font size, satur
 - 2394, 2395 (18 Nov 2026, "ok", "go with your suggestion"): high contrast must be clearly visible. It follows the india.gov.in style: black page, white text, yellow headings, links, main buttons and focus ring, 2 px light borders, bright status colours. It replaces the black-on-white look and closes 2350.
 - 2410 (18 Nov 2026): the founder chose to finish the agreed order first (batch B → H part 2 → v2 retirement → C → D → E → F → G → Enterprise → IT assets → tiers 2 and 3). The 226 designed-but-not-live screens (design-live-guard.known.json: about 65 phone screens, about 55 platform, 39 portals, 29 engage and learning, 18 proctoring, 6 compliance, 3 pay, 3 time, 2 settings, 1 kit) and the 9 performance and hiring live copies are planned after that.
 - 2411 (18 Nov 2026, "ok"): when a batch works in an area, its builder also makes that area's already-designed, not-live screens live (and re-wires live copies) in the same batch, where they fit. Example: Engage and Learning screens in batches C–G, the 9 performance live copies when Performance is touched, proctoring analytics with the next assessment work. The mobile app, platform builder tools and portals stay at the end.
+
+## Plans and apps, like Zoho One (founder request 18 Nov 2026; 2462 to 2465 PARKED to the end, after all building is finished)
+- **Model:** YukthiX One (everything, one per-employee price), or separate apps bought à la carte and added later in the same account.
+- **Draft app list:** People (base), Time, Payroll, Hire, Assess, Performance, Helpdesk, Engage & Learn, Expenses, Visitors & contract labour. Hire, Assess and Helpdesk work alone; the HR apps need People.
+- **Build when resumed:**
+  1. an app catalogue and plans in the staff console;
+  2. apps on or off per company: menu, home, search and notifications show only bought apps, the API refuses the rest, and this is proved by tests;
+  3. dependencies;
+  4. per-app sign-up and set-up;
+  5. billing: per employee or per candidate/minute, a One discount, prorated add/remove, GST invoices;
+  6. trials and "Upgrade to One".
+- **Pricing:** the mechanism only; prices are set in the console later, never in code. Existing demo companies go on One.
+- **Size:** 3–4 weeks. It goes with AS-7 billing at the end, as the founder decided.
