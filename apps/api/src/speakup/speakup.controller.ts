@@ -10,7 +10,7 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { AnonymousReportDto, CodeDto, ReplyDto, ReportDto, TeamMemberDto, TeamReplyDto } from './dto';
+import { AnnualReportStepDto, AnonymousReportDto, AwarenessSessionDto, CodeDto, ReplyDto, ReportDto, TeamMemberDto, TeamReplyDto } from './dto';
 import { SpeakupService } from './speakup.service';
 
 // HLP-06 speak-up (rules: docs/yukthix/helpdesk-design-map.md section 4e). Keys (P02 YX-SEC-01):
@@ -71,6 +71,19 @@ export class SpeakupController {
   icCommittee(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     assertOwnSession(req);
     return this.speakup.icCommittee(ctx);
+  }
+
+  // Batch G1 answer 2593: the committee's awareness log and annual report (members only; presiding moves the report on).
+  @Post('ic/awareness')
+  logAwareness(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AwarenessSessionDto) {
+    assertOwnSession(req);
+    return this.speakup.logAwareness(ctx, dto);
+  }
+
+  @Post('ic/report')
+  annualReportStep(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AnnualReportStepDto) {
+    assertOwnSession(req);
+    return this.speakup.annualReportStep(ctx, dto);
   }
 
   @Get('setup')

@@ -30,6 +30,13 @@ export const liveIcConsole = (over: Partial<LiveIcConsole> = {}): LiveIcConsole 
     { id: 'c2', ref: 'POSH-0006', filedOn: '2026-07-10', location: 'Hosur plant', stage: 'Inquiry', next: { label: 'Inquiry ends', on: '2026-10-08' }, overdue: false, status: 'open' },
   ],
   onOpen: () => undefined,
+  awareness: [
+    { id: 'a1', committeeId: null, heldOn: '2026-09-12', title: 'POSH awareness for new joiners', audience: 'New joiners', attended: 34 },
+    { id: 'a2', committeeId: null, heldOn: '2026-07-05', title: 'Internal Committee orientation', audience: 'IC members', attended: 4 },
+  ],
+  reports: [{ committeeId: null, committee: 'Whole company', year: 2026, dueOn: '2027-01-31', received: 2, disposed: 0, pendingOver90: 1, sessions: 2, actionTaken: null, stage: 'draft', presiding: true }],
+  onLog: async () => undefined,
+  onReportStep: async () => undefined,
   ...over,
 });
 

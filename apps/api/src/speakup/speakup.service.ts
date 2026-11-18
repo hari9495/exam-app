@@ -11,7 +11,7 @@ import { CompanyContext, Tx, audit, companyContext } from '../org-structure/org-
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { safeName } from '../service-desk/attachments.service';
-import { SPEAKUP_TEAMS, type AnonymousReportDto, type ReportDto, type SpeakupKind, type SpeakupTeam, type TeamMemberDto } from './dto';
+import { SPEAKUP_TEAMS, type AnnualReportStepDto, type AnonymousReportDto, type AwarenessSessionDto, type ReportDto, type SpeakupKind, type SpeakupTeam, type TeamMemberDto } from './dto';
 import { isoDay } from '../cases/case-rules';
 import { addDays, anonymousAllowed, caseNumber, newReplyCode, poshLate, readCode, route, showCode } from './speakup-rules';
 
@@ -444,14 +444,86 @@ export class SpeakupService {
       const users = await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.userId) } }, select: { id: true, name: true, email: true } });
       const places = await tx.location.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.locationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
       const org0 = await tx.organization.findFirst({ where: { id: org }, select: { name: true } });
+      // Answer 2593: the awareness log (this year and last) and this year's annual report, per committee.
+      const today = todayIst();
+      const year = Number(today.slice(0, 4));
+      const committees = [...mine];
+      const awareness = await tx.poshAwarenessSession.findMany({ where: { organizationId: org, committeeLocationId: { in: committees.filter((x): x is string => Boolean(x)) } }, orderBy: { heldOn: 'desc' }, take: 500 });
+      const companyLog = mine.has(null) ? await tx.poshAwarenessSession.findMany({ where: { organizationId: org, committeeLocationId: null }, orderBy: { heldOn: 'desc' }, take: 500 }) : [];
+      const log = [...awareness, ...companyLog].filter((a) => a.heldOn.toISOString().slice(0, 4) >= String(year - 1)).sort((a, b) => b.heldOn.getTime() - a.heldOn.getTime());
+      const nameOf = (id: string | null) => (id ? (places.find((p) => p.id === id)?.name ?? 'A workplace') : 'Whole company');
+      const reports = [];
+      for (const cid of committees) {
+        const cases = await tx.speakupCase.findMany({ where: { organizationId: org, kind: 'posh', icLocationId: cid, filedAt: { gte: new Date(`${year}-01-01T00:00:00+05:30`), lt: new Date(`${year + 1}-01-01T00:00:00+05:30`) } }, select: { status: true, filedAt: true } });
+        const row = await tx.poshAnnualReport.findFirst({ where: { organizationId: org, year, committeeLocationId: cid } });
+        reports.push({
+          committeeId: cid,
+          committee: nameOf(cid),
+          year,
+          dueOn: `${year + 1}-01-31`,
+          received: cases.length,
+          disposed: cases.filter((x) => x.status === 'closed').length,
+          pendingOver90: cases.filter((x) => x.status !== 'closed' && addDays(isoDay(x.filedAt)!, 90) < today).length,
+          sessions: log.filter((a) => a.committeeLocationId === cid && a.heldOn.toISOString().slice(0, 4) === String(year)).length,
+          actionTaken: row?.actionTaken ?? null,
+          stage: (row?.stage ?? 'draft') as 'draft' | 'reviewed' | 'employer' | 'district',
+          presiding: all.some((r) => r.locationId === cid && r.role === 'presiding' && r.userId === c.userId),
+        });
+      }
       return {
         company: org0?.name ?? '',
+        awareness: log.map((a) => ({ id: a.id, committeeId: a.committeeLocationId, heldOn: a.heldOn.toISOString().slice(0, 10), title: a.title, audience: a.audience, attended: a.attended })),
+        reports,
         members: rows.map((r) => {
           const u = users.find((x) => x.id === r.userId);
           return { id: r.id, name: u?.name ?? u?.email ?? 'Former user', role: r.role as 'presiding' | 'member' | 'external', since: isoDay(r.addedAt), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null, committeeId: r.locationId, committee: r.locationId ? (places.find((p) => p.id === r.locationId)?.name ?? 'A workplace') : 'Whole company' };
         }),
       };
     });
+  }
+
+  /** Answer 2593: a member logs an awareness session for a committee they sit on (others: 404). */
+  async logAwareness(ctx: TenantContext, dto: AwarenessSessionDto) {
+    return this.tx(ctx, async (tx, c) => {
+      const cid = dto.committeeId ?? null;
+      if (!(await this.onCommittee(tx, c, cid))) throw new NotFoundException('Not found');
+      const heldOn = dto.heldOn.slice(0, 10);
+      if (heldOn > todayIst()) throw new BadRequestException('The session date can’t be in the future.');
+      const a = await tx.poshAwarenessSession.create({ data: { organizationId: c.organizationId, committeeLocationId: cid, heldOn: day(heldOn), title: dto.title, audience: dto.audience || null, attended: dto.attended, createdBy: c.userId! } });
+      await audit(tx, c, 'posh.awareness_logged', 'posh_awareness_session', a.id, { committeeId: cid, heldOn, attended: dto.attended });
+      return { id: a.id };
+    });
+  }
+
+  /** Answer 2593: the presiding officer moves this committee's annual report on, one step at a time. */
+  async annualReportStep(ctx: TenantContext, dto: AnnualReportStepDto) {
+    return this.tx(ctx, async (tx, c) => {
+      const cid = dto.committeeId ?? null;
+      if (!(await this.onCommittee(tx, c, cid))) throw new NotFoundException('Not found');
+      const presiding = await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ic', role: 'presiding', removedAt: null, userId: c.userId!, locationId: cid }, select: { id: true } });
+      if (!presiding) throw new ForbiddenException({ statusCode: 403, code: 'POSH_NOT_PRESIDING', message: 'Only the presiding officer moves the annual report on.' });
+      const year = Number(todayIst().slice(0, 4));
+      if (dto.year > year || dto.year < year - 1) throw new BadRequestException('Only this year’s or last year’s report can be moved on.');
+      const row = (await tx.poshAnnualReport.findFirst({ where: { organizationId: c.organizationId, year: dto.year, committeeLocationId: cid } })) ?? (await tx.poshAnnualReport.create({ data: { organizationId: c.organizationId, year: dto.year, committeeLocationId: cid } }));
+      const before = { reviewed: 'draft', employer: 'reviewed', district: 'employer' }[dto.step];
+      if (row.stage !== before) throw new ConflictException({ statusCode: 409, code: 'POSH_REPORT_STEP', message: 'The report is not at that step. Refresh and try again.' });
+      if (dto.step === 'reviewed' && !dto.actionTaken?.trim()) throw new BadRequestException('Write the action taken in the year (or “None”).');
+      const now = new Date();
+      await tx.poshAnnualReport.update({
+        where: { id: row.id },
+        data: {
+          stage: dto.step,
+          updatedAt: now,
+          ...(dto.step === 'reviewed' ? { actionTaken: dto.actionTaken!.trim(), reviewedBy: c.userId, reviewedAt: now } : dto.step === 'employer' ? { employerBy: c.userId, employerAt: now } : { districtBy: c.userId, districtAt: now }),
+        },
+      });
+      await audit(tx, c, 'posh.annual_report_step', 'posh_annual_report', row.id, { committeeId: cid, year: dto.year, step: dto.step });
+      return { stage: dto.step };
+    });
+  }
+
+  private async onCommittee(tx: Tx, c: CompanyContext, cid: string | null) {
+    return Boolean(c.userId && (await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ic', removedAt: null, userId: c.userId, locationId: cid }, select: { id: true } })));
   }
 
   async setup(ctx: TenantContext) {

@@ -119,7 +119,7 @@ const IMPLICIT: Record<string, string[]> = {
   EmployeeImportController: [],
   PoliciesAdminController: [],
   // HLP-06: the form and one's own named report; cases: being routed to the case is the access (404 otherwise).
-  SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply', 'icCommittee'], // icCommittee: committee members only (404 otherwise)
+  SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply', 'icCommittee', 'logAwareness', 'annualReportStep'], // IC routes: committee members only (404 otherwise); the report steps need the presiding officer (403)
   // HLP-07/08/09: membership of the case is the access (404 otherwise); My cases is one's own part.
   CasesController: ['list', 'detail', 'message', 'notice', 'delay', 'moreTime', 'propose', 'approve', 'sendBack', 'icReport', 'vote', 'sign', 'relief', 'reliefDone', 'recuse', 'addMember', 'upload', 'file', 'letter'],
   EthicsController: ['reports', 'severity', 'route'],

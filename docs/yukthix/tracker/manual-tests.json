@@ -27900,5 +27900,24 @@
                     "expected": "Step 2: one email, subject 'You have a question from your team in YukthiX', body says to open My cases; no ticket number, subject, description or name. Step 3: the question with its details is there. Step 4: the bell shows it; no email.",
                     "stories": [],
                     "note": "Positive and negative (service-desk-esm e2e 29/29: exactly one email, to the manager only, with no ticket number and no subject words). The email follows the company's email switch and the person's notice settings like every other notice."
+          },
+          {
+                    "id": "MT-G1-2593-IC-REPORT-AWARENESS",
+                    "area": "Batch G1 answer 2593: the Internal Committee's annual report and awareness log live (19 Nov 2026)",
+                    "screen": "Helpdesk › Internal Committee › Annual report; Awareness log",
+                    "url": "http://localhost:3000/yx/desk/ic",
+                    "account": "The presiding officer of the company committee; another member of it; an employee; HR admin; the company admin.",
+                    "steps": [
+                              "As a committee member open Awareness log › Log a session and press Save session with nothing filled; then a date in the future; then a real session (name, date, attended, audience).",
+                              "Open Annual report as the member who does not preside.",
+                              "As the presiding officer open Annual report › Mark reviewed; press Mark reviewed in the dialog with nothing written; write the action taken and save.",
+                              "Press Mark sent to the employer, then Mark sent to the District Officer.",
+                              "As an employee, HR and the company admin open /yx/desk/ic."
+                    ],
+                    "expected": "Step 1: 'Name the session…', 'Choose the day it was held.', 'Enter how many attended.' under the fields; the calendar stops at today (the server also refuses a future day); then a 5-second toast 'Session logged.' and the row with its attendance in the total. Step 2: the counts (received, disposed of, pending more than 90 days, sessions) and 'The presiding officer moves the report on.'; no button. Step 3: 'Write the action taken in the year (or “None”).'; then 'Report marked reviewed.' and the trail moves to Reviewed. Step 4: the trail reaches 'Submitted to District Officer'; the header says the report is Sent. Step 5: Not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Compliance/CMP-09 · IC console"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e: outsiders 404, future day / short name / negative attendance / unknown field 400, the database hides the log from a non-member, a non-presiding member 403, steps out of order 409, reviewed without action 400, an old year 400, three audited steps; rls-isolation; kit posh-live 15/15). New tables posh_awareness_sessions and posh_annual_reports (RLS tenant + RESTRICTIVE ic_member_only per committee + support excluded) in rls-isolation. New routes POST /desk/speakup/ic/awareness and /ic/report in the endpoint-permissions list. The figures are counted from the committee's POSH complaints of the calendar year."
           }
 ]

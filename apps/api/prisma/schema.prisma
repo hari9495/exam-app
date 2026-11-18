@@ -13210,6 +13210,41 @@ model SpeakupCase {
   @@map("speakup_cases")
 }
 
+/// Batch G1 answer 2593: an awareness session the Internal Committee held (one committee; RLS: its members only).
+model PoshAwarenessSession {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  committeeLocationId String?  @map("committee_location_id") @db.Uuid
+  heldOn              DateTime @map("held_on") @db.Date
+  title               String   @db.VarChar(200)
+  audience            String?  @db.VarChar(200)
+  attended            Int
+  createdBy           String   @map("created_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, heldOn], map: "posh_awareness_sessions_org_idx")
+  @@map("posh_awareness_sessions")
+}
+
+/// Batch G1 answer 2593: a committee's annual report for a calendar year; the figures are counted when read.
+model PoshAnnualReport {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  committeeLocationId String?   @map("committee_location_id") @db.Uuid
+  year                Int
+  stage               String    @default("draft") @db.VarChar(10)
+  actionTaken         String?   @map("action_taken") @db.VarChar(1000)
+  reviewedBy          String?   @map("reviewed_by") @db.Uuid
+  reviewedAt          DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  employerBy          String?   @map("employer_by") @db.Uuid
+  employerAt          DateTime? @map("employer_at") @db.Timestamptz(3)
+  districtBy          String?   @map("district_by") @db.Uuid
+  districtAt          DateTime? @map("district_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("posh_annual_reports")
+}
+
 /// HLP-06: who a case was routed to (append-only).
 model SpeakupCaseMember {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

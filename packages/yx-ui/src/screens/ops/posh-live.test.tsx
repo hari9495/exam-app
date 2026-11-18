@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
@@ -114,6 +114,48 @@ describe('CMP-11 Internal Committee console (live)', () => {
     expect(screen.getByText('Overdue')).toBeInTheDocument();
     await ue.click(screen.getAllByRole('button', { name: 'Open' })[0]);
     expect(onOpen).toHaveBeenCalledWith('c1');
+  });
+
+  it('answer 2593: the presiding officer marks the report reviewed only with the action taken, then sends it on', async () => {
+    const onReportStep = vi.fn().mockResolvedValue(undefined);
+    show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ onReportStep, start: { tab: 'report' } })} />);
+    expect(screen.getByText('Pending more than 90 days')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Mark reviewed' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Mark reviewed' }));
+    expect(await screen.findByText('Write the action taken in the year (or “None”).')).toBeInTheDocument();
+    expect(onReportStep).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Action taken/ }), '1 transfer');
+    await ue.click(within(dialog).getByRole('button', { name: 'Mark reviewed' }));
+    expect(onReportStep).toHaveBeenCalledWith({ committeeId: null, year: 2026, step: 'reviewed', actionTaken: '1 transfer' });
+    expect((await screen.findAllByText('Report marked reviewed.')).length).toBeGreaterThan(0);
+  });
+
+  it('answer 2593: a member who does not preside cannot move the report on', () => {
+    show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ reports: liveIcConsole().reports!.map((r) => ({ ...r, presiding: false })), start: { tab: 'report' } })} />);
+    expect(screen.queryByRole('button', { name: 'Mark reviewed' })).toBeNull();
+    expect(screen.getByText('The presiding officer moves the report on.')).toBeInTheDocument();
+  });
+
+  it('answer 2593: logging a session needs its name, date and attendance; a refusal shows', async () => {
+    const onLog = vi.fn().mockRejectedValueOnce(new Error('The session date can’t be in the future.')).mockResolvedValue(undefined);
+    show(<IcConsoleScreen today={TODAY} live={liveIcConsole({ onLog, start: { tab: 'awareness' } })} />);
+    expect(screen.getByText('POSH awareness for new joiners')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Log a session' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save session' }));
+    expect(await screen.findByText('Name the session (at least 3 letters).')).toBeInTheDocument();
+    expect(screen.getByText('Choose the day it was held.')).toBeInTheDocument();
+    expect(screen.getByText('Enter how many attended.')).toBeInTheDocument();
+    expect(onLog).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /^Session/ }), 'Plant floor session');
+    await ue.type(within(dialog).getByRole('textbox', { name: /^Date/ }), '10/10/2026{Enter}');
+    await ue.type(within(dialog).getByRole('textbox', { name: /Attended/ }), '40');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save session' }));
+    expect(await screen.findByText('The session date can’t be in the future.')).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Save session' }));
+    expect(onLog).toHaveBeenLastCalledWith({ heldOn: '2026-10-10', title: 'Plant floor session', attended: 40 });
+    expect((await screen.findAllByText('Session logged.')).length).toBeGreaterThan(0);
   });
 
   it('someone not on the committee sees Not found, never the committee', () => {

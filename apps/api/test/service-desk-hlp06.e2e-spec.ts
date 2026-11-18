@@ -262,6 +262,44 @@ describe('HLP-06 speak-up filing', () => {
     expect((await counts('ethics1')).icComplaints).toBeUndefined();
   });
 
+  it('answer 2593: committee members log awareness sessions; the presiding officer moves the annual report on step by step; nobody else sees or changes either', async () => {
+    const year = Number(today.slice(0, 4));
+    const ic = (body: object, who: Who = 'ic1') => api(who, 'post', '/ic/awareness').send(body);
+    // Outsiders: not found. Bad input: 400.
+    for (const who of ['divya', 'hr', 'adminA', 'ethics1', 'adminB'] as const) await ic({ heldOn: today, title: 'Session', attended: 5 }, who).expect(404);
+    await ic({ heldOn: shift(1), title: 'Future session', attended: 5 }).expect(400);
+    await ic({ heldOn: today, title: 'ab', attended: 5 }).expect(400);
+    await ic({ heldOn: today, title: 'Session', attended: -1 }).expect(400);
+    await ic({ heldOn: today, title: 'Session', attended: 5, extra: 1 }).expect(400);
+    await ic({ heldOn: today, title: 'POSH awareness for new joiners', audience: 'New joiners', attended: 34 }).expect(201);
+    const view = (await api('ic1', 'get', '/ic').expect(200)).body;
+    expect(view.awareness).toEqual([expect.objectContaining({ committeeId: null, heldOn: today, title: 'POSH awareness for new joiners', audience: 'New joiners', attended: 34 })]);
+    expect(view.reports).toEqual([expect.objectContaining({ committeeId: null, committee: 'Whole company', year, dueOn: `${year + 1}-01-31`, sessions: 1, stage: 'draft', presiding: true, actionTaken: null })]);
+    expect(view.reports[0].received).toBeGreaterThanOrEqual(1);
+    // The database hides both tables from someone not on the committee, even inside the company.
+    const asDivya = await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, userId: users.divya } as never, (tx) => tx.poshAwarenessSession.count());
+    expect(asDivya).toBe(0);
+    // The report: only the presiding officer, one step at a time, "reviewed" needs the action taken.
+    const step = (body: object, who: Who = 'ic1') => api(who, 'post', '/ic/report').send({ year, ...body });
+    await step({ step: 'reviewed', actionTaken: 'None' }, 'divya').expect(404);
+    await step({ step: 'employer' }).expect(409);
+    await step({ step: 'reviewed' }).expect(400);
+    await step({ step: 'reviewed', actionTaken: 'None' }, 'ethics1').expect(404);
+    await step({ step: 'reviewed', actionTaken: '1 transfer', year: year - 3 }).expect(400);
+    await step({ step: 'signed' }).expect(400);
+    // A member who does not preside: 403, and nothing changes.
+    const m = (await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, ...IC }).expect(201)).body;
+    expect((await step({ step: 'reviewed', actionTaken: 'None' }, 'chair').expect(403)).body.code).toBe('POSH_NOT_PRESIDING');
+    await api('adminA', 'post', `/setup/members/${m.id}/remove`).expect(201);
+    await step({ step: 'reviewed', actionTaken: '1 transfer' }).expect(201);
+    await step({ step: 'reviewed', actionTaken: '1 transfer' }).expect(409);
+    await step({ step: 'employer' }).expect(201);
+    await step({ step: 'district' }).expect(201);
+    expect((await api('ic1', 'get', '/ic').expect(200)).body.reports[0]).toMatchObject({ stage: 'district', actionTaken: '1 transfer' });
+    const logs = await inA((tx) => tx.auditLog.findMany({ where: { action: { in: ['posh.awareness_logged', 'posh.annual_report_step'] } }, select: { action: true } }));
+    expect(logs.filter((l) => l.action === 'posh.annual_report_step')).toHaveLength(3);
+  });
+
   it('check my report: wrong codes are counted; the right code shows the team reply; the reporter replies; files attach', async () => {
     await clearTries();
     const wrong = (await pub('/check').send({ org: org.A.slug, code: 'AAAA-BBBB-CCCC-DDDD' }).expect(404)).body;

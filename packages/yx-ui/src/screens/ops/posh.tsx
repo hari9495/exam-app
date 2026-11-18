@@ -6,7 +6,8 @@ import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
+import { errorText } from '../org/org-kit';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -58,13 +59,107 @@ export interface LiveIcConsole {
   /** The POSH complaints this member is on (the case list, POSH only). */
   cases: { id: string; ref: string; filedOn: string | null; location: string; stage: string; next: { label: string; on: string | null } | null; overdue: boolean; status: string }[];
   onOpen: (caseId: string) => void;
+  /** Answer 2593: the awareness log (this year and last) of the member's committees. */
+  awareness?: IcAwarenessRow[];
+  /** Answer 2593: this year's annual report of each committee, counted from the complaints and the log. */
+  reports?: IcAnnualReport[];
+  onLog?: (input: IcAwarenessInput) => Promise<unknown>;
+  onReportStep?: (input: { committeeId: string | null; year: number; step: 'reviewed' | 'employer' | 'district'; actionTaken?: string }) => Promise<unknown>;
+  /** Stories and tests only. */
+  start?: { tab?: 'committee' | 'cases' | 'report' | 'awareness'; dialog?: 'log' | 'review' };
 }
+export interface IcAwarenessRow {
+  id: string;
+  committeeId: string | null;
+  heldOn: string;
+  title: string;
+  audience: string | null;
+  attended: number;
+}
+export interface IcAwarenessInput {
+  committeeId?: string;
+  heldOn: string;
+  title: string;
+  audience?: string;
+  attended: number;
+}
+export interface IcAnnualReport {
+  committeeId: string | null;
+  committee: string;
+  year: number;
+  dueOn: string;
+  received: number;
+  disposed: number;
+  pendingOver90: number;
+  sessions: number;
+  actionTaken: string | null;
+  stage: 'draft' | 'reviewed' | 'employer' | 'district';
+  /** The person looking is this committee's presiding officer (only they move the report on). */
+  presiding: boolean;
+}
+const REPORT_STEPS = ['draft', 'reviewed', 'employer', 'district'] as const;
+const NEXT_STEP = { draft: { step: 'reviewed', label: 'Mark reviewed' }, reviewed: { step: 'employer', label: 'Mark sent to the employer' }, employer: { step: 'district', label: 'Mark sent to the District Officer' } } as const;
 
 const isoToday = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 const ROLE_WORDS = { presiding: 'Presiding officer', member: 'Member', external: 'External member (NGO / legal)' } as const;
 
 function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date }) {
+  const { toast } = useSay();
+  const [tab, setTab] = useState<string>(live.start?.tab ?? 'committee');
+  const [dialog, setDialog] = useState<'log' | { review: IcAnnualReport } | null>(live.start?.dialog === 'log' ? 'log' : live.start?.dialog === 'review' && live.reports?.[0] ? { review: live.reports[0] } : null);
+  const [logCommittee, setLogCommittee] = useState<string>('company');
+  const [title, setTitle] = useState('');
+  const [heldOn, setHeldOn] = useState<Date | null>(null);
+  const [attended, setAttended] = useState<number | null>(null);
+  const [audience, setAudience] = useState('');
+  const [actionTaken, setActionTaken] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const logEarly = useTooEarly([
+    ...(title.trim().length < 3 ? [{ fieldId: 'ic-title', message: 'Name the session (at least 3 letters).' }] : []),
+    ...(!heldOn ? [{ fieldId: 'ic-held', message: 'Choose the day it was held.' }] : []),
+    ...(attended === null ? [{ fieldId: 'ic-attended', message: 'Enter how many attended.' }] : []),
+  ]);
+  const reviewEarly = useTooEarly(actionTaken.trim() ? [] : [{ fieldId: 'ic-action', message: 'Write the action taken in the year (or “None”).' }]);
   if (live.state === 'no-access') return <RestrictedNotFound area="compliance" />;
+  const run = async (fn: () => Promise<unknown>, done: string) => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+      setDialog(null);
+      return true;
+    } catch (e) {
+      setFailed(errorText(e));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveLog = () => {
+    if (logEarly.stop() || !live.onLog) return;
+    void run(() => live.onLog!({ ...(logCommittee !== 'company' ? { committeeId: logCommittee } : {}), heldOn: isoToday(heldOn!), title: title.trim(), attended: attended!, ...(audience.trim() ? { audience: audience.trim() } : {}) }), 'Session logged.').then((ok) => {
+      if (ok) {
+        setTitle('');
+        setHeldOn(null);
+        setAttended(null);
+        setAudience('');
+        logEarly.reset();
+      }
+    });
+  };
+  const step = (r: IcAnnualReport) => {
+    if (r.stage === 'draft') return setDialog({ review: r });
+    const next = NEXT_STEP[r.stage as 'reviewed' | 'employer'];
+    void run(() => live.onReportStep!({ committeeId: r.committeeId, year: r.year, step: next.step }), next.step === 'employer' ? 'Marked as sent to the employer.' : 'Marked as sent to the District Officer.');
+  };
+  const saveReview = (r: IcAnnualReport) => {
+    if (reviewEarly.stop()) return;
+    void run(() => live.onReportStep!({ committeeId: r.committeeId, year: r.year, step: 'reviewed', actionTaken: actionTaken.trim() }), 'Report marked reviewed.').then((ok) => ok && (setActionTaken(''), reviewEarly.reset()));
+  };
+  const awareness = live.awareness ?? [];
+  const reports = live.reports ?? [];
   const open = live.cases.filter((c) => c.status !== 'closed');
   // Answer 2591: presiding woman, at least half women, one external member, terms not over; answer 2592: per committee.
   const committees = [...new Map(live.members.map((m) => [m.committeeId, m.committee])).entries()];
@@ -82,18 +177,25 @@ function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date
             { label: 'Members', value: live.members.length },
             { label: 'Open complaints', value: open.length },
             { label: 'Past 90 days', value: over90 },
+            ...(reports[0] ? [{ label: 'Annual report', value: reports[0].stage === 'district' ? 'Sent' : `Due ${formatDate(new Date(`${reports[0].dueOn}T00:00:00`))}` }] : []),
           ]}
         />
         {live.state === 'ready' && issues.length > 0 && <PageBanner tone="danger">{`Committee not complete: ${issues.join('; ')}. Your System Admin sets the committee up.`}</PageBanner>}
         {live.state === 'error' ? (
           <EmptyState title="We couldn't load the committee" description="Try again in a moment." action={<Button onClick={live.onRetry}>Try again</Button>} />
         ) : (
-          <Tabs defaultValue="committee">
+          <Tabs value={tab} onValueChange={setTab}>
             <TabsList aria-label="IC console">
               <TabsTrigger value="committee">Committee</TabsTrigger>
               <TabsTrigger value="cases" count={open.length}>
                 Complaints
               </TabsTrigger>
+              {live.reports && <TabsTrigger value="report">Annual report</TabsTrigger>}
+              {live.awareness && (
+                <TabsTrigger value="awareness" count={awareness.length}>
+                  Awareness log
+                </TabsTrigger>
+              )}
             </TabsList>
             <TabsContent value="committee">
               <DataTable
@@ -130,9 +232,123 @@ function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date
                 empty={<EmptyState compact title="No complaints." />}
               />
             </TabsContent>
+            {live.reports && (
+              <TabsContent value="report">
+                <div className="yx-ops-stack">
+                  {failed && !dialog && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+                  {reports.map((r) => (
+                    <Card key={r.committeeId ?? 'company'} title={`Annual report ${r.year}${several ? ` · ${r.committee}` : ''}`}>
+                      <div className="yx-ops-stack">
+                        <p className="yx-ops-muted">{`Counted from this year's complaints and the awareness log. Due ${formatDate(new Date(`${r.dueOn}T00:00:00`))}; submitted to the employer and the District Officer.`}</p>
+                        <Facts
+                          items={[
+                            { label: 'Complaints received', value: r.received },
+                            { label: 'Disposed of', value: r.disposed },
+                            { label: 'Pending more than 90 days', value: r.pendingOver90, tone: r.pendingOver90 ? 'danger' : undefined },
+                            { label: 'Workshops and sessions', value: r.sessions },
+                            { label: 'Action taken', value: r.actionTaken ?? 'Written when the presiding officer reviews it' },
+                          ]}
+                        />
+                        <StatusTrail steps={[{ label: 'Draft' }, { label: 'Reviewed by presiding officer' }, { label: 'Submitted to employer' }, { label: 'Submitted to District Officer' }]} current={REPORT_STEPS.indexOf(r.stage)} />
+                        {r.stage !== 'district' &&
+                          (r.presiding && live.onReportStep ? (
+                            <Actions>
+                              <Button variant="primary" loading={busy} onClick={() => step(r)}>
+                                {NEXT_STEP[r.stage].label}
+                              </Button>
+                            </Actions>
+                          ) : (
+                            <p className="yx-ops-muted">The presiding officer moves the report on.</p>
+                          ))}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+            {live.awareness && (
+              <TabsContent value="awareness">
+                <div className="yx-ops-stack">
+                  {live.onLog && (
+                    <Actions end>
+                      <Button onClick={() => (setDialog('log'), setFailed(null))}>Log a session</Button>
+                    </Actions>
+                  )}
+                  <DataTable
+                    label="Awareness sessions"
+                    columns={[
+                      { key: 'd', header: 'Date', type: 'date', value: (a: IcAwarenessRow) => new Date(`${a.heldOn}T00:00:00`) },
+                      { key: 't', header: 'Session', value: (a) => a.title, width: 280 },
+                      { key: 'au', header: 'Audience', value: (a) => a.audience ?? '—' },
+                      ...(several ? [{ key: 'c', header: 'Committee', value: (a: IcAwarenessRow) => committees.find(([id]) => id === a.committeeId)?.[1] ?? '—' }] : []),
+                      { key: 'n', header: 'Attended', type: 'number', value: (a) => a.attended, total: 'sum' },
+                    ]}
+                    rows={awareness}
+                    getRowId={(a) => a.id}
+                    empty={<EmptyState compact title="No sessions logged yet." description="Log each workshop or awareness session; the annual report counts them." />}
+                  />
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         )}
       </Confidential>
+      <Dialog
+        open={dialog === 'log'}
+        onOpenChange={(o) => !o && setDialog(null)}
+        title="Log an awareness session"
+        footer={
+          <>
+            <Button onClick={() => setDialog(null)}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={saveLog}>
+              Save session
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-ops-stack">
+          {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+          {several && (
+            <FormField label="Committee">
+              <Select value={logCommittee} onChange={(v) => setLogCommittee(v ?? 'company')} options={committees.map(([id, name]) => ({ value: id ?? 'company', label: name }))} />
+            </FormField>
+          )}
+          <FormField id="ic-title" label="Session" required error={logEarly.errorOf('ic-title')}>
+            <TextField value={title} onChange={setTitle} maxLength={200} />
+          </FormField>
+          <FieldRow>
+            <FormField id="ic-held" label="Date" required error={logEarly.errorOf('ic-held')}>
+              <DatePicker value={heldOn} onChange={setHeldOn} max={today} />
+            </FormField>
+            <FormField id="ic-attended" label="Attended" required error={logEarly.errorOf('ic-attended')}>
+              <NumberField value={attended} onChange={setAttended} min={0} max={100000} />
+            </FormField>
+          </FieldRow>
+          <FormField label="Audience" optional>
+            <TextField value={audience} onChange={setAudience} maxLength={200} />
+          </FormField>
+        </div>
+      </Dialog>
+      <Dialog
+        open={dialog !== null && dialog !== 'log'}
+        onOpenChange={(o) => !o && setDialog(null)}
+        title="Mark the annual report reviewed"
+        footer={
+          <>
+            <Button onClick={() => setDialog(null)}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={() => dialog && dialog !== 'log' && saveReview(dialog.review)}>
+              Mark reviewed
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-ops-stack">
+          {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+          <FormField id="ic-action" label="Action taken in the year" required helper="For example “1 transfer, 1 written warning”, or “None”." error={reviewEarly.errorOf('ic-action')}>
+            <TextArea value={actionTaken} onChange={setActionTaken} rows={3} maxLength={1000} />
+          </FormField>
+        </div>
+      </Dialog>
     </OpsDesk>
   );
 }

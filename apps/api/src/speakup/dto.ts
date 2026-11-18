@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsDateString, IsEmail, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 // HLP-06 speak-up inputs. Whitelisted by the global ValidationPipe (unknown fields are refused).
 
@@ -75,6 +75,47 @@ export class ReportDto {
   @IsOptional()
   @IsBoolean()
   conciliation?: boolean;
+}
+
+/** Batch G1 answer 2593: an awareness session the Internal Committee held. */
+export class AwarenessSessionDto {
+  /** The workplace committee; left out for the company committee. */
+  @IsOptional()
+  @IsUUID()
+  committeeId?: string;
+
+  @IsDateString({ strict: true })
+  heldOn!: string;
+
+  @Text(3, 200)
+  title!: string;
+
+  @Opt(200)
+  audience?: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  attended!: number;
+}
+
+/** Batch G1 answer 2593: the presiding officer moves the annual report on (reviewed, sent to the employer, the District Officer). */
+export class AnnualReportStepDto {
+  @IsOptional()
+  @IsUUID()
+  committeeId?: string;
+
+  @IsInt()
+  @Min(2013)
+  @Max(2100)
+  year!: number;
+
+  @IsIn(['reviewed', 'employer', 'district'])
+  step!: 'reviewed' | 'employer' | 'district';
+
+  /** With "reviewed": the action taken in the year (for example "1 transfer, 1 written warning"). */
+  @Opt(1000)
+  actionTaken?: string;
 }
 
 /** Anonymous filing through the no-login route: the company by its sign-in name. POSH is never anonymous. */
