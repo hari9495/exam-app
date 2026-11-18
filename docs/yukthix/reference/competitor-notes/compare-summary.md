@@ -440,3 +440,15 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
   - **2538:** "By person" only regroups what the viewer may already approve.
   - **2539:** "Request leave" opens the leave drawer for that day, and the day shows "Leave requested" until decided.
   - **2540:** the PRJ-02 phone layout stays with phone approvals in tier 3.
+- Founder answers (18 Nov 2026, "ok for all"):
+  - 2557: the timesheet drill-down is read-only; "By person" shows one card per project.
+  - 2558: a manager's "own team" means direct and indirect reports (same as the team calendar dots).
+  - 2559: HR may decline an open waiver request after lock (no pay change); waiving and asking are refused after lock.
+  - 2560: a declined day can be asked again with a new reason.
+  - 2550: B7 window cards are already built; check and add a manual test.
+  - 2551: "Waiting on" shows the approver's name, "HR" or "Finance" for a shared step, "You" when sent back, and "Finance (payment)" once approved and not paid.
+  - 2552: managers also see "Waiting on" in Team claims.
+  - 2553: past-claim filters are status (multi), a sent-date range with "Paid between", and search by title or claim number; 25 per page; filters kept in the page address.
+  - 2554: Finance's To pay filters come later.
+  - 2555: make the "payroll not set up" FirstUse empty state live in batch E.
+  - 2556: a step with several approvers shows the first name and "and N more".
