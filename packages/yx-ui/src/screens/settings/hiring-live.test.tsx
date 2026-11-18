@@ -342,7 +342,7 @@ describe('Settings 6.1 Hiring (live)', () => {
 
   it('answer 2510: an end time before the start is refused on the page, before anything is saved', async () => {
     const onSave = vi.fn();
-    render(<ToastProvider><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" live={{ page: hiringSettingsPage(design, DATA), canEdit: true, state: 'ready', onSave, savedTitle: 'Hiring settings saved' } as LiveSettingsPage} /></ToastProvider>);
+    render(<ToastProvider><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" live={{ page: hiringSettingsPage(design, DATA), canEdit: true, lastChange: null, state: 'ready', onSave, savedTitle: 'Hiring settings saved' } satisfies LiveSettingsPage} /></ToastProvider>);
     const to = screen.getByLabelText(/^Candidates may book interviews until/);
     await ue.clear(to);
     await ue.type(to, '08:00');
