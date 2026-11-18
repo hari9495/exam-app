@@ -27508,7 +27508,7 @@
                     ],
                     "expected": "Step 1: 'Hours for' is a single-choice control on This week; columns Billable (approved), Non-billable (approved) and Total booked per person, with totals. Step 2: the numbers follow the range (weeks starting this month; everything). Step 3: the approved hours move from booked-only into Billable or Non-billable by the line's billable tick. Step 4: a reduced line counts its reduced hours as approved, a rejected one none; both stay in Total booked. No page scroll at 1278 x 635.",
                     "stories": [
-                              "Screens/Hiring/PRJ-01 · Project workspace"
+                              "Screens/Projects/PRJ-01 · Projects and project workspace"
                     ],
                     "note": "Positive and negative (API unit capacity.spec teamHours / rangeFrom; projects-p2 e2e: a week sent and waiting is booked only, approved becomes billable, the week range leaves it out, a bad range 400; kit prj-01-live: columns, Segment asks again, an older API keeps Hours booked). Hours are per person on the project."
           }
