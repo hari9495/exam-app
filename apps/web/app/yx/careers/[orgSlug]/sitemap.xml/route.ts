@@ -6,7 +6,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 
 export async function GET(req: Request, { params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const res = await fetch(`${API_BASE}/public/yx/careers/${encodeURIComponent(orgSlug)}/sitemap`, { cache: 'no-store' }).catch(() => null);
+  const res = await fetch(`${API_BASE}/public/careers/${encodeURIComponent(orgSlug)}/sitemap`, { cache: 'no-store' }).catch(() => null);
   if (!res?.ok) return new Response('Not found', { status: 404 });
   const data = (await res.json()) as { jobs: { slug: string; updatedAt: string }[]; companies: string[] };
   const base = `${originOf(req.headers)}/yx/careers/${encodeURIComponent(orgSlug)}`;

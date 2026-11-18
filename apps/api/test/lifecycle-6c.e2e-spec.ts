@@ -129,6 +129,9 @@ describe('Lifecycle batch 6c', () => {
     ids.phone = await add(`PH-${run}`, 'Galaxy A35', '15000.00');
     await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Dup', tag: `lt-${run}` }).expect(409);
     await api('ravi', 'get', '/lifecycle/assets').expect(403);
+    // The Issue picker: current employees by name, only for whoever may issue (IT holds no employee grant).
+    expect((await api('hr', 'get', '/lifecycle/assets/people').expect(200)).body.map((p: { id: string }) => p.id)).toContain(emp.ravi);
+    await api('ravi', 'get', '/lifecycle/assets/people').expect(403);
     for (const a of [ids.laptop, ids.phone]) await api('hr', 'post', `/lifecycle/assets/${a}/issue`).send({ employeeId: emp.ravi, issuedOn: today, condition: 'New' }).expect(200);
     await api('hr', 'post', `/lifecycle/assets/${ids.laptop}/issue`).send({ employeeId: emp.sita, issuedOn: today, condition: 'New' }).expect(409);
     const person = await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: emp.sita } }));

@@ -121,8 +121,9 @@ describe('Performance batch PM5', () => {
     ids.cycle = c.id;
     await api('priya', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) }).expect(403);
     await api('adminA', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 4, maxNominees: 2, dueOn: shift(today, 10) }).expect(400);
-    await api('adminA', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) }).expect(200);
+    const on = (await api('adminA', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) }).expect(200)).body;
     const cur = (await api('adminA', 'get', `/cycles/${c.id}`).expect(200)).body;
+    expect(on.version).toBe(cur.version); // the set-up wizard launches with this version
     expect(cur.peerFeedback).toEqual({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) });
     expect((await api('adminA', 'post', `/cycles/${c.id}/launch`).send({ version: cur.version }).expect(200)).body.reviews).toBe(1);
     await api('adminA', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) }).expect(409);

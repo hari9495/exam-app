@@ -7,7 +7,6 @@ import { AddAssetDrawer, type AssetRow } from '@yukthix/ui/lifecycle';
 import type { PersonOption } from '@yukthix/ui/history';
 import { todayIst, useYxPermissions, loadState } from '../../../../../lib/yx-org';
 import { useJoinerPlaces, useLife, useLifeWrite } from '../../../../../lib/yx-lifecycle';
-import { usePeople } from '../../../../../lib/yx-people';
 
 const id = encodeURIComponent;
 const STATUS: Record<AssetRow['status'], string> = { in_stock: 'In stock', assigned: 'Assigned', in_repair: 'In repair', retired: 'Retired', lost: 'Lost' };
@@ -20,7 +19,8 @@ export default function YxAssetsPage() {
   const canManage = perms.has('asset.manage');
   const data = useLife<{ today: string; rows: AssetRow[] }>('/lifecycle/assets');
   const places = useJoinerPlaces(canManage);
-  const people = usePeople<PersonOption[]>(canManage ? '/employees' : null);
+  // Who an asset can go to: its own list for asset.manage (IT holds no employee grant, so /employees is empty for it).
+  const people = useLife<PersonOption[]>(canManage ? '/lifecycle/assets/people' : null);
   const write = useLifeWrite();
   const [adding, setAdding] = useState(false);
   const today = data.data?.today ?? todayIst();

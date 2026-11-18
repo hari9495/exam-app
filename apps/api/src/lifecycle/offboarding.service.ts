@@ -320,6 +320,18 @@ export class OffboardingService {
     });
   }
 
+  /** The Issue picker: current employees (id and name only), for whoever may issue assets. */
+  async assetPeople(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    if (!v.grants.has('asset.manage')) throw new ForbiddenException('You cannot issue assets.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const current = await tx.employment.findMany({ where: { organizationId: org, exitedOn: null }, select: { employeeId: true }, distinct: ['employeeId'] });
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: current.map((e) => e.employeeId) } } });
+      return people.map((p) => ({ id: p.id, name: displayName(p) })).sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }
+
   /** PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers. */
   async personAssets(ctx: TenantContext, user: ScopeUser, employeeId: string) {
     const v = await this.viewer(user);

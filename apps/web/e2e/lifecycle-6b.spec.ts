@@ -60,11 +60,13 @@ test('HR issues the appointment letter → the System Admin approves → issued 
   // Lakshmi signs letters herself, so the System Admin approves it.
   const admin = await signedIn(browser, 'admin@demo-org.test', 'DevAdmin123!');
   await admin.goto('/yx/approvals');
-  const card = admin.locator('section').filter({ has: admin.getByRole('heading', { name: /Appointment letter to approve/ }) }).last();
-  await expect(card).toBeVisible();
-  await expect(card.getByText(new RegExp(first))).toBeVisible();
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(card).toHaveCount(0);
+  // Approvals is a table: the letter's row names the joiner; it opens, and Approve completes it.
+  const request = admin.getByRole('row', { name: new RegExp(`Appointment letter.*${first}`) }).first();
+  await expect(request).toBeVisible({ timeout: 30_000 });
+  await request.click();
+  const open = admin.getByRole('dialog', { name: new RegExp(`Appointment letter.*${first}`) });
+  await open.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(admin.getByRole('row', { name: new RegExp(`Appointment letter.*${first}`) })).toHaveCount(0, { timeout: 30_000 });
 
   // Issued: in the register with its reference, and the checklist task closed by itself.
   await expect(async () => {
@@ -79,8 +81,7 @@ test('HR issues the appointment letter → the System Admin approves → issued 
   await hr.getByRole('menuitem', { name: 'Copy verification link' }).click();
   const checkHref = await hr.evaluate(() => navigator.clipboard.readText());
   const check = await (await browser.newContext()).newPage();
-  await check.goto(checkHref!);
-  await check.getByRole('button', { name: 'Check' }).click();
+  await check.goto(checkHref!); // the public check page checks the code in its address at once
   await expect(check.getByText(/Appointment letter/)).toBeVisible();
   await expect(check.getByText(/current|valid/i).first()).toBeVisible();
   await expect(async () => {

@@ -80,7 +80,9 @@ test('a fresh employee → End of contract today → clearance and the payroll h
   await divya.getByRole('combobox', { name: 'Purpose' }).click();
   await divya.getByRole('option', { name: 'Home loan' }).click();
   await divya.getByRole('button', { name: 'Generate certificate' }).click();
-  await expect(divya.getByText(/^Employment certificate ready · /)).toBeVisible({ timeout: 30_000 });
+  // Made at once with its own reference and a verification code; a toast says it is ready.
+  await expect(divya.getByRole('status').filter({ hasText: /^Employment certificate · [A-Z]+\/EMPL\/\d{4}\/\d{6}/ })).toContainText(/Verification code [A-Z0-9]+/, { timeout: 30_000 });
+  await expect(divya.getByText('Employment certificate ready').first()).toBeVisible();
   // The old My letters address opens the same page (PPL-30).
   await divya.goto('/yx/me/letters');
   await expect(divya).toHaveURL(/\/yx\/me\/documents$/);

@@ -26,51 +26,60 @@ test('feedback → 1:1 with a private note → HR seals a concern', async ({ bro
   await mu.goto('/yx/performance/feedback');
   await mu.getByRole('button', { name: 'Give feedback' }).click();
   const sheet = mu.getByRole('dialog');
-  await expect(sheet.getByRole('link', { name: 'Report a concern instead' })).toBeVisible();
-  await sheet.getByRole('combobox', { name: 'For' }).click();
+  await expect(sheet.getByRole('link', { name: 'Report a concern' })).toBeVisible();
+  await sheet.getByRole('combobox', { name: /^To/ }).click();
+  await mu.keyboard.type('Kavya');
   await mu.getByRole('option', { name: /Kavya/ }).first().click();
   await sheet.getByRole('textbox', { name: /^Feedback/ }).fill(praise);
   await sheet.getByRole('button', { name: 'Send feedback' }).click();
   await expect(sheet).toHaveCount(0, { timeout: 30_000 });
-  await mu.getByRole('radio', { name: 'Given' }).click();
+  await mu.getByRole('tab', { name: /^Given/ }).click();
   await expect(mu.getByText(praise)).toBeVisible({ timeout: 30_000 });
 
   const kv = await signedIn(browser, 'kavya@demo-org.test', PASSWORD);
   await kv.goto('/yx/performance/feedback');
   await expect(kv.getByText(praise)).toBeVisible({ timeout: 30_000 });
   await kv.goto('/yx/performance/one-on-ones');
-  await kv.getByRole('button', { name: 'Plan a 1:1' }).click();
-  const plan = kv.getByRole('dialog');
-  await plan.getByRole('combobox', { name: 'With' }).click();
+  await kv.getByRole('button', { name: 'Schedule 1:1' }).first().click();
+  const plan = kv.getByRole('dialog', { name: 'Schedule 1:1' });
+  await plan.getByRole('combobox', { name: /^With/ }).click();
   await kv.getByRole('option', { name: /Murugan/ }).first().click();
-  await plan.getByRole('textbox', { name: '1:1 date' }).fill(shown(day(3)));
-  await plan.getByRole('textbox', { name: '1:1 date' }).press('Enter');
-  await plan.getByRole('button', { name: 'Plan', exact: true }).click();
+  await plan.getByRole('textbox', { name: /First 1:1 on/ }).fill(shown(day(3)));
+  await plan.getByRole('textbox', { name: /First 1:1 on/ }).press('Enter');
+  await plan.getByRole('button', { name: 'Schedule 1:1' }).click();
   await kv.waitForURL(/\/yx\/performance\/one-on-ones\/[0-9a-f-]+$/, { timeout: 30_000 });
   const meetingUrl = kv.url();
-  await kv.getByRole('textbox', { name: 'Add to the agenda' }).fill(`Line audit ${tag}`);
-  await kv.getByRole('button', { name: 'Add', exact: true }).click();
-  await expect(kv.getByText(`Line audit ${tag}`)).toBeVisible({ timeout: 30_000 });
+  const meeting = (p: import('@playwright/test').Page) => p.getByRole('dialog', { name: /^1:1 with / });
+  await meeting(kv).getByRole('textbox', { name: 'Add an agenda item' }).fill(`Line audit ${tag}`);
+  await meeting(kv).getByRole('button', { name: 'Add item' }).click();
+  await expect(meeting(kv).getByText(`Line audit ${tag}`)).toBeVisible({ timeout: 30_000 });
 
+  // Murugan sees the shared agenda; his private note saves when he leaves the box and stays his alone.
   await mu.goto(meetingUrl);
-  await expect(mu.getByText(`Line audit ${tag}`)).toBeVisible({ timeout: 30_000 });
-  await mu.getByRole('textbox', { name: /Only you/ }).fill(`Ask about the course ${tag}`);
-  await mu.getByRole('button', { name: 'Save my note' }).click();
-  await expect(mu.getByRole('button', { name: 'Save my note' })).toBeDisabled({ timeout: 30_000 });
+  await expect(meeting(mu).getByText(`Line audit ${tag}`)).toBeVisible({ timeout: 30_000 });
+  await meeting(mu).getByRole('textbox', { name: 'My private notes' }).fill(`Ask about the course ${tag}`);
+  await meeting(mu).getByRole('textbox', { name: 'My private notes' }).press('Tab');
+  await expect(async () => {
+    await mu.reload();
+    await expect(meeting(mu).getByRole('textbox', { name: 'My private notes' })).toHaveValue(`Ask about the course ${tag}`, { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
   await kv.reload();
-  await expect(kv.getByText(`Line audit ${tag}`)).toBeVisible({ timeout: 30_000 });
-  await expect(kv.getByRole('textbox', { name: /Only you/ })).toHaveValue('');
+  await expect(meeting(kv).getByText(`Line audit ${tag}`)).toBeVisible({ timeout: 30_000 });
+  await expect(meeting(kv).getByRole('textbox', { name: 'My private notes' })).toHaveValue('');
 
+  // HR who handle concerns read Kavya's feedback (given and received) and seal the praise.
   const admin = await signedIn(browser, 'admin@demo-org.test', 'DevAdmin123!');
   await admin.goto('/yx/performance/feedback');
-  await admin.getByRole('radio', { name: 'Concerns' }).click();
+  await admin.getByRole('tab', { name: 'Concerns' }).click();
   await admin.getByRole('combobox', { name: 'Employee' }).click();
+  await admin.keyboard.type('Kavya');
   await admin.getByRole('option', { name: /Kavya/ }).first().click();
-  const row = admin.getByRole('row').filter({ hasText: praise });
-  await row.getByRole('button', { name: 'Seal' }).click();
-  const seal = admin.getByRole('dialog');
+  const item = admin.getByRole('tabpanel', { name: 'Concerns' }).getByRole('listitem').filter({ hasText: praise });
+  await item.getByRole('button', { name: 'Seal' }).click();
+  const seal = admin.getByRole('dialog', { name: /^Seal feedback from Murugan Selvam to Kavya Reddy\?$/ });
+  await expect(seal).toContainText('The two people see that HR removed it.');
   await seal.getByRole('textbox', { name: /Reason/ }).fill('Passed to the confidential channel');
-  await seal.getByRole('button', { name: 'Seal', exact: true }).click();
+  await seal.getByRole('button', { name: 'Seal feedback' }).click();
   await expect(seal).toHaveCount(0, { timeout: 30_000 });
 
   await kv.goto('/yx/performance/feedback');
@@ -86,8 +95,9 @@ test('on a phone, feedback can be given and the concern link is there', async ({
   await page.goto('/yx/performance/feedback');
   await page.getByRole('button', { name: 'Give feedback' }).click();
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByRole('link', { name: 'Report a concern instead' })).toHaveAttribute('href', '/yx/desk/help');
-  await sheet.getByRole('combobox', { name: 'For' }).click();
+  await expect(sheet.getByRole('link', { name: 'Report a concern' })).toHaveAttribute('href', '/yx/desk/help');
+  await sheet.getByRole('combobox', { name: /^To/ }).click();
+  await page.keyboard.type('Murugan');
   await page.getByRole('option', { name: /Murugan/ }).first().click();
   const text = `Clear shift hand-over ${Date.now().toString(36)}`;
   await sheet.getByRole('textbox', { name: /^Feedback/ }).fill(text);
