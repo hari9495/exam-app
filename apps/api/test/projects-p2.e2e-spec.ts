@@ -280,5 +280,18 @@ describe('Projects P-2 line approvals', () => {
     // Once sent, the week leaves both lists.
     await api('peer', 'post', '/time/me/timesheet/submit').send({ week: addDays(week, -14) }).expect(want(200));
     expect(((await api('peer', 'get', '/time/me/timesheet/not-sent').expect(200)).body.weeks as { week: string }[]).some((w) => w.week === addDays(week, -14))).toBe(false);
+
+    // The person's own working days count, not Monday to Friday: three weeks ago Monday to Friday are all holidays.
+    const w3 = addDays(week, -21);
+    await inA(async (tx) => {
+      const cal = await tx.holidayCalendar.create({ data: { organizationId: org.A.id, name: `Chennai ${run}`, locationId: ids.loc! } });
+      for (let k = 0; k < 5; k++) await tx.holiday.create({ data: { organizationId: org.A.id, calendarId: cal.id, holidayOn: day(addDays(w3, k)), name: `Festival ${k + 1}` } });
+    });
+    const has = async () => ((await api('peer', 'get', '/time/me/timesheet/not-sent').expect(200)).body.weeks as { week: string }[]).some((w) => w.week === w3);
+    // A six-day week (only Sunday off, the location's rule): Saturday is a working day, so the week is still owed.
+    expect(await has()).toBe(true);
+    // A five-day week (Saturday and Sunday off): nothing was due that week, so it is not listed.
+    await inA((tx) => tx.locationAttendanceRule.create({ data: { organizationId: org.A.id, locationId: ids.loc!, validFrom: day(addDays(week, -90)), shiftStart: 570, shiftEnd: 1110, weeklyOffs: [{ weekday: 6 }, { weekday: 7 }] } }));
+    expect(await has()).toBe(false);
   });
 });

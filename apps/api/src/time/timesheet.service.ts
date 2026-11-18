@@ -8,7 +8,7 @@ import type { ScopeUser } from '../access/scope';
 import { ApprovalsEngine, Notice } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
 import { TimesheetLineDto } from './dto';
-import { lockedDates } from './schedule';
+import { ScheduleBook, lockedDates } from './schedule';
 import { TimeSetupService } from './setup.service';
 import { LineApprovalsService } from './line-approvals.service';
 import { DAY_NAMES, dayCommentProblems, lineApproved, sevenComments } from './line-rules';
@@ -113,10 +113,11 @@ export class TimesheetService implements OnModuleInit {
   /**
    * Answer 2534: a person's past weeks (ended before this week) that were never sent: none saved, a draft, or sent back.
    * A week counts when the person was employed, was on a timesheet (attendance mode 'timesheet') or allocated to a project
-   * that week (`projectIds`: only those projects, the manager's view), and had at least one working day Monday to Friday
-   * that was not a holiday or full-day leave. A week whose days are all in locked months is shown read-only.
+   * that week (`projectIds`: only those projects, the manager's view), and had at least one of their own working days
+   * (their shift pattern, roster or location weekly offs, as the day engine works them out) that was not a holiday or
+   * full-day leave. `book` lets a caller share one schedule load across people. A week whose days are all in locked months is shown read-only.
    */
-  async notSentOf(tx: Tx, c: CompanyContext, employeeId: string, weeks: number, projectIds?: string[]): Promise<NotSentWeek[]> {
+  async notSentOf(tx: Tx, c: CompanyContext, employeeId: string, weeks: number, projectIds?: string[], book?: ScheduleBook): Promise<NotSentWeek[]> {
     const org = c.organizationId;
     const last = addDays(mondayOf(todayIst()), -7);
     const first = addDays(last, -7 * (weeks - 1));
@@ -129,6 +130,8 @@ export class TimesheetService implements OnModuleInit {
     const hol = (await holidaysFor(tx, org, now.locationId, first, end, employeeId)).map;
     const leave = await leaveDays(tx, org, employeeId, first, end);
     const locked = await lockedDates(tx, org, employeeId, first, end);
+    const days = book ?? (await ScheduleBook.load(tx, org));
+    await days.prime([employeeId], first, end);
     const out: NotSentWeek[] = [];
     for (let w = last; w >= first; w = addDays(w, -7)) {
       const s = sheets.find((x) => dateOf(x.weekStart) === w);
@@ -137,8 +140,14 @@ export class TimesheetService implements OnModuleInit {
       if (!f) continue; // not employed that week (before joining or after leaving)
       const allocated = allocs.some((a) => dateOf(a.fromOn) <= addDays(w, 6) && (!a.toOn || dateOf(a.toOn) >= w));
       if (!allocated && (projectIds || (await settingOn(tx, c, 'attendance.mode', f, w)) !== 'timesheet')) continue;
-      const working = [0, 1, 2, 3, 4].map((k) => addDays(w, k)).filter((d) => !hol.has(d) && leave.get(d) !== 'full');
-      if (!working.length) continue;
+      let working = 0;
+      for (let k = 0; k < 7; k++) {
+        const d = addDays(w, k);
+        if (hol.has(d) || leave.get(d) === 'full') continue;
+        const ff = (await factsOn(tx, org, employeeId, d)) ?? f;
+        if (!(await days.day(ff, d)).weeklyOff) working++;
+      }
+      if (!working) continue;
       out.push({ week: w, status: !s ? 'not_started' : s.status === 'rejected' ? 'sent_back' : 'draft', totalMinutes: s?.totalMinutes ?? 0, locked: [0, 1, 2, 3, 4, 5, 6].every((k) => locked.has(addDays(w, k))) });
     }
     return out;
@@ -158,10 +167,11 @@ export class TimesheetService implements OnModuleInit {
     const allocs = await tx.projectAllocation.findMany({ where: { organizationId: org, tentative: false, projectId: { in: mine.map((p) => p.id) }, OR: [{ toOn: null }, { toOn: { gte: asDate(first) } }] }, select: { employeeId: true, projectId: true } });
     const me = await tx.employee.findFirst({ where: { organizationId: org, userId }, select: { id: true } });
     const people = [...new Set(allocs.map((a) => a.employeeId))].filter((e) => e !== me?.id);
+    const book = await ScheduleBook.load(tx, org);
     const out = [];
     for (const employeeId of people) {
       const projectIds = [...new Set(allocs.filter((a) => a.employeeId === employeeId).map((a) => a.projectId))];
-      const weeks = await this.notSentOf(tx, c, employeeId, NOT_SENT_WEEKS, projectIds);
+      const weeks = await this.notSentOf(tx, c, employeeId, NOT_SENT_WEEKS, projectIds, book);
       if (!weeks.length) continue;
       const f = await factsOn(tx, org, employeeId, todayIst());
       const e = f ? null : await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { givenName: true, familyName: true, preferredName: true } });
