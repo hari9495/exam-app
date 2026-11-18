@@ -119,6 +119,7 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
     ['/v2/sms-templates', '/yx/settings/hiring'],
     ['/v2/whatsapp-templates', '/yx/settings/hiring'],
     ['/message-templates', '/yx/settings/hiring'],
+    ['/v2/settings/business-hours', '/yx/settings/hiring'],
     ['/dashboard', '/yx/hiring/dashboard'],
     ['/analytics/hiring', '/yx/hiring/dashboard'],
     ['/v2/panel/reports', '/yx/hiring/assessments/results'],

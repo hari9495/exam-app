@@ -27296,5 +27296,29 @@
                               "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · message template, view only"
                     ],
                     "note": "Positive and negative (kit stage-message-sheet.test.tsx and hiring-live.test.tsx; web yx-settings-hiring.test.tsx; API retire-v2-settings.e2e-spec.ts). The three template APIs now refuse another company's stage (400) and any change while acting for someone else (403), and audit before and after."
+          },
+          {
+                    "id": "MT-V2-HIRE-HOURS",
+                    "area": "Retire /v2: interview hours on Settings 6.1 Hiring (answers 2423 and 2510, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test; a recruiter with a candidate on an open job; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Candidates may book interviews from', 'until' and 'Days candidates may book interviews'.",
+                              "Set 'until' to 08:00 (before the start) and press Save changes.",
+                              "Type 09:15 in 'from' and save.",
+                              "Clear every day and save.",
+                              "Set from 10:00, until 13:00, days Monday and Saturday, and save.",
+                              "In Time › Holidays, check the published calendar for the job's location (or the company-wide one) has a holiday next week; add a national holiday on a coming Monday if not.",
+                              "As the recruiter: on the job board, schedule an interview for a candidate with 'Let the candidate pick a slot' for the next two weeks. Open the link from Mailpit.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/business-hours.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: 09:30, 6:30 pm and Monday to Friday, marked as the starter values; no page scroll at 1278 x 635. Step 2: an error under 'until' and nothing saved. Step 3: refused with 'Choose a time on the hour or half hour, like 09:30.' Step 4: refused, 'Choose at least one day for interviews.' Step 5: a 5-second toast 'Hiring settings saved'. Step 7: only Monday and Saturday slots between 10:00 and 13:00 (India time), and none on the holiday. Step 8: one entry per change with before and after. Step 9: Settings › Hiring. Step 10: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring"
+                    ],
+                    "note": "Positive and negative (kit hiring-live.test.tsx; API interview-hours.spec.ts and retire-v2-settings.e2e-spec.ts). Old /v2 hours are copied by migration 202617z0000541. Holidays only in the old /v2 list are listed by apps/api/scripts/v2-holiday-compare.ts (none on the local databases) and never added to a calendar automatically."
           }
 ]

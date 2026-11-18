@@ -84,4 +84,27 @@ describe('Retired /v2 settings in YukthiX Settings', () => {
       expect(await at('A', (tx) => tx.candidateEmailTemplate.count({ where: { triggerStageId: stage.B } }))).toBe(0);
     });
   });
+
+  // Answers 2423 and 2510: interview hours for self-booking on 6.1 Hiring.
+  describe('6.1 interview hours (2423, 2510)', () => {
+    it('defaults 09:30 to 18:30, Monday to Friday; the admin changes them (audited); the other company keeps its own', async () => {
+      expect((await call('adminA', 'get', '/hiring/settings').expect(200)).body.values).toMatchObject({ 'hiring.interview_hours.from': '09:30', 'hiring.interview_hours.to': '18:30', 'hiring.interview_hours.days': 'mon,tue,wed,thu,fri' });
+      const after = (await call('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.interview_hours.from', value: '10:00' }, { key: 'hiring.interview_hours.days', value: 'mon,tue,wed,thu,fri,sat' }] }).expect(200)).body;
+      expect(after.values).toMatchObject({ 'hiring.interview_hours.from': '10:00', 'hiring.interview_hours.to': '18:30', 'hiring.interview_hours.days': 'mon,tue,wed,thu,fri,sat' });
+      const logged = await at('A', (tx) => tx.auditLog.findMany({ where: { organizationId: org.A! } }));
+      expect(logged.map((l) => l.metadataJson ?? '').join(' ')).toContain('hiring.interview_hours.from');
+      expect((await call('adminB', 'get', '/hiring/settings').expect(200)).body.values['hiring.interview_hours.from']).toBe('09:30');
+    });
+
+    it('negative: an end before the start (even against the stored start), an odd minute, no day, a bad day, no key, acting', async () => {
+      await call('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.interview_hours.to', value: '09:30' }] }).expect(400);
+      const odd = await call('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.interview_hours.from', value: '09:15' }] }).expect(400);
+      expect(odd.body.message).toBe('Choose a time on the hour or half hour, like 09:30.');
+      await call('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.interview_hours.days', value: '' }] }).expect(400);
+      await call('adminA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.interview_hours.days', value: 'mon,funday' }] }).expect(400);
+      await call('plainA', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.interview_hours.from', value: '08:00' }] }).expect(403);
+      await call('acting', 'put', '/hiring/settings').send({ changes: [{ key: 'hiring.interview_hours.from', value: '08:00' }] }).expect(403);
+      expect((await call('adminA', 'get', '/hiring/settings').expect(200)).body.values).toMatchObject({ 'hiring.interview_hours.from': '10:00', 'hiring.interview_hours.to': '18:30' });
+    });
+  });
 });

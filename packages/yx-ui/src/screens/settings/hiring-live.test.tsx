@@ -33,6 +33,9 @@ const DEFAULTS = {
   'hiring.bgv.decider_other_person': 'on',
   'hiring.record_visibility': 'off',
   'hiring.reminders': 'off',
+  'hiring.interview_hours.from': '09:30',
+  'hiring.interview_hours.to': '18:30',
+  'hiring.interview_hours.days': 'mon,tue,wed,thu,fri',
 };
 const DATA: HiringSettingsData = {
   canEdit: true,
@@ -322,5 +325,29 @@ describe('Settings 6.1 Hiring (live)', () => {
     });
     expect(field(hiringSettingsPage(design, DATA))).toBeUndefined();
     expect(hiringSettingsChanges({}, { 'hire.stage_messages': [['x', 'Email', 'No stage', 'Sent by hand']] }, data)).toEqual([]);
+  });
+  it('answers 2423 and 2510: interview hours (09:30 to 18:30, Monday to Friday by default) save as company settings', () => {
+    const page = hiringSettingsPage(design, DATA);
+    const field = (k: string) => page.sections.flatMap((x) => x.settings).find((d) => d.key === k)!;
+    expect(field('hire.interview_from')).toMatchObject({ kind: 'time', value: '09:30', starter: true });
+    expect(field('hire.interview_to')).toMatchObject({ kind: 'time', value: '18:30', after: 'hire.interview_from' });
+    expect(field('hire.interview_days')).toMatchObject({ kind: 'multiselect', value: ['mon', 'tue', 'wed', 'thu', 'fri'], starter: true });
+    expect(hiringSettingsChanges({ 'hire.interview_from': '10:00', 'hire.interview_days': ['sat', 'mon'] }, {}, DATA)).toEqual([
+      { key: 'hiring.interview_hours.from', value: '10:00' },
+      { key: 'hiring.interview_hours.days', value: 'mon,sat' },
+    ]);
+    const changed = hiringSettingsPage(design, { ...DATA, values: { ...DATA.values, 'hiring.interview_hours.days': 'mon,sat' } });
+    expect(changed.sections.flatMap((x) => x.settings).find((d) => d.key === 'hire.interview_days')).toMatchObject({ value: ['mon', 'sat'], starter: false });
+  });
+
+  it('answer 2510: an end time before the start is refused on the page, before anything is saved', async () => {
+    const onSave = vi.fn();
+    render(<ToastProvider><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" live={{ page: hiringSettingsPage(design, DATA), canEdit: true, state: 'ready', onSave, savedTitle: 'Hiring settings saved' } as LiveSettingsPage} /></ToastProvider>);
+    const to = screen.getByLabelText(/^Candidates may book interviews until/);
+    await ue.clear(to);
+    await ue.type(to, '08:00');
+    await ue.tab();
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

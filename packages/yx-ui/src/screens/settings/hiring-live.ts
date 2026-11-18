@@ -68,6 +68,10 @@ const KEY = {
   // Answer 2427: kept on the organisation row, changed through this page.
   'hire.record_visibility': 'hiring.record_visibility',
   'hire.reminders': 'hiring.reminders',
+  // Answers 2423 and 2510: interview hours for self-booking.
+  'hire.interview_from': 'hiring.interview_hours.from',
+  'hire.interview_to': 'hiring.interview_hours.to',
+  'hire.interview_days': 'hiring.interview_hours.days',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -86,6 +90,7 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.record_visibility': ['on', 'off'],
   'hire.reminders': ['on', 'off'],
 };
+const WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const BASIS: Record<string, string> = { full: 'All of it', pro_rata: 'The part for the months not served' };
 const BONUS = 'ats.referral.bonus_inr';
 const DAYS = 'ats.referral.qualify_days';
@@ -216,6 +221,15 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
         const warning = stale ? `${stale.name} can no longer see offer pay or has left, so offers above the range go to the company admins instead. Choose someone else.` : undefined;
         return { ...base, kind: 'select', options, optionLabels: { hr_head: 'HR head', hiring_manager: 'Hiring manager', ...Object.fromEntries(approvers.map((p) => [p.value, p.label])), ...(stale ? { [stale.id]: `${stale.name} (cannot approve)` } : {}) }, value, warning, starter: value === data.defaults[k] && !warning };
       }
+      case 'hire.interview_from':
+      case 'hire.interview_to': {
+        const k = KEY[d.key];
+        return { ...base, value: v[k] ?? data.defaults[k]!, starter: v[k] === data.defaults[k] };
+      }
+      case 'hire.interview_days': {
+        const k = KEY[d.key];
+        return { ...base, value: (v[k] ?? data.defaults[k] ?? '').split(',').filter(Boolean), starter: v[k] === data.defaults[k] };
+      }
       case 'hire.offer_expiry': {
         // Answer 404: one expiry for single and bulk offers.
         const k = KEY[d.key];
@@ -262,7 +276,9 @@ export function hiringSettingsChanges(values: Record<string, SettingValue>, rows
     if (!key) continue;
     const toggle = TOGGLE[field as keyof typeof KEY];
     const empty = field === 'hire.clawback_basis' ? 'full' : field === 'hire.band_approver' ? 'hr_head' : 'none';
-    out.push({ key, value: toggle ? toggle[value === true ? 0 : 1] : String(value ?? empty) });
+    // Answer 2510: the interview days in week order, as a comma list.
+    if (Array.isArray(value)) out.push({ key, value: WEEK.filter((w) => value.includes(w)).join(',') });
+    else out.push({ key, value: toggle ? toggle[value === true ? 0 : 1] : String(value ?? empty) });
   }
   // HIR-09 answer 337: each offer letter whose e-sign switch changed ('offer_template.esign' = '<id>:on|off').
   const chosen = values['hire.offer_esign'];

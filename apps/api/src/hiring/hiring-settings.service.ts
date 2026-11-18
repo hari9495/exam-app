@@ -10,6 +10,7 @@ import { assertDefaultRecruiter, isRecruiter, recruiterKeyHolders } from './recr
 import { todayIst } from '../org-structure/org-validation';
 import { holdersOf } from '../time/time-core';
 import { biasLaw, coveredPlace } from './bias-audit';
+import { interviewHours } from '../interviews/interview-hours';
 
 /** Answer 332: the band approver may be a named person who holds the offer-pay key (they decide on pay). */
 const OFFER_PAY_KEY = 'ats.offer.compensation.view';
@@ -49,6 +50,10 @@ export const HIRING_SETTING_KEYS = [
   // HIR-27: the interview day's slot length and how Auto-assign fills it.
   'hiring.interview_day.slot_minutes',
   'hiring.interview_day.assign',
+  // Answers 2423 and 2510: the hours a candidate may book an interview themselves.
+  'hiring.interview_hours.from',
+  'hiring.interview_hours.to',
+  'hiring.interview_hours.days',
   // HIR-13 (founder decision 6): who can apply for internal jobs, and when the current manager is told.
   'hiring.internal.after_probation',
   'hiring.internal.months_in_role',
@@ -223,7 +228,18 @@ export class HiringSettingsService {
       if (seen.has(ch.key)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is in the list twice.`);
       seen.add(ch.key);
       const def = SETTINGS[ch.key]!;
-      if (!def.oneOf && !def.values.includes(ch.value)) throw new BadRequestException(`${def.label} is one of: ${def.values.join(', ')}`);
+      if ((ch.key === 'hiring.interview_hours.from' || ch.key === 'hiring.interview_hours.to') && !def.values.includes(ch.value)) throw new BadRequestException('Choose a time on the hour or half hour, like 09:30.');
+      const parts = def.multi ? (ch.value ? ch.value.split(',') : []) : [ch.value];
+      if (!def.oneOf && (!parts.every((p) => def.values.includes(p)) || new Set(parts).size !== parts.length)) throw new BadRequestException(`${def.label} is ${def.multi ? 'any of' : 'one of'}: ${def.values.join(', ')}`);
+    }
+    // Answer 2510: interview hours end after they start, on at least one day (checked against the stored value too).
+    if (changes.some((ch) => ch.key.startsWith('hiring.interview_hours.'))) {
+      const now = await inCompany(this.tenantPrisma, ctx, (tx, c) => interviewHours(tx, c.organizationId));
+      const get = (k: string, d: string) => changes.find((ch) => ch.key === k)?.value ?? d;
+      const from = get('hiring.interview_hours.from', now.from);
+      const to = get('hiring.interview_hours.to', now.to);
+      if (!(from < to)) throw new BadRequestException('Interview hours must end after they start. Choose a later end time.');
+      if (!get('hiring.interview_hours.days', now.days.join(','))) throw new BadRequestException('Choose at least one day for interviews.');
     }
     // Answer 348 (checked again by each company setting write): before anything is written, so a bad choice saves nothing.
     const recruiter = changes.find((ch) => ch.key === 'hiring.requisition.default_recruiter');

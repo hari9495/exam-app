@@ -377,6 +377,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // slots first across every panel, as drawn; by_panel: one panel's slots before the next panel's).
   'hiring.interview_day.slot_minutes': { label: 'Hiring: each interview on an interview day lasts (minutes)', scopes: ['tenant'], dated: false, values: ['30', '45', '60', '90'], default: '45' },
   'hiring.interview_day.assign': { label: 'Hiring: Auto-assign on an interview day fills', scopes: ['tenant'], dated: false, values: ['by_slot', 'by_panel'], default: 'by_slot' },
+  // Answers 2423 and 2510 (retiring /v2 Business hours): the hours and days a candidate may book an interview themselves,
+  // in India time; holidays come from the company's holiday calendars (the job's location, else the company-wide one).
+  'hiring.interview_hours.from': { label: 'Hiring: candidates may book interviews from', scopes: ['tenant'], dated: false, values: DAY_HOURS, default: '09:30' },
+  'hiring.interview_hours.to': { label: 'Hiring: candidates may book interviews until', scopes: ['tenant'], dated: false, values: DAY_HOURS, default: '18:30' },
+  'hiring.interview_hours.days': { label: 'Hiring: days candidates may book interviews', scopes: ['tenant'], dated: false, values: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], multi: true, default: 'mon,tue,wed,thu,fri' },
   // Staffing desk (slice 1; Settings 6.2). Off by default: the staffing area shows only to a company that turns it on.
   'staffing.desk.enabled': { label: 'Staffing desk: place people with client companies', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // Projects P-1 (answers 1401, 1404, 1405): the Projects menu, who may book time, and the burn alerts.
