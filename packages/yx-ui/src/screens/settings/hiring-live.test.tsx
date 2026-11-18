@@ -303,4 +303,24 @@ describe('Settings 6.1 Hiring (live)', () => {
     expect(hiringSettingsChanges({ 'hire.offer_esign': ['t2'] }, {}, data)).toEqual([]);
     expect(hiringSettingsPage(design, { ...data, offerLetters: [] }).sections.flatMap((x) => x.settings).some((d) => d.key === 'hire.offer_esign')).toBe(false);
   });
+  it('answer 2434: stage message templates list every channel with its stage; absent when the lists were not read', () => {
+    const data: HiringSettingsData = {
+      ...DATA,
+      messages: [
+        { channel: 'email', id: null, name: 'Application received', triggerStageId: 's1', triggerMode: 'manual', subject: 'Thanks', body: 'Hi', enabled: true, isDefault: true },
+        { channel: 'whatsapp', id: 'w1', name: 'Reminder', triggerStageId: null, triggerMode: 'manual', body: 'Hi', enabled: false, isDefault: false },
+      ],
+    };
+    const field = (p: ReturnType<typeof hiringSettingsPage>) => p.sections.flatMap((x) => x.settings).find((d) => d.key === 'hire.stage_messages');
+    expect(field(hiringSettingsPage(design, data))).toMatchObject({
+      kind: 'list',
+      readOnlyList: true,
+      rows: [
+        ['Application received', 'Email', 'Applied', 'Sent by hand · Standard wording'],
+        ['Reminder', 'WhatsApp', 'No stage', 'Sent by hand · Off'],
+      ],
+    });
+    expect(field(hiringSettingsPage(design, DATA))).toBeUndefined();
+    expect(hiringSettingsChanges({}, { 'hire.stage_messages': [['x', 'Email', 'No stage', 'Sent by hand']] }, data)).toEqual([]);
+  });
 });

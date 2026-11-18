@@ -27268,5 +27268,33 @@
                               "Screens/Settings/Group 6 · Hiring & Assessments › Hiring"
                     ],
                     "note": "Positive and negative (kit hiring-live.test.tsx; API hiring-dashboard.e2e-spec.ts). The values stay on the company row (record-visibility RLS and the reminder sweep read them there)."
+          },
+          {
+                    "id": "MT-V2-HIRE-MESSAGES",
+                    "area": "Retire /v2: stage message templates on Settings 6.1 Hiring (answer 2434, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test (holds the pipeline key); employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Stage message templates'.",
+                              "Press Edit on 'Application received' (Email, standard wording). Change the message and press Save template.",
+                              "Press Add message template. Choose SMS, leave the name empty and press Save template.",
+                              "Enter a name 'Interview call', choose the Interview stage, choose 'Ask before sending', enter a message and save.",
+                              "Paste a message longer than 1600 characters into an SMS template and save.",
+                              "Edit 'Application received' again: choose 'Send automatically' and save. On a job board, move a candidate to Applied (or add one).",
+                              "Open the 'Interview call' template and press Delete template, then confirm.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/message-templates, /v2/sms-templates and /v2/whatsapp-templates.",
+                              "Start acting as another person (Support › Act as) and open Settings › Hiring.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: a list with each template, how it is sent (Email, SMS, WhatsApp), its stage and when it is sent; no page scroll at 1278 x 635. Step 2: 5-second toast 'Message template saved'; the row no longer says Standard wording. Step 3: nothing saved, 'Enter the name.' under Name and the cursor is in Name; the button is never greyed out. Step 4: saved with a toast; the row shows SMS, Interview, Ask before sending. Step 5: 'Keep it to 1600 characters.', nothing saved. Step 6: the email arrives in Mailpit (http://localhost:8025) and shows in the candidate's messages. Step 7: a toast 'Message template deleted'; for a stage with standard wording, the standard wording comes back. Step 8: one entry per save with before and after. Step 9: Settings › Hiring. Step 10: the list shows, but no Add or Edit. Step 11: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · add message template",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · edit message template",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · standard message (saved as your copy)",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · message template, view only"
+                    ],
+                    "note": "Positive and negative (kit stage-message-sheet.test.tsx and hiring-live.test.tsx; web yx-settings-hiring.test.tsx; API retire-v2-settings.e2e-spec.ts). The three template APIs now refuse another company's stage (400) and any change while acting for someone else (403), and audit before and after."
           }
 ]

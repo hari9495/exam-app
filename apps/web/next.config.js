@@ -63,6 +63,10 @@ const nextConfig = {
       // Answer 2427: record visibility and the daily reminders are switches on Settings 6.1 Hiring.
       '/v2/settings/record-visibility': '/yx/settings/hiring',
       '/v2/settings/reminders': '/yx/settings/hiring',
+      // Answer 2434: email, SMS and WhatsApp stage messages are the Stage message templates on Settings 6.1 Hiring.
+      '/v2/message-templates': '/yx/settings/hiring',
+      '/v2/sms-templates': '/yx/settings/hiring',
+      '/v2/whatsapp-templates': '/yx/settings/hiring',
       // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
       '/v2/reports': '/yx/hiring/assessments/tests',
       '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',

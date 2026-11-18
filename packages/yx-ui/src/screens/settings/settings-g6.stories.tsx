@@ -4,6 +4,7 @@ import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { StageTargetsSheet } from '../hiring/job-settings';
 import { ScorecardTemplateSheet } from '../hiring/scorecard-template-sheet';
+import { StageMessageSheet, type StageMessageView } from '../hiring/stage-message-sheet';
 import { InvoiceSeriesSheet } from '../hiring/staffing-sheets';
 import type { ScorecardTemplateView } from '../hiring/live/types';
 import type { SettingsPageDef } from './settings-types';
@@ -65,6 +66,20 @@ export const P6_1_ScorecardEdit: S = { name: '6.1 Hiring · edit scorecard', ren
 export const P6_1_ScorecardNew: S = { name: '6.1 Hiring · add scorecard', render: () => sheet(null) };
 export const P6_1_ScorecardUsed: S = { name: '6.1 Hiring · used scorecard (saved as a copy)', render: () => sheet({ ...PLANT, inUse: true }) };
 export const P6_1_ScorecardView: S = { name: '6.1 Hiring · scorecard, view only', render: () => sheet(PLANT, false) };
+// Answer 2434 (retiring /v2): the email, SMS and WhatsApp templates recruiters send from the hiring screens.
+const STAGES = [{ value: 's1', label: 'Applied' }, { value: 's4', label: 'Interview' }, { value: 's6', label: 'Offer' }];
+const INVITE: StageMessageView = { channel: 'sms', id: 't1', name: 'Moving to interview', triggerStageId: 's4', triggerMode: 'prompt', body: 'Hi {{candidateName}}, we would like to move you forward to interview for {{jobTitle}}. - {{recruiterName}}', enabled: true, isDefault: false };
+const STANDARD: StageMessageView = { channel: 'email', id: null, name: 'Application received', triggerStageId: 's1', triggerMode: 'manual', subject: 'Thanks for applying to {{jobTitle}}', body: 'Hi {{candidateName}}, thanks for applying to {{jobTitle}} at {{orgName}}. We will be in touch. {{recruiterName}}', enabled: true, isDefault: true };
+const message = (template: StageMessageView | null, canEdit = true) => (
+  <>
+    <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" />
+    <StageMessageSheet open onOpenChange={() => {}} template={template} stages={STAGES} canEdit={canEdit} onSave={noop} onDelete={noop} />
+  </>
+);
+export const P6_1_MessageNew: S = { name: '6.1 Hiring · add message template', render: () => message(null) };
+export const P6_1_MessageEdit: S = { name: '6.1 Hiring · edit message template', render: () => message(INVITE) };
+export const P6_1_MessageStandard: S = { name: '6.1 Hiring · standard message (saved as your copy)', render: () => message(STANDARD) };
+export const P6_1_MessageView: S = { name: '6.1 Hiring · message template, view only', render: () => message(INVITE, false) };
 // Founder answer 348: the default recruiter must hold the recruiter key; one who no longer does reads as None, with a warning.
 const g6 = SETTINGS_GROUPS.find((g) => g.id === 6)!;
 const hiringPage = g6.pages.find((p) => p.id === '6.1')!;

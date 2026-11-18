@@ -748,6 +748,22 @@ const hiring: SettingsPageDef = {
           starter: true,
           synonyms: ['interview feedback', 'rating form'],
         },
+        // Answer 2434 (retiring /v2): the email, SMS and WhatsApp wording recruiters send from the hiring screens.
+        {
+          key: 'hire.stage_messages',
+          label: 'Stage message templates',
+          kind: 'list',
+          columns: ['Template', 'Sent by', 'Stage', 'Sending'],
+          rows: [
+            ['Application received', 'Email', 'Applied', 'Sent by hand · Standard wording'],
+            ['Moving to interview', 'SMS', 'Interview', 'Ask before sending'],
+            ['Interview reminder', 'WhatsApp', 'No stage', 'Sent by hand'],
+          ],
+          addLabel: 'Add message template',
+          helper: 'Recruiters pick these when they email, text or WhatsApp a candidate. One tied to a stage is offered, or sent, when a candidate moves to that stage.',
+          starter: true,
+          synonyms: ['message templates', 'email templates', 'sms templates', 'whatsapp templates', 'candidate messages'],
+        },
         // Founder answer 291: a hiring manager's request starts with this recruiter, or none; never the manager themselves.
         // Founder answer 348: only people who hold the recruiter key are offered.
         { key: 'hire.default_recruiter', label: 'Default recruiter for new requisitions', kind: 'select', value: 'None', options: ['None', 'Neha Joshi', 'Arjun Kulkarni'], helper: 'A hiring manager’s request starts with this recruiter. Only people with the recruiter key are listed. None: it waits until recruiting assigns one. It is never the manager themselves.', starter: true, scope: 'Company', synonyms: ['recruiter', 'requisition', 'request a hire'] },
