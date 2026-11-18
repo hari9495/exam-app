@@ -6,6 +6,7 @@ import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { MenuItem } from '../../components/menu';
@@ -202,6 +203,8 @@ export interface LiveProjectWorkspace {
   onAllocate: (input: AllocationInput) => Promise<void>;
   onChangeAllocation: (id: string, input: AllocationInput & { version: number }) => Promise<void>;
   onEndAllocation: (id: string, version: number) => Promise<void>;
+  /** Batch D B3 (answer 2537): the Team tab's hours range (this week by default). */
+  onHoursRange?: (range: 'week' | 'month' | 'all') => void;
   onAddTask: (input: TaskInput) => Promise<void>;
   onChangeTask: (id: string, input: TaskInput) => Promise<void>;
   onAddMilestone: (input: MilestoneInput) => Promise<void>;
@@ -273,6 +276,7 @@ const STATUS_MOVES: Record<ProjectStatus, { to: ProjectStatus; label: string; de
 export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPersona = 'pm', allocations: drawnAllocations = [], tasks: drawnTasks = [], milestones: drawnMilestones = [], wip = [], rateCard = [], expenses = [], activity = [], today = new Date(), defaultTab = 'overview', live }: ProjectWorkspaceProps) {
   const [drawer, setDrawer] = useState<{ kind: 'edit' | 'allocate' | 'task' | 'milestone'; id?: string } | null>(live?.defaultDrawer ? { kind: live.defaultDrawer } : null);
   const [confirm, setConfirm] = useState<{ title: string; consequence: string; label: string; destructive?: boolean; action: () => Promise<void> } | null>(null);
+  const [drawnRange, setDrawnRange] = useState<'week' | 'month' | 'all'>('week');
   const { toast } = useToast();
   const d = live?.detail ?? null;
   if (live && !d)
@@ -441,6 +445,9 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
             </div>
           </TabsContent>
           <TabsContent value="team">
+            <div className="yx-hire-stack">
+            {/* Batch D B3 (answer 2537): approved billable and non-billable hours and all hours booked, over a range. */}
+            <Segment label="Hours for" value={live ? (d?.hoursRange ?? 'week') : drawnRange} onChange={(v) => (live ? live.onHoursRange?.(v) : setDrawnRange(v))} options={[{ value: 'week', label: 'This week' }, { value: 'month', label: 'This month' }, { value: 'all', label: 'Since the start' }]} />
             <DataTable
               label="Allocations"
               rows={allocations}
@@ -450,7 +457,15 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
                 { key: 'pct', header: 'Allocation', type: 'number', value: (r) => r.percent, render: (r) => `${r.percent}% · ${Math.round((r.percent / 100) * 40)} h a week` },
                 { key: 'from', header: 'From', type: 'date', value: (r) => r.from },
                 ...(live ? [{ key: 'toLive', header: 'To', value: (r: Allocation) => (Number.isNaN(r.to.getTime()) ? 'Open' : formatDate(r.to)) } as TableColumn<Allocation>] : [{ key: 'to', header: 'To', type: 'date', value: (r: Allocation) => r.to } as TableColumn<Allocation>]),
-                ...(live ? [{ key: 'booked', header: 'Hours booked', type: 'number', value: (r: Allocation) => r.bookedThisWeek, total: 'sum' } as TableColumn<Allocation>] : []),
+                ...(allocations.some((a) => a.hours)
+                  ? ([
+                      { key: 'billable', header: 'Billable (approved)', type: 'number', value: (r: Allocation) => r.hours?.billable ?? 0, total: 'sum' },
+                      { key: 'nonBillable', header: 'Non-billable (approved)', type: 'number', value: (r: Allocation) => r.hours?.nonBillable ?? 0, total: 'sum' },
+                      { key: 'booked', header: 'Total booked', type: 'number', value: (r: Allocation) => r.hours?.booked ?? 0, total: 'sum' },
+                    ] as TableColumn<Allocation>[])
+                  : live
+                  ? [{ key: 'booked', header: 'Hours booked', type: 'number', value: (r: Allocation) => r.bookedThisWeek, total: 'sum' } as TableColumn<Allocation>]
+                  : []),
                 { key: 'tentative', header: 'Status', type: 'status', value: (r) => (r.tentative ? 'Tentative' : 'Confirmed'), statusTone: (v) => (v === 'Tentative' ? 'warning' : 'success') },
               ]}
               rowActions={
@@ -482,6 +497,7 @@ export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPe
               }
               empty={<EmptyState title="No one is allocated yet." description="Only allocated people can book time to this project." />}
             />
+            </div>
           </TabsContent>
           <TabsContent value="tasks">
             <div className="yx-hire-stack">

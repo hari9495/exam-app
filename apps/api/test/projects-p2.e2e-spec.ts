@@ -281,6 +281,20 @@ describe('Projects P-2 line approvals', () => {
     await api('peer', 'post', '/time/me/timesheet/submit').send({ week: addDays(week, -14) }).expect(want(200));
     expect(((await api('peer', 'get', '/time/me/timesheet/not-sent').expect(200)).body.weeks as { week: string }[]).some((w) => w.week === addDays(week, -14))).toBe(false);
 
+    // Batch D B3 (answer 2537): the Team tab's hours by range; a week sent and not decided is booked, never approved.
+    const hoursOf = async (range: string) => ((await api('pmA', 'get', `/projects/${ids.nrp}?range=${range}`).expect(200)).body.allocations as { employeeId: string; fromOn: string; hours: { billable: number; nonBillable: number; booked: number } }[]).find((a) => a.employeeId === ids.peerEmp && a.fromOn === addDays(week, -28))!.hours;
+    // Hours are per person on the project (peer's approved 2 h of this week, from the 1442 test, count too).
+    const all0 = await hoursOf('all');
+    const week0 = await hoursOf('week');
+    expect(all0.booked - week0.booked).toBe(4);
+    expect(all0.billable - week0.billable).toBe(0);
+    // Approved by the PM: it counts as approved billable (NRP lines are billable).
+    const pl = await inA(async (tx) => tx.timesheetLine.findFirstOrThrow({ where: { projectId: ids.nrp, timesheetId: (await tx.timesheet.findFirstOrThrow({ where: { employeeId: ids.peerEmp, weekStart: day(addDays(week, -14)) } })).id } }));
+    await decide('pmA', [{ lineId: pl.id, status: 'approved', version: pl.version }]).expect(want(200));
+    expect(await hoursOf('all')).toEqual({ billable: all0.billable + 4, nonBillable: all0.nonBillable, booked: all0.booked });
+    expect(await hoursOf('week')).toEqual(week0);
+    await api('pmA', 'get', `/projects/${ids.nrp}?range=year`).expect(400);
+
     // The person's own working days count, not Monday to Friday: three weeks ago Monday to Friday are all holidays.
     const w3 = addDays(week, -21);
     await inA(async (tx) => {

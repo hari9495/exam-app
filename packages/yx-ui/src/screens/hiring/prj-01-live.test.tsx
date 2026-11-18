@@ -135,6 +135,27 @@ describe('PRJ-01 Project workspace (live)', () => {
     expect(l.onStatus).toHaveBeenCalledWith('closed', 3);
   });
 
+  it('B3 (answer 2537): the Team tab shows approved billable and non-billable and total booked over a range; the range asks again', async () => {
+    const onHoursRange = vi.fn();
+    const detail = { ...LIVE_PROJECT_DETAIL, hoursRange: 'week' as const, allocations: LIVE_PROJECT_DETAIL.allocations.map((a, i) => ({ ...a, hours: { billable: i ? 0 : 30, nonBillable: i ? 5 : 2, booked: i ? 6 : 34 } })) };
+    show(<ProjectWorkspaceScreen live={ws({ detail, onHoursRange })} />);
+    await ue.click(screen.getByRole('tab', { name: /^Team/ }));
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toEqual(expect.arrayContaining(['Billable (approved)', 'Non-billable (approved)', 'Total booked']));
+    expect(heads).not.toContain('Hours booked');
+    expect(screen.getByRole('radio', { name: 'This week' })).toBeChecked();
+    await ue.click(screen.getByRole('radio', { name: 'This month' }));
+    expect(onHoursRange).toHaveBeenCalledWith('month');
+  });
+
+  it('negative: an older API without range hours keeps the one Hours booked column', async () => {
+    show(<ProjectWorkspaceScreen live={ws()} />);
+    await ue.click(screen.getByRole('tab', { name: /^Team/ }));
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toContain('Hours booked');
+    expect(heads).not.toContain('Billable (approved)');
+  });
+
   it('a reader (no edit, no team) gets no actions', () => {
     show(<ProjectWorkspaceScreen live={ws({ detail: { ...LIVE_PROJECT_DETAIL, can: { edit: false, run: false, team: false, finance: false } } })} />);
     expect(screen.queryByRole('button', { name: 'Add allocation' })).toBeNull();

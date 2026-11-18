@@ -27493,5 +27493,23 @@
                               "Screens/Time/TIM-15 · Timesheets › Request leave from the week"
                     ],
                     "note": "Positive and negative (API time-leave.e2e: the week marks a pending day as leave requested, then leave when approved; kit ops-live: the drawer opens here on today, the requested day is labelled, no button without my leave). The web leave wiring is shared (lib/yx-my-leave.ts) by My leave and My timesheet."
+          },
+          {
+                    "id": "MT-D-B3-BILLABLE-TOTALS",
+                    "area": "Batch D B3: billable and non-billable totals on the project team (answer 2537, 18 Nov 2026)",
+                    "screen": "Projects › a project (PRJ-01), Team tab",
+                    "url": "http://localhost:3000/yx/projects",
+                    "account": "A project manager with a billable project whose team has approved, reduced, rejected and waiting timesheet lines; projects.manage admin.",
+                    "steps": [
+                              "Open the project › Team.",
+                              "Switch 'Hours for' to This month, then Since the start.",
+                              "Approve a waiting line in Timesheet approvals, then come back.",
+                              "Negative: reduce a line, reject another; come back and compare."
+                    ],
+                    "expected": "Step 1: 'Hours for' is a single-choice control on This week; columns Billable (approved), Non-billable (approved) and Total booked per person, with totals. Step 2: the numbers follow the range (weeks starting this month; everything). Step 3: the approved hours move from booked-only into Billable or Non-billable by the line's billable tick. Step 4: a reduced line counts its reduced hours as approved, a rejected one none; both stay in Total booked. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Hiring/PRJ-01 · Project workspace"
+                    ],
+                    "note": "Positive and negative (API unit capacity.spec teamHours / rangeFrom; projects-p2 e2e: a week sent and waiting is booked only, approved becomes billable, the week range leaves it out, a bad range 400; kit prj-01-live: columns, Segment asks again, an older API keeps Hours booked). Hours are per person on the project."
           }
 ]

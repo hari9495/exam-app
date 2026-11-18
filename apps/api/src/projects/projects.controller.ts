@@ -5,7 +5,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import type { ScopeUser } from '../access/scope';
-import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskDto, VersionDto } from './dto';
+import { AllocationDto, SaveProjectSettingsDto, AllocationUpdateDto, MilestoneDto, ProjectInputDto, ProjectStatusDto, ProjectUpdateDto, TaskDto, VersionDto, HoursRangeQueryDto } from './dto';
 import { ProjectsService } from './projects.service';
 
 // Projects P-1 (answers 1401 to 1405, 1412, 1420). Signed-in company people; the service checks the Projects keys
@@ -58,8 +58,8 @@ export class ProjectsController {
   }
 
   @Get(':id')
-  get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.projects.get(ctx, this.user(req), id);
+  get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: HoursRangeQueryDto) {
+    return this.projects.get(ctx, this.user(req), id, q.range ?? 'week');
   }
 
   @Put(':id')

@@ -1,4 +1,4 @@
-import { allocatedMinutes, attendanceMismatch, availableMinutes, freePct, hideSmallTeam, rankMatches, utilisationPct } from './capacity';
+import { allocatedMinutes, attendanceMismatch, availableMinutes, freePct, hideSmallTeam, rankMatches, rangeFrom, teamHours, utilisationPct } from './capacity';
 
 describe('capacity rules (PRJ-03, PRJ-07, answers 1411, 1418, 1541)', () => {
   const wd = (over: Partial<{ weekday: boolean; holiday: boolean; leave: 'full' | 'first' | 'second' | null }> = {}) => ({ weekday: true, holiday: false, leave: null, ...over });
@@ -41,5 +41,26 @@ describe('capacity rules (PRJ-03, PRJ-07, answers 1411, 1418, 1541)', () => {
     expect(attendanceMismatch(2520, 2400)).toBe('Timesheet 42 h vs attendance 40 h worked');
     expect(attendanceMismatch(2430, 2400)).toBeNull();
     expect(attendanceMismatch(2520, null)).toBeNull();
+  });
+});
+
+describe('teamHours and rangeFrom (batch D B3, answer 2537)', () => {
+  const ok = (l: { minutes: number[]; status: string | null; approvedMinutes: number[] }) => (l.status === 'rejected' ? l.minutes.map(() => 0) : l.status === 'reduced' ? l.approvedMinutes : l.minutes);
+  const row = (employee_id: string, billable: boolean, minutes: number[], status: string | null, sheet = 'pending', approved_minutes: number[] = []) => ({ employee_id, billable, minutes, status, approved_minutes, sheet });
+  it('approved billable and non-billable from approved, reduced or whole-week approved lines; booked counts everything sent', () => {
+    const m = teamHours([row('a', true, [480, 480], 'approved'), row('a', false, [120, 0], null, 'approved'), row('a', true, [240, 0], 'reduced', 'pending', [60, 0]), row('a', true, [300, 0], 'rejected'), row('a', true, [60, 0], 'pending'), row('b', false, [60, 0], null)], ok);
+    expect(m.get('a')).toEqual({ billable: 960 + 60, nonBillable: 120, booked: 960 + 120 + 240 + 300 + 60 });
+    // Waiting for a decision: booked only, never approved.
+    expect(m.get('b')).toEqual({ billable: 0, nonBillable: 0, booked: 60 });
+  });
+  it('the range starts at this Monday, the Monday of the 1st of the month, or nowhere', () => {
+    const mondayOf = (iso: string) => {
+      const d = new Date(`${iso}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+      return d.toISOString().slice(0, 10);
+    };
+    expect(rangeFrom('week', '2026-11-18', mondayOf)).toBe('2026-11-16');
+    expect(rangeFrom('month', '2026-11-18', mondayOf)).toBe('2026-10-26');
+    expect(rangeFrom('all', '2026-11-18', mondayOf)).toBeNull();
   });
 });

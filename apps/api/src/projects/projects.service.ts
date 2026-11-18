@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { allocatedMinutes, attendanceMismatch } from './capacity';
+import { allocatedMinutes, attendanceMismatch, rangeFrom, teamHours, type HoursRange } from './capacity';
 import { lineApproved } from '../time/line-rules';
 import { mondayOf } from '../time/time-rules';
 import { Prisma } from '@prisma/client';
@@ -234,7 +234,7 @@ export class ProjectsService {
   }
 
   /** One project's workspace: the project, its team, tasks with hours used, milestones and this week's hours. */
-  async get(ctx: TenantContext, user: ScopeUser, id: string) {
+  async get(ctx: TenantContext, user: ScopeUser, id: string, range: HoursRange = 'week') {
     const w = await this.who(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.needOn(tx, c);
@@ -255,8 +255,17 @@ export class ProjectsService {
       };
       const today = todayIst();
       const used = booked.reduce((t, b) => t + b.minutes, 0);
+      // Batch D B3 (answer 2537): approved billable, approved non-billable and booked hours per person over the range.
+      const from = rangeFrom(range, today, mondayOf);
+      const lines = await tx.$queryRaw<Parameters<typeof teamHours>[0]>`
+        SELECT t.employee_id::text, l.billable, l.minutes::int[] AS minutes, l.status, l.approved_minutes::int[] AS approved_minutes, t.status AS sheet
+        FROM timesheet_lines l JOIN timesheets t ON t.organization_id = l.organization_id AND t.id = l.timesheet_id
+        WHERE l.organization_id = ${org}::uuid AND l.project_id = ${id}::uuid AND t.status IN ('pending', 'approved')
+          AND (${from}::date IS NULL OR t.week_start >= ${from}::date)`;
+      const range$ = teamHours(lines, lineApproved);
       return {
         project: this.row(p, w, { clientName: client?.name ?? null, managerName: manager ? manager.name?.trim() || manager.email : null, usedHours: hoursOf(used), people: allocations.filter((a) => !a.toOn || day(a.toOn)! >= today).length }),
+        hoursRange: range,
         can: { edit: w.manage, run: this.canRun(p, w), team: this.canRun(p, w, true), finance: w.finance },
         allocations: allocations.map((a) => ({
           id: a.id,
@@ -268,6 +277,7 @@ export class ProjectsService {
           percent: a.percent,
           tentative: a.tentative,
           bookedHours: hoursOf(booked.filter((b) => b.employee_id === a.employeeId).reduce((t, b) => t + b.minutes, 0)),
+          hours: ((h) => ({ billable: hoursOf(h.billable), nonBillable: hoursOf(h.nonBillable), booked: hoursOf(h.booked) }))(range$.get(a.employeeId) ?? { billable: 0, nonBillable: 0, booked: 0 }),
           version: a.version,
         })),
         tasks: tasks.map((t) => ({ id: t.id, name: t.name, budgetHours: num(t.budgetHours), usedHours: hoursOf(booked.filter((b) => b.activity === t.name).reduce((s, b) => s + b.minutes, 0)), billable: t.billable, active: t.active })),

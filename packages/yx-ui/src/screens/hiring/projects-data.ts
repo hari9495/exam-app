@@ -47,12 +47,14 @@ export interface Allocation {
   tentative?: boolean;
   bookedThisWeek: number;
   expectedThisWeek: number;
+  /** Batch D B3 (answer 2537): the range's approved billable, approved non-billable and booked hours. */
+  hours?: { billable: number; nonBillable: number; booked: number };
 }
 export const ALLOCATIONS: Allocation[] = [
-  { id: 'a1', person: 'Priya Nair', role: 'Senior developer', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 100, bookedThisWeek: 40, expectedThisWeek: 40 },
-  { id: 'a2', person: 'Rohit Bhat', role: 'Developer', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 100, bookedThisWeek: 42, expectedThisWeek: 40 },
-  { id: 'a3', person: 'Sana Nizami', role: 'Developer', from: D(2026, 8, 1), to: D(2026, 12, 31), percent: 50, bookedThisWeek: 20, expectedThisWeek: 20 },
-  { id: 'a4', person: 'Divya Raghunathan', role: 'QA lead', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 50, bookedThisWeek: 18, expectedThisWeek: 20 },
+  { id: 'a1', person: 'Priya Nair', role: 'Senior developer', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 100, bookedThisWeek: 40, expectedThisWeek: 40, hours: { billable: 36, nonBillable: 4, booked: 40 } },
+  { id: 'a2', person: 'Rohit Bhat', role: 'Developer', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 100, bookedThisWeek: 42, expectedThisWeek: 40, hours: { billable: 34, nonBillable: 0, booked: 42 } },
+  { id: 'a3', person: 'Sana Nizami', role: 'Developer', from: D(2026, 8, 1), to: D(2026, 12, 31), percent: 50, bookedThisWeek: 20, expectedThisWeek: 20, hours: { billable: 18, nonBillable: 2, booked: 20 } },
+  { id: 'a4', person: 'Divya Raghunathan', role: 'QA lead', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 50, bookedThisWeek: 18, expectedThisWeek: 20, hours: { billable: 0, nonBillable: 16, booked: 18 } },
   { id: 'a5', person: 'Thomas George', role: 'Designer', from: D(2026, 6, 1), to: D(2026, 10, 31), percent: 25, bookedThisWeek: 10, expectedThisWeek: 10 },
   { id: 'a6', person: 'Meera Iyer', role: 'Developer', from: D(2026, 10, 12), to: D(2026, 12, 31), percent: 100, tentative: true, bookedThisWeek: 0, expectedThisWeek: 0 },
 ];
