@@ -9,6 +9,7 @@ import type { Prisma } from '@prisma/client';
  */
 export const STORED_FILE_COLUMNS: readonly { table: string; column: string; via?: string }[] = [
   { table: 'actuarial_census_exports', column: 'file_ref' },
+  { table: 'accommodation_requests', column: 'evidence_path' },
   { table: 'actuarial_valuations', column: 'report_ref' },
   { table: 'agency_submissions', column: 'resume_path' },
   { table: 'audit_archives', column: 'file_ref' },
@@ -19,6 +20,7 @@ export const STORED_FILE_COLUMNS: readonly { table: string; column: string; via?
   { table: 'consultant_invoices', column: 'file_ref' },
   { table: 'exchange_files', column: 'file_ref' },
   { table: 'files', column: 'storage_ref' },
+  { table: 'integrity_appeals', column: 'evidence_path' },
   { table: 'letter_issues', column: 'signature_ref' },
   { table: 'offers', column: 'pdf_path' },
   { table: 'organizations', column: 'logo_path', via: 'WHERE x.id = $1::uuid' },
@@ -46,6 +48,8 @@ export const STORED_FILE_COLUMNS: readonly { table: string; column: string; via?
 
 /** Columns whose names look like a file but hold something else (why, in a word or two). */
 export const NOT_STORED_FILES: Readonly<Record<string, string>> = {
+  'accommodation_requests.evidence_name': 'file name',
+  'accommodation_requests.evidence_type': 'file type',
   'approval_requests.chain_snapshot_json': 'approval chain copy',
   'arrears_worksheets.source_ref': 'record id',
   'asset_assignments.ack_evidence': 'click evidence (time, IP)',
@@ -75,6 +79,8 @@ export const NOT_STORED_FILES: Readonly<Record<string, string>> = {
   'field_visits.client_ref': 'device id',
   'held_punches.device_ref': 'device id',
   'identity_providers.saml_sso_url': 'web address',
+  'integrity_appeals.evidence_name': 'file name',
+  'integrity_appeals.evidence_type': 'file type',
   'interviews.meeting_url': 'meeting link',
   'kiosk_face_enrolments.provider_ref': 'face service id',
   'loans.source_ref': 'record id',
@@ -87,6 +93,7 @@ export const NOT_STORED_FILES: Readonly<Record<string, string>> = {
   'organizations.webhook_url': 'web address',
   'overpayment_recoveries.origin_ref': 'record id',
   'pay_documents.signature': 'signature text',
+  'perquisites.source_ref': 'record id',
   'payslip_lines.source_ref': 'record id',
   'payslips.snapshot_hash': 'checksum',
   'recruiting_costs.source_ref': 'record id',
@@ -100,6 +107,7 @@ export const NOT_STORED_FILES: Readonly<Record<string, string>> = {
   'signatories.signature_file_id': 'a files row (dropped with files)',
   'signature_requests.evidence': 'signing evidence',
   'special_postings.source_ref': 'record id',
+  'staff_notices.link_path': 'link in the app',
   'statutory_penalty_lines.paid_ref': 'payment id',
   'tax_paid_outside.source_ref': 'record id',
   'trip_bookings.provider_ref': 'booking id',

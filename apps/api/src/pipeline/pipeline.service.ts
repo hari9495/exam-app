@@ -329,7 +329,9 @@ export class PipelineService {
           pipelineId,
         },
       });
-      await this.audit.record(context, {
+      // In this transaction, never a second one: the job-number row stays locked until commit, so a nested audit write
+      // waiting for its own pooled connection could starve the pool when several jobs are made at once (CI: 503s).
+      await AuditService.recordIn(tx, context, {
         actorUserId,
         action: 'job.created',
         entityType: 'job',

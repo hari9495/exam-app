@@ -520,7 +520,7 @@ export function LiveInterviewDayView({ live }: { live: LiveInterviewDay }) {
       <HireFrame active="Interviews">
         <PageHeader title="Interview days" description="A hiring day with several panels: candidates are placed on slots and each gets their own interview." actions={live.state === 'ready' ? extra : undefined} />
         {live.state === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the interview day">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading the interview day">
             <Skeleton height={64} />
             <Skeleton height={320} />
           </div>

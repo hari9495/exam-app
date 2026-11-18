@@ -53,7 +53,7 @@ function Frame({ brand, portal, children, narrow }: { brand: CandidateBrand; por
 
 function Loading() {
   return (
-    <div className="yx-ps-stack" aria-busy="true" aria-label="Loading">
+    <div className="yx-ps-stack" role="status" aria-busy="true" aria-label="Loading">
       <Skeleton height={32} width="60%" />
       <Skeleton height={96} />
       <Skeleton height={96} />

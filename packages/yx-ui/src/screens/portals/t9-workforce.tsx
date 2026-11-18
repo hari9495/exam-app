@@ -195,7 +195,7 @@ function OutcomeNote({ tenant, outcome, on, newDate, from }: { tenant: string; o
 function PreState({ state, onRetry }: { state: 'loading' | 'error'; onRetry?: () => void }) {
   if (state === 'loading')
     return (
-      <div className="yx-ps-stack" aria-busy="true" aria-label="Loading your joining checklist">
+      <div className="yx-ps-stack" role="status" aria-busy="true" aria-label="Loading your joining checklist">
         <Skeleton height={56} />
         <Skeleton height={96} />
         <Skeleton height={220} />

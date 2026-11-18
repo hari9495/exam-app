@@ -223,7 +223,8 @@ export function Stepper({
           <InlineAlert tone="danger" title={step.statusNote} actions={step.statusAction} />
         )}
         {steps.map((s, i) => (
-          <div key={s.id} className="yx-stepper__panel" hidden={i !== index}>
+          // Horizontal layout: the step's panel scrolls on its own, so it takes focus (keyboard users can scroll it; WCAG 2.1.1).
+          <div key={s.id} className="yx-stepper__panel" hidden={i !== index} {...(i === index && !narrow && layout === 'horizontal' ? { tabIndex: 0, role: 'region', 'aria-labelledby': hid } : {})}>
             {s.id === REVIEW_ID ? (
               // The note and the summaries are one stack, with the standard gap between them.
               <div className="yx-stepper__review-step">

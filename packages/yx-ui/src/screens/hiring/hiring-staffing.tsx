@@ -72,7 +72,7 @@ const statusTone = (v: unknown) => (v === 'Active' ? 'success' : v === 'On hold'
 
 /** The desk is off, or the viewer has no key: the same calm states on every staffing page. */
 function DeskState({ state, what, onRetry, title }: { state: 'loading' | 'error' | 'denied' | 'off'; what: string; onRetry: () => void; title: string }) {
-  if (state === 'loading') return <div className="yx-hire-stack" aria-busy="true" aria-label={`Loading ${what}`}><Skeleton height={64} /><Skeleton height={320} /></div>;
+  if (state === 'loading') return <div className="yx-hire-stack" role="status" aria-busy="true" aria-label={`Loading ${what}`}><Skeleton height={64} /><Skeleton height={320} /></div>;
   if (state === 'error') return <ErrorState title={`${title} could not be loaded.`} onRetry={onRetry} />;
   if (state === 'off') return <EmptyState title="The staffing desk is off." description="An admin turns it on in Settings › Staffing desk, for a company that places its people with client companies." />;
   return <NoAccessState grantedBy="your admin (Staffing account manager)" what={what} />;

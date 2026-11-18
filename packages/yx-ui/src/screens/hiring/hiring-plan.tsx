@@ -2130,7 +2130,7 @@ export function JobWorkspaceScreen({ job, postings: initial, law, range, activit
   if (live && live.state !== 'ready')
     return (
       <HireFrame active="Jobs & requisitions">
-        {live.state === 'loading' ? <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the job"><Skeleton height={56} /><Skeleton height={240} /></div> : <ErrorState title="This job could not be loaded." onRetry={live.onRetry} />}
+        {live.state === 'loading' ? <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading the job"><Skeleton height={56} /><Skeleton height={240} /></div> : <ErrorState title="This job could not be loaded." onRetry={live.onRetry} />}
       </HireFrame>
     );
   const can = Boolean(live?.canManage);
@@ -2467,7 +2467,7 @@ export function InternalJobsScreen({ jobs, applications, applyFor = null, eligib
     <HireFrame active="Jobs & requisitions">
       <PageHeader title="Internal jobs" description={`Openings at ${live?.companyName ?? 'Kaveri Foods'} you can apply for. Applying doesn't affect your current role.`} />
       {state === 'loading' ? (
-        <div className="yx-hire-stack" aria-busy="true" aria-label="Loading internal jobs">
+        <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading internal jobs">
           <Skeleton height={120} />
           <Skeleton height={120} />
         </div>

@@ -571,8 +571,10 @@ td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
 .yx-ts__notes-list > li:last-child { padding-bottom: 0; border-bottom: 0; }
 .yx-ts__notes-meta { font-size: var(--yx-text-sm); color: var(--yx-color-text-muted); }
 /* The comment's state is a dot on the box's corner: it never takes room, so every day box lines up. */
-.yx-ts__comment-dot { position: absolute; top: calc(var(--yx-space-1) * -1); right: calc(var(--yx-space-1) * -1); display: inline-flex; align-items: center; justify-content: center; width: var(--yx-space-4); height: var(--yx-space-4); padding: 0; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: 999px; background: var(--yx-color-bg-surface); color: var(--yx-color-text-muted); cursor: pointer; }
-.yx-ts__comment-dot:hover { color: var(--yx-color-link); border-color: var(--yx-color-link); }
+/* The dot looks 16 px (a 1 px ring drawn by the background); the button around it is 24 px so it meets the minimum
+   target size (WCAG 2.5.8). Tones change the ring and fill colours only. */
+.yx-ts__comment-dot { --dot-fill: var(--yx-color-bg-surface); --dot-ring: var(--yx-color-border); position: absolute; top: calc(var(--yx-space-2) * -1); right: calc(var(--yx-space-2) * -1); display: inline-flex; align-items: center; justify-content: center; width: var(--yx-space-6); height: var(--yx-space-6); padding: 0; border: 0; border-radius: 999px; background: radial-gradient(circle closest-side, var(--dot-fill) calc(var(--yx-space-2) - var(--yx-border-width)), var(--dot-ring) calc(var(--yx-space-2) - var(--yx-border-width)) var(--yx-space-2), transparent var(--yx-space-2)); color: var(--yx-color-text-muted); cursor: pointer; }
+.yx-ts__comment-dot:hover { --dot-ring: var(--yx-color-link); color: var(--yx-color-link); }
 .yx-ts__comment-dot:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
-.yx-ts__comment-dot[data-tone='short'] { color: var(--yx-color-warning-text); border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); }
-.yx-ts__comment-dot[data-tone='done'] { color: var(--yx-color-link); border-color: var(--yx-color-link); }
+.yx-ts__comment-dot[data-tone='short'] { --dot-fill: var(--yx-color-warning-bg); --dot-ring: var(--yx-color-warning-border); color: var(--yx-color-warning-text); }
+.yx-ts__comment-dot[data-tone='done'] { --dot-ring: var(--yx-color-link); color: var(--yx-color-link); }

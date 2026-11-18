@@ -1,3 +1,5 @@
+// Uploaded files open only once the virus check passes: the e2e uses the fake scanner (CI has no laptop .env).
+process.env.SD_SCANNER = 'dev-fake';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';

@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { ToastProvider } from '@yukthix/ui';
 import { AccommodationRequestScreen } from '@yukthix/ui/assessments';
 import { useAskForHelp, useAttemptQuery, useCandidateHelp } from '../../../lib/hooks/useAttempt';
 import { isAttemptStarted } from '../../../lib/types';
@@ -13,7 +14,9 @@ export default function CandidateAccommodationPage() {
   const help = useCandidateHelp();
   const ask = useAskForHelp();
   const started = Boolean(current.data && isAttemptStarted(current.data));
+  // The screen says "Request sent" with a toast; the candidate pages bring their own provider (as my-tests and result do).
   return (
+    <ToastProvider>
     <AccommodationRequestScreen
       live={{
         state: current.isError || help.isError ? 'error' : current.isLoading || help.isLoading ? 'loading' : 'ready',
@@ -27,5 +30,6 @@ export default function CandidateAccommodationPage() {
         onBack: () => router.push('/welcome'),
       }}
     />
+    </ToastProvider>
   );
 }

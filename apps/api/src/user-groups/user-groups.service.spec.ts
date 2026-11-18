@@ -10,6 +10,7 @@ describe('UserGroupsService', () => {
     userGroupMember: { findMany: jest.Mock; createMany: jest.Mock; deleteMany: jest.Mock };
     user: { findMany: jest.Mock };
     pipelineEntry: { updateMany: jest.Mock };
+    recycleBinItem: { create: jest.Mock };
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -19,6 +20,8 @@ describe('UserGroupsService', () => {
       userGroupMember: { findMany: jest.fn(), createMany: jest.fn(), deleteMany: jest.fn() },
       user: { findMany: jest.fn() },
       pipelineEntry: { updateMany: jest.fn() },
+      // Answer 2439: a deleted group and its members go to the recycle bin first.
+      recycleBinItem: { create: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
@@ -139,10 +142,15 @@ describe('UserGroupsService', () => {
 
   describe('remove', () => {
     it('deletes members then the group, and records audit', async () => {
-      tx.userGroup.findFirst.mockResolvedValue({ id: 'g1' });
+      tx.userGroup.findFirst.mockResolvedValue({ id: 'g1', name: 'Interviewers' });
       tx.userGroup.delete.mockResolvedValue({ id: 'g1' });
+      tx.userGroupMember.findMany.mockResolvedValueOnce([{ groupId: 'g1', userId: 'u1' }]);
 
       const result = await service.remove(context, 'actor-1', 'g1');
+
+      // Answer 2439: the group and its members are kept in the recycle bin before anything is deleted.
+      expect(tx.recycleBinItem.create).toHaveBeenCalledWith({ data: expect.objectContaining({ organizationId: 'org-1', kind: 'user_group', entityId: 'g1', label: 'Interviewers', deletedBy: 'actor-1' }) });
+      expect(tx.recycleBinItem.create.mock.invocationCallOrder[0]).toBeLessThan(tx.userGroupMember.deleteMany.mock.invocationCallOrder[0]);
 
       const memberDeleteOrder = tx.userGroupMember.deleteMany.mock.invocationCallOrder[0];
       const groupDeleteOrder = tx.userGroup.delete.mock.invocationCallOrder[0];
@@ -155,7 +163,7 @@ describe('UserGroupsService', () => {
     });
 
     it('clears assignedGroupId on pipeline entries still assigned to the deleted group', async () => {
-      tx.userGroup.findFirst.mockResolvedValue({ id: 'g1' });
+      tx.userGroup.findFirst.mockResolvedValue({ id: 'g1', name: 'Interviewers' });
       tx.userGroup.delete.mockResolvedValue({ id: 'g1' });
 
       await service.remove(context, 'actor-1', 'g1');
@@ -173,6 +181,7 @@ describe('UserGroupsService', () => {
       expect(tx.userGroupMember.deleteMany).not.toHaveBeenCalled();
       expect(tx.pipelineEntry.updateMany).not.toHaveBeenCalled();
       expect(tx.userGroup.delete).not.toHaveBeenCalled();
+      expect(tx.recycleBinItem.create).not.toHaveBeenCalled();
     });
   });
 
