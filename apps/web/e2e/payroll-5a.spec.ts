@@ -33,12 +33,13 @@ test('Suresh asks to reopen last month → Meena checks → Neha approves → th
   const hr = await signedIn(browser, 'hr@demo-org.test');
   await hr.goto('/yx/time/periods');
   if (!sameYear) await hr.getByRole('button', { name: 'Previous year' }).click();
-  const hrRow = hr.getByRole('table', { name: `${ENTITY} periods` }).getByRole('row').filter({ hasText: monthName });
+  // Periods (redesigned): each company is a region, each month a region with its status and next action.
+  const hrRow = hr.getByRole('region', { name: `${ENTITY} periods` }).getByRole('region', { name: monthName });
   await expect(hrRow).toBeVisible();
-  if (await hrRow.getByRole('button', { name: 'Lock' }).isVisible()) {
-    await hrRow.getByRole('button', { name: 'Lock' }).click();
-    const lock = hr.getByRole('dialog');
-    await expect(lock.getByText('Ready to lock')).toBeVisible({ timeout: 60_000 });
+  if (await hrRow.getByRole('button', { name: 'Pre-lock checklist' }).isVisible()) {
+    await hrRow.getByRole('button', { name: 'Pre-lock checklist' }).click();
+    const lock = hr.getByRole('dialog', { name: `${monthName} · pre-lock checklist` });
+    await expect(lock.getByRole('list', { name: 'Pre-lock checklist' }).getByRole('listitem').filter({ hasText: 'Requests decided' })).toContainText('Done', { timeout: 60_000 });
     await lock.getByRole('button', { name: 'Lock the month' }).click();
     await expect(lock).toHaveCount(0, { timeout: 60_000 });
   }
