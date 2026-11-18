@@ -42,3 +42,22 @@ export async function setCompanySetting(orgSlug: string, key: string, value: str
     await prisma.$disconnect();
   }
 }
+
+/** Puts one employee's current tax workspaces in the old regime (what HR's regime override would do); proofs are asked only there. */
+export async function setOldRegime(email: string): Promise<void> {
+  const prisma = new PrismaClient({ datasources: { db: { url: databaseUrl() } } });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+      const user = await tx.user.findFirstOrThrow({ where: { email }, select: { id: true } });
+      const emp = await tx.employee.findFirstOrThrow({ where: { userId: user.id }, select: { id: true } });
+      // tax_workspaces also has a restrictive pay policy: open every legal entity to this transaction.
+      const entities = await tx.legalEntity.findMany({ select: { id: true } });
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${entities.map((e) => e.id).join(',')}}`}, true)`;
+      const n = await tx.taxWorkspace.updateMany({ where: { employeeId: emp.id }, data: { regime: 'old', version: { increment: 1 } } });
+      if (!n.count) throw new Error(`${email} has no tax workspace yet`);
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
