@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { ScopeUser } from '../access/scope';
 import { assertOwnSession } from '../service-desk/desk-access';
@@ -114,8 +114,8 @@ export class OffersController {
   @RequirePermissions('pipeline:manage')
   async cancelOfferApproval(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Req() req: Request) {
     assertOwnSession(req);
-    // An older request (from before HIR-09) is cancelled on the older engine.
-    if (!(await this.builder.cancelApproval(tenant, userId, id))) return this.offers.cancelOfferApproval(tenant, userId, id);
+    // P03 only: the older engine is retired and its waiting requests were moved (answer 2511).
+    if (!(await this.builder.cancelApproval(tenant, userId, id))) throw new ConflictException('This offer is not waiting for approval.');
   }
 
   @Get('offer-template/default')

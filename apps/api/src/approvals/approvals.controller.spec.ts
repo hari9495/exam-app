@@ -20,14 +20,11 @@ class RejectingGuard implements CanActivate {
 
 describe('ApprovalsController', () => {
   let controller: ApprovalsController;
-  let approvals: { listRequests: jest.Mock; getRequestDetail: jest.Mock; decide: jest.Mock; getGateStatus: jest.Mock };
+  let approvals: { getGateStatus: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(async () => {
     approvals = {
-      listRequests: jest.fn().mockResolvedValue([{ id: 'req-1' }]),
-      getRequestDetail: jest.fn().mockResolvedValue({ id: 'req-1' }),
-      decide: jest.fn().mockResolvedValue({ requestStatus: 'approved' }),
       getGateStatus: jest.fn().mockResolvedValue({ requisition: false, offer: true }),
     };
     const moduleRef = await Test.createTestingModule({
@@ -42,21 +39,6 @@ describe('ApprovalsController', () => {
     controller = moduleRef.get(ApprovalsController);
   });
 
-  it('listRequests defaults scope to inbox when omitted', async () => {
-    await controller.listRequests(tenant, 'user-1', undefined, undefined);
-    expect(approvals.listRequests).toHaveBeenCalledWith(tenant, 'user-1', 'inbox', undefined);
-  });
-
-  it('listRequests passes scope + status through', async () => {
-    await controller.listRequests(tenant, 'user-1', 'submitted', 'pending_approval');
-    expect(approvals.listRequests).toHaveBeenCalledWith(tenant, 'user-1', 'submitted', 'pending_approval');
-  });
-
-  it('getRequestDetail delegates with the request id', async () => {
-    await controller.getRequestDetail(tenant, 'req-1');
-    expect(approvals.getRequestDetail).toHaveBeenCalledWith(tenant, 'req-1');
-  });
-
   // Regression for Finding 1: any authenticated org user (not just approvals:configure
   // holders) must be able to read the gate-enabled flags -- this route carries no
   // @RequirePermissions, unlike getChains() on the config controller.
@@ -64,11 +46,6 @@ describe('ApprovalsController', () => {
     const result = await controller.getGateStatus(tenant);
     expect(approvals.getGateStatus).toHaveBeenCalledWith(tenant);
     expect(result).toEqual({ requisition: false, offer: true });
-  });
-
-  it('decide delegates to the service with the actor, id, decision, and note', async () => {
-    await controller.decide(tenant, 'user-1', 'req-1', { decision: 'approved', note: 'ok' } as any);
-    expect(approvals.decide).toHaveBeenCalledWith(tenant, 'req-1', 'user-1', 'approved', 'ok');
   });
 
   // Routes must be mounted behind JwtAuthGuard, not simply absent -- an unauthenticated
@@ -86,7 +63,7 @@ describe('ApprovalsController', () => {
     const app = moduleRef.createNestApplication();
     await app.init();
     const server = app.getHttpServer();
-    const response = await request(server).get('/approvals/requests');
+    const response = await request(server).get('/approvals/gate-status');
     expect(response.status).toBe(401);
     await app.close();
   });
