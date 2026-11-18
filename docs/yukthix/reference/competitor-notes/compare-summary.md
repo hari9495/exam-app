@@ -529,3 +529,9 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2611: CMP-02 Statutory set-up stays not live. Registrations are live in Payroll set-up and the filing mode needs a partner connector. Suggested answer: keep it parked with the payroll partner work.
 - 2612: 2594 (private notes in the data-access export) and 2595 (email chase for customers of an external desk) stay out of G, as the founder said. Suggested answer: yes.
 - Founder answers (19 Nov 2026, "ok for all"): 2600-2612 approved exactly as suggested above.
+- G1 built (19 Nov 2026): 2591, 2592, 2597 with 2590, 2596 and 2593 are live. What was left out or needs a choice, as questions:
+- 2620: the CMP-09 design also has an HR view of the console (anonymised counts and the actions the committee gave HR). HR already gets interim-relief tasks from the case (HLP-08). Suggested answer: build the HR counts view with the compliance dashboard in G3 (counts only, hidden below 5 complaints).
+- 2621: the annual report is counted and moved through its steps in the app, but there is no printable report yet. The presiding officer marks it sent to the employer and the District Officer. Suggested answer: add a PDF in the format the state asks for, with the P07 POSH parameters, after G3.
+- 2622: the app does not record seniority, so the presiding officer counts as senior. The set-up asks for "a senior woman employee". Suggested answer: yes, leave it to the System Admin.
+- 2623: when a member's term ends, the console and set-up warn, but complaints still reach that member. Suggested answer: keep the warning, remind the System Admin 30 days before a term ends, and stop routing new complaints to a member whose term has ended.
+- 2624: the awareness log is typed in by committee members. Suggested answer: when Learning (G3) is live, POSH awareness course completions count in the annual report too, next to the sessions logged by hand.
