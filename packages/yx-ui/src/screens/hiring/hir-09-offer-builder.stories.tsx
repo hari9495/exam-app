@@ -23,4 +23,5 @@ export const Reneged: S = { name: 'Reneged · pre-boarding unwound', render: () 
 // Answer 377: an e-signed acceptance keeps a sealed copy; one that could not be made is made again from here.
 export const AcceptedSealed: S = { name: 'Accepted with e-sign · sealed copy (377)', render: () => <OfferRecordScreen {...rec} status="Accepted" handoff={{ mode: 'manual', personType: 'New person' }} sealed="made" /> };
 export const SealedMissing: S = { name: 'Accepted with e-sign · sealed copy not made (377)', render: () => <OfferRecordScreen {...rec} status="Accepted" handoff={{ mode: 'manual', personType: 'New person' }} sealed="missing" /> };
+export const SentLetter: S = { name: 'Sent · issued company letter reference (M10 D4)', render: () => <OfferRecordScreen {...rec} status="Sent" letterRef="KF/OFR/2026/000012" /> };
 export const Versions: S = { name: 'Versions tab', render: () => <OfferRecordScreen {...rec} status="Sent" defaultTab="versions" /> };

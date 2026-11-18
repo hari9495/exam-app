@@ -475,6 +475,14 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
     expect((await api('rec', 'post', `/offers/${ids.d4}/send`).expect(400)).body.message).toBe('This letter cannot be made yet. Missing: department.');
     expect(await lettersOf(ids.d4)).toHaveLength(0);
     await inA((tx) => tx.job.update({ where: { id: ids.job }, data: { departmentId: ids.dept } }));
+    // HR previews the filled letter before sending: read-only, nothing issued or numbered; pay key and company checked.
+    const pdfOf = (who: Who, id: string) => api(who, 'get', `/offers/${id}/pdf`).buffer(true).parse((res, cb) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    const preview = await pdfOf('rec', ids.d4).expect(200);
+    expect((preview.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+    expect(await lettersOf(ids.d4)).toHaveLength(0);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'letter.requested', metadataJson: { contains: ids.d4 } } }))).toBe(0);
+    await pdfOf('noPay', ids.d4).expect(403);
+    await pdfOf('recB', ids.d4).expect(404);
     const sent = (await api('rec', 'post', `/offers/${ids.d4}/send`).expect(201)).body;
     expect(sent).toMatchObject({ status: 'sent', esign: true, pdfPath: null });
     const [l] = await lettersOf(ids.d4);

@@ -426,6 +426,8 @@ export interface OfferRecordProps {
   persona?: 'recruiter' | 'hr';
   /** Answer 377: the drawn sealed copy of an e-signed acceptance. */
   sealed?: 'made' | 'missing';
+  /** M10 D4: the issued P05 letter's reference (none: not issued yet, so the menu previews the letter). */
+  letterRef?: string;
   /** Live (HIR-09 / HIR-29): the offer from the API and its actions. */
   live?: LiveOfferRecord;
 }
@@ -605,7 +607,7 @@ export function OfferRecordScreen(p: OfferRecordProps) {
   return live ? <LiveOfferRecordView live={live} defaultTab={p.defaultTab} /> : <SampleOfferRecord {...p} />;
 }
 
-function SampleOfferRecord({ candidate = '', job = '', status = 'Sent', ctc = 0, conditions = [], lapseDate = new Date(), today = new Date(), handoff, declineReason, activity = [], defaultTab = 'overview', persona = 'recruiter', sealed }: OfferRecordProps) {
+function SampleOfferRecord({ candidate = '', job = '', status = 'Sent', ctc = 0, conditions = [], lapseDate = new Date(), today = new Date(), handoff, declineReason, activity = [], defaultTab = 'overview', persona = 'recruiter', sealed, letterRef }: OfferRecordProps) {
   return (
     <HireFrame active="Offers & BGV">
       <RecordLayout
@@ -629,6 +631,7 @@ function SampleOfferRecord({ candidate = '', job = '', status = 'Sent', ctc = 0,
               { label: 'Joining', value: '2 Nov 2026' },
               { label: 'Expires', value: formatDate(lapseDate) },
               { label: 'Hand-off', value: handoff ? `${handoff.mode === 'automatic' ? 'Automatic' : 'Manual'} · ${handoff.personType}` : '—' },
+              ...(letterRef ? [{ label: 'Letter', value: letterRef }] : []),
             ]}
             actions={
               status === 'Accepted' && handoff?.mode === 'manual' && persona === 'hr' ? (
@@ -648,7 +651,7 @@ function SampleOfferRecord({ candidate = '', job = '', status = 'Sent', ctc = 0,
             }
             menu={
               <>
-                <MenuItem>Download letter</MenuItem>
+                <MenuItem>{letterRef || status === 'Sent' || status === 'Accepted' ? 'Download letter' : 'Preview letter'}</MenuItem>
                 <MenuItem destructive>Withdraw offer</MenuItem>
               </>
             }
@@ -768,6 +771,8 @@ function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOffe
               { label: 'Joining', value: formatDate(lapseDate) },
               { label: 'Expires', value: formatDate(new Date(o.expiresAt)) },
               { label: 'Hand-off', value: o.joiner ? 'Manual · joiner added' : o.status === 'accepted' ? 'Manual · waiting for HR' : '—' },
+              // M10 D4: the P05 letter the offer was issued as (its reference; "replaced" once a revision is sent).
+              ...(o.letter?.referenceNo ? [{ label: 'Letter', value: o.letter.status === 'superseded' ? `${o.letter.referenceNo} · replaced` : o.letter.referenceNo }] : []),
             ]}
             actions={
               o.status === 'accepted' && !o.joiner ? (
@@ -802,7 +807,8 @@ function LiveOfferRecordView({ live, defaultTab = 'overview' }: { live: LiveOffe
             }
             menu={
               <>
-                {o.canSeePay && <MenuItem onSelect={() => void run('letter', live.onLetter, 'Letter opened')}>Download letter</MenuItem>}
+                {/* Before it is issued the letter is a preview, marked as such: nothing is numbered or kept. */}
+                {o.canSeePay && (o.letter || ['sent', 'accepted', 'declined', 'withdrawn'].includes(o.status) ? <MenuItem onSelect={() => void run('letter', live.onLetter, 'Letter opened')}>Download letter</MenuItem> : <MenuItem onSelect={() => void run('letter', live.onLetter, 'Preview opened')}>Preview letter</MenuItem>)}
                 {o.canSeePay && o.sealedCopy === 'made' && live.onSealedCopy && <MenuItem onSelect={() => void run('sealed', live.onSealedCopy!, 'Sealed copy downloaded')}>Download sealed copy</MenuItem>}
                 {o.status === 'pending_approval' && <MenuItem onSelect={() => setDialog('cancel')}>Take back from approval</MenuItem>}
                 {o.status === 'sent' && (

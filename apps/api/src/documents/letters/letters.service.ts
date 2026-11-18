@@ -628,12 +628,7 @@ export class LettersService implements OnModuleInit {
       if (last && last.createdAt >= input.since && last.templateId === input.templateId) return last.id;
       // A letter of an earlier version that was never made stops here (the hourly retry would make it otherwise).
       await tx.letterIssue.updateMany({ where: { ...mine, status: 'rendering' }, data: { status: 'withdrawn' } });
-      const t = await this.chosenTemplate(tx, org, 'offer', input.templateId, input.legalEntityId);
-      if (t.companyDsc) throw new BadRequestException('This offer letter asks for the company’s digital signature, which offers do not use. Switch it off in Settings › Letter templates.');
-      const signer = await this.signatoryFor(tx, org, input.legalEntityId);
-      const data = { ...input.data, signatory_name: signer?.name ?? '', signatory_title: signer?.title ?? '' };
-      const missing = missingFields(t.fields, data);
-      if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: missingMessage(missing, false), errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
+      const { t, signer, data } = await this.offerPrepared(tx, org, input);
       const issued = await tx.letterIssue.findFirst({ where: { ...mine, status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { id: true } });
       const l = await tx.letterIssue.create({
         data: {
@@ -664,6 +659,29 @@ export class LettersService implements OnModuleInit {
       if (l.status !== 'issued' || !l.fileId) throw new ServiceUnavailableException(l.renderError ? plainRenderError(l.renderError) : 'The offer letter could not be made. Try again in a few minutes.');
       return { id: l.id, referenceNo: l.referenceNo!, sha256: l.sha256!, title: l.title, pdf: await this.fileBytes(tx, org, l.fileId) };
     });
+  }
+
+  /** The offer letter's template, signatory and data, checked as for issuing (the same refusals for a preview). */
+  private async offerPrepared(tx: Tx, org: string, input: { templateId: string; legalEntityId: string; data: Record<string, string | boolean> }) {
+    const t = await this.chosenTemplate(tx, org, 'offer', input.templateId, input.legalEntityId);
+    if (t.companyDsc) throw new BadRequestException('This offer letter asks for the company’s digital signature, which offers do not use. Switch it off in Settings › Letter templates.');
+    const signer = await this.signatoryFor(tx, org, input.legalEntityId);
+    const data = { ...input.data, signatory_name: signer?.name ?? '', signatory_title: signer?.title ?? '' };
+    const missing = missingFields(t.fields, data);
+    if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: missingMessage(missing, false), errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
+    return { t, signer, data };
+  }
+
+  /**
+   * HR's read-only preview of an offer letter before it is sent: the same fill as issuing, marked as a preview; never
+   * numbered, stored or audited as issued (nothing is written).
+   */
+  async previewOffer(org: string, input: { templateId: string; legalEntityId: string; data: Record<string, string | boolean> }) {
+    const p = await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      const r = await this.offerPrepared(tx, org, input);
+      return { data: r.data, docx: await this.fileBytes(tx, org, r.t.fileId) };
+    });
+    return previewMark(await this.toPdf(fillDocx(p.docx, p.data)));
   }
 
   /** A candidate's offer letter (the issued PDF) by its id: for the offer page and the sealed copy. */

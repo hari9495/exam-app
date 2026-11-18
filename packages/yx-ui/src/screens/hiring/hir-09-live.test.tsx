@@ -167,6 +167,22 @@ describe('HIR-09 offer record and HIR-29 conditions (live)', () => {
     expect(screen.queryByRole('button', { name: 'Send reminder' })).not.toBeInTheDocument();
   });
 
+  it('M10 D4: an issued letter shows its reference and downloads; before it is sent the menu previews the letter', async () => {
+    const sent = rec({}, { status: 'sent', letter: { referenceNo: 'KF/OFR/2026/000012', status: 'issued' } });
+    const first = show(<OfferRecordScreen live={sent} />);
+    expect(screen.getByText('KF/OFR/2026/000012')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'More actions' }));
+    expect(screen.getByRole('menuitem', { name: 'Download letter' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Preview letter' })).not.toBeInTheDocument();
+    first.unmount();
+    const approved = rec({}, { status: 'approved', letter: null });
+    show(<OfferRecordScreen live={approved} />);
+    expect(screen.queryByText(/OFR/)).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'More actions' }));
+    await ue.click(screen.getByRole('menuitem', { name: 'Preview letter' }));
+    await waitFor(() => expect(approved.onLetter).toHaveBeenCalled());
+  });
+
   it('shows the CTC lines, the versions with history and the activity; Revise opens the builder', async () => {
     const live = rec();
     show(<OfferRecordScreen live={live} />);

@@ -49,6 +49,17 @@ export class OffersService {
     @Optional() private readonly letters?: LettersService,
   ) {}
 
+  /** A P05 offer's letter input for a preview (its live link is not made yet, so the letter says where it will go). */
+  private async offerPreviewInput(tx: Prisma.TransactionClient, org: string, offerId: string) {
+    const offer = await tx.offer.findFirst({ where: { id: offerId, organizationId: org }, include: { pipelineEntry: { include: { candidate: true, job: true } } } });
+    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
+    const t = await offerLetterTemplate(tx, org, offer.templateId);
+    if (!t) return null;
+    const c = { organizationId: org, isSuperAdmin: false } as CompanyContext;
+    const link = offer.offerToken ? `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/offer/${offer.offerToken}` : '(the candidate’s link is added when the offer is sent)';
+    return { templateId: t.id, ...(await offerLetterData(tx, c, offer, link)) };
+  }
+
   /** The offer's issued P05 letter (the latest; an earlier version's is superseded), or null for an older offer. */
   private offerLetter(tx: Prisma.TransactionClient, org: string, offerId: string) {
     // Without Letters wired (older unit set-ups) there is no P05 letter to find.
@@ -164,6 +175,9 @@ export class OffersService {
     // M10 D4: once issued, the offer's letter is its P05 letter (the same pages the candidate has).
     const issued = this.letters ? await this.tenantPrisma.forTenant(context, (tx) => this.offerLetter(tx, context.organizationId as string, offerId)) : null;
     if (issued) return (await this.letters!.offerLetterPdf(context.organizationId as string, issued.id)).pdf;
+    // Not issued yet: a P05 offer previews its letter with the same fill as the send (read-only, marked as a preview).
+    const p05 = this.letters ? await this.tenantPrisma.forTenant(context, (tx) => this.offerPreviewInput(tx, context.organizationId as string, offerId)) : null;
+    if (p05) return this.letters!.previewOffer(context.organizationId as string, p05);
     const loaded = await this.tenantPrisma.forTenant(context, async (tx) => {
       const orgId = context.organizationId as string;
       const offer = await tx.offer.findFirst({
