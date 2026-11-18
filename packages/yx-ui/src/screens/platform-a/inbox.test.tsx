@@ -227,10 +227,16 @@ describe('PLT-04 live (the approvals engine)', () => {
     await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
     await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
     expect(within(panel).getByText('Choose who approves it instead.')).toBeInTheDocument();
-    expect(within(panel).getByText('Say why you are moving it, so both approvers know.')).toBeInTheDocument();
+    expect(within(panel).getByText('Say why you are moving it in at least 10 characters, so both approvers know.')).toBeInTheDocument();
     expect(onReassign).not.toHaveBeenCalled();
     await u.click(within(panel).getByRole('combobox', { name: /Reassign to/ }));
     await u.click(await screen.findByRole('option', { name: /Anita Desai/ }));
+    // Answer 2525: 9 characters are not enough.
+    await u.type(within(panel).getByRole('textbox', { name: /Reason/ }), 'Away now.');
+    await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
+    expect(within(panel).getByText(/at least 10 characters/)).toBeInTheDocument();
+    expect(onReassign).not.toHaveBeenCalled();
+    await u.clear(within(panel).getByRole('textbox', { name: /Reason/ }));
     await u.type(within(panel).getByRole('textbox', { name: /Reason/ }), 'Divya is on long leave');
     await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
     await waitFor(() => expect(onReassign).toHaveBeenCalledWith(expect.objectContaining({ id: 'x' }), 'u3', 'Divya is on long leave'));

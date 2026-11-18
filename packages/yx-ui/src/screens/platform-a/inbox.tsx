@@ -516,7 +516,7 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
     setTried(true);
     // Never a disabled button: pressed too early, the field says what is missing and takes focus.
     if (decision === 'reassign') {
-      if (!to || reason.trim().length < 3) {
+      if (!to || reason.trim().length < 10) {
         setTimeout(() => document.getElementById(!to ? 'ap-reassign-to' : 'ap-reassign-reason')?.focus(), 0);
         return;
       }
@@ -591,7 +591,7 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
               <FormField id="ap-reassign-to" label={text.field} required error={tried && !to ? 'Choose who approves it instead.' : null} helper="Never the person who asked. YukthiX checks they can approve this step.">
                 <PersonPicker people={people} value={to} onChange={setTo} onSearchChange={live?.reassign?.onFindPeople} />
               </FormField>
-              <FormField id="ap-reassign-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why you are moving it, so both approvers know.' : null} helper="Both approvers see it; it is kept in the request's history.">
+              <FormField id="ap-reassign-reason" label="Reason" required error={tried && reason.trim().length < 10 ? 'Say why you are moving it in at least 10 characters, so both approvers know.' : null} helper="Both approvers see it; it is kept in the request's history.">
                 <TextArea value={reason} onChange={setReason} rows={2} />
               </FormField>
             </div>

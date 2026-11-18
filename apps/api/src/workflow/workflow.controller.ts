@@ -23,7 +23,7 @@ export class ReassignDto {
 
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
-  @MinLength(3, { message: 'Say why you are moving it, so both approvers know.' })
+  @MinLength(10, { message: 'Say why you are moving it in at least 10 characters, so both approvers know.' })
   @MaxLength(500)
   reason!: string;
 }

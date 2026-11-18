@@ -106,6 +106,8 @@ describe('Approvals: everyone’s pending and reassign (batch C item 4)', () => 
     const t = await taskOf(ids.r1!);
     await reassign('hr', t.id, { toUserId: users.mgr2 }).expect(400);
     await reassign('hr', t.id, { toUserId: users.mgr2, reason: ' ' }).expect(400);
+    // Answer 2525: at least 10 characters (9 is refused).
+    expect((await reassign('hr', t.id, { toUserId: users.mgr2, reason: 'Away now.' }).expect(400)).body.message.join(' ')).toMatch(/at least 10 characters/);
     expect((await reassign('hr', t.id, { toUserId: users.emp, reason: 'Manager away' }).expect(400)).body.message).toMatch(/cannot approve their own request/);
     expect((await reassign('hr', t.id, { toUserId: users.gone, reason: 'Manager away' }).expect(400)).body.message).toMatch(/active colleague/);
     expect((await reassign('hr', t.id, { toUserId: users.mgr, reason: 'Manager away' }).expect(400)).body.message).toMatch(/already hold/);
@@ -135,7 +137,7 @@ describe('Approvals: everyone’s pending and reassign (batch C item 4)', () => 
     await api('mgr', 'post', `/workflow/approvals/tasks/${t.id}/decide`).send({ decision: 'approve' }).expect(404);
     await api('mgr2', 'post', `/workflow/approvals/tasks/${t.id}/decide`).send({ decision: 'approve' }).expect(200);
     // Decided already: moving it is a conflict.
-    await reassign('hr', t.id, { toUserId: users.mgr, reason: 'Again' }).expect(409);
+    await reassign('hr', t.id, { toUserId: users.mgr, reason: 'Asked to move it again' }).expect(409);
   });
 
   it('the approver moves their own (no key needed); a maker-checker type never goes to who approved an earlier step', async () => {
@@ -145,7 +147,7 @@ describe('Approvals: everyone’s pending and reassign (batch C item 4)', () => 
     const first = await taskOf(mc);
     await api('mgr', 'post', `/workflow/approvals/tasks/${first.id}/decide`).send({ decision: 'approve' }).expect(200);
     const second = await taskOf(mc);
-    expect((await reassign('hr', second.id, { toUserId: users.mgr, reason: 'Head away' }).expect(400)).body.message).toMatch(/approved an earlier step/);
-    await reassign('hr', second.id, { toUserId: users.mgr2, reason: 'Head away' }).expect(200);
+    expect((await reassign('hr', second.id, { toUserId: users.mgr, reason: 'Head is away this week' }).expect(400)).body.message).toMatch(/approved an earlier step/);
+    await reassign('hr', second.id, { toUserId: users.mgr2, reason: 'Head is away this week' }).expect(200);
   });
 });

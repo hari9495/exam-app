@@ -858,7 +858,8 @@ export class ApprovalsEngine {
    */
   async reassign(ctx: CompanyContext, actorId: string, taskId: string, toUserId: string, reason: string, mayOversee: (tx: Tx, req: Prisma.WfRequestGetPayload<object>) => Promise<boolean>) {
     const why = reason.trim();
-    if (why.length < 3) throw new BadRequestException('Say why you are moving it, so both approvers know.');
+    // Answer 2525: at least 10 characters, as for late-mark waivers.
+    if (why.length < 10) throw new BadRequestException('Say why you are moving it in at least 10 characters, so both approvers know.');
     const notices: Notice[] = [];
     const out = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId;
