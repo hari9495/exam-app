@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import { isRetryableError } from '../../../lib/retry';
-import { TerminalCard } from '../components/TerminalCard';
+import { CandidateLinkScreen } from '@yukthix/ui/assessments';
 
 interface RedeemFailure {
   message: string;
@@ -34,28 +34,14 @@ function StartRedeemer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, retryCount]);
 
-  if (failure) {
-    return (
-      <TerminalCard tone="error" title="Can't open this invitation" body={failure.message}>
-        {failure.canRetry ? (
-          <button
-            type="button"
-            onClick={() => setRetryCount((count) => count + 1)}
-            className="rounded-md bg-candidate-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-          >
-            Try again
-          </button>
-        ) : null}
-      </TerminalCard>
-    );
-  }
-
-  return <TerminalCard tone="loading" title="Verifying your invitation" body="This only takes a moment." />;
+  // Decision 2398 (step 4): the kit's invitation-link screen.
+  if (failure) return <CandidateLinkScreen live={{ state: 'failed', message: failure.message, onRetry: failure.canRetry ? () => setRetryCount((count) => count + 1) : undefined }} />;
+  return <CandidateLinkScreen live={{ state: 'checking' }} />;
 }
 
 export default function CandidateStartPage() {
   return (
-    <Suspense fallback={<TerminalCard tone="loading" title="Loading" body="This only takes a moment." />}>
+    <Suspense fallback={<CandidateLinkScreen live={{ state: 'checking' }} />}>
       <StartRedeemer />
     </Suspense>
   );

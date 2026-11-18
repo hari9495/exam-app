@@ -64,3 +64,6 @@ export { EvaluatorConsoleScreen, FairnessScreen } from './integrity';
 export type { FairnessData, FairnessRow, LiveEvaluator, LiveFairness, MarkStatus, MarkingItem } from './marking-live';
 // Answer 2234: the candidate's own Run output under the code editor on /exam.
 export { CodeRunOutput, type CodeRun } from './proctoring-kit';
+
+// Decision 2398 (step 4): the invitation link (/start) and "session ended" pages.
+export { CandidateLinkScreen, type LiveCandidateLink } from './candidate-link';
