@@ -27312,5 +27312,25 @@
                               "Screens/Platform/Inbox & requests · PLT-04 · Approvals · reassign with a reason"
                     ],
                     "note": "Positive and negative (kit inbox.test.tsx; API approvals-oversee.e2e-spec.ts: company-wide vs legal-entity scope, no key 403, other company empty, no reason / requester / inactive / same approver / bad id 400, not holder or out of scope or other company 404, decided 409, maker-checker earlier-step approver refused, logged + audited + both told). Requests about nobody (for example a candidate's offer) are seen only by a company-wide overseer."
+          },
+          {
+                    "id": "MT-C26-DESK",
+                    "area": "Batch C item 26: three-column approvals desk at 1440 px or wider (answer 2504, 18 Nov 2026)",
+                    "screen": "Approvals (PLT-04)",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "Manager panel@demo-org.test (Divya) with a few waiting requests of two kinds.",
+                    "steps": [
+                              "Open Approvals in a browser window 1440 px wide or wider (100 % zoom on a large screen).",
+                              "Choose a kind in the left column (for example Leave).",
+                              "Click a request in the list, then approve or do not approve it from the right column.",
+                              "Make the window narrower than 1440 px (or a laptop at 150 %, 1278 x 635) and open a request."
+                    ],
+                    "expected": "Step 1: three columns: kinds of request (All · n and each kind), the list, and 'Choose a request.' on the right; no page scroll sideways. Step 2: the list shows only that kind. Step 3: the request opens in the right column (no drawer); the decision works and shows the 5-second toast; the next request takes its place. Step 4: the kinds are back above the list and the request opens in the drawer as before; no page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · three-column desk (1440 px or wider)",
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · desk, nothing open yet",
+                              "Forms · Segment, vertical"
+                    ],
+                    "note": "Positive and negative (kit inbox.test.tsx: desk columns, kind filter, decide in the pane, 1440 desk vs 1439 drawer). Measured headless at 1440 x 900: columns 176/480/384 px with 16 px gaps, no overflow; 1278 x 635 inbox, everyone, bulk dialog and reassign drawer: no page scroll, no touching blocks."
           }
 ]

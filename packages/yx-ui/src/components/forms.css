@@ -223,6 +223,8 @@
 /* Each option is a bordered button even before a choice (founder review 14 Oct 2026); the chosen one is blue-bordered and tinted. */
 .yx-segment > button[aria-checked='true'] { background: var(--yx-color-bg-selected); border-color: var(--yx-color-action-primary); color: var(--yx-color-action-primary); font-weight: var(--yx-weight-medium); }
 .yx-segment > button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
+.yx-segment[data-orientation='vertical'] { flex-direction: column; flex-wrap: nowrap; align-self: stretch; justify-self: stretch; }
+.yx-segment[data-orientation='vertical'] > button { flex: 0 0 auto; text-align: start; white-space: normal; }
 .yx-segment > button:disabled, .yx-segment > button:disabled:hover { border-color: var(--yx-color-border-input); color: var(--yx-color-text-disabled); cursor: not-allowed; }
 
 /* FilterToggle: an on/off filter pill above a list (border, hover, pointer, focus ring; a tick when on). */

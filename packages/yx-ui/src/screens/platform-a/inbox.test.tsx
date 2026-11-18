@@ -245,6 +245,41 @@ describe('PLT-04 live (the approvals engine)', () => {
     expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Reassign' })).toBeNull();
   });
 
+  // Answer 2504: the three-column desk at 1440 px or wider; the list and drawer below that.
+  it('desk: kinds in a column, the list, and the request in the third column (no drawer); deciding works there', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live();
+    render(<ApprovalsInboxScreen waiting={[row('a'), row('b', { type: 'Leave', requester: 'Meera Iyer' })]} sent={[]} history={[]} live={l} desk />);
+    const kinds = screen.getByRole('radiogroup', { name: 'Kind of request' });
+    expect(kinds).toHaveAttribute('aria-orientation', 'vertical');
+    expect(within(screen.getByRole('complementary', { name: 'The request' })).getByText('Choose a request.')).toBeInTheDocument();
+    await u.click(within(kinds).getByRole('radio', { name: 'Leave · 1' }));
+    expect(screen.queryByText('Laptop a')).toBeNull();
+    await u.click(screen.getByText('Laptop b'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const pane = screen.getByRole('complementary', { name: 'The request' });
+    await u.click(within(pane).getByRole('button', { name: 'Approve' }));
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'b' }), 'approve', '');
+  });
+
+  it('the desk follows the screen: 1440 px or wider only; narrower keeps the drawer', async () => {
+    const real = window.matchMedia;
+    const at = (w: number) => ((q: string) => ({ matches: /min-width: (\d+)px/.test(q) ? w >= Number(/min-width: (\d+)px/.exec(q)![1]) : /max-width: (\d+)px/.test(q) ? w <= Number(/max-width: (\d+)px/.exec(q)![1]) : false, media: q, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
+    try {
+      window.matchMedia = at(1440);
+      const { unmount } = render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={live()} />);
+      expect(screen.getByRole('complementary', { name: 'The request' })).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      unmount();
+      window.matchMedia = at(1439);
+      render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={live()} />);
+      expect(screen.queryByRole('complementary', { name: 'The request' })).toBeNull();
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    } finally {
+      window.matchMedia = real;
+    }
+  });
+
   it('a request decided on its own page links there; Set up delegation opens When I am away', async () => {
     const u = userEvent.setup({ pointerEventsCheck: 0 });
     render(<ApprovalsInboxScreen waiting={[row('p', { lowRisk: false, decideAt: '/yx/payroll/reopen-requests' })]} sent={[]} history={[]} openId="p" live={live()} />);

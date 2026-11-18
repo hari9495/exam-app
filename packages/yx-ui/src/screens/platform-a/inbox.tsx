@@ -17,7 +17,7 @@ import { DatePicker } from '../../components/date';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/menu';
 import { Icon } from '../../components/foundations';
-import { useNarrow } from '../../components/stepper';
+import { useMinWidth, useNarrow } from '../../components/stepper';
 import type { TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
 import { dayLabel } from '../../components/notify';
@@ -722,6 +722,22 @@ function ApprovalDrawer({ row, list, onMove, onClose, defaultDecision, onDone, a
   );
 }
 
+/** Answer 2504: the open request in the desk's third column (the drawer's content, without the overlay). */
+function ApprovalPane({ row, defaultDecision, onDone, actionable, live }: { row: ApprovalRow; defaultDecision: Decision; onDone: (text: string) => void; actionable: boolean; live?: LiveDecision }) {
+  const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, actionable, live);
+  return (
+    <Card title={`${row.summary} · ${row.requester}`}>
+      <div className="yx-plt-stack">
+        <span className="yx-plt-muted">
+          {row.ref} · {row.detail}
+        </span>
+        {body}
+        {footer}
+      </div>
+    </Card>
+  );
+}
+
 /**
  * PLT-04 live (P03 approvals engine). The page maps the engine's rows (waiting rows are task ids; delegated ones carry
  * onBehalfOf; a row with decideAt is decided on its own page) and turns "done" texts into toasts.
@@ -758,12 +774,16 @@ export interface ApprovalsInboxScreenProps {
   bulkRejectOpen?: boolean;
   /** Answer 2500: everyone's pending approvals (HR with workflow.approvals.oversee); the tab shows only when given. */
   everyone?: ApprovalRow[];
+  /** Answer 2504: the three-column desk (groups, list, request). By default from the screen: 1440 px or wider. */
+  desk?: boolean;
   state?: 'ready' | 'loading' | 'error';
   live?: LiveApprovals;
 }
 
 // PLT-04 · Approvals inbox (tabs, filters, bulk, side panel). APX-D §1.1 Approvals. Manager page: no company button.
-export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, bulkRejectOpen, everyone, state = 'ready', live }: ApprovalsInboxScreenProps) {
+export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, bulkRejectOpen, everyone, desk: deskProp, state = 'ready', live }: ApprovalsInboxScreenProps) {
+  const wide = useMinWidth(1440);
+  const desk = deskProp ?? wide;
   const [tab, setTab] = useState<string>(defaultTab);
   const [own, setItems] = useState(() => byUrgency(waiting));
   // Live: the rows are the server's; a decided one leaves when the list reloads.
@@ -819,6 +839,21 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
     setOpenDecision(d);
   };
   const actionable = tab === 'waiting' || tab === 'delegated';
+  const closeRow = () => {
+    setOpen(null);
+    setOpenDecision(null);
+  };
+  // The request, in the drawer (below 1440 px) or the desk's third column.
+  const paneProps = (r: ApprovalRow) => ({
+    row: r,
+    defaultDecision: openDecision ?? (r.id === openId ? defaultDecision ?? null : null),
+    onDone: (t: string) => {
+      live?.onDone(doneText(r, t));
+      decide([r.id], t);
+    },
+    actionable: tab === 'everyone' || (actionable && items.some((x) => x.id === r.id)),
+    live: live ? { decide: (d: 'approve' | 'reject' | 'send_back', reason: string) => live.onDecide(r, d, reason), today, reassign: live.reassign, onlyReassign: tab === 'everyone' } : undefined,
+  });
   const overdue = overdueCount(items, today);
   const page = (
       <ListPage
@@ -859,7 +894,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         tab={tab}
         onTabChange={setTab}
         beforeTable={
-          kinds.length > 1 ? (
+          !desk && kinds.length > 1 ? (
             <Segment
               label="Kind of request"
               value={shownKind}
@@ -945,25 +980,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         onRowClick={(r) => openRow(r.id)}
         activeRowId={open}
       >
-        {current && (
-          <ApprovalDrawer
-            key={`${current.id}-${openDecision ?? ''}`}
-            row={current}
-            list={rows}
-            onMove={(id) => openRow(id)}
-            onClose={() => {
-              setOpen(null);
-              setOpenDecision(null);
-            }}
-            defaultDecision={openDecision ?? (current.id === openId ? defaultDecision ?? null : null)}
-            onDone={(t) => {
-              live?.onDone(doneText(current, t));
-              decide([current.id], t);
-            }}
-            actionable={tab === 'everyone' || (actionable && items.some((x) => x.id === current.id))}
-            live={live ? { decide: (d, reason) => live.onDecide(current, d, reason), today, reassign: live.reassign, onlyReassign: tab === 'everyone' } : undefined}
-          />
-        )}
+        {current && !desk && <ApprovalDrawer key={`${current.id}-${openDecision ?? ''}`} {...paneProps(current)} list={rows} onMove={(id) => openRow(id)} onClose={closeRow} />}
         {confirmIds && (
           <ConfirmDialog
             open
@@ -1029,7 +1046,26 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
   );
   return (
     <DesktopFrame area="home" panelTitle="Home" panel={homePanel('Approvals', items.length)} scope="none">
-      {page}
+      {desk ? (
+        // Answer 2504: at 1440 px or wider, three columns: kinds of request, the list, and the open request.
+        <div className="yx-plt-desk">
+          <div className="yx-plt-desk__groups">
+            <Segment
+              label="Kind of request"
+              orientation="vertical"
+              value={shownKind}
+              onChange={setKind}
+              options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
+            />
+          </div>
+          <div className="yx-plt-desk__list">{page}</div>
+          <aside className="yx-plt-desk__detail" aria-label="The request">
+            {current ? <ApprovalPane key={`${current.id}-${openDecision ?? ''}`} {...paneProps(current)} /> : <EmptyState compact title="Choose a request." description="It opens here, with what to decide." />}
+          </aside>
+        </div>
+      ) : (
+        page
+      )}
       {live?.footer}
     </DesktopFrame>
   );

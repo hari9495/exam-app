@@ -271,3 +271,9 @@
 
 .yx-plt-myreq__row:hover { background: var(--yx-color-bg-subtle); }
 .yx-plt-palette-field:hover { border-color: var(--yx-color-text-muted); background: var(--yx-color-bg-subtle); }
+
+/* Answer 2504: the approvals desk at 1440 px or wider: kinds of request, the list, the open request. */
+.yx-plt-desk { display: grid; grid-template-columns: minmax(9rem, 11rem) minmax(0, 1fr) minmax(20rem, 24rem); gap: var(--yx-space-4); align-items: start; }
+.yx-plt-desk__groups { padding-top: var(--yx-space-4); }
+.yx-plt-desk__list { min-width: 0; }
+.yx-plt-desk__detail { position: sticky; top: var(--yx-space-4); max-height: calc(100vh - var(--yx-space-8)); overflow-y: auto; }
