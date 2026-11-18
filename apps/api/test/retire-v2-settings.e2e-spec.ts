@@ -132,4 +132,31 @@ describe('Retired /v2 settings in YukthiX Settings', () => {
       expect((await call('adminA', 'get', '/certificate-template').expect(200)).body.title).toBe('Certificate of Merit');
     });
   });
+
+  // Answer 2422: the logo and brand colour on Settings 1.1.
+  describe('1.1 logo and brand colour (2422)', () => {
+    const PNG = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex');
+    it('uploads a real PNG and saves a colour, each audited with before and after; the other company keeps its own', async () => {
+      const up = (await call('adminA', 'post', '/organizations/branding/logo').attach('file', PNG, { filename: 'logo.png', contentType: 'image/png' }).expect(201)).body;
+      expect(up.logoUrl).toBeTruthy();
+      await call('adminA', 'patch', '/organizations/branding').send({ primaryColor: '#1F6F5C' }).expect(200);
+      expect((await call('adminA', 'get', '/organizations/branding').expect(200)).body.primaryColor).toBe('#1F6F5C');
+      const logs = await at('A', (tx) => tx.auditLog.findMany({ where: { action: { in: ['organization.logo_updated', 'organization.branding_updated'] } }, orderBy: { createdAt: 'asc' } }));
+      const meta = logs.map((l) => JSON.parse(l.metadataJson ?? '{}'));
+      expect(meta[0]).toMatchObject({ before: null, after: expect.stringContaining('logos/') });
+      expect(meta[1]).toMatchObject({ before: { primaryColor: null }, after: { primaryColor: '#1F6F5C' } });
+      expect((await call('adminB', 'get', '/organizations/branding').expect(200)).body).toMatchObject({ logoUrl: null, primaryColor: null });
+    });
+
+    it('negative: an SVG, HTML named .png, a bad colour, no key, acting for someone else', async () => {
+      const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+      expect((await call('adminA', 'post', '/organizations/branding/logo').attach('file', svg, { filename: 'logo.svg', contentType: 'image/svg+xml' }).expect(400)).body.message).toBe('Logo must be a PNG or JPEG image');
+      await call('adminA', 'post', '/organizations/branding/logo').attach('file', Buffer.from('<html>hi</html>'), { filename: 'logo.png', contentType: 'image/png' }).expect(400);
+      await call('adminA', 'patch', '/organizations/branding').send({ primaryColor: 'blue' }).expect(400);
+      await call('plainA', 'patch', '/organizations/branding').send({ primaryColor: '#000000' }).expect(403);
+      await call('acting', 'patch', '/organizations/branding').send({ primaryColor: '#000000' }).expect(403);
+      await call('acting', 'post', '/organizations/branding/logo').attach('file', PNG, { filename: 'logo.png', contentType: 'image/png' }).expect(403);
+      expect((await call('adminA', 'get', '/organizations/branding').expect(200)).body.primaryColor).toBe('#1F6F5C');
+    });
+  });
 });

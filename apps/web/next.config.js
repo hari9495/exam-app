@@ -71,6 +71,8 @@ const nextConfig = {
       '/v2/settings/business-hours': '/yx/settings/hiring',
       // Answer 2424: the pass certificate is a section on Settings 6.5 Assessments.
       '/v2/settings/certificate': '/yx/settings/talent/assessments',
+      // Answer 2422: logo and brand colour are on Settings 1.1 Company & branding.
+      '/v2/settings/branding': '/yx/settings/org/company-and-branding',
       // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
       '/v2/reports': '/yx/hiring/assessments/tests',
       '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',

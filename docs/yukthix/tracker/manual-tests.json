@@ -27346,5 +27346,28 @@
                               "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate, view only"
                     ],
                     "note": "Positive and negative (kit certificate-card.test.tsx; web yx-settings-s8.test.tsx; API retire-v2-settings.e2e-spec.ts). The certificate API now audits before and after."
+          },
+          {
+                    "id": "MT-V2-ORG-BRANDING",
+                    "area": "Retire /v2: logo and brand colour on Settings 1.1 Company & branding (answer 2422, 18 Nov 2026)",
+                    "screen": "Settings › Organisation › Company & branding",
+                    "url": "http://localhost:3000/yx/settings/org/company-and-branding",
+                    "account": "Admin admin-tester@demo-org.test (company settings); an HR user with only HR's settings key; a PNG logo, an SVG file and a text file renamed logo.png.",
+                    "steps": [
+                              "As admin: open Settings › Company & branding. Find 'Logo and brand colour'.",
+                              "Press Upload logo (or Replace) and choose the PNG.",
+                              "Choose the SVG file, then the renamed text file.",
+                              "Change Brand colour to #FFEE00 and press Save changes.",
+                              "Change it to #1F6F5C and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/branding and /settings/branding.",
+                              "As the HR user: open the page. Then, as admin, act as another person and open it.",
+                              "As arjun@demo-org.test: open the page."
+                    ],
+                    "expected": "Step 1: the current logo (or 'No logo yet') and the brand colour with a button preview and a contrast badge; no page scroll at 1278 x 635 beyond the settings list. Step 2: a 5-second toast 'Logo saved' and the new logo shows at once (no Save needed). Step 3: refused with 'Logo must be a PNG or JPEG image'; the old logo stays. Step 4: 'White button text is hard to read on this colour. Choose a darker one.' and nothing saved. Step 5: saved with a toast. Step 6: one entry per change with before and after. Step 7: Settings › Company & branding. Step 8: logo and colour are shown but cannot be changed. Step 9: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 1 · Organisation › 1.1 Company & branding · logo and colour (live)"
+                    ],
+                    "note": "Positive and negative (kit settings-branding.test.tsx; web yx-settings-s7.test.tsx; API retire-v2-settings.e2e-spec.ts and organizations.service.spec.ts). Logos and careers banners are now checked by their bytes; SVG is refused (it can carry script). The /v2 accent colour, text colour and sign-in watermark are not used by any YukthiX page, so they are not on 1.1."
           }
 ]

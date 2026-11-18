@@ -258,13 +258,16 @@ export class OrganizationsController {
     return this.organizationsService.updateBusinessHours(tenant, userId, dto);
   }
 
+  // Answer 2422 (Settings 1.1): never while acting for someone else.
   @Patch('branding')
+  @UseGuards(OwnSessionGuard)
   @RequirePermissions('org:manage_settings')
   updateBrandingColors(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateBrandingColorsDto) {
     return this.organizationsService.updateBrandingColors(tenant, userId, dto);
   }
 
   @Post('branding/logo')
+  @UseGuards(OwnSessionGuard)
   @RequirePermissions('org:manage_settings')
   @UseInterceptors(FileInterceptor('file'))
   @Throttle(MODERATE_UPLOAD_THROTTLE)

@@ -772,7 +772,7 @@ describe('OrganizationsService', () => {
       expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { primaryColor: '#1a73e8' } });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
-        { actorUserId: 'user-1', action: 'organization.branding_updated', entityType: 'organization', entityId: 'org-1' },
+        expect.objectContaining({ actorUserId: 'user-1', action: 'organization.branding_updated', entityType: 'organization', entityId: 'org-1', metadata: expect.objectContaining({ before: null }) }),
       );
       expect(result).toEqual({ name: 'Acme Corp', logoUrl: null, primaryColor: '#1a73e8', accentColor: null });
     });
@@ -832,7 +832,8 @@ describe('OrganizationsService', () => {
   });
 
   describe('uploadLogo', () => {
-    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
+    // A real PNG header: the type is read from the bytes (answer 2422).
+    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001080600000000', 'hex') } as Express.Multer.File;
 
     beforeEach(() => {
       blobStorage.upload.mockReset().mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png');
@@ -855,7 +856,7 @@ describe('OrganizationsService', () => {
       });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
-        { actorUserId: 'user-1', action: 'organization.logo_updated', entityType: 'organization', entityId: 'org-1' },
+        { actorUserId: 'user-1', action: 'organization.logo_updated', entityType: 'organization', entityId: 'org-1', metadata: { before: null, after: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png' } },
       );
       expect(result.logoUrl).toBe('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png');
     });
@@ -864,6 +865,14 @@ describe('OrganizationsService', () => {
       const badFile = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
 
       await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', badFile)).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('refuses an SVG, or a file whose bytes are not an image whatever the browser called it', async () => {
+      const svg = { mimetype: 'image/svg+xml', size: 60, buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>') } as Express.Multer.File;
+      const html = { mimetype: 'image/png', size: 20, buffer: Buffer.from('<html><body>hi</body></html>') } as Express.Multer.File;
+      await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', svg)).rejects.toThrow('Logo must be a PNG or JPEG image');
+      await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', html)).rejects.toThrow('Logo must be a PNG or JPEG image');
       expect(blobStorage.upload).not.toHaveBeenCalled();
     });
 
@@ -989,7 +998,7 @@ describe('OrganizationsService', () => {
   });
 
   describe('uploadCareersBanner', () => {
-    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
+    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001080600000000', 'hex') } as Express.Multer.File;
 
     beforeEach(() => {
       blobStorage.upload.mockReset().mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png');

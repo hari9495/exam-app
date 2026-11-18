@@ -82,7 +82,7 @@ export { CreateInvoicesSheet, ExportSheet, type DraftInput, type ExportInput, ty
 export { PlacementFee, type LivePlacementFee } from '../hiring-staffing';
 export { ClientPortalScreen, type LiveClientPortal, type LiveClientTab } from '../../portals/t9-business';
 export { PortalSignInScreen } from '../../portals/portals-kit';
-export type { SettingsGroupDef } from '../../settings/settings-types';
+export type { SettingDef, SettingValue, SettingsGroupDef, SettingsPageDef } from '../../settings/settings-types';
 // Projects P-1 (answers 1401 to 1405, 1412, 1420): the designed PRJ-01 list and workspace, live with their `live` prop,
 // and Settings 3.11 Projects & timesheets.
 export { ProjectsListScreen, ProjectWorkspaceScreen, type LiveProjectsList, type LiveProjectWorkspace, type LiveProjectBilling } from '../projects';

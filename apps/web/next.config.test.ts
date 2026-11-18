@@ -121,6 +121,8 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
     ['/message-templates', '/yx/settings/hiring'],
     ['/v2/settings/business-hours', '/yx/settings/hiring'],
     ['/v2/settings/certificate', '/yx/settings/talent/assessments'],
+    ['/v2/settings/branding', '/yx/settings/org/company-and-branding'],
+    ['/settings/branding', '/yx/settings/org/company-and-branding'],
     ['/dashboard', '/yx/hiring/dashboard'],
     ['/analytics/hiring', '/yx/hiring/dashboard'],
     ['/v2/panel/reports', '/yx/hiring/assessments/results'],
@@ -138,7 +140,7 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
   });
 
   it('gap pages stay (2438): their addresses are not redirected away yet', () => {
-    for (const gap of ['/v2/surveys', '/v2/system-logs', '/v2/settings/branding'])
+    for (const gap of ['/v2/surveys', '/v2/settings/custom-fields'])
       expect(redirects.some((r) => r.source === gap)).toBe(false);
   });
 });
