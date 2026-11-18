@@ -15,6 +15,12 @@ import { biasLaw, coveredPlace } from './bias-audit';
 const OFFER_PAY_KEY = 'ats.offer.compensation.view';
 const NONE = '00000000-0000-0000-0000-000000000000';
 const LETTER_ESIGN = 'offer_template.esign';
+/**
+ * Answer 2427 (retiring /v2): two company switches kept on the organisation row (record-visibility RLS and the daily
+ * reminder sweep read them there) shown and changed on 6.1, audited with before and after.
+ */
+export const ORG_SWITCHES = { 'hiring.record_visibility': 'recordVisibilityEnabled', 'hiring.reminders': 'remindersEnabled' } as const;
+type OrgSwitch = keyof typeof ORG_SWITCHES;
 
 /**
  * Settings 6.1 Hiring: the company hiring settings the design has a place for (answers 291, 302 and 341). Every value is a scoped company setting with a default (org-settings.service), audited there
@@ -171,8 +177,11 @@ export class HiringSettingsService {
           return locs.filter((l) => coveredPlace(law, { state: l.state, city: (l.address as { city?: string } | null)?.city ?? null })).map((l) => l.name);
         })(),
         offerLetters: await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }], select: { id: true, name: true, esign: true } }),
-        values,
-        defaults: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
+        values: { ...values, ...(await (async () => {
+          const o = await tx.organization.findFirst({ where: { id: org }, select: { recordVisibilityEnabled: true, remindersEnabled: true } });
+          return { 'hiring.record_visibility': o?.recordVisibilityEnabled ? 'on' : 'off', 'hiring.reminders': o?.remindersEnabled ? 'on' : 'off' };
+        })()) },
+        defaults: { ...Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])), 'hiring.record_visibility': 'off', 'hiring.reminders': 'off' },
         choices: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
         lastChange: last ? { by: by?.name || by?.email || 'Someone', at: last.updatedAt, what: `Changed ${SETTINGS[last.key]!.label.replace(/^Hiring: /, '').toLowerCase()}` } : null,
         pipelines: pipelines
@@ -204,6 +213,10 @@ export class HiringSettingsService {
       return { id: m[1]!, esign: m[2] === 'on' };
     });
     changes = changes.filter((ch) => ch.key !== LETTER_ESIGN);
+    // Answer 2427: the organisation switches ride along as 'on' | 'off'.
+    const switches = changes.filter((ch): ch is { key: OrgSwitch; value: string } => ch.key in ORG_SWITCHES);
+    for (const ch of switches) if (!['on', 'off'].includes(ch.value)) throw new BadRequestException(`${ch.key} is on or off.`);
+    changes = changes.filter((ch) => !(ch.key in ORG_SWITCHES));
     const seen = new Set<string>();
     for (const ch of changes) {
       if (!(HIRING_SETTING_KEYS as readonly string[]).includes(ch.key)) throw new BadRequestException(`${ch.key} is not a hiring setting on this page.`);
@@ -230,6 +243,17 @@ export class HiringSettingsService {
           if (t.esign === l.esign) continue;
           await tx.offerTemplate.update({ where: { id: t.id }, data: { esign: l.esign } });
           await audit(tx, c, 'offer_template.updated', 'offer_template', t.id, { name: t.name, esign: l.esign });
+        }
+      });
+    if (switches.length)
+      await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+        const before = await tx.organization.findFirstOrThrow({ where: { id: c.organizationId }, select: { recordVisibilityEnabled: true, remindersEnabled: true } });
+        for (const ch of switches) {
+          const col = ORG_SWITCHES[ch.key];
+          const on = ch.value === 'on';
+          if (before[col] === on) continue;
+          await tx.organization.update({ where: { id: c.organizationId }, data: { [col]: on } });
+          await audit(tx, c, 'org.setting.changed', 'organization', c.organizationId, { key: ch.key, from: before[col] ? 'on' : 'off', to: ch.value });
         }
       });
     for (const ch of changes) await this.settings.set(ctx, { key: ch.key, scopeType: 'tenant', value: ch.value } as Parameters<OrgSettingsService['set']>[1]);

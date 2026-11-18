@@ -31,6 +31,8 @@ const DEFAULTS = {
   'hiring.notetaker.keep_days': '90',
   'hiring.bias_audit.nyc': 'off',
   'hiring.bgv.decider_other_person': 'on',
+  'hiring.record_visibility': 'off',
+  'hiring.reminders': 'off',
 };
 const DATA: HiringSettingsData = {
   canEdit: true,
@@ -170,6 +172,20 @@ describe('Settings 6.1 Hiring (live)', () => {
     await waitFor(() => expect(onSave).toHaveBeenCalled());
     const [values, rows] = onSave.mock.calls[0]!;
     expect(hiringSettingsChanges(values, rows, DATA)).toEqual([{ key: 'hiring.bias_audit.nyc', value: 'on' }]);
+  });
+
+  it('answer 2427: record visibility and the daily reminders are company switches on 6.1 (off by default) and save as on/off', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(live({ onSave }));
+    const own = screen.getByRole('checkbox', { name: /Recruiters see only their own candidates/ });
+    const rem = screen.getByRole('checkbox', { name: /Send the hiring team daily reminders/ });
+    expect(own).not.toBeChecked();
+    expect(rem).not.toBeChecked();
+    await ue.click(own);
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const [values, rows] = onSave.mock.calls[0]!;
+    expect(hiringSettingsChanges(values, rows, DATA)).toEqual([{ key: 'hiring.record_visibility', value: 'on' }]);
   });
 
   it('answer 348: a default recruiter who no longer qualifies reads as None, with a warning naming them', () => {

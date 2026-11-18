@@ -113,6 +113,8 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
     ['/v2/reports/:examId', '/yx/hiring/assessments/tests/:examId?tab=results'],
     ['/v2/dashboard', '/yx/hiring/dashboard'],
     ['/v2/settings/scheduled-reports', '/yx/hiring/schedules'],
+    ['/v2/settings/record-visibility', '/yx/settings/hiring'],
+    ['/v2/settings/reminders', '/yx/settings/hiring'],
     ['/dashboard', '/yx/hiring/dashboard'],
     ['/analytics/hiring', '/yx/hiring/dashboard'],
     ['/v2/panel/reports', '/yx/hiring/assessments/results'],

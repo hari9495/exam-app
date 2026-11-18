@@ -27247,5 +27247,26 @@
                               "Screens/Analytics/ANL-08 · Schedules and export log › Live · weekly hiring digest on / off / loading / could not load"
                     ],
                     "note": "Positive and negative (kit analytics-live.test.tsx; web yx-report-schedules.test.tsx; API hiring-dashboard.e2e-spec.ts and organizations.service.spec.ts). GET /organizations/scheduled-report-settings now also returns lastSentAt. The export log tab of ANL-08 waits for analytics exports."
+          },
+          {
+                    "id": "MT-V2-HIRE-SWITCHES",
+                    "area": "Retire /v2: record visibility and daily reminders on Settings 6.1 Hiring (answer 2427, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test; a recruiter with two candidates (one assigned to them, one to someone else); employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Recruiters see only their own candidates' and 'Send the hiring team daily reminders'.",
+                              "Turn 'Recruiters see only their own candidates' on and press Save changes.",
+                              "As the recruiter: open Hire › Candidates.",
+                              "As admin: turn it off again and save; turn on the daily reminders and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/record-visibility and /v2/settings/reminders.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: both switches, off by default, with what each does. No page scroll at 1278 x 635. Step 2: 5-second toast 'Hiring settings saved'. Step 3: only the candidate assigned to them (and any unassigned ones). Step 4: the recruiter sees every candidate again; the next daily sweep sends the reminders. Step 5: one entry per change with before and after. Step 6: Settings › Hiring. Step 7: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › Hiring"
+                    ],
+                    "note": "Positive and negative (kit hiring-live.test.tsx; API hiring-dashboard.e2e-spec.ts). The values stay on the company row (record-visibility RLS and the reminder sweep read them there)."
           }
 ]
