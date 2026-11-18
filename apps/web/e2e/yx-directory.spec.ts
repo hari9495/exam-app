@@ -38,7 +38,10 @@ test('HR: cards, ID and status, a saved view, export and Issue letter', async ({
   await page.getByRole('checkbox', { name: /^Select Arjun/ }).first().click();
   await page.getByRole('button', { name: 'Issue letter' }).click();
   await page.waitForURL(/\/yx\/people\/letters\?people=/);
-  await expect(page.getByRole('dialog', { name: 'Issue a letter to many' })).toBeVisible({ timeout: 30_000 });
+  // One person chosen opens the single letter, with that person already in it (many open "Issue a letter to many").
+  const letter = page.getByRole('dialog', { name: 'Issue a letter' });
+  await expect(letter).toBeVisible({ timeout: 30_000 });
+  await expect(letter.getByRole('combobox', { name: 'Employee' })).toContainText('Arjun');
 });
 
 test('a colleague: Public fields only, and the quick chips', async ({ page }) => {

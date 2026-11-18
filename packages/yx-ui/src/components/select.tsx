@@ -252,7 +252,7 @@ export function MultiSelect<V extends string = string>({
             <span key={o.value} className="yx-select__chip">
               {o.label}
               {!disabled && (
-                <button type="button" className="yx-select__chip-remove" aria-label={`Remove ${o.label}`} onClick={() => toggle(o.value)}>
+                <button type="button" className="yx-select__chip-remove" aria-label={`Remove ${o.label}`} title={`Remove ${o.label}`} onClick={() => toggle(o.value)}>
                   <Icon icon={X} size="sm" />
                 </button>
               )}
@@ -327,12 +327,13 @@ export function PersonPicker({ people, placeholder = 'Search people', ...rest }:
       placeholder={placeholder}
       searchable
       searchPlaceholder="Name, email, role or department"
+      // A searched list can drop the chosen person on the next search; fall back to the option itself, never crash.
       renderOption={(o) => {
-        const p = byId.get(o.value)!;
+        const p = byId.get(o.value) ?? { id: o.value, name: o.label };
         return <PersonLabel name={p.name} src={p.photoUrl} secondary={secondary(p)} />;
       }}
       renderValue={(o) => {
-        const p = byId.get(o.value)!;
+        const p = byId.get(o.value) ?? { id: o.value, name: o.label };
         return <PersonLabel name={p.name} src={p.photoUrl} size={20} />;
       }}
     />

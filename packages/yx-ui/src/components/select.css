@@ -54,8 +54,13 @@
 .yx-select--multi { height: auto; min-height: var(--yx-control-md); flex-wrap: wrap; padding-block: var(--yx-space-1); cursor: default; }
 .yx-select--multi:focus-within, .yx-select--multi[data-open] { border-color: var(--yx-color-focus-ring); outline: var(--yx-border-width) solid var(--yx-color-focus-ring); }
 .yx-select--multi[data-disabled] { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); color: var(--yx-color-text-disabled); }
+/* A read-only multi still shows its chosen values: they are text people read, so they keep AA contrast (4.5:1) with the
+   muted text token; the box's subtle fill and the not-allowed cursor say it cannot be changed. */
+[data-disabled] .yx-select__chip, :disabled .yx-select__chip { color: var(--yx-color-text-muted); }
 .yx-select__trigger { flex: 1; min-width: var(--yx-space-16); display: flex; align-items: center; gap: var(--yx-space-2); align-self: stretch; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .yx-select__trigger:disabled { cursor: not-allowed; }
+/* Clickable must look clickable: hovering the multi select's trigger shows a fill (it changed nothing before). */
+.yx-select__trigger:hover:not(:disabled) { background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); }
 .yx-select__trigger > .yx-icon { color: var(--yx-color-text-muted); margin-left: auto; }
 .yx-select__chip-remove { display: inline-flex; align-items: center; justify-content: center; margin-left: var(--yx-space-1); margin-right: calc(-1 * var(--yx-space-1)); padding: 0; border: 0; border-radius: var(--yx-radius-badge); background: none; color: var(--yx-color-text-muted); cursor: pointer; }
 .yx-select__chip-remove:hover { color: var(--yx-color-text); background: var(--yx-color-border); }

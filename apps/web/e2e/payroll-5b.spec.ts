@@ -22,23 +22,27 @@ test('Suresh checks the set-up; HR works out a salary from a CTC and sends it fo
 
   // Set-up: the checklist and the registrations of Kaveri Foods Pvt Ltd.
   await page.goto('/yx/payroll/setup');
-  await expect(page.getByRole('heading', { name: 'Payroll set-up' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Set up payroll', level: 1 })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Statutory registrations' })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('list', { name: 'Set-up steps' })).toContainText('Pay groups');
+  await expect(page.getByRole('navigation', { name: 'Payroll set-up steps' })).toContainText('Pay group and cut-off');
   await shot('5b-setup');
 
   // The library and the starter template.
   await page.goto('/yx/payroll/components');
-  await expect(page.getByRole('table', { name: 'Earnings' })).toContainText('Basic');
-  await expect(page.getByRole('table', { name: 'Deductions' })).toContainText('Provident fund (employee)');
+  // One table grouped by type: the earnings and deductions groups with the starter lines.
+  const library = page.getByRole('table', { name: 'Pay components' });
+  await expect(library.getByRole('row', { name: /^Earnings \d+$/ })).toBeVisible({ timeout: 30_000 });
+  await expect(library.getByRole('row', { name: /^Basic / })).toBeVisible();
+  await expect(library.getByRole('row', { name: /^Deductions \d+$/ })).toBeVisible();
+  await expect(library.getByRole('row', { name: /^Provident fund \(employee\) Statutory / })).toBeVisible();
   await shot('5b-components');
   await page.goto('/yx/payroll/templates');
-  await expect(page.getByText('Standard monthly (India starter)')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Standard monthly (India starter)', level: 1 })).toBeVisible({ timeout: 30_000 });
   await shot('5b-templates');
 
   // Published rules and the payslip's required particulars.
   await page.goto('/yx/payroll/statutory-rules');
-  await expect(page.getByRole('table', { name: 'Statutory rules' })).toContainText('Provident fund');
+  await expect(page.getByRole('table', { name: 'Statutory rule sets' }).getByRole('row', { name: /^Provident fund All India .* In force/ }).first()).toBeVisible({ timeout: 30_000 });
   await shot('5b-rules');
   await page.goto('/yx/payroll/payslip-layout');
   await expect(page.getByRole('list', { name: 'Always shown' })).toContainText('Net wages paid');
@@ -49,8 +53,8 @@ test('Suresh checks the set-up; HR works out a salary from a CTC and sends it fo
   await page.getByRole('textbox', { name: 'Find a person' }).fill('Arjun');
   await page.getByRole('button', { name: 'Search', exact: true }).click();
   await page.getByRole('button', { name: /Arjun Kulkarni/ }).click();
-  await expect(page.getByText('Salary in force')).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('region', { name: 'New or revised salary' })).toHaveCount(0);
+  await expect(page.getByRole('table', { name: 'Current breakup' })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: 'Revise compensation' })).toHaveCount(0);
 
   // Lakshmi (HR) works out Arjun's salary from a CTC: the breakup cites the PF rule; it goes for approval.
   const hr = await (await browser.newContext({ viewport: { width: 1440, height: 1000 } })).newPage();
@@ -61,16 +65,18 @@ test('Suresh checks the set-up; HR works out a salary from a CTC and sends it fo
   await hr.getByRole('textbox', { name: 'Find a person' }).fill('Arjun');
   await hr.getByRole('button', { name: 'Search', exact: true }).click();
   await hr.getByRole('button', { name: /Arjun Kulkarni/ }).click();
-  await expect(hr.getByText('Salary in force')).toBeVisible({ timeout: 30_000 });
-  await hr.getByRole('combobox', { name: 'Template' }).click();
+  await expect(hr.getByRole('table', { name: 'Current breakup' })).toBeVisible({ timeout: 30_000 });
+  await hr.getByRole('button', { name: 'Revise compensation' }).click();
+  const revise = hr.getByRole('dialog', { name: 'Revise compensation' });
+  await revise.getByRole('textbox', { name: /^Reason/ }).fill(`Annual review ${Date.now()}`);
+  await revise.getByRole('textbox', { name: /New annual CTC/ }).fill('900000');
+  await revise.getByRole('combobox', { name: /Salary template/ }).click();
   await hr.getByRole('option', { name: /Standard monthly/ }).click();
-  await hr.getByRole('textbox', { name: 'Annual CTC' }).fill('900000');
-  await hr.getByRole('button', { name: 'Work out the breakup' }).click();
-  const breakup = hr.getByRole('table', { name: 'Salary breakup' });
-  await expect(breakup).toContainText('Provident fund (employee)');
-  await expect(breakup).toContainText('₹75,000.00');
+  await revise.getByRole('button', { name: 'Work out the breakup' }).click();
+  await expect(revise).toContainText('Provident fund (employee)', { timeout: 30_000 });
+  await expect(revise).toContainText('₹75,000.00');
   await shot('5b-compensation');
-  await hr.getByRole('region', { name: 'New or revised salary' }).getByRole('textbox', { name: /Reason/ }).fill(`Annual review ${Date.now()}`);
-  await hr.getByRole('button', { name: 'Send for approval' }).click();
-  await expect(hr.getByText('Sent for approval.', { exact: false })).toBeVisible({ timeout: 30_000 });
+  await revise.getByRole('button', { name: 'Send for approval' }).click();
+  await expect(revise).toHaveCount(0, { timeout: 30_000 });
+  await expect(hr.getByText(/Sent for approval/).first()).toBeVisible({ timeout: 30_000 });
 });

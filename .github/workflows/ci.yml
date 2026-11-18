@@ -219,6 +219,9 @@ jobs:
 
       - name: API e2e suites (shard ${{ matrix.shard }}/4)
         working-directory: apps/api
+        # seed-panel-role builds a fresh database, which needs the service container's superuser (not docker exec).
+        env:
+          PG_SUPERUSER_URL: postgresql://postgres:ci-throwaway@localhost:5432/postgres
         run: npx jest --config ./test/jest-e2e.json --shard=${{ matrix.shard }}/4
 
   # A fresh database takes every migration in order, and Prisma then reports it up to date (no failed, missing or

@@ -1,7 +1,7 @@
 import { humanizeHttpError, NetworkError } from './http-error-message';
 import { goTo } from './navigate';
 import { withNextHere } from './safe-next';
-import { noteNotFound } from './yx-not-found';
+import { noteNotFound } from './yx-not-found-store';
 import { SALARY_RECHECK_MESSAGE, salaryCheck } from './salary-check';
 
 // Exported for public, unauthenticated pages (e.g. the candidate apply/status pages) that hit

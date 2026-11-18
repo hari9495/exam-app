@@ -1,6 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
-import { openProofWindow } from './fixtures/pay-db';
+import { openProofWindow, setOldRegime } from './fixtures/pay-db';
 import { stepUp } from './fixtures/time-db';
 
 // Payroll operations screens (PAY-10.09 … 10.16) on the seeded Kaveri Foods demo: Arjun declares 80C with a proof and asks
@@ -33,59 +33,72 @@ test('declarations and proofs, an advance, a payment mode, registers and advisor
   await openProofWindow('demo-org');
   const arjun = await as(browser, 'arjun@demo-org.test');
   await arjun.goto('/yx/me/tax-declarations');
-  await expect(arjun.getByRole('heading', { name: 'My tax declarations' })).toBeVisible({ timeout: 30_000 });
-  await arjun.getByRole('button', { name: 'Declare' }).click();
-  await arjun.getByRole('combobox', { name: /What/ }).click();
+  const tax = arjun.locator('main').last();
+  await expect(tax.getByRole('heading', { name: /^Tax workspace · / })).toBeVisible({ timeout: 30_000 });
+  await arjun.getByRole('tab', { name: /^Declarations/ }).click();
+  await tax.getByRole('button', { name: 'Add declaration' }).click();
+  const declare = arjun.getByRole('dialog', { name: 'Add declaration' });
+  await declare.getByRole('combobox', { name: /What/ }).click();
   await arjun.getByRole('option', { name: 'Investments and payments · s.123, Sch XV (old 80C)' }).click();
-  await arjun.getByRole('textbox', { name: /Amount for the year/ }).fill('50000');
-  await arjun.getByRole('button', { name: 'Save' }).click();
-  const row = arjun.getByRole('row', { name: /Investments and payments/ });
-  await expect(row).toContainText('₹50,000.00');
-  await row.locator('input[type=file]').setInputFiles({ name: 'ppf-statement.pdf', mimeType: 'application/pdf', buffer: PDF });
-  await expect(row).toContainText('Proof being checked');
+  await declare.getByRole('textbox', { name: /Amount for the year/ }).fill('50000');
+  await declare.getByRole('button', { name: 'Save declaration' }).click();
+  await expect(tax.getByRole('table', { name: 'Declarations' }).getByRole('row', { name: /Investments and payments/ })).toContainText('₹50,000.00', { timeout: 30_000 });
+  // Proofs are asked only in the old regime (PAY-22 design). Arjun's workspace (made on his first visit) starts in the new
+  // one; put it in the old regime, as an HR override would.
+  await setOldRegime('arjun@demo-org.test');
+  await arjun.reload();
+  await arjun.getByRole('tab', { name: 'Proofs' }).click();
+  const proof = tax.getByRole('list', { name: 'Proofs' }).getByRole('listitem').filter({ hasText: 'Investments and payments' });
+  await proof.locator('input[type=file]').setInputFiles({ name: 'ppf-statement.pdf', mimeType: 'application/pdf', buffer: PDF });
+  await expect(proof).toContainText('Proof being checked', { timeout: 30_000 });
 
   await arjun.goto('/yx/me/loans');
-  await arjun.getByRole('button', { name: 'Ask for an advance or loan' }).first().click();
-  await arjun.getByRole('textbox', { name: /Amount/ }).fill('20000');
-  await arjun.getByRole('textbox', { name: /Instalments/ }).fill('4');
-  await arjun.getByLabel(/First instalment in/).fill(next);
-  await arjun.getByRole('textbox', { name: /Why/ }).fill('School fees for the new term');
-  await arjun.getByRole('button', { name: 'Send for approval' }).click();
-  await expect(arjun.getByRole('table', { name: 'Loans and advances' })).toContainText('Waiting for approval');
+  const ask = arjun.getByRole('region', { name: 'Ask for a loan or advance' });
+  await ask.getByRole('textbox', { name: /^Amount/ }).fill('20000');
+  await ask.getByRole('textbox', { name: /Number of instalments/ }).fill('4');
+  await ask.getByRole('textbox', { name: /First instalment in/ }).fill(next);
+  await ask.getByRole('textbox', { name: /^Reason/ }).fill('School fees for the new term');
+  await ask.getByRole('button', { name: 'Send request' }).click();
+  await expect(arjun.getByRole('table', { name: 'Loans and advances' })).toContainText('Waiting for approval', { timeout: 30_000 });
 
   // Suresh accepts part of the proof with a reason.
   const suresh = await as(browser, 'payroll@demo-org.test');
   await suresh.goto('/yx/payroll/proofs');
-  await expect(suresh.getByRole('heading', { name: 'Proof checking' })).toBeVisible({ timeout: 30_000 });
-  await suresh.getByRole('button', { name: /^Decide on Arjun/ }).click();
-  await suresh.getByRole('radio', { name: 'Accept part' }).click();
-  await suresh.getByRole('textbox', { name: /Amount accepted/ }).fill('30000');
-  await suresh.getByRole('textbox', { name: /Comment/ }).fill('Only the PPF deposit is this year');
-  await suresh.getByRole('button', { name: 'Save decision' }).click();
-  await expect(suresh.getByRole('button', { name: /^Decide on Arjun/ })).toHaveCount(0);
-  await suresh.getByRole('radio', { name: 'Partly accepted' }).click();
-  await expect(suresh.getByRole('table', { name: 'Proofs' })).toContainText('₹30,000.00 accepted');
+  await expect(suresh.getByRole('heading', { name: 'Proof verification' })).toBeVisible({ timeout: 30_000 });
+  const lines = suresh.getByRole('table', { name: 'Proof lines' });
+  await lines.getByRole('row').filter({ hasText: 'Arjun' }).filter({ hasText: 'Investments and payments' }).getByRole('button', { name: 'Decide' }).click();
+  const decide = suresh.getByRole('dialog', { name: 'Investments and payments (80C)' });
+  await decide.getByRole('radio', { name: 'Approve part' }).click();
+  // Approving part needs the amount and a comment the employee sees.
+  await decide.getByRole('textbox', { name: /Approved amount/ }).fill('30000');
+  await decide.getByRole('textbox', { name: /Comment to employee/ }).fill('Only the PPF deposit is this year');
+  await decide.getByRole('button', { name: 'Approve part' }).click();
+  await expect(decide).toHaveCount(0, { timeout: 30_000 });
+  await suresh.getByRole('radio', { name: 'Partly approved' }).click();
+  await expect(lines.getByRole('row').filter({ hasText: 'Arjun' })).toContainText('₹30,000.00', { timeout: 30_000 });
 
   // The advance waits for the approver; Suresh asks for a cash payment mode for someone else.
   await suresh.goto('/yx/payroll/loans');
   await expect(suresh.getByRole('table', { name: 'Loans and advances' })).toContainText('Waiting for approval');
   await suresh.goto('/yx/payroll/payment-modes');
   await suresh.getByRole('button', { name: 'Ask for a payment mode' }).click();
-  await suresh.getByRole('textbox', { name: /Find person/ }).fill('Arjun');
-  await suresh.getByRole('button', { name: 'Search', exact: true }).click();
-  await suresh.getByRole('button', { name: /Arjun/ }).first().click();
-  await suresh.getByLabel(/^From/).fill(`${next}-01`);
-  await suresh.getByRole('textbox', { name: /Why/ }).fill('Bank account frozen');
-  await suresh.getByRole('button', { name: 'Send for approval' }).click();
+  const mode = suresh.getByRole('dialog', { name: 'Ask for a payment mode' });
+  await mode.getByRole('textbox', { name: /Find person/ }).fill('Arjun');
+  await mode.getByRole('button', { name: 'Search', exact: true }).click();
+  await mode.getByRole('button', { name: /Arjun/ }).first().click();
+  await mode.getByRole('textbox', { name: /^From/ }).fill(`${next}-01`);
+  await mode.getByRole('textbox', { name: /Why/ }).fill('Bank account frozen');
+  await mode.getByRole('button', { name: 'Send for approval' }).click();
   await expect(suresh.getByRole('table', { name: 'Payment modes' })).toContainText('Waiting for approval');
   await suresh.goto('/yx/payroll/payslip-queries');
   await expect(suresh.getByRole('heading', { name: 'Payslip queries' })).toBeVisible();
   await suresh.goto('/yx/payroll/certificates');
-  await expect(suresh.getByRole('heading', { name: 'Tax certificates' })).toBeVisible();
+  await expect(suresh.getByRole('heading', { name: /^Form 16 · tax year / })).toBeVisible({ timeout: 30_000 });
 
   // Arjun sees the part acceptance and its reason.
   await arjun.goto('/yx/me/tax-declarations');
-  await expect(arjun.getByRole('row', { name: /Investments and payments/ })).toContainText('Only the PPF deposit is this year');
+  await arjun.getByRole('tab', { name: 'Proofs' }).click();
+  await expect(tax.getByRole('list', { name: 'Proofs' }).getByRole('listitem').filter({ hasText: 'Investments and payments' })).toContainText('Only the PPF deposit is this year', { timeout: 30_000 });
 
   // Kavya opens the month's registers and the advisories.
   const kavya = await as(browser, 'compliance@demo-org.test');
@@ -93,5 +106,5 @@ test('declarations and proofs, an advance, a payment mode, registers and advisor
   await expect(kavya.getByRole('heading', { name: 'Statutory registers' })).toBeVisible({ timeout: 30_000 });
   await expect(kavya.getByRole('button', { name: 'Make registers' })).toBeVisible();
   await kavya.goto('/yx/payroll/advisories');
-  await expect(kavya.getByRole('heading', { name: 'Compliance advisories' })).toBeVisible();
+  await expect(kavya.getByRole('heading', { name: 'Rules & updates', level: 1 })).toBeVisible({ timeout: 30_000 });
 });

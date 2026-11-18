@@ -37,10 +37,9 @@ test('trip with an advance → claim on the trip → the advance is settled and 
   await signIn(mu, 'murugan@demo-org.test', PASSWORD);
   await mu.waitForURL((url) => !url.pathname.includes('sign-in'));
   await mu.goto('/yx/expenses');
-  await mu.getByRole('button', { name: 'Trips' }).click();
-  await mu.waitForURL(/\/yx\/expenses\/trips$/);
   await mu.getByRole('button', { name: 'Request a trip' }).click();
-  const sheet = mu.getByRole('dialog');
+  await mu.waitForURL(/\/yx\/expenses\/trips$/);
+  const sheet = mu.getByRole('dialog', { name: 'Request a trip' });
   await sheet.getByRole('textbox', { name: /Purpose/ }).fill(`Pune meetings ${tag}`);
   await sheet.getByRole('textbox', { name: 'Trip starts' }).fill(shown(from));
   await sheet.getByRole('textbox', { name: 'Trip starts' }).press('Enter');
@@ -54,7 +53,8 @@ test('trip with an advance → claim on the trip → the advance is settled and 
   await sheet.getByRole('textbox', { name: /Advance needed/ }).fill('10000');
   await sheet.getByRole('button', { name: 'Send for approval' }).click();
   await mu.waitForURL(/\/yx\/expenses\/trips\/[0-9a-f-]+$/, { timeout: 30_000 });
-  await expect(mu.getByText('With approvers')).toBeVisible({ timeout: 30_000 });
+  const timeline = mu.getByRole('list', { name: 'Trip timeline' });
+  await expect(timeline.getByRole('listitem').filter({ hasText: 'Approved' })).toContainText('current step', { timeout: 30_000 });
   const tripUrl = mu.url();
 
   // Kavya approves it; the approval creates the advance.
@@ -65,40 +65,42 @@ test('trip with an advance → claim on the trip → the advance is settled and 
   await kv.getByRole('radio', { name: /Waiting for me/ }).click();
   await kv.getByRole('row', { name: new RegExp(`Pune meetings ${tag}`) }).getByRole('button', { name: 'Open' }).click();
   await kv.getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(kv.getByText('Approved', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(kv.getByRole('list', { name: 'Trip timeline' }).getByRole('listitem').filter({ hasText: 'Advance paid' })).toContainText('current step', { timeout: 30_000 });
 
   // Finance (the admin) pays the advance.
-  await mu.reload();
-  await mu.getByRole('button', { name: 'Open the advance' }).click();
+  await mu.goto('/yx/expenses/advances');
+  await mu.getByRole('table', { name: 'Advances' }).getByRole('row', { name: new RegExp(`Pune meetings ${tag} [(]trip[)] ₹10,000[.]00`) }).getByRole('button', { name: 'Open' }).click();
   await mu.waitForURL(/\/yx\/expenses\/advances\//);
   const advanceUrl = mu.url();
   await admin.goto(advanceUrl);
   await admin.getByRole('button', { name: 'Record payment' }).click();
-  const pay = admin.getByRole('dialog');
+  const pay = admin.getByRole('dialog', { name: 'Record payment of ₹10,000.00?' });
   await pay.getByRole('textbox', { name: /Bank reference/ }).fill(`NEFT-${tag}`);
   await pay.getByRole('button', { name: 'Record payment' }).click();
   await expect(admin.getByText('Advance paid')).toBeVisible({ timeout: 30_000 });
 
   // Murugan claims ₹7,000 on the trip.
   await mu.goto(tripUrl);
-  await mu.getByRole('button', { name: 'Add a claim to this trip' }).click();
+  await mu.getByRole('button', { name: 'Add claim to this trip' }).click();
   await mu.waitForURL(/\/yx\/expenses\/claims\//);
-  await mu.getByLabel('Snap or upload a receipt').setInputFiles({ name: `receipt__Air India__Date ${dmy}__Grand Total 7,000.00.png`, mimeType: 'image/png', buffer: Buffer.concat([PNG, Buffer.from(randomUUID())]) });
-  await expect(mu.getByText('Check the values read from the receipt')).toBeVisible({ timeout: 30_000 });
-  await mu.getByRole('button', { name: 'Check and confirm' }).click();
-  const line = mu.getByRole('dialog');
+  await mu.getByRole('button', { name: 'Add line' }).click();
+  await mu.getByRole('dialog', { name: 'Add a line' }).locator('input[type=file]').setInputFiles({ name: `receipt__Air India__Date ${dmy}__Grand Total 7,000.00.png`, mimeType: 'image/png', buffer: Buffer.concat([PNG, Buffer.from(randomUUID())]) });
+  const read = mu.getByRole('article', { name: /^Line 1, / });
+  await expect(read.getByText('Check the values read from the receipt')).toBeVisible({ timeout: 30_000 });
+  await read.getByRole('button', { name: 'Check and confirm' }).click();
+  const line = mu.getByRole('dialog', { name: 'Line 1' });
   await line.getByRole('combobox', { name: 'What is it for' }).click();
   await mu.getByRole('option', { name: 'Air travel' }).click();
-  await line.getByRole('button', { name: 'Confirm' }).click();
+  await line.getByRole('button', { name: 'Confirm line' }).click();
   await expect(line).toHaveCount(0, { timeout: 30_000 });
   await expect(async () => {
-    await mu.getByRole('button', { name: 'Send for approval' }).click();
-    await expect(mu.getByText('With approvers')).toBeVisible({ timeout: 3_000 });
+    await mu.getByRole('button', { name: 'Submit claim' }).click();
+    await expect(mu.getByRole('list', { name: 'Approval steps' }).getByRole('listitem').filter({ hasText: 'Manager' })).toContainText('Waiting', { timeout: 3_000 });
   }).toPass({ timeout: 60_000 });
   const claimUrl = mu.url();
 
   await kv.goto(claimUrl);
-  await kv.getByRole('button', { name: 'Approve', exact: true }).click();
+  await kv.getByRole('button', { name: 'Approve all' }).click();
   await expect(kv.getByText('Approved', { exact: true }).first()).toBeVisible({ timeout: 30_000 });
 
   // The advance covered the claim: nothing more to receive, ₹3,000 left to return.

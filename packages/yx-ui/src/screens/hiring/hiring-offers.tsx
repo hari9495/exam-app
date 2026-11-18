@@ -84,7 +84,7 @@ export function OfferBuilderScreen(p: OfferBuilderProps) {
     return (
       <HireFrame active="Offers & BGV">
         {live.state === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the offer">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading the offer">
             <Skeleton height={64} />
             <Skeleton height={320} />
           </div>
@@ -589,7 +589,7 @@ export function OfferRecordScreen(p: OfferRecordProps) {
     return (
       <HireFrame active="Offers & BGV">
         {live.state === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the offer">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading the offer">
             <Skeleton height={64} />
             <Skeleton height={240} />
           </div>
@@ -937,7 +937,7 @@ export function BulkOfferScreen({ rows: sampleRows = [], band: sampleBand = { mi
     return (
       <HireFrame active="Offers & BGV">
         {live.state === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the bulk offers">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading the bulk offers">
             <Skeleton height={64} />
             <Skeleton height={320} />
           </div>

@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp } from './dual-app';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 describe('Super Admin Cross-Org Access', () => {
   let app: INestApplication;
@@ -61,6 +62,9 @@ describe('Super Admin Cross-Org Access', () => {
       }),
     );
     superAdminId = superAdmin.id;
+    // Staff roles (answer 1058): the staff role alone holds no platform key since 202617z0000071; opening a company in a
+    // support session is the Support agent's.
+    await giveStaffRoles(superAdminId, ['support_agent']);
 
     // P02 Q8: staff open a company only inside a support session the company approved (platform-console.e2e-spec.ts
     // covers asking and approving); this suite starts from an approved one.

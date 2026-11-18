@@ -9,7 +9,7 @@ import { Badge } from '../../components/display';
 import { DataTable } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
-import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsList, TabsTrigger } from '../../components/shell';
+import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { FormField } from '../../components/field';
 import { TextArea } from '../../components/inputs';
 import { Select } from '../../components/select';
@@ -100,26 +100,29 @@ export function LiveAccommodationQueueScreen({ live }: { live: LiveAccommodation
           <TabsTrigger value="pending">Waiting</TabsTrigger>
           <TabsTrigger value="decided">Decided</TabsTrigger>
         </TabsList>
+        {/* The tab's panel holds the list, so each tab names a panel that exists (aria-controls). */}
+        <TabsContent value={live.tab}>
+          {live.state === 'error' ? (
+            <ErrorState title="We couldn't load the requests." onRetry={live.onRetry} />
+          ) : (
+            <DataTable
+              label="Accommodation requests"
+              columns={[
+                { key: 'name', header: 'Candidate', type: 'person', value: (r: AccommodationView) => r.candidateName, person: (r) => ({ name: r.candidateName, secondary: r.test }), width: 260 },
+                { key: 'kinds', header: 'Asked for', value: (r: AccommodationView) => words(r.kinds, r.extraTimePercent), width: 300 },
+                { key: 'submitted', header: 'Submitted', type: 'date', value: (r: AccommodationView) => new Date(r.createdAt), width: 130 },
+                { key: 'status', header: 'Status', type: 'status', value: (r: AccommodationView) => statusOf(r.status).label, statusTone: (v) => (v === 'Approved' ? 'success' : v === 'Declined' ? 'danger' : v === 'New' ? 'warning' : 'info'), width: 160 },
+              ]}
+              rows={live.rows}
+              getRowId={(r) => r.id}
+              state={live.state === 'loading' ? 'loading' : 'ready'}
+              empty={<EmptyState title={live.tab === 'pending' ? 'No requests waiting.' : 'No decisions yet.'} description="Candidates ask from their test page; approved changes apply to their invitation automatically." />}
+              onRowClick={(r) => setOpenId(r.id)}
+              activeRowId={openId}
+            />
+          )}
+        </TabsContent>
       </Tabs>
-      {live.state === 'error' ? (
-        <ErrorState title="We couldn't load the requests." onRetry={live.onRetry} />
-      ) : (
-        <DataTable
-          label="Accommodation requests"
-          columns={[
-            { key: 'name', header: 'Candidate', type: 'person', value: (r: AccommodationView) => r.candidateName, person: (r) => ({ name: r.candidateName, secondary: r.test }), width: 260 },
-            { key: 'kinds', header: 'Asked for', value: (r: AccommodationView) => words(r.kinds, r.extraTimePercent), width: 300 },
-            { key: 'submitted', header: 'Submitted', type: 'date', value: (r: AccommodationView) => new Date(r.createdAt), width: 130 },
-            { key: 'status', header: 'Status', type: 'status', value: (r: AccommodationView) => statusOf(r.status).label, statusTone: (v) => (v === 'Approved' ? 'success' : v === 'Declined' ? 'danger' : v === 'New' ? 'warning' : 'info'), width: 160 },
-          ]}
-          rows={live.rows}
-          getRowId={(r) => r.id}
-          state={live.state === 'loading' ? 'loading' : 'ready'}
-          empty={<EmptyState title={live.tab === 'pending' ? 'No requests waiting.' : 'No decisions yet.'} description="Candidates ask from their test page; approved changes apply to their invitation automatically." />}
-          onRowClick={(r) => setOpenId(r.id)}
-          activeRowId={openId}
-        />
-      )}
       {open && <AccommodationDrawer key={open.id} row={open} live={live} onClose={() => setOpenId(null)} />}
     </PrcFrame>
   );

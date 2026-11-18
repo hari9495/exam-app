@@ -44,14 +44,17 @@ test('finance pays an approved claim by bank file, released by someone else; the
   await admin.waitForURL((url) => !url.pathname.includes('sign-in'));
   await admin.goto('/yx/expenses/to-pay');
   await expect(admin.getByRole('heading', { name: 'To pay' })).toBeVisible({ timeout: 30_000 });
-  const row = admin.getByRole('row', { name: new RegExp(`Dealer visits ${tag}`) });
+  const row = admin.getByRole('table', { name: 'Claims to pay' }).getByRole('row', { name: new RegExp(`Dealer visits ${tag}`) });
+  await expect(row).toContainText('Direct payout');
   await row.getByRole('checkbox').check();
-  await admin.getByRole('button', { name: 'Pay by bank file' }).click();
-  await admin.getByRole('textbox', { name: /Pay from account/ }).fill('00123456789');
-  await admin.getByRole('button', { name: 'Make bank file' }).click();
-  await expect(admin.getByText(/Bank file made: 1 payment/)).toBeVisible({ timeout: 30_000 });
+  await admin.getByRole('button', { name: 'Pay now by bank file' }).click();
+  const make = admin.getByRole('dialog', { name: 'Pay 1 claim now by bank file?' });
+  await expect(make).toContainText('created for release by someone else');
+  await make.getByRole('textbox', { name: /Pay from account/ }).fill('00123456789');
+  await make.getByRole('button', { name: 'Create bank file' }).click();
+  await expect(make).toHaveCount(0, { timeout: 30_000 });
   await admin.getByRole('tab', { name: /Bank files/ }).click();
-  await expect(admin.getByText('Someone else releases it.').first()).toBeVisible();
+  await expect(admin.getByText('A bank file is released by someone other than the person who made it.')).toBeVisible();
 
   // Neha (Finance Approver), someone else, releases it with step-up and the phrase.
   const neha = await (await browser.newContext()).newPage();
@@ -61,15 +64,24 @@ test('finance pays an approved claim by bank file, released by someone else; the
   await neha.goto('/yx/expenses/to-pay');
   await neha.getByRole('tab', { name: /Bank files/ }).click();
   await neha.getByRole('button', { name: 'Release' }).first().click();
-  await neha.getByRole('textbox', { name: /Type/ }).fill('RELEASE 1');
-  await neha.getByRole('dialog').getByRole('button', { name: 'Release' }).click();
-  await expect(neha.getByText('Sent to the bank').first()).toBeVisible({ timeout: 30_000 });
+  const release = neha.getByRole('dialog', { name: 'Release this bank file' });
+  await expect(release.getByRole('region', { name: 'Maker and checker' })).toContainText('Maker and checker are different people');
+  await release.getByRole('textbox', { name: /Type RELEASE 1/ }).fill('RELEASE 1');
+  await release.getByRole('button', { name: 'Release' }).click();
+  await expect(release).toHaveCount(0, { timeout: 30_000 });
+  // Released: the file is with the bank, so its next step is recording the bank's results.
+  await neha.reload();
+  await neha.getByRole('tab', { name: /Bank files/ }).click();
+  const files = neha.getByRole('table', { name: 'Bank files' });
+  await expect(files.getByRole('button', { name: 'Record results' }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(files.getByRole('button', { name: 'Release' })).toHaveCount(0);
 
   // The admin records the bank's result.
   await admin.reload();
   await admin.getByRole('tab', { name: /Bank files/ }).click();
   await admin.getByRole('button', { name: 'Record results' }).first().click();
-  const results = admin.getByRole('dialog');
+  const results = admin.getByRole('dialog', { name: "The bank's results" });
+  await expect(results.getByRole('radiogroup', { name: 'Result for Murugan Selvam' }).getByRole('radio', { name: 'Paid' })).toBeChecked();
   await results.getByRole('textbox', { name: /Bank reference/ }).first().fill(`UTR-${tag}`);
   await results.getByRole('button', { name: 'Record results' }).click();
   await expect(admin.getByText('Settled').first()).toBeVisible({ timeout: 30_000 });

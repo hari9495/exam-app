@@ -77,7 +77,9 @@ export class PerformancePeerService {
       const n = await tx.reviewCycle.updateMany({ where: { organizationId: c.organizationId, id: cycleId, status: 'draft' }, data: { peerFeedback: dto ? asJson({ minNominees: dto.minNominees, maxNominees: dto.maxNominees, dueOn: dto.dueOn }) : Prisma.DbNull, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Only a draft cycle changes its peer feedback.');
       await audit(tx, c, 'perf.cycle.peer_feedback', 'review_cycle', cycleId, { on: Boolean(dto) });
-      return { peerFeedback: dto };
+      // The change bumps the cycle's version: the caller needs it to launch without a false "someone else changed it".
+      const { version } = await tx.reviewCycle.findFirstOrThrow({ where: { organizationId: c.organizationId, id: cycleId }, select: { version: true } });
+      return { peerFeedback: dto, version };
     });
   }
 

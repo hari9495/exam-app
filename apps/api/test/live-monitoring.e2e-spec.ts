@@ -192,11 +192,18 @@ describe('Live Monitoring WebSocket flow', () => {
     expect(currentResponse.body.messages).toHaveLength(1);
     expect(currentResponse.body.messages[0].body).toBe('Please stay on the exam tab');
 
+    // Answer 2269: a message stays until the candidate says "Got it" (polling never marks it read); then it is gone.
     const secondCurrentResponse = await request(runtimeHttp)
       .get('/api/v1/attempt/current')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(200);
-    expect(secondCurrentResponse.body.messages).toHaveLength(0);
+    expect(secondCurrentResponse.body.messages).toHaveLength(1);
+    expect((await request(runtimeHttp).post('/api/v1/attempt/messages/read').set('Authorization', `Bearer ${accessToken}`).expect(200)).body).toEqual({ read: 1 });
+    const afterRead = await request(runtimeHttp)
+      .get('/api/v1/attempt/current')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+    expect(afterRead.body.messages).toHaveLength(0);
 
     socket.disconnect();
   });

@@ -24,6 +24,8 @@ function withPayMocks(tx: any) {
   tx.statutoryRuleSet = { findMany: jest.fn().mockResolvedValue([]), ...tx.statutoryRuleSet };
   tx.setting = { findMany: jest.fn().mockResolvedValue([]), ...tx.setting };
   tx.jobBoard = { findMany: jest.fn().mockResolvedValue([]), ...tx.jobBoard };
+  // A new job's audit row is written in its own transaction (no second pooled connection while the number row is locked).
+  tx.auditLog = { create: jest.fn(), ...tx.auditLog };
   // HIR-03 answers 222, 225, 229: the job number counter, the company's default entity (India) and the recruiter.
   tx.$queryRaw = tx.$queryRaw ?? jest.fn().mockResolvedValue([{ n: 1 }]);
   tx.legalEntity = { findFirst: jest.fn().mockResolvedValue(null), ...tx.legalEntity };
@@ -124,13 +126,17 @@ describe('PipelineService', () => {
 
   it('createJob writes org-scoped and audits', async () => {
     const create = jest.fn().mockResolvedValue({ id: 'job-1', title: 'Backend Eng' });
-    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { create } }));
+    const auditLog = { create: jest.fn() };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { create }, auditLog }));
     const out = await service.createJob(context, 'user-1', { title: 'Backend Eng' });
     expect(out).toEqual({ id: 'job-1', title: 'Backend Eng' });
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({ organizationId: 'org-1', title: 'Backend Eng', description: undefined, createdById: 'user-1', status: 'open' }),
     });
-    expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.created', entityId: 'job-1' }));
+    // Written in the job's own transaction, after the job.
+    expect(auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ organizationId: 'org-1', action: 'job.created', entityType: 'job', entityId: 'job-1' }) });
+    expect(auditLog.create.mock.invocationCallOrder[0]).toBeGreaterThan(create.mock.invocationCallOrder[0]);
+    expect(audit.record).not.toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.created' }));
   });
 
   describe('job custom fields', () => {
