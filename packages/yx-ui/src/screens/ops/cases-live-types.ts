@@ -276,7 +276,7 @@ export interface CaseDetail {
   /** Disciplinary, after an approved Warning (answer 56): the letter from Letters, or "waiting" for the company template. */
   letter: { id: string | null; status: string; referenceNo: string | null; renderError: string | null } | null;
   /** What the reporter filed (HLP-06). */
-  report: { summary: string; category: string | null; happenedOn: string | null; involved: string | null; witnesses: string | null; outside: string | null; retaliationWorry: boolean; late: boolean };
+  report: { summary: string; category: string | null; happenedOn: string | null; involved: string | null; witnesses: string | null; outside: string | null; retaliationWorry: boolean; late: boolean; /** Answer 2597 (POSH). */ onBehalf?: { name: string; relation: string } | null; lateReason?: string | null; conciliation?: boolean };
   timeline: { id: string; at: string; who: string; text: string }[];
   files: CaseFile[];
   accessLog: AccessEntry[];

@@ -244,6 +244,17 @@ describe('HLP-08 Cases (live)', () => {
     expect(onAddMember).toHaveBeenLastCalledWith('k2', { personId: 'p-ravi', role: 'investigator', overrideReason: 'Only Tamil-speaking investigator at Hosur.' });
   });
 
+  it('answer 2597: a POSH case shows on whose behalf it was filed, why late, and that conciliation was asked; a plain one shows none', () => {
+    const { unmount } = show(<CaseWorkspaceScreen live={liveWorkspace({ detail: poshCase({ report: { ...poshCase().report, onBehalf: { name: 'Meena Pillai', relation: 'Sister' }, lateReason: 'She was on medical leave.', conciliation: true } }) })} />);
+    expect(screen.getByText('Meena Pillai (by her sister)')).toBeInTheDocument();
+    expect(screen.getByText('She was on medical leave.')).toBeInTheDocument();
+    expect(screen.getByText('She asks to try conciliation first')).toBeInTheDocument();
+    unmount();
+    show(<CaseWorkspaceScreen live={liveWorkspace({ detail: poshCase() })} />);
+    expect(screen.queryByText('Filed on behalf of')).toBeNull();
+    expect(screen.queryByText('She asks to try conciliation first')).toBeNull();
+  });
+
   it('evidence shows the fingerprint, the virus check and the access log; a recused member is marked', () => {
     const { unmount } = show(<CaseWorkspaceScreen live={liveWorkspace({ start: { tab: 'evidence' } })} />);
     expect(screen.getAllByText(/^9f2c4a71e0b3/).length).toBeGreaterThan(0);

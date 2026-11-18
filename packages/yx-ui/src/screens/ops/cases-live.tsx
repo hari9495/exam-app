@@ -1491,8 +1491,11 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
                       ...(c.report.involved ? [{ label: 'Who was involved', value: c.report.involved }] : []),
                       ...(c.report.outside ? [{ label: 'Outside the company', value: c.report.outside }] : []),
                       ...(c.report.witnesses ? [{ label: 'Witnesses', value: c.report.witnesses }] : []),
+                      ...(c.report.onBehalf ? [{ label: 'Filed on behalf of', value: `${c.report.onBehalf.name} (by her ${c.report.onBehalf.relation.toLowerCase()})` }] : []),
+                      ...(c.report.lateReason ? [{ label: 'Why it was not filed earlier', value: c.report.lateReason }] : []),
                     ]}
                   />
+                  {c.report.conciliation && <InlineAlert tone="info" title="She asks to try conciliation first">The committee may try conciliation before an inquiry, only because she asked; it can't be a money settlement.</InlineAlert>}
                   {c.report.retaliationWorry && <InlineAlert tone="warning">The reporter is worried about retaliation.</InlineAlert>}
                   {c.report.late && <InlineAlert tone="info">Filed after the law's window from the incident; the committee decides whether to accept it.</InlineAlert>}
                 </Card>

@@ -49,7 +49,7 @@ describe('CMP-10 POSH complaint (live)', () => {
     await fill('Bengaluru head office', 'A visitor', 'Unwelcome touching at the reception.');
     await ue.click(screen.getByRole('button', { name: 'File complaint' }));
     expect(await screen.findByText(/Reference SPK-0013/)).toBeInTheDocument();
-    expect(onFile.mock.calls[0][0].summary).toContain('Filed on behalf of Meena (Sister).');
+    expect(onFile).toHaveBeenCalledWith(expect.objectContaining({ summary: 'Unwelcome touching at the reception.', onBehalfName: 'Meena', onBehalfRelation: 'Sister' }));
   });
 
   it('more than 6 months ago is refused before sending, with a way to raise a grievance', async () => {

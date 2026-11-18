@@ -250,7 +250,7 @@ export class CasesService {
         respondent: row.respondentUserId ? nm(row.respondentUserId) : null,
         rule: row.ruleClause,
         letter: row.kind === 'disciplinary' && f.outcome.decision === 'warning' && f.outcome.status === 'approved' ? ((await this.warningLetter(tx, c.organizationId, row.id)) ?? { id: null, status: 'waiting', referenceNo: null, renderError: null }) : null,
-        report: { summary: row.summary, category: row.category, happenedOn: iso(row.happenedOn), involved: row.involved, witnesses: row.witnesses, outside: row.outsideName ? `${row.outsideName}${row.outsideEmployer ? ` (${row.outsideEmployer})` : ''}` : null, retaliationWorry: row.retaliationWorry, late: row.late },
+        report: { summary: row.summary, category: row.category, happenedOn: iso(row.happenedOn), involved: row.involved, witnesses: row.witnesses, outside: row.outsideName ? `${row.outsideName}${row.outsideEmployer ? ` (${row.outsideEmployer})` : ''}` : null, retaliationWorry: row.retaliationWorry, late: row.late, onBehalf: row.onBehalfName ? { name: row.onBehalfName, relation: row.onBehalfRelation ?? '' } : null, lateReason: row.lateReason, conciliation: row.conciliationAsked },
         dates,
         datesSource: source,
         severity: row.kind === 'whistleblower' ? severityOf(f, row.retaliationWorry) : null,

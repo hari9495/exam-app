@@ -59,6 +59,22 @@ export class ReportDto {
   @IsOptional()
   @IsUUID()
   aboutUserId?: string;
+
+  /** Answer 2597 (POSH only): filed on her behalf: her name and the filer's relationship to her (both or neither). */
+  @Opt(150)
+  onBehalfName?: string;
+
+  @Opt(100)
+  onBehalfRelation?: string;
+
+  /** Answer 2597 (POSH only): why it was not filed within the window. */
+  @Opt(1000)
+  lateReason?: string;
+
+  /** Answer 2597 (POSH only): she asks to try conciliation first (never a money settlement). */
+  @IsOptional()
+  @IsBoolean()
+  conciliation?: boolean;
 }
 
 /** Anonymous filing through the no-login route: the company by its sign-in name. POSH is never anonymous. */

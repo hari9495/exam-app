@@ -13200,6 +13200,11 @@ model SpeakupCase {
   source             String    @default("hr") @db.VarChar(8)
   /// Answer 2592: the Internal Committee a POSH complaint went to (a workplace's; null is the company committee).
   icLocationId       String?   @map("ic_location_id") @db.Uuid
+  /// Answer 2597 (POSH only): filed on her behalf (her name, the relationship), why late, conciliation asked first.
+  onBehalfName       String?   @map("on_behalf_name") @db.VarChar(150)
+  onBehalfRelation   String?   @map("on_behalf_relation") @db.VarChar(100)
+  lateReason         String?   @map("late_reason") @db.VarChar(1000)
+  conciliationAsked  Boolean   @default(false) @map("conciliation_asked")
 
   @@unique([organizationId, kind, number], map: "speakup_cases_number_key")
   @@map("speakup_cases")

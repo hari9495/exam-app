@@ -27865,5 +27865,24 @@
                               "Screens/Compliance/CMP-09 · IC console"
                     ],
                     "note": "Positive and negative (service-desk-hlp06 e2e: a workplace on another list 400, unknown workplace 400, same person twice 409, second presiding 409, routing by workplace and fallback to the company, the case keeps its committee, outsiders 404, console per member; kit set-up and console tests). Migration 612: speakup_team_members.location_id (Internal Committee only) with the live key per committee, speakup_cases.ic_location_id. The presiding officer who signs a case's report is the one of that case's committee."
+          },
+          {
+                    "id": "MT-G1-2597-POSH-OWN-FIELDS",
+                    "area": "Batch G1 answers 2597 and 2590: the POSH complaint's own fields; one POSH workspace (19 Nov 2026)",
+                    "screen": "Helpdesk › Speak up › Sexual harassment complaint (/yx/desk/posh); Helpdesk › Cases › a POSH case",
+                    "url": "http://localhost:3000/yx/desk/posh",
+                    "account": "An employee who files; an Internal Committee member.",
+                    "steps": [
+                              "As the employee open the complaint form, choose 'On her behalf', fill her name and your relationship, a date about 4 months ago with the reason, tick 'I want to try conciliation first', fill the rest and file.",
+                              "As a committee member open the complaint from Cases (or the Internal Committee console).",
+                              "File another complaint for yourself, recent date, no conciliation; open it as the member.",
+                              "As the employee, try a grievance in Speak up: it has no on-behalf, late-reason or conciliation fields."
+                    ],
+                    "expected": "Step 1: filed with a reference. Step 2: the Report card shows 'What happened' with only what was written, 'Filed on behalf of: <name> (by her <relationship>)', 'Why it was not filed earlier: …', the late notice, and 'She asks to try conciliation first'. Step 3: none of those rows. Step 4: the fields are not there (the server also refuses them on a grievance). The case opens in the one POSH workspace (HLP-08); there is no separate POSH workspace design any more.",
+                    "stories": [
+                              "Screens/Compliance/CMP-10 · POSH complaint filing",
+                              "Screens/Helpdesk/HLP-08 · Cases (case team)"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e: fields on a grievance 400, her name without the relationship 400 and the other way, a non-boolean 400, a reason over 1,000 characters 400, saved and shown; kit cases-live and posh-live tests). Migration 613 adds on_behalf_name, on_behalf_relation, late_reason, conciliation_asked to speakup_cases (POSH only, checked in the database). Answer 2590: PoshCaseScreen and the design-only LoadingCase / ErrorCase removed; HLP-08's Loading and Error stories now draw the live workspace's own states."
           }
 ]

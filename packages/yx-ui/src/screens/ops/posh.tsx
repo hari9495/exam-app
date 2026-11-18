@@ -1,7 +1,7 @@
 // POSH screens (M08 YX-POSH, restricted to Internal Committee members): CMP-09 IC console, CMP-10 complaint filing,
 // CMP-11 POSH case workspace with the statutory clock and Confidential watermark.
 import { useState } from 'react';
-import { ArrowLeft, Scale, Send, Users } from 'lucide-react';
+import { ArrowLeft, Send, Users } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
@@ -13,13 +13,12 @@ import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
 import { DataTable } from '../../components/table';
-import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { MenuItem } from '../../components/menu';
+import { Card, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Dialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { StatCard } from '../../components/charts';
 import { formatDate } from '../../lib/format';
-import { Actions, CardGrid, ClockPanel, Confidential, Facts, MembersList, OpsDesk, StatusTrail, Workspace, useSay, type CaseMember } from './ops-kit';
+import { Actions, CardGrid, ClockPanel, Confidential, Facts, OpsDesk, StatusTrail, useSay } from './ops-kit';
 import { addDays, icIssues, poshClock, poshFilingWindow, recordedIcIssues, type IcMember } from './ops-rules';
 import { RestrictedNotFound } from './cases';
 import type { Device } from './helpdesk';
@@ -342,6 +341,11 @@ export interface LivePoshFiling {
 }
 export interface PoshFilingInput {
   summary: string;
+  /** Answer 2597: their own fields. */
+  onBehalfName?: string;
+  onBehalfRelation?: string;
+  lateReason?: string;
+  conciliation?: boolean;
   happenedOn: string;
   locationId: string | null;
   involved: string;
@@ -390,14 +394,14 @@ export function PoshComplaintScreen({ device = 'desk', today, incidentDate = nul
     setSending(true);
     setFailed(null);
     try {
-      // The speak-up record has one free-text summary: who filed, the late reason and conciliation travel inside it.
-      const lines = [
-        what.trim(),
-        who === 'behalf' ? `Filed on behalf of ${herName.trim()} (${relation.trim()}).` : null,
-        windowState === 'extension-needed' ? `Why it was not filed earlier: ${late.trim()}` : null,
-        conc ? 'She asks to try conciliation first (not a money settlement).' : null,
-      ].filter(Boolean);
-      const out = await live.onFile({ summary: lines.join('\n\n'), happenedOn: iso(incident!), locationId: place === 'other' ? null : place, involved: about.trim(), ...(outside ? { outsideName: about.trim() } : {}), ...(witnesses.trim() ? { witnesses: witnesses.trim() } : {}) });
+      // Answer 2597: on her behalf, the late reason and conciliation go in their own fields.
+      const out = await live.onFile({
+        summary: what.trim(),
+        ...(who === 'behalf' ? { onBehalfName: herName.trim(), onBehalfRelation: relation.trim() } : {}),
+        ...(windowState === 'extension-needed' ? { lateReason: late.trim() } : {}),
+        ...(conc ? { conciliation: true } : {}),
+        happenedOn: iso(incident!), locationId: place === 'other' ? null : place, involved: about.trim(), ...(outside ? { outsideName: about.trim() } : {}), ...(witnesses.trim() ? { witnesses: witnesses.trim() } : {}),
+      });
       for (const f of files) await live.onUpload?.(out.id, f);
       setReference(out.reference);
     } catch (e) {
@@ -512,117 +516,6 @@ export function PoshComplaintScreen({ device = 'desk', today, incidentDate = nul
       >
         <div className="yx-ops-narrow">{body}</div>
       </Card>
-    </OpsDesk>
-  );
-}
-
-/* =========================================================================================
- * CMP-11 · POSH case workspace (statutory clock, members, Confidential watermark)
- * ======================================================================================= */
-
-export interface PoshCaseScreenProps {
-  caseId: string;
-  filed: Date;
-  today: Date;
-  members: CaseMember[];
-  timeline: { id: string; at: Date; who: string; text: string }[];
-  done?: { notice?: Date | null; inquiry?: Date | null; report?: Date | null; action?: Date | null };
-  conciliation?: boolean;
-  member?: boolean;
-  tab?: string;
-}
-export function PoshCaseScreen({ caseId, filed, today, members, timeline, done = {}, conciliation, member = true, tab = 'timeline' }: PoshCaseScreenProps) {
-  const [current, setCurrent] = useState(tab);
-  if (!member) return <RestrictedNotFound area="compliance" />;
-  const clock = poshClock(filed, done);
-  const stage = done.report ? 4 : done.inquiry ? 3 : done.notice ? 2 : 1;
-  return (
-    <OpsDesk area="compliance" active="POSH" member>
-      <Confidential note="Confidential. Visible only to the Internal Committee members on this case. Not used in performance or any other module.">
-        <ObjectHeader
-          name={`POSH complaint ${caseId}`}
-          icon={Scale}
-          secondary={`Filed ${formatDate(filed)} · Bengaluru head office`}
-          status={
-            <>
-              <Badge tone="info">{conciliation ? 'Conciliation requested' : ['Filed', 'Notice to respondent', 'Inquiry', 'IC report', 'Employer action'][stage]}</Badge>
-            </>
-          }
-          facts={[
-            { label: 'Complainant', value: 'Shown to IC members on the case' },
-            { label: 'Respondent', value: 'Senior manager, Sales' },
-            { label: 'Inquiry due', value: formatDate(addDays(filed, 90)) },
-          ]}
-          actions={
-            <>
-              <Button>Schedule hearing</Button>
-              <Button variant="primary">{done.notice ? (done.inquiry ? 'Submit IC report' : 'Record hearing') : 'Send notice to respondent'}</Button>
-            </>
-          }
-          menu={
-            <>
-              <MenuItem>Record conciliation</MenuItem>
-              <MenuItem>Interim relief (transfer, leave)</MenuItem>
-              <MenuItem>Close with outcome</MenuItem>
-            </>
-          }
-        />
-        <StatusTrail steps={['Filed', 'Notice to respondent', 'Inquiry and hearings', 'IC report', 'Employer action', 'Appeal window', 'Closed'].map((label) => ({ label }))} current={stage} label="POSH stages" />
-        <ClockPanel title="Statutory clock" items={clock} today={today} source="P07 POSH parameters, version 2013-12 (in force)" />
-        {conciliation && <InlineAlert tone="info">The complainant asked for conciliation. No money settlement can be its basis. If it fails, the inquiry continues on the same clock.</InlineAlert>}
-        <Workspace
-          main={
-            <Tabs value={current} onValueChange={setCurrent}>
-              <TabsList aria-label="Case sections">
-                <TabsTrigger value="timeline">Timeline</TabsTrigger>
-                <TabsTrigger value="hearings">Hearings</TabsTrigger>
-                <TabsTrigger value="report">IC report</TabsTrigger>
-              </TabsList>
-              <TabsContent value="timeline">
-                <ol className="yx-ops-conv">
-                  {timeline.map((t) => (
-                    <li key={t.id} className="yx-ops-msg">
-                      <span className="yx-ops-msg__meta">
-                        <span className="yx-ops-msg__who">{t.who}</span>
-                        <span>{formatDate(t.at)}</span>
-                      </span>
-                      <p className="yx-ops-msg__body">{t.text}</p>
-                    </li>
-                  ))}
-                </ol>
-              </TabsContent>
-              <TabsContent value="hearings">
-                <DataTable
-                  label="Hearings"
-                  columns={[
-                    { key: 'd', header: 'Date', type: 'date', value: (h: { d: Date; who: string; s: string }) => h.d },
-                    { key: 'w', header: 'Heard', value: (h) => h.who },
-                    { key: 's', header: 'Status', type: 'status', value: (h) => h.s, statusTone: (v) => (v === 'Held' ? 'success' : 'info') },
-                  ]}
-                  rows={done.notice ? [{ d: addDays(filed, 20), who: 'Complainant', s: 'Held' }, { d: addDays(filed, 34), who: 'Respondent', s: 'Scheduled' }] : []}
-                  getRowId={(h) => h.who}
-                  empty={<EmptyState compact title="No hearings yet." description="Hearings start after the notice to the respondent." />}
-                />
-              </TabsContent>
-              <TabsContent value="report">
-                {done.inquiry ? (
-                  <div className="yx-ops-stack">
-                    <DescriptionList items={[{ label: 'Finding', value: 'Allegation proved in part' }, { label: 'Recommendation', value: 'Written warning; transfer the respondent to another reporting line' }, { label: 'Report sent to employer', value: done.report ? formatDate(done.report) : 'Not yet' }]} />
-                    {done.report && <InlineAlert tone="warning">The employer must act on the recommendation by {formatDate(addDays(done.report, 60))}.</InlineAlert>}
-                  </div>
-                ) : (
-                  <EmptyState compact title="The report comes after the inquiry." />
-                )}
-              </TabsContent>
-            </Tabs>
-          }
-          rail={
-            <Card>
-              <MembersList members={members} />
-            </Card>
-          }
-        />
-      </Confidential>
     </OpsDesk>
   );
 }

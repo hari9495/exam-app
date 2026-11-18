@@ -1,11 +1,11 @@
 // Case screens (M08): HLP-06 speak-up filing, HLP-07 my cases + show-cause reply, HLP-08 case list + workspace (case team),
 // HLP-09 ethics desk. Cases are visible to case members only (YX-CASE-02); non-members see Not found (APX-D §6.3).
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { ArrowLeft, Briefcase, FileText, Lock, Megaphone, Send, ShieldAlert } from 'lucide-react';
 import { PhoneFrame, PortalFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, InlineAlert } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
 import { FieldRow, FormField } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
@@ -861,22 +861,4 @@ function SampleEthicsDesk({ rows, today, state = 'ready', member = true, routeId
   );
 }
 
-export function LoadingCase(): ReactNode {
-  return (
-    <OpsDesk area="helpdesk" active="Cases">
-      <div className="yx-ops-stack" role="status" aria-busy="true" aria-label="Loading case">
-        <Skeleton height={64} />
-        <Skeleton height={120} />
-        <Skeleton height={320} />
-      </div>
-    </OpsDesk>
-  );
-}
-export function ErrorCase(): ReactNode {
-  return (
-    <OpsDesk area="helpdesk" active="Cases">
-      <ErrorState title="We couldn't load this case." description="Try again. If it keeps failing, share the reference with support; they can't see case content." onRetry={() => {}} reference="CASE-7710" />
-    </OpsDesk>
-  );
-}
 

@@ -136,6 +136,9 @@ export class SpeakupService {
     const cats = dto.kind === 'grievance' ? s.grievance : dto.kind === 'whistleblower' ? s.ethics : [];
     if (dto.category && !cats.includes(dto.category)) throw new BadRequestException('Choose one of the topics in the list.');
     if (dto.locationId && !(await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId }, select: { id: true } }))) throw new BadRequestException('Choose one of the company’s locations.');
+    // Answer 2597: the POSH complaint's own fields.
+    if (dto.kind !== 'posh' && (dto.onBehalfName || dto.onBehalfRelation || dto.lateReason || dto.conciliation)) throw new BadRequestException('On her behalf, the late reason and conciliation are only for a sexual harassment complaint.');
+    if (Boolean(dto.onBehalfName) !== Boolean(dto.onBehalfRelation)) throw new BadRequestException('Give her name and your relationship to her.');
     const teams = await this.teams(tx, org);
     if (dto.aboutUserId && !Object.values(teams).some((t) => t.includes(dto.aboutUserId!))) throw new BadRequestException('Choose one of the case officers in the list.');
     // Answer 2592: a POSH complaint goes to its workplace's committee when there is one, else to the company's.
@@ -182,6 +185,10 @@ export class SpeakupService {
         decideDueOn: decideDays ? day(addDays(today, decideDays)) : null,
         ruleSet: rs?.label ?? null,
         icLocationId,
+        onBehalfName: dto.onBehalfName || null,
+        onBehalfRelation: dto.onBehalfRelation || null,
+        lateReason: dto.lateReason || null,
+        conciliationAsked: Boolean(dto.conciliation),
       },
     });
     await tx.speakupCaseMember.createMany({ data: r.members.map((userId) => ({ organizationId: org, caseId: row.id, userId })) });

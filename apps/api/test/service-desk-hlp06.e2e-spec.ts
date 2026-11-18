@@ -234,6 +234,21 @@ describe('HLP-06 speak-up filing', () => {
     for (const m of setup.members.filter((x: { team: string; locationId: string | null }) => x.team === 'ic' && x.locationId === loc)) await api('adminA', 'post', `/setup/members/${m.id}/remove`).expect(201);
   });
 
+  it('answer 2597: a POSH complaint keeps on whose behalf, why late and conciliation in their own fields; other kinds refuse them', async () => {
+    const posh = { kind: 'posh', summary: 'Unwelcome remarks at the team offsite dinner.', happenedOn: shift(-120) };
+    await api('divya', 'post', '/reports').send({ ...REPORT, conciliation: true }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...REPORT, lateReason: 'Was away.' }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...posh, onBehalfName: 'Meena' }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...posh, onBehalfRelation: 'Sister' }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...posh, conciliation: 'yes' }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...posh, lateReason: 'x'.repeat(1001) }).expect(400);
+    const r = (await api('divya', 'post', '/reports').send({ ...posh, onBehalfName: 'Meena', onBehalfRelation: 'Sister', lateReason: 'She was on medical leave for two months.', conciliation: true }).expect(201)).body;
+    const detail = (await request(server()).get(`/api/v1/desk/cases/${r.id}`).set('Authorization', `Bearer ${token.ic1}`).expect(200)).body;
+    expect(detail.report).toMatchObject({ summary: posh.summary, onBehalf: { name: 'Meena', relation: 'Sister' }, lateReason: 'She was on medical leave for two months.', conciliation: true, late: true });
+    const plain = (await api('divya', 'post', '/reports').send(posh).expect(201)).body;
+    expect((await request(server()).get(`/api/v1/desk/cases/${plain.id}`).set('Authorization', `Bearer ${token.ic1}`).expect(200)).body.report).toMatchObject({ onBehalf: null, lateReason: null, conciliation: false });
+  });
+
   it('CMP-11 (batch F item 13): the Internal Committee console is for its members only; their POSH complaints carry the filing day; the menu count too', async () => {
     const ic = (await api('ic1', 'get', '/ic').expect(200)).body;
     expect(ic.company).toBe('HLP06 Org A');
@@ -242,7 +257,7 @@ describe('HLP-06 speak-up filing', () => {
     const rows = (await request(server()).get('/api/v1/desk/cases').set('Authorization', `Bearer ${token.ic1}`).expect(200)).body as { kind: string; ref: string; filedOn: string }[];
     expect(rows.find((c) => c.ref === 'POSH-0001')).toMatchObject({ kind: 'posh', filedOn: today });
     const counts = (who: Who) => request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token[who]}`).expect(200).then((r) => r.body);
-    expect((await counts('ic1')).icComplaints).toBe(3); // POSH-0001, and the two filed in the answer 2592 test
+    expect((await counts('ic1')).icComplaints).toBe(5); // POSH-0001, two from the answer 2592 test, two from 2597
     expect((await counts('divya')).icComplaints).toBeUndefined();
     expect((await counts('ethics1')).icComplaints).toBeUndefined();
   });
