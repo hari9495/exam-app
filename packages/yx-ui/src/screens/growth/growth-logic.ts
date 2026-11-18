@@ -470,3 +470,21 @@ export interface StageRow {
   due?: Date;
   state: 'done' | 'current' | 'todo' | 'skipped';
 }
+
+/**
+ * Batch F item 31 (answer 2576): one person's goals at a glance: the average progress (weighted by goal weight when the
+ * weights are set, else a simple average) and how many are on track, at risk, off track and done.
+ */
+export function progressSummary(goals: Goal[], all: Goal[] = goals): { average: number | null; onTrack: number; atRisk: number; offTrack: number; done: number } {
+  const measured = goals.map((g) => ({ w: g.weight, p: goalProgress(g, all) })).filter((x): x is { w: number; p: number } => x.p != null);
+  const weight = measured.reduce((a, x) => a + x.w, 0);
+  const average = !measured.length ? null : weight > 0 ? Math.round(measured.reduce((a, x) => a + x.w * x.p, 0) / weight) : Math.round(measured.reduce((a, x) => a + x.p, 0) / measured.length);
+  const open = goals.filter((g) => g.status !== 'Closed');
+  return {
+    average,
+    onTrack: open.filter((g) => g.confidence === 'On track').length,
+    atRisk: open.filter((g) => g.confidence === 'At risk').length,
+    offTrack: open.filter((g) => g.confidence === 'Off track').length,
+    done: goals.filter((g) => g.status === 'Closed').length,
+  };
+}

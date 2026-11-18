@@ -1,6 +1,7 @@
 // Performance: home (PRF-01), my goals + check-in (PRF-02), company goal map (PRF-03), manager coach card (PRF-16).
 import { useMemo, useState } from 'react';
 import { GoalGapsCard, type GoalGaps } from './goal-gaps';
+import { GoalProgressSummary } from './goal-summary';
 import { Check, MessageSquarePlus, Plus, Target } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
@@ -499,6 +500,8 @@ function SampleMyGoals({ persona, device = 'desktop', state = 'ready', ownerName
       );
     return (
       <>
+        {/* Batch F item 31 (answer 2576): the average and the status counts on top. */}
+        <GoalProgressSummary goals={mine} all={allGoals} />
         {!w.ok && (
           <InlineAlert tone="warning" title="Goal weights don’t add up">
             {w.message} {persona === 'mgr' ? 'Send the goals back or edit the weights before approving.' : 'Your manager can’t approve until they do.'}

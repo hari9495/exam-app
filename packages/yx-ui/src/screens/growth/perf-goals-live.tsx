@@ -3,6 +3,7 @@
 // needs is added (adding and changing goals, sending them, the manager's decision, periods, cascading, dropping).
 import { useMemo, useState } from 'react';
 import { GoalGapsCard, type GoalGaps } from './goal-gaps';
+import { GoalProgressSummary } from './goal-summary';
 import { Check, Download, Plus, Target, Trash2 } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
@@ -711,6 +712,8 @@ export function LiveMyGoalsScreen({ live, defaultDialog }: { live: LiveMyGoals; 
       );
     return (
       <>
+        {/* Batch F item 31 (answer 2576): the average and the status counts on top. */}
+        <GoalProgressSummary goals={mine} all={all} />
         {failed && (
           <InlineAlert tone="danger" title="That didn’t work">
             {failed}

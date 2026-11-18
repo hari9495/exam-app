@@ -27763,5 +27763,23 @@
                               "Screens/Performance/PRF-01 · Performance home"
                     ],
                     "note": "Positive and negative (performance-pm2 e2e: nothing to chase when all have goals and checked in, a new period lists both, no team empty, other company 404, bad period 400, bad kind 400, not my team 404, remind once, repeat 409, audited; kit goal-gaps test). Setting perf.goal.stale_days (14, 30, 45, 60; default 30)."
+          },
+          {
+                    "id": "MT-F-31-GOAL-PROGRESS-SUMMARY",
+                    "area": "Batch F item 31: goal progress summary (answer 2576, 18 Nov 2026)",
+                    "screen": "Performance › My goals (PRF-02); a manager opening a report's goals",
+                    "url": "http://localhost:3000/yx/performance/goals",
+                    "account": "An employee with weighted goals (60 / 40) and check-ins (on track, at risk); their manager; an employee with goals not yet checked in.",
+                    "steps": [
+                              "As the employee open My goals for the current period.",
+                              "Check in one goal as off track; reload.",
+                              "As the manager open the employee's goals.",
+                              "Negative: open My goals as someone whose goals have no progress yet; and as someone with no goals."
+                    ],
+                    "expected": "Step 1: a row on top: 'Average progress N%' (weighted 60/40 by the goal weights) and pills 'n on track', 'n at risk', 'n off track', 'n done'. Step 2: the pills follow the new confidence. Step 3: the same summary for that person. Step 4: 'No progress yet' with zero pills; with no goals the empty state shows (no summary). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Performance/PRF-02 · My goals and check-in"
+                    ],
+                    "note": "Positive and negative (kit goal-summary test: weighted, simple average without weights, closed counts as done, nothing measured, empty). No API change: the server's progress is used as is."
           }
 ]
