@@ -415,3 +415,10 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
   - 2516: the order is system logs and user search, then approvals and campaigns, then offer templates.
   - 2517: /v2/system-logs sends company admins to /yx/settings/audit-log.
 - PR #221 (test/yukthix-main → main): the founder asked whether merging affects the present code. It doesn't. The repo has no deploy workflow, hooks or environments; only CI runs.
+
+**Builder questions (offer templates into Letters, 18 Nov 2026), each with the default built:**
+- 2520: the old {{recruiterName}} became {{signatory_name}} (who signs the letter). Suggested answer: keep it; an offer letter is signed by the entity's signatory, not the recruiter.
+- 2521: moved offer letters have "needs approval" off. Suggested answer: keep it; offers already go through the P03 offer route.
+- 2522: a moved template is switched on with its preview counted as seen by the system (the database requires a preview before "on"); a name HR already uses in Letters waits as a draft. Suggested answer: keep it, so offers keep their company text the day it moves.
+- 2523: the 6.1 Hiring e-sign switches now change the Letters offer templates' "person signs", under the hiring settings key (not letter.template.manage). Suggested answer: keep it until the issue step, then move the switch to Letters only.
+- 2524: until offers are issued as P05 letters, the offer email is made from the letter's text; letter fields other than the eight offer ones (and sections) drop out of the email. Suggested answer: accept; the next step issues the real letter.
