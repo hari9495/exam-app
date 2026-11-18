@@ -381,3 +381,12 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2474: port feat/yukthix-learning (#210) during the Engage and Learn batch, instead of rebuilding it.
 - 2475: list each time piece from feat/yukthix-time-parity (#195) and feat/yukthix-reclockin (#212) and say whether a later decision replaced it; the founder then chooses which to rebuild. The pieces are geofence location fences, Wi-Fi names, device binding, dated leave type versions, hourly leave and re-clock-in.
 - 2476: close the 15 safe old PRs after #221 merges (#220, #219, #216, #214, #209, #208, #207, #206, #205, #204, #202, #201, #200, #197, #194). Keep #203, #210, #195 and #212 open until ported. Leave Dependabot #173–177 open.
+- 2477 (18 Nov 2026, "ok build now"): a time batch, rebuilt on today's code before batch C, from the old #195 and #212 pieces:
+  1. several geofence points per location, plus office network and Wi-Fi names checked at check-in;
+  2. phone binding, off until HR turns it on per site;
+  3. dated leave type versions (leave follows the version in force on its first day; past leave unchanged);
+  4. leave eligibility by employment type, months worked and probation, most days in a month, and blocked dates;
+  6. paid or unpaid dated per version, with the payroll feed reading the rule in force on each leave day;
+  7. clock in again after clocking out, per shift or location, off by default.
+
+  Item 5 (leave by the hour) stays as hourly permission (B4). Check, and fill gaps in: leave during notice, credit during long absence, and a 10-character reason on attendance fixes and work-from-home requests shown to the approver.
