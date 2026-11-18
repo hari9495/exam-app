@@ -4,7 +4,7 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
-import type { ScopeUser, Viewer } from '../access/scope';
+import { buildViewer, tenantWide, type ScopeUser, type Viewer } from '../access/scope';
 import { asDate, dateOf } from '../time/time-core';
 import { entitiesFor, payScope, payViewer, requireSelf, withPayScope } from './pay-access';
 import { PayrollIntakeService } from './intake.service';
@@ -184,8 +184,15 @@ export class FlexBenefitsService {
     return code;
   }
 
-  async addComponent(ctx: TenantContext, dto: FlexComponentDto) {
+  /** The company's list is changed only with the company-wide grant (a legal-entity grant reads it); fails closed. */
+  private async companyWide(user: ScopeUser) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['benefits.settings.manage']);
+    if (v.actingForOther || !tenantWide(v, 'benefits.settings.manage')) throw new ForbiddenException("The company's flexible benefits are changed with benefits.settings.manage for the whole company.");
+  }
+
+  async addComponent(ctx: TenantContext, user: ScopeUser, dto: FlexComponentDto) {
     this.amount(dto.monthlyAmount);
+    await this.companyWide(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       if (await tx.flexComponent.findFirst({ where: { organizationId: org, code: dto.code }, select: { id: true } })) throw new ConflictException('A flexible component with that code already exists.');
@@ -196,8 +203,9 @@ export class FlexBenefitsService {
     });
   }
 
-  async changeComponent(ctx: TenantContext, id: string, dto: FlexComponentChangeDto) {
+  async changeComponent(ctx: TenantContext, user: ScopeUser, id: string, dto: FlexComponentChangeDto) {
     this.amount(dto.monthlyAmount);
+    await this.companyWide(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const old = await tx.flexComponent.findFirst({ where: { organizationId: org, id } });

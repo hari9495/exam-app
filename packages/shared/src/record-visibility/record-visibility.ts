@@ -51,6 +51,9 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // M02 leave and attendance of people: scoped like employee records. The leave set-up is company configuration: it
   // may be granted per legal entity like org.settings.manage, but changing it needs the company-wide grant.
   if (key === 'leave.settings.manage') return ['tenant', 'legal_entity'];
+  // B8/E5 flexible benefits (answer 2456): HR Admin's template is per legal entity, so the key may be granted there to read
+  // Settings 4.11; changing the company's flexible components or the unclaimed rule needs the company-wide grant.
+  if (key === 'benefits.settings.manage') return ['tenant', 'legal_entity'];
   // Batch 2: an attendance month is locked per legal entity; rosters are planned for people, scoped like their records.
   if (key === 'attendance.lock' || key === 'attendance.lock.approve') return ['tenant', 'legal_entity'];
   if (key === 'roster.manage') return GRANT_SCOPE_TYPES;

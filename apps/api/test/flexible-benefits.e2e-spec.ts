@@ -30,7 +30,7 @@ describe('Flexible benefits (B8/E5)', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hrNoKey' | 'payAdmin' | 'payAdminB' | 'emp1';
+  type Who = 'adminA' | 'adminB' | 'hrNoKey' | 'payAdmin' | 'payAdminB' | 'emp1' | 'hrEntity' | 'hrTenant';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -72,6 +72,9 @@ describe('Flexible benefits (B8/E5)', () => {
       ['payAdmin', 'A', 'panel', template('payroll_admin')],
       ['payAdminB', 'B', 'panel', template('payroll_admin')],
       ['emp1', 'A', 'panel', null],
+      // HR Admin granted for one legal entity (how the template is usually granted), and one granted company-wide.
+      ['hrEntity', 'A', 'panel', null],
+      ['hrTenant', 'A', 'panel', ['benefits.settings.manage']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -93,6 +96,8 @@ describe('Flexible benefits (B8/E5)', () => {
       ids.dept = (await tx.department.create({ data: { ...o, id: deptId, name: 'Finance', code: 'FIN', path: `/${deptId}/` } })).id;
       ids.desig = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
+      const hr = await tx.permissionProfile.create({ data: { ...o, name: `hr-entity-${run}`, permissionsJson: JSON.stringify(ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions) } });
+      await tx.roleGrant.create({ data: { ...o, userId: users.hrEntity, permissionProfileId: hr.id, scopeType: 'legal_entity', legalEntityId: ids.entity, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'HR for Flex Mills' } });
     });
     ids.emp1 = (
       await api('adminA', 'post', '/people/employees')
@@ -174,6 +179,21 @@ describe('Flexible benefits (B8/E5)', () => {
     expect(audits.map((a) => a.action)).toEqual(['benefits.flex.component_added', 'benefits.flex.component_added', 'benefits.flex.component_changed']);
     expect(JSON.parse(audits[2].metadataJson ?? '{}')).toMatchObject({ before: { name: 'Books and periodicals', active: true, monthlyAmount: '1000.00' }, after: { name: 'Books', active: false, monthlyAmount: '1000.50' } });
     expect((await api('adminA', 'get', '/benefits/flex/settings').expect(200)).body.lastChange).toMatchObject({ what: 'Changed a flexible component' });
+  });
+
+  it('HR Admin granted for one legal entity reads Settings 4.11 but cannot change the company list; a company-wide grant can', async () => {
+    expect((await api('hrEntity', 'get', '/benefits/flex/settings').expect(200)).body.components.map((x: { code: string }) => x.code)).toContain('phone');
+    const meal = { code: 'meal', name: 'Meal card', monthlyAmount: '2200', taxableIfUnclaimed: true, expenseCategoryCode: null };
+    expect((await api('hrEntity', 'post', '/benefits/flex/components').send(meal).expect(403)).body.message).toMatch(/for the whole company/);
+    await api('hrEntity', 'put', `/benefits/flex/components/${ids.phone}`).send({ ...phone, active: true, version: 1 }).expect(403);
+    await api('hrEntity', 'put', '/org/settings').send({ key: 'benefits.fbp.unclaimed', scopeType: 'tenant', value: 'carry' }).expect(403);
+    expect((await api('adminA', 'get', '/benefits/flex/settings').expect(200)).body).toMatchObject({ unclaimed: 'pay' });
+    expect((await api('adminA', 'get', '/benefits/flex/settings').expect(200)).body.components.map((x: { code: string }) => x.code)).not.toContain('meal');
+    // The company-wide grant adds it; another company never sees it.
+    expect((await api('hrTenant', 'post', '/benefits/flex/components').send(meal).expect(201)).body).toMatchObject({ code: 'meal', active: true });
+    expect((await api('adminB', 'get', '/benefits/flex/settings').expect(200)).body.components).toEqual([]);
+    const m = (await api('adminA', 'get', '/benefits/flex/settings').expect(200)).body.components.find((x: { code: string }) => x.code === 'meal');
+    await api('hrTenant', 'put', `/benefits/flex/components/${m.id}`).send({ ...meal, active: false, version: m.version }).expect(200);
   });
 
   it('the unclaimed rule is a company setting: pay by default, carry on HR’s say; others refused', async () => {

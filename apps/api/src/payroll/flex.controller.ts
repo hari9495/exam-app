@@ -31,14 +31,14 @@ export class FlexBenefitsController {
 
   @Post('components')
   @RequirePermissions('benefits.settings.manage')
-  addComponent(@CurrentTenant() ctx: TenantContext, @Body() dto: FlexComponentDto) {
-    return this.flex.addComponent(ctx, dto);
+  addComponent(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: FlexComponentDto) {
+    return this.flex.addComponent(ctx, this.user(req), dto);
   }
 
   @Put('components/:id')
   @RequirePermissions('benefits.settings.manage')
-  changeComponent(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FlexComponentChangeDto) {
-    return this.flex.changeComponent(ctx, id, dto);
+  changeComponent(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FlexComponentChangeDto) {
+    return this.flex.changeComponent(ctx, this.user(req), id, dto);
   }
 
   /** The signed-in person's own ledger for a tax year (the current one by default). */
