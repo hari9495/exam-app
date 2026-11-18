@@ -22,19 +22,26 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await signIn(employee, 'panel@demo-org.test', PASSWORD);
   await employee.waitForURL((url) => !url.pathname.includes('sign-in'));
   await employee.goto('/yx/desk/help');
-  await employee.getByRole('button', { name: 'Raise a ticket' }).click();
-  const raise = employee.getByRole('dialog');
-  await raise.getByRole('combobox', { name: /Which team/ }).click();
-  await employee.getByRole('option', { name: 'IT help desk' }).click();
+  const raise = employee.getByRole('dialog', { name: 'Raise a ticket' });
+  // The page hydrates after it paints: press again until the dialog opens.
+  await expect(async () => {
+    await employee.getByRole('button', { name: 'Raise a ticket' }).click();
+    await expect(raise).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  // HLP-01 (a119f526e): the topic carries its team, so there is no separate team choice.
   await raise.getByRole('combobox', { name: /What is it about/ }).click();
-  await employee.getByRole('option', { name: /Access and accounts/ }).click();
+  await employee.getByRole('option', { name: /^Access and accounts\s*IT help desk/ }).click();
   await raise.getByRole('textbox', { name: /Subject/ }).fill(subject);
   await raise.getByRole('textbox', { name: /Details/ }).fill('The intranet says access denied since this morning.');
-  await raise.getByRole('radio', { name: 'Today' }).click();
+  // HLP-01 asks no urgency (a119f526e): the team sets the priority.
   await raise.getByRole('button', { name: 'Raise ticket' }).click();
-  await expect(employee.getByText(/Your ticket number is IT-\d+/)).toBeVisible();
-  const number = (await employee.getByText(/Your ticket number is IT-\d+/).textContent())!.match(/IT-\d+/)![0];
-  await expect(employee.getByRole('button', { name: subject })).toBeVisible();
+  // The toast says it (its screen-reader announcement carries the same words, so take the visible one, the last).
+  const said = employee.getByText(/Your ticket number is IT-\d+/).last();
+  await expect(said).toBeVisible();
+  const number = (await said.textContent())!.match(/IT-\d+/)![0];
+  const mine = employee.getByRole('list', { name: 'My tickets' });
+  await expect(mine.getByRole('link', { name: subject })).toBeVisible();
+  await expect(mine.getByRole('listitem').filter({ hasText: subject })).toContainText(number);
 
   // 2. Suresh (IT agent) finds it, takes it, adds a note and replies.
   const agent = await (await browser.newContext()).newPage();
@@ -56,7 +63,7 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await agent.getByRole('tab', { name: 'Internal note' }).click();
   await writeInEditor(agent, 'Checked the proxy logs: her account is not in the intranet group.');
   await agent.getByRole('button', { name: 'Add note' }).click();
-  await expect(agent.getByText('Internal note: Divya never sees it').last()).toBeVisible();
+  await expect(agent.getByText('Internal note, not visible to Divya').last()).toBeVisible();
   // The note shows (from the refresh) before sending has finished; when it finishes the composer clears and its editor
   // is replaced. Typing the reply before then lost it, or met a button still busy with the note.
   await expect(agent.getByRole('button', { name: 'Add note' })).not.toHaveAttribute('aria-busy', 'true', { timeout: 30_000 });
@@ -74,10 +81,11 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
 
   // 4. Divya sees the reply and the new status, never the note.
   await employee.goto('/yx/desk/help');
-  await employee.getByRole('radio', { name: 'All' }).click();
-  await employee.getByRole('button', { name: subject }).click();
-  await expect(employee.getByText('I have added you to the intranet group')).toBeVisible();
-  await expect(employee.getByText('Resolved').first()).toBeVisible();
+  const item = employee.getByRole('list', { name: 'My tickets' }).getByRole('listitem').filter({ hasText: subject });
+  await expect(item).toContainText('Resolved', { timeout: 30_000 });
+  await item.getByRole('link', { name: subject }).click();
+  await expect(employee.getByRole('list', { name: 'Conversation' })).toContainText('I have added you to the intranet group', { timeout: 30_000 });
+  await expect(employee.getByText(/^Not fixed\? Reply by /)).toBeVisible();
   await expect(employee.getByText(/proxy logs/)).toHaveCount(0);
 });
 
