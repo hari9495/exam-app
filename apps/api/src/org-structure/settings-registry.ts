@@ -230,6 +230,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'expense.card.reminder_days': { label: 'Card statements: remind the employee about a card line to explain after these days', scopes: ['tenant'], dated: false, values: ['3,7,14', '7,14', '7', '14', 'off'], default: '3,7,14' },
   'expense.card.recovery_instalments': { label: 'Card statements: personal spend is recovered from salary in this many instalments', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '6'], default: '3' },
   // M06 performance PM2 (§6.1, D2): whether the manager approves a person's goals; how often check-ins are expected.
+  // Batch F item 30 (answer 2575): a goal with no check-in for this many days shows as "not updated" to the manager.
+  'perf.goal.stale_days': { label: 'Performance: a goal shows as not updated after this many days without a check-in', scopes: ['tenant'], dated: false, values: ['14', '30', '45', '60'], default: '30' },
   'perf.goal.approval': { label: 'Performance: the manager approves a person’s goals', scopes: ['tenant'], dated: false, values: ['manager', 'none'], default: 'manager' },
   'perf.self_review.visible_to_manager': { label: 'Performance: the manager reads the self review', scopes: ['tenant'], dated: false, values: ['after_manager_draft', 'immediately'], default: 'after_manager_draft' },
   'perf.disagreement.days': { label: 'Performance: days after release to disagree with a review', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '15' },

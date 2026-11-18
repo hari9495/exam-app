@@ -192,6 +192,30 @@ describe('Performance batch PM2', () => {
     expect(await svc.sweepOrg(org.A.id, later)).toBe(0);
   });
 
+  // Batch F item 30 (answer 2575): my own team's people with no goals or goals not updated, and Remind once a day.
+  it('the manager sees who in their own team has no goals or stale goals, and reminds once a day', async () => {
+    type Gaps = { days: number; team: number; noGoals: { employeeId: string; canRemind: boolean }[]; notUpdated: { employeeId: string }[] };
+    // In this period both reports have goals, and Arjun checked in today: nothing to chase.
+    const gaps = (await api('priya', 'get', `/goals/team-gaps?period=${ids.period}`).expect(200)).body as Gaps;
+    expect(gaps).toMatchObject({ days: 30, team: 2, noGoals: [] });
+    expect(gaps.notUpdated.map((x) => x.employeeId)).not.toContain(emp.arjun);
+    // A new period: nobody has goals yet.
+    const next = (await api('hr', 'post', '/goal-periods').send({ name: `Next ${run}`, fromOn: shift(today, 151), toOn: shift(today, 300) }).expect(201)).body.id as string;
+    expect(((await api('priya', 'get', `/goals/team-gaps?period=${next}`).expect(200)).body as Gaps).noGoals.map((x) => x.employeeId).sort()).toEqual([emp.arjun, emp.sita].sort());
+    // Someone with no team sees an empty list; another company's period is not found; bad input is refused.
+    expect((await api('arjun', 'get', `/goals/team-gaps?period=${ids.period}`).expect(200)).body).toMatchObject({ team: 0, noGoals: [], notUpdated: [] });
+    await api('adminB', 'get', `/goals/team-gaps?period=${ids.period}`).expect(404);
+    await api('priya', 'get', '/goals/team-gaps?period=nope').expect(400);
+    const remind = (who: Who, employeeId: string, kind = 'no_goals') => api(who, 'post', `/goals/team-gaps/${employeeId}/remind`).send({ period: next, kind });
+    await remind('priya', emp.sita!, 'later').expect(400);
+    await remind('priya', emp.hr!).expect(404);
+    await remind('arjun', emp.sita!).expect(404);
+    await remind('priya', emp.sita!).expect(200);
+    expect((await remind('priya', emp.sita!).expect(409)).body.message).toMatch(/last day/);
+    expect(((await api('priya', 'get', `/goals/team-gaps?period=${next}`).expect(200)).body as Gaps).noGoals.find((x) => x.employeeId === emp.sita)!.canRemind).toBe(false);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.goal.reminded', entityId: emp.sita } }))).toBe(1);
+  });
+
   it('two companies stay apart', async () => {
     await api('adminB', 'get', `/goals/${ids.arjunGoal}`).expect(404);
     expect((await api('adminB', 'get', '/goal-periods').expect(200)).body).toEqual([]);

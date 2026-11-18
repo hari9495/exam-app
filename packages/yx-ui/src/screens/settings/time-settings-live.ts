@@ -270,6 +270,8 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     settings: [
       { section: 'Goals and reviews', key: 'perf.goal.approval', synonyms: ['goal approval'] },
       { section: 'Goals and reviews', key: 'perf.goal.checkin_days', synonyms: ['check-in'] },
+      // Batch F item 30 (answer 2575): when a goal shows as not updated to the manager.
+      { section: 'Goals and reviews', key: 'perf.goal.stale_days', synonyms: ['not updated', 'stale goals'] },
       { section: 'Goals and reviews', key: 'perf.self_review.visible_to_manager', synonyms: ['self review'] },
       { section: 'Goals and reviews', key: 'perf.disagreement.days', synonyms: ['disagree', 'appeal'] },
       { section: 'Goals and reviews', key: 'perf.dispute.escalate_days', synonyms: ['dispute'] },

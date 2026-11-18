@@ -410,6 +410,15 @@ export class PeriodQueryDto {
   period!: string;
 }
 
+/** Batch F item 30: remind a person of my team to add, or to update, their goals. */
+export class GoalRemindDto {
+  @IsUUID()
+  period!: string;
+
+  @IsIn(['no_goals', 'not_updated'])
+  kind!: 'no_goals' | 'not_updated';
+}
+
 // ------------------------------------------------------------------------------------------ PM3: feedback and 1:1s (§19)
 
 export class FeedbackDto {

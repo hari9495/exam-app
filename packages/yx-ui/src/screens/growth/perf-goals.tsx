@@ -1,5 +1,6 @@
 // Performance: home (PRF-01), my goals + check-in (PRF-02), company goal map (PRF-03), manager coach card (PRF-16).
 import { useMemo, useState } from 'react';
+import { GoalGapsCard, type GoalGaps } from './goal-gaps';
 import { Check, MessageSquarePlus, Plus, Target } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
@@ -120,6 +121,18 @@ function FeedbackMini({ items }: { items: NonNullable<PerformanceHomeProps['feed
 }
 
 /** PRF-01 Performance home (T6, role-based). Manager home carries the PRF-16 coach card. The live app passes `live`. */
+/** Batch F item 30 (design): two people with no goals, one not updated for 30 days. */
+const SAMPLE_GAPS: GoalGaps = {
+  periodId: 'p',
+  days: 30,
+  team: 6,
+  noGoals: [
+    { employeeId: 'e1', name: 'Arjun Kulkarni', remindedAt: null, canRemind: true },
+    { employeeId: 'e2', name: 'Meera Nair', remindedAt: '2026-09-28T04:30:00Z', canRemind: false },
+  ],
+  notUpdated: [{ employeeId: 'e3', name: 'Sana Nizami', remindedAt: null, canRemind: true, goals: 3, lastCheckIn: '2026-08-21' }],
+};
+
 export function PerformanceHomeScreen(props: PerformanceHomeProps | { live: LiveHome }) {
   return 'live' in props ? <LivePerformanceHome live={props.live} /> : <SamplePerformanceHome {...props} />;
 }
@@ -231,6 +244,8 @@ function SamplePerformanceHome(p: PerformanceHomeProps) {
     widgets.push(
       { id: 'coach', title: 'Manager coach', size: 4, bare: true, content: p.coach ? <CoachCard nudges={p.coach.nudges} weekOf={p.coach.weekOf} optedOut={p.coach.optedOut} /> : null },
       { id: 'team', title: 'My team', size: 8, content: <TeamTable team={p.team ?? []} /> },
+      // Batch F item 30 (answer 2575): who has no goals, whose goals were not updated, with Remind.
+      { id: 'gaps', title: 'Goals to chase', size: 12, content: <GoalGapsCard gaps={SAMPLE_GAPS} onRemind={async () => undefined} /> },
       { id: 'teamgoals', title: 'Team goal', size: 12, content: <GoalTree goals={p.goals} aria-label="Team goals" compact /> },
     );
   }

@@ -27744,5 +27744,24 @@
                               "Screens/Helpdesk/Desk set-up"
                     ],
                     "note": "Positive and negative (service-desk-esm e2e: agent 403, other company 403/404 for export and import, the file's keys, no company id, bad format 400, over 500 items 400, dry run writes nothing, import by name, rule with foreign ids not added, rules never active, a second import adds nothing, audited; kit setup-transfer test)."
+          },
+          {
+                    "id": "MT-F-30-GOALS-TO-CHASE",
+                    "area": "Batch F item 30: people with no goals or goals not updated, with Remind (answer 2575, 18 Nov 2026)",
+                    "screen": "Performance › home (PRF-01, manager) › Goals to chase; Settings › 6.3 Performance › Goals and reviews",
+                    "url": "http://localhost:3000/yx/performance",
+                    "account": "Manager panel@ (Divya) with reports, one with no goals in the period and one whose goals have no check-in for 30+ days; HR setup admin; an employee with no reports.",
+                    "steps": [
+                              "As the manager open Performance. Find 'Goals to chase'.",
+                              "Press Remind for the person with no goals; press it again.",
+                              "Switch to 'Not updated in 30 days' and remind that person.",
+                              "As HR set 'a goal shows as not updated after' to 14 days; back as the manager reload.",
+                              "Negative: as the employee with no reports open Performance; open the API for another manager's report."
+                    ],
+                    "expected": "Step 1: a single-choice switch 'No goals (n)' / 'Not updated in 30 days (n)' with a table of the manager's own team only. Step 2: a 5-second toast 'Reminder sent to …'; the button turns 'Reminded today'; the person gets a bell notice; a second try the same day is refused ('Already reminded in the last day'). Step 3: last check-in shows the date or 'Never'. Step 4: the label and list follow the new number of days. Step 5: no card without reports; another team's person is 404. No page scroll at 1278 x 635 with a short list.",
+                    "stories": [
+                              "Screens/Performance/PRF-01 · Performance home"
+                    ],
+                    "note": "Positive and negative (performance-pm2 e2e: nothing to chase when all have goals and checked in, a new period lists both, no team empty, other company 404, bad period 400, bad kind 400, not my team 404, remind once, repeat 409, audited; kit goal-gaps test). Setting perf.goal.stale_days (14, 30, 45, 60; default 30)."
           }
 ]
