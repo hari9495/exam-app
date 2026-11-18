@@ -395,7 +395,7 @@ export function CandidateRetentionScreen({ months, monthsOptions, canChange = tr
     return (
       <HireFrame active="Candidates & talent CRM">
         {shown === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading retention">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading retention">
             <Skeleton height={56} />
             <Skeleton height={200} />
           </div>

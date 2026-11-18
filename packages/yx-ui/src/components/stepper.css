@@ -105,3 +105,4 @@
 
 /* Why the next button is disabled: plain information (neutral), always right beside that button, wrapping inside its own space. */
 .yx-stepper__blocked { flex: 0 1 auto; min-width: 0; text-align: end; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); }
+.yx-stepper__panel:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 0; }

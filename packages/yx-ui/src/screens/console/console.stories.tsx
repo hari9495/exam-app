@@ -13,7 +13,7 @@ import { StaffRolesScreen } from './staff';
 import { SupportAccessScreen } from '../access/support-access';
 import { ACTIVITY, AUDIT, COMPANIES, COMPANY, COMPANY_SETTINGS, NOW, PRODUCTS, REQUEST, SESSIONS, STAFF, STAFF_ROLE_DEFS, TODAY } from './data';
 
-const meta: Meta = { title: 'Screens/YukthiX console/Platform console (step 3)', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Screens/YukthiX console/Platform console (step 3)', parameters: { layout: 'fullscreen' }, excludeStories: ['STAFF_NOTICES'] };
 export default meta;
 type S = StoryObj;
 

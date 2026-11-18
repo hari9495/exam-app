@@ -676,7 +676,7 @@ function LiveCandidateRecordView({ live }: { live: LiveCandidateRecord }) {
     return (
       <HireFrame active="Candidates & talent CRM">
         {live.state === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the candidate">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading the candidate">
             <Skeleton height={64} />
             <Skeleton height={240} />
           </div>
@@ -1416,7 +1416,7 @@ function LiveInterviewCalendarView({ live }: { live: LiveInterviewCalendar }) {
       <HireFrame active="Interviews">
         {header}
         {live.state === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading interviews">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading interviews">
             <Skeleton height={64} />
             <Skeleton height={320} />
           </div>
@@ -1700,7 +1700,7 @@ function LiveScorecardView({ live }: { live: LiveScorecard }) {
     return (
       <HireFrame active="Interviews">
         {live.state === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the interview">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading the interview">
             <Skeleton height={64} />
             <Skeleton height={320} />
           </div>
@@ -2130,7 +2130,7 @@ export function DraftScorecardReview({ candidate, drafts, defaultConfirmed = [],
     return (
       <HireFrame active="Interviews">
         {live.state === 'loading' ? (
-          <div className="yx-hire-stack" aria-busy="true" aria-label="Loading the draft">
+          <div className="yx-hire-stack" role="status" aria-busy="true" aria-label="Loading the draft">
             <Skeleton height={56} />
             <Skeleton height={240} />
           </div>
