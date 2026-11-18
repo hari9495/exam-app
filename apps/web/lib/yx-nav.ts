@@ -341,7 +341,7 @@ export function buildNav(n: NavInput): NavArea[] {
       : [
           ...sec('Payroll', [
             ...when(any('payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve', 'payroll.offcycle.prepare'), L('pay-runs', 'Payroll home', '/yx/payroll/runs')),
-            ...when(has('payroll.input.manage'), L('pay-inputs', 'Inputs', '/yx/payroll/inputs')),
+            ...when(has('payroll.input.manage'), L('pay-inputs', 'Inputs', '/yx/payroll/inputs'), L('pay-fbp', 'Flexible benefits', '/yx/payroll/flexible-benefits')),
             ...when(has('payroll.query.handle'), L('pay-queries', 'Queries', '/yx/payroll/payslip-queries', 'payslipQueries')),
             ...when(any('payroll.fnf.manage', 'payroll.notice.waive'), L('pay-fnf', 'Full and final', '/yx/payroll/fnf')),
             ...when(any('payroll.period.view', 'payroll.period.reopen', 'payroll.period.reopen.approve'), L('pay-periods', 'Pay periods', '/yx/payroll/periods'), L('reopen-requests', 'Reopen requests', '/yx/payroll/reopen-requests')),
@@ -385,7 +385,7 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(any('payroll.special.manage', 'payroll.journal.export'), L('pay-actuarial', 'Actuarial valuation', '/yx/payroll/actuarial')),
             ...when(has('audit.view'), L('pay-audit', 'Audit log', '/yx/payroll/audit')),
           ]),
-          ...sec('My pay', when(employee, L('my-payslips', 'Payslips', '/yx/me/payslips'), L('my-tax', 'Tax workspace', '/yx/me/tax'), L('my-declarations', 'Tax declarations', '/yx/me/tax-declarations'), L('my-loans', 'Loans & advances', '/yx/me/loans'), L('my-ewa', 'Get paid early', '/yx/me/earned-pay'), L('my-incentives', 'My incentives', '/yx/me/incentives'), L('pay-band', 'My pay band', '/yx/performance/pay-band'), L('my-equity', 'My equity', '/yx/me/equity'), L('my-pay-documents', 'My pay documents', '/yx/me/pay-documents'))),
+          ...sec('My pay', when(employee, L('my-payslips', 'Payslips', '/yx/me/payslips'), L('my-tax', 'Tax workspace', '/yx/me/tax'), L('my-declarations', 'Tax declarations', '/yx/me/tax-declarations'), L('my-loans', 'Loans & advances', '/yx/me/loans'), L('my-ewa', 'Get paid early', '/yx/me/earned-pay'), L('my-incentives', 'My incentives', '/yx/me/incentives'), L('pay-band', 'My pay band', '/yx/performance/pay-band'), L('my-equity', 'My equity', '/yx/me/equity'), L('my-fbp', 'Flexible benefits', '/yx/me/flexible-benefits'), L('my-pay-documents', 'My pay documents', '/yx/me/pay-documents'))),
         ],
   };
 

@@ -256,6 +256,22 @@ describe('Flexible benefits (B8/E5)', () => {
     expect(JSON.parse(a?.metadataJson ?? '{}')).toMatchObject({ kind: 'exit', automatic: true, settled: 1 });
   });
 
+  it('answer 2455: the settlement list for payroll in scope; the leaver carries the F&F last day; refusals', async () => {
+    const o = (await api('payAdmin', 'get', `/benefits/flex/settlements?taxYear=${year}`).expect(200)).body;
+    expect(o).toMatchObject({ taxYear: year, opensIn: march, unclaimed: 'pay' });
+    const byId = new Map((o.people as { employeeId: string }[]).map((p) => [p.employeeId, p]));
+    expect(byId.get(ids.emp1)).toMatchObject({ name: `emp1 ${run}`, employeeCode: 'FLX-001', leavesOn: null, settled: null });
+    expect(byId.get(ids.emp2)).toMatchObject({ leavesOn: today, available: '0.00', settled: 'exit' });
+    // The person's own ledger says what happens to an unclaimed balance.
+    expect((await api('emp1', 'get', '/benefits/flex/me').expect(200)).body.unclaimed).toBe('pay');
+    // Wrong role, another company (sees nobody of A), bad input.
+    await api('emp1', 'get', '/benefits/flex/settlements').expect(403);
+    await api('hrNoKey', 'get', '/benefits/flex/settlements').expect(403);
+    // Company B's payroll reaches no legal entity of A: refused, nothing of A shown.
+    expect((await api('payAdminB', 'get', '/benefits/flex/settlements').expect(403)).body.message).toBe('You need payroll.input.manage over a legal entity.');
+    await api('payAdmin', 'get', '/benefits/flex/settlements?taxYear=26-27').expect(400);
+  });
+
   it('answer 2459: the year-end settlement is refused before the March pay month; nothing saved', async () => {
     const real = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 7);
     if (real >= march) return; // in March itself the real clock already allows it

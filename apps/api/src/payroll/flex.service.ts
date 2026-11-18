@@ -70,6 +70,13 @@ async function employmentIn(tx: Tx, org: string, employeeId: string, taxYear: st
   return tx.employment.findFirst({ where: { organizationId: org, employeeId, joinedOn: { lte: asDate(`${y.last}-31`) }, OR: [{ exitedOn: null }, { exitedOn: { gte: asDate(`${y.first}-01`) } }] }, orderBy: { joinedOn: 'desc' } });
 }
 
+/** The leaver's last day: the exit date, else the last day of the F&F settlement handed to payroll (before the exit date is set). */
+async function leavingOn(tx: Tx, org: string, e: { id: string; exitedOn: Date | null }) {
+  if (e.exitedOn) return dateOf(e.exitedOn);
+  const f = await tx.fnfSettlement.findFirst({ where: { organizationId: org, employmentId: e.id }, select: { lwd: true } });
+  return f ? dateOf(f.lwd) : null;
+}
+
 /**
  * The ledger of one person for a tax year, through `through` (YYYY-MM; the current month for a live view). Reads the
  * settlements with the pay guard opened to the whole company (a transfer keeps the year), then puts the scope back.
@@ -213,7 +220,7 @@ export class FlexBenefitsService {
       const me = await tx.employee.findFirst({ where: { organizationId: c.organizationId, userId: v.userId! }, select: { id: true } });
       if (!me) throw new ForbiddenException('Only employees have a flexible benefit ledger.');
       const year = taxYear ?? flexYearOf(todayIst().slice(0, 7));
-      return { taxYear: year, rows: await flexLedger(tx, c.organizationId, me.id, year, this.through(year)) };
+      return { taxYear: year, unclaimed: await settingFor(tx, c, FLEX_UNCLAIMED_KEY, { legalEntityId: '' }), rows: await flexLedger(tx, c.organizationId, me.id, year, this.through(year)) };
     });
   }
 
@@ -223,7 +230,7 @@ export class FlexBenefitsService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const year = taxYear ?? flexYearOf(todayIst().slice(0, 7));
       await this.reach(tx, c, v, employeeId, year);
-      return { taxYear: year, employeeId, rows: await flexLedger(tx, c.organizationId, employeeId, year, this.through(year)) };
+      return { taxYear: year, employeeId, unclaimed: await settingFor(tx, c, FLEX_UNCLAIMED_KEY, { legalEntityId: '' }), rows: await flexLedger(tx, c.organizationId, employeeId, year, this.through(year)) };
     });
   }
 
@@ -241,6 +248,43 @@ export class FlexBenefitsService {
     if (await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: employeeId, userId: v.userId! }, select: { id: true } })) throw new ForbiddenException('Someone else in payroll settles your own flexible benefits.');
     await payScope(tx, ids);
     return e;
+  }
+
+  /**
+   * Answer 2455, payroll's settlement screen (PAY-60): everyone in payroll.input.manage's entities employed in the year
+   * (never oneself), with what is left, claims still waiting, and whether they are settled; leavers carry their last day.
+   */
+  async overview(ctx: TenantContext, user: ScopeUser, taxYear?: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const now = todayIst().slice(0, 7);
+      const year = taxYear ?? flexYearOf(now);
+      const y = flexYearMonths(year);
+      const ids = await entitiesFor(tx, c, v, 'payroll.input.manage');
+      if (!ids.length) throw new ForbiddenException('You need payroll.input.manage over a legal entity.');
+      await payScope(tx, ids);
+      const me = await tx.employee.findFirst({ where: { organizationId: org, userId: v.userId! }, select: { id: true } });
+      const jobs = (await tx.employment.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, joinedOn: { lte: asDate(`${y.last}-31`) }, OR: [{ exitedOn: null }, { exitedOn: { gte: asDate(`${y.first}-01`) } }] }, orderBy: { joinedOn: 'desc' } })).filter((e) => e.employeeId !== me?.id);
+      const names = new Map((await tx.employee.findMany({ where: { organizationId: org, id: { in: jobs.map((e) => e.employeeId) } }, select: { id: true, givenName: true, preferredName: true, familyName: true } })).map((p) => [p.id, p]));
+      const seen = new Set<string>();
+      const people = [];
+      // shortcut: one ledger read per person (a few queries each); page the list when a company passes a few thousand people.
+      for (const e of jobs) {
+        if (seen.has(e.employeeId)) continue;
+        seen.add(e.employeeId);
+        const leaves = await leavingOn(tx, org, e);
+        const leaver = !!leaves && leaves.slice(0, 7) <= y.last;
+        const end = leaver ? leaves!.slice(0, 7) : y.last;
+        const rows = await flexLedger(tx, org, e.employeeId, year, now < end ? now : end);
+        if (!rows.length) continue;
+        const p = names.get(e.employeeId);
+        const sum = (k: 'available' | 'pending') => money(rows.reduce((t, r) => t.add(r[k]), ZERO));
+        const settled = rows.every((r) => r.settlement) ? (rows.find((r) => r.settlement)?.settlement?.kind ?? null) : null;
+        people.push({ employeeId: e.employeeId, name: p ? [p.preferredName ?? p.givenName, p.familyName].filter(Boolean).join(' ') : 'Someone', employeeCode: e.employeeCode, leavesOn: leaver ? leaves : null, available: sum('available'), pending: sum('pending'), settled });
+      }
+      return { taxYear: year, opensIn: y.last, open: now >= y.last, unclaimed: await settingFor(tx, c, FLEX_UNCLAIMED_KEY, { legalEntityId: '' }), people };
+    });
   }
 
   /**
@@ -270,8 +314,9 @@ export class FlexBenefitsService {
         const e = (await employmentIn(tx, org, employeeId, dto.taxYear))!;
         let month = y.last;
         if (dto.kind === 'exit') {
-          if (!e.exitedOn || dateOf(e.exitedOn).slice(0, 7) > y.last || dateOf(e.exitedOn).slice(0, 7) < y.first) throw new ConflictException('This person has no exit date in that tax year. Settle them at year end instead.');
-          month = dateOf(e.exitedOn).slice(0, 7);
+          const leaves = await leavingOn(tx, org, e);
+          if (!leaves || leaves.slice(0, 7) > y.last || leaves.slice(0, 7) < y.first) throw new ConflictException('This person has no exit date in that tax year. Settle them at year end instead.');
+          month = leaves.slice(0, 7);
         }
         done.push(...(await this.settlePerson(tx, c, e, dto.taxYear, dto.kind, month, v.userId!, false)));
       }

@@ -23164,6 +23164,74 @@
     "stories": [
       "Screens/Settings/Group 4 · Payroll & Statutory"
     ],
-    "note": "Positive and negative. B8/E5. The employee ledger page has no design yet (question 2455), so steps 1 and 4 use the API."
+    "note": "Positive and negative. B8/E5. The ledger and settlement screens are now live: see MT-BATHF-01 and 02."
+  },
+  {
+    "id": "MT-BATHF-01",
+    "area": "Pay: batch H follow-ups (18 Nov 2026)",
+    "screen": "Me · My pay · Flexible benefits (PAY-59)",
+    "url": "http://localhost:3000/yx/me/flexible-benefits",
+    "account": "arjun@demo-org.test (employee); with 'Phone and internet' set up at ₹1,500 a month (MT-BATH3-02).",
+    "steps": [
+      "Open My pay › Flexible benefits.",
+      "Pick 'FY 2025-26' in the Tax year control, then 'This year'.",
+      "Press Make a claim.",
+      "Negative: sign in as a user with no employee record (admin@demo-org.test) and open the page."
+    ],
+    "expected": "Step 1: the menu item is highlighted; totals Given so far / Claimed / Waiting / Left to claim; one row per component with a status badge; one note on what happens in March and at exit; no page scroll at 1278 x 635. Step 2: last year shows 'No flexible benefits' (or its settled rows); this year comes back. Step 3: Expenses opens. Step 4: the page shows it could not load (the API answers 403 'Only employees have a flexible benefit ledger').",
+    "stories": [
+      "Screens/Pay/PAY-59 · My flexible benefits"
+    ],
+    "note": "Positive and negative. Answer 2455."
+  },
+  {
+    "id": "MT-BATHF-02",
+    "area": "Pay: batch H follow-ups (18 Nov 2026)",
+    "screen": "Payroll · Flexible benefits settlement (PAY-60)",
+    "url": "http://localhost:3000/yx/payroll/flexible-benefits",
+    "account": "payroll@demo-org.test (payroll.input.manage); arjun@demo-org.test for the refusal.",
+    "steps": [
+      "Open Payroll › Flexible benefits: Year end (March) for this tax year.",
+      "Press Settle the year, then confirm.",
+      "Click a person's row.",
+      "Switch to Leavers; on a leaver not settled yet press Settle and confirm.",
+      "Negative: as Arjun open the same address."
+    ],
+    "expected": "Step 1: 'Opens with the March 2027 pay month' shows; People, Left to settle, Claims waiting, What is left. Step 2: refused inside the dialog: 'The year-end settlement for 2026-27 opens with the March 2027 pay month.' Nothing saved (answer 2459). Step 3: a drawer shows that person's ledger. Step 4: toast 'name: 1 benefit settled', status becomes Settled at exit; a leaver whose F&F was handed off is already 'Settled at exit' (answer 2460). Step 5: no access.",
+    "stories": [
+      "Screens/Pay/PAY-60 · Flexible benefit settlement"
+    ],
+    "note": "Positive and negative. Answers 2455, 2459, 2460."
+  },
+  {
+    "id": "MT-BATHF-03",
+    "area": "Pay: batch H follow-ups (18 Nov 2026)",
+    "screen": "Payroll · Tax centre · Perquisites (loan perquisite by hand)",
+    "url": "http://localhost:3000/yx/payroll/proofs",
+    "account": "payroll@demo-org.test (tax.proof.verify).",
+    "steps": [
+      "As payroll, POST /api/v1/tax/perquisites {employeeId: Arjun, taxYear: '2026-27', kind: 'loan', annualValue: '5000', description: 'Loan benefit'}.",
+      "Send the same with kind 'car'.",
+      "After an approved run with a loan perquisite line, open Arjun's tax sheet (GET /api/v1/tax/me/tax-sheet as Arjun)."
+    ],
+    "expected": "Step 1: 409 'Payroll works out the loan perquisite itself for this year…', nothing saved (answer 2454). Step 2: 201. Step 3: perquisites = this month's loan perquisite x the pay periods left (answer 2451).",
+    "stories": [],
+    "note": "Positive and negative. Answers 2451, 2454. Needs SBI rates loaded for step 3."
+  },
+  {
+    "id": "MT-BATHF-04",
+    "area": "Pay: batch H follow-ups (18 Nov 2026)",
+    "screen": "Settings · Benefits & FBP (HR Admin)",
+    "url": "http://localhost:3000/yx/settings/benefits",
+    "account": "An HR Admin made from the HR Admin template (hr@demo-org.test if it follows the template).",
+    "steps": [
+      "Sign in as the HR Admin and open Settings › Benefits & FBP.",
+      "Negative: sign in as an HR Executive and open it."
+    ],
+    "expected": "Step 1: the page opens and components can be added (benefits.settings.manage now in the HR Admin template, answer 2456). Step 2: no access.",
+    "stories": [
+      "Screens/Settings/Group 4 · Payroll & Statutory"
+    ],
+    "note": "Positive and negative. Answer 2456."
   }
 ]
