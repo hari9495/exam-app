@@ -118,6 +118,8 @@ export const YX_KEYS = [
   'expense.policy.manage',
   // B8/E5: Settings 4.11 Benefits & FBP.
   'benefits.settings.manage',
+  // Batch C item 4 (answer 2500): everyone's pending approvals, with reassign.
+  'workflow.approvals.oversee',
   'expense.policy.view',
   // HLP-10 / HLP-11 company policies.
   'policy.manage',

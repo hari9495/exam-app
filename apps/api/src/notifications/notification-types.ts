@@ -59,6 +59,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'workflow.approval.needed', group: 'approvals', label: 'A request needs your approval' },
   { type: 'workflow.approval.reminder', group: 'reminders', label: 'A request is still waiting for your approval' },
   { type: 'workflow.approval.decided', group: 'approvals', label: 'A request you sent or were asked about was decided' },
+  // Answers 2501 / 2502: an approval you held was moved to someone else (by you, or by HR), with why.
+  { type: 'workflow.approval.reassigned', group: 'approvals', label: 'An approval you held was moved to someone else' },
   { type: 'workflow.approval.no_approver', group: 'approvals', label: 'No approver was found for a request step, so someone else got it (HR, or the desk leads for desk requests)' },
   { type: 'helpdesk.request.stage', group: 'reminders', label: 'Something you ordered moved to its next stage' },
   { type: 'helpdesk.rule.notify', group: 'assignments', label: 'A desk rule sent you a message' },

@@ -27270,5 +27270,47 @@
                               "Screens/Hiring/HIR-09 · Offer builder · Live"
                     ],
                     "note": "Positive and negative (API offer-letters.e2e-spec.ts: moved with mapped fields and person signs, name clash → draft, re-run makes nothing, other company never sees it, GET old routes 301 to /yx/settings/letters, POST/PATCH/DELETE 410, signed out 401; hiring-hir09 / hir28 e2e use moved templates in the builder; unit offer-letters.spec.ts; web next.config.test.ts). Issuing the offer as a P05 letter with OTP e-accept is the next step (out of scope)."
+          },
+          {
+                    "id": "MT-C17-BULK-NOT-APPROVE",
+                    "area": "Batch C item 17: bulk Do not approve (answer 2503, 18 Nov 2026)",
+                    "screen": "Approvals (PLT-04)",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "Manager panel@demo-org.test (Divya Raghunathan) with at least two waiting requests from arjun@demo-org.test (raise two leave or work-from-home requests as Arjun first).",
+                    "steps": [
+                              "As Divya: open Approvals, tick two requests (one may be high risk).",
+                              "Press 'Do not approve 2'. Press 'Do not approve 2' in the dialog with the Reason empty.",
+                              "Type 'Budget is frozen this quarter' and press 'Do not approve 2'.",
+                              "As Arjun: open the bell and Me › My requests.",
+                              "As Divya: tick a request that is decided on its own page (a payroll reopen), if any; also check the 100 limit message by selecting more than 100 (demo: skip if fewer)."
+                    ],
+                    "expected": "Step 1: the bulk bar shows 'Do not approve 2' (Approve 2 only when all are low risk, else the low-risk message). Step 2: field error 'Say why, so the people who asked know.', focus in Reason, nothing sent. Step 3: 5-second toast 'Not approved: 2 requests. The people who asked are told why.'; both leave the list; any refused one is listed with why. Step 4: both show Not approved with the same reason. Step 5: 'Some of these are decided on their own page. Open them one by one.' / 'Choose 100 requests or fewer at a time.'. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · bulk do not approve (one reason for all)"
+                    ],
+                    "note": "Positive and negative (kit inbox.test.tsx, platform.test.tsx; API service-desk-esm.e2e-spec.ts: blank reason 400, 101 ids 400, other approver refused, shared reason on each request, repeat refused)."
+          },
+          {
+                    "id": "MT-C4-OVERSEE-REASSIGN",
+                    "area": "Batch C item 4: HR sees everyone's pending approvals and reassigns (answers 2500 to 2502, 18 Nov 2026)",
+                    "screen": "Approvals (PLT-04) › Everyone's pending",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "HR hr-tester@demo-org.test (HR Admin role, gets workflow.approvals.oversee); manager panel@demo-org.test (Divya); employee arjun@demo-org.test.",
+                    "steps": [
+                              "As Arjun: raise a leave request (it waits for Divya).",
+                              "As HR: open Approvals › Everyone's pending. Open Arjun's request.",
+                              "Press Reassign, then Reassign again with nothing filled in.",
+                              "Choose Arjun himself, give the reason 'Divya is away' and press Reassign.",
+                              "Choose another manager or HR person, reason 'Divya is away', press Reassign.",
+                              "As Divya: open the bell and Approvals. As the new approver: open Approvals and approve it.",
+                              "As Divya, for another waiting request: open it, press Reassign and move it to a colleague with a reason.",
+                              "As Arjun (no key): open /yx/approvals and look for the Everyone's pending tab."
+                    ],
+                    "expected": "Step 2: the tab lists every pending approval in HR's scope with 'Waiting for' (the current approver); the panel has only Reassign (no Approve). Step 3: 'Choose who approves it instead.' and 'Say why you are moving it, so both approvers know.'; nothing moves. Step 4: 'The person who asked cannot approve their own request. Choose someone else.'. Step 5: 5-second toast 'Reassigned to <name>: … Both approvers are told.'; the row now waits for them. Step 6: Divya's bell says it moved, with the reason; the request left her list; the new approver's bell and email say 'Reassigned to you: …' and they can approve. Step 7: works the same without the HR key. Step 8: no Everyone's pending tab. Audit log shows workflow.task.reassigned with from, to and reason.",
+                    "stories": [
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · everyone’s pending (HR)",
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · reassign with a reason"
+                    ],
+                    "note": "Positive and negative (kit inbox.test.tsx; API approvals-oversee.e2e-spec.ts: company-wide vs legal-entity scope, no key 403, other company empty, no reason / requester / inactive / same approver / bad id 400, not holder or out of scope or other company 404, decided 409, maker-checker earlier-step approver refused, logged + audited + both told). Requests about nobody (for example a candidate's offer) are seen only by a company-wide overseer."
           }
 ]

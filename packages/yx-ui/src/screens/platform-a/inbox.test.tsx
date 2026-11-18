@@ -209,6 +209,42 @@ describe('PLT-04 live (the approvals engine)', () => {
     expect(screen.queryByRole('button', { name: /^Approve 101/ })).toBeNull();
   });
 
+  // Answers 2500 to 2502: HR's "Everyone's pending" and reassign (HR, or the approver for their own).
+  const people = [{ id: 'u2', name: 'Ravi Shankar' }, { id: 'u3', name: 'Anita Desai' }];
+  it("Everyone's pending: only with the list; reassign asks who and why (field errors), then moves it", async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const onReassign = vi.fn(async () => undefined);
+    const l = live({ reassign: { people, onFindPeople: vi.fn(), onReassign } });
+    const { unmount } = render(<ApprovalsInboxScreen waiting={[]} sent={[]} history={[]} live={l} />);
+    expect(screen.queryByRole('tab', { name: /Everyone/ })).toBeNull();
+    unmount();
+    render(<ApprovalsInboxScreen waiting={[]} sent={[]} history={[]} everyone={[row('x', { approver: 'Divya Raghunathan' })]} defaultTab="everyone" openId="x" live={l} />);
+    expect(screen.getAllByText(/^Waiting for$/).length).toBeGreaterThan(0);
+    const panel = await screen.findByRole('dialog');
+    // HR is not the approver: no Approve or Do not approve here.
+    expect(within(panel).queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(within(panel).queryByRole('button', { name: 'Do not approve' })).toBeNull();
+    await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
+    await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
+    expect(within(panel).getByText('Choose who approves it instead.')).toBeInTheDocument();
+    expect(within(panel).getByText('Say why you are moving it, so both approvers know.')).toBeInTheDocument();
+    expect(onReassign).not.toHaveBeenCalled();
+    await u.click(within(panel).getByRole('combobox', { name: /Reassign to/ }));
+    await u.click(await screen.findByRole('option', { name: /Anita Desai/ }));
+    await u.type(within(panel).getByRole('textbox', { name: /Reason/ }), 'Divya is on long leave');
+    await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
+    await waitFor(() => expect(onReassign).toHaveBeenCalledWith(expect.objectContaining({ id: 'x' }), 'u3', 'Divya is on long leave'));
+    expect(l.onDone).toHaveBeenCalledWith('Reassigned to Anita Desai: Laptop x. Both approvers are told.');
+  });
+
+  it('the approver can reassign their own; with no reassign set up there is no button', async () => {
+    const { unmount } = render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={live({ reassign: { people, onFindPeople: vi.fn(), onReassign: vi.fn() } })} />);
+    expect(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reassign' })).toBeInTheDocument();
+    unmount();
+    render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={live()} />);
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Reassign' })).toBeNull();
+  });
+
   it('a request decided on its own page links there; Set up delegation opens When I am away', async () => {
     const u = userEvent.setup({ pointerEventsCheck: 0 });
     render(<ApprovalsInboxScreen waiting={[row('p', { lowRisk: false, decideAt: '/yx/payroll/reopen-requests' })]} sent={[]} history={[]} openId="p" live={live()} />);

@@ -374,7 +374,7 @@ export function approvalKinds(rows: { type: string }[]): { kind: string; count: 
   return [...by.entries()].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind));
 }
 
-export type ApprovalTab = 'waiting' | 'delegated' | 'sent' | 'history';
+export type ApprovalTab = 'waiting' | 'delegated' | 'sent' | 'history' | 'everyone';
 
 const APPROVAL_TYPES = ['Leave', 'Expense', 'Timesheet', 'Regularisation', 'Bank change', 'Access request', 'Offer'];
 
@@ -427,6 +427,13 @@ const approvalColumns = (withStatus: boolean, today = TODAY, live = false): Tabl
   return withStatus ? [...base, { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => toneFor(v) }] : base;
 };
 
+/** Answer 2500: everyone's pending, with who holds each one now. */
+const everyoneColumns = (today: Date, live: boolean): TableColumn<ApprovalRow>[] => {
+  const base = approvalColumnsBase(today).filter((c) => !live || c.key !== 'policy');
+  const at = base.findIndex((c) => c.key === 'due');
+  return [...base.slice(0, at), { key: 'approver', header: 'Waiting for', type: 'person', value: (r) => r.approver ?? '', person: (r) => ({ name: r.approver ?? '', secondary: r.onBehalfOf ? `for ${r.onBehalfOf}` : r.step }), width: 190 }, ...base.slice(at)];
+};
+
 function approvalSteps(r: ApprovalRow): ApprovalStep[] {
   if (r.timeline) return r.timeline;
   return [
@@ -456,12 +463,21 @@ const LIVE_REJECT = { title: 'Do not approve this request?', field: 'Reason', co
 /** Live send back (founder 30 Oct 2026): the person changes the request and sends it again as a new one. */
 const LIVE_SENDBACK = { title: 'Send back for changes', field: 'What to change', confirm: 'Send back', done: 'Sent back for changes' };
 
-function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone: (text: string) => void, actionable: boolean, live?: { decide: LiveDecide; today: Date }) {
+/** Answers 2501 / 2502: move an open approval to someone else (its holder, or HR from "Everyone's pending"). */
+export interface LiveReassign {
+  /** People matching the last search (the server checks the chosen one again). */
+  people: PersonOption[];
+  onFindPeople: (q: string) => void;
+  onReassign: (row: ApprovalRow, toUserId: string, reason: string) => Promise<unknown>;
+}
+type LiveDecision = { decide: LiveDecide; today: Date; reassign?: LiveReassign; onlyReassign?: boolean };
+
+function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone: (text: string) => void, actionable: boolean, live?: LiveDecision) {
   const [decision, setDecision] = useState<Decision>(defaultDecision);
   const [reason, setReason] = useState('');
   const [to, setTo] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
-  const [busy, setBusy] = useState<'approve' | 'reject' | 'send_back' | null>(null);
+  const [busy, setBusy] = useState<'approve' | 'reject' | 'send_back' | 'reassign' | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const pick = (d: Decision) => {
     setDecision(d);
@@ -482,17 +498,39 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
       setBusy(null);
     }
   };
+  const people = live?.reassign?.people ?? PEOPLE.filter((p) => p.id !== 'e1');
+  const moveTo = async () => {
+    if (!live?.reassign || !to) return;
+    setBusy('reassign');
+    setFailed(null);
+    try {
+      await live.reassign.onReassign(row, to, reason.trim());
+      onDone(`Reassigned to ${people.find((p) => p.id === to)?.name ?? 'them'}`);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
   const confirm = () => {
     setTried(true);
     // Never a disabled button: pressed too early, the field says what is missing and takes focus.
-    if (decision === 'reassign' ? !to : reason.trim().length < (live ? 1 : 5)) {
+    if (decision === 'reassign') {
+      if (!to || reason.trim().length < 3) {
+        setTimeout(() => document.getElementById(!to ? 'ap-reassign-to' : 'ap-reassign-reason')?.focus(), 0);
+        return;
+      }
+      if (live) return void moveTo();
+      return onDone(DECISION_TEXT.reassign.done);
+    }
+    if (reason.trim().length < (live ? 1 : 5)) {
       setTimeout(() => document.getElementById('ap-reason')?.focus(), 0);
       return;
     }
     if (live) return void send(decision === 'sendback' ? 'send_back' : 'reject');
     onDone(decision ? DECISION_TEXT[decision].done : 'Approved');
   };
-  const text = decision ? (live ? (decision === 'sendback' ? LIVE_SENDBACK : LIVE_REJECT) : DECISION_TEXT[decision]) : null;
+  const text = decision ? (live ? (decision === 'sendback' ? LIVE_SENDBACK : decision === 'reassign' ? DECISION_TEXT.reassign : LIVE_REJECT) : DECISION_TEXT[decision]) : null;
   const body = (
     <div className="yx-plt-stack">
       {failed && (
@@ -549,9 +587,14 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
       {decision && text && (
         <Card title={text.title}>
           {decision === 'reassign' ? (
-            <FormField label={text.field} required error={tried && !to ? 'Choose an eligible approver.' : null} helper="Only people who can approve this request type are listed.">
-              <PersonPicker people={PEOPLE.filter((p) => p.id !== 'e1')} value={to} onChange={setTo} />
-            </FormField>
+            <div className="yx-plt-stack">
+              <FormField id="ap-reassign-to" label={text.field} required error={tried && !to ? 'Choose who approves it instead.' : null} helper="Never the person who asked. YukthiX checks they can approve this step.">
+                <PersonPicker people={people} value={to} onChange={setTo} onSearchChange={live?.reassign?.onFindPeople} />
+              </FormField>
+              <FormField id="ap-reassign-reason" label="Reason" required error={tried && reason.trim().length < 3 ? 'Say why you are moving it, so both approvers know.' : null} helper="Both approvers see it; it is kept in the request's history.">
+                <TextArea value={reason} onChange={setReason} rows={2} />
+              </FormField>
+            </div>
           ) : (
             <FormField
               id="ap-reason"
@@ -578,13 +621,23 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
   ) : decision && text ? (
     <div className="yx-plt-decide">
       <Button onClick={() => pick(null)}>Cancel</Button>
-      <Button variant={decision === 'reject' ? 'danger' : 'primary'} loading={busy === 'reject' || busy === 'send_back'} onClick={confirm}>
+      <Button variant={decision === 'reject' ? 'danger' : 'primary'} loading={busy === 'reject' || busy === 'send_back' || busy === 'reassign'} onClick={confirm}>
         {text.confirm}
       </Button>
     </div>
-  ) : live ? (
-    // Live: the engine approves, does not approve, or sends back (where the type has it); ask and reassign wait for their backend.
+  ) : live?.onlyReassign || (!live && row.approver) ? (
+    // "Everyone's pending" (HR): HR is not the approver, so moving it is the only action.
     <div className="yx-plt-decide">
+      <span className="yx-plt-muted">{row.approver ? `Waiting for ${row.approver}` : 'Waiting for its approver'}</span>
+      <span className="yx-plt-decide__gap" />
+      <Button variant="primary" onClick={() => pick('reassign')}>
+        Reassign
+      </Button>
+    </div>
+  ) : live ? (
+    // Live: the engine approves, does not approve, sends back (where the type has it) or moves it to someone else.
+    <div className="yx-plt-decide">
+      {live.reassign && <Button onClick={() => pick('reassign')}>Reassign</Button>}
       <span className="yx-plt-decide__gap" />
       {row.canSendBack && <Button onClick={() => pick('sendback')}>Send back</Button>}
       <Button onClick={() => pick('reject')}>Do not approve</Button>
@@ -633,7 +686,7 @@ function ApprovalDrawer({ row, list, onMove, onClose, defaultDecision, onDone, a
   defaultDecision: Decision;
   onDone: (text: string) => void;
   actionable: boolean;
-  live?: { decide: LiveDecide; today: Date };
+  live?: LiveDecision;
 }) {
   const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, actionable, live);
   const i = list.findIndex((r) => r.id === row.id);
@@ -688,6 +741,8 @@ export interface LiveApprovals {
   onDone: (text: string) => void;
   /** Shown under the list (approve from chat apps). */
   footer?: ReactNode;
+  /** Answers 2501 / 2502: move an approval to someone else (my own, and everyone's for HR). */
+  reassign?: LiveReassign;
 }
 
 export interface ApprovalsInboxScreenProps {
@@ -701,12 +756,14 @@ export interface ApprovalsInboxScreenProps {
   bulkConfirmOpen?: boolean;
   /** Answer 2503: the bulk "Do not approve" dialog open for defaultSelected. */
   bulkRejectOpen?: boolean;
+  /** Answer 2500: everyone's pending approvals (HR with workflow.approvals.oversee); the tab shows only when given. */
+  everyone?: ApprovalRow[];
   state?: 'ready' | 'loading' | 'error';
   live?: LiveApprovals;
 }
 
 // PLT-04 · Approvals inbox (tabs, filters, bulk, side panel). APX-D §1.1 Approvals. Manager page: no company button.
-export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, bulkRejectOpen, state = 'ready', live }: ApprovalsInboxScreenProps) {
+export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, bulkRejectOpen, everyone, state = 'ready', live }: ApprovalsInboxScreenProps) {
   const [tab, setTab] = useState<string>(defaultTab);
   const [own, setItems] = useState(() => byUrgency(waiting));
   // Live: the rows are the server's; a decided one leaves when the list reloads.
@@ -726,13 +783,13 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
   const today = live?.today ?? TODAY;
   const mine = items.filter((r) => !r.onBehalfOf);
   const delegated = items.filter((r) => r.onBehalfOf);
-  const tabRows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : history;
+  const tabRows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : tab === 'everyone' ? everyone ?? [] : history;
   // Keka ideas (2026-11): the kinds waiting in this tab, with counts, as one pick-one control (All or one kind).
   const [kind, setKind] = useState<string>('all');
   const kinds = approvalKinds(tabRows);
   const shownKind = kinds.some((k) => k.kind === kind) ? kind : 'all';
   const rows = shownKind === 'all' ? tabRows : tabRows.filter((r) => r.type === shownKind);
-  const current = [...items, ...sent, ...history].find((r) => r.id === open) ?? null;
+  const current = (tab === 'everyone' ? everyone ?? [] : [...items, ...sent, ...history]).find((r) => r.id === open) ?? null;
   const decide = (ids: string[], text: string) => {
     const next = rows.filter((r) => !ids.includes(r.id));
     if (!live) setItems((xs) => xs.filter((x) => !ids.includes(x.id)));
@@ -742,7 +799,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
     setOpen(ids.length === 1 && next.length > 0 ? next[Math.min(at, next.length - 1)].id : null);
     setOpenDecision(null);
   };
-  const doneText = (r: ApprovalRow, text: string) => `${text}: ${r.summary}${r.requester ? `. ${r.requester} is told by email and in their bell.` : '.'}`;
+  const doneText = (r: ApprovalRow, text: string) => (text.startsWith('Reassigned') ? `${text}: ${r.summary}. Both approvers are told.` : `${text}: ${r.summary}${r.requester ? `. ${r.requester} is told by email and in their bell.` : '.'}`);
   const approveRow = async (r: ApprovalRow) => {
     if (!live) return decide([r.id], 'Approved');
     setBusyRow(r.id);
@@ -797,6 +854,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           { id: 'delegated', label: 'Delegated to me', count: delegated.length },
           { id: 'sent', label: 'Sent by me', count: sent.length },
           { id: 'history', label: 'Team history' },
+          ...(everyone ? [{ id: 'everyone', label: 'Everyone’s pending', count: everyone.length }] : []),
         ]}
         tab={tab}
         onTabChange={setTab}
@@ -811,7 +869,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           ) : undefined
         }
         label="Approval requests"
-        columns={approvalColumns(!actionable, today, Boolean(live))}
+        columns={tab === 'everyone' ? everyoneColumns(today, Boolean(live)) : approvalColumns(!actionable, today, Boolean(live))}
         rows={rows}
         getRowId={(r) => r.id}
         filters={[
@@ -902,8 +960,8 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
               live?.onDone(doneText(current, t));
               decide([current.id], t);
             }}
-            actionable={actionable && items.some((x) => x.id === current.id)}
-            live={live ? { decide: (d, reason) => live.onDecide(current, d, reason), today } : undefined}
+            actionable={tab === 'everyone' || (actionable && items.some((x) => x.id === current.id))}
+            live={live ? { decide: (d, reason) => live.onDecide(current, d, reason), today, reassign: live.reassign, onlyReassign: tab === 'everyone' } : undefined}
           />
         )}
         {confirmIds && (

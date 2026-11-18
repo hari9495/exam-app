@@ -1,7 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -9,10 +9,24 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CompanyContext } from '../org-structure/org-structure.service';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { ApprovalsEngine } from './approvals-engine.service';
+import { ApprovalsOversight } from './approvals-oversight';
+import type { ScopeUser } from '../access/scope';
 
 // P03 shared screens (M14 §12.2 "P03 shared: GET /approvals/inbox, POST /approvals/{id}/decide"). No permission key:
 // an approver is anyone a request names (P03, implicit role); every route reaches only the signed-in person's own tasks,
 // requests and delegations. Decisions are made by the person themselves, never while acting for someone else.
+
+/** Answers 2501 / 2502: move an open approval to someone else, with a reason both approvers see. */
+export class ReassignDto {
+  @IsUUID()
+  toUserId!: string;
+
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(3, { message: 'Say why you are moving it, so both approvers know.' })
+  @MaxLength(500)
+  reason!: string;
+}
 
 export class DecideDto {
   @IsIn(['approve', 'reject', 'send_back'])
@@ -86,7 +100,26 @@ function me(req: Request, t: TenantContext, write = false): { ctx: CompanyContex
 @Controller('workflow')
 @UseGuards(JwtAuthGuard)
 export class WorkflowController {
-  constructor(private readonly engine: ApprovalsEngine) {}
+  constructor(
+    private readonly engine: ApprovalsEngine,
+    private readonly oversight: ApprovalsOversight,
+  ) {}
+
+  /** Answer 2500: everyone's pending approvals in the overseer's scope (workflow.approvals.oversee). */
+  @Get('approvals/everyone')
+  everyone(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    const m = me(req, t);
+    return this.oversight.everyone(m.ctx, req.user as ScopeUser);
+  }
+
+  /** Answers 2501 / 2502: the task's holder, or an overseer in scope, moves it to another approver (reason required). */
+  @Post('approvals/tasks/:id/reassign')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  reassign(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReassignDto) {
+    const m = me(req, t, true);
+    return this.oversight.reassign(m.ctx, req.user as ScopeUser, id, dto.toUserId, dto.reason);
+  }
 
   @Get('approvals/inbox')
   inbox(@Req() req: Request, @CurrentTenant() t: TenantContext) {

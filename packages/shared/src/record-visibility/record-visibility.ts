@@ -54,6 +54,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // B8/E5 flexible benefits (answer 2456): HR Admin's template is per legal entity, so the key may be granted there to read
   // Settings 4.11; changing the company's flexible components or the unclaimed rule needs the company-wide grant.
   if (key === 'benefits.settings.manage') return ['tenant', 'legal_entity'];
+  // Batch C item 4 (answer 2500): HR oversees pending approvals company-wide or for the people of a legal entity.
+  if (key === 'workflow.approvals.oversee') return ['tenant', 'legal_entity'];
   // Batch 2: an attendance month is locked per legal entity; rosters are planned for people, scoped like their records.
   if (key === 'attendance.lock' || key === 'attendance.lock.approve') return ['tenant', 'legal_entity'];
   if (key === 'roster.manage') return GRANT_SCOPE_TYPES;

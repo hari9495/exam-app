@@ -1,10 +1,10 @@
 'use client';
 
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@yukthix/ui';
-import { ChannelLinksCard, type ApprovalHistory, type ApprovalTask, type ChannelLinkView } from '@yukthix/ui/desk';
+import { ChannelLinksCard, type ApprovalHistory, type ApprovalTask, type ChannelLinkView, type PickOption } from '@yukthix/ui/desk';
 import { ApprovalsInboxScreen } from '@yukthix/ui/frame';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
@@ -40,7 +40,12 @@ function Approvals() {
   // Keka ideas: identity and bank changes waiting for HR (their own kind in the list; decided on their own page).
   const perms = useYxPermissions();
   const profile = usePeople<{ rows: ProfileRequest[] }>(perms.has('employee.identity.approve') ? '/profile-requests?status=pending' : null);
-  const waiting = [...(tasks.data ?? []).map(waitingRow), ...profileRows(profile.data?.rows ?? [])];
+  const waiting = [...(tasks.data ?? []).map((t) => waitingRow(t)), ...profileRows(profile.data?.rows ?? [])];
+  // Answers 2500 to 2502: HR with workflow.approvals.oversee sees everyone's pending in scope; anyone may move their own.
+  const oversee = perms.has('workflow.approvals.oversee');
+  const everyone = useQuery({ ...get<ApprovalTask[]>('/approvals/everyone'), enabled: Boolean(token) && oversee });
+  const [q, setQ] = useState('');
+  const found = useQuery(get<PickOption[]>(`/people?q=${encodeURIComponent(q)}`));
   const openId = focus ? waiting.find((r) => tasks.data?.find((t) => t.taskId === r.id)?.requestId === focus)?.id : undefined;
   return (
     <ApprovalsInboxScreen
@@ -48,6 +53,7 @@ function Approvals() {
       waiting={waiting}
       sent={(history.data?.sent ?? []).map(sentRow)}
       history={(team.data ?? []).map(teamRow)}
+      everyone={oversee ? (everyone.data ?? []).map((t) => waitingRow(t, false)) : undefined}
       openId={openId}
       state={tasks.isLoading ? 'loading' : tasks.isError ? 'error' : 'ready'}
       live={{
@@ -67,6 +73,14 @@ function Approvals() {
           const out = (await post('/approvals/tasks/decide', { taskIds: rows.map((r) => r.id), decision: 'reject', reason })) as { results: { taskId: string; ok: boolean; message?: string }[] };
           await refresh();
           return out.results.filter((x) => !x.ok).map((x) => ({ id: x.taskId, message: x.message ?? 'Not decided.' }));
+        },
+        reassign: {
+          people: (found.data ?? []).map((p) => ({ id: p.id, name: p.label })),
+          onFindPeople: setQ,
+          onReassign: async (row, toUserId, reason) => {
+            await post(`/approvals/tasks/${encodeURIComponent(row.id)}/reassign`, { toUserId, reason });
+            await refresh();
+          },
         },
         delegation,
         onDone: (text) => toast({ tone: 'success', title: text }),

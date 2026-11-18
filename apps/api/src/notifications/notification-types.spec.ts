@@ -36,6 +36,7 @@ describe('notification catalog', () => {
       'workflow.approval.needed',
       'workflow.approval.reminder',
       'workflow.approval.decided',
+      'workflow.approval.reassigned',
       'workflow.approval.no_approver',
       'helpdesk.request.stage',
       'helpdesk.rule.notify',
