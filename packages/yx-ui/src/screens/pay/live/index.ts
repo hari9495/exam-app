@@ -102,3 +102,6 @@ export { StatutoryHubScreen, RegistersScreen, Form16BulkScreen, RulesBrowserScre
 export type { LiveStatutoryHub, LiveRegisters, LiveForm16, LiveRules, LiveConsultantTds, LiveTdsReturns, LiveChallanSheet, SectionChallan, CertificateImport, LiveMissingIds, CorrectionInput } from '../../ops/compliance-live';
 // Settings 4.11 Benefits & FBP (B8/E5): the designed page with the company's flexible components, and the component sheet.
 export { FlexComponentSheet, fbpSettingsChanges, fbpSettingsPage, type FbpSettingsData, type FlexComponentInput, type FlexComponentView } from '../../settings/benefits-live';
+export { SpecialPayScreen, MyIncentivesScreen, EwaAdminScreen, MyEwaScreen, EquityScreen, MyEquityScreen, ActuarialScreen, CountryPacksScreen, type SpecialPayScreenProps, type EwaAdminScreenProps, type EquityScreenProps, type ActuarialScreenProps, type CountryPacksScreenProps } from './special';
+// Payroll budget (founder decision 21 Oct 2026): the monthly budget behind the finance Home's "Payroll cost vs budget".
+export { PayrollBudgetScreen, type PayrollBudgetScreenProps, type PayrollBudget, type BudgetMonth } from '../budget';

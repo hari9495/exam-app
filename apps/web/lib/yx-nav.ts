@@ -625,6 +625,7 @@ export function buildNav(n: NavInput): NavArea[] {
           // S-3 (answers 1323 to 1325): HR changes them (a second person approves); payroll set-up reads them.
           ...when(any('payroll.setup.manage', 'org.settings.manage'), ...PAY_SETTINGS_PAGES.map(([id, label, slug]) => L(`pay-settings-${id}`, label, `${SETTINGS_HOME}/payroll/${slug}`))),
           ...when(has('payroll.setup.manage'), L('pay-groups', 'Pay groups', '/yx/payroll/pay-groups'), L('pay-layout', 'Payslip layout', '/yx/payroll/payslip-layout'), L('pay-country-packs', 'Country packs', '/yx/payroll/country-packs')),
+          ...when(any('payroll.setup.manage', 'payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve'), L('pay-budget', 'Payroll budget', '/yx/payroll/budget')),
           ...when(has('payroll.component.manage'), L('pay-components', 'Component library', '/yx/payroll/components')),
           ...when(has('payroll.template.manage'), L('pay-templates', 'Salary templates', '/yx/payroll/templates')),
           ...when(has('payroll.import.run'), L('pay-imports', 'Import old payroll', '/yx/payroll/imports')),

@@ -85,7 +85,7 @@ export function myPayPanel(active: MyPayPage, show: { /** false for people on no
   ];
 }
 
-export type PaySettingsPage = '4.1' | '4.2' | '4.3' | '4.4' | '4.5' | '4.6' | '4.7' | '4.10' | '4.11';
+export type PaySettingsPage = '4.1' | '4.2' | '4.3' | '4.4' | '4.5' | '4.6' | '4.7' | '4.10' | '4.11' | 'budget';
 
 /** Settings › Group 4 · Payroll & Statutory (APX-D §3). */
 export function paySettingsPanel(active: PaySettingsPage): PanelSection[] {
@@ -99,6 +99,8 @@ export function paySettingsPanel(active: PaySettingsPage): PanelSection[] {
     ['4.7', 'Statutory set-up'],
     ['4.10', 'Earned wage access'],
     ['4.11', 'Benefits & FBP'],
+    // PAY-61 (answer 2473): the monthly payroll budget behind the finance Home's "Payroll cost vs budget".
+    ['budget', 'Payroll budget'],
   ];
   return [{ label: 'Payroll & Statutory', items: items.map(([id, label]) => ({ label, active: id === active })) }];
 }
