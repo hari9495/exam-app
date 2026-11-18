@@ -55,6 +55,9 @@ const nextConfig = {
       '/v2/referrals': '/yx/hiring/referrals/all',
       '/v2/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
       '/v2/panel/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
+      // Answer 2432: the recruiting overview and hiring analytics are Hire › Dashboard.
+      '/v2/dashboard': '/yx/hiring/dashboard',
+      '/v2/analytics/hiring': '/yx/hiring/dashboard',
       // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
       '/v2/reports': '/yx/hiring/assessments/tests',
       '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',

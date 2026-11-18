@@ -10,6 +10,8 @@ export interface HiringTimeToHire { avgDays: number | null; medianDays: number |
 export interface HiringSourceRow { source: string; entered: number; hired: number; hireRate: number; }
 export interface HiringJobRow { jobId: string; title: string; status: string; entered: number; hired: number; conversionPct: number; avgTimeToHireDays: number | null; }
 export interface HiringAnalytics { funnel: HiringFunnelRow[]; timeToHire: HiringTimeToHire; sources: HiringSourceRow[]; jobs: HiringJobRow[]; }
+/** Answer 2432 (ANL-02 hiring dashboard): open jobs now, and offers answered in the window. */
+export interface HiringDashboard extends HiringAnalytics { openJobs: number; offers: { accepted: number; declined: number } }
 
 const DAY_MS = 86_400_000;
 const isHired = (e: EntryRow) => e.category === 'hired' && !e.rejected;

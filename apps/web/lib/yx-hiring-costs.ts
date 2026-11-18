@@ -114,3 +114,8 @@ export function allReferralRow(r: ApiReferral): AllReferral {
 
 /** Today in India as a local Date (for the bonus countdown). */
 export const todayInIndia = (now = new Date()) => dayToDate(istDay(now));
+
+/** Answer 2432 (hiring dashboard): rupees spent in the quarter's months (a cost counts in its own month, India time). */
+export function quarterSpend(costs: ApiCost[], months: string[]): number {
+  return costs.filter((c) => months.includes((c.period ?? istDay(new Date(c.createdAt))).slice(0, 7))).reduce((a, c) => a + Number(c.amount), 0);
+}

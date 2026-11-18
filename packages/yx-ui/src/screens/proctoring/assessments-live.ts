@@ -70,3 +70,6 @@ export { CandidateLinkScreen, type LiveCandidateLink } from './candidate-link';
 
 // Answer 2437: the Results tab of a test page.
 export { INTEGRITY_WORDS, RESULT_STATUS, TestResultsPanel, TestResultsScreen, type CompareResult, type LiveResultsPage, type LiveTestResults, type TestResultRow, type TestResultsSummary } from './tests-results';
+
+// Answer 2432: the ANL-02 Recruiter dashboard, live.
+export { HIRING_PERIODS, HiringDashboardScreen, type HiringPeriod, type LiveHiringDashboard } from './analytics-live';

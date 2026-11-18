@@ -35,6 +35,9 @@ describe('buildNav: areas', () => {
     expect(reader.filter((l) => l.id === 'hiring-results').map((l) => [l.label, l.href])).toEqual([['Test results', '/yx/hiring/assessments/results']]);
     expect(reader.some((l) => l.href.startsWith('/v2'))).toBe(false);
     expect(all.some((l) => l.id === 'hiring-results')).toBe(false);
+    // Answer 2432: Hire › Dashboard for results readers; never for hiring keys alone.
+    expect(reader.filter((l) => l.id === 'hiring-dashboard').map((l) => l.href)).toEqual(['/yx/hiring/dashboard']);
+    expect(hiringOnly.some((l) => l.id === 'hiring-dashboard')).toBe(false);
     expect(labels(nav(['pipeline:manage', 'candidate:view']), 'hire')).toEqual(['Jobs & requisitions', 'Requisitions', 'Interviews', 'Candidates & talent CRM', 'Talent CRM', 'Referrals', 'Vendors', 'All referrals', 'Bias audits']);
   });
 

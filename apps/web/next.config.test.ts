@@ -111,6 +111,9 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
     ['/exams/:id/edit', '/yx/hiring/assessments/tests/:id'],
     ['/reports/:examId/candidates/:candidateId', '/yx/hiring/assessments/reports/:examId/:candidateId'],
     ['/v2/reports/:examId', '/yx/hiring/assessments/tests/:examId?tab=results'],
+    ['/v2/dashboard', '/yx/hiring/dashboard'],
+    ['/dashboard', '/yx/hiring/dashboard'],
+    ['/analytics/hiring', '/yx/hiring/dashboard'],
     ['/v2/panel/reports', '/yx/hiring/assessments/results'],
     ['/v2/panel/reports/:examId/compare', '/yx/hiring/assessments/results?test=:examId'],
     ['/reports', '/yx/hiring/assessments/results'],
@@ -126,7 +129,7 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
   });
 
   it('gap pages stay (2438): their addresses are not redirected away yet', () => {
-    for (const gap of ['/v2/dashboard', '/v2/analytics/hiring', '/v2/surveys', '/v2/system-logs', '/v2/settings/branding'])
+    for (const gap of ['/v2/surveys', '/v2/system-logs', '/v2/settings/branding'])
       expect(redirects.some((r) => r.source === gap)).toBe(false);
   });
 });
