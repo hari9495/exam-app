@@ -393,3 +393,16 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2480 (18 Nov 2026, "ok"): add approved FBP claims to taxable pay for new-regime employees once the CA confirms checklist item 56; until then it stays on the checklist.
 - 2481 (18 Nov 2026, "ok"): page the PAY-60 settlement list when a company passes a few thousand people.
 - 2490 (18 Nov 2026, "ok"): "already clocked out" is refused only on web clock-in. Kiosk and phone punches (including offline syncs) are always recorded so nothing is lost.
+
+**Batch C (approvals and team), founder answers (18 Nov 2026, "ok for all"), 2500 to 2509:**
+- 2500: a new key, workflow.approvals.oversee, in the HR Admin template (legal-entity scope), for "Everyone's pending approvals".
+- 2501: reassign to any active user who passes the step's own checks, never the requester. A reason is required; it is audited, and both the old and new approver are told.
+- 2502: both HR and the approver can reassign; both need a reason.
+- 2503: bulk "Do not approve" has the same 100 cap as bulk approve, with one shared reason the requester sees.
+- 2504: the three-column desk shows at 1440 px or wider; below that, the list plus drawer.
+- 2505: attendance.lock holders waive late marks, with a reason of 10 or more characters; a manager can only ask. Only for unlocked months; audited, and can be undone before lock.
+- 2506: a waived late mark stays visible as "waived"; only the penalty goes.
+- 2507: short-hours bands are a company setting, default under 4 h, 4–6 h and 6–8 h of worked time against the shift.
+- 2508: frequent breaks are a setting, default more than 3 breaks or 60+ minutes a day. Where clock-in-again is off, the report says breaks are not recorded.
+- 2509: team calendar dots are for the manager's own team now; peers come with C2 (tier 2).
+- 2510: interview hours become one setting on 6.1 plus the company holiday calendars. Before the old holiday list is dropped, every date found only in the old list is reported to the founder; none are added automatically.
