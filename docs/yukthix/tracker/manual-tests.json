@@ -27473,5 +27473,25 @@
                               "Screens/Hiring/PRJ-02 · Timesheet approvals › PM · Not sent tab (batch D 2535)"
                     ],
                     "note": "Positive and negative (API projects-p2.e2e: draft and nothing-saved weeks listed, this week never, an employee with none, weeks=99 400, the PM's list only for their projects, another PM empty, remind 404 for another PM, 403 acting for someone, once a day 409, audited, a sent week leaves the list, a week of Mon-Fri holidays is owed on a six-day week and not on a five-day week; kit ops-live and prj-02-live)."
+          },
+          {
+                    "id": "MT-D-A8-REQUEST-LEAVE",
+                    "area": "Batch D A8: request leave from the timesheet week (answer 2539, 18 Nov 2026)",
+                    "screen": "Time › My timesheet (TIM-15), Week tab; the Apply leave drawer (TIM-18)",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "An employee with leave balances (for example arjun@demo-org.test) and their manager.",
+                    "steps": [
+                              "Open My timesheet on this week, type some hours (do not save).",
+                              "Press Request leave.",
+                              "Choose a leave type and a day later this week, write a reason, press Send request.",
+                              "Close the drawer and look at the grid and the day header of that day.",
+                              "As the manager: approve the request; as the employee: reload My timesheet.",
+                              "Negative: on a week whose days are all in a locked month, look for Request leave."
+                    ],
+                    "expected": "Step 2: the Apply leave drawer opens on the same page, starting on today (or the week's Monday on another week). Step 3: 5-second toast 'Leave sent for approval'. Step 4: the hours you typed are still there; the day says 'Leave requested'. Step 5: the day shows as leave (greyed, 'On leave'). Step 6: no Request leave button. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Request leave from the week"
+                    ],
+                    "note": "Positive and negative (API time-leave.e2e: the week marks a pending day as leave requested, then leave when approved; kit ops-live: the drawer opens here on today, the requested day is labelled, no button without my leave). The web leave wiring is shared (lib/yx-my-leave.ts) by My leave and My timesheet."
           }
 ]

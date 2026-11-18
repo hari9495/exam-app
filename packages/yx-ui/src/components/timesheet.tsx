@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, Copy, MessageSquareText, Plus, Trash2 } from 'lucide-react';
+import { CalendarPlus, ChevronLeft, ChevronRight, Copy, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatDate } from '../lib/format';
 import { formatHours, parseHours } from '../lib/table';
@@ -84,6 +84,8 @@ export interface TimesheetGridProps {
   onNextWeek?: () => void;
   onThisWeek?: () => void;
   onCopyLastWeek?: () => void;
+  /** Batch D A8: opens Apply leave for a day of this week (the leave drawer). */
+  onRequestLeave?: () => void;
   onSaveDraft?: () => void;
   /** Called only when the week passes the checks. */
   onSubmit?: () => void;
@@ -259,6 +261,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
     onNextWeek,
     onThisWeek,
     onCopyLastWeek,
+    onRequestLeave,
     onSaveDraft,
     onSubmit,
     sentBackReason,
@@ -427,6 +430,11 @@ export function TimesheetGrid(props: TimesheetGridProps) {
           {onCopyLastWeek && (
             <Button size="sm" icon={Copy} onClick={onCopyLastWeek}>
               Copy last week
+            </Button>
+          )}
+          {onRequestLeave && (
+            <Button size="sm" icon={CalendarPlus} onClick={onRequestLeave}>
+              Request leave
             </Button>
           )}
           {asDays && onSaveDraft && (

@@ -769,7 +769,8 @@ export interface MyTimesheet {
   /** Projects P-2 (1406): each line's decision, its reason (the person sees it) and the hours approved; 1408: the client's decision. */
   lines: { id: string; projectId: string; activity: string | null; billable: boolean; minutes: number[]; /** Answer 1787: a comment per day, Monday to Sunday. */ comments?: string[]; decision?: 'pending' | 'approved' | 'reduced' | 'rejected' | null; reason?: string | null; approvedMinutes?: number[] | null; unallocated?: boolean; clientStatus?: 'waiting' | 'approved' | 'sent_back' | null; clientNote?: string | null }[];
   projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; active: boolean }[];
-  days: { on: string; holiday: string | null; leave: string | null; locked: boolean }[];
+  /** `leaveRequested` (batch D A8): leave asked for that day, not decided yet. */
+  days: { on: string; holiday: string | null; leave: string | null; leaveRequested?: boolean; locked: boolean }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];
   /** Answer 1787: the company's comment rule, per day with hours (absent from an older API: none asked). */
   noteRule?: { required: boolean; minWords: number };

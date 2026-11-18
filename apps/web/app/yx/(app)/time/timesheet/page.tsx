@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { TimesheetScreen, type NotSentWeek, type MyTimesheet, type PrefillSuggestions, type PrefillTools, type TimeSummaryWeek } from '@yukthix/ui/time';
 import { mondayOf, timeState, todayIndia, useTime, useTimeWrite } from '../../../../../lib/yx-time';
+import { useMyLeaveLive } from '../../../../../lib/yx-my-leave';
 
 // Me › Timesheet (§B7, TIM-15): the person's own weeks, submitted to the project manager through P03.
 export default function YxTimesheetPage() {
@@ -20,6 +21,8 @@ export default function YxTimesheetPage() {
   const [notSentWeeks, setNotSentWeeks] = useState(12);
   const notSent = useTime<{ weeks: NotSentWeek[] }>(`/me/timesheet/not-sent?weeks=${notSentWeeks}`);
   const write = useTimeWrite();
+  // Batch D A8: Request leave opens My leave's drawer here, so unsaved hours stay on the grid.
+  const leave = useMyLeaveLive();
   const queryClient = useQueryClient();
   // Connecting a tool refreshes only the tools and suggestions, so unsaved hours on the grid stay.
   const tool = async (path: string) => {
@@ -38,6 +41,7 @@ export default function YxTimesheetPage() {
         week,
         today,
         lastWeek: lastWeek.data ?? null,
+        leave: { data: leave.data, live: leave },
         notSent: { state: timeState(notSent), data: notSent.data ?? null, onShowOlder: notSentWeeks < 52 ? () => setNotSentWeeks(52) : undefined },
         onWeek: setWeek,
         onSave: (w, lines) => write('/me/timesheet', 'PUT', { week: w, lines }),

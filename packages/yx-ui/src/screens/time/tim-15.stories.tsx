@@ -29,4 +29,6 @@ export const PhoneComments: S = { name: 'Phone · a comment under each day', arg
 // Keka ideas (2026-11): Time summary, a bar per week across the year, then each week with its hours and status.
 // Batch D A5 (answer 2534): past weeks not sent, with sent-back ones and a locked month.
 export const NotSent: S = { name: 'Not sent · past weeks to send', args: { view: 'not-sent' } };
+// Batch D A8 (answer 2539): Request leave on the week opens Apply leave on today.
+export const RequestLeave: S = { name: 'Request leave from the week', args: { leaveOpen: true } };
 export const TimeSummary: S = { name: 'Time summary · hours per week this year', args: { view: 'summary' } };

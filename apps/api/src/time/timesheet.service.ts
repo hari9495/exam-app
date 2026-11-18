@@ -70,6 +70,8 @@ export class TimesheetService implements OnModuleInit {
       const to = addDays(week, 6);
       const hol = (await holidaysFor(tx, org, f.locationId, week, to, me)).map;
       const leave = await leaveDays(tx, org, me, week, to);
+      // Batch D A8 (answer 2539): a day with leave asked for and not decided yet says so on the week.
+      const asked = await leaveDays(tx, org, me, week, to, ['pending']);
       const locked = await lockedDates(tx, org, me, week, to);
       const recent = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: me }, orderBy: { weekStart: 'desc' }, take: 8 });
       return {
@@ -81,7 +83,7 @@ export class TimesheetService implements OnModuleInit {
         projects: projects.map((p) => ({ id: p.id, code: p.code, name: p.name, billable: p.billable, activities: p.activities, active: p.active })),
         days: Array.from({ length: 7 }, (_, k) => {
           const on = addDays(week, k);
-          return { on, holiday: hol.get(on)?.name ?? null, leave: leave.get(on) ?? null, locked: locked.has(on) };
+          return { on, holiday: hol.get(on)?.name ?? null, leave: leave.get(on) ?? null, leaveRequested: !leave.has(on) && asked.has(on), locked: locked.has(on) };
         }),
         recent: recent.map((s) => ({ id: s.id, week: dateOf(s.weekStart), status: s.status, totalMinutes: s.totalMinutes })),
         noteRule: await TimesheetService.noteRule(tx, c),

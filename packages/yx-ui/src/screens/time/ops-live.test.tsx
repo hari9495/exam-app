@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { OtReviewScreen, PeriodsScreen, type LiveMyOvertime, type LiveOtReview, type LivePeriods } from './requests';
 import { AttendanceReportsScreen, TimesheetScreen, type LiveTimesheet } from './ops';
-import { MY_OVERTIME, MY_TIMESHEET, OT_REVIEW, PAYROLL_FEED, PERIODS, PREFLIGHT_BLOCKED, PREFLIGHT_READY, TODAY } from './live/fixtures';
+import { MY_LEAVE, MY_OVERTIME, MY_TIMESHEET, OT_REVIEW, PAYROLL_FEED, PERIODS, PREFLIGHT_BLOCKED, PREFLIGHT_READY, TODAY } from './live/fixtures';
 import type { MyTimesheet, Registers } from './live/types';
 
 // The designed TIM-09, TIM-11, TIM-15 and TIM-16 screens with the live app's data: what each live page must do.
@@ -254,6 +254,23 @@ describe('My timesheet (TIM-15 live)', () => {
     render(<TimesheetScreen live={sheet(MY_TIMESHEET, { summary: { state: 'ready', onYear: vi.fn(), data: { year: 2026, years: [2026], weeks: [] } }, notSent: { state: 'ready', data: { weeks: [] } } })} />);
     await ue.click(screen.getByRole('tab', { name: 'Not sent' }));
     expect(screen.getAllByText('Every past week is sent.').length).toBeGreaterThan(0);
+  });
+
+  it('A8 (answer 2539): Request leave opens the leave drawer here on today; a day with leave asked for says so', async () => {
+    const onPreview = vi.fn(async () => { throw new Error('stop'); });
+    const leaveLive = { state: 'ready' as const, data: MY_LEAVE, onPreview, onApply: vi.fn(), onWithdraw: vi.fn(), onCancel: vi.fn(), onChooseHoliday: vi.fn(), onFindPeople: vi.fn(async () => []) };
+    const data: MyTimesheet = { ...MY_TIMESHEET, days: MY_TIMESHEET.days.map((x, i) => ({ ...x, leaveRequested: i === 4 })) };
+    render(<TimesheetScreen live={sheet(data, { leave: { data: MY_LEAVE, live: leaveLive } })} />);
+    expect(screen.getAllByText(/Leave requested/).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Request leave' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Apply leave' });
+    expect(drawer).toBeInTheDocument();
+    await waitFor(() => expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ from: TODAY })));
+  });
+
+  it('negative: without my leave there is no Request leave button', () => {
+    render(<TimesheetScreen live={sheet(MY_TIMESHEET)} />);
+    expect(screen.queryByRole('button', { name: 'Request leave' })).toBeNull();
   });
 
   it('a sent week can be recalled, and locked days are named', async () => {

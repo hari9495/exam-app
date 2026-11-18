@@ -746,7 +746,7 @@ const pickPeople = (hr: boolean): PickPerson[] => (hr ? TEAM : myReports()).map(
  * Apply leave in a drawer (desk) or bottom sheet (phone): Send is blocked while the form has errors; sent shows what happens next.
  * With `forSomeone` (a manager's reports, or everyone for HR), the first field picks the employee; their balances and approver are used.
  */
-export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, picked: picked0 = null, self = ME.name, live, liveFor, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** With `forSomeone`: the person already picked (stories). */ picked?: string | null; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome; resend?: LiveRequest }; /** The app: HR applies for someone (founder answer B). */ liveFor?: LiveApplyFor }) {
+export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, picked: picked0 = null, self = ME.name, live, liveFor, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** With `forSomeone`: the person already picked (stories). */ picked?: string | null; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome; resend?: LiveRequest; /** Batch D A8: the day the request starts on (from the timesheet week). */ startOn?: string }; /** The app: HR applies for someone (founder answer B). */ liveFor?: LiveApplyFor }) {
   if (live) return open ? <LiveApplyLeavePanel {...live} onClose={() => onOpenChange(false)} /> : null;
   if (liveFor) return open ? <LiveApplyLeavePanel forSomeone={liveFor} onClose={() => onOpenChange(false)} /> : null;
   const [draft, setDraft] = useState<LeaveDraft>(() => {
@@ -2881,14 +2881,14 @@ const COUNTED_AS: Record<LeavePlan['days'][number]['countedAs'], string> = { lea
  * TIM-18 in the app: my own leave (`data`, `live`), or HR applying for someone (`forSomeone`, founder answer B): the
  * first field picks the person, then the same form with their leave types, balances and the server's summary.
  */
-function LiveApplyLeavePanel({ data, live, forSomeone, resend, onClose }: { data?: MyLeave; live?: LiveLeaveHome; forSomeone?: LiveApplyFor; /** Sent back for changes: starts from that request; Send sends it again. */ resend?: LiveRequest; onClose: () => void }) {
+function LiveApplyLeavePanel({ data, live, forSomeone, resend, startOn, onClose }: { data?: MyLeave; live?: LiveLeaveHome; forSomeone?: LiveApplyFor; /** Sent back for changes: starts from that request; Send sends it again. */ resend?: LiveRequest; startOn?: string; onClose: () => void }) {
   const [personId, setPersonId] = useState<string | null>(null);
   const [target, setTarget] = useState<ApplyForForm | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const types = forSomeone ? (target?.balances ?? []) : data!.balances;
   const today = forSomeone ? target?.today : data!.today;
   const [typeId, setTypeId] = useState<string | null>(resend?.type?.id ?? types[0]?.leaveTypeId ?? null);
-  const [from, setFrom] = useState<Date | null>(resend ? isoDate(resend.from) : null);
+  const [from, setFrom] = useState<Date | null>(resend ? isoDate(resend.from) : startOn ? isoDate(startOn) : null);
   const [to, setTo] = useState<Date | null>(resend && resend.to !== resend.from ? isoDate(resend.to) : null);
   const [fromHalf, setFromHalf] = useState<'full' | 'second'>(resend?.fromHalf ?? 'full');
   const [toHalf, setToHalf] = useState<'full' | 'first'>(resend?.toHalf ?? 'full');

@@ -28,7 +28,8 @@ import { DueBadge, Kpis, NoRecordState, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TEAM, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
-import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import { ApplyLeavePanel, type LiveLeaveHome } from './leave';
+import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyLeave, MyTimesheet, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, RevokeKioskDialog, RevokedKiosksTable, ShowRevoked, type RevokedKiosk, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
@@ -501,6 +502,8 @@ const SEP14_LINES: TimesheetLine[] = [
 const THIS_MONDAY = new Date(2026, 8, 28);
 /** Today is Tue 29 Sep: hours from Wed 30 Sep can't be entered yet. */
 const LOCK_FROM = new Date(2026, 8, 30);
+/** Batch D A8 (design): Request leave starts on today, Tue 29 Sep. */
+const TODAY0_TS = new Date(2026, 8, 29);
 /** The queried cell on the sent-back week: SRF-24 audit visits, Tue 22 Sep, 3 h. */
 const QUERIED = { lineId: 'p2', day: 1, hours: 3 };
 type WeekData = { days: TimesheetDay[]; lines: TimesheetLine[]; status: TimesheetStatus };
@@ -608,6 +611,8 @@ export interface LiveTimesheet {
   summary?: { state: LoadState; data: { year: number; years: number[]; weeks: TimeSummaryWeek[] } | null; onYear: (year: number) => void };
   /** Batch D A3: last week's sheet, loaded while this week is shown (for "Copy last week"). */
   lastWeek?: MyTimesheet | null;
+  /** Batch D A8: my leave, so "Request leave" opens the leave drawer here (unsaved hours stay on the grid). */
+  leave?: { data: MyLeave | null; live: LiveLeaveHome };
   /** Batch D A5: my weeks not sent (GET /time/me/timesheet/not-sent); `onShowOlder` asks for a year. */
   notSent?: { state: LoadState; data: { weeks: NotSentWeek[] } | null; onShowOlder?: () => void };
 }
@@ -631,7 +636,9 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)), comments: Array.from({ length: 7 }, (_, k) => (l.comments?.[k] ?? '').trim()) }));
   // Answer 1787: the company's comment rule, per day with hours (the API checks it again on submit).
   const noteRule = d?.noteRule;
-  const days: TimesheetDay[] = (d?.days ?? []).map((x) => (x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : { expected: 0, kind: 'workday' }));
+  const days: TimesheetDay[] = (d?.days ?? []).map((x) => (x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : x.leaveRequested ? { expected: 0, kind: 'workday', label: 'Leave requested' } : { expected: 0, kind: 'workday' }));
+  // Batch D A8 (answer 2539): the leave drawer opens on today in this week, else on the week's Monday.
+  const [leaveOn, setLeaveOn] = useState<string | null>(null);
   const locked = (d?.days ?? []).filter((x) => x.locked);
   const allLocked = !!d && locked.length === d.days.length;
   const st: TimesheetStatus = allLocked ? 'locked' : d?.sheet ? LIVE_STATUS[d.sheet.status] : 'draft';
@@ -688,6 +695,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             onNextWeek={() => (d.week >= thisWeek ? toast({ title: 'Next week opens on Monday.' }) : go(isoPlus(d.week, 7)))}
             onThisWeek={d.week < isoPlus(thisWeek, -7) ? () => go(thisWeek) : undefined}
             onCopyLastWeek={editable && d.week === thisWeek && live.lastWeek ? copyLast : undefined}
+            onRequestLeave={live.leave?.data && !allLocked ? () => setLeaveOn(live.today >= d.week && live.today <= isoPlus(d.week, 6) ? live.today : d.week) : undefined}
             onSaveDraft={editable ? () => void run('save', async () => { await live.onSave(d.week, input()); toast({ tone: 'success', title: `Draft saved for ${weekRange(d.week)}.` }); }) : undefined}
             saving={busy === 'save'}
             today={localDay(live.today)}
@@ -736,6 +744,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   return (
     <TimePage active="My timesheet">
       <PageHeader title="My timesheet" description={d ? `Approver: the project manager · ${d.mode === 'timesheet' ? 'your days come from this timesheet' : 'your days come from your check-ins; hours here don’t change your attendance'}` : 'Approver: the project manager'} actions={live.prefill && d && editable && d.week <= thisWeek ? <Button icon={Link2} onClick={() => setPf(true)}>Pre-fill from my tools</Button> : undefined} />
+      {live.leave?.data && leaveOn && <ApplyLeavePanel open onOpenChange={(o) => !o && setLeaveOn(null)} live={{ data: live.leave.data, live: live.leave.live, startOn: leaveOn }} />}
       {live.prefill && d && <PrefillDrawer open={pf} onOpenChange={setPf} lines={lines} onLinesChange={setLines} live={{ prefill: live.prefill, week: d.week, projects: d.projects.filter((x) => x.active) }} />}
       {live.summary ? (
         <Tabs value={view} onValueChange={setView}>
@@ -785,9 +794,9 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   );
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, view, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** Keka ideas: open on the Time summary. */ view?: 'week' | 'summary' | 'not-sent'; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
+export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, view, leaveOpen, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** Keka ideas: open on the Time summary. */ view?: 'week' | 'summary' | 'not-sent'; /** Batch D A8: the leave drawer open (story). */ leaveOpen?: boolean; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
   if (live) return <LiveTimesheetScreen live={live} />;
-  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} view={view} />;
+  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} view={view} leaveOpen={leaveOpen} />;
 }
 
 /** Keka ideas: the sample year for the Time summary, Monday 5 Jan to the week before this one (sample hours). */
@@ -797,9 +806,11 @@ const SAMPLE_WEEKS: TimeSummaryWeek[] = Array.from({ length: 38 }, (_, i) => {
   return { week, totalMinutes: [2400, 2280, 2520, 2400, 1920, 2400, 2700][i % 7]!, status: i === 37 ? 'pending' : i === 30 ? 'rejected' : 'approved' };
 });
 
-function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule, view = 'week' }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule; view?: 'week' | 'summary' | 'not-sent' }) {
+function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule, view = 'week', leaveOpen: leaveOpen0 = false }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule; view?: 'week' | 'summary' | 'not-sent'; leaveOpen?: boolean }) {
   const { toast } = useToast();
   const [tab, setTab] = useState<string>(view);
+  // Batch D A8: Request leave opens the leave drawer on the timesheet (the design's own Apply leave).
+  const [leaveOpen, setLeaveOpen] = useState(leaveOpen0);
   // `status` is for the week the story opens on: a draft is this week, locked is the August week, every other status is last week.
   const [offset, setOffset] = useState(status === 'draft' ? 0 : status === 'locked' ? -5 : -1);
   const [edits, setEdits] = useState<Record<number, TimesheetLine[]>>(initialLines ? { 0: initialLines } : {});
@@ -892,6 +903,7 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
       onThisWeek={offset < -1 ? () => go(0) : undefined}
       // Copying last week would overwrite hours fixed for a sent-back week.
       onCopyLastWeek={onThis ? copyLast : undefined}
+      onRequestLeave={() => setLeaveOpen(true)}
       onSaveDraft={() => toast({ tone: 'success', title: `Draft saved for ${range(weekStart)}.` })}
       sentBackReason={st === 'sent_back' ? 'SRF-24 audit visits on Tue 22 Sep look high: 3 h for a 1 h visit. Move the travel time to Internal.' : undefined}
       sentBackCell={st === 'sent_back' ? { lineId: QUERIED.lineId, day: QUERIED.day, by: ME.manager } : undefined}
@@ -906,7 +918,12 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
     />
   );
   const prefillBtn = onThis && editable && <Button icon={Link2} onClick={() => setPf(true)}>Pre-fill from my tools</Button>;
-  const drawer = onThis && <PrefillDrawer open={pf} onOpenChange={setPf} view={prefillView} lines={thisLines} onLinesChange={setThisLines} />;
+  const drawer = (
+    <>
+      {onThis && <PrefillDrawer open={pf} onOpenChange={setPf} view={prefillView} lines={thisLines} onLinesChange={setThisLines} />}
+      <ApplyLeavePanel open={leaveOpen} onOpenChange={setLeaveOpen} from={TODAY0_TS} to={TODAY0_TS} />
+    </>
+  );
   if (layout === 'days')
     return (
       <PhoneFrame tab="time" title="My timesheet">

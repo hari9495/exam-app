@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
+import { mondayOf } from '../src/time/time-rules';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { LeaveService } from '../src/time/leave.service';
@@ -206,6 +207,10 @@ describe('Time and leave batch 1', () => {
       const res = await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: d(5), to: d(6), reason: 'Visiting family' }).expect(201);
       ids.req1 = res.body.id;
       expect(res.body).toMatchObject({ status: 'pending', days: 2 });
+      // Batch D A8 (answer 2539): my timesheet week shows the day as leave requested until it is decided (not as leave).
+      const wk = (await api('emp', 'get', `/time/me/timesheet?week=${mondayOf(d(5))}`).expect(200)).body as { days: { on: string; leave: string | null; leaveRequested: boolean }[] };
+      expect(wk.days.find((x) => x.on === d(5))).toMatchObject({ leave: null, leaveRequested: true });
+      expect(wk.days.filter((x) => x.on !== d(5) && x.on !== d(6)).every((x) => !x.leaveRequested)).toBe(true);
       // The manager's email: who asks for what, in the designed YukthiX email (founder review 19 Oct 2026).
       const send = app.get(EmailService).send as jest.Mock;
       await new Promise((r) => setTimeout(r, 300));
@@ -228,6 +233,8 @@ describe('Time and leave batch 1', () => {
       await decide('mgr', card.taskId, 'approve').expect(409);
       const r = (await api('emp', 'get', `/time/requests/${ids.req1}`).expect(200)).body;
       expect(r.status).toBe('approved');
+      // Decided: the week shows it as leave now, no longer "requested".
+      expect((await api('emp', 'get', `/time/me/timesheet?week=${mondayOf(d(5))}`).expect(200)).body.days.find((x: { on: string }) => x.on === d(5))).toMatchObject({ leave: 'full', leaveRequested: false });
       const ledger = await inA((tx) => tx.leaveLedgerEntry.findMany({ where: { organizationId: org.A.id, requestId: ids.req1 } }));
       expect(ledger.map((l) => Number(l.days))).toEqual([-2]);
       expect((await balance('emp', 'EL')).balance).toBe(before.balance - 2);
