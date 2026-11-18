@@ -56,9 +56,13 @@ test('raise → assign → reply → resolve', async ({ browser }) => {
   await agent.getByText(subject).click();
   await agent.getByRole('dialog').getByRole('button', { name: 'Open ticket' }).click();
   await expect(agent.getByRole('heading', { name: subject })).toBeVisible();
+  // Take it (unless the desk already gave it to him); the button can appear just after the ticket paints.
   const take = agent.getByRole('button', { name: 'Assign to me' });
-  if (await take.isVisible()) await take.click();
-  await expect(agent.getByRole('combobox', { name: 'Assignee', exact: true })).toContainText('Suresh Pillai (me)');
+  const assignee = agent.getByRole('combobox', { name: 'Assignee', exact: true });
+  await expect(async () => {
+    if (await take.isVisible()) await take.click();
+    await expect(assignee).toContainText('Suresh Pillai (me)', { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 
   await agent.getByRole('tab', { name: 'Internal note' }).click();
   await writeInEditor(agent, 'Checked the proxy logs: her account is not in the intranet group.');

@@ -12,7 +12,7 @@ test('the jobs list moved to Hiring › Jobs: redirect, create, open', async ({ 
   await page.waitForURL(/\/yx\/hiring\/jobs$/, { timeout: 30_000 });
   await expect(page.getByRole('heading', { name: 'Jobs', level: 1 })).toBeVisible({ timeout: 30_000 });
   const title = `Stores assistant ${Date.now().toString(36)}`;
-  await page.getByRole('button', { name: 'Create job' }).click();
+  await page.getByRole('button', { name: 'Create job' }).first().click(); // the header's (an empty list offers one too)
   const d = page.getByRole('dialog', { name: 'Create job' });
   await d.getByRole('textbox', { name: /Job title/ }).fill(title);
   await d.getByRole('button', { name: 'Create job' }).click();
