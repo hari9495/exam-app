@@ -109,6 +109,22 @@ describe('Service Desk HLP-02 Agent desk: clocks, raised filter, who sees and ch
     expect(row.resolution!.targetMinutes).toBeGreaterThan(row.firstResponse!.targetMinutes);
     expect(row.resolution!.usedMinutes).toBeLessThan(5);
     expect(row.firstResponseAt).toBeNull();
+    expect((row as { firstResponseOutcome?: string | null }).firstResponseOutcome).toBeNull();
+  });
+
+  // Batch F item 34 (answer 2570): once answered, the list says whether the first response was on time.
+  it('first response: answered in time is Met; a timer that had passed its target is Breached', async () => {
+    const t = (await api('divya', 'post', '/desk/my/tickets').send({ deskId: ids.desk, subject: `Printer jam ${run}`, description: 'Tray 2.' }).expect(201)).body.id as string;
+    await api('agent', 'post', `/desk/tickets/${t}/messages`).send({ kind: 'reply', bodyHtml: '<p>Looking now.</p>', mentions: [], attachmentIds: [] }).expect(201);
+    type Row = { id: string; firstResponse: Clock; firstResponseAt: string | null; firstResponseOutcome: string | null };
+    const met = ((await list('agent')) as unknown as Row[]).find((x) => x.id === t)!;
+    expect(met).toMatchObject({ firstResponse: null, firstResponseOutcome: 'met' });
+    expect(met.firstResponseAt).not.toBeNull();
+    // The same promise kept late: the timer had breached before the reply.
+    await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, (tx) => tx.sdSlaTimer.updateMany({ where: { ticketId: t, metric: 'first_response' }, data: { breachedAt: new Date() } }));
+    expect(((await list('agent')) as unknown as Row[]).find((x) => x.id === t)!.firstResponseOutcome).toBe('breached');
+    // Another company sees none of it.
+    expect((await list('agentB')).map((x) => x.id)).not.toContain(t);
   });
 
   it('Raised filter: today includes it, tomorrow does not; bad dates are refused; a saved view keeps it', async () => {

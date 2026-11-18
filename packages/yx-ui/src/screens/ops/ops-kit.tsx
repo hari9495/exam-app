@@ -105,6 +105,17 @@ export function SlaBadge({ elapsedMin, targetMin, paused, met, label, atRiskPerc
   );
 }
 
+/**
+ * Batch F item 34 (answer 2570): the first-response cell of a ticket list. While the clock runs, the time left (or over);
+ * once answered, Met or Breached; with no target, a dash.
+ */
+export function FirstResponseBadge({ outcome, clock }: { outcome: 'met' | 'breached' | null; clock: { elapsedMin: number; targetMin: number; paused?: boolean; atRiskPercent?: number } | null }) {
+  if (outcome === 'breached') return <Badge tone="danger">Breached</Badge>;
+  if (outcome === 'met') return <Badge tone="success">Met</Badge>;
+  if (clock) return <SlaBadge elapsedMin={clock.elapsedMin} targetMin={clock.targetMin} paused={clock.paused} atRiskPercent={clock.atRiskPercent} />;
+  return <span className="yx-ops-muted" aria-label="No first-response target">—</span>;
+}
+
 /* ---------------- Statutory / case clock panel ---------------- */
 
 const CLOCK_TONE: Record<ClockState, BadgeTone> = { done: 'success', upcoming: 'neutral', 'due-soon': 'warning', overdue: 'danger', waiting: 'neutral' };

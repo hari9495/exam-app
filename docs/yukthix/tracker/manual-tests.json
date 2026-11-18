@@ -27646,5 +27646,23 @@
                               "Screens/Pay/PAY-01 · Payroll home"
                     ],
                     "note": "The live page now renders the designed FirstUse piece (left design-live-guard.known.json)."
+          },
+          {
+                    "id": "MT-F-34-FIRST-RESPONSE",
+                    "area": "Batch F item 34: first-response column (answer 2570, 18 Nov 2026)",
+                    "screen": "Helpdesk › Agent desk (HLP-02) ticket list",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "An agent of a desk with an SLA policy (first response target); a requester; a desk with no SLA.",
+                    "steps": [
+                              "As the requester raise a ticket. As the agent open the Agent desk.",
+                              "Reply to the ticket as the agent; go back to the list.",
+                              "Find a ticket answered after its first-response target (or wait past a short target, then reply).",
+                              "Negative: raise a ticket on a desk with no SLA policy; sign in as an agent of another company."
+                    ],
+                    "expected": "Step 1: a 'First response' column next to Resolution SLA shows the time left (amber when at risk). Step 2: it says Met (green). Step 3: Breached (red). Step 4: a dash with no target; the other company's agent never sees the ticket. Column can be sorted. No page scroll at 1278 x 635 (the table scrolls inside itself).",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-02 · Agent desk"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp02 e2e: unanswered null, answered Met, breached-before-reply Breached, other company none; kit helpdesk-desk-live: Met, Breached, running clock, dash)."
           }
 ]

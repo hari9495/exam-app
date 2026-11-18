@@ -23,7 +23,7 @@ import { RichTextEditor } from '../../components/editor';
 import { ActivityFeed, type ActivityEntry } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { Actions, CardGrid, Facts, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
+import { Actions, CardGrid, Facts, FirstResponseBadge, OpsDesk, SlaBadge, Workspace, useSay } from './ops-kit';
 import { ackPercent, slaState, ticketCloseInfo } from './ops-rules';
 import type { KbArticle, PolicyRow, Ticket, TicketStatus } from './helpdesk-data';
 import { LiveHelpCentre, type LiveHelp } from './helpdesk-live';
@@ -406,6 +406,14 @@ export function ticketColumns(): TableColumn<Ticket>[] {
           <SlaBadge elapsedMin={t.resolution.elapsed} targetMin={t.resolution.target} paused={t.status === 'Waiting on employee'} />
         ),
       width: 190,
+    },
+    // Batch F item 34 (answer 2570): first response next to resolution.
+    {
+      key: 'first',
+      header: 'First response',
+      value: (t) => (t.firstResponse.met === undefined ? t.firstResponse.target - t.firstResponse.elapsed : t.firstResponse.met ? Number.MAX_SAFE_INTEGER : -1),
+      render: (t) => <FirstResponseBadge outcome={t.firstResponse.met === undefined ? null : t.firstResponse.met ? 'met' : 'breached'} clock={t.firstResponse.met === undefined ? { elapsedMin: t.firstResponse.elapsed, targetMin: t.firstResponse.target } : null} />,
+      width: 170,
     },
     { key: 'assignee', header: 'Assignee', value: (t) => t.assignee ?? 'Unassigned', width: 160 },
   ];

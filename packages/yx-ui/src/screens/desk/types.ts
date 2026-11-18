@@ -173,6 +173,8 @@ export interface TicketRow {
   firstResponse?: { usedMinutes: number; targetMinutes: number; paused: boolean; atRiskPercent?: number } | null;
   resolution?: { usedMinutes: number; targetMinutes: number; paused: boolean; atRiskPercent?: number } | null;
   firstResponseAt?: string | null;
+  /** Batch F item 34: once answered, whether the first response was on time (null: no target, or not answered yet). */
+  firstResponseOutcome?: 'met' | 'breached' | null;
   createdAt: string;
   updatedAt: string;
   canBulk: boolean;

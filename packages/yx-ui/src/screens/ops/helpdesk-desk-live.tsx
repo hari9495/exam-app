@@ -27,7 +27,7 @@ import type { FilterValue } from '../../lib/table';
 import { useRun } from '../org/org-kit';
 import { OPEN_STATES, PRIORITY_LABEL, PriorityBadge, STATE_LABEL, StatusBadge, TicketFlags, when } from '../desk/desk-kit';
 import type { DeskDetail, DeskSummary, LoadState, Person, SavedTicketView, SystemState, TicketFilters, TicketPage, TicketRow } from '../desk/types';
-import { OpsDesk, SlaBadge, useSay } from './ops-kit';
+import { FirstResponseBadge, OpsDesk, SlaBadge, useSay } from './ops-kit';
 import { ReferenceLookupDialog, type NotFoundLookup } from './reference-lookup';
 
 export interface TicketQuery {
@@ -136,6 +136,19 @@ function columns(): TableColumn<TicketRow>[] {
           <span className="yx-ops-muted">No target</span>
         ),
       width: 190,
+    },
+    // Batch F item 34 (answer 2570): first response: time left while it runs, then Met or Breached; no target, a dash.
+    {
+      key: 'first',
+      header: 'First response',
+      value: (t) => (t.firstResponseOutcome === 'breached' ? -1 : t.firstResponseOutcome === 'met' || t.firstResponseAt ? Number.MAX_SAFE_INTEGER : t.firstResponse ? t.firstResponse.targetMinutes - t.firstResponse.usedMinutes : Number.MAX_SAFE_INTEGER - 1),
+      render: (t) => (
+        <FirstResponseBadge
+          outcome={t.firstResponseOutcome ?? (t.firstResponseAt ? 'met' : null)}
+          clock={t.firstResponse ? { elapsedMin: t.firstResponse.usedMinutes, targetMin: t.firstResponse.targetMinutes, paused: t.firstResponse.paused, atRiskPercent: t.firstResponse.atRiskPercent } : null}
+        />
+      ),
+      width: 170,
     },
     { key: 'assignee', header: 'Assignee', value: (t) => t.assignee ?? 'Unassigned', width: 160 },
     { key: 'tags', header: 'Tags', value: (t) => t.tags.join(', '), width: 160, optional: true },

@@ -38,10 +38,24 @@ describe('HLP-02 Agent desk (live)', () => {
     render(<AgentDeskScreen live={liveDesk()} />);
     expect(screen.getByText('IT-1001')).toBeInTheDocument();
     expect(screen.getByText(/1 h left/)).toBeInTheDocument();
-    expect(screen.getByText(/Breached/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Breached/)[0]).toBeInTheDocument();
     expect(screen.getAllByText(/Paused/)[0]).toBeInTheDocument();
     expect(screen.getByText(/1 ticket has passed a response target/)).toBeInTheDocument();
     expect(screen.getByText(/3 in this view · 1 past the target/)).toBeInTheDocument();
+  });
+
+  // Batch F item 34 (answer 2570): the first-response column.
+  it('first response: Met or Breached once answered, the clock while it runs, a dash with no target', () => {
+    const rows = [...DESK_ROWS, { ...DESK_ROWS[2]!, id: 'none', number: 'IT-1009', subject: 'No target here', firstResponse: null, firstResponseAt: null, firstResponseOutcome: null }];
+    render(<AgentDeskScreen live={liveDesk({ page: { items: rows, total: rows.length, nextCursor: null } })} />);
+    const table = screen.getByRole('table');
+    expect(within(table).getByRole('columnheader', { name: /First response/ })).toBeInTheDocument();
+    const cell = (subject: string) => within(screen.getByRole('row', { name: new RegExp(subject) }));
+    expect(cell(DESK_ROWS[0]!.subject).getByText('Met')).toBeInTheDocument();
+    // Still running and past its target: the clock says so.
+    expect(cell('New laptop for Arjun').getAllByText(/Breached .* ago/).length).toBe(2);
+    expect(cell(DESK_ROWS[2]!.subject).getAllByText('Breached').length).toBeGreaterThan(0);
+    expect(cell('No target here').getByLabelText('No first-response target')).toBeInTheDocument();
   });
 
   it('"Show breaching tickets" switches to the at-risk view', async () => {

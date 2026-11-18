@@ -9,9 +9,9 @@ const ok = async () => undefined;
 export const HR_DESK_ROW: DeskSummary = { ...DESK, id: 'd-hr', key: 'HR', name: 'HR help desk', myRole: null, canWork: false };
 
 export const DESK_ROWS: TicketRow[] = [
-  { ...ROWS[0], canBulk: true, resolution: { usedMinutes: 420, targetMinutes: 480, paused: false }, firstResponse: null, firstResponseAt: '2026-10-07T05:00:00Z', sla: { dueAt: '2026-10-08T05:00:00Z', breached: false, paused: false } },
+  { ...ROWS[0], canBulk: true, resolution: { usedMinutes: 420, targetMinutes: 480, paused: false }, firstResponse: null, firstResponseAt: '2026-10-07T05:00:00Z', firstResponseOutcome: 'met', sla: { dueAt: '2026-10-08T05:00:00Z', breached: false, paused: false } },
   { ...ROWS[1], canBulk: true, resolution: { usedMinutes: 1100, targetMinutes: 960, paused: false }, firstResponse: { usedMinutes: 200, targetMinutes: 120, paused: false }, firstResponseAt: null, sla: { dueAt: null, breached: true, paused: false } },
-  { ...ROWS[2], canBulk: true, resolution: { usedMinutes: 300, targetMinutes: 480, paused: true }, firstResponse: null, firstResponseAt: '2026-10-07T03:00:00Z', sla: { dueAt: null, breached: false, paused: true } },
+  { ...ROWS[2], canBulk: true, resolution: { usedMinutes: 300, targetMinutes: 480, paused: true }, firstResponse: null, firstResponseAt: '2026-10-07T03:00:00Z', firstResponseOutcome: 'breached', sla: { dueAt: null, breached: false, paused: true } },
 ];
 
 export function liveDesk(over: Partial<LiveAgentDesk> = {}): LiveAgentDesk {
