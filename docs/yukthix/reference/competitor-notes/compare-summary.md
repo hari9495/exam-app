@@ -425,3 +425,18 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2526 (18 Nov 2026, "ok"): "Everyone's pending" works by company or legal entity only; a location-only grant sees nothing.
 - 2527 to 2529 (18 Nov 2026), batch C, awaiting founder: a manager "ask HR to waive" request in a later batch; WFH dots from the actual check-in place; half day against half the shift, and above the last band = no band.
 - 2530 (18 Nov 2026, "ok"): make CI fully green before PR #221 merges. That means fixing the 114 affordance findings in the shared components, and updating the ~44 web-e2e journeys to the current screens (fixing any real bug they reveal). Builder 1 pauses the settings gaps for it.
+- Founder answers (18 Nov 2026, "ok for all"):
+  - **2527:** a manager "ask HR to waive" request (pick days and reason; HR waives from the same list) goes in a later batch.
+  - **2528:** WFH dots come from the actual check-in place, not an approved WFH request alone.
+  - **2529:** a half day is measured against half the shift; above the last band falls in no band.
+  - **2541:** OTP e-accept applies per template ("Accepts it"), the default for new offer templates.
+  - **2542:** the accepted offer letter is copied into the joiner's documents after joining (small follow-up).
+  - **2543:** offers skip the template's "needs approval" (P03 covers it), and templates needing the company digital signature are refused for offers.
+  - **2533:** Copy last week fills only empty cells, working days up to today, current projects, never notes.
+  - **2534:** "Not sent" shows past weeks with expected hours never sent; last 12 weeks, then "Show older"; locked months are read-only.
+  - **2535:** managers get a "Not sent" tab on PRJ-02 with Remind, once a day per person.
+  - **2536:** the Home nudge appears from 4 pm when today has no hours, plus one reminder at 10:00 the day before the cut-off; both are company settings.
+  - **2537:** B3 shows approved billable, approved non-billable and total booked hours for a chosen range.
+  - **2538:** "By person" only regroups what the viewer may already approve.
+  - **2539:** "Request leave" opens the leave drawer for that day, and the day shows "Leave requested" until decided.
+  - **2540:** the PRJ-02 phone layout stays with phone approvals in tier 3.
