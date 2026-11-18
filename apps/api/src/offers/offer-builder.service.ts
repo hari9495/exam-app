@@ -19,6 +19,8 @@ import { formatIstDate } from './offer-rules';
 import { PayStructuresService } from '../payroll/structures.service';
 import { breakupJson, inCtcOf } from '../payroll/structure';
 import { DEFAULT_OFFER_TEMPLATE } from './default-offer-template';
+import { offerLetterChoice, offerLetterChoices } from './offer-letters';
+import { FilesService } from '../documents/files.service';
 import { BAND_TEXT, REVISABLE, bandAddsStep, bandPosition, compensationText, conditionNames, inr, offerLines, revisionNeedsApproval, statusAfterRevision, type BandPosition, type OfferLine } from './offer-rules';
 import type { OfferConditionDto, OfferCreateDto, OfferDraftDto, OfferPayDto, OfferPreviewDto, OfferReviseDto } from './dto/offer-builder.dto';
 
@@ -86,6 +88,8 @@ export class OfferBuilderService implements OnModuleInit {
     private readonly looks: EmailLookService,
     private readonly notifications: NotificationsService,
     @Optional() private readonly internal?: InternalApplicationsService,
+    // Answer 2515: reads the Letters offer templates' .docx (optional so older unit tests build without it).
+    @Optional() private readonly files?: FilesService,
   ) {}
 
   onModuleInit() {
@@ -175,7 +179,7 @@ export class OfferBuilderService implements OnModuleInit {
       const grade = e.job.gradeId ? await tx.grade.findFirst({ where: { organizationId: org, id: e.job.gradeId }, select: { name: true, code: true } }) : null;
       const band = await this.band(tx, org, e.job.gradeId, e.job.legalEntityId, today);
       const locations = await tx.location.findMany({ where: { organizationId: org, archivedAt: null, ...(e.job.legalEntityId ? { legalEntityId: e.job.legalEntityId } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 200 });
-      const letters = await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }] });
+      const letters = await this.letterChoices(tx, org, e.job.legalEntityId);
       const conditions = conditionNames(await settingFor(tx, c, 'hiring.offer.default_conditions', { legalEntityId: e.job.legalEntityId ?? '' }));
       const org$ = await tx.organization.findUnique({ where: { id: org }, select: { name: true } });
       return {
@@ -187,7 +191,7 @@ export class OfferBuilderService implements OnModuleInit {
         band: band ? { min: Number(band.min), max: Number(band.max) } : null,
         structures: await this.structuresFor(tx, org, e.job.legalEntityId, today),
         locations: locations.map((l) => ({ value: l.id, label: l.name })),
-        letters: letters.length ? letters.map((t) => ({ value: t.id, label: t.name, esign: t.esign, subject: t.subject, body: t.body })) : [{ value: 'default', label: 'Default offer letter', esign: false, ...DEFAULT_OFFER_TEMPLATE }],
+        letters: letters.length ? letters : [{ value: 'default', label: 'Default offer letter', esign: false, ...DEFAULT_OFFER_TEMPLATE }],
         defaultConditions: conditions,
         // Offers answer 404: the builder's default expiry (days after today), the same setting bulk offers use.
         expiryDays: Number(await settingFor(tx, c, 'hiring.offer.expiry_days', { legalEntityId: e.job.legalEntityId ?? '' })),
@@ -261,14 +265,19 @@ export class OfferBuilderService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ create and revise
 
-  private async letterOf(tx: Tx, org: string, templateId: string | undefined) {
-    if (!templateId) {
-      const d = await tx.offerTemplate.findFirst({ where: { organizationId: org, isDefault: true } });
-      return d ? { id: d.id, subject: d.subject, body: d.body } : { id: null, ...DEFAULT_OFFER_TEMPLATE };
+  /** HIR-09 / HIR-28: the offer letters a job's builder offers (Letters 'offer' templates, answer 2515). */
+  letterChoices(tx: Tx, org: string, legalEntityId: string | null) {
+    return offerLetterChoices(tx, this.files!, org, legalEntityId);
+  }
+
+  /** Answer 2515: the offer's letter is a switched-on Letters 'offer' template (none chosen: the first, else the built-in text). */
+  private async letterOf(tx: Tx, org: string, legalEntityId: string | null, templateId: string | undefined) {
+    if (!templateId || templateId === 'default') {
+      const [d] = await offerLetterChoices(tx, this.files!, org, legalEntityId);
+      return d ? { id: d.value, subject: d.subject, body: d.body } : { id: null, ...DEFAULT_OFFER_TEMPLATE };
     }
-    const t = await tx.offerTemplate.findFirst({ where: { organizationId: org, id: templateId } });
-    if (!t) throw new BadRequestException('Choose one of the company’s offer letters.');
-    return { id: t.id, subject: t.subject, body: t.body };
+    const t = await offerLetterChoice(tx, this.files!, org, legalEntityId, templateId);
+    return { id: t.value, subject: t.subject, body: t.body };
   }
 
   private versionData(org: string, offerId: string, version: number, dto: OfferDraftDto, gradeId: string | null, w: Awaited<ReturnType<OfferBuilderService['work']>>, needsApproval: boolean, by: string | null, note: string | null): Prisma.OfferVersionUncheckedCreateInput {
@@ -300,7 +309,7 @@ export class OfferBuilderService implements OnModuleInit {
       if (minor) throw new ConflictException(minor);
       if (await tx.offer.findFirst({ where: { organizationId: org, pipelineEntryId: e.id, status: { in: ['draft', 'pending_approval', 'approved', 'sent', 'accepted'] } }, select: { id: true } })) throw new ConflictException('This application already has an open offer. Revise that offer instead.');
       const w = await this.work(tx, org, e.job, dto, dto.startDate);
-      const letter = await this.letterOf(tx, org, dto.templateId);
+      const letter = await this.letterOf(tx, org, e.job.legalEntityId, dto.templateId);
       const pay = { annualCtc: dto.annualCtc, variablePay: w.variablePay, joiningBonus: w.joiningBonus, clawbackMonths: w.clawbackMonths };
       const offer = await tx.offer.create({
         data: { organizationId: org, pipelineEntryId: e.id, candidateId: e.candidateId, compensation: compensationText(pay), startDate: new Date(dto.startDate), expiresAt: new Date(dto.expiresAt), status: 'draft', letterSubject: letter.subject, letterBody: letter.body, templateId: letter.id, gradeId: e.job.gradeId, currentVersion: 1, createdBy: c.userId ?? null, batchId: opts.batchId ?? null },
@@ -334,7 +343,7 @@ export class OfferBuilderService implements OnModuleInit {
       if (o.wfRequestId && o.status === 'pending_approval') await this.engine.withdraw(tx, c, o.wfRequestId, c.userId ?? null, 'A new version of the offer replaced it');
       const status = statusAfterRevision(o.status, needsApproval);
       const letterWithdrawn = o.status === 'sent';
-      const letter = dto.templateId && dto.templateId !== o.templateId ? await this.letterOf(tx, org, dto.templateId) : null;
+      const letter = dto.templateId && dto.templateId !== o.templateId ? await this.letterOf(tx, org, o.pipelineEntry.job.legalEntityId, dto.templateId) : null;
       const version = o.currentVersion + 1;
       const pay = { annualCtc: dto.annualCtc, variablePay: w.variablePay, joiningBonus: w.joiningBonus, clawbackMonths: w.clawbackMonths };
       const n = await tx.offer.updateMany({

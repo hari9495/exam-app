@@ -170,7 +170,8 @@ export class HiringSettingsService {
           const locs = await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { name: true, state: true, address: true } });
           return locs.filter((l) => coveredPlace(law, { state: l.state, city: (l.address as { city?: string } | null)?.city ?? null })).map((l) => l.name);
         })(),
-        offerLetters: await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }], select: { id: true, name: true, esign: true } }),
+        // Answer 2515: the offer letters are the switched-on Letters 'offer' templates; e-sign is their "person signs".
+        offerLetters: (await tx.letterTemplate.findMany({ where: { organizationId: org, letterType: 'offer', status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true, personSigns: true } })).map((t) => ({ id: t.id, name: t.name, esign: t.personSigns })),
         values,
         defaults: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
         choices: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
@@ -225,11 +226,11 @@ export class HiringSettingsService {
     if (letters.length)
       await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
         for (const l of letters) {
-          const t = await tx.offerTemplate.findFirst({ where: { organizationId: c.organizationId, id: l.id }, select: { id: true, esign: true, name: true } });
+          const t = await tx.letterTemplate.findFirst({ where: { organizationId: c.organizationId, id: l.id, letterType: 'offer', status: 'active' }, select: { id: true, personSigns: true, name: true } });
           if (!t) throw new NotFoundException('That offer letter is not one of your company’s.');
-          if (t.esign === l.esign) continue;
-          await tx.offerTemplate.update({ where: { id: t.id }, data: { esign: l.esign } });
-          await audit(tx, c, 'offer_template.updated', 'offer_template', t.id, { name: t.name, esign: l.esign });
+          if (t.personSigns === l.esign) continue;
+          await tx.letterTemplate.update({ where: { id: t.id }, data: { personSigns: l.esign } });
+          await audit(tx, c, 'letter.template.person_signs', 'letter_template', t.id, { name: t.name, before: t.personSigns, after: l.esign });
         }
       });
     for (const ch of changes) await this.settings.set(ctx, { key: ch.key, scopeType: 'tenant', value: ch.value } as Parameters<OrgSettingsService['set']>[1]);

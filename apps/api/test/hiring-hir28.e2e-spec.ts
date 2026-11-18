@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
+import { OfferTemplatesToLetters } from '../src/offers/offer-letters';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
@@ -113,7 +114,10 @@ describe('HIR-28 bulk offers', () => {
     await inA((tx) => tx.job.update({ where: { id: ids.job }, data: { legalEntityId: ids.entity, gradeId: ids.g3, locationId: ids.blr, headcountPlanLineId: ids.line } }));
     for (const k of ['aditi', 'farhan', 'gayathri', 'harsha', 'ishita', 'joel', 'kavin', 'lena', 'mohan']) await entry(k);
     await entry('elsewhere', 'job2');
-    ids.tplE = (await api('rec', 'post', '/offer-template').send({ name: `Campus LOI ${run}`, subject: 'Your letter of intent', body: 'Dear {{candidateName}}, {{compensation}}. {{offerLink}}', esign: true }).expect(201)).body.id;
+    // Answer 2515: an older offer template, moved by the one-off command into a Letters 'offer' template.
+    const old = await inA((tx) => tx.offerTemplate.create({ data: { organizationId: org.A.id, name: `Campus LOI ${run}`, subject: 'Your letter of intent', body: 'Dear {{candidateName}}, {{compensation}}. {{offerLink}}', esign: true } }));
+    await app.get(OfferTemplatesToLetters).run();
+    ids.tplE = (await inA((tx) => tx.offerTemplate.findFirstOrThrow({ where: { id: old.id } }))).letterTemplateId!;
     // Gayathri already has an offer of her own: a batch skips her, never offers twice.
     ids.single = (await api('rec', 'post', '/hiring/offers').send({ entryId: ids.gayathri, templateVersionId: ids.tv, annualCtc: '480000', locationId: ids.blr, startDate: plus(40), expiresAt: plus(10) }).expect(201)).body.id;
     ids.jobB = (await api('recB', 'post', '/jobs').send({ title: 'Other company job' }).expect(201)).body.id;

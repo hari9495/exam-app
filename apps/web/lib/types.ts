@@ -1013,15 +1013,6 @@ export interface Offer {
   approval: ApprovalSummary | null;
 }
 
-// GET /offer-template -- the org's saved, named offer letter templates (empty if none saved yet).
-export interface OfferTemplate {
-  id: string | null;
-  name: string;
-  subject: string;
-  body: string;
-  isDefault: boolean;
-}
-
 // GET /public/offers/:token -- unauthenticated, deliberately thin (no offer id, no org internals).
 export interface PublicOffer {
   /** Careers answer 362: the company's logo, colour, careers link and white-label. */

@@ -27247,5 +27247,28 @@
                               "Screens/Analytics/ANL-08 · Schedules and export log › Live · weekly hiring digest on / off / loading / could not load"
                     ],
                     "note": "Positive and negative (kit analytics-live.test.tsx; web yx-report-schedules.test.tsx; API hiring-dashboard.e2e-spec.ts and organizations.service.spec.ts). GET /organizations/scheduled-report-settings now also returns lastSentAt. The export log tab of ANL-08 waits for analytics exports."
+          },
+          {
+                    "id": "MT-2515-OFFER-LETTERS",
+                    "area": "Retire /v2: offer templates become Letters 'offer' templates (answer 2515, 18 Nov 2026)",
+                    "screen": "Settings › Letter templates (5.2); Hire › offer builder (HIR-09); Settings › Hiring (6.1)",
+                    "url": "http://localhost:3000/yx/settings/letters",
+                    "account": "Admin admin-tester@demo-org.test (letter templates); recruiter@demo-org.test (offers); HR hr-tester@demo-org.test.",
+                    "steps": [
+                              "Lead first, once: in apps/api run `npm run build` then `npm run offers:to-letters`. Note the line 'Offer templates moved to Letters: N. Failed: 0.'",
+                              "Run `npm run offers:to-letters` again.",
+                              "As admin: open Settings › Letter templates.",
+                              "Open the moved offer template in the editor (Edit).",
+                              "As recruiter: open a candidate's application in Hire and press Make offer; open the Letter choice.",
+                              "As admin: open Settings › Hiring, find 'Offer letters the candidate signs', switch one off and save.",
+                              "Open the old addresses /v2/offer-template and /offer-template.",
+                              "As an employee (arjun@demo-org.test): open /offer-template."
+                    ],
+                    "expected": "Step 1: each demo offer template is moved. Step 2: 'moved: 0. Failed: 0.'; no second copy in Letters. Step 3: each old offer template is listed with letter type 'offer', its old name, version 1, switched on; 'Person signs' is on only where e-sign was on; a name HR already used in Letters is a new draft version instead. Step 4: the first line is the bold 'Subject: …', then the old text line by line; old fields show as letter fields (candidate name → Full name, job title → Designation, company → Company name, recruiter → Who signs (name), compensation → Offered pay, start date → Joining day, expiry → Accept the offer by, link → Where the person accepts). Step 5: the Letter list shows the Letters offer templates (not the old ones); an offer drafts with the chosen one. Step 6: 5-second toast; in Letters that template's 'Person signs' is off. Step 7: both land on Settings › Letter templates. Step 8: no access.",
+                    "stories": [
+                              "Screens/People/PPL-29 · Letter templates · Live",
+                              "Screens/Hiring/HIR-09 · Offer builder · Live"
+                    ],
+                    "note": "Positive and negative (API offer-letters.e2e-spec.ts: moved with mapped fields and person signs, name clash → draft, re-run makes nothing, other company never sees it, GET old routes 301 to /yx/settings/letters, POST/PATCH/DELETE 410, signed out 401; hiring-hir09 / hir28 e2e use moved templates in the builder; unit offer-letters.spec.ts; web next.config.test.ts). Issuing the offer as a P05 letter with OTP e-accept is the next step (out of scope)."
           }
 ]

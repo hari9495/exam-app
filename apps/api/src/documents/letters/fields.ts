@@ -82,6 +82,10 @@ export const FIELDS: Readonly<Record<string, FieldDef>> = {
   standing_orders_clause: { label: 'Standing orders clause (blank when not given)', cls: 'internal', optional: true, sample: 'Clause 14(2)(c) of the certified standing orders' },
   decision_summary: { label: 'The decision as told to the employee', cls: 'internal', sample: 'You get a written warning for one day of absence without leave.' },
   decision_date: { label: 'The day the decision was approved', cls: 'internal', sample: '2 October 2026' },
+  // Answer 2515: offer letters (the older offer templates moved here). Filled when an offer is issued as a letter.
+  offer_ctc: { label: 'Offered pay (annual CTC)', cls: 'pay', sample: '₹6,00,000 a year' },
+  offer_expiry: { label: 'Accept the offer by', cls: 'internal', sample: '30 October 2026' },
+  offer_link: { label: 'Where the person accepts the offer (blank when they accept in YukthiX)', cls: 'internal', optional: true, sample: 'https://app.yukthix.test/yx/offer/sample' },
 };
 
 export const longDate = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' });

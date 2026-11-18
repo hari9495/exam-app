@@ -165,7 +165,7 @@ export class LettersService implements OnModuleInit {
   }
 
   /** Checks a Word file: safe, placeholders all known (with "did you mean"). */
-  private checkTemplate(buf: Buffer): string[] {
+  checkTemplate(buf: Buffer): string[] {
     let fields: string[];
     try {
       fields = templateFields(buf);
@@ -185,19 +185,27 @@ export class LettersService implements OnModuleInit {
     this.requireKey(v, 'letter.template.manage', input.legalEntityId);
     const fields = this.checkTemplate(input.buf);
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const org = c.organizationId;
-      if (input.legalEntityId && !(await tx.legalEntity.findFirst({ where: { organizationId: org, id: input.legalEntityId }, select: { id: true } }))) throw new BadRequestException('No such legal entity.');
-      const file = await this.files.storeIn(tx, c, { area: 'letter-templates', name: input.fileName, data: input.buf, allowedMime: [DOCX], maxMb: 20, via: input.source === 'starter' ? 'system' : 'staff' });
-      // Several templates per letter type: a template is its name; a new file under the same name is its next version.
-      const prev = await tx.letterTemplate.findFirst({ where: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, language: 'en' }, orderBy: { version: 'desc' } });
-      const t = await tx.letterTemplate.create({
-        data: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, source: input.source, fileId: file.id, fields, requiresApproval: input.requiresApproval, personSigns: input.personSigns, companyDsc: input.companyDsc, onePerPerson: input.onePerPerson, starterRevision: input.starterRevision ?? null, version: (prev?.version ?? 0) + 1, status: 'draft', createdBy: c.userId ?? null },
-      });
-      await audit(tx, c, 'letter.template.added', 'letter_template', t.id, { letterType: t.letterType, version: t.version, source: t.source, fields, onePerPerson: t.onePerPerson });
-      return { t, fileId: file.id, org };
+      if (input.legalEntityId && !(await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: input.legalEntityId }, select: { id: true } }))) throw new BadRequestException('No such legal entity.');
+      return this.insertTemplate(tx, c, { ...input, fields, status: 'draft' });
     });
     await this.files.scan(out.org, out.fileId);
     return this.templateView(out.t);
+  }
+
+  /**
+   * Stores a checked .docx and adds it as the next version of the template with that name. Also used by the one-off move
+   * of the older offer templates (answer 2515), which runs as the system and adds them already switched on.
+   */
+  async insertTemplate(tx: Tx, c: CompanyContext, input: { letterType: string; name: string; legalEntityId: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc: boolean; onePerPerson: boolean; source: 'upload' | 'starter' | 'editor'; starterRevision?: number; fileName: string; buf: Buffer; fields: string[]; status: 'draft' | 'active'; previewViewedAt?: Date }) {
+    const org = c.organizationId;
+    const file = await this.files.storeIn(tx, c, { area: 'letter-templates', name: input.fileName, data: input.buf, allowedMime: [DOCX], maxMb: 20, via: input.source === 'starter' || !c.userId ? 'system' : 'staff' });
+    // Several templates per letter type: a template is its name; a new file under the same name is its next version.
+    const prev = await tx.letterTemplate.findFirst({ where: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, language: 'en' }, orderBy: { version: 'desc' } });
+    const t = await tx.letterTemplate.create({
+      data: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, source: input.source, fileId: file.id, fields: input.fields, requiresApproval: input.requiresApproval, personSigns: input.personSigns, companyDsc: input.companyDsc, onePerPerson: input.onePerPerson, starterRevision: input.starterRevision ?? null, version: (prev?.version ?? 0) + 1, status: input.status, previewViewedAt: input.previewViewedAt ?? null, createdBy: c.userId ?? null },
+    });
+    await audit(tx, c, 'letter.template.added', 'letter_template', t.id, { letterType: t.letterType, version: t.version, source: t.source, fields: input.fields, onePerPerson: t.onePerPerson });
+    return { t, fileId: file.id, org };
   }
 
   uploadTemplate(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc?: boolean; onePerPerson?: boolean; fixes?: string }, file: { originalname: string; buffer: Buffer } | undefined) {

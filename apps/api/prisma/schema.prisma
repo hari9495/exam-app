@@ -2494,6 +2494,8 @@ model OfferTemplate {
   /// HIR-09 (founder decision 4): the candidate signs electronically only when this is on; else accepting by the link.
   esign          Boolean  @default(false)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Answer 2515: the P05 'offer' letter template this one became (the one-off move's claim; never moved twice).
+  letterTemplateId String? @unique(map: "offer_templates_letter_template_key") @map("letter_template_id") @db.Uuid
 
   @@unique([organizationId, name])
   @@index([organizationId])

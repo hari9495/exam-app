@@ -40,6 +40,8 @@ const nextConfig = {
       // Answers 2433, 2511, 2512: the older approvals inbox is the YukthiX one; drip campaigns are HIR-20 campaigns.
       '/v2/approvals': '/yx/approvals',
       '/v2/campaigns': '/yx/hiring/pools',
+      // Answer 2515: offer templates are Letters 'offer' templates (Settings 5.2).
+      '/v2/offer-template': '/yx/settings/letters',
       '/v2/data-rights': '/yx/hiring/retention',
       '/v2/settings/roles': '/yx/settings/access',
       '/v2/settings/permission-profiles': '/yx/settings/access',

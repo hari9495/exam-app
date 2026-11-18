@@ -17,6 +17,7 @@ import { OfferTemplatesService } from './offer-templates.service';
 import { OfferBuilderService } from './offer-builder.service';
 import { OfferBatchService } from './offer-batch.service';
 import { OfferBatchController } from './offer-batch.controller';
+import { OfferTemplatesToLetters } from './offer-letters';
 import { OFFER_BATCHES_QUEUE, OfferBatchWorker, createOfferBatchesQueue } from './offer-batch.worker';
 import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
 
@@ -31,6 +32,8 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
     OfferTemplatesService,
     OfferBuilderService,
     OfferBatchService,
+    // Answer 2515: the one-off move of the older offer templates into Letters (offer-templates-to-letters.cli.ts).
+    OfferTemplatesToLetters,
     // Answer 405: bulk offers on a job queue.
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     { provide: OFFER_BATCHES_QUEUE, useFactory: createOfferBatchesQueue, inject: [REDIS_CONNECTION] },

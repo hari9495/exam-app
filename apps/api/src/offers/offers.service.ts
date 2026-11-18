@@ -270,7 +270,10 @@ export class OffersService {
         ? ((await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } }))?.name ?? '')
         : '';
       // Founder decision 4: e-sign only when the offer's template switches it on (accepting by the link otherwise).
-      const esign = offer.templateId ? Boolean((await tx.offerTemplate.findFirst({ where: { organizationId: orgId, id: offer.templateId }, select: { esign: true } }))?.esign) : false;
+      // Answer 2515: a Letters offer template's "person signs"; an offer drafted before the move keeps its old template's switch.
+      const esign = offer.templateId
+        ? Boolean((await tx.letterTemplate.findFirst({ where: { organizationId: orgId, id: offer.templateId }, select: { personSigns: true } }))?.personSigns ?? (await tx.offerTemplate.findFirst({ where: { organizationId: orgId, id: offer.templateId }, select: { esign: true } }))?.esign)
+        : false;
       return { offer, candidate: offer.pipelineEntry.candidate, job: offer.pipelineEntry.job, org, actorName, offerToken, esign };
     });
 

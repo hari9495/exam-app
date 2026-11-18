@@ -79,7 +79,7 @@ export class OfferBatchService {
       const locations = await tx.location.findMany({ where: { organizationId: org, archivedAt: null, ...(job.legalEntityId ? { legalEntityId: job.legalEntityId } : {}) }, select: { id: true, name: true, legalEntityId: true }, orderBy: { name: 'asc' }, take: 200 });
       // Answer 401: open People joiner batches the accepted offers can join (the screen offers those on the joining day).
       const joinerBatches = await tx.joinerBatch.findMany({ where: { organizationId: org, status: 'open', joiningOn: { gte: new Date(`${today}T00:00:00Z`) }, legalEntityId: { in: [...new Set(locations.map((l) => l.legalEntityId))] } }, orderBy: { joiningOn: 'asc' }, take: 100 });
-      const letters = await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }] });
+      const letters = await this.builder.letterChoices(tx, org, job.legalEntityId);
       return {
         job: { id: job.id, title: job.title, locationId: job.locationId },
         company: (await tx.organization.findUnique({ where: { id: org }, select: { name: true } }))?.name ?? '',
@@ -88,7 +88,7 @@ export class OfferBatchService {
         structures: await this.builder.structuresFor(tx, org, job.legalEntityId, today),
         locations: locations.map((l) => ({ value: l.id, label: l.name, legalEntityId: l.legalEntityId })),
         joinerBatches: joinerBatches.map((b) => ({ value: b.id, label: b.name, joiningOn: iso(b.joiningOn), legalEntityId: b.legalEntityId })),
-        letters: letters.length ? letters.map((t) => ({ value: t.id, label: t.name, esign: t.esign, subject: t.subject, body: t.body })) : [{ value: 'default', label: 'Default offer letter', esign: false, ...DEFAULT_OFFER_TEMPLATE }],
+        letters: letters.length ? letters : [{ value: 'default', label: 'Default offer letter', esign: false, ...DEFAULT_OFFER_TEMPLATE }],
         defaultConditions: conditionNames(await settingFor(tx, c, 'hiring.offer.default_conditions', { legalEntityId: job.legalEntityId ?? '' })),
         expiryDays: Number(await settingFor(tx, c, 'hiring.offer.expiry_days', { legalEntityId: job.legalEntityId ?? '' })),
         plan: { check: check as 'hold' | 'off', linked: Boolean(job.headcountPlanLineId), free },

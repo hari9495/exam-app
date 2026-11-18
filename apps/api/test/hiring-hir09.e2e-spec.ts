@@ -7,6 +7,7 @@ import { randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
+import { OfferTemplatesToLetters } from '../src/offers/offer-letters';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
@@ -371,8 +372,11 @@ describe('HIR-09 offer builder and HIR-29 conditions', () => {
   });
 
   it('e-sign only when the template switches it on: then the emailed code and the disclosure are needed', async () => {
-    const tplE = (await api('rec', 'post', '/offer-template').send({ name: `Signed letter ${run}`, subject: 'Your offer', body: 'Dear {{candidateName}}, {{compensation}}. Sign here: {{offerLink}}', esign: true }).expect(201)).body;
-    expect(tplE.esign).toBe(true);
+    // Answer 2515: an older offer template, moved by the one-off command into a Letters 'offer' template (person signs).
+    const old = await inA((tx) => tx.offerTemplate.create({ data: { organizationId: org.A.id, name: `Signed letter ${run}`, subject: 'Your offer', body: 'Dear {{candidateName}}, {{compensation}}. Sign here: {{offerLink}}', esign: true } }));
+    await app.get(OfferTemplatesToLetters).run();
+    const tplE = { id: (await inA((tx) => tx.offerTemplate.findFirstOrThrow({ where: { id: old.id } }))).letterTemplateId! };
+    expect((await inA((tx) => tx.letterTemplate.findFirstOrThrow({ where: { id: tplE.id } }))).personSigns).toBe(true);
     ids.o5 = (await api('rec', 'post', '/hiring/offers').send(draft(ids.esign, { templateId: tplE.id })).expect(201)).body.id;
     await api('rec', 'post', `/hiring/offers/${ids.o5}/submit`).expect(200);
     await decide(ids.o5, 'rec2');
