@@ -14,6 +14,7 @@ import { StaffingService } from '../staffing/staffing.service';
 import { toRupees } from '../staffing/staffing-rules';
 import { correctionDocument, heldReason, hoursOf, minutesAmount, spreadMinutes } from './billing';
 import { ProjectsService } from './projects.service';
+import { toBin } from '../recycle-bin/bin';
 import type { BillingDraftDto, CorrectionDto } from './dto';
 
 // Projects P-6 (PRJ-05, PRJ-06; founder answers 1414 to 1416). One invoice engine (1414): the workbench lists the
@@ -288,6 +289,13 @@ export class ProjectBillingService {
     return this.finance(ctx, user, async (tx, c) => {
       const inv = await this.projectDraft(tx, c.organizationId, id);
       if (inv.status !== 'draft') throw new ConflictException('An issued invoice is never deleted. Correct the hours to raise a credit note.');
+      // Answer 2439: the draft, its lines and billing rows wait in the recycle bin; restored only while its work is unbilled.
+      const [lines, billings, reminders] = await Promise.all([
+        tx.staffingInvoiceLine.findMany({ where: { invoiceId: id } }),
+        tx.projectBilling.findMany({ where: { organizationId: c.organizationId, invoiceId: id } }),
+        tx.staffingReminder.findMany({ where: { invoiceId: id } }),
+      ]);
+      await toBin(tx, c, 'project_billing_draft', inv, `Project billing draft ${id.slice(0, 8)}`, { staffingInvoiceLine: lines, projectBilling: billings, staffingReminder: reminders });
       await tx.staffingInvoice.delete({ where: { id } });
       await audit(tx, c, 'projects.billing.draft_deleted', 'staffing_invoice', id, {});
       return { removed: true };
