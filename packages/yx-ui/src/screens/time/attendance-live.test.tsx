@@ -231,7 +231,12 @@ describe('Me › Attendance (live calendar)', () => {
     await ue.click(send);
     expect(onWfh).not.toHaveBeenCalled();
     expect(within(sheet).getAllByText('Enter a reason').length).toBeGreaterThan(1);
-    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Plumber visit');
+    // Answer 2477: a reason of at least 10 characters, so the manager can check it.
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Plumber');
+    await ue.click(send);
+    expect(onWfh).not.toHaveBeenCalled();
+    expect(within(sheet).getAllByText('Please say why, in at least 10 characters, so your manager can check it.').length).toBeGreaterThan(0);
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), ' visit');
     await ue.click(send);
     await waitFor(() => expect(onWfh).toHaveBeenCalledWith({ on: '2026-10-09', reason: 'Plumber visit' }));
     expect(await screen.findByText('Sent to your manager')).toBeInTheDocument();

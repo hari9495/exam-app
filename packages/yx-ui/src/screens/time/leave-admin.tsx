@@ -1954,8 +1954,8 @@ export interface SetupLive {
   onRetry?: () => void;
   data: TimeSetup | null;
 }
-export type LeaveTypeInput = { code: string; name: string; kind: string; paid: boolean; colour: string; active: boolean; rules: LeaveRules };
-export type LocationRuleInput = { validFrom: string; shiftName: string; shiftStart: number; shiftEnd: number; graceMinutes: number; weeklyOffs: { weekday: number; nth?: number[] }[]; checkIn: 'restricted' | 'field' };
+export type LeaveTypeInput = { code: string; name: string; kind: string; paid: boolean; colour: string; active: boolean; rules: LeaveRules; /** Answer 2477: the change applies from this date (absent: today). */ validFrom?: string };
+export type LocationRuleInput = { validFrom: string; shiftName: string; shiftStart: number; shiftEnd: number; graceMinutes: number; weeklyOffs: { weekday: number; nth?: number[] }[]; checkIn: 'restricted' | 'field'; reclockIn?: boolean };
 export interface LiveLeavePolicies extends SetupLive {
   /** Resolves to the new policy (`{ id }`), so its drawer stays open on it. */
   onCreatePolicy: (name: string) => Promise<unknown>;
@@ -2015,7 +2015,7 @@ export interface LiveYearEnd extends SetupLive {
 export interface LiveLocations extends SetupLive {
   onSetRule: (locationId: string, input: LocationRuleInput) => Promise<unknown>;
   /** TIM-31 IpError: save the location's office networks (one IP range per line; the server checks each again). */
-  onSetNetworks?: (locationId: string, ipRanges: string[]) => Promise<unknown>;
+  onSetNetworks?: (locationId: string, ipRanges: string[], wifiNames: string[]) => Promise<unknown>;
   /** TIM-31 Multi: save every check-in point of the location, with the location's updatedAt as last seen. */
   onSetPoints?: (locationId: string, points: GeoPointInput[], updatedAt?: string) => Promise<unknown>;
   /** Settings › Locations, where locations are added (the breadcrumb). */
@@ -2679,6 +2679,8 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
   const [pay, setPay] = useState(row && !row.paid ? 'unpaid' : row && partPct(row.rules) ? 'part' : 'paid');
   const [colour, setColour] = useState<string | null>(row?.colour ?? 'blue');
   const [active, setActive] = useState(row?.active ?? true);
+  // Answer 2477: a change to an existing type applies from this date (empty: today); earlier leave keeps its rules.
+  const [applyFrom, setApplyFrom] = useState<Date | null>(null);
   const [r, setR] = useState<LeaveRules>(row?.rules ?? DEFAULT_RULES);
   const [payPct, setPayPct] = useState<number | null>(row ? partPct(row.rules) : null);
   const [sec, setSec] = useState<string>('basics');
@@ -2709,7 +2711,7 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
       // Partially paid is one pay step over the whole year; plain paid drops a step set here (other steps stay).
       const paySteps = pay === 'part' ? [{ days: 366, percent: payPct! }] : pay === 'unpaid' || partPct(r) ? null : r.paySteps ?? null;
       const cashIn = r.encashable ? {} : { encashMaxDays: null, encashMinLeft: null, encashDivisor: null };
-      const res = await live.onSaveType(row?.id ?? null, { code, name: name.trim(), kind: kind!, paid: pay !== 'unpaid', colour: colour ?? 'blue', active, rules: { ...(kind === 'lop' ? { ...r, negativeLimit: 0 } : r), paySteps, ...cashIn } });
+      const res = await live.onSaveType(row?.id ?? null, { code, name: name.trim(), kind: kind!, paid: pay !== 'unpaid', colour: colour ?? 'blue', active, ...(row && applyFrom ? { validFrom: isoOf(applyFrom) } : {}), rules: { ...(kind === 'lop' ? { ...r, negativeLimit: 0 } : r), paySteps, ...cashIn } });
       const id = (res as { id?: string } | undefined)?.id;
       if (!row && id) live.onAdded?.(id);
     });
@@ -2780,6 +2782,11 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
         <div className="yx-tim-form">
           <ErrorSummary errors={saveErrors.shownErrors} />
           {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+          {row && (
+            <FormField id="lt-from" label="Changes to the rules and pay apply from" helper={`Empty: today. Leave keeps the rules in force on its first day.${row.versions && row.versions.length > 1 ? ` Earlier changes: ${row.versions.filter((v) => v.validFrom > '2000-01-01').map((v) => isoDay(v.validFrom)).join(', ')}.` : ''}`}>
+              <DatePicker value={applyFrom} onChange={setApplyFrom} min={dateOfIso(d.today)} />
+            </FormField>
+          )}
           <Tabs value={sec} onValueChange={setSec}>
             {narrow ? (
               <FormField label="Section">
@@ -2903,12 +2910,38 @@ function LiveTypeForm({ d, row, live, crumbs }: { d: TimeSetup; row: LeaveTypeRo
                 <RadioGroup
                   aria-label="During notice"
                   value={r.noticePeriod ?? 'company'}
-                  onChange={(v) => set('noticePeriod', v === 'company' ? null : (v as 'allowed' | 'extends' | 'blocked'))}
+                  onChange={(v) => set('noticePeriod', v === 'company' ? null : (v as 'allowed' | 'extends' | 'blocked' | 'unpaid'))}
                   options={[
                     { value: 'company', label: `Company default (${NOTICE_PERIOD_TEXT[defaults['leave.notice_period.leave'] ?? 'no_change'] ?? 'allowed'})` },
                     { value: 'allowed', label: 'Allowed' },
+                    { value: 'unpaid', label: 'Allowed, but unpaid' },
                     { value: 'extends', label: 'Moves the last working day later' },
                     { value: 'blocked', label: 'Not allowed' },
+                  ]}
+                />
+              </FormSection>
+              {/* Answer 2477: who may take it; plan and apply refuse with the rule named (HR can override for one person). */}
+              <FormSection title="Who can take it">
+                {(d.employmentTypes ?? []).length > 0 && (
+                  <fieldset className="yx-tim-stack" data-gap="sm">
+                    <legend className="yx-tim-h3">Employment types</legend>
+                    <p className="yx-tim-muted">None ticked: every employment type.</p>
+                    {(d.employmentTypes ?? []).map((et) => (
+                      <Checkbox key={et.id} label={et.name} checked={(r.eligibleEmploymentTypes ?? []).includes(et.id)} onChange={(on) => { const now = (r.eligibleEmploymentTypes ?? []).filter((x) => x !== et.id); const next = on ? [...now, et.id] : now; set('eligibleEmploymentTypes', next.length ? next : null); }} />
+                    ))}
+                  </fieldset>
+                )}
+                <FormField id="lt-months" label="Months worked before it can be taken" helper="Empty: from the first day.">
+                  <NumberField value={r.minMonthsWorked ?? null} onChange={(v) => set('minMonthsWorked', v && v > 0 ? Math.min(120, Math.round(v)) : null)} min={1} max={120} />
+                </FormField>
+                <RadioGroup
+                  aria-label="During probation"
+                  value={r.probation ?? 'company'}
+                  onChange={(v) => set('probation', v === 'company' ? null : (v as 'allowed' | 'blocked'))}
+                  options={[
+                    { value: 'company', label: 'Company default (Settings › Leave while on probation)' },
+                    { value: 'allowed', label: 'Can be taken during probation' },
+                    { value: 'blocked', label: 'Not during probation' },
                   ]}
                 />
               </FormSection>
@@ -3727,15 +3760,20 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
   const [end, setEnd] = useState<string | null>(hhmm(r.shiftEnd));
   const [grace, setGrace] = useState<number | null>(r.graceMinutes);
   const [offs, setOffs] = useState(r.weeklyOffs);
+  const [reclock, setReclock] = useState(Boolean(r.reclockIn));
   const { busy, error, run } = useRun();
   const [ips, setIps] = useState(loc.ipRanges.join('\n'));
   const [ipsTried, setIpsTried] = useState(false);
+  const [wifi, setWifi] = useState((loc.wifiNames ?? []).join('\n'));
+  const lines = (t: string) => t.split('\n').map((l) => l.trim()).filter(Boolean);
+  const wifiErr = ipsTried && lines(wifi).some((w) => w.length > 32) ? 'A Wi-Fi name is at most 32 characters.' : null;
   // The server checks each line again; its "Line N: …" answer shows on the field too.
   const ipErr = (ipsTried ? ipRangeError(ips) : null) ?? (error?.startsWith('Line ') ? error : null);
   const saveNetworks = () => {
     setIpsTried(true);
     if (ipRangeError(ips)) return void document.getElementById('rl-ips')?.focus();
-    void run('ips', () => live.onSetNetworks!(loc.id, ips.split('\n').map((l) => l.trim()).filter(Boolean)));
+    if (lines(wifi).some((w) => w.length > 32)) return void document.getElementById('rl-wifi')?.focus();
+    void run('ips', () => live.onSetNetworks!(loc.id, lines(ips), lines(wifi)));
   };
   // TIM-31 Multi: the location's points, edited as in the design and saved together (inside any one is inside).
   const [points, setPoints] = useState<GeoPoint[]>(() => (loc.points ?? (loc.geofence ? [{ name: loc.name, ...loc.geofence }] : [])).map((p, i) => ({ id: `p${i}`, name: p.name, lat: String(p.lat), lng: String(p.lng), r: p.radiusM })));
@@ -3765,7 +3803,7 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
       document.getElementById(errors[0].fieldId)?.focus();
       return;
     }
-    void run('save', () => live.onSetRule(loc.id, { validFrom: isoOf(from!), shiftName: shiftName.trim() || 'General', shiftStart: minuteOf(start)!, shiftEnd: minuteOf(end)!, graceMinutes: grace ?? 0, weeklyOffs: offs, checkIn: mode === 'field' ? 'field' : 'restricted' }));
+    void run('save', () => live.onSetRule(loc.id, { validFrom: isoOf(from!), shiftName: shiftName.trim() || 'General', shiftStart: minuteOf(start)!, shiftEnd: minuteOf(end)!, graceMinutes: grace ?? 0, weeklyOffs: offs, checkIn: mode === 'field' ? 'field' : 'restricted', reclockIn: reclock }));
   };
   const field = mode === 'field';
   return (
@@ -3820,6 +3858,8 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
                 />
               )}
             </fieldset>
+            {/* Answer 2477: off by default; split days and field visits turn it on. */}
+            <Checkbox label="People may clock in again after clocking out" description="Worked time is the sum of the in and out sessions." checked={reclock} onChange={setReclock} />
           </FormSection>
           {live.onSetPoints ? (
             <div ref={pointsRef}>
@@ -3840,10 +3880,13 @@ function LiveLocationForm({ d, loc, live, picker }: { d: TimeSetup; loc: SetupLo
                 <FormField id="rl-ips" label="IP ranges" helper="One range per line, e.g. 10.20.4.0/24" error={ipErr}>
                   <TextArea value={ips} onChange={setIps} rows={3} />
                 </FormField>
+                <FormField id="rl-wifi" label="Office Wi-Fi names" helper="One per line, as the phone shows it. Checked when people clock in from the phone app." error={wifiErr}>
+                  <TextArea value={wifi} onChange={setWifi} rows={2} />
+                </FormField>
                 <span><Button size="sm" loading={busy === 'ips'} onClick={saveNetworks}>Save office network</Button></span>
               </>
             ) : (
-              <p className="yx-tim-muted">{loc.ipRanges.length ? loc.ipRanges.join(', ') : 'No office network yet.'}</p>
+              <p className="yx-tim-muted">{loc.ipRanges.length ? loc.ipRanges.join(', ') : 'No office network yet.'}{loc.wifiNames?.length ? ` · Wi-Fi: ${loc.wifiNames.join(', ')}` : ''}</p>
             )}
           </FormSection>
           <FormField id="rl-from" label="Changes apply from" required error={saveErrors.errorOf('rl-from')}>

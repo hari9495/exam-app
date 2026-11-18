@@ -133,7 +133,16 @@ describe('TIM-27 absence and notice choices', () => {
   });
   it('parseRules refuses unknown choices', () => {
     expect(() => parseRules({ longAbsence: 'sometimes' })).toThrow(BadRequestException);
-    expect(() => parseRules({ noticePeriod: 'unpaid' })).toThrow(BadRequestException);
+    expect(() => parseRules({ noticePeriod: 'half_paid' })).toThrow(BadRequestException);
+    // Answer 2477: unpaid during notice is a choice now; eligibility values are checked.
+    expect(parseRules({ noticePeriod: 'unpaid' }).noticePeriod).toBe('unpaid');
+    expect(noticePeriodMode('unpaid', 'no_change')).toBe('unpaid');
+    expect(() => parseRules({ eligibleEmploymentTypes: ['x'] })).toThrow(BadRequestException);
+    expect(() => parseRules({ eligibleEmploymentTypes: [] })).toThrow(BadRequestException);
+    expect(() => parseRules({ minMonthsWorked: 0 })).toThrow(BadRequestException);
+    expect(() => parseRules({ minMonthsWorked: 121 })).toThrow(BadRequestException);
+    expect(parseRules({ minMonthsWorked: 120, probation: 'blocked', eligibleEmploymentTypes: ['0b7c2a3e-1111-4222-8333-944455556666'] })).toMatchObject({ minMonthsWorked: 120, probation: 'blocked' });
+    expect(() => parseRules({ probation: 'sometimes' })).toThrow(BadRequestException);
   });
 });
 

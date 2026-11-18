@@ -219,8 +219,8 @@ export function yearEndWithEncash(balance: number, carryCap: number | null, enca
 }
 
 /** The type's notice-period choice as the company setting's value, or the company's own value. */
-export function noticePeriodMode(own: 'allowed' | 'extends' | 'blocked' | null | undefined, company: string): string {
-  return own === 'allowed' ? 'no_change' : own === 'extends' ? 'extends_last_day' : own === 'blocked' ? 'blocked' : company;
+export function noticePeriodMode(own: 'allowed' | 'extends' | 'blocked' | 'unpaid' | null | undefined, company: string): string {
+  return own === 'allowed' ? 'no_change' : own === 'extends' ? 'extends_last_day' : own === 'blocked' ? 'blocked' : own === 'unpaid' ? 'unpaid' : company;
 }
 
 /** Long absence: does this type keep crediting? The type's own choice, else the absence's (leave.long_absence.accrues). */

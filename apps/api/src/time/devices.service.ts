@@ -564,7 +564,7 @@ export class DevicesService {
    * One device punch, once (rule 14): the device's own id for the punch (client_ref) keys a receipt written in the same
    * transaction; a repeat returns the first result and never makes a second punch, also when two arrive at once.
    */
-  async punchOnce(c: CompanyContext, item: DevicePunchDto, resolve: (tx: Tx) => Promise<{ deviceId: string; f: Facts; source: 'kiosk' | 'mobile'; pin?: { lat: number; lng: number; accuracyM?: number } | null; ip?: string | null; device?: string | null; kioskLocationId?: string }>): Promise<PunchResult> {
+  async punchOnce(c: CompanyContext, item: DevicePunchDto, resolve: (tx: Tx) => Promise<{ deviceId: string; f: Facts; source: 'kiosk' | 'mobile'; pin?: { lat: number; lng: number; accuracyM?: number } | null; wifi?: string | null; ip?: string | null; device?: string | null; kioskLocationId?: string }>): Promise<PunchResult> {
     let deviceId: string | null = null;
     const read = () => this.tenantPrisma.forTenant(c, (tx) => tx.devicePunchReceipt.findUnique({ where: { organizationId_deviceId_clientRef: { organizationId: c.organizationId, deviceId: deviceId!, clientRef: item.clientRef } } }));
     try {
@@ -577,7 +577,7 @@ export class DevicesService {
         const at = new Date(item.punchedAt);
         const problem = punchTimeProblem(at);
         if (problem) throw new BadRequestException(problem);
-        const out = await this.attendance.record(tx, c, r.f, { kind: item.kind, at, source: r.source, pin: r.pin ?? null, ip: r.ip ?? null, device: r.device ?? null, kioskLocationId: r.kioskLocationId });
+        const out = await this.attendance.record(tx, c, r.f, { kind: item.kind, at, source: r.source, pin: r.pin ?? null, wifi: r.wifi ?? null, ip: r.ip ?? null, device: r.device ?? null, kioskLocationId: r.kioskLocationId });
         const result: PunchResult = { accepted: out.accepted, duplicate: out.duplicate, kind: out.kind, at: out.at.toISOString(), verdict: out.verdict, message: out.message, distanceM: out.distanceM, punchId: out.punchId };
         await tx.devicePunchReceipt.create({ data: { organizationId: c.organizationId, deviceId: r.deviceId, clientRef: item.clientRef, punchId: out.duplicate ? null : out.punchId, result: result as unknown as Prisma.InputJsonValue } });
         return result;
@@ -639,7 +639,7 @@ export class DevicesService {
       if (!f) throw new NotFoundException('You had no job assignment on that day. Ask HR to check your record.');
       if ((item.lat === undefined) !== (item.lng === undefined)) throw new BadRequestException('Send both latitude and longitude, or neither.');
       const deviceId = await this.phoneFor(tx, c, f, installId);
-      return { deviceId, f, source: 'mobile' as const, pin: item.lat !== undefined ? { lat: item.lat, lng: item.lng!, accuracyM: item.accuracyM } : null, ip, device: ua };
+      return { deviceId, f, source: 'mobile' as const, pin: item.lat !== undefined ? { lat: item.lat, lng: item.lng!, accuracyM: item.accuracyM } : null, wifi: item.wifi ?? null, ip, device: ua };
     };
   }
 

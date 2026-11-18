@@ -68,8 +68,14 @@ export interface LeaveRules {
   encashAtExit: boolean;
   /** TIM-27 Absence & notice: crediting during a sabbatical or long unpaid leave (null: leave.long_absence.accrues). */
   longAbsence: 'pause' | 'continue' | null;
-  /** Taking this type during the notice period (null: the company's leave.notice_period.leave). */
-  noticePeriod: 'allowed' | 'extends' | 'blocked' | null;
+  /** Taking this type during the notice period (null: the company's leave.notice_period.leave). Answer 2477: or unpaid. */
+  noticePeriod: 'allowed' | 'extends' | 'blocked' | 'unpaid' | null;
+  /** Answer 2477: only these employment types may take it (null: every type). */
+  eligibleEmploymentTypes: string[] | null;
+  /** Answer 2477: months worked since joining before it can be taken (null: from the start). */
+  minMonthsWorked: number | null;
+  /** Answer 2477: during probation (null: the company's leave.probation.leave). */
+  probation: 'allowed' | 'blocked' | null;
 }
 
 export interface PayStep {
@@ -79,7 +85,9 @@ export interface PayStep {
   percent: number;
 }
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null, eligibleEmploymentTypes: null, minMonthsWorked: null, probation: null };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -106,7 +114,10 @@ export function parseRules(input: unknown): LeaveRules {
   if (r.maxDaysPerMonth !== null && r.maxDays !== null && r.maxDays > r.maxDaysPerMonth) throw new BadRequestException(`Most days in one request is more than the monthly limit of ${r.maxDaysPerMonth}. A request that big could never be approved.`);
   if (r.encashDivisor !== null && r.encashDivisor !== 26 && r.encashDivisor !== 30) throw new BadRequestException('The daily rate for cashing in is monthly pay divided by 26 or 30.');
   if (r.longAbsence !== null && r.longAbsence !== 'pause' && r.longAbsence !== 'continue') throw new BadRequestException('Choose whether crediting stops or continues during a long absence.');
-  if (r.noticePeriod !== null && !['allowed', 'extends', 'blocked'].includes(r.noticePeriod)) throw new BadRequestException('Choose what happens to this leave during the notice period.');
+  if (r.noticePeriod !== null && !['allowed', 'extends', 'blocked', 'unpaid'].includes(r.noticePeriod)) throw new BadRequestException('Choose what happens to this leave during the notice period.');
+  if (r.eligibleEmploymentTypes !== null && (!Array.isArray(r.eligibleEmploymentTypes) || !r.eligibleEmploymentTypes.length || r.eligibleEmploymentTypes.length > 50 || r.eligibleEmploymentTypes.some((x) => typeof x !== 'string' || !UUID_RE.test(x)))) throw new BadRequestException('Choose the employment types that may take this leave, or leave it open to every type.');
+  if (r.minMonthsWorked !== null && (!Number.isInteger(r.minMonthsWorked) || r.minMonthsWorked < 1 || r.minMonthsWorked > 120)) throw new BadRequestException('Months worked before it can be taken is 1 to 120.');
+  if (r.probation !== null && r.probation !== 'allowed' && r.probation !== 'blocked') throw new BadRequestException('Choose whether this leave can be taken during probation.');
   if (r.eligibleGenders !== null && (!Array.isArray(r.eligibleGenders) || !r.eligibleGenders.length || r.eligibleGenders.some((g) => !GENDER_VALUES.includes(g)))) throw new BadRequestException('Choose who the leave is for, or leave it open to everyone.');
   if (r.eligibleGenders) r.eligibleGenders = [...new Set(r.eligibleGenders)];
   if (!['leave_year', 'rolling_12_months'].includes(r.payWindow)) throw new BadRequestException('Count earlier days in the leave year or the last 12 months.');
@@ -409,9 +420,11 @@ export interface LocationRule extends DayRule {
   weeklyOffs: WeeklyOffRule[];
   checkIn: 'restricted' | 'field';
   alsoAllowed: string[];
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  reclockIn: boolean;
 }
 
-export const DEFAULT_RULE: LocationRule = { shiftName: 'General', shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted', alsoAllowed: [] };
+export const DEFAULT_RULE: LocationRule = { shiftName: 'General', shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted', alsoAllowed: [], reclockIn: false };
 
 /** Batch A item 9 (D11): the dates marked as working on the location's holiday calendar (its own, else the company's). */
 export async function workingDaysFor(tx: Tx, org: string, locationId: string): Promise<Set<string>> {
@@ -423,7 +436,7 @@ export async function workingDaysFor(tx: Tx, org: string, locationId: string): P
 /** The location's dated rules in force on each date of a range (the latest valid_from on or before the date). */
 export async function rulesFor(tx: Tx, org: string, locationId: string, to: string): Promise<(on: string) => LocationRule> {
   const rows = await tx.locationAttendanceRule.findMany({ where: { organizationId: org, locationId, validFrom: { lte: asDate(to) } }, orderBy: { validFrom: 'desc' } });
-  const list = rows.map((r) => ({ from: iso(r.validFrom), rule: { shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs as unknown as WeeklyOffRule[], checkIn: r.checkIn as LocationRule['checkIn'], alsoAllowed: r.alsoAllowed } }));
+  const list = rows.map((r) => ({ from: iso(r.validFrom), rule: { shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs as unknown as WeeklyOffRule[], checkIn: r.checkIn as LocationRule['checkIn'], alsoAllowed: r.alsoAllowed, reclockIn: r.reclockIn } }));
   return (on: string) => list.find((r) => r.from <= on)?.rule ?? DEFAULT_RULE;
 }
 
@@ -551,4 +564,25 @@ export async function approvedLeaveOfUsers(tx: Tx, org: string, userIds: readonl
       AND d.leave_on BETWEEN ${from}::date AND ${to}::date
     GROUP BY 1, 2`;
   return rows.map((r) => ({ userId: r.userId, on: r.on, part: r.parts.length > 1 || r.parts[0] === 'full' ? 'full' : (r.parts[0] as 'first' | 'second') }));
+}
+
+// ------------------------------------------------------------------------------------------ leave type versions (answer 2477)
+
+/** The leave type with the rules and pay of the version in force on `on` (the type's own copy when it has no version). */
+export async function typeOn<T extends { id: string; rules: Prisma.JsonValue; paid: boolean }>(tx: Tx, org: string, t: T, on: string): Promise<T> {
+  const v = await tx.leaveTypeVersion.findFirst({ where: { organizationId: org, leaveTypeId: t.id, validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' }, select: { rules: true, paid: true } });
+  return v ? { ...t, rules: v.rules, paid: v.paid } : t;
+}
+
+/**
+ * leave_types.rules and .paid are the copy in force today, for the readers that act now (balances, accrual, cash-in).
+ * A version dated ahead reaches the copy when it starts: the accrual run refreshes it.
+ * shortcut: up to the 6-hour accrual interval late on the morning a future version starts; read typeOn where a date matters.
+ */
+export async function refreshTypeCopies(tx: Tx, org: string, today: string): Promise<number> {
+  return tx.$executeRaw`
+    UPDATE leave_types t SET rules = v.rules, paid = v.paid, updated_at = now()
+    FROM (SELECT DISTINCT ON (leave_type_id) leave_type_id, rules, paid FROM leave_type_versions
+          WHERE organization_id = ${org}::uuid AND valid_from <= ${today}::date ORDER BY leave_type_id, valid_from DESC) v
+    WHERE t.organization_id = ${org}::uuid AND t.id = v.leave_type_id AND (t.rules IS DISTINCT FROM v.rules OR t.paid IS DISTINCT FROM v.paid)`;
 }

@@ -458,6 +458,8 @@ export interface ClockCardProps {
   distanceM?: number;
   mode?: 'restricted' | 'field';
   deviceApproved?: boolean;
+  /** Answer 2477: the shift lets people clock in again after clocking out; the card offers "Clock in again". */
+  reclockIn?: boolean;
   /** DeviceNotApproved: HR was already asked to approve this device (the card starts at "Requested"). */
   deviceRequested?: boolean;
   /** Source recorded on a new punch. */
@@ -559,6 +561,7 @@ export function ClockCard(p: ClockCardProps) {
     mode: workMode === 'office' ? mode : 'field',
     deviceApproved,
     outAt,
+    reclockIn: p.reclockIn,
   };
   const evaluated = evaluateClock(ctx);
   const { actions, block: rawBlock } = dayOff ? { actions: [] as ClockAction[], block: null } : evaluated;
@@ -734,7 +737,11 @@ export function ClockCard(p: ClockCardProps) {
         {breaks && (state === 'working' || state === 'break') && (
           <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} loading={punching === 'break_start' || punching === 'break_end'} onClick={() => (breakAct ? act(breakAct) : setHint(blockTitle || 'You cannot take a break right now.'))}>{state === 'break' ? 'End break' : 'Start break'}</Button>
         )}
-        {state === 'out' && <Button size="lg" icon={LogIn} onClick={() => setHint(`You clocked out at ${fmt12(outAt ?? shift.end)}. To change today, regularise it.`)}>Clock in</Button>}
+        {state === 'out' && (p.reclockIn ? (
+          <Button variant="primary" size="lg" icon={LogIn} loading={punching === 'in'} onClick={() => (primary ? act(primary) : setHint(blockTitle || 'You cannot clock in right now.'))}>Clock in again</Button>
+        ) : (
+          <Button size="lg" icon={LogIn} onClick={() => setHint(`You clocked out at ${fmt12(outAt ?? shift.end)}. To change today, regularise it.`)}>Clock in</Button>
+        ))}
         {/* A note goes with the next punch, so it is offered only while a punch can be made (R2: bordered button). */}
         {canNote && !noteOpen && <Button size="lg" icon={StickyNote} onClick={() => setNoteOpen(true)}>{note ? 'Edit note' : 'Add note'}</Button>}
         {state === 'break' && primary !== 'clock_out' && hint !== 'End your break to clock out' && <span className="yx-tim-muted">End your break to clock out</span>}

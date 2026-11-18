@@ -234,7 +234,7 @@ export interface MyAttendance {
   zone: string;
   mode: 'punch' | 'assumed_present' | 'timesheet';
   /** Today's shift from the roster, pattern or location (off: a weekly off today). */
-  shift: { name: string; start: number; end: number; grace: number; checkIn: 'restricted' | 'field'; off?: boolean; /** Check-in opens this many minutes before the start (null: any time). */ opensBefore?: number | null };
+  shift: { name: string; start: number; end: number; grace: number; checkIn: 'restricted' | 'field'; off?: boolean; /** Answer 2477: clocking in again after clocking out is allowed today. */ reclockIn?: boolean; /** Check-in opens this many minutes before the start (null: any time). */ opensBefore?: number | null };
   /** Is this computer on the office network: "outside" blocks clock-in before a punch; "unknown" leaves it to the punch. */
   network?: 'inside' | 'outside' | 'unknown';
   /** The manager who approves work from home. */
@@ -415,7 +415,11 @@ export interface LeaveRules {
   encashAtExit?: boolean;
   /** TIM-27 Absence & notice (null: the company's). */
   longAbsence?: 'pause' | 'continue' | null;
-  noticePeriod?: 'allowed' | 'extends' | 'blocked' | null;
+  noticePeriod?: 'allowed' | 'extends' | 'blocked' | 'unpaid' | null;
+  /** Answer 2477: who may take it (null: everyone), months worked first, and probation (null: the company's). */
+  eligibleEmploymentTypes?: string[] | null;
+  minMonthsWorked?: number | null;
+  probation?: 'allowed' | 'blocked' | null;
 }
 
 /** TIM-27 Statutory: what the law fixes for the type's kind. */
@@ -436,6 +440,8 @@ export interface LeaveTypeRow {
   rules: LeaveRules;
   /** Set by law (maternity; paternity where a state rule applies): those fields can't go below it. */
   statutory?: StatutoryMinimum | null;
+  /** Answer 2477: the dated versions of the rules and pay, newest first. */
+  versions?: { validFrom: string; paid: boolean; rules: LeaveRules }[];
 }
 
 export interface PolicyLine {
@@ -457,6 +463,8 @@ export interface LocationRule {
   graceMinutes: number;
   weeklyOffs: { weekday: number; nth?: number[] }[];
   checkIn: 'restricted' | 'field';
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  reclockIn?: boolean;
   starter?: boolean;
 }
 
@@ -489,11 +497,13 @@ export interface TimeSetup {
   templates?: Record<string, string>;
   /** TIM-28: grades for "Apply to", people per policy today, people no policy covers, the policy order. */
   grades?: { id: string; name: string }[];
+  /** Answer 2477: the company's employment types (leave type eligibility). */
+  employmentTypes?: { id: string; name: string }[];
   coverage?: Record<string, { people: number; overrides: number }>;
   covered?: number;
   uncovered?: { count: number; people: { id: string; name: string; code: string | null; joinedOn: string }[] };
   order?: { current: string[] | null; currentFrom: string | null; upcoming: { validFrom: string; policyIds: string[] } | null };
-  locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; /** TIM-31 Multi: every check-in point. */ points?: GeoPointInput[]; /** Sent back with a points change (409 when someone else changed it first). */ updatedAt?: string; ipRanges: string[]; /** Answers 131, 141: Settings › Locations › Registered factory. */ registeredFactory?: boolean; /** Answer 141: Factories Act coverage here and where it comes from. */ factoriesAct?: FactoriesActCover; rule: LocationRule; upcoming: LocationRule[] }[];
+  locations: { id: string; name: string; state: string; timezone: string; geofence: { lat: number; lng: number; radiusM: number } | null; /** TIM-31 Multi: every check-in point. */ points?: GeoPointInput[]; /** Sent back with a points change (409 when someone else changed it first). */ updatedAt?: string; ipRanges: string[]; /** Answer 2477: office Wi-Fi names the phone app reports. */ wifiNames?: string[]; /** Answers 131, 141: Settings › Locations › Registered factory. */ registeredFactory?: boolean; /** Answer 141: Factories Act coverage here and where it comes from. */ factoriesAct?: FactoriesActCover; rule: LocationRule; upcoming: LocationRule[] }[];
   entities: { id: string; name: string }[];
   /** Founder decision 2: days' notice for a leave type without its own number (company setting; sick leave 0). */
   noticeDefault?: number;
@@ -619,6 +629,8 @@ export interface ShiftRow {
   colour: string;
   night: boolean;
   active: boolean;
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  reclockIn?: boolean;
   /** Fixed when absent; never changes once saved. */
   kind?: ShiftKind;
   versions: ShiftVersionRow[];
@@ -693,6 +705,8 @@ export interface ShiftInput {
   otAfterMinutes?: number | null;
   firstEnd?: number | null;
   secondStart?: number | null;
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  reclockIn?: boolean;
 }
 
 export type OtCategory = 'normal' | 'weekly_off' | 'holiday';

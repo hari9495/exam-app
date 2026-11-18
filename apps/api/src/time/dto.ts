@@ -260,13 +260,16 @@ export class PunchDto {
   note?: string;
 }
 
+/** Answer 2477: attendance fixes and work from home need a real reason; the approver sees it ("Why"). */
+const REASON_10 = 'Please say why, in at least 10 characters, so your manager can check it.';
+
 export class WfhDto {
   @IsDateString(DATE)
   on!: string;
 
   @trim()
   @IsString()
-  @MinLength(1)
+  @MinLength(10, { message: REASON_10 })
   @MaxLength(500)
   reason!: string;
 }
@@ -347,7 +350,7 @@ export class RegulariseDto {
 
   @trim()
   @IsString()
-  @MinLength(1)
+  @MinLength(10, { message: REASON_10 })
   @MaxLength(500)
   reason!: string;
 }
@@ -378,6 +381,11 @@ export class LeaveTypeDto {
   @IsOptional()
   @IsObject()
   rules?: Record<string, unknown>;
+
+  /** Answer 2477: a change to the rules or pay applies from this date (today or later; absent: today). */
+  @IsOptional()
+  @IsDateString(DATE)
+  validFrom?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -530,6 +538,11 @@ export class AttendanceRuleDto {
 
   @IsIn(['restricted', 'field'])
   checkIn!: 'restricted' | 'field';
+
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class YearEndDto {
@@ -653,6 +666,11 @@ export class ShiftDto extends ShiftTimesDto {
 
   @IsBoolean()
   night!: boolean;
+
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class ShiftDetailsDto {
@@ -670,6 +688,11 @@ export class ShiftDetailsDto {
 
   @IsBoolean()
   active!: boolean;
+
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class PatternDto {
@@ -1097,4 +1120,13 @@ export class NetworksDto {
   @IsString({ each: true })
   @MaxLength(43, { each: true })
   ipRanges!: string[];
+
+  /** Answer 2477: the office Wi-Fi names the phone app reports (absent keeps them). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(32, { each: true, message: 'A Wi-Fi name is at most 32 characters.' })
+  wifiNames?: string[];
 }

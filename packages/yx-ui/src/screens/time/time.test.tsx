@@ -55,6 +55,10 @@ describe('clock-in policy (M02 §B1)', () => {
     expect(r.block?.message).toContain('6:41 pm');
     expect(r.block?.options).toEqual(['regularise']);
   });
+  it('answer 2477: clocked out where clocking in again is allowed: clock in again, the place still checked', () => {
+    expect(evaluateClock(ctx({ state: 'out', outAt: '18:41', reclockIn: true }))).toEqual({ actions: ['clock_in'], block: null });
+    expect(evaluateClock(ctx({ state: 'out', outAt: '18:41', reclockIn: true, inside: false })).block?.code).toBe('outside');
+  });
   it('blocks an unapproved device before anything else', () => {
     expect(evaluateClock(ctx({ deviceApproved: false, inside: false })).block?.code).toBe('device');
   });

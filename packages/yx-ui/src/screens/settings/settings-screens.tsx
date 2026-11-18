@@ -889,7 +889,7 @@ function SettingsForm({
         open={confirmSensitive}
         onOpenChange={setConfirmSensitive}
         title="Save this high-impact change?"
-        consequence={`${defs.filter((d) => d.sensitive && changed.includes(d.key)).map((d) => d.label).join(', ')} affects everyone in the company. You'll be asked to confirm it's you, and the change is audited.`}
+        consequence={`${defs.filter((d) => d.sensitive && changed.includes(d.key)).map((d) => d.label).join(', ')} is a high-impact change: it can stop people clocking in or change their pay. You'll be asked to confirm it's you, and the change is audited.`}
         confirmLabel="Confirm and save"
         onConfirm={doSave}
       />

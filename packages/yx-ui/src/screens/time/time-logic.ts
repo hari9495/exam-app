@@ -41,6 +41,8 @@ export interface ClockContext {
   deviceApproved: boolean;
   /** When already clocked out, the time, "18:41". */
   outAt?: string;
+  /** Answer 2477: the shift lets people clock in again after clocking out (off by default). */
+  reclockIn?: boolean;
 }
 
 export interface ClockBlock {
@@ -59,6 +61,8 @@ export function fmt12(hhmm: string) {
 
 /** Which buttons are live and, if clocking in or out is refused, the plain reason (M02 §B1, YX-AT-23, YX-MOB-05/08/18). */
 export function evaluateClock(c: ClockContext): { actions: ClockAction[]; block: ClockBlock | null } {
+  // Answer 2477: clocked out on a shift that allows it: clocking in again is checked like the first clock-in (place, device).
+  if (c.state === 'out' && c.reclockIn) return evaluateClock({ ...c, state: 'not_in', shift: { ...c.shift, opensBeforeMin: 1440 } });
   if (c.state === 'out')
     return {
       actions: [],

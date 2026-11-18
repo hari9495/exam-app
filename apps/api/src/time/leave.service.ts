@@ -30,11 +30,14 @@ import {
   num,
   policyOn,
   settingOn,
+  parseRules,
   statutoryOn,
+  typeOn,
+  refreshTypeCopies,
   todayIn,
   visibleSql,
 } from './time-core';
-import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, ceilingLapses, countLeaveDays, daysBetween } from './time-maths';
+import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, ceilingLapses, countLeaveDays, daysBetween, localDate } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
 import { MaternityCase, daysWorked, eligibilityWindow, maternityChecks } from './time-rules';
 import { BLOCK_DATE_EXEMPT, blockDateStops, creditsDuringAbsence, encashAmount, encashTerms, yearEndWithEncash, monthLimitOver, monthName, noticePeriodMode, statutoryProblem, factoriesElEligible, lastDayAfterLeave, noticeDaysFor, noticeText, optionalLimitAfterMove, probationAllows } from './leave-rules';
@@ -95,7 +98,7 @@ export interface Plan {
   /** Leave v2: company block dates the leave touches (blocked or warned by leave.block_dates.mode). */
   blockDates: { from: string; to: string; reason: string }[];
   /** Leave v2: on notice, the last working day now and after this leave (leave.notice_period.leave). */
-  notice: { lastDay: string; newLastDay: string } | null;
+  notice: { lastDay: string; newLastDay: string; unpaid?: boolean } | null;
   /** Leave v2: shorter notice than the type asks (the type's noticeMode says block or warn). */
   shortNotice: boolean;
   /** Founder decision 2: the notice this type asks for (its own, or the company default; sick leave 0). */
@@ -103,6 +106,13 @@ export interface Plan {
   /** HR applied for someone with shorter notice and the company skips notice then (audited). */
   noticeSkipped: boolean;
 }
+
+/** The same day `n` months after `on` (the month's last day when it is shorter). */
+const addMonths = (on: string, n: number) => {
+  const y = Number(on.slice(0, 4)), m = Number(on.slice(5, 7)) - 1 + n, d = Number(on.slice(8, 10));
+  const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m, Math.min(d, last))).toISOString().slice(0, 10);
+};
 
 @Injectable()
 export class LeaveService implements OnModuleInit {
@@ -202,9 +212,11 @@ export class LeaveService implements OnModuleInit {
 
   private async plan(tx: Tx, c: CompanyContext, f: Facts, dto: LeavePlanDto, today: string): Promise<Plan> {
     const org = c.organizationId;
-    const t = await tx.leaveType.findFirst({ where: { organizationId: org, id: dto.leaveTypeId, active: true } });
-    if (!t) throw new NotFoundException('No such leave type.');
-    const rules = t.rules as unknown as LeaveRules;
+    const found = await tx.leaveType.findFirst({ where: { organizationId: org, id: dto.leaveTypeId, active: true } });
+    if (!found) throw new NotFoundException('No such leave type.');
+    // Answer 2477: the leave follows the type's version in force on its first day.
+    const t = await typeOn(tx, org, found, dto.from);
+    const rules = parseRules(t.rules);
     const fromHalf = dto.fromHalf ?? 'full';
     const toHalf = dto.toHalf ?? 'full';
     const blocks: string[] = [];
@@ -331,7 +343,9 @@ export class LeaveService implements OnModuleInit {
       SELECT p.planned_end_on::text AS end FROM probations p
       JOIN employee_assignments a ON a.organization_id = p.organization_id AND a.employment_id = p.employment_id AND a.employee_id = ${f.employeeId}::uuid AND a.superseded_at IS NULL
       WHERE p.organization_id = ${org}::uuid AND p.planned_end_on >= ${dto.from}::date LIMIT 1`;
-    if (prob && !override) {
+    const ownProbation = parseRules(t.rules).probation;
+    if (prob && !override && ownProbation === 'blocked') blocks.push(`You are on probation until ${fmt(prob.end)}. ${t.name} can't be taken until then.`);
+    else if (prob && !override && ownProbation !== 'allowed') {
       const mode = await setting('leave.probation.leave');
       if (!probationAllows(mode, t.kind)) blocks.push(`You are on probation until ${fmt(prob.end)}. ${mode === 'unpaid_only' ? 'Only unpaid leave' : 'Only casual, sick and unpaid leave'} can be taken until then.`);
     }
@@ -342,11 +356,15 @@ export class LeaveService implements OnModuleInit {
       WHERE organization_id = ${org}::uuid AND employee_id = ${f.employeeId}::uuid AND status IN ('submitted', 'accepted') ORDER BY submitted_on DESC LIMIT 1`;
     if (exit && dto.to >= today) {
       // TIM-27 Absence & notice: the type's own choice, else the company's.
-      const mode = noticePeriodMode((t.rules as unknown as LeaveRules).noticePeriod, await setting('leave.notice_period.leave'));
+      const mode = noticePeriodMode(parseRules(t.rules).noticePeriod, await setting('leave.notice_period.leave'));
       if (dto.to > exit.lwd) blocks.push(`Your last working day is ${fmt(exit.lwd)}. Leave can't go past it.`);
       else if (mode === 'blocked') blocks.push(`${t.name} can't be taken during the notice period. Ask HR if you need leave before ${fmt(exit.lwd)}.`);
       else if (mode === 'sick_and_unpaid_only' && !BLOCK_DATE_EXEMPT.includes(t.kind)) blocks.push('During your notice period only sick and unpaid leave can be taken. Ask HR if you need other leave.');
-      else {
+      else if (mode === 'unpaid') {
+        // Answer 2477: allowed, but unpaid; the last working day stays.
+        notice = { lastDay: exit.lwd, newLastDay: exit.lwd, unpaid: true };
+        warnings.push(`You are on notice. ${t.name} taken now is unpaid. Your last working day stays ${fmt(exit.lwd)}.`);
+      } else {
         notice = { lastDay: exit.lwd, newLastDay: lastDayAfterLeave(mode, exit.lwd, total) };
         warnings.push(notice.newLastDay === exit.lwd ? `You are on notice. Your last working day stays ${fmt(exit.lwd)}.` : `You are on notice. This leave moves your last working day from ${fmt(exit.lwd)} to ${fmt(notice.newLastDay)} once HR confirms it.`);
       }
@@ -375,6 +393,15 @@ export class LeaveService implements OnModuleInit {
     if (rules.eligibleGenders?.length && !override) {
       const pd = await tx.employeePersonalDetails.findFirst({ where: { organizationId: org, employeeId: f.employeeId }, select: { gender: true } });
       if (!pd?.gender || !rules.eligibleGenders.includes(pd.gender)) out.push(`${t.name} is not available to you under the leave policy${pd?.gender ? '' : ' (no gender is recorded on your profile)'}. Ask HR if this is wrong.`);
+    }
+    // Answer 2477: who may take it, from the version in force on the first day; HR's override lets one person through.
+    if (rules.eligibleEmploymentTypes?.length && !override && !rules.eligibleEmploymentTypes.includes(f.employmentTypeId)) {
+      const et = await tx.employmentType.findFirst({ where: { organizationId: org, id: f.employmentTypeId }, select: { name: true } });
+      out.push(`${t.name} is not available to ${et?.name ?? 'your'} employees under the leave policy. Ask HR if this is wrong.`);
+    }
+    if (rules.minMonthsWorked && !override) {
+      const from = addMonths(f.joinedOn, rules.minMonthsWorked);
+      if (dto.from < from) out.push(`${t.name} can be taken after ${rules.minMonthsWorked} ${rules.minMonthsWorked === 1 ? 'month' : 'months'} of work, from ${fmt(from)}.`);
     }
     if (t.kind !== 'maternity') return out;
     if (!dto.expectedOn || !dto.maternityCase) return [...out, 'Give the expected date of delivery (or of the event) and the kind of maternity leave.'];
@@ -643,6 +670,7 @@ export class LeaveService implements OnModuleInit {
           fromHalf: dto.fromHalf ?? 'full',
           toHalf: dto.toHalf ?? 'full',
           days: p.total,
+          unpaidInNotice: Boolean(p.notice?.unpaid),
           reason,
           certificate: p.certificateNeeded || dto.certificate ? 'pending' : 'none',
           delegateUserId: dto.delegateUserId ?? null,
@@ -1352,6 +1380,11 @@ export class LeaveService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ jobs
 
   /** Monthly / yearly credits due by today for every employee of the company (idempotent by period key). */
+  /** Answer 2477: a leave type version dated ahead reaches the type's copy in force when its day comes (run with accrual). */
+  refreshTypeCopies(org: string, now = new Date()): Promise<number> {
+    return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, (tx) => refreshTypeCopies(tx, org, localDate(now, 'Asia/Kolkata')));
+  }
+
   async accrue(org: string, now = new Date()): Promise<number> {
     const c: CompanyContext = { organizationId: org, isSuperAdmin: false };
     return this.tenantPrisma.forTenant(c, async (tx) => {
