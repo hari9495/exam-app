@@ -1,22 +1,17 @@
 import { roleToLandingPath } from './staff-routing';
+import { staffLandingPath } from './staff-landing';
 
-describe('roleToLandingPath', () => {
-  it('routes super_admin to /v2/organizations', () => {
-    expect(roleToLandingPath('super_admin')).toBe('/v2/organizations');
+describe('roleToLandingPath (decision 2398: no role lands on /v2)', () => {
+  it('routes super_admin to the platform console', () => {
+    expect(roleToLandingPath('super_admin')).toBe('/staff/companies');
   });
-  it('routes org_admin to /v2/users', () => {
-    expect(roleToLandingPath('org_admin')).toBe('/v2/users');
+  it.each(['org_admin', 'panel', 'auditor', 'recruiter', 'hiring_manager', undefined])('routes %s to the YukthiX Home', (role) => {
+    expect(roleToLandingPath(role)).toBe('/yx/home');
   });
-  it('routes panel to /v2/panel/reports', () => {
-    expect(roleToLandingPath('panel')).toBe('/v2/panel/reports');
-  });
-  it('routes auditor to /v2/reports', () => {
-    expect(roleToLandingPath('auditor')).toBe('/v2/reports');
-  });
-  it('routes recruiter (default) to /v2/today', () => {
-    expect(roleToLandingPath('recruiter')).toBe('/v2/today');
-  });
-  it('routes unknown/undefined to /v2/today', () => {
-    expect(roleToLandingPath(undefined)).toBe('/v2/today');
+  it('staffLandingPath (impersonation, return-to-admin) agrees, and never names /v2', () => {
+    for (const role of ['super_admin', 'org_admin', 'panel', 'auditor', 'recruiter', null, undefined]) {
+      expect(staffLandingPath(role)).toBe(roleToLandingPath(role ?? undefined));
+      expect(staffLandingPath(role)).not.toMatch(/^\/v2/);
+    }
   });
 });

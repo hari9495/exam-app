@@ -23188,5 +23188,25 @@
       "Recycle bin · restore refused (name taken)"
     ],
     "note": "Positive and negative (e2e: recycle-bin-wave2.e2e-spec.ts, projects-p6.e2e-spec.ts). Children kept: group members; survey responses; billing draft lines, billing rows and reminders. Restoring a group does not re-assign candidates that were assigned to it. Custom fields (archived), visitor entries, draft expense claims and trips have no hard delete, so nothing to bin (2439)."
+  },
+  {
+    "id": "MT-V2-START",
+    "area": "Retire /v2 step 4: invitation link and session ended in the kit (decision 2398, 18 Nov 2026)",
+    "screen": "Candidate › /start and /session-ended",
+    "url": "http://localhost:3000/start?token=<from an invitation email>",
+    "account": "A test candidate invited to a test from Hire › Assessments › Invitations (Mailpit shows the email).",
+    "steps": [
+      "Open the invitation link from the email.",
+      "Open the same link again in a private window after finishing the test (or after the invitation is revoked).",
+      "Open http://localhost:3000/start with no token.",
+      "Stop the API, open the link, then start the API and press Retry.",
+      "Open the test in one tab, then open the same link in a second browser; go back to the first tab.",
+      "Open http://localhost:3000/session-ended on a phone-width window."
+    ],
+    "expected": "Step 1: 'Checking your invitation' with a spinner, then the welcome page. Step 2: 'We can't open this invitation' with the reason; no Retry button. Step 3: the same, 'This invitation link is missing a token.'; no Retry. Step 4: the reason and a Retry button; Retry opens the welcome page. Step 5: the first tab shows 'Your session has ended' and says to use the link in the invitation email again. Step 6: same text, no sideways scroll. No company name or other person's name is shown on these pages. No page scroll at 1278 x 635.",
+    "stories": [
+      "Screens/Proctoring/Extra · Invitation link and session ended"
+    ],
+    "note": "Positive and negative. Kit: CandidateLinkScreen (candidate-link.test.tsx); web: start and session-ended page tests."
   }
 ]
