@@ -26,9 +26,9 @@ import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { DueBadge, Kpis, NoRecordState, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
-import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
+import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TEAM, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
-import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, RevokeKioskDialog, RevokedKiosksTable, ShowRevoked, type RevokedKiosk, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
@@ -1215,7 +1215,7 @@ export interface LivePayrollFeed extends LiveReportBase {
   entityId: string | null;
   onEntity: (id: string) => void;
 }
-export type LiveReports = LiveRegisters | LivePayrollFeed | LiveAttendanceReport | LiveNightRegister;
+export type LiveReports = LiveRegisters | LivePayrollFeed | LiveAttendanceReport | LiveNightRegister | LiveHoursReport;
 
 const STATE_TEXT: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
 const MODE_LABEL: Record<string, string> = { punch: 'Check in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' };
@@ -1329,13 +1329,19 @@ function LiveReportsScreen({ live }: { live: LiveRegisters | LivePayrollFeed }) 
 export interface LiveAttendanceReport extends LiveReportBase {
   report: 'late' | 'ot';
   data: AttendanceReport | null;
-  onReport: (report: 'late' | 'ot' | 'night') => void;
+  onReport: (report: 'late' | 'ot' | 'night' | 'hours') => void;
+}
+/** Batch C item 16: Short hours and Breaks (a manager's team by person; HR's scope by person too). */
+export interface LiveHoursReport extends LiveReportBase {
+  report: 'hours';
+  data: HoursReport | null;
+  onReport: (report: 'late' | 'ot' | 'night' | 'hours') => void;
 }
 /** HR only: women who worked a night shift in the month, with their consent on file (OSH Code / Factories Act). */
 export interface LiveNightRegister extends LiveReportBase {
   report: 'night';
   data: NightRegister | null;
-  onReport: (report: 'late' | 'ot' | 'night') => void;
+  onReport: (report: 'late' | 'ot' | 'night' | 'hours') => void;
 }
 type ReportRow = { id: string; label: string; loc: string; late: number; early: number; ot: number; lop: number };
 
@@ -1347,12 +1353,51 @@ function saveCsv(name: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(a.href);
 }
 
-function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNightRegister }) {
+/**
+ * Batch C item 16 (answers 2507, 2508): Short hours (worked days short of the shift, in the company's bands) and Breaks
+ * (frequent-break days: more breaks than the company's number, or its minutes). Where clock-in-again is off, the row says
+ * breaks are not recorded instead of showing zero.
+ */
+export function HoursReportCard({ data, month, state, onRetry, onExport }: { data: HoursReport | null; month: string; state: ReturnType<typeof liveTable>; onRetry?: () => void; onExport: () => void }) {
+  const rows = data?.rows ?? [];
+  const b = rows[0]?.bands ?? [4, 6, 8];
+  const lim = rows[0]?.limit ?? { count: 3, minutes: 60 };
+  const notRecorded = rows.filter((r) => !r.breaksRecorded).length;
+  type Row = HoursReport['rows'][number];
+  const muted = (r: Row, v: number | null) => (r.breaksRecorded ? v ?? 0 : null);
+  const cols: TableColumn<Row>[] = [
+    { key: 'name', header: 'Employee', type: 'person', width: 220, value: (x) => x.name, person: (x) => ({ name: x.name, secondary: [x.dept, x.location].filter(Boolean).join(' · ') }) },
+    { key: 'b1', header: `Under ${b[0]} h`, type: 'number', value: (x) => x.short.b1, total: 'sum' },
+    { key: 'b2', header: `${b[0]}–${b[1]} h`, type: 'number', value: (x) => x.short.b2, total: 'sum' },
+    { key: 'b3', header: `${b[1]}–${b[2]} h`, type: 'number', value: (x) => x.short.b3, total: 'sum' },
+    { key: 'freq', header: 'Frequent-break days', value: (x) => muted(x, x.frequentBreakDays) ?? -1, render: (x) => (x.breaksRecorded ? String(x.frequentBreakDays ?? 0) : <span className="yx-tim-muted">Breaks not recorded</span>) },
+    { key: 'breaks', header: 'Breaks', type: 'number', value: (x) => muted(x, x.breaks) ?? 0, optional: true },
+    { key: 'mins', header: 'Break time (h)', type: 'number', value: (x) => (x.breaksRecorded ? hoursOf(x.breakMinutes ?? 0) : 0), optional: true },
+  ];
+  return (
+    <Card title={`Short hours and breaks · ${monthText(month)}`}>
+      <div className="yx-tim-stack">
+        <p className="yx-tim-muted">
+          Days worked short of the shift, by hours worked: under {b[0]} h, {b[0]}–{b[1]} h and {b[1]}–{b[2]} h. A frequent-break day has more than {lim.count} breaks or {lim.minutes} minutes of breaks. Your company sets these in Settings › Time.
+        </p>
+        {notRecorded > 0 && (
+          <InlineAlert tone="info" title={`Breaks are not recorded for ${notRecorded === rows.length ? 'anyone here' : plural(notRecorded, 'person', 'people')}`}>
+            Their shifts do not let people clock in again after clocking out, so their breaks are not recorded. Turn on clock-in-again for the shift to see them.
+          </InlineAlert>
+        )}
+        <DataTable label="Short hours and breaks" columns={cols} rows={rows} getRowId={(x) => x.id} state={state} onRetry={onRetry} exportFormats={['csv']} onExport={onExport} empty={<EmptyState compact title="No short days or breaks this month" description="Days worked short of the shift appear here." />} />
+      </div>
+    </Card>
+  );
+}
+
+function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNightRegister | LiveHoursReport }) {
   const { toast } = useToast();
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const night = live.report === 'night';
-  const rep = live.report !== 'night' ? live : null;
-  const mgr = rep?.data?.scope === 'team';
+  const hours = live.report === 'hours' ? live : null;
+  const rep = live.report === 'late' || live.report === 'ot' ? live : null;
+  const mgr = (rep?.data ?? hours?.data)?.scope === 'team';
   const isOt = live.report === 'ot';
   // HR adds people up by department and site; a manager sees each person.
   const rows: ReportRow[] = !rep?.data
@@ -1402,10 +1447,11 @@ function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNigh
   ];
   const stage = (live.data as { stage?: string | null } | null)?.stage;
   const draft = stage !== 'locked' && stage !== 'filed';
-  const reportName = night ? 'Register of women night-shift workers' : isOt ? 'Overtime' : 'Late and early';
+  const reportName = night ? 'Register of women night-shift workers' : hours ? 'Short hours and breaks' : isOt ? 'Overtime' : 'Late and early';
   const exportRows = (fmt: 'csv' | 'xlsx') => {
     const file = `${reportName} · ${monthText(live.month)}.csv`;
     if (night) saveCsv(file, [['Worker', 'Code', 'Night shifts', 'Night hours', 'Consent', 'Given', 'Withdrawn'], ...nightRows.map((x) => [x.name, x.code ?? '', x.shifts, hoursOf(x.nightMinutes), x.consent?.reference ?? 'None', x.consent?.givenOn ?? '', x.consent?.withdrawnOn ?? ''])]);
+    else if (hours) saveCsv(file, [['Employee', 'Code', 'Department', 'Location', 'Short band 1', 'Short band 2', 'Short band 3', 'Frequent-break days', 'Breaks', 'Break minutes'], ...(hours.data?.rows ?? []).map((x) => [x.name, x.code ?? '', x.dept, x.location, x.short.b1, x.short.b2, x.short.b3, x.breaksRecorded ? x.frequentBreakDays ?? 0 : 'Not recorded', x.breaksRecorded ? x.breaks ?? 0 : 'Not recorded', x.breaksRecorded ? x.breakMinutes ?? 0 : 'Not recorded'])]);
     else saveCsv(file, [[mgr ? 'Employee' : 'Department', 'Location', 'Late marks', 'Early exits', 'Overtime hours', 'Unpaid days'], ...shown.map((x) => [x.label, x.loc, x.late, x.early, x.ot, x.lop])]);
     toast({ tone: 'success', title: `${file} downloaded.${draft ? ' Draft: the month is not locked yet.' : ''}${fmt === 'xlsx' ? ' Saved as CSV, which Excel opens.' : ''}` });
   };
@@ -1418,13 +1464,15 @@ function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNigh
         facts={<span className="yx-tim-row"><span>{monthText(live.month)}{rep?.data && draft ? ` · up to ${isoDate(rep.data.upTo)}` : ''}</span>{stage ? <Badge tone={draft ? 'warning' : 'neutral'}>{draft ? 'Not locked' : 'Locked'}</Badge> : null}</span>}
         actions={
           <div className="yx-tim-row">
-            <div className="yx-tim-picker"><Select aria-label="Report" value={live.report} onChange={(v) => v && live.onReport(v as 'late' | 'ot' | 'night')} options={[{ value: 'late', label: 'Late and early' }, { value: 'ot', label: 'Overtime' }, ...(mgr ? [] : [{ value: 'night', label: 'Register of women night-shift workers' }])]} /></div>
+            <div className="yx-tim-picker"><Select aria-label="Report" value={live.report} onChange={(v) => v && live.onReport(v as 'late' | 'ot' | 'night' | 'hours')} options={[{ value: 'late', label: 'Late and early' }, { value: 'ot', label: 'Overtime' }, { value: 'hours', label: 'Short hours and breaks' }, ...(mgr ? [] : [{ value: 'night', label: 'Register of women night-shift workers' }])]} /></div>
             <div className="yx-tim-picker"><Select aria-label="Month" value={live.month} onChange={(v) => v && live.onMonth(v)} options={monthOptions(live.month)} /></div>
           </div>
         }
       />
       {live.state === 'no-access' ? (
         <LiveGate state="no-access" what={night ? 'the night-shift register' : 'attendance reports'} />
+      ) : hours ? (
+        <HoursReportCard data={hours.data} month={live.month} state={tableState} onRetry={live.onRetry} onExport={() => exportRows('csv')} />
       ) : night ? (
         <Card title={`Register of women night-shift workers · ${monthText(live.month)}`}>
           <div className="yx-tim-stack">
@@ -1470,9 +1518,30 @@ function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNigh
   );
 }
 
-export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready', live }: { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState; /** The live app's /time/registers or /time/payroll-feed. */ live?: LiveReports }) {
+export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready', live }: { report?: 'late' | 'ot' | 'form25' | 'night' | 'hours'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState; /** The live app's /time/registers or /time/payroll-feed. */ live?: LiveReports }) {
   if (live) return live.report === 'registers' || live.report === 'feed' ? <LiveReportsScreen live={live} /> : <LiveTimeReportsScreen live={live} />;
+  if (report === 'hours') return <SampleHoursReport persona={persona} />;
   return <SampleAttendanceReports report={report} persona={persona} month={startMonth} filters={startFilters} state={state} />;
+}
+
+/** Batch C item 16 (design): September 2026, the manager's team; the Hosur plant's shift has clock-in-again off. */
+function SampleHoursReport({ persona }: { persona: 'hr' | 'manager' }) {
+  const people = persona === 'manager' ? myReports() : TEAM;
+  const data: HoursReport = {
+    month: '2026-09',
+    upTo: '2026-09-30',
+    scope: persona === 'manager' ? 'team' : 'company',
+    rows: people.map((p, i) => {
+      const recorded = !p.location.includes('Hosur');
+      return { id: p.id, name: p.name, code: p.code, dept: p.dept, location: p.location, short: { b1: i % 4 === 1 ? 1 : 0, b2: i % 3, b3: (i * 2) % 5 }, breaksRecorded: recorded, breaks: recorded ? 18 + i * 3 : null, breakMinutes: recorded ? 400 + i * 35 : null, frequentBreakDays: recorded ? i % 4 : null, bands: [4, 6, 8], limit: { count: 3, minutes: 60 } };
+    }),
+  };
+  return (
+    <TimePage active="Reports">
+      <PageHeader title={persona === 'manager' ? 'My team · attendance' : 'Attendance reports'} description="Short hours and breaks" facts="September 2026" />
+      <HoursReportCard data={data} month="2026-09" state="ready" onExport={() => undefined} />
+    </TimePage>
+  );
 }
 
 function SampleAttendanceReports({ report, persona, month: startMonth, filters: startFilters, state }: { report: 'late' | 'ot' | 'form25' | 'night'; persona: 'hr' | 'manager'; month: Month; filters: FilterValue[]; state: ViewState }) {

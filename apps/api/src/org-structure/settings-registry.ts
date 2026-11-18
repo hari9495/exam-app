@@ -697,6 +697,13 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // valid_from and apply from that month only).
   'attendance.late_marks_free': { label: 'Late marks a month without a deduction', scopes: ['employee', 'tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6'], default: '3' },
   'attendance.late_mark_penalty': { label: 'Each late mark over the free ones costs (days of pay)', scopes: ['employee', 'tenant', 'legal_entity', 'location'], dated: false, values: ['0', '0.5', '1'], default: '0' },
+  // Batch C item 16 (answers 2507, 2508): the Short hours and Breaks reports. Bands of worked time on days short of
+  // the shift (default under 4 h, 4-6 h, 6-8 h), and what counts as frequent breaks (more than 3, or 60+ minutes a day).
+  'attendance.short_hours.band1': { label: 'Short day: the shortest band is worked time under (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['2', '3', '4', '5'], default: '4' },
+  'attendance.short_hours.band2': { label: 'Short day: the middle band ends at (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['5', '6', '7'], default: '6' },
+  'attendance.short_hours.band3': { label: 'Short day: the longest band ends at (hours; a full day from here)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['7', '8', '9'], default: '8' },
+  'attendance.frequent_breaks.count': { label: 'Frequent breaks: more breaks than this in a day', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['2', '3', '4', '5', '6'], default: '3' },
+  'attendance.frequent_breaks.minutes': { label: 'Frequent breaks: or breaks adding up to at least (minutes a day)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['30', '45', '60', '90', '120'], default: '60' },
   // TIM-36: presence-based attendance on work-from-home days (desktop app / Teams presence), only with each person's consent.
   'attendance.presence': { label: 'Presence-based attendance on work-from-home days', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'attendance.factories_act': {

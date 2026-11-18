@@ -422,3 +422,8 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2522: a moved template is switched on with its preview counted as seen by the system (the database requires a preview before "on"); a name HR already uses in Letters waits as a draft. Suggested answer: keep it, so offers keep their company text the day it moves.
 - 2523: the 6.1 Hiring e-sign switches now change the Letters offer templates' "person signs", under the hiring settings key (not letter.template.manage). Suggested answer: keep it until the issue step, then move the switch to Letters only.
 - 2524: until offers are issued as P05 letters, the offer email is made from the letter's text; letter fields other than the eight offer ones (and sections) drop out of the email. Suggested answer: accept; the next step issues the real letter.
+
+**Builder questions (batch C items 15, 6 and 16, 18 Nov 2026), each with the default built:**
+- 2527: answer 2505 says a manager can only ask for a late-mark waiver. No "ask HR to waive" flow is built yet; managers do not see Late marks. Suggested answer: add a small request (the manager picks the days and a reason, HR waives from the same Late marks list) in a later batch.
+- 2528: a team calendar dot counts a day as "worked from home" by the company's mixed-day place rule (the same one My attendance uses), not by an approved work-from-home request. Suggested answer: keep it; a day with an approved request and no remote punch shows as present.
+- 2529: the Short hours report measures a half day against half the shift, and a day above the last band (for example 8.5 h of a 9 h shift) is in no band. Suggested answer: keep both.

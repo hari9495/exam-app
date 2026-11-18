@@ -1,19 +1,23 @@
 'use client';
 
 import { useState } from 'react';
-import { AttendanceReportsScreen, type AttendanceReport, type NightRegister } from '@yukthix/ui/time';
+import { AttendanceReportsScreen, type AttendanceReport, type HoursReport, type NightRegister } from '@yukthix/ui/time';
 import { lastMonth, timeState, useTime } from '../../../../../lib/yx-time';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
 // Team / HR › Attendance reports (TIM-16): late marks and early exits, and overtime, for a manager's team (by person)
-// or HR's scope (by department and site); the register of women night-shift workers for HR (attendance.view).
+// or HR's scope (by department and site); the register of women night-shift workers for HR (attendance.view); short hours
+// and breaks (batch C item 16).
 export default function YxAttendanceReportsPage() {
   const { entity } = useScopeParams();
-  const [report, setReport] = useState<'late' | 'ot' | 'night'>('late');
+  const [report, setReport] = useState<'late' | 'ot' | 'night' | 'hours'>('late');
   const [month, setMonth] = useState(lastMonth());
-  const rows = useTime<AttendanceReport>(report === 'night' ? null : withParams(`/reports/attendance?month=${month}`, entity));
+  const rows = useTime<AttendanceReport>(report === 'night' || report === 'hours' ? null : withParams(`/reports/attendance?month=${month}`, entity));
+  // Batch C item 16: Short hours and Breaks.
+  const hours = useTime<HoursReport>(report === 'hours' ? withParams(`/reports/hours?month=${month}`, entity) : null);
   const night = useTime<NightRegister>(report === 'night' ? withParams(`/reports/night?month=${month}`, entity) : null);
   const base = { month, onMonth: setMonth, onReport: setReport };
+  if (report === 'hours') return <AttendanceReportsScreen live={{ ...base, report, state: timeState(hours), onRetry: () => void hours.refetch(), data: hours.data ?? null }} />;
   return report === 'night' ? (
     <AttendanceReportsScreen live={{ ...base, report, state: timeState(night), onRetry: () => void night.refetch(), data: night.data ?? null }} />
   ) : (

@@ -27378,5 +27378,27 @@
                               "Screens/Time/TIM-11 · Periods · Late marks · locked month (read only)"
                     ],
                     "note": "Positive and negative (kit time-ops-live.test.tsx: waive, reason under 10 refused, undo, locked read only; API time-ops.e2e: list, manager/HR exec 403, other company 404, short reason, empty list, day outside the month 400, no late mark skipped, repeat skipped, feed LOP drops and returns on undo, day card shows waived, audited, locked month 409 for waive and undo, never deleted). New table late_mark_waivers (migration 202617z0000533, RLS + support-session excluded, in rls-isolation). Answer 2505 'a manager can only ask': no manager request flow built yet (question 2527)."
+          },
+          {
+                    "id": "MT-C16-SHORT-HOURS",
+                    "area": "Batch C item 16: Short hours and Breaks reports (answers 2507, 2508, 18 Nov 2026)",
+                    "screen": "Time › Reports (TIM-16) › Short hours and breaks; Settings › Time 3.5",
+                    "url": "http://localhost:3000/yx/time/reports",
+                    "account": "Manager panel@demo-org.test (Divya); HR hr-tester@demo-org.test; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As Divya: open Time › Reports and choose 'Short hours and breaks' for last month.",
+                              "Look at a person whose shift has clock-in-again off.",
+                              "As HR: Settings › Time 3.5 'Short hours and breaks': change 'Frequent breaks: more breaks than this in a day' from 3 to 2 and save.",
+                              "As Divya: reload the report.",
+                              "Export the report as CSV.",
+                              "As Arjun: open Time › Reports if shown.",
+                              "As HR: put the setting back to 3."
+                    ],
+                    "expected": "Step 1: one row per report: Under 4 h, 4–6 h and 6–8 h (days worked short of the shift), Frequent-break days, Breaks, Break time; the note above names the bands and the frequent-break rule. No page scroll at 1278 x 635. Step 2: 'Breaks not recorded' in their row and the info note 'Breaks are not recorded for …' (never a zero). Step 3: 5-second toast. Step 4: the frequent-break days follow the new number. Step 5: the CSV has the same rows, with 'Not recorded' where breaks are not recorded. Step 6: no team rows (an employee sees no one).",
+                    "stories": [
+                              "Screens/Time/TIM-16 · Attendance reports · Short hours and breaks",
+                              "Screens/Time/TIM-16 · Attendance reports · Short hours and breaks · manager"
+                    ],
+                    "note": "Positive and negative (API time-rules.spec: band limits, breaks from break punches and clock-in-again gaps, frequent rule; time-ops.e2e: bands, breaks null while clock-in-again is off, counted when on, setting changes the frequent days, employee none, other company none, bad month 400; kit time-ops-live: columns, not-recorded row and note, empty). Settings: attendance.short_hours.band1/2/3 (4/6/8 h), attendance.frequent_breaks.count (3) and .minutes (60), per company, entity or location."
           }
 ]

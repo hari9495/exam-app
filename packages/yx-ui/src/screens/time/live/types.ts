@@ -1069,6 +1069,13 @@ export interface AttendanceReport {
   stage: 'open' | 'frozen' | 'locked' | 'filed' | null;
   rows: { id: string; name: string; code: string | null; dept: string; location: string; late: number; early: number; otMinutes: number; lop: number }[];
 }
+/** Batch C item 16 (answers 2507, 2508): GET /time/reports/hours. Breaks are null where clock-in-again is off. */
+export interface HoursReport {
+  month: string;
+  upTo: string;
+  scope: Scope;
+  rows: { id: string; name: string; code: string | null; dept: string; location: string; short: { b1: number; b2: number; b3: number }; breaksRecorded: boolean; breaks: number | null; breakMinutes: number | null; frequentBreakDays: number | null; bands: [number, number, number]; limit: { count: number; minutes: number } }[];
+}
 export interface NightRegister {
   month: string;
   stage: 'open' | 'frozen' | 'locked' | 'filed' | null;

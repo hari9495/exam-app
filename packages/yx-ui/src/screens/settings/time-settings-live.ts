@@ -96,6 +96,12 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
     links: [],
     settings: [
       { section: 'Late penalty', key: 'attendance.late_mark_penalty', synonyms: ['late coming', 'late marks'] },
+      // Batch C item 16: the Short hours and Breaks reports.
+      { section: 'Short hours and breaks', key: 'attendance.short_hours.band1', synonyms: ['short hours', 'negligence', 'under hours'] },
+      { section: 'Short hours and breaks', key: 'attendance.short_hours.band2' },
+      { section: 'Short hours and breaks', key: 'attendance.short_hours.band3' },
+      { section: 'Short hours and breaks', key: 'attendance.frequent_breaks.count', synonyms: ['breaks', 'frequent breaks'] },
+      { section: 'Short hours and breaks', key: 'attendance.frequent_breaks.minutes' },
       { section: 'Regularisation', key: 'attendance.regularise_monthly_limit', synonyms: ['missed punch', 'attendance fix'] },
       { section: 'WFH and on-duty', key: 'attendance.wfh_monthly_limit', synonyms: ['work from home'] },
       { section: 'WFH and on-duty', key: 'attendance.wfh_same_day' },

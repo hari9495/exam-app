@@ -166,6 +166,12 @@ export class AttendanceOpsController {
     return this.ops.attendanceReport(ctx, this.user(req), q.month, q.legalEntityId);
   }
 
+  // Batch C item 16: Short hours and Breaks (a manager's team, or attendance.view in scope).
+  @Get('reports/hours')
+  hoursReport(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OpsMonthQueryDto) {
+    return this.ops.hoursReport(ctx, this.user(req), q.month, q.legalEntityId);
+  }
+
   @Get('reports/night')
   @RequirePermissions('attendance.view')
   nightRegister(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OpsMonthQueryDto) {

@@ -6,7 +6,7 @@ import { AttendanceRequestSheet, DeviceBackfillWizard, IndustrialActionScreen, O
 import { AttendanceReportsScreen } from './ops';
 import { PresenceDayScreen } from './field';
 import { OT_REVIEW, PERIODS, PREFLIGHT_READY } from './live/fixtures';
-import type { DayCard, DevicePreview, ExceptionsList, IndustrialEvent, LateMarks, Muster, MyAttendance, OtReview, TodayBoard } from './live/types';
+import type { DayCard, DevicePreview, ExceptionsList, HoursReport, IndustrialEvent, LateMarks, Muster, MyAttendance, OtReview, TodayBoard } from './live/types';
 
 // Time ops (29 Oct 2026): the designed TIM-01, 02, 03, 04, 07, 09, 10, 11, 16, 36 and 37 screens with live data. Each
 // state renders; pressed too early, a button says why and focuses the field; every action calls the API once.
@@ -318,6 +318,37 @@ describe('TIM-11 late marks (live)', () => {
     const drawer = await open(live({ onLateMarks: vi.fn(async () => ({ ...late, unlocked: false })) }));
     expect(within(drawer).getByText('This month is locked')).toBeInTheDocument();
     expect(within(drawer).queryByRole('checkbox')).toBeNull();
+  });
+});
+
+// Batch C item 16 (answers 2507, 2508): Short hours and Breaks.
+describe('TIM-16 short hours and breaks (live)', () => {
+  const data: HoursReport = {
+    month: '2026-10',
+    upTo: '2026-10-31',
+    scope: 'team',
+    rows: [
+      { id: 'a', name: 'Kavya Reddy', code: 'KF-1', dept: 'Quality', location: 'Bengaluru', short: { b1: 1, b2: 2, b3: 0 }, breaksRecorded: true, breaks: 20, breakMinutes: 410, frequentBreakDays: 3, bands: [4, 6, 8], limit: { count: 3, minutes: 60 } },
+      { id: 'b', name: 'Ravi Kumar', code: 'KF-2', dept: 'Production', location: 'Hosur', short: { b1: 0, b2: 0, b3: 4 }, breaksRecorded: false, breaks: null, breakMinutes: null, frequentBreakDays: null, bands: [4, 6, 8], limit: { count: 3, minutes: 60 } },
+    ],
+  };
+  it("shows the company's bands, frequent-break days, and says breaks are not recorded where clock-in-again is off", () => {
+    const onReport = vi.fn();
+    render(<AttendanceReportsScreen live={{ report: 'hours', state: 'ready', data, month: '2026-10', onMonth: vi.fn(), onReport }} />);
+    expect(screen.getByRole('columnheader', { name: /Under 4 h/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /4–6 h/ })).toBeInTheDocument();
+    expect(screen.getByText(/more than 3 breaks or 60 minutes/)).toBeInTheDocument();
+    expect(screen.getByText('Breaks are not recorded for 1 person')).toBeInTheDocument();
+    const ravi = screen.getByRole('row', { name: /Ravi Kumar/ });
+    expect(within(ravi).getByText('Breaks not recorded')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Kavya Reddy/ })).getAllByText('3').length).toBeGreaterThan(0);
+  });
+
+  it('nobody has clock-in-again: the note says anyone here; an empty month says so', () => {
+    const { rerender } = render(<AttendanceReportsScreen live={{ report: 'hours', state: 'ready', data: { ...data, rows: [data.rows[1]!] }, month: '2026-10', onMonth: vi.fn(), onReport: vi.fn() }} />);
+    expect(screen.getByText('Breaks are not recorded for anyone here')).toBeInTheDocument();
+    rerender(<AttendanceReportsScreen live={{ report: 'hours', state: 'ready', data: { ...data, rows: [] }, month: '2026-10', onMonth: vi.fn(), onReport: vi.fn() }} />);
+    expect(screen.getByText('No short days or breaks this month')).toBeInTheDocument();
   });
 });
 

@@ -320,6 +320,47 @@ describe('Time ops: attendance, overtime, periods', () => {
     });
   });
 
+  // Batch C item 16 (answers 2507, 2508): Short hours and Breaks. Its own person (the manager's employee record, seen by HR
+  // company-wide) and its own shifts, so the other reports and the lock below are not touched.
+  describe('short hours and breaks report', () => {
+    const who = () => ids.mgrEmp;
+    const day = (on: string, workedMinutes: number, shiftId: string) =>
+      inA((tx) => tx.attendanceDay.upsert({ where: { organizationId_employeeId_workOn: { organizationId: org.A.id, employeeId: who(), workOn: new Date(`${on}T00:00:00Z`) } }, create: { organizationId: org.A.id, employeeId: who(), workOn: new Date(`${on}T00:00:00Z`), mode: 'punch', status: 'present', workedMinutes, lateMinutes: 0, shiftId }, update: { status: 'present', workedMinutes, lateMinutes: 0, shiftId } }));
+    const p = (on: string, kind: 'in' | 'out' | 'break_start' | 'break_end', hhmm: string) => inA((tx) => tx.punch.create({ data: { organizationId: org.A.id, employeeId: who(), punchedAt: at(on, hhmm), workOn: new Date(`${on}T00:00:00Z`), kind, source: 'web', accepted: true, verdict: 'inside' } }));
+    const shift = (code: string, reclockIn: boolean) =>
+      inA(async (tx) => {
+        const sh = await tx.shift.create({ data: { organizationId: org.A.id, code, name: `Hours ${code}`, reclockIn } });
+        await tx.shiftVersion.create({ data: { organizationId: org.A.id, shiftId: sh.id, validFrom: new Date('2020-01-01T00:00:00Z'), startMinute: 570, endMinute: 1110 } });
+        return sh.id;
+      });
+    type Row = { id: string; short: { b1: number; b2: number; b3: number }; breaksRecorded: boolean; breaks: number | null; breakMinutes: number | null; frequentBreakDays: number | null; bands: number[] };
+    const report = async (w: Who) => (await api(w, 'get', `/time/reports/hours?month=${lockMonth}`).expect(200)).body as { scope: string; rows: Row[] };
+    const mine = async () => (await report('hrExec')).rows.find((r) => r.id === who())!;
+
+    it("bands short days by the company's hours; breaks only where clock-in-again is on; the frequent-break rule follows the setting; scope as the other reports", async () => {
+      const off = await shift('HOFF', false);
+      const on = await shift('HON', true);
+      await day(L(20), 200, off);
+      await day(L(21), 300, off);
+      await day(L(22), 420, off);
+      // L(21): three clock-in-again gaps (30, 10, 5 minutes); L(22): one 65-minute break.
+      for (const [k, t] of [['in', '09:00'], ['out', '11:00'], ['in', '11:30'], ['out', '12:00'], ['in', '12:10'], ['out', '13:00'], ['in', '13:05'], ['out', '18:30']] as const) await p(L(21), k, t);
+      for (const [k, t] of [['in', '09:00'], ['break_start', '10:00'], ['break_end', '11:05'], ['out', '18:30']] as const) await p(L(22), k, t);
+      expect(await mine()).toMatchObject({ short: { b1: 1, b2: 1, b3: 1 }, breaksRecorded: false, breaks: null, breakMinutes: null, frequentBreakDays: null, bands: [4, 6, 8] });
+      await day(L(21), 300, on);
+      await day(L(22), 420, on);
+      expect(await mine()).toMatchObject({ breaksRecorded: true, breaks: 4, breakMinutes: 110, frequentBreakDays: 1 });
+      await setting('attendance.frequent_breaks.count', '2');
+      expect((await mine()).frequentBreakDays).toBe(2);
+      // Scope: a manager never sees themselves; the employee sees no one; another company sees none of A's people.
+      expect((await report('mgr')).rows.some((r) => r.id === who())).toBe(false);
+      expect((await report('emp')).rows).toEqual([]);
+      expect((await report('empB')).rows.some((r) => r.id === who())).toBe(false);
+      await api('hrExec', 'get', '/time/reports/hours?month=May').expect(400);
+      await inA((tx) => tx.setting.deleteMany({ where: { organizationId: org.A.id, key: 'attendance.frequent_breaks.count' } }));
+    });
+  });
+
   // Batch C item 6 (answers 2505, 2506): attendance.lock waives late-mark penalties before the lock; the mark stays.
   describe('late-mark penalty waivers', () => {
     const upsertLate = (employeeId: string, on: string, lateMinutes: number) =>
