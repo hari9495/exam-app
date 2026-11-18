@@ -442,3 +442,10 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2538: B1's By person view shows only the hours the viewer may approve today (the switch regroups, never widens). Suggested answer: yes.
 - 2539: "Request leave" on the week opens the existing leave drawer for the picked day; the day shows "Leave requested" until it is decided. Suggested answer: yes.
 - 2540: make the PRJ-02 phone layout live together with B1, since the page is rebuilt anyway? Suggested answer: no; keep it with phone approvals (tier 3), as 2411 keeps phone screens to the end.
+
+**Builder questions (batch D B1 and answer 2527, 18 Nov 2026), each with the default built:**
+- 2544: B1's week → day → task drill-down is read only; approving, reducing and sending back stay on the cards. In "By person" a person who booked on two projects gets one card per project (each project's approver rules and bulk check stay as they are). Suggested answer: keep both.
+- 2545: the manager asks from Time › Muster ("Late marks" button, for the month on screen). "Own team" is the whole reporting line on that day (direct and indirect reports), the same rule as the team calendar dots. Suggested answer: keep.
+- 2546: HR can still decline an open request after the month is locked (it changes no pay and closes the request); waiving and asking are refused after the lock. Suggested answer: keep.
+- 2547: a declined day can be asked again with a new reason; HR sees it as a new request. Suggested answer: keep.
+- Found while building B1: the person's notice for a reduced or rejected timesheet line failed (the bell row's id was the week's date, not a UUID), so nobody was told. Fixed: it now points at the timesheet.

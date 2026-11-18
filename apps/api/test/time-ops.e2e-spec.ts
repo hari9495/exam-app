@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { DayEngine } from '../src/time/day-engine.service';
+import { NotificationsService } from '../src/notifications/notifications.service';
 import { addDays, instantAt } from '../src/time/time-maths';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
@@ -133,7 +134,7 @@ describe('Time ops: attendance, overtime, periods', () => {
   });
 
   it('every new table has forced RLS; resolutions and presence states are never changed (presence states are removed only on withdrawal)', async () => {
-    const tables = ['attendance_resolutions', 'industrial_action_events', 'late_mark_waivers', 'presence_consents', 'presence_signals'];
+    const tables = ['attendance_resolutions', 'industrial_action_events', 'late_mark_waiver_requests', 'late_mark_waivers', 'presence_consents', 'presence_signals'];
     const rows = await prisma.$queryRaw<{ relname: string; forced: boolean; policy: boolean }[]>`
       SELECT c.relname, c.relforcerowsecurity AS forced, EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS policy
       FROM pg_class c WHERE c.relname = ANY(${tables}::text[]) AND c.relkind = 'r'`;
@@ -143,6 +144,8 @@ describe('Time ops: attendance, overtime, periods', () => {
     await expect(prisma.$executeRaw`UPDATE presence_signals SET state = 'idle'`).rejects.toThrow();
     // Batch C item 6: a waiver is never deleted (undone instead).
     await expect(prisma.$executeRaw`DELETE FROM late_mark_waivers`).rejects.toThrow();
+    // Answer 2527: a manager's request is kept (answered, never deleted).
+    await expect(prisma.$executeRaw`DELETE FROM late_mark_waiver_requests`).rejects.toThrow();
   });
 
   it('my pages for a sign-in with no employee record say so with a code, not a retryable error', async () => {
@@ -409,6 +412,71 @@ describe('Time ops: attendance, overtime, periods', () => {
       await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(6) }], reason: 'Heavy rain closed the gate' }).expect(200);
       await inA((tx) => tx.setting.deleteMany({ where: { organizationId: org.A.id, key: { in: ['attendance.late_marks_free', 'attendance.late_mark_penalty'] } } }));
     });
+
+    // Founder answer 2527: a manager asks HR to waive their own team's late marks; HR waives or declines from the same list.
+    it('2527: a manager asks for their own team only; HR waives or declines from Late marks; both sides are told; audited', async () => {
+      await upsertLate(ids.peerEmp, L(8), 30);
+      await upsertLate(ids.peerEmp, L(9), 12);
+      await upsertLate(ids.hrEmp, L(8), 10);
+      const spy = jest.spyOn(app.get(NotificationsService), 'notifySystem');
+      type Row = { employeeId: string; on: string; waiver: unknown; request: { id: string; reason: string; status: string; declineReason: string | null } | null };
+      const team = async (who: Who) => (await api(who, 'get', `/time/team/late-marks?month=${lockMonth}`).expect(200)).body as { unlocked: boolean; rows: Row[] };
+      const find = (rows: Row[], employeeId: string, on: string) => rows.find((r) => r.employeeId === employeeId && r.on === on)!;
+      // The manager sees their own team's late marks only (never their own, never anyone else's).
+      const mine = await team('mgr');
+      expect(mine.unlocked).toBe(true);
+      expect([...new Set(mine.rows.map((r) => r.employeeId))].sort()).toEqual([ids.empEmp, ids.peerEmp].sort());
+      expect(find(mine.rows, ids.empEmp, L(6)).waiver).toBeTruthy();
+      expect((await team('emp')).rows).toEqual([]);
+      expect((await team('hrAdmin')).rows).toEqual([]);
+      await api('mgr', 'get', '/time/team/late-marks?month=May').expect(400);
+      const reason = 'Client visit ran late, I asked them to go';
+      const ask = (who: Who, items: { employeeId: string; on: string }[], r = reason) => api(who, 'post', '/time/team/late-marks/ask').send({ month: lockMonth, items, reason: r });
+      // Negatives: a short reason, outside the team (HR's own person, a peer asking, another company), outside the month.
+      await ask('mgr', [{ employeeId: ids.peerEmp, on: L(8) }], 'Too short').expect(400);
+      await ask('mgr', [{ employeeId: ids.hrEmp, on: L(8) }]).expect(404);
+      await ask('emp', [{ employeeId: ids.peerEmp, on: L(8) }]).expect(404);
+      await ask('mgr', [{ employeeId: ids.empBEmp, on: L(8) }]).expect(404);
+      await ask('mgr', [{ employeeId: ids.peerEmp, on: L(8) }, { employeeId: ids.hrEmp, on: L(8) }]).expect(404);
+      await ask('mgr', [{ employeeId: ids.peerEmp, on: `${thisMonth}-01` }]).expect(400);
+      await ask('mgr', []).expect(400);
+      const acting = await api('adminA', 'post', `/auth/impersonate/${users.mgr}`);
+      if (acting.status === 200) await as(acting.body.accessToken, 'post', '/time/team/late-marks/ask').send({ month: lockMonth, items: [{ employeeId: ids.peerEmp, on: L(8) }], reason }).expect(403);
+      expect(await inA((tx) => tx.lateMarkWaiverRequest.count({ where: { organizationId: org.A.id } }))).toBe(0);
+      // Asked: a day with no late mark or already waived is skipped and said; HR is told.
+      const out = (await ask('mgr', [{ employeeId: ids.peerEmp, on: L(8) }, { employeeId: ids.peerEmp, on: L(9) }, { employeeId: ids.empEmp, on: L(6) }, { employeeId: ids.peerEmp, on: L(27) }]).expect(200)).body;
+      expect(out.asked).toHaveLength(2);
+      expect(out.skipped.map((x: { message: string }) => x.message).sort()).toEqual(['Already waived.', 'There is no late mark on this day.']);
+      expect((await ask('mgr', [{ employeeId: ids.peerEmp, on: L(8) }]).expect(200)).body.skipped[0].message).toMatch(/Already asked/);
+      expect(spy).toHaveBeenCalledWith(expect.anything(), expect.arrayContaining([users.hrAdmin]), 'time.late_mark.request', expect.objectContaining({ contextText: expect.stringMatching(/asked HR to waive 2 late marks/), linkPath: '/yx/time/periods' }), expect.anything());
+      expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'time.late_mark.waiver_asked' } }))).toBe(2);
+      // HR sees the requests on the same Late marks list.
+      const body = { legalEntityId: ids.entityA, month: lockMonth };
+      const hr = (await api('hrAdmin', 'get', `/time/periods/late-marks?legalEntityId=${ids.entityA}&month=${lockMonth}`).expect(200)).body.rows as Row[];
+      expect(find(hr, ids.peerEmp, L(8)).request).toMatchObject({ reason, status: 'pending' });
+      const r9 = find(hr, ids.peerEmp, L(9)).request!;
+      // Decline: HR only, a reason of 10+ characters, once; the manager is told why.
+      const decline = (who: Who, r: string) => api(who, 'post', '/time/periods/late-marks/decline').send({ ...body, requestIds: [r9.id], reason: r });
+      await decline('mgr', 'Twelve minutes is within the rules').expect(403);
+      await decline('adminB', 'Twelve minutes is within the rules').expect(404);
+      await decline('hrAdmin', 'Too short').expect(400);
+      spy.mockClear();
+      await decline('hrAdmin', 'Twelve minutes is within the rules').expect(200);
+      await decline('hrAdmin', 'Twelve minutes is within the rules').expect(404);
+      expect(spy).toHaveBeenCalledWith(expect.anything(), [users.mgr], 'time.late_mark.request', expect.objectContaining({ contextText: expect.stringMatching(/declined to waive 1 late mark .*Reason: Twelve minutes is within the rules/) }), expect.anything());
+      // Waiving answers the open request; the manager is told.
+      spy.mockClear();
+      await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.peerEmp, on: L(8) }], reason: 'Manager confirmed the client visit' }).expect(200);
+      expect(spy).toHaveBeenCalledWith(expect.anything(), [users.mgr], 'time.late_mark.request', expect.objectContaining({ contextText: expect.stringMatching(/HR waived 1 late mark you asked about/) }), expect.anything());
+      const after = (await team('mgr')).rows;
+      expect(find(after, ids.peerEmp, L(8))).toMatchObject({ request: { status: 'waived' } });
+      expect(find(after, ids.peerEmp, L(8)).waiver).toBeTruthy();
+      expect(find(after, ids.peerEmp, L(9)).request).toMatchObject({ status: 'declined', declineReason: 'Twelve minutes is within the rules' });
+      expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'time.late_mark.waiver_declined' } }))).toBe(1);
+      // Declined, it may be asked again (left open for the lock test below).
+      expect((await ask('mgr', [{ employeeId: ids.peerEmp, on: L(9) }], 'Bus was cancelled, ticket attached').expect(200)).body.asked).toHaveLength(1);
+      spy.mockRestore();
+    });
   });
 
   describe('TIM-02 / TIM-11 freeze, send and the lock (attendance.lock_flow)', () => {
@@ -488,6 +556,11 @@ describe('Time ops: attendance, overtime, periods', () => {
       await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(5) }], reason: 'Bus breakdown on the highway' }).expect(409);
       const kept = await inA((tx) => tx.lateMarkWaiver.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.empEmp, undoneAt: null } }));
       await api('hrAdmin', 'post', '/time/periods/late-marks/undo').send({ ...body, waiverIds: [kept.id], reason: 'Transport did not confirm it' }).expect(409);
+      // Answer 2527: after the lock a manager can no longer ask; HR can still decline what is open (no pay changes).
+      expect((await api('mgr', 'get', `/time/team/late-marks?month=${lockMonth}`).expect(200)).body.unlocked).toBe(false);
+      await api('mgr', 'post', '/time/team/late-marks/ask').send({ month: lockMonth, items: [{ employeeId: ids.peerEmp, on: L(8) }], reason: 'Asked after the month was locked' }).expect(409);
+      const open = await inA((tx) => tx.lateMarkWaiverRequest.findFirstOrThrow({ where: { organizationId: org.A.id, status: 'pending' } }));
+      await api('hrAdmin', 'post', '/time/periods/late-marks/decline').send({ ...body, requestIds: [open.id], reason: 'The month is locked already' }).expect(200);
       await api('peer', 'post', '/payroll/me/late-corrections').send({ on: L(17), kind: 'attendance', shouldBe: 'present', reason: 'I was at the client site all day' }).expect(201);
     });
   });

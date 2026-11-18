@@ -33,6 +33,8 @@ export default function YxPeriodsPage() {
         onLateMarks: (legalEntityId, month) => read<LateMarks>(`/periods/late-marks?legalEntityId=${encodeURIComponent(legalEntityId)}&month=${month}`),
         onWaiveLate: (legalEntityId, month, items, reason) => write('/periods/late-marks/waive', 'POST', { legalEntityId, month, items, reason }),
         onUndoLate: (legalEntityId, month, waiverIds, reason) => write('/periods/late-marks/undo', 'POST', { legalEntityId, month, waiverIds, reason }),
+        // Answer 2527: decline a manager's requests to waive, with a reason they see.
+        onDeclineLate: (legalEntityId, month, requestIds, reason) => write('/periods/late-marks/decline', 'POST', { legalEntityId, month, requestIds, reason }),
       }}
     />
   );

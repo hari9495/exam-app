@@ -20,3 +20,5 @@ export const OpenAgain: S = { name: 'HR · open a frozen month again (1 Oct)', a
 export const LateMarks: S = { name: 'Late marks · waive before the lock', args: { late: 'list' } };
 export const LateWaive: S = { name: 'Late marks · waive 2 with one reason', args: { late: 'waive' } };
 export const LateLocked: S = { name: 'Late marks · locked month (read only)', args: { late: 'locked' } };
+// Answer 2527: a manager asked HR to waive one; HR declines it with a reason the manager sees.
+export const LateDecline: S = { name: "Late marks · decline a manager's request", args: { late: 'decline' } };

@@ -1207,5 +1207,14 @@ export interface LateMarks {
   month: string;
   /** Open or frozen: waivers can still be added or undone. */
   unlocked: boolean;
-  rows: { employeeId: string; name: string; code: string | null; on: string; lateMinutes: number; waiver: { id: string; reason: string; by: string; at: string } | null }[];
+  rows: {
+    employeeId: string;
+    name: string;
+    code: string | null;
+    on: string;
+    lateMinutes: number;
+    waiver: { id: string; reason: string; by: string; at: string } | null;
+    /** Answer 2527: a manager's request to waive it (HR's list: open ones; the manager's own list: the latest). */
+    request?: { id: string; reason: string; by: string; at: string; status: 'pending' | 'waived' | 'declined'; declineReason: string | null } | null;
+  }[];
 }

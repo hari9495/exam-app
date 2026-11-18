@@ -1,6 +1,6 @@
 'use client';
 
-import { MusterScreen, type DayCard, type Muster } from '@yukthix/ui/time';
+import { MusterScreen, type DayCard, type LateMarks, type Muster } from '@yukthix/ui/time';
 import { timeState, todayIndia, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
@@ -8,7 +8,8 @@ import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 // (YX-AT-14). Each cell opens the person's day card (TIM-03: HR resolves a past day, managers decide pending overtime).
 // The month's stage for its legal entity: freeze inputs and lock (attendance.lock), or in the two-step flow send it
 // (HR) and approve the lock (attendance.lock.approve); the lock asks for the second sign-in step. HR (leave.approve)
-// marks ticked people present with a reason. A manager pre-approves overtime for a report. Every action is checked again
+// marks ticked people present with a reason. A manager pre-approves overtime for a report and asks HR to waive their
+// team's late marks (answer 2527). Every action is checked again
 // on the server.
 export default function YxMusterPage() {
   const { month, setMonth, entity } = useScopeParams();
@@ -37,6 +38,9 @@ export default function YxMusterPage() {
         personHref: (employeeId, m) => `/yx/time/muster/${encodeURIComponent(employeeId)}?month=${m}`,
         // TIM-02 Manager · Pre-approve overtime (founder 2 Nov 2026): approved at once for a report; the sheet shows the toast.
         onPreApproveOt: (employeeId, input) => write(`/team/overtime/plans/${encodeURIComponent(employeeId)}`, 'POST', input, true),
+        // Answer 2527: a manager's own team's late marks, and asking HR to waive some (the drawer says "done" itself).
+        onTeamLateMarks: (m) => read<LateMarks>(`/team/late-marks?month=${m}`),
+        onAskLate: (m, items, reason) => write('/team/late-marks/ask', 'POST', { month: m, items, reason }),
       }}
     />
   );

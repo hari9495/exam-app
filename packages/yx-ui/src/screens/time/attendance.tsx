@@ -1,7 +1,7 @@
 // Attendance: web clock-in page, attendance calendar, Today board, muster, day card, exceptions.
 // TIM-01, TIM-02, TIM-03, TIM-04 + founder extras "My attendance today" and "Attendance calendar".
 import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
-import { Bell, ChevronLeft, ChevronRight, Clock, Download, Lock, Snowflake } from 'lucide-react';
+import { AlarmClock, Bell, ChevronLeft, ChevronRight, Clock, Download, Lock, Snowflake } from 'lucide-react';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { Button, IconButton, SplitButton } from '../../components/button';
 import { MenuItem } from '../../components/menu';
@@ -56,9 +56,9 @@ import { AttendanceLegend, AttendanceMonth, ClockCard, DayCardBody, DueBadge, Ge
 import { DAY_CODE_LABEL, daysUntil, fmt12, fmtDuration, lateMinutes, monthSummary, relativeDue, toHHMM, toMin, type AttendanceDay, type ClockState, type DayCode, type Punch } from './time-logic';
 import { VISITS } from '../ops/visitors-data';
 import { useRun } from '../org/org-kit';
-import { AttendanceRequestSheet, OnDutySentBackSheet, OtPreApproveSheet, type OtPreApproveSample } from './requests';
+import { AttendanceRequestSheet, LateMarksDrawer, OnDutySentBackSheet, OtPreApproveSheet, SAMPLE_TEAM_LATE, TeamLateMarks, type OtPreApproveSample } from './requests';
 import { MODE_TEXT } from './live/kit';
-import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput, OnDutyInput, PermissionInput, OtPlanInput, OtPlanRow } from './live/types';
+import type { DayCard, DayRow, ExceptionsList, LateCorrectionInput, TodayBoard, FixInput, FixRow, LoadState, Muster, MyAttendance, MyNightWork, NightCodeSent, PersonAttendance, Pin, PunchKind, PunchResult, PunchRow, ResolveInput, WfhInput, OnDutyInput, PermissionInput, OtPlanInput, OtPlanRow, LateMarks } from './live/types';
 import './time.css';
 
 export type ViewState = 'ready' | 'loading' | 'error' | 'empty';
@@ -1471,6 +1471,8 @@ export interface MusterProps {
   persona?: 'hr' | 'mgr';
   /** Manager: the Pre-approve overtime sheet open in one of its states. */
   preApprove?: OtPreApproveSample;
+  /** Answer 2527 (manager): the team's late marks open ('list'), or asking HR to waive two of them ('ask'). */
+  lateAsk?: 'list' | 'ask';
 }
 
 /** TIM-02 · Muster. The app passes `live` (Time › Muster); stories show the sample. */
@@ -1478,9 +1480,10 @@ export function MusterScreen(p: MusterProps & { live?: LiveMusterData }) {
   return p.live ? <LiveMusterScreen live={p.live} /> : <SampleMusterScreen {...p} />;
 }
 
-function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'ready', month = 'sep', openCell, dialog = null, defaultSelected = [], resolved: resolvedProp = false, asOf, persona = 'hr', preApprove }: MusterProps) {
+function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'ready', month = 'sep', openCell, dialog = null, defaultSelected = [], resolved: resolvedProp = false, asOf, persona = 'hr', preApprove, lateAsk }: MusterProps) {
   const mgr = persona === 'mgr';
   const [otSheet, setOtSheet] = useState(preApprove ?? null);
+  const [late, setLate] = useState(lateAsk ?? null);
   const today = asOf ?? TODAY;
   const [state, retry] = useViewState(stateProp);
   const [stage, setStage] = useState(stageProp);
@@ -1541,6 +1544,7 @@ function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'rea
           <div className="yx-tim-row">
             {ready && <Button icon={Download} onClick={() => downloadCsv(`muster-${monthName.toLowerCase()}-2026.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((d) => String(d.date.getDate()))], ...shown.map((r) => { const s = monthSummary(r.days); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((d) => codeText(cellCode(d.code)))]; })])}>Export</Button>}
             {mgr && ready && <Button icon={Clock} onClick={() => setOtSheet('default')}>Pre-approve overtime</Button>}
+            {mgr && ready && <Button icon={AlarmClock} onClick={() => setLate('list')}>Late marks</Button>}
             {!mgr && stage === 'open' && ready && <Button icon={Snowflake} onClick={() => setDlg('freeze')}>Freeze inputs</Button>}
             {/* Not ready to lock: pressed, it says why (the alert below says it too). */}
             {!mgr && stage === 'frozen' && <Button variant="primary" icon={Lock} onClick={() => (lockBlock ? setMsg(`${lockBlock}.`, 'default') : setDlg('lock'))}>Lock period</Button>}
@@ -1584,6 +1588,16 @@ function SampleMusterScreen({ stage: stageProp = 'open', state: stateProp = 'rea
         {day && <DayPanel key={`${row!.id}-${cell![1]}`} day={day} person={row!.name} viewer={mgr ? 'mgr' : 'hr'} locked={stage === 'locked'} monthDays={row!.days} />}
       </Drawer>
       {otSheet && <OtPreApproveSheet key={otSheet} sample={otSheet} />}
+      {late && (
+        <LateMarksDrawer
+          title="Late marks · September 2026 · Your team"
+          data={SAMPLE_TEAM_LATE}
+          onAsk={async () => ({ skipped: [] })}
+          onClose={() => setLate(null)}
+          defaultSelected={late === 'ask' ? SAMPLE_TEAM_LATE.rows.filter((r) => !r.waiver && r.request?.status !== 'pending').slice(0, 2).map((r) => `${r.employeeId}:${r.on}`) : undefined}
+          defaultDialog={late === 'ask' ? 'ask' : undefined}
+        />
+      )}
       <ConfirmDialog
         open={dlg === 'freeze'}
         onOpenChange={(o) => !o && setDlg(null)}
@@ -2313,6 +2327,9 @@ export interface LiveMusterData {
   personHref?: (employeeId: string, month: string) => string;
   /** TIM-02 Manager · Pre-approve overtime for a report (approved at once); offered on a team muster that has reports. */
   onPreApproveOt?: (employeeId: string, input: OtPlanInput) => Promise<unknown>;
+  /** Answer 2527 (manager): the team's late marks of a month, and asking HR to waive some of them. */
+  onTeamLateMarks?: (month: string) => Promise<LateMarks>;
+  onAskLate?: (month: string, items: { employeeId: string; on: string }[], reason: string) => Promise<{ skipped: { employeeId: string; on: string; message: string }[] } | void>;
 }
 
 const LIVE_SOURCES: Punch['source'][] = ['web', 'mobile', 'biometric', 'kiosk', 'teams', 'desktop', 'field'];
@@ -3164,6 +3181,7 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
   const [selected, setSelected] = useState<string[]>([]);
   // Pre-approve overtime: open for no one yet (''), or for the person whose day card it came from.
   const [otFor, setOtFor] = useState<string | null>(null);
+  const [lateOpen, setLateOpen] = useState(false);
   const { run } = useRun();
   const today = live.today ?? isoOf(new Date());
   const todayDate = isoDay(today);
@@ -3247,6 +3265,8 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
         actions={
           <div className="yx-tim-row">
             {ready && reports.length > 0 && <Button icon={Clock} onClick={() => setOtFor('')}>Pre-approve overtime</Button>}
+            {/* Answer 2527: a manager with reports (the server's reporting-line mark) asks HR to waive their late marks. */}
+            {ready && live.onTeamLateMarks && live.onAskLate && d!.people.some((p) => p.ot && !p.me) && <Button icon={AlarmClock} onClick={() => setLateOpen(true)}>Late marks</Button>}
             {ready && <Button icon={Download} onClick={() => downloadCsv(`muster-${d!.month}.csv`, [['Employee', 'Code', 'Payable', 'Unpaid', 'Late', 'OT h', ...monthDays.map((x) => String(x.date.getDate()))], ...rows.map((r) => { const s = monthSummary(r.days, todayDate); return [r.name, r.code, s.payable, s.lop, s.lateMarks, s.otHours, ...r.days.map((x) => codeText(cellCode(x.code)))]; })])}>Export</Button>}
             {stageButton}
           </div>
@@ -3375,6 +3395,7 @@ function LiveMusterScreen({ live }: { live: LiveMusterData }) {
           />
         </>
       )}
+      {lateOpen && live.onTeamLateMarks && live.onAskLate && <TeamLateMarks month={live.month} onLoad={live.onTeamLateMarks} onAsk={live.onAskLate} onClose={() => setLateOpen(false)} />}
       {otFor !== null && live.onPreApproveOt && (
         <OtPreApproveSheet
           live={{

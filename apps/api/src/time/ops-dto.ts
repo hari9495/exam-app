@@ -119,6 +119,40 @@ export class LateUndoDto extends PeriodReasonDto {
   waiverIds!: string[];
 }
 
+/** Answer 2527: HR declines a manager's open requests, with a reason (10+ characters) the manager sees. */
+export class LateDeclineDto extends PeriodReasonDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  requestIds!: string[];
+}
+
+/** Answer 2527: a manager's month of their own team's late marks. */
+export class TeamLateQueryDto {
+  @Matches(MONTH)
+  month!: string;
+}
+
+/** Answer 2527: a manager asks HR to waive up to 100 late marks of their own team, with one reason (10+ characters). */
+export class LateAskDto {
+  @Matches(MONTH)
+  month!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => LateMarkRefDto)
+  items!: LateMarkRefDto[];
+
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+}
+
 /** TIM-09: one decision on an overtime claim through the shared approvals engine; comp-off approves it as time off. */
 export class OtDecisionDto {
   @IsIn(['approve', 'reject', 'comp_off'])

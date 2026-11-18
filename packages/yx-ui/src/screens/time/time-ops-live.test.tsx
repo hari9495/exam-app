@@ -321,6 +321,77 @@ describe('TIM-11 late marks (live)', () => {
   });
 });
 
+// Founder answer 2527: a manager asks HR to waive their team's late marks; HR declines (or waives) from the same list.
+describe('2527 ask HR to waive late marks (live)', () => {
+  const team: LateMarks = {
+    legalEntityId: '',
+    month: '2026-09',
+    unlocked: true,
+    rows: [
+      { employeeId: 'e1', name: 'Kavya Reddy', code: null, on: '2026-09-03', lateMinutes: 14, waiver: null, request: null },
+      { employeeId: 'e2', name: 'Ravi Kumar', code: null, on: '2026-09-04', lateMinutes: 30, waiver: null, request: { id: 'r1', reason: 'Bus breakdown, confirmed', by: 'Divya', at: '2026-09-28T06:00:00Z', status: 'pending', declineReason: null } },
+      { employeeId: 'e2', name: 'Ravi Kumar', code: null, on: '2026-09-09', lateMinutes: 12, waiver: null, request: { id: 'r0', reason: 'Traffic diversion near the plant', by: 'Divya', at: '2026-09-20T06:00:00Z', status: 'declined', declineReason: 'Inside the grace rule already' } },
+    ],
+  };
+  const base: Muster = {
+    month: '2026-09', from: '2026-09-01', to: '2026-09-30', scope: 'team',
+    people: [
+      { id: 'me', name: 'Divya', code: 'K0', location: 'Hosur', me: true, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [] },
+      { id: 'e1', name: 'Kavya Reddy', code: 'K1', location: 'Hosur', me: false, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [], ot: { aheadDays: 30, factoriesAct: false } },
+    ],
+  };
+  const muster = (o: Partial<LiveMusterData> = {}, data: Muster = base): LiveMusterData => ({ state: 'ready', data, month: '2026-09', onMonth: vi.fn(), today: '2026-10-05', onOpenDay: vi.fn(), onTeamLateMarks: vi.fn(async () => team), onAskLate: vi.fn(async () => ({ skipped: [] })), ...o });
+
+  it('the manager picks days and a reason (10+ characters, else a field error and nothing sent); asked and declined days say so', async () => {
+    const l = muster();
+    render(<MusterScreen live={l} />);
+    await ue.click(screen.getByRole('button', { name: 'Late marks' }));
+    const drawer = await screen.findByRole('dialog', { name: /Late marks · September 2026 · Your team/ });
+    expect(l.onTeamLateMarks).toHaveBeenCalledWith('2026-09');
+    expect(within(drawer).getByText('Asked HR')).toBeInTheDocument();
+    expect(within(drawer).getByText('Declined')).toBeInTheDocument();
+    expect(within(drawer).getByText('Inside the grace rule already')).toBeInTheDocument();
+    // An open request is not asked again; a declined day may be.
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Select all/i }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Ask HR to waive 2' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Too short');
+    await ue.click(within(dlg).getByRole('button', { name: 'Ask HR to waive 2' }));
+    expect(within(dlg).getByText('Say why in at least 10 characters.')).toBeInTheDocument();
+    expect(l.onAskLate).not.toHaveBeenCalled();
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), ' to explain');
+    await ue.click(within(dlg).getByRole('button', { name: 'Ask HR to waive 2' }));
+    await waitFor(() => expect(l.onAskLate).toHaveBeenCalledWith('2026-09', [{ employeeId: 'e1', on: '2026-09-03' }, { employeeId: 'e2', on: '2026-09-09' }], 'Too short to explain'));
+  });
+
+  it('negative: no reports (or no handlers), no Late marks button; a locked month cannot be asked', async () => {
+    const { unmount } = render(<MusterScreen live={muster({}, { ...base, people: [base.people[0]!] })} />);
+    expect(screen.queryByRole('button', { name: 'Late marks' })).toBeNull();
+    unmount();
+    render(<MusterScreen live={muster({ onTeamLateMarks: vi.fn(async () => ({ ...team, unlocked: false })) })} />);
+    await ue.click(screen.getByRole('button', { name: 'Late marks' }));
+    const drawer = await screen.findByRole('dialog', { name: /Your team/ });
+    expect(within(drawer).getByText('This month is locked')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('checkbox')).toBeNull();
+  });
+
+  it('HR sees the open request on Late marks and declines it with a reason the manager sees', async () => {
+    const onDeclineLate = ok();
+    const hrLate: LateMarks = { ...team, legalEntityId: 'le-kfpl', rows: team.rows.slice(0, 2) };
+    render(<PeriodsScreen live={{ state: 'ready', data: { ...PERIODS, entities: [{ ...PERIODS.entities[0]!, canLock: true, canApprove: false }] }, year: '2026', onYear: vi.fn(), onPreflight: vi.fn(async () => PREFLIGHT_READY), onLock: ok(), onUnlock: ok(), onLateMarks: vi.fn(async () => hrLate), onWaiveLate: vi.fn(async () => ({ waived: [], skipped: [] })), onUndoLate: ok(), onDeclineLate }} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Late marks' })[1]!);
+    const drawer = await screen.findByRole('dialog', { name: /Late marks · September 2026/ });
+    expect(within(drawer).getByText('Asked by manager')).toBeInTheDocument();
+    expect(within(drawer).getByText(/Divya · Bus breakdown/)).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Ravi Kumar/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Decline 1' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Inside the grace rule already');
+    await ue.click(within(dlg).getByRole('button', { name: 'Decline 1' }));
+    await waitFor(() => expect(onDeclineLate).toHaveBeenCalledWith('le-kfpl', '2026-09', ['r1'], 'Inside the grace rule already'));
+  });
+});
+
 // Batch C item 16 (answers 2507, 2508): Short hours and Breaks.
 describe('TIM-16 short hours and breaks (live)', () => {
   const data: HoursReport = {

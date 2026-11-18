@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { lineApproved } from './line-rules';
 import { Prisma } from '@prisma/client';
 import ExcelJS from 'exceljs';
@@ -10,7 +10,9 @@ import { todayIst } from '../org-structure/org-validation';
 import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
 import { DayEngine } from './day-engine.service';
 import { ScheduleBook } from './schedule';
-import { TIME_KEYS, asDate, dateOf, factsOn, monthRange, num, settingOn, visibleSql } from './time-core';
+import { TIME_KEYS, asDate, dateOf, factsOn, holdersOf, monthRange, num, settingOn, visibleSql } from './time-core';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
 import { addDays, daysBetween } from './time-maths';
 import { industrialPay, lateMarkDays, payOfDay, type IndustrialKind, type Legality } from './time-rules';
 import { PayPeriodsService } from '../payroll/periods.service';
@@ -66,7 +68,18 @@ export class PeriodsService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly days: DayEngine,
     private readonly payPeriods: PayPeriodsService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  private readonly logger = new Logger(PeriodsService.name);
+
+  /** Answer 2527: tell people about late-mark waiver requests; a failed notice never undoes the change. */
+  private tell(ctx: TenantContext, notices: { userIds: string[]; entityId: string; text: string; link: string; subject: string }[]) {
+    for (const n of notices.filter((x) => x.userIds.length))
+      void this.notifications
+        .notifySystem(ctx, n.userIds, 'time.late_mark.request', { entityType: 'late_mark_waiver_request', entityId: n.entityId, contextText: n.text, linkPath: n.link }, { subject: n.subject, html: `<p>${escapeHtml(n.text)}</p>` })
+        .catch((e: unknown) => this.logger.error(e));
+  }
 
   private viewer(user: ScopeUser): Promise<Viewer> {
     return buildViewer(this.prisma, this.tenantPrisma, user, [...TIME_KEYS, PAYROLL_APPROVE]);
@@ -366,7 +379,9 @@ export class PeriodsService {
       const ids = people.map((x) => x.id);
       const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, lateMinutes: { gt: 0 } }, orderBy: [{ workOn: 'asc' }] }) : [];
       const waivers = ids.length ? await tx.lateMarkWaiver.findMany({ where: { organizationId: org, employeeId: { in: ids }, undoneAt: null, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
-      const names = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(waivers.map((w) => w.waivedBy))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name?.trim() || u.email]));
+      // Answer 2527: the open "ask HR to waive" requests of a manager.
+      const asks = ids.length ? await tx.lateMarkWaiverRequest.findMany({ where: { organizationId: org, employeeId: { in: ids }, status: 'pending', workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
+      const names = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set([...waivers.map((w) => w.waivedBy), ...asks.map((a) => a.requestedBy)])] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name?.trim() || u.email]));
       const byId = new Map(people.map((x) => [x.id, x]));
       return {
         legalEntityId: entityId,
@@ -374,7 +389,8 @@ export class PeriodsService {
         unlocked: await this.unlockedMonth(tx, c, entityId, month),
         rows: days.map((d) => {
           const w = waivers.find((x) => x.employeeId === d.employeeId && dateOf(x.workOn) === dateOf(d.workOn));
-          return { employeeId: d.employeeId, name: byId.get(d.employeeId)?.name ?? '', code: byId.get(d.employeeId)?.code ?? null, on: dateOf(d.workOn), lateMinutes: d.lateMinutes ?? 0, waiver: w ? { id: w.id, reason: w.reason, by: names.get(w.waivedBy) ?? '', at: w.waivedAt.toISOString() } : null };
+          const a = asks.find((x) => x.employeeId === d.employeeId && dateOf(x.workOn) === dateOf(d.workOn));
+          return { employeeId: d.employeeId, name: byId.get(d.employeeId)?.name ?? '', code: byId.get(d.employeeId)?.code ?? null, on: dateOf(d.workOn), lateMinutes: d.lateMinutes ?? 0, waiver: w ? { id: w.id, reason: w.reason, by: names.get(w.waivedBy) ?? '', at: w.waivedAt.toISOString() } : null, request: a ? { id: a.id, reason: a.reason, by: names.get(a.requestedBy) ?? '', at: a.requestedAt.toISOString(), status: 'pending' as const, declineReason: null } : null };
         }),
       };
     });
@@ -390,11 +406,12 @@ export class PeriodsService {
     if (why.length < 10) throw new BadRequestException('Say why in at least 10 characters. It is kept with each waiver.');
     const { from, to } = monthRange(month);
     if (items.some((i) => i.on < from || i.on > to)) throw new BadRequestException(`Every late mark must be in ${monthText(month)}.`);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId }, select: { id: true } }))) throw new NotFoundException('Not found');
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${entityId}:${month}`}))`;
       if (!(await this.unlockedMonth(tx, c, entityId, month))) throw new ConflictException(`${monthText(month)} is locked. Late marks can only be waived before the lock.`);
+      const asked = new Map<string, { n: number; id: string }>();
       const inEntity = new Set((await this.employeesOf(tx, org, entityId, from, to)).map((x) => x.id));
       const done: { employeeId: string; on: string; id: string }[] = [];
       const skipped: { employeeId: string; on: string; message: string }[] = [];
@@ -409,11 +426,159 @@ export class PeriodsService {
           continue;
         }
         const w = await tx.lateMarkWaiver.create({ data: { organizationId: org, employeeId: i.employeeId, legalEntityId: entityId, workOn: asDate(i.on), reason: why, waivedBy: c.userId! } });
-        await audit(tx, c, 'time.late_mark.waived', 'late_mark_waiver', w.id, { employeeId: i.employeeId, on: i.on, legalEntityId: entityId, month, reason: why });
+        // Answer 2527: a manager's open request for this day is answered by the waiver.
+        const ask = await tx.lateMarkWaiverRequest.findFirst({ where: { organizationId: org, employeeId: i.employeeId, workOn: asDate(i.on), status: 'pending' } });
+        if (ask) {
+          await tx.lateMarkWaiverRequest.update({ where: { id: ask.id }, data: { status: 'waived', decidedBy: c.userId!, decidedAt: new Date() } });
+          asked.set(ask.requestedBy, { n: (asked.get(ask.requestedBy)?.n ?? 0) + 1, id: ask.id });
+        }
+        await audit(tx, c, 'time.late_mark.waived', 'late_mark_waiver', w.id, { employeeId: i.employeeId, on: i.on, legalEntityId: entityId, month, reason: why, requestId: ask?.id ?? null });
         done.push({ ...i, id: w.id });
       }
-      return { waived: done, skipped };
+      return { waived: done, skipped, asked };
     });
+    this.tell(ctx, [...out.asked].map(([userId, { n, id }]) => ({ userIds: [userId], entityId: id, link: '/yx/time/team', subject: `Late marks waived for ${monthText(month)}`, text: `HR waived ${n} late mark${n === 1 ? '' : 's'} you asked about in ${monthText(month)}. They no longer count towards the late penalty.` })));
+    return { waived: out.waived, skipped: out.skipped };
+  }
+
+  /** Answer 2527: HR declines a manager's open requests with a reason (10+ characters) the manager sees. */
+  async declineLateRequests(ctx: TenantContext, user: ScopeUser, entityId: string, month: string, ids: string[], reason: string) {
+    await this.lateHolder(user, entityId, true);
+    const why = reason.trim();
+    if (why.length < 10) throw new BadRequestException('Say why in at least 10 characters. The manager sees it.');
+    const { from, to } = monthRange(month);
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      // Declining changes no pay, so it is allowed after the lock too (closing what can no longer be waived).
+      const rows = await tx.lateMarkWaiverRequest.findMany({ where: { organizationId: org, legalEntityId: entityId, id: { in: ids }, status: 'pending', workOn: { gte: asDate(from), lte: asDate(to) } } });
+      if (rows.length !== new Set(ids).size) throw new NotFoundException('Some of these requests were not found or are already answered. Reload and try again.');
+      const asked = new Map<string, { n: number; id: string }>();
+      for (const r of rows) {
+        await tx.lateMarkWaiverRequest.update({ where: { id: r.id }, data: { status: 'declined', decidedBy: c.userId!, decidedAt: new Date(), declineReason: why } });
+        await audit(tx, c, 'time.late_mark.waiver_declined', 'late_mark_waiver_request', r.id, { employeeId: r.employeeId, on: dateOf(r.workOn), legalEntityId: entityId, month, reason: why });
+        asked.set(r.requestedBy, { n: (asked.get(r.requestedBy)?.n ?? 0) + 1, id: r.id });
+      }
+      return { declined: rows.length, asked };
+    });
+    this.tell(ctx, [...out.asked].map(([userId, { n, id }]) => ({ userIds: [userId], entityId: id, link: '/yx/time/team', subject: `Late-mark waiver declined for ${monthText(month)}`, text: `HR declined to waive ${n} late mark${n === 1 ? '' : 's'} you asked about in ${monthText(month)}. Reason: ${why}` })));
+    return { declined: out.declined };
+  }
+
+  /** Answer 2527: which of these (person, day) pairs are in my own reporting line on that day. */
+  private async myTeamOn(tx: Tx, org: string, own: string, pairs: { employeeId: string; on: string }[]) {
+    if (!pairs.length) return new Set<string>();
+    const rows = await tx.$queryRaw<{ k: string }[]>`
+      SELECT x.id::text || ':' || x.d::text AS k FROM unnest(${pairs.map((p) => p.employeeId)}::uuid[], ${pairs.map((p) => p.on)}::date[]) AS x(id, d)
+      WHERE x.id <> ${own}::uuid AND yx_scope_periods(${org}::uuid, x.id, 'all_reports', NULL::uuid, ${own}::uuid) @> x.d`;
+    return new Set(rows.map((r) => r.k));
+  }
+
+  /**
+   * Answer 2527 (manager): the late marks of my own team in a month, each with its waiver and my latest request. Only
+   * people in my reporting line on that day; nobody else, and nothing while acting for someone else.
+   */
+  async teamLateMarks(ctx: TenantContext, user: ScopeUser, month: string) {
+    const v = await this.viewer(user);
+    const { from, to } = monthRange(month);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = await this.ownId(tx, c, v);
+      // shortcut: reads the company's late days of the month, then keeps my team's; narrow by reports first if this grows slow.
+      const all = own ? await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { not: own }, workOn: { gte: asDate(from), lte: asDate(to) }, lateMinutes: { gt: 0 } }, orderBy: [{ workOn: 'asc' }], take: 20000, select: { employeeId: true, workOn: true, lateMinutes: true } }) : [];
+      const team = own ? await this.myTeamOn(tx, org, own, all.map((d) => ({ employeeId: d.employeeId, on: dateOf(d.workOn) }))) : new Set<string>();
+      const days = all.filter((d) => team.has(`${d.employeeId}:${dateOf(d.workOn)}`));
+      const ids = [...new Set(days.map((d) => d.employeeId))];
+      const people = ids.length ? await tx.employee.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }) : [];
+      const waivers = ids.length ? await tx.lateMarkWaiver.findMany({ where: { organizationId: org, employeeId: { in: ids }, undoneAt: null, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
+      const asks = ids.length ? await tx.lateMarkWaiverRequest.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { requestedAt: 'desc' } }) : [];
+      const names = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set([...waivers.map((w) => w.waivedBy), ...asks.map((a) => a.requestedBy)])] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name?.trim() || u.email]));
+      // The month is open for asking only while every entity of these people is unlocked.
+      const entities = new Set<string>();
+      // No late marks yet: the manager's own entity says whether the month is still open.
+      for (const id of ids.length ? ids : own ? [own] : []) {
+        const f = await factsOn(tx, org, id, to);
+        if (f) entities.add(f.legalEntityId);
+      }
+      let unlocked = true;
+      for (const e of entities) unlocked = unlocked && (await this.unlockedMonth(tx, c, e, month));
+      return {
+        month,
+        unlocked,
+        rows: days.map((d) => {
+          const on = dateOf(d.workOn);
+          const p = people.find((x) => x.id === d.employeeId);
+          const w = waivers.find((x) => x.employeeId === d.employeeId && dateOf(x.workOn) === on);
+          const a = asks.find((x) => x.employeeId === d.employeeId && dateOf(x.workOn) === on);
+          return {
+            employeeId: d.employeeId,
+            name: [p?.preferredName ?? p?.givenName, p?.familyName].filter(Boolean).join(' '),
+            code: null,
+            on,
+            lateMinutes: d.lateMinutes ?? 0,
+            waiver: w ? { id: w.id, reason: w.reason, by: names.get(w.waivedBy) ?? '', at: w.waivedAt.toISOString() } : null,
+            request: a ? { id: a.id, reason: a.reason, by: names.get(a.requestedBy) ?? '', at: a.requestedAt.toISOString(), status: a.status as 'pending' | 'waived' | 'declined', declineReason: a.declineReason } : null,
+          };
+        }),
+      };
+    });
+  }
+
+  /**
+   * Answer 2527 (manager): ask HR to waive these late marks of my own team, with one reason (10+ characters). Refused for
+   * anyone outside my team (404, as for an unknown person), while acting for someone else (403) and for a locked month
+   * (409). A day with no late mark, already waived or already asked is skipped and said. HR holders are told.
+   */
+  async askLateWaiver(ctx: TenantContext, user: ScopeUser, month: string, items: { employeeId: string; on: string }[], reason: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    const why = reason.trim();
+    if (why.length < 10) throw new BadRequestException('Say why in at least 10 characters. HR sees it.');
+    const { from, to } = monthRange(month);
+    if (items.some((i) => i.on < from || i.on > to)) throw new BadRequestException(`Every late mark must be in ${monthText(month)}.`);
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = await this.ownId(tx, c, v);
+      if (!own) throw new NotFoundException('Not found');
+      const team = await this.myTeamOn(tx, org, own, items);
+      if (items.some((i) => !team.has(`${i.employeeId}:${i.on}`))) throw new NotFoundException('Not found');
+      const done: { employeeId: string; on: string; id: string }[] = [];
+      const skipped: { employeeId: string; on: string; message: string }[] = [];
+      const hr = new Set<string>();
+      const today = todayIst();
+      for (const i of items) {
+        const f = await factsOn(tx, org, i.employeeId, i.on);
+        if (!f) {
+          skipped.push({ ...i, message: 'Not employed on this day.' });
+          continue;
+        }
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${f.legalEntityId}:${month}`}))`;
+        if (!(await this.unlockedMonth(tx, c, f.legalEntityId, month))) throw new ConflictException(`${monthText(month)} is locked. Late marks can no longer be waived for it.`);
+        const day = await tx.attendanceDay.findFirst({ where: { organizationId: org, employeeId: i.employeeId, workOn: asDate(i.on) }, select: { lateMinutes: true } });
+        if (!((day?.lateMinutes ?? 0) > 0)) {
+          skipped.push({ ...i, message: 'There is no late mark on this day.' });
+          continue;
+        }
+        if (await tx.lateMarkWaiver.findFirst({ where: { organizationId: org, employeeId: i.employeeId, workOn: asDate(i.on), undoneAt: null }, select: { id: true } })) {
+          skipped.push({ ...i, message: 'Already waived.' });
+          continue;
+        }
+        if (await tx.lateMarkWaiverRequest.findFirst({ where: { organizationId: org, employeeId: i.employeeId, workOn: asDate(i.on), status: 'pending' }, select: { id: true } })) {
+          skipped.push({ ...i, message: 'Already asked. HR has not answered yet.' });
+          continue;
+        }
+        const r = await tx.lateMarkWaiverRequest.create({ data: { organizationId: org, employeeId: i.employeeId, legalEntityId: f.legalEntityId, workOn: asDate(i.on), reason: why, requestedBy: c.userId! } });
+        await audit(tx, c, 'time.late_mark.waiver_asked', 'late_mark_waiver_request', r.id, { employeeId: i.employeeId, on: i.on, legalEntityId: f.legalEntityId, month, reason: why });
+        done.push({ ...i, id: r.id });
+        let holders = (await holdersOf(tx, org, 'attendance.lock', i.employeeId, today)).filter((x) => x !== c.userId);
+        if (!holders.length) holders = (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active', id: { not: c.userId! } }, select: { id: true }, take: 25 })).map((u) => u.id);
+        holders.forEach((x) => hr.add(x));
+      }
+      const me = c.userId ? await tx.user.findFirst({ where: { organizationId: org, id: c.userId }, select: { name: true, email: true } }) : null;
+      return { asked: done, skipped, hr: [...hr], by: me?.name?.trim() || me?.email || 'A manager' };
+    });
+    const n = out.asked.length;
+    if (n) this.tell(ctx, [{ userIds: out.hr, entityId: out.asked[0]!.id, link: '/yx/time/periods', subject: `Late-mark waiver asked for ${monthText(month)}`, text: `${out.by} asked HR to waive ${n} late mark${n === 1 ? '' : 's'} in ${monthText(month)}. Reason: ${why}. Waive or decline them from Late marks.` }]);
+    return { asked: out.asked, skipped: out.skipped };
   }
 
   /** Undo waivers before the lock (kept, marked undone, audited); the late marks count again. */

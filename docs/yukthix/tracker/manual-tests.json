@@ -27533,5 +27533,46 @@
                               "Screens/Projects/PRJ-01 · Projects and project workspace"
                     ],
                     "note": "Positive and negative (API projects-p2.e2e: nudge after 16:00 on a working day with no hours, none before, on the weekly off, without an allocation, for a sent week, after booking today, when switched off; settings 403 for a non-admin, a bad time 400; the reminder only the day before the cut-off from 10:00, once per person and week, audited, none when off; kit prj-01-live settings mapping). Settings are company-wide: timesheet.nudge.daily_from, timesheet.reminder.cutoff_day, timesheet.reminder.time. The reminder runs with the hourly time job."
+          },
+          {
+                    "id": "MT-D-B1-APPROVAL-DRILL",
+                    "area": "Batch D B1: timesheet approval drill-down, By project / By person (answers 2538, 2540, 18 Nov 2026)",
+                    "screen": "Projects › Timesheet approvals (PRJ-02), Waiting for me tab",
+                    "url": "http://localhost:3000/yx/projects/approvals",
+                    "account": "A project manager (projects.view) with sent weeks waiting on two projects, one person booked on both; a second PM of another project; the person themselves.",
+                    "steps": [
+                              "Open Timesheet approvals. Check the switch shows By project and By person, By project picked.",
+                              "Press 'Week by day' on a project's week, then press a day with hours.",
+                              "Pick By person. Check the person who booked on both your projects.",
+                              "Approve one card, and use 'Approve N within allocation' in the By person view.",
+                              "Negative: press a day showing 'no hours'; sign in as the other PM and as the person, open the page; pick By person again."
+                    ],
+                    "expected": "Step 1: a single-choice joined control (not chips); the Not sent tab still beside Waiting for me. Step 2: the week opens in place into Monday to Sunday with hours per day; the day opens into its tasks with each person's hours; the totals add up to the cards. Step 3: one section per person and week, one card per project (the project code beside 'allocated'); the same cards as before, no new ones. Step 4: a 5-second toast; the lines leave the list; bulk asks first and takes only lines within the allocation. Step 5: an empty day is not a button; the other PM and the person never see your lines in either view (By person only regroups, never widens). No page scroll at 1278 x 635 with the drill-down closed.",
+                    "stories": [
+                              "Screens/Projects/PRJ-02 · Timesheet approvals",
+                              "Data/Timesheet (M12)"
+                    ],
+                    "note": "Positive and negative (kit data.test TimesheetWeekDrill; prj-02-live: By person same cards, bulk by person, drill-down days and tasks, no days = no drill-down; projects-p2 e2e: days and the person on each line, every line listed waits for the viewer, other PM / person / acting see none). No phone layout (2540)."
+          },
+          {
+                    "id": "MT-2527-ASK-HR-WAIVE",
+                    "area": "Founder answer 2527: a manager asks HR to waive late marks of their own team (18 Nov 2026)",
+                    "screen": "Time › Muster (TIM-02, manager) › Late marks; HR: Time › Attendance periods (TIM-11) › Late marks",
+                    "url": "http://localhost:3000/yx/time/muster",
+                    "account": "Manager: panel@ (Divya) with reports who were late this month; HR: an attendance.lock holder (HR Admin); another employee who manages nobody.",
+                    "steps": [
+                              "As the manager open Muster for an open month, press Late marks.",
+                              "Tick two days that count, press 'Ask HR to waive 2', type a short reason ('Too short') and press the button.",
+                              "Type a reason of 10+ characters and send.",
+                              "As HR open Attendance periods › the month › Late marks. Decline one request with a reason; waive the other.",
+                              "As the manager open Late marks again and check the bell.",
+                              "Negative: as the employee with no reports open Muster; after HR locks the month, as the manager try to ask again."
+                    ],
+                    "expected": "Step 1: a drawer of the manager's own team's late marks only (never their own row, never other teams); each says Counts, Waived, Asked HR or Declined. Step 2: the reason field says 'Say why in at least 10 characters.' and takes focus; nothing is sent. Step 3: a 5-second toast 'Asked HR to waive 2 late marks…'; the rows say Asked HR; HR holders get a bell notice. Step 4: the rows show 'Asked by manager' with the reason; Decline needs 10+ characters; both give a 5-second toast. Step 5: one row Waived (with HR's reason), one Declined with HR's reason; the manager got a notice for each. Step 6: no Late marks button without reports; a locked month says 'This month is locked' with no ticks, and the API refuses (409). Audit log: time.late_mark.waiver_asked / waived / waiver_declined.",
+                    "stories": [
+                              "Screens/Time/TIM-02 · Muster",
+                              "Screens/Time/TIM-11 · Periods"
+                    ],
+                    "note": "Positive and negative (time-ops e2e: own team only, outside the team / a peer / another company 404, short reason and wrong month 400, acting for someone else 403, repeats skipped and said, HR told, decline HR-only with reason and once, waive answers the request, both sides told, audited, locked month 409 for asking while HR can still decline; kit time-ops-live: manager ask with field error, declined day asked again, locked read only, HR decline). New table late_mark_waiver_requests (RLS, support excluded, no delete)."
           }
 ]
