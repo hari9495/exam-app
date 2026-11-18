@@ -423,3 +423,4 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
   - 2524: until offers are issued as P05 letters, the offer email is built from the letter text and extra letter fields drop out. "Issue offers as real P05 letters with OTP e-accept" is scheduled right after batch C.
 - 2525 (18 Nov 2026, "ok"): the reassign reason must be at least 10 characters (same as late-mark waivers).
 - 2526 (18 Nov 2026, "ok"): "Everyone's pending" works by company or legal entity only; a location-only grant sees nothing.
+- 2527 to 2529 (18 Nov 2026), batch C, awaiting founder: a manager "ask HR to waive" request in a later batch; WFH dots from the actual check-in place; half day against half the shift, and above the last band = no band.
