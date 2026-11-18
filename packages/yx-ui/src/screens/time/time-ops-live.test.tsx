@@ -6,7 +6,7 @@ import { AttendanceRequestSheet, DeviceBackfillWizard, IndustrialActionScreen, O
 import { AttendanceReportsScreen } from './ops';
 import { PresenceDayScreen } from './field';
 import { OT_REVIEW, PERIODS, PREFLIGHT_READY } from './live/fixtures';
-import type { DayCard, DevicePreview, ExceptionsList, IndustrialEvent, Muster, MyAttendance, OtReview, TodayBoard } from './live/types';
+import type { DayCard, DevicePreview, ExceptionsList, IndustrialEvent, LateMarks, Muster, MyAttendance, OtReview, TodayBoard } from './live/types';
 
 // Time ops (29 Oct 2026): the designed TIM-01, 02, 03, 04, 07, 09, 10, 11, 16, 36 and 37 screens with live data. Each
 // state renders; pressed too early, a button says why and focuses the field; every action calls the API once.
@@ -265,6 +265,59 @@ describe('TIM-11 Periods two-step (live)', () => {
     await ue.click(within(screen.getAllByRole('dialog').at(-1)!).getByRole('button', { name: 'Send for approval' }));
     await waitFor(() => expect(l.onSend).toHaveBeenCalledWith('le-kfpl', '2026-09'));
     expect(l.onLock).not.toHaveBeenCalled();
+  });
+});
+
+// Batch C item 6 (answers 2505, 2506): late-mark penalty waivers from the month card.
+describe('TIM-11 late marks (live)', () => {
+  const late: LateMarks = {
+    legalEntityId: 'le-kfpl',
+    month: '2026-09',
+    unlocked: true,
+    rows: [
+      { employeeId: 'e1', name: 'Kavya Reddy', code: 'KF-1', on: '2026-09-03', lateMinutes: 14, waiver: null },
+      { employeeId: 'e2', name: 'Ravi Kumar', code: 'KF-2', on: '2026-09-04', lateMinutes: 30, waiver: { id: 'w1', reason: 'Bus breakdown, confirmed', by: 'Lakshmi', at: '2026-09-28T06:00:00Z' } },
+    ],
+  };
+  const live = (o: Partial<LivePeriods> = {}): LivePeriods => ({ state: 'ready', data: { ...PERIODS, entities: [{ ...PERIODS.entities[0]!, canLock: true, canApprove: false }] }, year: '2026', onYear: vi.fn(), onPreflight: vi.fn(async () => PREFLIGHT_READY), onLock: ok(), onUnlock: ok(), onLateMarks: vi.fn(async () => late), onWaiveLate: vi.fn(async () => ({ waived: [{}], skipped: [] })), onUndoLate: ok(), ...o });
+  const open = async (l: LivePeriods) => {
+    render(<PeriodsScreen live={l} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Late marks' })[1]!);
+    return screen.findByRole('dialog', { name: /Late marks · September 2026/ });
+  };
+
+  it('waives the chosen marks with one reason; under 10 characters is a field error and nothing is sent; the waived one stays visible', async () => {
+    const l = live();
+    const drawer = await open(l);
+    expect(within(drawer).getByText('Waived')).toBeInTheDocument();
+    expect(within(drawer).getByText(/Lakshmi · Bus breakdown/)).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Kavya Reddy/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Waive 1' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Too short');
+    await ue.click(within(dlg).getByRole('button', { name: 'Waive 1' }));
+    expect(within(dlg).getByText('Say why in at least 10 characters.')).toBeInTheDocument();
+    expect(l.onWaiveLate).not.toHaveBeenCalled();
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), ' to explain');
+    await ue.click(within(dlg).getByRole('button', { name: 'Waive 1' }));
+    await waitFor(() => expect(l.onWaiveLate).toHaveBeenCalledWith('le-kfpl', '2026-09', [{ employeeId: 'e1', on: '2026-09-03' }], 'Too short to explain'));
+  });
+
+  it('undoes a waiver with a reason; a locked month is read only', async () => {
+    const l = live();
+    const drawer = await open(l);
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Ravi Kumar/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Undo 1 waiver' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Transport did not confirm it');
+    await ue.click(within(dlg).getByRole('button', { name: 'Undo 1' }));
+    await waitFor(() => expect(l.onUndoLate).toHaveBeenCalledWith('le-kfpl', '2026-09', ['w1'], 'Transport did not confirm it'));
+  });
+
+  it('a locked month: no selection, the reason is shown', async () => {
+    const drawer = await open(live({ onLateMarks: vi.fn(async () => ({ ...late, unlocked: false })) }));
+    expect(within(drawer).getByText('This month is locked')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('checkbox')).toBeNull();
   });
 });
 

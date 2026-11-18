@@ -27353,5 +27353,30 @@
                               "Screens/Time/TIM-03 · Day card"
                     ],
                     "note": "Positive and negative (kit leave-live.test.tsx: legend, dot opens the card, non-team none, dots-only shows the grid; attendance-live.test.tsx: DayCardScreen live and 404; API time-rules.spec teamDot; time-leave.e2e: manager sees dots for the report only, not own row, HR none, employee none, other company none). DayCardScreen left the design-live-guard known list."
+          },
+          {
+                    "id": "MT-C6-LATE-WAIVERS",
+                    "area": "Batch C item 6: bulk waive late-mark penalties before payroll (answers 2505, 2506, 18 Nov 2026)",
+                    "screen": "Time › Periods (TIM-11) › Late marks; the day card (TIM-03)",
+                    "url": "http://localhost:3000/yx/time/periods",
+                    "account": "HR hr-tester@demo-org.test (attendance.lock); manager panel@demo-org.test (Divya).",
+                    "steps": [
+                              "As HR: Settings › Time 3.5 Late penalty: set 'Each late mark over the free ones costs' to 1 day (note the old value).",
+                              "Open Time › Periods. On an open month press Late marks.",
+                              "Tick two late marks, press Waive 2, type 'Too short' and press Waive 2.",
+                              "Type a full reason (10+ characters, for example 'Bus breakdown on the Hosur road') and press Waive 2.",
+                              "Open one of those people's day card for that day (Muster › person › the day).",
+                              "Back in Late marks, tick a waived mark, press Undo 1 waiver, give a reason and confirm.",
+                              "Open Late marks on a locked month.",
+                              "As Divya (no attendance.lock): open /yx/time/periods.",
+                              "Put the late penalty setting back."
+                    ],
+                    "expected": "Step 2: a drawer lists each late mark (person, day, late by, Penalty: Counts or Waived with who and why). No page scroll at 1278 x 635. Step 3: 'Say why in at least 10 characters.' with focus in Reason; nothing sent. Step 4: 5-second toast 'Waived 2 late marks. They no longer count towards the penalty.'; both rows show Waived with HR's name and the reason; the payroll feed for the month (Time › Payroll feed) has one day less unpaid per waived mark over the free ones. Step 5: the late mark is still there with 'Late mark waived by … : reason. It does not count towards the late penalty.' Step 6: toast 'Undone 1 waiver. Those late marks count again.'; Counts again. Step 7: 'This month is locked' and no tick boxes. Step 8: no access. Audit log: time.late_mark.waived / time.late_mark.waiver_undone with the reason.",
+                    "stories": [
+                              "Screens/Time/TIM-11 · Periods · Late marks · waive before the lock",
+                              "Screens/Time/TIM-11 · Periods · Late marks · waive 2 with one reason",
+                              "Screens/Time/TIM-11 · Periods · Late marks · locked month (read only)"
+                    ],
+                    "note": "Positive and negative (kit time-ops-live.test.tsx: waive, reason under 10 refused, undo, locked read only; API time-ops.e2e: list, manager/HR exec 403, other company 404, short reason, empty list, day outside the month 400, no late mark skipped, repeat skipped, feed LOP drops and returns on undo, day card shows waived, audited, locked month 409 for waive and undo, never deleted). New table late_mark_waivers (migration 202617z0000533, RLS + support-session excluded, in rls-isolation). Answer 2505 'a manager can only ask': no manager request flow built yet (question 2527)."
           }
 ]

@@ -2531,6 +2531,8 @@ function LiveDayPanel({ load, day, viewer, person, employeeId, approver, monthDa
       />
       {viewer === 'hr' && card.hrFix && !card.hrFix.ok && card.hrFix.why && (day.code === 'MP' || day.code === 'MI' || day.code === 'A') && <p className="yx-tim-note">{card.hrFix.why}</p>}
       {card.resolution && <p className="yx-tim-note">Resolved by {card.resolution.by ?? 'HR'} on {formatDate(new Date(card.resolution.at))}: {card.resolution.reason}</p>}
+      {/* Batch C item 6 (answer 2506): the late mark stays on the day, shown as waived; only the penalty went. */}
+      {card.lateWaived && <p className="yx-tim-note"><Badge tone="success">Late mark waived</Badge> by {card.lateWaived.by ?? 'HR'} on {formatDate(new Date(card.lateWaived.at))}: {card.lateWaived.reason}. It does not count towards the late penalty.</p>}
       <ResolveDialog
         key={resolve?.map((r) => r.id).join()}
         rows={resolve}

@@ -91,6 +91,34 @@ export class PeriodReasonDto extends PeriodRefDto {
   reason!: string;
 }
 
+/** Batch C item 6: one late mark (a person's day). */
+export class LateMarkRefDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  on!: string;
+}
+
+/** Answers 2505 / 2506: waive the penalty of up to 500 late marks with one reason (10+ characters). */
+export class LateWaiveDto extends PeriodReasonDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @ValidateNested({ each: true })
+  @Type(() => LateMarkRefDto)
+  items!: LateMarkRefDto[];
+}
+
+/** Undo waivers before the lock, with a reason (10+ characters). */
+export class LateUndoDto extends PeriodReasonDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  waiverIds!: string[];
+}
+
 /** TIM-09: one decision on an overtime claim through the shared approvals engine; comp-off approves it as time off. */
 export class OtDecisionDto {
   @IsIn(['approve', 'reject', 'comp_off'])

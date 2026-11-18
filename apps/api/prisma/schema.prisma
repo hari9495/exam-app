@@ -5945,6 +5945,26 @@ model LeaveType {
 
 /// Answer 2477: dated versions of a leave type's rules and pay. Leave follows the version in force on its first day;
 /// the payroll feed reads the pay in force on each leave day. A version in force never changes (database trigger).
+/// Batch C item 6 (answers 2505, 2506): a late mark whose penalty an attendance.lock holder waived, with a reason (10+
+/// characters), only while the month is unlocked; undone (never deleted) before the lock. The mark itself stays, shown as
+/// "waived"; only the penalty in the payroll feed goes. At most one active waiver per person and day (partial index).
+model LateMarkWaiver {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  workOn         DateTime  @map("work_on") @db.Date
+  reason         String    @db.VarChar(500)
+  waivedBy       String    @map("waived_by") @db.Uuid
+  waivedAt       DateTime  @default(now()) @map("waived_at") @db.Timestamptz(3)
+  undoneBy       String?   @map("undone_by") @db.Uuid
+  undoneAt       DateTime? @map("undone_at") @db.Timestamptz(3)
+  undoReason     String?   @map("undo_reason") @db.VarChar(500)
+
+  @@index([organizationId, legalEntityId, workOn], map: "late_mark_waivers_entity_day_idx")
+  @@map("late_mark_waivers")
+}
+
 model LeaveTypeVersion {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid

@@ -361,6 +361,8 @@ export interface DayCard {
   /** TIM-03 HrFix: null when the viewer may not resolve; otherwise whether they may now, and why not. */
   hrFix?: { ok: boolean; why: string | null } | null;
   resolution?: { how: 'present' | 'absent'; inMinute: number | null; outMinute: number | null; reason: string; by: string | null; at: string } | null;
+  /** Batch C item 6: this day's late mark is waived (it stays shown; only the penalty went). */
+  lateWaived?: { reason: string; by: string | null; at: string } | null;
   /** TIM-03 OnDuty: an on-duty request for the day (approved, else waiting). */
   onDuty?: { id: string; place: string; inMinute: number; outMinute: number; reason: string; status: 'approved' | 'pending' } | null;
 }
@@ -1189,4 +1191,13 @@ export interface FactoriesActCover {
   exclusions: { scopeType: string; name: string }[];
   /** Answer 151: the location's own setting value in force today (null: none). */
   locationSetting?: string | null;
+}
+
+/** Batch C item 6: an entity's late marks for a month, each with its penalty waiver (GET /time/periods/late-marks). */
+export interface LateMarks {
+  legalEntityId: string;
+  month: string;
+  /** Open or frozen: waivers can still be added or undone. */
+  unlocked: boolean;
+  rows: { employeeId: string; name: string; code: string | null; on: string; lateMinutes: number; waiver: { id: string; reason: string; by: string; at: string } | null }[];
 }

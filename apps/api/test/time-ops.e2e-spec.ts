@@ -133,7 +133,7 @@ describe('Time ops: attendance, overtime, periods', () => {
   });
 
   it('every new table has forced RLS; resolutions and presence states are never changed (presence states are removed only on withdrawal)', async () => {
-    const tables = ['attendance_resolutions', 'industrial_action_events', 'presence_consents', 'presence_signals'];
+    const tables = ['attendance_resolutions', 'industrial_action_events', 'late_mark_waivers', 'presence_consents', 'presence_signals'];
     const rows = await prisma.$queryRaw<{ relname: string; forced: boolean; policy: boolean }[]>`
       SELECT c.relname, c.relforcerowsecurity AS forced, EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename = c.relname AND p.policyname = 'tenant_isolation') AS policy
       FROM pg_class c WHERE c.relname = ANY(${tables}::text[]) AND c.relkind = 'r'`;
@@ -141,6 +141,8 @@ describe('Time ops: attendance, overtime, periods', () => {
     for (const r of rows) expect(r).toMatchObject({ forced: true, policy: true });
     await expect(prisma.$executeRaw`UPDATE attendance_resolutions SET reason = 'x'`).rejects.toThrow();
     await expect(prisma.$executeRaw`UPDATE presence_signals SET state = 'idle'`).rejects.toThrow();
+    // Batch C item 6: a waiver is never deleted (undone instead).
+    await expect(prisma.$executeRaw`DELETE FROM late_mark_waivers`).rejects.toThrow();
   });
 
   it('my pages for a sign-in with no employee record say so with a code, not a retryable error', async () => {
@@ -318,6 +320,56 @@ describe('Time ops: attendance, overtime, periods', () => {
     });
   });
 
+  // Batch C item 6 (answers 2505, 2506): attendance.lock waives late-mark penalties before the lock; the mark stays.
+  describe('late-mark penalty waivers', () => {
+    const upsertLate = (employeeId: string, on: string, lateMinutes: number) =>
+      inA((tx) => tx.attendanceDay.upsert({ where: { organizationId_employeeId_workOn: { organizationId: org.A.id, employeeId, workOn: new Date(`${on}T00:00:00Z`) } }, create: { organizationId: org.A.id, employeeId, workOn: new Date(`${on}T00:00:00Z`), mode: 'punch', status: 'present', lateMinutes, workedMinutes: 480 }, update: { status: 'present', lateMinutes } }));
+    const feedLop = async (employeeId: string) => ((await api('hrAdmin', 'get', `/time/payroll-feed?legalEntityId=${ids.entityA}&month=${lockMonth}`).expect(200)).body.rows as { employeeId: string; lopDays: number }[]).find((r) => r.employeeId === employeeId)!.lopDays;
+
+    it('lists the late marks; refuses the wrong role, another company, bad input; waives with one reason; the feed drops the penalty; undo brings it back', async () => {
+      await upsertLate(ids.empEmp, L(5), 20);
+      await upsertLate(ids.empEmp, L(6), 15);
+      // Free 1 late mark, then a full day of pay each (the company settings).
+      await setting('attendance.late_marks_free', '1');
+      await setting('attendance.late_mark_penalty', '1');
+      const q = `/time/periods/late-marks?legalEntityId=${ids.entityA}&month=${lockMonth}`;
+      await api('mgr', 'get', q).expect(403);
+      await api('hrExec', 'get', q).expect(403);
+      await api('adminB', 'get', q).expect(404);
+      const list = (await api('hrAdmin', 'get', q).expect(200)).body;
+      expect(list.unlocked).toBe(true);
+      expect(list.rows.filter((r: { employeeId: string }) => r.employeeId === ids.empEmp).map((r: { on: string; waiver: unknown }) => [r.on, r.waiver])).toEqual([[L(5), null], [L(6), null]]);
+      const before = await feedLop(ids.empEmp);
+      const body = { legalEntityId: ids.entityA, month: lockMonth };
+      const reason = 'Bus breakdown on the highway';
+      await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(5) }], reason: 'Too short' }).expect(400);
+      await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [], reason }).expect(400);
+      await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: `${thisMonth}-01` }], reason }).expect(400);
+      await api('hrExec', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(5) }], reason }).expect(403);
+      await api('adminB', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(5) }], reason }).expect(404);
+      const out = (await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(5) }, { employeeId: ids.empEmp, on: L(7) }], reason }).expect(200)).body;
+      expect(out.waived).toHaveLength(1);
+      expect(out.skipped).toEqual([{ employeeId: ids.empEmp, on: L(7), message: 'There is no late mark on this day.' }]);
+      // A repeat is said, not waived twice.
+      expect((await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(5) }], reason }).expect(200)).body.skipped[0].message).toBe('Already waived.');
+      expect(await feedLop(ids.empEmp)).toBe(before - 1);
+      // The mark stays on the day, shown as waived; it no longer counts.
+      const card = (await api('hrAdmin', 'get', `/time/people/${ids.empEmp}/days/${L(5)}`).expect(200)).body;
+      expect(card.day.lateMinutes).toBe(20);
+      expect(card.lateWaived).toMatchObject({ reason });
+      expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: 'time.late_mark.waived' } }))).toBe(1);
+      // Undo: a reason too; the penalty is back.
+      const w = (await api('hrAdmin', 'get', q).expect(200)).body.rows.find((r: { on: string; employeeId: string }) => r.on === L(5) && r.employeeId === ids.empEmp).waiver;
+      await api('hrAdmin', 'post', '/time/periods/late-marks/undo').send({ ...body, waiverIds: [w.id], reason: 'short' }).expect(400);
+      await api('hrAdmin', 'post', '/time/periods/late-marks/undo').send({ ...body, waiverIds: [w.id], reason: 'Transport did not confirm it' }).expect(200);
+      await api('hrAdmin', 'post', '/time/periods/late-marks/undo').send({ ...body, waiverIds: [w.id], reason: 'Transport did not confirm it' }).expect(404);
+      expect(await feedLop(ids.empEmp)).toBe(before);
+      // Waived again for the lock below (kept after the lock).
+      await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(6) }], reason: 'Heavy rain closed the gate' }).expect(200);
+      await inA((tx) => tx.setting.deleteMany({ where: { organizationId: org.A.id, key: { in: ['attendance.late_marks_free', 'attendance.late_mark_penalty'] } } }));
+    });
+  });
+
   describe('TIM-02 / TIM-11 freeze, send and the lock (attendance.lock_flow)', () => {
     it('freeze: waiting requests first; the wrong role, another company, acting for someone else are refused', async () => {
       const body = { legalEntityId: ids.entityA, month: lockMonth };
@@ -389,6 +441,12 @@ describe('Time ops: attendance, overtime, periods', () => {
 
     it('a locked month: unfreeze is refused; a late request still goes to payroll', async () => {
       await api('hrAdmin', 'post', '/time/periods/unfreeze').send({ legalEntityId: ids.entityA, month: lockMonth, reason: 'Reopen for a missed fix' }).expect(409);
+      // Batch C item 6: after the lock, waivers are neither added nor undone; the list says it is locked.
+      const body = { legalEntityId: ids.entityA, month: lockMonth };
+      expect((await api('hrAdmin', 'get', `/time/periods/late-marks?legalEntityId=${ids.entityA}&month=${lockMonth}`).expect(200)).body.unlocked).toBe(false);
+      await api('hrAdmin', 'post', '/time/periods/late-marks/waive').send({ ...body, items: [{ employeeId: ids.empEmp, on: L(5) }], reason: 'Bus breakdown on the highway' }).expect(409);
+      const kept = await inA((tx) => tx.lateMarkWaiver.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.empEmp, undoneAt: null } }));
+      await api('hrAdmin', 'post', '/time/periods/late-marks/undo').send({ ...body, waiverIds: [kept.id], reason: 'Transport did not confirm it' }).expect(409);
       await api('peer', 'post', '/payroll/me/late-corrections').send({ on: L(17), kind: 'attendance', shouldBe: 'present', reason: 'I was at the client site all day' }).expect(201);
     });
   });

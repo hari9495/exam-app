@@ -849,7 +849,11 @@ export class AttendanceService implements OnModuleInit {
       const shift = (await (await ScheduleBook.load(tx, c.organizationId)).day(f, on)).shift;
       const org = c.organizationId;
       const month = monthRange(on.slice(0, 7));
-      const lateMarks = await tx.attendanceDay.count({ where: { organizationId: org, employeeId, workOn: { gte: asDate(month.from), lte: asDate(on) }, lateMinutes: { gt: 0 } } });
+      // Batch C item 6: waived late marks stay visible on their day ("waived") but do not count towards the penalty.
+      const waivers = await tx.lateMarkWaiver.findMany({ where: { organizationId: org, employeeId, undoneAt: null, workOn: { gte: asDate(month.from), lte: asDate(on) } } });
+      const lateMarks = (await tx.attendanceDay.count({ where: { organizationId: org, employeeId, workOn: { gte: asDate(month.from), lte: asDate(on) }, lateMinutes: { gt: 0 } } })) - waivers.length;
+      const waiver = waivers.find((w) => dateOf(w.workOn) === on);
+      const waivedBy = waiver ? await tx.user.findFirst({ where: { organizationId: org, id: waiver.waivedBy }, select: { name: true, email: true } }) : null;
       // TIM-03 HrFix: HR (leave.approve over the person, never their own day) may resolve a past day of an open month.
       const hr = !v.actingForOther && employeeId !== own && (await grantCovers(tx, c, v, own, 'leave.approve', employeeId, on));
       const locked = (await lockedDates(tx, org, employeeId, on, on)).size > 0;
@@ -860,7 +864,8 @@ export class AttendanceService implements OnModuleInit {
         on,
         zone: f.zone,
         ot: day?.workedMinutes ? await this.overtime.dayOt(tx, org, employeeId, on) : null,
-        lateMarks: { month: lateMarks, free: Number(await settingOn(tx, c, 'attendance.late_marks_free', f, on)) },
+        lateMarks: { month: Math.max(0, lateMarks), free: Number(await settingOn(tx, c, 'attendance.late_marks_free', f, on)) },
+        lateWaived: waiver ? { reason: waiver.reason, by: waivedBy?.name || waivedBy?.email || null, at: waiver.waivedAt.toISOString() } : null,
         locked,
         hrFix: hr ? (on >= todayIn(f.zone) ? { ok: false, why: 'Today is read only until the day is over.' } : locked ? { ok: false, why: 'The month is frozen or locked: record a correction for the next payroll.' } : { ok: true, why: null }) : null,
         onDuty: await tx.attendanceRequest.findFirst({ where: { organizationId: org, employeeId, workOn: asDate(on), kind: 'on_duty', status: { in: ['approved', 'pending'] } }, orderBy: [{ status: 'asc' }, { createdAt: 'desc' }] }).then((x) => (x ? { id: x.id, place: x.place ?? '', inMinute: x.inMinute!, outMinute: x.outMinute!, reason: x.reason, status: x.status as 'approved' | 'pending' } : null)),

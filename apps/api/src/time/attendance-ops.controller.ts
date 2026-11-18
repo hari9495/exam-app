@@ -14,7 +14,7 @@ import type { ScopeUser } from '../access/scope';
 import { AttendanceOpsService } from './attendance-ops.service';
 import { DeviceBackfillService } from './device-backfill.service';
 import { IndustrialActionService } from './industrial-action.service';
-import { DeviceRefQueryDto, EntityQueryDto, ExceptionsQueryDto, EventDatesDto, EventVersionDto, IndustrialActionDto, LegalityDto, MarkPresentDto, OpsMonthQueryDto, OtDecisionDto, PageQueryDto, PeriodReasonDto, PeriodRefDto, PresenceConsentDto, PresenceSignalDto, ResolveDto } from './ops-dto';
+import { DeviceRefQueryDto, EntityQueryDto, ExceptionsQueryDto, EventDatesDto, EventVersionDto, IndustrialActionDto, LegalityDto, LateUndoDto, LateWaiveDto, MarkPresentDto, OpsMonthQueryDto, OtDecisionDto, PageQueryDto, PeriodReasonDto, PeriodRefDto, PresenceConsentDto, PresenceSignalDto, ResolveDto } from './ops-dto';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
 import { PresenceService } from './presence.service';
@@ -110,6 +110,29 @@ export class AttendanceOpsController {
   @RequireStepUp()
   unfreeze(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PeriodReasonDto) {
     return this.periods.unfreeze(ctx, this.user(req), dto.legalEntityId, dto.month, dto.reason);
+  }
+
+  // Batch C item 6 (answers 2505, 2506): late marks of an entity's month, and waiving or un-waiving their penalty.
+  @Get('periods/late-marks')
+  @RequirePermissions('attendance.lock')
+  lateMarks(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PeriodRefDto) {
+    return this.periods.lateMarks(ctx, this.user(req), q.legalEntityId, q.month);
+  }
+
+  @Post('periods/late-marks/waive')
+  @HttpCode(200)
+  @RequirePermissions('attendance.lock')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  waiveLate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LateWaiveDto) {
+    return this.periods.waiveLateMarks(ctx, this.user(req), dto.legalEntityId, dto.month, dto.items, dto.reason);
+  }
+
+  @Post('periods/late-marks/undo')
+  @HttpCode(200)
+  @RequirePermissions('attendance.lock')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  undoLate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LateUndoDto) {
+    return this.periods.undoLateWaivers(ctx, this.user(req), dto.legalEntityId, dto.month, dto.waiverIds, dto.reason);
   }
 
   @Post('periods/send')

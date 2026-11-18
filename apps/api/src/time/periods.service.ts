@@ -339,6 +339,103 @@ export class PeriodsService {
     });
   }
 
+  // ------------------------------------------------------------------------------------------ late-mark waivers
+
+  /** A month an attendance.lock holder may still change: open or frozen (never locked or filed). */
+  private async unlockedMonth(tx: Tx, c: CompanyContext, entityId: string, month: string) {
+    const p = await tx.payPeriod.findFirst({ where: { organizationId: c.organizationId, legalEntityId: entityId, payGroupId: null, periodStart: asDate(monthRange(month).from) } });
+    return !p || p.stage === 'open' || p.stage === 'frozen';
+  }
+
+  private async lateHolder(user: ScopeUser, entityId: string, write: boolean) {
+    const v = await this.viewer(user);
+    if (write && v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    // A manager can only ask (answer 2505): without attendance.lock for the entity it is "not found".
+    if (!this.coversEntity(v, entityId)) throw new NotFoundException('Not found');
+    return v;
+  }
+
+  /** Batch C item 6: every late mark of the entity's month, each with its waiver (who, when, why) if it has one. */
+  async lateMarks(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
+    await this.lateHolder(user, entityId, false);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId }, select: { id: true } }))) throw new NotFoundException('Not found');
+      const { from, to } = monthRange(month);
+      const people = await this.employeesOf(tx, org, entityId, from, to);
+      const ids = people.map((x) => x.id);
+      const days = ids.length ? await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) }, lateMinutes: { gt: 0 } }, orderBy: [{ workOn: 'asc' }] }) : [];
+      const waivers = ids.length ? await tx.lateMarkWaiver.findMany({ where: { organizationId: org, employeeId: { in: ids }, undoneAt: null, workOn: { gte: asDate(from), lte: asDate(to) } } }) : [];
+      const names = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(waivers.map((w) => w.waivedBy))] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name?.trim() || u.email]));
+      const byId = new Map(people.map((x) => [x.id, x]));
+      return {
+        legalEntityId: entityId,
+        month,
+        unlocked: await this.unlockedMonth(tx, c, entityId, month),
+        rows: days.map((d) => {
+          const w = waivers.find((x) => x.employeeId === d.employeeId && dateOf(x.workOn) === dateOf(d.workOn));
+          return { employeeId: d.employeeId, name: byId.get(d.employeeId)?.name ?? '', code: byId.get(d.employeeId)?.code ?? null, on: dateOf(d.workOn), lateMinutes: d.lateMinutes ?? 0, waiver: w ? { id: w.id, reason: w.reason, by: names.get(w.waivedBy) ?? '', at: w.waivedAt.toISOString() } : null };
+        }),
+      };
+    });
+  }
+
+  /**
+   * Answers 2505 / 2506: waive the penalty of these late marks, one reason (10+ characters) for all, while the month is
+   * unlocked. Each must be a late mark of someone in the entity that month; one already waived is skipped (said so).
+   */
+  async waiveLateMarks(ctx: TenantContext, user: ScopeUser, entityId: string, month: string, items: { employeeId: string; on: string }[], reason: string) {
+    await this.lateHolder(user, entityId, true);
+    const why = reason.trim();
+    if (why.length < 10) throw new BadRequestException('Say why in at least 10 characters. It is kept with each waiver.');
+    const { from, to } = monthRange(month);
+    if (items.some((i) => i.on < from || i.on > to)) throw new BadRequestException(`Every late mark must be in ${monthText(month)}.`);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (!(await tx.legalEntity.findFirst({ where: { organizationId: org, id: entityId }, select: { id: true } }))) throw new NotFoundException('Not found');
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${entityId}:${month}`}))`;
+      if (!(await this.unlockedMonth(tx, c, entityId, month))) throw new ConflictException(`${monthText(month)} is locked. Late marks can only be waived before the lock.`);
+      const inEntity = new Set((await this.employeesOf(tx, org, entityId, from, to)).map((x) => x.id));
+      const done: { employeeId: string; on: string; id: string }[] = [];
+      const skipped: { employeeId: string; on: string; message: string }[] = [];
+      for (const i of items) {
+        const day = inEntity.has(i.employeeId) ? await tx.attendanceDay.findFirst({ where: { organizationId: org, employeeId: i.employeeId, workOn: asDate(i.on) } }) : null;
+        if (!day || !((day.lateMinutes ?? 0) > 0)) {
+          skipped.push({ ...i, message: 'There is no late mark on this day.' });
+          continue;
+        }
+        if (await tx.lateMarkWaiver.findFirst({ where: { organizationId: org, employeeId: i.employeeId, workOn: asDate(i.on), undoneAt: null }, select: { id: true } })) {
+          skipped.push({ ...i, message: 'Already waived.' });
+          continue;
+        }
+        const w = await tx.lateMarkWaiver.create({ data: { organizationId: org, employeeId: i.employeeId, legalEntityId: entityId, workOn: asDate(i.on), reason: why, waivedBy: c.userId! } });
+        await audit(tx, c, 'time.late_mark.waived', 'late_mark_waiver', w.id, { employeeId: i.employeeId, on: i.on, legalEntityId: entityId, month, reason: why });
+        done.push({ ...i, id: w.id });
+      }
+      return { waived: done, skipped };
+    });
+  }
+
+  /** Undo waivers before the lock (kept, marked undone, audited); the late marks count again. */
+  async undoLateWaivers(ctx: TenantContext, user: ScopeUser, entityId: string, month: string, ids: string[], reason: string) {
+    await this.lateHolder(user, entityId, true);
+    const why = reason.trim();
+    if (why.length < 10) throw new BadRequestException('Say why in at least 10 characters. It is kept with the waiver.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`lock:${org}:${entityId}:${month}`}))`;
+      if (!(await this.unlockedMonth(tx, c, entityId, month))) throw new ConflictException(`${monthText(month)} is locked. A waiver cannot be undone after the lock.`);
+      const { from, to } = monthRange(month);
+      const rows = await tx.lateMarkWaiver.findMany({ where: { organizationId: org, legalEntityId: entityId, id: { in: ids }, undoneAt: null, workOn: { gte: asDate(from), lte: asDate(to) } } });
+      if (rows.length !== new Set(ids).size) throw new NotFoundException('Some of these waivers were not found or are already undone. Reload and try again.');
+      for (const w of rows) {
+        await tx.lateMarkWaiver.update({ where: { id: w.id }, data: { undoneAt: new Date(), undoneBy: c.userId!, undoReason: why } });
+        await audit(tx, c, 'time.late_mark.waiver_undone', 'late_mark_waiver', w.id, { employeeId: w.employeeId, on: dateOf(w.workOn), legalEntityId: entityId, month, reason: why });
+      }
+      return { undone: rows.length };
+    });
+  }
+
   /** The muster's period card (TIM-02): stage, when it may be frozen or locked, what blocks it, what the viewer may do. */
   async musterPeriod(tx: Tx, c: CompanyContext, v: Viewer, entityId: string, month: string) {
     const p = await tx.payPeriod.findFirst({ where: { organizationId: c.organizationId, legalEntityId: entityId, payGroupId: null, periodStart: asDate(monthRange(month).from) } });
@@ -398,6 +495,8 @@ export class PeriodsService {
     const sheets = await tx.timesheet.findMany({ where: { organizationId: org, employeeId: { in: ids }, status: 'approved', weekStart: { gte: asDate(addDays(from, -6)), lte: asDate(to) } } });
     const lines = sheets.length ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: { in: sheets.map((s) => s.id) } } }) : [];
     const events = await tx.industrialActionEvent.findMany({ where: { organizationId: org, legalEntityId: entityId, status: 'active', fromOn: { lte: asDate(to) }, toOn: { gte: asDate(from) } } });
+    // Batch C item 6: a waived late mark stays on the day but costs nothing.
+    const waived = new Set((await tx.lateMarkWaiver.findMany({ where: { organizationId: org, employeeId: { in: ids }, undoneAt: null, workOn: { gte: asDate(from), lte: asDate(to) } }, select: { employeeId: true, workOn: true } })).map((w) => `${w.employeeId}:${dateOf(w.workOn)}`));
     const out: FeedRow[] = [];
     for (const p of people) {
       let layoff = 0;
@@ -432,7 +531,7 @@ export class PeriodsService {
           held += ip.held;
           continue;
         }
-        if ((d.lateMinutes ?? 0) > 0) lateMarks++;
+        if ((d.lateMinutes ?? 0) > 0 && !waived.has(`${p.id}:${on}`)) lateMarks++;
         const lp = leavePaid.find((x) => x.employeeId === p.id && x.on === on);
         const pay = payOfDay({ status: d.status, leavePart: d.leavePart as 'full' | 'first' | 'second' | null, leavePaid: lp ? lp.paid : null });
         paid += pay.paid;
