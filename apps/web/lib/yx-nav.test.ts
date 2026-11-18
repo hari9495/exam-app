@@ -178,6 +178,12 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(labels(nav([], { employee: true }), 'pay')).not.toContain('Statutory bonus');
   });
 
+  it('PAY-59 / PAY-60 flexible benefits (answer 2455): the employee their own ledger, payroll.input.manage the settlement', () => {
+    expect(activeLink(nav([], { employee: true }), '/yx/me/flexible-benefits')?.link.id).toBe('my-fbp');
+    expect(activeLink(nav(['payroll.input.manage']), '/yx/payroll/flexible-benefits')?.link.id).toBe('pay-fbp');
+    expect(labels(nav(['payroll.run.view']), 'pay')).not.toContain('Flexible benefits');
+  });
+
   it('PAY-25 Payroll reports: shown with payroll.reports.view only (not to HR without payroll scope or employees)', () => {
     const n = nav(['payroll.reports.view']);
     expect(labels(n, 'pay')).toEqual(['Payroll reports']);

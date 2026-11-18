@@ -495,6 +495,17 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
   ],
   "hiring_admin": [
     [
+      "assessments.settings.manage",
+      "ats.agency.manage",
+      "ats.candidate.data_rights",
+      "ats.headcount.manage",
+      "ats.offer.compensation.view",
+      "ats.referral.manage",
+      "ats.report.view",
+      "ats.settings.manage",
+      "payroll.equity.own"
+    ],
+    [
       "ats.agency.manage",
       "ats.candidate.data_rights",
       "ats.headcount.manage",
@@ -523,6 +534,13 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
     ]
   ],
   "hiring_manager": [
+    [
+      "asmt.results.view",
+      "ats.assessment.view",
+      "ats.candidate.view",
+      "ats.requisition.raise",
+      "payroll.equity.own"
+    ],
     [
       "ats.assessment.view",
       "ats.candidate.view",
@@ -2696,6 +2714,22 @@ export const TEMPLATE_HISTORY: Record<string, string[][]> = {
     ]
   ],
   "recruiter": [
+    [
+      "asmt.bank.manage",
+      "asmt.evaluate",
+      "asmt.proctor",
+      "asmt.results.view",
+      "asmt.test.manage",
+      "ats.assessment.view",
+      "ats.candidate.manage",
+      "ats.costs.manage",
+      "ats.interview.schedule",
+      "ats.job.manage",
+      "ats.offer.manage",
+      "ats.report.view",
+      "ats.staffing.view",
+      "payroll.equity.own"
+    ],
     [
       "ats.assessment.view",
       "ats.candidate.manage",

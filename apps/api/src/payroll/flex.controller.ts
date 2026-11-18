@@ -53,6 +53,13 @@ export class FlexBenefitsController {
     return this.flex.ledger(ctx, this.user(req), employeeId, q.taxYear);
   }
 
+  /** Answer 2455: the settlement screen's list for a tax year (the current one by default). */
+  @Get('settlements')
+  @RequirePermissions('payroll.input.manage')
+  overview(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: FlexLedgerQueryDto) {
+    return this.flex.overview(ctx, this.user(req), q.taxYear);
+  }
+
   @Post('settlements')
   @RequirePermissions('payroll.input.manage')
   settle(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: FlexSettleDto) {
