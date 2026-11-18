@@ -27884,5 +27884,21 @@
                               "Screens/Helpdesk/HLP-08 · Cases (case team)"
                     ],
                     "note": "Positive and negative (service-desk-hlp06 e2e: fields on a grievance 400, her name without the relationship 400 and the other way, a non-boolean 400, a reason over 1,000 characters 400, saved and shown; kit cases-live and posh-live tests). Migration 613 adds on_behalf_name, on_behalf_relation, late_reason, conciliation_asked to speakup_cases (POSH only, checked in the database). Answer 2590: PoshCaseScreen and the design-only LoadingCase / ErrorCase removed; HLP-08's Loading and Error stories now draw the live workspace's own states."
+          },
+          {
+                    "id": "MT-G1-2596-MANAGER-EMAIL",
+                    "area": "Batch G1 answer 2596: the manager gets a no-details email when a question from their team reaches them (19 Nov 2026)",
+                    "screen": "Helpdesk › Help centre › raise a ticket in a category answered by the manager; the manager's email inbox; My cases › Asked of me",
+                    "url": "http://localhost:3000/yx/desk/help",
+                    "account": "An employee whose manager has a login (the demo manager panel@); a desk admin who set a category to 'Who answers: the requester's manager'.",
+                    "steps": [
+                              "As the employee raise a ticket in that category with a subject and description.",
+                              "Open the manager's email (the test mail catcher).",
+                              "As the manager open My cases › Asked of me.",
+                              "As the manager, in Profile › Notifications turn email off for this notice and repeat step 1."
+                    ],
+                    "expected": "Step 2: one email, subject 'You have a question from your team in YukthiX', body says to open My cases; no ticket number, subject, description or name. Step 3: the question with its details is there. Step 4: the bell shows it; no email.",
+                    "stories": [],
+                    "note": "Positive and negative (service-desk-esm e2e 29/29: exactly one email, to the manager only, with no ticket number and no subject words). The email follows the company's email switch and the person's notice settings like every other notice."
           }
 ]

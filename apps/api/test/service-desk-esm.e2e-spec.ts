@@ -611,8 +611,17 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       // The help centre says who answers.
       const desks = (await api('emp', 'get', '/desk/my/desks').expect(200)).body as { id: string; categories: { id: string; answeredBy: string }[] }[];
       expect(desks.find((d) => d.id === ids.it)!.categories.find((c) => c.id === cat)!.answeredBy).toBe('manager');
+      const send = app.get(EmailService).send as jest.Mock;
+      send.mockClear();
       const t = (await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, categoryId: cat, subject: `Can I take my laptop home? ${run}`, description: 'For the weekend.' }).expect(201)).body;
       expect(t.answeredBy).toBe('manager');
+      // Answer 2596: the manager gets an email with no details (no number, subject or name), only to the manager.
+      const toMgr = () => send.mock.calls.map((c) => c[0] as { to: string; subject: string; html: string }).filter((m) => m.to === `mgr@esm-${run}.test`);
+      for (let i = 0; i < 50 && !toMgr().length; i++) await new Promise((r) => setTimeout(r, 100));
+      expect(toMgr()).toEqual([expect.objectContaining({ subject: 'You have a question from your team in YukthiX' })]);
+      expect(toMgr()[0].html).not.toContain(t.number);
+      expect(toMgr()[0].html).not.toContain('laptop');
+      expect(send.mock.calls.filter((c) => (c[0] as { subject: string }).subject === 'You have a question from your team in YukthiX')).toHaveLength(1);
       expect((await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t.id } }))).answerUserId).toBe(users.mgr);
       // Only the manager sees it as a question; another manager, the person and another company get nothing.
       expect(((await api('mgr', 'get', '/desk/my/asked').expect(200)).body as { id: string }[]).map((x) => x.id)).toContain(t.id);

@@ -222,7 +222,7 @@ export class RequesterService {
     });
     if (out?.kind === 'manager')
       await this.notifications
-        .notifySystem(r.ctx as TenantContext, [out.userId!], 'desk.ticket.asked_manager', { entityType: 'sd_ticket', entityId: t.id, contextText: `A question from your team: ${t.number} · ${t.subject}`, linkPath: `/yx/desk/my-cases?asked=${t.id}` }, { subject: 'A question from your team', html: `<p>Someone in your team asked a question that you answer: ${escapeHtml(t.number)}. Open My cases in YukthiX to answer it.</p>` })
+        .notifySystem(r.ctx as TenantContext, [out.userId!], 'desk.ticket.asked_manager', { entityType: 'sd_ticket', entityId: t.id, contextText: `A question from your team: ${t.number} · ${t.subject}`, linkPath: `/yx/desk/my-cases?asked=${t.id}` }, { subject: 'You have a question from your team in YukthiX', html: '<p>You have a question from your team in YukthiX. Open My cases in YukthiX to read and answer it.</p>' }) // answer 2596: no details in the email
         .catch(() => undefined);
     return out?.kind ?? null;
   }
