@@ -24,7 +24,7 @@ import { dayLabel } from '../../components/notify';
 import { timeOf } from '../../lib/dates';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { HOLIDAYS_2026, ME, TODAY } from '../_kit/data';
-import { ListPage, bulkApprovable, homePanel, leaveEffect, toneFor, validateDelegation } from './platform-kit';
+import { ListPage, bulkApprovable, bulkNotApprovable, homePanel, leaveEffect, toneFor, validateDelegation } from './platform-kit';
 import { PEOPLE, type ApprovalRow, type MyRequest, type NotifCategory, type PlatformNotification } from './platform-data';
 
 /* ================================================================ PLT-03 Notifications inbox */
@@ -680,6 +680,8 @@ export interface LiveApprovals {
   onDecide: (row: ApprovalRow, decision: 'approve' | 'reject' | 'send_back', reason: string) => Promise<unknown>;
   /** Approve several: the server checks each again. Returns the ones it refused, with why. */
   onBulkApprove: (rows: ApprovalRow[]) => Promise<{ id: string; message: string }[]>;
+  /** Answer 2503: do not approve several with one reason every requester sees; the server checks each again. Returns the refused ones. */
+  onBulkReject?: (rows: ApprovalRow[], reason: string) => Promise<{ id: string; message: string }[]>;
   /** "Set up delegation" opens "When I am away": the designed delegation form (PLT-07). */
   delegation: LiveDelegation;
   /** Success messages (toasts). */
@@ -697,12 +699,14 @@ export interface ApprovalsInboxScreenProps {
   defaultDecision?: Decision;
   defaultSelected?: string[];
   bulkConfirmOpen?: boolean;
+  /** Answer 2503: the bulk "Do not approve" dialog open for defaultSelected. */
+  bulkRejectOpen?: boolean;
   state?: 'ready' | 'loading' | 'error';
   live?: LiveApprovals;
 }
 
 // PLT-04 · Approvals inbox (tabs, filters, bulk, side panel). APX-D §1.1 Approvals. Manager page: no company button.
-export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, state = 'ready', live }: ApprovalsInboxScreenProps) {
+export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, bulkRejectOpen, state = 'ready', live }: ApprovalsInboxScreenProps) {
   const [tab, setTab] = useState<string>(defaultTab);
   const [own, setItems] = useState(() => byUrgency(waiting));
   // Live: the rows are the server's; a decided one leaves when the list reloads.
@@ -710,9 +714,13 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const [openDecision, setOpenDecision] = useState<Decision>(null);
   const [confirmIds, setConfirmIds] = useState<string[] | null>(bulkConfirmOpen ? defaultSelected ?? [] : null);
+  const [rejectIds, setRejectIds] = useState<string[] | null>(bulkRejectOpen ? defaultSelected ?? [] : null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectTried, setRejectTried] = useState(false);
   const [away, setAway] = useState(false);
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [refused, setRefused] = useState<{ title: string; message: string }[]>([]);
+  const [refusedVerb, setRefusedVerb] = useState<'approved' | 'decided'>('approved');
   const [rowError, setRowError] = useState<string | null>(null);
   const [announce, setAnnounce] = useState('');
   const today = live?.today ?? TODAY;
@@ -772,7 +780,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
               </InlineAlert>
             )}
             {refused.length > 0 && (
-              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not approved`} actions={<Button size="sm" onClick={() => setRefused([])}>Dismiss</Button>}>
+              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not ${refusedVerb}`} actions={<Button size="sm" onClick={() => setRefused([])}>Dismiss</Button>}>
                 <ul className="yx-plt-list">
                   {refused.map((x) => (
                     <li key={x.title}>
@@ -823,12 +831,24 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         defaultSelected={defaultSelected}
         bulkActions={(ids) => {
           const check = bulkApprovable(items, ids);
-          return check.ok ? (
-            <Button variant="approve" size="sm" onClick={() => setConfirmIds(ids)}>
-              Approve {ids.length}
-            </Button>
-          ) : (
-            <span className="yx-plt-muted">{check.reason}</span>
+          const no = bulkNotApprovable(items, ids);
+          return (
+            <>
+              {check.ok ? (
+                <Button variant="approve" size="sm" onClick={() => setConfirmIds(ids)}>
+                  Approve {ids.length}
+                </Button>
+              ) : (
+                <span className="yx-plt-muted">{check.reason}</span>
+              )}
+              {no.ok ? (
+                <Button size="sm" onClick={() => setRejectIds(ids)}>
+                  Do not approve {ids.length}
+                </Button>
+              ) : (
+                no.reason !== check.reason && <span className="yx-plt-muted">{no.reason}</span>
+              )}
+            </>
           );
         }}
         rowButtons={
@@ -898,11 +918,49 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
               const picked = items.filter((r) => confirmIds.includes(r.id));
               const failed = await live.onBulkApprove(picked);
               const ok = picked.length - failed.length;
+              setRefusedVerb('approved');
               setRefused(failed.map((f) => ({ title: picked.find((r) => r.id === f.id)?.summary ?? f.id, message: f.message })));
               if (ok) live.onDone(`Approved ${ok} request${ok === 1 ? '' : 's'}. The people who asked are told.`);
               decide(confirmIds, 'Approved');
             }}
           />
+        )}
+        {rejectIds && (
+          <ConfirmDialog
+            open
+            onOpenChange={(o) => {
+              if (o) return;
+              setRejectIds(null);
+              setRejectReason('');
+              setRejectTried(false);
+            }}
+            title={`Do not approve ${rejectIds.length} request${rejectIds.length === 1 ? '' : 's'}?`}
+            consequence="Each request is checked again. Everyone who asked sees the same reason, by email and in their bell."
+            confirmLabel={`Do not approve ${rejectIds.length}`}
+            destructive
+            onConfirm={async () => {
+              setRejectTried(true);
+              // Never a disabled button: pressed without a reason, the field says so and takes focus.
+              if (!rejectReason.trim()) {
+                setTimeout(() => document.getElementById('ap-bulk-reason')?.focus(), 0);
+                return false;
+              }
+              if (!live?.onBulkReject) return decide(rejectIds, 'Not approved');
+              const picked = items.filter((r) => rejectIds.includes(r.id));
+              const failed = await live.onBulkReject(picked, rejectReason.trim());
+              const ok = picked.length - failed.length;
+              setRefusedVerb('decided');
+              setRefused(failed.map((f) => ({ title: picked.find((r) => r.id === f.id)?.summary ?? f.id, message: f.message })));
+              if (ok) live.onDone(`Not approved: ${ok} request${ok === 1 ? '' : 's'}. The people who asked are told why.`);
+              decide(rejectIds, 'Not approved');
+              setRejectReason('');
+              setRejectTried(false);
+            }}
+          >
+            <FormField id="ap-bulk-reason" label="Reason" required helper="Everyone who asked sees this reason." error={rejectTried && !rejectReason.trim() ? 'Say why, so the people who asked know.' : null}>
+              <TextArea value={rejectReason} onChange={setRejectReason} rows={3} />
+            </FormField>
+          </ConfirmDialog>
         )}
         {live && away && (
           <Drawer open onOpenChange={(o) => !o && setAway(false)} title="When I am away" subtitle="Choose who approves requests for you while you are away." size="md">

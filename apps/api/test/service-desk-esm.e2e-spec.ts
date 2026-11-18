@@ -444,6 +444,28 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       for (const t of tickets) await api('emp', 'post', `/desk/my/requests/${t}/cancel`).send({ reason: 'Test done' });
     });
 
+    // Answer 2503: bulk "Do not approve" with one reason every requester sees; the same 100 cap as bulk approve.
+    it('PLT-04 bulk do not approve: one shared reason on each request; over 100 or no reason is refused; another approver cannot', async () => {
+      const order = async () => (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.cc } }] }).expect(201)).body.requests[0].ticketId as string;
+      const before = new Set((await inbox('mgr')).map((t) => t.taskId));
+      const tickets = [await order(), await order()];
+      const two = (await inbox('mgr')).filter((x) => !before.has(x.taskId));
+      expect(two).toHaveLength(2);
+      const bulk = (who: Who, body: Record<string, unknown>) => api(who, 'post', '/workflow/approvals/tasks/decide').send(body);
+      await bulk('mgr', { taskIds: two.map((t) => t.taskId), decision: 'reject', reason: '   ' }).expect(400);
+      await bulk('mgr', { taskIds: Array.from({ length: 101 }, () => randomUUID()), decision: 'reject', reason: 'Too many' }).expect(400);
+      expect((await bulk('other', { taskIds: [two[0].taskId], decision: 'reject', reason: 'Not mine' }).expect(200)).body.results[0]).toMatchObject({ ok: false, message: 'No such approval.' });
+      const res = (await bulk('mgr', { taskIds: two.map((t) => t.taskId), decision: 'reject', reason: 'Budget is frozen this quarter' }).expect(200)).body;
+      expect(res.results).toEqual(two.map((t) => ({ taskId: t.taskId, ok: true, requestStatus: 'rejected' })));
+      for (const t of two) {
+        const log = await system((tx) => tx.wfAction.findFirstOrThrow({ where: { requestId: t.requestId, action: 'rejected' } }));
+        expect(log.reason).toBe('Budget is frozen this quarter');
+      }
+      // Already decided: said for each, not decided twice.
+      expect((await bulk('mgr', { taskIds: [two[0].taskId], decision: 'reject', reason: 'Again' }).expect(200)).body.results[0]).toMatchObject({ ok: false });
+      for (const t of tickets) await api('emp', 'post', `/desk/my/requests/${t}/cancel`).send({ reason: 'Test done' });
+    });
+
     it('delegation: by hand (open tasks move, "on behalf of" is kept) and from leave (to the manager)', async () => {
       const out = (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.cc } }] }).expect(201)).body;
       await api('mgr', 'post', '/workflow/delegations').send({ delegateUserId: users.mgr, startsOn: today, endsOn: today }).expect(400);

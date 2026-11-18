@@ -180,6 +180,35 @@ describe('PLT-04 live (the approvals engine)', () => {
     expect(l.onDone).toHaveBeenCalledWith('Approved 1 request. The people who asked are told.');
   });
 
+  // Answer 2503: bulk "Do not approve", one shared reason, the same 100 cap.
+  it('bulk do not approve: no reason is a field error and nothing is sent; then one reason for all, refused ones listed', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live({ onBulkReject: vi.fn(async () => [{ id: 'b', message: 'This approval is already closed.' }]) });
+    render(<ApprovalsInboxScreen waiting={[row('a'), row('b', { requester: 'Meera Iyer', lowRisk: false })]} sent={[]} history={[]} live={l} />);
+    await u.click(screen.getByRole('checkbox', { name: /Arjun/ }));
+    await u.click(screen.getByRole('checkbox', { name: /Meera/ }));
+    // A high-risk one blocks bulk approve, never bulk "Do not approve".
+    expect(screen.getByText(/Only low-risk requests can be approved together/)).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Do not approve 2' }));
+    const dialog = (await screen.findByText('Do not approve 2 requests?')).closest('[role="dialog"],[role="alertdialog"]') as HTMLElement;
+    await u.click(within(dialog).getByRole('button', { name: 'Do not approve 2' }));
+    expect(within(dialog).getByText('Say why, so the people who asked know.')).toBeInTheDocument();
+    expect(l.onBulkReject).not.toHaveBeenCalled();
+    await u.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Budget is frozen this quarter');
+    await u.click(within(dialog).getByRole('button', { name: 'Do not approve 2' }));
+    await waitFor(() => expect(l.onBulkReject).toHaveBeenCalledWith([expect.objectContaining({ id: 'a' }), expect.objectContaining({ id: 'b' })], 'Budget is frozen this quarter'));
+    expect(await screen.findByText('1 request was not decided')).toBeInTheDocument();
+    expect(l.onDone).toHaveBeenCalledWith('Not approved: 1 request. The people who asked are told why.');
+  });
+
+  it('bulk: more than 100 selected is refused for both; one decided on its own page blocks Do not approve', () => {
+    const many = Array.from({ length: 101 }, (_, i) => row(`r${i}`));
+    render(<ApprovalsInboxScreen waiting={many} sent={[]} history={[]} live={live()} defaultSelected={many.map((r) => r.id)} />);
+    expect(screen.getByText('Choose 100 requests or fewer at a time.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Do not approve 101/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Approve 101/ })).toBeNull();
+  });
+
   it('a request decided on its own page links there; Set up delegation opens When I am away', async () => {
     const u = userEvent.setup({ pointerEventsCheck: 0 });
     render(<ApprovalsInboxScreen waiting={[row('p', { lowRisk: false, decideAt: '/yx/payroll/reopen-requests' })]} sent={[]} history={[]} openId="p" live={live()} />);

@@ -62,6 +62,12 @@ function Approvals() {
           await refresh();
           return out.results.filter((x) => !x.ok).map((x) => ({ id: x.taskId, message: x.message ?? 'Not approved.' }));
         },
+        // Answer 2503: one reason for all, which every requester sees; the server checks each request again.
+        onBulkReject: async (rows, reason) => {
+          const out = (await post('/approvals/tasks/decide', { taskIds: rows.map((r) => r.id), decision: 'reject', reason })) as { results: { taskId: string; ok: boolean; message?: string }[] };
+          await refresh();
+          return out.results.filter((x) => !x.ok).map((x) => ({ id: x.taskId, message: x.message ?? 'Not decided.' }));
+        },
         delegation,
         onDone: (text) => toast({ tone: 'success', title: text }),
         footer: (
