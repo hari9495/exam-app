@@ -218,6 +218,21 @@ describe('Settings 3.11 and Shifts set-up (Projects P-1)', () => {
     ]);
   });
 
+  it('A14 (answer 2536): the nudge time, the due day and the reminder time show with the company values and save back', () => {
+    const vals = { ...data.values, 'timesheet.nudge.daily_from': '17:00', 'timesheet.reminder.cutoff_day': 'off', 'timesheet.reminder.time': '10:00' };
+    const all = projectSettingsPage(design, { ...data, values: vals, defaults: { ...data.defaults, 'timesheet.nudge.daily_from': '16:00', 'timesheet.reminder.cutoff_day': 'fri', 'timesheet.reminder.time': '10:00' } }).sections.flatMap((x) => x.settings);
+    expect(all.find((x) => x.key === 'prj.nudge_from')).toMatchObject({ value: '17:00', starter: false });
+    expect(all.find((x) => x.key === 'prj.cutoff_day')).toMatchObject({ value: 'off', optionLabels: expect.objectContaining({ off: 'No reminder' }) });
+    expect(all.find((x) => x.key === 'prj.reminder_time')).toMatchObject({ value: '10:00', starter: true });
+    expect(projectSettingsChanges({ 'prj.nudge_from': 'off', 'prj.cutoff_day': 'thu', 'prj.reminder_time': '09:00' })).toEqual([
+      { key: 'timesheet.nudge.daily_from', value: 'off' },
+      { key: 'timesheet.reminder.cutoff_day', value: 'thu' },
+      { key: 'timesheet.reminder.time', value: '09:00' },
+    ]);
+    // An older API without them never shows them with sample values.
+    expect(projectSettingsPage(design, data).sections.flatMap((x) => x.settings).some((x) => x.key === 'prj.nudge_from')).toBe(false);
+  });
+
   it("Shifts set-up's projects tab says where projects went and has no editor", () => {
     render(<ProjectsTab />);
     expect(screen.getByText('Timesheet projects moved to Projects')).toBeInTheDocument();

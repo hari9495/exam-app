@@ -631,6 +631,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'timesheet.note.required': { label: 'Timesheet comment: required on every day with hours', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
   // Answer 1787 (founder change, 13 Nov 2026): the minimum is per day with hours.
   'timesheet.note.min_words_per_day': { label: 'Timesheet comment: at least this many words per day with hours', scopes: ['tenant'], dated: false, values: ['5', '10', '15', '20', '25', '30', '50', '100'], default: '20' },
+  // Batch D A14 (answer 2536): the Home nudge when today has no hours, and one reminder the day before the weekly cut-off.
+  'timesheet.nudge.daily_from': { label: 'Timesheet: Home nudge when today has no hours, from (off: none)', scopes: ['tenant'], dated: false, values: ['off', '14:00', '15:00', '16:00', '17:00', '18:00'], default: '16:00' },
+  'timesheet.reminder.cutoff_day': { label: 'Timesheet: the week is due on (a reminder goes the day before; off: none)', scopes: ['tenant'], dated: false, values: ['off', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], default: 'fri' },
+  'timesheet.reminder.time': { label: 'Timesheet: the reminder before the cut-off goes at', scopes: ['tenant'], dated: false, values: ['08:00', '09:00', '10:00', '11:00', '12:00'], default: '10:00' },
   'timesheet.tool_suggestions': { label: 'People may connect calendars and work tools for timesheet suggestions', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   // Founder decision 9 Oct 2026: where the Factories Act / OSH Code covers the place (a factory), approved overtime of the
   // employment categories P07 IN.FACTORIES counts as workers is always paid at the legal rate, never comp-off. Dated.

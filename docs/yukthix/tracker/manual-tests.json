@@ -27511,5 +27511,27 @@
                               "Screens/Projects/PRJ-01 · Projects and project workspace"
                     ],
                     "note": "Positive and negative (API unit capacity.spec teamHours / rangeFrom; projects-p2 e2e: a week sent and waiting is booked only, approved becomes billable, the week range leaves it out, a bad range 400; kit prj-01-live: columns, Segment asks again, an older API keeps Hours booked). Hours are per person on the project."
+          },
+          {
+                    "id": "MT-D-A14-NUDGE",
+                    "area": "Batch D A14: the Home nudge and the reminder before the weekly cut-off (answer 2536, 18 Nov 2026)",
+                    "screen": "Home (the 'You have not logged time today' card); Settings › Projects & timesheets (3.11); the bell and email",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee allocated to a project (for example arjun@demo-org.test); an admin for Settings 3.11; an employee with no project allocation.",
+                    "steps": [
+                              "As admin: Settings › Projects & timesheets. Find 'Home nudge when today has no hours, from', 'Each week is due on' and 'The reminder goes at'.",
+                              "As the employee, on a working day after 4 pm, with no hours for today: open Home.",
+                              "Press Fill in today; add hours for today and save the draft; open Home again.",
+                              "Press Not now on the card (on another day with no hours).",
+                              "Wait for (or ask the lead to run) the hourly time job on the day before the due day after 10 am; check the bell and email.",
+                              "Negative: Home before 4 pm, on a weekly off or holiday, on full-day leave, and for an employee with no project allocation.",
+                              "Negative: as admin set the nudge to Off and the due day to No reminder; save."
+                    ],
+                    "expected": "Step 1: 4 pm, Friday and 10 am by default. Step 2: the card 'You have not logged time today' with Fill in today and Not now. Step 3: My timesheet opens; after saving today's hours the card is gone. Step 4: the card goes for this visit. Step 5: one bell and email 'Your timesheet is due tomorrow' naming the week, only for people allocated to a project whose week is not sent; no second one that week. Step 6: no card. Step 7: 5-second toast; no card and no reminder afterwards. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Home nudge · no hours today",
+                              "Screens/Projects/PRJ-01 · Projects and project workspace"
+                    ],
+                    "note": "Positive and negative (API projects-p2.e2e: nudge after 16:00 on a working day with no hours, none before, on the weekly off, without an allocation, for a sent week, after booking today, when switched off; settings 403 for a non-admin, a bad time 400; the reminder only the day before the cut-off from 10:00, once per person and week, audited, none when off; kit prj-01-live settings mapping). Settings are company-wide: timesheet.nudge.daily_from, timesheet.reminder.cutoff_day, timesheet.reminder.time. The reminder runs with the hourly time job."
           }
 ]

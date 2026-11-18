@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { NotificationsService } from '../src/notifications/notifications.service';
 import { mondayOf } from '../src/time/time-rules';
+import { TimesheetService } from '../src/time/timesheet.service';
 
 // Projects P-2 end to end (PRJ-02, founder answers 1406 to 1408, 1442; parked item 914). With Projects on, each line of
 // a week goes to its own approver: a PM never decides another project's lines; a reduction or rejection needs a reason
@@ -307,5 +308,43 @@ describe('Projects P-2 line approvals', () => {
     // A five-day week (Saturday and Sunday off): nothing was due that week, so it is not listed.
     await inA((tx) => tx.locationAttendanceRule.create({ data: { organizationId: org.A.id, locationId: ids.loc!, validFrom: day(addDays(week, -90)), shiftStart: 570, shiftEnd: 1110, weeklyOffs: [{ weekday: 6 }, { weekday: 7 }] } }));
     expect(await has()).toBe(false);
+  });
+  it('batch D A14 / 2536: the Home nudge when today has no hours, and one reminder the day before the cut-off', async () => {
+    const ts = app.get(TimesheetService);
+    const at = (iso: string, hhmmIst: string) => new Date(Date.parse(`${iso}T${hhmmIst}:00+05:30`));
+    const wed = addDays(week, 2);
+    const thu = addDays(week, 3);
+    await api('pmA', 'post', `/projects/${ids.nrp}/allocations`).send({ employeeId: ids.mgrEmp, fromOn: week, percent: 20 }).expect(want(201));
+    const as = (who: Who) => ({ organizationId: org.A.id, isSuperAdmin: false, userId: users[who]! });
+    // Allocated, a working day, after 16:00, nothing booked today: nudged. Before 16:00, on the weekly off: not.
+    expect(await ts.nudge(as('mgr'), at(wed, '17:00'))).toMatchObject({ show: true, week, today: wed });
+    expect(await ts.nudge(as('mgr'), at(wed, '15:00'))).toEqual({ show: false });
+    expect(await ts.nudge(as('mgr'), at(addDays(week, 6), '17:00'))).toEqual({ show: false });
+    // Someone not allocated today, and a week already sent, are never nudged.
+    expect(await ts.nudge(as('peer'), at(wed, '17:00'))).toEqual({ show: false });
+    expect(await ts.nudge(as('emp'), at(wed, '17:00'))).toEqual({ show: false });
+    // The person's endpoint answers for them only (no one else's).
+    expect((await api('mgr', 'get', '/time/me/timesheet/nudge').expect(200)).body).toHaveProperty('show');
+    // The company switches the nudge off.
+    await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'timesheet.nudge.daily_from', value: 'off' }] }).expect(want(200));
+    expect(await ts.nudge(as('mgr'), at(wed, '17:00'))).toEqual({ show: false });
+    await api('pmA', 'put', '/projects/settings').send({ changes: [{ key: 'timesheet.nudge.daily_from', value: '16:00' }] }).expect(403);
+    await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'timesheet.reminder.time', value: '07:00' }] }).expect(400);
+    await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'timesheet.nudge.daily_from', value: '16:00' }] }).expect(want(200));
+    // Hours booked today: no nudge.
+    await api('mgr', 'put', '/time/me/timesheet').send({ week, lines: [{ projectId: ids.nrp, activity: null, billable: true, minutes: [0, 0, 120, 0, 0, 0, 0] }] }).expect(want(200));
+    expect(await ts.nudge(as('mgr'), at(wed, '17:00'))).toEqual({ show: false });
+
+    // The reminder (cut-off Friday by default): Thursday from 10:00, once, only to allocated people whose week is not sent.
+    notify.mockClear();
+    expect(await ts.cutoffReminders(org.A.id, at(thu, '09:00'))).toBe(0);
+    expect(await ts.cutoffReminders(org.A.id, at(wed, '11:00'))).toBe(0);
+    expect(await ts.cutoffReminders(org.A.id, at(thu, '10:30'))).toBe(1);
+    expect(notify.mock.calls.filter((c) => c[2] === 'timesheet.cutoff').map((c) => c[1])).toEqual([[users.mgr]]);
+    expect(await ts.cutoffReminders(org.A.id, at(thu, '11:30'))).toBe(0);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'timesheet.cutoff_reminded', entityId: ids.mgrEmp } }))).toBe(1);
+    // Off: none.
+    await api('admin', 'put', '/projects/settings').send({ changes: [{ key: 'timesheet.reminder.cutoff_day', value: 'off' }] }).expect(want(200));
+    expect(await ts.cutoffReminders(org.A.id, at(addDays(thu, 7), '10:30'))).toBe(0);
   });
 });

@@ -15,7 +15,7 @@ export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
 export { type LiveShiftSetup } from './shifts-setup';
 export { LeaveReportsScreen, type LiveLeaveReports } from '../ops';
 export { OtReviewScreen, PeriodsScreen, DeviceBackfillWizard, IndustrialActionScreen, type LiveOtReview, type LiveMyOvertime, type LivePeriods, type LiveDeviceBackfill, type LiveIndustrialAction } from '../requests';
-export { TimesheetScreen, AttendanceReportsScreen, type LiveTimesheet, type LiveReports, type LiveRegisters, type LivePayrollFeed, type LiveAttendanceReport, type LiveNightRegister, type NotSentWeek } from '../ops';
+export { TimesheetScreen, AttendanceReportsScreen, type LiveTimesheet, type LiveReports, type LiveRegisters, type LivePayrollFeed, type LiveAttendanceReport, type LiveNightRegister, type NotSentWeek, TimesheetNudgeCard } from '../ops';
 // Keka ideas (2026-11): the Time summary on My timesheet.
 export { TIME_SUMMARY_STATUS, TimeSummary, type TimeSummaryStatus, type TimeSummaryWeek } from '../time-summary';
 // Time ops (29 Oct 2026): presence-based attendance (TIM-36).

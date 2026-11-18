@@ -209,6 +209,88 @@ export class TimesheetService implements OnModuleInit {
     return { reminded: true, weeks: prep.weeks.length };
   }
 
+  // ------------------------------------------------------------------------------------------ nudges (batch D A14)
+
+  /** Today's confirmed project allocations of one person (the people A14 nudges and reminds). */
+  private async allocatedOn(tx: Tx, org: string, employeeIds: string[] | null, on: string) {
+    return tx.projectAllocation.findMany({ where: { organizationId: org, tentative: false, ...(employeeIds ? { employeeId: { in: employeeIds } } : {}), fromOn: { lte: asDate(on) }, OR: [{ toOn: null }, { toOn: { gte: asDate(on) } }] }, select: { employeeId: true } });
+  }
+
+  /** Is `on` one of the person's own working days (their schedule), not a holiday and not full-day leave? */
+  private async workingOn(tx: Tx, org: string, f: Awaited<ReturnType<typeof factsOn>> & object, on: string, book: ScheduleBook) {
+    if ((await holidaysFor(tx, org, f.locationId, on, on, f.employeeId)).map.has(on)) return false;
+    if ((await leaveDays(tx, org, f.employeeId, on, on)).get(on) === 'full') return false;
+    await book.prime([f.employeeId], on, on);
+    return !(await book.day(f, on)).weeklyOff;
+  }
+
+  /**
+   * Answer 2536: the Home nudge. From the company's time (16:00 by default) on one of my working days, when I am
+   * allocated to a project today and today has no hours on my week (a week already sent never nudges).
+   */
+  nudge(ctx: TenantContext, now = new Date()) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const none = { show: false as const };
+      const from = await settingFor(tx, c, 'timesheet.nudge.daily_from', { legalEntityId: '' });
+      const today = todayIst(now);
+      const hhmm = new Date(now.getTime() + 330 * 60_000).toISOString().slice(11, 16);
+      if (from === 'off' || hhmm < from) return none;
+      const me = await tx.employee.findFirst({ where: { organizationId: org, userId: c.userId ?? undefined }, select: { id: true } });
+      if (!me || !c.userId) return none;
+      const f = await factsOn(tx, org, me.id, today);
+      if (!f || !(await this.allocatedOn(tx, org, [me.id], today)).length) return none;
+      if (!(await this.workingOn(tx, org, f, today, await ScheduleBook.load(tx, org)))) return none;
+      const week = mondayOf(today);
+      const k = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${week}T00:00:00Z`)) / 86_400_000;
+      const sheet = await tx.timesheet.findFirst({ where: { organizationId: org, employeeId: me.id, weekStart: asDate(week) }, select: { id: true, status: true } });
+      if (sheet && (sheet.status === 'pending' || sheet.status === 'approved')) return none;
+      const lines = sheet ? await tx.timesheetLine.findMany({ where: { organizationId: org, timesheetId: sheet.id }, select: { minutes: true } }) : [];
+      if (lines.some((l) => (l.minutes[k] ?? 0) > 0)) return none;
+      return { show: true as const, week, today };
+    });
+  }
+
+  /**
+   * Answer 2536: hourly, for one company: on the day before the weekly cut-off, from the company's time (10:00 by
+   * default), one reminder to each person allocated to a project whose week is not sent yet. Claimed once per person and
+   * week in the audit log (a re-run never repeats it); a person without a sign-in is skipped.
+   */
+  async cutoffReminders(org: string, now = new Date()) {
+    const ctx = { organizationId: org, isSuperAdmin: false };
+    const prep = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const cutoff = await settingFor(tx, c, 'timesheet.reminder.cutoff_day', { legalEntityId: '' });
+      if (cutoff === 'off') return null;
+      const at = await settingFor(tx, c, 'timesheet.reminder.time', { legalEntityId: '' });
+      const today = todayIst(now);
+      const hhmm = new Date(now.getTime() + 330 * 60_000).toISOString().slice(11, 16);
+      const names = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+      const todayIdx = (new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7;
+      if (names[(todayIdx + 1) % 7] !== cutoff || hhmm < at) return null;
+      const week = mondayOf(today);
+      const people = [...new Set((await this.allocatedOn(tx, org, null, today)).map((a) => a.employeeId))];
+      const sent = new Set((await tx.timesheet.findMany({ where: { organizationId: org, weekStart: asDate(week), employeeId: { in: people }, status: { in: ['pending', 'approved'] } }, select: { employeeId: true } })).map((s) => s.employeeId));
+      const out: { userId: string; employeeId: string }[] = [];
+      for (const e of people.filter((p) => !sent.has(p))) {
+        const f = await factsOn(tx, org, e, today);
+        if (!f?.userId) continue;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`ts-cutoff:${org}:${e}:${week}`}))`;
+        if (await tx.auditLog.findFirst({ where: { organizationId: org, entityType: 'employee', entityId: e, action: 'timesheet.cutoff_reminded', metadataJson: { contains: week } }, select: { id: true } })) continue;
+        await audit(tx, c, 'timesheet.cutoff_reminded', 'employee', e, { week });
+        out.push({ userId: f.userId, employeeId: e });
+      }
+      return { week, due: cutoff, out };
+    });
+    if (!prep) return 0;
+    const text = `Your timesheet for the week of ${fmt(prep.week)} is due tomorrow. Fill in your hours and send it.`;
+    for (const p of prep.out) {
+      await this.notifications
+        .notifySystem(ctx, [p.userId], 'timesheet.cutoff', { entityType: 'employee', entityId: p.employeeId, contextText: text, linkPath: '/yx/time/timesheet' }, { subject: 'Your timesheet is due tomorrow', html: `<p>${escapeHtml(text)}</p>` })
+        .catch(() => undefined);
+    }
+    return prep.out.length;
+  }
+
   /** Saves the week as a draft (a rejected week becomes a draft again). Hours on locked days never change. */
   async save(ctx: TenantContext, user: ScopeUser, weekIn: string, lines: TimesheetLineDto[]) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');

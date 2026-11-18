@@ -551,6 +551,27 @@ function copyLastWeek(lines: TimesheetLine[]): [TimesheetLine[], number[]] {
   return copyWeekInto(lines, LAST_LINES, open);
 }
 
+/* ---------- batch D A14: the Home nudge (answer 2536) ---------- */
+
+/** Home: today has no hours yet (from the company's time on a working day, for people allocated to a project). */
+export function TimesheetNudgeCard({ href, onDismiss }: { href: string; onDismiss?: () => void }) {
+  return (
+    <Card title="You have not logged time today">
+      <p className="yx-tim-muted">Add today's hours while you remember them. Your week goes to the project manager when you send it.</p>
+      <div className="yx-tim-row">
+        <Button size="sm" variant="primary" asChild>
+          <a href={href}>Fill in today</a>
+        </Button>
+        {onDismiss && (
+          <Button size="sm" onClick={onDismiss}>
+            Not now
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 /* ---------- batch D A5: weeks not sent (TIM-15 "Not sent" tab) ---------- */
 
 /** A past week never sent (answer 2534): none saved, a draft, or sent back; a week in a locked month is read-only. */

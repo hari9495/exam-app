@@ -269,6 +269,12 @@ export class TimeOpsController {
     return this.timesheets.summary(ctx, Number(q.year));
   }
 
+  // Batch D A14 (answer 2536): the Home nudge when today has no hours yet.
+  @Get('me/timesheet/nudge')
+  myNudge(@CurrentTenant() ctx: TenantContext) {
+    return this.timesheets.nudge(ctx);
+  }
+
   // Batch D A5 (answer 2534): my past weeks never sent (none saved, a draft, or sent back); `weeks` up to 52 ("Show older").
   @Get('me/timesheet/not-sent')
   myNotSent(@CurrentTenant() ctx: TenantContext, @Query() q: NotSentQueryDto) {

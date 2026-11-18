@@ -33,7 +33,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words_per_day'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words_per_day', 'timesheet.nudge.daily_from', 'timesheet.reminder.cutoff_day', 'timesheet.reminder.time'] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
