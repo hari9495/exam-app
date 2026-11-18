@@ -424,3 +424,4 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2525 (18 Nov 2026, "ok"): the reassign reason must be at least 10 characters (same as late-mark waivers).
 - 2526 (18 Nov 2026, "ok"): "Everyone's pending" works by company or legal entity only; a location-only grant sees nothing.
 - 2527 to 2529 (18 Nov 2026), batch C, awaiting founder: a manager "ask HR to waive" request in a later batch; WFH dots from the actual check-in place; half day against half the shift, and above the last band = no band.
+- 2530 (18 Nov 2026, "ok"): make CI fully green before PR #221 merges. That means fixing the 114 affordance findings in the shared components, and updating the ~44 web-e2e journeys to the current screens (fixing any real bug they reveal). Builder 1 pauses the settings gaps for it.
