@@ -100,9 +100,9 @@ export interface FinanceHome {
   /** expense.payout.manage: claims approved and not paid (not the person's own), bank files not released. */
   /** previous: claims to pay at the end of last month (rupees), only when on record and covering all the person sees now. */
   claims?: { count: number; amount: string; previous?: number; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
-  /** statutory.filing.view: the statutory hub per legal entity and wage month (approved payslips only). */
   /** payroll.run.view, prepare or approve: the last six months' cost to company against the payroll budget. */
   cost?: { canSetBudget: boolean; months: { month: string; cost: string | null; budget: string | null }[] };
+  /** statutory.filing.view: the statutory hub per legal entity and wage month (approved payslips only). */
   dues?: { entity: string; entityId: string; month: string; today: string; cards: { statute: string; state: string | null; label: string; amount: string; dueOn: string | null; status: string; late: boolean }[]; tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean } }[];
 }
 

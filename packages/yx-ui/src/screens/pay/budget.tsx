@@ -6,6 +6,7 @@ import { TextField } from '../../components/inputs';
 import { useToast } from '../../components/notify';
 import { Select } from '../../components/select';
 import { Card } from '../../components/shell';
+import { DataTable, type TableColumn } from '../../components/table';
 import { formatINR } from '../../lib/format';
 import { useRun } from '../org/org-kit';
 import { LivePage, dateText } from '../time/live/kit';
@@ -67,8 +68,43 @@ export function PayrollBudgetScreen(p: PayrollBudgetScreenProps) {
     .filter((m) => !same(draft[m.month] ?? '', m.budget))
     .map((m) => ({ month: m.month, amount: clean(draft[m.month] ?? '') || null }));
   const bad = (p.budget?.months ?? []).filter((m) => !valid(draft[m.month] ?? ''));
-  const total = (key: 'budget' | 'cost') => (p.budget?.months ?? []).reduce((t, m) => t + Number(m[key] ?? 0), 0);
   const edit = Boolean(p.budget?.canEdit);
+  const columns: TableColumn<BudgetMonth>[] = [
+    { key: 'month', header: 'Month', value: (m) => m.month, render: (m) => monthName(m.month), hideable: false },
+    {
+      key: 'budget',
+      header: 'Budget (cost to company)',
+      type: 'money',
+      total: 'sum',
+      value: (m) => (m.budget === null ? null : Number(m.budget)),
+      render: (m) =>
+        edit ? (
+          <TextField
+            aria-label={`Budget for ${monthName(m.month)}`}
+            inputMode="decimal"
+            size="sm"
+            prefix="₹"
+            value={draft[m.month] ?? ''}
+            onChange={(v) => setDraft((d) => ({ ...d, [m.month]: v }))}
+            placeholder="No budget"
+            aria-invalid={!valid(draft[m.month] ?? '') || undefined}
+          />
+        ) : (
+          money(m.budget) || <span className="yx-tim-muted">No budget</span>
+        ),
+    },
+    { key: 'cost', header: 'Payroll cost', type: 'money', total: 'sum', value: (m) => (m.cost === null ? null : Number(m.cost)), render: (m) => (m.cost === null ? <span className="yx-tim-muted">No payroll yet</span> : money(m.cost)) },
+    {
+      key: 'diff',
+      header: 'Difference',
+      value: (m) => (m.budget !== null && m.cost !== null ? Number(m.cost) - Number(m.budget) : null),
+      render: (m) => {
+        const diff = m.budget !== null && m.cost !== null ? Number(m.cost) - Number(m.budget) : null;
+        return diff === null ? '' : diff > 0 ? `${formatINR(diff)} over` : diff < 0 ? `${formatINR(-diff)} under` : 'On budget';
+      },
+    },
+    { key: 'changed', header: 'Last change', optional: true, value: (m) => m.changedOn, render: (m) => <span className="yx-tim-muted">{m.changedBy && m.changedOn ? `${m.changedBy}, ${dateText(m.changedOn)}` : ''}</span> },
+  ];
   return (
     <PaySettingsFrame page="budget">
     <LivePage
@@ -99,13 +135,15 @@ export function PayrollBudgetScreen(p: PayrollBudgetScreenProps) {
               <Button
                 variant="primary"
                 loading={busy === 'save'}
-                disabled={!changes.length || bad.length > 0}
-                onClick={() =>
+                onClick={() => {
+                  // Pressed too early it says why (never a greyed-out button).
+                  if (bad.length) return void toast({ title: 'Fix the amounts marked in red first.' });
+                  if (!changes.length) return void toast({ title: 'Nothing to save yet. Type a month’s budget first.' });
                   void run('save', async () => {
                     await p.onSave(changes);
                     toast({ title: `Budget saved for ${entity}`, description: `${changes.length} ${changes.length === 1 ? 'month' : 'months'} changed.` });
-                  })
-                }
+                  });
+                }}
               >
                 Save budget
               </Button>
@@ -113,55 +151,7 @@ export function PayrollBudgetScreen(p: PayrollBudgetScreenProps) {
           }
         >
           {!edit && <p className="yx-tim-muted">You can see the budget. Your payroll admin sets it.</p>}
-          <table className="yx-tim-table" aria-label="Payroll budget by month">
-            <thead>
-              <tr>
-                <th scope="col">Month</th>
-                <th scope="col">Budget (cost to company)</th>
-                <th scope="col">Payroll cost</th>
-                <th scope="col">Difference</th>
-                <th scope="col">Last change</th>
-              </tr>
-            </thead>
-            <tbody>
-              {p.budget.months.map((m) => {
-                const diff = m.budget !== null && m.cost !== null ? Number(m.cost) - Number(m.budget) : null;
-                return (
-                  <tr key={m.month}>
-                    <th scope="row">{monthName(m.month)}</th>
-                    <td>
-                      {edit ? (
-                        <TextField
-                          aria-label={`Budget for ${monthName(m.month)}`}
-                          inputMode="decimal"
-                          size="sm"
-                          prefix="₹"
-                          value={draft[m.month] ?? ''}
-                          onChange={(v) => setDraft({ ...draft, [m.month]: v })}
-                          placeholder="No budget"
-                          aria-invalid={!valid(draft[m.month] ?? '') || undefined}
-                        />
-                      ) : (
-                        money(m.budget) || <span className="yx-tim-muted">No budget</span>
-                      )}
-                    </td>
-                    <td>{m.cost === null ? <span className="yx-tim-muted">No payroll yet</span> : money(m.cost)}</td>
-                    <td>{diff === null ? '' : diff > 0 ? `${formatINR(diff)} over` : diff < 0 ? `${formatINR(-diff)} under` : 'On budget'}</td>
-                    <td className="yx-tim-muted">{m.changedBy && m.changedOn ? `${m.changedBy}, ${dateText(m.changedOn)}` : ''}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row">Year</th>
-                <td>{money(String(total('budget')))}</td>
-                <td>{money(String(total('cost')))}</td>
-                <td />
-                <td />
-              </tr>
-            </tfoot>
-          </table>
+          <DataTable label="Payroll budget by month" columns={columns} rows={p.budget.months} getRowId={(m) => m.month} rowNoun={['month', 'months']} />
           {bad.length > 0 && <p className="yx-tim-muted">Type an amount in rupees, like 2,14,00,000, or leave it empty for no budget.</p>}
         </Card>
       )}

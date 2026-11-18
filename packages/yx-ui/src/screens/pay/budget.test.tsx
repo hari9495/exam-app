@@ -37,7 +37,10 @@ describe('Payroll budget (21 Oct 2026)', () => {
   it('saves only the months that changed, with Indian commas allowed and an empty month cleared, then says so', async () => {
     const onSave = show(true);
     const save = screen.getByRole('button', { name: 'Save budget' });
-    expect(save).toBeDisabled();
+    // Pressed before anything changed it says why, and saves nothing.
+    await userEvent.click(save);
+    expect((await screen.findAllByText('Nothing to save yet. Type a month’s budget first.'))[0]).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
     await userEvent.type(screen.getByRole('textbox', { name: 'Budget for June 2026' }), '2,14,00,000');
     await userEvent.clear(screen.getByRole('textbox', { name: 'Budget for May 2026' }));
     await userEvent.click(save);
@@ -45,10 +48,12 @@ describe('Payroll budget (21 Oct 2026)', () => {
     expect(await screen.findByText('Budget saved for Kaveri Foods Pvt Ltd')).toBeInTheDocument();
   });
 
-  it('refuses an amount that is not rupees', async () => {
-    show(true);
+  it('refuses an amount that is not rupees, and saves nothing', async () => {
+    const onSave = show(true);
     await userEvent.type(screen.getByRole('textbox', { name: 'Budget for July 2026' }), 'two crore');
-    expect(screen.getByRole('button', { name: 'Save budget' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Save budget' }));
+    expect((await screen.findAllByText('Fix the amounts marked in red first.'))[0]).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
     expect(within(screen.getByRole('table')).getByRole('textbox', { name: 'Budget for July 2026' })).toHaveAttribute('aria-invalid', 'true');
   });
 });

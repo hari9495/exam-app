@@ -632,32 +632,8 @@ function homeWidgets(persona: Exclude<Persona, 'admin'>, data: HomeData, loading
         </div>
       ),
     },
-    {
-      id: 'trend',
-      title: 'Payroll cost',
-      size: 4,
-      bare: true,
-      content: hideMoney ? (
-        <section className="yx-stat" aria-label="Payroll cost">
-          <span className="yx-stat__label">Payroll cost, last 6 months</span>
-          <p className="yx-plt-muted">Amounts are hidden. Select Show amounts to see the chart.</p>
-        </section>
-      ) : (
-        <LineChart
-          title="Payroll cost vs budget"
-          description="Monthly cost to company, April to September"
-          money
-          xLabel="Month"
-          height={180}
-          yMin={20000000}
-          categories={['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep']}
-          series={[
-            { name: 'Cost', values: [20850000, 20910000, 21120000, 21300000, 21280000, 21560000] },
-            { name: 'Budget', values: [21400000, 21400000, 21400000, 21400000, 21400000, 21400000] },
-          ]}
-        />
-      ),
-    },
+    // The same drawing as the live Home (answer 2473), with the design's six months.
+    costTrend(DESIGN_TREND, hideMoney),
     news,
     coming,
   ];
@@ -833,6 +809,14 @@ const axisFloor = (values: number[]) => {
   if (!Number.isFinite(low) || low <= 0) return 0;
   const step = 10 ** (Math.floor(Math.log10(low)) - 1);
   return Math.floor(low / step) * step;
+};
+
+/** The design's six months of payroll cost against a flat budget (PLT-02 finance). */
+const DESIGN_TREND: NonNullable<LiveHome['trend']> = {
+  months: ([
+    ['Apr', 'April', 20850000], ['May', 'May', 20910000], ['Jun', 'June', 21120000],
+    ['Jul', 'July', 21300000], ['Aug', 'August', 21280000], ['Sep', 'September', 21560000],
+  ] as const).map(([label, name, cost]) => ({ label, name, cost, budget: 21400000 })),
 };
 
 /** "Payroll cost" (PLT-02 finance): cost to company against the payroll budget; hidden with the amounts; worded when no budget is set. */

@@ -106,6 +106,12 @@ describe('Payroll budget', () => {
     expect((await api('setupB', 'get', '/payroll/budgets/entities').expect(200)).body.map((e: { id: string }) => e.id)).toEqual([ids.leB]);
     await save('setupA', ids.leA, [{ month, amount: '-5' }]).expect(400);
     await save('setupA', ids.leA, [{ month: '2026-13', amount: '5' }]).expect(400);
+    await save('setupA', ids.leA, []).expect(400);
+    // The same month twice: refused, and the first (valid) one is not saved either.
+    await save('setupA', ids.leA, [{ month, amount: '1.00' }, { month, amount: '2.00' }]).expect(400);
+    // Nothing was saved by any refused request: the amount and the audit trail are as before.
+    expect((await read('setupA', ids.leA).expect(200)).body.months.find((m: { month: string }) => m.month === month).budget).toBe('220000.50');
+    expect(await tenantPrisma.forTenant(ctx('A'), (tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: { startsWith: 'payroll.budget.' } } }))).toBe(2);
   });
 
   it("never reads or writes another company's budget", async () => {
