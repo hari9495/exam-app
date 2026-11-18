@@ -390,3 +390,5 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
   7. clock in again after clocking out, per shift or location, off by default.
 
   Item 5 (leave by the hour) stays as hourly permission (B4). Check, and fill gaps in: leave during notice, credit during long absence, and a 10-character reason on attendance fixes and work-from-home requests shown to the approver.
+- 2480 (18 Nov 2026, "ok"): add approved FBP claims to taxable pay for new-regime employees once the CA confirms checklist item 56; until then it stays on the checklist.
+- 2481 (18 Nov 2026, "ok"): page the PAY-60 settlement list when a company passes a few thousand people.
