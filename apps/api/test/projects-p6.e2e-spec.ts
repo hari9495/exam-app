@@ -248,10 +248,20 @@ describe('Projects P-6 billing workbench and corrections', () => {
     await expect(inA((tx) => tx.projectBilling.create({ data: { organizationId: org.A.id, projectId: ids.tm!, sourceType: 'hours', sourceId: ids.l2!, invoiceId: ids.invTn!, amountPaise: 1n } }))).rejects.toThrow();
     // Deleting a draft frees its work; drafting again bills it once more, once.
     await api('boss', 'delete', `/projects/billing/drafts/${ids.invKa}`).expect(403);
+    const lines = await inA((tx) => tx.staffingInvoiceLine.count({ where: { invoiceId: ids.invKa } }));
     await api('fin', 'delete', `/projects/billing/drafts/${ids.invKa}`).expect(want(200));
     expect((await bench()).wip.some((w) => w.id === `milestone:${ids.msOk}`)).toBe(true);
+    // Answer 2439: the draft waits in the recycle bin with its lines and billing rows.
+    const old = ids.invKa!;
+    const binned = await inA((tx) => tx.recycleBinItem.findFirstOrThrow({ where: { entityId: old, kind: 'project_billing_draft' } }));
+    const kept = (binned.data as { __children: Record<string, unknown[]> }).__children;
+    expect([kept.staffingInvoiceLine!.length, kept.projectBilling!.length]).toEqual([lines, 2]);
     ids.invKa = (await api('fin', 'post', '/projects/billing/drafts').send({ seriesId: ids.series, month: m, items: [`milestone:${ids.msOk}`, `retainer:${ids.ret}:${m}`] }).expect(want(201))).body.ids[0];
     expect(await inA((tx) => tx.projectBilling.count({ where: { invoiceId: ids.invKa } }))).toBe(2);
+    // Its work is billed again, so it cannot come back (never billed twice), and nothing of it does.
+    await api('admin', 'post', `/recycle-bin/items/${binned.id}/restore`).expect(409);
+    expect(await inA((tx) => tx.staffingInvoice.findFirst({ where: { id: old } }))).toBeNull();
+    expect(await inA((tx) => tx.staffingInvoiceLine.count({ where: { invoiceId: old } }))).toBe(0);
   });
 
   it('1415: the account manager approves before finance issues when the company asks; then finance issues on the series', async () => {

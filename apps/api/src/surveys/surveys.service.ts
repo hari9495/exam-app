@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { TenantContext, TenantPrismaService, AuditService } from '@exam-platform/shared';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
 import { UpsertSurveyDto } from './dto/survey.dto';
+import { toBin } from '../recycle-bin/bin';
 
 // super-admin flag on forTenant bypasses the RLS predicate entirely, so this placeholder org is
 // never used for filtering -- it just satisfies the TenantContext shape for a token lookup that
@@ -152,6 +153,10 @@ export class SurveysService {
   async remove(context: TenantContext, actorUserId: string, id: string) {
     await this.requireSurvey(context, id);
     await this.tenantPrisma.forTenant(context, async (tx) => {
+      // Answer 2439: the survey and its responses wait in the recycle bin.
+      const survey = await tx.surveyDefinition.findFirstOrThrow({ where: { id, organizationId: context.organizationId as string } });
+      const responses = await tx.surveyResponse.findMany({ where: { surveyId: id } });
+      await toBin(tx, { organizationId: survey.organizationId, userId: actorUserId }, 'survey', survey, survey.name, { surveyResponse: responses });
       await tx.surveyResponse.deleteMany({ where: { surveyId: id } });
       await tx.surveyDefinition.delete({ where: { id } });
     });

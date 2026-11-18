@@ -23165,5 +23165,28 @@
       "Screens/Settings/Group 4 · Payroll & Statutory"
     ],
     "note": "Positive and negative. B8/E5. The employee ledger page has no design yet (question 2455), so steps 1 and 4 use the API."
+  },
+  {
+    "id": "MT-BIN-W2",
+    "area": "Recycle bin wave 2: records come back with their child rows (answer 2439, 18 Nov 2026)",
+    "screen": "Settings › Recycle bin",
+    "url": "http://localhost:3000/yx/settings/recycle-bin",
+    "account": "Admin admin-tester@demo-org.test (org.settings.manage, user groups, surveys); Finance user with Projects billing; employee arjun@demo-org.test for the refusal.",
+    "steps": [
+      "As admin: /v2/settings/user-groups: add group 'Bin test group' with two members, then delete it.",
+      "/v2/surveys: add survey 'Bin test survey' with one question; send it to a test candidate from the candidate drawer and answer it from the email link; then delete the survey.",
+      "As the finance user: Projects › Billing: make a draft for one milestone, then delete the draft.",
+      "As admin: open Settings › Recycle bin. Restore 'Bin test group', then 'Bin test survey'.",
+      "Open the group and the survey results.",
+      "As finance: make a new draft for the same milestone. As admin: restore the deleted billing draft.",
+      "As admin: add a new group named 'Bin test group 2', delete it, add another group with the same name, then restore the deleted one.",
+      "As arjun: open /yx/settings/recycle-bin directly."
+    ],
+    "expected": "Steps 1-3: each delete works as before. Step 4: the three records show with What = User group / Candidate survey / Billing draft and Area = Access / Hiring / Projects; each restore shows the 5-second toast '<name> is back.' Step 5: the group has both members again; the survey shows the answer again. Step 6: refused: 'It cannot come back: a record with the same name or code exists now…' (its milestone is billed again); it stays in the bin and no lines come back. Step 7: refused the same way; no members come back. Step 8: no access. No page scroll at 1278 x 635.",
+    "stories": [
+      "Screens/Settings/Recycle bin › Recycle bin · deleted records",
+      "Recycle bin · restore refused (name taken)"
+    ],
+    "note": "Positive and negative (e2e: recycle-bin-wave2.e2e-spec.ts, projects-p6.e2e-spec.ts). Children kept: group members; survey responses; billing draft lines, billing rows and reminders. Restoring a group does not re-assign candidates that were assigned to it. Custom fields (archived), visitor entries, draft expense claims and trips have no hard delete, so nothing to bin (2439)."
   }
 ]

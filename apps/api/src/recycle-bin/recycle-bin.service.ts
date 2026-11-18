@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantPrismaService, TenantContext } from '@exam-platform/shared';
-import { BIN_KINDS, isBinKind, keepDays } from './bin';
+import { BIN_KINDS, CHILDREN_KEY, childModels, isBinKind, keepDays, revive } from './bin';
 
 // Single source for the four recycle-bin-eligible entities (T1's soft-delete columns / T2's
 // SOFT_DELETE_MODELS list) -- entityType is the stable, url-safe string used on the wire;
@@ -63,7 +63,11 @@ export class RecycleBinService {
       return await this.tenantPrisma.forTenant(context, async (tx) => {
         const item = await tx.recycleBinItem.findFirst({ where: { id, organizationId: context.organizationId as string } });
         if (!item || !isBinKind(item.kind)) throw new NotFoundException('That item is not in the recycle bin.');
-        await (tx as any)[BIN_KINDS[item.kind].model].create({ data: item.data });
+        const { [CHILDREN_KEY]: kids, ...row } = item.data as Record<string, unknown>;
+        await (tx as any)[BIN_KINDS[item.kind].model].create({ data: revive(BIN_KINDS[item.kind].model, row) });
+        // Answer 2439: the child rows come back too, in the order the kind lists them (only models the kind allows).
+        const stored = (kids ?? {}) as Record<string, Record<string, unknown>[]>;
+        for (const m of childModels(item.kind)) if (stored[m]?.length) await (tx as any)[m].createMany({ data: stored[m].map((r) => revive(m, r)) });
         await tx.recycleBinItem.delete({ where: { id } });
         await AuditService.recordIn(tx, context, { actorUserId, action: `${item.kind}.restored`, entityType: item.kind, entityId: item.entityId, metadata: { name: item.label, from: 'recycle_bin' } });
         return { id, kind: item.kind, entityId: item.entityId, label: item.label };
