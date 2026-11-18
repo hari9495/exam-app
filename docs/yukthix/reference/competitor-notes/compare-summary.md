@@ -337,3 +337,38 @@ Reference: the Income Tax Department site's Accessibility menu (font size, satur
   6. trials and "Upgrade to One".
 - **Pricing:** the mechanism only; prices are set in the console later, never in code. Existing demo companies go on One.
 - **Size:** 3–4 weeks. It goes with AS-7 billing at the end, as the founder decided.
+
+**Founder answers (18 Nov 2026, "ok for all"):**
+- 2420 to 2438 (retire /v2), all as suggested:
+  - super_admin lands on /staff/companies;
+  - system logs live in the staff console only;
+  - logo and colours go in Settings 1.1;
+  - interview business hours reuse holiday calendars plus one hiring setting;
+  - the pass certificate becomes a section on Settings 6.5;
+  - candidate and job custom fields get an entity switch on /yx/settings/custom-fields;
+  - field permissions are kept as a panel in Roles & access;
+  - record visibility and reminders become settings on 6.1 Hiring;
+  - ANL-08 goes live for scheduled reports;
+  - approval, interview and sender emails go into 5.4 Notifications;
+  - user groups go in 2.1 Roles & access;
+  - a cross-company user search is added to the staff console;
+  - ANL-02 goes live with hiring metrics;
+  - old approval chains and drip campaigns are retired, with existing data moved into the new approvals and HIR-20 campaigns;
+  - a stage message template editor goes on 6.1 Hiring;
+  - offer templates move into Letters (5.2), used by the HIR-09 offer builder;
+  - candidate experience surveys are kept and built later with Engage;
+  - a Results tab goes on each test page (PRC-15 if it fits);
+  - old gap pages stay until their new version exists, then redirect.
+- 2439: the recycle bin saves and restores child rows (user group members, survey responses, billing draft lines). Items with no hard delete have nothing to bin.
+- 2450: the ₹20,000 vs ₹2,00,000 exemption goes on the CA checklist; it is one rule value.
+- 2451: TDS also counts this month's loan perquisite for the rest of the year (spread evenly).
+- 2452: a salary advance is a concession loan; expense advances are not.
+- 2453: a mid-month pre-closure and the re-run balance are accepted for now.
+- 2454: manual "loan" perquisite entries are refused while the automatic calculation is on.
+- 2455: design the employee FBP ledger and payroll's settlement screen in the Pay kit first, then make them live.
+- 2456: benefits.settings.manage is added to the HR Admin role template.
+- 2457: a part month counts in full.
+- 2458: everyone gets every component for now; per-grade eligibility later.
+- 2459: the year-end settlement is allowed only from the March pay month.
+- 2460: the exit settlement starts automatically when F&F is handed off.
+- 2461: FBP claims are taxable under the new regime (also added to the CA checklist).
