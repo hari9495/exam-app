@@ -417,6 +417,10 @@ export function buildNav(n: NavInput): NavArea[] {
       : [
           ...sec(undefined, [
           // HIR-01 (founder decision 11): a hiring manager reads their own department's plan.
+          // Answer 2432: the ANL-02 Recruiter dashboard (the API checks results:view).
+          ...when(has('results:view'), L('hiring-dashboard', 'Dashboard', '/yx/hiring/dashboard')),
+          // Answer 2428: ANL-08 report schedules (the weekly hiring digest), for company admins.
+          ...when(has('org:manage_settings'), L('hiring-schedules', 'Report schedules', '/yx/hiring/schedules')),
           ...when(any('ats.headcount.manage', 'ats.requisition.raise'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
           // AS-0: candidate view is enough (the Interview coordinator reads jobs and candidates, without test results).
           ...when(any('pipeline:manage', 'results:view', 'candidate:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),

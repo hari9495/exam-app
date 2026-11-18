@@ -27208,5 +27208,44 @@
                               "Screens/Settings/Group 3 · Time & Leave"
                     ],
                     "note": "Positive and negative. Answer 2477 item 2 (already built per site; the confirm is new)."
+          },
+          {
+                    "id": "MT-V2-HIRING-DASH",
+                    "area": "Retire /v2: Hire › Dashboard, the ANL-02 Recruiter dashboard live (answer 2432, 18 Nov 2026)",
+                    "screen": "Hire › Dashboard",
+                    "url": "http://localhost:3000/yx/hiring/dashboard",
+                    "account": "Admin admin-tester@demo-org.test (results and costs keys); a recruiter without the costs key; employee arjun@demo-org.test for the refusal.",
+                    "steps": [
+                              "As admin: open Hire › Dashboard.",
+                              "Change Period to Last 30 days, then Last 12 months.",
+                              "Press each 'View …' link under the numbers.",
+                              "Open the old addresses /v2/dashboard and /v2/analytics/hiring.",
+                              "As the recruiter without the costs key: open Hire › Dashboard.",
+                              "As arjun: open /yx/hiring/dashboard directly."
+                    ],
+                    "expected": "Step 1: Open positions, Time to hire (median days), Offer acceptance (%), Cost per hire this quarter; the Pipeline funnel (Applied, Offered, Hired) and Applications and hires by source. With nothing to count, the card says so (for example 'No hires in the last 90 days') instead of 0. No page scroll at 1278 x 635. Step 2: the numbers and chart titles follow the period. Step 3: jobs, candidates, recruiting costs. Step 4: both open Hire › Dashboard. Step 5: no Cost per hire card. Step 6: no Dashboard in the menu; the page says HR gives access.",
+                    "stories": [
+                              "Screens/Analytics/ANL-02 · Role dashboards › Live · Hiring dashboard (and without costs / nothing yet / loading / could not load)"
+                    ],
+                    "note": "Positive and negative (kit analytics-live.test.tsx; web yx-hiring-dashboard.test.tsx; API hiring-dashboard.e2e-spec.ts and pipeline-analytics.service.spec.ts). GET /analytics/hiring now also returns openJobs and offers {accepted, declined} answered in the window."
+          },
+          {
+                    "id": "MT-V2-SCHEDULES",
+                    "area": "Retire /v2: Hire › Report schedules, ANL-08 live for the weekly hiring digest (answer 2428, 18 Nov 2026)",
+                    "screen": "Hire › Report schedules",
+                    "url": "http://localhost:3000/yx/hiring/schedules",
+                    "account": "Admin admin-tester@demo-org.test (company settings key); recruiter without it; Mailpit for the email.",
+                    "steps": [
+                              "As admin: open Hire › Dashboard and press Schedule.",
+                              "On 'Hiring dashboard: weekly digest' press Edit. Turn on 'Send the weekly digest' with no recipients and press Save schedule.",
+                              "Choose two people and press Save schedule.",
+                              "Open the old address /v2/settings/scheduled-reports.",
+                              "As the recruiter: open /yx/hiring/schedules directly; open Hire › Dashboard."
+                    ],
+                    "expected": "Step 1: Report schedules with one row: When Weekly, Recipients, Delivery 'Email · CSV attached', Last sent (empty until the first send), Status On or Off. No page scroll at 1278 x 635. Step 2: 'Choose at least one person to send it to.'; nothing saved. Step 3: 5-second toast 'The weekly hiring digest is on'; the row shows the two names and On; the next nightly sweep emails them (Mailpit) and Last sent fills in. Step 4: Report schedules. Step 5: no access (your company admin gives it); no Report schedules in the menu and no Schedule button on the dashboard.",
+                    "stories": [
+                              "Screens/Analytics/ANL-08 · Schedules and export log › Live · weekly hiring digest on / off / loading / could not load"
+                    ],
+                    "note": "Positive and negative (kit analytics-live.test.tsx; web yx-report-schedules.test.tsx; API hiring-dashboard.e2e-spec.ts and organizations.service.spec.ts). GET /organizations/scheduled-report-settings now also returns lastSentAt. The export log tab of ANL-08 waits for analytics exports."
           }
 ]

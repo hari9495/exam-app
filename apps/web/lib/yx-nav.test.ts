@@ -35,6 +35,12 @@ describe('buildNav: areas', () => {
     expect(reader.filter((l) => l.id === 'hiring-results').map((l) => [l.label, l.href])).toEqual([['Test results', '/yx/hiring/assessments/results']]);
     expect(reader.some((l) => l.href.startsWith('/v2'))).toBe(false);
     expect(all.some((l) => l.id === 'hiring-results')).toBe(false);
+    // Answer 2432: Hire › Dashboard for results readers; never for hiring keys alone.
+    expect(reader.filter((l) => l.id === 'hiring-dashboard').map((l) => l.href)).toEqual(['/yx/hiring/dashboard']);
+    expect(hiringOnly.some((l) => l.id === 'hiring-dashboard')).toBe(false);
+    // Answer 2428: Report schedules for company admins only.
+    expect(nav(['pipeline:manage', 'org:manage_settings']).flatMap((a) => a.sections.flatMap((s) => s.items)).filter((l) => l.id === 'hiring-schedules').map((l) => l.href)).toEqual(['/yx/hiring/schedules']);
+    expect(reader.some((l) => l.id === 'hiring-schedules')).toBe(false);
     expect(labels(nav(['pipeline:manage', 'candidate:view']), 'hire')).toEqual(['Jobs & requisitions', 'Requisitions', 'Interviews', 'Candidates & talent CRM', 'Talent CRM', 'Referrals', 'Vendors', 'All referrals', 'Bias audits']);
   });
 

@@ -19,6 +19,7 @@ import { AssistantPanel, type AssistantMessage } from '../../components/notify';
 import { Timeline } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import { AnlFrame } from './proctoring-shared';
+import { HiringDashboardScreen, LiveSchedulesScreen, type LiveHiringDashboard, type LiveSchedules } from './analytics-live';
 import { deliveryMode, inheritedSensitivity, suppress, type Sensitivity } from './proctoring-logic';
 import { EXPORTS, METRICS, MONTHS, REPORTS, SCHEDULES, d, type MetricRow, type ReportRow, type ScheduleRow } from './proctoring-data';
 
@@ -155,7 +156,12 @@ function roleWidgets(role: RoleKey): DashboardWidget[] {
   }
 }
 
-export function RoleDashboardScreen({ role = 'executive', loading = false }: { role?: RoleKey; loading?: boolean }) {
+/** ANL-02. With `live`, the Recruiter dashboard with the company's own figures (Hire › Dashboard, answer 2432). */
+export function RoleDashboardScreen(props: { role?: RoleKey; loading?: boolean } | { live: LiveHiringDashboard }) {
+  return 'live' in props ? <HiringDashboardScreen live={props.live} /> : <SampleRoleDashboard {...props} />;
+}
+
+function SampleRoleDashboard({ role = 'executive', loading = false }: { role?: RoleKey; loading?: boolean }) {
   // ANL-02
   const widgets = roleWidgets(role).map((w) => (loading ? { ...w, content: <StatCard label={w.title} value={0} loading drill={{ label: '', href: '#' }} /> } : w));
   return (
@@ -632,7 +638,12 @@ export function MetricCatalogueScreen({ selected = 'workforce.attrition_rate', b
 /* ANL-08 · Schedules & subscriptions + export log                     */
 /* ================================================================== */
 
-export function SchedulesScreen({ tab = 'schedules', dialog = false, persona = 'HR' }: { tab?: 'schedules' | 'exports'; dialog?: boolean; persona?: 'HR' | 'Auditor' }) {
+/** ANL-08. With `live`, the company's schedules (today the weekly hiring digest, answer 2428). */
+export function SchedulesScreen(props: { tab?: 'schedules' | 'exports'; dialog?: boolean; persona?: 'HR' | 'Auditor' } | { live: LiveSchedules }) {
+  return 'live' in props ? <LiveSchedulesScreen live={props.live} /> : <SampleSchedules {...props} />;
+}
+
+function SampleSchedules({ tab = 'schedules', dialog = false, persona = 'HR' }: { tab?: 'schedules' | 'exports'; dialog?: boolean; persona?: 'HR' | 'Auditor' }) {
   // ANL-08
   const [open, setOpen] = useState(dialog);
   const [channel, setChannel] = useState<'email' | 'whatsapp' | 'in-app'>('email');
