@@ -11,6 +11,11 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Private-repo runners have about 7 GB, so Node's default heap is about 2 GB; the jest, Next and Storybook steps ran
+# out of it (18 Nov 2026, PR #221). 6 GB still leaves room for Postgres and Redis on the runner.
+env:
+  NODE_OPTIONS: --max-old-space-size=6144
+
 jobs:
   test:
     runs-on: ubuntu-latest
