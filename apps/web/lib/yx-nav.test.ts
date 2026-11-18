@@ -25,11 +25,22 @@ describe('buildNav: areas', () => {
     for (const unbuilt of ['assess', 'learning', 'analytics', 'engage', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
   });
 
-  it('YukthiX Hiring for hiring; the exam tools not yet in YukthiX are one link to the older screens (19 Oct 2026)', () => {
-    const all = nav(['exam:manage', 'pipeline:manage', 'candidate:manage']).flatMap((a) => a.sections.flatMap((s) => s.items));
-    expect(all.filter((l) => l.href.startsWith('/v2')).map((l) => l.label)).toEqual(['Assessments & more (older screens)']);
+  it('YukthiX Hiring for hiring; no menu link leads to the older /v2 screens (decision 2398, step 5)', () => {
+    const all = nav(['exam:manage', 'pipeline:manage', 'candidate:manage', 'question_bank:manage', 'results:view']).flatMap((a) => a.sections.flatMap((s) => s.items));
+    expect(all.filter((l) => l.href.startsWith('/v2'))).toEqual([]);
     const hiringOnly = nav(['pipeline:manage', 'candidate:manage']).flatMap((a) => a.sections.flatMap((s) => s.items));
     expect(hiringOnly.filter((l) => l.href.startsWith('/v2'))).toEqual([]);
+    // Answer 2437: a results reader's Test results is the YukthiX page (no longer the older screens); test writers use the Results tab.
+    const reader = nav(['pipeline:manage', 'results:view']).flatMap((a) => a.sections.flatMap((s) => s.items));
+    expect(reader.filter((l) => l.id === 'hiring-results').map((l) => [l.label, l.href])).toEqual([['Test results', '/yx/hiring/assessments/results']]);
+    expect(reader.some((l) => l.href.startsWith('/v2'))).toBe(false);
+    expect(all.some((l) => l.id === 'hiring-results')).toBe(false);
+    // Answer 2432: Hire › Dashboard for results readers; never for hiring keys alone.
+    expect(reader.filter((l) => l.id === 'hiring-dashboard').map((l) => l.href)).toEqual(['/yx/hiring/dashboard']);
+    expect(hiringOnly.some((l) => l.id === 'hiring-dashboard')).toBe(false);
+    // Answer 2428: Report schedules for company admins only.
+    expect(nav(['pipeline:manage', 'org:manage_settings']).flatMap((a) => a.sections.flatMap((s) => s.items)).filter((l) => l.id === 'hiring-schedules').map((l) => l.href)).toEqual(['/yx/hiring/schedules']);
+    expect(reader.some((l) => l.id === 'hiring-schedules')).toBe(false);
     expect(labels(nav(['pipeline:manage', 'candidate:view']), 'hire')).toEqual(['Jobs & requisitions', 'Requisitions', 'Interviews', 'Candidates & talent CRM', 'Talent CRM', 'Referrals', 'Vendors', 'All referrals', 'Bias audits']);
   });
 
@@ -178,6 +189,12 @@ describe('buildNav: Time, Pay, Compliance', () => {
     }
     expect(labels(nav(['payroll.special.manage']), 'pay')).not.toContain('Statutory bonus');
     expect(labels(nav([], { employee: true }), 'pay')).not.toContain('Statutory bonus');
+  });
+
+  it('PAY-59 / PAY-60 flexible benefits (answer 2455): the employee their own ledger, payroll.input.manage the settlement', () => {
+    expect(activeLink(nav([], { employee: true }), '/yx/me/flexible-benefits')?.link.id).toBe('my-fbp');
+    expect(activeLink(nav(['payroll.input.manage']), '/yx/payroll/flexible-benefits')?.link.id).toBe('pay-fbp');
+    expect(labels(nav(['payroll.run.view']), 'pay')).not.toContain('Flexible benefits');
   });
 
   it('PAY-25 Payroll reports: shown with payroll.reports.view only (not to HR without payroll scope or employees)', () => {

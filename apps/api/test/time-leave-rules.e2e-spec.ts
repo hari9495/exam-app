@@ -142,7 +142,7 @@ describe('Time leave rules and on duty', () => {
       expect((await api('hr', 'post', '/time/setup/types').send(typeBody({}, { maxDaysPerMonth: 3, maxDays: 4 })).expect(400)).body.message).toMatch(/monthly limit of 3/);
       expect((await api('hr', 'post', '/time/setup/types').send(typeBody({}, { encashMaxDays: 2 })).expect(400)).body.message).toMatch(/Can be cashed in/);
       await api('hr', 'post', '/time/setup/types').send(typeBody({}, { encashable: true, encashDivisor: 31 })).expect(400);
-      await api('hr', 'post', '/time/setup/types').send(typeBody({}, { noticePeriod: 'unpaid' })).expect(400);
+      await api('hr', 'post', '/time/setup/types').send(typeBody({}, { noticePeriod: 'half_paid' })).expect(400);
       await api('emp', 'post', '/time/setup/types').send(typeBody({}, { maxDaysPerMonth: 3 })).expect(403);
       ids.EL = (await api('hr', 'post', '/time/setup/types').send(typeBody({}, { maxDaysPerMonth: 3, encashable: true, encashMaxDays: 2, encashMinLeft: 0, encashDivisor: 30, encashAtExit: false, longAbsence: 'continue', noticePeriod: 'blocked' })).expect(201)).body.id;
       const t = (await api('hr', 'get', '/time/setup').expect(200)).body.types.find((x: { id: string }) => x.id === ids.EL);
@@ -203,6 +203,49 @@ describe('Time leave rules and on duty', () => {
   });
 
   // ------------------------------------------------------------------------------------------ TIM-29 year end
+
+  describe('answer 2477: dated leave type versions and who can take it', () => {
+    const on = (day: number) => `${M}-${String(day).padStart(2, '0')}`;
+    const body = (over: Record<string, unknown> = {}, rules: Record<string, unknown> = {}) => ({ code: 'CL', name: 'Casual leave', kind: 'other', paid: true, ...over, rules: { halfDays: true, ...rules } });
+
+    it('a change dated ahead waits as a version; leave follows the version in force on its first day; past ones never change', async () => {
+      ids.CL = (await api('hr', 'post', '/time/setup/types').send(body()).expect(201)).body.id;
+      // Negatives first: the wrong role, another company, a date in the past, bad eligibility; nothing saved.
+      await api('emp', 'put', `/time/setup/types/${ids.CL}`).send({ ...body({}, { minMonthsWorked: 120 }), validFrom: on(1) }).expect(403);
+      await api('adminB', 'put', `/time/setup/types/${ids.CL}`).send({ ...body({}, { minMonthsWorked: 120 }), validFrom: on(1) }).expect(404);
+      expect((await api('hr', 'put', `/time/setup/types/${ids.CL}`).send({ ...body({}, { minMonthsWorked: 120 }), validFrom: d(-1) }).expect(400)).body.message).toMatch(/today or a later date/);
+      await api('hr', 'put', `/time/setup/types/${ids.CL}`).send({ ...body({}, { minMonthsWorked: 0 }), validFrom: on(1) }).expect(400);
+      await api('hr', 'put', `/time/setup/types/${ids.CL}`).send({ ...body({}, { eligibleEmploymentTypes: ['not-a-type'] }), validFrom: on(1) }).expect(400);
+      await api('hr', 'put', `/time/setup/types/${ids.CL}`).send({ ...body({}, { probation: 'sometimes' }), validFrom: on(1) }).expect(400);
+      expect(await inA((tx) => tx.leaveTypeVersion.count({ where: { leaveTypeId: ids.CL } }))).toBe(1);
+      // From the 1st of month M: 120 months of work first, and unpaid.
+      expect((await api('hr', 'put', `/time/setup/types/${ids.CL}`).send({ ...body({ paid: false }, { minMonthsWorked: 120 }), validFrom: on(1) }).expect(200)).body).toEqual({ id: ids.CL, validFrom: on(1) });
+      const t = (await api('hr', 'get', '/time/setup').expect(200)).body.types.find((x: { id: string }) => x.id === ids.CL);
+      expect(t.paid).toBe(true);
+      expect(t.versions.map((v: { validFrom: string; paid: boolean }) => [v.validFrom, v.paid])).toEqual([[on(1), false], ['2000-01-01', true]]);
+      const blocks = async (from: string) => (await api('emp', 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.CL, from, to: from }).expect(200)).body.blocks as string[];
+      expect((await blocks(d(3))).join(' ')).not.toMatch(/months of work/);
+      expect((await blocks(on(2))).join(' ')).toMatch(/Casual leave can be taken after 120 months of work, from /);
+      // The waiting version can be replaced on its date; a version in force never changes (the database refuses).
+      await api('hr', 'put', `/time/setup/types/${ids.CL}`).send({ ...body({ paid: false }, { minMonthsWorked: 119 }), validFrom: on(1) }).expect(200);
+      expect(await inA((tx) => tx.leaveTypeVersion.count({ where: { leaveTypeId: ids.CL } }))).toBe(2);
+      await expect(inA((tx) => tx.leaveTypeVersion.updateMany({ where: { leaveTypeId: ids.CL, validFrom: asDate('2000-01-01') }, data: { paid: false } }))).rejects.toThrow(/YX_VERSION_IN_FORCE/);
+      const a = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'leave.type.changed', entityId: ids.CL }, orderBy: { createdAt: 'desc' } }));
+      expect(JSON.parse(a.metadataJson ?? '{}')).toMatchObject({ validFrom: on(1), to: { paid: false } });
+      // Another company sees no versions of A.
+      expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.leaveTypeVersion.count({ where: { leaveTypeId: ids.CL } }))).toBe(0);
+    });
+
+    it('a change from today applies at once; only some employment types may take it, refused with the rule named', async () => {
+      const contract = await inA((tx) => tx.employmentType.create({ data: { organizationId: org.A.id, name: 'Contract', code: `CON-${run}`.slice(0, 20), category: 'fixed_term' } }));
+      await api('hr', 'put', `/time/setup/types/${ids.CL}`).send(body({}, { eligibleEmploymentTypes: [contract.id] })).expect(200);
+      expect((await api('hr', 'get', '/time/setup').expect(200)).body.types.find((x: { id: string }) => x.id === ids.CL).rules.eligibleEmploymentTypes).toEqual([contract.id]);
+      expect((await api('emp', 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.CL, from: d(3), to: d(3) }).expect(200)).body.blocks.join(' ')).toMatch(/Casual leave is not available to Permanent employees/);
+      await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.CL, from: d(3), to: d(3), reason: 'Family function' }).expect(400);
+      // A second change on the same day is refused: it applies from tomorrow or later.
+      expect((await api('hr', 'put', `/time/setup/types/${ids.CL}`).send(body({}, { eligibleEmploymentTypes: null })).expect(409)).body.message).toMatch(/from tomorrow or later/);
+    });
+  });
 
   describe('TIM-29 year end: carry, pay out, lapse; once per policy', () => {
     it('previews and posts; a second post is refused; the wrong role and another company get nothing', async () => {

@@ -41,7 +41,7 @@ export async function wasLop(tx: Tx, org: string, employeeId: string, on: string
   const d = await tx.attendanceDay.findUnique({ where: { organizationId_employeeId_workOn: { organizationId: org, employeeId, workOn: asDate(on) } } });
   if (!d) return 0;
   const [lp] = await tx.$queryRaw<{ paid: boolean }[]>`
-    SELECT bool_and(t.paid) AS paid FROM leave_request_days ld
+    SELECT bool_and(coalesce((SELECT v.paid FROM leave_type_versions v WHERE v.organization_id = r.organization_id AND v.leave_type_id = r.leave_type_id AND v.valid_from <= ld.leave_on ORDER BY v.valid_from DESC LIMIT 1), t.paid) AND NOT r.unpaid_in_notice) AS paid FROM leave_request_days ld
     JOIN leave_requests r ON r.organization_id = ld.organization_id AND r.id = ld.request_id AND r.status IN ('approved', 'cancel_pending')
     JOIN leave_types t ON t.organization_id = r.organization_id AND t.id = r.leave_type_id
     WHERE ld.organization_id = ${org}::uuid AND ld.employee_id = ${employeeId}::uuid AND ld.active AND ld.portion > 0 AND ld.leave_on = ${on}::date`;

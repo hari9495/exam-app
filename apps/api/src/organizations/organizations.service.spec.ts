@@ -1744,8 +1744,9 @@ describe('OrganizationsService', () => {
     const context = { organizationId: 'org-1', isSuperAdmin: false };
 
     it('getScheduledReportSettings parses the recipient JSON', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ scheduledReportEnabled: true, scheduledReportRecipientsJson: JSON.stringify(['u1', 'u2']) });
-      expect(await service.getScheduledReportSettings(context)).toEqual({ enabled: true, recipientUserIds: ['u1', 'u2'] });
+      const at = new Date('2026-11-16T03:30:00Z');
+      prisma.organization.findUnique.mockResolvedValue({ scheduledReportEnabled: true, scheduledReportRecipientsJson: JSON.stringify(['u1', 'u2']), scheduledReportLastSentAt: at });
+      expect(await service.getScheduledReportSettings(context)).toEqual({ enabled: true, recipientUserIds: ['u1', 'u2'], lastSentAt: at });
     });
 
     it('updateScheduledReportSettings validates recipients belong to the org and persists', async () => {

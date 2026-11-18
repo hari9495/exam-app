@@ -353,7 +353,8 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: extra, explanation: `The year's tax with this payment ${rupees(withItems.tax.total)} less without it ${rupees(without.tax.total)} (${withItems.regime} regime), deducted in full now.`, rule: tdsRs ? cite(tdsRs) : undefined });
     } else {
       const plus = (x: string, y?: string) => D(x).add(y ?? 0).toFixed(2);
-      tax = projectTax(perqMonth.gt(0) ? { ...s.tax, perquisites: plus(s.tax.perquisites, perqMonth.toFixed(2)) } : s.tax, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
+      // Answer 2451: this month's loan perquisite also counts for each month left in the year (spread evenly).
+      tax = projectTax(perqMonth.gt(0) ? { ...s.tax, perquisites: plus(s.tax.perquisites, perqMonth.mul(1 + s.tax.futureMonths).toFixed(2)) } : s.tax, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: D(tax.monthTds), explanation: `Tax for the year ${rupees(tax.tax.total)} (${tax.regime} regime) less ${rupees(tax.alreadyDeducted)} already deducted, over ${tax.remainingPeriods} pay ${tax.remainingPeriods === 1 ? 'period' : 'periods'}.`, rule: tdsRs ? cite(tdsRs) : undefined });
     }
   }

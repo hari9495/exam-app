@@ -9,6 +9,10 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { entitledMonths, flexYearOf } from '../src/payroll/flex';
+import * as orgValidation from '../src/org-structure/org-validation';
+import { freezeSettlementIn } from '../src/lifecycle/settlement';
+import { FnfService } from '../src/payroll/fnf.service';
+import type { CompanyContext } from '../src/org-structure/org-structure.service';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
 // B8/E5 (founder answers 2406, 2407) end to end against the real database: the company's flexible components on Settings
@@ -19,13 +23,14 @@ describe('Flexible benefits (B8/E5)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
+  let fnf: FnfService;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hrNoKey' | 'payAdmin' | 'payAdminB' | 'emp1';
+  type Who = 'adminA' | 'adminB' | 'hrNoKey' | 'payAdmin' | 'payAdminB' | 'emp1' | 'hrEntity' | 'hrTenant';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -52,6 +57,7 @@ describe('Flexible benefits (B8/E5)', () => {
     await app.init();
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
+    fnf = moduleRef.get(FnfService);
     planId = (await prisma.plan.create({ data: { name: `flex-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     for (const k of ['A', 'B'] as const) {
       const created = await prisma.organization.create({ data: { name: `Flex Org ${k}`, slug: `flex-${k.toLowerCase()}-${run}`, planId } });
@@ -66,6 +72,9 @@ describe('Flexible benefits (B8/E5)', () => {
       ['payAdmin', 'A', 'panel', template('payroll_admin')],
       ['payAdminB', 'B', 'panel', template('payroll_admin')],
       ['emp1', 'A', 'panel', null],
+      // HR Admin granted for one legal entity (how the template is usually granted), and one granted company-wide.
+      ['hrEntity', 'A', 'panel', null],
+      ['hrTenant', 'A', 'panel', ['benefits.settings.manage']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -87,6 +96,8 @@ describe('Flexible benefits (B8/E5)', () => {
       ids.dept = (await tx.department.create({ data: { ...o, id: deptId, name: 'Finance', code: 'FIN', path: `/${deptId}/` } })).id;
       ids.desig = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
+      const hr = await tx.permissionProfile.create({ data: { ...o, name: `hr-entity-${run}`, permissionsJson: JSON.stringify(ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions) } });
+      await tx.roleGrant.create({ data: { ...o, userId: users.hrEntity, permissionProfileId: hr.id, scopeType: 'legal_entity', legalEntityId: ids.entity, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'HR for Flex Mills' } });
     });
     ids.emp1 = (
       await api('adminA', 'post', '/people/employees')
@@ -170,6 +181,21 @@ describe('Flexible benefits (B8/E5)', () => {
     expect((await api('adminA', 'get', '/benefits/flex/settings').expect(200)).body.lastChange).toMatchObject({ what: 'Changed a flexible component' });
   });
 
+  it('HR Admin granted for one legal entity reads Settings 4.11 but cannot change the company list; a company-wide grant can', async () => {
+    expect((await api('hrEntity', 'get', '/benefits/flex/settings').expect(200)).body.components.map((x: { code: string }) => x.code)).toContain('phone');
+    const meal = { code: 'meal', name: 'Meal card', monthlyAmount: '2200', taxableIfUnclaimed: true, expenseCategoryCode: null };
+    expect((await api('hrEntity', 'post', '/benefits/flex/components').send(meal).expect(403)).body.message).toMatch(/for the whole company/);
+    await api('hrEntity', 'put', `/benefits/flex/components/${ids.phone}`).send({ ...phone, active: true, version: 1 }).expect(403);
+    await api('hrEntity', 'put', '/org/settings').send({ key: 'benefits.fbp.unclaimed', scopeType: 'tenant', value: 'carry' }).expect(403);
+    expect((await api('adminA', 'get', '/benefits/flex/settings').expect(200)).body).toMatchObject({ unclaimed: 'pay' });
+    expect((await api('adminA', 'get', '/benefits/flex/settings').expect(200)).body.components.map((x: { code: string }) => x.code)).not.toContain('meal');
+    // The company-wide grant adds it; another company never sees it.
+    expect((await api('hrTenant', 'post', '/benefits/flex/components').send(meal).expect(201)).body).toMatchObject({ code: 'meal', active: true });
+    expect((await api('adminB', 'get', '/benefits/flex/settings').expect(200)).body.components).toEqual([]);
+    const m = (await api('adminA', 'get', '/benefits/flex/settings').expect(200)).body.components.find((x: { code: string }) => x.code === 'meal');
+    await api('hrTenant', 'put', `/benefits/flex/components/${m.id}`).send({ ...meal, active: false, version: m.version }).expect(200);
+  });
+
   it('the unclaimed rule is a company setting: pay by default, carry on HR’s say; others refused', async () => {
     await api('hrNoKey', 'put', '/org/settings').send({ key: 'benefits.fbp.unclaimed', scopeType: 'tenant', value: 'carry' }).expect(403);
     await api('adminA', 'put', '/org/settings').send({ key: 'benefits.fbp.unclaimed', scopeType: 'tenant', value: 'later' }).expect(400);
@@ -204,7 +230,82 @@ describe('Flexible benefits (B8/E5)', () => {
     expect(((await api('emp1', 'post', `/expenses/claims/${c.id}/check`).expect(200)).body.blockers as { text: string }[]).map((b) => b.text).filter((t) => /balance/.test(t))).toEqual([]);
   });
 
+  it('answer 2460: the exit settlement starts by itself when F&F is handed off; once; another company sees nothing', async () => {
+    const emp2 = (
+      await api('adminA', 'post', '/people/employees')
+        .send({
+          legalEntityId: ids.entity,
+          status: 'confirmed',
+          reason: 'Joined',
+          givenName: 'emp2',
+          familyName: run,
+          employeeCode: 'FLX-002',
+          joinedOn: joined,
+          workEmail: `emp2@flex-${run}.test`,
+          assignment: { locationId: ids.loc, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null },
+        })
+        .expect(201)
+    ).body.id as string;
+    ids.emp2 = emp2;
+    const c = { organizationId: org.A.id, isSuperAdmin: false, userId: users.adminA } as unknown as CompanyContext;
+    const exitCaseId = await inA(async (tx) => {
+      await tx.payGroup.create({ data: { organizationId: org.A.id, legalEntityId: ids.entity, name: 'Monthly' } });
+      const e = await tx.employee.findFirstOrThrow({ where: { id: emp2 } });
+      const em = await tx.employment.findFirstOrThrow({ where: { employeeId: emp2 } });
+      const k = await tx.exitCase.create({
+        data: { organizationId: org.A.id, employmentId: em.id, employeeId: emp2, personId: e.personId!, exitType: 'resignation', initiatedBy: 'employee', reasonText: 'Test exit', submittedOn: new Date(`${today}T00:00:00Z`), noticePeriod: '0d', standardLwd: new Date(`${today}T00:00:00Z`), approvedLwd: new Date(`${today}T00:00:00Z`), status: 'accepted', acceptedAt: new Date() },
+      });
+      await freezeSettlementIn(tx, c, k.id, 'accepted');
+      return k.id;
+    });
+    await fnf.fromInputs(org.A.id, exitCaseId);
+    const settled = () =>
+      inA(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+        return tx.flexSettlement.findMany({ where: { employeeId: emp2 } });
+      });
+    const rows = await settled();
+    // Only the active phone component; the switched-off books component has nothing to settle.
+    expect(rows.map((r) => ({ kind: r.kind, payMonth: r.payMonth.toISOString().slice(0, 7), paid: r.paidTaxable.toFixed(2) }))).toEqual([{ kind: 'exit', payMonth: today.slice(0, 7), paid: (1500 * months).toFixed(2) }]);
+    expect((await api('payAdmin', 'get', `/benefits/flex/ledger/${emp2}`).expect(200)).body.rows[0]).toMatchObject({ available: '0.00', settlement: { kind: 'exit' } });
+    // A refreshed hand-off settles nothing twice; another company's payroll does not see the person.
+    await fnf.fromInputs(org.A.id, exitCaseId);
+    expect(await settled()).toHaveLength(1);
+    await api('payAdminB', 'get', `/benefits/flex/ledger/${emp2}`).expect(404);
+    const a = await inA((tx) => tx.auditLog.findFirst({ where: { action: 'benefits.flex.settled', entityId: emp2 } }));
+    expect(JSON.parse(a?.metadataJson ?? '{}')).toMatchObject({ kind: 'exit', automatic: true, settled: 1 });
+  });
+
+  it('answer 2455: the settlement list for payroll in scope; the leaver carries the F&F last day; refusals', async () => {
+    const o = (await api('payAdmin', 'get', `/benefits/flex/settlements?taxYear=${year}`).expect(200)).body;
+    expect(o).toMatchObject({ taxYear: year, opensIn: march, unclaimed: 'pay' });
+    const byId = new Map((o.people as { employeeId: string }[]).map((p) => [p.employeeId, p]));
+    expect(byId.get(ids.emp1)).toMatchObject({ name: `emp1 ${run}`, employeeCode: 'FLX-001', leavesOn: null, settled: null });
+    expect(byId.get(ids.emp2)).toMatchObject({ leavesOn: today, available: '0.00', settled: 'exit' });
+    // The person's own ledger says what happens to an unclaimed balance.
+    expect((await api('emp1', 'get', '/benefits/flex/me').expect(200)).body.unclaimed).toBe('pay');
+    // Wrong role, another company (sees nobody of A), bad input.
+    await api('emp1', 'get', '/benefits/flex/settlements').expect(403);
+    await api('hrNoKey', 'get', '/benefits/flex/settlements').expect(403);
+    // Company B's payroll reaches no legal entity of A: refused, nothing of A shown.
+    expect((await api('payAdminB', 'get', '/benefits/flex/settlements').expect(403)).body.message).toBe('You need payroll.input.manage over a legal entity.');
+    await api('payAdmin', 'get', '/benefits/flex/settlements?taxYear=26-27').expect(400);
+  });
+
+  it('answer 2459: the year-end settlement is refused before the March pay month; nothing saved', async () => {
+    const real = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 7);
+    if (real >= march) return; // in March itself the real clock already allows it
+    const r = await api('payAdmin', 'post', '/benefits/flex/settlements').send({ kind: 'year_end', taxYear: year }).expect(409);
+    expect(r.body.message).toBe(`The year-end settlement for ${year} opens with the March ${march.slice(0, 4)} pay month.`);
+    expect(await inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return tx.flexSettlement.count({ where: { employeeId: ids.emp1 } });
+    })).toBe(0);
+  });
+
   it('March settlement: what is left paid as taxable one-time pay in March, once; refusals for the wrong role, another company and a non-leaver exit', async () => {
+    // The clock moves to the March pay month (answer 2459).
+    jest.spyOn(orgValidation, 'todayIst').mockReturnValue(`${march}-10`);
     await api('emp1', 'post', '/benefits/flex/settlements').send({ kind: 'year_end', taxYear: year }).expect(403);
     await api('payAdminB', 'post', '/benefits/flex/settlements').send({ kind: 'year_end', taxYear: year, employeeId: ids.emp1 }).expect(404);
     await api('payAdmin', 'post', '/benefits/flex/settlements').send({ kind: 'exit', taxYear: year }).expect(400);
@@ -230,5 +331,6 @@ describe('Flexible benefits (B8/E5)', () => {
         return tx.flexSettlement.updateMany({ data: { paidTaxable: 1 } });
       }),
     ).rejects.toThrow(/permission denied/);
+    jest.restoreAllMocks();
   });
 });

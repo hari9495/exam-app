@@ -383,7 +383,7 @@ describe('TIM-31 Locations, live', () => {
     await ue.clear(ips);
     await ue.type(ips, '10.20.4.0/24{Enter}{Enter}10.20.5.0/24');
     await ue.click(screen.getByRole('button', { name: 'Save office network' }));
-    await waitFor(() => expect(onSetNetworks).toHaveBeenCalledWith('loc-blr', ['10.20.4.0/24', '10.20.5.0/24']));
+    await waitFor(() => expect(onSetNetworks).toHaveBeenCalledWith('loc-blr', ['10.20.4.0/24', '10.20.5.0/24'], []));
   });
 
   it('Multi: a location saved with one point shows it; another point is added and both are saved with the version seen', async () => {

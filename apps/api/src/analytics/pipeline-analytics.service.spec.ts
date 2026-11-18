@@ -3,7 +3,8 @@ import { TenantContext } from '@exam-platform/shared';
 
 const context = { organizationId: 'org-1', isSuperAdmin: false } as TenantContext;
 
-function serviceWith(tx: { pipelineEntry: { findMany: jest.Mock }; job: { findMany: jest.Mock } }) {
+function serviceWith(tx: { pipelineEntry: { findMany: jest.Mock }; job: { findMany: jest.Mock }; offer?: { groupBy: jest.Mock } }) {
+  tx.offer ??= { groupBy: jest.fn().mockResolvedValue([]) };
   const tenantPrisma = { forTenant: jest.fn((_c: unknown, fn: (tx: unknown) => unknown) => fn(tx)) };
   return { service: new PipelineAnalyticsService(tenantPrisma as never), tenantPrisma };
 }
@@ -91,5 +92,21 @@ describe('PipelineAnalyticsService.getHiring', () => {
     expect(out.funnel.find((f) => f.stage === 'offer')!.reached).toBe(1);
     // null status falls back to 'active' category, so it's still counted at the active step.
     expect(out.funnel.find((f) => f.stage === 'active')!.reached).toBe(2);
+  });
+});
+
+describe('PipelineAnalyticsService.getHiring: ANL-02 dashboard figures (answer 2432)', () => {
+  it('counts open jobs now and the offers answered in the window, for one job when asked', async () => {
+    const groupBy = jest.fn().mockResolvedValue([{ status: 'accepted', _count: { _all: 9 } }, { status: 'declined', _count: { _all: 3 } }]);
+    const { service } = serviceWith({
+      pipelineEntry: { findMany: jest.fn().mockResolvedValue([]) },
+      job: { findMany: jest.fn().mockResolvedValue([{ id: 'j1', title: 'A', status: 'open' }, { id: 'j2', title: 'B', status: 'closed' }, { id: 'j3', title: 'C', status: 'open' }]) },
+      offer: { groupBy },
+    });
+    const from = new Date('2026-08-01');
+    const to = new Date('2026-08-31');
+    const out = await service.getHiring(context, { from, to, jobId: 'j1' });
+    expect(out).toMatchObject({ openJobs: 2, offers: { accepted: 9, declined: 3 } });
+    expect(groupBy).toHaveBeenCalledWith(expect.objectContaining({ where: { organizationId: 'org-1', status: { in: ['accepted', 'declined'] }, respondedAt: { gte: from, lte: to }, pipelineEntry: { jobId: 'j1' } } }));
   });
 });

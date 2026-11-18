@@ -1,4 +1,4 @@
-import { accrualsDue, applyFloors, breakMinutes, checkInVerdict, countLeaveDays, fencesOf, geoPointsOf, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
+import { accrualsDue, applyFloors, breakMinutes, checkInVerdict, netWorked, sessionMs, countLeaveDays, fencesOf, geoPointsOf, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
 
 const SUN = [{ weekday: 7 }];
 const SAT_SUN = [{ weekday: 6 }, { weekday: 7 }];
@@ -303,5 +303,36 @@ describe('the day engine (YX-AT-03, YX-AT-12)', () => {
     const r = evaluateDay({ ...base, punches: [{ at: at('09:31'), kind: 'in' }], fix: { kind: 'missed_out', inMinute: null, outMinute: 18 * 60 + 10 } });
     expect(r).toMatchObject({ status: 'present', regularised: true });
     expect(evaluateDay({ ...base, fix: { kind: 'full_day', inMinute: null, outMinute: null } }).status).toBe('present');
+  });
+});
+
+describe('answer 2477: clocking in again and office Wi-Fi', () => {
+  const at = (hhmm: string) => new Date(`2026-11-18T${hhmm}:00+05:30`);
+  const punches = [
+    { at: at('09:00'), kind: 'in' as const },
+    { at: at('12:00'), kind: 'out' as const },
+    { at: at('14:00'), kind: 'in' as const },
+    { at: at('18:00'), kind: 'out' as const },
+  ];
+  const rule = { breakMinutes: 30, breakAboveMinutes: 300 };
+
+  it('off (the default): first in to last out, less the break rule, as before', () => {
+    expect(netWorked(punches, at('09:00'), at('18:00'), rule)).toBe(540 - 30);
+  });
+  it('on: only the sessions count; the gap between out and in is not worked', () => {
+    expect(sessionMs(punches) / 60_000).toBe(420);
+    expect(netWorked(punches, at('09:00'), at('18:00'), { ...rule, reclockIn: true })).toBe(420 - 30);
+  });
+  it('a stray second in, or an out with nothing open, is ignored', () => {
+    expect(sessionMs([{ at: at('09:00'), kind: 'in' }, { at: at('09:30'), kind: 'in' }, { at: at('10:00'), kind: 'out' }, { at: at('10:30'), kind: 'out' }]) / 60_000).toBe(60);
+  });
+
+  const office = fencesOf({ id: 'l1', name: 'Chennai office', geoLat: null, geoLng: null, geoRadiusM: null, ipRanges: [], wifiNames: ['KF-Office'] });
+  it('the office Wi-Fi name (any case) is office evidence', () => {
+    expect(checkInVerdict({ fences: office, pin: null, ip: null, wifi: 'kf-office', mode: 'restricted' })).toMatchObject({ accepted: true, verdict: 'network', locationId: 'l1' });
+  });
+  it('another Wi-Fi, or none, is refused at a restricted place that has only Wi-Fi names', () => {
+    expect(checkInVerdict({ fences: office, pin: null, ip: null, wifi: 'Home-5G', mode: 'restricted' }).accepted).toBe(false);
+    expect(checkInVerdict({ fences: office, pin: null, ip: null, mode: 'restricted' }).accepted).toBe(false);
   });
 });

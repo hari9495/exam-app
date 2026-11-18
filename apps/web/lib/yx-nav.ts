@@ -341,7 +341,7 @@ export function buildNav(n: NavInput): NavArea[] {
       : [
           ...sec('Payroll', [
             ...when(any('payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve', 'payroll.offcycle.prepare'), L('pay-runs', 'Payroll home', '/yx/payroll/runs')),
-            ...when(has('payroll.input.manage'), L('pay-inputs', 'Inputs', '/yx/payroll/inputs')),
+            ...when(has('payroll.input.manage'), L('pay-inputs', 'Inputs', '/yx/payroll/inputs'), L('pay-fbp', 'Flexible benefits', '/yx/payroll/flexible-benefits')),
             ...when(has('payroll.query.handle'), L('pay-queries', 'Queries', '/yx/payroll/payslip-queries', 'payslipQueries')),
             ...when(any('payroll.fnf.manage', 'payroll.notice.waive'), L('pay-fnf', 'Full and final', '/yx/payroll/fnf')),
             ...when(any('payroll.period.view', 'payroll.period.reopen', 'payroll.period.reopen.approve'), L('pay-periods', 'Pay periods', '/yx/payroll/periods'), L('reopen-requests', 'Reopen requests', '/yx/payroll/reopen-requests')),
@@ -385,7 +385,7 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(any('payroll.special.manage', 'payroll.journal.export'), L('pay-actuarial', 'Actuarial valuation', '/yx/payroll/actuarial')),
             ...when(has('audit.view'), L('pay-audit', 'Audit log', '/yx/payroll/audit')),
           ]),
-          ...sec('My pay', when(employee, L('my-payslips', 'Payslips', '/yx/me/payslips'), L('my-tax', 'Tax workspace', '/yx/me/tax'), L('my-declarations', 'Tax declarations', '/yx/me/tax-declarations'), L('my-loans', 'Loans & advances', '/yx/me/loans'), L('my-ewa', 'Get paid early', '/yx/me/earned-pay'), L('my-incentives', 'My incentives', '/yx/me/incentives'), L('pay-band', 'My pay band', '/yx/performance/pay-band'), L('my-equity', 'My equity', '/yx/me/equity'), L('my-pay-documents', 'My pay documents', '/yx/me/pay-documents'))),
+          ...sec('My pay', when(employee, L('my-payslips', 'Payslips', '/yx/me/payslips'), L('my-tax', 'Tax workspace', '/yx/me/tax'), L('my-declarations', 'Tax declarations', '/yx/me/tax-declarations'), L('my-loans', 'Loans & advances', '/yx/me/loans'), L('my-ewa', 'Get paid early', '/yx/me/earned-pay'), L('my-incentives', 'My incentives', '/yx/me/incentives'), L('pay-band', 'My pay band', '/yx/performance/pay-band'), L('my-equity', 'My equity', '/yx/me/equity'), L('my-fbp', 'Flexible benefits', '/yx/me/flexible-benefits'), L('my-pay-documents', 'My pay documents', '/yx/me/pay-documents'))),
         ],
   };
 
@@ -407,8 +407,8 @@ export function buildNav(n: NavInput): NavArea[] {
   };
 
   // M10 AT1: hiring, for holders of the hiring keys (founder D2); never in a support session (D14). YukthiX Hiring is
-  // the only hiring app (founder decision 15 Oct 2026). Assessments, campaigns and the other exam tools are not in YukthiX
-  // yet: recruiters now land here, so one link reaches them in the older screens until they are redesigned (19 Oct).
+  // the only hiring app (founder decision 15 Oct 2026). Decision 2398 (step 5): no link to the older /v2 screens; test
+  // results are each test's Results tab, or Test results for readers.
   const hire: NavArea = {
     id: 'hire',
     title: 'Hiring',
@@ -417,6 +417,10 @@ export function buildNav(n: NavInput): NavArea[] {
       : [
           ...sec(undefined, [
           // HIR-01 (founder decision 11): a hiring manager reads their own department's plan.
+          // Answer 2432: the ANL-02 Recruiter dashboard (the API checks results:view).
+          ...when(has('results:view'), L('hiring-dashboard', 'Dashboard', '/yx/hiring/dashboard')),
+          // Answer 2428: ANL-08 report schedules (the weekly hiring digest), for company admins.
+          ...when(has('org:manage_settings'), L('hiring-schedules', 'Report schedules', '/yx/hiring/schedules')),
           ...when(any('ats.headcount.manage', 'ats.requisition.raise'), L('hiring-plans', 'Headcount plan', '/yx/hiring/plans')),
           // AS-0: candidate view is enough (the Interview coordinator reads jobs and candidates, without test results).
           ...when(any('pipeline:manage', 'results:view', 'candidate:view'), L('hiring-jobs', 'Jobs & requisitions', '/yx/hiring/jobs')),
@@ -437,8 +441,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('candidate:data_rights'), L('hiring-retention', 'Candidate data retention', '/yx/hiring/retention')),
           // HIR-10: HR with the background-check key (Special data; the API checks the joiner's scope).
           ...when(has('lifecycle.bgv.manage'), L('hiring-bgv', 'Background checks', '/yx/hiring/bgv')),
-          ...when(any('exam:manage', 'question_bank:manage'), L('hiring-older', 'Assessments & more (older screens)', '/v2/today')),
-          ...when(has('results:view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results (older screens)', '/v2/panel/reports')),
+          // Answer 2437: results readers (interviewers, hiring managers) see test results here; test writers on each test's Results tab.
+          ...when(any('results:view', 'asmt.results.view') && !any('exam:manage', 'question_bank:manage'), L('hiring-results', 'Test results', '/yx/hiring/assessments/results')),
           ]),
           // Answer 2001 (AS-1 follow-ups): Hire › Assessments, for bank writers (the YukthiX key or its older alias), only when
           // the company has assessments on. Tests, delivery and results join as their designed screens go live.

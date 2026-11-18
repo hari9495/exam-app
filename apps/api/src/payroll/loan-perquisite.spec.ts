@@ -114,7 +114,8 @@ describe('loan perquisite on the payslip', () => {
     expect(line.explanation).toContain('₹300000.00, the most owed this month');
     expect(r.ruleVersions['IN.PERQ-LOAN|IN']).toBe('TEST');
     expect(r.gross).toBe(base.gross);
-    expect(r.tax?.income.perquisites).toBe('3000.00');
+    // Answer 2451: this month's 3,000 counts for this month and the 5 left in the year (spread evenly).
+    expect(r.tax?.income.perquisites).toBe('18000.00');
     expect(tdsOf(base)).toBeGreaterThan(0);
     expect(tdsOf(r)).toBeGreaterThan(tdsOf(base));
     // Not paid: no earning or deduction line carries it.

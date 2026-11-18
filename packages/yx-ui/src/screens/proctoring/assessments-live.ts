@@ -67,3 +67,13 @@ export { CodeRunOutput, type CodeRun } from './proctoring-kit';
 
 // Decision 2398 (step 4): the invitation link (/start) and "session ended" pages.
 export { CandidateLinkScreen, type LiveCandidateLink } from './candidate-link';
+
+// Answer 2437: the Results tab of a test page.
+export { INTEGRITY_WORDS, RESULT_STATUS, TestResultsPanel, TestResultsScreen, type CompareResult, type LiveResultsPage, type LiveTestResults, type TestResultRow, type TestResultsSummary } from './tests-results';
+
+// Answer 2432: the ANL-02 Recruiter dashboard, live.
+export { HIRING_PERIODS, type HiringPeriod, type LiveHiringDashboard } from './analytics-live';
+
+// Answer 2428: ANL-08 Schedules, live (the weekly hiring digest).
+export { RoleDashboardScreen, SchedulesScreen } from './analytics';
+export { type LiveSchedules } from './analytics-live';

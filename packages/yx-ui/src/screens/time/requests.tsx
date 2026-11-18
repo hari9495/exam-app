@@ -783,7 +783,7 @@ function LiveAttendanceRequestDrawer({ live }: { live: LiveAttendanceRequest }) 
     ...(od && odFrom && odTo && odTo > odFrom && minuteOf(odTo)! - minuteOf(odFrom)! < 30 ? [{ fieldId: 'ar-to', message: 'On duty is at least 30 minutes' }] : []),
     ...(pm && (!pmFrom || !pmTo) ? [{ fieldId: !pmFrom ? 'ar-from' : 'ar-to', message: 'Enter the From and To times' }] : pm && pmMin <= 0 ? [{ fieldId: 'ar-to', message: 'Enter a To time after From' }] : pm && pmMin > pmRules.maxMinutes ? [{ fieldId: 'ar-to', message: `A permission can be at most ${minutesText(pmRules.maxMinutes)}. Apply for leave for a longer time.` }] : []),
     ...(late && shouldBe === 'leave' && !lateLeave ? [{ fieldId: 'ar-leave', message: 'Choose the leave type' }] : []),
-    ...(!reason.trim() ? [{ fieldId: 'ar-reason', message: 'Enter a reason' }] : late && reason.trim().length < 10 ? [{ fieldId: 'ar-reason', message: 'Give the reason in a sentence (at least 10 letters).' }] : []),
+    ...(!reason.trim() ? [{ fieldId: 'ar-reason', message: 'Enter a reason' }] : (late || !(type === 'ot' || pm || od)) && reason.trim().length < 10 ? [{ fieldId: 'ar-reason', message: late ? 'Give the reason in a sentence (at least 10 letters).' : 'Please say why, in at least 10 characters, so your manager can check it.' }] : []),
   ];
   const early = useTooEarly(errors);
   const regLeft = Math.max(0, d.regularise.limit - d.regularise.used);

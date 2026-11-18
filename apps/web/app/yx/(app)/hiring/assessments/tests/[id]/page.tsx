@@ -1,12 +1,13 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { TestBuilderScreen, type BuilderTestView, type ProctorMode, type QuestionChoice } from '@yukthix/ui/assessments';
 import { useApi, useApiWrite } from '../../../../../../../lib/yx-hiring';
 import { BANK_BASE, loadState, testRows, type ExamListPage } from '../../../../../../../lib/yx-assessments';
 import { useYxPermissions } from '../../../../../../../lib/yx-org';
 import { apiFetch } from '../../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../../lib/auth-context';
+import { useTestResults } from '../../../../../../../lib/yx-test-results';
 
 // Assessments AS-2 › Test builder (PRC-04, answers 2007, 2008): one test with its sections, the blueprint of its pools,
 // timing, scoring, the proctoring mode, the pre-publish checklist and the approver a big test needs (asmt.high_stakes).
@@ -25,6 +26,9 @@ export default function YxTestBuilderPage() {
   const perms = useYxPermissions();
   const open = (other: string) => router.push(`${BANK_BASE}/tests/${other}`);
   const t = `/asmt/tests/${id}`;
+  // Answer 2437: the Results tab, for people who read results, once the test is out of draft.
+  const results = useTestResults(id, (perms.has('results:view' as never) || perms.has('asmt.results.view' as never)) && Boolean(test.data && test.data.status !== 'draft'));
+  const tab = useSearchParams()?.get('tab') === 'results' ? 'results' : 'build';
   return (
     <TestBuilderScreen
       live={{
@@ -67,6 +71,8 @@ export default function YxTestBuilderPage() {
         // Answer 2307: with a fairness finding still open the screen asks why; the API checks it again.
         onRestore: async (reason) => void (await write('POST', `${t}/restore`, reason ? { reason } : undefined)),
         onLiveConsole: perms.has('exam:manage' as never) ? () => router.push(`${BANK_BASE}/tests/${id}/live`) : undefined,
+        results: results ?? undefined,
+        tab,
       }}
     />
   );

@@ -190,7 +190,7 @@ export class AttendanceService implements OnModuleInit {
         mode: await settingOn(tx, c, 'attendance.mode', f, today),
         // Today's shift from the roster / pattern / location (Q1); null on a weekly off.
         // ShiftNotStarted: check-in opens `opensBefore` minutes before the shift (null: any time; the server refuses earlier).
-        shift: { ...(day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true }), opensBefore: opens === 'any' ? null : Number(opens) },
+        shift: { ...(day.shift ? { name: day.shift.name, start: day.shift.shiftStart, end: day.shift.shiftEnd, grace: day.shift.graceMinutes, checkIn: rule.checkIn, off: false, reclockIn: day.shift.reclockIn ?? rule.reclockIn } : { name: 'Weekly off', start: rule.shiftStart, end: rule.shiftEnd, grace: rule.graceMinutes, checkIn: rule.checkIn, off: true }), opensBefore: opens === 'any' ? null : Number(opens) },
         // OutsideNetwork: "inside" on an office network; "outside" when only networks decide and this one isn't one of
         // them; "unknown" when the location (geofence) decides at the punch, or nothing restricts it.
         network: networkOf(fences, ip, rule.checkIn),
@@ -260,7 +260,7 @@ export class AttendanceService implements OnModuleInit {
    * punches of TIM-12 / 13 (`at` may be up to 72 h old when a device syncs; a locked month is refused). A kiosk's
    * place decides where it was (its location must be one of the person's places, unless they work in the field).
    */
-  async record(tx: Tx, c: CompanyContext, f: Facts, p: { kind: PunchDto['kind']; at: Date; source: 'web' | 'kiosk' | 'mobile'; pin: { lat: number; lng: number; accuracyM?: number } | null; ip: string | null; device: string | null; kioskLocationId?: string; note?: string }) {
+  async record(tx: Tx, c: CompanyContext, f: Facts, p: { kind: PunchDto['kind']; at: Date; source: 'web' | 'kiosk' | 'mobile'; pin: { lat: number; lng: number; accuracyM?: number } | null; wifi?: string | null; ip: string | null; device: string | null; kioskLocationId?: string; note?: string }) {
     const org = c.organizationId;
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`punch:${org}:${f.employeeId}`}))`;
     const now = p.at;
@@ -287,6 +287,9 @@ export class AttendanceService implements OnModuleInit {
     }
     if (p.kind === 'break_start' && state !== 'in' && state !== 'break_end') throw new ConflictException(state === 'break_start' ? 'You are already on a break.' : 'Check in before you start a break.');
     if (p.kind === 'break_end' && state !== 'break_start') throw new ConflictException('You are not on a break.');
+    // Answer 2477: clocking in again after clocking out only where HR allows it on the day's shift (else the location's).
+    // Web only: kiosks and phones (also offline syncs) record what happened; the day engine decides what counts (question 2490).
+    if (p.source === 'web' && p.kind === 'in' && state === 'out' && !(own?.reclockIn ?? rule.reclockIn)) throw new ConflictException("You have already clocked out today. To change today's times, regularise the day.");
     // An approved work-from-home day (or one waiting, when the company lets people clock in as WFH on the day): the punch
     // records where the person is and is never refused for the place. Not approved, those punches stop counting.
     const sameDay = (await settingOn(tx, c, 'attendance.wfh_same_day', f, workOn)) === 'on';
@@ -298,7 +301,7 @@ export class AttendanceService implements OnModuleInit {
       const ok = fences.some((x) => x.locationId === p.kioskLocationId) || rule.checkIn === 'field' || wfh;
       v = ok ? { accepted: true, verdict: 'inside', distanceM: null, locationId: p.kioskLocationId, message: `At the ${here?.name ?? 'site'} kiosk` } : { accepted: false, verdict: 'outside', distanceM: null, locationId: p.kioskLocationId, message: `This kiosk is not at one of your work places. Check in at ${fences[0]?.name ?? 'your own site'}.` };
     } else {
-      v = checkInVerdict({ fences, pin: p.pin ? { lat: p.pin.lat, lng: p.pin.lng, accuracyM: p.pin.accuracyM ?? 9999 } : null, ip: p.ip, mode: wfh ? 'field' : rule.checkIn });
+      v = checkInVerdict({ fences, pin: p.pin ? { lat: p.pin.lat, lng: p.pin.lng, accuracyM: p.pin.accuracyM ?? 9999 } : null, ip: p.ip, wifi: p.wifi, mode: wfh ? 'field' : rule.checkIn });
       if (wfh && v.verdict === 'field') v.message = 'Working from home today, location recorded';
     }
     const row = await tx.punch.create({

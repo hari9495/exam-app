@@ -55,6 +55,18 @@ const nextConfig = {
       '/v2/referrals': '/yx/hiring/referrals/all',
       '/v2/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
       '/v2/panel/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
+      // Answer 2432: the recruiting overview and hiring analytics are Hire › Dashboard.
+      '/v2/dashboard': '/yx/hiring/dashboard',
+      '/v2/analytics/hiring': '/yx/hiring/dashboard',
+      // Answer 2428: the weekly hiring digest is ANL-08 Report schedules.
+      '/v2/settings/scheduled-reports': '/yx/hiring/schedules',
+      // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
+      '/v2/reports': '/yx/hiring/assessments/tests',
+      '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',
+      '/v2/reports/:examId/compare': '/yx/hiring/assessments/tests/:examId?tab=results',
+      '/v2/panel/reports': '/yx/hiring/assessments/results',
+      '/v2/panel/reports/:examId': '/yx/hiring/assessments/results?test=:examId',
+      '/v2/panel/reports/:examId/compare': '/yx/hiring/assessments/results?test=:examId',
     };
     const direct = (r) => ({ ...r, destination: v2Moved[r.destination] ?? r.destination });
     return [

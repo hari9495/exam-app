@@ -249,5 +249,20 @@ describe('Loan perquisite (D14)', () => {
     // Another company sees none of it.
     expect((await api('payAdminB', 'get', `/tax/perquisites?employeeId=${ids.emp1}`).expect(200)).body).toEqual([]);
     await api('emp1', 'get', `/tax/perquisites?employeeId=${ids.emp1}`).expect(403);
+    // Answer 2451: the TDS projection counts this month's 3,000 for this month and each month left (spread evenly).
+    const sheet = (await api('emp1', 'get', '/tax/me/tax-sheet').expect(200)).body.sheet as { income: { perquisites: string }; remainingPeriods: number };
+    expect(sheet.income.perquisites).toBe((3000 * sheet.remainingPeriods).toFixed(2));
+  });
+
+  it('answer 2454: a hand-entered loan perquisite is refused while payroll works it out; nothing saved', async () => {
+    const y = Number(month.slice(0, 4)) - (Number(month.slice(5)) < 4 ? 1 : 0);
+    const taxYear = `${y}-${String(y + 1).slice(2)}`;
+    const count = () => scoped((tx) => tx.perquisite.count({ where: { employeeId: ids.emp1 } }));
+    const before = await count();
+    const r = await api('payAdmin', 'post', '/tax/perquisites').send({ employeeId: ids.emp1, taxYear, kind: 'loan', annualValue: '5000', description: 'Interest-free loan benefit' }).expect(409);
+    expect(r.body.message).toContain('Payroll works out the loan perquisite itself');
+    expect(await count()).toBe(before);
+    // Other kinds are still entered by hand.
+    await api('payAdmin', 'post', '/tax/perquisites').send({ employeeId: ids.emp1, taxYear, kind: 'car', annualValue: '28800', description: 'Company car, also private use' }).expect(201);
   });
 });

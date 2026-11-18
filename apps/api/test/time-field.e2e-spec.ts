@@ -89,7 +89,8 @@ describe('Time · field force (TIM-32 / TIM-33)', () => {
         ids[`desig${k}`] = (await tx.designation.create({ data: { ...o, name: 'Sales officer', code: 'SO' } })).id;
         ids[`perm${k}`] = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
         // Field check-in: a punch is accepted wherever the person is (field staff), every day a working day.
-        await tx.locationAttendanceRule.create({ data: { ...o, locationId: ids[`loc${k}`], validFrom: new Date('2025-01-01T00:00:00Z'), shiftStart: 540, shiftEnd: 1080, weeklyOffs: [], checkIn: 'field' } });
+        await tx.locationAttendanceRule.create({ data: { ...o, locationId: ids[`loc${k}`], validFrom: new Date('2025-01-01T00:00:00Z'), shiftStart: 540, shiftEnd: 1080, weeklyOffs: [], checkIn: 'field', reclockIn: true } });
+        // Answer 2477: field staff here clock in again after a visit (off by default; this location turns it on).
       });
     }
     const hire = async (admin: 'adminA' | 'adminB', who: Who, manager: string | null, k: 'A' | 'B' = 'A') =>

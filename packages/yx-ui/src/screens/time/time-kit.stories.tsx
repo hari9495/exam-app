@@ -22,6 +22,7 @@ export const ClockNotIn: S = { name: 'ClockCard · not clocked in' };
 export const ClockWorking: S = { name: 'ClockCard · working', args: { defaultState: 'working', defaultPunches: TODAY_PUNCHES } };
 export const ClockBreak: S = { name: 'ClockCard · on break', args: { defaultState: 'break', now: 13 * 60 + 30, defaultPunches: SEP_29.slice(0, 2) } };
 export const ClockOut: S = { name: 'ClockCard · clocked out', args: { defaultState: 'out', now: 19 * 60, defaultPunches: SEP_29 } };
+export const ClockOutAgain: S = { name: 'ClockCard · clocked out · may clock in again', args: { defaultState: 'out', reclockIn: true, now: 19 * 60, defaultPunches: SEP_29 } };
 export const ClockOutside: S = { name: 'ClockCard · outside office', args: { inside: false, distanceM: 850 } };
 export const ClockEarly: S = { name: 'ClockCard · shift not started', args: { now: 8 * 60 } };
 export const ClockDevice: S = { name: 'ClockCard · device not approved', args: { deviceApproved: false } };

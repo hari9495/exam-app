@@ -55,6 +55,9 @@ describe('Time & Leave settings (S-2): every hidden setting has a field', () => 
     expect(f('3.5', 'attendance.wfh_monthly_limit')).toMatchObject({ value: '6', starter: false });
     expect(f('3.2', 'attendance.phone_binding').locked).toMatch(/manages access/);
     expect(allSettings(timeSettingsPage(pageOf('3.2'), { ...DATA, canGuard: true }, ALL_LINKS)).find((d) => d.key === 'attendance.phone_binding')!.locked).toBeUndefined();
+    // Answer 2477: turning phone binding on asks to confirm first (the high-impact confirm and step-up).
+    expect(f('3.2', 'attendance.phone_binding').sensitive).toBe(true);
+    expect(f('3.2', 'kiosk.methods').sensitive).toBeUndefined();
     expect(f('3.3', 'roster.max_daily_hours').scope).toBe('Company · own value at 2 places (Company rules)');
     expect(timeSettingsChanges({ 'attendance.wfh_same_day': false, 'kiosk.methods': ['face', 'pin'], 'leave.year_start_month': '4' }, DATA)).toEqual([
       { key: 'attendance.wfh_same_day', value: 'off' },

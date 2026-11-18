@@ -33,7 +33,8 @@ export type PayPage =
   | 'loans'
   | 'expenses'
   | 'payments'
-  | 'reports';
+  | 'reports'
+  | 'fbp';
 
 /** Pay panel, APX-D §1.2: Payroll (home, runs, queries) · Compensation · One-time pay & holds · Tax centre · Loans, recoveries & EWA · Expenses & advances · Payments & files · Reports. */
 export function payPanel(active: PayPage, persona: PayPersona = 'pa', counts: { queries?: number; tax?: number } = {}): PanelSection[] {
@@ -56,12 +57,14 @@ export function payPanel(active: PayPage, persona: PayPersona = 'pa', counts: { 
         { label: 'Expenses & advances', active: a('expenses') },
         { label: 'Payments & files', active: a('payments') },
         { label: 'Reports', active: a('reports') },
+        // PAY-60 (answer 2455): the March and exit settlement of flexible benefits.
+        { label: 'Flexible benefits', active: a('fbp') },
       ],
     },
   ];
 }
 
-export type MyPayPage = 'payslips' | 'tax' | 'form130' | 'loans' | 'ewa' | 'incentives' | 'band' | 'documents' | 'equity';
+export type MyPayPage = 'payslips' | 'tax' | 'form130' | 'loans' | 'ewa' | 'incentives' | 'band' | 'documents' | 'equity' | 'fbp';
 
 /** Employee view of Pay (Me › My pay; mobile Pay tab, APX-D §5). */
 export function myPayPanel(active: MyPayPage, show: { /** false for people on no incentive plan */ incentives?: boolean; /** false when band visibility is off */ band?: boolean } = {}): PanelSection[] {
@@ -80,6 +83,8 @@ export function myPayPanel(active: MyPayPage, show: { /** false for people on no
         // Founder answer 4 (30 Oct 2026): PAY-54 and PAY-58 highlight their own item.
         { label: 'Pay documents', active: a('documents') },
         { label: 'My equity', active: a('equity') },
+        // PAY-59 (answer 2455): the person's flexible benefit ledger.
+        { label: 'Flexible benefits', active: a('fbp') },
       ],
     },
   ];
