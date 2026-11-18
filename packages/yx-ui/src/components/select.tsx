@@ -327,12 +327,13 @@ export function PersonPicker({ people, placeholder = 'Search people', ...rest }:
       placeholder={placeholder}
       searchable
       searchPlaceholder="Name, email, role or department"
+      // A searched list can drop the chosen person on the next search; fall back to the option itself, never crash.
       renderOption={(o) => {
-        const p = byId.get(o.value)!;
+        const p = byId.get(o.value) ?? { id: o.value, name: o.label };
         return <PersonLabel name={p.name} src={p.photoUrl} secondary={secondary(p)} />;
       }}
       renderValue={(o) => {
-        const p = byId.get(o.value)!;
+        const p = byId.get(o.value) ?? { id: o.value, name: o.label };
         return <PersonLabel name={p.name} src={p.photoUrl} size={20} />;
       }}
     />
