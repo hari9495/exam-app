@@ -18,6 +18,7 @@ import { asDate, dateOf, monthRange } from '../time/time-core';
 import { addDays } from '../time/time-maths';
 import { PAY_RUN_EDITABLE, entitiesFor, payHolders, payScope, payViewer, requireSelf } from './pay-access';
 import { FNF_COMPONENTS } from './starter';
+import { FlexBenefitsService } from './flex.service';
 import { clawbackDue } from '../offers/offer-rules';
 import type { FnfPatchDto, FnfPayeesDto } from './dto-5g';
 
@@ -88,6 +89,7 @@ export class FnfService implements OnModuleInit {
     private readonly rules: StatutoryRulesService,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly letters: LettersService,
+    private readonly flex: FlexBenefitsService,
   ) {}
 
   onModuleInit() {
@@ -214,6 +216,15 @@ export class FnfService implements OnModuleInit {
           await tx.fnfSettlement.update({ where: { id: f.id }, data: { runId } });
           await audit(tx, c, 'payroll.run.created', 'payroll_run', r.id, { payGroupId: group.id, month, offcycle: 'fnf', fnfSettlementId: f.id });
         }
+      }
+      // Answer 2460: the flexible benefit exit settlement starts with the hand-off; a failure (a locked month) never stops the F&F.
+      await tx.$executeRaw`SAVEPOINT fbp_exit`;
+      try {
+        await this.flex.settleExitOnHandoff(tx, c, em.employeeId, lwd, SYSTEM);
+        await tx.$executeRaw`RELEASE SAVEPOINT fbp_exit`;
+      } catch (e) {
+        await tx.$executeRaw`ROLLBACK TO SAVEPOINT fbp_exit`;
+        this.logger.warn(`FBP exit settlement for exit ${exitCaseId}: ${(e as Error).message}`);
       }
       await this.lines(tx, c, { ...f, runId }, k, from);
       await audit(tx, c, run ? 'payroll.fnf.refreshed' : 'payroll.fnf.created', 'fnf_settlement', f.id, { exitCaseId, revision: input.revision, lwd, deadline: dateOf(input.wagesDueBy), runId });

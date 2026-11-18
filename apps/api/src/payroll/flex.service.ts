@@ -250,9 +250,11 @@ export class FlexBenefitsService {
   async settle(ctx: TenantContext, user: ScopeUser, dto: FlexSettleDto) {
     const v = await this.viewer(user);
     if (dto.kind === 'exit' && !dto.employeeId) throw new BadRequestException('Choose the person who is leaving.');
+    const y = flexYearMonths(dto.taxYear);
+    // Answer 2459: the year-end settlement opens with the March pay month of the year, never before.
+    if (dto.kind === 'year_end' && todayIst().slice(0, 7) < y.last) throw new ConflictException(`The year-end settlement for ${dto.taxYear} opens with the March ${y.last.slice(0, 4)} pay month.`);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const y = flexYearMonths(dto.taxYear);
       const people: string[] = [];
       if (dto.employeeId) people.push((await this.reach(tx, c, v, dto.employeeId, dto.taxYear)).employeeId);
       else {
@@ -263,8 +265,7 @@ export class FlexBenefitsService {
         const rows = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, joinedOn: { lte: asDate(`${y.last}-31`) }, OR: [{ exitedOn: null }, { exitedOn: { gt: asDate(`${y.last}-31`) } }] }, select: { employeeId: true } });
         people.push(...new Set(rows.map((r) => r.employeeId).filter((id) => id !== me?.id)));
       }
-      const carry = (await settingFor(tx, c, FLEX_UNCLAIMED_KEY, { legalEntityId: '' })) === 'carry';
-      const done: { employeeId: string; component: string; paidTaxable: string; carriedOut: string; lapsed: string }[] = [];
+      const done: Settled[] = [];
       for (const employeeId of people) {
         const e = (await employmentIn(tx, org, employeeId, dto.taxYear))!;
         let month = y.last;
@@ -272,23 +273,52 @@ export class FlexBenefitsService {
           if (!e.exitedOn || dateOf(e.exitedOn).slice(0, 7) > y.last || dateOf(e.exitedOn).slice(0, 7) < y.first) throw new ConflictException('This person has no exit date in that tax year. Settle them at year end instead.');
           month = dateOf(e.exitedOn).slice(0, 7);
         }
-        for (const r of await flexLedger(tx, org, employeeId, dto.taxYear, month)) {
-          if (r.settlement) continue;
-          if (D(r.pending).gt(0)) throw new ConflictException(`${r.name}: claims of ₹${r.pending} still wait for a decision. Decide them first.`);
-          const s = flexSettle({ entitled: r.entitled, carriedIn: r.carriedIn, claimed: r.claimed, kind: dto.kind, carryForward: carry, taxableIfUnclaimed: r.taxableIfUnclaimed });
-          let oneTimePayId: string | null = null;
-          if (s.paidTaxable.gt(0)) {
-            const pay = await this.intake.oneTime(tx, c, { source: 'm11', sourceRef: `fbp:${dto.taxYear}:${employeeId}:${r.code}`, employeeId, componentCode: 'fbp_unclaimed', amount: money(s.paidTaxable), month, reason: `Unclaimed ${r.name} for ${dto.taxYear}, paid as taxable salary.`, by: v.userId! });
-            oneTimePayId = pay.id;
-          }
-          await withPayScope(tx, [e.legalEntityId], () =>
-            tx.flexSettlement.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId, employmentId: e.id, componentId: r.componentId, taxYear: dto.taxYear, kind: dto.kind, payMonth: asDate(`${month}-01`), entitled: r.entitled, carriedIn: r.carriedIn, claimed: r.claimed, paidTaxable: s.paidTaxable, carriedOut: s.carriedOut, lapsed: s.lapsed, oneTimePayId, settledBy: v.userId! } }),
-          );
-          done.push({ employeeId, component: r.code, paidTaxable: money(s.paidTaxable), carriedOut: money(s.carriedOut), lapsed: money(s.lapsed) });
-        }
+        done.push(...(await this.settlePerson(tx, c, e, dto.taxYear, dto.kind, month, v.userId!, false)));
       }
-      await audit(tx, c, 'benefits.flex.settled', 'flex_settlement', dto.employeeId ?? org, { kind: dto.kind, taxYear: dto.taxYear, carryForward: carry, settled: done.length });
+      await audit(tx, c, 'benefits.flex.settled', 'flex_settlement', dto.employeeId ?? org, { kind: dto.kind, taxYear: dto.taxYear, carryForward: (await settingFor(tx, c, FLEX_UNCLAIMED_KEY, { legalEntityId: '' })) === 'carry', settled: done.length });
       return { kind: dto.kind, taxYear: dto.taxYear, settled: done };
     });
   }
+
+  /**
+   * Answer 2460: the exit settlement starts by itself when lifecycle hands the full and final settlement to payroll, in
+   * the month of the last day. A component with claims still waiting is left for payroll to settle by hand once they
+   * are decided. Runs inside the F&F transaction, the pay guard already open to the leaver's entity.
+   */
+  async settleExitOnHandoff(tx: Tx, c: CompanyContext, employeeId: string, lwd: string, by: string) {
+    const month = lwd.slice(0, 7);
+    const taxYear = flexYearOf(month);
+    const e = await employmentIn(tx, c.organizationId, employeeId, taxYear);
+    if (!e) return [];
+    const done = await this.settlePerson(tx, c, e, taxYear, 'exit', month, by, true);
+    if (done.length) await audit(tx, c, 'benefits.flex.settled', 'flex_settlement', employeeId, { kind: 'exit', taxYear, settled: done.length, automatic: true });
+    return done;
+  }
+
+  /** Settles one person's components not settled yet for the year, through `month` (the pay month of the settlement). */
+  private async settlePerson(tx: Tx, c: CompanyContext, e: { id: string; employeeId: string; legalEntityId: string }, taxYear: string, kind: 'year_end' | 'exit', month: string, by: string, skipPending: boolean) {
+    const org = c.organizationId;
+    const carry = (await settingFor(tx, c, FLEX_UNCLAIMED_KEY, { legalEntityId: '' })) === 'carry';
+    const done: Settled[] = [];
+    for (const r of await flexLedger(tx, org, e.employeeId, taxYear, month)) {
+      if (r.settlement) continue;
+      if (D(r.pending).gt(0)) {
+        if (skipPending) continue;
+        throw new ConflictException(`${r.name}: claims of ₹${r.pending} still wait for a decision. Decide them first.`);
+      }
+      const s = flexSettle({ entitled: r.entitled, carriedIn: r.carriedIn, claimed: r.claimed, kind, carryForward: carry, taxableIfUnclaimed: r.taxableIfUnclaimed });
+      let oneTimePayId: string | null = null;
+      if (s.paidTaxable.gt(0)) {
+        const pay = await this.intake.oneTime(tx, c, { source: 'm11', sourceRef: `fbp:${taxYear}:${e.employeeId}:${r.code}`, employeeId: e.employeeId, componentCode: 'fbp_unclaimed', amount: money(s.paidTaxable), month, reason: `Unclaimed ${r.name} for ${taxYear}, paid as taxable salary.`, by });
+        oneTimePayId = pay.id;
+      }
+      await withPayScope(tx, [e.legalEntityId], () =>
+        tx.flexSettlement.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, componentId: r.componentId, taxYear, kind, payMonth: asDate(`${month}-01`), entitled: r.entitled, carriedIn: r.carriedIn, claimed: r.claimed, paidTaxable: s.paidTaxable, carriedOut: s.carriedOut, lapsed: s.lapsed, oneTimePayId, settledBy: by } }),
+      );
+      done.push({ employeeId: e.employeeId, component: r.code, paidTaxable: money(s.paidTaxable), carriedOut: money(s.carriedOut), lapsed: money(s.lapsed) });
+    }
+    return done;
+  }
 }
+
+type Settled = { employeeId: string; component: string; paidTaxable: string; carriedOut: string; lapsed: string };
