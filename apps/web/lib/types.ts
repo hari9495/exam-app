@@ -305,26 +305,8 @@ export type CandidateStatus = 'active' | 'inactive';
 export const GLOBAL_STAGES = ['new', 'in_review', 'engaged', 'available', 'offered', 'hired', 'rejected'] as const;
 export type GlobalStage = (typeof GLOBAL_STAGES)[number];
 
-// Kept in sync by hand with @exam-platform/shared's scheduling/business-hours.ts (same
-// runtime-import restriction as GLOBAL_STAGES above).
-export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
-export const WEEKDAYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-export interface DayHours {
-  enabled: boolean;
-  open: string; // "HH:MM"
-  close: string; // "HH:MM"
-}
-export interface BusinessHours {
-  timeZone: string;
-  days: Record<Weekday, DayHours>;
-}
-export interface Holiday {
-  date: string; // "YYYY-MM-DD"
-  name: string;
-}
-
 // Kept in sync by hand with @exam-platform/shared's field-permissions/field-permissions.ts (same
-// runtime-import restriction as GLOBAL_STAGES/Weekday above).
+// runtime-import restriction as GLOBAL_STAGES above).
 // Mirror of packages/shared field-permissions.ts (web can't import shared values) -- keep in sync.
 export const GOVERNABLE_ROLES = ['recruiter', 'panel', 'hiring_manager'] as const;
 export const GOVERNED_FIELDS = {

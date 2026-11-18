@@ -517,7 +517,7 @@ describe('InterviewsService', () => {
     beforeEach(() => {
       tx.interview.findUnique.mockResolvedValue(baseResolvedInterview());
       tx.pipelineEntry.findUnique.mockResolvedValue({ job: { title: 'Backend Engineer' } });
-      tx.organization.findUnique.mockResolvedValue({ name: 'Acme', businessHoursJson: null, holidaysJson: null });
+      tx.organization.findUnique.mockResolvedValue({ name: 'Acme' });
       tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
       tx.user.findMany.mockResolvedValue([{ name: 'Priya Singh' }]);
     });
@@ -660,7 +660,7 @@ describe('InterviewsService', () => {
         job: { title: 'Backend Engineer' },
         candidate: { name: 'Asha Rao', email: 'asha@example.com' },
       });
-      tx.organization.findUnique.mockResolvedValue({ name: 'Acme', businessHoursJson: null, holidaysJson: null });
+      tx.organization.findUnique.mockResolvedValue({ name: 'Acme' });
       tx.user.findUnique.mockResolvedValue({ email: 'recruiter@example.com' });
       tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
       tx.user.findMany.mockResolvedValue([{ email: 'panelist@example.com', name: 'Jane Doe' }]);

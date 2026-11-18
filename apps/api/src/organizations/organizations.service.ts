@@ -27,7 +27,6 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
 import { UpdateScheduledReportSettingsDto } from './dto/update-scheduled-report-settings.dto';
-import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
 import { getSmsProvider } from '../sms/providers';
@@ -37,7 +36,6 @@ import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { UpdateHrisConfigDto } from './dto/update-hris-config.dto';
 import { isAllowedWebhookUrl } from '../integrations/webhook-url-allowlist';
 import { getHrisConnector } from '../hris/providers';
-import { BusinessHours, Holiday } from '@exam-platform/shared';
 import { getWhatsappProvider, listWhatsappProviders, WhatsappConfigField } from '../whatsapp/providers';
 
 export interface BrandingResponse {
@@ -131,10 +129,6 @@ export interface SmsConfigResponse {
   config: Record<string, unknown>;
 }
 
-export interface BusinessHoursResponse {
-  businessHours: BusinessHours | null;
-  holidays: Holiday[];
-}
 
 export interface CareersSettingsResponse {
   enabled: boolean;
@@ -1053,37 +1047,6 @@ export class OrganizationsService {
       entityId: organizationId,
     });
     return { enabled: dto.enabled, recipientUserIds };
-  }
-
-  async getBusinessHours(context: TenantContext): Promise<BusinessHoursResponse> {
-    const organizationId = this.requireOrganizationId(context);
-    const org = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { businessHoursJson: true, holidaysJson: true },
-    });
-    return {
-      businessHours: org?.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
-      holidays: org?.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
-    };
-  }
-
-  async updateBusinessHours(context: TenantContext, actorUserId: string, dto: UpdateBusinessHoursDto): Promise<BusinessHoursResponse> {
-    const organizationId = this.requireOrganizationId(context);
-    const org = await this.prisma.organization.update({
-      where: { id: organizationId },
-      data: { businessHoursJson: JSON.stringify(dto.businessHours), holidaysJson: JSON.stringify(dto.holidays) },
-      select: { businessHoursJson: true, holidaysJson: true },
-    });
-    await this.audit.record(context, {
-      actorUserId,
-      action: 'organization.business_hours_updated',
-      entityType: 'organization',
-      entityId: organizationId,
-    });
-    return {
-      businessHours: org.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
-      holidays: org.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
-    };
   }
 
   async getCareers(context: TenantContext): Promise<CareersSettingsResponse> {

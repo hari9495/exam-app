@@ -63,8 +63,6 @@ model Organization {
   webhookUrl                    String?                   @map("webhook_url") @db.VarChar(1000)
   webhookSecretEncrypted        String?                   @map("webhook_secret_encrypted") @db.VarChar(1000)
   autoArchiveSiblingsOnHire     Boolean                   @default(true) @map("auto_archive_siblings_on_hire")
-  businessHoursJson             String?                   @map("business_hours_json") @db.Text
-  holidaysJson                  String?                   @map("holidays_json") @db.Text
   fieldPermissionsJson          String?                   @map("field_permissions_json") @db.Text
   recordVisibilityEnabled       Boolean                   @default(false) @map("record_visibility_enabled")
   planId                        String                    @map("plan_id") @db.Uuid

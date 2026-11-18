@@ -3,7 +3,7 @@ import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
 
 // Web data layer for the Task 5 approval-email-template endpoints (Zoho #9 slice 2).
-// Mirrors useBusinessHours.ts. The four event types are inlined here (not imported from
+// One query and one upsert mutation, like the other settings hooks. The four event types are inlined here (not imported from
 // @exam-platform/shared) because apps/web can't import shared VALUES at runtime -- only types.
 export type ApprovalEmailEventType = 'approval.requested' | 'approval.approved' | 'approval.rejected' | 'approval.cancelled';
 
