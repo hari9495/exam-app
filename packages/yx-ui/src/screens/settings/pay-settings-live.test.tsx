@@ -29,8 +29,8 @@ const show = (id: string, over: Partial<LiveSettingsPage> = {}) =>
 describe('Payroll settings (S-3): every hidden setting has a field', () => {
   it('the 16 payroll and tax settings with no screen, the second-person switch and the lapse days, each sit on one drawn page', () => {
     const keys = unmoved(Object.values(PAY_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)));
-    expect(keys).toHaveLength(18); // 16 hidden, the second-person switch (1325) and the lapse days (1523)
-    expect(new Set([...keys, ...unmoved(Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)))]).size).toBe(18 + 43); // time has 43 since 2629 (block-leave next-year days)
+    expect(keys).toHaveLength(21); // 16 hidden, the second-person switch (1325), the lapse days (1523) and E4's three on 4.12
+    expect(new Set([...keys, ...unmoved(Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)))]).size).toBe(21 + 43); // time has 43 since 2629 (block-leave next-year days)
     for (const [id, spec] of Object.entries(PAY_SETTINGS)) {
       const fields = allSettings(page(id));
       for (const s of spec.settings.filter((x) => !MOVED.has(x.key))) expect([s.key, fields.find((d) => d.key === s.key)?.starter]).toEqual([s.key, DATA.company[s.key] === undefined]);

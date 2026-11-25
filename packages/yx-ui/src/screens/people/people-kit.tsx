@@ -17,7 +17,7 @@ import './people.css';
 /* ------------------------------------------------------------------ frames (APX-D §1.2 People, §1.1 Me) */
 
 export type PeoplePage =
-  | 'Directory' | 'Org chart' | 'My team'
+  | 'Directory' | 'Org chart' | 'Positions' | 'My team'
   | 'Onboarding board' | 'Ready to onboard' | 'Batches' | 'Probation' | 'Buddies' | 'Life events' | 'My checklist tasks'
   | 'Change action' | 'Scheduled' | 'Bulk changes' | 'Restructure' | 'Import' | 'Team pay access'
   | 'Exit cases' | 'F&F' | 'Clearance' | 'Retirements and contracts'
@@ -42,7 +42,7 @@ export function peoplePanel(active: PeoplePage, persona: Persona = 'hr'): PanelS
       { label: 'For my team', items: (['Probation', 'Change action', 'Exit cases', 'Clearance', 'Buddies'] as PeoplePage[]).map(it) },
     ];
   return [
-    { items: (['Directory', 'Org chart'] as PeoplePage[]).map(it) },
+    { items: (['Directory', 'Org chart', 'Positions'] as PeoplePage[]).map(it) },
     { label: 'Onboarding', items: (['Onboarding board', 'Ready to onboard', 'Batches', 'Probation', 'Buddies', 'Life events', 'My checklist tasks'] as PeoplePage[]).map(it) },
     { label: 'Changes', items: (['Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import', 'Team pay access'] as PeoplePage[]).map(it) },
     { label: 'Exits', items: (['Exit cases', 'F&F', 'Clearance', 'Retirements and contracts'] as PeoplePage[]).map(it) },

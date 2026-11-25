@@ -12,6 +12,7 @@ import { JobBoardPosterService } from '../job-boards/job-board-poster.service';
 import { resolveSteps, type ChainStepInput } from '../approvals/approver-resolver';
 import type { ApprovalSummary } from '../approvals/approvals.service';
 import { checkRequisition, type PlanMode } from './requisition-rules';
+import { incumbentsOn, positionsOn, seatsOn } from '../positions/seat-rules';
 import { isRecruiter } from './recruiter-key';
 import type { PlanDto } from './hiring-dto';
 
@@ -37,7 +38,7 @@ export const PLAN_TYPE = 'ats.headcount_plan';
 /** HIR-01: the refusal when the company shows the plan to HR only (ats.headcount_plan.manager_view = off); the web reads it. */
 export const HEADCOUNT_PLAN_HR_ONLY = 'HEADCOUNT_PLAN_HR_ONLY';
 const D = (n: Prisma.Decimal | null) => (n === null ? null : Number(n.toString()));
-type RevLine = { id: string | null; designationId: string; gradeId: string | null; locationId: string | null; count: number; budget: number | null };
+type RevLine = { id: string | null; designationId: string; gradeId: string | null; locationId: string | null; count: number; budget: number | null; positionId?: string | null };
 type Revision = { note: string | null; lines: RevLine[] };
 const revOf = (p: { revision: Prisma.JsonValue }) => p.revision as Revision | null;
 /** The plan's open question to approvers (the first approval or a revision), waiting or sent back. */
@@ -182,7 +183,7 @@ export class HiringRequisitionsService implements OnModuleInit {
           : null,
         lines: lines.filter((l) => l.planId === p.id).map((l) => {
           const u = use.get(l.id) ?? { committed: 0, committedBudget: 0, filled: 0 };
-          return { id: l.id, designationId: l.designationId, ...named(l), gradeId: l.gradeId, locationId: l.locationId, count: l.count, budget: D(l.budget), committed: u.committed, committedBudget: u.committedBudget, filled: u.filled };
+          return { id: l.id, designationId: l.designationId, ...named(l), gradeId: l.gradeId, locationId: l.locationId, positionId: l.positionId, count: l.count, budget: D(l.budget), committed: u.committed, committedBudget: u.committedBudget, filled: u.filled };
         }),
       };
     });
@@ -358,6 +359,8 @@ export class HiringRequisitionsService implements OnModuleInit {
       await check('designation', dto.lines.map((l) => l.designationId), 'designation');
       await check('grade', dto.lines.map((l) => l.gradeId), 'grade');
       await check('location', dto.lines.map((l) => l.locationId), 'location');
+      const seats = [...new Set(dto.lines.map((l) => l.positionId).filter((x): x is string => Boolean(x)))];
+      if (seats.length && (await tx.position.count({ where: { organizationId: org, id: { in: seats } } })) !== seats.length) throw new BadRequestException('Choose a seat of this company.');
       let plan;
       if (id) {
         plan = await tx.headcountPlan.findFirst({ where: { organizationId: org, id } });
@@ -371,7 +374,7 @@ export class HiringRequisitionsService implements OnModuleInit {
         if (await tx.headcountPlan.findFirst({ where: { organizationId: org, departmentId: dto.departmentId, fyStart: dto.fyStart }, select: { id: true } })) throw new ConflictException('This department already has a plan for that year.');
         plan = await tx.headcountPlan.create({ data: { organizationId: org, departmentId: dto.departmentId, legalEntityId: dto.legalEntityId ?? null, fyStart: dto.fyStart, note: dto.note ?? null, createdBy: userId } });
       }
-      await tx.headcountPlanLine.createMany({ data: dto.lines.map((l) => ({ organizationId: org, planId: plan.id, designationId: l.designationId, gradeId: l.gradeId ?? null, locationId: l.locationId ?? null, count: l.count, budget: l.budget ?? null })) });
+      await tx.headcountPlanLine.createMany({ data: dto.lines.map((l) => ({ organizationId: org, planId: plan.id, designationId: l.designationId, gradeId: l.gradeId ?? null, locationId: l.locationId ?? null, positionId: l.positionId ?? null, count: l.count, budget: l.budget ?? null })) });
       await audit(tx, c, id ? 'ats.plan.updated' : 'ats.plan.created', 'headcount_plan', plan.id, { lines: dto.lines.length });
       return (await this.planView(tx, org, [await tx.headcountPlan.findFirstOrThrow({ where: { id: plan.id } })]))[0];
     });
@@ -395,7 +398,7 @@ export class HiringRequisitionsService implements OnModuleInit {
       if (row.count < taken) throw new ConflictException(`A line can't have fewer positions than its open requisitions and hires (${taken}).`);
       if (row.designationId !== l.designationId) throw new ConflictException('A line with requisitions keeps its designation. Add a new line instead.');
     }
-    const revision: Revision = { note: dto.note ?? null, lines: dto.lines.map((l) => ({ id: l.id ?? null, designationId: l.designationId, gradeId: l.gradeId ?? null, locationId: l.locationId ?? null, count: l.count, budget: l.budget ?? null })) };
+    const revision: Revision = { note: dto.note ?? null, lines: dto.lines.map((l) => ({ id: l.id ?? null, designationId: l.designationId, gradeId: l.gradeId ?? null, locationId: l.locationId ?? null, positionId: l.positionId ?? null, count: l.count, budget: l.budget ?? null })) };
     const n = await tx.headcountPlan.updateMany({ where: { id: plan.id, version: dto.version ?? -1 }, data: { revision, revisionStatus: 'draft', version: { increment: 1 } } });
     if (!n.count) throw new ConflictException('Someone else changed this plan. Reload it.');
     await audit(tx, c, 'ats.plan.revision_saved', 'headcount_plan', plan.id, { lines: dto.lines.length });
@@ -467,18 +470,19 @@ export class HiringRequisitionsService implements OnModuleInit {
       const u = use.get(l.id);
       const taken = (u?.committed ?? 0) + (u?.filled ?? 0);
       const row = rev.lines.find((r) => r.id === l.id);
-      if (row) await tx.headcountPlanLine.update({ where: { id: l.id }, data: { designationId: taken ? l.designationId : row.designationId, gradeId: row.gradeId, locationId: row.locationId, count: Math.max(row.count, taken), budget: row.budget } });
+      if (row) await tx.headcountPlanLine.update({ where: { id: l.id }, data: { designationId: taken ? l.designationId : row.designationId, gradeId: row.gradeId, locationId: row.locationId, positionId: row.positionId ?? null, count: Math.max(row.count, taken), budget: row.budget } });
       else if (!taken) await tx.headcountPlanLine.delete({ where: { id: l.id } });
     }
     const added = rev.lines.filter((r) => !r.id);
-    if (added.length) await tx.headcountPlanLine.createMany({ data: added.map((r) => ({ organizationId: org, planId: p.id, designationId: r.designationId, gradeId: r.gradeId, locationId: r.locationId, count: r.count, budget: r.budget })) });
+    if (added.length) await tx.headcountPlanLine.createMany({ data: added.map((r) => ({ organizationId: org, planId: p.id, designationId: r.designationId, gradeId: r.gradeId, locationId: r.locationId, positionId: r.positionId ?? null, count: r.count, budget: r.budget })) });
     await tx.headcountPlan.update({ where: { id: p.id }, data: { note: rev.note, revision: Prisma.DbNull, revisionStatus: null, revisionNo: { increment: 1 }, version: { increment: 1 } } });
   }
 
   // ------------------------------------------------------------------------------------------ requisitions (AT-2.02 … 2.04)
 
   /** The checks a requisition's plan facts must pass when saved (link targets belong to the company). */
-  async checkLinks(tx: Prisma.TransactionClient, org: string, dto: { headcountPlanLineId?: string | null; replacementOfEmployeeId?: string | null }) {
+  async checkLinks(tx: Prisma.TransactionClient, org: string, dto: { headcountPlanLineId?: string | null; replacementOfEmployeeId?: string | null; positionId?: string | null }) {
+    if (dto.positionId && !(await tx.position.findFirst({ where: { organizationId: org, id: dto.positionId }, select: { id: true } }))) throw new BadRequestException('Choose a seat of this company.');
     if (dto.headcountPlanLineId && !(await tx.headcountPlanLine.findFirst({ where: { organizationId: org, id: dto.headcountPlanLineId }, select: { id: true } }))) throw new BadRequestException('Choose a line of this company’s headcount plan.');
     if (dto.replacementOfEmployeeId && !(await tx.employee.findFirst({ where: { organizationId: org, id: dto.replacementOfEmployeeId }, select: { id: true } }))) throw new BadRequestException('Choose an employee of this company.');
   }
@@ -501,6 +505,7 @@ export class HiringRequisitionsService implements OnModuleInit {
       }
       const check = checkRequisition(mode, { lineId: job.headcountPlanLineId, outsidePlan: job.outsidePlan, outsidePlanReason: job.outsidePlanReason, reason: (job.requisitionReason as 'new' | 'replacement' | null) ?? null, replacementOf: job.replacementOfEmployeeId, headcount: job.headcount ?? 1, budgetAmount: D(job.budgetAmount) }, line);
       if (check.problem) throw new BadRequestException(check.problem);
+      await this.checkSeatOpenings(tx, c, job);
 
       // The company's requisition chain is the route (D3), its steps resolved to people now, as the older engine did.
       const chain = await tx.approvalChain.findFirst({ where: { organizationId: org, gate: 'requisition', enabled: true }, include: { steps: { orderBy: { position: 'asc' } } } });
@@ -544,6 +549,31 @@ export class HiringRequisitionsService implements OnModuleInit {
     if (notices.length) await this.engine.send(ctx, notices);
     if (opened) await this.poster.syncJobToPaidBoards(ctx, jobId).catch((e) => this.logger.warn(`boards ${jobId}: ${(e as Error).message}`));
     return out;
+  }
+
+  /**
+   * Enterprise E1 (O4, answer 2643): with positions on, a new hire's requisition is raised against a seat, else marked
+   * outside the plan with a reason; the seat must be active and its openings (headcount − people − other live
+   * requisitions on it) cover this one. Replacements may name a seat too.
+   */
+  private async checkSeatOpenings(tx: Tx, c: CompanyContext, job: { id: string; positionId: string | null; outsidePlan: boolean; requisitionReason: string | null; headcount: number | null; legalEntityId: string | null }) {
+    if (!(await positionsOn(tx, c, ''))) {
+      if (job.positionId) throw new BadRequestException('Your company does not use positions: remove the seat from the requisition.');
+      return;
+    }
+    if (!job.positionId) {
+      if (!job.outsidePlan && job.requisitionReason !== 'replacement') throw new BadRequestException('Your company uses positions: raise the requisition against a seat, or mark it outside the plan with a reason.');
+      return;
+    }
+    const today = todayIst();
+    const [seat] = await seatsOn(tx, c.organizationId, today, [job.positionId]);
+    if (!seat) throw new BadRequestException('No such seat today.');
+    if (seat.status !== 'active') throw new BadRequestException(`The seat is ${seat.status}. Only an active seat takes a requisition.`);
+    const filled = (await incumbentsOn(tx, c.organizationId, today, [job.positionId])).get(job.positionId) ?? 0;
+    const others = await tx.job.findMany({ where: { organizationId: c.organizationId, positionId: job.positionId, id: { not: job.id }, deletedAt: null, status: { in: ['pending_approval', 'open'] } }, select: { headcount: true } });
+    const committed = others.reduce((t, j) => t + (j.headcount ?? 1), 0);
+    const left = Math.max(0, seat.headcount - filled - committed);
+    if ((job.headcount ?? 1) > left) throw new BadRequestException(left ? `The seat has ${left} opening${left === 1 ? '' : 's'} left.` : 'The seat has no openings left: it is full or already being hired for.');
   }
 
   /** Withdraws a P03 requisition request (the job goes back to draft). False when the job has none (an older request). */

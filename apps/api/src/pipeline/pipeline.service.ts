@@ -185,9 +185,10 @@ const JOB_DEFINITION_SELECT = {
 } as const;
 
 /** M10 AT2: the requisition columns a job create / update sets (only what the caller sent). */
-function requisitionData(dto: { headcountPlanLineId?: string | null; outsidePlan?: boolean; outsidePlanReason?: string | null; requisitionReason?: 'new' | 'replacement' | null; replacementOfEmployeeId?: string | null; budgetAmount?: number | null; targetStart?: string | null; applyBy?: string | null; experience?: string | null }) {
+function requisitionData(dto: { headcountPlanLineId?: string | null; positionId?: string | null; outsidePlan?: boolean; outsidePlanReason?: string | null; requisitionReason?: 'new' | 'replacement' | null; replacementOfEmployeeId?: string | null; budgetAmount?: number | null; targetStart?: string | null; applyBy?: string | null; experience?: string | null }) {
   const out: Record<string, unknown> = {};
   if (dto.headcountPlanLineId !== undefined) out.headcountPlanLineId = dto.headcountPlanLineId;
+  if (dto.positionId !== undefined) out.positionId = dto.positionId;
   if (dto.outsidePlan !== undefined) out.outsidePlan = dto.outsidePlan;
   if (dto.outsidePlanReason !== undefined) out.outsidePlanReason = dto.outsidePlanReason?.trim() || null;
   if (dto.requisitionReason !== undefined) out.requisitionReason = dto.requisitionReason;

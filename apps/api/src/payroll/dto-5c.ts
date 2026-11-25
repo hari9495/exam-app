@@ -339,8 +339,9 @@ export class CourtOrderDto {
 }
 
 export class JournalExportDto {
-  @IsIn(['csv', 'tally', 'zoho'])
-  format!: 'csv' | 'tally' | 'zoho';
+  // Enterprise E4 (O22, answer 2655): SAP flat file and the Oracle GL interface besides CSV, Tally and Zoho Books.
+  @IsIn(['csv', 'tally', 'zoho', 'sap', 'oracle'])
+  format!: 'csv' | 'tally' | 'zoho' | 'sap' | 'oracle';
 }
 
 export class CostRateListDto {

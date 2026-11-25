@@ -188,10 +188,18 @@ export interface RunJournal {
   postedAt: string | null;
   canPost: boolean;
   unmapped: { componentCode: string; side: 'expense' | 'payable'; costCentreId: string | null; amount: string }[];
-  lines: { accountCode: string; accountName: string; ledger: string; costCentre: string | null; debit: string; credit: string }[];
-  exports: { format: string; at: string; by: string }[];
+  lines: { accountCode: string; accountName: string; ledger: string; costCentre: string | null; department?: string | null; location?: string | null; project?: string | null; debit: string; credit: string }[];
+  exports: { format: string; at: string; by: string; reversal?: boolean }[];
+  /** Enterprise E4 (O20): the company's suspense setting, its account and what this journal parks there. */
+  suspense?: { on: boolean; account: string | null; amount: string };
+  /** O21: how costs are split. */
+  split?: 'cost_centre' | 'project_hours';
+  /** O22: the company's export format (chosen first). */
+  defaultFormat?: JournalFormat;
+  /** O22: a voided or reopened run whose journal went to the books: its reversing journal. */
+  reversal?: { lines: { accountCode: string; accountName: string; debit: string; credit: string }[]; exportedAt: string } | null;
 }
-export type JournalFormat = 'tally' | 'csv' | 'zoho';
+export type JournalFormat = 'tally' | 'csv' | 'zoho' | 'sap' | 'oracle';
 export type RepayRoute = 'next_bank_file' | 'offcycle' | 'reimbursement_account';
 export type RepayInput = { route: RepayRoute; reason: string; debitAccount?: string };
 
@@ -395,7 +403,7 @@ const PAYMENT: Record<string, { label: string; tone: BadgeTone }> = {
 const payment = (s: string) => PAYMENT[s] ?? { label: s, tone: 'neutral' as BadgeTone };
 /** PAY-10 FailedIfsc: failed for an invalid IFSC; paid again through the bank once the employee corrects it. */
 const IFSC_WAIT: { label: string; tone: BadgeTone } = { label: 'Waiting for corrected IFSC', tone: 'warning' };
-const FORMAT_TEXT: Record<JournalFormat, string> = { tally: 'Tally (XML)', csv: 'CSV', zoho: 'Zoho Books (CSV)' };
+const FORMAT_TEXT: Record<JournalFormat, string> = { tally: 'Tally (XML)', csv: 'CSV', zoho: 'Zoho Books (CSV)', sap: 'SAP (flat file)', oracle: 'Oracle GL (interface CSV)' };
 
 function LiveRun({ live }: { live: LiveRunPayments }) {
   const [result, setResult] = useState<RunPayslip | null>(null);
@@ -403,7 +411,7 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
   const [paying, setPaying] = useState<Disbursement | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showPay, setShowPay] = useState(false);
-  const [format, setFormat] = useState<JournalFormat>('csv');
+  const [chosen, setFormat] = useState<JournalFormat | null>(null);
   const { busy, run } = useRun();
   const { toast } = useToast();
   const say = (title: string) => toast({ tone: 'success', title });
@@ -421,8 +429,12 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
   const allSum = bank.reduce((a, s) => a + Number(s.net), 0);
   const acked = register.filter((x) => x.paidOn).length;
   const j = live.journal;
-  const debits = j ? j.lines.reduce((a, l) => a + Number(l.debit), 0) : 0;
-  const credits = j ? j.lines.reduce((a, l) => a + Number(l.credit), 0) : 0;
+  const format: JournalFormat = chosen ?? j?.defaultFormat ?? 'csv';
+  const shown = j?.reversal ? j.reversal.lines : (j?.lines ?? []);
+  const debits = shown.reduce((a, l) => a + Number(l.debit), 0);
+  const credits = shown.reduce((a, l) => a + Number(l.credit), 0);
+  const parked = j?.suspense?.account && Number(j.suspense.amount) > 0;
+  const has = (k: 'department' | 'location' | 'project') => (j?.lines ?? []).some((l) => l[k]);
   const balanced = Math.abs(debits - credits) < 0.005;
   const lastExport = j?.exports.length ? j.exports[j.exports.length - 1] : null;
   const cols: TableColumn<RunPayslip>[] = [
@@ -597,15 +609,21 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
                 <div className="yx-pay-stack">
                   <FactRow
                     items={[
-                      { label: 'Journal', value: r ? `${monthLong(r.month)} salary` : 'Salary' },
-                      { label: 'Lines', value: `${j.lines.length} ledgers` },
+                      { label: 'Journal', value: `${j.reversal ? 'Reversal of ' : ''}${r ? `${monthLong(r.month)} salary` : 'salary'}` },
+                      { label: 'Lines', value: `${shown.length} ledgers` },
                       { label: 'Debits and credits', value: balanced ? `Both ${formatINR(debits)}` : `Debits ${formatINR(debits)} · credits ${formatINR(credits)}` },
                       { label: 'Last export', value: lastExport ? `${FORMAT_TEXT[lastExport.format as JournalFormat] ?? lastExport.format}, ${day(lastExport.at)}` : 'Not exported' },
                     ]}
                   />
-                  {j.unmapped.length > 0 && (
-                    <InlineAlert tone="danger" title="Some pay lines have no ledger account">
-                      Map these to ledger accounts first: {[...new Set(j.unmapped.map((u) => `${u.componentCode} (${u.side})`))].slice(0, 10).join(', ')}.
+                  {j.reversal && (
+                    <InlineAlert tone="warning" title="This run was reopened or voided after its journal went to the books">
+                      Export the reversing journal (every debit and credit swapped) and post it, so the books match. The journal last exported on {day(j.reversal.exportedAt)} is reversed.
+                    </InlineAlert>
+                  )}
+                  {!j.reversal && j.unmapped.length > 0 && (
+                    <InlineAlert tone={parked ? 'warning' : 'danger'} title={parked ? `${formatINR(Number(j.suspense!.amount))} is in suspense (${j.suspense!.account})` : 'Some pay lines have no ledger account'}>
+                      {parked ? 'The journal can go to the books; map these so the amount moves to its account: ' : 'Map these to ledger accounts first: '}
+                      {[...new Set(j.unmapped.map((u) => `${u.componentCode} (${u.side})`))].slice(0, 10).join(', ')}.
                     </InlineAlert>
                   )}
                   <FormField label="Export to">
@@ -613,11 +631,14 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
                   </FormField>
                   <PlainTable
                     label="Journal"
-                    rows={j.lines.map((l, i) => ({ ...l, i }))}
+                    rows={shown.map((l, i) => ({ ledger: l.accountName, costCentre: null, department: null, location: null, project: null, ...l, i }))}
                     getRowId={(l) => `${l.accountCode}-${l.costCentre ?? ''}-${l.i}`}
                     columns={[
                       { key: 'ledger', header: 'Ledger', rowHeader: true, cell: (l) => l.ledger },
                       { key: 'cc', header: 'Cost centre', cell: (l) => l.costCentre ?? '' },
+                      ...(has('department') ? [{ key: 'dept', header: 'Department', cell: (l: { department?: string | null }) => l.department ?? '' }] : []),
+                      ...(has('location') ? [{ key: 'loc', header: 'Location', cell: (l: { location?: string | null }) => l.location ?? '' }] : []),
+                      ...(has('project') ? [{ key: 'prj', header: 'Project', cell: (l: { project?: string | null }) => l.project ?? '' }] : []),
                       { key: 'debit', header: 'Debit', num: true, cell: (l) => (Number(l.debit) ? money(l.debit) : '') },
                       { key: 'credit', header: 'Credit', num: true, cell: (l) => (Number(l.credit) ? money(l.credit) : '') },
                     ]}
@@ -629,15 +650,15 @@ function LiveRun({ live }: { live: LiveRunPayments }) {
                       icon={Download}
                       loading={busy === 'journal'}
                       onClick={() => {
-                        // Never disabled: pressed while lines are unmapped, it says why.
-                        if (j.unmapped.length) return void toast({ tone: 'default', title: 'Map every pay line to a ledger account first.' });
+                        // Never disabled: pressed while lines are unmapped (and nothing parks them in suspense), it says why.
+                        if (!j.reversal && j.unmapped.length && !parked) return void toast({ tone: 'default', title: 'Map every pay line to a ledger account first.' });
                         void run('journal', async () => {
                           await live.onExportJournal(format);
-                          say(`Journal exported as ${FORMAT_TEXT[format]} · ${j.lines.length} ledgers`);
+                          say(`${j.reversal ? 'Reversing journal' : 'Journal'} exported as ${FORMAT_TEXT[format]} · ${shown.length} ledgers`);
                         });
                       }}
                     >
-                      Export journal
+                      {j.reversal ? 'Export reversing journal' : 'Export journal'}
                     </Button>
                   </div>
                 </div>

@@ -194,6 +194,15 @@ export const PAY_SETTINGS: Record<string, { links: string[]; settings: Place[] }
       { section: 'Payroll reports access', key: 'payroll.reports_access.days', synonyms: ['reports access'] },
     ],
   },
+  // Enterprise E4 (O19-O22, answers 2653-2655): the ledger mapping (its own screen), suspense, costing and the export format.
+  '4.12': {
+    links: ['ledger.mapping'],
+    settings: [
+      { section: 'Suspense', key: 'payroll.journal.suspense', synonyms: ['unmapped', 'suspense account'] },
+      { section: 'Costing', key: 'payroll.costing.split', synonyms: ['cost allocation', 'project costing', 'cost centre split'] },
+      { section: 'Export', key: 'payroll.journal.format', synonyms: ['SAP', 'Oracle', 'Tally', 'Zoho', 'journal file'] },
+    ],
+  },
 };
 
 /** Settings S-7 (answer 1321): the Organisation, Documents and Account pages that hold settings from Company rules. */

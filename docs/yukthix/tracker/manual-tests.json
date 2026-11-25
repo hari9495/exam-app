@@ -27485,5 +27485,145 @@
                     "expected": "Step 1: the setting shows 60, marked as the starter value; no page scroll at 1278 x 635. Step 2: a toast says the block is planned; the row shows Planned with 28 Dec to 8 Jan. Step 3: refused: 'A block that runs into the next leave year starts by <today + 60 days>.' Step 4: refused: the last day must be by 31 Dec. Step 5: the setting cannot be changed (read only or not shown).",
                     "stories": [],
                     "note": "Positive and negative (API leave-rules.spec.ts with fixed late-December dates; time-leave-v2.e2e-spec.ts TIM-39 plans a window across 31 Dec in November and December, refuses a start beyond 60 days and refuses the setting change by a manager and an employee). The block is stored as the current leave year's plan; working days in the next year use that year's weekly offs and holidays."
+          },
+          {
+                    "id": "MT-E1-POSITIONS-SWITCH-ON",
+                    "area": "Enterprise E1: switch positions on (answer 2642, 25 Nov 2026)",
+                    "screen": "People › Positions › Switch on (POS-03)",
+                    "url": "http://localhost:3000/yx/people/positions",
+                    "account": "admin@demo-org.test (sends); hr@demo-org.test (approves; needs org.position.manage, employee.change.manage and .approve); panel@demo-org.test (manager, no key).",
+                    "steps": [
+                              "As admin: open People › Positions. It says the company does not use positions yet. Press Plan the switch-on.",
+                              "Check the seats the plan makes: one per group of the same job, with headcount and the first people's names.",
+                              "Press Send for approval with the reason empty; then type a reason of 10 characters or more and send.",
+                              "Still as admin: open the plan again and look for Approve.",
+                              "As hr@: open People › Positions › Switch on and press Approve and switch on.",
+                              "Open People › Positions; open one seat; open People › Org chart.",
+                              "As panel@ (manager): look for Positions in the People menu and open /yx/people/positions."
+                    ],
+                    "expected": "Step 1: the empty state explains positions; no page scroll at 1278 x 635. Step 3: the reason error shows; then a toast 'Plan sent for approval'. Step 4: the sender sees Withdraw only, never Approve. Step 5: a toast 'Positions are on' and the result line (seats made, people given a seat, anyone left out with the reason). Step 6: every person sits in a seat; the seat lists its people and the seat above. Step 7: no Positions menu item; the page says there is no access.",
+                    "stories": [
+                              "Screens/People/POS-01…04 · Positions · POS-03 · Switch on: the plan to send",
+                              "Screens/People/POS-01…04 · Positions · POS-03 · Switch on: another HR person approves",
+                              "Screens/People/POS-01…04 · Positions · POS-03 · Switched on, one person left out"
+                    ],
+                    "note": "Enterprise E1 (answers 2340, 2341, 2641-2643). Positive and negative: API positions.e2e-spec.ts and position-rules.spec.ts; kit positions.test.tsx; web yx-positions-pages.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E1-POSITIONS-CHANGES",
+                    "area": "Enterprise E1: seat changes, mass update and history (O1, O2, O8)",
+                    "screen": "People › Positions (POS-01, POS-02, POS-04)",
+                    "url": "http://localhost:3000/yx/people/positions",
+                    "account": "admin@demo-org.test (asks); hr@demo-org.test (approves from Approvals).",
+                    "steps": [
+                              "As admin: press New seat. Press Send for approval with nothing filled in.",
+                              "Fill title, department, location, designation, headcount 2, a reason, and a From date of tomorrow; send.",
+                              "On a seat with people, choose Change and set the headcount below the people in it; send.",
+                              "Choose Eliminate on a seat with people; send.",
+                              "Tick two seats and press Mass update; choose Cost centre and a new one; look at the preview; send.",
+                              "As hr@: approve both requests in Approvals. Open the seats as admin, with the date set to tomorrow.",
+                              "As admin: on a seat with a change waiting, look for Change and Withdraw."
+                    ],
+                    "expected": "Step 1: the field errors show and nothing is sent. Step 2: a toast 'Sent for approval'; the seat appears only after approval. Steps 3 and 4: refused with the reason shown in the drawer, which stays open. Step 5: the preview lists each seat with now and after; one request for both. Step 6: the new seat has a code POS-…; the history shows each dated version. Step 7: the seat says a change is waiting; Change is not offered; Withdraw removes the request.",
+                    "stories": [
+                              "Screens/People/POS-01…04 · Positions · POS-01 · Positions list",
+                              "Screens/People/POS-01…04 · Positions · POS-02 · Position record",
+                              "Screens/People/POS-01…04 · Positions · POS-04 · Mass update with preview"
+                    ],
+                    "note": "Enterprise E1 (answers 2340, 2341, 2641-2643). Positive and negative: API positions.e2e-spec.ts and position-rules.spec.ts; kit positions.test.tsx; web yx-positions-pages.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E1-POSITIONS-HIRE-REQUISITION",
+                    "area": "Enterprise E1: hires, requisitions and the org chart with positions on (O3, O4, O5)",
+                    "screen": "People › Add employee; Hire › Requisitions; People › Org chart",
+                    "url": "http://localhost:3000/yx/people/directory",
+                    "account": "admin@demo-org.test; recruiter@demo-org.test.",
+                    "steps": [
+                              "With positions on, add an employee without choosing a seat.",
+                              "Add an employee into a full seat; then into a frozen seat; then into a seat with room.",
+                              "As recruiter: raise a requisition for a new hire without a seat and without 'outside the plan'.",
+                              "Raise one against a full seat; then against a seat with one vacancy for 1 opening.",
+                              "Open People › Org chart."
+                    ],
+                    "expected": "Step 1: refused, 'choose the seat'. Step 2: full and frozen seats are refused with the reason; the seat with room is accepted. Step 3: refused, raise it against a seat or mark it outside the plan. Step 4: the full seat is refused ('no openings left'); the vacancy is accepted. Step 5: each empty seat shows as a vacancy under the person in the seat above it.",
+                    "stories": [],
+                    "note": "Enterprise E1 (answers 2340, 2341, 2641-2643). Positive and negative: API positions.e2e-spec.ts and position-rules.spec.ts; kit positions.test.tsx; web yx-positions-pages.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E1-2680-RESTRUCTURE-SEATS",
+                    "area": "Enterprise E1 follow-up: a seat column in the restructure plan (answer 2680)",
+                    "screen": "People › Restructure (PPL-09), step Checks › Each person",
+                    "url": "http://localhost:3000/yx/people/restructure",
+                    "account": "hr@demo-org.test (HR Admin) sends; panel@demo-org.test (a second HR person) approves. Positions switched on for the entity people land in.",
+                    "steps": [
+                              "Start a move inside the entity (or a merge into an entity that uses positions). Pick two people and a new department; go to the Checks step.",
+                              "Look at the Each person table. Leave the Seat cells empty.",
+                              "Choose a full seat for one person.",
+                              "Choose a seat with room for each person.",
+                              "Send for approval. As panel@, approve it.",
+                              "Repeat step 1 with an entity that does not use positions."
+                    ],
+                    "expected": "Step 2: a Seat column; each person shows \"Can't move\" with 'choose the seat'. Step 3: that person says the seat is full. Step 4: both are Ready; each list shows only the seats of the entity people land in, with the room left. Step 5: the sender cannot approve their own; after panel@ approves, the seat page shows the people in their seats from the move date. Step 6: no Seat column. No sideways scroll at 1278 x 635.",
+                    "stories": [],
+                    "note": "Answer 2680 (founder 25 Nov 2026). Positive and negative: API positions.e2e-spec.ts ('answer 2680'); kit restructure-live.test.tsx ('answer 2680')."
+          },
+          {
+                    "id": "MT-E1-2683-GIVE-SEAT",
+                    "area": "Enterprise E1 follow-up: Give a seat to someone the switch-on left out (answer 2683)",
+                    "screen": "People › Positions › a seat (POS-02), card People in the seat",
+                    "url": "http://localhost:3000/yx/people/positions",
+                    "account": "hr@demo-org.test sends; panel@demo-org.test approves; a viewer with org.structure.view only.",
+                    "steps": [
+                              "Open a seat with a vacancy in an entity where someone has no seat (for example the HR person who approved the switch-on).",
+                              "Press Give a seat, then Send for approval with nothing filled in.",
+                              "Choose the person, keep today's date, write a reason, and send.",
+                              "Try to approve the change yourself in People › Changes.",
+                              "As panel@, approve it. Open the seat again.",
+                              "Open a full seat; then open any seat as the viewer."
+                    ],
+                    "expected": "Step 1: a Give a seat button on the People in the seat card. Step 2: 'Choose the person.' and 'Say why, in 10 characters or more.'; nothing is sent. Step 3: a toast 'Sent for approval'. Step 4: refused: someone else approves. Step 5: the person shows in the seat and is no longer offered. Step 6: no Give a seat on a full seat, and none for the viewer.",
+                    "stories": [
+                              "People › Positions › POS-02 · Give a seat (answer 2683)"
+                    ],
+                    "note": "Answer 2683 (founder 25 Nov 2026). Positive and negative: API positions.e2e-spec.ts ('answer 2683'); kit positions.test.tsx; web yx-positions-pages.test.tsx."
+          },
+          {
+                    "id": "MT-E4-LEDGER-MAPPING",
+                    "area": "Enterprise E4: ledger mapping and the suspense account (O19, O20)",
+                    "screen": "Pay › Ledger mapping (PAY-62); Settings › Payroll & Statutory › Accounting & costing (4.12)",
+                    "url": "http://localhost:3000/yx/payroll/accounting",
+                    "account": "payroll@demo-org.test (Payroll Admin, ledger key); finance@demo-org.test (journal export only); hr@demo-org.test (settings).",
+                    "steps": [
+                              "As payroll@: open Pay › Ledger mapping. Press Add mapping and Save mapping with nothing filled in.",
+                              "Map Net pay (payable) to 2100 Net salary payable for the company; then Basic (expense) to 5110 for one cost centre.",
+                              "Press Set suspense account and save 9999 Payroll suspense.",
+                              "Remove the Basic cost-centre override and confirm.",
+                              "As finance@: open the same page.",
+                              "As hr@: open Settings › Payroll & Statutory › Accounting & costing. Look at the suspense, costing split and export format settings; change the export format to SAP and save."
+                    ],
+                    "expected": "Step 1: the field errors show and nothing is saved. Step 2: a toast 'Ledger mapping saved'; the override shows its cost centre. Step 3: the suspense card shows 'Company: 9999 · Payroll suspense'. Step 4: a confirm says the company default is used instead; a toast 'Mapping removed'. Step 5: read only: no Add, Change or Remove. Step 6: the page shows the three settings with their starter values and a link 'Edit ledger mapping'; the change waits for a second person when that switch is on. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Pay/PAY-62 · Ledger mapping · PAY-62 · Ledger mapping with the suspense account",
+                              "Screens/Pay/PAY-62 · Ledger mapping · PAY-62 · Read only (journal export key)"
+                    ],
+                    "note": "Enterprise E4 (answers 2653-2655; Oracle O19-O22). Positive and negative: API costing.spec.ts, ledger.spec.ts and payroll-5c.e2e-spec.ts; kit ledger-mapping.test.tsx and payments-live.test.tsx; web yx-ledger-mapping.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E4-JOURNAL",
+                    "area": "Enterprise E4: the run journal with suspense, dimensions, formats and reversal (O20-O22)",
+                    "screen": "Pay › Runs › a run › Payments & files › Journal export",
+                    "url": "http://localhost:3000/yx/payroll/runs",
+                    "account": "payroll@demo-org.test; finance@demo-org.test.",
+                    "steps": [
+                              "On an approved run with one pay line unmapped and no suspense account, open Journal export and press Export journal.",
+                              "Set the suspense account (MT-E4-LEDGER-MAPPING step 3) and open the journal again.",
+                              "Export as SAP; then as Oracle GL; open both files.",
+                              "Map the unmapped line and open the journal again.",
+                              "Reopen the month (two approvals), then open the run's Journal export.",
+                              "Press Export reversing journal and open the file."
+                    ],
+                    "expected": "Step 1: 'Map every pay line to a ledger account first.' and nothing is exported. Step 2: an alert '₹X is in suspense (9999 · Payroll suspense)' with the fix list; the export works. Step 3: SAP has posting key 40/S for debits and 50/H for credits; Oracle has ENTERED_DR and ENTERED_CR; both have cost centre, department, location and project columns; a ledger name starting with = is quoted with an apostrophe. Step 4: nothing in suspense. Step 5: the alert says the run was reopened after its journal went to the books; only 'Export reversing journal' is offered. Step 6: every debit of the last export is a credit and back; the file name ends in -reversal.",
+                    "stories": [],
+                    "note": "Enterprise E4 (answers 2653-2655; Oracle O19-O22). Positive and negative: API costing.spec.ts, ledger.spec.ts and payroll-5c.e2e-spec.ts; kit ledger-mapping.test.tsx and payments-live.test.tsx; web yx-ledger-mapping.test.tsx and yx-nav.test.ts."
           }
 ]

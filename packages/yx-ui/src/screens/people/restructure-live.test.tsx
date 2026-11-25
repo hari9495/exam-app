@@ -104,6 +104,53 @@ describe('Restructure wizard (PPL-09)', () => {
     await waitFor(() => expect(l.onSend).toHaveBeenCalledWith(expect.objectContaining({ overrides: [{ employeeId: 'imran', leaveOut: true, reason: 'Retiring 31 Oct' }] }), 'Merge Kaveri TN into Kaveri Foods'));
   });
 
+  // Answer 2680: a move lands each person in a seat while the new entity uses positions.
+  const toChecks = async () => {
+    await ue.click(screen.getByRole('combobox', { name: /From entity/ }));
+    await ue.click(await screen.findByRole('option', { name: /Kaveri TN/ }));
+    await ue.click(screen.getByRole('combobox', { name: /Into entity/ }));
+    await ue.click(await screen.findByRole('option', { name: /Kaveri Foods/ }));
+    await ue.click(screen.getByRole('textbox', { name: /Effective date/ }));
+    await ue.keyboard('01/11/2026{Enter}');
+    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'Merger');
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+    await ue.click(screen.getByRole('combobox', { name: 'Location in Kaveri Foods for Hosur plant' }));
+    await ue.click(await screen.findByRole('option', { name: 'Bengaluru' }));
+    await ue.click(screen.getByRole('button', { name: 'Continue' }));
+  };
+  const seats = { entityIds: ['kf'], seats: [{ id: 's1', code: 'KF-QA-01', title: 'Quality lead', legalEntityId: 'kf', open: 1 }, { id: 's9', code: 'TN-QA-09', title: 'Quality TN', legalEntityId: 'tn', open: 1 }] };
+
+  it('answer 2680: with positions on in the new entity, each person picks a seat there and the plan carries it', async () => {
+    const base = live();
+    const l = live({ setup: { ...base.setup!, positions: seats } });
+    wrap(<RestructureWizard live={l} />);
+    await toChecks();
+    await waitFor(() => expect(screen.getByRole('combobox', { name: 'Seat for Divya' })).toBeInTheDocument(), { timeout: 3000 });
+    await ue.click(screen.getByRole('combobox', { name: 'Seat for Divya' }));
+    // Only the new entity's seats, with the room left.
+    expect(await screen.findByRole('option', { name: 'KF-QA-01 · Quality lead · 1 open' })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /TN-QA-09/ })).toBeNull();
+    await ue.click(screen.getByRole('option', { name: /KF-QA-01/ }));
+    await waitFor(() => expect(vi.mocked(l.onPreview).mock.calls.at(-1)![0].seatMap).toEqual({ divya: 's1' }), { timeout: 3000 });
+  });
+
+  it('answer 2680 (negative): no seat column while the new entity does not use positions; a left-out person has no seat', async () => {
+    const base = live();
+    const off = live({ setup: { ...base.setup!, positions: { ...seats, entityIds: ['tn'] } } });
+    const { unmount } = wrap(<RestructureWizard live={off} />);
+    await toChecks();
+    await waitFor(() => expect(off.onPreview).toHaveBeenCalled(), { timeout: 3000 });
+    expect(await screen.findByText('Imran can\'t move')).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /^Seat/ })).toBeNull();
+    expect(vi.mocked(off.onPreview).mock.calls.at(-1)![0].seatMap).toBeUndefined();
+    unmount();
+    const on = live({ setup: { ...base.setup!, positions: seats }, onPreview: vi.fn(async () => ({ people: [person('Imran', { status: 'left_out', reason: 'Left out: retiring', to: null })], checks: [], counts: { ready: 0, failed: 0, leftOut: 1 } })) });
+    wrap(<RestructureWizard live={on} />);
+    await toChecks();
+    await waitFor(() => expect(screen.getByRole('columnheader', { name: /^Seat/ })).toBeInTheDocument(), { timeout: 3000 });
+    expect(screen.queryByRole('combobox', { name: 'Seat for Imran' })).toBeNull();
+  });
+
   it('never guesses a place in the new entity: only an exact same-name match starts chosen', async () => {
     const m = (id: string, name: string, openTo: string[] | null, tn = 0) => ({ kind: 'department' as const, id, name, byEntity: (tn ? { tn } : {}) as Record<string, number>, openTo });
     const base = live();

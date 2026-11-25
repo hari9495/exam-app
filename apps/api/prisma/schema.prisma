@@ -275,10 +275,10 @@ model User {
   recoveryCodes          RecoveryCode[]
   mfaResetRequests       MfaResetRequest[]
   externalIdentities     ExternalIdentity[]
+  staffNotices           StaffNotice[]        @relation("StaffNoticeRecipient")
 
   @@unique([organizationId, email])
   @@map("users")
-  staffNotices                   StaffNotice[]                @relation("StaffNoticeRecipient")
 }
 
 model Permission {
@@ -632,7 +632,7 @@ model Question {
   imageAlt           String?               @map("image_alt") @db.VarChar(500)
   optionAlts         Json                  @default("[]") @map("option_alts")
   /// Answer 2271: criteria with marks for essay and code questions ([{ criterion, marks }]).
-  rubric         Json      @default("[]")
+  rubric             Json                  @default("[]")
   lastApprovedBy     String?               @map("last_approved_by") @db.Uuid
   lastApprovedAt     DateTime?             @map("last_approved_at") @db.Timestamptz(3)
   revisions          QuestionRevision[]
@@ -658,6 +658,7 @@ model QuestionOption {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@index([questionId])
   @@map("question_options")
 }
@@ -675,19 +676,19 @@ model Tag {
 }
 
 model WalkInGroup {
-  id              String         @id @default(uuid()) @db.Uuid
-  organizationId  String         @map("organization_id") @db.Uuid
-  name            String         @db.VarChar(1000)
-  createdAt       DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
-  jobId           String?        @map("job_id") @db.Uuid
-  deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz(3)
-  deletedByUserId String?        @map("deleted_by_user_id") @db.Uuid
-  job             Job?           @relation(fields: [jobId], references: [id], onDelete: SetNull, onUpdate: NoAction)
-  exams           Exam[]
-  driveSessions   DriveSession[]
+  id               String                @id @default(uuid()) @db.Uuid
+  organizationId   String                @map("organization_id") @db.Uuid
+  name             String                @db.VarChar(1000)
+  createdAt        DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  jobId            String?               @map("job_id") @db.Uuid
+  deletedAt        DateTime?             @map("deleted_at") @db.Timestamptz(3)
+  deletedByUserId  String?               @map("deleted_by_user_id") @db.Uuid
+  job              Job?                  @relation(fields: [jobId], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  exams            Exam[]
+  driveSessions    DriveSession[]
   /// AS-3 (PRC-29): the campus registration form and eligibility; null = not a campus drive.
-  campusSettings  Json?          @map("campus_settings")
-  registrants     AsmtRegistrant[]
+  campusSettings   Json?                 @map("campus_settings")
+  registrants      AsmtRegistrant[]
   coordinatorLinks AsmtCoordinatorLink[]
 
   @@unique([organizationId, name])
@@ -907,6 +908,7 @@ model ExamSection {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@index([examId])
   @@map("exam_sections")
 }
@@ -920,6 +922,7 @@ model ExamSectionQuestion {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@id([sectionId, questionId])
   @@map("exam_section_questions")
 }
@@ -932,6 +935,7 @@ model ExamSectionPoolTag {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@id([sectionId, tagId])
   @@map("exam_section_pool_tags")
 }
@@ -976,11 +980,11 @@ model Candidate {
   candidateEmails     CandidateEmail[]
   candidateSms        CandidateSms[]
   candidateWhatsapp   CandidateWhatsapp[]
+  asmtRegistrants     AsmtRegistrant[]
 
   @@unique([organizationId, email])
   @@index([organizationId, globalStage])
   @@map("candidates")
-  asmtRegistrants     AsmtRegistrant[]
 }
 
 model CandidateProfile {
@@ -1048,17 +1052,18 @@ model Invitation {
   candidate              Candidate               @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   driveSession           DriveSession?           @relation(fields: [driveSessionId], references: [id], onDelete: SetNull)
   notifications          Notification[]
-  attempt                Attempt? @relation("InvitationAttempt")
+  attempt                Attempt?                @relation("InvitationAttempt")
   reusedAttempt          Attempt?                @relation("InvitationReusedAttempt", fields: [reusedAttemptId], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "invitations_reused_attempt_fkey")
   candidateRefreshTokens CandidateRefreshToken[]
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
-  organizationId String? @map("organization_id") @db.Uuid
-  asmtRegistrants        AsmtRegistrant[]
+  organizationId        String?                @map("organization_id") @db.Uuid
+  asmtRegistrants       AsmtRegistrant[]
+  /// AS-4b (PRC-23, PRC-11): the candidate's requests for help, decided by the test owner.
+  accommodationRequests AccommodationRequest[]
+
   @@index([examId, status])
   @@map("invitations")
-  /// AS-4b (PRC-23, PRC-11): the candidate's requests for help, decided by the test owner.
-  accommodationRequests  AccommodationRequest[]
 }
 
 model Notification {
@@ -1110,42 +1115,42 @@ model UserNotificationPreference {
 }
 
 model Attempt {
-  id                            String              @id @default(uuid()) @db.Uuid
-  invitationId                  String              @unique @map("invitation_id") @db.Uuid
-  candidateId                   String              @map("candidate_id") @db.Uuid
-  examId                        String              @map("exam_id") @db.Uuid
-  status                        String              @default("in_progress") @db.VarChar(1000)
-  questionOrderJson             String              @map("question_order_json") @db.Text
-  sectionSnapshotJson           String              @map("section_snapshot_json") @db.Text
-  optionOrderJson               String?             @map("option_order_json") @db.Text
-  startedAt                     DateTime            @default(now()) @map("started_at") @db.Timestamptz(3)
-  submittedAt                   DateTime?           @map("submitted_at") @db.Timestamptz(3)
-  deviceFingerprint             String?             @map("device_fingerprint") @db.VarChar(1000)
-  lastSeenAt                    DateTime?           @map("last_seen_at") @db.Timestamptz(3)
-  webcamViolationCount          Int                 @default(0) @map("webcam_violation_count")
-  browserActivityViolationCount Int                 @default(0) @map("browser_activity_violation_count")
-  screenCaptureCount            Int                 @default(0) @map("screen_capture_count")
-  pausedAt                      DateTime?           @map("paused_at") @db.Timestamptz(3)
-  pausedReason                  String?             @map("paused_reason") @db.VarChar(50)
-  pausedDurationMs              Int                 @default(0) @map("paused_duration_ms")
-  consentAt                     DateTime?           @map("consent_at") @db.Timestamptz(3)
-  screenShareStartedAt          DateTime?           @map("screen_share_started_at") @db.Timestamptz(3)
-  proctoringBypassedAt          DateTime?           @map("proctoring_bypassed_at") @db.Timestamptz(3)
-  proctoringBypassedBy          String?             @map("proctoring_bypassed_by") @db.Uuid
-  proctoringBypassReason        String?             @map("proctoring_bypass_reason") @db.VarChar(1000)
-  proctoringBypassRevokedAt     DateTime?           @map("proctoring_bypass_revoked_at") @db.Timestamptz(3)
-  faceMismatchCount             Int                 @default(0) @map("face_mismatch_count")
+  id                            String               @id @default(uuid()) @db.Uuid
+  invitationId                  String               @unique @map("invitation_id") @db.Uuid
+  candidateId                   String               @map("candidate_id") @db.Uuid
+  examId                        String               @map("exam_id") @db.Uuid
+  status                        String               @default("in_progress") @db.VarChar(1000)
+  questionOrderJson             String               @map("question_order_json") @db.Text
+  sectionSnapshotJson           String               @map("section_snapshot_json") @db.Text
+  optionOrderJson               String?              @map("option_order_json") @db.Text
+  startedAt                     DateTime             @default(now()) @map("started_at") @db.Timestamptz(3)
+  submittedAt                   DateTime?            @map("submitted_at") @db.Timestamptz(3)
+  deviceFingerprint             String?              @map("device_fingerprint") @db.VarChar(1000)
+  lastSeenAt                    DateTime?            @map("last_seen_at") @db.Timestamptz(3)
+  webcamViolationCount          Int                  @default(0) @map("webcam_violation_count")
+  browserActivityViolationCount Int                  @default(0) @map("browser_activity_violation_count")
+  screenCaptureCount            Int                  @default(0) @map("screen_capture_count")
+  pausedAt                      DateTime?            @map("paused_at") @db.Timestamptz(3)
+  pausedReason                  String?              @map("paused_reason") @db.VarChar(50)
+  pausedDurationMs              Int                  @default(0) @map("paused_duration_ms")
+  consentAt                     DateTime?            @map("consent_at") @db.Timestamptz(3)
+  screenShareStartedAt          DateTime?            @map("screen_share_started_at") @db.Timestamptz(3)
+  proctoringBypassedAt          DateTime?            @map("proctoring_bypassed_at") @db.Timestamptz(3)
+  proctoringBypassedBy          String?              @map("proctoring_bypassed_by") @db.Uuid
+  proctoringBypassReason        String?              @map("proctoring_bypass_reason") @db.VarChar(1000)
+  proctoringBypassRevokedAt     DateTime?            @map("proctoring_bypass_revoked_at") @db.Timestamptz(3)
+  faceMismatchCount             Int                  @default(0) @map("face_mismatch_count")
   // Stage-3 face-mismatch enforcement: a non-freezing "warn" heads-up. Set when a confirmed
   // mismatch fires on an exam whose faceMismatchAction is 'warn'; the candidate sees a one-time
   // dismissible notice (timer keeps running) and clears it via /attempt/face-warning-ack. pause
   // and block reuse status/pausedReason instead; only warn needs its own field.
-  faceWarningAt                 DateTime?           @map("face_warning_at") @db.Timestamptz(3)
+  faceWarningAt                 DateTime?            @map("face_warning_at") @db.Timestamptz(3)
   /// AS-4a: breaks taken (exams.breaks_allowed) and time given back for a lost connection (asmt.time_credit_cap).
-  breaksUsed                    Int                 @default(0) @map("breaks_used")
-  offlineCreditMs               Int                 @default(0) @map("offline_credit_ms")
-  invitation                    Invitation          @relation("InvitationAttempt", fields: [invitationId], references: [id], onDelete: Cascade)
+  breaksUsed                    Int                  @default(0) @map("breaks_used")
+  offlineCreditMs               Int                  @default(0) @map("offline_credit_ms")
+  invitation                    Invitation           @relation("InvitationAttempt", fields: [invitationId], references: [id], onDelete: Cascade)
   /// AS-3 (answer 2213): invitations that use this attempt's result instead of a new test.
-  reusedBy                      Invitation[]        @relation("InvitationReusedAttempt")
+  reusedBy                      Invitation[]         @relation("InvitationReusedAttempt")
   answers                       Answer[]
   result                        Result?
   proctoringEvents              ProctoringEvent[]
@@ -1162,6 +1167,7 @@ model Attempt {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@index([examId, status])
   @@map("attempts")
 }
@@ -1207,6 +1213,7 @@ model Answer {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@unique([attemptId, questionId])
   @@map("answers")
 }
@@ -1357,6 +1364,7 @@ model Result {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@map("results")
 }
 
@@ -1385,6 +1393,7 @@ model ProctoringEvent {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@index([attemptId, occurredAt])
   @@map("proctoring_events")
 }
@@ -1407,22 +1416,24 @@ model FaceEnrolment {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@map("face_enrolments")
 }
 
 model CandidateMessage {
-  id           String    @id @default(uuid()) @db.Uuid
-  attemptId    String    @map("attempt_id") @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
+  attemptId     String    @map("attempt_id") @db.Uuid
   /// Empty for the candidate's reply (answer 2269); a check keeps one of the two.
-  sentByUserId String?   @map("sent_by_user_id") @db.Uuid
-  fromCandidate Boolean  @default(false) @map("from_candidate")
-  body         String    @db.Text
-  sentAt       DateTime  @default(now()) @map("sent_at") @db.Timestamptz(3)
-  readAt       DateTime? @map("read_at") @db.Timestamptz(3)
-  attempt      Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  sentByUserId  String?   @map("sent_by_user_id") @db.Uuid
+  fromCandidate Boolean   @default(false) @map("from_candidate")
+  body          String    @db.Text
+  sentAt        DateTime  @default(now()) @map("sent_at") @db.Timestamptz(3)
+  readAt        DateTime? @map("read_at") @db.Timestamptz(3)
+  attempt       Attempt   @relation(fields: [attemptId], references: [id], onDelete: Cascade)
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@index([attemptId, sentAt])
   @@map("candidate_messages")
 }
@@ -1438,6 +1449,7 @@ model ProctoringAnalysis {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@map("proctoring_analyses")
 }
 
@@ -1453,6 +1465,7 @@ model IntegrityAnalysis {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@map("integrity_analyses")
 }
 
@@ -1483,6 +1496,7 @@ model AttemptInsight {
 
   /// Assessments AS-0: the company, filled by the database from the parent (BEFORE INSERT trigger); forced RLS.
   organizationId String? @map("organization_id") @db.Uuid
+
   @@map("attempt_insights")
 }
 
@@ -1527,6 +1541,8 @@ model Job {
   locationId              String?               @map("location_id") @db.Uuid
   /// M10 AT2: the requisition (plan line or outside the plan, replacement, budget, P03 request).
   headcountPlanLineId     String?               @map("headcount_plan_line_id") @db.Uuid
+  /// Enterprise E1 (O4): the seat the requisition is raised against; its open headcount caps the openings.
+  positionId              String?               @map("position_id") @db.Uuid
   outsidePlan             Boolean               @default(false) @map("outside_plan")
   outsidePlanReason       String?               @map("outside_plan_reason") @db.VarChar(1000)
   requisitionReason       String?               @map("requisition_reason") @db.VarChar(12)
@@ -2601,23 +2617,23 @@ model ApiUsageDaily {
 }
 
 model PermissionProfile {
-  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId       String   @map("organization_id") @db.Uuid
-  name                 String   @db.VarChar(200)
-  permissionsJson      String   @map("permissions_json") @db.Text
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  name                 String    @db.VarChar(200)
+  permissionsJson      String    @map("permissions_json") @db.Text
   // Optional per-user field rules (entity->field->level). Overlaid per-field on the org role config
   // for users assigned this profile. Null = inherit role field rules entirely.
-  fieldPermissionsJson String?  @map("field_permissions_json") @db.Text
+  fieldPermissionsJson String?   @map("field_permissions_json") @db.Text
   /// The role template this role still follows (null: the company's own role); see access/template-sync.service.ts.
-  templateKey          String?  @map("template_key") @db.VarChar(40)
+  templateKey          String?   @map("template_key") @db.VarChar(40)
   /// The template keys the role was last brought up to (JSON, sorted).
-  templateSet          String?  @map("template_set") @db.Text
+  templateSet          String?   @map("template_set") @db.Text
   /// Whether the start-up sync has looked at this role once for a template it matches.
-  templateChecked      Boolean  @default(false) @map("template_checked")
+  templateChecked      Boolean   @default(false) @map("template_checked")
   /// Answer 795: deleted while it has past grants (their history stays); hidden from lists, never granted again.
   archivedAt           DateTime? @map("archived_at") @db.Timestamptz(3)
-  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   users                User[]
 
   @@unique([organizationId, name])
@@ -3260,6 +3276,8 @@ model EmployeeAssignment {
   /// G1 (gap pass C1): contracted hours a week; null = full-time (the normal week of the location).
   hoursPerWeek         Decimal?  @map("hours_per_week") @db.Decimal(4, 1)
   managerEmployeeId    String?   @map("manager_employee_id") @db.Uuid
+  /// Enterprise E1: the person's seat (positions on), set by a change like the grade.
+  positionId           String?   @map("position_id") @db.Uuid
   changeId             String    @map("change_id") @db.Uuid
   recordedAt           DateTime  @default(now()) @map("recorded_at") @db.Timestamptz(3)
   supersededAt         DateTime? @map("superseded_at") @db.Timestamptz(3)
@@ -5790,23 +5808,23 @@ model SdRequestItem {
 
 /// P07 statutory rule sets: global, dated, read-only to the app (no tenant key).
 model StatutoryRuleSet {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  statute      String    @db.VarChar(20)
-  jurisdiction String    @db.VarChar(8)
-  version      String    @db.VarChar(20)
-  validFrom    DateTime  @map("valid_from") @db.Date
-  validTo      DateTime? @map("valid_to") @db.Date
-  values       Json
-  source       String    @db.VarChar(500)
-  verify       Boolean   @default(true)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  status       String    @default("published") @db.VarChar(10)
-  lawVersion   String?   @map("law_version") @db.VarChar(10)
-  transitional Boolean   @default(false)
-  draftedBy    String?   @map("drafted_by") @db.Uuid
-  reviewedBy   String?   @map("reviewed_by") @db.Uuid
-  publishedAt  DateTime? @map("published_at") @db.Timestamptz(3)
-  withdrawnAt  DateTime? @map("withdrawn_at") @db.Timestamptz(3)
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  statute         String    @db.VarChar(20)
+  jurisdiction    String    @db.VarChar(8)
+  version         String    @db.VarChar(20)
+  validFrom       DateTime  @map("valid_from") @db.Date
+  validTo         DateTime? @map("valid_to") @db.Date
+  values          Json
+  source          String    @db.VarChar(500)
+  verify          Boolean   @default(true)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  status          String    @default("published") @db.VarChar(10)
+  lawVersion      String?   @map("law_version") @db.VarChar(10)
+  transitional    Boolean   @default(false)
+  draftedBy       String?   @map("drafted_by") @db.Uuid
+  reviewedBy      String?   @map("reviewed_by") @db.Uuid
+  publishedAt     DateTime? @map("published_at") @db.Timestamptz(3)
+  withdrawnAt     DateTime? @map("withdrawn_at") @db.Timestamptz(3)
   /// Console C-1 (answer 1042): what changed and why; the review (send for review, changes requested with a note).
   changeNote      String?   @map("change_note") @db.VarChar(500)
   sentForReviewAt DateTime? @map("sent_for_review_at") @db.Timestamptz(3)
@@ -6540,17 +6558,17 @@ model OvertimePlan {
 }
 
 model TimesheetProject {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  code           String   @db.Citext
-  name           String   @db.VarChar(100)
-  managerUserId  String?  @map("manager_user_id") @db.Uuid
-  billable       Boolean  @default(false)
-  activities     String[] @default([])
-  active         Boolean  @default(true)
-  createdBy      String?  @map("created_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  id                      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId          String    @map("organization_id") @db.Uuid
+  code                    String    @db.Citext
+  name                    String    @db.VarChar(100)
+  managerUserId           String?   @map("manager_user_id") @db.Uuid
+  billable                Boolean   @default(false)
+  activities              String[]  @default([])
+  active                  Boolean   @default(true)
+  createdBy               String?   @map("created_by") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt               DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
   /// Projects P-1 (answers 1402, 1403, 1420): the designed project.
   clientId                String?   @map("client_id") @db.Uuid
   billingModel            String    @default("non_billable") @map("billing_model") @db.VarChar(15)
@@ -6746,17 +6764,17 @@ model Timesheet {
 }
 
 model TimesheetLine {
-  id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String  @map("organization_id") @db.Uuid
-  timesheetId    String  @map("timesheet_id") @db.Uuid
-  projectId      String  @map("project_id") @db.Uuid
-  activity       String? @db.VarChar(60)
-  billable       Boolean @default(false)
-  minutes        Int[]   @db.SmallInt
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  timesheetId     String    @map("timesheet_id") @db.Uuid
+  projectId       String    @map("project_id") @db.Uuid
+  activity        String?   @db.VarChar(60)
+  billable        Boolean   @default(false)
+  minutes         Int[]     @db.SmallInt
   /// Answers 1731 to 1736: the row's note (required, at least N words, when the company asks for it).
-  note           String? @db.VarChar(4000)
+  note            String?   @db.VarChar(4000)
   /// Answer 1787: a comment per day, Monday to Sunday (seven entries; empty text for none), beside `minutes`.
-  dayComments    String[] @default([]) @map("day_comments")
+  dayComments     String[]  @default([]) @map("day_comments")
   /// Projects P-2 (1406): null in a draft or a week decided as a whole; else pending, approved, reduced or rejected.
   status          String?   @db.VarChar(10)
   approverUserIds String[]  @default([]) @map("approver_user_ids") @db.Uuid
@@ -7607,49 +7625,49 @@ model JourneyTask {
 
 /// A joiner before day one (D2: not an employee yet; the employee record is made on the joining day, batch 6b).
 model Preboarding {
-  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId     String    @map("organization_id") @db.Uuid
-  personId           String    @map("person_id") @db.Uuid
-  source             String    @db.VarChar(16)
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  personId             String    @map("person_id") @db.Uuid
+  source               String    @db.VarChar(16)
   /// CL-7 (answer 637): the deployment a contract worker joins from (source "contract_worker").
-  contractDeploymentId String? @map("contract_deployment_id") @db.Uuid
-  joiningOn          DateTime  @map("joining_on") @db.Date
-  legalEntityId      String    @map("legal_entity_id") @db.Uuid
-  locationId         String    @map("location_id") @db.Uuid
-  departmentId       String?   @map("department_id") @db.Uuid
-  designationId      String?   @map("designation_id") @db.Uuid
-  employmentTypeId   String?   @map("employment_type_id") @db.Uuid
-  managerEmployeeId  String?   @map("manager_employee_id") @db.Uuid
-  hrOwnerUserId      String    @map("hr_owner_user_id") @db.Uuid
-  status             String    @db.VarChar(12)
-  employmentId       String?   @map("employment_id") @db.Uuid
+  contractDeploymentId String?   @map("contract_deployment_id") @db.Uuid
+  joiningOn            DateTime  @map("joining_on") @db.Date
+  legalEntityId        String    @map("legal_entity_id") @db.Uuid
+  locationId           String    @map("location_id") @db.Uuid
+  departmentId         String?   @map("department_id") @db.Uuid
+  designationId        String?   @map("designation_id") @db.Uuid
+  employmentTypeId     String?   @map("employment_type_id") @db.Uuid
+  managerEmployeeId    String?   @map("manager_employee_id") @db.Uuid
+  hrOwnerUserId        String    @map("hr_owner_user_id") @db.Uuid
+  status               String    @db.VarChar(12)
+  employmentId         String?   @map("employment_id") @db.Uuid
   /// 6b: the accepted ATS offer it came from; the pre-boarder's own answers (sealed JSON) and section progress.
-  offerId            String?   @map("offer_id") @db.Uuid
-  answersEnc         String?   @map("answers_enc")
-  sections           Json      @default("{}")
-  completion         Int       @default(0)
-  outcome            String?   @db.VarChar(16)
-  outcomeReason      String?   @map("outcome_reason") @db.VarChar(500)
-  identityAttestedBy String?   @map("identity_attested_by") @db.Uuid
-  identityAttestedAt DateTime? @map("identity_attested_at") @db.Timestamptz(3)
-  remindedOn         DateTime? @map("reminded_on") @db.Date
-  joinedAt           DateTime? @map("joined_at") @db.Timestamptz(3)
+  offerId              String?   @map("offer_id") @db.Uuid
+  answersEnc           String?   @map("answers_enc")
+  sections             Json      @default("{}")
+  completion           Int       @default(0)
+  outcome              String?   @db.VarChar(16)
+  outcomeReason        String?   @map("outcome_reason") @db.VarChar(500)
+  identityAttestedBy   String?   @map("identity_attested_by") @db.Uuid
+  identityAttestedAt   DateTime? @map("identity_attested_at") @db.Timestamptz(3)
+  remindedOn           DateTime? @map("reminded_on") @db.Date
+  joinedAt             DateTime? @map("joined_at") @db.Timestamptz(3)
   /// The day the joining was cancelled (IST): Special data erasure counts a never-joined person's period from it.
-  cancelledOn        DateTime? @map("cancelled_on") @db.Date
-  personType         String    @default("new") @map("person_type") @db.VarChar(8)
-  rehireOf           String?   @map("rehire_of") @db.Uuid
-  rehireOptions      Json?     @map("rehire_options")
-  rehireOverrides    Json      @default("{}") @map("rehire_overrides")
-  batchId            String?   @map("batch_id") @db.Uuid
-  buddyEmployeeId    String?   @map("buddy_employee_id") @db.Uuid
-  version            Int       @default(1)
+  cancelledOn          DateTime? @map("cancelled_on") @db.Date
+  personType           String    @default("new") @map("person_type") @db.VarChar(8)
+  rehireOf             String?   @map("rehire_of") @db.Uuid
+  rehireOptions        Json?     @map("rehire_options")
+  rehireOverrides      Json      @default("{}") @map("rehire_overrides")
+  batchId              String?   @map("batch_id") @db.Uuid
+  buddyEmployeeId      String?   @map("buddy_employee_id") @db.Uuid
+  version              Int       @default(1)
   /// PPL-36: from the joiner's own answers, for "possible same person" (PAN and UAN as the company's keyed hashes).
-  panHash            String?   @map("pan_hash") @db.Char(64)
-  uanHash            String?   @map("uan_hash") @db.Char(64)
-  dateOfBirth        DateTime? @map("date_of_birth") @db.Date
-  createdBy          String?   @map("created_by") @db.Uuid
-  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  panHash              String?   @map("pan_hash") @db.Char(64)
+  uanHash              String?   @map("uan_hash") @db.Char(64)
+  dateOfBirth          DateTime? @map("date_of_birth") @db.Date
+  createdBy            String?   @map("created_by") @db.Uuid
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("preboardings")
 }
@@ -8964,30 +8982,30 @@ model CourtOrderRemittance {
 }
 
 model Loan {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  legalEntityId  String    @map("legal_entity_id") @db.Uuid
-  employeeId     String    @map("employee_id") @db.Uuid
-  employmentId   String    @map("employment_id") @db.Uuid
-  loanType       String    @map("loan_type") @db.VarChar(8)
-  principal      Decimal   @db.Decimal(14, 2)
-  interestRate   Decimal   @default(0) @map("interest_rate") @db.Decimal(5, 2)
-  emi            Decimal   @db.Decimal(14, 2)
-  firstMonth     DateTime  @map("first_month") @db.Date
-  outstanding    Decimal   @db.Decimal(14, 2)
-  perquisite     Boolean   @default(false)
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  legalEntityId    String    @map("legal_entity_id") @db.Uuid
+  employeeId       String    @map("employee_id") @db.Uuid
+  employmentId     String    @map("employment_id") @db.Uuid
+  loanType         String    @map("loan_type") @db.VarChar(8)
+  principal        Decimal   @db.Decimal(14, 2)
+  interestRate     Decimal   @default(0) @map("interest_rate") @db.Decimal(5, 2)
+  emi              Decimal   @db.Decimal(14, 2)
+  firstMonth       DateTime  @map("first_month") @db.Date
+  outstanding      Decimal   @db.Decimal(14, 2)
+  perquisite       Boolean   @default(false)
   /// D14: the SBI loan type for the loan perquisite (Rule 3(7)(i)), and the company's exempt mark with its reason (medical).
   perqPurpose      String    @default("personal") @map("perq_purpose") @db.VarChar(10)
   perqExempt       Boolean   @default(false) @map("perq_exempt")
   perqExemptReason String?   @map("perq_exempt_reason") @db.VarChar(300)
-  reason         String    @db.VarChar(300)
-  status         String    @default("requested") @db.VarChar(10)
-  pausedUntil    DateTime? @map("paused_until") @db.Date
+  reason           String    @db.VarChar(300)
+  status           String    @default("requested") @db.VarChar(10)
+  pausedUntil      DateTime? @map("paused_until") @db.Date
   /// An 'expense' loan's advance (M05), one loan per advance.
-  sourceRef      String?   @map("source_ref") @db.VarChar(80)
-  wfRequestId    String?   @map("wf_request_id") @db.Uuid
-  requestedBy    String    @map("requested_by") @db.Uuid
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  sourceRef        String?   @map("source_ref") @db.VarChar(80)
+  wfRequestId      String?   @map("wf_request_id") @db.Uuid
+  requestedBy      String    @map("requested_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@map("loans")
 }
@@ -9244,29 +9262,29 @@ model TaxWorkspace {
 }
 
 model TaxDeclarationLine {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId   String    @map("organization_id") @db.Uuid
-  legalEntityId    String    @map("legal_entity_id") @db.Uuid
-  employeeId       String    @map("employee_id") @db.Uuid
-  workspaceId      String    @map("workspace_id") @db.Uuid
-  subjectKey       String    @map("subject_key") @db.VarChar(30)
-  amount           Decimal   @db.Decimal(14, 2)
-  landlordName     String?   @map("landlord_name") @db.VarChar(200)
-  landlordPanEnc   String?   @map("landlord_pan_enc")
-  landlordPanLast4 String?   @map("landlord_pan_last4") @db.Char(4)
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  legalEntityId        String    @map("legal_entity_id") @db.Uuid
+  employeeId           String    @map("employee_id") @db.Uuid
+  workspaceId          String    @map("workspace_id") @db.Uuid
+  subjectKey           String    @map("subject_key") @db.VarChar(30)
+  amount               Decimal   @db.Decimal(14, 2)
+  landlordName         String?   @map("landlord_name") @db.VarChar(200)
+  landlordPanEnc       String?   @map("landlord_pan_enc")
+  landlordPanLast4     String?   @map("landlord_pan_last4") @db.Char(4)
   /// H15: Form No. 124 (Income-tax Rules 2026 r.205) asks how the employee is related to the landlord.
-  landlordRelationship String? @map("landlord_relationship") @db.VarChar(20)
-  rentFrom         String?   @map("rent_from") @db.Char(7)
-  rentTo           String?   @map("rent_to") @db.Char(7)
-  metro            Boolean?
-  proofFiles       Json      @default("[]") @map("proof_files")
-  proofStatus      String    @default("none") @map("proof_status") @db.VarChar(8)
-  approvedAmount   Decimal?  @map("approved_amount") @db.Decimal(14, 2)
-  verifierId       String?   @map("verifier_id") @db.Uuid
-  verifierComment  String?   @map("verifier_comment") @db.VarChar(500)
-  verifiedAt       DateTime? @map("verified_at") @db.Timestamptz(3)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  landlordRelationship String?   @map("landlord_relationship") @db.VarChar(20)
+  rentFrom             String?   @map("rent_from") @db.Char(7)
+  rentTo               String?   @map("rent_to") @db.Char(7)
+  metro                Boolean?
+  proofFiles           Json      @default("[]") @map("proof_files")
+  proofStatus          String    @default("none") @map("proof_status") @db.VarChar(8)
+  approvedAmount       Decimal?  @map("approved_amount") @db.Decimal(14, 2)
+  verifierId           String?   @map("verifier_id") @db.Uuid
+  verifierComment      String?   @map("verifier_comment") @db.VarChar(500)
+  verifiedAt           DateTime? @map("verified_at") @db.Timestamptz(3)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, workspaceId, subjectKey], map: "tax_declaration_lines_key")
   @@map("tax_declaration_lines")
@@ -11205,7 +11223,7 @@ model ConsultantInvoice {
   certificateUsed Decimal   @default(0) @map("certificate_used") @db.Decimal(14, 2)
   netPayable      Decimal?  @map("net_payable") @db.Decimal(14, 2)
   /// Contract labour CL-4: wages the company paid the contractor's workers itself, recovered from this bill.
-  clraRecovery   Decimal   @default(0) @map("clra_recovery") @db.Decimal(14, 2)
+  clraRecovery    Decimal   @default(0) @map("clra_recovery") @db.Decimal(14, 2)
   payoutBatchId   String?   @map("payout_batch_id") @db.Uuid
   paidOn          DateTime? @map("paid_on") @db.Date
   paymentRef      String?   @map("payment_ref") @db.VarChar(80)
@@ -11976,6 +11994,8 @@ model HeadcountPlanLine {
   locationId     String?  @map("location_id") @db.Uuid
   count          Int
   budget         Decimal? @db.Decimal(14, 2)
+  /// Enterprise E1 (O5): the seat this line budgets for, when positions are on.
+  positionId     String?  @map("position_id") @db.Uuid
 
   @@unique([organizationId, id])
   @@index([organizationId, planId])
@@ -13268,24 +13288,24 @@ model RequisitionSuggestion {
 
 /// HIR-27 bulk interview day: a job's hiring day with panels and fixed slots; each row becomes an ordinary interview.
 model InterviewDay {
-  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String              @map("organization_id") @db.Uuid
-  jobId          String              @map("job_id") @db.Uuid
-  stageId        String              @map("stage_id") @db.Uuid
-  name           String              @db.VarChar(120)
-  day            DateTime            @db.Date
-  timeZone       String              @map("time_zone") @db.VarChar(64)
-  slots          Int[]
-  slotMinutes    Int                 @map("slot_minutes")
-  status         String              @default("draft") @db.VarChar(10)
-  sendingAt      DateTime?           @map("sending_at") @db.Timestamptz(3)
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String              @map("organization_id") @db.Uuid
+  jobId             String              @map("job_id") @db.Uuid
+  stageId           String              @map("stage_id") @db.Uuid
+  name              String              @db.VarChar(120)
+  day               DateTime            @db.Date
+  timeZone          String              @map("time_zone") @db.VarChar(64)
+  slots             Int[]
+  slotMinutes       Int                 @map("slot_minutes")
+  status            String              @default("draft") @db.VarChar(10)
+  sendingAt         DateTime?           @map("sending_at") @db.Timestamptz(3)
   /// Answer 421: WhatsApp reminders 2 hours before each slot (only to candidates who opted in).
-  whatsappReminders Boolean          @default(false) @map("whatsapp_reminders")
-  createdBy      String?             @map("created_by") @db.Uuid
-  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
-  panels         InterviewDayPanel[]
-  rows           InterviewDayRow[]
+  whatsappReminders Boolean             @default(false) @map("whatsapp_reminders")
+  createdBy         String?             @map("created_by") @db.Uuid
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  panels            InterviewDayPanel[]
+  rows              InterviewDayRow[]
 
   @@index([organizationId, day], map: "interview_days_org_day_idx")
   @@map("interview_days")
@@ -13477,7 +13497,7 @@ model StaffingPlacement {
   guaranteeCreditId String?   @map("guarantee_credit_id") @db.Uuid
 
   /// CL-8: our own employee at a client's establishment (contract labour at the client).
-  clientSiteId      String?   @map("client_site_id") @db.Uuid
+  clientSiteId String? @map("client_site_id") @db.Uuid
 
   @@index([organizationId, status, endOn], map: "staffing_placements_org_idx")
   @@map("staffing_placements")
@@ -13813,16 +13833,16 @@ model Visit {
 
 /// Answer 606: a company's visitor type (Settings 3.12) with its escort rule and NDA / induction policy documents.
 model VisitorType {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId    String   @map("organization_id") @db.Uuid
-  name              String   @db.VarChar(60)
-  escort            Boolean  @default(false)
-  ndaPolicyId       String?  @map("nda_policy_id") @db.Uuid
-  inductionPolicyId String?  @map("induction_policy_id") @db.Uuid
-  position          Int      @default(0)
-  updatedBy         String?  @map("updated_by") @db.Uuid
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  name              String    @db.VarChar(60)
+  escort            Boolean   @default(false)
+  ndaPolicyId       String?   @map("nda_policy_id") @db.Uuid
+  inductionPolicyId String?   @map("induction_policy_id") @db.Uuid
+  position          Int       @default(0)
+  updatedBy         String?   @map("updated_by") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// Answer 794: in use when taken off the list: kept for its visits, hidden from new ones.
   archivedAt        DateTime? @map("archived_at") @db.Timestamptz(3)
 
@@ -13861,34 +13881,34 @@ model VisitCount {
 
 /// Contract labour CL-2 (answers 624, 632, 633, 635, 636): a contract worker's deployment at one of our sites.
 model ContractDeployment {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  personId      String    @map("person_id") @db.Uuid
-  agencyId      String    @map("agency_id") @db.Uuid
-  locationId    String    @map("location_id") @db.Uuid
-  skill         String    @db.VarChar(14)
-  wagePaise     BigInt?   @map("wage_paise")
-  dob           DateTime  @db.Date
-  idLast4       String    @map("id_last4") @db.Char(4)
-  idHash        String    @map("id_hash") @db.Char(64)
-  uan           String?   @db.VarChar(12)
-  esicIp        String?   @map("esic_ip") @db.VarChar(10)
-  fromOn        DateTime  @map("from_on") @db.Date
-  toOn          DateTime? @map("to_on") @db.Date
-  status        String    @default("pending") @db.VarChar(10)
-  inductionOn   DateTime? @map("induction_on") @db.Date
-  inductionBy   String?   @map("induction_by") @db.VarChar(120)
-  gatePassNo    String?   @map("gate_pass_no") @db.VarChar(30)
-  gateValidTo   DateTime? @map("gate_valid_to") @db.Date
-  approvedBy    String?   @map("approved_by") @db.Uuid
-  approvedAt    DateTime? @map("approved_at") @db.Timestamptz(3)
-  releasedOn    DateTime? @map("released_on") @db.Date
-  releaseReason String?   @map("release_reason") @db.VarChar(500)
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  personId       String    @map("person_id") @db.Uuid
+  agencyId       String    @map("agency_id") @db.Uuid
+  locationId     String    @map("location_id") @db.Uuid
+  skill          String    @db.VarChar(14)
+  wagePaise      BigInt?   @map("wage_paise")
+  dob            DateTime  @db.Date
+  idLast4        String    @map("id_last4") @db.Char(4)
+  idHash         String    @map("id_hash") @db.Char(64)
+  uan            String?   @db.VarChar(12)
+  esicIp         String?   @map("esic_ip") @db.VarChar(10)
+  fromOn         DateTime  @map("from_on") @db.Date
+  toOn           DateTime? @map("to_on") @db.Date
+  status         String    @default("pending") @db.VarChar(10)
+  inductionOn    DateTime? @map("induction_on") @db.Date
+  inductionBy    String?   @map("induction_by") @db.VarChar(120)
+  gatePassNo     String?   @map("gate_pass_no") @db.VarChar(30)
+  gateValidTo    DateTime? @map("gate_valid_to") @db.Date
+  approvedBy     String?   @map("approved_by") @db.Uuid
+  approvedAt     DateTime? @map("approved_at") @db.Timestamptz(3)
+  releasedOn     DateTime? @map("released_on") @db.Date
+  releaseReason  String?   @map("release_reason") @db.VarChar(500)
   /// Answer 735: the worker's photo for the gate pass card.
-  photoFileId   String?   @map("photo_file_id") @db.Uuid
-  version       Int       @default(1)
-  createdBy     String?   @map("created_by") @db.Uuid
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  photoFileId    String?   @map("photo_file_id") @db.Uuid
+  version        Int       @default(1)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
   @@index([organizationId, locationId, agencyId, status], map: "contract_deployments_site_idx")
   @@index([organizationId, personId], map: "contract_deployments_person_idx")
@@ -14163,26 +14183,26 @@ model StaffingClientSite {
 
 /// CL-8 (CLB-08, answer 639): a client's monthly compliance pack and its upload to the client's portal (recorded by hand).
 model ClientPack {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId   String    @map("organization_id") @db.Uuid
-  clientSiteId     String    @map("client_site_id") @db.Uuid
-  month            DateTime  @db.Date
-  legalEntityId    String    @map("legal_entity_id") @db.Uuid
-  wagesRegisterId  String    @map("wages_register_id") @db.Uuid
-  musterRegisterId String    @map("muster_register_id") @db.Uuid
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  clientSiteId       String    @map("client_site_id") @db.Uuid
+  month              DateTime  @db.Date
+  legalEntityId      String    @map("legal_entity_id") @db.Uuid
+  wagesRegisterId    String    @map("wages_register_id") @db.Uuid
+  musterRegisterId   String    @map("muster_register_id") @db.Uuid
   /// Answer 821: the PF and ESI remittances register, and the statutes not filed yet for the month.
-  challansRegisterId String? @map("challans_register_id") @db.Uuid
-  missing          String[]  @default([])
-  employees        Int
-  madeBy           String    @map("made_by") @db.Uuid
-  madeAt           DateTime  @default(now()) @map("made_at") @db.Timestamptz(3)
-  uploadedOn       DateTime? @map("uploaded_on") @db.Date
-  reference        String?   @db.VarChar(80)
-  recordedBy       String?   @map("recorded_by") @db.Uuid
-  recordedAt       DateTime? @map("recorded_at") @db.Timestamptz(3)
-  ackFileId        String?   @map("ack_file_id") @db.Uuid
-  acceptedAt       DateTime? @map("accepted_at") @db.Timestamptz(3)
-  version          Int       @default(1)
+  challansRegisterId String?   @map("challans_register_id") @db.Uuid
+  missing            String[]  @default([])
+  employees          Int
+  madeBy             String    @map("made_by") @db.Uuid
+  madeAt             DateTime  @default(now()) @map("made_at") @db.Timestamptz(3)
+  uploadedOn         DateTime? @map("uploaded_on") @db.Date
+  reference          String?   @db.VarChar(80)
+  recordedBy         String?   @map("recorded_by") @db.Uuid
+  recordedAt         DateTime? @map("recorded_at") @db.Timestamptz(3)
+  ackFileId          String?   @map("ack_file_id") @db.Uuid
+  acceptedAt         DateTime? @map("accepted_at") @db.Timestamptz(3)
+  version            Int       @default(1)
 
   @@unique([organizationId, clientSiteId, month], map: "client_packs_key")
   @@map("client_packs")
@@ -14418,26 +14438,26 @@ model HelpArticleRetirement {
 
 /// Answers 1641, 1650: a desk's own ticket field (for every ticket of the desk, or for one ticket type).
 model SdTicketField {
-  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String   @map("organization_id") @db.Uuid
-  deskId         String   @map("desk_id") @db.Uuid
-  ticketTypeId   String?  @map("ticket_type_id") @db.Uuid
-  key            String   @db.VarChar(40)
-  label          String   @db.VarChar(100)
-  fieldType      String   @map("field_type") @db.VarChar(10)
-  options        Json     @default("[]")
-  dependsOn      String?  @map("depends_on") @db.VarChar(40)
-  optionsBy      Json?    @map("options_by")
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  deskId          String   @map("desk_id") @db.Uuid
+  ticketTypeId    String?  @map("ticket_type_id") @db.Uuid
+  key             String   @db.VarChar(40)
+  label           String   @db.VarChar(100)
+  fieldType       String   @map("field_type") @db.VarChar(10)
+  options         Json     @default("[]")
+  dependsOn       String?  @map("depends_on") @db.VarChar(40)
+  optionsBy       Json?    @map("options_by")
   /// all: everyone on the ticket; agents: the desk's staff (hidden from the requester); leads: team leads only.
-  visibility     String   @default("all") @db.VarChar(10)
+  visibility      String   @default("all") @db.VarChar(10)
   /// Answer 1843: the ticket cannot be solved until this field has a value (never for a team-lead-only field).
-  requiredToSolve Boolean @default(false) @map("required_to_solve")
-  sortOrder      Int      @default(0) @map("sort_order") @db.SmallInt
-  active         Boolean  @default(true)
-  version        Int      @default(1)
-  createdBy      String?  @map("created_by") @db.Uuid
-  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  requiredToSolve Boolean  @default(false) @map("required_to_solve")
+  sortOrder       Int      @default(0) @map("sort_order") @db.SmallInt
+  active          Boolean  @default(true)
+  version         Int      @default(1)
+  createdBy       String?  @map("created_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@unique([organizationId, deskId, key])
   @@index([organizationId, deskId, sortOrder])
@@ -14661,17 +14681,17 @@ model RetentionReleaseGrant {
 
 /// Ask YukthiX (answers 2101 to 2108): one person's chat with the help assistant. RLS: the company, then the person.
 model AssistantConversation {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId   String    @map("organization_id") @db.Uuid
-  userId           String    @map("user_id") @db.Uuid
-  startedAt        DateTime  @default(now()) @map("started_at") @db.Timestamptz(3)
-  lastAt           DateTime  @default(now()) @map("last_at") @db.Timestamptz(3)
-  unhelpful        Int       @default(0) @db.SmallInt
-  ticketRef        String?   @map("ticket_ref") @db.VarChar(40)
-  featureRequestId String?   @map("feature_request_id") @db.Uuid
+  id               String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String             @map("organization_id") @db.Uuid
+  userId           String             @map("user_id") @db.Uuid
+  startedAt        DateTime           @default(now()) @map("started_at") @db.Timestamptz(3)
+  lastAt           DateTime           @default(now()) @map("last_at") @db.Timestamptz(3)
+  unhelpful        Int                @default(0) @db.SmallInt
+  ticketRef        String?            @map("ticket_ref") @db.VarChar(40)
+  featureRequestId String?            @map("feature_request_id") @db.Uuid
   /// Answer 2112: the sales request sent from this chat (once per chat).
-  salesRequestId   String?   @map("sales_request_id") @db.Uuid
-  handedOverAt     DateTime? @map("handed_over_at") @db.Timestamptz(3)
+  salesRequestId   String?            @map("sales_request_id") @db.Uuid
+  handedOverAt     DateTime?          @map("handed_over_at") @db.Timestamptz(3)
   messages         AssistantMessage[]
 
   @@index([organizationId, userId, lastAt(sort: Desc)], map: "assistant_conversations_user_idx")
@@ -14832,8 +14852,8 @@ model AccommodationRequest {
   status                  String     @default("pending") @db.VarChar(12)
   approvedKinds           String[]   @default([]) @map("approved_kinds") @db.VarChar(20)
   grantedExtraTimePercent Int?       @map("granted_extra_time_percent")
-  grantedExtraBreaks     Int?       @map("granted_extra_breaks") @db.SmallInt
-  grantedBreakMinutes    Int?       @map("granted_break_minutes") @db.SmallInt
+  grantedExtraBreaks      Int?       @map("granted_extra_breaks") @db.SmallInt
+  grantedBreakMinutes     Int?       @map("granted_break_minutes") @db.SmallInt
   message                 String?    @db.VarChar(2000)
   decidedBy               String?    @map("decided_by") @db.Uuid
   decidedAt               DateTime?  @map("decided_at") @db.Timestamptz(3)
@@ -14867,30 +14887,30 @@ model ConnectivityCredit {
 
 /// AS-5 (answers 2006, 2008, 2012): an attempt the integrity analysis flagged, and its verdict. Forced RLS.
 model IntegrityIncident {
-  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id               String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Filled by the database from the attempt (asmt_org_from_attempt).
-  organizationId String?          @map("organization_id") @db.Uuid
-  attemptId      String           @unique(map: "integrity_incidents_attempt_id_key") @map("attempt_id") @db.Uuid
+  organizationId   String?          @map("organization_id") @db.Uuid
+  attemptId        String           @unique(map: "integrity_incidents_attempt_id_key") @map("attempt_id") @db.Uuid
   /// open | second_review | decided
-  status         String           @default("open") @db.VarChar(14)
+  status           String           @default("open") @db.VarChar(14)
   /// review | high_concern | manual
-  level          String           @db.VarChar(14)
-  reviewerId     String?          @map("reviewer_id") @db.Uuid
+  level            String           @db.VarChar(14)
+  reviewerId       String?          @map("reviewer_id") @db.Uuid
   /// cleared | warning | section | attempt
-  verdict        String?          @db.VarChar(10)
-  sectionTitle   String?          @map("section_title") @db.VarChar(200)
-  reason         String?          @db.VarChar(2000)
-  decidedBy      String?          @map("decided_by") @db.Uuid
-  decidedAt      DateTime?        @map("decided_at") @db.Timestamptz(3)
+  verdict          String?          @db.VarChar(10)
+  sectionTitle     String?          @map("section_title") @db.VarChar(200)
+  reason           String?          @db.VarChar(2000)
+  decidedBy        String?          @map("decided_by") @db.Uuid
+  decidedAt        DateTime?        @map("decided_at") @db.Timestamptz(3)
   /// The person the first reviewer chose to confirm an attempt invalidation (PRC-17).
-  secondReviewerId String?        @map("second_reviewer_id") @db.Uuid
-  confirmedBy    String?          @map("confirmed_by") @db.Uuid
-  confirmedAt    DateTime?        @map("confirmed_at") @db.Timestamptz(3)
-  appealClosesAt DateTime?        @map("appeal_closes_at") @db.Timestamptz(3)
-  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt      DateTime         @default(now()) @map("updated_at") @db.Timestamptz(3)
-  attempt        Attempt          @relation(fields: [attemptId], references: [id], onDelete: Cascade, map: "integrity_incidents_attempt_fkey")
-  appeal         IntegrityAppeal?
+  secondReviewerId String?          @map("second_reviewer_id") @db.Uuid
+  confirmedBy      String?          @map("confirmed_by") @db.Uuid
+  confirmedAt      DateTime?        @map("confirmed_at") @db.Timestamptz(3)
+  appealClosesAt   DateTime?        @map("appeal_closes_at") @db.Timestamptz(3)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime         @default(now()) @map("updated_at") @db.Timestamptz(3)
+  attempt          Attempt          @relation(fields: [attemptId], references: [id], onDelete: Cascade, map: "integrity_incidents_attempt_fkey")
+  appeal           IntegrityAppeal?
 
   @@index([organizationId, status], map: "integrity_incidents_organization_id_status_idx")
   @@map("integrity_incidents")
@@ -14951,21 +14971,20 @@ model StaffNotice {
   @@map("staff_notices")
 }
 
-
 /// Batch A D12: cancel some days of approved leave (employee to the approver, or HR at once). Migration 433.
 model LeaveChange {
-  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  requestId      String    @map("request_id") @db.Uuid
-  employeeId     String    @map("employee_id") @db.Uuid
-  kind           String    @db.VarChar(12)
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  requestId      String     @map("request_id") @db.Uuid
+  employeeId     String     @map("employee_id") @db.Uuid
+  kind           String     @db.VarChar(12)
   days           DateTime[] @db.Date
-  reason         String    @db.VarChar(500)
-  status         String    @default("pending") @db.VarChar(10)
-  wfRequestId    String?   @map("wf_request_id") @db.Uuid
-  raisedBy       String?   @map("raised_by") @db.Uuid
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  reason         String     @db.VarChar(500)
+  status         String     @default("pending") @db.VarChar(10)
+  wfRequestId    String?    @map("wf_request_id") @db.Uuid
+  raisedBy       String?    @map("raised_by") @db.Uuid
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime?  @map("decided_at") @db.Timestamptz(3)
 
   @@map("leave_changes")
 }
@@ -15028,4 +15047,68 @@ model PayrollBudget {
 
   @@unique([organizationId, legalEntityId, month])
   @@map("payroll_budgets")
+}
+
+/// Enterprise E1 (O1-O9): one seat (or several: headcount) in a legal entity. Its details are dated in position_versions.
+model Position {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  legalEntityId  String   @map("legal_entity_id") @db.Uuid
+  code           String   @db.VarChar(20)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, code], map: "positions_code_key")
+  @@index([organizationId, legalEntityId], map: "positions_entity_idx")
+  @@map("positions")
+}
+
+/// A position's details from a day on (the version in force on a day is the latest valid_from on or before it).
+model PositionVersion {
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String   @map("organization_id") @db.Uuid
+  positionId           String   @map("position_id") @db.Uuid
+  validFrom            DateTime @map("valid_from") @db.Date
+  status               String   @db.VarChar(12)
+  title                String   @db.VarChar(120)
+  departmentId         String   @map("department_id") @db.Uuid
+  locationId           String   @map("location_id") @db.Uuid
+  designationId        String   @map("designation_id") @db.Uuid
+  gradeIds             String[] @default([]) @map("grade_ids") @db.Uuid
+  defaultGradeId       String?  @map("default_grade_id") @db.Uuid
+  fte                  Decimal  @default(1) @db.Decimal(4, 2)
+  headcount            Int      @default(1)
+  supervisorPositionId String?  @map("supervisor_position_id") @db.Uuid
+  costCentreId         String?  @map("cost_centre_id") @db.Uuid
+  entrySalary          Decimal? @map("entry_salary") @db.Decimal(14, 2)
+  changeId             String?  @map("change_id") @db.Uuid
+  recordedBy           String?  @map("recorded_by") @db.Uuid
+  recordedAt           DateTime @default(now()) @map("recorded_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, positionId, validFrom], map: "position_versions_day_key")
+  @@map("position_versions")
+}
+
+/// A requested position change (create, change, freeze, activate, eliminate; or the switch-on plan), approved by someone else.
+model PositionChange {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  batchId        String    @map("batch_id") @db.Uuid
+  kind           String    @db.VarChar(12)
+  positionId     String?   @map("position_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  effectiveOn    DateTime  @map("effective_on") @db.Date
+  values         Json      @default("{}")
+  reason         String    @db.VarChar(500)
+  status         String    @default("submitted") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  result         Json?
+  requestedBy    String    @map("requested_by") @db.Uuid
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+
+  @@index([organizationId, batchId], map: "position_changes_batch_idx")
+  @@index([organizationId, positionId, status], map: "position_changes_position_idx")
+  @@map("position_changes")
 }

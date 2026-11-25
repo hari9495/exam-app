@@ -2,7 +2,7 @@ import { affectedMonths, applyFact, fold, FoldError, fyStart, localToday, payloa
 
 // P06 rules that need no database: change types (M01 §3.3), the fold that turns changes into dated rows
 // (§4.3, §4.4, YX-HIS-06), retro reach (YX-HIS-12) and affected periods (§4.5).
-const A: AssignmentValues = { locationId: 'loc', departmentId: 'dep', designationId: 'des', gradeId: 'g1', skillClass: null, hoursPerWeek: null, employmentTypeId: 'et', managerEmployeeId: 'm1', costCentres: [], dottedLineManagerIds: [] };
+const A: AssignmentValues = { locationId: 'loc', departmentId: 'dep', designationId: 'des', gradeId: 'g1', skillClass: null, hoursPerWeek: null, employmentTypeId: 'et', managerEmployeeId: 'm1', positionId: null, costCentres: [], dottedLineManagerIds: [] };
 
 describe('change types (M01 §3.3)', () => {
   it('each type changes only its own facts', () => {
@@ -32,7 +32,7 @@ describe('change types (M01 §3.3)', () => {
   });
 
   it('PPL-04 / PPL-09: a transfer moves the location or department, a promotion the designation or grade, to a value not already in force', () => {
-    expect(payloadProblem('transfer', { assignment: { dottedLineManagerIds: [] } })).toBe('A transfer needs a new location or department.');
+    expect(payloadProblem('transfer', { assignment: { dottedLineManagerIds: [] } })).toBe('A transfer needs a new location or department or position.');
     expect(payloadProblem('transfer', { assignment: { departmentId: 'd2' } })).toBeNull();
     expect(payloadProblem('promotion', { assignment: { skillClass: 'skilled' } })).toBe('A promotion needs a new designation or grade.');
     expect(payloadProblem('promotion', { assignment: { gradeId: 'g2' } })).toBeNull();

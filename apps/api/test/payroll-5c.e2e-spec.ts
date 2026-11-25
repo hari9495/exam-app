@@ -519,6 +519,28 @@ describe('Payroll batch 5c', () => {
       })
       .expect(200);
     expect(Buffer.from(tally.body as Buffer).toString()).toMatch(/<VOUCHER VCHTYPE="Journal"/);
+    // Enterprise E4 (O20, O22): with a suspense account an unmapped line is parked there and the journal still goes to
+    // the books (the fix list stays); every line carries its department and location; SAP and Oracle files.
+    await api('payAdmin', 'put', '/payroll/ledger-mappings').send({ scopeType: 'company', componentCode: '_suspense', side: 'payable', accountCode: '9999', accountName: 'Payroll suspense' }).expect(200);
+    const maps = (await api('payAdmin', 'get', '/payroll/ledger-mappings').expect(200)).body as { id: string; scopeType: string; componentCode: string; side: string; accountCode: string; accountName: string }[];
+    const dropped = maps.find((m) => m.scopeType === 'company' && m.side === 'payable' && !m.componentCode.startsWith('_'))!;
+    await api('payAdmin', 'post', `/payroll/ledger-mappings/${dropped.id}/remove`).expect(200);
+    const parked = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/journal`).expect(200)).body;
+    expect(parked).toMatchObject({ canPost: true, suspense: { on: true, account: '9999 · Payroll suspense' }, split: 'cost_centre', defaultFormat: 'csv', reversal: null });
+    expect(Number(parked.suspense.amount)).toBeGreaterThan(0);
+    expect(parked.unmapped.map((u: { componentCode: string }) => u.componentCode)).toContain(dropped.componentCode);
+    expect(parked.lines.some((l: { accountCode: string }) => l.accountCode === '9999')).toBe(true);
+    expect(parked.lines.every((l: { department: string | null }) => typeof l.department === 'string')).toBe(true);
+    const sap = await api('payAdmin', 'post', `/payroll/runs/${ids.run}/journal/export`).send({ format: 'sap' }).expect(200);
+    expect(sap.text).toMatch(/^DocDate,PostingDate,Reference,HeaderText,PostingKey,GLAccount/);
+    expect(sap.text).toMatch(/,40,"9999"|,50,"9999"/);
+    const ora = await api('payAdmin', 'post', `/payroll/runs/${ids.run}/journal/export`).send({ format: 'oracle' }).expect(200);
+    expect(ora.text).toMatch(/ENTERED_DR,ENTERED_CR/);
+    await api('payAdmin', 'post', `/payroll/runs/${ids.run}/journal/export`).send({ format: 'xml' }).expect(400);
+    // The suspense line is only a pay line for payroll's ledger key.
+    await api('emp1', 'put', '/payroll/ledger-mappings').send({ scopeType: 'company', componentCode: '_suspense', side: 'payable', accountCode: '1', accountName: 'Mine' }).expect(403);
+    await api('payAdmin', 'put', '/payroll/ledger-mappings').send({ scopeType: 'company', componentCode: dropped.componentCode, side: dropped.side, accountCode: dropped.accountCode, accountName: dropped.accountName }).expect(200);
+    expect((await api('payAdmin', 'get', `/payroll/runs/${ids.run}/journal`).expect(200)).body).toMatchObject({ unmapped: [], suspense: { amount: '0.00' } });
     expect((await api('finance', 'get', `/payroll/cost-rates?month=${month}`).expect(200)).body).toHaveLength(2);
     await api('emp1', 'get', `/payroll/cost-rates?month=${month}`).expect(403);
   });
@@ -556,6 +578,18 @@ describe('Payroll batch 5c', () => {
       .send({ decision: 'approve', confirmation: { phrase, impact: [] } })
       .expect(200);
     expect((await api('payAdmin', 'get', `/payroll/runs/${ids.run}`).expect(200)).body.status).toBe('reopened');
+    // Enterprise E4 (O22): the reopened run's exported journal is offered as its reversing journal (debits and credits
+    // swapped); exporting it is recorded as a reversal.
+    const rev = (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/journal`).expect(200)).body;
+    expect(rev).toMatchObject({ canPost: false, lines: [], reversal: { exportedAt: expect.any(String) } });
+    const net = rev.reversal.lines.find((l: { accountCode: string }) => l.accountCode === '2100');
+    expect(Number(net.debit)).toBeGreaterThan(0);
+    expect(net.credit).toBe('0.00');
+    const back = await api('payAdmin', 'post', `/payroll/runs/${ids.run}/journal/export`).send({ format: 'csv' }).expect(200);
+    expect(back.headers['content-disposition']).toMatch(/payroll-journal-.*-reversal\.csv/);
+    expect(back.text).toMatch(/"2100"/);
+    await api('payAdmin', 'post', `/payroll/runs/${ids.run}/journal/posted`).expect(409);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.journal.reversal_exported', entityId: ids.run } }))).toBe(1);
     await api('payAdmin', 'post', `/payroll/runs/${ids.run}/calculate`).expect(202);
     await waitFor(ids.run, 'calculated');
     for (const v of (await api('payAdmin', 'get', `/payroll/runs/${ids.run}/variances`).expect(200)).body)

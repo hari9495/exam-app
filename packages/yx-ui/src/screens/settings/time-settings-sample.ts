@@ -467,6 +467,24 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "block"
   },
+  "payroll.journal.suspense": {
+    "label": "Pay lines with no ledger account go to the suspense account",
+    "values": ["on", "off"],
+    "default": "on",
+    "labels": { "on": "On: park them there and let the journal go to the books", "off": "Off: refuse the export until every line is mapped" }
+  },
+  "payroll.costing.split": {
+    "label": "Split each person's payroll cost by",
+    "values": ["cost_centre", "project_hours"],
+    "default": "cost_centre",
+    "labels": { "cost_centre": "Cost centre (from the job)", "project_hours": "Project hours (approved timesheets, else allocations)" }
+  },
+  "payroll.journal.format": {
+    "label": "Journal export format",
+    "values": ["csv", "tally", "zoho", "sap", "oracle"],
+    "default": "csv",
+    "labels": { "csv": "CSV", "tally": "Tally (XML)", "zoho": "Zoho Books (CSV)", "sap": "SAP (flat file)", "oracle": "Oracle GL (interface CSV)" }
+  },
   "payroll.variance_threshold_pct": {
     "label": "Ask to confirm a net pay change above (%)",
     "values": [

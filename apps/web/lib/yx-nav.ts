@@ -98,6 +98,8 @@ export const PAY_SETTINGS_PAGES: [string, string, string][] = [
   ['4.5', 'Tax', 'tax'],
   // S-7 (answers 1321, 1521): Payroll rules' settings, under the second person.
   ['4.6', 'Bonus & loan rules', 'loans-and-advances'],
+  // Enterprise E4 (O19-O22): suspense, costing split and the journal format; the ledger mapping is its own page.
+  ['4.12', 'Accounting & costing', 'accounting-and-costing'],
 ];
 const payPage = (id: string) => PAY_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/payroll/${p[2]}`);
 /** S-4: the drawn People & Access pages that show the company's settings (address under /yx/settings/people). */
@@ -170,6 +172,8 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '4.8': ['/yx/settings/finance/expenses-and-travel', '/yx/settings/expenses'],
   '4.9': ['/yx/settings/contract-labour'],
   '4.10': ['/yx/payroll/ewa'],
+  // Enterprise E4: Accounting & costing, with the ledger mapping page.
+  '4.12': [...payPage('4.12'), '/yx/payroll/accounting'],
   // B8/E5: Benefits & FBP, the flexible benefit plan (answer 2411).
   '4.11': ['/yx/settings/benefits'],
   '5.1': morePage('5.1'),
@@ -250,7 +254,7 @@ export function buildNav(n: NavInput): NavArea[] {
   // Managers without HR keys get the designed "For my team" group instead of Onboarding / Changes / Exits.
   const team = !hr;
   const peopleWork: NavSection[] = [
-    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
+    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(has('org.position.manage'), L('positions', 'Positions', '/yx/people/positions')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
     ...sec(team ? 'For my team' : 'Onboarding', [
       ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
       ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
@@ -633,6 +637,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('payroll.component.manage'), L('pay-components', 'Component library', '/yx/payroll/components')),
           ...when(has('payroll.template.manage'), L('pay-templates', 'Salary templates', '/yx/payroll/templates')),
           ...when(has('payroll.import.run'), L('pay-imports', 'Import old payroll', '/yx/payroll/imports')),
+          // Enterprise E4 (O19): which ledger account each pay line goes to (payroll's ledger key).
+          ...when(has('payroll.ledger.manage'), L('pay-ledger', 'Ledger mapping', '/yx/payroll/accounting')),
         ]),
         // Settings 4.9 Contract labour (CL-1): no payroll needed.
         ...when(!support && any('clra.settings.manage', 'clra.contractor.manage', 'clra.contractor.view', 'org.settings.manage'), L('clra-settings', 'Contract labour', '/yx/settings/contract-labour')),
