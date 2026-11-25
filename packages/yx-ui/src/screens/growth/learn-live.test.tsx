@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import type { Course } from './learn-me';
-import { LiveAssignmentRulesScreen, LiveComplianceScreen, LiveCourseBuilderScreen, LiveCoursePlayerScreen, LiveMyLearningScreen, TeamLearningScreen, fromConditions, type LiveBuilder, type LiveRules } from './learn-live';
+import { LiveAssignmentRulesScreen, LiveComplianceScreen, LiveCourseBuilderScreen, LiveCoursePlayerScreen, LiveMyLearningScreen, TeamLearningScreen, fromConditions, cleanSkills, NEW_COURSE, type LiveBuilder, type LiveRules } from './learn-live';
 
 // Learning core, wired: My learning (LRN-01), the player (LRN-02), the builder (LRN-03), rules (LRN-07), compliance
 // (LRN-08) and the manager's team.
@@ -130,6 +130,34 @@ describe('Course builder (LRN-03)', () => {
     expect(screen.getByText('Mark at least one item as required')).toBeInTheDocument();
     await ue.click(screen.getByRole('checkbox', { name: 'Required' }));
     expect(live.onItem).toHaveBeenCalledWith(expect.objectContaining({ id: 'i1' }), { required: true });
+  });
+});
+
+describe('Answer 2672: level gained per course skill', () => {
+  it('cleanSkills keeps the first of each name with its level; blanks dropped; missing levels are 2', () => {
+    expect(cleanSkills({ ...NEW_COURSE, skills: [' Welding', '', 'welding', 'Rigging'], skillLevels: [4, 1, 5] })).toEqual({ skills: ['Welding', 'Rigging'], skillLevels: [4, 2] });
+  });
+
+  it('the Skills tab sets the level each skill gives; Save sends the levels', async () => {
+    const onSave = vi.fn(async () => undefined);
+    const live: LiveBuilder = {
+      state: 'ready',
+      onRetry: vi.fn(),
+      data: { course: { ...course(), skills: ['Fire safety', 'First aid'], skillLevels: [3, 2], status: 'draft', version: 1, description: null, durationMinutes: 45, certificateMonths: 12 }, items: [] },
+      onSave,
+      onStatus: vi.fn(async () => undefined),
+      onAddItem: vi.fn(async () => undefined),
+      onItem: vi.fn(async () => undefined),
+      onRemove: vi.fn(async () => undefined),
+      onBack: vi.fn(),
+    };
+    wrap(<LiveCourseBuilderScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: 'Skills' }));
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
+    await ue.click(screen.getByRole('combobox', { name: 'Level gained for First aid' }));
+    await ue.click(await screen.findByRole('option', { name: 'Level 5' }));
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ skills: ['Fire safety', 'First aid'], skillLevels: [3, 5] }));
   });
 });
 

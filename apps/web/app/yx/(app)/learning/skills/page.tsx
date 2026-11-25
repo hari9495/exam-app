@@ -22,6 +22,8 @@ export default function YxMySkillsPage() {
         data: data.data ?? null,
         onSuggestions: () => router.push('/yx/learning/skills/suggestions'),
         onAssess: (skillId, level) => write('POST', `/skills/people/${encodeURIComponent(data.data!.employeeId)}/assess`, { skillId, level }),
+        // Answer 2673: add a skill to my profile; my manager confirms it.
+        onAddOwn: (skillId, level, note) => write('POST', '/skills/me', { skillId, level, ...(note ? { note } : {}) }),
       }}
     />
   );

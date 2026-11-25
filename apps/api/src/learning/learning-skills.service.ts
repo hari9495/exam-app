@@ -5,6 +5,8 @@ import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-struc
 import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, Viewer, buildViewer, implicitSql, tenantWide } from '../access/scope';
 import { LEARNING_KEYS, asDate, iso, jobsToday, ownEmployee } from './learning-core';
+import { NotificationsService } from '../notifications/notifications.service';
+import { randomUUID } from 'crypto';
 
 // G3d (M07): skills (LRN-09 team matrix, LRN-10 profile, LRN-15 suggestions) on the company skills library that
 // Settings › Performance keeps (company_skills), with the level each job title needs from the role map
@@ -12,19 +14,35 @@ import { LEARNING_KEYS, asDate, iso, jobsToday, ownEmployee } from './learning-c
 // their manager confirms it, and a rejected one is never offered again from the same course. Training needs and
 // department budgets (LRN-11) are L&D's (learning.manage).
 
-/** shortcut: a course's skills carry no level yet (PR #210 keeps names), so a completion suggests "working" (2); question 2672. */
+/** The level a course skill gives when the course sets none (courses made before answer 2672). */
 export const COURSE_SKILL_LEVEL = 2;
 
-/** On completion: each course skill that names an active library skill becomes a pending suggestion (once per course). */
-export async function suggestFromCourse(tx: Tx, c: CompanyContext, e: { id: string; employeeId: string }, course: { title: string; skills: string[] }) {
+/** Answer 2672: a course's skills (trimmed, the first of each name kept) with the level each gives, in the same order. */
+export function courseSkills(dto: { skills: string[]; skillLevels?: number[] }) {
+  if (dto.skillLevels && dto.skillLevels.length !== dto.skills.length) throw new BadRequestException('Give a level for each skill.');
+  const seen = new Set<string>();
+  const skills: string[] = [];
+  const skillLevels: number[] = [];
+  dto.skills.forEach((raw, i) => {
+    const s = raw.trim();
+    if (!s || seen.has(s.toLowerCase())) return;
+    seen.add(s.toLowerCase());
+    skills.push(s);
+    skillLevels.push(dto.skillLevels?.[i] ?? COURSE_SKILL_LEVEL);
+  });
+  return { skills, skillLevels };
+}
+
+/** On completion: each course skill that names an active library skill becomes a pending suggestion at the level the course gives (once per course). */
+export async function suggestFromCourse(tx: Tx, c: CompanyContext, e: { id: string; employeeId: string }, course: { title: string; skills: string[]; skillLevels: number[] }) {
   if (!course.skills.length) return 0;
   const lib = await tx.companySkill.findMany({ where: { organizationId: c.organizationId, status: 'active', kind: { not: 'domain' } }, select: { id: true, name: true } });
-  const wanted = new Set(course.skills.map((s) => s.trim().toLowerCase()));
-  const hits = lib.filter((s) => wanted.has(s.name.toLowerCase()));
+  const wanted = new Map(course.skills.map((s, i) => [s.trim().toLowerCase(), course.skillLevels[i] ?? COURSE_SKILL_LEVEL]));
+  const hits = lib.filter((s) => wanted.has(s.name.toLowerCase())).map((s) => ({ ...s, level: wanted.get(s.name.toLowerCase())! }));
   if (!hits.length) return 0;
   const held = await tx.learningSkillLevel.findMany({ where: { organizationId: c.organizationId, employeeId: e.employeeId, companySkillId: { in: hits.map((h) => h.id) } } });
-  const rows = hits.filter((h) => (held.find((x) => x.companySkillId === h.id)?.level ?? 0) < COURSE_SKILL_LEVEL);
-  const made = await tx.learningSkillSuggestion.createMany({ data: rows.map((h) => ({ organizationId: c.organizationId, employeeId: e.employeeId, companySkillId: h.id, level: COURSE_SKILL_LEVEL, source: 'course', sourceRef: e.id, evidence: course.title.slice(0, 200) })), skipDuplicates: true });
+  const rows = hits.filter((h) => (held.find((x) => x.companySkillId === h.id)?.level ?? 0) < h.level);
+  const made = await tx.learningSkillSuggestion.createMany({ data: rows.map((h) => ({ organizationId: c.organizationId, employeeId: e.employeeId, companySkillId: h.id, level: h.level, source: 'course', sourceRef: e.id, evidence: course.title.slice(0, 200) })), skipDuplicates: true });
   return made.count;
 }
 
@@ -32,6 +50,7 @@ export async function suggestFromCourse(tx: Tx, c: CompanyContext, e: { id: stri
 export const fyOf = (day: string) => (Number(day.slice(5, 7)) >= 4 ? Number(day.slice(0, 4)) : Number(day.slice(0, 4)) - 1);
 
 type Need = Prisma.LearningNeedGetPayload<object>;
+const SOURCE_WORDS = { course: 'Course', manager: 'Manager', self: 'Self, confirmed by the manager' } as const;
 const NEED_WORDS = { source: { skill_gap: 'Skill gap', manager: 'Manager request', compliance: 'Compliance', review: 'Review gap' }, priority: { high: 'High', medium: 'Medium', low: 'Low' }, status: { new: 'New', planned: 'Planned', in_progress: 'In progress', closed: 'Closed' } } as const;
 
 @Injectable()
@@ -39,6 +58,7 @@ export class LearningSkillsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -100,7 +120,7 @@ export class LearningSkillsService {
         .filter((s) => req.some((r) => r.company_skill_id === s) || levels.some((l) => l.companySkillId === s))
         .map((s) => {
           const l = levels.find((x) => x.companySkillId === s);
-          return { id: s, name: names.get(s) ?? '', level: l?.level ?? null, required: req.find((r) => r.company_skill_id === s)?.expected_level ?? null, source: l ? (l.source === 'course' ? 'Course' : 'Manager') : 'Not assessed', evidence: l?.evidence ?? '', updated: iso(l?.updatedAt) };
+          return { id: s, name: names.get(s) ?? '', level: l?.level ?? null, required: req.find((r) => r.company_skill_id === s)?.expected_level ?? null, source: l ? SOURCE_WORDS[l.source as keyof typeof SOURCE_WORDS] : 'Not assessed', evidence: l?.evidence ?? '', updated: iso(l?.updatedAt) };
         })
         .sort((a, b) => a.name.localeCompare(b.name));
       return {
@@ -111,8 +131,9 @@ export class LearningSkillsService {
         canAssess: who.manager,
         canDecide: who.self || who.manager,
         skills,
-        suggestions: who.self || who.manager ? pending.map((p) => ({ id: p.id, skillId: p.companySkillId, skill: names.get(p.companySkillId) ?? '', level: p.level, from: 'Course', evidence: p.evidence })) : [],
-        library: who.manager ? (await tx.companySkill.findMany({ where: { organizationId: c.organizationId, status: 'active', kind: { not: 'domain' } }, select: { id: true, name: true }, orderBy: { name: 'asc' } })) : [],
+        // Answer 2673: a skill the person added waits for the manager; the person sees it but cannot confirm it.
+        suggestions: who.self || who.manager ? pending.map((p) => ({ id: p.id, skillId: p.companySkillId, skill: names.get(p.companySkillId) ?? '', level: p.level, from: p.source === 'self' ? 'Added by the person' : 'Course', evidence: p.evidence, canDecide: p.source === 'self' ? who.manager : true })) : [],
+        library: who.manager || who.self ? (await tx.companySkill.findMany({ where: { organizationId: c.organizationId, status: 'active', kind: { not: 'domain' } }, select: { id: true, name: true }, orderBy: { name: 'asc' } })) : [],
       };
     });
   }
@@ -125,6 +146,7 @@ export class LearningSkillsService {
       if (!s) throw new NotFoundException('No such suggestion.');
       const who = await this.access(tx, c, v, s.employeeId);
       if (!who.self && !who.manager) throw new NotFoundException('No such suggestion.');
+      if (s.source === 'self' && !who.manager) throw new ForbiddenException('Your manager confirms a skill you added.');
       const moved = await tx.learningSkillSuggestion.updateMany({ where: { id: s.id, status: 'pending' }, data: { status: confirm ? 'confirmed' : 'rejected', decidedBy: c.userId, decidedAt: new Date() } });
       if (!moved.count) throw new ConflictException('This suggestion was decided already.');
       if (confirm) {
@@ -158,6 +180,47 @@ export class LearningSkillsService {
     });
   }
 
+  /** Answer 2673: a person adds a library skill at a level to their own profile; it waits for their manager. */
+  async addOwn(ctx: TenantContext, user: ScopeUser, dto: { skillId: string; level: number; note?: string }) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Only the person adds their own skills.');
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await ownEmployee(tx, c);
+      if (!me) throw new NotFoundException('Not found');
+      const skill = await tx.companySkill.findFirst({ where: { organizationId: org, id: dto.skillId, status: 'active', kind: { not: 'domain' } }, select: { id: true, name: true } });
+      if (!skill) throw new BadRequestException('Choose a skill from the library.');
+      const cur = await tx.learningSkillLevel.findUnique({ where: { employeeId_companySkillId: { employeeId: me, companySkillId: skill.id } } });
+      if (cur && cur.level >= dto.level) throw new BadRequestException(`Your profile already has ${skill.name} at level ${cur.level}.`);
+      if (await tx.learningSkillSuggestion.count({ where: { organizationId: org, employeeId: me, companySkillId: skill.id, source: 'self', status: 'pending' } })) throw new ConflictException(`${skill.name} is already waiting for your manager.`);
+      const s = await tx.learningSkillSuggestion.create({ data: { organizationId: org, employeeId: me, companySkillId: skill.id, level: dto.level, source: 'self', sourceRef: randomUUID(), evidence: dto.note?.trim().slice(0, 200) || 'Added by the person' } });
+      await audit(tx, c, 'learning.skill.self_added', 'learning_skill_suggestion', s.id, { skillId: skill.id, level: dto.level });
+      const [job] = await jobsToday(tx, c, todayIst(), [me]);
+      const mgr = job?.managerEmployeeId ? await tx.employee.findFirst({ where: { organizationId: org, id: job.managerEmployeeId }, select: { userId: true } }) : null;
+      return { id: s.id, managerUserId: mgr?.userId ?? null, text: `${job?.name ?? 'Someone on your team'} added ${skill.name} at level ${dto.level} to their skills. Confirm or reject it.`, me };
+    });
+    if (out.managerUserId)
+      await this.notifications
+        .notifySystem(ctx, [out.managerUserId], 'learning.skill_added', { entityType: 'learning_skill_suggestion', entityId: out.id, contextText: out.text, linkPath: `/yx/learning/skills/people/${out.me}/suggestions` }, { subject: out.text, html: `<p>${out.text} Open YukthiX to decide.</p>` })
+        .catch(() => undefined);
+    return { id: out.id, manager: Boolean(out.managerUserId) };
+  }
+
+  /** Answer 2675: a manager raises a training need for someone in their team (chain), from the team skills. Once per open need. */
+  async raiseNeed(ctx: TenantContext, user: ScopeUser, dto: { employeeId: string; skillId?: string; title: string; priority: string }) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const who = await this.access(tx, c, v, dto.employeeId);
+      if (!who.manager) throw new ForbiddenException('Their manager raises a training need here.');
+      if (dto.skillId && !(await tx.companySkill.count({ where: { organizationId: org, id: dto.skillId, status: 'active' } }))) throw new BadRequestException('Choose a skill from the library.');
+      if (dto.skillId && (await tx.learningNeed.count({ where: { organizationId: org, employeeId: dto.employeeId, companySkillId: dto.skillId, status: { not: 'closed' } } }))) throw new ConflictException('There is already an open training need for this skill.');
+      const n = await tx.learningNeed.create({ data: { organizationId: org, title: dto.title.trim(), employeeId: dto.employeeId, companySkillId: dto.skillId ?? null, source: dto.skillId ? 'skill_gap' : 'manager', priority: dto.priority, estCost: 0, raisedBy: c.userId! } });
+      await audit(tx, c, 'learning.need.raised', 'learning_need', n.id, { employeeId: dto.employeeId, skillId: dto.skillId ?? null, by: 'manager' });
+      return { id: n.id };
+    });
+  }
+
   /** LRN-09: my direct reports today × the skills their job titles need, with their confirmed levels. */
   team(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -173,6 +236,7 @@ export class LearningSkillsService {
       const levels = await tx.learningSkillLevel.findMany({ where: { organizationId: c.organizationId, employeeId: { in: team.map((t) => t.employeeId) }, companySkillId: { in: order } } });
       return {
         skills: order.map((s) => names.get(s) ?? ''),
+        skillIds: order,
         people: team
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((t) => ({

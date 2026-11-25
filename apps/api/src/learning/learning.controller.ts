@@ -34,6 +34,8 @@ export class CourseDto {
   @IsBoolean() certificate!: boolean;
   @IsOptional() @IsInt() @Min(1) @Max(120) certificateMonths?: number | null;
   @IsArray() @ArrayMaxSize(20) @IsString({ each: true }) @MaxLength(80, { each: true }) skills!: string[];
+  /** Answer 2672: the level each skill gives on completion, in the order of skills. */
+  @IsOptional() @IsArray() @ArrayMaxSize(20) @IsInt({ each: true }) @Min(1, { each: true }) @Max(5, { each: true }) skillLevels?: number[];
 }
 
 export class CourseUpdateDto extends CourseDto {
@@ -162,6 +164,19 @@ export class DecideSkillDto {
 export class AssessDto {
   @IsUUID() skillId!: string;
   @IsInt() @Min(1) @Max(5) level!: number;
+}
+
+export class OwnSkillDto {
+  @IsUUID() skillId!: string;
+  @IsInt() @Min(1) @Max(5) level!: number;
+  @IsOptional() @IsString() @MaxLength(200) note?: string;
+}
+
+export class TeamNeedDto {
+  @IsUUID() employeeId!: string;
+  @IsOptional() @IsUUID() skillId?: string;
+  @IsString() @MinLength(3) @MaxLength(200) title!: string;
+  @IsIn(['high', 'medium', 'low']) priority!: string;
 }
 
 export class NeedDto {
@@ -488,6 +503,20 @@ export class LearningController {
   @Get('skills/team')
   teamSkills(@CurrentTenant() ctx: TenantContext) {
     return this.skills.team(ctx);
+  }
+
+  // Answer 2673: add a skill to my own profile; my manager confirms it.
+  @Post('skills/me')
+  addOwnSkill(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OwnSkillDto) {
+    ownSession(req);
+    return this.skills.addOwn(ctx, this.user(req), dto);
+  }
+
+  // Answer 2675: a manager raises a training need for someone in their team (checked per person: 404 or 403 otherwise).
+  @Post('skills/team/needs')
+  raiseTeamNeed(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TeamNeedDto) {
+    ownSession(req);
+    return this.skills.raiseNeed(ctx, this.user(req), dto);
   }
 
   @Get('skills/people/:employeeId')

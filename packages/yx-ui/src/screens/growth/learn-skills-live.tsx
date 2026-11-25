@@ -41,7 +41,8 @@ export interface LiveSkillProfileData {
   canAssess: boolean;
   canDecide: boolean;
   skills: { id: string; name: string; level: number | null; required: number | null; source: string; evidence: string; updated: string | null }[];
-  suggestions: { id: string; skillId: string; skill: string; level: number; from: string; evidence: string }[];
+  /** Answer 2673: `canDecide` false on a skill the person added (their manager decides it). */
+  suggestions: { id: string; skillId: string; skill: string; level: number; from: string; evidence: string; canDecide?: boolean }[];
   library: { id: string; name: string }[];
 }
 export interface LiveSkillsProfile {
@@ -50,10 +51,13 @@ export interface LiveSkillsProfile {
   data: LiveSkillProfileData | null;
   onSuggestions: () => void;
   onAssess: (skillId: string, level: number) => Promise<unknown>;
+  /** Answer 2673: the person adds a library skill to their own profile; their manager confirms it. */
+  onAddOwn?: (skillId: string, level: number, note: string) => Promise<unknown>;
 }
 
 export function LiveSkillsProfileScreen({ live }: { live: LiveSkillsProfile }) {
   const [assessing, setAssessing] = useState(false);
+  const [adding, setAdding] = useState(false);
   const d = live.data;
   const persona = d && !d.self ? 'mgr' : 'emp';
   return (
@@ -72,6 +76,10 @@ export function LiveSkillsProfileScreen({ live }: { live: LiveSkillsProfile }) {
                     <Button variant="primary" icon={Plus} onClick={() => setAssessing(true)}>
                       Set a level
                     </Button>
+                  ) : p.self && live.onAddOwn ? (
+                    <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
+                      Add a skill
+                    </Button>
                   ) : undefined
                 }
               />
@@ -85,7 +93,7 @@ export function LiveSkillsProfileScreen({ live }: { live: LiveSkillsProfile }) {
                     </Button>
                   }
                 >
-                  Suggestions join {p.self ? 'your' : `${p.person}’s`} profile only after {p.self ? 'you or your manager' : 'you or they'} confirm.
+                  Suggestions join {p.self ? 'your' : `${p.person}’s`} profile only after {p.self ? 'you or your manager' : 'you or they'} confirm. A skill {p.self ? 'you' : 'they'} added waits for the manager.
                 </InlineAlert>
               )}
               <div className="yx-growth-split">
@@ -126,6 +134,7 @@ export function LiveSkillsProfileScreen({ live }: { live: LiveSkillsProfile }) {
                 </aside>
               </div>
               {assessing && <AssessDialog person={p.person} library={p.library} onClose={() => setAssessing(false)} onSave={live.onAssess} />}
+              {adding && live.onAddOwn && <AddOwnDialog library={p.library} onClose={() => setAdding(false)} onSave={live.onAddOwn} />}
             </>
           );
         }}
@@ -182,6 +191,59 @@ function AssessDialog({ person, library, onClose, onSave }: { person: string; li
   );
 }
 
+/** Answer 2673: add a skill to my own profile, with the level and how I know it; my manager confirms it. */
+function AddOwnDialog({ library, onClose, onSave }: { library: { id: string; name: string }[]; onClose: () => void; onSave: NonNullable<LiveSkillsProfile['onAddOwn']> }) {
+  const { toast } = useToast();
+  const [skill, setSkill] = useState<string | null>(null);
+  const [level, setLevel] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const early = useTooEarly([...(skill ? [] : [{ fieldId: 'ao-skill', message: 'Choose the skill.' }]), ...(level ? [] : [{ fieldId: 'ao-level', message: 'Choose the level.' }])]);
+  const save = async () => {
+    if (early.stop()) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onSave(skill!, Number(level), note.trim());
+      toast({ tone: 'success', title: 'Sent to your manager to confirm.' });
+      onClose();
+    } catch (e) {
+      setFailed(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Add a skill"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} onClick={() => void save()}>
+            Send to my manager
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-growth-stack">
+        {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+        <FormField id="ao-skill" label="Skill" required error={early.errorOf('ao-skill')}>
+          <Select value={skill} onChange={setSkill} options={library.map((s) => ({ value: s.id, label: s.name }))} />
+        </FormField>
+        <FormField id="ao-level" label="Level" required error={early.errorOf('ao-level')} helper="1 is a beginner, 5 an expert who teaches others.">
+          <Select value={level} onChange={setLevel} options={LEVELS} />
+        </FormField>
+        <FormField label="How you know it" helper="Optional. Your manager sees this.">
+          <TextField value={note} onChange={setNote} maxLength={200} />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
 export interface LiveSkillSuggestions {
   state: State;
   onRetry?: () => void;
@@ -207,7 +269,7 @@ export function LiveSkillSuggestionsScreen({ live }: { live: LiveSkillSuggestion
           <>
             <PageHeader title={d!.self ? 'Skills to confirm' : `Skills to confirm for ${d!.person}`} facts={`${d!.suggestions.length} waiting`} />
             <Text size="sm" tone="secondary">
-              Suggested from completed courses. Nothing joins {d!.self ? 'your' : `${d!.person}’s`} profile until confirmed. A rejected suggestion isn’t offered again from the same course.
+              Suggested from completed courses, or added by the person (their manager confirms those). Nothing joins {d!.self ? 'your' : `${d!.person}’s`} profile until confirmed. A rejected suggestion isn’t offered again from the same course.
             </Text>
             {d!.suggestions.length === 0 ? (
               <EmptyState title="No suggestions to review" description="When a course with skills is completed, its skills appear here." />
@@ -219,9 +281,9 @@ export function LiveSkillSuggestionsScreen({ live }: { live: LiveSkillSuggestion
                       <span className="yx-growth-list__title">
                         {s.skill} · level {s.level}
                       </span>
-                      <span className="yx-growth-meta">From course: {s.evidence}</span>
+                      <span className="yx-growth-meta">{s.from === 'Course' ? `From course: ${s.evidence}` : `${s.from}: ${s.evidence}`}</span>
                     </div>
-                    {d!.canDecide && (
+                    {(s.canDecide ?? d!.canDecide) ? (
                       <>
                         <Button size="sm" icon={CheckCircle2} onClick={() => void decide(s.id, true, s.skill)}>
                           Confirm
@@ -230,6 +292,8 @@ export function LiveSkillSuggestionsScreen({ live }: { live: LiveSkillSuggestion
                           Reject
                         </Button>
                       </>
+                    ) : (
+                      <Badge tone="neutral">Waiting for the manager</Badge>
                     )}
                   </li>
                 ))}
@@ -247,17 +311,28 @@ export function LiveSkillSuggestionsScreen({ live }: { live: LiveSkillSuggestion
 
 export interface LiveTeamSkillsData {
   skills: string[];
+  /** Library skill ids, in the order of skills (answer 2675). */
+  skillIds?: string[];
   people: { employeeId: string; name: string; role: string; levels: (number | null)[]; required: number[] }[];
+}
+export interface TeamNeedInput {
+  employeeId: string;
+  skillId?: string;
+  title: string;
+  priority: 'high' | 'medium' | 'low';
 }
 export interface LiveTeamSkills {
   state: State;
   onRetry?: () => void;
   data: LiveTeamSkillsData | null;
   onPerson: (employeeId: string) => void;
+  /** Answer 2675: raise a training need for someone in the team (L&D plans it). */
+  onRaiseNeed?: (n: TeamNeedInput) => Promise<unknown>;
 }
 
 export function LiveTeamSkillsScreen({ live }: { live: LiveTeamSkills }) {
   const d = live.data;
+  const [raising, setRaising] = useState<LiveTeamSkillsData['people'][number] | null>(null);
   const gaps = d ? d.people.reduce((a, p) => a + p.levels.filter((l, i) => p.required[i] > 0 && (l == null || l < p.required[i])).length, 0) : 0;
   return (
     <GrowthFrame area="learning" active="Skills" persona="mgr">
@@ -289,16 +364,95 @@ export function LiveTeamSkillsScreen({ live }: { live: LiveTeamSkills }) {
                   ),
                 },
                 ...d!.skills.map((s, i) => ({ key: `s${i}`, header: s, cell: (p: LiveTeamSkillsData['people'][number]) => (p.required[i] > 0 || p.levels[i] != null ? <SkillLevel level={p.levels[i]} required={p.required[i] || undefined} label={`${p.name}, ${s}`} /> : <span className="yx-growth-meta">Not needed</span>) })),
+                ...(live.onRaiseNeed
+                  ? [
+                      {
+                        key: 'need',
+                        header: 'Training',
+                        cell: (p: LiveTeamSkillsData['people'][number]) => (
+                          <Button size="sm" onClick={() => setRaising(p)} aria-label={`Raise a training need for ${p.name}`}>
+                            Raise need
+                          </Button>
+                        ),
+                      },
+                    ]
+                  : []),
               ]}
             />
           )
         }
       </Loading>
+      {raising && d && live.onRaiseNeed && <RaiseNeedDialog person={raising} data={d} onClose={() => setRaising(null)} onSave={live.onRaiseNeed} />}
     </GrowthFrame>
   );
 }
 
 /* ------------------------------------------------------------------ LRN-11 training needs and budgets */
+
+/** Answer 2675: the manager raises a training need for one person, about a skill (gaps first) or a topic. */
+function RaiseNeedDialog({ person, data, onClose, onSave }: { person: LiveTeamSkillsData['people'][number]; data: LiveTeamSkillsData; onClose: () => void; onSave: NonNullable<LiveTeamSkills['onRaiseNeed']> }) {
+  const { toast } = useToast();
+  const gap = (i: number) => person.required[i] > 0 && (person.levels[i] == null || person.levels[i]! < person.required[i]);
+  const order = data.skills.map((_, i) => i).sort((a, b) => Number(gap(b)) - Number(gap(a)));
+  const first = order.find(gap);
+  const [skill, setSkill] = useState<string | null>(first != null ? (data.skillIds?.[first] ?? null) : null);
+  const nameOf = (id: string | null) => (id ? data.skills[data.skillIds?.indexOf(id) ?? -1] : undefined);
+  const [title, setTitle] = useState(first != null ? `${data.skills[first]} for ${person.name}` : '');
+  const [priority, setPriority] = useState<TeamNeedInput['priority']>('medium');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const early = useTooEarly(title.trim().length < 3 ? [{ fieldId: 'rn-title', message: 'Say what training is needed (at least 3 letters).' }] : []);
+  const save = async () => {
+    if (early.stop()) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onSave({ employeeId: person.employeeId, ...(skill ? { skillId: skill } : {}), title: title.trim(), priority });
+      toast({ tone: 'success', title: `Training need for ${person.name} sent to L&D.` });
+      onClose();
+    } catch (e) {
+      setFailed(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Raise a training need for ${person.name}`}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} onClick={() => void save()}>
+            Send to L&amp;D
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-growth-stack">
+        {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+        <FormField label="Skill" helper="Optional. Gaps for the job title come first.">
+          <Select
+            value={skill}
+            onChange={(v) => {
+              setSkill(v);
+              const n = nameOf(v);
+              if (n) setTitle(`${n} for ${person.name}`);
+            }}
+            options={order.flatMap((i) => (data.skillIds?.[i] ? [{ value: data.skillIds[i], label: gap(i) ? `${data.skills[i]} (gap)` : data.skills[i] }] : []))}
+          />
+        </FormField>
+        <FormField id="rn-title" label="What training is needed" required error={early.errorOf('rn-title')}>
+          <TextField value={title} onChange={setTitle} maxLength={200} />
+        </FormField>
+        <FormField label="Priority">
+          <Segment<TeamNeedInput['priority']> label="Priority" value={priority} onChange={setPriority} options={[{ value: 'high', label: 'High' }, { value: 'medium', label: 'Medium' }, { value: 'low', label: 'Low' }]} />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
 
 export interface LiveNeedRow {
   id: string;

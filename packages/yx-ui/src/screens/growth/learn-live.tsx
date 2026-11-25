@@ -598,9 +598,28 @@ export interface CourseDetails {
   certificate: boolean;
   certificateMonths: number | null;
   skills: string[];
+  /** Answer 2672: the level each skill gives on completion (1-5), in the order of skills; missing: level 2. */
+  skillLevels?: number[];
   /** Answer 2624: completions count in the Internal Committee annual report. */
   poshAwareness?: boolean;
 }
+
+/** Answer 2672: the named skills (trimmed, no blanks or repeats) with the level each gives. */
+export function cleanSkills(d: CourseDetails): Pick<CourseDetails, 'skills' | 'skillLevels'> {
+  const seen = new Set<string>();
+  const skills: string[] = [];
+  const skillLevels: number[] = [];
+  d.skills.forEach((raw, i) => {
+    const s = raw.trim();
+    if (!s || seen.has(s.toLowerCase())) return;
+    seen.add(s.toLowerCase());
+    skills.push(s);
+    skillLevels.push(d.skillLevels?.[i] ?? 2);
+  });
+  return { skills, skillLevels };
+}
+
+const GAIN_LEVELS = ['1', '2', '3', '4', '5'].map((v) => ({ value: v, label: `Level ${v}` }));
 export const NEW_COURSE: CourseDetails = { title: '', description: '', source: 'company', provider: '', durationMinutes: 30, cost: 0, mandatory: false, needsApproval: false, certificate: true, certificateMonths: 12, skills: [], poshAwareness: false };
 
 /** A course's details: what it is, where it is from, what it costs, whether it is mandatory and gives a certificate. */
@@ -730,7 +749,7 @@ export interface BuilderLiveItem {
 export interface LiveBuilder {
   state: LoadState;
   onRetry: () => void;
-  data: { course: Course & { status: CourseRow['status']; version: number; description: string | null; durationMinutes: number; certificateMonths: number | null }; items: BuilderLiveItem[] } | null;
+  data: { course: Course & { status: CourseRow['status']; version: number; description: string | null; durationMinutes: number; certificateMonths: number | null; skillLevels?: number[] }; items: BuilderLiveItem[] } | null;
   onSave: (details: CourseDetails) => Promise<void>;
   onStatus: (status: 'published' | 'retired') => Promise<void>;
   onAddItem: (input: { title: string; kind: 'pdf' | 'video' | 'link'; minutes: number; required: boolean; url?: string }, file?: File) => Promise<void>;
@@ -752,6 +771,7 @@ function detailsOf(c: NonNullable<LiveBuilder['data']>['course']): CourseDetails
     certificate: Boolean(c.certificate),
     certificateMonths: c.certificateMonths,
     skills: c.skills,
+    skillLevels: c.skills.map((_, i) => c.skillLevels?.[i] ?? 2),
   };
 }
 
@@ -769,7 +789,7 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
   const saveBar = changed && details && (
     <div className="yx-growth-row">
       <Button onClick={() => d && setDetails(detailsOf(d.course))}>Cancel</Button>
-      <Button variant="primary" onClick={() => void live.onSave({ ...details, skills: details.skills.map((s) => s.trim()).filter(Boolean) })}>
+      <Button variant="primary" onClick={() => void live.onSave({ ...details, ...cleanSkills(details) })}>
         Save changes
       </Button>
     </div>
@@ -862,6 +882,25 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
                     <FormField label="Skills it builds" helper="Separate skills with commas.">
                       <TextField value={details.skills.join(', ')} onChange={(v) => setDetails({ ...details, skills: v.split(',').map((s) => s.trimStart()) })} />
                     </FormField>
+                    {details.skills.some((s) => s.trim()) && (
+                      <FormField label="Level gained" helper="On completion each skill is suggested at this level; the person or their manager confirms it.">
+                        <div className="yx-growth-stack">
+                          {details.skills.map((s, i) =>
+                            s.trim() ? (
+                              <FieldRow key={i}>
+                                <Text>{s.trim()}</Text>
+                                <Select
+                                  aria-label={`Level gained for ${s.trim()}`}
+                                  value={String(details.skillLevels?.[i] ?? 2)}
+                                  onChange={(v) => setDetails({ ...details, skillLevels: details.skills.map((_, j) => (j === i ? Number(v ?? 2) : (details.skillLevels?.[j] ?? 2))) })}
+                                  options={GAIN_LEVELS}
+                                />
+                              </FieldRow>
+                            ) : null,
+                          )}
+                        </div>
+                      </FormField>
+                    )}
                     {saveBar}
                   </div>
                 </TabsContent>

@@ -13,7 +13,7 @@ import { ANY_ENTITY, LEARNING_KEYS, asDate, iso, ownEmployee } from './learning-
 import { settingFor } from '../people/probation';
 import { addMonths, durationText, progressPct, shownStatus } from './learning-rules';
 import { placeInSession } from './session-place';
-import { suggestFromCourse } from './learning-skills.service';
+import { COURSE_SKILL_LEVEL, courseSkills, suggestFromCourse } from './learning-skills.service';
 
 // Learning for the learner and L&D (LRN-01 My learning and catalogue, LRN-02 course player, LRN-03 course builder):
 // published courses are the company's catalogue; a person enrols (or asks, when the course needs approval), works
@@ -45,6 +45,8 @@ export interface CourseInput {
   certificate: boolean;
   certificateMonths?: number | null;
   skills: string[];
+  /** Answer 2672: the level each skill gives on completion (1-5), in the order of skills; missing: level 2. */
+  skillLevels?: number[];
 }
 
 @Injectable()
@@ -114,6 +116,7 @@ export class LearningService implements OnModuleInit {
       duration: durationText(c.durationMinutes),
       durationMinutes: c.durationMinutes,
       skills: c.skills,
+      skillLevels: c.skills.map((_, i) => c.skillLevels[i] ?? COURSE_SKILL_LEVEL),
       cost: Number(c.cost),
       mandatory: c.mandatory,
       approval: c.needsApproval,
@@ -516,7 +519,7 @@ export class LearningService implements OnModuleInit {
       needsApproval: dto.needsApproval,
       certificate: dto.certificate,
       certificateMonths: dto.certificate ? (dto.certificateMonths ?? null) : null,
-      skills: [...new Set(dto.skills.map((s) => s.trim()).filter(Boolean))],
+      ...courseSkills(dto),
     };
   }
 

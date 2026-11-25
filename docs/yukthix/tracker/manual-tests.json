@@ -28193,5 +28193,27 @@
                               "Screens/Engage/ENG-11 · Moderation"
                     ],
                     "note": "Positive and negative (engage-g2 e2e follow-ups 4: CSV key only/no text/small groups out/audit/other company 404; monthly repeat once; onboarding day 0 vs 30 once with notices; exit only accepted after launch; Route to HR 403/400/once 409/notice text/no author notice/other company 404; kit tests 4). Migration 741 engage_followups (columns on eng_surveys, route_hr action); new routes in endpoint-permissions; notification type engage.moderation.routed; jobs run with the 15-minute Engage jobs."
+          },
+          {
+                    "id": "MT-LEARNING-FOLLOWUPS-2672-2673-2675",
+                    "area": "Learning follow-ups (answers 2672, 2673, 2675): level gained per course skill, self-added skills the manager confirms, managers raise training needs (25 Nov 2026)",
+                    "screen": "Learning › course builder (Skills tab: Level gained), My skills (Add a skill), Skills to confirm, Team skills (Raise need), Needs & budgets",
+                    "url": "http://localhost:3000/yx/learning/skills",
+                    "account": "L&D (learning.manage); an employee (Arjun) and his manager (Divya, panel@); someone outside the team; another company's admin.",
+                    "steps": [
+                              "As L&D open a course › Skills: name two library skills, set Level gained 4 and 5, Save. Complete the course as an employee and open My skills › Review suggestions.",
+                              "As Arjun open My skills › Add a skill: send with nothing chosen; then pick a skill, level 3, 'How you know it', send. Send the same skill again. Try a skill he already holds at a higher level.",
+                              "As Arjun open Skills to confirm. As Divya open the notice, then Arjun's skills to confirm; Confirm it. As Arjun open My skills.",
+                              "As Divya open Team skills › Raise need for Arjun: clear the title and send; then send with the gap skill, priority High. Send the same skill again.",
+                              "As Arjun, L&D, someone outside the team and another company's admin try to raise a need for Arjun (API). As L&D open Needs & budgets."
+                    ],
+                    "expected": "Step 1: the suggestions are at levels 4 and 5 (courses saved before keep level 2). Step 2: 'Choose the skill.' / 'Choose the level.'; then toast 'Sent to your manager to confirm.'; the repeat says it is already waiting; the lower level is refused. Step 3: Arjun sees 'Waiting for the manager' and no Confirm; Divya got 'added … to their skills. Confirm or reject it.' and confirms; My skills shows the level with source 'Self, confirmed by the manager'. Step 4: the title message; then toast 'Training need for Arjun sent to L&D.'; the repeat says there is already an open need. Step 5: Arjun and L&D refused (403), outsiders not found (404); L&D sees the need as Skill gap, New, cost 0. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Learning/LRN-03 · Course builder",
+                              "Screens/Learning/LRN-10 · Skills profile",
+                              "Screens/Learning/LRN-15 · Skills to confirm",
+                              "Screens/Learning/LRN-09 · Team skills"
+                    ],
+                    "note": "Positive and negative (learning e2e 'answers 2672, 2673, 2675': levels must match skills 400, level 6 400, suggestion levels 4/5; self-add bad skill 400, level 0 400, already higher 400, twice 409, manager notified once, self decide 403, outsider 404, manager confirms, audit; raise need self/L&D 403, outsider/other company 404, bad priority 400, open need for the skill 409, L&D sees it, audit; kit tests 6). Migration 751 learning_skill_followups (skill_levels on courses, source 'self'); routes in endpoint-permissions; notification type learning.skill_added."
           }
 ]

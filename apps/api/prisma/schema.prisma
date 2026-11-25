@@ -15422,6 +15422,8 @@ model LearningCourse {
   poshAwareness     Boolean  @default(false) @map("posh_awareness")
   attendancePct     Int      @default(75) @map("attendance_pct")
   skills            String[] @default([])
+  /// Answer 2672: the level each skill gives on completion, in the order of skills (empty: level 2).
+  skillLevels       Int[]    @default([]) @map("skill_levels") @db.SmallInt
   /// draft · published · retired
   status            String   @default("draft") @db.VarChar(10)
   createdBy         String?  @map("created_by") @db.Uuid
@@ -15663,7 +15665,7 @@ model LearningSkillLevel {
   employeeId     String   @map("employee_id") @db.Uuid
   companySkillId String   @map("company_skill_id") @db.Uuid
   level          Int      @db.SmallInt
-  /// course · manager
+  /// course · manager · self (answer 2673: added by the person, confirmed by the manager)
   source         String   @db.VarChar(8)
   evidence       String?  @db.VarChar(200)
   setBy          String?  @map("set_by") @db.Uuid

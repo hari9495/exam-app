@@ -19,18 +19,20 @@ export const SKILL_PROFILE: LiveSkillProfileData = {
     { id: 's3', name: 'Lockout tagout' },
   ],
 };
-export const liveSkillsProfile = (over: Partial<LiveSkillsProfile> = {}): LiveSkillsProfile => ({ state: 'ready', data: SKILL_PROFILE, onSuggestions: () => {}, onAssess: ok, ...over });
+export const liveSkillsProfile = (over: Partial<LiveSkillsProfile> = {}): LiveSkillsProfile => ({ state: 'ready', data: SKILL_PROFILE, onSuggestions: () => {}, onAssess: ok, onAddOwn: ok, ...over });
 export const liveSkillSuggestions = (over: Partial<LiveSkillSuggestions> = {}): LiveSkillSuggestions => ({ state: 'ready', data: SKILL_PROFILE, onDecide: ok, ...over });
 export const liveTeamSkills = (over: Partial<LiveTeamSkills> = {}): LiveTeamSkills => ({
   state: 'ready',
   data: {
     skills: ['Food safety', 'Forklift handling'],
+    skillIds: ['k1', 'k2'],
     people: [
       { employeeId: 'p1', name: 'Arjun Nair', role: 'Line Operator', levels: [null, 2], required: [2, 3] },
       { employeeId: 'p2', name: 'Meena Iyer', role: 'Quality Inspector', levels: [4, null], required: [3, 0] },
     ],
   },
   onPerson: () => {},
+  onRaiseNeed: ok,
   ...over,
 });
 export const liveTrainingNeeds = (over: Partial<LiveTrainingNeeds> = {}): LiveTrainingNeeds => ({

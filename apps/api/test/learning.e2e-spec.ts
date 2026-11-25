@@ -540,4 +540,50 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     expect(JSON.stringify(counts)).not.toMatch(/Divya|Imran/);
     expect((await api('adminB', 'get', '/desk/speakup/ic/counts').expect(200)).body.committees).toEqual([]);
   });
+
+  it('answers 2672, 2673, 2675: a course gives its level per skill; a self-added skill waits for the manager; the manager raises a need', async () => {
+    // 2672: each course skill gives its own level; the levels must match the skills.
+    const reach = await tenantPrisma.forTenant(SUPER, async (tx) => (await tx.companySkill.create({ data: { organizationId: org.A.id, name: 'Reach truck', kind: 'skill', parentId: (await tx.companySkill.findFirstOrThrow({ where: { organizationId: org.A.id, name: 'Safety', kind: 'domain' } })).id } })).id);
+    const base = { ...course, title: 'Reach truck advanced', mandatory: false, certificate: false, skills: ['Reach truck', 'Forklift handling'] };
+    await api('ldA', 'post', '/learning/admin/courses').send({ ...base, skillLevels: [4] }).expect(400);
+    await api('ldA', 'post', '/learning/admin/courses').send({ ...base, skillLevels: [6, 2] }).expect(400);
+    const cid = (await api('ldA', 'post', '/learning/admin/courses').send({ ...base, skillLevels: [4, 5] }).expect(201)).body.id;
+    const item = (await api('ldA', 'post', `/learning/admin/courses/${cid}/items`).send({ title: 'Video', kind: 'link', minutes: 5, required: true, url: 'https://example.test/reach' }).expect(201)).body.id;
+    await api('ldA', 'post', `/learning/admin/courses/${cid}/status`).send({ status: 'published', version: 1 }).expect(200);
+    const e = (await api('imranU', 'post', `/learning/courses/${cid}/enrol`).send({}).expect(201)).body;
+    await api('imranU', 'post', `/learning/enrolments/${e.id ?? e.enrolmentId}/items/${item}/done`).expect(200);
+    const imran = (await api('imranU', 'get', '/learning/skills/me').expect(200)).body.suggestions.map((x: { skill: string; level: number }) => [x.skill, x.level]);
+    expect(imran).toEqual(expect.arrayContaining([['Reach truck', 4], ['Forklift handling', 5]]));
+
+    // 2673: Arjun adds a skill to his own profile; only his manager decides it.
+    await api('arjunU', 'post', '/learning/skills/me').send({ skillId: randomUUID(), level: 3 }).expect(400);
+    await api('arjunU', 'post', '/learning/skills/me').send({ skillId: reach, level: 0 }).expect(400);
+    await api('arjunU', 'post', '/learning/skills/me').send({ skillId: ids.forkliftSkill, level: 3 }).expect(400); // he holds level 4 already
+    expect((await api('arjunU', 'post', '/learning/skills/me').send({ skillId: reach, level: 3, note: 'Drove one for two years' }).expect(201)).body.manager).toBe(true);
+    await api('arjunU', 'post', '/learning/skills/me').send({ skillId: reach, level: 3 }).expect(409);
+    const mine = (await api('arjunU', 'get', '/learning/skills/me').expect(200)).body.suggestions.find((x: { skill: string }) => x.skill === 'Reach truck');
+    expect(mine).toMatchObject({ level: 3, from: 'Added by the person', evidence: 'Drove one for two years', canDecide: false });
+    expect(await tenantPrisma.forTenant(SUPER, (tx) => tx.userNotification.count({ where: { recipientUserId: users.mgrU, type: 'learning.skill_added', entityId: mine.id } }))).toBe(1);
+    await api('arjunU', 'post', `/learning/skills/suggestions/${mine.id}`).send({ confirm: true }).expect(403);
+    await api('imranU', 'post', `/learning/skills/suggestions/${mine.id}`).send({ confirm: true }).expect(404);
+    expect((await api('mgrU', 'get', `/learning/skills/people/${ids.arjun}`).expect(200)).body.suggestions.find((x: { id: string }) => x.id === mine.id)).toMatchObject({ canDecide: true });
+    await api('mgrU', 'post', `/learning/skills/suggestions/${mine.id}`).send({ confirm: true }).expect(200);
+    expect((await api('arjunU', 'get', '/learning/skills/me').expect(200)).body.skills.find((x: { name: string }) => x.name === 'Reach truck')).toMatchObject({ level: 3, source: 'Self, confirmed by the manager' });
+    expect(await audits('learning.skill.self_added')).toHaveLength(1);
+
+    // 2675: the manager raises a training need for his report from the team skills; L&D sees it in Needs.
+    const team = (await api('mgrU', 'get', '/learning/skills/team').expect(200)).body;
+    expect(team.skillIds).toEqual([ids.forkliftSkill]);
+    const need = { employeeId: ids.arjun, skillId: ids.forkliftSkill, title: 'Forklift handling for Arjun', priority: 'medium' };
+    await api('arjunU', 'post', '/learning/skills/team/needs').send(need).expect(403);
+    await api('ldA', 'post', '/learning/skills/team/needs').send(need).expect(403);
+    await api('imranU', 'post', '/learning/skills/team/needs').send(need).expect(404);
+    await api('adminB', 'post', '/learning/skills/team/needs').send(need).expect(404);
+    await api('mgrU', 'post', '/learning/skills/team/needs').send({ ...need, priority: 'urgent' }).expect(400);
+    // The planned need from L&D for this skill is still open, so a second one is refused; another skill is fine.
+    await api('mgrU', 'post', '/learning/skills/team/needs').send(need).expect(409);
+    const nid = (await api('mgrU', 'post', '/learning/skills/team/needs').send({ ...need, skillId: reach, title: 'Reach truck for Arjun' }).expect(201)).body.id;
+    expect((await api('ldA', 'get', '/learning/needs').expect(200)).body.find((n: { id: string }) => n.id === nid)).toMatchObject({ who: 'Arjun', source: 'Skill gap', skill: 'Reach truck', priority: 'Medium', status: 'New', estCost: 0 });
+    expect(await audits('learning.need.raised')).toHaveLength(1);
+  });
 });
