@@ -565,3 +565,18 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2676: a department budget counts "spent" as the cost of courses completed in the financial year plus approved external training, and "committed" as the cost of open enrolments assigned in the year. The Finance view and export are not built. Suggested answer: yes; the export comes with G4 reports.
 - 2677: LRN-13 (My tests) and LRN-16 (AI course drafts) are not in G3. Suggested answer: My tests with the assessments question bank later; AI drafts with the other AI work (2607).
 - 2678: the skills profile shows gaps against the current job title; the design's "next role on path" needs career paths. Suggested answer: add next-role gaps when career paths are built.
+- G1 follow-ups built (25 Nov 2026): 2625 Edit member on the Speak-up set-up lists; 2623 an ended committee term takes no new complaint, and the System Admins are reminded once 30 days before a term ends.
+- G4 plan (25 Nov 2026; items 14, 21 and 92):
+  - Reports library (ANL-06, live): one page listing every live area report the person may open (Payroll, Expenses, Attendance and registers, Performance, Learning compliance, Helpdesk SLAs, Visitors, Hiring costs), grouped by the question it answers, with search and personal favourites; Open goes to the area's own report page. Built now (no answer needed).
+  - Scheduled report emails (ANL-08): waits on 2690 and 2691.
+  - Export log (ANL-08 second tab): waits on 2692.
+  - Team reports for managers (item 92): waits on 2693.
+  - Company documents (item 21, People): folders, documents (title, file, optional expiry), counts per folder, download, remove, expiry warning. A design story first (no YukthiX design exists), then live. Built now with the suggested answers 2695-2697 as defaults that can change.
+- 2690: scheduled report emails must build each recipient's own copy with their own rights (as the Helpdesk schedules already do). Suggested answer: the first pass schedules the reports that already export CSV (Payroll reports, Expense reports, Attendance reports, Performance reports, Learning compliance); daily, weekdays, weekly or monthly at 07:00 India time; recipients are people who hold that report's key; anyone who has lost it gets nothing.
+- 2691: Confidential reports (pay) in an email. Suggested answer: no attachment; the email says the report is ready and links to YukthiX, where the person signs in to download it. Internal reports attach the CSV.
+- 2692: the Export log needs one list of every export, but each area audits exports under its own action name (about 25). Suggested answer: an Export log that reads those audit actions, for holders of a new key (System Admin and auditors).
+- 2693: team reports for managers (item 92). Suggested answer: the library shows managers the team views that exist (Attendance reports for their team, Learning › My team, Team skills, Team claims); new team reports come later with the metric layer.
+- 2694: "New report" (the ANL-05 report builder) is not in G4. Suggested answer: later, with the metric layer (P09).
+- 2695: who sees company documents. Suggested answer: a new key company.documents.manage (System Admin and HR Admin) creates folders and uploads; every employee sees folders marked "Everyone"; a folder marked "Document managers only" is seen only by key holders.
+- 2696: expiring documents. Suggested answer: the uploader and the document managers are told once, 30 days before expiry (a company setting); an expired document stays listed, marked Expired, until someone removes or replaces it.
+- 2697: policies stay in Policies (with acknowledgement); company documents are reference files people read and download, with no acknowledgement. Suggested answer: yes.
