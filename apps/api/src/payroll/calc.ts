@@ -68,6 +68,8 @@ export interface Snapshot {
   profile: { pf: boolean; eps: boolean; vpfPercent: string; pfOnActualWage: boolean; esi: 'yes' | 'no' | 'by_wage'; esiCoveredThisPeriod: boolean; pwd: boolean; ptState: string; lwfState: string | null; gender: string | null; age: number };
   /** ptWage / halfPtWage (review M5, M6): the PT wage of approved payslips earlier in the financial year / half-year. */
   ytd: { pt: string; ptWage?: string; halfPtWage?: string };
+  /** Review M3: the employment's joining date (LWF coverage by days employed). */
+  joinedOn?: string;
   /** `label`: the payslip text of an arrears or F&F item (batch 5g). */
   oneTime: { id: string; code: string; amount: string; days: number | null; label?: string }[];
   /** inFeedDays: the part of `days` the Time feed already counts as unpaid (HLP-12 answer 65), not taken off again. */
@@ -298,7 +300,8 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   const lwfRs = !itemsOnly && !partial && s.profile.lwfState ? rule('IN.LWF', [s.profile.lwfState]) : null;
   if (lwfRs) {
     // 2384: a rate-based LWF (Haryana) is on the month's gross earnings.
-    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO) });
+    const daysEmployed = s.joinedOn ? Math.round((Date.parse(`${on}T00:00:00Z`) - Date.parse(`${s.joinedOn}T00:00:00Z`)) / 86_400_000) + 1 : undefined;
+    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO), daysEmployed });
     add({ code: statCode('lwf_employee'), name: nameOf(statCode('lwf_employee'), 'Labour welfare fund'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: `${s.profile.lwfState} labour welfare fund for this month.`, rule: r.citation });
     add({ code: statCode('lwf_employer'), name: nameOf(statCode('lwf_employer'), 'Labour welfare fund (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer labour welfare fund for this month.', rule: r.citation });
   }

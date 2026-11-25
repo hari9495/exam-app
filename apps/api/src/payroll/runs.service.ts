@@ -1036,6 +1036,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         gender: personal?.gender ?? null,
         age,
       },
+      joinedOn: dateOf(em.joinedOn),
       ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2), ...(await this.ptWageSoFar(tx, org, employmentId, run.periodStart, fyStart, month, components)) },
       oneTime: [
         ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}) })),
