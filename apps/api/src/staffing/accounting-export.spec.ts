@@ -55,6 +55,15 @@ describe('accounting export (answer 522)', () => {
     expect(cn).toEqual(['Credit Note Number,Reference Invoice,Reason', 'KS/CN1,KS/7,Overtime not agreed']);
     expect(zohoCsv([{ ...INV, party: 'A, "B" Ltd' }], 'invoice', S, rule)).toContain('"A, ""B"" Ltd"');
   });
+  it('security review F14: a customer name that starts like a formula is neutralised; negative amounts stay numbers', () => {
+    const rule = { invoiceColumns: [{ header: 'Customer Name', field: 'customer' }, { header: 'Total', field: 'total' }], creditNoteColumns: [] };
+    const out = zohoCsv([{ ...INV, party: '=HYPERLINK("http://x","pay")' }], 'invoice', S, rule);
+    expect(out).toContain(`"'=HYPERLINK(""http://x"",""pay"")"`);
+    expect(out).not.toMatch(/(^|,)=HYPERLINK/m);
+    const cn = zohoCsv([{ ...INV, party: '@SUM(A1)' }], 'invoice', S, rule).trim().split('\r\n')[1];
+    expect(cn.startsWith("'@SUM(A1)")).toBe(true);
+    expect(cn.split(',').pop()).toMatch(/^-?\d+(\.\d+)?$/);
+  });
 });
 
 describe('receipts in the export (answer 574)', () => {
