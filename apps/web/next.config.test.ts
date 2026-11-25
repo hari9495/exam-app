@@ -127,6 +127,8 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
     ['/v2/settings/interview-emails', '/yx/settings/documents/notifications'],
     ['/v2/settings/sender-addresses', '/yx/settings/documents/notifications'],
     ['/v2/settings/custom-fields', '/yx/settings/custom-fields'],
+    ['/v2/settings/field-permissions', '/yx/settings/access?view=fields'],
+    ['/v2/settings/user-groups', '/yx/settings/access?view=groups'],
     ['/dashboard', '/yx/hiring/dashboard'],
     ['/analytics/hiring', '/yx/hiring/dashboard'],
     ['/v2/panel/reports', '/yx/hiring/assessments/results'],
@@ -144,7 +146,7 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
   });
 
   it('gap pages stay (2438): their addresses are not redirected away yet', () => {
-    for (const gap of ['/v2/surveys', '/v2/settings/field-permissions'])
+    for (const gap of ['/v2/surveys']) // field permissions moved to Roles & access (2426)
       expect(redirects.some((r) => r.source === gap)).toBe(false);
   });
 });

@@ -79,6 +79,9 @@ const nextConfig = {
       '/v2/settings/sender-addresses': '/yx/settings/documents/notifications',
       // Answer 2425: candidate and job fields are on Settings › Custom fields (with the employee fields).
       '/v2/settings/custom-fields': '/yx/settings/custom-fields',
+      // Answers 2426 and 2430: hiring field access and staff groups are tabs of Settings › Roles & access.
+      '/v2/settings/field-permissions': '/yx/settings/access?view=fields',
+      '/v2/settings/user-groups': '/yx/settings/access?view=groups',
       // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
       '/v2/reports': '/yx/hiring/assessments/tests',
       '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',

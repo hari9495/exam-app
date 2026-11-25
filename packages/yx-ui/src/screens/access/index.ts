@@ -6,3 +6,4 @@ export { CancelDialog, ChangeDialog, PersonalDialog, PERSONAL_REQUIRED_DEFAULT, 
 export { ProfileRequestsScreen, type ProfileRequestsScreenProps } from './profile-requests';
 export { SCOPE_LABEL, KIND_LABEL } from './access-kit';
 export { SupportAccessScreen, type SupportAccessScreenProps } from './support-access';
+export { HiringFieldAccess, UserGroupsPanel, type FieldEntity as HiringFieldEntity, type FieldLevel, type FieldPermissionConfig, type HiringFieldAccessProps, type UserGroup as AccessUserGroup, type UserGroupsPanelProps } from './hiring-access';

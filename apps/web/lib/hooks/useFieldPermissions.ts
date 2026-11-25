@@ -5,12 +5,12 @@ import { useAuth } from '../auth-context';
 
 // Web data layer for the Task 3 org field-permissions config endpoints. Mirrors
 // the other settings hooks.
-export function useFieldPermissions() {
+export function useFieldPermissions(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<FieldPermissionConfig>({
     queryKey: ['field-permissions'],
     queryFn: () => apiFetch('/organizations/field-permissions', {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
   });
 }
 

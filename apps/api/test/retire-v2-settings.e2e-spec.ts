@@ -244,4 +244,42 @@ describe('Retired /v2 settings in YukthiX Settings', () => {
       expect((await call('adminA', 'get', '/custom-fields?entityType=job').expect(200)).body.map((f: { label: string }) => f.label)).toEqual(['Cost centre']);
     });
   });
+
+  // Answers 2426 and 2430: hiring field access and staff groups on Settings › Roles & access.
+  describe('hiring field access and staff groups (2426, 2430)', () => {
+    it('the field matrix is saved with before and after in the audit; a group is made, renamed, staffed and deleted, each audited', async () => {
+      await call('adminA', 'put', '/organizations/field-permissions').send({ config: { candidate: { panel: { email: 'hidden' } } } }).expect(200);
+      await call('adminA', 'put', '/organizations/field-permissions').send({ config: { candidate: { panel: { email: 'readonly' } } } }).expect(200);
+      const f = await at('A', (tx) => tx.auditLog.findMany({ where: { action: 'organization.field_permissions_updated' }, orderBy: { createdAt: 'asc' } }));
+      expect(JSON.parse(f.at(-1)!.metadataJson ?? '{}')).toEqual({ before: { candidate: { panel: { email: 'hidden' } } }, after: { candidate: { panel: { email: 'readonly' } } } });
+      expect((await call('adminB', 'get', '/organizations/field-permissions').expect(200)).body).toEqual({});
+
+      const g = (await call('adminA', 'post', '/user-groups').send({ name: `Plant ${run}` }).expect(201)).body;
+      await call('adminA', 'patch', `/user-groups/${g.id}`).send({ name: `Plant recruiters ${run}`, description: 'Hosur' }).expect(200);
+      await call('adminA', 'put', `/user-groups/${g.id}/members`).send({ userIds: [users.plainA] }).expect(200);
+      await call('adminA', 'put', `/user-groups/${g.id}/members`).send({ userIds: [] }).expect(200);
+      const logs = await at('A', (tx) => tx.auditLog.findMany({ where: { entityId: g.id }, orderBy: { createdAt: 'asc' } }));
+      expect(logs.map((l) => l.action)).toEqual(['user_group.created', 'user_group.updated', 'user_group.members_changed', 'user_group.members_changed']);
+      expect(JSON.parse(logs[1]!.metadataJson ?? '{}')).toEqual({ before: { name: `Plant ${run}`, description: null }, after: { name: `Plant recruiters ${run}`, description: 'Hosur' } });
+      expect(JSON.parse(logs[2]!.metadataJson ?? '{}')).toMatchObject({ added: [users.plainA], removed: [] });
+      expect(JSON.parse(logs[3]!.metadataJson ?? '{}')).toMatchObject({ added: [], removed: [users.plainA] });
+      expect((await call('adminB', 'get', '/user-groups').expect(200)).body).toEqual([]);
+      await call('adminA', 'delete', `/user-groups/${g.id}`).expect(200);
+    });
+
+    it('negative: an unknown field or level, no key, acting for someone else, another company’s group', async () => {
+      await call('adminA', 'put', '/organizations/field-permissions').send({ config: { candidate: { panel: { salary: 'hidden' } } } }).expect(400);
+      await call('adminA', 'put', '/organizations/field-permissions').send({ config: { candidate: { panel: { email: 'gone' } } } }).expect(400);
+      await call('plainA', 'put', '/organizations/field-permissions').send({ config: {} }).expect(403);
+      await call('acting', 'put', '/organizations/field-permissions').send({ config: {} }).expect(403);
+      await call('plainA', 'post', '/user-groups').send({ name: 'X' }).expect(403);
+      await call('acting', 'post', '/user-groups').send({ name: 'Y' }).expect(403);
+      const g = (await call('adminA', 'post', '/user-groups').send({ name: `Dup ${run}` }).expect(201)).body;
+      await call('adminA', 'post', '/user-groups').send({ name: `Dup ${run}` }).expect(400);
+      await call('acting', 'patch', `/user-groups/${g.id}`).send({ name: 'Z' }).expect(403);
+      await call('adminB', 'patch', `/user-groups/${g.id}`).send({ name: 'Taken' }).expect(404);
+      await call('adminB', 'put', `/user-groups/${g.id}/members`).send({ userIds: [] }).expect(404);
+      await call('adminB', 'delete', `/user-groups/${g.id}`).expect(404);
+    });
+  });
 });

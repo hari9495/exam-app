@@ -27442,5 +27442,31 @@
                               "Screens/People/PPL-03 · Person record › Settings · custom fields (jobs, view only)"
                     ],
                     "note": "Positive and negative (kit custom-fields.test.tsx; web yx-org-pages.test.tsx; API retire-v2-settings.e2e-spec.ts and custom-fields.service.spec.ts). Field definition changes are now audited with before and after (they were not before), and the candidate and job API refuses changes while acting."
+          },
+          {
+                    "id": "MT-V2-ROLES-HIRING-FIELDS-GROUPS",
+                    "area": "Retire /v2: hiring field access and staff groups on Settings › Roles & access (answers 2426, 2430, 25 Nov 2026)",
+                    "screen": "Settings › People & Access › Roles & access",
+                    "url": "http://localhost:3000/yx/settings/access?view=fields",
+                    "account": "Admin admin-tester@demo-org.test (company settings and user groups); hr@demo-org.test (no company settings).",
+                    "steps": [
+                              "As admin: open Settings › Roles & access. Find the Show switch with People, Waiting, Requests, Roles, Hiring fields and Groups.",
+                              "Choose Hiring fields. For Candidate fields, set Email for Interview panel to Hidden and press Save field access.",
+                              "Sign in as a panel member and open a candidate in a job you are on the panel for.",
+                              "As admin: set it back to Can change, then press Discard changes before saving.",
+                              "Choose Groups. Press New group and press Make group with the name empty; then type the name of a group that exists.",
+                              "Make 'Plant recruiters', press Members, choose two people and press Save members.",
+                              "Press Edit, rename it, then Delete and confirm.",
+                              "Open Settings › Audit log; then Settings › Recycle bin.",
+                              "Open the old addresses /v2/settings/field-permissions and /v2/settings/user-groups.",
+                              "As hr@demo-org.test: open Roles & access. As admin acting as another person: choose Groups and press New group."
+                    ],
+                    "expected": "Step 1: both tabs show; no page scroll at 1278 x 635. Step 2: a toast says 'Field access saved.'. Step 3: the candidate's email is blanked out for the panel member. Step 4: the matrix returns to what was saved. Step 5: 'Enter a name.', then 'Another group has this name.'; nothing saved. Step 6: the row lists the two members and a toast confirms. Step 7: the row is gone after the confirm, which says it goes to the recycle bin. Step 8: the field access change with before and after; group made, renamed (before and after), members changed (who joined and who left), deleted; the group is in the recycle bin. Step 9: Roles & access on the Hiring fields and Groups tabs. Step 10: HR sees neither tab; acting, saving is refused ('Not available while acting for someone else').",
+                    "stories": [
+                              "Screens/People/Access and privacy › Roles & access · hiring field access (2426)",
+                              "Screens/People/Access and privacy › Roles & access · staff groups (2430)",
+                              "Screens/People/Access and privacy › Roles & access · staff groups, none yet"
+                    ],
+                    "note": "Positive and negative (kit access.test.tsx; web yx-access-pages.test.tsx, next.config.test.ts; API retire-v2-settings.e2e-spec.ts, user-groups and field-permissions service specs). Both APIs now refuse changes while acting; the field matrix is audited with before and after, group renames with before and after, membership changes with who joined and who left (they were only a count)."
           }
 ]

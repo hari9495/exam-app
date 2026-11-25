@@ -6,7 +6,11 @@ import { RolesAccessScreen, type AccessRequestRow, type AccessRole, type AccessU
 import type { LegalEntity, MasterRecord, OrgLocation } from '@yukthix/ui/org';
 import { useCurrentUser } from '../../../../../lib/hooks/useCurrentUser';
 import { useAccess, useAccessRead, useAccessWrite } from '../../../../../lib/yx-access';
-import { loadState, todayIst, useOrg } from '../../../../../lib/yx-org';
+import { loadState, todayIst, useOrg, useYxPermissions } from '../../../../../lib/yx-org';
+import { useFieldPermissions, useUpdateFieldPermissions } from '../../../../../lib/hooks/useFieldPermissions';
+import { useCreateUserGroup, useDeleteUserGroup, useSetGroupMembers, useUpdateUserGroup, useUserGroups } from '../../../../../lib/hooks/useUserGroups';
+import { useTeammates } from '../../../../../lib/hooks/useUserDirectory';
+import { GOVERNABLE_ROLES, GOVERNED_FIELDS } from '../../../../../lib/types';
 
 const id = encodeURIComponent;
 
@@ -28,6 +32,18 @@ export default function YxRolesAccessPage() {
   const read = useAccessRead();
   const write = useAccessWrite();
   const loadEffective = useCallback((userId: string) => read<EffectiveAccess>(`/users/${id(userId)}/effective`), [read]);
+  // Answers 2426 and 2430 (retiring /v2): hiring field access (org:manage_settings) and staff groups (users:manage_groups).
+  const perms = useYxPermissions();
+  const canFields = perms.has('org:manage_settings');
+  const canGroups = perms.has('users:manage_groups');
+  const fieldConfig = useFieldPermissions(canFields);
+  const saveFields = useUpdateFieldPermissions();
+  const groups = useUserGroups(canGroups);
+  const staff = useTeammates(canGroups);
+  const createGroup = useCreateUserGroup();
+  const updateGroup = useUpdateUserGroup();
+  const setMembers = useSetGroupMembers();
+  const deleteGroup = useDeleteUserGroup();
   return (
     <RolesAccessScreen
       state={loadState(users, roles, templates, grants)}
@@ -52,13 +68,30 @@ export default function YxRolesAccessPage() {
       onDeleteRole={async (roleId, reason) => void (await write(`/roles/${id(roleId)}/delete`, { reason }))}
       requests={requests.data?.rows ?? []}
       maxDays={requests.data?.maxDays ?? 30}
-      initialView={view === 'requests' || view === 'waiting' ? view : undefined}
       onApproveRequest={async (requestId, input) => {
         const { userId: _person, ...grant } = input;
         void _person;
         await write(`/requests/${id(requestId)}/approve`, grant);
       }}
       onRefuseRequest={async (requestId, reason) => void (await write(`/requests/${id(requestId)}/refuse`, { reason }))}
+      hiringFields={
+        canFields && fieldConfig.data
+          ? { config: fieldConfig.data, fields: { candidate: [...GOVERNED_FIELDS.candidate], job: [...GOVERNED_FIELDS.job] }, roles: [...GOVERNABLE_ROLES], onSave: (config) => saveFields.mutateAsync(config) }
+          : undefined
+      }
+      groups={
+        canGroups && groups.data
+          ? {
+              groups: groups.data,
+              people: (staff.data ?? []).map((p) => ({ value: p.id, label: p.name ? `${p.name} · ${p.email}` : p.email })),
+              onCreate: (input) => createGroup.mutateAsync(input),
+              onUpdate: (groupId, input) => updateGroup.mutateAsync({ groupId, ...input }),
+              onMembers: (groupId, userIds) => setMembers.mutateAsync({ groupId, userIds }),
+              onDelete: (groupId) => deleteGroup.mutateAsync(groupId),
+            }
+          : undefined
+      }
+      initialView={view === 'requests' || view === 'waiting' || view === 'fields' || view === 'groups' ? view : undefined}
       onSystemAdmin={async (userId, makeAdmin, reason) => void (await write(`/users/${id(userId)}/system-admin${makeAdmin ? '' : '/remove'}`, { reason }))}
     />
   );
