@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { FEEDBACK_VISIBILITY, QuickFeedbackScreen, type FeedbackItem, type FeedbackRequest, type QuickFeedbackItem, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { FEEDBACK_VISIBILITY, QuickFeedbackScreen, type FeedbackItem, type FeedbackRequest, type QuickFeedbackItem, type PersonNote, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
-import { day, designState, usePerf, usePerfWrite, refused } from '../../../../../lib/yx-performance';
+import { day, designState, usePerf, usePerfRead, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
 // PRF-08 Quick feedback, the designed screen with live data: received, given, requests to me, my team's (managers),
 // and for HR who handle concerns one person's feedback with sealing. A concern goes to the confidential channel; until
@@ -47,6 +47,7 @@ export default function YxFeedbackPage() {
   const [search, setSearch] = useState('');
   const directory = usePeople<{ people: { id: string; name: string; designation: { name: string | null } | null; department: { name: string | null } | null }[] }>(`/directory?limit=25${search ? `&q=${encodeURIComponent(search)}` : ''}`, { keepPrevious: true });
   const write = usePerfWrite();
+  const readPerf = usePerfRead();
   const myId = me.data?.employeeId ?? null;
   if (refused(received)) return <PerfNoAccessScreen title="Feedback" what="feedback" grantedBy="HR" active="Feedback" persona="emp" />;
   return (
@@ -72,6 +73,16 @@ export default function YxFeedbackPage() {
         onAsk: (input) => write('POST', '/feedback-requests', input),
         onDecline: (id) => write('POST', `/feedback-requests/${encodeURIComponent(id)}/decline`),
         onSeal: (id, reason) => write('POST', `/feedback/${encodeURIComponent(id)}/seal`, { reason }),
+        // Batch F item 32 (answer 2577): my private notes about a colleague (only I see them).
+        notes: {
+          people: (directory.data?.people ?? []).filter((p) => p.id !== myId).map((p) => ({ id: p.id, name: p.name, role: p.designation?.name ?? undefined, department: p.department?.name ?? undefined })),
+          onPeopleSearch: setSearch,
+          load: (employeeId) => readPerf<PersonNote[]>(`/notes?employeeId=${encodeURIComponent(employeeId)}`),
+          onAdd: (employeeId, text) => write('POST', '/notes', { employeeId, text }),
+          onEdit: (id, text) => write('PUT', `/notes/${encodeURIComponent(id)}`, { text }),
+          onDelete: (id) => write('DELETE', `/notes/${encodeURIComponent(id)}`),
+        },
+        oneOnOneHref: '/yx/performance/one-on-ones',
       }}
     />
   );

@@ -22,6 +22,8 @@ import { AnlFrame } from './proctoring-shared';
 import { HiringDashboardScreen, LiveSchedulesScreen, type LiveHiringDashboard, type LiveSchedules } from './analytics-live';
 import { deliveryMode, inheritedSensitivity, suppress, type Sensitivity } from './proctoring-logic';
 import { EXPORTS, METRICS, MONTHS, REPORTS, SCHEDULES, d, type MetricRow, type ReportRow, type ScheduleRow } from './proctoring-data';
+import { LiveReportLibraryScreen, type LiveReportLibrary } from './report-library-live';
+import { LiveReportSchedulesScreen, type LiveReportSchedules } from './report-schedules-live';
 
 const DEPTS = ['Engineering', 'Operations', 'Finance', 'People', 'Sales', 'Quality'];
 const SENS_TONE: Record<Sensitivity, 'neutral' | 'warning' | 'danger'> = { Internal: 'neutral', Confidential: 'warning', Special: 'danger' };
@@ -532,7 +534,11 @@ export function ReportBuilderScreen({ grouped = true, chartOn = false, empty = f
 /* ANL-06 · Report library                                             */
 /* ================================================================== */
 
-export function ReportLibraryScreen({ query = '', favouritesOnly = false }: { query?: string; favouritesOnly?: boolean }) {
+export function ReportLibraryScreen(props: { query?: string; favouritesOnly?: boolean } | { live: LiveReportLibrary }) {
+  return 'live' in props ? <LiveReportLibraryScreen live={props.live} /> : <SampleReportLibrary {...props} />;
+}
+
+function SampleReportLibrary({ query = '', favouritesOnly = false }: { query?: string; favouritesOnly?: boolean }) {
   // ANL-06
   const [q, setQ] = useState(query);
   const [fav, setFav] = useState(favouritesOnly);
@@ -639,7 +645,8 @@ export function MetricCatalogueScreen({ selected = 'workforce.attrition_rate', b
 /* ================================================================== */
 
 /** ANL-08. With `live`, the company's schedules (today the weekly hiring digest, answer 2428). */
-export function SchedulesScreen(props: { tab?: 'schedules' | 'exports'; dialog?: boolean; persona?: 'HR' | 'Auditor' } | { live: LiveSchedules }) {
+export function SchedulesScreen(props: { tab?: 'schedules' | 'exports'; dialog?: boolean; persona?: 'HR' | 'Auditor' } | { live: LiveSchedules } | { library: LiveReportSchedules }) {
+  if ('library' in props) return <LiveReportSchedulesScreen live={props.library} />;
   return 'live' in props ? <LiveSchedulesScreen live={props.live} /> : <SampleSchedules {...props} />;
 }
 

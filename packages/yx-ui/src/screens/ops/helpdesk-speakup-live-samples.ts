@@ -74,13 +74,14 @@ export function liveSetup(over: Partial<LiveSpeakUpSetup> = {}): LiveSpeakUpSetu
       members: [
         { id: 'm1', team: 'ethics', userId: 'u-rekha', name: 'Rekha Iyengar', role: 'member', addedAt: '2026-10-01T05:00:00Z' },
         { id: 'm2', team: 'ethics', userId: 'u-suresh', name: 'Suresh Pillai', role: 'member', addedAt: '2026-10-01T05:00:00Z' },
-        { id: 'm3', team: 'ic', userId: 'u-lakshmi', name: 'Lakshmi Venkatesan', role: 'presiding', addedAt: '2026-10-01T05:00:00Z' },
-        { id: 'm4', team: 'ic', userId: 'u-ngo', name: 'Farida Sheikh', role: 'external', addedAt: '2026-10-01T05:00:00Z' },
+        { id: 'm3', team: 'ic', userId: 'u-lakshmi', name: 'Lakshmi Venkatesan', role: 'presiding', addedAt: '2026-10-01T05:00:00Z', woman: true, termEndsOn: '2029-09-30' },
+        { id: 'm4', team: 'ic', userId: 'u-ngo', name: 'Farida Sheikh', role: 'external', addedAt: '2026-10-01T05:00:00Z', woman: true, termEndsOn: '2029-09-30' },
         { id: 'm5', team: 'escalation', userId: 'u-chair', name: 'Anand Rao', role: 'member', addedAt: '2026-10-01T05:00:00Z' },
         { id: 'm6', team: 'safety', userId: 'u-prakash', name: 'Prakash Nair', role: 'member', addedAt: '2026-11-04T05:00:00Z' },
         { id: 'm7', team: 'ir', userId: 'u-harish', name: 'Harish Bhat', role: 'member', addedAt: '2026-11-04T05:00:00Z' },
         { id: 'm8', team: 'ir', userId: 'u-rohini', name: 'Adv. Rohini Kamath', role: 'external', addedAt: '2026-11-04T05:00:00Z' },
       ],
+      locations: [{ id: 'loc-blr', name: 'Bengaluru head office' }, { id: 'loc-hsr', name: 'Hosur plant' }],
       users: [
         { id: 'u-rekha', name: 'Rekha Iyengar', email: 'rekha@kaverifoods.in' },
         { id: 'u-divya', name: 'Divya Raghunathan', email: 'divya@kaverifoods.in' },

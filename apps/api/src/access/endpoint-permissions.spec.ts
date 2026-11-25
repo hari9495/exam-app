@@ -33,7 +33,10 @@ import { PersonPanelsController } from '../people/person-panels.controller';
 import { BfsiController } from '../people/bfsi.controller';
 import { MyPoliciesController, PoliciesAdminController } from '../policies/policies.controller';
 import { SpeakupController } from '../speakup/speakup.controller';
+import { AnnouncementsController, ModerationController, MyEngageController, SurveysController } from '../engage/engage.controller';
 import { CasesController, EthicsController, MisconductReportsController, MyCasesController } from '../cases/cases.controller';
+import { LearningController } from '../learning/learning.controller';
+import { LibraryController } from '../library/library.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -89,7 +92,7 @@ const IMPLICIT: Record<string, string[]> = {
   ExpensesController: ['categories', 'tiers', 'myLimits'],
   // M05 E2: the service decides per claim (claimant, approver whose turn it is, expense.claim.view in scope, finance).
   // Saved expenses (Keka ideas): the person's own only; the service matches the employee and their own draft claim.
-  ExpenseClaimsController: ['home', 'list', 'create', 'get', 'rename', 'receipt', 'addLine', 'updateLine', 'removeLine', 'receiptFile', 'fxProof', 'fxProofFile', 'check', 'submit', 'withdraw', 'approveAmount', 'decide', 'myItems', 'addItem', 'removeItem', 'claimItems'],
+  ExpenseClaimsController: ['home', 'list', 'create', 'get', 'rename', 'receipt', 'addLine', 'updateLine', 'removeLine', 'receiptFile', 'fxProof', 'fxProofFile', 'check', 'submit', 'withdraw', 'approveAmount', 'decide', 'myItems', 'addItem', 'removeItem', 'claimItems', 'mine'], // mine: batch E, my own claims
   // E4: the traveller, the approver whose task it is and the travel desk (in scope) are decided per trip or advance.
   ExpenseTripsController: ['list', 'create', 'get', 'update', 'submit', 'cancel', 'addBooking', 'partner', 'removeBooking', 'bookingFile', 'advances', 'request', 'advance', 'amount'],
   ExpenseReportsController: [],
@@ -98,10 +101,14 @@ const IMPLICIT: Record<string, string[]> = {
   // PRF-01: the home; each part is the viewer's own, their team's, or HR's with perf.cycle.manage (checked by the service).
   PerformanceHomeController: ['home'],
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
-  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade'],
+  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap'], // batch F item 30: the manager's own team, checked in the service
+  // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
+  // G4: the report library (entries follow their area's keys) and company documents (the service decides per folder).
+  LibraryController: ['reports', 'favourite', 'documents', 'file', 'schedulesList', 'schedule', 'endSchedule'],
+  LearningController: ['me', 'mySkills', 'teamSkills', 'personSkills', 'assessSkill', 'decideSkill', 'addOwnSkill', 'raiseTeamNeed', 'feedbackDue', 'react', 'checks', 'check', 'roles', 'external', 'sessionList', 'upcoming', 'sessionPage', 'nominate', 'checkinCode', 'closeCheckin', 'mark', 'checkIn', 'decline', 'enrol', 'player', 'markDone', 'itemFile', 'certificatePdf', 'team', 'person'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   // counts: the record's Performance tab, counts only; the service checks who may ask.
-  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions'],
+  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions', 'myNotes', 'addNote', 'editNote', 'deleteNote'], // batch F item 32: the author alone (service and RLS)
   // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope); pdf: the same
   // view as a file (PRF-05 / PRF-06).
   PerformanceReviewsController: ['list', 'get', 'pdf', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
@@ -120,7 +127,7 @@ const IMPLICIT: Record<string, string[]> = {
   EmployeeImportController: [],
   PoliciesAdminController: [],
   // HLP-06: the form and one's own named report; cases: being routed to the case is the access (404 otherwise).
-  SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply'],
+  SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply', 'icCommittee', 'logAwareness', 'annualReportStep'], // IC routes: committee members only (404 otherwise); the report steps need the presiding officer (403)
   // HLP-07/08/09: membership of the case is the access (404 otherwise); My cases is one's own part.
   CasesController: ['list', 'detail', 'message', 'notice', 'delay', 'moreTime', 'propose', 'approve', 'sendBack', 'icReport', 'vote', 'sign', 'relief', 'reliefDone', 'recuse', 'addMember', 'upload', 'file', 'letter'],
   EthicsController: ['reports', 'severity', 'route'],
@@ -131,11 +138,17 @@ const IMPLICIT: Record<string, string[]> = {
   PeopleRegistersController: [],
   RestructureController: [],
   PositionsController: [],
+  // Batch G2 item 12: announcements need engage.announce; the feed is one's own (audience checked per announcement).
+  AnnouncementsController: [],
+  // Items 100, 73, 74, 75: my spaces, an invitation, my own team or a readable post (404 otherwise).
+  MyEngageController: ['announcements', 'acknowledge', 'feed', 'spaces', 'post', 'like', 'comments', 'comment', 'reportPost', 'reportComment', 'kudosOptions', 'giveKudos', 'wall', 'vote', 'mySurveys', 'toTake', 'answer', 'teamSurveys', 'teamResults', 'myPlan', 'savePlan', 'celebrationsToday', 'myCelebrations', 'setMyCelebrations'],
+  SurveysController: [],
+  ModerationController: [],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, PositionsController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, CasesController, EthicsController, MyCasesController, MisconductReportsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController, LibraryController, PositionsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

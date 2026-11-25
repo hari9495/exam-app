@@ -3,7 +3,7 @@
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Spinner, useToast } from '@yukthix/ui';
-import { MyCasesScreen, type MyCaseDetail, type MyCaseRow } from '@yukthix/ui/desk';
+import { MyCasesScreen, type AskedQuestion, type AskedQuestionDetail, type MyCaseDetail, type MyCaseRow } from '@yukthix/ui/desk';
 import { deskState, useDesk, useDeskDownload, useDeskUpload, useDeskWrite } from '../../../../../lib/yx-desk';
 
 const id = encodeURIComponent;
@@ -24,6 +24,10 @@ function MyCases() {
   const accident = cases.find((c) => c.id === openId)?.kind === 'accident';
   const one = useDesk<MyCaseDetail>(openId && list.data && accidents.data ? (accident ? `/accidents/mine/${id(openId)}` : `/my/cases/${id(openId)}`) : null);
   const write = useDeskWrite();
+  // Batch F item 33 (answer 2573): questions from my team that I answer as their manager (?asked=<id> opens one).
+  const askedId = params.get('asked');
+  const asked = useDesk<AskedQuestion[]>('/my/asked');
+  const askedOne = useDesk<AskedQuestionDetail>(askedId ? `/my/asked/${id(askedId)}` : null);
   const upload = useDeskUpload();
   const download = useDeskDownload();
   return (
@@ -50,6 +54,17 @@ function MyCases() {
         onOpenFile: (c, f) => void download(`/my/cases/${id(c)}/files/${id(f)}`).catch((e: Error) => toast({ title: e.message })),
         onSpeakUp: () => router.push('/yx/desk/speakup'),
         onBack: () => router.push('/yx'),
+        asked: asked.data
+          ? {
+              rows: asked.data,
+              openId: askedId,
+              onOpen: (q) => router.replace(q ? `/yx/desk/my-cases?asked=${id(q)}` : '/yx/desk/my-cases'),
+              detail: askedOne.data ?? null,
+              onAnswer: async (q, text, solve) => {
+                await write(`/my/asked/${id(q)}/answer`, 'POST', { text, solve });
+              },
+            }
+          : undefined,
       }}
     />
   );

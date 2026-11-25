@@ -380,7 +380,9 @@ export class PreboardingPortalService {
 
   async letterFile(slug: string, token: string | undefined, id: string, which: 'letter' | 'acceptance') {
     return this.inPortal(slug, token, async (tx, s, c) => {
-      const l = await tx.letterIssue.findFirst({ where: { organizationId: s.org, id, personId: s.personId, status: { in: ['issued', 'superseded'] } } });
+      // Answer 2542: their accepted offer letter (issued to them as a candidate) is theirs to read too.
+      const mine = await this.letters.acceptedOfferLetterIds(tx, s.org, s.personId);
+      const l = await tx.letterIssue.findFirst({ where: { organizationId: s.org, id, status: { in: ['issued', 'superseded'] }, OR: [{ personId: s.personId }, { id: { in: mine } }] } });
       if (!l) throw new NotFoundException('No such letter.');
       return this.letters.letterFile(tx, c, l, which, 'self');
     }, true);

@@ -23,12 +23,16 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, ProgressRing, RatingScale, SkillLevel, type Device } from './growth-kit';
 import { budgetCheck, enrol } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { LiveCoursePlayerScreen, LiveMyLearningScreen, type LiveMyLearning, type LivePlayer } from './learn-live';
+import { LiveTrainingFeedbackScreen, type LiveFeedback } from './learn-feedback-live';
+import { LiveSkillSuggestionsScreen, LiveSkillsProfileScreen, type LiveSkillSuggestions, type LiveSkillsProfile } from './learn-skills-live';
 import './growth.css';
 
 /* ================================================================== Shared types */
 
 export type CourseType = 'Classroom' | 'Virtual' | 'Self-paced' | 'SCORM' | 'Assessment only';
-export type CourseSource = 'Kaveri Foods' | 'Provider' | 'Partner pack';
+/** The company's own name, a provider, or a partner pack (live: the company's name for its own courses). */
+export type CourseSource = 'Kaveri Foods' | 'Provider' | 'Partner pack' | (string & {});
 
 export interface Course {
   id: string;
@@ -74,7 +78,7 @@ function CourseCard({ c, action }: { c: Course; action?: ReactNode }) {
       <h3 className="yx-growth-card__title">{c.title}</h3>
       <span className="yx-growth-meta">
         {c.type} · {c.duration}
-        {c.source !== 'Kaveri Foods' ? ` · ${c.source === 'Provider' ? c.provider : 'Partner pack'}` : ''}
+        {c.source === 'Provider' ? ` · ${c.provider}` : c.source === 'Partner pack' ? ' · Partner pack' : ''}
       </span>
       <div className="yx-growth-row">
         {c.mandatory && <Badge tone="warning">Mandatory</Badge>}
@@ -101,6 +105,8 @@ export interface MyLearningProps {
   recommendations: { course: Course; reason: string }[];
   points?: { total: number; badges: string[]; optedOut?: boolean } | null;
   tab?: 'mine' | 'catalogue' | 'certificates';
+  /** Wired to the API (the core: assigned, catalogue, certificates). */
+  live?: LiveMyLearning;
 }
 
 const CAT_FIELDS: FilterFieldDef[] = [
@@ -109,7 +115,11 @@ const CAT_FIELDS: FilterFieldDef[] = [
 ];
 
 /** LRN-01 My learning (mobile first) + catalogue: assigned with due dates, continue, recommendations (AI, no auto-enrol), certificates. */
-export function MyLearningScreen({ device = 'desktop', state = 'ready', enrolments, certificates, catalogue, recommendations, points, tab = 'mine' }: MyLearningProps) {
+export function MyLearningScreen(props: MyLearningProps) {
+  return props.live ? <LiveMyLearningScreen live={props.live} /> : <SampleMyLearning {...props} />;
+}
+
+function SampleMyLearning({ device = 'desktop', state = 'ready', enrolments, certificates, catalogue, recommendations, points, tab = 'mine' }: MyLearningProps) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [optOut, setOptOut] = useState(!!points?.optedOut);
@@ -308,10 +318,16 @@ export interface CoursePlayerProps {
   currentId: string;
   scormStatus?: 'incomplete' | 'completed' | 'failed';
   completed?: boolean;
+  /** Wired to the API (PDF, video and link items). */
+  live?: LivePlayer;
 }
 
 /** LRN-02 Course player (T3): outline, sandboxed content, required items; SCORM status comes from the package (YX-LRN-09). */
-export function CoursePlayerScreen({ device = 'desktop', course, items: initial, currentId, scormStatus, completed }: CoursePlayerProps) {
+export function CoursePlayerScreen(props: CoursePlayerProps) {
+  return props.live ? <LiveCoursePlayerScreen live={props.live} /> : <SamplePlayer {...props} />;
+}
+
+function SamplePlayer({ device = 'desktop', course, items: initial, currentId, scormStatus, completed }: CoursePlayerProps) {
   const [items, setItems] = useState(initial);
   const [cur, setCur] = useState(currentId);
   const item = items.find((i) => i.id === cur) ?? items[0];
@@ -556,7 +572,22 @@ export interface PersonSkill {
 }
 
 /** LRN-10 Skills profile (T3): confirmed skills with source and evidence, gaps for the next role; only confirmed skills count (YX-PERF-20). */
-export function SkillsProfileScreen({ persona, device = 'desktop', person, role, nextRole, skills, pending, state = 'ready' }: { persona: 'emp' | 'mgr'; device?: Device; person: string; role: string; nextRole: string; skills: PersonSkill[]; pending: number; state?: LoadState }) {
+export function SkillsProfileScreen(props: SkillsProfileProps | { live: LiveSkillsProfile }) {
+  return 'live' in props ? <LiveSkillsProfileScreen live={props.live} /> : <SkillsProfileDesign {...props} />;
+}
+
+interface SkillsProfileProps {
+  persona: 'emp' | 'mgr';
+  device?: Device;
+  person: string;
+  role: string;
+  nextRole: string;
+  skills: PersonSkill[];
+  pending: number;
+  state?: LoadState;
+}
+
+function SkillsProfileDesign({ persona, device = 'desktop', person, role, nextRole, skills, pending, state = 'ready' }: SkillsProfileProps) {
   const list =
     state === 'empty' || skills.length === 0 ? (
       <EmptyState title="No confirmed skills yet" description="Skills are added from completed courses, tests, projects and your manager. Confirm suggestions to build your profile." action={<Button>Add a skill</Button>} />
@@ -625,7 +656,20 @@ export function SkillsProfileScreen({ persona, device = 'desktop', person, role,
 /* ================================================================== LRN-12 · Session feedback + 60-day manager check */
 
 /** LRN-12 (T4): reaction survey after a session (Emp) and the manager's 60-day "applying the skill?" check (Q8). */
-export function TrainingFeedbackScreen({ mode, device = 'desktop', course, trainer, person, sent }: { mode: 'reaction' | 'manager-check'; device?: Device; course: string; trainer: string; person?: string; sent?: boolean }) {
+export function TrainingFeedbackScreen(props: TrainingFeedbackProps | { live: LiveFeedback }) {
+  return 'live' in props ? <LiveTrainingFeedbackScreen live={props.live} /> : <SampleTrainingFeedback {...props} />;
+}
+
+interface TrainingFeedbackProps {
+  mode: 'reaction' | 'manager-check';
+  device?: Device;
+  course: string;
+  trainer: string;
+  person?: string;
+  sent?: boolean;
+}
+
+function SampleTrainingFeedback({ mode, device = 'desktop', course, trainer, person, sent }: TrainingFeedbackProps) {
   const [overall, setOverall] = useState<number | null>(null);
   const [trainerScore, setTrainerScore] = useState<number | null>(null);
   const [applying, setApplying] = useState('');
@@ -793,7 +837,18 @@ export interface SkillSuggestion {
 }
 
 /** LRN-15 (T3 / T8): AI skill suggestions stay pending until the employee or manager confirms; rejected ones aren't re-offered from the same evidence. */
-export function SkillSuggestionsScreen({ persona, device = 'desktop', person, suggestions }: { persona: 'emp' | 'mgr'; device?: Device; person: string; suggestions: SkillSuggestion[] }) {
+export function SkillSuggestionsScreen(props: SkillSuggestionsProps | { live: LiveSkillSuggestions }) {
+  return 'live' in props ? <LiveSkillSuggestionsScreen live={props.live} /> : <SkillSuggestionsDesign {...props} />;
+}
+
+interface SkillSuggestionsProps {
+  persona: 'emp' | 'mgr';
+  device?: Device;
+  person: string;
+  suggestions: SkillSuggestion[];
+}
+
+function SkillSuggestionsDesign({ persona, device = 'desktop', person, suggestions }: SkillSuggestionsProps) {
   const [decided, setDecided] = useState<Record<string, 'Confirmed' | 'Rejected'>>({});
   const open = suggestions.filter((s) => !decided[s.id]);
   const list =

@@ -49,3 +49,32 @@ export function attendanceMismatch(timesheetMinutes: number, workedMinutes: numb
   const h = (m: number) => `${Math.round((m / 60) * 10) / 10} h`;
   return `Timesheet ${h(timesheetMinutes)} vs attendance ${h(workedMinutes)} worked`;
 }
+
+/** Batch D B3 (answer 2537): the team's hours over a range: this week (default), this month's weeks, or since the start. */
+export type HoursRange = 'week' | 'month' | 'all';
+export const HOURS_RANGES: readonly HoursRange[] = ['week', 'month', 'all'];
+
+/** The first Monday a range counts from (week starts on or after it); null for since the start. */
+export function rangeFrom(range: HoursRange, today: string, mondayOf: (iso: string) => string): string | null {
+  if (range === 'all') return null;
+  return mondayOf(range === 'week' ? today : `${today.slice(0, 7)}-01`);
+}
+
+type LineHours = { employee_id: string; billable: boolean; minutes: number[]; status: string | null; approved_minutes: number[]; sheet: string };
+
+/**
+ * Per person, in minutes: approved billable, approved non-billable (a line approved, reduced or corrected, or a week
+ * approved before line decisions: what was approved, never what was rejected) and everything booked (sent or approved).
+ */
+export function teamHours(rows: LineHours[], approved: (l: { minutes: number[]; status: string | null; approvedMinutes: number[] }) => number[]): Map<string, { billable: number; nonBillable: number; booked: number }> {
+  const out = new Map<string, { billable: number; nonBillable: number; booked: number }>();
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  for (const r of rows) {
+    const t = out.get(r.employee_id) ?? { billable: 0, nonBillable: 0, booked: 0 };
+    t.booked += sum(r.minutes);
+    const decided = r.status ? ['approved', 'reduced', 'corrected'].includes(r.status) : r.sheet === 'approved';
+    if (decided) t[r.billable ? 'billable' : 'nonBillable'] += sum(approved({ minutes: r.minutes, status: r.status, approvedMinutes: r.approved_minutes }));
+    out.set(r.employee_id, t);
+  }
+  return out;
+}

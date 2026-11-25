@@ -4,6 +4,10 @@
 import { useId, useMemo, useState, type DragEvent, type ReactNode } from 'react';
 import {
   ArrowLeft,
+  Cake,
+  Gift,
+  PartyPopper,
+  Plus,
   BarChart3,
   CalendarDays,
   Check,
@@ -23,11 +27,12 @@ import {
 } from 'lucide-react';
 import { DesktopFrame, PhoneFrame, SCREEN_RAIL, type PanelSection } from '../_kit/frames';
 import { Button, IconButton, Link } from '../../components/button';
-import { Badge, AiBadge, Avatar, type BadgeTone } from '../../components/display';
+import { Badge, AiBadge, Avatar, PersonLabel, type BadgeTone } from '../../components/display';
 import { Icon, Text, VisuallyHidden } from '../../components/foundations';
-import { InlineAlert } from '../../components/feedback';
+import { InlineAlert, Skeleton } from '../../components/feedback';
+import { Drawer } from '../../components/drawer';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from '../../components/menu';
-import { RadioGroup } from '../../components/choice';
+import { RadioGroup, Switch } from '../../components/choice';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { PlainTable } from '../../components/plain-table';
 import { MultiSelect, Select } from '../../components/select';
@@ -63,10 +68,10 @@ const PANELS: Record<GrowthArea, { title: string; items: string[]; by: Partial<R
   },
   learning: {
     title: 'Learning',
-    items: ['My learning', 'Catalogue', 'My tests', 'Sessions', 'Compliance', 'Needs & budgets', 'Skills', 'Course builder'],
+    items: ['My learning', 'Catalogue', 'My tests', 'Sessions', 'Compliance', 'Needs & budgets', 'Skills', 'My team', 'Course builder'],
     by: {
       emp: ['My learning', 'Catalogue', 'My tests', 'Skills'],
-      mgr: ['My learning', 'Catalogue', 'My tests', 'Skills', 'Needs & budgets'],
+      mgr: ['My learning', 'Catalogue', 'My tests', 'Skills', 'My team', 'Needs & budgets'],
       fin: ['Needs & budgets'],
     },
   },
@@ -678,13 +683,16 @@ export interface FeedPost {
   points?: number;
   event?: { when: string; where: string; going: number };
   ack?: { required: boolean; done?: boolean; due?: Date };
-  state?: 'Published' | 'Held' | 'Hidden';
+  /** Batch G2 item 100: Pending = waiting for a moderator's approval (shown to its author only). */
+  state?: 'Published' | 'Held' | 'Hidden' | 'Pending';
 }
 
 const TYPE_TONE: Record<PostType, BadgeTone> = { Announcement: 'info', Update: 'neutral', Kudos: 'success', Celebration: 'success', Poll: 'neutral', Event: 'neutral' };
 
 /** One feed item: author, space, type, body, poll / kudos / event block, reactions, comments, report (M09 §3). */
-export function PostCard({ post, now, onAck, onReport }: { post: FeedPost; now: Date; onAck?: () => void; onReport?: () => void }) {
+/** `social` false hides Like and Comment (batch G2: an announcement before the feed's reactions are live). onAck may be async: a failure undoes it. */
+/** Batch G2 item 100: onLike (may be async; a failure undoes it) and onComment open the live actions. */
+export function PostCard({ post, now, onAck, onReport, social = true, onLike, onComment, onVote }: { post: FeedPost; now: Date; onAck?: () => void | Promise<unknown>; onReport?: () => void; social?: boolean; onLike?: () => void | Promise<unknown>; onComment?: () => void; onVote?: (i: number) => void }) {
   const [reacted, setReacted] = useState(!!post.reacted);
   const [acked, setAcked] = useState(!!post.ack?.done);
   const mins = Math.round((now.getTime() - post.at.getTime()) / 60000);
@@ -708,6 +716,8 @@ export function PostCard({ post, now, onAck, onReport }: { post: FeedPost; now: 
           </Badge>
         )}
         <Badge tone={TYPE_TONE[post.type]}>{post.type}</Badge>
+        {post.state === 'Held' && <Badge tone="warning">Held for review</Badge>}
+        {post.state === 'Pending' && <Badge tone="warning">Waiting for approval</Badge>}
         {onReport && (
           <Menu>
             <MenuTrigger asChild>
@@ -728,7 +738,7 @@ export function PostCard({ post, now, onAck, onReport }: { post: FeedPost; now: 
         </p>
       )}
       <div className="yx-post__body">{post.body}</div>
-      {post.poll && <PollBlock poll={post.poll} />}
+      {post.poll && <PollBlock poll={post.poll} onVote={onVote} />}
       {post.event && (
         <p className="yx-post__event">
           <Icon icon={CalendarDays} /> {post.event.when} · {post.event.where} · {post.event.going} going
@@ -747,7 +757,7 @@ export function PostCard({ post, now, onAck, onReport }: { post: FeedPost; now: 
                 size="sm"
                 onClick={() => {
                   setAcked(true);
-                  onAck?.();
+                  void Promise.resolve(onAck?.()).catch(() => setAcked(false));
                 }}
               >
                 Acknowledge
@@ -756,14 +766,23 @@ export function PostCard({ post, now, onAck, onReport }: { post: FeedPost; now: 
           )}
         </div>
       )}
-      <footer className="yx-post__foot">
-        <Button size="sm" icon={Heart} aria-pressed={reacted} onClick={() => setReacted((r) => !r)}>
+      {social && <footer className="yx-post__foot">
+        <Button
+          size="sm"
+          icon={Heart}
+          aria-pressed={reacted}
+          onClick={() => {
+            const was = reacted;
+            setReacted(!was);
+            void Promise.resolve(onLike?.()).catch(() => setReacted(was));
+          }}
+        >
           {reacted ? 'Liked' : 'Like'} · {post.reactions + (reacted && !post.reacted ? 1 : !reacted && post.reacted ? -1 : 0)}
         </Button>
-        <Button size="sm" icon={MessageSquare}>
+        <Button size="sm" icon={MessageSquare} onClick={onComment}>
           Comment · {post.comments}
         </Button>
-      </footer>
+      </footer>}
     </article>
   );
 }
@@ -1033,6 +1052,121 @@ export function CalibrationPlan({ sessions, onChange, facilitators, departments 
           </FormField>
         </div>
       </Dialog>
+    </div>
+  );
+}
+
+/* ================================================================== Comments drawer (batch G2 item 100) */
+
+export interface FeedComment {
+  id: string;
+  author: string;
+  mine: boolean;
+  body: string;
+  at: string;
+  /** Held for a blocked word: only its author sees it, marked. */
+  held: boolean;
+}
+
+/** The comments on one post: read, add (a blocked word holds it for a moderator), report someone else's. */
+export function CommentsDrawer({ open, onClose, title, comments, onAdd, onReport }: { open: boolean; onClose: () => void; title: string; comments: FeedComment[] | null; onAdd: (text: string) => Promise<unknown>; onReport: (id: string) => Promise<unknown> }) {
+  const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [reported, setReported] = useState<string[]>([]);
+  const add = async () => {
+    setTried(true);
+    if (!text.trim()) return void setTimeout(() => document.getElementById('cm-text')?.focus(), 0);
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onAdd(text.trim());
+      setText('');
+      setTried(false);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'Not sent. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer open={open} onOpenChange={(o) => !o && onClose()} title="Comments" subtitle={title} footer={<Button variant="primary" loading={busy} onClick={() => void add()}>Comment</Button>}>
+      <div className="yx-growth-stack">
+        {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+        {comments === null ? (
+          <Skeleton height={80} />
+        ) : comments.length === 0 ? (
+          <Text tone="secondary">No comments yet.</Text>
+        ) : (
+          <ul className="yx-growth-list" aria-label="Comments">
+            {comments.map((c) => (
+              <li key={c.id} className="yx-growth-list__item">
+                <div className="yx-growth-list__main">
+                  <span>
+                    <strong>{c.author}</strong> {c.held && <Badge tone="warning">Held for review</Badge>}
+                  </span>
+                  <span>{c.body}</span>
+                  <span className="yx-growth-meta">{formatDate(new Date(c.at))}</span>
+                </div>
+                {!c.mine && (
+                  <Button size="sm" icon={Flag} disabled={reported.includes(c.id)} onClick={() => void onReport(c.id).then(() => setReported((r) => [...r, c.id]), (e: unknown) => setFailed(e instanceof Error ? e.message : 'Not reported.'))}>
+                    {reported.includes(c.id) ? 'Reported' : 'Report'}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <FormField id="cm-text" label="Your comment" required error={tried && !text.trim() ? 'Write the comment first.' : null}>
+          <TextArea value={text} onChange={setText} rows={3} maxLength={2000} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+/* ================================================================== Celebrations (ENG-01 strip; batch G2 item 76) */
+
+export interface Celebration {
+  id: string;
+  name: string;
+  kind: 'Birthday' | 'Work anniversary' | 'New joiner' | 'Promotion';
+  detail: string;
+}
+
+const CELEB_ICON = { Birthday: Cake, 'Work anniversary': PartyPopper, 'New joiner': Plus, Promotion: Gift };
+
+export function CelebrationStrip({ items }: { items: Celebration[] }) {
+  if (items.length === 0) return null;
+  return (
+    <section aria-label="Celebrations today" className="yx-growth-stack" data-gap="sm">
+      <h2 className="yx-growth-h">Today</h2>
+      {/* Scrolls sideways, so it is a focusable, labelled region (keyboard users can scroll it). */}
+      <div className="yx-growth-strip" tabIndex={0} role="region" aria-label="Celebrations today, scroll sideways for more">
+        <ul className="yx-growth-strip__list">
+        {items.map((c) => (
+          <li key={c.id} className="yx-growth-strip__item">
+            <PersonLabel name={c.name} />
+            <span className="yx-growth-meta">
+              <Icon icon={CELEB_ICON[c.kind]} /> {c.detail}
+            </span>
+          </li>
+        ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+
+/** Batch G2 item 76: which of my own celebrations the feed shows (a personal opt-out per kind). */
+export function CelebrationChoices({ value, onChange }: { value: { birthday: boolean; anniversary: boolean; newJoiner: boolean }; onChange: (v: { birthday: boolean; anniversary: boolean; newJoiner: boolean }) => void | Promise<unknown> }) {
+  return (
+    <div className="yx-growth-stack" data-gap="sm">
+      <Switch checked={value.birthday} onChange={(c) => void onChange({ ...value, birthday: c })} label="My birthday" description="Never the year. Hidden too when you hide your birthday in your profile." />
+      <Switch checked={value.anniversary} onChange={(c) => void onChange({ ...value, anniversary: c })} label="My work anniversary" />
+      <Switch checked={value.newJoiner} onChange={(c) => void onChange({ ...value, newJoiner: c })} label="Welcome me as a new joiner" />
     </div>
   );
 }

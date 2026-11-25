@@ -118,6 +118,8 @@ export const YX_KEYS = [
   'expense.policy.manage',
   // B8/E5: Settings 4.11 Benefits & FBP.
   'benefits.settings.manage',
+  // Batch C item 4 (answer 2500): everyone's pending approvals, with reassign.
+  'workflow.approvals.oversee',
   'expense.policy.view',
   // HLP-10 / HLP-11 company policies.
   'policy.manage',
@@ -126,6 +128,10 @@ export const YX_KEYS = [
   'speakup.setup.manage',
   // HLP-08 disciplinary show-cause cases.
   'case.disciplinary.raise',
+  // Batch G2 item 12: announcements.
+  'engage.announce',
+  'engage.moderate',
+  'engage.survey.manage',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',
@@ -189,6 +195,10 @@ export const YX_KEYS = [
   'perf.feedback.investigate',
   'perf.calibration.facilitate',
   'perf.report.view',
+  'learning.manage',
+  'learning.report.view',
+  'company.documents.manage',
+  'exports.log.view',
   'perf.comp.manage',
   'perf.comp.approve',
   'perf.pip.manage',

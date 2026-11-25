@@ -995,15 +995,6 @@ export interface Offer {
   approval: ApprovalSummary | null;
 }
 
-// GET /offer-template -- the org's saved, named offer letter templates (empty if none saved yet).
-export interface OfferTemplate {
-  id: string | null;
-  name: string;
-  subject: string;
-  body: string;
-  isDefault: boolean;
-}
-
 // GET /public/offers/:token -- unauthenticated, deliberately thin (no offer id, no org internals).
 export interface PublicOffer {
   /** Careers answer 362: the company's logo, colour, careers link and white-label. */
@@ -1017,6 +1008,8 @@ export interface PublicOffer {
   pdfUrl: string | null;
   /** HIR-09: the company's letter asks for an e-signature (a one-time code by email). */
   esign?: boolean;
+  /** M10 D4: issued as a numbered company letter, downloaded from GET /public/offers/:token/letter. */
+  letter?: { referenceNo: string | null } | null;
 }
 
 export type InterviewStatus = 'proposed' | 'confirmed' | 'declined' | 'reschedule_requested' | 'cancelled';

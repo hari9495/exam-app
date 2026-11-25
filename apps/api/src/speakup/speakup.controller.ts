@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
@@ -8,9 +8,10 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
+import type { ScopeUser } from '../access/scope';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession } from '../service-desk/desk-access';
-import { AnonymousReportDto, CodeDto, ReplyDto, ReportDto, TeamMemberDto, TeamReplyDto } from './dto';
+import { AnnualReportStepDto, AnonymousReportDto, AwarenessSessionDto, CodeDto, EditMemberDto, ReplyDto, ReportDto, TeamMemberDto, TeamReplyDto } from './dto';
 import { SpeakupService } from './speakup.service';
 
 // HLP-06 speak-up (rules: docs/yukthix/helpdesk-design-map.md section 4e). Keys (P02 YX-SEC-01):
@@ -66,6 +67,34 @@ export class SpeakupController {
     return this.speakup.teamReply(ctx, id, dto.body);
   }
 
+  // Batch F item 13 (answer 2578): the committee, for its own members only (others: 404).
+  @Get('ic')
+  icCommittee(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.speakup.icCommittee(ctx);
+  }
+
+  // Answer 2620: HR's counts view of the committees (training reports, company-wide): counts only, none below 5 complaints.
+  @Get('ic/counts')
+  @RequirePermissions('learning.report.view')
+  icCounts(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.speakup.icCounts(ctx, req.user as ScopeUser);
+  }
+
+  // Batch G1 answer 2593: the committee's awareness log and annual report (members only; presiding moves the report on).
+  @Post('ic/awareness')
+  logAwareness(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AwarenessSessionDto) {
+    assertOwnSession(req);
+    return this.speakup.logAwareness(ctx, dto);
+  }
+
+  @Post('ic/report')
+  annualReportStep(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AnnualReportStepDto) {
+    assertOwnSession(req);
+    return this.speakup.annualReportStep(ctx, dto);
+  }
+
   @Get('setup')
   @RequirePermissions('speakup.setup.manage')
   setup(@CurrentTenant() ctx: TenantContext) {
@@ -77,6 +106,14 @@ export class SpeakupController {
   addMember(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: TeamMemberDto) {
     assertOwnSession(req);
     return this.speakup.addMember(ctx, dto);
+  }
+
+  // Answer 2625: edit a member (same checks as adding; audited).
+  @Patch('setup/members/:id')
+  @RequirePermissions('speakup.setup.manage')
+  editMember(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EditMemberDto) {
+    assertOwnSession(req);
+    return this.speakup.editMember(ctx, id, dto);
   }
 
   @Post('setup/members/:id/remove')

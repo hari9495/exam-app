@@ -146,6 +146,18 @@ export interface ClaimSummary {
   submittedAt: string | null;
   decidedAt: string | null;
   version: number;
+  /** Batch E A4 (2551, 2556): who the claim waits on ("Asha Rao", "Asha Rao and 2 more", "HR", "Finance (payment)", "You"); null: no one. */
+  waitingOn?: string | null;
+  /** Batch E A7: when it was paid (my claims list only). */
+  paidAt?: string | null;
+}
+
+/** Batch E A7 (2553): one page of my own claims, filtered (GET /expenses/me/claims). */
+export interface MyClaimsPage {
+  claims: ClaimSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface ExpenseHome {

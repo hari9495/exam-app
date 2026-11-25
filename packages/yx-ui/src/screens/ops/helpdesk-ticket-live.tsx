@@ -147,6 +147,7 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
   const timer = (metric: string) => live.work?.sla.find((x) => x.kind === 'sla' && x.metric === metric && x.state !== 'cancelled');
   const resolution = timer('resolution');
   const response = timer('first_response');
+  const teamTimers = (live.work?.sla ?? []).filter((x) => x.kind === 'ola' && x.state !== 'cancelled');
   const update = (c: TicketChange, said?: string) =>
     void run('update', async () => {
       await live.onUpdate(c);
@@ -405,6 +406,16 @@ export function LiveTicketWorkspace({ live }: { live: LiveTicket }) {
                 <FormField label="First response">
                   {t.firstResponseAt ? <Badge tone="success">Met</Badge> : response ? <SlaBadge elapsedMin={minutes(response.usedSeconds)} targetMin={minutes(response.targetSeconds)} paused={response.state === 'paused'} atRiskPercent={response.atRiskPercent} /> : <span className="yx-ops-muted">No target</span>}
                 </FormField>
+                {/* Batch F GLPI 8 (answer 2572): the team targets (OLA), next to the requester's SLA; never shown to the requester. */}
+                {teamTimers.length > 0 && (
+                  <FormField label="Team targets">
+                    <span className="yx-ops-row">
+                      {teamTimers.map((x) => (
+                        <SlaBadge key={x.id} label={x.label.replace(' (OLA)', '')} elapsedMin={minutes(x.usedSeconds)} targetMin={minutes(x.targetSeconds)} paused={x.state === 'paused'} met={x.state === 'met' && !x.breached} atRiskPercent={x.atRiskPercent} />
+                      ))}
+                    </span>
+                  </FormField>
+                )}
                 <TagEditor tags={t.tags} disabled={!work} onChange={(tags) => update({ tags })} />
                 {work && <Switch label="Private" description="Only this desk’s agents and the ticket’s collaborators see it." checked={t.private} onChange={(p) => update({ private: p }, p ? 'The ticket is private now.' : 'The ticket is no longer private.')} />}
               </div>

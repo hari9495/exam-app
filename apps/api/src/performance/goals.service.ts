@@ -94,6 +94,82 @@ export class PerformanceGoalsService implements OnModuleInit {
     }));
   }
 
+  // ------------------------------------------------------------------------------------------ team gaps (item 30)
+
+  /** My own team today (the manager's implicit reporting line), as employee ids. */
+  private async myTeam(tx: Tx, c: CompanyContext, meId: string) {
+    const today = todayIst();
+    const rows = await tx.$queryRaw<{ id: string }[]>`
+      SELECT e.id::text FROM employees e WHERE e.organization_id = ${c.organizationId}::uuid AND e.id <> ${meId}::uuid
+        AND ${await implicitSql(tx, c, meId, Prisma.sql`e.id`, Prisma.sql`${today}::date`)}`;
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Batch F item 30 (answer 2575): in a goal period, the people of my own team with no goal, and those whose active goals
+   * have had no check-in for the company's number of days; each with when they were last reminded. Nobody else's team.
+   */
+  async teamGaps(ctx: TenantContext, user: ScopeUser, periodId: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const period = await tx.goalPeriod.findFirst({ where: { organizationId: org, id: periodId } });
+      if (!period) throw new NotFoundException('No such goal period.');
+      const me = await this.me(tx, org, v);
+      const team = me ? await this.myTeam(tx, c, me.id) : [];
+      const days = Number(await settingFor(tx, c, 'perf.goal.stale_days', { legalEntityId: '' }));
+      const goals = team.length ? await tx.goal.findMany({ where: { organizationId: org, periodId, ownerType: 'person', ownerEmployeeId: { in: team }, status: { not: 'dropped' } }, select: { id: true, ownerEmployeeId: true, status: true, createdAt: true } }) : [];
+      const active = goals.filter((g) => g.status === 'active');
+      const last = active.length ? await tx.goalCheckin.groupBy({ by: ['goalId'], where: { organizationId: org, goalId: { in: active.map((g) => g.id) } }, _max: { on: true } }) : [];
+      const cutoff = new Date(Date.parse(`${todayIst()}T00:00:00Z`) - days * 86_400_000);
+      const names = await this.names(tx, org, team);
+      const reminded = await this.lastReminded(tx, org, team);
+      const row = (id: string) => ({ employeeId: id, name: names.get(id) ?? '', remindedAt: reminded.get(id)?.toISOString() ?? null, canRemind: !reminded.get(id) || reminded.get(id)!.getTime() < Date.now() - 86_400_000 });
+      const noGoals = team.filter((id) => !goals.some((g) => g.ownerEmployeeId === id)).map(row);
+      const notUpdated = team
+        .map((id) => {
+          const mine = active.filter((g) => g.ownerEmployeeId === id);
+          const lastOn = mine.map((g) => last.find((x) => x.goalId === g.id)?._max.on ?? g.createdAt).sort((a, b) => b.getTime() - a.getTime())[0];
+          return mine.length && lastOn && lastOn < cutoff ? { ...row(id), goals: mine.length, lastCheckIn: last.some((x) => mine.some((g) => g.id === x.goalId)) ? lastOn.toISOString().slice(0, 10) : null } : null;
+        })
+        .filter((x): x is NonNullable<typeof x> => Boolean(x));
+      return { periodId, days, team: team.length, noGoals: noGoals.sort((a, b) => a.name.localeCompare(b.name)), notUpdated: notUpdated.sort((a, b) => a.name.localeCompare(b.name)) };
+    });
+  }
+
+  private async lastReminded(tx: Tx, org: string, ids: string[]) {
+    if (!ids.length) return new Map<string, Date>();
+    const rows = await tx.auditLog.groupBy({ by: ['entityId'], where: { organizationId: org, action: 'perf.goal.reminded', entityId: { in: ids } }, _max: { createdAt: true } });
+    return new Map(rows.map((r) => [r.entityId!, r._max.createdAt!]));
+  }
+
+  /** Reminds one person of my team to add goals, or to update them; at most once a day per person. */
+  async remindGap(ctx: TenantContext, user: ScopeUser, periodId: string, employeeId: string, kind: 'no_goals' | 'not_updated') {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
+    const out = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await this.me(tx, org, v);
+      if (!me || !(await this.myTeam(tx, c, me.id)).includes(employeeId)) throw new NotFoundException('No such person in your team.');
+      const period = await tx.goalPeriod.findFirst({ where: { organizationId: org, id: periodId } });
+      if (!period) throw new NotFoundException('No such goal period.');
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`perf-remind:${org}:${employeeId}`}))`;
+      const at = (await this.lastReminded(tx, org, [employeeId])).get(employeeId);
+      if (at && at.getTime() > Date.now() - 86_400_000) throw new ConflictException('Already reminded in the last day. Try again tomorrow.');
+      await audit(tx, c, 'perf.goal.reminded', 'employee', employeeId, { periodId, kind });
+      const p = await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { userId: true } });
+      return { userId: p?.userId ?? null, period: period.name };
+    });
+    if (out.userId) {
+      const text = kind === 'no_goals' ? `Your manager asks you to add your goals for ${out.period}.` : `Your manager asks you to update your goals for ${out.period} with a check-in.`;
+      await this.notifications
+        .notifySystem(ctx, [out.userId], 'perf.goal.reminder', { entityType: 'employee', entityId: employeeId, contextText: text, linkPath: '/yx/performance/goals' }, { subject: kind === 'no_goals' ? 'Add your goals' : 'Update your goals', html: `<p>${text.replace(/[<>&]/g, '')}</p>` })
+        .catch((e: unknown) => this.logger.error(e));
+    }
+    return { reminded: true };
+  }
+
   // ------------------------------------------------------------------------------------------ periods
 
   periods(ctx: TenantContext) {

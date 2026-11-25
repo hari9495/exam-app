@@ -124,8 +124,3 @@ export const AWARENESS_LOG = [
   { id: 'aw3', date: d(18, 2), title: 'Plant-floor session in Tamil', audience: 'Hosur plant', attended: 118 },
 ];
 
-export const POSH_TIMELINE = [
-  { id: 'p1', at: at(21, 18, 5), who: 'Complainant', text: 'Filed the complaint' },
-  { id: 'p2', at: at(22, 10, 0), who: 'Dr. Anuradha Menon', text: 'Acknowledged; complainant did not request conciliation' },
-  { id: 'p3', at: at(24, 16, 30), who: 'Adv. Shobha Rao', text: 'Reviewed the complaint and witness list' },
-];

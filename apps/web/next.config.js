@@ -40,6 +40,8 @@ const nextConfig = {
       // Answers 2433, 2511, 2512: the older approvals inbox is the YukthiX one; drip campaigns are HIR-20 campaigns.
       '/v2/approvals': '/yx/approvals',
       '/v2/campaigns': '/yx/hiring/pools',
+      // Answer 2515: offer templates are Letters 'offer' templates (Settings 5.2).
+      '/v2/offer-template': '/yx/settings/letters',
       '/v2/data-rights': '/yx/hiring/retention',
       '/v2/settings/roles': '/yx/settings/access',
       '/v2/settings/permission-profiles': '/yx/settings/access',
@@ -115,6 +117,9 @@ const nextConfig = {
       // M10 AT2: hiring approval routes moved to YukthiX (requisitions now run on YukthiX Approvals).
       { source: '/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
       { source: '/v2/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
+      // Answer 2631: the older hiring settings pages have YukthiX homes.
+      { source: '/v2/settings/pipelines', destination: '/yx/settings/hiring', permanent: false },
+      { source: '/v2/settings/easy-apply', destination: '/yx/hiring/job-boards', permanent: false },
       // M10 AT3: the careers site, applicant consent and job boards moved to YukthiX Hiring.
       ...['careers', 'apply-consent'].flatMap((p) => [`/settings/${p}`, `/v2/settings/${p}`].map((source) => ({ source, destination: '/yx/hiring/careers', permanent: false }))),
       ...['/settings/job-boards', '/v2/settings/job-boards'].map((source) => ({ source, destination: '/yx/hiring/job-boards', permanent: false })),

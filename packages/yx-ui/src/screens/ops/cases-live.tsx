@@ -25,13 +25,13 @@ import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Breadcrumbs, Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { MenuItem } from '../../components/menu';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
-import { PageBanner } from '../../components/notify';
+import { PageBanner, useToast } from '../../components/notify';
 import { useNarrow } from '../../components/stepper';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { errorText } from '../org/org-kit';
 import { FileList } from '../desk/help';
-import type { LoadState } from '../desk/types';
+import type { AskedQuestion, AskedQuestionDetail, LoadState } from '../desk/types';
 import { Actions, ClockPanel, Confidential, MembersList, OpsDesk, StatusTrail, Workspace, useSay } from './ops-kit';
 import type { ClockItem } from './ops-rules';
 import { RestrictedNotFound } from './cases';
@@ -207,6 +207,8 @@ export interface LiveMyCases {
   onSpeakUp?: () => void;
   /** Phone: back to Me. */
   onBack?: () => void;
+  /** Batch F item 33 (answer 2573): questions from my team that I answer (shown when I have any). */
+  asked?: LiveAskedQuestions;
 }
 
 function RespondentPart({ live, c }: { live: LiveMyCases; c: Extract<MyCaseDetail, { role: 'respondent' }> }) {
@@ -404,6 +406,7 @@ export function LiveMyCases({ live }: { live: LiveMyCases }) {
           {action[0]!.next?.on ? `You are asked to reply by ${day(action[0]!.next.on)}.` : 'A case needs your reply.'}
         </PageBanner>
       )}
+      {live.asked && live.asked.rows.length > 0 && <AskedQuestions asked={live.asked} />}
       <DataTable
         label="My cases"
         columns={columns}
@@ -420,6 +423,106 @@ export function LiveMyCases({ live }: { live: LiveMyCases }) {
         {detail}
       </Drawer>
     </OpsDesk>
+  );
+}
+
+/* =========================================================================================
+ * Batch F item 33 (answer 2573): questions from my team that I answer as their manager
+ * ======================================================================================= */
+
+export interface LiveAskedQuestions {
+  rows: AskedQuestion[];
+  openId: string | null;
+  onOpen: (id: string | null) => void;
+  detail: AskedQuestionDetail | null;
+  onAnswer: (id: string, text: string, solve: boolean) => Promise<void>;
+}
+
+/** A card of my team's questions (open first) with a drawer to answer; pressed empty, the answer field says so. */
+export function AskedQuestions({ asked }: { asked: LiveAskedQuestions }) {
+  const { toast } = useToast();
+  const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState<'send' | 'solve' | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const open = asked.rows.filter((r) => !r.done);
+  const d = asked.openId && asked.detail?.id === asked.openId ? asked.detail : null;
+  const send = async (solve: boolean) => {
+    setTried(true);
+    if (!text.trim()) return void setTimeout(() => document.getElementById('asked-answer')?.focus(), 0);
+    setBusy(solve ? 'solve' : 'send');
+    setFailed(null);
+    try {
+      await asked.onAnswer(d!.id, text.trim(), solve);
+      toast({ tone: 'success', title: solve ? 'Answer sent and marked solved.' : 'Answer sent.' });
+      setText('');
+      setTried(false);
+      if (solve) asked.onOpen(null);
+    } catch (e) {
+      setFailed(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const columns: TableColumn<AskedQuestion>[] = [
+    { key: 'person', header: 'From', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.number }) },
+    { key: 'subject', header: 'Question', value: (r) => r.subject, width: 300 },
+    { key: 'topic', header: 'Topic', value: (r) => r.category ?? '—' },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => (r.done ? 'Solved' : r.answered ? 'Answered' : 'Waiting for you'), statusTone: (v) => (v === 'Waiting for you' ? 'warning' : v === 'Solved' ? 'neutral' : 'info') },
+  ];
+  return (
+    <Card title={`Questions from your team${open.length ? ` (${open.length} open)` : ''}`}>
+      <DataTable
+        label="Questions from your team"
+        columns={columns}
+        rows={asked.rows}
+        getRowId={(r) => r.id}
+        empty={<EmptyState compact title="No questions from your team." description="Topics your company sends to managers appear here." />}
+        onRowClick={(r) => asked.onOpen(r.id)}
+        rowButtons={(r) => <Button size="sm" onClick={() => asked.onOpen(r.id)}>{r.done ? 'Open' : 'Answer'}</Button>}
+      />
+      <Drawer
+        open={Boolean(asked.openId)}
+        onOpenChange={(o) => !o && asked.onOpen(null)}
+        size="lg"
+        title={d ? `${d.number} · ${d.subject}` : 'Question'}
+        subtitle="The person sees your answer. The help desk can see the question too."
+        footer={
+          d && !d.done ? (
+            <>
+              <Button loading={busy === 'send'} onClick={() => void send(false)}>Send answer</Button>
+              <Button variant="primary" loading={busy === 'solve'} onClick={() => void send(true)}>Answer and mark solved</Button>
+            </>
+          ) : undefined
+        }
+      >
+        {!d ? (
+          <Skeleton height={160} />
+        ) : (
+          <div className="yx-ops-stack">
+            {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+            <ul className="yx-ops-list" aria-label="Conversation">
+              {d.messages.map((m) => (
+                <li key={m.id} className="yx-ops-list__item">
+                  <span className="yx-ops-list__main">
+                    <span className="yx-ops-list__title">{m.fromMe ? 'You' : 'They wrote'}</span>
+                    <span className="yx-ops-list__sub">{m.text}</span>
+                  </span>
+                  <span className="yx-ops-muted">{formatDate(new Date(m.at))}</span>
+                </li>
+              ))}
+            </ul>
+            {d.done ? (
+              <InlineAlert tone="info">Solved. If the person replies, it opens again for the help desk.</InlineAlert>
+            ) : (
+              <FormField id="asked-answer" label="Your answer" required error={tried && !text.trim() ? 'Write your answer first.' : null}>
+                <TextArea value={text} onChange={setText} rows={4} maxLength={20000} />
+              </FormField>
+            )}
+          </div>
+        )}
+      </Drawer>
+    </Card>
   );
 }
 
@@ -1388,8 +1491,11 @@ export function LiveCaseWorkspace({ live }: { live: LiveCaseWorkspace }) {
                       ...(c.report.involved ? [{ label: 'Who was involved', value: c.report.involved }] : []),
                       ...(c.report.outside ? [{ label: 'Outside the company', value: c.report.outside }] : []),
                       ...(c.report.witnesses ? [{ label: 'Witnesses', value: c.report.witnesses }] : []),
+                      ...(c.report.onBehalf ? [{ label: 'Filed on behalf of', value: `${c.report.onBehalf.name} (by her ${c.report.onBehalf.relation.toLowerCase()})` }] : []),
+                      ...(c.report.lateReason ? [{ label: 'Why it was not filed earlier', value: c.report.lateReason }] : []),
                     ]}
                   />
+                  {c.report.conciliation && <InlineAlert tone="info" title="She asks to try conciliation first">The committee may try conciliation before an inquiry, only because she asked; it can't be a money settlement.</InlineAlert>}
                   {c.report.retaliationWorry && <InlineAlert tone="warning">The reporter is worried about retaliation.</InlineAlert>}
                   {c.report.late && <InlineAlert tone="info">Filed after the law's window from the incident; the committee decides whether to accept it.</InlineAlert>}
                 </Card>

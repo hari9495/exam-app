@@ -15,7 +15,6 @@ import { interviewHours } from '../interviews/interview-hours';
 /** Answer 332: the band approver may be a named person who holds the offer-pay key (they decide on pay). */
 const OFFER_PAY_KEY = 'ats.offer.compensation.view';
 const NONE = '00000000-0000-0000-0000-000000000000';
-const LETTER_ESIGN = 'offer_template.esign';
 /**
  * Answer 2427 (retiring /v2): two company switches kept on the organisation row (record-visibility RLS and the daily
  * reminder sweep read them there) shown and changed on 6.1, audited with before and after.
@@ -181,7 +180,6 @@ export class HiringSettingsService {
           const locs = await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { name: true, state: true, address: true } });
           return locs.filter((l) => coveredPlace(law, { state: l.state, city: (l.address as { city?: string } | null)?.city ?? null })).map((l) => l.name);
         })(),
-        offerLetters: await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }], select: { id: true, name: true, esign: true } }),
         values: { ...values, ...(await (async () => {
           const o = await tx.organization.findFirst({ where: { id: org }, select: { recordVisibilityEnabled: true, remindersEnabled: true } });
           return { 'hiring.record_visibility': o?.recordVisibilityEnabled ? 'on' : 'off', 'hiring.reminders': o?.remindersEnabled ? 'on' : 'off' };
@@ -211,13 +209,7 @@ export class HiringSettingsService {
   async save(ctx: TenantContext, user: ScopeUser, changes: { key: string; value: string }[]) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     if (!(await this.canEdit(user))) throw new ForbiddenException('Only people with the hiring settings key for the whole company can change these settings.');
-    // Answer 337: an offer letter's e-sign switch rides along as 'offer_template.esign' = '<template id>:on|off'.
-    const letters = changes.filter((ch) => ch.key === LETTER_ESIGN).map((ch) => {
-      const m = /^([0-9a-f-]{36}):(on|off)$/i.exec(ch.value);
-      if (!m) throw new BadRequestException('An offer letter switch is "<letter>:on" or "<letter>:off".');
-      return { id: m[1]!, esign: m[2] === 'on' };
-    });
-    changes = changes.filter((ch) => ch.key !== LETTER_ESIGN);
+    // Answer 2523: an offer letter's e-sign is its "person signs" in Settings › Letter templates only (not on this page).
     // Answer 2427: the organisation switches ride along as 'on' | 'off'.
     const switches = changes.filter((ch): ch is { key: OrgSwitch; value: string } => ch.key in ORG_SWITCHES);
     for (const ch of switches) if (!['on', 'off'].includes(ch.value)) throw new BadRequestException(`${ch.key} is on or off.`);
@@ -250,16 +242,6 @@ export class HiringSettingsService {
         const ok = /^[0-9a-f-]{36}$/i.test(approver.value) && (await tx.user.findFirst({ where: { organizationId: c.organizationId, id: approver.value, status: 'active' }, select: { id: true } }));
         if (!ok) throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
         if (!(await holdersOf(tx, c.organizationId, OFFER_PAY_KEY, NONE, todayIst())).includes(approver.value)) throw new BadRequestException('That person cannot see offer pay, so cannot approve it. Choose someone with the offer-pay key.');
-      });
-    if (letters.length)
-      await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-        for (const l of letters) {
-          const t = await tx.offerTemplate.findFirst({ where: { organizationId: c.organizationId, id: l.id }, select: { id: true, esign: true, name: true } });
-          if (!t) throw new NotFoundException('That offer letter is not one of your company’s.');
-          if (t.esign === l.esign) continue;
-          await tx.offerTemplate.update({ where: { id: t.id }, data: { esign: l.esign } });
-          await audit(tx, c, 'offer_template.updated', 'offer_template', t.id, { name: t.name, esign: l.esign });
-        }
       });
     if (switches.length)
       await inCompany(this.tenantPrisma, ctx, async (tx, c) => {

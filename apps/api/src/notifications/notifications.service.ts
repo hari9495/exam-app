@@ -132,7 +132,8 @@ export class NotificationsService {
     type: string,
     target: MentionTarget,
     /** One email for everyone, or one per recipient address (the designed email names who it was sent to). */
-    email: { subject: string; html: string } | ((to: string) => Promise<{ subject: string; html: string }>),
+    /** null: the bell only (batch G2: an announcement the author chose not to email). */
+    email: { subject: string; html: string } | ((to: string) => Promise<{ subject: string; html: string }>) | null,
     /** The person the notice is about, for the bell row's avatar (never the recipient themselves). */
     aboutUserId: string | null = null,
   ): Promise<void> {
@@ -159,7 +160,7 @@ export class NotificationsService {
             linkPath: target.linkPath,
           },
         });
-        if (u.email && emailsOn) {
+        if (u.email && emailsOn && email) {
           const prefMap = await this.resolveEmailEnabledByType(tx, u.id);
           box.push({ to: u.email, prefMap, digest: u.notificationDigest });
         }
@@ -174,7 +175,7 @@ export class NotificationsService {
         // (the bell row created above is what the digest collects), 'off' gets none.
         .filter((entry) => entry.digest === 'immediate' && (entry.prefMap.get(type) ?? true))
         .map(async (entry) => {
-          const e = typeof email === 'function' ? await email(entry.to) : email;
+          const e = typeof email === 'function' ? await email(entry.to) : email!;
           return this.emailService.send({ to: entry.to, subject: e.subject, html: e.html, organizationId: context.organizationId as string });
         });
       await Promise.allSettled(sends);

@@ -43,6 +43,8 @@ export interface Claim {
   route?: 'Next payroll' | 'Direct payout';
   utr?: string;
   flags?: number;
+  /** Batch E A4: who the claim waits on. */
+  waitingOn?: string;
 }
 
 export const MUMBAI_LINES: ExpenseLine[] = [
@@ -54,8 +56,8 @@ export const MUMBAI_LINES: ExpenseLine[] = [
 ];
 
 export const MY_CLAIMS: Claim[] = [
-  { id: 'EXP-1042', title: 'Mumbai distributor meet', employee: 'Vikram Rao', role: 'Area Sales Manager', submitted: d(17), lines: MUMBAI_LINES, advanceAdjusted: 10000, status: 'Submitted', payment: 'Not due', trip: 'TRP-0211', flags: 2 },
-  { id: 'EXP-1031', title: 'Client visits, Hosur and Krishnagiri', employee: 'Vikram Rao', role: 'Area Sales Manager', submitted: d(5), lines: [{ id: 'x1', date: d(3), category: 'Mileage', merchant: '126 km, car', city: 'Hosur', tier: 'Tier 3', amount: 2142, approved: 2142, receipt: false, mode: 'Personal', kind: 'mileage', km: 126, rate: 17 }], advanceAdjusted: 0, status: 'Approved', payment: 'In October payroll', route: 'Next payroll' },
+  { id: 'EXP-1042', title: 'Mumbai distributor meet', employee: 'Vikram Rao', role: 'Area Sales Manager', submitted: d(17), lines: MUMBAI_LINES, advanceAdjusted: 10000, status: 'Submitted', payment: 'Not due', trip: 'TRP-0211', flags: 2, waitingOn: 'Asha Rao and 1 more' },
+  { id: 'EXP-1031', title: 'Client visits, Hosur and Krishnagiri', employee: 'Vikram Rao', role: 'Area Sales Manager', submitted: d(5), lines: [{ id: 'x1', date: d(3), category: 'Mileage', merchant: '126 km, car', city: 'Hosur', tier: 'Tier 3', amount: 2142, approved: 2142, receipt: false, mode: 'Personal', kind: 'mileage', km: 126, rate: 17 }], advanceAdjusted: 0, status: 'Approved', payment: 'In October payroll', route: 'Next payroll', waitingOn: 'Finance (payment)' },
   { id: 'EXP-1019', title: 'Chennai quarterly review', employee: 'Vikram Rao', role: 'Area Sales Manager', submitted: d(20, 7), lines: [{ id: 'y1', date: d(18, 7), category: 'Hotel', merchant: 'Marina Stay', city: 'Chennai', tier: 'Tier 1', amount: 2000, approved: 1200, reason: 'hotel cap Tier 2', receipt: true, mode: 'Personal' }], advanceAdjusted: 0, status: 'Partly approved', payment: 'Paid', route: 'Next payroll', utr: 'Paid in Aug 2026 payroll' },
   { id: 'EXP-1008', title: 'Team dinner, festive sales', employee: 'Vikram Rao', role: 'Area Sales Manager', submitted: d(2, 7), lines: [{ id: 'z1', date: d(1, 7), category: 'Client entertainment', merchant: 'Spice Route', city: 'Bengaluru', tier: 'Tier 1', amount: 5600, approved: 0, reason: 'Team meals are not client entertainment', receipt: true, mode: 'Personal' }], advanceAdjusted: 0, status: 'Rejected', payment: 'Not due' },
 ];

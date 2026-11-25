@@ -96,6 +96,12 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
     links: [],
     settings: [
       { section: 'Late penalty', key: 'attendance.late_mark_penalty', synonyms: ['late coming', 'late marks'] },
+      // Batch C item 16: the Short hours and Breaks reports.
+      { section: 'Short hours and breaks', key: 'attendance.short_hours.band1', synonyms: ['short hours', 'negligence', 'under hours'] },
+      { section: 'Short hours and breaks', key: 'attendance.short_hours.band2' },
+      { section: 'Short hours and breaks', key: 'attendance.short_hours.band3' },
+      { section: 'Short hours and breaks', key: 'attendance.frequent_breaks.count', synonyms: ['breaks', 'frequent breaks'] },
+      { section: 'Short hours and breaks', key: 'attendance.frequent_breaks.minutes' },
       { section: 'Regularisation', key: 'attendance.regularise_monthly_limit', synonyms: ['missed punch', 'attendance fix'] },
       { section: 'WFH and on-duty', key: 'attendance.wfh_monthly_limit', synonyms: ['work from home'] },
       { section: 'WFH and on-duty', key: 'attendance.wfh_same_day' },
@@ -233,6 +239,23 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Company policies', key: 'policy.publish.second_person' },
       { section: 'Company policies', key: 'policy.ai_writer', synonyms: ['AI policy'] },
       { section: 'Company policies', key: 'company.industry', synonyms: ['industry'] },
+      // Batch G2 item 100 (M09 Q2): the feed's moderation choices.
+      { section: 'Engage feed', key: 'engage.blocked_words', synonyms: ['blocked words', 'moderation', 'feed'] },
+      { section: 'Engage feed', key: 'engage.hide_after_reports', synonyms: ['reports', 'hide posts'] },
+      // Batch G2 item 73: the company values and badges of kudos.
+      { section: 'Engage feed', key: 'engage.values', synonyms: ['company values', 'kudos'] },
+      { section: 'Engage feed', key: 'engage.badges', synonyms: ['badges', 'kudos'] },
+      // Batch G2 item 74: survey results are shown only for groups this big or bigger.
+      { section: 'Engage feed', key: 'engage.survey.min_group', synonyms: ['surveys', 'anonymous', 'smallest group'] },
+      // Batch G2 item 76: which celebrations the feed shows.
+      { section: 'Engage feed', key: 'engage.celebrate.birthdays', synonyms: ['birthdays', 'celebrations'] },
+      { section: 'Engage feed', key: 'engage.celebrate.anniversaries', synonyms: ['work anniversary', 'celebrations'] },
+      { section: 'Engage feed', key: 'engage.celebrate.new_joiners', synonyms: ['new joiners', 'welcome'] },
+      // Learning (M07): the attendance share for new courses, the manager's training check, and overdue escalation (2609).
+      { section: 'Learning', key: 'learning.attendance_share', synonyms: ['attendance', 'sessions', 'training'] },
+      { section: 'Learning', key: 'learning.check_after_days', synonyms: ['training check', 'manager check'] },
+      { section: 'Learning', key: 'learning.overdue.manager_days', synonyms: ['overdue', 'mandatory training', 'escalation'] },
+      { section: 'Learning', key: 'learning.overdue.hr_days', synonyms: ['overdue', 'mandatory training', 'escalation'] },
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },
@@ -274,6 +297,8 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
     settings: [
       { section: 'Goals and reviews', key: 'perf.goal.approval', synonyms: ['goal approval'] },
       { section: 'Goals and reviews', key: 'perf.goal.checkin_days', synonyms: ['check-in'] },
+      // Batch F item 30 (answer 2575): when a goal shows as not updated to the manager.
+      { section: 'Goals and reviews', key: 'perf.goal.stale_days', synonyms: ['not updated', 'stale goals'] },
       { section: 'Goals and reviews', key: 'perf.self_review.visible_to_manager', synonyms: ['self review'] },
       { section: 'Goals and reviews', key: 'perf.disagreement.days', synonyms: ['disagree', 'appeal'] },
       { section: 'Goals and reviews', key: 'perf.dispute.escalate_days', synonyms: ['dispute'] },

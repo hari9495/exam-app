@@ -21,8 +21,10 @@ describe('buildNav: areas', () => {
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
     const n = nav(['employee.profile.view', 'payroll.run.view', 'statutory.filing.view', 'pipeline:manage', 'perf.goal.view', 'org.settings.manage'], { employee: true });
-    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'visitors', 'settings']);
-    for (const unbuilt of ['assess', 'learning', 'analytics', 'engage', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
+    // Learning (PR #210) for everyone with a job; batch G2: Engage (the feed) for everyone with a job; G4: Analytics (the
+    // report library) for anyone a report opens for (statutory.filing.view here).
+    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'learning', 'helpdesk', 'engage', 'visitors', 'analytics', 'settings']);
+    for (const unbuilt of ['assess', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
   });
 
   it('YukthiX Hiring for hiring; no menu link leads to the older /v2 screens (decision 2398, step 5)', () => {
@@ -88,6 +90,32 @@ describe('buildNav: scorecard templates (answer 345)', () => {
   });
 });
 
+describe('buildNav: G4 report library and company documents', () => {
+  it('Report library for a report key or a manager, never a plain employee or a support session; Company documents for everyone with a job or the key', () => {
+    expect(areas(nav([], { employee: true }))).not.toContain('analytics');
+    expect(labels(nav(['expense.report.view']), 'analytics')).toEqual(['Report library', 'Schedules and exports']);
+    expect(labels(nav([], { employee: true, manager: true }), 'analytics')).toEqual(['Report library']);
+    expect(labels(nav(['exports.log.view']), 'analytics')).toEqual(['Schedules and exports']);
+    expect(areas(nav(['expense.report.view'], { support: true }))).not.toContain('analytics');
+    expect(labels(nav(['company.documents.manage']), 'people')).toContain('Company documents');
+    expect(labels(nav([], { employee: true, support: true }), 'people')).not.toContain('Company documents');
+  });
+});
+
+describe('buildNav: Learning', () => {
+  it('employees learn; managers add My team; training reports and L&D add Compliance and Course builder', () => {
+    expect(labels(nav([], { employee: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My skills']);
+    expect(labels(nav([], { employee: true, manager: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My skills', 'My team', 'Team skills', 'Training checks']);
+    expect(labels(nav(['learning.report.view', 'learning.manage']), 'learning')).toEqual(['Sessions', 'Compliance', 'Course builder', 'Needs & budgets']);
+    expect(labels(nav([], { employee: true, trainer: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My skills', 'Sessions']);
+    expect(areas(nav(['learning.manage'], { support: true }))).not.toContain('learning');
+    expect(activeLink(nav(['learning.manage', 'learning.report.view'], { employee: true }), '/yx/learning/compliance/rules')?.link.label).toBe('Compliance');
+    expect(activeLink(nav([], { employee: true }), '/yx/learning/enrolments/abc')?.link.label).toBe('My learning');
+    expect(activeLink(nav([], { employee: true, manager: true }), '/yx/learning/skills/people/abc')?.link.label).toBe('My skills');
+    expect(activeLink(nav(['learning.manage']), '/yx/learning/needs')?.link.label).toBe('Needs & budgets');
+  });
+});
+
 describe('buildNav: People', () => {
   it('payroll does no HR work: no Probation, Change action, Bulk changes or Import (founder 21 Oct 2026)', () => {
     const n = nav(['employee.profile.view', 'employee.change.approve', 'employee.salary.manage', 'payroll.fnf.manage']);
@@ -122,12 +150,12 @@ describe('buildNav: People', () => {
 
   it('a manager without HR keys gets "For my team"; raising on behalf adds Change action', () => {
     const n = nav(['request.raise_on_behalf'], { employee: true, manager: true, history: true });
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'My team', 'Probation', 'Change action', 'Exit cases', 'Job history']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'My team', 'Company documents', 'Probation', 'Change action', 'Exit cases', 'Job history']);
     expect(sections(n, 'people')).toEqual(['', 'For my team', 'Changes']);
   });
 
   it('an employee without reports sees the directory and their history; someone with no record sees no People area', () => {
-    expect(labels(nav([], { employee: true, history: true }), 'people')).toEqual(['Directory', 'Org chart', 'Job history']);
+    expect(labels(nav([], { employee: true, history: true }), 'people')).toEqual(['Directory', 'Org chart', 'Company documents', 'Job history']);
     expect(areas(nav())).not.toContain('people');
   });
 
@@ -413,6 +441,11 @@ describe('Cases and Ethics desk only for the people they concern (HLP-07/08/09, 
     expect(desk({ caseTeam: true, ethicsDesk: true })).toEqual(expect.arrayContaining(['Cases', 'Ethics desk']));
     expect(desk({ caseTeam: true, ethicsDesk: true, support: true })).not.toEqual(expect.arrayContaining(['Cases']));
   });
+  it('Internal Committee only for its members (CMP-11, batch F item 13), never in a support session', () => {
+    expect(desk({})).not.toEqual(expect.arrayContaining(['Internal Committee']));
+    expect(desk({ icMember: true })).toEqual(expect.arrayContaining(['Internal Committee']));
+    expect(desk({ icMember: true, support: true })).not.toEqual(expect.arrayContaining(['Internal Committee']));
+  });
   it('Report misconduct only for a manager (answer 55), never in a support session', () => {
     expect(desk({ manager: true })).toEqual(expect.arrayContaining(['Report misconduct']));
     expect(desk({ manager: false })).not.toEqual(expect.arrayContaining(['Report misconduct']));
@@ -422,6 +455,7 @@ describe('Cases and Ethics desk only for the people they concern (HLP-07/08/09, 
     const items = nav([], { employee: true, caseTeam: true, ethicsDesk: true }).find((a) => a.id === 'helpdesk')!.sections.flatMap((x) => x.items);
     expect(items.find((l) => l.label === 'Cases')?.count).toBe('casesOpen');
     expect(items.find((l) => l.label === 'Ethics desk')?.count).toBe('ethicsReports');
+    expect(nav([], { employee: true, icMember: true }).find((a) => a.id === 'helpdesk')!.sections.flatMap((x) => x.items).find((l) => l.label === 'Internal Committee')?.count).toBe('icComplaints');
   });
 });
 
@@ -515,5 +549,29 @@ describe('buildNav: Settings S-6', () => {
     expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(expect.arrayContaining(['Approvals', 'Approval policies']));
     expect(labels(nav(['employee.profile.view', 'org.structure.view']), 'settings')).toEqual(expect.arrayContaining(['Approvals', 'Approval policies']));
     expect(labels(nav(['leave.settings.manage']), 'settings')).not.toContain('Approval policies');
+  });
+});
+
+describe('buildNav: Engage (batch G2)', () => {
+  const engage = (over: Partial<NavInput>, keys: string[] = []) => labels(nav(keys, { employee: true, ...over }), 'engage');
+  it('the feed for everyone with a job; Announcements only with engage.announce; nothing on a support session', () => {
+    expect(engage({})).toEqual(['Feed', 'Recognition']);
+    expect(engage({}, ['engage.announce'])).toEqual(['Feed', 'Recognition', 'Announcements']);
+    // Batch G2 item 74: surveys for the key; a manager's own team results otherwise.
+    expect(engage({}, ['engage.survey.manage'])).toEqual(['Feed', 'Recognition', 'Surveys']);
+    expect(engage({ manager: true })).toEqual(['Feed', 'Recognition', 'Team surveys']);
+    expect(engage({ manager: true }, ['engage.survey.manage'])).toEqual(['Feed', 'Recognition', 'Surveys']);
+    expect(engage({ employee: false }, ['engage.announce'])).toEqual(['Announcements']);
+    expect(engage({ support: true }, ['engage.announce'])).toEqual([]);
+    expect(engage({}, ['engage.moderate'])).toEqual(['Feed', 'Recognition', 'Moderation']);
+    expect(engage({ support: true }, ['engage.moderate'])).toEqual([]);
+  });
+  it('pages name themselves', () => {
+    const all = nav(['engage.announce'], { employee: true });
+    expect(pageLink(all, '/yx/engage/announcements/new')?.link.label).toBe('Announcements');
+    expect(pageLink(all, '/yx/engage')?.link.label).toBe('Feed');
+    expect(pageLink(all, '/yx/engage/post')?.link.label).toBe('Feed');
+    expect(pageLink(all, '/yx/engage/recognition')?.link.label).toBe('Recognition');
+    expect(pageLink(nav(['engage.survey.manage'], { employee: true }), '/yx/engage/surveys/x/results')?.link.label).toBe('Surveys');
   });
 });

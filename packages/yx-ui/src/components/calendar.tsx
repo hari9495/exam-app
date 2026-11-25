@@ -559,12 +559,43 @@ export interface TeamCalendarProps {
   weeklyOff?: (d: Date) => boolean;
   /** Per-person off days (shift patterns, other locations). Overrides weeklyOff for that person's row. */
   memberOff?: (memberId: string, d: Date) => boolean;
+  /** Batch C item 15: each worked day's attendance as a dot (a manager's own team), with the legend of the kinds shown. */
+  dots?: TeamDayDot[];
+  /** Opens the person's day card from their dot. */
+  onDayClick?: (memberId: string, d: Date) => void;
 }
+
+/** Batch C item 15: a day's attendance on the team calendar. Leave, holidays and weekly offs show as chips and shading. */
+export type TeamDotKind = 'present' | 'late' | 'remote' | 'half_day' | 'absent' | 'missing';
+export interface TeamDayDot {
+  memberId: string;
+  on: Date;
+  dot: TeamDotKind;
+}
+export const TEAM_DOT_LABEL: Record<TeamDotKind, string> = { present: 'Present', late: 'Late', remote: 'Worked from home', half_day: 'Half day', absent: 'Absent', missing: 'Missing punch' };
+const DOT_ORDER: TeamDotKind[] = ['present', 'late', 'remote', 'half_day', 'absent', 'missing'];
 
 const ALL = 'all';
 
+/** A day's attendance dot; a button (opening the day card) when the calendar can open one. */
+function TeamDotMark({ kind, label, onClick }: { kind: TeamDotKind; label: string; onClick?: () => void }) {
+  return (
+    <Tooltip content={label}>
+      {onClick ? (
+        <button type="button" className="yx-teamcal__dotbtn" aria-label={`${label}. Open the day card`} onClick={onClick}>
+          <span className="yx-teamcal__dot" data-dot={kind} aria-hidden="true" />
+        </button>
+      ) : (
+        <span className="yx-teamcal__dotbtn" tabIndex={0} aria-label={label}>
+          <span className="yx-teamcal__dot" data-dot={kind} aria-hidden="true" />
+        </span>
+      )}
+    </Tooltip>
+  );
+}
+
 /** Who is away: people × days, leave as a code chip with its full name (§28). */
-export function TeamCalendar({ members, absences, holidays, start, days = 14, today: todayProp, team: teamProp, defaultTeam = ALL, onTeamChange, weeklyOff = defaultWeeklyOff, memberOff }: TeamCalendarProps) {
+export function TeamCalendar({ members, absences, holidays, start, days = 14, today: todayProp, team: teamProp, defaultTeam = ALL, onTeamChange, weeklyOff = defaultWeeklyOff, memberOff, dots, onDayClick }: TeamCalendarProps) {
   const today = useMemo(() => startOfDay(todayProp ?? new Date()), [todayProp]);
   const [teamState, setTeamState] = useState(defaultTeam);
   const team = teamProp ?? teamState;
@@ -576,6 +607,8 @@ export function TeamCalendar({ members, absences, holidays, start, days = 14, to
   const awayToday = shown.filter((m) => absenceOn(m.id, today));
   const shownHolidays = (holidays ?? []).filter((h) => cols.some((c) => isSameDay(c, h.date)));
   const anyPending = absences.some((a) => a.pending);
+  const dotOn = (id: string, d: Date) => dots?.find((x) => x.memberId === id && isSameDay(x.on, d));
+  const dotKinds = DOT_ORDER.filter((k) => dots?.some((x) => x.dot === k && shown.some((m) => m.id === x.memberId) && cols.some((c) => isSameDay(c, x.on))));
 
   return (
     <section className="yx-teamcal" aria-label="Team calendar">
@@ -657,6 +690,8 @@ export function TeamCalendar({ members, absences, holidays, start, days = 14, to
                             {a.pending && <Clock3 className="yx-teamcal__pending" size={10} aria-hidden="true" />}
                           </span>
                         </Tooltip>
+                      ) : dotOn(m.id, d) ? (
+                        <TeamDotMark kind={dotOn(m.id, d)!.dot} label={`${m.name}, ${dayTitle(d)}: ${TEAM_DOT_LABEL[dotOn(m.id, d)!.dot]}`} onClick={onDayClick ? () => onDayClick(m.id, d) : undefined} />
                       ) : (
                         memberOff && off && <span className="yx-teamcal__off">Off</span>
                       )}
@@ -676,6 +711,12 @@ export function TeamCalendar({ members, absences, holidays, start, days = 14, to
           </li>
         )}
         <li><span className="yx-teamcal__swatch" aria-hidden="true" />Holiday (Hol) or weekly off (Off)</li>
+        {dotKinds.map((k) => (
+          <li key={k}>
+            <span className="yx-teamcal__dot" data-dot={k} aria-hidden="true" />
+            {TEAM_DOT_LABEL[k]}
+          </li>
+        ))}
       </ul>
       {shownHolidays.length > 0 && (
         <p className="yx-teamcal__holidays">

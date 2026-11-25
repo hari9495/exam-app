@@ -12,6 +12,7 @@ import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { REDIS_CONNECTION } from '../src/jobs/redis-connection';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { SpeakupService } from '../src/speakup/speakup.service';
 
 // HLP-06 speak-up filing end to end against the real database (forced RLS, the app role). Positive and negative: named
 // and anonymous reports, the company's anonymous setting, routing to the ethics team, the Internal Committee and the
@@ -33,9 +34,11 @@ describe('HLP-06 speak-up filing', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post', path: string) => request(server())[method](`/api/v1/desk/speakup${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'patch', path: string) => request(server())[method](`/api/v1/desk/speakup${path}`).set('Authorization', `Bearer ${token[who]}`);
   const pub = (path: string) => request(server()).post(`/api/v1/desk/speakup/public${path}`);
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+  // Answer 2591: the committee list asks whether a member is a woman and when the term ends.
+  const IC = { woman: true, termEndsOn: new Date(Date.now() + 330 * 60_000 + 2 * 365 * 86_400_000).toISOString().slice(0, 10) };
   const shift = (n: number) => new Date(Date.parse(`${today}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const setting = (key: string, value: string) =>
@@ -109,9 +112,9 @@ describe('HLP-06 speak-up filing', () => {
     await api('hr', 'post', '/setup/members').send({ team: 'ethics', userId: users.hr }).expect(403);
     await api('adminA', 'post', '/setup/members').send({ team: 'board', userId: users.ethics1 }).expect(400);
     await api('adminA', 'post', '/setup/members').send({ team: 'ethics', userId: users.adminB }).expect(400);
-    for (const [team, who, role] of [['ethics', 'ethics1'], ['ethics', 'ethics2'], ['ic', 'ic1', 'presiding'], ['escalation', 'chair']] as const) await api('adminA', 'post', '/setup/members').send({ team, userId: users[who], ...(role ? { role } : {}) }).expect(201);
+    for (const [team, who, role] of [['ethics', 'ethics1'], ['ethics', 'ethics2'], ['ic', 'ic1', 'presiding'], ['escalation', 'chair']] as const) await api('adminA', 'post', '/setup/members').send({ team, userId: users[who], ...(role ? { role } : {}), ...(team === 'ic' ? IC : {}) }).expect(201);
     await api('adminA', 'post', '/setup/members').send({ team: 'ethics', userId: users.ethics1 }).expect(409);
-    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, role: 'presiding' }).expect(409);
+    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, role: 'presiding', ...IC }).expect(409);
     const form = (await api('divya', 'get', '/form').expect(200)).body;
     expect(form.ready).toEqual({ grievance: true, whistleblower: true, posh: true });
     expect(form.posh).toMatchObject({ filingMonths: 3, extensionMonths: 3, source: 'IN.POSH 2013-v2 (verify)' });
@@ -178,7 +181,162 @@ describe('HLP-06 speak-up filing', () => {
     const ic = (await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { team: string }) => m.team === 'ic');
     await api('adminA', 'post', `/setup/members/${ic.id}/remove`).expect(201);
     expect((await api('divya', 'post', '/reports').send({ kind: 'posh', summary: 'Repeated unwelcome remarks by a colleague in meetings.' }).expect(409)).body.code).toBe('SPEAKUP_NO_IC');
-    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding' }).expect(201);
+    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding', ...IC }).expect(201);
+  });
+
+  it('answer 2591: the committee list needs woman and term end (at most 3 years, after today); a man cannot preside; other lists refuse them', async () => {
+    const add = (body: object) => api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, ...body });
+    await add({}).expect(400);
+    await add({ woman: true }).expect(400);
+    await add({ woman: true, termEndsOn: today }).expect(400);
+    await add({ woman: true, termEndsOn: shift(3 * 365 + 5) }).expect(400);
+    await add({ woman: 'yes', termEndsOn: shift(30) }).expect(400);
+    await api('adminA', 'post', '/setup/members').send({ team: 'escalation', userId: users.divya, woman: true }).expect(400);
+    const ok = (await add({ woman: false, termEndsOn: shift(365) }).expect(201)).body;
+    const row = (await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { id: string }) => m.id === ok.id);
+    expect(row).toMatchObject({ team: 'ic', role: 'member', woman: false, termEndsOn: shift(365) });
+    await api('adminA', 'post', `/setup/members/${ok.id}/remove`).expect(201);
+    // Removing the presiding officer first so a man may be tried as presiding.
+    const po = (await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { team: string; role: string }) => m.team === 'ic' && m.role === 'presiding');
+    await api('adminA', 'post', `/setup/members/${po.id}/remove`).expect(201);
+    expect((await add({ role: 'presiding', woman: false, termEndsOn: shift(365) }).expect(400)).body.message).toMatch(/senior woman/);
+    await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding', ...IC }).expect(201);
+  });
+
+  it('answer 2625: Edit member with the same checks as adding, audited; answer 2623: an ended term takes no new complaint, and the System Admin is reminded once 30 days before', async () => {
+    const chair = (await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, woman: false, termEndsOn: shift(365) }).expect(201)).body.id;
+    const edit = (body: object, id = chair) => api('adminA', 'patch', `/setup/members/${id}`).send(body);
+    await api('hr', 'patch', `/setup/members/${chair}`).send({ woman: true }).expect(403);
+    await edit({ woman: true }, randomUUID()).expect(404);
+    await edit({ termEndsOn: today }).expect(400);
+    await edit({ termEndsOn: shift(3 * 365 + 5) }).expect(400);
+    await edit({ role: 'presiding' }).expect(400); // not a woman
+    await edit({ role: 'presiding', woman: true }).expect(409); // ic1 presides already
+    await edit({ woman: 'yes' }).expect(400);
+    const other = (await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { team: string }) => m.team === 'ethics');
+    await edit({ role: 'member' }, other.id).expect(400);
+    await edit({ woman: true, termEndsOn: shift(200) }).expect(200);
+    expect((await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { id: string }) => m.id === chair)).toMatchObject({ role: 'member', woman: true, termEndsOn: shift(200) });
+    const log = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'speakup.team_member_edited', entityId: chair } }));
+    expect(JSON.parse(log.metadataJson!)).toMatchObject({ before: { woman: false, termEndsOn: shift(365) }, after: { woman: true, termEndsOn: shift(200) } });
+    // 2623: a term that has ended takes no new complaint; the others on the committee still do.
+    await inA((tx) => tx.speakupTeamMember.update({ where: { id: chair }, data: { termEndsOn: new Date(`${shift(-1)}T00:00:00Z`) } }));
+    const filed = (await api('divya', 'post', '/reports').send({ kind: 'posh', summary: 'Unwelcome remarks during the night shift.' }).expect(201)).body;
+    expect((await inA((tx) => tx.speakupCaseMember.findMany({ where: { caseId: filed.id }, select: { userId: true } }))).map((m) => m.userId)).toEqual([users.ic1]);
+    // 2623: one note to the System Admins 30 days before; again only after the term is changed.
+    const svc = app.get(SpeakupService);
+    const bells = () => inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.adminA, type: 'helpdesk.ic.term_ending', entityId: chair } }));
+    await inA((tx) => tx.speakupTeamMember.update({ where: { id: chair }, data: { termEndsOn: new Date(`${shift(31)}T00:00:00Z`) } }));
+    await svc.remindIcTerms();
+    expect(await bells()).toBe(0);
+    await inA((tx) => tx.speakupTeamMember.update({ where: { id: chair }, data: { termEndsOn: new Date(`${shift(20)}T00:00:00Z`) } }));
+    await svc.remindIcTerms();
+    expect(await bells()).toBe(1);
+    expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.hr, type: 'helpdesk.ic.term_ending' } }))).toBe(0);
+    await svc.remindIcTerms();
+    expect(await bells()).toBe(1);
+    await edit({ termEndsOn: shift(25) }).expect(200);
+    await svc.remindIcTerms();
+    expect(await bells()).toBe(2);
+    await api('adminA', 'post', `/setup/members/${chair}/remove`).expect(201);
+  });
+
+  it('answer 2592: a workplace committee takes that workplace’s POSH complaints; others go to the company committee; each committee’s presiding and console are its own', async () => {
+    const loc = await inA(async (tx) => {
+      const e = await tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'HLP06 Foods', shortName: `H6${run.slice(0, 4).toUpperCase()}`, isDefault: true } });
+      return (await tx.location.create({ data: { organizationId: org.A.id, legalEntityId: e.id, name: 'Hosur plant', code: 'HSR', address: {}, country: 'IN', state: 'IN-TN', timezone: 'Asia/Kolkata' } })).id;
+    });
+    const add = (body: object) => api('adminA', 'post', '/setup/members').send({ team: 'ic', ...IC, ...body });
+    await api('adminA', 'post', '/setup/members').send({ team: 'ethics', userId: users.chair, locationId: loc }).expect(400);
+    await add({ userId: users.ethics2, locationId: '00000000-0000-4000-8000-000000000000' }).expect(400);
+    await add({ userId: users.ethics2, role: 'presiding', locationId: loc }).expect(201);
+    await add({ userId: users.ethics2, locationId: loc }).expect(409);
+    await add({ userId: users.chair, role: 'presiding', locationId: loc }).expect(409);
+    // ic1 presides the company committee and may sit on the workplace's too.
+    await add({ userId: users.ic1, locationId: loc }).expect(201);
+    const setup = (await api('adminA', 'get', '/setup').expect(200)).body;
+    expect(setup.locations).toEqual(expect.arrayContaining([{ id: loc, name: 'Hosur plant' }]));
+    expect(setup.members.filter((m: { team: string; locationId: string | null }) => m.team === 'ic' && m.locationId === loc)).toHaveLength(2);
+    const at = (await api('divya', 'post', '/reports').send({ kind: 'posh', summary: 'Unwelcome remarks at the plant canteen.', locationId: loc }).expect(201)).body;
+    expect(await inA((tx) => tx.speakupCase.findFirstOrThrow({ where: { id: at.id }, select: { icLocationId: true } }))).toEqual({ icLocationId: loc });
+    expect((await inA((tx) => tx.speakupCaseMember.findMany({ where: { caseId: at.id }, select: { userId: true } }))).map((m) => m.userId).sort()).toEqual([users.ethics2, users.ic1].sort());
+    await api('ethics2', 'get', `/cases/${at.id}`).expect(200);
+    await api('chair', 'get', `/cases/${at.id}`).expect(404);
+    const co = (await api('divya', 'post', '/reports').send({ kind: 'posh', summary: 'Unwelcome remarks in the head office.' }).expect(201)).body;
+    expect((await inA((tx) => tx.speakupCaseMember.findMany({ where: { caseId: co.id }, select: { userId: true } }))).map((m) => m.userId)).toEqual([users.ic1]);
+    await api('ethics2', 'get', `/cases/${co.id}`).expect(404);
+    const mine = (await api('ethics2', 'get', '/ic').expect(200)).body.members;
+    expect(mine.map((m: { committee: string }) => m.committee)).toEqual(['Hosur plant', 'Hosur plant']);
+    const both = (await api('ic1', 'get', '/ic').expect(200)).body.members;
+    expect(new Set(both.map((m: { committee: string }) => m.committee))).toEqual(new Set(['Whole company', 'Hosur plant']));
+    // Leave only the company committee for the tests after this one.
+    for (const m of setup.members.filter((x: { team: string; locationId: string | null }) => x.team === 'ic' && x.locationId === loc)) await api('adminA', 'post', `/setup/members/${m.id}/remove`).expect(201);
+  });
+
+  it('answer 2597: a POSH complaint keeps on whose behalf, why late and conciliation in their own fields; other kinds refuse them', async () => {
+    const posh = { kind: 'posh', summary: 'Unwelcome remarks at the team offsite dinner.', happenedOn: shift(-120) };
+    await api('divya', 'post', '/reports').send({ ...REPORT, conciliation: true }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...REPORT, lateReason: 'Was away.' }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...posh, onBehalfName: 'Meena' }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...posh, onBehalfRelation: 'Sister' }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...posh, conciliation: 'yes' }).expect(400);
+    await api('divya', 'post', '/reports').send({ ...posh, lateReason: 'x'.repeat(1001) }).expect(400);
+    const r = (await api('divya', 'post', '/reports').send({ ...posh, onBehalfName: 'Meena', onBehalfRelation: 'Sister', lateReason: 'She was on medical leave for two months.', conciliation: true }).expect(201)).body;
+    const detail = (await request(server()).get(`/api/v1/desk/cases/${r.id}`).set('Authorization', `Bearer ${token.ic1}`).expect(200)).body;
+    expect(detail.report).toMatchObject({ summary: posh.summary, onBehalf: { name: 'Meena', relation: 'Sister' }, lateReason: 'She was on medical leave for two months.', conciliation: true, late: true });
+    const plain = (await api('divya', 'post', '/reports').send(posh).expect(201)).body;
+    expect((await request(server()).get(`/api/v1/desk/cases/${plain.id}`).set('Authorization', `Bearer ${token.ic1}`).expect(200)).body.report).toMatchObject({ onBehalf: null, lateReason: null, conciliation: false });
+  });
+
+  it('CMP-11 (batch F item 13): the Internal Committee console is for its members only; their POSH complaints carry the filing day; the menu count too', async () => {
+    const ic = (await api('ic1', 'get', '/ic').expect(200)).body;
+    expect(ic.company).toBe('HLP06 Org A');
+    expect(ic.members).toEqual([expect.objectContaining({ role: 'presiding', name: `ic1 ${run}`, since: today, woman: true, termEndsOn: IC.termEndsOn })]);
+    for (const who of ['divya', 'hr', 'adminA', 'ethics1', 'adminB'] as const) await api(who, 'get', '/ic').expect(404);
+    const rows = (await request(server()).get('/api/v1/desk/cases').set('Authorization', `Bearer ${token.ic1}`).expect(200)).body as { kind: string; ref: string; filedOn: string }[];
+    expect(rows.find((c) => c.ref === 'POSH-0001')).toMatchObject({ kind: 'posh', filedOn: today });
+    const counts = (who: Who) => request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token[who]}`).expect(200).then((r) => r.body);
+    expect((await counts('ic1')).icComplaints).toBe(6); // POSH-0001, one from the 2623 test, two from the answer 2592 test, two from 2597
+    expect((await counts('divya')).icComplaints).toBeUndefined();
+    expect((await counts('ethics1')).icComplaints).toBeUndefined();
+  });
+
+  it('answer 2593: committee members log awareness sessions; the presiding officer moves the annual report on step by step; nobody else sees or changes either', async () => {
+    const year = Number(today.slice(0, 4));
+    const ic = (body: object, who: Who = 'ic1') => api(who, 'post', '/ic/awareness').send(body);
+    // Outsiders: not found. Bad input: 400.
+    for (const who of ['divya', 'hr', 'adminA', 'ethics1', 'adminB'] as const) await ic({ heldOn: today, title: 'Session', attended: 5 }, who).expect(404);
+    await ic({ heldOn: shift(1), title: 'Future session', attended: 5 }).expect(400);
+    await ic({ heldOn: today, title: 'ab', attended: 5 }).expect(400);
+    await ic({ heldOn: today, title: 'Session', attended: -1 }).expect(400);
+    await ic({ heldOn: today, title: 'Session', attended: 5, extra: 1 }).expect(400);
+    await ic({ heldOn: today, title: 'POSH awareness for new joiners', audience: 'New joiners', attended: 34 }).expect(201);
+    const view = (await api('ic1', 'get', '/ic').expect(200)).body;
+    expect(view.awareness).toEqual([expect.objectContaining({ committeeId: null, heldOn: today, title: 'POSH awareness for new joiners', audience: 'New joiners', attended: 34 })]);
+    expect(view.reports).toEqual([expect.objectContaining({ committeeId: null, committee: 'Whole company', year, dueOn: `${year + 1}-01-31`, sessions: 1, stage: 'draft', presiding: true, actionTaken: null })]);
+    expect(view.reports[0].received).toBeGreaterThanOrEqual(1);
+    // The database hides both tables from someone not on the committee, even inside the company.
+    const asDivya = await tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false, userId: users.divya } as never, (tx) => tx.poshAwarenessSession.count());
+    expect(asDivya).toBe(0);
+    // The report: only the presiding officer, one step at a time, "reviewed" needs the action taken.
+    const step = (body: object, who: Who = 'ic1') => api(who, 'post', '/ic/report').send({ year, ...body });
+    await step({ step: 'reviewed', actionTaken: 'None' }, 'divya').expect(404);
+    await step({ step: 'employer' }).expect(409);
+    await step({ step: 'reviewed' }).expect(400);
+    await step({ step: 'reviewed', actionTaken: 'None' }, 'ethics1').expect(404);
+    await step({ step: 'reviewed', actionTaken: '1 transfer', year: year - 3 }).expect(400);
+    await step({ step: 'signed' }).expect(400);
+    // A member who does not preside: 403, and nothing changes.
+    const m = (await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, ...IC }).expect(201)).body;
+    expect((await step({ step: 'reviewed', actionTaken: 'None' }, 'chair').expect(403)).body.code).toBe('POSH_NOT_PRESIDING');
+    await api('adminA', 'post', `/setup/members/${m.id}/remove`).expect(201);
+    await step({ step: 'reviewed', actionTaken: '1 transfer' }).expect(201);
+    await step({ step: 'reviewed', actionTaken: '1 transfer' }).expect(409);
+    await step({ step: 'employer' }).expect(201);
+    await step({ step: 'district' }).expect(201);
+    expect((await api('ic1', 'get', '/ic').expect(200)).body.reports[0]).toMatchObject({ stage: 'district', actionTaken: '1 transfer' });
+    const logs = await inA((tx) => tx.auditLog.findMany({ where: { action: { in: ['posh.awareness_logged', 'posh.annual_report_step'] } }, select: { action: true } }));
+    expect(logs.filter((l) => l.action === 'posh.annual_report_step')).toHaveLength(3);
   });
 
   it('check my report: wrong codes are counted; the right code shows the team reply; the reporter replies; files attach', async () => {

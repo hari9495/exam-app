@@ -13,7 +13,7 @@ describe('S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
   it('the 14 expense and 18 performance choices each sit once on their page, and nowhere else', () => {
     expect(keysOf('4.8')).toHaveLength(14);
     expect(keysOf('4.8').every((k) => k.startsWith('expense.'))).toBe(true);
-    expect(keysOf('6.3')).toHaveLength(18);
+    expect(keysOf('6.3')).toHaveLength(19); // batch F item 30: perf.goal.stale_days
     expect(keysOf('6.3').every((k) => k.startsWith('perf.'))).toBe(true);
     const all = [TIME_SETTINGS, PAY_SETTINGS, PEOPLE_SETTINGS, MORE_SETTINGS].flatMap((g) => Object.values(g).flatMap((p) => p.settings.map((s) => s.key)));
     expect(new Set(all).size).toBe(all.length);

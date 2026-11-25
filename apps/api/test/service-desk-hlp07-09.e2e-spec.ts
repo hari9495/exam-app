@@ -86,7 +86,7 @@ describe('HLP-07/08/09 cases', () => {
     }
     // The respondent reports to the manager (the conflict check reads the reporting line).
     await inA((tx) => tx.user.update({ where: { id: users.resp }, data: { managerId: users.manager } }));
-    const add = (team: string, who: Who, role?: string) => call('adminA', 'post', '/speakup/setup/members').send({ team, userId: users[who], ...(role ? { role } : {}) }).expect(201);
+    const add = (team: string, who: Who, role?: string) => call('adminA', 'post', '/speakup/setup/members').send({ team, userId: users[who], ...(role ? { role } : {}), ...(team === 'ic' ? { woman: true, termEndsOn: new Date(Date.now() + 2 * 365 * 86_400_000).toISOString().slice(0, 10) } : {}) }).expect(201);
     await add('ethics', 'eth1');
     await add('ethics', 'eth2');
     await add('ic', 'ic1', 'presiding');

@@ -1,5 +1,6 @@
 // Performance, people side: quick feedback (PRF-08), 1:1s with suggested agenda (PRF-11, PRF-16), PIP record (PRF-12),
 // hand-over list after a manager change (PRF-13), competency framework (PRF-14).
+import { FeedbackRail, PrivateNotesDrawer, type LivePersonNotes } from './feedback-rail';
 import { useEffect, useMemo, useState } from 'react';
 import { Archive, ArrowLeft, CalendarPlus, Check, GitMerge, Lock, MessageSquarePlus, Plus, Send, Upload } from 'lucide-react';
 import { Button, Link } from '../../components/button';
@@ -90,6 +91,10 @@ export interface LiveQuickFeedback {
   onAsk: (input: { aboutEmployeeId: string; askedEmployeeIds: string[]; question: string; dueOn: string | null }) => Promise<unknown>;
   onDecline: (id: string) => Promise<unknown>;
   onSeal: (id: string, reason: string) => Promise<unknown>;
+  /** Batch F item 32 (answer 2577): my private notes about a colleague (absent: no Private notes action). */
+  notes?: LivePersonNotes;
+  /** Where "Plan a 1:1" goes. */
+  oneOnOneHref?: string;
 }
 
 export interface QuickFeedbackProps {
@@ -107,6 +112,8 @@ export interface QuickFeedbackProps {
   /** Stories: open the ask sheet, or the seal dialog for the first concern. */
   askOpen?: boolean;
   sealOpen?: boolean;
+  /** Batch F item 32: the Private notes drawer open (story). */
+  notesOpen?: boolean;
   state?: LoadState;
   live?: LiveQuickFeedback;
 }
@@ -256,8 +263,23 @@ function SealDialog({ item, onClose, onSeal }: { item: FeedbackItem | null; onCl
   );
 }
 
+/** Batch F item 32 (design): two notes about Meera. */
+const SAMPLE_NOTES: LivePersonNotes = {
+  people: [{ id: 'p-meera', name: 'Meera Iyer', role: 'QA Engineer' }],
+  load: async () => [],
+  onAdd: async () => undefined,
+  onEdit: async () => undefined,
+  onDelete: async () => undefined,
+  defaultPerson: 'p-meera',
+  defaultNotes: [
+    { id: 'n1', text: 'Took the lead on the line 3 audit without being asked. Mention it at mid-year.', createdAt: '2026-09-21T05:00:00Z', updatedAt: '2026-09-21T05:00:00Z' },
+    { id: 'n2', text: 'Wants to move into test automation; look for a course budget.', createdAt: '2026-08-30T05:00:00Z', updatedAt: '2026-09-02T05:00:00Z' },
+  ],
+};
+
 /** PRF-08 Quick feedback (T4): give anytime to any colleague, visibility rule shown before sending (YX-PERF-04). */
-export function QuickFeedbackScreen({ device: deviceProp, me, people, goals, received, given, requests = [], defaultTab = 'received', composerOpen, sent: sentProp, askOpen, sealOpen, state = 'ready', live }: QuickFeedbackProps) {
+export function QuickFeedbackScreen({ device: deviceProp, me, people, goals, received, given, requests = [], defaultTab = 'received', composerOpen, sent: sentProp, askOpen, sealOpen, notesOpen, state = 'ready', live }: QuickFeedbackProps) {
+  const [notesShown, setNotesShown] = useState(!!notesOpen);
   // The live page takes the designed phone layout under 768 px, as PRF-01, 02 and 06 do.
   const narrow = useNarrow();
   const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
@@ -501,7 +523,18 @@ export function QuickFeedbackScreen({ device: deviceProp, me, people, goals, rec
           </>
         }
       />
-      {lists}
+      {/* Batch F item 32 (answer 2577): the quick-actions rail beside the lists. */}
+      <div className="yx-growth-rail">
+        {lists}
+        <FeedbackRail
+          onPraise={() => { setKind('Praise'); setOpen(true); }}
+          onSuggest={() => { setKind('Suggestion'); setOpen(true); }}
+          onAsk={(live ? live.askAbout.length > 0 : true) ? () => setAsking(true) : undefined}
+          onNotes={!live || live.notes ? () => setNotesShown(true) : undefined}
+          oneOnOneHref={live ? live.oneOnOneHref : '#one-on-ones'}
+        />
+      </div>
+      {notesShown && (live?.notes || !live) && <PrivateNotesDrawer open={notesShown} onClose={() => setNotesShown(false)} live={live?.notes ?? SAMPLE_NOTES} />}
       <Drawer open={open} onOpenChange={(o) => (o ? setOpen(true) : close())} title={title} footer={footer} dirty={text.length > 0}>
         {form}
       </Drawer>

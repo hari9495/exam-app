@@ -1,6 +1,6 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { OffersService } from './offers.service';
 import { RespondOfferDto } from './dto/respond-offer.dto';
 import { PublicApplicationsThrottlerGuard } from '../public-applications/public-applications.throttler.guard';
@@ -19,6 +19,14 @@ export class PublicOffersController {
   @Get('offers/:token')
   getOffer(@Param('token') token: string) {
     return this.offers.getPublicOffer(token);
+  }
+
+  /** M10 D4: the issued P05 offer letter (PDF), by the offer's link. */
+  @Get('offers/:token/letter')
+  async letter(@Param('token') token: string, @Res({ passthrough: true }) res: Response) {
+    const f = await this.offers.publicLetter(token);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `inline; filename="${f.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+    return new StreamableFile(f.file);
   }
 
   /** HIR-09 e-sign: emails the candidate a one-time code (only when the offer's template switched e-sign on). */

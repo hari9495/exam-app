@@ -1,5 +1,5 @@
 import { DayRule, evaluateDay, instantAt } from './time-maths';
-import { compOffDays, daysWorked, eligibilityWindow, maternityChecks, mondayOf, overlapsNight, otSettlement, overtimeFor, patternCell, payOfDay, quarterOf, resolveDay, restConflicts, scheduledMinutes, workOnForPunch, type ShiftTimes } from './time-rules';
+import { compOffDays, daysWorked, eligibilityWindow, maternityChecks, mondayOf, overlapsNight, otSettlement, overtimeFor, patternCell, payOfDay, quarterOf, resolveDay, restConflicts, scheduledMinutes, teamDot, shortBand, dayBreaks, frequentBreaks, workOnForPunch, type ShiftTimes } from './time-rules';
 
 const Z = 'Asia/Kolkata';
 const rule = (start: number, end: number): DayRule => ({ shiftStart: start, shiftEnd: end, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300 });
@@ -185,5 +185,50 @@ describe('Timesheet mode (D1, YX-AT-09)', () => {
     expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: 0 }).status).toBe('absent');
     expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: null }).status).toBe('no_timesheet');
     expect(evaluateDay({ ...base, mode: 'timesheet', timesheetMinutes: 480, weeklyOff: true }).status).toBe('weekly_off');
+  });
+});
+
+// Batch C item 15: a team calendar dot from the day's status, late minutes and place.
+describe('team calendar dots', () => {
+  it('present, late, remote, half day, absent and missing; leave, holidays and weekly offs have none', () => {
+    expect(teamDot('present', 0, 'office')).toBe('present');
+    expect(teamDot('present', null, 'unknown')).toBe('present');
+    expect(teamDot('present', 1, 'remote')).toBe('late');
+    expect(teamDot('present', 0, 'remote')).toBe('remote');
+    expect(teamDot('half_day', 20, 'office')).toBe('half_day');
+    expect(teamDot('absent', null, 'unknown')).toBe('absent');
+    expect(teamDot('missing_in', null, 'unknown')).toBe('missing');
+    expect(teamDot('missing_out', null, 'office')).toBe('missing');
+    for (const s of ['leave', 'holiday', 'weekly_off', 'not_started', 'strike']) expect(teamDot(s, null, 'unknown')).toBeNull();
+  });
+});
+
+// Batch C item 16 (answers 2507, 2508): short-hours bands and frequent breaks.
+describe('short hours and breaks', () => {
+  const bands: [number, number, number] = [4, 6, 8];
+  it('bands only days short of the full day: under 4 h, 4-6 h, 6-8 h (limits belong to the next band)', () => {
+    expect(shortBand(239, 480, bands)).toBe('b1');
+    expect(shortBand(240, 480, bands)).toBe('b2');
+    expect(shortBand(359, 480, bands)).toBe('b2');
+    expect(shortBand(360, 480, bands)).toBe('b3');
+    expect(shortBand(479, 480, bands)).toBe('b3');
+    expect(shortBand(480, 480, bands)).toBeNull();
+    // A 9-hour shift worked 8.5 h is short but above the last band: not in any.
+    expect(shortBand(510, 540, bands)).toBeNull();
+    // Company bands 3, 5, 7.
+    expect(shortBand(200, 480, [3, 5, 7])).toBe('b2');
+  });
+  const t = (hhmm: string) => new Date(`2026-11-10T${hhmm}:00+05:30`);
+  it('breaks are break punches and clock-in-again gaps; the last clock-out is not a break', () => {
+    expect(dayBreaks([{ at: t('09:00'), kind: 'in' }, { at: t('18:00'), kind: 'out' }])).toEqual({ count: 0, minutes: 0 });
+    expect(dayBreaks([{ at: t('09:00'), kind: 'in' }, { at: t('11:00'), kind: 'break_start' }, { at: t('11:15'), kind: 'break_end' }, { at: t('13:00'), kind: 'out' }, { at: t('13:40'), kind: 'in' }, { at: t('18:00'), kind: 'out' }])).toEqual({ count: 2, minutes: 55 });
+    // An unfinished break (no end) is not counted.
+    expect(dayBreaks([{ at: t('09:00'), kind: 'in' }, { at: t('17:00'), kind: 'break_start' }])).toEqual({ count: 0, minutes: 0 });
+  });
+  it('frequent: more than the number, or at least the minutes', () => {
+    const limit = { count: 3, minutes: 60 };
+    expect(frequentBreaks({ count: 3, minutes: 59 }, limit)).toBe(false);
+    expect(frequentBreaks({ count: 4, minutes: 20 }, limit)).toBe(true);
+    expect(frequentBreaks({ count: 1, minutes: 60 }, limit)).toBe(true);
   });
 });

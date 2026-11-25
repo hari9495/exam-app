@@ -27,6 +27,8 @@ const METRICS: Record<'sla' | 'ola', { value: string; label: string }[]> = {
   ],
   ola: [
     { value: 'group', label: 'Team hand-off' },
+    // Batch F GLPI 8 (answer 2572): the team's first response (internal TTO).
+    { value: 'group_response', label: 'Team first response' },
     { value: 'task', label: 'Team task' },
   ],
 };

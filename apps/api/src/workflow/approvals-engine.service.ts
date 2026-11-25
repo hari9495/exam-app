@@ -128,7 +128,7 @@ export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text' | 'rea
   const about = who && what.endsWith(` of ${who}`) ? `${what.slice(0, -(who.length + 4))} from ${who}` : null;
   const asks = about ?? (who ? `${who} asks for ${what}` : `A request waits for you: ${what}`);
   if (n.type === 'workflow.approval.reminder') return `Still waiting for your approval: ${asks}`;
-  if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? `Escalated to you: ${asks}` : asks;
+  if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? `Escalated to you: ${asks}` : n.text.startsWith('Reassigned to you') ? `Reassigned to you: ${asks}` : asks;
   // To the person who asked: what was decided (and for whom, as the title says), then why it was turned down.
   if (n.type === 'workflow.approval.decided' && toRequester) return n.text === 'Approved' ? `${what} approved` : n.text === SENT_BACK ? `${what} sent back for changes${n.reason ? `: ${n.reason}` : ''}` : `${what} not approved${n.reason ? `: ${n.reason}` : ''}`;
   return `${n.text}: ${n.title}`;
@@ -137,7 +137,7 @@ export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text' | 'rea
 export interface Notice {
   to: string[];
   requestId: string;
-  type: 'workflow.approval.needed' | 'workflow.approval.reminder' | 'workflow.approval.decided' | 'workflow.approval.no_approver';
+  type: 'workflow.approval.needed' | 'workflow.approval.reminder' | 'workflow.approval.decided' | 'workflow.approval.no_approver' | 'workflow.approval.reassigned';
   title: string;
   link: string;
   text: string;
@@ -268,6 +268,8 @@ export interface InboxItem {
   quickApprove?: boolean;
   /** Short context for the row, from the type (inboxNotes). */
   note?: string | null;
+  /** Answer 2500: who holds the task now (the overseer's list). */
+  approver?: string;
 }
 
 /**
@@ -784,8 +786,15 @@ export class ApprovalsEngine {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId;
       const tasks = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: userId, status: 'open' }, orderBy: { createdAt: 'asc' }, take: 200 });
+      const items = await this.items(tx, org, tasks);
+      return [...items, ...(await this.sourceItems(tx, ctx, userId))];
+    });
+  }
+
+  /** Inbox rows for open tasks at their request's current step. */
+  private async items(tx: Tx, org: string, tasks: Prisma.WfTaskGetPayload<object>[]): Promise<InboxItem[]> {
       const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: tasks.map((t) => t.requestId) }, status: 'pending' } })).map((r) => [r.id, r]));
-      const names = await this.names(tx, org, [...reqs.values()].flatMap((r) => [r.requesterUserId, r.raisedByUserId]).concat(tasks.map((t) => t.onBehalfOfUserId)));
+      const names = await this.names(tx, org, [...reqs.values()].flatMap((r) => [r.requesterUserId, r.raisedByUserId]).concat(tasks.flatMap((t) => [t.onBehalfOfUserId, t.assigneeUserId])));
       const personIds = [...new Set([...reqs.values()].map((r) => r.subjectPersonId).filter((x): x is string => Boolean(x)))];
       const persons = new Map((personIds.length ? await tx.person.findMany({ where: { organizationId: org, id: { in: personIds } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }) : []).map((p) => [p.id, p.preferredName?.trim() || [p.givenName, p.familyName].filter(Boolean).join(' ')]));
       // Send back is offered where the type has it and the company allows it for this request.
@@ -798,7 +807,7 @@ export class ApprovalsEngine {
       const byType = new Map<string, Prisma.WfRequestGetPayload<object>[]>();
       for (const r of reqs.values()) byType.set(r.requestType, [...(byType.get(r.requestType) ?? []), r]);
       for (const [key, rs] of byType) for (const [id, n] of (await this.types.get(key)?.inboxNotes?.(tx, rs)) ?? []) notes.set(id, n);
-      const items: InboxItem[] = tasks
+      return tasks
         .filter((t) => reqs.get(t.requestId)?.currentStep === t.step)
         .map((t) => {
           const r = reqs.get(t.requestId)!;
@@ -822,10 +831,69 @@ export class ApprovalsEngine {
             canSendBack: backable.has(r.id),
             quickApprove: Boolean(this.types.get(r.requestType)?.quickApprove && !this.types.get(r.requestType)?.decideOnlyVia),
             note: notes.get(r.id) ?? null,
+            approver: names.get(t.assigneeUserId) ?? '',
           };
         });
-      return [...items, ...(await this.sourceItems(tx, ctx, userId))];
+  }
+
+  /**
+   * Answer 2500: everyone's open approvals, for whoever holds workflow.approvals.oversee. `reach` keeps the requests in
+   * the overseer's scope (the caller works it out from their grants). Oldest due first; at most 500.
+   */
+  async pendingAll(ctx: CompanyContext, reach: (tx: Tx, reqs: Prisma.WfRequestGetPayload<object>[]) => Promise<Set<string>>) {
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const org = ctx.organizationId;
+      const reqs = await tx.wfRequest.findMany({ where: { organizationId: org, status: 'pending' }, orderBy: { submittedAt: 'asc' }, take: 2000 });
+      const ok = await reach(tx, reqs);
+      const tasks = await tx.wfTask.findMany({ where: { organizationId: org, status: 'open', requestId: { in: reqs.filter((r) => ok.has(r.id)).map((r) => r.id) } }, orderBy: [{ dueAt: { sort: 'asc', nulls: 'last' } }, { createdAt: 'asc' }], take: 500 });
+      return this.items(tx, org, tasks);
     });
+  }
+
+  /**
+   * Answers 2501 / 2502: an open task moves to another approver. The task's holder may do it, or an overseer whose scope
+   * reaches the request (`mayOversee`). The new approver must pass the step's own checks: an active login of the company,
+   * never the requester or whoever raised it, never someone who approved an earlier step of a maker-checker type, and
+   * not already holding this step. A reason is required; it is logged and audited; both approvers are told.
+   */
+  async reassign(ctx: CompanyContext, actorId: string, taskId: string, toUserId: string, reason: string, mayOversee: (tx: Tx, req: Prisma.WfRequestGetPayload<object>) => Promise<boolean>) {
+    const why = reason.trim();
+    // Answer 2525: at least 10 characters, as for late-mark waivers.
+    if (why.length < 10) throw new BadRequestException('Say why you are moving it in at least 10 characters, so both approvers know.');
+    const notices: Notice[] = [];
+    const out = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const org = ctx.organizationId;
+      const task = await tx.wfTask.findFirst({ where: { organizationId: org, id: taskId } });
+      if (!task) throw new NotFoundException('No such approval.');
+      await tx.$queryRaw`SELECT id FROM wf_requests WHERE organization_id = ${org}::uuid AND id = ${task.requestId}::uuid FOR UPDATE`;
+      const req = await tx.wfRequest.findFirstOrThrow({ where: { organizationId: org, id: task.requestId } });
+      // Someone who neither holds the task nor oversees the request learns nothing about it.
+      if (task.assigneeUserId !== actorId && !(await mayOversee(tx, req))) throw new NotFoundException('No such approval.');
+      const fresh = await tx.wfTask.findFirstOrThrow({ where: { id: task.id } });
+      if (fresh.status !== 'open' || req.status !== 'pending' || fresh.step !== req.currentStep) throw new ConflictException('This approval is already closed.');
+      if (toUserId === fresh.assigneeUserId) throw new BadRequestException('They already hold this approval. Choose someone else.');
+      if (toUserId === req.requesterUserId || toUserId === req.raisedByUserId) throw new BadRequestException('The person who asked cannot approve their own request. Choose someone else.');
+      if (!(await this.active(tx, org, [toUserId])).length) throw new BadRequestException('Choose an active colleague.');
+      if (await tx.wfTask.findFirst({ where: { organizationId: org, requestId: req.id, step: fresh.step, assigneeUserId: toUserId, status: 'open' } })) throw new BadRequestException('They already hold this step of the request. Choose someone else.');
+      if (this.type(req.requestType).distinctSteps && fresh.step > 0 && (await tx.wfAction.count({ where: { organizationId: org, requestId: req.id, actorUserId: toUserId, action: { in: ['approved', 'self_approved'] }, step: { lt: fresh.step } } })))
+        throw new BadRequestException('They approved an earlier step of this request, so someone else must approve this one.');
+      const from = fresh.onBehalfOfUserId ?? fresh.assigneeUserId;
+      const steps = req.steps as unknown as FrozenStep[];
+      steps[fresh.step].approverIds = steps[fresh.step].approverIds.map((id) => (id === from ? toUserId : id));
+      const n = await tx.wfTask.updateMany({ where: { id: fresh.id, version: fresh.version, status: 'open' }, data: { assigneeUserId: toUserId, onBehalfOfUserId: null, version: { increment: 1 }, updatedAt: new Date() } });
+      if (!n.count) throw new ConflictException('Someone acted on this approval meanwhile. Reload and try again.');
+      await tx.wfRequest.update({ where: { id: req.id }, data: { steps: steps as unknown as Prisma.InputJsonValue, version: { increment: 1 }, updatedAt: new Date() } });
+      await this.log(tx, org, req.id, fresh.id, fresh.step, actorId, null, 'reassigned', why, 'web');
+      await AuditService.recordIn(tx, ctx, { actorUserId: actorId, action: 'workflow.task.reassigned', entityType: 'wf_request', entityId: req.id, metadata: { taskId: fresh.id, step: fresh.step, from: fresh.assigneeUserId, onBehalfOf: fresh.onBehalfOfUserId, to: toUserId, reason: why, asOverseer: fresh.assigneeUserId !== actorId } });
+      const names = await this.names(tx, org, [toUserId, actorId]);
+      const s = steps[fresh.step];
+      notices.push({ to: [toUserId], requestId: req.id, type: 'workflow.approval.needed', title: req.title, link: `/yx/approvals?request=${req.id}`, text: `Reassigned to you: ${s.name}`, actor: req.requesterUserId });
+      const by = fresh.assigneeUserId === actorId ? '' : ` by ${names.get(actorId) ?? 'HR'}`;
+      notices.push({ to: [...new Set([fresh.assigneeUserId, from])], requestId: req.id, type: 'workflow.approval.reassigned', title: req.title, link: '/yx/approvals', text: `Moved to ${names.get(toUserId) ?? 'someone else'}${by} (${why.slice(0, 120)})`, actor: actorId });
+      return { taskId: fresh.id, to: toUserId, toName: names.get(toUserId) ?? '' };
+    });
+    await this.send(ctx, notices);
+    return out;
   }
 
   /** A request's route and log, for its requester, the person who raised it, or anyone who held one of its tasks. */

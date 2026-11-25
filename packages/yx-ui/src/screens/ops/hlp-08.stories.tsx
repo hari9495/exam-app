@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { CaseListScreen, CaseWorkspaceScreen, ErrorCase, LoadingCase } from './cases';
+import { CaseListScreen, CaseWorkspaceScreen } from './cases';
 import { ANON_MESSAGES, CASES } from './helpdesk-data';
 import { ANON_MEMBERS, CASE_DOCUMENTS, CASE_TIMELINE, DISC_MEMBERS, GRIEVANCE_MEMBERS } from './cases-data';
 import { TODAY } from '../_kit/data';
@@ -23,11 +23,12 @@ export const DecisionAllowed: S = { name: 'Disciplinary · record decision', ren
 export const ConflictBlock: S = { name: 'Add member · conflict of interest', render: () => <CaseWorkspaceScreen variant="grievance" caseRow={CASES[0]} members={GRIEVANCE_MEMBERS} {...common} addMemberConflict /> };
 export const NonMember: S = { name: 'Not a case member (shows Not found)', render: () => <CaseWorkspaceScreen variant="grievance" caseRow={CASES[0]} members={[]} {...common} member={false} /> };
 export const NonMemberList: S = { name: 'Case list · not a member (shows Not found)', render: () => <CaseListScreen cases={CASES} today={TODAY} member={false} /> };
-export const Loading: S = { render: () => <LoadingCase /> };
-export const Error: S = { render: () => <ErrorCase /> };
 
 // States only the real records have (Helpdesk design wiring, HLP-08 live), drawn in the same layout as above.
 const live = (over: Partial<LiveCaseWorkspace> = {}) => <CaseWorkspaceScreen live={liveWorkspace(over)} />;
+// Answer 2590: the workspace's loading and error states are the live screen's own (the design-only copies are gone).
+export const Loading: S = { render: () => live({ state: 'loading', detail: null }) };
+export const Error: S = { render: () => live({ state: 'error', detail: null }) };
 const ethics = ethicsCase();
 const notSent = { ...ethics.notice!, status: 'not-sent' as const, sentOn: null, replyBy: null, replies: [] };
 const noOutcome = { ...ethics.outcome!, status: 'none' as const, finding: null, action: null, reasons: null, proposedBy: null, proposedAt: null };
@@ -73,3 +74,5 @@ export const ManagerReports: S = { name: 'Cases · reports from managers (open o
 export const ReportMisconduct: S = { name: 'Manager · report misconduct to HR', render: () => <ReportMisconductScreen live={liveReportMisconduct()} /> };
 export const ReportMisconductNoTeam: S = { name: 'Manager · report misconduct · nobody reports to you', render: () => <ReportMisconductScreen live={liveReportMisconduct({ people: [], reports: [] })} /> };
 export const NoAccess: S = { name: 'No access (no case-team key)', render: () => live({ state: 'no-access' }) };
+// Answer 2597: a POSH complaint filed on her behalf, after the window, asking for conciliation first.
+export const PoshFilingDetails: S = { name: 'POSH · filed on her behalf, late, conciliation asked', render: () => live({ detail: poshCase({ report: { ...poshCase().report, late: true, onBehalf: { name: 'Meena Pillai', relation: 'Sister' }, lateReason: 'She was on medical leave for two months after it happened.', conciliation: true } }) }) };

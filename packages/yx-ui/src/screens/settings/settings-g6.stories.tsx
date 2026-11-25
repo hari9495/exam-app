@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { StageTargetsSheet } from '../hiring/job-settings';
+import { PipelineSheet, type EditablePipeline } from '../hiring/pipeline-sheet';
 import { ScorecardTemplateSheet } from '../hiring/scorecard-template-sheet';
 import { StageMessageSheet, type StageMessageView } from '../hiring/stage-message-sheet';
 import { CertificateCard, type CertificateTemplateView } from './certificate-card';
@@ -138,3 +139,19 @@ export const P6_5_Certificate: S = { name: '6.5 Assessments · pass certificate'
 export const P6_5_CertificateStandard: S = { name: '6.5 Assessments · pass certificate, standard wording', render: () => cert({ ...CERT, signatoryName: null, isDefault: true }) };
 export const P6_5_CertificateEdit: S = { name: '6.5 Assessments · edit pass certificate', render: () => cert(CERT, true, true) };
 export const P6_5_CertificateView: S = { name: '6.5 Assessments · pass certificate, view only', render: () => cert({ ...CERT, enabled: false }, false) };
+const OFFICE: EditablePipeline = {
+  id: 'p2',
+  name: 'Office staff',
+  isDefault: false,
+  stages: [
+    { id: 'a', name: 'Applied', category: 'active', position: 0, statuses: [{ id: 'a1', name: 'New', position: 0 }] },
+    { id: 'b', name: 'Interview', category: 'active', position: 1, statuses: [{ id: 'b1', name: 'Scheduled', position: 0 }, { id: 'b2', name: 'Done', position: 1 }], rules: [{ id: 'r1', type: 'feedback', minCount: 2, minAvgRating: 3 }] },
+    { id: 'c', name: 'Offer', category: 'offer', position: 2, statuses: [], rules: [{ id: 'r2', type: 'checklist', items: [{ id: 'i1', label: 'References checked' }] }] },
+  ],
+};
+const pipelineSheet = (pipeline: EditablePipeline | null, canEdit = true) => (
+  <PipelineSheet open onOpenChange={() => {}} pipeline={pipeline} tests={[{ value: 'e1', label: 'Plant safety test' }]} canEdit={canEdit} onCreate={async () => {}} onDeletePipeline={async () => {}} onAddStage={async () => {}} onSaveStage={async () => {}} onMoveStage={async () => {}} onRemoveStage={async () => {}} />
+);
+export const P6_1_PipelineEdit: S = { name: '6.1 Hiring · edit pipeline (stages, statuses, entry rules)', render: () => pipelineSheet(OFFICE) };
+export const P6_1_PipelineNew: S = { name: '6.1 Hiring · add pipeline', render: () => pipelineSheet(null) };
+export const P6_1_PipelineView: S = { name: '6.1 Hiring · pipeline, view only', render: () => pipelineSheet(OFFICE, false) };

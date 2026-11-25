@@ -159,6 +159,25 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'policy.publish.second_person': { label: 'Policies: a second person publishes each version', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
   // HLP-06 speak-up (docs/yukthix/helpdesk-design-map.md 4e): who may report without a name, the days to acknowledge,
   // and the topics people choose from. Legal clocks (POSH, GRC) come from the rule sets IN.POSH and IN.GRC, not from here.
+  // Batch G2 item 100 (M09 Q2): the feed's blocked words (one a line, matched as whole words) and how many reports hide a post.
+  'engage.blocked_words': { label: 'Engage: blocked words that hold a post or comment for a moderator (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 2000 }, default: 'idiot\nstupid\nbastard\nchutiya\nsaala\nkamina' },
+  // Batch G2 item 73 (M09 Q4, answer 2603): the company values a kudos names, and its badges (badges only, no points).
+  'engage.values': { label: 'Engage: company values people thank each other for (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Customer first\nOwn it\nWin together\nDo the right thing' },
+  'engage.badges': { label: 'Engage: badges a kudos may carry (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Above and beyond\nTeam player\nProblem solver\nGreat mentor' },
+  // Batch G2 item 74 (answer 2604): survey results show only for groups of this many responses or more.
+  'engage.survey.min_group': { label: 'Engage: smallest group whose survey results are shown', scopes: ['tenant'], dated: false, values: ['3', '4', '5', '6', '7', '8', '9', '10'], default: '5' },
+  // Batch G2 item 76 (M09 Q5, answer 2605): which celebrations the feed shows (each person can still opt out).
+  'engage.celebrate.birthdays': { label: 'Engage: show birthdays on the feed (without the year)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'engage.celebrate.anniversaries': { label: 'Engage: show work anniversaries on the feed', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'engage.celebrate.new_joiners': { label: 'Engage: welcome new joiners on the feed (their first week)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // Learning (M07): the default attendance share for new classroom and virtual courses, the manager's later check
+  // (LRN-12), and who hears about an overdue mandatory course when (answer 2609).
+  'learning.attendance_share': { label: 'Learning: share of the session slots someone must attend to complete it, for new courses (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '75', '80', '90', '100'], default: '75' },
+  'learning.check_after_days': { label: 'Learning: days after a session that managers are asked if the skill is applied', scopes: ['tenant'], dated: false, values: ['30', '45', '60', '90'], default: '60' },
+  'learning.overdue.manager_days': { label: 'Learning: days past the due date before the manager is told', scopes: ['tenant'], dated: false, values: ['1', '3', '7', '14'], default: '7' },
+  'company_docs.expiry_reminder_days': { label: 'Company documents: days before expiry that the uploader and document managers are told', scopes: ['tenant'], dated: false, values: ['7', '14', '30', '60', '90'], default: '30' },
+  'learning.overdue.hr_days': { label: 'Learning: days past the due date before training reports (HR) are told', scopes: ['tenant'], dated: false, values: ['7', '14', '21', '30'], default: '14' },
+  'engage.hide_after_reports': { label: 'Engage: reports that hide a post or comment until a moderator reviews it', scopes: ['tenant'], dated: false, values: ['2', '3', '5', '10'], default: '3' },
   'speakup.anonymous': { label: 'Speak-up: who may report without a name', scopes: ['tenant'], dated: false, values: ['all', 'ethics_only', 'off'], default: 'all' },
   'speakup.ack_days': { label: 'Speak-up: days for the case team to acknowledge a report', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '5', '7'], default: '2' },
   'speakup.categories.grievance': { label: 'Speak-up: topics of a grievance (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Pay and benefits\nWorking conditions\nA manager\nTransport\nSafety\nOther' },
@@ -232,6 +251,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'expense.card.reminder_days': { label: 'Card statements: remind the employee about a card line to explain after these days', scopes: ['tenant'], dated: false, values: ['3,7,14', '7,14', '7', '14', 'off'], default: '3,7,14' },
   'expense.card.recovery_instalments': { label: 'Card statements: personal spend is recovered from salary in this many instalments', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '6'], default: '3' },
   // M06 performance PM2 (§6.1, D2): whether the manager approves a person's goals; how often check-ins are expected.
+  // Batch F item 30 (answer 2575): a goal with no check-in for this many days shows as "not updated" to the manager.
+  'perf.goal.stale_days': { label: 'Performance: a goal shows as not updated after this many days without a check-in', scopes: ['tenant'], dated: false, values: ['14', '30', '45', '60'], default: '30' },
   'perf.goal.approval': { label: 'Performance: the manager approves a person’s goals', scopes: ['tenant'], dated: false, values: ['manager', 'none'], default: 'manager' },
   'perf.self_review.visible_to_manager': { label: 'Performance: the manager reads the self review', scopes: ['tenant'], dated: false, values: ['after_manager_draft', 'immediately'], default: 'after_manager_draft' },
   'perf.disagreement.days': { label: 'Performance: days after release to disagree with a review', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '15' },
@@ -640,6 +661,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'timesheet.note.required': { label: 'Timesheet comment: required on every day with hours', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'on' },
   // Answer 1787 (founder change, 13 Nov 2026): the minimum is per day with hours.
   'timesheet.note.min_words_per_day': { label: 'Timesheet comment: at least this many words per day with hours', scopes: ['tenant'], dated: false, values: ['5', '10', '15', '20', '25', '30', '50', '100'], default: '20' },
+  // Batch D A14 (answer 2536): the Home nudge when today has no hours, and one reminder the day before the weekly cut-off.
+  'timesheet.nudge.daily_from': { label: 'Timesheet: Home nudge when today has no hours, from (off: none)', scopes: ['tenant'], dated: false, values: ['off', '14:00', '15:00', '16:00', '17:00', '18:00'], default: '16:00' },
+  'timesheet.reminder.cutoff_day': { label: 'Timesheet: the week is due on (a reminder goes the day before; off: none)', scopes: ['tenant'], dated: false, values: ['off', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], default: 'fri' },
+  'timesheet.reminder.time': { label: 'Timesheet: the reminder before the cut-off goes at', scopes: ['tenant'], dated: false, values: ['08:00', '09:00', '10:00', '11:00', '12:00'], default: '10:00' },
   'timesheet.tool_suggestions': { label: 'People may connect calendars and work tools for timesheet suggestions', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   // Founder decision 9 Oct 2026: where the Factories Act / OSH Code covers the place (a factory), approved overtime of the
   // employment categories P07 IN.FACTORIES counts as workers is always paid at the legal rate, never comp-off. Dated.
@@ -710,6 +735,13 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // valid_from and apply from that month only).
   'attendance.late_marks_free': { label: 'Late marks a month without a deduction', scopes: ['employee', 'tenant', 'legal_entity', 'location'], dated: false, values: ['0', '1', '2', '3', '4', '5', '6'], default: '3' },
   'attendance.late_mark_penalty': { label: 'Each late mark over the free ones costs (days of pay)', scopes: ['employee', 'tenant', 'legal_entity', 'location'], dated: false, values: ['0', '0.5', '1'], default: '0' },
+  // Batch C item 16 (answers 2507, 2508): the Short hours and Breaks reports. Bands of worked time on days short of
+  // the shift (default under 4 h, 4-6 h, 6-8 h), and what counts as frequent breaks (more than 3, or 60+ minutes a day).
+  'attendance.short_hours.band1': { label: 'Short day: the shortest band is worked time under (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['2', '3', '4', '5'], default: '4' },
+  'attendance.short_hours.band2': { label: 'Short day: the middle band ends at (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['5', '6', '7'], default: '6' },
+  'attendance.short_hours.band3': { label: 'Short day: the longest band ends at (hours; a full day from here)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['7', '8', '9'], default: '8' },
+  'attendance.frequent_breaks.count': { label: 'Frequent breaks: more breaks than this in a day', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['2', '3', '4', '5', '6'], default: '3' },
+  'attendance.frequent_breaks.minutes': { label: 'Frequent breaks: or breaks adding up to at least (minutes a day)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['30', '45', '60', '90', '120'], default: '60' },
   // TIM-36: presence-based attendance on work-from-home days (desktop app / Teams presence), only with each person's consent.
   'attendance.presence': { label: 'Presence-based attendance on work-from-home days', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', 'on'], default: 'off' },
   'attendance.factories_act': {

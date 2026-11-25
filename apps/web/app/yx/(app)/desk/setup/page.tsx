@@ -407,6 +407,23 @@ function YxDeskSetupPageInner() {
           />
         ) : undefined
       }
+      // Batch F GLPI 10 (answer 2574): copy this desk's set-up as a file; import one (a dry run first).
+      transfer={
+        selected
+          ? {
+              onExport: async () => {
+                const file = await apiFetch(`/desk${base}/export`, {}, token);
+                const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }));
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `desk-set-up-${new Date().toISOString().slice(0, 10)}.json`;
+                link.click();
+                URL.revokeObjectURL(url);
+              },
+              onImport: (file, dryRun) => write(`${base}/import`, 'POST', { file, dryRun }),
+            }
+          : undefined
+      }
       rules={
         canRules && selected ? (
           <RulesAdmin

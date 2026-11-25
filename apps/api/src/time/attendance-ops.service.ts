@@ -10,6 +10,7 @@ import { ResolveDto, MarkPresentDto } from './ops-dto';
 import { ScheduleBook, lockedDates } from './schedule';
 import { TIME_KEYS, asDate, dateOf, factsOn, grantCovers, monthRange, mustSee, settingOn, todayIn, visibleSql } from './time-core';
 import { FlexiRules, addDays, fromStart, lateFrom, minutesInto, partsOf } from './time-maths';
+import { dayBreaks, frequentBreaks, scheduledMinutes, shortBand } from './time-rules';
 
 // Time ops, attendance side (29 Oct 2026):
 //   TIM-01 Today board   a manager's team or HR's people (attendance.view in scope) today: who is in, late, not in, on
@@ -325,6 +326,58 @@ export class AttendanceOpsService {
    * early exits (checked out before the shift's end on a worked day), approved overtime hours and unpaid days. HR's page
    * adds them up by department and site; a manager's lists the people.
    */
+  /**
+   * Batch C item 16 (answers 2507, 2508): Short hours and Breaks for the month up to yesterday, for the same people as the
+   * attendance report (a manager's team, attendance.view in scope). Short hours: worked days short of the shift's full day
+   * in the company's bands. Breaks: break punches and clock-in-again gaps; where clock-in-again is off for the person, the
+   * report says breaks are not recorded (null), never zero.
+   */
+  async hoursReport(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null) {
+    const { from, to } = monthRange(month);
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = await this.own(tx, c, v);
+      const today = todayIst();
+      const people = await this.people(tx, c, v, own, from, entityId, to);
+      const ids = people.map((p) => p.id);
+      const upTo = to < today ? to : addDays(today, -1);
+      const days = ids.length && upTo >= from ? await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(upTo) }, status: { in: ['present', 'half_day'] } } }) : [];
+      const punches = days.length ? await tx.punch.findMany({ where: { organizationId: org, employeeId: { in: ids }, accepted: true, workOn: { gte: asDate(from), lte: asDate(upTo) } }, orderBy: { punchedAt: 'asc' }, select: { employeeId: true, workOn: true, punchedAt: true, kind: true } }) : [];
+      const book = await ScheduleBook.load(tx, org);
+      const num = async (f: Awaited<ReturnType<typeof factsOn>>, key: string) => Number(await settingOn(tx, c, key, f!, upTo));
+      const rows = [];
+      for (const p of people) {
+        const f = await factsOn(tx, org, p.id, upTo < from ? from : upTo);
+        if (!f) continue;
+        const bands: [number, number, number] = [await num(f, 'attendance.short_hours.band1'), await num(f, 'attendance.short_hours.band2'), await num(f, 'attendance.short_hours.band3')];
+        const limit = { count: await num(f, 'attendance.frequent_breaks.count'), minutes: await num(f, 'attendance.frequent_breaks.minutes') };
+        const short = { b1: 0, b2: 0, b3: 0 };
+        let frequent = 0;
+        let breaks = 0;
+        let breakMinutes = 0;
+        let recorded = false;
+        for (const d of days.filter((x) => x.employeeId === p.id)) {
+          const on = dateOf(d.workOn);
+          const fd = (await factsOn(tx, org, p.id, on)) ?? f;
+          const shift = (d.shiftId ? book.shiftOn(d.shiftId, on) : null) ?? (await book.locationDay(fd, on)).rule;
+          // A half day is measured against half the shift.
+          const full = d.status === 'half_day' ? Math.round(scheduledMinutes(shift) / 2) : scheduledMinutes(shift);
+          const band = d.workedMinutes === null ? null : shortBand(d.workedMinutes, full, bands);
+          if (band) short[band]++;
+          if (!shift.reclockIn) continue;
+          recorded = true;
+          const b = dayBreaks(punches.filter((x) => x.employeeId === p.id && dateOf(x.workOn) === on).map((x) => ({ at: x.punchedAt, kind: x.kind })));
+          breaks += b.count;
+          breakMinutes += b.minutes;
+          if (frequentBreaks(b, limit)) frequent++;
+        }
+        rows.push({ id: p.id, name: p.name, code: p.code, dept: p.dept, location: p.location, short, breaksRecorded: recorded, breaks: recorded ? breaks : null, breakMinutes: recorded ? breakMinutes : null, frequentBreakDays: recorded ? frequent : null, bands, limit });
+      }
+      return { month, upTo, scope: this.scope(v), rows };
+    });
+  }
+
   async attendanceReport(ctx: TenantContext, user: ScopeUser, month: string, entityId?: string | null) {
     const { from, to } = monthRange(month);
     const v = await this.viewer(user);

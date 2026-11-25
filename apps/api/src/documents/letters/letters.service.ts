@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, Logger, NotFoundException, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Inject, Injectable, Logger, NotFoundException, OnModuleInit, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../../org-structure/org-structure.service';
@@ -46,7 +46,7 @@ const REQUEST_TYPE = 'letter.issue';
 export const ESIGN_NOTICE = 'G-19 v1';
 /** The register lists a cancelled joiner's letters, and their offer withdrawal letter is issued after the cancel (PPL-15). */
 const LETTER_JOINERS = ['invited', 'cancelled'];
-const TYPE_CODE: Record<string, string> = { appointment: 'APT', welcome: 'WEL', confirmation: 'CNF', fnf_statement: 'FNF', offer_withdrawal: 'OWD' };
+const TYPE_CODE: Record<string, string> = { appointment: 'APT', welcome: 'WEL', confirmation: 'CNF', fnf_statement: 'FNF', offer_withdrawal: 'OWD', offer: 'OFR' };
 const typeCode = (t: string) => TYPE_CODE[t] ?? t.slice(0, 4).toUpperCase();
 
 /** A joiner's planned job, filled in on their checklist's Pre-boarding forms card (PPL-15). */
@@ -73,6 +73,11 @@ export function plainRenderError(e: string): string {
   if (/decrypt|cipher|auth tag|unsupported state/i.test(e)) return 'A stored file could not be opened. Ask your admin to upload the template again.';
   return 'Something went wrong while making the letter. Try again; if it fails again, ask your admin.';
 }
+/** A person's letter: a candidate's offer letter (no person) is never drafted, held, retried or listed here. */
+const pid = (l: { personId: string | null }) => {
+  if (!l.personId) throw new NotFoundException('No such letter.');
+  return l.personId;
+};
 type Template = Prisma.LetterTemplateGetPayload<object>;
 type Letter = Prisma.LetterIssueGetPayload<object>;
 export interface SignEvidence {
@@ -165,7 +170,7 @@ export class LettersService implements OnModuleInit {
   }
 
   /** Checks a Word file: safe, placeholders all known (with "did you mean"). */
-  private checkTemplate(buf: Buffer): string[] {
+  checkTemplate(buf: Buffer): string[] {
     let fields: string[];
     try {
       fields = templateFields(buf);
@@ -185,19 +190,27 @@ export class LettersService implements OnModuleInit {
     this.requireKey(v, 'letter.template.manage', input.legalEntityId);
     const fields = this.checkTemplate(input.buf);
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const org = c.organizationId;
-      if (input.legalEntityId && !(await tx.legalEntity.findFirst({ where: { organizationId: org, id: input.legalEntityId }, select: { id: true } }))) throw new BadRequestException('No such legal entity.');
-      const file = await this.files.storeIn(tx, c, { area: 'letter-templates', name: input.fileName, data: input.buf, allowedMime: [DOCX], maxMb: 20, via: input.source === 'starter' ? 'system' : 'staff' });
-      // Several templates per letter type: a template is its name; a new file under the same name is its next version.
-      const prev = await tx.letterTemplate.findFirst({ where: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, language: 'en' }, orderBy: { version: 'desc' } });
-      const t = await tx.letterTemplate.create({
-        data: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, source: input.source, fileId: file.id, fields, requiresApproval: input.requiresApproval, personSigns: input.personSigns, companyDsc: input.companyDsc, onePerPerson: input.onePerPerson, starterRevision: input.starterRevision ?? null, version: (prev?.version ?? 0) + 1, status: 'draft', createdBy: c.userId ?? null },
-      });
-      await audit(tx, c, 'letter.template.added', 'letter_template', t.id, { letterType: t.letterType, version: t.version, source: t.source, fields, onePerPerson: t.onePerPerson });
-      return { t, fileId: file.id, org };
+      if (input.legalEntityId && !(await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: input.legalEntityId }, select: { id: true } }))) throw new BadRequestException('No such legal entity.');
+      return this.insertTemplate(tx, c, { ...input, fields, status: 'draft' });
     });
     await this.files.scan(out.org, out.fileId);
     return this.templateView(out.t);
+  }
+
+  /**
+   * Stores a checked .docx and adds it as the next version of the template with that name. Also used by the one-off move
+   * of the older offer templates (answer 2515), which runs as the system and adds them already switched on.
+   */
+  async insertTemplate(tx: Tx, c: CompanyContext, input: { letterType: string; name: string; legalEntityId: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc: boolean; onePerPerson: boolean; source: 'upload' | 'starter' | 'editor'; starterRevision?: number; fileName: string; buf: Buffer; fields: string[]; status: 'draft' | 'active'; previewViewedAt?: Date }) {
+    const org = c.organizationId;
+    const file = await this.files.storeIn(tx, c, { area: 'letter-templates', name: input.fileName, data: input.buf, allowedMime: [DOCX], maxMb: 20, via: input.source === 'starter' || !c.userId ? 'system' : 'staff' });
+    // Several templates per letter type: a template is its name; a new file under the same name is its next version.
+    const prev = await tx.letterTemplate.findFirst({ where: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, language: 'en' }, orderBy: { version: 'desc' } });
+    const t = await tx.letterTemplate.create({
+      data: { organizationId: org, letterType: input.letterType, name: input.name, legalEntityId: input.legalEntityId, source: input.source, fileId: file.id, fields: input.fields, requiresApproval: input.requiresApproval, personSigns: input.personSigns, companyDsc: input.companyDsc, onePerPerson: input.onePerPerson, starterRevision: input.starterRevision ?? null, version: (prev?.version ?? 0) + 1, status: input.status, previewViewedAt: input.previewViewedAt ?? null, createdBy: c.userId ?? null },
+    });
+    await audit(tx, c, 'letter.template.added', 'letter_template', t.id, { letterType: t.letterType, version: t.version, source: t.source, fields: input.fields, onePerPerson: t.onePerPerson });
+    return { t, fileId: file.id, org };
   }
 
   uploadTemplate(ctx: TenantContext, user: ScopeUser, dto: { letterType: string; name: string; legalEntityId?: string | null; requiresApproval: boolean; personSigns: boolean; companyDsc?: boolean; onePerPerson?: boolean; fixes?: string }, file: { originalname: string; buffer: Buffer } | undefined) {
@@ -597,6 +610,89 @@ export class LettersService implements OnModuleInit {
     return this.letterView(await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, (tx) => tx.letterIssue.findFirstOrThrow({ where: { id } })));
   }
 
+  // ------------------------------------------------------------------------------------------ offers (M10 D4, answer 2524)
+
+  /**
+   * M10 D4: a candidate's offer issued as a P05 letter from the chosen Letters 'offer' template. The entity's signatory
+   * signs it; every field the template uses must be filled (never a silent blank); then it is numbered, made, stamped and
+   * issued like any letter. The offer's own P03 route ('ats.offer') was its approval, so the template's "needs approval"
+   * is not asked again. A letter already made for this version (an email that failed) is used again, never numbered
+   * twice; an older version's letter is superseded by the new one.
+   */
+  async issueOffer(org: string, userId: string | null, input: { offerId: string; candidateId: string; candidateName: string; templateId: string; legalEntityId: string; since: Date; data: Record<string, string | boolean> }) {
+    const ctx: TenantContext = { organizationId: org, isSuperAdmin: false, userId };
+    const id = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`offer-letter:${input.offerId}`}))`;
+      const mine = { organizationId: org, subjectType: 'offer', subjectId: input.offerId };
+      const last = await tx.letterIssue.findFirst({ where: { ...mine, status: { in: ['rendering', 'issued'] } }, orderBy: { createdAt: 'desc' } });
+      if (last && last.createdAt >= input.since && last.templateId === input.templateId) return last.id;
+      // A letter of an earlier version that was never made stops here (the hourly retry would make it otherwise).
+      await tx.letterIssue.updateMany({ where: { ...mine, status: 'rendering' }, data: { status: 'withdrawn' } });
+      const { t, signer, data } = await this.offerPrepared(tx, org, input);
+      const issued = await tx.letterIssue.findFirst({ where: { ...mine, status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { id: true } });
+      const l = await tx.letterIssue.create({
+        data: {
+          organizationId: org,
+          templateId: t.id,
+          templateVersion: t.version,
+          letterType: 'offer',
+          title: `${t.name}: ${input.candidateName}`.slice(0, 150),
+          candidateId: input.candidateId,
+          legalEntityId: input.legalEntityId,
+          subjectType: 'offer',
+          subjectId: input.offerId,
+          dataEnc: this.seal(data),
+          status: 'rendering',
+          supersedesId: issued?.id ?? null,
+          signatoryId: signer?.row.id ?? null,
+          personSigns: t.personSigns,
+          requestedBy: userId,
+        },
+      });
+      await audit(tx, c, 'letter.requested', 'letter_issue', l.id, { letterType: 'offer', templateVersion: t.version, offerId: input.offerId, approval: false, supersedes: l.supersedesId });
+      return l.id;
+    });
+    const at = { organizationId: org, isSuperAdmin: false };
+    if ((await this.tenantPrisma.forTenant(at, (tx) => tx.letterIssue.findFirstOrThrow({ where: { organizationId: org, id } }))).status === 'rendering') await this.render(org, id);
+    return this.tenantPrisma.forTenant(at, async (tx) => {
+      const l = await tx.letterIssue.findFirstOrThrow({ where: { organizationId: org, id } });
+      if (l.status !== 'issued' || !l.fileId) throw new ServiceUnavailableException(l.renderError ? plainRenderError(l.renderError) : 'The offer letter could not be made. Try again in a few minutes.');
+      return { id: l.id, referenceNo: l.referenceNo!, sha256: l.sha256!, title: l.title, pdf: await this.fileBytes(tx, org, l.fileId) };
+    });
+  }
+
+  /** The offer letter's template, signatory and data, checked as for issuing (the same refusals for a preview). */
+  private async offerPrepared(tx: Tx, org: string, input: { templateId: string; legalEntityId: string; data: Record<string, string | boolean> }) {
+    const t = await this.chosenTemplate(tx, org, 'offer', input.templateId, input.legalEntityId);
+    if (t.companyDsc) throw new BadRequestException('This offer letter asks for the company’s digital signature, which offers do not use. Switch it off in Settings › Letter templates.');
+    const signer = await this.signatoryFor(tx, org, input.legalEntityId);
+    const data = { ...input.data, signatory_name: signer?.name ?? '', signatory_title: signer?.title ?? '' };
+    const missing = missingFields(t.fields, data);
+    if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'LETTER_FIELDS_MISSING', message: missingMessage(missing, false), errors: Object.fromEntries(missing.map((m) => [m, FIELDS[m].label])) });
+    return { t, signer, data };
+  }
+
+  /**
+   * HR's read-only preview of an offer letter before it is sent: the same fill as issuing, marked as a preview; never
+   * numbered, stored or audited as issued (nothing is written).
+   */
+  async previewOffer(org: string, input: { templateId: string; legalEntityId: string; data: Record<string, string | boolean> }) {
+    const p = await this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      const r = await this.offerPrepared(tx, org, input);
+      return { data: r.data, docx: await this.fileBytes(tx, org, r.t.fileId) };
+    });
+    return previewMark(await this.toPdf(fillDocx(p.docx, p.data)));
+  }
+
+  /** A candidate's offer letter (the issued PDF) by its id: for the offer page and the sealed copy. */
+  async offerLetterPdf(org: string, id: string) {
+    return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      const l = await tx.letterIssue.findFirst({ where: { organizationId: org, id, subjectType: 'offer', candidateId: { not: null }, fileId: { not: null } } });
+      if (!l) throw new NotFoundException('Offer letter not found');
+      return { id: l.id, referenceNo: l.referenceNo!, sha256: l.sha256!, title: l.title, pdf: await this.fileBytes(tx, org, l.fileId!) };
+    });
+  }
+
   /**
    * The signatory approves; the company admins do when the signatory asked for it, is not active, or none is named.
    * That is the letter's own route, not a fallback, so no "no approver" warning goes out.
@@ -664,7 +760,7 @@ export class LettersService implements OnModuleInit {
     if (!d) throw new NotFoundException('There is no draft letter here.');
     const t = await this.templateRow(tx, c.organizationId, d.templateId);
     const kept = this.open(d.dataEnc);
-    return { d, ...(await this.prepare(tx, c, v, { letterType: d.letterType, personId: d.personId, template: t, withdrawalReason: String(kept.withdrawal_reason ?? '') || null })) };
+    return { d, ...(await this.prepare(tx, c, v, { letterType: d.letterType, personId: pid(d), template: t, withdrawalReason: String(kept.withdrawal_reason ?? '') || null })) };
   }
 
   /** HR issues a drafted letter after reviewing it: then as any letter. */
@@ -673,7 +769,7 @@ export class LettersService implements OnModuleInit {
     let notices: Notice[] = [];
     const org = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { d, t, data, signer } = await this.draftPrepared(tx, c, v, id);
-      await this.noOtherLetter(tx, c.organizationId, d.personId, t, d.employmentId);
+      await this.noOtherLetter(tx, c.organizationId, pid(d), t, d.employmentId);
       const l = await tx.letterIssue.update({ where: { id }, data: { dataEnc: this.seal(data), signatoryId: signer?.row.id ?? null, status: t.requiresApproval ? 'pending_approval' : 'rendering' } });
       if (t.requiresApproval) notices = await this.requestApproval(tx, c, l, t, signer);
       await audit(tx, c, 'letter.requested', 'letter_issue', id, { letterType: t.letterType, templateVersion: t.version, personId: d.personId, approval: t.requiresApproval, fromDraft: true });
@@ -689,7 +785,7 @@ export class LettersService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const d = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id, status: 'draft' } });
       if (!d) throw new NotFoundException('There is no draft letter here.');
-      await this.mayIssue(tx, c, v, d.personId, await this.templateRow(tx, c.organizationId, d.templateId));
+      await this.mayIssue(tx, c, v, pid(d), await this.templateRow(tx, c.organizationId, d.templateId));
       const n = await tx.letterIssue.updateMany({ where: { organizationId: c.organizationId, id, status: 'draft' }, data: { status: 'discarded', discardReason: reason.trim().slice(0, 500) } });
       if (!n.count) throw new ConflictException('This draft changed meanwhile. Reload the letters.');
       await audit(tx, c, 'letter.discarded', 'letter_issue', id, { letterType: d.letterType, personId: d.personId, reason: reason.trim().slice(0, 500) });
@@ -704,7 +800,7 @@ export class LettersService implements OnModuleInit {
     const org = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const l = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!l) throw new NotFoundException('No such letter.');
-      await this.mayIssue(tx, c, v, l.personId, await this.templateRow(tx, c.organizationId, l.templateId));
+      await this.mayIssue(tx, c, v, pid(l), await this.templateRow(tx, c.organizationId, l.templateId));
       if (l.status !== 'rendering') throw new ConflictException('This letter is not waiting to be made.');
       await audit(tx, c, 'letter.render_retried', 'letter_issue', id, { referenceNo: l.referenceNo });
       return c.organizationId;
@@ -724,8 +820,8 @@ export class LettersService implements OnModuleInit {
     const { org, notices } = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const l = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!l) throw new NotFoundException('No such letter.');
-      await this.mayIssue(tx, c, v, l.personId, await this.templateRow(tx, c.organizationId, l.templateId));
-      if (l.subjectType === 'exit_case' && !(await reachesPerson(tx, c, v, 'lifecycle.exit.manage', l.personId, await ownOf(tx, c, v)))) throw new ForbiddenException('This letter is held on an exit. Releasing it needs the exit key (lifecycle.exit.manage).');
+      await this.mayIssue(tx, c, v, pid(l), await this.templateRow(tx, c.organizationId, l.templateId));
+      if (l.subjectType === 'exit_case' && !(await reachesPerson(tx, c, v, 'lifecycle.exit.manage', pid(l), await ownOf(tx, c, v)))) throw new ForbiddenException('This letter is held on an exit. Releasing it needs the exit key (lifecycle.exit.manage).');
       return { org: c.organizationId, notices: await this.releaseIn(tx, c, l) };
     });
     return this.afterRequest(ctx, org, id, notices);
@@ -821,7 +917,8 @@ export class LettersService implements OnModuleInit {
     const n = await tx.letterIssue.updateMany({ where: { organizationId: org, id: l.id, status: { in: ['rendering', 'awaiting_signature'] } }, data: { status: 'issued', fileId, sha256: hash, signatureRef, issuedBy: l.requestedBy, issuedAt: new Date(), renderError: null } });
     if (!n.count) throw new ConflictException('This letter was issued meanwhile.');
     if (l.supersedesId) await tx.letterIssue.update({ where: { id: l.supersedesId }, data: { status: 'superseded', supersededById: l.id } });
-    if (l.personSigns) await tx.signatureRequest.create({ data: { organizationId: org, letterIssueId: l.id, personId: l.personId, status: 'open' } });
+    // A candidate's offer letter is accepted on the offer's own page (OffersService), not by a signature request.
+    if (l.personSigns && l.personId) await tx.signatureRequest.create({ data: { organizationId: org, letterIssueId: l.id, personId: l.personId, status: 'open' } });
     await audit(tx, c, 'letter.issued', 'letter_issue', l.id, { referenceNo: l.referenceNo, sha256: hash, letterType: l.letterType, supersedes: l.supersedesId, dsc: Boolean(signatureRef) });
     // The checklist's letter task closes from the issued letter (YX-LC-26), and other modules hear of it.
     await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'document.issued', payload: { letterIssueId: l.id, personId: l.personId, letterType: l.letterType, referenceNo: l.referenceNo } } });
@@ -830,6 +927,7 @@ export class LettersService implements OnModuleInit {
   private async afterIssue(ctx: CompanyContext, id: string) {
     const users = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const l = await tx.letterIssue.findFirstOrThrow({ where: { organizationId: ctx.organizationId, id } });
+      if (!l.personId) return []; // a candidate's offer letter goes out with the offer email
       const emp = await tx.employee.findFirst({ where: { organizationId: ctx.organizationId, personId: l.personId, userId: { not: null } }, select: { userId: true } });
       const u = emp?.userId ? await tx.user.findFirst({ where: { organizationId: ctx.organizationId, id: emp.userId }, select: { id: true, email: true } }) : null;
       const company = (await tx.organization.findUnique({ where: { id: ctx.organizationId! }, select: { name: true } }))?.name ?? null;
@@ -907,13 +1005,14 @@ export class LettersService implements OnModuleInit {
     this.requireKey(v, 'letter.issue');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const own = await ownOf(tx, c, v);
-      const rows = await tx.letterIssue.findMany({ where: { organizationId: c.organizationId, ...(personId ? { personId } : {}) }, orderBy: { createdAt: 'desc' }, take: 300 });
+      const rows = await tx.letterIssue.findMany({ where: { organizationId: c.organizationId, candidateId: null, ...(personId ? { personId } : {}) }, orderBy: { createdAt: 'desc' }, take: 300 });
       const out = [];
       const seen = new Map<string, boolean>();
       for (const r of rows) {
-        if (!seen.has(r.personId)) seen.set(r.personId, own.personId !== r.personId && (await reachesPerson(tx, c, v, 'letter.issue', r.personId, own, LETTER_JOINERS)));
-        if (!seen.get(r.personId)) continue;
-        const p = await tx.person.findFirstOrThrow({ where: { organizationId: c.organizationId, id: r.personId } });
+        const who = pid(r);
+        if (!seen.has(who)) seen.set(who, own.personId !== who && (await reachesPerson(tx, c, v, 'letter.issue', who, own, LETTER_JOINERS)));
+        if (!seen.get(who)) continue;
+        const p = await tx.person.findFirstOrThrow({ where: { organizationId: c.organizationId, id: who } });
         const sr = await tx.signatureRequest.findFirst({ where: { organizationId: c.organizationId, letterIssueId: r.id } });
         const holder = r.status === 'held' && r.heldBy ? await tx.user.findFirst({ where: { organizationId: c.organizationId, id: r.heldBy }, select: { name: true, email: true } }) : null;
         out.push(this.letterView(r, { person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), signature: sr ? { status: sr.status, signedAt: sr.signedAt?.toISOString() ?? null } : null, heldBy: holder ? holder.name || holder.email : null }));
@@ -978,8 +1077,19 @@ export class LettersService implements OnModuleInit {
     });
   }
 
+  /**
+   * Answer 2542: the offer letter a joiner accepted as a candidate is theirs too (their joiner record's offer). It is shown
+   * with their letters by that link, never copied: an issued letter never changes, so it keeps its candidate.
+   */
+  async acceptedOfferLetterIds(tx: Tx, org: string, personId: string) {
+    const offers = (await tx.preboarding.findMany({ where: { organizationId: org, personId, offerId: { not: null } }, select: { offerId: true } })).map((p) => p.offerId!);
+    if (!offers.length) return [];
+    return (await tx.letterIssue.findMany({ where: { organizationId: org, subjectType: 'offer', subjectId: { in: offers }, candidateId: { not: null }, status: 'issued', acceptedAt: { not: null } }, select: { id: true } })).map((l) => l.id);
+  }
+
   async lettersOf(tx: Tx, org: string, personId: string) {
-    const rows = await tx.letterIssue.findMany({ where: { organizationId: org, personId, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' } });
+    const offerLetters = await this.acceptedOfferLetterIds(tx, org, personId);
+    const rows = await tx.letterIssue.findMany({ where: { organizationId: org, status: { in: ['issued', 'superseded'] }, OR: [{ personId }, { id: { in: offerLetters } }] }, orderBy: { issuedAt: 'desc' } });
     const srs = await tx.signatureRequest.findMany({ where: { organizationId: org, personId, letterIssueId: { in: rows.map((r) => r.id) } } });
     const consent = await tx.consentRecord.findFirst({ where: { organizationId: org, personId, purpose: 'esign', withdrawnAt: null }, select: { id: true } });
     const sizes = new Map((await tx.file.findMany({ where: { organizationId: org, id: { in: rows.flatMap((r) => (r.fileId ? [r.fileId] : [])) } }, select: { id: true, size: true } })).map((f) => [f.id, f.size]));
@@ -999,6 +1109,11 @@ export class LettersService implements OnModuleInit {
       const l = await tx.letterIssue.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!l) throw new NotFoundException('No such letter.');
       const own = await ownOf(tx, c, v);
+      // A candidate's offer letter: only the joiner who accepted it reads it here (answer 2542); HR reads it on the offer.
+      if (!l.personId) {
+        if (!own.personId || v.actingForOther || !(await this.acceptedOfferLetterIds(tx, c.organizationId, own.personId)).includes(l.id)) throw new NotFoundException('No such letter.');
+        return this.letterFile(tx, c, l, which, 'self');
+      }
       const self = own.personId === l.personId;
       if (!self && !(await reachesPerson(tx, c, v, 'letter.issue', l.personId, own))) throw new ForbiddenException('You cannot see this letter.');
       if (self && !['issued', 'superseded'].includes(l.status)) throw new NotFoundException('No such letter.');
@@ -1088,15 +1203,16 @@ export class LettersService implements OnModuleInit {
   async verify(code: string) {
     if (!VERIFY_CODE.test(code)) return null;
     return this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, async (tx) => {
-      const l = await tx.letterIssue.findFirst({ where: { verifyCode: code, status: { in: ['issued', 'superseded'] } }, select: { organizationId: true, legalEntityId: true, personId: true, letterType: true, templateId: true, issuedAt: true, status: true } });
+      const l = await tx.letterIssue.findFirst({ where: { verifyCode: code, status: { in: ['issued', 'superseded'] } }, select: { organizationId: true, legalEntityId: true, personId: true, candidateId: true, letterType: true, templateId: true, issuedAt: true, status: true } });
       if (!l) return null;
+      const cand = l.candidateId ? await tx.candidate.findFirst({ where: { organizationId: l.organizationId, id: l.candidateId }, select: { name: true, erasedAt: true } }) : null;
       const [entity, p, t] = await Promise.all([
         // The legal entity that issued it, as printed on the letter (not the company group's name).
         tx.legalEntity.findFirst({ where: { organizationId: l.organizationId, id: l.legalEntityId }, select: { name: true } }),
-        tx.person.findFirst({ where: { organizationId: l.organizationId, id: l.personId }, select: { givenName: true, familyName: true, preferredName: true } }),
+        l.personId ? tx.person.findFirst({ where: { organizationId: l.organizationId, id: l.personId }, select: { givenName: true, familyName: true, preferredName: true } }) : null,
         tx.letterTemplate.findFirst({ where: { organizationId: l.organizationId, id: l.templateId }, select: { name: true } }),
       ]);
-      return { company: entity?.name ?? '', kind: t?.name ?? 'Letter', name: p ? [p.preferredName ?? p.givenName, p.familyName].filter(Boolean).join(' ') : '', issuedOn: localDate(l.issuedAt!, await entityTimeZone(tx, l.organizationId, l.legalEntityId)), status: (l.status === 'issued' ? 'current' : 'superseded') as 'current' | 'superseded' };
+      return { company: entity?.name ?? '', kind: t?.name ?? 'Letter', name: p ? [p.preferredName ?? p.givenName, p.familyName].filter(Boolean).join(' ') : cand && !cand.erasedAt ? cand.name : '', issuedOn: localDate(l.issuedAt!, await entityTimeZone(tx, l.organizationId, l.legalEntityId)), status: (l.status === 'issued' ? 'current' : 'superseded') as 'current' | 'superseded' };
     });
   }
 }

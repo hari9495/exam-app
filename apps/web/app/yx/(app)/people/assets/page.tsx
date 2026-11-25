@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
 import { AssetRegister } from '@yukthix/ui/frame';
 import { AddAssetDrawer, type AssetRow } from '@yukthix/ui/lifecycle';
@@ -15,6 +16,7 @@ const STATUS: Record<AssetRow['status'], string> = { in_stock: 'In stock', assig
 // it; add, issue and take back. The API checks every call (asset.view / asset.manage and the place it belongs to).
 export default function YxAssetsPage() {
   const { toast } = useToast();
+  const router = useRouter();
   const perms = useYxPermissions();
   const canManage = perms.has('asset.manage');
   const data = useLife<{ today: string; rows: AssetRow[] }>('/lifecycle/assets');
@@ -49,6 +51,7 @@ export default function YxAssetsPage() {
         today: new Date(`${today}T00:00:00`),
         people: (people.data ?? []).map((p) => ({ id: p.id, name: p.name, ...(p.designation ? { role: p.designation } : {}), ...(p.department ? { department: p.department } : {}) })),
         ...(canManage ? { onAdd: () => setAdding(true) } : {}),
+        onOpen: (a) => router.push(`/yx/people/assets/${id(a.id)}`),
         onIssue: async (a, x) => {
           await write('POST', `/lifecycle/assets/${id(a.id)}/issue`, x);
           toast({ tone: 'success', title: `${a.name} (${a.tag}) issued to ${people.data?.find((p) => p.id === x.employeeId)?.name ?? 'the employee'}` });

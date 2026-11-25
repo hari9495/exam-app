@@ -96,6 +96,10 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
   it.each([
     ['/v2/users', '/yx/settings/access'],
     ['/v2/audit-log', '/yx/settings/audit-log'],
+    ['/v2/system-logs', '/yx/settings/audit-log'],
+    ['/v2/approvals', '/yx/approvals'],
+    ['/v2/campaigns', '/yx/hiring/pools'],
+    ['/v2/offer-template', '/yx/settings/letters'],
     ['/v2/data-rights', '/yx/hiring/retention'],
     ['/v2/settings/roles', '/yx/settings/access'],
     ['/v2/settings/permission-profiles', '/yx/settings/access'],

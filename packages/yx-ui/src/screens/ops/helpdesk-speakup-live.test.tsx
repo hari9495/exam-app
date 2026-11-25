@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
@@ -140,6 +140,76 @@ describe('HLP-06 Speak-up set-up (live)', () => {
     unmount();
     show(<SpeakUpSetupScreen live={base} />);
     expect(screen.queryByText('Set-up is not finished')).not.toBeInTheDocument();
+  });
+
+  it('answer 2591: adding to the IC asks whether she is a woman and when the term ends; a man cannot preside', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    show(<SpeakUpSetupScreen live={liveSetup({ onAdd, start: { adding: 'ic' } })} />);
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Person/ }));
+    await ue.click(await screen.findByRole('option', { name: /Divya Raghunathan/ }));
+    await ue.click(within(dialog).getByRole('radio', { name: /Presiding officer/ }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(await screen.findByText('Say whether this member is a woman.')).toBeInTheDocument();
+    expect(screen.getByText('Choose the day their term ends.')).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('radio', { name: 'No' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(await screen.findByText('The presiding officer must be a senior woman employee.')).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('radio', { name: 'Yes' }));
+    const next = new Date();
+    next.setFullYear(next.getFullYear() + 2);
+    const dd = `${String(next.getDate()).padStart(2, '0')}/${String(next.getMonth() + 1).padStart(2, '0')}/${next.getFullYear()}`;
+    await ue.type(within(dialog).getByRole('textbox', { name: /Term ends/ }), `${dd}{Enter}`);
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ team: 'ic', role: 'presiding', woman: true, termEndsOn: `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}` }));
+  });
+
+  it('answer 2591: the IC card warns when a member has no woman or term end recorded', () => {
+    const base = liveSetup();
+    show(<SpeakUpSetupScreen live={{ ...base, data: { ...base.data!, members: base.data!.members.map((m) => (m.team === 'ic' && m.role === 'presiding' ? { ...m, woman: null, termEndsOn: null } : m)) } }} />);
+    expect(screen.getByText(/Lakshmi Venkatesan: woman or term end not recorded/)).toBeInTheDocument();
+  });
+
+  it('answer 2592: a member can be added to a workplace committee; each committee is checked on its own', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    const base = liveSetup({ onAdd, start: { adding: 'ic' } });
+    show(<SpeakUpSetupScreen live={{ ...base, data: { ...base.data!, members: [...base.data!.members, { id: 'h1', team: 'ic', userId: 'u-divya', name: 'Divya Raghunathan', role: 'presiding', addedAt: '2026-11-01T05:00:00Z', woman: true, termEndsOn: '2029-10-31', locationId: 'loc-hsr' }] } }} />);
+    expect(screen.getByText(/Hosur plant: Add one external member/)).toBeInTheDocument();
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Person/ }));
+    await ue.click(await screen.findByRole('option', { name: /Joseph Mathew/ }));
+    await ue.click(within(dialog).getByRole('combobox', { name: /Committee/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Hosur plant' }));
+    await ue.click(within(dialog).getByRole('radio', { name: 'No' }));
+    const next = new Date();
+    next.setFullYear(next.getFullYear() + 1);
+    await ue.type(within(dialog).getByRole('textbox', { name: /Term ends/ }), `${String(next.getDate()).padStart(2, '0')}/${String(next.getMonth() + 1).padStart(2, '0')}/${next.getFullYear()}{Enter}`);
+    await ue.click(within(dialog).getByRole('button', { name: 'Add' }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ team: 'ic', role: 'member', woman: false, locationId: 'loc-hsr' }));
+  });
+
+  it('answer 2625: Edit member changes the woman and role with the same checks; only the Internal Committee and IR lists offer it', async () => {
+    const onEdit = vi.fn().mockRejectedValueOnce(new Error('This committee already has a presiding officer. Change them first.')).mockResolvedValue(undefined);
+    show(<SpeakUpSetupScreen live={liveSetup({ onEdit })} />);
+    const ethics = liveSetup().data!.members.find((m) => m.team === 'ethics')!;
+    await ue.click(screen.getByRole('button', { name: `More actions for ${ethics.name}` }));
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    await ue.keyboard('{Escape}');
+    await ue.click(screen.getByRole('button', { name: 'More actions for Lakshmi Venkatesan' }));
+    await ue.click(await screen.findByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('combobox', { name: /Person/ })).toBeNull();
+    await ue.click(within(dialog).getByRole('radio', { name: /Presiding officer/ }));
+    await ue.click(within(dialog).getByRole('radio', { name: 'No' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText('The presiding officer must be a senior woman employee.')).toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
+    await ue.click(within(dialog).getByRole('radio', { name: 'Yes' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    expect(await within(dialog).findByText(/already has a presiding officer/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('radio', { name: 'Member' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    expect(onEdit).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ role: 'member', woman: true }));
   });
 
   it('no access without the key', () => {

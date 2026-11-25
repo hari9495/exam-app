@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TakeSurveyScreen } from './engage-surveys';
 import { PULSE_QUESTIONS } from './engage-data';
 import { d } from './perf-data';
+import { liveTakeSurvey } from './engage-live-samples';
 
 const meta: Meta = { title: 'Screens/Engage/ENG-05 · Take survey, pulse and eNPS', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -15,3 +16,6 @@ export const Named: S = { name: 'Named onboarding survey', render: () => <TakeSu
 export const Phone: S = { name: 'Phone', globals: PHONE, render: () => <TakeSurveyScreen {...base} device="phone" prefill /> };
 export const Submitted: S = { name: 'Submitted', render: () => <TakeSurveyScreen {...base} submitted /> };
 export const Closed: S = { name: 'Closed', render: () => <TakeSurveyScreen {...base} closed /> };
+// Batch G2 item 74: a survey I was invited to.
+export const Invited: S = { name: 'A survey I was invited to', render: () => <TakeSurveyScreen live={liveTakeSurvey()} /> };
+export const InvitedAnswered: S = { name: 'Answered already', render: () => <TakeSurveyScreen live={liveTakeSurvey({ survey: { ...liveTakeSurvey().survey!, answered: true } })} /> };

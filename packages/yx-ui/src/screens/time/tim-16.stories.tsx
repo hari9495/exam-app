@@ -13,3 +13,6 @@ export const August: S = { name: 'August 2026 (locked)', args: { month: 'aug' } 
 export const Manager: S = { name: 'Manager · my team', args: { persona: 'manager' } };
 export const Empty: S = { name: 'Empty · no rows for these filters', args: { filters: [{ key: 'loc', type: 'multi', values: ['Bengaluru head office'] }, { key: 'dept', type: 'multi', values: ['Operations'] }] } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
+// Batch C item 16 (answers 2507, 2508): short hours in the company's bands and frequent breaks; not recorded where clock-in-again is off.
+export const ShortHours: S = { name: 'Short hours and breaks', args: { report: 'hours' } };
+export const ShortHoursManager: S = { name: 'Short hours and breaks · manager', args: { report: 'hours', persona: 'manager' } };

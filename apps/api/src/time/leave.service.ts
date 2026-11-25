@@ -6,6 +6,7 @@ import { employeeLanguage, translated } from '../global/global-data';
 import { Viewer, buildViewer, has, implicitSql, tenantWide, type ScopeUser, inEntitySql } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { DayEngine } from './day-engine.service';
+import { dayPlace, placeOf, teamDot, type DayPlaceRule, type TeamDot, type WorkPlace } from './time-rules';
 import { NotificationsService } from '../notifications/notifications.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { payOn } from '../payroll/fnf.service';
@@ -36,6 +37,7 @@ import {
   refreshTypeCopies,
   todayIn,
   visibleSql,
+  inReportingLine,
 } from './time-core';
 import { CountedDay, accrualsDue, addDays, afterWait, applyFloors, ceilingLapses, countLeaveDays, daysBetween, localDate } from './time-maths';
 import { ScheduleBook, assertOpen, lockedDates } from './schedule';
@@ -1201,6 +1203,9 @@ export class LeaveService implements OnModuleInit {
         : [];
       const holidays = new Map<string, { on: string; name: string; halfDay: boolean }[]>();
       for (const loc of new Set(people.map((p) => p.locationId))) holidays.set(loc, [...(await holidaysFor(tx, c.organizationId, loc, from, to)).map].map(([on, h]) => ({ on, name: h.name, halfDay: h.halfDay })));
+      // Batch C item 15 (answer 2509): attendance dots for the manager's own reporting line only (peers come with C2).
+      const line = await inReportingLine(tx, c, own, ids, today);
+      const dots = await this.teamDots(tx, c, [...line], from, to <= today ? to : today);
       return {
         from,
         to,
@@ -1212,9 +1217,33 @@ export class LeaveService implements OnModuleInit {
           me: p.id === own,
           holidays: holidays.get(p.locationId) ?? [],
           days: days.filter((d) => d.employeeId === p.id).map((d) => ({ on: d.on, part: d.part, status: d.status === 'pending' ? 'pending' : 'approved', code: d.code, colour: d.colour, name: d.name })),
+          ...(line.has(p.id) ? { attendance: dots.get(p.id) ?? [] } : {}),
         })),
       };
     });
+  }
+
+  /** Each day's dot (present, late, remote, half day, absent, missing punch) for these people, up to today. */
+  private async teamDots(tx: Tx, c: CompanyContext, ids: string[], from: string, to: string): Promise<Map<string, { on: string; dot: TeamDot }[]>> {
+    const out = new Map<string, { on: string; dot: TeamDot }[]>();
+    if (!ids.length || to < from) return out;
+    const org = c.organizationId;
+    const days = await tx.attendanceDay.findMany({ where: { organizationId: org, employeeId: { in: ids }, workOn: { gte: asDate(from), lte: asDate(to) } }, select: { employeeId: true, workOn: true, status: true, lateMinutes: true } });
+    const punches = await tx.punch.findMany({ where: { organizationId: org, employeeId: { in: ids }, accepted: true, workOn: { gte: asDate(from), lte: asDate(to) } }, orderBy: { punchedAt: 'asc' }, select: { employeeId: true, workOn: true, workPlace: true, source: true, verdict: true, accepted: true } });
+    for (const id of ids) {
+      const f = await factsOn(tx, org, id, to);
+      const rule = (f ? await settingOn(tx, c, 'attendance.day_place_rule', f, to) : 'office_wins') as DayPlaceRule;
+      const places = new Map<string, WorkPlace[]>();
+      for (const p of punches.filter((x) => x.employeeId === id)) places.set(dateOf(p.workOn), [...(places.get(dateOf(p.workOn)) ?? []), (p.workPlace as WorkPlace | null) ?? placeOf(p)]);
+      const list: { on: string; dot: TeamDot }[] = [];
+      for (const d of days.filter((x) => x.employeeId === id)) {
+        const on = dateOf(d.workOn);
+        const dot = teamDot(d.status, d.lateMinutes, places.has(on) ? dayPlace(places.get(on)!, rule) : 'unknown');
+        if (dot) list.push({ on, dot });
+      }
+      out.set(id, list.sort((a, b) => a.on.localeCompare(b.on)));
+    }
+    return out;
   }
 
   /** HR: balances of everyone in leave.view scope (TIM-30 balances matrix, basic). */

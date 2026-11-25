@@ -2508,6 +2508,8 @@ model OfferTemplate {
   /// HIR-09 (founder decision 4): the candidate signs electronically only when this is on; else accepting by the link.
   esign          Boolean  @default(false)
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// Answer 2515: the P05 'offer' letter template this one became (the one-off move's claim; never moved twice).
+  letterTemplateId String? @unique(map: "offer_templates_letter_template_key") @map("letter_template_id") @db.Uuid
 
   @@unique([organizationId, name])
   @@index([organizationId])
@@ -4094,6 +4096,11 @@ model SdDesk {
   routingWaitMinutes Int      @default(2) @map("routing_wait_minutes") @db.SmallInt
   /// HLP-05b: a clock is "at risk" once this share (%) of its target is used: 50, 60, 70, 80 or 90.
   atRiskPercent      Int      @default(80) @map("at_risk_percent") @db.SmallInt
+  /// Batch F GLPI 4 (answer 2571): chase a requester who does not answer: a reminder each business day while a ticket
+  /// waits for them, at most chaseMax, then solved after chaseSolveDays business days with no reply.
+  chaseEnabled       Boolean  @default(true) @map("chase_enabled")
+  chaseMax           Int      @default(3) @map("chase_max") @db.SmallInt
+  chaseSolveDays     Int      @default(5) @map("chase_solve_days") @db.SmallInt
   /// SD-2.10: desks this desk may move tickets to.
   forwardTo          String[] @default([]) @map("forward_to") @db.Uuid
   /// Answer 1643: the preset reasons a requester may pick after the stars (at most 12).
@@ -4198,6 +4205,8 @@ model SdCategory {
   defaultPriority  Int?     @map("default_priority") @db.SmallInt
   /// SD-2.25: skills an agent needs for tickets in this category.
   skills           String[] @default([])
+  /// Batch F item 33 (answer 2573): 'desk' or 'manager' (the requester's manager answers; never for confidential ones).
+  answeredBy       String   @default("desk") @map("answered_by") @db.VarChar(8)
   active           Boolean  @default(true)
   sortOrder        Int      @default(0) @map("sort_order")
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -4329,6 +4338,8 @@ model SdTicket {
   language             String?                  @db.VarChar(8)
   /// Founder decision 9 Oct 2026: waiting for the best-matched agent until then (the desk sweep falls back after).
   routingWaitUntil     DateTime?                @map("routing_wait_until") @db.Timestamptz(3)
+  /// Batch F item 33 (answer 2573): the requester's manager who answers this ticket (from its category).
+  answerUserId         String?                  @map("answer_user_id") @db.Uuid
   version              Int                      @default(1)
   search               Unsupported("tsvector")?
   createdBy            String?                  @map("created_by") @db.Uuid
@@ -5959,6 +5970,47 @@ model LeaveType {
 
 /// Answer 2477: dated versions of a leave type's rules and pay. Leave follows the version in force on its first day;
 /// the payroll feed reads the pay in force on each leave day. A version in force never changes (database trigger).
+/// Batch C item 6 (answers 2505, 2506): a late mark whose penalty an attendance.lock holder waived, with a reason (10+
+/// characters), only while the month is unlocked; undone (never deleted) before the lock. The mark itself stays, shown as
+/// "waived"; only the penalty in the payroll feed goes. At most one active waiver per person and day (partial index).
+model LateMarkWaiver {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  workOn         DateTime  @map("work_on") @db.Date
+  reason         String    @db.VarChar(500)
+  waivedBy       String    @map("waived_by") @db.Uuid
+  waivedAt       DateTime  @default(now()) @map("waived_at") @db.Timestamptz(3)
+  undoneBy       String?   @map("undone_by") @db.Uuid
+  undoneAt       DateTime? @map("undone_at") @db.Timestamptz(3)
+  undoReason     String?   @map("undo_reason") @db.VarChar(500)
+
+  @@index([organizationId, legalEntityId, workOn], map: "late_mark_waivers_entity_day_idx")
+  @@map("late_mark_waivers")
+}
+
+/// Founder answer 2527: a manager asks HR to waive late marks of their own team, with a reason (10+ characters). HR waives
+/// (status waived, a LateMarkWaiver is made) or declines with a reason, from the same Late marks list. Kept, never
+/// deleted; one open request per person and day (partial index); only while the month is unlocked.
+model LateMarkWaiverRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  legalEntityId  String    @map("legal_entity_id") @db.Uuid
+  workOn         DateTime  @map("work_on") @db.Date
+  reason         String    @db.VarChar(500)
+  requestedBy    String    @map("requested_by") @db.Uuid
+  requestedAt    DateTime  @default(now()) @map("requested_at") @db.Timestamptz(3)
+  status         String    @default("pending") @db.VarChar(10)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  declineReason  String?   @map("decline_reason") @db.VarChar(500)
+
+  @@index([organizationId, legalEntityId, workOn], map: "late_mark_waiver_requests_entity_day_idx")
+  @@map("late_mark_waiver_requests")
+}
+
 model LeaveTypeVersion {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
@@ -7775,7 +7827,10 @@ model LetterIssue {
   templateVersion  Int       @map("template_version")
   letterType       String    @map("letter_type") @db.VarChar(40)
   title            String    @db.VarChar(150)
-  personId         String    @map("person_id") @db.Uuid
+  /// Null for a candidate's offer letter (candidateId instead; exactly one of the two, a database check).
+  personId         String?   @map("person_id") @db.Uuid
+  /// Answer 2524 next step: an offer issued as a letter to a candidate who is not a person yet.
+  candidateId      String?   @map("candidate_id") @db.Uuid
   /// The employment the letter is for ("one per person" counts per employment); null while the person is still joining.
   employmentId     String?   @map("employment_id") @db.Uuid
   legalEntityId    String    @map("legal_entity_id") @db.Uuid
@@ -7809,6 +7864,8 @@ model LetterIssue {
   issuedAt         DateTime? @map("issued_at") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
 
+  @@index([organizationId, candidateId], map: "letter_issues_candidate_idx")
+  @@index([organizationId, subjectType, subjectId], map: "letter_issues_subject_idx")
   @@map("letter_issues")
 }
 
@@ -7918,6 +7975,11 @@ model Asset {
   purchasedOn    DateTime? @map("purchased_on") @db.Date
   cost           Decimal?  @db.Decimal(14, 2)
   status         String    @default("in_stock") @db.VarChar(10)
+  /// IT assets (plan 26 Nov 2026): plain details on the asset page; the warranty end follows from purchasedOn.
+  maker          String?   @db.VarChar(100)
+  model          String?   @db.VarChar(100)
+  invoiceNumber  String?   @map("invoice_number") @db.VarChar(60)
+  warrantyMonths Int?      @map("warranty_months") @db.SmallInt
   version        Int       @default(1)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -10573,6 +10635,20 @@ model KeyResult {
   @@map("key_results")
 }
 
+/// Batch F item 32 (answer 2577): a private note about a colleague; the author alone sees it (RLS author_only).
+model PerfPersonNote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  authorUserId   String   @map("author_user_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  text           String   @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId, authorUserId, employeeId], map: "perf_person_notes_author_idx")
+  @@map("perf_person_notes")
+}
+
 model GoalCheckin {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String   @map("organization_id") @db.Uuid
@@ -13094,10 +13170,17 @@ model SpeakupTeamMember {
   team           String    @db.VarChar(12)
   userId         String    @map("user_id") @db.Uuid
   role           String    @default("member") @db.VarChar(12)
+  /// Answer 2591 (Internal Committee only): a woman member, and the day the term ends (at most 3 years).
+  woman          Boolean?
+  termEndsOn     DateTime? @map("term_ends_on") @db.Date
+  /// Answer 2592 (Internal Committee only): the workplace's own committee; null is the company committee.
+  locationId     String?   @map("location_id") @db.Uuid
   addedBy        String?   @map("added_by") @db.Uuid
   addedAt        DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
   removedBy      String?   @map("removed_by") @db.Uuid
   removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  /// Answer 2623: when the System Admin was reminded that this term ends within 30 days.
+  termRemindedAt DateTime? @map("term_reminded_at") @db.Timestamptz(3)
 
   @@map("speakup_team_members")
 }
@@ -13140,9 +13223,297 @@ model SpeakupCase {
   ruleClause         String?   @map("rule_clause") @db.VarChar(200)
   /// HLP-08 answer 55: "hr" (opened by HR) or "manager" (a manager's report, a draft until HR decides).
   source             String    @default("hr") @db.VarChar(8)
+  /// Answer 2592: the Internal Committee a POSH complaint went to (a workplace's; null is the company committee).
+  icLocationId       String?   @map("ic_location_id") @db.Uuid
+  /// Answer 2597 (POSH only): filed on her behalf (her name, the relationship), why late, conciliation asked first.
+  onBehalfName       String?   @map("on_behalf_name") @db.VarChar(150)
+  onBehalfRelation   String?   @map("on_behalf_relation") @db.VarChar(100)
+  lateReason         String?   @map("late_reason") @db.VarChar(1000)
+  conciliationAsked  Boolean   @default(false) @map("conciliation_asked")
 
   @@unique([organizationId, kind, number], map: "speakup_cases_number_key")
   @@map("speakup_cases")
+}
+
+/// Batch G2 (M09 Engage): one post in the feed: an announcement (item 12) now; updates, polls, kudos, celebrations next.
+model EngPost {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  kind          String    @db.VarChar(12)
+  spaceId       String?   @map("space_id") @db.Uuid
+  authorUserId  String?   @map("author_user_id") @db.Uuid
+  title         String?   @db.VarChar(200)
+  body          String
+  locationIds   String[]  @default([]) @map("location_ids") @db.Uuid
+  departmentIds String[]  @default([]) @map("department_ids") @db.Uuid
+  email         Boolean   @default(false)
+  ackRequired   Boolean   @default(false) @map("ack_required")
+  ackDueOn      DateTime? @map("ack_due_on") @db.Date
+  pinned        Boolean   @default(false)
+  state         String    @default("published") @db.VarChar(10)
+  publishAt     DateTime  @default(now()) @map("publish_at") @db.Timestamptz(3)
+  notifiedAt    DateTime? @map("notified_at") @db.Timestamptz(3)
+  remindersSent Int       @default(0) @map("reminders_sent")
+  remindedOn    DateTime? @map("reminded_on") @db.Date
+  heldReason    String?   @map("held_reason") @db.VarChar(200)
+  reports       Int       @default(0)
+  /// Batch G2 item 75: a poll's options (2 to 5) and the day it closes.
+  pollOptions   Json?     @map("poll_options")
+  pollClosesOn  DateTime? @map("poll_closes_on") @db.Date
+  votes         EngPollVote[]
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  reads         EngPostRead[]
+  space         EngSpace? @relation(fields: [spaceId], references: [id], onDelete: Cascade, map: "eng_posts_space_fkey")
+  comments      EngComment[]
+  reactions     EngReaction[]
+  kudos         EngKudos?
+
+  @@index([organizationId, kind, publishAt(sort: Desc)], map: "eng_posts_feed_idx")
+  @@map("eng_posts")
+}
+
+/// Batch G2 item 100: a feed space (the company, a location, a department); approval: posts wait for a moderator.
+model EngSpace {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  kind           String    @db.VarChar(12)
+  refId          String?   @map("ref_id") @db.Uuid
+  name           String    @db.VarChar(150)
+  approval       Boolean   @default(false)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  posts          EngPost[]
+
+  @@map("eng_spaces")
+}
+
+/// Batch G2 item 74 (M09 Q3, Q8; answer 2604): a survey; anonymous unless onboarding or exit; locked at launch.
+model EngSurvey {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(150)
+  type           String    @db.VarChar(12)
+  anonymous      Boolean   @default(true)
+  minGroup       Int       @default(5) @map("min_group")
+  questions      Json      @default("[]")
+  locationIds    String[]  @default([]) @map("location_ids") @db.Uuid
+  departmentIds  String[]  @default([]) @map("department_ids") @db.Uuid
+  opensOn        DateTime  @map("opens_on") @db.Date
+  closesOn       DateTime  @map("closes_on") @db.Date
+  remind         Boolean   @default(true)
+  remindedOn     DateTime? @map("reminded_on") @db.Date
+  /// Answer 2664: none · monthly · quarterly; each run is its own survey, made when the next one is due.
+  repeat         String    @default("none") @db.VarChar(10)
+  repeatedAt     DateTime? @map("repeated_at") @db.Timestamptz(3)
+  /// Answer 2664: onboarding and exit surveys invite people as they reach the event (joining + days; an accepted exit).
+  autoInvite     Boolean   @default(false) @map("auto_invite")
+  autoAfterDays  Int       @default(30) @map("auto_after_days")
+  launchedAt     DateTime? @map("launched_at") @db.Timestamptz(3)
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz(3)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  invites        EngSurveyInvite[]
+  responses      EngSurveyResponse[]
+  plans          EngActionPlan[]
+
+  @@map("eng_surveys")
+}
+
+/// Batch G2 item 74: who was asked, and only whether they answered (for reminders); never joined to a response.
+model EngSurveyInvite {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  surveyId       String    @map("survey_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  answered       Boolean   @default(false)
+  survey         EngSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, userId], map: "eng_survey_invites_key")
+  @@map("eng_survey_invites")
+}
+
+/// Batch G2 item 74: one set of answers; anonymous ones carry slices only (department, location, the manager's team).
+model EngSurveyResponse {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  surveyId       String    @map("survey_id") @db.Uuid
+  answers        Json
+  departmentId   String?   @map("department_id") @db.Uuid
+  locationId     String?   @map("location_id") @db.Uuid
+  teamManagerId  String?   @map("team_manager_id") @db.Uuid
+  namedUserId    String?   @map("named_user_id") @db.Uuid
+  submittedOn    DateTime  @map("submitted_on") @db.Date
+  survey         EngSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId], map: "eng_survey_responses_survey_idx")
+  @@map("eng_survey_responses")
+}
+
+/// Batch G2 item 74 (M09 Q8): a manager's action plan on their team's results.
+model EngActionPlan {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  surveyId       String    @map("survey_id") @db.Uuid
+  managerUserId  String    @map("manager_user_id") @db.Uuid
+  focus          String    @db.VarChar(300)
+  focusScore     String?   @map("focus_score") @db.VarChar(40)
+  status         String    @default("draft") @db.VarChar(10)
+  items          Json      @default("[]")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  survey         EngSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, managerUserId], map: "eng_action_plans_key")
+  @@map("eng_action_plans")
+}
+
+/// Batch G2 item 76 (answer 2605): a person keeps one kind of celebration of themselves off the feed.
+model EngCelebrationOptout {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  kind           String   @db.VarChar(12)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId, kind], map: "eng_celebration_optouts_key")
+  @@map("eng_celebration_optouts")
+}
+
+/// Batch G2 item 75: one vote per person on a poll.
+model EngPollVote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  postId         String   @map("post_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  option         Int
+  post           EngPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId], map: "eng_poll_votes_key")
+  @@map("eng_poll_votes")
+}
+
+/// Batch G2 item 73 (answer 2603): a kudos: the giver, the people thanked, the company value and an optional badge.
+model EngKudos {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  postId         String   @unique(map: "eng_kudos_post_key") @map("post_id") @db.Uuid
+  giverUserId    String   @map("giver_user_id") @db.Uuid
+  receiverIds    String[] @map("receiver_ids") @db.Uuid
+  value          String   @db.VarChar(80)
+  badge          String?  @db.VarChar(80)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  post           EngPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("eng_kudos")
+}
+
+/// Batch G2 item 100: a comment on a feed post.
+model EngComment {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  postId         String   @map("post_id") @db.Uuid
+  authorUserId   String   @map("author_user_id") @db.Uuid
+  body           String   @db.VarChar(2000)
+  state          String   @default("published") @db.VarChar(10)
+  heldReason     String?  @map("held_reason") @db.VarChar(200)
+  reports        Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  post           EngPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt], map: "eng_comments_post_idx")
+  @@map("eng_comments")
+}
+
+/// Batch G2 item 100: a like on a feed post (one per person).
+model EngReaction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  postId         String   @map("post_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  post           EngPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId], map: "eng_reactions_key")
+  @@map("eng_reactions")
+}
+
+/// Batch G2 item 100: a report of a post or comment (one per person).
+model EngReport {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  target         String   @db.VarChar(8)
+  targetId       String   @map("target_id") @db.Uuid
+  reporterUserId String   @map("reporter_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([target, targetId, reporterUserId], map: "eng_reports_key")
+  @@map("eng_reports")
+}
+
+/// Batch G2 item 100: what a moderator did, and to whose post or comment.
+model EngModAction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  target         String   @db.VarChar(8)
+  targetId       String   @map("target_id") @db.Uuid
+  authorUserId   String?  @map("author_user_id") @db.Uuid
+  action         String   @db.VarChar(10)
+  note           String?  @db.VarChar(1000)
+  byUserId       String   @map("by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, authorUserId], map: "eng_mod_actions_author_idx")
+  @@map("eng_mod_actions")
+}
+
+/// Batch G2 item 12: who read an announcement, and when they acknowledged it.
+model EngPostRead {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  postId         String    @map("post_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  readAt         DateTime  @default(now()) @map("read_at") @db.Timestamptz(3)
+  ackedAt        DateTime? @map("acked_at") @db.Timestamptz(3)
+  post           EngPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId], map: "eng_post_reads_key")
+  @@map("eng_post_reads")
+}
+
+/// Batch G1 answer 2593: an awareness session the Internal Committee held (one committee; RLS: its members only).
+model PoshAwarenessSession {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String   @map("organization_id") @db.Uuid
+  committeeLocationId String?  @map("committee_location_id") @db.Uuid
+  heldOn              DateTime @map("held_on") @db.Date
+  title               String   @db.VarChar(200)
+  audience            String?  @db.VarChar(200)
+  attended            Int
+  createdBy           String   @map("created_by") @db.Uuid
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, heldOn], map: "posh_awareness_sessions_org_idx")
+  @@map("posh_awareness_sessions")
+}
+
+/// Batch G1 answer 2593: a committee's annual report for a calendar year; the figures are counted when read.
+model PoshAnnualReport {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId      String    @map("organization_id") @db.Uuid
+  committeeLocationId String?   @map("committee_location_id") @db.Uuid
+  year                Int
+  stage               String    @default("draft") @db.VarChar(10)
+  actionTaken         String?   @map("action_taken") @db.VarChar(1000)
+  reviewedBy          String?   @map("reviewed_by") @db.Uuid
+  reviewedAt          DateTime? @map("reviewed_at") @db.Timestamptz(3)
+  employerBy          String?   @map("employer_by") @db.Uuid
+  employerAt          DateTime? @map("employer_at") @db.Timestamptz(3)
+  districtBy          String?   @map("district_by") @db.Uuid
+  districtAt          DateTime? @map("district_at") @db.Timestamptz(3)
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@map("posh_annual_reports")
 }
 
 /// HLP-06: who a case was routed to (append-only).
@@ -15111,4 +15482,404 @@ model PositionChange {
   @@index([organizationId, batchId], map: "position_changes_batch_idx")
   @@index([organizationId, positionId, status], map: "position_changes_position_idx")
   @@map("position_changes")
+}
+// ---- Learning core (LRN-01, 02, 03, 07, 08). Checks, RLS and keys in migration 20261207000000_learning. ----
+
+/// A course: what it is, who it is for, whether it gives a certificate and for how long.
+model LearningCourse {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  title             String   @db.VarChar(200)
+  description       String?  @db.VarChar(2000)
+  /// self_paced · classroom · virtual · scorm · assessment
+  type              String   @default("self_paced") @db.VarChar(20)
+  /// company · provider · partner
+  source            String   @default("company") @db.VarChar(20)
+  provider          String?  @db.VarChar(120)
+  durationMinutes   Int      @default(0) @map("duration_minutes")
+  cost              Decimal  @default(0) @db.Decimal(12, 2)
+  mandatory         Boolean  @default(false)
+  needsApproval     Boolean  @default(false) @map("needs_approval")
+  certificate       Boolean  @default(false)
+  certificateMonths Int?     @map("certificate_months")
+  /// Share of session slots attended that completes a classroom or virtual course.
+  /// Answer 2624: completions count in the Internal Committee annual report as POSH awareness training.
+  poshAwareness     Boolean  @default(false) @map("posh_awareness")
+  attendancePct     Int      @default(75) @map("attendance_pct")
+  skills            String[] @default([])
+  /// Answer 2672: the level each skill gives on completion, in the order of skills (empty: level 2).
+  skillLevels       Int[]    @default([]) @map("skill_levels") @db.SmallInt
+  /// draft · published · retired
+  status            String   @default("draft") @db.VarChar(10)
+  createdBy         String?  @map("created_by") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  version           Int      @default(1)
+
+  @@map("learning_courses")
+}
+
+/// One piece of a course's content, in order: a PDF or video (a stored file) or a link.
+model LearningCourseItem {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  courseId       String   @map("course_id") @db.Uuid
+  position       Int
+  title          String   @db.VarChar(200)
+  /// pdf · video · link
+  kind           String   @db.VarChar(10)
+  minutes        Int      @default(0)
+  required       Boolean  @default(true)
+  fileId         String?  @map("file_id") @db.Uuid
+  url            String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, courseId, position], map: "learning_course_items_course_idx")
+  @@map("learning_course_items")
+}
+
+/// Who must complete a course (job today in the listed entities, locations and departments; designation words), by when, how often.
+model LearningRule {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  courseId       String   @map("course_id") @db.Uuid
+  legalEntityIds String[] @default([]) @map("legal_entity_ids") @db.Uuid
+  locationIds    String[] @default([]) @map("location_ids") @db.Uuid
+  departmentIds  String[] @default([]) @map("department_ids") @db.Uuid
+  designation    String?  @db.VarChar(120)
+  dueDays        Int      @default(30) @map("due_days")
+  /// 0 (once) · 12 · 24
+  repeatMonths   Int      @default(0) @map("repeat_months")
+  active         Boolean  @default(true)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  @@map("learning_rules")
+}
+
+model LearningEnrolment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  courseId       String    @map("course_id") @db.Uuid
+  /// rule · renewal · self · nominated
+  source         String    @db.VarChar(12)
+  ruleId         String?   @map("rule_id") @db.Uuid
+  assignedOn     DateTime  @map("assigned_on") @db.Date
+  dueOn          DateTime? @map("due_on") @db.Date
+  /// requested · waitlisted · enrolled · in_progress · completed · no_show · failed · cancelled · declined
+  /// (overdue is enrolled or in_progress past due_on)
+  status         String    @default("enrolled") @db.VarChar(12)
+  /// The session the seat or waitlist place is in (classroom and virtual courses).
+  sessionId      String?   @map("session_id") @db.Uuid
+  waitlistedAt   DateTime? @map("waitlisted_at") @db.Timestamptz(3)
+  /// Why a nomination was declined (seen by the manager).
+  declineReason  String?   @map("decline_reason") @db.VarChar(500)
+  /// Why a session result is what it is ("Attended 1 of 2 slots; needs 75%").
+  resultReason   String?   @map("result_reason") @db.VarChar(200)
+  /// The approval request (LRN-06) when the course needs approval.
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  bondAcceptedAt DateTime? @map("bond_accepted_at") @db.Timestamptz(3)
+  startedAt      DateTime? @map("started_at") @db.Timestamptz(3)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@index([organizationId, employeeId], map: "learning_enrolments_employee_idx")
+  @@map("learning_enrolments")
+}
+
+model LearningItemProgress {
+  organizationId String   @map("organization_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  itemId         String   @map("item_id") @db.Uuid
+  doneAt         DateTime @default(now()) @map("done_at") @db.Timestamptz(3)
+
+  @@id([enrolmentId, itemId])
+  @@map("learning_item_progress")
+}
+
+model LearningCertificate {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  enrolmentId    String    @map("enrolment_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  courseId       String    @map("course_id") @db.Uuid
+  courseTitle    String    @map("course_title") @db.VarChar(200)
+  personName     String    @map("person_name") @db.VarChar(200)
+  issuedOn       DateTime  @map("issued_on") @db.Date
+  expiresOn      DateTime? @map("expires_on") @db.Date
+  verifyCode     String    @map("verify_code") @db.VarChar(10)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([enrolmentId], map: "learning_certificates_enrolment_key")
+  @@unique([verifyCode], map: "learning_certificates_verify_key")
+  @@index([organizationId, employeeId], map: "learning_certificates_employee_idx")
+  @@map("learning_certificates")
+}
+
+model LearningReminder {
+  organizationId String   @map("organization_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  /// before_7 · before_2 · overdue_manager · overdue_hr
+  kind           String   @db.VarChar(20)
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@id([enrolmentId, kind])
+  @@map("learning_reminders")
+}
+
+/// LRN-06: external training a person asks for (outside the catalogue), decided by the manager, then L&D.
+model LearningExternalRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  title          String    @db.VarChar(200)
+  provider       String    @db.VarChar(200)
+  cost           Decimal   @db.Decimal(12, 2)
+  reason         String    @db.VarChar(2000)
+  bondAcceptedAt DateTime? @map("bond_accepted_at") @db.Timestamptz(3)
+  /// requested · approved · declined
+  status         String    @default("requested") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+
+  @@index([organizationId, employeeId], map: "learning_external_requests_employee_idx")
+  @@map("learning_external_requests")
+}
+
+/// LRN-04: a trainer: an employee (internal) or someone from a training company (external).
+model LearningTrainer {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  orgName        String?  @map("org_name") @db.VarChar(200)
+  external       Boolean
+  employeeId     String?  @map("employee_id") @db.Uuid
+  email          String?  @db.VarChar(254)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("learning_trainers")
+}
+
+/// LRN-04: a classroom or virtual session of a course: seats, a trainer, slots and cost lines.
+model LearningSession {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  courseId              String    @map("course_id") @db.Uuid
+  /// classroom · virtual
+  mode                  String    @db.VarChar(10)
+  /// A room and site, or the meeting link.
+  venue                 String    @db.VarChar(300)
+  trainerId             String    @map("trainer_id") @db.Uuid
+  seats                 Int
+  /// scheduled · completed · cancelled
+  status                String    @default("scheduled") @db.VarChar(12)
+  /// [{ label, amount }]
+  costLines             Json      @default("[]") @map("cost_lines")
+  attendanceConfirmedAt DateTime? @map("attendance_confirmed_at") @db.Timestamptz(3)
+  createdBy             String?   @map("created_by") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// When managers were asked whether attendees apply what they learnt (LRN-12).
+  checkSentAt           DateTime? @map("check_sent_at") @db.Timestamptz(3)
+  version               Int       @default(1)
+
+  @@index([organizationId, courseId], map: "learning_sessions_course_idx")
+  @@map("learning_sessions")
+}
+
+model LearningSessionSlot {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  sessionId       String    @map("session_id") @db.Uuid
+  position        Int
+  startsAt        DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt          DateTime  @map("ends_at") @db.Timestamptz(3)
+  checkinClosedAt DateTime? @map("checkin_closed_at") @db.Timestamptz(3)
+
+  @@unique([sessionId, position], map: "learning_session_slots_position_key")
+  @@map("learning_session_slots")
+}
+
+model LearningAttendance {
+  organizationId String   @map("organization_id") @db.Uuid
+  slotId         String   @map("slot_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  /// present · late · absent
+  status         String   @db.VarChar(8)
+  /// qr · code · manual
+  method         String   @db.VarChar(10)
+  markedBy       String?  @map("marked_by") @db.Uuid
+  markedAt       DateTime @default(now()) @map("marked_at") @db.Timestamptz(3)
+
+  @@id([slotId, enrolmentId])
+  @@map("learning_attendance")
+}
+
+/// LRN-12: an attendee's reaction to a confirmed session (once), and their manager's later check (once).
+model LearningFeedback {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sessionId      String   @map("session_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  /// reaction · check
+  kind           String   @db.VarChar(8)
+  byUserId       String   @map("by_user_id") @db.Uuid
+  overall        Int?     @db.SmallInt
+  trainer        Int?     @db.SmallInt
+  /// yes · partly · no · early
+  applying       String?  @db.VarChar(8)
+  comment        String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([enrolmentId, kind], map: "learning_feedback_once")
+  @@index([organizationId, sessionId], map: "learning_feedback_session_idx")
+  @@map("learning_feedback")
+}
+
+/// LRN-10: a person's confirmed level of a library skill (source course or manager).
+model LearningSkillLevel {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  companySkillId String   @map("company_skill_id") @db.Uuid
+  level          Int      @db.SmallInt
+  /// course · manager · self (answer 2673: added by the person, confirmed by the manager)
+  source         String   @db.VarChar(8)
+  evidence       String?  @db.VarChar(200)
+  setBy          String?  @map("set_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([employeeId, companySkillId])
+  @@index([organizationId, employeeId], map: "learning_skill_levels_org_idx")
+  @@map("learning_skill_levels")
+}
+
+/// LRN-15: a suggested level from evidence, pending until the person or their manager decides; never re-offered.
+model LearningSkillSuggestion {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  companySkillId String    @map("company_skill_id") @db.Uuid
+  level          Int       @db.SmallInt
+  source         String    @db.VarChar(8)
+  sourceRef      String    @map("source_ref") @db.Uuid
+  evidence       String    @db.VarChar(200)
+  /// pending · confirmed · rejected
+  status         String    @default("pending") @db.VarChar(10)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([employeeId, companySkillId, sourceRef], map: "learning_skill_suggestions_once")
+  @@index([organizationId, employeeId], map: "learning_skill_suggestions_org_idx")
+  @@map("learning_skill_suggestions")
+}
+
+/// LRN-11: a training need for a person or a department.
+model LearningNeed {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  title          String   @db.VarChar(200)
+  employeeId     String?  @map("employee_id") @db.Uuid
+  departmentId   String?  @map("department_id") @db.Uuid
+  companySkillId String?  @map("company_skill_id") @db.Uuid
+  /// skill_gap · manager · compliance · review
+  source         String   @db.VarChar(12)
+  /// high · medium · low
+  priority       String   @db.VarChar(6)
+  /// new · planned · in_progress · closed
+  status         String   @default("new") @db.VarChar(12)
+  courseId       String?  @map("course_id") @db.Uuid
+  estCost        Decimal  @default(0) @map("est_cost") @db.Decimal(14, 2)
+  raisedBy       String   @map("raised_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  @@index([organizationId, status], map: "learning_needs_org_idx")
+  @@map("learning_needs")
+}
+
+/// LRN-11: a department's training budget for a financial year (April's year).
+model LearningBudget {
+  organizationId String   @map("organization_id") @db.Uuid
+  departmentId   String   @map("department_id") @db.Uuid
+  year           Int
+  amount         Decimal  @db.Decimal(14, 2)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([departmentId, year])
+  @@index([organizationId, year], map: "learning_budgets_org_idx")
+  @@map("learning_budgets")
+}
+
+/// G4 (ANL-06): a report the person marked as a favourite in the report library (report_id from the code catalogue).
+model ReportFavourite {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  reportId       String   @map("report_id") @db.VarChar(60)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([userId, reportId])
+  @@index([organizationId], map: "report_favourites_org_idx")
+  @@map("report_favourites")
+}
+
+/// G4 (item 21): a folder of company documents (everyone, or the document managers only).
+model CompanyDocFolder {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(80)
+  /// everyone · managers
+  audience       String    @default("everyone") @db.VarChar(10)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+
+  @@map("company_doc_folders")
+}
+
+/// G4 (item 21): a company document with its stored file and an optional expiry.
+model CompanyDocument {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  folderId       String    @map("folder_id") @db.Uuid
+  title          String    @db.VarChar(200)
+  fileId         String    @map("file_id") @db.Uuid
+  expiresOn      DateTime? @map("expires_on") @db.Date
+  remindedAt     DateTime? @map("reminded_at") @db.Timestamptz(3)
+  uploadedBy     String    @map("uploaded_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  removedBy      String?   @map("removed_by") @db.Uuid
+
+  @@index([organizationId, folderId], map: "company_documents_folder_idx")
+  @@map("company_documents")
+}
+
+/// G4 (answers 2690-2691): a report-library report emailed on a schedule; each recipient's copy is built with their own rights.
+model ReportSchedule {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  reportId       String    @map("report_id") @db.VarChar(60)
+  /// daily · weekdays · weekly · monthly
+  frequency      String    @db.VarChar(10)
+  recipients     String[]  @db.Uuid
+  nextRunAt      DateTime  @map("next_run_at") @db.Timestamptz(3)
+  lastRunAt      DateTime? @map("last_run_at") @db.Timestamptz(3)
+  lastResult     String?   @map("last_result") @db.VarChar(300)
+  active         Boolean   @default(true)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdBy], map: "report_schedules_org_idx")
+  @@map("report_schedules")
 }

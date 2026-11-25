@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TrainingFeedbackScreen } from './learn-me';
+import { liveFeedback } from './learn-feedback-samples';
 
 const meta: Meta = { title: 'Screens/Learning/LRN-12 · Session feedback and 60-day check', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -11,3 +12,5 @@ export const ReactionPhone: S = { name: 'Employee · phone', globals: PHONE, ren
 export const ManagerCheck: S = { name: 'Manager · 60-day check', render: () => <TrainingFeedbackScreen mode="manager-check" course="Statistical process control" trainer="Anita Deshpande" person="Rohit Bhat" /> };
 export const ManagerCheckPhone: S = { name: 'Manager · 60-day check on phone', globals: PHONE, render: () => <TrainingFeedbackScreen mode="manager-check" device="phone" course="Statistical process control" trainer="Anita Deshpande" person="Rohit Bhat" /> };
 export const Sent: S = { name: 'Sent', render: () => <TrainingFeedbackScreen mode="reaction" course="Fire safety and evacuation" trainer="Ramesh Kamath" sent /> };
+export const LiveReaction: S = { name: 'Live · reaction', render: () => <TrainingFeedbackScreen live={liveFeedback()} /> };
+export const LiveManagerCheck: S = { name: 'Live · manager check', render: () => <TrainingFeedbackScreen live={liveFeedback({ mode: 'manager-check' })} /> };

@@ -131,4 +131,17 @@ describe('HLP-03 Ticket workspace (live)', () => {
     render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, systemState: 'open' }, work, timeline: TIMELINE })} />);
     if (WORK.sla.some((x) => x.metric === 'resolution' && x.kind === 'sla')) expect(screen.getByText(/Resolution: 3 h left/)).toBeInTheDocument();
   });
+
+  // Batch F GLPI 8 (answer 2572): the team targets beside the requester's first response; none set, none shown.
+  it('team targets (OLA) show beside the first response; a ticket with none shows no field', () => {
+    const base = WORK.sla[0]!;
+    const ola = { ...base, id: 'ola1', kind: 'ola' as const, metric: 'group_response', label: 'Team first response (OLA) · Payroll team', state: 'running' as const, breached: false, usedSeconds: 600, targetSeconds: 1800, metAt: null, breachedAt: null };
+    const { unmount } = render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, systemState: 'open' }, work: { ...WORK, sla: [...WORK.sla, ola, { ...ola, id: 'gone', state: 'cancelled' as const }] }, timeline: TIMELINE })} />);
+    expect(screen.getByText('Team targets')).toBeInTheDocument();
+    expect(screen.getAllByText(/Team first response · Payroll team: 20 min left/)).toHaveLength(1);
+    unmount();
+    render(<TicketWorkspaceScreen live={liveTicket({ ticket: { ...TICKET, systemState: 'open' }, work: { ...WORK, sla: WORK.sla.filter((x) => x.kind === 'sla') }, timeline: TIMELINE })} />);
+    expect(screen.queryByText('Team targets')).toBeNull();
+  });
 });
+

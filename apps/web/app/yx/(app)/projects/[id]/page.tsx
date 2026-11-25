@@ -11,7 +11,9 @@ import { useProjects, useProjectsWrite } from '../../../../../lib/yx-projects';
 export default function YxProjectPage() {
   const { id } = useParams<{ id: string }>();
   const p = `/${encodeURIComponent(id)}`;
-  const detail = useProjects<LiveProjectDetail>(p);
+  // Batch D B3 (answer 2537): the Team tab's hours range (this week by default).
+  const [range, setRange] = useState<'week' | 'month' | 'all'>('week');
+  const detail = useProjects<LiveProjectDetail>(range === 'week' ? p : `${p}?range=${range}`);
   const can = detail.data?.can;
   const choices = useProjects<ProjectChoices>(can && (can.edit || can.team) ? '/choices' : null);
   const settings = useProjects<{ values: Record<string, string> }>(can?.edit ? '/settings' : null);
@@ -47,6 +49,7 @@ export default function YxProjectPage() {
         onAllocate: async (input) => void (await write('POST', `${p}/allocations`, input)),
         // The person on an allocation never changes.
         onChangeAllocation: async (aid, { employeeId: _person, ...input }) => void (await write('PUT', `${p}/allocations/${encodeURIComponent(aid)}`, input)),
+        onHoursRange: setRange,
         onEndAllocation: async (aid, version) => void (await write('POST', `${p}/allocations/${encodeURIComponent(aid)}/end`, { version })),
         onAddTask: async (input) => void (await write('POST', `${p}/tasks`, input)),
         onChangeTask: async (tid, input) => void (await write('PUT', `${p}/tasks/${encodeURIComponent(tid)}`, input)),

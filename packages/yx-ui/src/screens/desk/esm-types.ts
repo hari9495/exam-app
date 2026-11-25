@@ -121,6 +121,8 @@ export interface ApprovalTask {
   quickApprove?: boolean;
   /** Short context from the request's type ("Over the policy limit, so it needs a full review"). */
   note?: string | null;
+  /** Answer 2500: who holds the task now ("Everyone's pending"). */
+  approver?: string;
 }
 export interface ApprovalHistory {
   decided: { requestId: string; title: string; type: string; decision: string; at: string; requestStatus: string }[];

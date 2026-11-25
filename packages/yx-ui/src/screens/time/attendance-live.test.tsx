@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { AttendanceCalendarScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
+import { AttendanceCalendarScreen, DayCardScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
 import type { DayCard, MyAttendance, Muster, PersonAttendance } from './live/types';
 
 // The designed attendance screens with `live` (Me › Attendance, its clock page, and Time › Muster), as the app renders
@@ -432,6 +432,28 @@ describe('Muster › one person (Extra · Attendance calendar, Manager · one pe
     expect(l.onMonth).toHaveBeenCalledWith('2026-09');
     await ue.click(within(screen.getByRole('list', { name: 'Open exceptions' })).getByRole('button', { name: 'View' }));
     expect(l.onOpenDay).toHaveBeenCalledWith('2026-10-02');
+  });
+
+  // Batch C item 15: the designed TIM-03 day card, live, opened from the team calendar.
+  it('DayCardScreen live: the month with the day open in the drawer; another day moves; closing goes back', async () => {
+    const onOpenDay = vi.fn(async () => card);
+    const onDay = vi.fn();
+    const onClose = vi.fn();
+    render(<DayCardScreen live={{ state: 'ready', data: pa, on: '2026-10-02', onDay, onOpenDay, backHref: '/yx/time/team', backLabel: 'Back to the team calendar', onClose }} />);
+    // The drawer is modal, so the page behind it is hidden from the accessibility tree.
+    expect(screen.getByRole('heading', { name: /Kavya Reddy · October 2026/, hidden: true })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Back to the team calendar', hidden: true })).toHaveAttribute('href', '/yx/time/team');
+    const drawer = await screen.findByRole('dialog');
+    expect(drawer).toHaveTextContent('Kavya Reddy · reports to you');
+    await waitFor(() => expect(onOpenDay).toHaveBeenCalledWith('2026-10-02'));
+    await ue.keyboard('{Escape}');
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('DayCardScreen live: someone outside the team (404) shows no access and no data', () => {
+    render(<DayCardScreen live={{ state: 'no-access', data: null, on: '2026-10-02', onDay: vi.fn(), onOpenDay: vi.fn(), backHref: '/yx/time/team', backLabel: 'Back', onClose: vi.fn() }} />);
+    expect(screen.queryByText(/Kavya Reddy/)).toBeNull();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('someone outside the team (the server answers 404): no access, no data shown', () => {

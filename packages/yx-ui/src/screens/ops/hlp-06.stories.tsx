@@ -42,3 +42,7 @@ export const SetupUnfinished: S = { name: 'Set-up · Internal Committee and Esca
 export const SetupAddIc: S = { name: 'Set-up · add to the Internal Committee', render: () => setup({ start: { adding: 'ic' } }) };
 export const SetupTooEarly: S = { name: 'Set-up · Add pressed with nobody chosen', render: () => setup({ start: { adding: 'ethics', tooEarly: true } }) };
 export const SetupNoAccess: S = { name: 'Set-up · no access (HR without the key)', render: () => setup({ state: 'no-access' }) };
+// Answer 2591: the committee list asks whether a member is a woman and when the term ends, and warns what is wrong.
+export const SetupIcNotComplete: S = { name: 'Set-up · Internal Committee not complete', render: () => { const b = liveSetup(); return <SpeakUpSetupScreen live={{ ...b, data: { ...b.data!, members: b.data!.members.map((m) => (m.team === 'ic' && m.role === 'presiding' ? { ...m, woman: null, termEndsOn: null } : m)) } }} />; } };
+// Answer 2592: the Hosur plant has its own Internal Committee (no external member yet), next to the company committee.
+export const SetupWorkplaceIc: S = { name: 'Set-up · a workplace with its own Internal Committee', render: () => { const b = liveSetup(); return <SpeakUpSetupScreen live={{ ...b, data: { ...b.data!, members: [...b.data!.members, { id: 'h1', team: 'ic', userId: 'u-divya', name: 'Divya Raghunathan', role: 'presiding', addedAt: '2026-11-01T05:00:00Z', woman: true, termEndsOn: '2029-10-31', locationId: 'loc-hsr' }] } }} />; } };

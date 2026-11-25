@@ -16,13 +16,15 @@ export interface SegmentProps<V extends string | number> {
   className?: string;
   /** Read-only: shown, not changed (a statutory setting). */
   disabled?: boolean;
+  /** 'vertical' stacks the options (a column of groups, e.g. the approvals desk's kinds of request). */
+  orientation?: 'horizontal' | 'vertical';
 }
 
 /**
  * Joined pick-one control (R11): one choice of 2–4 short options. Independent on/off filters use toggle chips instead.
  * A radio group: arrow keys move and select, one tab stop.
  */
-export function Segment<V extends string | number>({ label, options, value, onChange, className, disabled }: SegmentProps<V>) {
+export function Segment<V extends string | number>({ label, options, value, onChange, className, disabled, orientation = 'horizontal' }: SegmentProps<V>) {
   const move = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
     if (!step) return;
@@ -33,7 +35,7 @@ export function Segment<V extends string | number>({ label, options, value, onCh
   };
   const chosen = options.some((o) => o.value === value);
   return (
-    <div className={cx('yx-segment', className)} role="radiogroup" aria-label={label}>
+    <div className={cx('yx-segment', className)} role="radiogroup" aria-label={label} aria-orientation={orientation} data-orientation={orientation}>
       {options.map((o, i) => (
         <button
           key={String(o.value)}

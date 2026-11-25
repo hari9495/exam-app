@@ -1,5 +1,6 @@
 'use client';
 
+import { useLearning } from '../../../lib/yx-learning';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -32,7 +33,7 @@ import { YxPageHelp } from '../../../lib/yx-access-requests';
 import { useWhatsNew } from '../../../lib/yx-whats-new';
 
 // Pages outside the menu (a record, a sub-page) still light up their area.
-const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
+const AREA_BY_PATH: [string, AreaId][] = [['/yx/people', 'people'], ['/yx/time', 'time'], ['/yx/payroll', 'pay'], ['/yx/expenses', 'pay'], ['/yx/hiring', 'hire'], ['/yx/projects', 'projects'], ['/yx/performance', 'performance'], ['/yx/engage', 'engage'], ['/yx/learning', 'learning'], ['/yx/analytics', 'analytics'], ['/yx/desk', 'helpdesk'], ['/yx/contract-labour', 'contract'], ['/yx/settings', 'settings'], ['/yx/admin', 'settings'], ['/yx/support', 'settings']];
 const COLLAPSE_KEY = 'yx-panel-collapsed';
 
 export default function YxAppLayout({ children }: { children: React.ReactNode }) {
@@ -77,6 +78,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   const myTasks = useLife<{ tasks: unknown[] }>('/lifecycle/my-tasks');
   const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
   const firstDays = useLife<{ card: unknown }>('/lifecycle/me/first-30-days');
+  // Internal trainers get Learning › Sessions.
+  const learningRoles = useLearning<{ trainer: boolean }>('/me/roles');
   const counts = useWorkspaceCounts();
   // Founder answer 511: Interviews shows for anyone on an interview panel (their own interviews; no key needed).
   const myInterviews = useQuery<unknown[]>({ queryKey: ['hiring', '/interviews/mine'], queryFn: () => apiFetch('/hiring/interviews/mine', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
@@ -138,12 +141,14 @@ function Frame({ children }: { children: React.ReactNode }) {
         designated: counts.data?.declarationsDue !== undefined,
         caseTeam: counts.data?.casesOpen !== undefined,
         ethicsDesk: counts.data?.ethicsReports !== undefined,
+        icMember: counts.data?.icComplaints !== undefined,
         changesAsked: counts.data?.changesAsked !== undefined,
         staffing: Boolean(staffingDesk.data?.enabled),
         assessments: Boolean(assessmentsOn.data?.enabled),
         projects: Boolean(projectsOn.data?.canOpen),
         lineApprovals: projectsOn.data?.lineApprovals ?? 0,
         panellist: Boolean(myInterviews.data?.length),
+        trainer: Boolean(learningRoles.data?.trainer),
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps

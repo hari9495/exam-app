@@ -61,10 +61,10 @@ export const TEAM: TeamClaims = {
   month: '2026-09',
   people: 6,
   claims: [
-    { ...summary(SUBMITTED), overLimit: 1, canOpen: true },
-    { ...summary(DRAFT), id: 'c1038', title: 'Pune plant audit', person: 'Sana Nizami', status: 'approved', paymentStatus: 'in_payroll', claimedTotal: '8450.00', approvedTotal: '8450.00', netPayable: '8450.00', advanceAdjusted: '0.00', submittedAt: '2026-09-12T05:00:00Z', overLimit: 0, canOpen: true },
-    { ...summary(DRAFT), id: 'c1035', title: 'Hyderabad dealer visits', person: 'Arjun Kulkarni', status: 'partly_approved', paymentStatus: 'approved_unpaid', claimedTotal: '12600.00', approvedTotal: '11200.00', netPayable: '11200.00', advanceAdjusted: '0.00', submittedAt: '2026-09-08T05:00:00Z', overLimit: 2, canOpen: true },
-    { ...summary(DRAFT), id: 'c1033', title: 'Team offsite supplies', person: 'Meera Iyer', status: 'sent_back', paymentStatus: 'not_due', claimedTotal: '3120.00', approvedTotal: null, netPayable: '3120.00', advanceAdjusted: '0.00', submittedAt: '2026-09-04T05:00:00Z', overLimit: 0, canOpen: false },
+    { ...summary(SUBMITTED), waitingOn: 'Asha Rao and 1 more', overLimit: 1, canOpen: true },
+    { ...summary(DRAFT), id: 'c1038', title: 'Pune plant audit', person: 'Sana Nizami', status: 'approved', paymentStatus: 'in_payroll', claimedTotal: '8450.00', approvedTotal: '8450.00', netPayable: '8450.00', advanceAdjusted: '0.00', submittedAt: '2026-09-12T05:00:00Z', waitingOn: 'Finance (payment)', overLimit: 0, canOpen: true },
+    { ...summary(DRAFT), id: 'c1035', title: 'Hyderabad dealer visits', person: 'Arjun Kulkarni', status: 'partly_approved', paymentStatus: 'approved_unpaid', claimedTotal: '12600.00', approvedTotal: '11200.00', netPayable: '11200.00', advanceAdjusted: '0.00', submittedAt: '2026-09-08T05:00:00Z', waitingOn: 'Finance (payment)', overLimit: 2, canOpen: true },
+    { ...summary(DRAFT), id: 'c1033', title: 'Team offsite supplies', person: 'Meera Iyer', status: 'sent_back', paymentStatus: 'not_due', claimedTotal: '3120.00', approvedTotal: null, netPayable: '3120.00', advanceAdjusted: '0.00', submittedAt: '2026-09-04T05:00:00Z', waitingOn: 'Meera Iyer', overLimit: 0, canOpen: false },
   ],
 };
 

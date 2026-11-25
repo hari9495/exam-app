@@ -38,12 +38,22 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.app.owner_left', group: 'reminders', label: "An application's owner has left or was deactivated" },
   { type: 'helpdesk.privacy.request', group: 'approvals', label: 'A privacy request about desk data is waiting' },
   // HLP-10 / HLP-11 company policies.
+  // Batch G2 item 12: an announcement for you, and the day-2 / day-5 reminder to acknowledge it.
+  { type: 'engage.announcement.published', group: 'mentions', label: 'A company announcement is for you' },
+  { type: 'engage.survey.open', group: 'reminders', label: 'A survey is open for you' },
+  { type: 'engage.survey.reminder', group: 'reminders', label: 'A survey you have not answered closes soon' },
+  { type: 'engage.kudos.received', group: 'mentions', label: 'A colleague thanked you with kudos' },
+  { type: 'engage.moderation.outcome', group: 'mentions', label: 'A moderator approved, hid or removed your post, or wrote to you' },
+  { type: 'engage.announcement.reminder', group: 'reminders', label: 'An announcement is waiting for you to acknowledge it' },
   { type: 'helpdesk.policy.to_acknowledge', group: 'reminders', label: 'A company policy is waiting for you to acknowledge it' },
   { type: 'helpdesk.policy.overdue_report', group: 'reminders', label: 'Someone in your team is overdue acknowledging a policy' },
   { type: 'helpdesk.policy.to_publish', group: 'approvals', label: 'A policy version is waiting for you to publish it' },
   { type: 'helpdesk.policy.decided', group: 'approvals', label: 'A policy version you wrote was published or sent back' },
   // HLP-06 speak-up.
   { type: 'helpdesk.speakup.received', group: 'assignments', label: 'A speak-up report was routed to you' },
+  { type: 'engage.moderation.routed', group: 'assignments', label: 'A feed moderator asks HR to look at someone' },
+  { type: 'people.company_doc.expiring', group: 'reminders', label: 'A company document expires soon' },
+  { type: 'helpdesk.ic.term_ending', group: 'reminders', label: 'An Internal Committee member\'s term ends within 30 days' },
   // HLP-07/08/09 cases.
   { type: 'helpdesk.case.update', group: 'assignments', label: 'There is an update on a case you are part of' },
   { type: 'helpdesk.case.task', group: 'assignments', label: 'A case needs you to carry out an action (interim relief)' },
@@ -59,6 +69,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'workflow.approval.needed', group: 'approvals', label: 'A request needs your approval' },
   { type: 'workflow.approval.reminder', group: 'reminders', label: 'A request is still waiting for your approval' },
   { type: 'workflow.approval.decided', group: 'approvals', label: 'A request you sent or were asked about was decided' },
+  // Answers 2501 / 2502: an approval you held was moved to someone else (by you, or by HR), with why.
+  { type: 'workflow.approval.reassigned', group: 'approvals', label: 'An approval you held was moved to someone else' },
   { type: 'workflow.approval.no_approver', group: 'approvals', label: 'No approver was found for a request step, so someone else got it (HR, or the desk leads for desk requests)' },
   { type: 'helpdesk.request.stage', group: 'reminders', label: 'Something you ordered moved to its next stage' },
   { type: 'helpdesk.rule.notify', group: 'assignments', label: 'A desk rule sent you a message' },
@@ -133,6 +145,19 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'perf.pip.checkin_missed', group: 'reminders', label: 'An improvement plan check-in was missed (HR and the manager)' },
   { type: 'perf.pip.handed_over', group: 'assignments', label: 'An improvement plan was handed over to you' },
   { type: 'perf.pip.extended', group: 'reminders', label: 'An improvement plan was extended after it was not met' },
+  // Learning: due dates of assigned courses, and who is told when one is missed.
+  { type: 'learning.before_7', group: 'reminders', label: 'A course assigned to you is due in a week' },
+  { type: 'learning.before_2', group: 'reminders', label: 'A course assigned to you is due in 2 days' },
+  { type: 'learning.overdue', group: 'reminders', label: 'A reminder to finish a course that is overdue' },
+  { type: 'learning.overdue_manager', group: 'reminders', label: 'Someone on your team missed a course due date' },
+  { type: 'learning.overdue_hr', group: 'reminders', label: 'Someone is a week past a course due date (training reports)' },
+  { type: 'learning.nominated', group: 'assignments', label: 'You were nominated for a training session' },
+  { type: 'learning.waitlist_promoted', group: 'assignments', label: 'A seat came free for you in a training session' },
+  { type: 'learning.session_changed', group: 'reminders', label: 'A training session you are in changed or was cancelled' },
+  { type: 'learning.nomination_declined', group: 'reminders', label: 'Someone in your team declined a nomination' },
+  { type: 'learning.rate_session', group: 'reminders', label: 'Rate a training session you attended' },
+  { type: 'learning.skill_added', group: 'assignments', label: 'Someone in your team added a skill for you to confirm' },
+  { type: 'learning.training_check', group: 'reminders', label: 'Is your team applying what they learnt? (training check)' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },
