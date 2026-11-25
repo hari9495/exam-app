@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
-import { publicGet } from '../../../../lib/yx-careers';
+import { headers } from 'next/headers';
+import { publicGet, visitorIp } from '../../../../lib/yx-careers';
 import type { CareersPageResponse } from '../../../../lib/types';
 import { CareersHome } from './careers-home';
 
@@ -7,7 +8,7 @@ import { CareersHome } from './careers-home';
 // jobs; the designed CareersSiteScreen with the company's builder layout. ?company= picks a group company's page.
 type Props = { params: Promise<{ orgSlug: string }>; searchParams: Promise<{ company?: string | string[] }> };
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : undefined);
-const fetchCareers = (orgSlug: string, company?: string) => publicGet<CareersPageResponse>(`/careers/${encodeURIComponent(orgSlug)}${company ? `?company=${encodeURIComponent(company)}` : ''}`);
+const fetchCareers = async (orgSlug: string, company?: string) => publicGet<CareersPageResponse>(`/careers/${encodeURIComponent(orgSlug)}${company ? `?company=${encodeURIComponent(company)}` : ''}`, visitorIp(await headers()));
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { orgSlug } = await params;

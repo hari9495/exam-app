@@ -5,6 +5,7 @@ import { TenantPrismaService, OrgSecretsCryptoService } from '@exam-platform/sha
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { HRIS_EXPORTS_QUEUE_NAME } from './hris-exports.queue';
 import { assertAllowedWebhookUrl, assertPublicWebhookTarget } from '../integrations/webhook-url-allowlist';
+import { pinnedFetch } from '../common/ssrf';
 import { getHrisConnector } from './providers';
 import type { HrisEmployeePayload } from './hris-payload';
 
@@ -83,7 +84,8 @@ export class HrisExportWorkerService implements OnModuleDestroy {
 
     let response: { ok: boolean; status: number };
     try {
-      response = await fetch(request.url, { method: request.method, redirect: 'error', headers: request.headers, body: request.body });
+      // Security review F13: pinned DNS, and no redirect is ever followed.
+      response = await pinnedFetch(request.url, { method: request.method, headers: request.headers, body: request.body });
     } catch (e) {
       await this.recordAttempt(delivery, false, undefined, (e as Error).message);
       throw e;

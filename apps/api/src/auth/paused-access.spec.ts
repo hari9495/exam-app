@@ -1,4 +1,4 @@
-import { DEACTIVATED_MESSAGE, inactiveAccountError, pausedMessage } from './paused-access';
+import { INVALID_CREDENTIALS, inactiveAccountError, pausedMessage } from './paused-access';
 
 // TIM-39 Suspend at sign-in: a running block-leave pause names its last day; anything else stays "deactivated".
 describe('inactiveAccountError', () => {
@@ -15,9 +15,9 @@ describe('inactiveAccountError', () => {
 
   it('paused with no running block, deactivated, or no company: "deactivated"', async () => {
     plan.mockResolvedValueOnce(null);
-    expect((await inactiveAccountError(tp, { id: 'u1', organizationId: 'o1', status: 'paused' }, now)).message).toBe(DEACTIVATED_MESSAGE);
-    expect((await inactiveAccountError(tp, { id: 'u1', organizationId: 'o1', status: 'deactivated' }, now)).message).toBe(DEACTIVATED_MESSAGE);
-    expect((await inactiveAccountError(tp, { id: 'u1', organizationId: null, status: 'paused' }, now)).message).toBe(DEACTIVATED_MESSAGE);
+    expect((await inactiveAccountError(tp, { id: 'u1', organizationId: 'o1', status: 'paused' }, now)).message).toBe(INVALID_CREDENTIALS);
+    expect((await inactiveAccountError(tp, { id: 'u1', organizationId: 'o1', status: 'deactivated' }, now)).message).toBe(INVALID_CREDENTIALS);
+    expect((await inactiveAccountError(tp, { id: 'u1', organizationId: null, status: 'paused' }, now)).message).toBe(INVALID_CREDENTIALS);
   });
 
   it('formats the day as "3 Nov 2026"', () => expect(pausedMessage(new Date('2026-11-03T00:00:00Z'))).toContain('until 3 Nov 2026.'));

@@ -6,6 +6,9 @@ jest.mock('bullmq', () => ({
 
 import { IntegrationDeliveryWorkerService } from './integration-delivery.worker.service';
 
+// Security review F13: the worker posts through the pinned fetch; here it hands over to the test's fetch mock.
+jest.mock('../common/ssrf', () => ({ ...jest.requireActual('../common/ssrf'), pinnedFetch: (...a: unknown[]) => (global as any).fetch(...a) }));
+
 describe('IntegrationDeliveryWorkerService.deliver', () => {
   const crypto = { decrypt: jest.fn((b: string) => b.replace('enc:', '')) } as any;
   const prisma = { forTenant: jest.fn(async (_c: unknown, fn: any) => fn(txStub)) } as any;
@@ -27,7 +30,7 @@ describe('IntegrationDeliveryWorkerService.deliver', () => {
 
   it('POSTs to the decrypted Slack URL and marks delivered', async () => {
     await svc().deliver(delivery as any, integration as any, 'attempt.submitted', { subject: 'Ada', linkPath: '/candidates/9' });
-    expect(fetchMock).toHaveBeenCalledWith('https://hooks.slack.com/services/A/B/c', expect.objectContaining({ method: 'POST', redirect: 'error' }));
+    expect(fetchMock).toHaveBeenCalledWith('https://hooks.slack.com/services/A/B/c', expect.objectContaining({ method: 'POST' }));
     expect(txStub.integrationDelivery.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'delivered', httpStatusCode: 200 }) }));
     expect(txStub.orgIntegration.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ lastDeliveryAt: expect.any(Date), lastError: null }) }));
   });

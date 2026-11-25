@@ -492,7 +492,7 @@ export class PublicApplicationsService {
       }
       // What the applicant accepted, at which version, when and (hashed) from where.
       if (consent.record.length) {
-        await tx.candidateConsent.createMany({ data: consent.record.map((n) => ({ organizationId: job.organizationId, candidateId: candidate.id, noticeId: n.id, purpose: n.purpose, version: n.version, source: 'apply', ipHash: ipHash(ip, process.env.JWT_SECRET ?? 'yukthix') })) });
+        await tx.candidateConsent.createMany({ data: consent.record.map((n) => ({ organizationId: job.organizationId, candidateId: candidate.id, noticeId: n.id, purpose: n.purpose, version: n.version, source: 'apply', ipHash: ipHash(ip) })) });
       }
       // New entries land on the job's pipeline's first active-category stage's first status (by
       // position), same rule as PipelineService.addEntry -- falls back to the pipeline's first
@@ -912,7 +912,7 @@ If you did not apply, ignore this email.`,
 
     const org = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      (tx) => tx.organization.findFirst({ where: { slug: orgSlug }, select: { easyApplyConfigEncrypted: true } }),
+      (tx) => tx.organization.findFirst({ where: { slug: orgSlug }, select: { id: true, easyApplyConfigEncrypted: true } }),
     );
     if (!org?.easyApplyConfigEncrypted) throw notAvailable;
     let storedSecret: string | undefined;
@@ -930,6 +930,10 @@ If you did not apply, ignore this email.`,
     } catch (err) {
       throw new BadRequestException(err instanceof Error ? err.message : 'Malformed Easy Apply payload');
     }
+    // Security review F12: the job must be this company's. Company A's board secret never posts into company B's job
+    // (same answer as a closed role, as quickApply does).
+    const job = await this.resolveJob(normalized.applyToken);
+    if (job.organizationId !== org.id) throw new NotFoundException('This role is not accepting applications');
     // Reuse the standard apply pipeline verbatim -- the only difference from a direct application is
     // how we got here (a verified board webhook instead of the public form).
     return this.apply(normalized.applyToken, {

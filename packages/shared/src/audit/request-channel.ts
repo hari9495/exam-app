@@ -18,7 +18,14 @@ export function channelOf(req: { path?: string; originalUrl?: string; headers?: 
   return PHONE.test(Array.isArray(ua) ? ua.join(' ') : (ua ?? '')) ? 'phone' : 'web';
 }
 
-/** Express middleware: runs the rest of the request with its channel known. */
+/**
+ * Security review F2 (25 Nov 2026): who is really acting in this request. Filled in by the API's JWT check once the token
+ * is read (it runs after this middleware, so the store is an object it sets a field on); every audit row written while
+ * handling the request then names the impersonator beside the impersonated person.
+ */
+export const requestActor = new AsyncLocalStorage<{ impersonatorUserId?: string | null }>();
+
+/** Express middleware: runs the rest of the request with its channel known (and room for the real actor). */
 export function recordRequestChannel(req: Parameters<typeof channelOf>[0], _res: unknown, next: () => void): void {
-  requestChannel.run(channelOf(req), next);
+  requestChannel.run(channelOf(req), () => requestActor.run({}, next));
 }

@@ -1,4 +1,4 @@
-import { createHash } from 'crypto';
+import { keyedHash } from '../common/keyed-hash';
 
 // Recruitment batch AT3 (M10-BUILD-DESIGN §6, §13): pure rules for the public careers site and apply.
 
@@ -23,7 +23,8 @@ export const safeColor = (c: string | null | undefined) => (c && /^#[0-9a-fA-F]{
 export const isSlug = (s: string) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(s) && s.length <= 60;
 
 /** The applicant's IP, kept only as a salted hash with the consent record (evidence without storing the address). */
-export const ipHash = (ip: string | null | undefined, salt: string) => (ip ? createHash('sha256').update(`${salt}:${ip}`).digest('hex') : null);
+/** Where a consent came from, as a keyed hash (F10: the key comes from the API secret; never the IP itself). */
+export const ipHash = (ip: string | null | undefined) => (ip ? keyedHash('consent-ip', ip) : null);
 
 /**
  * What the applicant accepted, checked against the notices shown: the application notice (when the company has one) is

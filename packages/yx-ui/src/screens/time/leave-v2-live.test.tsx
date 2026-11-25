@@ -134,6 +134,17 @@ describe('Leave reports, block leave, holiday feeds (live)', () => {
     expect(screen.getByText('No one in a block-leave role')).toBeInTheDocument();
   });
 
+  it('security review F6: with only leave.view the row offers a reminder, never planning or the access pause (negative)', () => {
+    const rows = [
+      { employeeId: 'e1', name: 'Ganesh Hegde', code: null, need: 10, status: 'not_planned' as const, plan: null, nudgedAt: null, earnedLeft: 14, canPlan: false, canNudge: true },
+      { employeeId: 'e2', name: 'Asha Rao', code: null, need: 10, status: 'planned' as const, plan: { from: '2026-11-09', to: '2026-11-20', accessPause: 'none' as const, version: 1 }, nudgedAt: null, earnedLeft: 14, canPlan: false, canNudge: true },
+    ];
+    render(<BlockLeavePlannerScreen live={{ state: 'ready', data: { today: '2026-10-29', rows }, onPlan: vi.fn(), onNudge: vi.fn(), onPause: vi.fn(), teamLeaveHref: '/t', onNavigate: vi.fn() }} />);
+    expect(screen.getByRole('button', { name: /Nudge/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Plan block leave' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Schedule access pause' })).not.toBeInTheDocument();
+  });
+
   it('Suspend: the access pause confirmation says when access stops and comes back; a running pause shows "Access paused"', async () => {
     const row = { employeeId: 'e1', name: 'Ganesh Hegde', code: null, need: 10, status: 'planned' as const, nudgedAt: null, earnedLeft: 14, canPlan: true };
     const onPause = vi.fn(async () => ({}));

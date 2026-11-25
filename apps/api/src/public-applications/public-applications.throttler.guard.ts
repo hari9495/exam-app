@@ -1,20 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 
+/**
+ * The rate-limit bucket of a public request (pure, so it is tested directly). Security review F7 (25 Nov 2026): routes
+ * without a private token (careers, sitemap, job feeds, application status, Easy Apply) were keyed only on their route
+ * pattern, one bucket for every caller and every company, so 20 requests a minute took every careers site down. Now:
+ * - the apply form: its public apply token plus the caller's IP (junk from one IP no longer blocks the job's real applicants);
+ * - the offer and candidate-portal links: their private token (a candidate behind a shared office NAT keeps their own);
+ * - everything else: the route, the company or feed it names (org slug, feed token, status token, provider) and the IP.
+ */
+export function publicTracker(req: { ip?: string; ips?: string[]; params?: Record<string, string | undefined>; route?: { path?: string } }): string {
+  const p = req.params ?? {};
+  const ip = req.ip ?? 'unknown';
+  if (p.applyToken) return `apply:${p.applyToken}:${ip}`;
+  const secret = p.token ?? p.portalToken;
+  if (secret) return secret;
+  const scope = p.orgSlug ?? p.feedToken ?? p.statusToken ?? '';
+  return `${req.route?.path ?? 'public'}:${scope}:${p.provider ?? ''}:${ip}`;
+}
+
 @Injectable()
 export class PublicApplicationsThrottlerGuard extends ThrottlerGuard {
-  // Keyed by the applyToken (or offer token) route param, not IP -- same reasoning as
-  // WalkInThrottlerGuard: this is a public unauthenticated surface, and IP-keyed throttling
-  // would let candidates behind a shared NAT/WiFi exhaust each other's budget. Also reused by
-  // PublicOffersController's :token param (accept/decline), which gets its own token-scoped
-  // budget the same way. The status route has neither (it uses statusToken instead), so it
-  // falls back to a fixed 'status' bucket shared by all status lookups rather than trusting an
-  // unvalidated route param as a per-caller key.
   // Deliberately does NOT extend FailOpenThrottlerGuard -- public-facing surface, fail closed.
-  // Token-less routes (status lookups, the jobs-feed) fall back to their route PATTERN, so each
-  // gets its own shared bucket instead of colliding in one 'status' pool -- otherwise a burst of
-  // status checks and an aggregator polling the feed would 429 each other.
   protected async getTracker(req: Record<string, any>): Promise<string> {
-    return req.params?.applyToken ?? req.params?.token ?? req.params?.portalToken ?? req.route?.path ?? 'status';
+    return publicTracker(req);
   }
 }

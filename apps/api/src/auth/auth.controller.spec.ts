@@ -168,7 +168,7 @@ describe('AuthController.ssoExchange', () => {
     prisma.ssoLoginCode.findUnique.mockResolvedValue(codeRow());
     tenantPrisma.forTenant.mockResolvedValue({ id: 'user-1', email: 'u@x.test', organizationId: 'org-1', role: 'recruiter', status: 'deactivated' });
 
-    await expect(controller.ssoExchange({ code: 'raw-code-123' }, req, { cookie: jest.fn() } as any)).rejects.toThrow('deactivated');
+    await expect(controller.ssoExchange({ code: 'raw-code-123' }, req, { cookie: jest.fn() } as any)).rejects.toThrow('Invalid credentials');
     expect(authService.issueTokensForSso).not.toHaveBeenCalled();
     expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user-1', result: 'failed', reason: 'account_inactive' }));
   });

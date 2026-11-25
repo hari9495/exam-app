@@ -17,6 +17,13 @@ describe('assertPublicHttpsUrl', () => {
   it('rejects 172.31.0.1 (top of the IPv4 private range)', () => reject('https://172.31.0.1/x'));
   it('rejects 192.168.1.1 (IPv4 private range)', () => reject('https://192.168.1.1/x'));
   it('rejects 169.254.1.1 (IPv4 link-local)', () => reject('https://169.254.1.1/x'));
+  // Security review F13: the ranges the old static list missed.
+  it('rejects 100.64.0.1 (CGNAT), 0.1.2.3 (this network) and :: (unspecified)', () => {
+    reject('https://100.64.0.1/x');
+    reject('https://0.1.2.3/x');
+    reject('https://[::]/x');
+  });
+  it('still accepts a public IP literal', () => accept('https://8.8.8.8/x'));
   it('rejects 0.0.0.0', () => reject('https://0.0.0.0/x'));
   it('rejects [::1] (IPv6 loopback)', () => reject('https://[::1]/x'));
   it('rejects [fd00::1] (IPv6 unique-local)', () => reject('https://[fd00::1]/x'));
@@ -70,5 +77,25 @@ describe('DNS-checked public HTTPS (ASVS V12.6 / V5.2.6)', () => {
     await expect(publicHttpsFetch('https://evil-discovery.example/token', { method: 'POST', body: new URLSearchParams({ a: 'b' }) })).rejects.toThrow(
       'does not resolve to a public address',
     );
+  });
+});
+
+describe('pinnedFetch (security review F13)', () => {
+  it('refuses a private address before any connection, and plain http (negative)', async () => {
+    const { pinnedFetch } = await import('./ssrf');
+    await expect(pinnedFetch('https://127.0.0.1/hook', { method: 'POST', body: '{}' })).rejects.toThrow(/not a public address/);
+    await expect(pinnedFetch('https://100.64.0.1/hook')).rejects.toThrow(/not a public address/);
+    await expect(pinnedFetch('http://example.com/hook')).rejects.toThrow('Only https is allowed');
+  });
+  it('passes method, headers and body through to the pinned request (positive)', async () => {
+    const pinned = jest.fn().mockResolvedValue(new Response('ok', { status: 200 }));
+    let mod: typeof import('./ssrf') | undefined;
+    jest.isolateModules(() => {
+      jest.doMock('@exam-platform/shared', () => ({ ...jest.requireActual('@exam-platform/shared'), publicHttpsFetch: pinned }));
+      mod = require('./ssrf');
+    });
+    const res = await mod!.pinnedFetch('https://hooks.example.com/x', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"a":1}' });
+    expect(res.status).toBe(200);
+    expect(pinned).toHaveBeenCalledWith('https://hooks.example.com/x', expect.objectContaining({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"a":1}' }));
   });
 });

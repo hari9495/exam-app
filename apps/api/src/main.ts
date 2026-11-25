@@ -5,7 +5,7 @@ import { json, urlencoded, raw } from 'express';
 import { configureTrustProxy } from '@exam-platform/shared';
 import { AppModule } from './app.module';
 import { InternalAppModule } from './internal-app.module';
-import { resolveInternalBindHost } from './bootstrap-config';
+import { assertProductionSecrets, resolveInternalBindHost } from './bootstrap-config';
 import { mountSmsCallbackBody } from './sms-channel/sms-channel.controller';
 import { mountInboundMailBody } from './service-desk/channels.controller';
 import { mountInboundMsgBody } from './service-desk/esm3.controller';
@@ -19,6 +19,8 @@ import { ChatIoAdapter } from './service-desk/chat-io.adapter';
 const JSON_BODY_LIMIT = '7mb';
 
 async function bootstrap() {
+  // Security review F9: never run in production on the example secrets.
+  assertProductionSecrets();
   const app = await NestFactory.create(AppModule, { bodyParser: false });
   configureTrustProxy(app);
   // The Stripe webhook must verify an HMAC over the EXACT raw request bytes, so it needs the raw

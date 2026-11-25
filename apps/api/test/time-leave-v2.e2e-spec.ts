@@ -466,7 +466,7 @@ describe('Leave v2', () => {
   });
 
   describe('block-leave planner (TIM-39)', () => {
-    it('lists only people whose role needs it; HR plans, nudges and schedules the access pause', async () => {
+    it('lists only people whose role needs it; HR Admin plans and schedules the access pause, HR Executive only reads and nudges', async () => {
       expect((await api('hrExec', 'get', '/time/hr/block-leave').expect(200)).body.rows).toEqual([]);
       await setting('leave.block_leave.required', 'yes', { scopeType: 'department', scopeId: ids.deptA });
       await setting('leave.block_leave.days', '5');
@@ -478,15 +478,18 @@ describe('Leave v2', () => {
       const to = [d(41), `${today.slice(0, 4)}-12-31`].sort()[0];
       const from = addDays(to, -11);
       expect(from > today).toBe(true);
-      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to: addDays(from, 2) }).expect(400);
-      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from: d(-3), to: d(10) }).expect(400);
-      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to: addDays(from, -1) }).expect(400);
+      // Security review F6: leave.view (HR Executive) reads and reminds, but planning and pausing need leave.approve.
+      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to }).expect(403);
+      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/pause`).send({ pause: true }).expect(403);
+      await api('hrAdmin', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to: addDays(from, 2) }).expect(400);
+      await api('hrAdmin', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from: d(-3), to: d(10) }).expect(400);
+      await api('hrAdmin', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to: addDays(from, -1) }).expect(400);
       await api('mgr', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to }).expect(403);
       await api('hrB', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to }).expect(404);
-      expect((await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to }).expect(200)).body.workingDays).toBeGreaterThanOrEqual(5);
-      await api('hrExec', 'post', `/time/hr/block-leave/${ids.peerEmp}/pause`).send({ pause: true }).expect(409);
-      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/pause`).send({ pause: true }).expect(200);
-      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/pause`).send({ pause: true }).expect(409);
+      expect((await api('hrAdmin', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to }).expect(200)).body.workingDays).toBeGreaterThanOrEqual(5);
+      await api('hrAdmin', 'post', `/time/hr/block-leave/${ids.peerEmp}/pause`).send({ pause: true }).expect(409);
+      await api('hrAdmin', 'post', `/time/hr/block-leave/${ids.empEmp}/pause`).send({ pause: true }).expect(200);
+      await api('hrAdmin', 'post', `/time/hr/block-leave/${ids.empEmp}/pause`).send({ pause: true }).expect(409);
       await api('hrExec', 'post', `/time/hr/block-leave/${ids.peerEmp}/nudge`).expect(200);
       await api('hrExec', 'post', `/time/hr/block-leave/${ids.peerEmp}/nudge`).expect(409);
       const after = (await api('hrExec', 'get', '/time/hr/block-leave').expect(200)).body.rows;

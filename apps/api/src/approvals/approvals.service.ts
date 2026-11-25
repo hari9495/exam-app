@@ -243,6 +243,8 @@ export class ApprovalsService {
       if (!req || req.status !== 'pending_approval') {
         throw new ConflictException('Request is not open for approval');
       }
+      // Security review F4: never one's own request, even when an older chain listed the submitter as an approver.
+      if (req.submittedByUserId === actorUserId) throw new ForbiddenException('You asked for this, so someone else approves it.');
       const steps: ResolvedStep[] = JSON.parse(req.chainSnapshotJson);
       const step = steps[req.currentStepPosition];
       if (!step || !step.approverUserIds.includes(actorUserId)) {
@@ -450,7 +452,12 @@ export class ApprovalsService {
     };
   }
 
-  async getRequestDetail(context: TenantContext, requestId: string): Promise<RequestDetail> {
+  /**
+   * Security review F3: only the submitter, the approvers on the chain (any step) and holders of the approvals admin key
+   * read a request (it carries offer pay, the candidate and every note); anyone else gets the same 404 as a missing one.
+   */
+  async getRequestDetail(context: TenantContext, requestId: string, userId: string): Promise<RequestDetail> {
+    const admin = await this.isConfigurer(context, userId);
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const req = await tx.approvalRequest.findFirst({
         where: { id: requestId, organizationId: context.organizationId as string },
@@ -459,6 +466,7 @@ export class ApprovalsService {
       if (!req) throw new NotFoundException('Approval request not found');
 
       const steps: ResolvedStep[] = JSON.parse(req.chainSnapshotJson);
+      if (!admin && req.submittedByUserId !== userId && !steps.some((s) => s.approverUserIds.includes(userId))) throw new NotFoundException('Approval request not found');
 
       let subject: Record<string, unknown>;
       if (req.subjectType === 'job') {

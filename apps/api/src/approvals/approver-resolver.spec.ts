@@ -373,4 +373,15 @@ describe('resolveSteps', () => {
       { position: 1, name: 'Group approval', approverType: 'group', approverUserIds: ['u2'] },
     ]);
   });
+
+  it('security review F4: drops the submitter from every step; a step left empty is skipped and reported', async () => {
+    const tx = makeTx({ users: { sub: {}, other: {} }, jobs: { 'job-1': { hiringManagerId: 'sub' } } });
+    const steps: ChainStepInput[] = [
+      { position: 0, name: 'Hiring manager', approverType: 'hiring_manager', approverUserIds: [], managerLevel: null },
+      { position: 1, name: 'Panel', approverType: 'users', approverUserIds: ['sub', 'other'], managerLevel: null },
+    ];
+    const { resolved, skipped } = await resolveSteps(tx, { steps, submitterUserId: 'sub', gate: 'requisition', subjectId: 'job-1', organizationId: 'org-1' });
+    expect(resolved).toEqual([{ position: 0, name: 'Panel', approverType: 'users', approverUserIds: ['other'] }]);
+    expect(skipped.map((x) => x.position)).toEqual([0]);
+  });
 });

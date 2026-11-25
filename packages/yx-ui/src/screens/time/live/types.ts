@@ -999,7 +999,7 @@ export type BlockDateInput = { from: string; to: string; reason: string; scopeTy
 /** GET /time/hr/block-leave (TIM-39). */
 export interface BlockLeaveList {
   today: string;
-  rows: { employeeId: string; name: string; code: string | null; need: number; status: 'taken' | 'planned' | 'not_planned'; plan: { from: string; to: string; accessPause: 'none' | 'scheduled'; version: number } | null; nudgedAt: string | null; earnedLeft: number; canPlan: boolean }[];
+  rows: { employeeId: string; name: string; code: string | null; need: number; status: 'taken' | 'planned' | 'not_planned'; plan: { from: string; to: string; accessPause: 'none' | 'scheduled'; version: number } | null; nudgedAt: string | null; earnedLeft: number; canPlan: boolean; /** Security review F6: a reminder only needs leave.view (absent: as canPlan). */ canNudge?: boolean }[];
 }
 
 /** GET /time/setup/holiday-feeds (TIM-42). */

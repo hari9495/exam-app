@@ -1,5 +1,8 @@
 import { hoursText, approvalDue, decider, inHours, personKey, photoProblem, policyText } from './walkin-rules';
 
+// The keyed hashes derive their key from the API secret (security review F10).
+process.env.JWT_ACCESS_SECRET ??= 'unit-test-secret-only-for-these-hashes';
+
 describe('Visitors slice 2 rules', () => {
   it('610: allowed hours in the location time zone (from inclusive, to exclusive)', () => {
     expect(inHours(new Date('2026-11-10T03:30:00Z'), 'Asia/Kolkata', '09:00', '18:30')).toBe(true); // 09:00 IST

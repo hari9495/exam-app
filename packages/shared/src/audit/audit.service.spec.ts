@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { AuditService } from './audit.service';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
+import { requestActor } from './request-channel';
 
 describe('AuditService', () => {
   let service: AuditService;
@@ -96,5 +97,24 @@ describe('AuditService', () => {
     await AuditService.recordIn(tx as never, { organizationId: 'org-1', isSuperAdmin: false }, { actorUserId: null, action: 'org.location.created', entityType: 'location', entityId: 'loc-1' });
     expect(tenantPrisma.forTenant).not.toHaveBeenCalled();
     expect(create).toHaveBeenCalledWith({ data: expect.objectContaining({ organizationId: 'org-1', action: 'org.location.created', entityId: 'loc-1' }) });
+  });
+
+  describe('security review F2: the real actor while impersonating', () => {
+    const write = async (store: { impersonatorUserId?: string | null } | null) => {
+      const create = jest.fn();
+      tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(mockTx({ auditLog: { create } })));
+      const go = () => service.record({ organizationId: 'org-1', isSuperAdmin: false }, { actorUserId: 'recruiter-1', action: 'pipeline.moved', entityType: 'entry', entityId: 'e-1', metadata: { to: 'offer' } });
+      if (store) await requestActor.run(store, go);
+      else await go();
+      return JSON.parse(create.mock.calls[0][0].data.metadataJson);
+    };
+    it('names the impersonator beside the person acted as (positive)', async () => {
+      expect(await write({ impersonatorUserId: 'admin-1' })).toEqual({ to: 'offer', impersonatorUserId: 'admin-1' });
+    });
+    it('adds nothing for a normal request, or outside a request (negative)', async () => {
+      expect(await write({ impersonatorUserId: null })).toEqual({ to: 'offer' });
+      expect(await write({})).toEqual({ to: 'offer' });
+      expect(await write(null)).toEqual({ to: 'offer' });
+    });
   });
 });

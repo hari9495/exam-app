@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { assertPublicHttpsUrl } from '../../common/ssrf';
+import { assertPublicHttpsUrl, pinnedFetch } from '../../common/ssrf';
 import { WhatsappProviderAdapter, WhatsappSendArgs, WhatsappSendResult } from './types';
 
 function isBlank(value: unknown): boolean {
@@ -47,7 +47,7 @@ export const httpProvider: WhatsappProviderAdapter = {
   async send(
     config: Record<string, unknown>,
     args: WhatsappSendArgs,
-    fetchImpl: typeof fetch = fetch,
+    fetchImpl: typeof fetch = pinnedFetch, // security review F13: pinned DNS by default (company-supplied URL)
   ): Promise<WhatsappSendResult> {
     try {
       const contentType = (config.contentType as string) || 'application/json';
