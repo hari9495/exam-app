@@ -702,6 +702,12 @@ export const PAY_ACCESS_ROWS: PayAccessRow[] = [
 
 /** The live popups take the day as yyyy-mm-dd: the sample's TODAY (29 Sep 2026). */
 export const TODAY_KEY = '2026-09-29';
+/** IT assets part 1 (answer 2712): the company's asset categories, as the Add asset picker gets them. */
+export const ASSET_CATEGORY_CHOICES: Choice[] = [
+  { value: 'cat-laptop', label: 'Laptop' },
+  { value: 'cat-phone', label: 'Phone' },
+  { value: 'cat-sim', label: 'SIM' },
+];
 export const ENTITY_CHOICES: Choice[] = [
   { value: 'le-ka', label: 'Kaveri Foods Pvt Ltd' },
   { value: 'le-tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' },

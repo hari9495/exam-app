@@ -31,7 +31,7 @@ describe('Lifecycle batch 6c', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hr' | 'hr2' | 'mgr' | 'it' | 'ravi' | 'sita' | 'arun' | 'meena' | 'kiran';
+  type Who = 'adminA' | 'adminB' | 'hr' | 'hr2' | 'mgr' | 'it' | 'ravi' | 'sita' | 'arun' | 'meena' | 'kiran' | 'fin' | 'agent';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const emp = {} as Record<string, string>;
@@ -80,6 +80,9 @@ describe('Lifecycle batch 6c', () => {
       ['arun', 'A', 'panel', []],
       ['meena', 'A', 'panel', []],
       ['kiran', 'A', 'panel', []],
+      // IT assets part 1 (answer 2711): Finance sees money on assets; an IT desk agent with asset.view only does not.
+      ['fin', 'A', 'panel', tpl('finance')],
+      ['agent', 'A', 'panel', ['asset.view']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -343,7 +346,7 @@ describe('Lifecycle batch 6c', () => {
 
   it('PPL-03: a manager reads their team memberâ€™s assets and leave balances; a peer, another company: not found', async () => {
     const tag = `TB-${run}`;
-    const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Tablet', name: 'Tab A9', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Phone', name: 'Tab A9', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
     await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: emp.sita, issuedOn: today, condition: 'New' }).expect(200);
     const assets = (await api('mgr', 'get', `/lifecycle/people/${emp.sita}/assets`).expect(200)).body.rows;
     expect(assets).toEqual([expect.objectContaining({ tag, name: 'Tab A9', condition: 'New', acknowledged: false })]);
@@ -461,6 +464,87 @@ describe('Lifecycle batch 6c', () => {
     await api('ravi', 'get', `/lifecycle/assets/${id}`).expect(403);
     await api('hr', 'get', `/lifecycle/assets/${randomUUID()}`).expect(404);
     await api('adminB', 'get', `/lifecycle/assets/${id}`).expect(404);
+  });
+
+  it('IT assets part 1 (2712): the starter list, HR adds, changes and retires categories; an asset takes one from the list', async () => {
+    const cats = (await api('hr', 'get', '/lifecycle/asset-categories').expect(200)).body;
+    expect(cats.canEdit).toBe(true);
+    expect(cats.rows.map((x: { name: string }) => x.name)).toEqual(expect.arrayContaining(['Laptop', 'Phone', 'SIM', 'ID / access card', 'Safety shoes and PPE kit', 'Tools']));
+    expect(cats.rows.find((x: { name: string }) => x.name === 'Laptop')).toMatchObject({ trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3 });
+    // Readers who may not change them, and no key at all.
+    expect((await api('it', 'get', '/lifecycle/asset-categories').expect(200)).body.canEdit).toBe(false);
+    await api('ravi', 'get', '/lifecycle/asset-categories').expect(403);
+    await api('it', 'post', '/lifecycle/asset-categories').send({ name: 'Drone' }).expect(403);
+    // Add; the same name again (any case), a bad name or a useful life over 50 years: refused.
+    const tab = (await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Tablet ${run}`, trackedBy: 'Serial number', defaultRecovery: '20000.00', usefulLifeYears: 3 }).expect(201)).body.id as string;
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `TABLET ${run}` }).expect(409);
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: 'Drone <b>' }).expect(400);
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: 'Drone', usefulLifeYears: 99 }).expect(400);
+    // Change with its version; a stale version or another company: refused.
+    await api('hr', 'put', `/lifecycle/asset-categories/${tab}`).send({ name: `Tablet ${run}`, trackedBy: 'IMEI', defaultRecovery: '22000.00', usefulLifeYears: 4, version: 1 }).expect(200);
+    await api('hr', 'put', `/lifecycle/asset-categories/${tab}`).send({ name: `Tablet ${run}`, version: 1 }).expect(409);
+    await api('adminB', 'put', `/lifecycle/asset-categories/${tab}`).send({ name: 'Other', version: 2 }).expect(404);
+    // An asset takes a category from the list (by id, or by name for older callers); a name not on it is refused.
+    const tag = `GT-${run}`;
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ categoryId: tab, name: 'Galaxy Tab S9', tag, legalEntityId: ids.entity, locationId: ids.blr, cost: '30000.00' }).expect(201)).body.id as string;
+    await api('hr', 'post', '/lifecycle/assets').send({ category: 'Hoverboard', name: 'x', tag: `HB-${run}`, legalEntityId: ids.entity }).expect(400);
+    await api('hr', 'post', '/lifecycle/assets').send({ categoryId: randomUUID(), name: 'x', tag: `HB-${run}`, legalEntityId: ids.entity }).expect(400);
+    expect((await api('hr', 'get', '/lifecycle/asset-categories').expect(200)).body.rows.find((x: { id: string }) => x.id === tab)).toMatchObject({ trackedBy: 'IMEI', assets: 1, version: 2 });
+    // Retired, never deleted: it leaves the list and new assets; the asset keeps it, and may be saved with it.
+    await api('it', 'post', `/lifecycle/asset-categories/${tab}/retire`).expect(403);
+    await api('hr', 'post', `/lifecycle/asset-categories/${tab}/retire`).expect(200);
+    await api('hr', 'post', `/lifecycle/asset-categories/${tab}/retire`).expect(404);
+    expect((await api('hr', 'get', '/lifecycle/asset-categories').expect(200)).body.rows.map((x: { id: string }) => x.id)).not.toContain(tab);
+    await api('hr', 'post', '/lifecycle/assets').send({ categoryId: tab, name: 'Tab 2', tag: `TB2-${run}`, legalEntityId: ids.entity }).expect(400);
+    const page = (await api('hr', 'get', `/lifecycle/assets/${id}`).expect(200)).body;
+    expect(page.asset).toMatchObject({ categoryId: tab, category: `Tablet ${run}` });
+    await api('hr', 'put', `/lifecycle/assets/${id}`).send({ categoryId: tab, name: 'Galaxy Tab S9 FE', tag, legalEntityId: ids.entity, locationId: ids.blr, cost: '30000.00', version: page.asset.version }).expect(200);
+    // Every change is audited.
+    const actions = (await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'asset_category', entityId: tab } }))).map((a) => a.action);
+    expect(actions).toEqual(expect.arrayContaining(['asset.category.added', 'asset.category.updated', 'asset.category.retired']));
+  });
+
+  it('IT assets part 1 (2711): cost only for asset managers of the place and asset.finance.view; never sent to anyone else', async () => {
+    const tag = `MN-${run}`;
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'ThinkPad X1', tag, legalEntityId: ids.entity, locationId: ids.blr, cost: '120000.00' }).expect(201)).body.id as string;
+    const row = async (who: Who) => {
+      const body = (await api(who, 'get', '/lifecycle/assets').expect(200)).body;
+      return { money: body.money, row: body.rows.find((x: { tag: string }) => x.tag === tag) };
+    };
+    expect(await row('hr')).toMatchObject({ money: true, row: { cost: '120000.00' } });
+    expect(await row('fin')).toMatchObject({ money: true, row: { cost: '120000.00' } });
+    const agent = await row('agent');
+    expect(agent.money).toBe(false);
+    expect(agent.row).toBeTruthy();
+    expect(agent.row).not.toHaveProperty('cost');
+    const page = (await api('agent', 'get', `/lifecycle/assets/${id}`).expect(200)).body;
+    expect(page.money).toBe(false);
+    expect(page.asset).not.toHaveProperty('cost');
+    expect(JSON.stringify(page)).not.toContain('120000');
+    expect((await api('fin', 'get', `/lifecycle/assets/${id}`).expect(200)).body.asset.cost).toBe('120000.00');
+    // Neither may change the asset.
+    await api('agent', 'put', `/lifecycle/assets/${id}`).send({ category: 'Laptop', name: 'x', tag }).expect(403);
+    await api('fin', 'put', `/lifecycle/assets/${id}`).send({ category: 'Laptop', name: 'x', tag }).expect(403);
+  });
+
+  it('IT assets part 1 (2712 settings): acknowledgement "None" asks nothing; recovery to F&F off refuses a recovery', async () => {
+    const o = { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id };
+    const ack = await inA((tx) => tx.setting.create({ data: { ...o, key: 'asset.ack_method', value: 'none' } }));
+    const off = await inA((tx) => tx.setting.create({ data: { ...o, key: 'asset.recovery_to_fnf', value: 'off' } }));
+    try {
+      const tag = `NA-${run}`;
+      const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'SIM', name: 'Jio SIM', tag, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+      await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: emp.sita, issuedOn: today, condition: 'New' }).expect(200);
+      expect((await api('sita', 'get', '/lifecycle/me/assets').expect(200)).body.rows.find((x: { tag: string }) => x.tag === tag)).toMatchObject({ ackNone: true });
+      const list = (await api('hr', 'get', '/lifecycle/assets').expect(200)).body;
+      expect(list.recovery).toEqual({ toFnf: false, basis: 'category_default' });
+      expect(list.rows.find((x: { tag: string }) => x.tag === tag).holder).toMatchObject({ acknowledged: true, ackNone: true });
+      await api('hr', 'post', `/lifecycle/assets/${id}/return`).send({ returnedOn: today, condition: 'Damaged', status: 'in_repair', recoveryAmount: '500.00' }).expect(400);
+      await api('hr', 'post', `/lifecycle/assets/${id}/return`).send({ returnedOn: today, condition: 'Good', status: 'in_stock' }).expect(200);
+    } finally {
+      await inA((tx) => tx.setting.update({ where: { id: ack.id }, data: { value: 'click' } }));
+      await inA((tx) => tx.setting.update({ where: { id: off.id }, data: { value: 'on' } }));
+    }
   });
 
   it('two companies apart', async () => {

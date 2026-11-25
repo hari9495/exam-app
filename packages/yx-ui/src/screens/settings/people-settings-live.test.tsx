@@ -31,7 +31,7 @@ describe('People settings (S-4): every hidden setting has a field', () => {
     // 2.4 (S-6) holds new approval settings, not lifecycle ones that had no screen.
     const S4 = Object.fromEntries(Object.entries(PEOPLE_SETTINGS).filter(([id]) => id !== '2.4'));
     const keys = unmoved(Object.values(S4).flatMap((p) => p.settings.map((s) => s.key)));
-    expect(keys).toHaveLength(15);
+    expect(keys).toHaveLength(18); // IT assets part 1 (answer 2712): 2.8's acknowledgement and recovery settings
     const all = [...keys, ...Object.values(TIME_SETTINGS).flatMap((p) => p.settings.map((s) => s.key)), ...Object.values(PAY_SETTINGS).flatMap((p) => p.settings.map((s) => s.key))];
     expect(new Set(all).size).toBe(all.length);
     for (const [id, spec] of Object.entries(S4)) {

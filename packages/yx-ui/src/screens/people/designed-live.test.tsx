@@ -452,6 +452,32 @@ describe('Assets (PPL-25)', () => {
     await ue.click(within(dialog).getByRole('button', { name: 'Mark not returned' }));
     expect(onReturn).toHaveBeenCalledWith(api, expect.objectContaining({ status: 'lost', condition: 'Not returned: Lost on the train' }));
   });
+
+  // IT assets part 1 (answers 2711, 2712).
+  const leaving: AssetRow = { ...api, holder: { ...api.holder!, leavingOn: '2026-10-30', recoveryDefault: '45000.00' } };
+  const live = (over: object = {}, r: AssetRow = leaving) => ({ state: 'ready' as const, onRetry: vi.fn(), rows: [{ ...row, live: r }], today: day('2026-10-09'), people: [], onIssue: vi.fn(), onReturn: vi.fn(async () => undefined), ...over });
+  it("a leaver's damaged asset starts from the category default recovery (Settings 2.8)", async () => {
+    const l = live({ recovery: { toFnf: true, basis: 'category_default' } });
+    wrap(<AssetRegister rows={[]} live={l} />);
+    expect(screen.getByRole('columnheader', { name: /Cost/ })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Return' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Return condition/ }));
+    await ue.click(screen.getByRole('option', { name: 'Damaged' }));
+    expect(within(dialog).getByRole('textbox', { name: /Recovery amount/ })).toHaveValue('45,000');
+    await ue.click(within(dialog).getByRole('button', { name: 'Record return' }));
+    expect(l.onReturn).toHaveBeenCalledWith(leaving, expect.objectContaining({ status: 'in_repair', recoveryAmount: '45000.00' }));
+  });
+
+  it('negative: recovery to F&F off offers no recovery; without money there is no Cost column (2711)', async () => {
+    wrap(<AssetRegister rows={[]} live={live({ money: false, recovery: { toFnf: false, basis: 'category_default' } })} />);
+    expect(screen.queryByRole('columnheader', { name: /Cost/ })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Return' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Return condition/ }));
+    await ue.click(screen.getByRole('option', { name: 'Damaged' }));
+    expect(within(dialog).queryByRole('textbox', { name: /Recovery amount/ })).toBeNull();
+  });
 });
 
 describe('Document verification (PPL-27)', () => {

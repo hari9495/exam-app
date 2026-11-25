@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { Review } from '../../history/job-changes';
 import { CHANGES, IMPACT } from '../../history/data';
-import { ENTITY_CHOICES, IMPORT_PREVIEW, JOINER_PLACES, LIVE_BATCH, WAITING_JOINERS } from '../people-data';
+import { ASSET_CATEGORY_CHOICES, ENTITY_CHOICES, IMPORT_PREVIEW, JOINER_PLACES, LIVE_BATCH, WAITING_JOINERS } from '../people-data';
 import { AddAssetDrawer } from './exits';
 import { ImportDrawer } from './lifecycle';
 import { AddMembersDialog, BatchDialog, BuddyCard } from './special';
@@ -14,21 +14,22 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 describe('People popups explain instead of disabling', () => {
   it('Add asset: empty and bad fields are named; a filled form is sent', async () => {
     const onAdd = vi.fn(async () => undefined);
-    render(<AddAssetDrawer entities={ENTITY_CHOICES} locations={JOINER_PLACES.locations} onClose={vi.fn()} onAdd={onAdd} />);
+    render(<AddAssetDrawer categories={ASSET_CATEGORY_CHOICES} entities={ENTITY_CHOICES} locations={JOINER_PLACES.locations} onClose={vi.fn()} onAdd={onAdd} />);
     const add = screen.getByRole('button', { name: 'Add asset' });
     expect(add).toBeEnabled();
     await ue.type(screen.getByRole('textbox', { name: /^Cost/ }), '12,000');
     await ue.click(add);
-    expect(screen.getByText('Enter the kind, for example Laptop.')).toBeInTheDocument();
+    expect(screen.getByText('Choose the category.')).toBeInTheDocument();
     expect(screen.getByText('Enter the asset tag.')).toBeInTheDocument();
     expect(screen.getByText('Enter an amount like 54000 or 54000.50.')).toBeInTheDocument();
     expect(onAdd).not.toHaveBeenCalled();
-    await ue.type(screen.getByRole('textbox', { name: /^Kind/ }), 'Laptop');
+    await ue.click(screen.getByRole('combobox', { name: 'Category' }));
+    await ue.click(screen.getByRole('option', { name: 'Laptop' }));
     await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Dell Latitude 5450');
     await ue.type(screen.getByRole('textbox', { name: /^Asset tag/ }), 'LT-0418');
     await ue.clear(screen.getByRole('textbox', { name: /^Cost/ }));
     await ue.click(add);
-    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ category: 'Laptop', tag: 'LT-0418', cost: null }));
+    expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'cat-laptop', tag: 'LT-0418', cost: null }));
   });
 
   it('Import joiners: Check the file with nothing asks for a file; with rows it previews', async () => {

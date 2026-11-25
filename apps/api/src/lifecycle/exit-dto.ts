@@ -193,10 +193,16 @@ export class InterviewNotesDto {
 }
 
 export class AssetDto {
+  // IT assets part 1 (answer 2712): a category from the company list, by id (or by its name, for older callers).
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string | null;
+
+  @IsOptional()
   @trim()
   @IsString()
   @Length(1, 40)
-  category!: string;
+  category?: string | null;
 
   @trim()
   @IsString()
@@ -252,6 +258,36 @@ export class AssetDto {
   @Min(0)
   @Max(120)
   warrantyMonths?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+/** Settings 2.8 (answer 2712): one asset category. */
+export class AssetCategoryDto {
+  @trim()
+  @IsString()
+  @Length(2, 40)
+  @Matches(/^[^<>]*$/, { message: 'leave out < and >' })
+  name!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(40)
+  @Matches(/^[^<>]*$/, { message: 'leave out < and >' })
+  trackedBy?: string | null;
+
+  @IsOptional()
+  @Matches(MONEY)
+  defaultRecovery?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  usefulLifeYears?: number | null;
 
   @IsOptional()
   @IsInt()

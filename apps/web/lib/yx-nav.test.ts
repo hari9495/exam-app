@@ -288,7 +288,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets the S-7 pages (no retired Company rules), Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Assets', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     // AS-2 (Settings 6.5): a test owner with only the assessments settings key gets that page and nothing else.
@@ -427,6 +427,20 @@ describe('pageLink: Policies and Policy admin name themselves (HLP-10 / HLP-11)'
     expect(pageLink(nav([], { employee: true }), '/yx/desk/policy-admin')?.inMenu).not.toBe(true);
     expect(pageLink(nav(['policy.manage'], { employee: true }), '/yx/desk/policy-writer')).toMatchObject({ link: { label: 'Write policies with AI' }, inMenu: true });
     expect(pageLink(nav(['policy.publish'], { employee: true }), '/yx/desk/policy-writer')?.inMenu).not.toBe(true);
+  });
+});
+
+describe('IT assets (answer 2710): one register, also reached from the Helpdesk', () => {
+  it('a desk agent with asset.view finds "IT assets" in the Helpdesk menu; it opens the same People › Assets page', () => {
+    const n = nav(['desk.ticket.view', 'asset.view'], { employee: true });
+    const it = n.find((a) => a.id === 'helpdesk')!.sections.flatMap((s) => s.items).find((l) => l.label === 'IT assets');
+    expect(it?.href).toBe('/yx/people/assets');
+    expect(n.find((a) => a.id === 'people')!.sections.flatMap((s) => s.items).find((l) => l.label === 'Assets')?.href).toBe('/yx/people/assets');
+  });
+  it('negative: no "IT assets" for a desk agent without asset.view, or for asset.view without a desk seat', () => {
+    expect(labels(nav(['desk.ticket.view'], { employee: true }), 'helpdesk')).not.toContain('IT assets');
+    expect(labels(nav(['asset.view'], { employee: true }), 'helpdesk')).not.toContain('IT assets');
+    expect(labels(nav(['asset.view'], { employee: true }), 'people')).toContain('Assets');
   });
 });
 

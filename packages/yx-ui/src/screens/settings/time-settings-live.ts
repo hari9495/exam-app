@@ -364,6 +364,15 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
       { section: 'Fixed-term contracts', key: 'contract_end.action' },
     ],
   },
+  // IT assets part 1 (answer 2712): 2.8 Assets; its category list is added by assetSettingsPage (asset-settings-live).
+  '2.8': {
+    links: [],
+    settings: [
+      { section: 'Issue and return', key: 'asset.ack_method', synonyms: ['acknowledge asset'] },
+      { section: 'Issue and return', key: 'asset.recovery_to_fnf', synonyms: ['recovery'] },
+      { section: 'Issue and return', key: 'asset.recovery_basis', synonyms: ['recovery amount', 'written-down value'] },
+    ],
+  },
   // Settings S-7 (answers 1321, 1561, 1564): the settings that were on Company rules and Access and privacy.
   '2.2': {
     links: [],

@@ -56,6 +56,25 @@ describe('Asset page (live)', () => {
     expect(screen.getAllByText(/ended 1 Jan 2025|Ended 1 Jan 2025/).length).toBeGreaterThan(0);
   });
 
+  it('IT assets part 1 (2712): the category is picked from the company list in Edit details and sent by id', async () => {
+    const onSave = vi.fn().mockResolvedValue({ id: 'a1' });
+    const categories = [{ value: 'c1', label: 'Laptop' }, { value: 'c2', label: 'Tablet' }];
+    show(<AssetPageScreen live={liveAssetPage({ onSave, categories, data: { ...ASSET_PAGE, asset: { ...ASSET_PAGE.asset, categoryId: 'c1' } } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Edit details' }));
+    const d = await screen.findByRole('dialog');
+    await ue.click(within(d).getByRole('combobox', { name: 'Category' }));
+    await ue.click(screen.getByRole('option', { name: 'Tablet' }));
+    await ue.click(within(d).getByRole('button', { name: 'Save details' }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'c2', name: 'Dell Latitude 5440' }));
+  });
+
+  it('negative (2711): without money the Cost line is not shown at all', () => {
+    show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, canManage: false, money: false, asset: { ...ASSET_PAGE.asset, cost: undefined } } })} />);
+    expect(screen.queryByText('Cost')).toBeNull();
+    expect(screen.queryByText(/84,500/)).toBeNull();
+    expect(screen.getByText('Invoice number')).toBeInTheDocument();
+  });
+
   it('no access, error with retry, and loading', async () => {
     const onRetry = vi.fn();
     const { unmount } = show(<AssetPageScreen live={liveAssetPage({ state: 'no-access', data: null })} />);

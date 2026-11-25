@@ -19,7 +19,9 @@ export default function YxAssetsPage() {
   const router = useRouter();
   const perms = useYxPermissions();
   const canManage = perms.has('asset.manage');
-  const data = useLife<{ today: string; rows: AssetRow[] }>('/lifecycle/assets');
+  const data = useLife<{ today: string; money?: boolean; recovery?: { toFnf: boolean; basis: string }; rows: AssetRow[] }>('/lifecycle/assets');
+  // IT assets part 1 (answer 2712): Add asset picks a category from the company list (Settings › Assets).
+  const cats = useLife<{ rows: { id: string; name: string }[] }>(canManage ? '/lifecycle/asset-categories' : null);
   const places = useJoinerPlaces(canManage);
   // Who an asset can go to: its own list for asset.manage (IT holds no employee grant, so /employees is empty for it).
   const people = useLife<PersonOption[]>(canManage ? '/lifecycle/assets/people' : null);
@@ -37,6 +39,7 @@ export default function YxAssetsPage() {
     location: where(a),
     status: STATUS[a.status],
     holder: a.holder?.name ?? '',
+    // Answer 2711: the API sends no cost to whoever may not see money.
     cost: a.cost ? Number(a.cost) : null,
     purchased: new Date(`${a.purchasedOn ?? today}T00:00:00`),
     live: a,
@@ -48,6 +51,8 @@ export default function YxAssetsPage() {
         state: loadState(data),
         onRetry: () => void data.refetch(),
         rows,
+        money: data.data?.money,
+        recovery: data.data?.recovery,
         today: new Date(`${today}T00:00:00`),
         people: (people.data ?? []).map((p) => ({ id: p.id, name: p.name, ...(p.designation ? { role: p.designation } : {}), ...(p.department ? { department: p.department } : {}) })),
         ...(canManage ? { onAdd: () => setAdding(true) } : {}),
@@ -62,6 +67,7 @@ export default function YxAssetsPage() {
         },
         children: adding && (
           <AddAssetDrawer
+            categories={(cats.data?.rows ?? []).map((c) => ({ value: c.id, label: c.name }))}
             entities={places.entities}
             locations={places.locations}
             onClose={() => setAdding(false)}

@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, BlockItemDto, SignOffDto } from './exit-dto';
+import { AssetCategoryDto, AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, BlockItemDto, SignOffDto } from './exit-dto';
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
@@ -202,6 +202,33 @@ export class ExitsController {
   @RequirePermissions('asset.view')
   assets(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.offboarding.assets(ctx, this.user(req));
+  }
+
+  // Settings 2.8 (answer 2712): the company's asset categories. Read by the settings page and the asset pickers; changed
+  // with HR's company-wide settings key (checked again by the service).
+  @Get('asset-categories')
+  @RequireAnyPermission('asset.view', 'asset.manage', 'org.settings.manage', 'org.structure.view')
+  assetCategories(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.offboarding.categories(ctx, this.user(req));
+  }
+
+  @Post('asset-categories')
+  @RequirePermissions('org.settings.manage')
+  addAssetCategory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AssetCategoryDto) {
+    return this.offboarding.saveCategory(ctx, this.user(req), null, dto);
+  }
+
+  @Put('asset-categories/:id')
+  @RequirePermissions('org.settings.manage')
+  saveAssetCategory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AssetCategoryDto) {
+    return this.offboarding.saveCategory(ctx, this.user(req), id, dto);
+  }
+
+  @Post('asset-categories/:id/retire')
+  @HttpCode(200)
+  @RequirePermissions('org.settings.manage')
+  retireAssetCategory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.offboarding.retireCategory(ctx, this.user(req), id);
   }
 
   /** Who an asset can be issued to: current employees, name only. IT holds asset.manage without any employee grant. */

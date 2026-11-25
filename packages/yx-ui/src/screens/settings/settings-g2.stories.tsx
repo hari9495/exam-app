@@ -4,6 +4,8 @@ import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { PEOPLE_SETTINGS, timeSettingsPage, type TimeSettingsData } from './time-settings-live';
 import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
+import { AssetCategoryDrawer, assetSettingsPage, type AssetCategoryRow } from './asset-settings-live';
+import { ToastProvider } from '../../components/notify';
 import './settings.css';
 
 const meta: Meta = {
@@ -32,6 +34,28 @@ export const P2_7: S = { name: '2.7 Exit & lifecycle policies', render: () => <S
 export const P2_7_ReadOnly: S = { name: '2.7 Exit & lifecycle policies · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.7" readOnly /> };
 export const P2_8: S = { name: '2.8 Assets', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.8" /> };
 export const P2_8_ReadOnly: S = { name: '2.8 Assets · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.8" readOnly /> };
+// IT assets part 1 (answer 2712): 2.8 live with the company's categories, the acknowledgement and the recovery basis.
+export const ASSET_CATEGORIES: AssetCategoryRow[] = [
+  { id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, assets: 42, version: 1 },
+  { id: 'c2', name: 'Phone', trackedBy: 'IMEI', defaultRecovery: '15000.00', usefulLifeYears: 3, assets: 18, version: 1 },
+  { id: 'c3', name: 'SIM', trackedBy: 'Number', defaultRecovery: '500.00', usefulLifeYears: null, assets: 18, version: 1 },
+  { id: 'c4', name: 'Tools', trackedBy: 'Tag', defaultRecovery: null, usefulLifeYears: null, assets: 3, version: 1 },
+];
+const assetPage = (canEdit: boolean) => {
+  const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '2.8')!;
+  const page = timeSettingsPage(design, { ...PEOPLE_DATA, canEdit }, new Set());
+  return <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.8" live={{ page: assetSettingsPage(page, design, ASSET_CATEGORIES, canEdit), canEdit, lastChange: null, onSave: async () => {}, onOpenScreen: () => {}, listEditors: canEdit ? { 'asset.categories': () => {} } : undefined }} />;
+};
+export const P2_8_Live: S = { name: '2.8 Assets · live (categories, acknowledgement, recovery)', render: () => <ToastProvider>{assetPage(true)}</ToastProvider> };
+export const P2_8_LiveReadOnly: S = { name: '2.8 Assets · live, view only', render: () => <ToastProvider>{assetPage(false)}</ToastProvider> };
+const drawer = (initial: AssetCategoryRow | null, onSave: () => Promise<unknown> = async () => undefined) => (
+  <ToastProvider>
+    <AssetCategoryDrawer initial={initial} onClose={() => {}} onSave={onSave} onRetire={initial ? async () => undefined : undefined} />
+  </ToastProvider>
+);
+export const P2_8_AddCategory: S = { name: '2.8 Assets · add a category', render: () => drawer(null) };
+export const P2_8_ChangeCategory: S = { name: '2.8 Assets · change a category', render: () => drawer(ASSET_CATEGORIES[0]!) };
+export const P2_8_CategoryRefused: S = { name: '2.8 Assets · change refused (name taken)', render: () => drawer(ASSET_CATEGORIES[1]!, () => Promise.reject(new Error('Another category already has that name.'))) };
 export const P2_9: S = { name: '2.9 Employee relations & cases', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.9" /> };
 export const P2_9_ReadOnly: S = { name: '2.9 Employee relations & cases · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.9" readOnly /> };
 export const P2_10: S = { name: '2.10 Audit & data retention', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.10" /> };

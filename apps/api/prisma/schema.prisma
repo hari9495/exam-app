@@ -7980,6 +7980,8 @@ model Asset {
   model          String?   @db.VarChar(100)
   invoiceNumber  String?   @map("invoice_number") @db.VarChar(60)
   warrantyMonths Int?      @map("warranty_months") @db.SmallInt
+  /// IT assets part 1 (answer 2712): the company category it belongs to (`category` keeps the text for history).
+  categoryId     String?   @map("category_id") @db.Uuid
   version        Int       @default(1)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -7987,6 +7989,24 @@ model Asset {
 
   @@unique([organizationId, id])
   @@map("assets")
+}
+
+/// IT assets part 1 (answer 2712): the company's asset categories (Settings 2.8); retired, never deleted.
+model AssetCategory {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  name            String    @db.VarChar(40)
+  trackedBy       String?   @map("tracked_by") @db.VarChar(40)
+  defaultRecovery Decimal?  @map("default_recovery") @db.Decimal(14, 2)
+  usefulLifeYears Int?      @map("useful_life_years") @db.SmallInt
+  retiredAt       DateTime? @map("retired_at") @db.Timestamptz(3)
+  version         Int       @default(1)
+  createdBy       String?   @map("created_by") @db.Uuid
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@map("asset_categories")
 }
 
 model AssetAssignment {

@@ -117,6 +117,8 @@ export const PEOPLE_SETTINGS_PAGES: [string, string, string][] = [
   ['2.5', 'Onboarding & probation', 'onboarding-and-probation'],
   ['2.6', 'Job changes & transfers', 'job-changes-and-transfers'],
   ['2.7', 'Exit & lifecycle policies', 'exit-and-lifecycle-policies'],
+  // IT assets part 1 (answer 2712): asset categories, acknowledgement and recovery.
+  ['2.8', 'Assets', 'assets'],
   ['2.9', 'Employee relations & cases', 'employee-relations-and-cases'],
   ['2.10', 'Audit & data retention', 'audit-and-data-retention'],
 ];
@@ -152,6 +154,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '2.5': [...peoplePage('2.5'), '/yx/settings/checklists'],
   '2.6': peoplePage('2.6'),
   '2.7': peoplePage('2.7'),
+  '2.8': peoplePage('2.8'),
   '2.9': [...peoplePage('2.9'), '/yx/desk/speakup-setup'],
   '2.10': [...peoplePage('2.10'), AUDIT_LOG],
   '3.1': timePage('3.1'),
@@ -563,6 +566,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('desk.ticket.view') || Boolean(n.changesAsked), L('desk-changes', 'Changes', '/yx/desk/changes', n.changesAsked ? 'changesAsked' : undefined)),
           // ITSM-3: IT problems (the page shows them to the IT desks' agents, leads and admins only).
           ...when(has('desk.ticket.view'), L('desk-problems', 'Problems', '/yx/desk/problems')),
+          // IT assets (answer 2710): one register; desk agents who hold asset.view reach the same page from here.
+          ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-assets', 'IT assets', '/yx/people/assets')),
           // Helpdesk plan item 4: buildings, areas and equipment (the facilities desks' staff; their admins edit).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-facilities', 'Buildings and equipment', '/yx/desk/facilities')),
           ...when(has('desk.desk.create'), L('desk-privacy', 'Privacy requests', '/yx/desk/privacy')),

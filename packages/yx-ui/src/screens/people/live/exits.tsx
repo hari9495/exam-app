@@ -72,7 +72,7 @@ export function MyAssetsScreen(p: MyAssetsScreenProps) {
     { key: 'name', header: 'Asset', value: (r) => r.name, render: (r) => <span className="yx-auth__item-main"><Text>{r.name}</Text><Text tone="secondary" size="sm">{`${r.category} · ${r.tag}`}</Text></span>, width: 240, hideable: false },
     { key: 'issued', header: 'Issued on', value: (r) => r.issuedOn, render: (r) => dateText(r.issuedOn), width: 130 },
     { key: 'condition', header: 'Condition when issued', value: (r) => r.condition, width: 220, optional: true },
-    { key: 'ack', header: 'Received', value: (r) => r.acknowledgedAt ?? '', render: (r) => (r.acknowledgedAt ? <Badge tone="success">Confirmed</Badge> : <Badge tone="warning">Waiting for confirmation</Badge>), width: 140 },
+    { key: 'ack', header: 'Received', value: (r) => r.acknowledgedAt ?? '', render: (r) => (r.ackNone ? <Badge tone="neutral">Not asked</Badge> : r.acknowledgedAt ? <Badge tone="success">Confirmed</Badge> : <Badge tone="warning">Waiting for confirmation</Badge>), width: 140 },
   ];
   return (
     <LivePage title="My assets" description="Company things you hold. Confirm what you received; hand them back when you leave." state={p.state} onRetry={p.onRetry} what="your assets">
@@ -390,14 +390,17 @@ export interface AssetsScreenProps {
   entities: Choice[];
   locations: (Choice & { entityId: string })[];
   people: Choice[];
-  onAdd: (input: { category: string; name: string; tag: string; serial: string | null; legalEntityId: string | null; locationId: string | null; cost: string | null }) => Promise<unknown>;
+  onAdd: (input: { categoryId: string; name: string; tag: string; serial: string | null; legalEntityId: string | null; locationId: string | null; cost: string | null }) => Promise<unknown>;
   onIssue: (a: AssetRow, input: { employeeId: string; issuedOn: string; condition: string }) => Promise<unknown>;
   onReturn: (a: AssetRow, input: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost' }) => Promise<unknown>;
 }
 
 
-export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
-  const [category, setCategory] = useState('');
+/** IT assets part 1 (answer 2712): a category from the company list (Settings 2.8). */
+export type AssetCategoryChoice = Choice;
+
+export function AddAssetDrawer({ categories, entities, locations, onClose, onAdd }: { categories: AssetCategoryChoice[]; entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
+  const [category, setCategory] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');
   const [serial, setSerial] = useState('');
@@ -408,7 +411,7 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   const problems = {
-    category: category.trim() ? null : 'Enter the kind, for example Laptop.',
+    category: category ? null : 'Choose the category.',
     name: name.trim() ? null : 'Enter the name.',
     tag: !tag.trim() ? 'Enter the asset tag.' : /^[A-Za-z0-9][A-Za-z0-9._/-]{0,59}$/.test(tag.trim()) ? null : 'Use letters, digits, dot, dash or slash, starting with a letter or digit.',
     cost: !cost || MONEY.test(cost) ? null : 'Enter an amount like 54000 or 54000.50.',
@@ -432,7 +435,7 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
               setBusy(true);
               setError(null);
               try {
-                await onAdd({ category: category.trim(), name: name.trim(), tag: tag.trim(), serial: serial.trim() || null, legalEntityId: entity, locationId: location, cost: cost || null });
+                await onAdd({ categoryId: category!, name: name.trim(), tag: tag.trim(), serial: serial.trim() || null, legalEntityId: entity, locationId: location, cost: cost || null });
                 onClose();
               } catch (e) {
                 setError((e as Error).message);
@@ -452,8 +455,8 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
         </InlineAlert>
       )}
       <div className="yx-lif-grid">
-        <FormField id="as-cat" label="Kind" required helper="For example Laptop, Phone, Access card." error={shown('category')}>
-          <TextField value={category} onChange={setCategory} maxLength={40} />
+        <FormField id="as-cat" label="Category" required helper="The list is in Settings › Assets." error={shown('category')}>
+          <Select aria-label="Category" value={category} onChange={setCategory} options={categories} />
         </FormField>
         <FormField id="as-name" label="Name" required error={shown('name')}>
           <TextField value={name} onChange={setName} maxLength={150} />

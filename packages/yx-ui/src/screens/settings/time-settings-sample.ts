@@ -3,6 +3,10 @@
 import type { RegistryDef } from './time-settings-live';
 
 export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
+  // IT assets part 1 (answer 2712): Settings 2.8.
+  "asset.ack_method": { "label": "Acknowledgement", "values": ["click", "none"], "default": "click", "labels": { "click": "Click to accept", "none": "None" }, "scopes": ["tenant"] },
+  "asset.recovery_to_fnf": { "label": "Add unreturned-asset recovery to F&F", "values": ["on", "off"], "default": "on", "scopes": ["tenant"] },
+  "asset.recovery_basis": { "label": "Recovery amount", "values": ["category_default", "written_down", "hr_decides"], "default": "category_default", "labels": { "category_default": "Category default", "written_down": "Written-down value", "hr_decides": "Decided by HR each time" }, "scopes": ["tenant"] },
   "attendance.check_in_opens_minutes": {
     "label": "Check-in opens before the shift starts (minutes)",
     "values": [

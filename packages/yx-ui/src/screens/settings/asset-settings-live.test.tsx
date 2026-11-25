@@ -1,0 +1,79 @@
+import { render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '../../components/notify';
+import { SettingsPageScreen } from './settings-screens';
+import { SETTINGS_GROUPS } from './settings-groups';
+import { timeSettingsPage, type TimeSettingsData } from './time-settings-live';
+import { TIME_REGISTRY_SAMPLE } from './time-settings-sample';
+import { allSettings } from './settings-logic';
+import { AssetCategoryDrawer, assetSettingsPage, type AssetCategoryRow } from './asset-settings-live';
+
+// IT assets part 1 (answer 2712): Settings 2.8 Assets made live. Positive and negative.
+const ue = userEvent.setup({ pointerEventsCheck: 0 });
+const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '2.8')!;
+const DATA: TimeSettingsData = { registry: TIME_REGISTRY_SAMPLE, company: {}, elsewhere: {}, limits: {}, canEdit: true, canGuard: false, lastChange: null };
+const ROWS: AssetCategoryRow[] = [
+  { id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, assets: 2, version: 1 },
+  { id: 'c4', name: 'Tools', trackedBy: null, defaultRecovery: null, usefulLifeYears: null, assets: 0, version: 1 },
+];
+const page = (canEdit = true, data = DATA) => assetSettingsPage(timeSettingsPage(design, data, new Set()), design, ROWS, canEdit);
+
+describe('2.8 Assets live', () => {
+  it('the company list comes first, then the acknowledgement (no E-sign yet) and the recovery basis, at their starter values', () => {
+    const p = page();
+    expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return']);
+    const f = (k: string) => allSettings(p).find((d) => d.key === k)!;
+    expect(f('asset.categories').rows).toEqual([['Laptop', 'Serial number', '₹45,000', '3 years', '2'], ['Tools', '—', 'Asset cost', '—', '0']]);
+    expect(f('asset.ack_method')).toMatchObject({ kind: 'radio', value: 'click', options: ['click', 'none'], starter: true, helper: expect.stringMatching(/E-sign comes when/) });
+    expect(f('asset.recovery_to_fnf')).toMatchObject({ kind: 'toggle', value: true });
+    expect(f('asset.recovery_basis')).toMatchObject({ kind: 'radio', value: 'category_default', helper: expect.stringMatching(/HR decides the amount each time/) });
+  });
+
+  it('negative: the drawn sample rows never show live; without the settings key the list is view only', () => {
+    const p = page(false);
+    const list = allSettings(p).find((d) => d.key === 'asset.categories')!;
+    expect(list.readOnlyList).toBe(true);
+    expect(list.rows!.map((r) => r[0])).not.toContain('Safety shoes and PPE kit');
+    render(<ToastProvider><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.8" live={{ page: p, canEdit: false, lastChange: null, onSave: vi.fn() }} /></ToastProvider>);
+    expect(screen.queryByRole('button', { name: 'Add asset category' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: 'E-sign' })).toBeNull();
+  });
+
+  it('adding a category sends the name, what it is tracked by, the recovery and the useful life; a toast says it is done', async () => {
+    const onSave = vi.fn().mockResolvedValue({ id: 'n' });
+    render(<ToastProvider><AssetCategoryDrawer initial={null} onClose={() => {}} onSave={onSave} /></ToastProvider>);
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /Name/ }), 'Tablet');
+    await ue.type(within(d).getByRole('textbox', { name: /Tracked by/ }), 'Serial number');
+    await ue.type(within(d).getByRole('textbox', { name: /Default recovery/ }), '20000');
+    await ue.type(within(d).getByRole('textbox', { name: /Useful life/ }), '3');
+    await ue.click(within(d).getByRole('button', { name: 'Add category' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ name: 'Tablet', trackedBy: 'Serial number', defaultRecovery: '20000.00', usefulLifeYears: 3 }));
+    expect((await screen.findAllByText('Category added')).length).toBeGreaterThan(0);
+  });
+
+  it('negative: no name, or a useful life over 50 years, is not sent; a refusal is shown in the drawer', async () => {
+    const onSave = vi.fn().mockRejectedValue(new Error('Another category already has that name.'));
+    render(<ToastProvider><AssetCategoryDrawer initial={null} onClose={() => {}} onSave={onSave} /></ToastProvider>);
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /Useful life/ }), '60');
+    await ue.click(within(d).getByRole('button', { name: 'Add category' }));
+    expect(within(d).getByText('Give the category a name of at least 2 characters.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    await ue.type(within(d).getByRole('textbox', { name: /Name/ }), 'Phone');
+    await ue.clear(within(d).getByRole('textbox', { name: /Useful life/ }));
+    await ue.click(within(d).getByRole('button', { name: 'Add category' }));
+    expect(await within(d).findByText('Another category already has that name.')).toBeInTheDocument();
+  });
+
+  it('a category in use is retired, never deleted (the drawer says assets keep it)', async () => {
+    const onRetire = vi.fn().mockResolvedValue({ ok: true });
+    render(<ToastProvider><AssetCategoryDrawer initial={ROWS[0]!} onClose={() => {}} onSave={vi.fn()} onRetire={onRetire} /></ToastProvider>);
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText(/Assets already in it keep it/)).toBeInTheDocument();
+    expect(within(d).queryByRole('button', { name: /Delete/ })).toBeNull();
+    await ue.click(within(d).getByRole('button', { name: 'Retire' }));
+    await waitFor(() => expect(onRetire).toHaveBeenCalled());
+  });
+});

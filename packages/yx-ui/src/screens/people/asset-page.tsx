@@ -10,6 +10,7 @@ import { ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../componen
 import { FormField } from '../../components/field';
 import { CurrencyField, NumberField, TextField } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
+import { Select } from '../../components/select';
 import { Breadcrumbs, Card, DescriptionList, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Timeline } from '../../components/timeline';
 import { useToast } from '../../components/notify';
@@ -20,8 +21,11 @@ export type AssetStatus = 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'l
 export interface AssetPageData {
   today: string;
   canManage: boolean;
+  /** Answer 2711: false when the viewer may not see money on this asset (no cost is sent). */
+  money?: boolean;
   asset: {
     id: string;
+    categoryId?: string | null;
     category: string;
     name: string;
     tag: string;
@@ -34,17 +38,19 @@ export interface AssetPageData {
     legalEntity: string | null;
     location: string | null;
     purchasedOn: string | null;
-    cost: string | null;
+    cost?: string | null;
     invoiceNumber: string | null;
     warrantyMonths: number | null;
     warrantyEndsOn: string | null;
     version: number;
   };
-  holder: { name: string; issuedOn: string; acknowledged: boolean } | null;
+  holder: { name: string; issuedOn: string; acknowledged: boolean; ackNone?: boolean } | null;
   /** Newest first; `at` is a day (YYYY-MM-DD) or a moment (ISO). */
   history: { id: string; at: string; who: string; what: string }[];
 }
 export interface AssetDetailsInput {
+  /** IT assets part 1 (answer 2712): a category from the company list. */
+  categoryId?: string;
   name: string;
   serial: string | null;
   maker: string | null;
@@ -61,8 +67,11 @@ export interface LiveAssetPage {
   onBack: () => void;
   /** Asset managers of its place (asset.manage); the page shows Edit details only when given. */
   onSave?: (input: AssetDetailsInput) => Promise<unknown>;
+  /** The company's categories (Settings 2.8) to choose from in Edit details. */
+  categories?: { value: string; label: string }[];
 }
 
+const SAMPLE_CATEGORIES = ['Laptop', 'Phone', 'SIM', 'Tools'].map((x) => ({ value: x, label: x }));
 const STATUS: Record<AssetStatus, { text: string; tone: BadgeTone }> = {
   in_stock: { text: 'In stock', tone: 'success' },
   assigned: { text: 'Assigned', tone: 'info' },
@@ -83,9 +92,9 @@ export function AssetPageScreen(props: { data: AssetPageData; tab?: 'details' | 
     if (l.state === 'no-access') return <Frame onBack={l.onBack}><NoAccessState what="the assets" grantedBy="your IT or HR admin" /></Frame>;
     if (l.state === 'error') return <Frame onBack={l.onBack}><ErrorState title="We couldn't load this asset" description="Check your connection and try again." onRetry={l.onRetry} /></Frame>;
     if (l.state === 'loading' || !l.data) return <Frame onBack={l.onBack}><Skeleton height={360} /></Frame>;
-    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} />;
+    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} />;
   }
-  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} />;
+  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} />;
 }
 
 function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; children: React.ReactNode }) {
@@ -97,7 +106,7 @@ function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; ch
   );
 }
 
-function AssetPage({ data, tab = 'details', editing = false, onBack, onSave }: { data: AssetPageData; tab?: 'details' | 'history'; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave'] }) {
+function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories }: { data: AssetPageData; tab?: 'details' | 'history'; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories'] }) {
   const [open, setOpen] = useState(editing);
   const a = data.asset;
   const ended = a.warrantyEndsOn != null && a.warrantyEndsOn < data.today;
@@ -133,16 +142,17 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave }: {
               columns={2}
               items={[
                 { label: 'Asset tag', value: a.tag, mono: true, copyValue: a.tag },
-                { label: 'Kind', value: a.category },
+                { label: 'Category', value: a.category },
                 { label: 'Maker', value: dash(a.maker) },
                 { label: 'Model', value: dash(a.model) },
                 { label: 'Serial number', value: dash(a.serial), mono: Boolean(a.serial) },
                 { label: 'Status', value: STATUS[a.status].text },
-                { label: 'With', value: data.holder ? `${data.holder.name} since ${formatDate(day(data.holder.issuedOn))} · ${data.holder.acknowledged ? 'confirmed' : 'waiting for confirmation'}` : 'Nobody' },
+                { label: 'With', value: data.holder ? `${data.holder.name} since ${formatDate(day(data.holder.issuedOn))} · ${data.holder.ackNone ? 'no confirmation asked' : data.holder.acknowledged ? 'confirmed' : 'waiting for confirmation'}` : 'Nobody' },
                 { label: 'Legal entity', value: dash(a.legalEntity) },
                 { label: 'Location', value: dash(a.location) },
                 { label: 'Purchased', value: a.purchasedOn ? formatDate(day(a.purchasedOn)) : '—' },
-                { label: 'Cost', value: a.cost ? `₹${Number(a.cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—' },
+                // Answer 2711: money only for asset managers of its place and asset.finance.view holders.
+                ...(data.money === false ? [] : [{ label: 'Cost', value: a.cost ? `₹${Number(a.cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—' }]),
                 { label: 'Invoice number', value: dash(a.invoiceNumber), mono: Boolean(a.invoiceNumber) },
                 { label: 'Warranty', value: ended ? <Badge tone="danger">{warranty}</Badge> : warranty },
               ]}
@@ -155,14 +165,17 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave }: {
           </Card>
         </TabsContent>
       </Tabs>
-      {open && onSave && <EditDetailsDrawer data={data} onClose={() => setOpen(false)} onSave={onSave} />}
+      {open && onSave && <EditDetailsDrawer data={data} categories={categories} onClose={() => setOpen(false)} onSave={onSave} />}
     </Frame>
   );
 }
 
-function EditDetailsDrawer({ data, onClose, onSave }: { data: AssetPageData; onClose: () => void; onSave: NonNullable<LiveAssetPage['onSave']> }) {
+function EditDetailsDrawer({ data, categories, onClose, onSave }: { data: AssetPageData; categories?: LiveAssetPage['categories']; onClose: () => void; onSave: NonNullable<LiveAssetPage['onSave']> }) {
   const { toast } = useToast();
   const a = data.asset;
+  // A category retired since stays choosable for the asset that already has it.
+  const choices = categories && a.categoryId && !categories.some((x) => x.value === a.categoryId) ? [{ value: a.categoryId, label: a.category }, ...categories] : categories;
+  const [category, setCategory] = useState<string | null>(a.categoryId ?? null);
   const [name, setName] = useState(a.name);
   const [serial, setSerial] = useState(a.serial ?? '');
   const [maker, setMaker] = useState(a.maker ?? '');
@@ -176,6 +189,7 @@ function EditDetailsDrawer({ data, onClose, onSave }: { data: AssetPageData; onC
   const [error, setError] = useState<string | null>(null);
   const costText = cost == null ? null : cost.toFixed(2);
   const problems = {
+    category: !choices || category ? null : 'Choose the category.',
     name: name.trim() ? null : 'Enter the name.',
     cost: costText == null || MONEY.test(costText) ? null : 'Enter an amount like 54000 or 54000.50.',
     months: months == null || (Number.isInteger(months) && months >= 0 && months <= 120) ? null : 'Enter 0 to 120 months.',
@@ -187,7 +201,7 @@ function EditDetailsDrawer({ data, onClose, onSave }: { data: AssetPageData; onC
     setBusy(true);
     setError(null);
     try {
-      await onSave({ name: name.trim(), serial: serial.trim() || null, maker: maker.trim() || null, model: model.trim() || null, purchasedOn: purchased ? keyOf(purchased) : null, cost: costText, invoiceNumber: invoice.trim() || null, warrantyMonths: months });
+      await onSave({ ...(choices && category ? { categoryId: category } : {}), name: name.trim(), serial: serial.trim() || null, maker: maker.trim() || null, model: model.trim() || null, purchasedOn: purchased ? keyOf(purchased) : null, cost: costText, invoiceNumber: invoice.trim() || null, warrantyMonths: months });
       toast({ tone: 'success', title: `${name.trim()} (${a.tag}) saved.` });
       onClose();
     } catch (e) {
@@ -217,6 +231,11 @@ function EditDetailsDrawer({ data, onClose, onSave }: { data: AssetPageData; onC
         </InlineAlert>
       )}
       <div className="yx-lif-grid">
+        {choices && (
+          <FormField id="ad-category" label="Category" required helper="The list is in Settings › Assets." error={shown('category')}>
+            <Select aria-label="Category" value={category} onChange={setCategory} options={choices} />
+          </FormField>
+        )}
         <FormField id="ad-name" label="Name" required error={shown('name')}>
           <TextField value={name} onChange={setName} maxLength={150} />
         </FormField>
