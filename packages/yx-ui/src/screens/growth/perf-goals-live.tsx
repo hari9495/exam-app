@@ -2,6 +2,8 @@
 // screens with real data (performance builder 1). The designs' parts are reused as they are; only what the real record
 // needs is added (adding and changing goals, sending them, the manager's decision, periods, cascading, dropping).
 import { useMemo, useState } from 'react';
+import { GoalGapsCard, type GoalGaps } from './goal-gaps';
+import { GoalProgressSummary } from './goal-summary';
 import { Check, Download, Plus, Target, Trash2 } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
@@ -69,6 +71,8 @@ export interface LiveHome {
   onCheckIn: (goalId: string, input: CheckinInput) => Promise<unknown>;
   /** PRF-16 coach card on the manager home (founder 3 Nov 2026); the same data as /yx/performance/coach. */
   coach?: LiveCoach | null;
+  /** Batch F item 30 (answer 2575): my team's people with no goals or goals not updated, with Remind. */
+  gaps?: { state: LoadState; data: GoalGaps | null; onRetry?: () => void; onRemind: (employeeId: string, kind: 'no_goals' | 'not_updated') => Promise<unknown> } | null;
 }
 
 /** Links to my earlier reviews (the old reviews list is retired, founder 3 Nov 2026). */
@@ -298,6 +302,9 @@ export function LivePerformanceHome({ live }: { live: LiveHome }) {
     widgets.push(
       ...(coachWidget ? [coachWidget] : []),
       { id: 'team', title: 'My team', size: coachWidget ? 8 : 12, content: <DataTable label="My team" columns={cols} rows={h.team} getRowId={(r) => r.id} rowButtons={(r) => <>{r.reviewId && <Link href={PERF_LINKS.review(r.reviewId)}>Review</Link>} <Link href={PERF_LINKS.personGoals(r.id)}>Goals</Link></>} /> },
+      ...(live.gaps && persona === 'mgr'
+        ? [{ id: 'gaps', title: 'Goals to chase', size: 12 as const, state: live.gaps.state === 'loading' ? ('loading' as const) : live.gaps.state === 'error' ? ('error' as const) : undefined, onRetry: live.gaps.onRetry, content: live.gaps.data ? <GoalGapsCard gaps={live.gaps.data} onRemind={live.gaps.onRemind} /> : null }]
+        : []),
       { id: 'teamgoals', title: 'Team goals', size: 12, content: teamGoals.length ? <GoalTree goals={teamGoals} aria-label="Team goals" compact onOpen={(g) => window.location.assign(PERF_LINKS.goal(g.id))} /> : null, empty: teamGoals.length ? undefined : 'No team goals in this period yet' },
     );
   }
@@ -705,6 +712,8 @@ export function LiveMyGoalsScreen({ live, defaultDialog }: { live: LiveMyGoals; 
       );
     return (
       <>
+        {/* Batch F item 31 (answer 2576): the average and the status counts on top. */}
+        <GoalProgressSummary goals={mine} all={all} />
         {failed && (
           <InlineAlert tone="danger" title="That didn’t work">
             {failed}

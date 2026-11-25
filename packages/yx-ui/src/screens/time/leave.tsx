@@ -16,7 +16,7 @@ import { ErrorSummary, FieldRow, FormField, useSaveErrors, useTooEarly } from '.
 import { MultiSelect, PersonPicker, Select } from '../../components/select';
 import { DatePicker, DateRangePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
-import { Calendar, TeamCalendar, type CalendarEvent, type TeamAbsence } from '../../components/calendar';
+import { Calendar, TeamCalendar, type CalendarEvent, type TeamAbsence, type TeamDayDot, type TeamDotKind } from '../../components/calendar';
 import { ApprovalTimeline, SYSTEM_ACTOR, Timeline, type TimelineItem } from '../../components/timeline';
 import { useToast } from '../../components/notify';
 import { formatDate, formatINR } from '../../lib/format';
@@ -746,7 +746,7 @@ const pickPeople = (hr: boolean): PickPerson[] => (hr ? TEAM : myReports()).map(
  * Apply leave in a drawer (desk) or bottom sheet (phone): Send is blocked while the form has errors; sent shows what happens next.
  * With `forSomeone` (a manager's reports, or everyone for HR), the first field picks the employee; their balances and approver are used.
  */
-export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, picked: picked0 = null, self = ME.name, live, liveFor, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** With `forSomeone`: the person already picked (stories). */ picked?: string | null; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome; resend?: LiveRequest }; /** The app: HR applies for someone (founder answer B). */ liveFor?: LiveApplyFor }) {
+export function ApplyLeavePanel({ open, onOpenChange, surface = 'desk', sent: sent0 = false, forSomeone, picked: picked0 = null, self = ME.name, live, liveFor, ...p }:ApplyLeaveProps & { open: boolean; onOpenChange: (o: boolean) => void; surface?: 'desk' | 'phone'; sent?: boolean; forSomeone?: PickPerson[]; /** With `forSomeone`: the person already picked (stories). */ picked?: string | null; /** The app: my own leave, with the server's summary. */ live?: { data: MyLeave; live: LiveLeaveHome; resend?: LiveRequest; /** Batch D A8: the day the request starts on (from the timesheet week). */ startOn?: string }; /** The app: HR applies for someone (founder answer B). */ liveFor?: LiveApplyFor }) {
   if (live) return open ? <LiveApplyLeavePanel {...live} onClose={() => onOpenChange(false)} /> : null;
   if (liveFor) return open ? <LiveApplyLeavePanel forSomeone={liveFor} onClose={() => onOpenChange(false)} /> : null;
   const [draft, setDraft] = useState<LeaveDraft>(() => {
@@ -1538,6 +1538,21 @@ const requestAbsence = (r: LeaveRequestRow): Absence => ({
 const reqDates = (r: LeaveRequestRow) => absenceDates(requestAbsence(r));
 
 /** TIM-20: the story shows the sample; the app passes `live` (a manager's team, HR's people in scope). */
+/** Batch C item 15 (design): the manager's own team's worked days as dots, up to today (HR sees none: answer 2509). */
+function sampleDots(ids: string[], absences: TeamAbsence[], start: Date, days: number, off: (id: string, d: Date) => boolean): TeamDayDot[] {
+  const out: TeamDayDot[] = [];
+  ids.forEach((id, i) => {
+    for (let j = 0; j < days; j++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + j);
+      if (d > TODAY0 || off(id, d) || absences.some((a) => a.memberId === id && day0(a.start) <= d && d <= day0(a.end))) continue;
+      const k = i + j;
+      const dot: TeamDotKind = k % 11 === 3 ? 'late' : k % 13 === 5 ? 'remote' : k % 17 === 7 ? 'absent' : k % 19 === 2 ? 'missing' : k % 23 === 4 ? 'half_day' : 'present';
+      out.push({ memberId: id, on: d, dot });
+    }
+  });
+  return out;
+}
+
 export function TeamLeaveCalendarScreen({ persona = 'mgr', view = 'team', state = 'ready', live }: { persona?: 'mgr' | 'hr'; view?: 'team' | 'month'; state?: ViewState; live?: LiveTeamLeave }) {
   if (live) return <LiveTeamLeaveCalendar live={live} />;
   const hr = persona === 'hr';
@@ -1620,7 +1635,7 @@ export function TeamLeaveCalendarScreen({ persona = 'mgr', view = 'team', state 
           <TabsContent value="team">
             <div className="yx-tim-stack">
               {nav}
-              <TeamCalendar members={members} absences={absences} holidays={HOLIDAYS} start={start} days={days} today={TODAY} team={hr ? undefined : ME.department} memberOff={(id, d) => personOff(memberName(id), d)} />
+              <TeamCalendar members={members} absences={absences} holidays={HOLIDAYS} start={start} days={days} today={TODAY} team={hr ? undefined : ME.department} memberOff={(id, d) => personOff(memberName(id), d)} dots={hr ? undefined : sampleDots(ids, absences, start, days, (id, d) => personOff(memberName(id), d))} />
               {pendingList}
             </div>
           </TabsContent>
@@ -2529,6 +2544,8 @@ export interface LiveTeamLeave {
   onRetry?: () => void;
   data: LiveCalendarData | null;
   onRange: (from: string, to: string) => void;
+  /** Batch C item 15: a team member's dot opens their day card (TIM-03). */
+  onOpenDay?: (employeeId: string, on: string) => void;
   /** Where leave is approved (the shared Approvals inbox). */
   approvalsHref: string;
   onNavigate: (href: string) => void;
@@ -2864,14 +2881,14 @@ const COUNTED_AS: Record<LeavePlan['days'][number]['countedAs'], string> = { lea
  * TIM-18 in the app: my own leave (`data`, `live`), or HR applying for someone (`forSomeone`, founder answer B): the
  * first field picks the person, then the same form with their leave types, balances and the server's summary.
  */
-function LiveApplyLeavePanel({ data, live, forSomeone, resend, onClose }: { data?: MyLeave; live?: LiveLeaveHome; forSomeone?: LiveApplyFor; /** Sent back for changes: starts from that request; Send sends it again. */ resend?: LiveRequest; onClose: () => void }) {
+function LiveApplyLeavePanel({ data, live, forSomeone, resend, startOn, onClose }: { data?: MyLeave; live?: LiveLeaveHome; forSomeone?: LiveApplyFor; /** Sent back for changes: starts from that request; Send sends it again. */ resend?: LiveRequest; startOn?: string; onClose: () => void }) {
   const [personId, setPersonId] = useState<string | null>(null);
   const [target, setTarget] = useState<ApplyForForm | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const types = forSomeone ? (target?.balances ?? []) : data!.balances;
   const today = forSomeone ? target?.today : data!.today;
   const [typeId, setTypeId] = useState<string | null>(resend?.type?.id ?? types[0]?.leaveTypeId ?? null);
-  const [from, setFrom] = useState<Date | null>(resend ? isoDate(resend.from) : null);
+  const [from, setFrom] = useState<Date | null>(resend ? isoDate(resend.from) : startOn ? isoDate(startOn) : null);
   const [to, setTo] = useState<Date | null>(resend && resend.to !== resend.from ? isoDate(resend.to) : null);
   const [fromHalf, setFromHalf] = useState<'full' | 'second'>(resend?.fromHalf ?? 'full');
   const [toHalf, setToHalf] = useState<'full' | 'first'>(resend?.toHalf ?? 'full');
@@ -3142,6 +3159,9 @@ function liveAbsences(d: LiveCalendarData): (TeamAbsence & { name: string })[] {
 }
 
 /** TIM-20 in the app: people × days (two weeks, one under 1100 px) and the month, with what waits for approval. */
+/** Batch C item 15: the server sends attendance only for the manager's own team (answer 2509). */
+const liveDots = (d: LiveCalendarData): TeamDayDot[] => d.people.flatMap((p) => (p.attendance ?? []).map((a) => ({ memberId: p.id, on: isoDate(a.on), dot: a.dot })));
+
 function LiveTeamLeaveCalendar({ live }: { live: LiveTeamLeave }) {
   const d = live.data;
   const [tab, setTab] = useState('team');
@@ -3203,10 +3223,10 @@ function LiveTeamLeaveCalendar({ live }: { live: LiveTeamLeave }) {
                   <Button size="sm" icon={ChevronLeft} onClick={() => twoWeeks(isoAdd(d.from, -7))}>Previous week</Button>
                   <Button size="sm" icon={ChevronRight} onClick={() => twoWeeks(isoAdd(d.from, 7))}>Next week</Button>
                 </div>
-                {absences.length === 0 ? (
+                {absences.length === 0 && liveDots(d).length === 0 ? (
                   <EmptyState title={`No one is away ${range}`} description="Leave shows here as soon as someone requests it." action={<Button onClick={() => twoWeeks(isoAdd(d.from, 14))}>Next 2 weeks</Button>} />
                 ) : (
-                  <TeamCalendar members={members} absences={absences} holidays={holidays} start={start} days={days} today={today} team={SCOPE_TEXT[d.scope]} weeklyOff={() => false} memberOff={holidayOf} />
+                  <TeamCalendar members={members} absences={absences} holidays={holidays} start={start} days={days} today={today} team={SCOPE_TEXT[d.scope]} weeklyOff={() => false} memberOff={holidayOf} dots={liveDots(d)} onDayClick={live.onOpenDay ? (id, x) => live.onOpenDay!(id, isoOf(x)) : undefined} />
                 )}
                 {pendingList}
               </div>

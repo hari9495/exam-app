@@ -65,6 +65,15 @@ export const Setup: S = { name: 'Desk set-up', render: () => shell('desk-setup',
 // HLP-05b (founder 3 Nov 2026): each desk chooses its at-risk point (default 80 %), on the same Settings tab.
 export const SetupAtRisk: S = { name: 'Desk set-up · Tickets · at risk from (per desk)', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="settings" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, atRiskPercent: 60 } }} />) };
 // Answer 1643: the reasons a requester may pick after a rating, per desk (a starter list until changed).
+// Batch F GLPI 10 (answer 2574): copy a desk's set-up as a file; a checked file before importing.
+const TRANSFER_ITEMS = [
+  { kind: 'category' as const, name: 'Laptop policy', outcome: 'add' as const, note: null },
+  { kind: 'category' as const, name: 'Hardware', outcome: 'skip' as const, note: 'Already on this desk.' },
+  { kind: 'sla' as const, name: 'IT standard', outcome: 'add' as const, note: null },
+  { kind: 'template' as const, name: 'New joiner laptop', outcome: 'failed' as const, note: 'No ticket type named "Joiner" on this desk.' },
+  { kind: 'rule' as const, name: 'VIP to the lead', outcome: 'add' as const, note: null },
+];
+export const SetupTransfer: S = { name: 'Desk set-up · Copy set-up · a checked file', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} detail={{ ...setupProps.detail!, canSetUp: true }} initialTab="transfer" transfer={{ onExport: async () => undefined, onImport: async () => ({ dryRun: true, items: TRANSFER_ITEMS }), defaultResult: { dryRun: true, items: TRANSFER_ITEMS } }} />) };
 export const SetupRatingReasons: S = { name: 'Desk set-up · Requesters · reasons to pick after a rating', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, ratingReasons: ['Quick help', 'Solved my problem', 'Friendly and clear', 'Slow', 'Not solved', 'Had to explain again'] } }} />) };
 // Answer 1646: the message the help centre and portal show while the desk is closed.
 export const SetupClosedMessage: S = { name: 'Desk set-up · Requesters · message while closed', render: () => shell('desk-setup', <DeskSetupScreen {...setupProps} initialTab="requesters" detail={{ ...setupProps.detail!, desk: { ...setupProps.detail!.desk, closedMessage: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open." } }} />) };

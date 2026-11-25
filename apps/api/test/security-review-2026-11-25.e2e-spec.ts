@@ -7,6 +7,7 @@ import { bootAdminApp } from './dual-app';
 import { markSteppedUp } from './fixtures/step-up';
 import { giveStaffRoles } from './fixtures/staff-roles';
 import { PublicApplicationsThrottlerGuard } from '../src/public-applications/public-applications.throttler.guard';
+import { OldApprovalsMigration } from '../src/hiring/old-approvals-migration';
 
 // Security review 25 Nov 2026 (docs/yukthix/reviews/security-review-2026-11-25.md). Every test here states the SAFE
 // behaviour and FAILS on test/yukthix-main as of 24c509c1a: each failure is a finding. When a fix lands, its test passes.
@@ -108,27 +109,26 @@ describe('Security review 2026-11-25: proofs', () => {
       });
     });
 
-    it('F3: a panel user who is neither submitter nor approver cannot read the request (offer pay, chain, notes)', async () => {
-      const res = await api('panelA', 'get', `/approvals/requests/${requestId}`);
-      expect([403, 404]).toContain(res.status);
+    // Retire /v2 (answers 2433, 2511-2513): the older runtime's read and decide routes are gone; a waiting request moves
+    // into the P03 engine, which keeps F3 (only the requester, the approvers and approvals admins read it) and F4 (the
+    // submitter is taken off every step; an empty step falls back to the company admins).
+    it('F3/F4: the older read and decide routes no longer exist', async () => {
+      expect((await api('panelA', 'get', `/approvals/requests/${requestId}`)).status).toBe(404);
+      expect((await api('recruiterA', 'post', `/approvals/requests/${requestId}/decide`).send({ decision: 'approved' })).status).toBe(404);
     });
 
-    it('F4: the submitter cannot approve their own request', async () => {
-      const res = await api('recruiterA', 'post', `/approvals/requests/${requestId}/decide`).send({ decision: 'approved' });
-      expect(res.status).toBe(403);
-    });
-
-    it('F3/F4: the submitter and an approver on the chain read it, and that approver approves (positive)', async () => {
-      const other = await inOrg('A', async (tx) => {
-        const job = await tx.job.create({ data: { organizationId: org.A.id, title: `Second hire ${run}`, createdById: users.recruiterA, status: 'pending_approval' } });
-        const steps = [{ position: 0, name: 'Panel lead', approverType: 'users', approverUserIds: [users.panelA] }];
-        return (await tx.approvalRequest.create({ data: { organizationId: org.A.id, gate: 'requisition', subjectType: 'job', subjectId: job.id, currentStepPosition: 0, submittedByUserId: users.recruiterA, chainSnapshotJson: JSON.stringify(steps) } })).id;
-      });
-      await api('recruiterA', 'get', `/approvals/requests/${other}`).expect(200);
-      await api('panelA', 'get', `/approvals/requests/${other}`).expect(200);
-      await api('adminB', 'get', `/approvals/requests/${other}`).expect(404);
-      await api('panelA', 'get', '/approvals/requests/not-a-uuid').expect(400);
-      expect((await api('panelA', 'post', `/approvals/requests/${other}/decide`).send({ decision: 'approved' }).expect(201)).body).toBeDefined();
+    it('F3/F4: once moved into P03, the submitter cannot approve their own request and a stranger cannot read it', async () => {
+      await app.get(OldApprovalsMigration).run();
+      const job = await inOrg('A', (tx) => tx.job.findFirstOrThrow({ where: { id: jobId } }));
+      expect(job.wfRequestId).toBeTruthy();
+      const tasks = await inOrg('A', (tx) => tx.wfTask.findMany({ where: { requestId: job.wfRequestId!, status: 'open' } }));
+      expect(tasks.length).toBeGreaterThan(0);
+      expect(tasks.map((t) => t.assigneeUserId)).not.toContain(users.recruiterA);
+      expect(tasks.map((t) => t.assigneeUserId)).toContain(users.adminA);
+      expect([403, 404]).toContain((await api('panelA', 'get', `/workflow/approvals/requests/${job.wfRequestId}`)).status);
+      expect([403, 404]).toContain((await api('recruiterA', 'post', `/workflow/approvals/tasks/${tasks[0].id}/decide`).send({ decision: 'approve' })).status);
+      await api('recruiterA', 'get', `/workflow/approvals/requests/${job.wfRequestId}`).expect(200);
+      await api('adminB', 'get', `/workflow/approvals/requests/${job.wfRequestId}`).expect(404);
     });
   });
 

@@ -11,6 +11,44 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const show = (ui: React.ReactElement) => render(<ToastProvider>{ui}</ToastProvider>);
 
 describe('HLP-07 My cases (live)', () => {
+  // Batch F item 33 (answer 2573): a manager answers questions from their team.
+  const asked = (over: Record<string, unknown> = {}) => ({
+    rows: [
+      { id: 'q1', number: 'IT-12', subject: 'Laptop home?', person: 'Arjun Kulkarni', category: 'Laptop policy', answered: false, done: false, createdAt: '2026-09-28T04:30:00Z' },
+      { id: 'q2', number: 'IT-10', subject: 'Course budget?', person: 'Meera Nair', category: null, answered: true, done: true, createdAt: '2026-09-24T04:30:00Z' },
+    ],
+    openId: null as string | null,
+    onOpen: vi.fn(),
+    detail: null,
+    onAnswer: vi.fn().mockResolvedValue(undefined),
+    ...over,
+  });
+  it('questions from my team: answer pressed empty says why; then sends, or sends and marks solved, with a toast', async () => {
+    const a = asked({ openId: 'q1', detail: { id: 'q1', number: 'IT-12', subject: 'Laptop home?', done: false, messages: [{ id: 'm1', fromMe: false, text: 'For the weekend.', at: '2026-09-28T04:30:00Z' }] } });
+    show(<MyCasesScreen live={liveMyCases({ asked: a })} />);
+    expect(screen.getByText('Questions from your team (1 open)')).toBeInTheDocument();
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('For the weekend.')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Answer and mark solved' }));
+    expect(await within(d).findByText('Write your answer first.')).toBeInTheDocument();
+    expect(a.onAnswer).not.toHaveBeenCalled();
+    await ue.type(within(d).getByRole('textbox', { name: /Your answer/ }), 'Yes, lock it in the boot.');
+    await ue.click(within(d).getByRole('button', { name: 'Answer and mark solved' }));
+    expect(a.onAnswer).toHaveBeenCalledWith('q1', 'Yes, lock it in the boot.', true);
+    expect((await screen.findAllByText('Answer sent and marked solved.')).length).toBeGreaterThan(0);
+    expect(a.onOpen).toHaveBeenCalledWith(null);
+  });
+
+  it('negative: no questions, no card; a solved question is read only', () => {
+    const { unmount } = show(<MyCasesScreen live={liveMyCases({ asked: asked({ rows: [] }) })} />);
+    expect(screen.queryByText(/Questions from your team/)).toBeNull();
+    unmount();
+    show(<MyCasesScreen live={liveMyCases({ asked: asked({ openId: 'q2', detail: { id: 'q2', number: 'IT-10', subject: 'Course budget?', done: true, messages: [] } }) })} />);
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText(/Solved. If the person replies/)).toBeInTheDocument();
+    expect(within(d).queryByRole('button', { name: 'Send answer' })).toBeNull();
+  });
+
   it('lists my cases with my role and the next date; a row opens the case', async () => {
     const onOpen = vi.fn();
     show(<MyCasesScreen live={liveMyCases({ onOpen })} />);
@@ -204,6 +242,17 @@ describe('HLP-08 Cases (live)', () => {
     await ue.type(within(d).getByRole('textbox', { name: /override/ }), 'Only Tamil-speaking investigator at Hosur.');
     await ue.click(within(d).getByRole('button', { name: 'Add with the override' }));
     expect(onAddMember).toHaveBeenLastCalledWith('k2', { personId: 'p-ravi', role: 'investigator', overrideReason: 'Only Tamil-speaking investigator at Hosur.' });
+  });
+
+  it('answer 2597: a POSH case shows on whose behalf it was filed, why late, and that conciliation was asked; a plain one shows none', () => {
+    const { unmount } = show(<CaseWorkspaceScreen live={liveWorkspace({ detail: poshCase({ report: { ...poshCase().report, onBehalf: { name: 'Meena Pillai', relation: 'Sister' }, lateReason: 'She was on medical leave.', conciliation: true } }) })} />);
+    expect(screen.getByText('Meena Pillai (by her sister)')).toBeInTheDocument();
+    expect(screen.getByText('She was on medical leave.')).toBeInTheDocument();
+    expect(screen.getByText('She asks to try conciliation first')).toBeInTheDocument();
+    unmount();
+    show(<CaseWorkspaceScreen live={liveWorkspace({ detail: poshCase() })} />);
+    expect(screen.queryByText('Filed on behalf of')).toBeNull();
+    expect(screen.queryByText('She asks to try conciliation first')).toBeNull();
   });
 
   it('evidence shows the fingerprint, the virus check and the access log; a recused member is marked', () => {

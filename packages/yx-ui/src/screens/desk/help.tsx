@@ -110,12 +110,13 @@ function useRaiseForm(desks: RaiseDesk[], suggest?: { onSuggest?: (q: string) =>
       </FormField>
       {desk && (
         <>
-          <FormField label="What is it about?" optional>
+          {/* Batch F item 33 (answer 2573): a topic the person's manager answers says so before it is sent. */}
+          <FormField label="What is it about?" optional helper={category?.answeredBy === 'manager' ? 'Your manager answers this one. If you have no manager, the team answers.' : undefined}>
             <Select
               value={categoryId}
               onChange={setCategoryId}
               clearable
-              options={desk.categories.map((c) => ({ value: c.id, label: c.parentId ? `· ${c.name}` : c.name, description: c.sensitive ? 'Private: only this team’s agents see it' : undefined }))}
+              options={desk.categories.map((c) => ({ value: c.id, label: c.parentId ? `· ${c.name}` : c.name, description: c.sensitive ? 'Private: only this team’s agents see it' : c.answeredBy === 'manager' ? 'Your manager answers' : undefined }))}
               placeholder="Choose a topic"
             />
           </FormField>
@@ -441,7 +442,7 @@ export function MyTicketScreen(props: MyTicketScreenProps) {
                     {t.history.map((h) => (
                       <li key={h.at} className="yx-ops-list__item">
                         <span className="yx-ops-list__sub">
-                          {h.to} · {when(h.at, props.timeZone)}
+                          {h.note ?? h.to} · {when(h.at, props.timeZone)}
                         </span>
                       </li>
                     ))}

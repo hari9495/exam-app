@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { ChevronLeft, ChevronRight, Copy, MessageSquareText, Plus, Trash2 } from 'lucide-react';
+import { CalendarPlus, ChevronDown, ChevronLeft, ChevronRight, Copy, MessageSquareText, Plus, Trash2 } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatDate } from '../lib/format';
 import { formatHours, parseHours } from '../lib/table';
@@ -84,6 +84,8 @@ export interface TimesheetGridProps {
   onNextWeek?: () => void;
   onThisWeek?: () => void;
   onCopyLastWeek?: () => void;
+  /** Batch D A8: opens Apply leave for a day of this week (the leave drawer). */
+  onRequestLeave?: () => void;
   onSaveDraft?: () => void;
   /** Called only when the week passes the checks. */
   onSubmit?: () => void;
@@ -259,6 +261,7 @@ export function TimesheetGrid(props: TimesheetGridProps) {
     onNextWeek,
     onThisWeek,
     onCopyLastWeek,
+    onRequestLeave,
     onSaveDraft,
     onSubmit,
     sentBackReason,
@@ -427,6 +430,11 @@ export function TimesheetGrid(props: TimesheetGridProps) {
           {onCopyLastWeek && (
             <Button size="sm" icon={Copy} onClick={onCopyLastWeek}>
               Copy last week
+            </Button>
+          )}
+          {onRequestLeave && (
+            <Button size="sm" icon={CalendarPlus} onClick={onRequestLeave}>
+              Request leave
             </Button>
           )}
           {asDays && onSaveDraft && (
@@ -836,6 +844,79 @@ export function TimesheetGrid(props: TimesheetGridProps) {
             </ul>
           )}
         </section>
+      )}
+    </div>
+  );
+}
+
+/* ---------- Batch D B1: the week → day → task drill-down for approvers ---------- */
+
+/** One line of the week (a project and task, or a person's task), with its hours Monday to Sunday. */
+export interface DrillLine {
+  id: string;
+  label: string;
+  secondary?: string;
+  /** Hours Monday to Sunday (7 numbers). */
+  days: number[];
+}
+
+const DRILL_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const drillHours = (n: number) => `${formatHours(n) || '0'} h`;
+
+/**
+ * In-place drill-down (founder pick B1): the week's total opens into its days, and a day opens into the tasks booked on
+ * it. Read only: deciding stays on the approval cards. Days with no hours are listed but do not open.
+ */
+export function TimesheetWeekDrill({ weekStart, lines, label = 'Week by day', defaultOpen = false, defaultDays = [] }: {
+  weekStart: Date;
+  lines: DrillLine[];
+  label?: string;
+  defaultOpen?: boolean;
+  /** Story: days (0 = Monday) open at first. */
+  defaultDays?: number[];
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const [days, setDays] = useState<number[]>(defaultDays);
+  const perDay = DRILL_DAYS.map((_, k) => lines.reduce((s, l) => s + (l.days[k] ?? 0), 0));
+  const total = perDay.reduce((s, h) => s + h, 0);
+  return (
+    <div className="yx-ts-drill">
+      <Button size="sm" icon={open ? ChevronDown : ChevronRight} aria-expanded={open} onClick={() => setOpen(!open)}>
+        {`${label} · ${drillHours(total)}`}
+      </Button>
+      {open && (
+        <ul className="yx-ts-drill__days" aria-label={label}>
+          {perDay.map((h, k) => {
+            const date = new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + k);
+            const name = `${DRILL_DAYS[k]} ${formatDate(date)}`;
+            const shown = days.includes(k);
+            const booked = lines.filter((l) => (l.days[k] ?? 0) > 0);
+            return (
+              <li key={k} className="yx-ts-drill__day">
+                {h > 0 ? (
+                  <Button size="sm" icon={shown ? ChevronDown : ChevronRight} aria-expanded={shown} onClick={() => setDays(shown ? days.filter((x) => x !== k) : [...days, k])}>
+                    {`${name} · ${drillHours(h)}`}
+                  </Button>
+                ) : (
+                  <span className="yx-ts__muted">{`${name} · no hours`}</span>
+                )}
+                {shown && (
+                  <ul className="yx-ts-drill__tasks" aria-label={`Tasks on ${name}`}>
+                    {booked.map((l) => (
+                      <li key={l.id} className="yx-ts-drill__task">
+                        <span className="yx-ts-drill__what">
+                          <span>{l.label}</span>
+                          {l.secondary && <span className="yx-ts__muted">{l.secondary}</span>}
+                        </span>
+                        <span className="yx-ts-drill__hours">{drillHours(l.days[k]!)}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+        </ul>
       )}
     </div>
   );

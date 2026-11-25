@@ -209,6 +209,18 @@ thead .yx-teamcal__person { font-size: var(--yx-text-xs); font-weight: var(--yx-
 .yx-teamcal__legend li { display: inline-flex; align-items: center; gap: var(--yx-space-1); }
 .yx-teamcal__legend .yx-teamcal__chip { min-width: 0; }
 .yx-teamcal__swatch { width: var(--yx-space-4); height: var(--yx-space-4); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-subtle); }
+/* Batch C item 15: attendance dots. Each kind differs in shape as well as colour (filled, ring, square, half). */
+.yx-teamcal__dotbtn { display: inline-flex; align-items: center; justify-content: center; min-width: var(--yx-target-min); min-height: var(--yx-target-min); padding: 0; border: var(--yx-border-width) solid transparent; border-radius: var(--yx-radius-control); background: transparent; }
+button.yx-teamcal__dotbtn { cursor: pointer; }
+button.yx-teamcal__dotbtn:hover { border-color: var(--yx-color-border-strong); background: var(--yx-color-bg-surface); }
+.yx-teamcal__dotbtn:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
+.yx-teamcal__dot { display: inline-block; flex: none; width: var(--yx-space-3); height: var(--yx-space-3); border-radius: 50%; border: var(--yx-border-width) solid currentColor; }
+.yx-teamcal__dot[data-dot='present'] { color: var(--yx-color-success-text); background: currentColor; }
+.yx-teamcal__dot[data-dot='late'] { color: var(--yx-color-warning-text); background: transparent; border-width: calc(var(--yx-border-width) * 2); }
+.yx-teamcal__dot[data-dot='remote'] { color: var(--yx-color-info-text); background: currentColor; border-radius: var(--yx-radius-badge); }
+.yx-teamcal__dot[data-dot='half_day'] { color: var(--yx-color-success-text); background: linear-gradient(90deg, currentColor 50%, transparent 50%); }
+.yx-teamcal__dot[data-dot='absent'] { color: var(--yx-color-danger-text); background: currentColor; }
+.yx-teamcal__dot[data-dot='missing'] { color: var(--yx-color-danger-text); background: transparent; border-style: dashed; border-width: calc(var(--yx-border-width) * 2); }
 .yx-teamcal__holidays { margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
 
 /* Mobile (§37): dots in the month grid, events listed under it */

@@ -21,6 +21,7 @@ describe('CustomFieldsService', () => {
       create: jest.Mock;
       update: jest.Mock;
     };
+    auditLog: { create: jest.Mock };
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -29,9 +30,11 @@ describe('CustomFieldsService', () => {
       customFieldDefinition: {
         findMany: jest.fn(),
         findFirst: jest.fn(),
-        create: jest.fn(),
-        update: jest.fn(),
+        create: jest.fn(async ({ data }: { data: object }) => ({ id: 'new', ...data })),
+        update: jest.fn(async ({ where, data }: { where: { id: string }; data: object }) => ({ id: where.id, ...data })),
       },
+      // Answer 2425: every change is audited in the same transaction.
+      auditLog: { create: jest.fn() },
     };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     service = new CustomFieldsService(tenantPrisma as any);

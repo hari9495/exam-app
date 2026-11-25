@@ -16,6 +16,12 @@ export const OverviewLoading: S = { name: 'Group 1 · loading', render: () => <S
 
 export const P1_1: S = { name: '1.1 Company & branding', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="1.1" /> };
 export const P1_1_ReadOnly: S = { name: '1.1 Company & branding · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="1.1" readOnly /> };
+// Answer 2422 (retiring /v2 Branding): live, the logo is the uploaded picture and is saved as soon as it is chosen.
+const LOGO_PNG = 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" rx="8" fill="#1F6F5C"/><text x="32" y="40" font-size="22" text-anchor="middle" fill="#fff" font-family="sans-serif">KF</text></svg>');
+const p11 = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '1.1')!;
+const brandFields = p11.sections.flatMap((x) => x.settings).filter((d) => d.key === 'org.company.logo' || d.key === 'org.brand.primary_colour');
+const livePage = { ...p11, sections: [{ title: 'Logo and brand colour', settings: brandFields.map((d) => (d.kind === 'image' ? { ...d, value: LOGO_PNG } : d)) }] };
+export const P1_1_LiveLogo: S = { name: '1.1 Company & branding · logo and colour (live)', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="1.1" live={{ page: livePage, canEdit: true, lastChange: null, state: 'ready', onSave: async () => {}, onUploadImage: async () => {} }} /> };
 export const P1_2: S = { name: '1.2 Legal entities', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="1.2" /> };
 export const P1_2_ReadOnly: S = { name: '1.2 Legal entities · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="1.2" readOnly /> };
 export const P1_3: S = { name: '1.3 Locations', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="1.3" /> };

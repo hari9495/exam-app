@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PipelineBoardScreen } from './hiring-pipeline';
 import { CANDIDATES, STAGES } from './hiring-data';
+import { StageMessagePrompt, type PendingStageMessage } from './stage-message-prompt';
 import { AddCandidateSheet, BulkActionsSheet, type BulkActionsSheetProps, type BulkRow } from './pipeline-sheets';
 
 const meta: Meta = { title: 'Screens/Hiring/HIR-04 · Pipeline board', parameters: { layout: 'fullscreen' }, excludeStories: /^[a-z]/ };
@@ -51,3 +52,16 @@ export const BulkActions: S = { name: 'Bulk actions · tick candidates, then mov
 export const BulkActionsOffers: S = { name: 'Bulk actions · make bulk offers (offer-pay key)', render: () => <BulkActionsSheet {...sampleBulk} defaultSelected={['e1', 'e2']} onBulkOffers={() => {}} /> };
 export const AddCandidate: S = { name: 'Add candidate · existing candidate', render: () => <AddCandidateSheet open onOpenChange={() => {}} job={JOB} candidates={[{ value: 'c9', label: 'Divya S · divya@example.com' }]} onAdd={async () => undefined} /> };
 export const AddCandidateNew: S = { name: 'Add candidate · new candidate', render: () => <AddCandidateSheet open onOpenChange={() => {}} job={JOB} candidates={[]} onAdd={async () => undefined} defaultMode="new" /> };
+// Answer 2434 follow-up: a stage message set to "Ask before sending", asked after a move (send, edit first, or don't send).
+const ASK: PendingStageMessage[] = [
+  { channel: 'email', templateId: 't1', subject: 'Interview for {{jobTitle}}', body: 'Hi {{candidateName}}, we would like to invite you to an interview for {{jobTitle}}. We will send the time shortly. {{recruiterName}}' },
+  { channel: 'sms', templateId: null, body: 'Hi {{candidateName}}, good news - we would like to move you forward to interview for {{jobTitle}}. - {{recruiterName}}' },
+];
+const ask = (messages: PendingStageMessage[]) => (
+  <>
+    <PipelineBoardScreen job={JOB} candidates={CANDIDATES} stages={STAGES} persona="recruiter" />
+    <StageMessagePrompt candidate="Priya Raman" stage="Interview" messages={messages} onSend={async () => {}} onSkip={async () => {}} onDone={() => {}} />
+  </>
+);
+export const AskBeforeSending: S = { name: 'Ask before sending · email after a move', render: () => ask(ASK) };
+export const AskBeforeSendingSms: S = { name: 'Ask before sending · SMS', render: () => ask(ASK.slice(1)) };

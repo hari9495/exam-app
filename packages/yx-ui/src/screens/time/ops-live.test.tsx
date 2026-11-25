@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { OtReviewScreen, PeriodsScreen, type LiveMyOvertime, type LiveOtReview, type LivePeriods } from './requests';
 import { AttendanceReportsScreen, TimesheetScreen, type LiveTimesheet } from './ops';
-import { MY_OVERTIME, MY_TIMESHEET, OT_REVIEW, PAYROLL_FEED, PERIODS, PREFLIGHT_BLOCKED, PREFLIGHT_READY, TODAY } from './live/fixtures';
+import { MY_LEAVE, MY_OVERTIME, MY_TIMESHEET, OT_REVIEW, PAYROLL_FEED, PERIODS, PREFLIGHT_BLOCKED, PREFLIGHT_READY, TODAY } from './live/fixtures';
 import type { MyTimesheet, Registers } from './live/types';
 
 // The designed TIM-09, TIM-11, TIM-15 and TIM-16 screens with the live app's data: what each live page must do.
@@ -193,6 +193,84 @@ describe('My timesheet (TIM-15 live)', () => {
     expect(live.onWeek).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Previous week' }));
     expect(live.onWeek).toHaveBeenCalledWith('2026-10-19');
+  });
+
+  it('A3 copy last week (answer 2533): only empty cells, only open days up to today, only current projects; notes never copied', async () => {
+    const data: MyTimesheet = { ...MY_TIMESHEET, lines: [{ id: 'tl1', projectId: 'pr1', activity: 'Documentation', billable: false, minutes: [240, 0, 0, 0, 0, 0, 0], comments: ['Mon note', '', '', '', '', '', ''] }] };
+    const lastWeek: MyTimesheet = {
+      ...MY_TIMESHEET,
+      week: '2026-10-19',
+      lines: [
+        { id: 'l1', projectId: 'pr1', activity: 'Documentation', billable: false, minutes: [480, 480, 480, 480, 480, 0, 0], comments: ['old', 'old', 'old', 'old', 'old', '', ''] },
+        { id: 'l2', projectId: 'pr2', activity: 'Installation', billable: true, minutes: [0, 0, 300, 0, 0, 0, 0] },
+        { id: 'l3', projectId: 'gone', activity: 'Old work', billable: true, minutes: [480, 480, 480, 0, 0, 0, 0] },
+      ],
+    };
+    const live = sheet(data, { lastWeek });
+    render(<TimesheetScreen live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Copy last week' }));
+    expect((await screen.findAllByText(/^Copied 27 Oct 2026, 28 Oct 2026 from 19 Oct 2026 – 25 Oct 2026 into empty cells\. Days from 29 Oct 2026 fill in on the day\./))[0]).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(live.onSave).toHaveBeenCalled());
+    const saved = (live.onSave as ReturnType<typeof vi.fn>).mock.calls[0]![1] as { projectId: string; minutes: number[]; comments: string[] }[];
+    expect(saved.map((l) => [l.projectId, l.minutes])).toEqual([
+      ['pr1', [240, 480, 480, 0, 0, 0, 0]],
+      ['pr2', [0, 0, 300, 0, 0, 0, 0]],
+    ]);
+    expect(saved[0]!.comments).toEqual(['Mon note', '', '', '', '', '', '']);
+    expect(saved[1]!.comments.every((c) => c === '')).toBe(true);
+  });
+
+  it('negative: no copy button on another week, on a sent week, or before last week has loaded', async () => {
+    const lastWeek = { ...MY_TIMESHEET, week: '2026-10-19' };
+    const a = render(<TimesheetScreen live={sheet({ ...MY_TIMESHEET, week: '2026-10-19' }, { lastWeek })} />);
+    expect(screen.queryByRole('button', { name: 'Copy last week' })).toBeNull();
+    a.unmount();
+    const b = render(<TimesheetScreen live={sheet({ ...MY_TIMESHEET, sheet: { id: 'ts1', status: 'pending', totalMinutes: 1200 } }, { lastWeek })} />);
+    expect(screen.queryByRole('button', { name: 'Copy last week' })).toBeNull();
+    b.unmount();
+    render(<TimesheetScreen live={sheet(MY_TIMESHEET)} />);
+    expect(screen.queryByRole('button', { name: 'Copy last week' })).toBeNull();
+  });
+
+  it('A5 Not sent (answer 2534): past weeks to send, newest first; Open week goes to the grid; Show older asks for more', async () => {
+    const onShowOlder = vi.fn();
+    const live = sheet(MY_TIMESHEET, { summary: { state: 'ready', onYear: vi.fn(), data: { year: 2026, years: [2026], weeks: [] } }, notSent: { state: 'ready', onShowOlder, data: { weeks: [{ week: '2026-10-19', status: 'sent_back', totalMinutes: 2280, locked: false }, { week: '2026-09-28', status: 'not_started', totalMinutes: 0, locked: true }] } } });
+    render(<TimesheetScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: 'Not sent (2)' }));
+    expect(screen.getByText('Sent back')).toBeInTheDocument();
+    expect(screen.getByText('Month locked: ask HR for a correction')).toBeInTheDocument();
+    // A locked week has no Open week (it needs a correction).
+    expect(screen.getAllByRole('button', { name: 'Open week' })).toHaveLength(1);
+    await ue.click(screen.getByRole('button', { name: 'Open week' }));
+    expect(live.onWeek).toHaveBeenCalledWith('2026-10-19');
+    expect(screen.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true');
+    await ue.click(screen.getByRole('tab', { name: 'Not sent (2)' }));
+    await ue.click(screen.getByRole('button', { name: 'Show older' }));
+    expect(onShowOlder).toHaveBeenCalled();
+  });
+
+  it('negative: every week sent says so', async () => {
+    render(<TimesheetScreen live={sheet(MY_TIMESHEET, { summary: { state: 'ready', onYear: vi.fn(), data: { year: 2026, years: [2026], weeks: [] } }, notSent: { state: 'ready', data: { weeks: [] } } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Not sent' }));
+    expect(screen.getAllByText('Every past week is sent.').length).toBeGreaterThan(0);
+  });
+
+  it('A8 (answer 2539): Request leave opens the leave drawer here on today; a day with leave asked for says so', async () => {
+    const onPreview = vi.fn(async () => { throw new Error('stop'); });
+    const leaveLive = { state: 'ready' as const, data: MY_LEAVE, onPreview, onApply: vi.fn(), onWithdraw: vi.fn(), onCancel: vi.fn(), onChooseHoliday: vi.fn(), onFindPeople: vi.fn(async () => []) };
+    const data: MyTimesheet = { ...MY_TIMESHEET, days: MY_TIMESHEET.days.map((x, i) => ({ ...x, leaveRequested: i === 4 })) };
+    render(<TimesheetScreen live={sheet(data, { leave: { data: MY_LEAVE, live: leaveLive } })} />);
+    expect(screen.getAllByText(/Leave requested/).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Request leave' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Apply leave' });
+    expect(drawer).toBeInTheDocument();
+    await waitFor(() => expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ from: TODAY })));
+  });
+
+  it('negative: without my leave there is no Request leave button', () => {
+    render(<TimesheetScreen live={sheet(MY_TIMESHEET)} />);
+    expect(screen.queryByRole('button', { name: 'Request leave' })).toBeNull();
   });
 
   it('a sent week can be recalled, and locked days are named', async () => {

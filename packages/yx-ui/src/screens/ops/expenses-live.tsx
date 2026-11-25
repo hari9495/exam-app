@@ -7,7 +7,9 @@ import { ArrowLeft, Camera, Car, Check, FileText, Plane, Plus, Receipt, RotateCc
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Pagination, Skeleton } from '../../components/feedback';
+import { FilterBar, type FilterFieldDef } from '../../components/filters';
+import type { FilterValue } from '../../lib/table';
 import { Drawer } from '../../components/drawer';
 import { ErrorSummary, FieldRow, FormField, useSaveErrors, useTooEarly } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
@@ -30,7 +32,7 @@ import { useAct } from '../growth/perf-live';
 import { Actions, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, Workspace } from './ops-kit';
 import { PickSavedExpenses, SavedExpensesCard, type LiveSavedExpenses, type SavedExpense } from './expenses-saved';
 import { FLAG_TEXT, PAYMENT, PAY_MODE, STATUS, amount, approvalSteps, cutText, day, lineChecks, money, moneyInput, monthName, paise, paymentText, prevMonthOf, sumMoney, toLineInput, type LoadState } from './expenses-live-data';
-import type { AdvanceSummary, ClaimDetail, ClaimLine, ClaimSummary, ExpenseCategory, ExpenseHome, LineInput, ToPayData, TripSummary } from '../expenses/live/types';
+import type { AdvanceSummary, ClaimDetail, ClaimLine, ClaimSummary, ExpenseCategory, ExpenseHome, LineInput, MyClaimsPage, ToPayData, TripSummary } from '../expenses/live/types';
 
 /** Where the live pages are (the Expenses menu). */
 export const EXP_LINKS = {
@@ -88,6 +90,53 @@ export interface LiveHome {
   startNew?: boolean;
   /** Keka ideas (2026-11): expenses saved first, claimed later (absent on an older API: the card is hidden). */
   saved?: LiveSavedExpenses;
+  /** Batch E A7 (2553): my claims filtered and paged (absent: the home's own list, no filters). */
+  myClaims?: LiveMyClaims;
+}
+
+/** Batch E A7: the past-claim filters' state and the page they gave. */
+export interface LiveMyClaims {
+  filters: FilterValue[];
+  q: string;
+  page: number;
+  onChange: (next: { filters: FilterValue[]; q: string; page: number }) => void;
+  state: LoadState;
+  data: MyClaimsPage | null;
+}
+
+/** Batch E A7 (2553): status (any of), sent between, paid between; the search box looks in the claim's title. */
+export const CLAIM_FILTERS: FilterFieldDef[] = [
+  { key: 'status', label: 'Status', type: 'multi', options: (Object.keys(STATUS) as (keyof typeof STATUS)[]).map((k) => ({ value: k, label: STATUS[k].label })) },
+  { key: 'sent', label: 'Sent between', type: 'date' },
+  { key: 'paid', label: 'Paid between', type: 'date' },
+];
+
+/** The filters as the API's query (`/me/claims?...`). */
+export function claimQuery(f: { filters: FilterValue[]; q: string; page: number }): string {
+  const p = new URLSearchParams();
+  for (const v of f.filters) {
+    if (v.type === 'multi' && v.values.length) p.set(v.key, v.values.join(','));
+    if (v.type === 'date') {
+      if (v.from) p.set(`${v.key}From`, v.from);
+      if (v.to) p.set(`${v.key}To`, v.to);
+    }
+  }
+  if (f.q.trim()) p.set('q', f.q.trim());
+  if (f.page > 1) p.set('page', String(f.page));
+  const s = p.toString();
+  return s ? `?${s}` : '';
+}
+
+/** The page address's query back into the filters (the same names as the API's), so a filtered list can be shared. */
+export function parseClaimQuery(p: URLSearchParams): { filters: FilterValue[]; q: string; page: number } {
+  const day = (x: string | null) => (x && /^\d{4}-\d{2}-\d{2}$/.test(x) ? x : null);
+  const known = new Set<string>(CLAIM_FILTERS[0]!.options!.map((o) => o.value));
+  const status = (p.get('status') ?? '').split(',').filter((x) => known.has(x));
+  const filters: FilterValue[] = [];
+  if (status.length) filters.push({ key: 'status', type: 'multi', values: status });
+  for (const k of ['sent', 'paid']) if (day(p.get(`${k}From`)) || day(p.get(`${k}To`))) filters.push({ key: k, type: 'date', from: day(p.get(`${k}From`)), to: day(p.get(`${k}To`)) });
+  const page = Number(p.get('page'));
+  return { filters, q: (p.get('q') ?? '').slice(0, 100), page: Number.isInteger(page) && page > 1 ? page : 1 };
 }
 
 type View = 'emp' | 'mgr' | 'fin';
@@ -143,10 +192,39 @@ function ClaimTiles({ claims, onOpen }: { claims: ClaimSummary[]; onOpen: (id: s
               <ClaimStatusBadges c={c} />
             </div>
             {cut && <span className="yx-ops-muted">{cut}</span>}
+            {c.waitingOn && <span className="yx-ops-muted">Waiting on {c.waitingOn}</span>}
           </li>
         );
       })}
     </ul>
+  );
+}
+
+/** Batch E A7: the filter bar, the filtered page of my claims and its pages. */
+function MyClaimsFiltered({ my, onOpen }: { my: LiveMyClaims; onOpen: (id: string) => void }) {
+  const d = my.data;
+  const filtering = my.filters.some((f) => (f.type === 'multi' ? f.values.length > 0 : f.type === 'date' ? Boolean(f.from || f.to) : false)) || my.q.trim() !== '';
+  return (
+    <div className="yx-ops-stack">
+      <FilterBar fields={CLAIM_FILTERS} value={my.filters} onChange={(filters) => my.onChange({ filters, q: my.q, page: 1 })} search={my.q} onSearchChange={(q) => my.onChange({ filters: my.filters, q, page: 1 })} searchPlaceholder="Search claims" />
+      {my.state === 'loading' || !d ? (
+        my.state === 'error' || my.state === 'no-access' ? (
+          <ErrorState title="We couldn't load your claims." description="Nothing has changed. Try again in a moment." onRetry={() => my.onChange({ filters: my.filters, q: my.q, page: my.page })} />
+        ) : (
+          <div className="yx-ops-stack" role="status" aria-busy="true" aria-label="Loading claims">
+            <Skeleton height={64} />
+            <Skeleton height={64} />
+          </div>
+        )
+      ) : d.claims.length === 0 ? (
+        <EmptyState compact title={filtering ? 'No claims match these filters.' : 'No claims yet.'} description={filtering ? 'Clear a filter or search for another title.' : 'Start a claim, then snap a receipt for each line.'} />
+      ) : (
+        <>
+          <ClaimTiles claims={d.claims} onOpen={onOpen} />
+          {d.total > d.pageSize && <Pagination page={d.page} pageSize={d.pageSize} total={d.total} pageSizes={[d.pageSize]} onPageChange={(page) => my.onChange({ filters: my.filters, q: my.q, page })} />}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -303,10 +381,10 @@ export function LiveExpensesHome({ live }: { live: LiveHome }) {
           live.saved ? (
             <div className="yx-ops-stack">
               <SavedExpensesCard live={live.saved} />
-              <Card title="My claims">{claimList}</Card>
+              <Card title="My claims">{live.myClaims ? <MyClaimsFiltered my={live.myClaims} onOpen={live.onOpen} /> : claimList}</Card>
             </div>
           ) : (
-            <Card title="My claims">{claimList}</Card>
+            <Card title="My claims">{live.myClaims ? <MyClaimsFiltered my={live.myClaims} onOpen={live.onOpen} /> : claimList}</Card>
           )
         }
         rail={

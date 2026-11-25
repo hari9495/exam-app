@@ -42,7 +42,7 @@
   background: var(--yx-color-bg-subtle); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card);
 }
 .yx-growth-effect__title { font-weight: var(--yx-weight-semibold); font-size: var(--yx-text-sm); }
-.yx-growth-effect ul { margin: 0; padding-left: var(--yx-space-5); }
+.yx-growth-effect ul { margin: 0; padding-left: var(--yx-space-5); list-style: disc; }
 
 /* Drawer / sheet footers */
 .yx-growth-foot { display: flex; gap: var(--yx-space-2); justify-content: flex-end; flex-wrap: wrap; width: 100%; }
@@ -150,4 +150,12 @@
 .yx-growth-kr-row { display: grid; grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr)) auto; gap: var(--yx-space-3); align-items: end; }
 @media (max-width: 767px) {
   .yx-growth-kr-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}
+/* Batch F item 32: the page with a quick-actions rail on the right (stacked below on narrow screens). */
+.yx-growth-rail { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--yx-space-16) * 4); gap: var(--yx-space-4); align-items: start; }
+@media (max-width: 1100px) { .yx-growth-rail { grid-template-columns: minmax(0, 1fr); } }
+
+/* Batch G2 item 100: a feed update keeps its line breaks. */
+.yx-growth-pre {
+  white-space: pre-wrap;
 }

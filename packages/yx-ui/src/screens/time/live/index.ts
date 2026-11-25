@@ -5,7 +5,7 @@ export { LeaveHomeScreen, TeamLeaveCalendarScreen, LeaveCardScreen, type LiveLea
 // Batch A item 2 (C2): my full leave history.
 export { LeaveHistoryDrawer, type LeaveHistoryPage, type LeaveHistoryQuery } from '../leave-history-live';
 // Me › Attendance (calendar + today's clock), Home's clock card and the muster: the designed screens, each with `live`.
-export { AttendanceCalendarScreen, MyAttendanceTodayScreen, HomeClockCard, MusterScreen, TodayBoardScreen, ExceptionsScreen, type LiveMyAttendance, type LivePersonAttendance, type LiveMusterData, type LiveTodayBoard, type LiveExceptions, type ExceptionsQuery } from '../attendance';
+export { AttendanceCalendarScreen, DayCardScreen, MyAttendanceTodayScreen, HomeClockCard, MusterScreen, TodayBoardScreen, ExceptionsScreen, type LiveDayCardScreen, type LiveMyAttendance, type LivePersonAttendance, type LiveMusterData, type LiveTodayBoard, type LiveExceptions, type ExceptionsQuery } from '../attendance';
 // HR set-up: the designed TIM-26 / 27 / 28 / 29 / 31 screens, each with `live`.
 export { HolidayFeedScreen, type LiveHolidayFeeds } from '../leave-admin';
 export { GeofenceEditorScreen, HolidayCalendarsScreen, LeavePoliciesScreen, LeaveTypeEditorScreen, YearEndWizard, type LeaveTypeInput, type LiveHolidayCalendars, type LiveBlockDates, type LiveLeavePolicies, type LiveLeaveTypeEditor, type LiveLocations, type LiveYearEnd, type LocationRuleInput, type SetupLive } from '../leave-admin';
@@ -15,7 +15,7 @@ export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
 export { type LiveShiftSetup } from './shifts-setup';
 export { LeaveReportsScreen, type LiveLeaveReports } from '../ops';
 export { OtReviewScreen, PeriodsScreen, DeviceBackfillWizard, IndustrialActionScreen, type LiveOtReview, type LiveMyOvertime, type LivePeriods, type LiveDeviceBackfill, type LiveIndustrialAction } from '../requests';
-export { TimesheetScreen, AttendanceReportsScreen, type LiveTimesheet, type LiveReports, type LiveRegisters, type LivePayrollFeed, type LiveAttendanceReport, type LiveNightRegister } from '../ops';
+export { TimesheetScreen, AttendanceReportsScreen, type LiveTimesheet, type LiveReports, type LiveRegisters, type LivePayrollFeed, type LiveAttendanceReport, type LiveNightRegister, type NotSentWeek, TimesheetNudgeCard } from '../ops';
 // Keka ideas (2026-11): the Time summary on My timesheet.
 export { TIME_SUMMARY_STATUS, TimeSummary, type TimeSummaryStatus, type TimeSummaryWeek } from '../time-summary';
 // Time ops (29 Oct 2026): presence-based attendance (TIM-36).

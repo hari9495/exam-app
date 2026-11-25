@@ -305,26 +305,8 @@ export type CandidateStatus = 'active' | 'inactive';
 export const GLOBAL_STAGES = ['new', 'in_review', 'engaged', 'available', 'offered', 'hired', 'rejected'] as const;
 export type GlobalStage = (typeof GLOBAL_STAGES)[number];
 
-// Kept in sync by hand with @exam-platform/shared's scheduling/business-hours.ts (same
-// runtime-import restriction as GLOBAL_STAGES above).
-export type Weekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
-export const WEEKDAYS: Weekday[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-export interface DayHours {
-  enabled: boolean;
-  open: string; // "HH:MM"
-  close: string; // "HH:MM"
-}
-export interface BusinessHours {
-  timeZone: string;
-  days: Record<Weekday, DayHours>;
-}
-export interface Holiday {
-  date: string; // "YYYY-MM-DD"
-  name: string;
-}
-
 // Kept in sync by hand with @exam-platform/shared's field-permissions/field-permissions.ts (same
-// runtime-import restriction as GLOBAL_STAGES/Weekday above).
+// runtime-import restriction as GLOBAL_STAGES above).
 // Mirror of packages/shared field-permissions.ts (web can't import shared values) -- keep in sync.
 export const GOVERNABLE_ROLES = ['recruiter', 'panel', 'hiring_manager'] as const;
 export const GOVERNED_FIELDS = {
@@ -1013,15 +995,6 @@ export interface Offer {
   approval: ApprovalSummary | null;
 }
 
-// GET /offer-template -- the org's saved, named offer letter templates (empty if none saved yet).
-export interface OfferTemplate {
-  id: string | null;
-  name: string;
-  subject: string;
-  body: string;
-  isDefault: boolean;
-}
-
 // GET /public/offers/:token -- unauthenticated, deliberately thin (no offer id, no org internals).
 export interface PublicOffer {
   /** Careers answer 362: the company's logo, colour, careers link and white-label. */
@@ -1035,6 +1008,8 @@ export interface PublicOffer {
   pdfUrl: string | null;
   /** HIR-09: the company's letter asks for an e-signature (a one-time code by email). */
   esign?: boolean;
+  /** M10 D4: issued as a numbered company letter, downloaded from GET /public/offers/:token/letter. */
+  letter?: { referenceNo: string | null } | null;
 }
 
 export type InterviewStatus = 'proposed' | 'confirmed' | 'declined' | 'reschedule_requested' | 'cancelled';

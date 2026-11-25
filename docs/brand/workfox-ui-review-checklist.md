@@ -2,7 +2,7 @@
 
 The standard every v2 surface (`app/v2/**`) is reviewed against — by `/code-review` and by hand — before it ships. Informed by the [Vercel Web Interface Guidelines](https://github.com/vercel-labs/web-interface-guidelines), UI UX Pro Max, and Anthropic frontend-design, adapted to Workfox's house rules.
 
-**Authority order:** the [brand guidelines](workfox-brand-guidelines.html) (and the living `/v2/brand` page) win on look, color, type, and voice. This checklist enforces interaction, accessibility, and build quality the guidelines state as principles. Where an external source conflicts with our guidelines, **our guidelines win.**
+**Authority order:** the [brand guidelines](workfox-brand-guidelines.html) win on look, color, type, and voice. This checklist enforces interaction, accessibility, and build quality the guidelines state as principles. Where an external source conflicts with our guidelines, **our guidelines win.**
 
 ## House overrides (do NOT import these from Vercel)
 - **Sentence case** for headings, buttons, labels — never Title Case (Vercel says Title Case; our Voice chapter wins).

@@ -70,7 +70,8 @@ export class DeskJobsService implements OnModuleInit, OnModuleDestroy {
   }
 
   private readonly jobs: Record<string, () => Promise<number>[]> = {
-    autoclose: () => [this.work.autoClose()],
+    // Batch F GLPI 4: the requester chase runs with auto-close, every 15 minutes.
+    autoclose: () => [this.work.autoClose(), this.work.chaseRequesters().then((r) => r.chased + r.solved)],
     // Batch 2: chats nobody took in time become tickets; timed sequence messages. Batch 3: tickets waiting for their
     // best-matched agent (founder decision 9 Oct 2026).
     reminders: () => [this.me.fireReminders(), this.chat.expire(), this.recurring.sequenceTick(), this.tickets.routingSweep()],

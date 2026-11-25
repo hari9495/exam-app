@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { Type, Transform } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
@@ -8,6 +8,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import type { ScopeUser } from '../access/scope';
 import { LineApprovalsService } from './line-approvals.service';
+import { TimesheetService } from './timesheet.service';
 
 // Projects P-2 (PRJ-02, answers 1406, 1407, 1442): line-by-line timesheet approval. Signed-in people; the service lets
 // each person decide only the lines they approve (their project's lines, or the people they approve for).
@@ -66,7 +67,22 @@ class BulkLinesDto {
 @Controller('time/line-approvals')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class LineApprovalsController {
-  constructor(private readonly lines: LineApprovalsService) {}
+  constructor(
+    private readonly lines: LineApprovalsService,
+    private readonly timesheets: TimesheetService,
+  ) {}
+
+  /** Batch D answer 2535: people on my projects with weeks not sent (project managers; empty for anyone else). */
+  @Get('not-sent')
+  notSent(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.timesheets.teamNotSent(ctx, req.user as ScopeUser);
+  }
+
+  @Post('not-sent/:employeeId/remind')
+  @HttpCode(200)
+  remind(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.timesheets.remindNotSent(ctx, req.user as ScopeUser, employeeId);
+  }
 
   @Get()
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {

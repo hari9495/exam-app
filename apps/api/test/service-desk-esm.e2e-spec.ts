@@ -444,6 +444,28 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       for (const t of tickets) await api('emp', 'post', `/desk/my/requests/${t}/cancel`).send({ reason: 'Test done' });
     });
 
+    // Answer 2503: bulk "Do not approve" with one reason every requester sees; the same 100 cap as bulk approve.
+    it('PLT-04 bulk do not approve: one shared reason on each request; over 100 or no reason is refused; another approver cannot', async () => {
+      const order = async () => (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.cc } }] }).expect(201)).body.requests[0].ticketId as string;
+      const before = new Set((await inbox('mgr')).map((t) => t.taskId));
+      const tickets = [await order(), await order()];
+      const two = (await inbox('mgr')).filter((x) => !before.has(x.taskId));
+      expect(two).toHaveLength(2);
+      const bulk = (who: Who, body: Record<string, unknown>) => api(who, 'post', '/workflow/approvals/tasks/decide').send(body);
+      await bulk('mgr', { taskIds: two.map((t) => t.taskId), decision: 'reject', reason: '   ' }).expect(400);
+      await bulk('mgr', { taskIds: Array.from({ length: 101 }, () => randomUUID()), decision: 'reject', reason: 'Too many' }).expect(400);
+      expect((await bulk('other', { taskIds: [two[0].taskId], decision: 'reject', reason: 'Not mine' }).expect(200)).body.results[0]).toMatchObject({ ok: false, message: 'No such approval.' });
+      const res = (await bulk('mgr', { taskIds: two.map((t) => t.taskId), decision: 'reject', reason: 'Budget is frozen this quarter' }).expect(200)).body;
+      expect(res.results).toEqual(two.map((t) => ({ taskId: t.taskId, ok: true, requestStatus: 'rejected' })));
+      for (const t of two) {
+        const log = await system((tx) => tx.wfAction.findFirstOrThrow({ where: { requestId: t.requestId, action: 'rejected' } }));
+        expect(log.reason).toBe('Budget is frozen this quarter');
+      }
+      // Already decided: said for each, not decided twice.
+      expect((await bulk('mgr', { taskIds: [two[0].taskId], decision: 'reject', reason: 'Again' }).expect(200)).body.results[0]).toMatchObject({ ok: false });
+      for (const t of tickets) await api('emp', 'post', `/desk/my/requests/${t}/cancel`).send({ reason: 'Test done' });
+    });
+
     it('delegation: by hand (open tasks move, "on behalf of" is kept) and from leave (to the manager)', async () => {
       const out = (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.cc } }] }).expect(201)).body;
       await api('mgr', 'post', '/workflow/delegations').send({ delegateUserId: users.mgr, startsOn: today, endsOn: today }).expect(400);
@@ -578,4 +600,91 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       await api('deskAdmin', 'post', '/desk/rules').send({ deskId: ids.it, name: 'Hook', trigger: { type: 'created' }, actions: [{ type: 'webhook', webhookId: randomUUID() }] }).expect(400);
     });
   });
+
+  // Batch F item 33 (answer 2573): a category answered by the requester's manager.
+  describe('ask your manager', () => {
+    it('routes to the manager; the manager answers and solves; never for confidential categories; with no manager the desk answers', async () => {
+      const cat = (await api('deskAdmin', 'post', `/desk/desks/${ids.it}/categories`).send({ name: `Laptop policy ${run}`, answeredBy: 'manager' }).expect(201)).body.id as string;
+      await api('agent', 'post', `/desk/desks/${ids.it}/categories`).send({ name: `Nope ${run}`, answeredBy: 'manager' }).expect(403);
+      await api('deskAdmin', 'post', `/desk/desks/${ids.it}/categories`).send({ name: `Secret ask ${run}`, sensitive: true, answeredBy: 'manager' }).expect(400);
+      await api('deskAdmin', 'post', `/desk/desks/${ids.it}/categories`).send({ name: `Bad ${run}`, answeredBy: 'boss' }).expect(400);
+      // The help centre says who answers.
+      const desks = (await api('emp', 'get', '/desk/my/desks').expect(200)).body as { id: string; categories: { id: string; answeredBy: string }[] }[];
+      expect(desks.find((d) => d.id === ids.it)!.categories.find((c) => c.id === cat)!.answeredBy).toBe('manager');
+      const send = app.get(EmailService).send as jest.Mock;
+      send.mockClear();
+      const t = (await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, categoryId: cat, subject: `Can I take my laptop home? ${run}`, description: 'For the weekend.' }).expect(201)).body;
+      expect(t.answeredBy).toBe('manager');
+      // Answer 2596: the manager gets an email with no details (no number, subject or name), only to the manager.
+      const toMgr = () => send.mock.calls.map((c) => c[0] as { to: string; subject: string; html: string }).filter((m) => m.to === `mgr@esm-${run}.test`);
+      for (let i = 0; i < 50 && !toMgr().length; i++) await new Promise((r) => setTimeout(r, 100));
+      expect(toMgr()).toEqual([expect.objectContaining({ subject: 'You have a question from your team in YukthiX' })]);
+      expect(toMgr()[0].html).not.toContain(t.number);
+      expect(toMgr()[0].html).not.toContain('laptop');
+      expect(send.mock.calls.filter((c) => (c[0] as { subject: string }).subject === 'You have a question from your team in YukthiX')).toHaveLength(1);
+      expect((await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t.id } }))).answerUserId).toBe(users.mgr);
+      // Only the manager sees it as a question; another manager, the person and another company get nothing.
+      expect(((await api('mgr', 'get', '/desk/my/asked').expect(200)).body as { id: string }[]).map((x) => x.id)).toContain(t.id);
+      for (const who of ['boss', 'emp', 'empB'] as const) {
+        expect(((await api(who, 'get', '/desk/my/asked').expect(200)).body as { id: string }[]).map((x) => x.id)).not.toContain(t.id);
+        await api(who, 'get', `/desk/my/asked/${t.id}`).expect(404);
+        await api(who, 'post', `/desk/my/asked/${t.id}/answer`).send({ text: 'Yes' }).expect(404);
+      }
+      expect((await api('mgr', 'get', `/desk/my/asked/${t.id}`).expect(200)).body).toMatchObject({ number: t.number, done: false, messages: [{ fromMe: false, text: expect.stringContaining('For the weekend') }] });
+      await api('mgr', 'post', `/desk/my/asked/${t.id}/answer`).send({ text: '' }).expect(400);
+      await api('mgr', 'post', `/desk/my/asked/${t.id}/answer`).send({ text: 'Yes, keep it locked in the boot.', solve: true }).expect(200);
+      const after = await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: t.id } }));
+      expect(after.systemState).toBe('solved');
+      expect(after.firstResponseAt).not.toBeNull();
+      await api('mgr', 'post', `/desk/my/asked/${t.id}/answer`).send({ text: 'Again' }).expect(409);
+      // The person sees the manager's answer as a reply.
+      expect(JSON.stringify((await api('emp', 'get', `/desk/my/tickets/${t.id}`).expect(200)).body)).toContain('locked in the boot');
+      expect(await system((tx) => tx.auditLog.count({ where: { entityId: t.id, action: { in: ['desk.ticket.routed_to_manager', 'desk.ticket.manager_answered'] } } }))).toBe(2);
+      // The boss has no manager: the desk answers.
+      const u = (await api('boss', 'post', '/desk/my/tickets').send({ deskId: ids.it, categoryId: cat, subject: `Laptop home ${run}`, description: 'Same.' }).expect(201)).body;
+      expect(u.answeredBy).toBe('desk');
+      expect((await system((tx) => tx.sdTicket.findFirstOrThrow({ where: { id: u.id } }))).answerUserId).toBeNull();
+      // The database refuses a confidential category answered by a manager.
+      await expect(system((tx) => tx.sdCategory.create({ data: { organizationId: org.A.id, deskId: ids.it, name: `Db ${run}`, sensitive: true, answeredBy: 'manager' } }))).rejects.toThrow();
+    });
+  });
+
+  // Batch F GLPI 10 (answer 2574): a desk's set-up out of one company and into another, a dry run first.
+  describe('desk set-up export and import', () => {
+    type Item = { kind: string; name: string; outcome: string; note: string | null };
+    it('exports rules, policies, categories and templates (never tickets); imports by name with a dry run; refuses others', async () => {
+      await api('agent', 'get', `/desk/desks/${ids.it}/export`).expect(403);
+      await api('adminB', 'get', `/desk/desks/${ids.it}/export`).expect((r) => expect([403, 404]).toContain(r.status));
+      const file = (await api('deskAdmin', 'get', `/desk/desks/${ids.it}/export`).expect(200)).body;
+      expect(file).toMatchObject({ format: 'yukthix-desk-setup', version: 1 });
+      expect(Object.keys(file).sort()).toEqual(['categories', 'desk', 'exportedAt', 'format', 'rules', 'slaPolicies', 'templates', 'version']);
+      expect(file.categories.some((c: { name: string; answeredBy: string }) => c.name === `Laptop policy ${run}` && c.answeredBy === 'manager')).toBe(true);
+      expect(JSON.stringify(file)).not.toContain(org.A.id);
+      // Bad files are refused.
+      await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file: { format: 'other' } }).expect(400);
+      await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file: { ...file, categories: Array.from({ length: 501 }, (_, i) => ({ name: `c${i}` })) } }).expect(400);
+      await api('adminB', 'post', `/desk/desks/${ids.it}/import`).send({ file, dryRun: true }).expect((r) => expect([403, 404]).toContain(r.status));
+      // Dry run: says what would happen, writes nothing.
+      const before = await system((tx) => tx.sdCategory.count({ where: { deskId: ids.itB } }), org.B.id);
+      const dry = (await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file, dryRun: true }).expect(200)).body as { dryRun: boolean; items: Item[] };
+      expect(dry.dryRun).toBe(true);
+      expect(dry.items.find((x) => x.kind === 'category' && x.name === `Laptop policy ${run}`)!.outcome).toBe('add');
+      expect(dry.items.filter((x) => x.outcome === 'skip').length).toBeGreaterThan(0);
+      expect(await system((tx) => tx.sdCategory.count({ where: { deskId: ids.itB } }), org.B.id)).toBe(before);
+      // Import: added by name; a rule naming the other company's records fails with a reason, the rest go on.
+      const done = (await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file }).expect(200)).body as { items: Item[] };
+      expect(done.items.find((x) => x.kind === 'category' && x.name === `Laptop policy ${run}`)!.outcome).toBe('added');
+      const cat = await system((tx) => tx.sdCategory.findFirstOrThrow({ where: { deskId: ids.itB, name: `Laptop policy ${run}` } }), org.B.id);
+      expect(cat.answeredBy).toBe('manager');
+      const rule = done.items.find((x) => x.kind === 'rule' && x.name === 'Declassify');
+      if (rule) expect(rule.outcome).toBe('failed');
+      expect(await system((tx) => tx.rule.count({ where: { scopeId: ids.itB, status: 'active' } }), org.B.id)).toBe(0);
+      // Again: everything is already there.
+      const again = (await api('adminB', 'post', `/desk/desks/${ids.itB}/import`).send({ file }).expect(200)).body as { items: Item[] };
+      expect(again.items.filter((x) => x.outcome === 'added')).toEqual([]);
+      expect(await system((tx) => tx.auditLog.count({ where: { entityId: ids.itB, action: 'desk.setup.imported' } }), org.B.id)).toBe(2);
+      expect(await system((tx) => tx.auditLog.count({ where: { entityId: ids.it, action: 'desk.setup.exported' } }))).toBe(1);
+    });
+  });
 });
+

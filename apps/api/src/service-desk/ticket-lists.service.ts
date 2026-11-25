@@ -138,6 +138,9 @@ export class TicketListsService {
     }
     // HLP-02: each ticket's first response and resolution clock (business minutes used of the target).
     const clocks = await this.sla.clocks(tx, org, rows.map((r) => r.id), ['first_response', 'resolution']);
+    // Batch F item 34 (answer 2570): an answered ticket's first response, on time or not.
+    const answered = rows.length ? await tx.sdSlaTimer.findMany({ where: { organizationId: org, kind: 'sla', metric: 'first_response', state: 'met', ticketId: { in: rows.map((r) => r.id) } }, select: { ticketId: true, breachedAt: true } }) : [];
+    const outcome = new Map(answered.map((x) => [x.ticketId, x.breachedAt ? ('breached' as const) : ('met' as const)]));
     const m = <T extends { id: string }>(xs: T[]) => new Map(xs.map((x) => [x.id, x]));
     const [D, S, T, C, G, P, U] = [m(desks), m(statuses), m(types), m(cats), m(groups), m(people), m(users)];
     const person = (id: string | null) => {
@@ -174,6 +177,7 @@ export class TicketListsService {
       firstResponse: clocks.get(t.id)?.first_response ?? null,
       resolution: clocks.get(t.id)?.resolution ?? null,
       firstResponseAt: t.firstResponseAt,
+      firstResponseOutcome: outcome.get(t.id) ?? null,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       // Lead-only actions show only to those who may do them.

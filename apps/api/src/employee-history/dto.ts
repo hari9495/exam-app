@@ -72,6 +72,11 @@ export class AssignmentPayloadDto {
   @IsUUID()
   managerEmployeeId?: string | null;
 
+  /** Enterprise E1: the person's seat (only while the company uses positions; checked against its room on the date). */
+  @Nullable()
+  @IsUUID()
+  positionId?: string | null;
+
   @IsOptional()
   @IsArray()
   @ArrayMaxSize(10)

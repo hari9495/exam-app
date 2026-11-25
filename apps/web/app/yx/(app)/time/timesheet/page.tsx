@@ -2,18 +2,27 @@
 
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { TimesheetScreen, type MyTimesheet, type PrefillSuggestions, type PrefillTools, type TimeSummaryWeek } from '@yukthix/ui/time';
+import { TimesheetScreen, type NotSentWeek, type MyTimesheet, type PrefillSuggestions, type PrefillTools, type TimeSummaryWeek } from '@yukthix/ui/time';
 import { mondayOf, timeState, todayIndia, useTime, useTimeWrite } from '../../../../../lib/yx-time';
+import { useMyLeaveLive } from '../../../../../lib/yx-my-leave';
 
 // Me › Timesheet (§B7, TIM-15): the person's own weeks, submitted to the project manager through P03.
 export default function YxTimesheetPage() {
   const today = todayIndia();
   const [week, setWeek] = useState(mondayOf(today));
   const sheet = useTime<MyTimesheet>(`/me/timesheet?week=${week}`);
+  // Batch D A3: last week's sheet while this week is shown, for "Copy last week".
+  const thisWeek = mondayOf(today);
+  const lastWeek = useTime<MyTimesheet>(week === thisWeek ? `/me/timesheet?week=${mondayOf(new Date(Date.parse(`${thisWeek}T00:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10))}` : null);
   // Keka ideas: the Time summary of a year (my own weeks).
   const [year, setYear] = useState(Number(today.slice(0, 4)));
   const summary = useTime<{ year: number; years: number[]; weeks: TimeSummaryWeek[] }>(`/me/timesheet/summary?year=${year}`);
+  // Batch D A5: my past weeks not sent (12 weeks; Show older: a year).
+  const [notSentWeeks, setNotSentWeeks] = useState(12);
+  const notSent = useTime<{ weeks: NotSentWeek[] }>(`/me/timesheet/not-sent?weeks=${notSentWeeks}`);
   const write = useTimeWrite();
+  // Batch D A8: Request leave opens My leave's drawer here, so unsaved hours stay on the grid.
+  const leave = useMyLeaveLive();
   const queryClient = useQueryClient();
   // Connecting a tool refreshes only the tools and suggestions, so unsaved hours on the grid stay.
   const tool = async (path: string) => {
@@ -31,6 +40,9 @@ export default function YxTimesheetPage() {
         data: sheet.data ?? null,
         week,
         today,
+        lastWeek: lastWeek.data ?? null,
+        leave: { data: leave.data, live: leave },
+        notSent: { state: timeState(notSent), data: notSent.data ?? null, onShowOlder: notSentWeeks < 52 ? () => setNotSentWeeks(52) : undefined },
         onWeek: setWeek,
         onSave: (w, lines) => write('/me/timesheet', 'PUT', { week: w, lines }),
         onSubmit: (w) => write('/me/timesheet/submit', 'POST', { week: w }, true, 'Week sent to the project manager'),

@@ -1,11 +1,11 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from 'react';
-import { BarChart3, BellRing, BookOpen, Handshake, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Siren, SlidersHorizontal, Tags, ToggleRight, UserCog, Wrench } from 'lucide-react';
+import { BarChart3, BellRing, BookOpen, FileWarning, Handshake, Building2, FileClock, HeartPulse, Inbox, LifeBuoy, Megaphone, MessageSquare, ReceiptIndianRupee, Scale, ScrollText, ShieldCheck, Siren, SlidersHorizontal, Tags, ToggleRight, UserCog, UserSearch, Wrench } from 'lucide-react';
 import { Logo, Monogram } from '../../components/brand';
 import type { IconComponent } from '../../components/foundations';
 import { AppShell, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, type DensityChoice, type RailItem, type ThemeChoice } from '../../components/shell';
 import { NotificationCentre, type NotificationItem } from '../../components/notify';
 
-export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'analytics' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'feature-requests' | 'assistant-review' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'staff';
+export type ConsolePageId = 'companies' | 'customers' | 'help-centre' | 'nudges' | 'sales' | 'analytics' | 'incidents' | 'maintenance' | 'support-desk' | 'support' | 'plans' | 'whats-new' | 'feature-requests' | 'assistant-review' | 'rules' | 'channels' | 'feature-flags' | 'platform-settings' | 'audit' | 'system-logs' | 'users' | 'staff';
 type ConsoleGroup = 'Customers' | 'Catalogue' | 'Rules' | 'Operations' | 'Channels' | 'Security';
 
 interface ConsoleLink {
@@ -28,6 +28,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   // Before Support sessions: the layout picks the first link whose href starts the path.
   { id: 'support-desk', label: 'Support desk', href: '/staff/support-desk', group: 'Customers', icon: Inbox },
   { id: 'support', label: 'Support sessions', href: '/staff/support', group: 'Customers', icon: LifeBuoy },
+  // Answer 2431: a user of any company by email or name (support requests).
+  { id: 'users', label: 'Find a user', href: '/staff/users', group: 'Customers', icon: UserSearch },
   { id: 'plans', label: 'Plans and prices', href: '/staff/plans', group: 'Catalogue', icon: Tags },
   // Help H-4 (answer 943): the entries people see in Help › What's new.
   { id: 'whats-new', label: "What's new", href: '/staff/whats-new', group: 'Catalogue', icon: Megaphone },
@@ -46,6 +48,8 @@ export const CONSOLE_LINKS: ConsoleLink[] = [
   { id: 'maintenance', label: 'Planned maintenance', href: '/staff/maintenance', group: 'Operations', icon: Wrench },
   // C-8 (YX-10, answer 1124): incidents and the breach reminders.
   { id: 'incidents', label: 'Incidents', href: '/staff/incidents', group: 'Operations', icon: Siren },
+  // Answer 2421: errors and warnings from every company, here only.
+  { id: 'system-logs', label: 'System logs', href: '/staff/system-logs', group: 'Operations', icon: FileWarning },
   { id: 'channels', label: 'Shared SMS account', href: '/staff/channels', group: 'Channels', icon: MessageSquare },
   // Console C-4 (answer 1049): switches for every company, one company, and the kill switch.
   { id: 'feature-flags', label: 'Feature flags', href: '/staff/feature-flags', group: 'Security', icon: ToggleRight },

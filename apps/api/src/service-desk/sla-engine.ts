@@ -5,7 +5,8 @@ import { CalendarSpec, addBusinessSeconds, businessSecondsBetween } from './busi
 // writing and job scheduling; everything that decides lives here and is unit tested.
 
 export const SLA_METRICS = ['assign', 'first_response', 'next_response', 'resolution'] as const;
-export const OLA_METRICS = ['group', 'task'] as const;
+// Batch F GLPI 8 (answer 2572): group_response, a team's first response (internal TTO) next to its hand-off time (TTR).
+export const OLA_METRICS = ['group', 'group_response', 'task'] as const;
 export type Metric = (typeof SLA_METRICS)[number] | (typeof OLA_METRICS)[number];
 export const MILESTONE_ACTIONS = ['notify_assignee', 'notify_group_leads', 'notify_desk_leads', 'raise_priority', 'move_to_group'] as const;
 export type MilestoneAction = { type: (typeof MILESTONE_ACTIONS)[number]; groupId?: string };

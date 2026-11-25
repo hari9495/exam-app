@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { toBin } from '../recycle-bin/bin';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { DEFAULT_SMS_TEMPLATES } from './default-sms-templates';
@@ -98,6 +98,10 @@ export class CandidateSmsTemplatesService {
   async upsert(context: TenantContext, actorUserId: string, dto: UpsertSmsTemplateDto) {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const triggerStageId = dto.triggerStageId ?? null;
+      // The stage must be one of this company's (a foreign or unknown id is refused, never stored).
+      if (triggerStageId && !(await tx.pipelineStage.findFirst({ where: { id: triggerStageId, organizationId: context.organizationId as string }, select: { id: true } })))
+        throw new BadRequestException('That stage is not in your pipelines. Choose a stage from the list.');
+      let before: { name: string; triggerStageId: string | null; triggerMode: string; enabled: boolean } | null = null;
       const baseData = {
         organizationId: context.organizationId as string,
         name: dto.name,
@@ -110,6 +114,7 @@ export class CandidateSmsTemplatesService {
       if (dto.id) {
         const existing = await tx.candidateSmsTemplate.findFirst({ where: { id: dto.id, organizationId: context.organizationId as string } });
         if (!existing) throw new NotFoundException(`Template ${dto.id} not found`);
+        before = { name: existing.name, triggerStageId: existing.triggerStageId, triggerMode: existing.triggerMode, enabled: existing.enabled };
         // Content-only edits (e.g. body from an edit form) omit `enabled` -- preserve the
         // row's current enabled state instead of silently re-enabling a disabled template.
         const data = { ...baseData, enabled: dto.enabled !== undefined ? dto.enabled : existing.enabled };
@@ -122,6 +127,7 @@ export class CandidateSmsTemplatesService {
           ? await tx.candidateSmsTemplate.findFirst({ where: { organizationId: context.organizationId as string, triggerStageId } })
           : null;
         const data = { ...baseData, enabled: dto.enabled ?? true };
+        if (existingForStage) before = { name: existingForStage.name, triggerStageId: existingForStage.triggerStageId, triggerMode: existingForStage.triggerMode, enabled: existingForStage.enabled };
         row = existingForStage
           ? await tx.candidateSmsTemplate.update({ where: { id: existingForStage.id }, data })
           : await tx.candidateSmsTemplate.create({ data });
@@ -132,7 +138,7 @@ export class CandidateSmsTemplatesService {
         action: 'candidate_sms_template.saved',
         entityType: 'candidate_sms_template',
         entityId: row.id,
-        metadata: { name: dto.name, triggerStageId: dto.triggerStageId ?? null },
+        metadata: { name: dto.name, triggerStageId: dto.triggerStageId ?? null, before, after: { name: row.name, triggerStageId: row.triggerStageId, triggerMode: row.triggerMode, enabled: row.enabled } },
       });
       return row;
     });

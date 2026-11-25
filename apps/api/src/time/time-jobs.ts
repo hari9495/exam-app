@@ -6,6 +6,7 @@ import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connect
 import { AttendanceService } from './attendance.service';
 import { LeaveService } from './leave.service';
 import { LeaveV2Service } from './leave-v2.service';
+import { TimesheetService } from './timesheet.service';
 
 const QUEUE = 'time-jobs';
 
@@ -25,6 +26,7 @@ export class TimeJobs implements OnModuleInit, OnModuleDestroy {
     private readonly leave: LeaveService,
     private readonly attendance: AttendanceService,
     private readonly leaveV2: LeaveV2Service,
+    private readonly timesheets: TimesheetService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -58,7 +60,7 @@ export class TimeJobs implements OnModuleInit, OnModuleDestroy {
       try {
         // Comp-off expiry and the holiday-on-a-weekly-off credit run with the accruals (all idempotent by period key).
         // TIM-39: block-leave access pauses start and end with the hourly day run.
-        n += name === 'accrue' ? (await this.leave.refreshTypeCopies(org)) + (await this.leave.accrue(org)) + (await this.leaveV2.expireCompOff(org)) + (await this.leaveV2.creditHolidayOnWeeklyOff(org)) : (await this.attendance.evaluateCompany(org)) + (await this.leaveV2.applyAccessPauses(org));
+        n += name === 'accrue' ? (await this.leave.refreshTypeCopies(org)) + (await this.leave.accrue(org)) + (await this.leaveV2.expireCompOff(org)) + (await this.leaveV2.creditHolidayOnWeeklyOff(org)) : (await this.attendance.evaluateCompany(org)) + (await this.leaveV2.applyAccessPauses(org)) + (await this.timesheets.cutoffReminders(org));
       } catch (e) {
         this.logger.warn(`${name} ${org}: ${(e as Error).message}`);
       }

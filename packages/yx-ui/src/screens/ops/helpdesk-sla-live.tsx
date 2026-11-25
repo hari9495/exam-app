@@ -44,7 +44,7 @@ import type {
   Wallboard,
   WallboardInput,
 } from '../desk/report-types';
-import { CardGrid, OpsDesk, SlaBadge, useSay } from './ops-kit';
+import { CardGrid, OpsDesk, SlaBadge, TeamTargetsTable, useSay } from './ops-kit';
 
 export type SlaReportTab = 'sla' | 'numbers' | 'kpis' | 'library' | 'funnel' | 'mine' | 'walls' | 'customers' | 'surveys';
 export type SlaDays = '7' | '30' | '90';
@@ -344,6 +344,12 @@ function SlaBody({ live, loading }: { live: LiveSla; loading: boolean }) {
           />
         </Card>
       </section>
+      {/* Batch F GLPI 8 (answer 2572): shown once a desk has team targets; they never change the requester's SLA. */}
+      {s?.teams && s.teams.length > 0 && (
+        <Card title="Team targets (OLA)">
+          <TeamTargetsTable rows={s.teams} loading={loading} />
+        </Card>
+      )}
       <Card title="Agent load">
         <DataTable
           label="Agent load"

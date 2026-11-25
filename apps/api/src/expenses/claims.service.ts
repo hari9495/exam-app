@@ -17,7 +17,7 @@ import { lowConfidence, type OcrFields } from './ocr-parse';
 import { ExpenseSetupService } from './setup.service';
 import { ExpensePaymentsService } from './payments.service';
 import { closeTripIfDone, settleAdvanceByClaim } from './trips.service';
-import { TEAM_LIST_STATUSES, isOverLimit, istMonthRange, lastMonths, payMonthFor, teamFigures } from './home-rules';
+import { TEAM_LIST_STATUSES, isOverLimit, istMonthRange, lastMonths, payMonthFor, teamFigures, waitingOnText, type WaitingStep } from './home-rules';
 import { LOOK_ALIKE_BITS, toPay, variancePct } from './fx';
 import { fxRateFor } from './setup.service';
 
@@ -195,7 +195,56 @@ export class ExpenseClaimsService implements OnModuleInit {
       }
       if (entityId && view !== 'mine') claims = claims.filter((x) => x.legalEntityId === entityId);
       const people = await this.names(tx, org, claims.map((x) => x.employeeId));
-      return { claims: claims.map((x) => this.summary(x, people.get(x.employeeId) ?? '')) };
+      const waiting = await this.waitingOn(tx, org, claims, view === 'mine' ? null : people);
+      return { claims: claims.map((x) => ({ ...this.summary(x, people.get(x.employeeId) ?? ''), waitingOn: waiting.get(x.id) ?? null })) };
+    });
+  }
+
+  /**
+   * Batch E A4 (answers 2551, 2552, 2556): who each claim waits on, from its approval's open step and the people holding
+   * a task on it. `people` names the claimant for someone else's list (null: my own claims, so "You").
+   */
+  private async waitingOn(tx: Tx, org: string, claims: Claim[], people: Map<string, string> | null) {
+    const out = new Map<string, string | null>();
+    const sent = claims.filter((x) => x.status === 'submitted' && x.wfRequestId);
+    const requests = sent.length ? await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: sent.map((x) => x.wfRequestId!) } }, select: { id: true, steps: true, currentStep: true } }) : [];
+    const tasks = requests.length ? await tx.wfTask.findMany({ where: { organizationId: org, requestId: { in: requests.map((r) => r.id) }, status: 'open' }, orderBy: { createdAt: 'asc' }, select: { requestId: true, step: true, assigneeUserId: true } }) : [];
+    const users = new Map((tasks.length ? await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(tasks.map((t) => t.assigneeUserId))] } }, select: { id: true, name: true, email: true } }) : []).map((u) => [u.id, u.name?.trim() || u.email]));
+    for (const x of claims) {
+      const r = requests.find((q) => q.id === x.wfRequestId);
+      const frozen = r ? ((r.steps as unknown as { name: string; approvers: { kind: string; userIds?: string[] }[] }[])[r.currentStep] ?? null) : null;
+      const step: WaitingStep | null = frozen ? { name: frozen.name, approvers: frozen.approvers ?? [], holders: tasks.filter((t) => t.requestId === r!.id && t.step === r!.currentStep).map((t) => users.get(t.assigneeUserId) ?? '').filter(Boolean) } : null;
+      out.set(x.id, waitingOnText(x, step, people ? (people.get(x.employeeId) ?? null) : null));
+    }
+    return out;
+  }
+
+  /**
+   * Batch E A7 (answer 2553): my own claims, filtered by status, sent or paid dates (IST days) and a title search, 25 a
+   * page, newest first. Only the person's own claims; drafts are included (they are theirs).
+   */
+  async mine(ctx: TenantContext, user: ScopeUser, q: { status?: string[]; sentFrom?: string; sentTo?: string; paidFrom?: string; paidTo?: string; q?: string; page?: number }) {
+    const v = await this.viewer(user);
+    const PAGE = 25;
+    const page = Math.max(1, q.page ?? 1);
+    const istStart = (d: string) => new Date(Date.parse(`${d}T00:00:00+05:30`));
+    const istEnd = (d: string) => new Date(Date.parse(`${d}T00:00:00+05:30`) + 86_400_000);
+    for (const [a, b] of [[q.sentFrom, q.sentTo], [q.paidFrom, q.paidTo]] as const) if (a && b && a > b) throw new BadRequestException('The "from" date must be on or before the "to" date.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await this.myEmployee(tx, org, v);
+      if (!me) return { claims: [], total: 0, page, pageSize: PAGE };
+      const where: Prisma.ExpenseClaimWhereInput = {
+        organizationId: org,
+        employeeId: me.id,
+        ...(q.status?.length ? { status: { in: q.status } } : {}),
+        ...(q.sentFrom || q.sentTo ? { submittedAt: { ...(q.sentFrom ? { gte: istStart(q.sentFrom) } : {}), ...(q.sentTo ? { lt: istEnd(q.sentTo) } : {}) } } : {}),
+        ...(q.paidFrom || q.paidTo ? { paidAt: { ...(q.paidFrom ? { gte: istStart(q.paidFrom) } : {}), ...(q.paidTo ? { lt: istEnd(q.paidTo) } : {}) } } : {}),
+        ...(q.q?.trim() ? { title: { contains: q.q.trim(), mode: 'insensitive' as const } } : {}),
+      };
+      const [total, rows] = await Promise.all([tx.expenseClaim.count({ where }), tx.expenseClaim.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (page - 1) * PAGE, take: PAGE })]);
+      const waiting = await this.waitingOn(tx, org, rows, null);
+      return { claims: rows.map((x) => ({ ...this.summary(x, ''), paidAt: x.paidAt?.toISOString() ?? null, waitingOn: waiting.get(x.id) ?? null })), total, page, pageSize: PAGE };
     });
   }
 
@@ -1161,10 +1210,11 @@ export class ExpenseClaimsService implements OnModuleInit {
       const over = new Map<string, number>();
       for (const l of lines) if (isOverLimit(l.policyResult)) over.set(l.claimId, (over.get(l.claimId) ?? 0) + 1);
       const people = await this.names(tx, org, rows.map((x) => x.employeeId));
+      const waiting = await this.waitingOn(tx, org, rows, people);
       const claims = [];
       for (const x of rows) {
         const a = await this.access(tx, c, v, x);
-        claims.push({ ...this.summary(x, people.get(x.employeeId) ?? ''), overLimit: over.get(x.id) ?? 0, canOpen: a.approver || a.scope || a.finance });
+        claims.push({ ...this.summary(x, people.get(x.employeeId) ?? ''), waitingOn: waiting.get(x.id) ?? null, overLimit: over.get(x.id) ?? 0, canOpen: a.approver || a.scope || a.finance });
       }
       return { month: m, people: reports.length, claims };
     });

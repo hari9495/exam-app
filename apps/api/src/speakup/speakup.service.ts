@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, ForbiddenException, HttpExcepti
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import Redis from 'ioredis';
-import { OrgSecretsCryptoService, TenantContext, TenantPrismaService, isOrganizationActive } from '@exam-platform/shared';
+import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService, isOrganizationActive } from '@exam-platform/shared';
+import { ScopeUser, buildViewer, tenantWide } from '../access/scope';
 import { REDIS_CONNECTION } from '../jobs/redis-connection';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -11,7 +12,9 @@ import { CompanyContext, Tx, audit, companyContext } from '../org-structure/org-
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { safeName } from '../service-desk/attachments.service';
-import { SPEAKUP_TEAMS, type AnonymousReportDto, type ReportDto, type SpeakupKind, type SpeakupTeam, type TeamMemberDto } from './dto';
+import { SPEAKUP_TEAMS, type AnnualReportStepDto, type AnonymousReportDto, type AwarenessSessionDto, type EditMemberDto, type ReportDto, type SpeakupKind, type SpeakupTeam, type TeamMemberDto } from './dto';
+import { isoDay } from '../cases/case-rules';
+import { jobsToday } from '../learning/learning-core';
 import { addDays, anonymousAllowed, caseNumber, newReplyCode, poshLate, readCode, route, showCode } from './speakup-rules';
 
 // HLP-06 speak-up filing (rules: docs/yukthix/helpdesk-design-map.md section 4e). Named reports come from the signed-in
@@ -50,6 +53,7 @@ export class SpeakupService {
   private readonly logger = new Logger(SpeakupService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
@@ -135,8 +139,19 @@ export class SpeakupService {
     const cats = dto.kind === 'grievance' ? s.grievance : dto.kind === 'whistleblower' ? s.ethics : [];
     if (dto.category && !cats.includes(dto.category)) throw new BadRequestException('Choose one of the topics in the list.');
     if (dto.locationId && !(await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId }, select: { id: true } }))) throw new BadRequestException('Choose one of the company’s locations.');
+    // Answer 2597: the POSH complaint's own fields.
+    if (dto.kind !== 'posh' && (dto.onBehalfName || dto.onBehalfRelation || dto.lateReason || dto.conciliation)) throw new BadRequestException('On her behalf, the late reason and conciliation are only for a sexual harassment complaint.');
+    if (Boolean(dto.onBehalfName) !== Boolean(dto.onBehalfRelation)) throw new BadRequestException('Give her name and your relationship to her.');
     const teams = await this.teams(tx, org);
     if (dto.aboutUserId && !Object.values(teams).some((t) => t.includes(dto.aboutUserId!))) throw new BadRequestException('Choose one of the case officers in the list.');
+    // Answer 2592: a POSH complaint goes to its workplace's committee when there is one, else to the company's.
+    let icLocationId: string | null = null;
+    if (dto.kind === 'posh') {
+      // Answer 2623: a member whose term has ended receives no new complaint (a term ends at the end of its day).
+      const ic = (await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, select: { userId: true, locationId: true, termEndsOn: true } })).filter((m) => !m.termEndsOn || isoDay(m.termEndsOn)! >= today);
+      icLocationId = dto.locationId && ic.some((m) => m.locationId === dto.locationId) ? dto.locationId : null;
+      teams.ic = ic.filter((m) => m.locationId === icLocationId).map((m) => m.userId);
+    }
     const r = route(dto.kind, teams, dto.aboutUserId ?? null);
     if (!r)
       throw new ConflictException(
@@ -173,6 +188,11 @@ export class SpeakupService {
         ackDueOn: day(addDays(today, s.ackDays)),
         decideDueOn: decideDays ? day(addDays(today, decideDays)) : null,
         ruleSet: rs?.label ?? null,
+        icLocationId,
+        onBehalfName: dto.onBehalfName || null,
+        onBehalfRelation: dto.onBehalfRelation || null,
+        lateReason: dto.lateReason || null,
+        conciliationAsked: Boolean(dto.conciliation),
       },
     });
     await tx.speakupCaseMember.createMany({ data: r.members.map((userId) => ({ organizationId: org, caseId: row.id, userId })) });
@@ -413,6 +433,150 @@ export class SpeakupService {
 
   // ------------------------------------------------------------------------------------------ set-up (speakup.setup.manage)
 
+  /**
+   * Batch F item 13 (answer 2578): the Internal Committee as its own members see it (CMP-09 console): who sits on it and
+   * in what role. Anyone not on the committee gets "not found". The complaints come from the case list (case members).
+   */
+  /** CMP-11 (batch F item 13; answers 2591, 2592): the committees this person sits on, for their members only. */
+  async icCommittee(ctx: TenantContext) {
+    return this.tx(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const all = await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, orderBy: { addedAt: 'asc' } });
+      const mine = new Set(all.filter((r) => r.userId === c.userId).map((r) => r.locationId));
+      if (!c.userId || !mine.size) throw new NotFoundException('Not found');
+      const rows = all.filter((r) => mine.has(r.locationId));
+      const users = await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.userId) } }, select: { id: true, name: true, email: true } });
+      const places = await tx.location.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.locationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+      const org0 = await tx.organization.findFirst({ where: { id: org }, select: { name: true } });
+      // Answer 2593: the awareness log (this year and last) and this year's annual report, per committee.
+      const today = todayIst();
+      const year = Number(today.slice(0, 4));
+      const committees = [...mine];
+      const awareness = await tx.poshAwarenessSession.findMany({ where: { organizationId: org, committeeLocationId: { in: committees.filter((x): x is string => Boolean(x)) } }, orderBy: { heldOn: 'desc' }, take: 500 });
+      const companyLog = mine.has(null) ? await tx.poshAwarenessSession.findMany({ where: { organizationId: org, committeeLocationId: null }, orderBy: { heldOn: 'desc' }, take: 500 }) : [];
+      const log = [...awareness, ...companyLog].filter((a) => a.heldOn.toISOString().slice(0, 4) >= String(year - 1)).sort((a, b) => b.heldOn.getTime() - a.heldOn.getTime());
+      const nameOf = (id: string | null) => (id ? (places.find((p) => p.id === id)?.name ?? 'A workplace') : 'Whole company');
+      const reports = [];
+      for (const cid of committees) {
+        const cases = await tx.speakupCase.findMany({ where: { organizationId: org, kind: 'posh', icLocationId: cid, filedAt: { gte: new Date(`${year}-01-01T00:00:00+05:30`), lt: new Date(`${year + 1}-01-01T00:00:00+05:30`) } }, select: { status: true, filedAt: true } });
+        const row = await tx.poshAnnualReport.findFirst({ where: { organizationId: org, year, committeeLocationId: cid } });
+        reports.push({
+          committeeId: cid,
+          committee: nameOf(cid),
+          year,
+          dueOn: `${year + 1}-01-31`,
+          received: cases.length,
+          disposed: cases.filter((x) => x.status === 'closed').length,
+          pendingOver90: cases.filter((x) => x.status !== 'closed' && addDays(isoDay(x.filedAt)!, 90) < today).length,
+          sessions: log.filter((a) => a.committeeLocationId === cid && a.heldOn.toISOString().slice(0, 4) === String(year)).length,
+          // Answer 2624: completions of courses marked as POSH awareness this year, by people at the committee's workplace.
+          trainings: await this.poshTrainings(tx, c, year, cid),
+          actionTaken: row?.actionTaken ?? null,
+          stage: (row?.stage ?? 'draft') as 'draft' | 'reviewed' | 'employer' | 'district',
+          presiding: all.some((r) => r.locationId === cid && r.role === 'presiding' && r.userId === c.userId),
+        });
+      }
+      return {
+        company: org0?.name ?? '',
+        awareness: log.map((a) => ({ id: a.id, committeeId: a.committeeLocationId, heldOn: a.heldOn.toISOString().slice(0, 10), title: a.title, audience: a.audience, attended: a.attended })),
+        reports,
+        members: rows.map((r) => {
+          const u = users.find((x) => x.id === r.userId);
+          return { id: r.id, name: u?.name ?? u?.email ?? 'Former user', role: r.role as 'presiding' | 'member' | 'external', since: isoDay(r.addedAt), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null, committeeId: r.locationId, committee: r.locationId ? (places.find((p) => p.id === r.locationId)?.name ?? 'A workplace') : 'Whole company' };
+        }),
+      };
+    });
+  }
+
+  /** Answer 2624: POSH awareness course completions in a calendar year, for one workplace (null: the whole company). */
+  private async poshTrainings(tx: Tx, c: CompanyContext, year: number, locationId: string | null) {
+    const done = await tx.learningEnrolment.findMany({
+      where: { organizationId: c.organizationId, status: 'completed', completedAt: { gte: new Date(`${year}-01-01T00:00:00+05:30`), lt: new Date(`${year + 1}-01-01T00:00:00+05:30`) }, courseId: { in: (await tx.learningCourse.findMany({ where: { organizationId: c.organizationId, poshAwareness: true }, select: { id: true } })).map((x) => x.id) } },
+      select: { employeeId: true },
+    });
+    if (!locationId) return done.length;
+    const at = new Set((await jobsToday(tx, c, todayIst(), done.map((d) => d.employeeId))).filter((j) => j.locationId === locationId).map((j) => j.employeeId));
+    return done.filter((d) => at.has(d.employeeId)).length;
+  }
+
+  /**
+   * Answer 2620: HR's view of the Internal Committees (CMP-09): this year's counts per committee only, never a case, a
+   * name or a member; a committee with fewer than 5 complaints shows no counts at all, so no one can be singled out.
+   */
+  async icCounts(ctx: TenantContext, user: ScopeUser) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['learning.report.view']);
+    // The counts are the whole company's committees, so a grant for part of it confers nothing here.
+    if (!tenantWide(v, 'learning.report.view') || v.actingForOther) throw new ForbiddenException('The committee counts need training reports for the whole company.');
+    return this.tx(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const year = Number(todayIst().slice(0, 4));
+      const today = todayIst();
+      const committees = [...new Set((await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, select: { locationId: true } })).map((r) => r.locationId))];
+      const places = await tx.location.findMany({ where: { organizationId: org, id: { in: committees.filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+      const out = [];
+      for (const cid of committees) {
+        const cases = await tx.speakupCase.findMany({ where: { organizationId: org, kind: 'posh', icLocationId: cid, filedAt: { gte: new Date(`${year}-01-01T00:00:00+05:30`), lt: new Date(`${year + 1}-01-01T00:00:00+05:30`) } }, select: { status: true, filedAt: true } });
+        const shown = cases.length >= 5;
+        out.push({
+          committee: cid ? (places.find((p) => p.id === cid)?.name ?? 'A workplace') : 'Whole company',
+          year,
+          shown,
+          received: shown ? cases.length : null,
+          disposed: shown ? cases.filter((x) => x.status === 'closed').length : null,
+          pendingOver90: shown ? cases.filter((x) => x.status !== 'closed' && addDays(isoDay(x.filedAt)!, 90) < today).length : null,
+          sessions: await tx.poshAwarenessSession.count({ where: { organizationId: org, committeeLocationId: cid, heldOn: { gte: new Date(`${year}-01-01T00:00:00Z`), lt: new Date(`${year + 1}-01-01T00:00:00Z`) } } }),
+          trainings: await this.poshTrainings(tx, c, year, cid),
+        });
+      }
+      await audit(tx, c, 'posh.counts_viewed', 'organization', org, { committees: out.length });
+      return { minimum: 5, committees: out.sort((a, b) => a.committee.localeCompare(b.committee)) };
+    });
+  }
+
+  /** Answer 2593: a member logs an awareness session for a committee they sit on (others: 404). */
+  async logAwareness(ctx: TenantContext, dto: AwarenessSessionDto) {
+    return this.tx(ctx, async (tx, c) => {
+      const cid = dto.committeeId ?? null;
+      if (!(await this.onCommittee(tx, c, cid))) throw new NotFoundException('Not found');
+      const heldOn = dto.heldOn.slice(0, 10);
+      if (heldOn > todayIst()) throw new BadRequestException('The session date can’t be in the future.');
+      const a = await tx.poshAwarenessSession.create({ data: { organizationId: c.organizationId, committeeLocationId: cid, heldOn: day(heldOn), title: dto.title, audience: dto.audience || null, attended: dto.attended, createdBy: c.userId! } });
+      await audit(tx, c, 'posh.awareness_logged', 'posh_awareness_session', a.id, { committeeId: cid, heldOn, attended: dto.attended });
+      return { id: a.id };
+    });
+  }
+
+  /** Answer 2593: the presiding officer moves this committee's annual report on, one step at a time. */
+  async annualReportStep(ctx: TenantContext, dto: AnnualReportStepDto) {
+    return this.tx(ctx, async (tx, c) => {
+      const cid = dto.committeeId ?? null;
+      if (!(await this.onCommittee(tx, c, cid))) throw new NotFoundException('Not found');
+      const presiding = await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ic', role: 'presiding', removedAt: null, userId: c.userId!, locationId: cid }, select: { id: true } });
+      if (!presiding) throw new ForbiddenException({ statusCode: 403, code: 'POSH_NOT_PRESIDING', message: 'Only the presiding officer moves the annual report on.' });
+      const year = Number(todayIst().slice(0, 4));
+      if (dto.year > year || dto.year < year - 1) throw new BadRequestException('Only this year’s or last year’s report can be moved on.');
+      const row = (await tx.poshAnnualReport.findFirst({ where: { organizationId: c.organizationId, year: dto.year, committeeLocationId: cid } })) ?? (await tx.poshAnnualReport.create({ data: { organizationId: c.organizationId, year: dto.year, committeeLocationId: cid } }));
+      const before = { reviewed: 'draft', employer: 'reviewed', district: 'employer' }[dto.step];
+      if (row.stage !== before) throw new ConflictException({ statusCode: 409, code: 'POSH_REPORT_STEP', message: 'The report is not at that step. Refresh and try again.' });
+      if (dto.step === 'reviewed' && !dto.actionTaken?.trim()) throw new BadRequestException('Write the action taken in the year (or “None”).');
+      const now = new Date();
+      await tx.poshAnnualReport.update({
+        where: { id: row.id },
+        data: {
+          stage: dto.step,
+          updatedAt: now,
+          ...(dto.step === 'reviewed' ? { actionTaken: dto.actionTaken!.trim(), reviewedBy: c.userId, reviewedAt: now } : dto.step === 'employer' ? { employerBy: c.userId, employerAt: now } : { districtBy: c.userId, districtAt: now }),
+        },
+      });
+      await audit(tx, c, 'posh.annual_report_step', 'posh_annual_report', row.id, { committeeId: cid, year: dto.year, step: dto.step });
+      return { stage: dto.step };
+    });
+  }
+
+  private async onCommittee(tx: Tx, c: CompanyContext, cid: string | null) {
+    return Boolean(c.userId && (await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ic', removedAt: null, userId: c.userId, locationId: cid }, select: { id: true } })));
+  }
+
   async setup(ctx: TenantContext) {
     return this.tx(ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -421,7 +585,8 @@ export class SpeakupService {
       const name = (id: string) => users.find((u) => u.id === id)?.name ?? users.find((u) => u.id === id)?.email ?? 'Former user';
       const s = await this.settings(tx, c);
       return {
-        members: rows.map((r) => ({ id: r.id, team: r.team, userId: r.userId, name: name(r.userId), role: r.role, addedAt: r.addedAt.toISOString() })),
+        members: rows.map((r) => ({ id: r.id, team: r.team, userId: r.userId, name: name(r.userId), role: r.role, addedAt: r.addedAt.toISOString(), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null, locationId: r.locationId })),
+        locations: await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
         users: users.map((u) => ({ id: u.id, name: u.name ?? u.email, email: u.email })),
         settings: { anonymous: s.anonymous, ackDays: s.ackDays, grievance: s.grievance, whistleblower: s.ethics },
       };
@@ -432,14 +597,97 @@ export class SpeakupService {
     return this.tx(ctx, async (tx, c) => {
       const org = c.organizationId;
       if (!(await tx.user.findFirst({ where: { organizationId: org, id: dto.userId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active person of this company.');
-      if (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: dto.team, userId: dto.userId, removedAt: null }, select: { id: true } })) throw new ConflictException('This person is already on that list.');
+      if (dto.locationId && dto.team !== 'ic') throw new BadRequestException('Only the Internal Committee can be set up per workplace.');
+      if (dto.locationId && !(await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId, archivedAt: null }, select: { id: true } }))) throw new BadRequestException('Choose one of the company’s workplaces.');
+      const committee = dto.team === 'ic' ? (dto.locationId ?? null) : null;
+      if (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: dto.team, userId: dto.userId, removedAt: null, locationId: committee }, select: { id: true } })) throw new ConflictException(dto.team === 'ic' ? 'This person is already on that committee.' : 'This person is already on that list.');
       // The IC has a presiding officer and an external member; the IR team may have an outside lawyer (HLP-13 decision 1).
       const role = dto.team === 'ic' ? (dto.role ?? 'member') : dto.team === 'ir' && dto.role === 'external' ? 'external' : 'member';
-      if (role === 'presiding' && (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: 'ic', role: 'presiding', removedAt: null }, select: { id: true } }))) throw new ConflictException('The Internal Committee already has a presiding officer. Remove them first.');
-      const m = await tx.speakupTeamMember.create({ data: { organizationId: org, team: dto.team, userId: dto.userId, role, addedBy: c.userId ?? null } });
-      await audit(tx, c, 'speakup.team_member_added', 'speakup_team_member', m.id, { team: dto.team, userId: dto.userId, role });
+      // Answer 2591: the committee list records who is a woman and when each term ends (the POSH Act checks).
+      if (dto.team === 'ic') {
+        if (dto.woman === undefined) throw new BadRequestException('Say whether this member is a woman.');
+        if (!dto.termEndsOn) throw new BadRequestException('Choose the day their term ends.');
+        const today = todayIst();
+        if (dto.termEndsOn.slice(0, 10) <= today) throw new BadRequestException('The term must end after today.');
+        if (dto.termEndsOn.slice(0, 10) > addDays(today, 3 * 365 + 1)) throw new BadRequestException('A term is at most 3 years.');
+        if (role === 'presiding' && !dto.woman) throw new BadRequestException('The presiding officer must be a senior woman employee.');
+      } else if (dto.woman !== undefined || dto.termEndsOn) throw new BadRequestException('Woman and term end are asked only for the Internal Committee.');
+      if (role === 'presiding' && (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: 'ic', role: 'presiding', removedAt: null, locationId: committee }, select: { id: true } }))) throw new ConflictException('This committee already has a presiding officer. Remove them first.');
+      const ic = dto.team === 'ic' ? { woman: dto.woman!, termEndsOn: day(dto.termEndsOn!.slice(0, 10)), locationId: committee } : {};
+      const m = await tx.speakupTeamMember.create({ data: { organizationId: org, team: dto.team, userId: dto.userId, role, addedBy: c.userId ?? null, ...ic } });
+      await audit(tx, c, 'speakup.team_member_added', 'speakup_team_member', m.id, { team: dto.team, userId: dto.userId, role, ...(dto.team === 'ic' ? { woman: dto.woman, termEndsOn: dto.termEndsOn!.slice(0, 10), locationId: committee } : {}) });
       return { id: m.id };
     });
+  }
+
+  /** Answer 2625: change a member with the same checks as adding; audited with what changed. */
+  async editMember(ctx: TenantContext, id: string, dto: EditMemberDto) {
+    return this.tx(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const m = await tx.speakupTeamMember.findFirst({ where: { organizationId: org, id, removedAt: null } });
+      if (!m) throw new NotFoundException('Not found.');
+      if (m.team !== 'ic' && m.team !== 'ir') throw new BadRequestException('There is nothing to change on this list; remove and add instead.');
+      if (m.team === 'ir') {
+        if (dto.woman !== undefined || dto.termEndsOn) throw new BadRequestException('Woman and term end are asked only for the Internal Committee.');
+        if (dto.role === 'presiding') throw new BadRequestException('The industrial relations team has company members and outside lawyers.');
+      }
+      const role = dto.role ?? (m.role as 'member' | 'presiding' | 'external');
+      const before = { role: m.role, woman: m.woman, termEndsOn: m.termEndsOn ? isoDay(m.termEndsOn) : null };
+      let after: Record<string, unknown> = { role };
+      if (m.team === 'ic') {
+        const woman = dto.woman ?? m.woman;
+        const term = dto.termEndsOn?.slice(0, 10) ?? before.termEndsOn;
+        if (woman == null) throw new BadRequestException('Say whether this member is a woman.');
+        if (!term) throw new BadRequestException('Choose the day their term ends.');
+        if (dto.termEndsOn) {
+          const today = todayIst();
+          if (term <= today) throw new BadRequestException('The term must end after today.');
+          if (term > addDays(today, 3 * 365 + 1)) throw new BadRequestException('A term is at most 3 years.');
+        }
+        if (role === 'presiding' && !woman) throw new BadRequestException('The presiding officer must be a senior woman employee.');
+        if (role === 'presiding' && m.role !== 'presiding' && (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: 'ic', role: 'presiding', removedAt: null, locationId: m.locationId, id: { not: m.id } }, select: { id: true } }))) throw new ConflictException('This committee already has a presiding officer. Change them first.');
+        after = { role, woman, termEndsOn: term };
+      }
+      const termChanged = m.team === 'ic' && after.termEndsOn !== before.termEndsOn;
+      await tx.speakupTeamMember.update({ where: { id: m.id }, data: { role, ...(m.team === 'ic' ? { woman: after.woman as boolean, termEndsOn: day(after.termEndsOn as string) } : {}), ...(termChanged ? { termRemindedAt: null } : {}) } });
+      await audit(tx, c, 'speakup.team_member_edited', 'speakup_team_member', m.id, { team: m.team, userId: m.userId, before, after });
+      return { id: m.id };
+    });
+  }
+
+  /** Answer 2623: daily, the System Admins hear once about each committee term ending within 30 days. */
+  async remindIcTerms(): Promise<number> {
+    const today = todayIst();
+    const due = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.speakupTeamMember.findMany({ where: { team: 'ic', removedAt: null, termRemindedAt: null, termEndsOn: { gte: day(today), lte: day(addDays(today, 30)) } }, take: 500 }),
+    );
+    let sent = 0;
+    for (const org of [...new Set(due.map((d) => d.organizationId))]) {
+      try {
+        const out = await this.tenantPrisma.forTenant(this.system(org), async (tx) => {
+          const rows = due.filter((d) => d.organizationId === org);
+          const people = await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.userId) } }, select: { id: true, name: true, email: true } });
+          const places = await tx.location.findMany({ where: { organizationId: org, id: { in: rows.flatMap((r) => (r.locationId ? [r.locationId] : [])) } }, select: { id: true, name: true } });
+          const admins = (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true } })).map((u) => u.id);
+          await tx.speakupTeamMember.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { termRemindedAt: new Date() } });
+          return {
+            admins,
+            texts: rows.map((r) => {
+              const u = people.find((p) => p.id === r.userId);
+              const place = r.locationId ? (places.find((p) => p.id === r.locationId)?.name ?? 'a workplace') : 'the whole company';
+              return { id: r.id, text: `${u?.name ?? u?.email ?? 'A member'}'s term on the Internal Committee (${place}) ends on ${isoDay(r.termEndsOn!)}. Extend the term or add a replacement.` };
+            }),
+          };
+        });
+        for (const t of out.texts) {
+          await this.notifications.notifySystem({ organizationId: org, isSuperAdmin: false }, out.admins, 'helpdesk.ic.term_ending', { entityType: 'speakup_team_member', entityId: t.id, contextText: t.text, linkPath: '/yx/desk/speakup-setup' }, { subject: 'An Internal Committee term ends soon', html: `<p>${t.text}</p>` }).catch((e: Error) => this.logger.warn(`IC term notice: ${e.message}`));
+          sent++;
+        }
+      } catch (e) {
+        this.logger.error(`IC term reminders for ${org} failed: ${(e as Error).message}`);
+      }
+    }
+    return sent;
   }
 
   /** Removing someone from a list stops new reports reaching them; cases already routed to them stay theirs (HLP-08 moves them). */

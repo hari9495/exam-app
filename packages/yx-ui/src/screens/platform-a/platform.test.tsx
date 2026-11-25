@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
-  bulkApprovable, filterRows, leaveDays, leaveEffect, parseQuery, readiness, ruleWarnings, simulatePolicy, slaText, sodConflicts, validateDelegation,
+  bulkApprovable, bulkNotApprovable, filterRows, leaveDays, leaveEffect, parseQuery, readiness, ruleWarnings, simulatePolicy, slaText, sodConflicts, validateDelegation,
 } from './platform-kit';
 import { HOLIDAYS_2026, TODAY } from '../_kit/data';
 import { APPROVALS } from './platform-data';
@@ -62,6 +62,14 @@ describe('approvals (PLT-04)', () => {
     expect(bulkApprovable(APPROVALS, ['a1', 'a4']).reason).toMatch(/low-risk/);
     expect(bulkApprovable(APPROVALS, ['a1', 'a3']).reason).toMatch(/one request type/);
     expect(bulkApprovable(APPROVALS, []).ok).toBe(false);
+    // Answer 2503: the same 100 cap both ways; any risk may be not approved together, not those decided on their own page.
+    const many = Array.from({ length: 101 }, (_, i) => ({ id: `x${i}`, type: 'Leave', lowRisk: true }));
+    expect(bulkApprovable(many, many.map((m) => m.id)).reason).toMatch(/100 requests or fewer/);
+    expect(bulkApprovable(many, many.slice(0, 100).map((m) => m.id)).ok).toBe(true);
+    expect(bulkNotApprovable(many, many.map((m) => m.id)).reason).toMatch(/100 requests or fewer/);
+    expect(bulkNotApprovable(APPROVALS, ['a1', 'a4']).ok).toBe(true);
+    expect(bulkNotApprovable([{ id: 'p', decideAt: '/yx/pay/x' }], ['p']).reason).toMatch(/own page/);
+    expect(bulkNotApprovable(APPROVALS, []).ok).toBe(false);
   });
 });
 

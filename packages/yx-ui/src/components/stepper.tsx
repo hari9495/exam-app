@@ -20,6 +20,21 @@ export function useNarrow(maxWidth = 767) {
   return narrow;
 }
 
+/** True only when the screen is at least this wide (false where the browser cannot tell: tests, server render). */
+export function useMinWidth(minWidth: number) {
+  const q = `(min-width: ${minWidth}px)`;
+  const [wide, setWide] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(q)?.matches);
+  useEffect(() => {
+    const m = window.matchMedia?.(q);
+    if (!m) return;
+    const h = () => setWide(m.matches);
+    h();
+    m.addEventListener('change', h);
+    return () => m.removeEventListener('change', h);
+  }, [q]);
+  return wide;
+}
+
 /* ------------------------------------------------------------------ Stepper (§19) */
 
 export type StepStatus = 'done' | 'current' | 'error' | 'locked' | 'todo' | 'open' | 'stopped';

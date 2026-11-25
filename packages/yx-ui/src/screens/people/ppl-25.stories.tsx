@@ -1,5 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AssetAcknowledgePhone, AssetRegister } from './assets';
+import { AssetPageScreen } from './asset-page';
+import { ASSET_PAGE } from './asset-page-samples';
 import { ASSETS } from './people-data';
 import { AddAssetDrawer } from './live/exits';
 import { ENTITY_CHOICES, JOINER_PLACES } from './people-data';
@@ -24,3 +26,10 @@ export const AddAsset: S = { name: 'Add asset · open', render: () => addAsset()
 export const AddAssetFilled: S = { name: 'Add asset · filled', render: () => addAsset(), play: play(...fillAsset) };
 export const AddAssetMissing: S = { name: 'Add asset · nothing filled, Add asset pressed', render: () => addAsset(), play: play(type(/^Asset tag/, '-bad tag'), press('Add asset')) };
 export const AddAssetFailed: S = { name: 'Add asset · the server refuses (tag already used)', render: () => addAsset(fails('Asset tag LT-0418 is already used by Dell Latitude 5440.')), play: play(...fillAsset, press('Add asset')) };
+
+// The asset page (IT assets plan, 26 Nov 2026): opened from the register's tag; Details and History; asset managers edit.
+export const AssetPage: S = { name: 'Asset page · details', render: () => <AssetPageScreen data={ASSET_PAGE} /> };
+export const AssetPageHistory: S = { name: 'Asset page · history', render: () => <AssetPageScreen data={ASSET_PAGE} tab="history" /> };
+export const AssetPageEdit: S = { name: 'Asset page · edit details', render: () => <AssetPageScreen data={ASSET_PAGE} editing /> };
+export const AssetPageReadOnly: S = { name: 'Asset page · view only (no asset.manage)', render: () => <AssetPageScreen data={{ ...ASSET_PAGE, canManage: false }} /> };
+export const AssetPageInStock: S = { name: 'Asset page · in stock, warranty ended', render: () => <AssetPageScreen data={{ ...ASSET_PAGE, holder: null, asset: { ...ASSET_PAGE.asset, status: 'in_stock', purchasedOn: '2023-03-01', warrantyMonths: 24, warrantyEndsOn: '2025-03-01' } }} /> };

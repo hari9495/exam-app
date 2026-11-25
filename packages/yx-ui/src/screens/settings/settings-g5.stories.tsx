@@ -1,8 +1,10 @@
 // Settings map · Group 5 · Documents & Communication (APX-D §3). One story per page plus a read-only variant.
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import type { ReactNode } from 'react';
 import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
 import { DocumentTypeDrawer, documentTypesPage, type DocTypeRow } from './document-types-live';
+import { EventEmailSheet, SenderAddressSheet } from './hiring-emails';
 import './settings.css';
 
 const meta: Meta = {
@@ -23,6 +25,18 @@ export const P5_3: S = { name: '5.3 Signatories & e-sign', render: () => <Settin
 export const P5_3_ReadOnly: S = { name: '5.3 Signatories & e-sign · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.3" readOnly /> };
 export const P5_4: S = { name: '5.4 Notifications', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.4" /> };
 export const P5_4_ReadOnly: S = { name: '5.4 Notifications · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.4" readOnly /> };
+// Answer 2429 (retiring /v2): the hiring emails' sheets: a sender address, an interview email, an approval email.
+const page54 = (sheet: ReactNode) => (
+  <>
+    <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.4" />
+    {sheet}
+  </>
+);
+const noop = async () => {};
+export const P5_4_SenderNew: S = { name: '5.4 Notifications · add sender address', render: () => page54(<SenderAddressSheet sender={null} canEdit onSave={noop} onClose={() => {}} />) };
+export const P5_4_SenderEdit: S = { name: '5.4 Notifications · edit sender address', render: () => page54(<SenderAddressSheet sender={{ id: 's1', label: 'Kaveri Foods Careers', address: 'careers@kaverifoods.in', isDefault: true }} canEdit onSave={noop} onDelete={noop} onClose={() => {}} />) };
+export const P5_4_InterviewEmail: S = { name: '5.4 Notifications · interview email (standard wording)', render: () => page54(<EventEmailSheet kind="interview" email={{ eventType: 'invite', subject: null, body: null, enabled: true, defaultSubject: 'Interview invitation: {{jobTitle}} at {{orgName}}', defaultBody: 'Hi {{candidateName}}, you are invited to interview for {{jobTitle}} at {{orgName}}. Proposed times: {{interviewTimes}}. Please confirm here: {{confirmLink}}' }} canEdit onSave={noop} onClose={() => {}} />) };
+export const P5_4_ApprovalEmail: S = { name: '5.4 Notifications · approval email, view only', render: () => page54(<EventEmailSheet kind="approval" email={{ eventType: 'approval.requested', subject: '{{actorName}} asks you to approve {{subjectLabel}}', body: 'Open it here: {{link}}', enabled: true }} canEdit={false} onClose={() => {}} />) };
 export const P5_5: S = { name: '5.5 WhatsApp & SMS', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.5" /> };
 export const P5_5_ReadOnly: S = { name: '5.5 WhatsApp & SMS · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.5" readOnly /> };
 export const P5_6: S = { name: '5.6 Announcements', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="5.6" /> };

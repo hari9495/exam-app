@@ -151,6 +151,24 @@ export function icIssues(members: IcMember[], today: Date): string[] {
   return issues;
 }
 
+/** Answer 2591: a committee member as the app records them (woman and term end may be missing on older rows). */
+export interface RecordedIcMember {
+  name: string;
+  role: 'presiding' | 'member' | 'external';
+  woman: boolean | null;
+  since: string;
+  termEndsOn: string | null;
+}
+/** The YX-POSH-01 checks on recorded members; a member with no woman or term end recorded is named instead of guessed.
+ *  Seniority is not recorded: the set-up asks for a senior woman as presiding officer, so presiding counts as senior. */
+export function recordedIcIssues(members: RecordedIcMember[], today: Date): string[] {
+  const day = (s: string) => new Date(`${s}T00:00:00`);
+  const missing = members.filter((m) => m.woman === null || !m.termEndsOn).map((m) => `${m.name}: woman or term end not recorded`);
+  const known = members.map((m) => ({ name: m.name, role: m.role, woman: Boolean(m.woman), senior: m.role === 'presiding', tenureFrom: day(m.since), tenureTo: m.termEndsOn ? day(m.termEndsOn) : addDays(today, 1) }));
+  if (!members.some((m) => m.role === 'presiding')) return ['Name a presiding officer', ...icIssues(known, today).filter((i) => !i.startsWith('Presiding')), ...missing];
+  return [...icIssues(known, today), ...missing];
+}
+
 /* ---------------- Expenses (M05) ---------------- */
 
 export interface ExpenseRule {

@@ -6,3 +6,4 @@
 .yx-console__list > li { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-2); }
 .yx-console__who { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-1); }
 @media (max-width: 1023px) { .yx-console__split { grid-template-columns: minmax(0, 1fr); } }
+.yx-console__search { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--yx-space-2); }

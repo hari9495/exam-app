@@ -2,6 +2,9 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import { InterviewsService } from './interviews.service';
 import { INTERVIEW_EMAIL_DEFAULTS } from './interview-email-types';
 
+// Answer 2510: the interview hours and holiday calendars are tested in interview-hours.spec.ts; here every hour is open.
+jest.mock('./interview-hours', () => ({ interviewBookingRules: jest.fn().mockResolvedValue({ businessHours: null, holidays: [] }) }));
+
 // Careers answers 356/362: the public brand read has its own tests (e2e); stub it here.
 jest.mock('../public-applications/public-brand', () => ({ publicBrand: jest.fn(async () => ({ orgName: 'Acme', orgLogo: null, careersSlug: null, accent: null, whiteLabel: false })) }));
 
@@ -514,7 +517,7 @@ describe('InterviewsService', () => {
     beforeEach(() => {
       tx.interview.findUnique.mockResolvedValue(baseResolvedInterview());
       tx.pipelineEntry.findUnique.mockResolvedValue({ job: { title: 'Backend Engineer' } });
-      tx.organization.findUnique.mockResolvedValue({ name: 'Acme', businessHoursJson: null, holidaysJson: null });
+      tx.organization.findUnique.mockResolvedValue({ name: 'Acme' });
       tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
       tx.user.findMany.mockResolvedValue([{ name: 'Priya Singh' }]);
     });
@@ -657,7 +660,7 @@ describe('InterviewsService', () => {
         job: { title: 'Backend Engineer' },
         candidate: { name: 'Asha Rao', email: 'asha@example.com' },
       });
-      tx.organization.findUnique.mockResolvedValue({ name: 'Acme', businessHoursJson: null, holidaysJson: null });
+      tx.organization.findUnique.mockResolvedValue({ name: 'Acme' });
       tx.user.findUnique.mockResolvedValue({ email: 'recruiter@example.com' });
       tx.interviewPanelist.findMany.mockResolvedValue([{ userId: 'panelist-1' }]);
       tx.user.findMany.mockResolvedValue([{ email: 'panelist@example.com', name: 'Jane Doe' }]);

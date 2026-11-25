@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
+import { Body, ConflictException, Controller, Delete, ForbiddenException, Get, GoneException, HttpCode, Param, ParseUUIDPipe, Patch, Post, Redirect, Req, Res, StreamableFile, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { ScopeUser } from '../access/scope';
 import { assertOwnSession } from '../service-desk/desk-access';
@@ -10,17 +10,15 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { OffersService } from './offers.service';
-import { OfferTemplatesService } from './offer-templates.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
-import { CreateOfferTemplateDto } from './dto/create-offer-template.dto';
-import { UpdateOfferTemplateDto } from './dto/update-offer-template.dto';
+
+const TEMPLATES_MOVED = 'Offer templates moved to Settings › Letter templates. Add or change an offer letter there (letter type "offer").';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class OffersController {
   constructor(
     private readonly offers: OffersService,
-    private readonly offerTemplates: OfferTemplatesService,
     private readonly builder: OfferBuilderService,
   ) {}
 
@@ -90,9 +88,9 @@ export class OffersController {
 
   @Post('offers/:id/send')
   @RequirePermissions('pipeline:manage')
-  sendOffer(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Req() req: Request) {
+  async sendOffer(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Req() req: Request) {
     assertOwnSession(req);
-    return this.offers.sendOffer(tenant, userId, id);
+    return this.offers.sendOffer(tenant, userId, id, { seesPay: await this.builder.canSeePay(req.user as ScopeUser) });
   }
 
   @Post('offers/:id/withdraw')
@@ -114,46 +112,33 @@ export class OffersController {
   @RequirePermissions('pipeline:manage')
   async cancelOfferApproval(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Req() req: Request) {
     assertOwnSession(req);
-    // An older request (from before HIR-09) is cancelled on the older engine.
-    if (!(await this.builder.cancelApproval(tenant, userId, id))) return this.offers.cancelOfferApproval(tenant, userId, id);
+    // P03 only: the older engine is retired and its waiting requests were moved (answer 2511).
+    if (!(await this.builder.cancelApproval(tenant, userId, id))) throw new ConflictException('This offer is not waiting for approval.');
   }
 
-  @Get('offer-template/default')
+  // Answer 2515: offer templates are Letters 'offer' templates now (Settings › Letter templates, 5.2).
+  @Get(['offer-template', 'offer-template/default'])
   @RequirePermissions('pipeline:manage')
-  getDefaultTemplate(@CurrentTenant() tenant: TenantContext) {
-    return this.offerTemplates.getDefault(tenant);
-  }
-
-  @Get('offer-template')
-  @RequirePermissions('pipeline:manage')
-  listTemplates(@CurrentTenant() tenant: TenantContext) {
-    return this.offerTemplates.list(tenant);
+  @Redirect('/yx/settings/letters', 301)
+  templatesMoved() {
+    return undefined;
   }
 
   @Post('offer-template')
   @RequirePermissions('pipeline:manage')
-  createTemplate(
-    @CurrentTenant() tenant: TenantContext,
-    @CurrentUserId() userId: string,
-    @Body() dto: CreateOfferTemplateDto,
-  ) {
-    return this.offerTemplates.create(tenant, userId, dto);
+  templateAddMoved() {
+    throw new GoneException(TEMPLATES_MOVED);
   }
 
   @Patch('offer-template/:id')
   @RequirePermissions('pipeline:manage')
-  updateTemplate(
-    @CurrentTenant() tenant: TenantContext,
-    @CurrentUserId() userId: string,
-    @Param('id') id: string,
-    @Body() dto: UpdateOfferTemplateDto,
-  ) {
-    return this.offerTemplates.update(tenant, userId, id, dto);
+  templateChangeMoved() {
+    throw new GoneException(TEMPLATES_MOVED);
   }
 
   @Delete('offer-template/:id')
   @RequirePermissions('pipeline:manage')
-  removeTemplate(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
-    return this.offerTemplates.remove(tenant, userId, id);
+  templateRemoveMoved() {
+    throw new GoneException(TEMPLATES_MOVED);
   }
 }

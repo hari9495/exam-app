@@ -187,6 +187,8 @@ screens are in `screens/hiring/projects.tsx` and `projects-billing.tsx`. One sto
 | LiveLoading · Live · loading | live | P-2 live state |
 | LiveError · Live · error | live | P-2 live state |
 | LiveMismatch · Live · timesheet against attendance | live | P-4 live state (1541) |
+| ByPerson · PM · by person (batch D B1) | live | Batch D B1 (2538): a By project / By person Segment regroups the same lines (never widens; `employeeId` per item from the API); each week opens in place into days and tasks (kit `TimesheetWeekDrill`, Data/Timesheet "Approver drill-down" stories; `days` per line from the API). No phone layout (2540) |
+| LiveByPerson · Live · by person | live | Batch D B1 live state |
 
 #### PRJ-08 · Timesheet mapping rules
 

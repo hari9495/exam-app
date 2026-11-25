@@ -21,7 +21,7 @@ import { Segment } from '../../components/segment';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { useToast } from '../../components/notify';
-import { countText, formatDate } from '../../lib/format';
+import { countText, formatDate, heldBackText } from '../../lib/format';
 import { dayKey } from '../../lib/dates';
 import type { Choice, CycleInput, CycleStage, Disagreement, EligibilityRow, EntryInput, PeerConfig, PeerGroups, Preflight, ReviewCycle, ReviewDetail, ReviewEntry, TemplateKind } from '../performance/live/types';
 import { CalibrationPlan, ConfidentialTag, PotentialChoice, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type PlannedSession } from './growth-kit';
@@ -840,7 +840,7 @@ function ReviewBody({ live, r }: { live: LiveReviewWorkspace; r: ReviewDetail })
               </li>
             ))}
           </ul>
-          {live.peer.heldBack > 0 && <InlineAlert tone="info">{live.peer.heldBack} anonymous responses are held back: fewer than 3 in the group, so they can’t be shown without identifying someone.</InlineAlert>}
+          {live.peer.heldBack > 0 && <InlineAlert tone="info">{heldBackText(live.peer.heldBack)}</InlineAlert>}
         </>
       )}
     </Card>

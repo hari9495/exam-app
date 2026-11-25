@@ -3,9 +3,12 @@ import { acceptanceCopy } from '../documents/letters/pdf';
 import { FilesService } from '../documents/files.service';
 import { createHash, randomUUID } from 'crypto';
 import { minorHold } from '../talent-crm/minor';
-import type { Tx } from '../org-structure/org-structure.service';
+import type { CompanyContext, Tx } from '../org-structure/org-structure.service';
+import { LettersService } from '../documents/letters/letters.service';
+import { offerLetterData, offerLetterTemplate } from './offer-letters';
+import { FIELDS } from '../documents/letters/fields';
 import { todayIst } from '../org-structure/org-validation';
-import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Offer, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
@@ -15,7 +18,7 @@ import { OfferTemplatesService } from './offer-templates.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { buildOfferPdf } from './offer-pdf';
 import { renderOfferTemplate } from './offer-render';
-import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
+import { ApprovalsService, ApprovalSummary } from '../approvals/approvals.service';
 import { OtpService } from '../auth/otp.service';
 import { publicBrand } from '../public-applications/public-brand';
 
@@ -42,7 +45,27 @@ export class OffersService {
     @Optional() private readonly internal?: InternalApplicationsService,
     // Answer 377: the sealed copy of an e-signed offer is stored like a letter's (private, the files table).
     @Optional() private readonly files?: FilesService,
+    // M10 D4 (answer 2524): an offer from a Letters 'offer' template is issued as a P05 letter.
+    @Optional() private readonly letters?: LettersService,
   ) {}
+
+  /** A P05 offer's letter input for a preview (its live link is not made yet, so the letter says where it will go). */
+  private async offerPreviewInput(tx: Prisma.TransactionClient, org: string, offerId: string) {
+    const offer = await tx.offer.findFirst({ where: { id: offerId, organizationId: org }, include: { pipelineEntry: { include: { candidate: true, job: true } } } });
+    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
+    const t = await offerLetterTemplate(tx, org, offer.templateId);
+    if (!t) return null;
+    const c = { organizationId: org, isSuperAdmin: false } as CompanyContext;
+    const link = offer.offerToken ? `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/offer/${offer.offerToken}` : '(the candidate’s link is added when the offer is sent)';
+    return { templateId: t.id, ...(await offerLetterData(tx, c, offer, link)) };
+  }
+
+  /** The offer's issued P05 letter (the latest; an earlier version's is superseded), or null for an older offer. */
+  private offerLetter(tx: Prisma.TransactionClient, org: string, offerId: string) {
+    // Without Letters wired (older unit set-ups) there is no P05 letter to find.
+    if (!this.letters) return Promise.resolve(null);
+    return tx.letterIssue.findFirst({ where: { organizationId: org, subjectType: 'offer', subjectId: offerId, status: 'issued' }, orderBy: { issuedAt: 'desc' }, select: { id: true, referenceNo: true, sha256: true, acceptedAt: true } });
+  }
 
   async createOffer(context: TenantContext, actorUserId: string, entryId: string, dto: CreateOfferDto): Promise<Offer> {
     // Template lookup opens its own forTenant read (see OfferTemplatesService.getDefault/getById),
@@ -106,11 +129,14 @@ export class OffersService {
     if (o.status !== 'accepted' || !o.esign || !ev?.at) throw new ConflictException('Only an offer accepted with e-sign has a sealed copy.');
     try {
       if (!this.files) throw new Error('file storage is not set up');
-      const letter = o.pdfPath ? await this.blobStorage.downloadToBuffer(o.pdfPath) : await this.previewPdf(ctx, offerId);
+      // M10 D4: a P05 offer letter's own pages, reference and fingerprint; an older offer's PDF otherwise.
+      const issued = await this.tenantPrisma.forTenant(ctx, (tx) => this.offerLetter(tx, organizationId, offerId));
+      const p05 = issued && this.letters ? await this.letters.offerLetterPdf(organizationId, issued.id) : null;
+      const letter = p05 ? p05.pdf : o.pdfPath ? await this.blobStorage.downloadToBuffer(o.pdfPath) : await this.previewPdf(ctx, offerId);
       const copy = await acceptanceCopy(letter, {
-        title: o.letterSubject.slice(0, 120) || 'Offer letter',
-        referenceNo: `Offer ${o.id.slice(0, 8)}`,
-        letterSha256: createHash('sha256').update(letter).digest('hex'),
+        title: p05 ? p05.title.split(':')[0]! : o.letterSubject.slice(0, 120) || 'Offer letter',
+        referenceNo: p05 ? p05.referenceNo : `Offer ${o.id.slice(0, 8)}`,
+        letterSha256: p05 ? p05.sha256 : createHash('sha256').update(letter).digest('hex'),
         who: `${o.pipelineEntry.candidate.name} (${o.pipelineEntry.candidate.email})`,
         at: ev.at,
         channel: ev.channel === 'sms' ? 'text message' : 'email',
@@ -123,6 +149,8 @@ export class OffersService {
         await tx.file.update({ where: { id: file.id }, data: { scanStatus: 'clean', scanDetail: 'generated by YukthiX', scannedAt: new Date() } });
         const n = await tx.offer.updateMany({ where: { id: o.id, organizationId, acceptanceFileId: null }, data: { acceptanceFileId: file.id } });
         if (!n.count) return { fileId: (await tx.offer.findUniqueOrThrow({ where: { id: o.id }, select: { acceptanceFileId: true } })).acceptanceFileId! };
+        // The P05 letter records its acceptance once (the letters guard): when, and the sealed copy.
+        if (p05) await tx.letterIssue.updateMany({ where: { organizationId, id: p05.id, acceptedAt: null }, data: { acceptedAt: new Date(ev.at!), acceptanceFileId: file.id } });
         await this.audit.record(ctx, { actorUserId: null, action: 'offer.esign_copy_made', entityType: 'offer', entityId: o.id, metadata: { fileId: file.id, sha256: createHash('sha256').update(copy).digest('hex') } });
         return { fileId: file.id };
       });
@@ -144,6 +172,12 @@ export class OffersService {
   }
 
   async previewPdf(context: TenantContext, offerId: string): Promise<Buffer> {
+    // M10 D4: once issued, the offer's letter is its P05 letter (the same pages the candidate has).
+    const issued = this.letters ? await this.tenantPrisma.forTenant(context, (tx) => this.offerLetter(tx, context.organizationId as string, offerId)) : null;
+    if (issued) return (await this.letters!.offerLetterPdf(context.organizationId as string, issued.id)).pdf;
+    // Not issued yet: a P05 offer previews its letter with the same fill as the send (read-only, marked as a preview).
+    const p05 = this.letters ? await this.tenantPrisma.forTenant(context, (tx) => this.offerPreviewInput(tx, context.organizationId as string, offerId)) : null;
+    if (p05) return this.letters!.previewOffer(context.organizationId as string, p05);
     const loaded = await this.tenantPrisma.forTenant(context, async (tx) => {
       const orgId = context.organizationId as string;
       const offer = await tx.offer.findFirst({
@@ -204,10 +238,16 @@ export class OffersService {
     return this.withApprovalSummaries(context, offers);
   }
 
-  // One batched getSummariesFor call for the whole list, not one per offer -- avoids N+1.
+  // The P03 approval timeline of each offer (one batched read), in the summary shape the offer lists read.
   private async withApprovalSummaries(context: TenantContext, offers: Offer[]): Promise<(Offer & { approval: ApprovalSummary | null })[]> {
-    const approvalByOfferId = await this.approvals.getSummariesFor(context, 'offer', offers.map((o) => o.id));
-    return offers.map((offer) => ({ ...offer, approval: approvalByOfferId.get(offer.id) ?? null }));
+    const ids = offers.flatMap((o) => (o.wfRequestId ? [o.wfRequestId] : []));
+    const reqs = ids.length ? await this.tenantPrisma.forTenant(context, (tx) => tx.wfRequest.findMany({ where: { organizationId: context.organizationId as string, id: { in: ids } } })) : [];
+    return offers.map((offer) => {
+      const r = reqs.find((x) => x.id === offer.wfRequestId);
+      if (!r) return { ...offer, approval: null };
+      const steps = (r.steps as { name: string; state: string }[]).map((st) => ({ name: st.name, state: (st.state === 'approved' || st.state === 'skipped' ? 'approved' : st.state === 'rejected' ? 'rejected' : 'pending') as 'pending' | 'approved' | 'rejected' }));
+      return { ...offer, approval: { status: r.status, currentStep: r.currentStep, steps } };
+    });
   }
 
   // Org-scoped status flips for the offer approval lifecycle -- mirrors
@@ -227,33 +267,7 @@ export class OffersService {
   }
 
   // Submits the offer through the approvals engine. Only a draft offer is eligible -- one
-  // already pending, approved, or sent has either cleared this gate already or isn't
-  // resubmittable. Mirrors PipelineService.submitRequisition's auto-pass/pending split.
-  async submitOffer(context: TenantContext, actorUserId: string, offerId: string): Promise<SubmitResult> {
-    const offer = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.offer.findFirst({ where: { id: offerId, organizationId: context.organizationId as string } }),
-    );
-    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
-    if (offer.status !== 'draft') throw new ConflictException('Only a draft offer can be submitted');
-
-    const result = await this.approvals.submit(context, 'offer', offerId, actorUserId);
-    if (result.status === 'approved') {
-      await this.markApproved(context, offerId);
-    } else {
-      await this.setOfferStatus(context, offerId, 'pending_approval');
-    }
-    return result;
-  }
-
-  // Cancels the offer's open approval request (permission-checked by ApprovalsService.cancel via
-  // isConfigurer) and puts the offer back in draft so it can be edited and resubmitted.
-  async cancelOfferApproval(context: TenantContext, actorUserId: string, offerId: string): Promise<void> {
-    const isConfigurer = await this.approvals.isConfigurer(context, actorUserId);
-    await this.approvals.cancelForSubject(context, 'offer', offerId, actorUserId, isConfigurer);
-    await this.markDraft(context, offerId);
-  }
-
-  async sendOffer(context: TenantContext, actorUserId: string, offerId: string): Promise<Offer> {
+   async sendOffer(context: TenantContext, actorUserId: string, offerId: string, opts: { seesPay?: boolean } = {}): Promise<Offer> {
     const orgId = context.organizationId as string;
 
     // Offer gate: when the org has an enabled offer approval chain, only an approved offer may
@@ -283,19 +297,40 @@ export class OffersService {
       }
       if (offer.pipelineEntry.candidate.erasedAt) throw new BadRequestException('Candidate has been erased');
 
-      const offerToken = randomUUID();
+      // A send that failed earlier keeps its link, so a letter already made for it (which prints the link) still works.
+      const offerToken = offer.offerToken ?? randomUUID();
+      const offerLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/offer/${offerToken}`;
+      // M10 D4 (answer 2524): a Letters 'offer' template is issued as a P05 letter with every letter field filled.
+      const letterTpl = await offerLetterTemplate(tx, orgId, offer.templateId);
+      // A letter that prints pay is issued only by someone who may see offer pay (P05 R1; bulk offers already need it).
+      if (letterTpl && opts.seesPay === false && letterTpl.fields.some((f) => FIELDS[f]?.cls === 'pay')) throw new ForbiddenException('This offer letter shows pay: sending it needs ats.offer.compensation.view.');
+      const c = { organizationId: orgId, isSuperAdmin: false, userId: actorUserId } as CompanyContext;
+      const p05 = letterTpl
+        ? {
+            templateId: letterTpl.id,
+            ...(await offerLetterData(tx, c, offer, offerLink)),
+            // The letter made for this version is used again after a failed email (LettersService.issueOffer).
+            since: (offer.currentVersion ? await tx.offerVersion.findFirst({ where: { organizationId: orgId, offerId, version: offer.currentVersion }, select: { createdAt: true } }) : null)?.createdAt ?? offer.createdAt,
+          }
+        : null;
       await tx.offer.update({ where: { id: offerId }, data: { offerToken } });
       const org = await tx.organization.findUnique({ where: { id: orgId }, select: { name: true, logoPath: true } });
       const actorName = actorUserId
         ? ((await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } }))?.name ?? '')
         : '';
       // Founder decision 4: e-sign only when the offer's template switches it on (accepting by the link otherwise).
-      const esign = offer.templateId ? Boolean((await tx.offerTemplate.findFirst({ where: { organizationId: orgId, id: offer.templateId }, select: { esign: true } }))?.esign) : false;
-      return { offer, candidate: offer.pipelineEntry.candidate, job: offer.pipelineEntry.job, org, actorName, offerToken, esign };
+      // Answer 2515: a Letters offer template's "person signs"; an offer drafted before the move keeps its old template's switch.
+      const esign = letterTpl
+        ? letterTpl.personSigns
+        : offer.templateId
+        ? Boolean((await tx.letterTemplate.findFirst({ where: { organizationId: orgId, id: offer.templateId }, select: { personSigns: true } }))?.personSigns ?? (await tx.offerTemplate.findFirst({ where: { organizationId: orgId, id: offer.templateId }, select: { esign: true } }))?.esign)
+        : false;
+      return { offer, candidate: offer.pipelineEntry.candidate, job: offer.pipelineEntry.job, org, actorName, offerToken, offerLink, esign, p05 };
     });
 
     // Phase 2 (outside any tx): rendering + network calls (PDF build, blob upload, SMTP send).
-    const offerLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/offer/${prep.offerToken}`;
+    if (prep.p05) return this.sendOfferLetter(context, actorUserId, { ...prep, p05: prep.p05 });
+    const offerLink = prep.offerLink;
     const rendered = renderOfferTemplate(prep.offer.letterSubject, prep.offer.letterBody, {
       candidateName: prep.candidate.name,
       jobTitle: prep.job.title,
@@ -355,6 +390,46 @@ export class OffersService {
         metadata: { to: prep.candidate.email, esign: prep.esign },
       });
       return updated;
+    });
+  }
+
+  /**
+   * M10 D4 phases 2 and 3 for a P05 offer: the letter is issued (numbered, made, stamped, signed for the entity by its
+   * signatory), then emailed with the letter attached and the link to answer it. A failed email leaves the offer approved
+   * with its link and letter, so Send again uses the same letter.
+   */
+  private async sendOfferLetter(context: TenantContext, actorUserId: string, prep: { offer: Offer; candidate: { name: string; email: string }; job: { title: string }; org: { name: string; logoPath: string | null } | null; offerLink: string; esign: boolean; p05: { templateId: string; legalEntityId: string; since: Date; data: Record<string, string | boolean> } }): Promise<Offer> {
+    const orgId = context.organizationId as string;
+    if (!this.letters) throw new ServiceUnavailableException('Offer letters are not available right now. Try again later.');
+    const letter = await this.letters.issueOffer(orgId, actorUserId, { offerId: prep.offer.id, candidateId: prep.offer.candidateId, candidateName: prep.candidate.name, templateId: prep.p05.templateId, legalEntityId: prep.p05.legalEntityId, since: prep.p05.since, data: prep.p05.data });
+    const company = String(prep.p05.data.legal_entity || prep.org?.name || '');
+    const logoUrl = prep.org?.logoPath ? await this.blobStorage.signIfOurs(prep.org.logoPath, LOGO_SIGN_TTL_MS) : null;
+    const answerBy = String(prep.p05.data.offer_expiry);
+    const html = buildCandidateEmailHtml({
+      logoUrl: logoUrl as string | null,
+      orgName: prep.org?.name ?? null,
+      bodyText: [
+        `Dear ${String(prep.p05.data.first_name) || prep.candidate.name},`,
+        `${company} is pleased to offer you the role of ${prep.job.title}. Your offer letter ${letter.referenceNo} is attached.`,
+        prep.esign ? `Read it and sign it with a one-time code by ${answerBy}: ${prep.offerLink}` : `Read it and answer by ${answerBy}: ${prep.offerLink}`,
+      ].join('\n\n'),
+    });
+    const result = await this.emailService.send({
+      to: prep.candidate.email,
+      subject: `Your offer from ${company} for ${prep.job.title}`.slice(0, 200),
+      html,
+      organizationId: orgId,
+      attachments: [{ filename: `${letter.referenceNo.replace(/[^A-Za-z0-9]+/g, '-')}.pdf`, content: letter.pdf }],
+    });
+    return this.tenantPrisma.forTenant(context, async (tx) => {
+      if (!result.success) {
+        await this.audit.record(context, { actorUserId, action: 'offer.send_failed', entityType: 'offer', entityId: prep.offer.id, metadata: { to: prep.candidate.email, letterId: letter.id } });
+        return prep.offer;
+      }
+      const n = await tx.offer.updateMany({ where: { id: prep.offer.id, organizationId: orgId, status: 'approved' }, data: { status: 'sent', pdfPath: null, sentAt: new Date(), sentByUserId: actorUserId, esign: prep.esign } });
+      if (!n.count) throw new ConflictException('This offer changed meanwhile. Reload it.');
+      await this.audit.record(context, { actorUserId, action: 'offer.sent', entityType: 'offer', entityId: prep.offer.id, metadata: { to: prep.candidate.email, esign: prep.esign, letterId: letter.id, referenceNo: letter.referenceNo } });
+      return tx.offer.findUniqueOrThrow({ where: { id: prep.offer.id } });
     });
   }
 
@@ -419,6 +494,8 @@ export class OffersService {
     );
 
     const pdfUrl = offer.pdfPath ? ((await this.blobStorage.signIfOurs(offer.pdfPath, PDF_SIGN_TTL_MS)) as string | null) : null;
+    // M10 D4: a P05 letter is downloaded from GET /public/offers/:token/letter (the page builds the address).
+    const letter = await this.tenantPrisma.forTenant({ organizationId: offer.organizationId, isSuperAdmin: false }, (tx) => this.offerLetter(tx, offer.organizationId, offer.id));
 
     return {
       jobTitle: details.jobTitle,
@@ -432,7 +509,18 @@ export class OffersService {
       pdfUrl,
       // HIR-09: the candidate signs with a one-time code only when the company's template asks for it.
       esign: offer.esign,
+      letter: letter ? { referenceNo: letter.referenceNo } : null,
     };
+  }
+
+  /** M10 D4: the offer's issued P05 letter for the candidate, by the offer's link (while the link is live). */
+  async publicLetter(token: string): Promise<{ file: Buffer; name: string }> {
+    const offer = await this.resolveOfferByToken(token);
+    if (!['sent', 'accepted', 'declined'].includes(offer.status) || !this.letters) throw new NotFoundException('Offer not found');
+    const l = await this.tenantPrisma.forTenant({ organizationId: offer.organizationId, isSuperAdmin: false }, (tx) => this.offerLetter(tx, offer.organizationId, offer.id));
+    if (!l) throw new NotFoundException('Offer not found');
+    const p = await this.letters.offerLetterPdf(offer.organizationId, l.id);
+    return { file: p.pdf, name: `${p.referenceNo.replace(/[^A-Za-z0-9]+/g, '-')}.pdf` };
   }
 
   private esignKey = (offerId: string) => `offer-esign:${offerId}`;
@@ -461,6 +549,7 @@ export class OffersService {
     if (offer.expiresAt < new Date()) throw new ConflictException('This offer has expired');
 
     const context = { organizationId: offer.organizationId, isSuperAdmin: true };
+    const letter = await this.tenantPrisma.forTenant({ organizationId: offer.organizationId, isSuperAdmin: false }, (tx) => this.offerLetter(tx, offer.organizationId, offer.id));
     const newStatus = action === 'accept' ? 'accepted' : 'declined';
     // HIR-09 e-sign (the template switched it on): accepting needs the disclosure read and the emailed one-time code;
     // the evidence (when, from where, the letter's fingerprint) is kept on the offer. Declining never needs a code.
@@ -469,7 +558,7 @@ export class OffersService {
       if (!sign.disclosureAccepted) throw new BadRequestException({ statusCode: 400, code: 'ESIGN_DISCLOSURE', message: 'Read and accept how electronic signing works first.' });
       if (!sign.code || !this.otp) throw new BadRequestException({ statusCode: 400, code: 'ESIGN_CODE', message: 'Enter the code we emailed you to sign the offer.' });
       if (!(await this.otp.check(this.esignKey(offer.id), sign.code))) throw new UnauthorizedException('That code is not right or has expired. Ask for a new one.');
-      esignEvidence = { at: new Date().toISOString(), ip: sign.ip ?? null, device: sign.device?.slice(0, 300) ?? null, channel: 'email', assurance: 'one-time code', letterSha256: createHash('sha256').update(offer.letterBody).digest('hex') };
+      esignEvidence = { at: new Date().toISOString(), ip: sign.ip ?? null, device: sign.device?.slice(0, 300) ?? null, channel: 'email', assurance: 'one-time code', letterSha256: letter?.sha256 ?? createHash('sha256').update(offer.letterBody).digest('hex'), ...(letter ? { referenceNo: letter.referenceNo } : {}) };
     }
 
     const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
@@ -485,12 +574,14 @@ export class OffersService {
       if (result.count === 0) {
         throw new ConflictException('This offer is no longer available');
       }
+      // A P05 letter accepted by the link records when (the sealed copy records an e-signed one).
+      if (letter && action === 'accept' && !esignEvidence) await tx.letterIssue.updateMany({ where: { organizationId: offer.organizationId, id: letter.id, acceptedAt: null }, data: { acceptedAt: respondedAt } });
       await this.audit.record(context, {
         actorUserId: null,
         action: action === 'accept' ? 'offer.accepted' : 'offer.declined',
         entityType: 'offer',
         entityId: offer.id,
-        ...(esignEvidence ? { metadata: { esign: true } } : {}),
+        ...(esignEvidence || letter ? { metadata: { ...(esignEvidence ? { esign: true } : {}), ...(letter ? { letterId: letter.id, referenceNo: letter.referenceNo } : {}) } } : {}),
       });
       return { ...offer, status: newStatus, respondedAt } as Offer;
     });

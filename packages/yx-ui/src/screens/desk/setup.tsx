@@ -10,6 +10,7 @@ import { NumberField, TextArea, TextField, TimeField } from '../../components/in
 import { Checkbox, Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
+import { DeskSetupTransfer, type LiveDeskTransfer } from './setup-transfer';
 import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Dialog } from '../../components/overlay';
@@ -58,13 +59,13 @@ export interface DeskSetupScreenProps {
   onCreateDesk: (input: { name: string; key: string; kind: DeskKind }) => Promise<void>;
   /** Answers 1641, 1650: add or change one of the desk's own ticket fields. */
   onSaveField?: (id: string | null, input: DeskFieldInput) => Promise<unknown>;
-  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons' | 'closedMessage'>> & { nextNumber?: number }) => Promise<void>;
+  onUpdateDesk: (change: Partial<Pick<DeskSummary, 'name' | 'privacy' | 'numberPrefix' | 'numberSuffix' | 'attachmentTypes' | 'attachmentMaxMb' | 'vipRaisesPriority' | 'calendarId' | 'resolutionRequired' | 'reopenWindowDays' | 'requesterCanReopen' | 'autoCloseDays' | 'chaseEnabled' | 'chaseMax' | 'chaseSolveDays' | 'routingWaitMinutes' | 'atRiskPercent' | 'ratingReasons' | 'closedMessage'>> & { nextNumber?: number }) => Promise<void>;
   onSearchUsers: (q: string) => Promise<{ id: string; name: string | null; email: string }[]>;
   onSeatCost: (userId: string, role: DeskRole) => Promise<SeatCost>;
   onAddMember: (input: { userId: string; role: DeskRole; tier?: string }) => Promise<void>;
   onEndMember: (memberId: string) => Promise<void>;
   onSaveGroup: (id: string | null, input: { name: string; assignmentMethod: DeskGroup['assignmentMethod']; maxOpenPerAgent: number | null; memberIds: string[]; active: boolean }) => Promise<void>;
-  onSaveCategory: (id: string | null, input: { name: string; parentId: string | null; sensitive: boolean; defaultGroupId: string | null; active: boolean }) => Promise<void>;
+  onSaveCategory: (id: string | null, input: { name: string; parentId: string | null; sensitive: boolean; defaultGroupId: string | null; active: boolean; answeredBy?: 'desk' | 'manager' }) => Promise<void>;
   onSaveType: (id: string | null, input: { name: string; kind?: 'incident' | 'request' | 'question'; active?: boolean }) => Promise<void>;
   onSaveStatus: (id: string | null, input: { label: string; systemState?: SystemState; active?: boolean }) => Promise<void>;
   onSaveMatrix: (cells: { impact: number; urgency: number; priority: number }[]) => Promise<void>;
@@ -90,6 +91,8 @@ export interface DeskSetupScreenProps {
   /** 3b-2 batch 1 tabs, built by the page (each only for people who hold its key). */
   catalog?: ReactNode;
   rules?: ReactNode;
+  /** Batch F GLPI 10 (answer 2574): copy this desk's set-up as a file, and import one (desk.settings.manage). */
+  transfer?: LiveDeskTransfer;
   /** 3b-2 batch 2 tabs (lifecycles, schedules, live chat, organisation), each only for people who hold its key. */
   more?: { value: string; label: string; node: ReactNode }[];
   banners?: BannerSetupProps;
@@ -243,6 +246,7 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
           {props.banners && <TabsTrigger value="banners">Banners</TabsTrigger>}
           {props.catalog && <TabsTrigger value="catalog">Catalogue</TabsTrigger>}
           {props.rules && <TabsTrigger value="rules">Rules</TabsTrigger>}
+          {props.transfer && props.detail?.canSetUp && <TabsTrigger value="transfer">Copy set-up</TabsTrigger>}
           {props.more?.map((m) => (
             <TabsTrigger key={m.value} value={m.value}>
               {m.label}
@@ -308,6 +312,7 @@ function DeskTabs(props: DeskSetupScreenProps & { detail: DeskDetail }) {
         )}
         {props.catalog && <TabsContent value="catalog">{props.catalog}</TabsContent>}
         {props.rules && <TabsContent value="rules">{props.rules}</TabsContent>}
+        {props.transfer && props.detail?.canSetUp && <TabsContent value="transfer"><DeskSetupTransfer live={props.transfer} /></TabsContent>}
         {props.more?.map((m) => (
           <TabsContent key={m.value} value={m.value}>
             {m.node}
@@ -486,6 +491,8 @@ function CategoriesTab(props: TabProps) {
   const [parentId, setParentId] = useState<string | null>(null);
   const [sensitive, setSensitive] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(d.groups[0]?.id ?? null);
+  // Batch F item 33 (answer 2573): the requester's manager may answer a category; never a sensitive one.
+  const [answeredBy, setAnsweredBy] = useState<'desk' | 'manager'>('desk');
   const { busy, error, run } = useRun();
   const early = useTooEarly(!name.trim() ? [{ fieldId: 'dc-name', message: 'Name the category.' }] : []);
   const top = d.categories.filter((c) => !c.parentId);
@@ -501,6 +508,7 @@ function CategoriesTab(props: TabProps) {
               <span className="yx-ops-list__sub">
                 {d.groups.find((g) => g.id === c.defaultGroupId)?.name ?? 'No group'}
                 {c.sensitive ? ' · sensitive: agents only' : ''}
+                {c.answeredBy === 'manager' ? ' · answered by the requester’s manager' : ''}
                 {c.active ? '' : ' · off'}
               </span>
             </span>
@@ -524,9 +532,12 @@ function CategoriesTab(props: TabProps) {
             <FormField label="Group that gets these tickets">
               <Select value={groupId} onChange={setGroupId} clearable options={d.groups.map((g) => ({ value: g.id, label: g.name }))} />
             </FormField>
-            <Checkbox checked={sensitive} onChange={setSensitive} label="Sensitive" description="Tickets in it are seen only by this desk’s agents and leads, never by admins." />
+            <Checkbox checked={sensitive} onChange={(v) => { setSensitive(v); if (v) setAnsweredBy('desk'); }} label="Sensitive" description="Tickets in it are seen only by this desk’s agents and leads, never by admins." />
+            <FormField label="Who answers" helper={sensitive ? 'A sensitive category is always answered by the desk.' : 'With no manager, the desk answers. The desk can still see these tickets.'}>
+              <Segment label="Who answers" value={answeredBy} disabled={sensitive} onChange={setAnsweredBy} options={[{ value: 'desk', label: 'The desk' }, { value: 'manager', label: 'The requester’s manager' }]} />
+            </FormField>
             <div className="yx-ops-row">
-              <Button variant="primary" loading={busy === 'add'} onClick={() => !early.stop() && void run('add', async () => { await props.onSaveCategory(null, { name: name.trim(), parentId, sensitive, defaultGroupId: groupId, active: true }); setName(''); })}>
+              <Button variant="primary" loading={busy === 'add'} onClick={() => !early.stop() && void run('add', async () => { await props.onSaveCategory(null, { name: name.trim(), parentId, sensitive, defaultGroupId: groupId, active: true, answeredBy: sensitive ? 'desk' : answeredBy }); setName(''); setAnsweredBy('desk'); })}>
                 Add category
               </Button>
             </div>
@@ -796,6 +807,12 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
   const [reopenDays, setReopenDays] = useState<number | null>(x.reopenWindowDays ?? 7);
   const [canReopen, setCanReopen] = useState(x.requesterCanReopen ?? true);
   const [closeDays, setCloseDays] = useState<number | null>(x.autoCloseDays === undefined ? 3 : x.autoCloseDays);
+  // Batch F GLPI 4 (answer 2571): chase a requester who does not answer.
+  const [chase, setChase] = useState(x.chaseEnabled ?? true);
+  const [chaseMax, setChaseMax] = useState<number | null>(x.chaseMax ?? 3);
+  const [chaseDays, setChaseDays] = useState<number | null>(x.chaseSolveDays ?? 5);
+  const [tried, setTried] = useState(false);
+  const chaseError = chase && (chaseMax ?? 0) >= (chaseDays ?? 0) ? 'Solve after more business days than the number of reminders.' : null;
   const [waitMinutes, setWaitMinutes] = useState<number | null>(x.routingWaitMinutes ?? 2);
   const [atRisk, setAtRisk] = useState(String(x.atRiskPercent ?? 80));
   const [reasons, setReasons] = useState((x.ratingReasons ?? []).join('\n'));
@@ -804,7 +821,10 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
   const { toast } = useToast();
   const can = props.detail.canSetUp;
   const tickets = props.part === 'tickets';
-  const save = () =>
+  const save = () => {
+    setTried(true);
+    // Never a disabled button: pressed with the chase days too few, the field says why and takes focus.
+    if (!tickets && chaseError) return void setTimeout(() => document.getElementById('desk-chase-days')?.focus(), 0);
     void run('save', async () => {
       await props.onUpdateDesk(
         tickets
@@ -826,12 +846,15 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
               requesterCanReopen: canReopen,
               reopenWindowDays: reopenDays ?? 7,
               autoCloseDays: closeDays,
+              chaseEnabled: chase,
+              ...(chase ? { chaseMax: chaseMax ?? 3, chaseSolveDays: chaseDays ?? 5 } : {}),
               ratingReasons: reasons.split('\n').map((r) => r.trim()).filter(Boolean),
               ...(closedMessage.trim() && closedMessage.trim() !== x.closedMessage ? { closedMessage: closedMessage.trim() } : {}),
             },
       );
       toast({ tone: 'success', title: 'Desk settings saved.' });
     });
+  };
   return (
     <div className="yx-ops-stack">
       <ReadOnly show={!can} />
@@ -886,6 +909,17 @@ function SettingsTab(props: TabProps & { part: 'tickets' | 'requesters' }) {
               <NumberField value={closeDays} onChange={setCloseDays} min={1} max={90} disabled={!can} />
             </FormField>
           </span>
+          <Switch label="Remind requesters who do not answer, then solve the ticket" checked={chase} onChange={setChase} disabled={!can} />
+          {chase && (
+            <span className="yx-ops-row">
+              <FormField label="Reminders, one a business day" helper="While a ticket waits for the requester. 0: none, solve only.">
+                <NumberField value={chaseMax} onChange={setChaseMax} min={0} max={10} disabled={!can} />
+              </FormField>
+              <FormField id="desk-chase-days" label="Solve after (business days with no reply)" helper="The requester can reply to reopen it within the reopen days." error={tried ? chaseError : null}>
+                <NumberField value={chaseDays} onChange={setChaseDays} min={1} max={30} disabled={!can} />
+              </FormField>
+            </span>
+          )}
           <FormField label="Message while closed" helper="The help centre and portal show it outside business hours. {opens} becomes the next opening time. Tickets people raise themselves then are marked “Raised outside hours” (not ones agents log).">
             <TextField value={closedMessage} onChange={setClosedMessage} maxLength={300} disabled={!can} />
           </FormField>

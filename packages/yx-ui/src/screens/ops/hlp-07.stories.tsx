@@ -15,6 +15,9 @@ export const List: S = { name: 'My cases (complainant, respondent, witness)', re
 export const ShowCauseReply: S = { name: 'Show-cause reply', render: () => <MyCasesScreen {...base} replyOpen /> };
 export const ExtensionAsked: S = { name: 'Show-cause · extension requested', render: () => <MyCasesScreen {...base} replyOpen extensionRequested /> };
 export const Replied: S = { name: 'Reply sent', render: () => <MyCasesScreen {...base} replied /> };
+// Batch F item 33 (answer 2573): a manager answers questions from their team (topics sent to managers).
+export const AskedList: S = { name: 'Manager · questions from my team', render: () => <MyCasesScreen {...base} asked="list" /> };
+export const AskedAnswer: S = { name: 'Manager · answer a question', render: () => <MyCasesScreen {...base} asked="answer" /> };
 export const Empty: S = { render: () => <MyCasesScreen {...base} cases={[]} state="empty" /> };
 export const Loading: S = { render: () => <MyCasesScreen {...base} state="loading" /> };
 export const Phone: S = { name: 'My cases · phone', globals: PHONE, render: () => <MyCasesScreen {...base} device="phone" /> };

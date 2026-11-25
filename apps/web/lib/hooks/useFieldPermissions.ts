@@ -4,13 +4,13 @@ import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
 
 // Web data layer for the Task 3 org field-permissions config endpoints. Mirrors
-// useBusinessHours/useUpdateBusinessHours in useBusinessHours.ts.
-export function useFieldPermissions() {
+// the other settings hooks.
+export function useFieldPermissions(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<FieldPermissionConfig>({
     queryKey: ['field-permissions'],
     queryFn: () => apiFetch('/organizations/field-permissions', {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
   });
 }
 

@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { Button } from './button';
 import { DataTable, tableToCsv, type TableColumn } from './table';
 import { FilterBar, summarise, type FilterFieldDef } from './filters';
-import { TimesheetGrid, checkTimesheet, type TimesheetLine } from './timesheet';
+import { TimesheetGrid, TimesheetWeekDrill, checkTimesheet, type TimesheetLine } from './timesheet';
 import type { FilterValue } from '../lib/table';
 
 interface Row {
@@ -292,3 +292,26 @@ describe('TimesheetGrid', () => {
   });
 });
 
+
+describe('TimesheetWeekDrill (batch D B1)', () => {
+  const lines = [
+    { id: 'a', label: 'NRP · Build', secondary: 'Priya Nair', days: [8, 6, 0, 0, 0, 0, 0] },
+    { id: 'b', label: 'NRP · Testing', secondary: 'Rohit Bhat', days: [0, 2, 0, 0, 0, 0, 0] },
+  ];
+  it('opens the week into days and a day into the tasks booked on it; an empty day does not open', async () => {
+    const user = userEvent.setup();
+    render(<TimesheetWeekDrill weekStart={new Date(2026, 10, 2)} lines={lines} />);
+    const week = screen.getByRole('button', { name: 'Week by day · 16 h' });
+    expect(week).toHaveAttribute('aria-expanded', 'false');
+    await user.click(week);
+    expect(week).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Wed 4 Nov 2026 · no hours')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Wed 4 Nov/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Tue 3 Nov 2026 · 8 h' }));
+    const tasks = within(screen.getByRole('list', { name: 'Tasks on Tue 3 Nov 2026' })).getAllByRole('listitem');
+    expect(tasks.map((t) => t.textContent)).toEqual(['NRP · BuildPriya Nair6 h', 'NRP · TestingRohit Bhat2 h']);
+    // Monday shows only the task booked that day.
+    await user.click(screen.getByRole('button', { name: 'Mon 2 Nov 2026 · 8 h' }));
+    expect(within(screen.getByRole('list', { name: 'Tasks on Mon 2 Nov 2026' })).getAllByRole('listitem')).toHaveLength(1);
+  });
+});

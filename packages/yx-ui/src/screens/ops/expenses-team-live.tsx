@@ -48,6 +48,8 @@ export function LiveTeamClaims({ live }: { live: LiveTeam }) {
     { key: 'amount', header: 'Amount', value: (r) => paise(r.approvedTotal ?? r.claimedTotal), render: (r) => money(r.currency, r.approvedTotal ?? r.claimedTotal) },
     { key: 'over', header: 'Over-limit lines', value: (r) => r.overLimit, render: (r) => (r.overLimit ? <Badge tone="warning">{r.overLimit}</Badge> : '—') },
     { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => <ClaimStatusBadges c={r} /> },
+    // Batch E A4 (2552): who each claim waits on.
+    { key: 'waiting', header: 'Waiting on', value: (r) => r.waitingOn ?? '', render: (r) => r.waitingOn ?? '—' },
   ];
   const body = (
     <>

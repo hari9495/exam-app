@@ -41,6 +41,7 @@ export default function YxSpeakUpPage() {
         onDone: () => router.push('/yx/desk/help'),
         checkHref: `/yx/speakup/${id(org)}/check`,
         accidentHref: '/yx/desk/accidents/report',
+        poshHref: '/yx/desk/posh',
         today: new Date(),
       }}
     />

@@ -14,6 +14,9 @@ export interface InterviewEmailTemplateSlot {
   subject: string | null;
   body: string | null;
   enabled: boolean;
+  /** The standard wording, used while the company has none of its own (Settings 5.4 starts the editor from it). */
+  defaultSubject: string;
+  defaultBody: string;
 }
 
 // A resolved template for one event: either the org's (enabled) copy or the built-in default.
@@ -38,8 +41,8 @@ export class InterviewEmailTemplatesService {
     return INTERVIEW_EMAIL_EVENT_TYPES.map((eventType) => {
       const row = byEventType.get(eventType);
       return row
-        ? { eventType, subject: row.subject, body: row.body, enabled: row.enabled }
-        : { eventType, subject: null, body: null, enabled: true };
+        ? { eventType, subject: row.subject, body: row.body, enabled: row.enabled, defaultSubject: INTERVIEW_EMAIL_DEFAULTS[eventType].subject, defaultBody: INTERVIEW_EMAIL_DEFAULTS[eventType].body }
+        : { eventType, subject: null, body: null, enabled: true, defaultSubject: INTERVIEW_EMAIL_DEFAULTS[eventType].subject, defaultBody: INTERVIEW_EMAIL_DEFAULTS[eventType].body };
     });
   }
 
@@ -49,6 +52,8 @@ export class InterviewEmailTemplatesService {
     }
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
+      // Answer 2429 (Settings 5.4): audited with before and after.
+      const was = await tx.interviewEmailTemplate.findUnique({ where: { organizationId_eventType: { organizationId, eventType } } });
       const row = await tx.interviewEmailTemplate.upsert({
         where: { organizationId_eventType: { organizationId, eventType } },
         update: { subject: dto.subject, body: dto.body, ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}) },
@@ -59,7 +64,7 @@ export class InterviewEmailTemplatesService {
         action: 'interview_email_template.saved',
         entityType: 'interview_email_template',
         entityId: row.id,
-        metadata: { eventType },
+        metadata: { eventType, before: was ? { subject: was.subject, body: was.body, enabled: was.enabled } : null, after: { subject: row.subject, body: row.body, enabled: row.enabled } },
       });
       return row;
     });

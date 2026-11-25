@@ -37,6 +37,9 @@ const routes = (perms: string[], settings: object = SETTINGS) =>
     if (path.startsWith('/rbac/me/permissions')) return perms;
     if (path === '/hiring/settings') return settings;
     if (path === '/hiring/scorecard-competencies') return [{ id: 'c1', name: 'Problem solving' }];
+    if (path === '/candidate-email-templates') return [{ id: null, name: 'Application received', triggerStageId: 's1', triggerMode: 'manual', subject: 'Thanks', body: 'Hi {{candidateName}}', enabled: true, isDefault: true }];
+    if (path === '/candidate-sms-templates') return [{ id: 'sm1', name: 'Interview nudge', triggerStageId: null, triggerMode: 'manual', body: 'See you soon', enabled: true, isDefault: false }];
+    if (path === '/candidate-whatsapp-templates') return [];
     throw new Error(`unexpected ${path}`);
   });
 
@@ -122,6 +125,38 @@ describe('Settings › Hiring (6.1, live)', () => {
     wrap(<YxHiringSettingsPage />);
     expect(await screen.findByText('Plant technician')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Add scorecard' })).not.toBeInTheDocument();
+  });
+
+  it('stage message templates (answer 2434): the pipeline key edits email, SMS and WhatsApp wording through their APIs', async () => {
+    routes(['pipeline:manage']);
+    wrap(<YxHiringSettingsPage />);
+    expect(await screen.findByText('Interview nudge')).toBeInTheDocument();
+    expect(screen.getByText('Sent by hand · Standard wording')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Edit Interview nudge' }));
+    let sheet = await screen.findByRole('dialog');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save template' }));
+    await waitFor(() => expect(calls).toEqual([['PATCH /candidate-sms-templates/sm1', { name: 'Interview nudge', triggerStageId: null, triggerMode: 'manual', body: 'See you soon', enabled: true }]]));
+    expect((await screen.findAllByText('Message template saved')).length).toBeGreaterThan(0);
+    calls.length = 0;
+    // The standard wording is saved as the company's own copy (a new row).
+    await ue.click(screen.getByRole('button', { name: 'Edit Application received' }));
+    sheet = await screen.findByRole('dialog');
+    await ue.click(within(sheet).getByRole('button', { name: 'Save template' }));
+    await waitFor(() => expect(calls).toEqual([['POST /candidate-email-templates', { name: 'Application received', triggerStageId: 's1', triggerMode: 'manual', subject: 'Thanks', body: 'Hi {{candidateName}}', enabled: true }]]));
+  });
+
+  it('stage message templates: not shown without the pipeline key; no Add or Edit while acting for someone else', async () => {
+    routes(['ats.settings.manage']);
+    const { unmount } = wrap(<YxHiringSettingsPage />);
+    expect(await screen.findByText('Plant technician')).toBeInTheDocument();
+    expect(screen.queryByText('Stage message templates')).not.toBeInTheDocument();
+    unmount();
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', impersonating: true, actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+    routes(['pipeline:manage']);
+    wrap(<YxHiringSettingsPage />);
+    expect(await screen.findByText('Interview nudge')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Add message template' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit Interview nudge' })).not.toBeInTheDocument();
   });
 
   it('default recruiter (answer 348): one who no longer qualifies shows a warning and reads as None', async () => {

@@ -156,7 +156,13 @@ describe('Performance batch PM5', () => {
     type L = { viewer: string; employee: string; cycle: string; sentAt: string | null; can: { send: boolean; decide: boolean } };
     expect(((await api('arjun', 'get', `/reviews/${ids.review}/nominations`).expect(200)).body as L)).toMatchObject({ viewer: 'employee', cycle: `FY ${run}`, sentAt: null, can: { send: true } });
     await api('priya', 'post', `/reviews/${ids.review}/nominations/send`).expect(403);
+    // Answer 2626: nothing on the manager's home until the list is sent.
+    type H = { actions: { id: string; title: string; href: string }[] };
+    const task = async (who: 'priya' | 'arjun') => ((await api(who, 'get', '/home').expect(200)).body as H).actions.find((x) => x.id === `nom-${ids.review}`);
+    expect(await task('priya')).toBeUndefined();
     await api('arjun', 'post', `/reviews/${ids.review}/nominations/send`).expect(200);
+    expect(await task('priya')).toMatchObject({ title: `Approve 360° reviewers · FY ${run}`, href: `/yx/performance/reviews/${ids.review}/nominations` });
+    expect(await task('arjun')).toBeUndefined();
     await api('arjun', 'post', `/reviews/${ids.review}/nominations/send`).expect(409);
     const after = (await api('arjun', 'get', `/reviews/${ids.review}/nominations`).expect(200)).body as L;
     expect(after.sentAt).toBeTruthy();
@@ -170,6 +176,7 @@ describe('Performance batch PM5', () => {
     await api('arjun', 'post', `/reviews/${ids.review}/nominations/approve-all`).expect(403);
     await api('adminB', 'post', `/reviews/${ids.review}/nominations/approve-all`).expect(404);
     expect((await api('priya', 'post', `/reviews/${ids.review}/nominations/approve-all`).expect(200)).body.approved).toBe(3);
+    expect(await task('priya')).toBeUndefined(); // decided: the task leaves the home
     expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.nomination.approved_all', entityId: ids.review } }))).toBeTruthy();
     await api('priya', 'post', `/nominations/${of(emp.sita)}/approve`).expect(409);
   });

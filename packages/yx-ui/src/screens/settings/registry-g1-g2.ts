@@ -25,7 +25,7 @@ export const GROUP_1: SettingsGroupDef = {
           title: 'Company',
           settings: [
             { key: 'org.company.name', label: 'Company name', kind: 'text', value: 'Kaveri Foods', helper: 'Shown in the app header, emails and the login page.', scope: 'Company', synonyms: ['company name', 'tenant name'] },
-            { key: 'org.company.logo', label: 'Logo', kind: 'image', value: 'kaveri-foods-logo.svg', helper: 'SVG or PNG, at least 256 px wide, on a transparent background.', synonyms: ['logo', 'brand'] },
+            { key: 'org.company.logo', label: 'Logo', kind: 'image', value: 'kaveri-foods-logo.svg', helper: 'PNG or JPEG, up to 2 MB, at least 256 px wide. Saved as soon as you choose it.', synonyms: ['logo', 'brand'] },
           ],
         },
         {

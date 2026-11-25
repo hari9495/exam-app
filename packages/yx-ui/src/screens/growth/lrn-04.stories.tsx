@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SessionsScreen } from './learn-admin';
 import { SESSION_PAGE, SESSIONS, TRAINERS, VIRTUAL_PAGE } from './learn-data';
+import { liveSessionPage, liveSessionsList } from './learn-feedback-samples';
 
 const meta: Meta = { title: 'Screens/Learning/LRN-04 · Sessions and trainers', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -18,3 +19,5 @@ export const TrainerPortal: S = { name: 'External trainer · portal session', re
 export const TrainerPortalList: S = { name: 'External trainer · my sessions', render: () => <SessionsScreen persona="trn" view="list" sessions={SESSIONS.filter((s) => s.trainer === 'Ramesh Kamath')} /> };
 export const Empty: S = { render: () => <SessionsScreen persona="ld" view="list" sessions={[]} trainers={TRAINERS} /> };
 export const Loading: S = { render: () => <SessionsScreen persona="ld" view="list" sessions={[]} state="loading" /> };
+export const LiveList: S = { name: 'Live · sessions list', render: () => <SessionsScreen live={liveSessionsList()} /> };
+export const LivePage: S = { name: 'Live · one session', render: () => <SessionsScreen livePage={liveSessionPage()} /> };

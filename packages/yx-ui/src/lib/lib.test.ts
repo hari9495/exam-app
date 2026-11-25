@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countText, formatBytes, formatDate, formatINR, formatPhone, formatTime, groupIndian, initials, parseDate, parseTime } from './format';
+import { countText, formatBytes, heldBackText, formatDate, formatINR, formatPhone, formatTime, groupIndian, initials, parseDate, parseTime } from './format';
 import { ID_SPECS, maskAadhaar, verhoeffValid } from './validators';
 
 describe('format', () => {
@@ -97,5 +97,13 @@ describe('countText', () => {
     expect(countText(120000, 'goal')).toBe('1,20,000 goals');
     expect(countText(1, 'person', 'people')).toBe('1 person');
     expect(countText(2, 'person', 'people')).toBe('2 people');
+  });
+});
+
+// Answer 2627: one held-back 360° answer is worded in the singular.
+describe('heldBackText', () => {
+  it('one and many', () => {
+    expect(heldBackText(1)).toBe('1 anonymous response is held back: fewer than 3 in the group, so it can’t be shown without identifying someone.');
+    expect(heldBackText(2)).toMatch(/^2 anonymous responses are held back: .* they can’t be shown/);
   });
 });

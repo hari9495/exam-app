@@ -27247,5 +27247,1370 @@
                               "Screens/Analytics/ANL-08 · Schedules and export log › Live · weekly hiring digest on / off / loading / could not load"
                     ],
                     "note": "Positive and negative (kit analytics-live.test.tsx; web yx-report-schedules.test.tsx; API hiring-dashboard.e2e-spec.ts and organizations.service.spec.ts). GET /organizations/scheduled-report-settings now also returns lastSentAt. The export log tab of ANL-08 waits for analytics exports."
+          },
+          {
+                    "id": "MT-V2-HIRE-SWITCHES",
+                    "area": "Retire /v2: record visibility and daily reminders on Settings 6.1 Hiring (answer 2427, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test; a recruiter with two candidates (one assigned to them, one to someone else); employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Recruiters see only their own candidates' and 'Send the hiring team daily reminders'.",
+                              "Turn 'Recruiters see only their own candidates' on and press Save changes.",
+                              "As the recruiter: open Hire › Candidates.",
+                              "As admin: turn it off again and save; turn on the daily reminders and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/record-visibility and /v2/settings/reminders.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: both switches, off by default, with what each does. No page scroll at 1278 x 635. Step 2: 5-second toast 'Hiring settings saved'. Step 3: only the candidate assigned to them (and any unassigned ones). Step 4: the recruiter sees every candidate again; the next daily sweep sends the reminders. Step 5: one entry per change with before and after. Step 6: Settings › Hiring. Step 7: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › Hiring"
+                    ],
+                    "note": "Positive and negative (kit hiring-live.test.tsx; API hiring-dashboard.e2e-spec.ts). The values stay on the company row (record-visibility RLS and the reminder sweep read them there)."
+          },
+          {
+                    "id": "MT-V2-HIRE-MESSAGES",
+                    "area": "Retire /v2: stage message templates on Settings 6.1 Hiring (answer 2434, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test (holds the pipeline key); employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Stage message templates'.",
+                              "Press Edit on 'Application received' (Email, standard wording). Change the message and press Save template.",
+                              "Press Add message template. Choose SMS, leave the name empty and press Save template.",
+                              "Enter a name 'Interview call', choose the Interview stage, choose 'Ask before sending', enter a message and save.",
+                              "Paste a message longer than 1600 characters into an SMS template and save.",
+                              "Edit 'Application received' again: choose 'Send automatically' and save. On a job board, move a candidate to Applied (or add one).",
+                              "Open the 'Interview call' template and press Delete template, then confirm.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/message-templates, /v2/sms-templates and /v2/whatsapp-templates.",
+                              "Start acting as another person (Support › Act as) and open Settings › Hiring.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: a list with each template, how it is sent (Email, SMS, WhatsApp), its stage and when it is sent; no page scroll at 1278 x 635. Step 2: 5-second toast 'Message template saved'; the row no longer says Standard wording. Step 3: nothing saved, 'Enter the name.' under Name and the cursor is in Name; the button is never greyed out. Step 4: saved with a toast; the row shows SMS, Interview, Ask before sending. Step 5: 'Keep it to 1600 characters.', nothing saved. Step 6: the email arrives in Mailpit (http://localhost:8025) and shows in the candidate's messages. Step 7: a toast 'Message template deleted'; for a stage with standard wording, the standard wording comes back. Step 8: one entry per save with before and after. Step 9: Settings › Hiring. Step 10: the list shows, but no Add or Edit. Step 11: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · add message template",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · edit message template",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · standard message (saved as your copy)",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · message template, view only"
+                    ],
+                    "note": "Positive and negative (kit stage-message-sheet.test.tsx and hiring-live.test.tsx; web yx-settings-hiring.test.tsx; API retire-v2-settings.e2e-spec.ts). The three template APIs now refuse another company's stage (400) and any change while acting for someone else (403), and audit before and after."
+          },
+          {
+                    "id": "MT-V2-HIRE-HOURS",
+                    "area": "Retire /v2: interview hours on Settings 6.1 Hiring (answers 2423 and 2510, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test; a recruiter with a candidate on an open job; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Candidates may book interviews from', 'until' and 'Days candidates may book interviews'.",
+                              "Set 'until' to 08:00 (before the start) and press Save changes.",
+                              "Type 09:15 in 'from' and save.",
+                              "Clear every day and save.",
+                              "Set from 10:00, until 13:00, days Monday and Saturday, and save.",
+                              "In Time › Holidays, check the published calendar for the job's location (or the company-wide one) has a holiday next week; add a national holiday on a coming Monday if not.",
+                              "As the recruiter: on the job board, schedule an interview for a candidate with 'Let the candidate pick a slot' for the next two weeks. Open the link from Mailpit.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/business-hours.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: 09:30, 6:30 pm and Monday to Friday, marked as the starter values; no page scroll at 1278 x 635. Step 2: an error under 'until' and nothing saved. Step 3: refused with 'Choose a time on the hour or half hour, like 09:30.' Step 4: refused, 'Choose at least one day for interviews.' Step 5: a 5-second toast 'Hiring settings saved'. Step 7: only Monday and Saturday slots between 10:00 and 13:00 (India time), and none on the holiday. Step 8: one entry per change with before and after. Step 9: Settings › Hiring. Step 10: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring"
+                    ],
+                    "note": "Positive and negative (kit hiring-live.test.tsx; API interview-hours.spec.ts and retire-v2-settings.e2e-spec.ts). Old /v2 hours are copied by migration 202617z0000541. Holidays only in the old /v2 list are listed by apps/api/scripts/v2-holiday-compare.ts (none on the local databases) and never added to a calendar automatically."
+          },
+          {
+                    "id": "MT-V2-ASMT-CERT",
+                    "area": "Retire /v2: pass certificate on Settings 6.5 Assessments (answer 2424, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Assessments",
+                    "url": "http://localhost:3000/yx/settings/talent/assessments",
+                    "account": "Admin admin-tester@demo-org.test (assessments settings); a candidate who passed a test with certificates on; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Assessments. Find the 'Pass certificate' section.",
+                              "Press Edit certificate. Clear the Title and press Save certificate.",
+                              "Enter the title 'Certificate of Merit', add 'Signed by' Meenakshi Sundaram and save.",
+                              "Open the passing candidate's report and download the certificate.",
+                              "Edit again, untick 'Use this wording' and save. Download the certificate again.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/certificate.",
+                              "Start acting as another person and open Settings › Assessments.",
+                              "As arjun: open /yx/settings/talent/assessments."
+                    ],
+                    "expected": "Step 1: the section shows 'Standard wording', the title, the text and 'No name'; no page scroll at 1278 x 635 apart from the settings list itself. Step 2: 'Enter the title.' under Title, the cursor is there, nothing saved, the button is never greyed out. Step 3: a 5-second toast 'Certificate saved'; the section shows 'Your wording'. Step 4: the PDF has the new title and the signatory name. Step 5: the section says your wording is off; the PDF has the standard wording. Step 6: one entry per save with before and after. Step 7: Settings › Assessments. Step 8: the section shows without Edit certificate. Step 9: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate, standard wording",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · edit pass certificate",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate, view only"
+                    ],
+                    "note": "Positive and negative (kit certificate-card.test.tsx; web yx-settings-s8.test.tsx; API retire-v2-settings.e2e-spec.ts). The certificate API now audits before and after."
+          },
+          {
+                    "id": "MT-V2-ORG-BRANDING",
+                    "area": "Retire /v2: logo and brand colour on Settings 1.1 Company & branding (answer 2422, 18 Nov 2026)",
+                    "screen": "Settings › Organisation › Company & branding",
+                    "url": "http://localhost:3000/yx/settings/org/company-and-branding",
+                    "account": "Admin admin-tester@demo-org.test (company settings); an HR user with only HR's settings key; a PNG logo, an SVG file and a text file renamed logo.png.",
+                    "steps": [
+                              "As admin: open Settings › Company & branding. Find 'Logo and brand colour'.",
+                              "Press Upload logo (or Replace) and choose the PNG.",
+                              "Choose the SVG file, then the renamed text file.",
+                              "Change Brand colour to #FFEE00 and press Save changes.",
+                              "Change it to #1F6F5C and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/branding and /settings/branding.",
+                              "As the HR user: open the page. Then, as admin, act as another person and open it.",
+                              "As arjun@demo-org.test: open the page."
+                    ],
+                    "expected": "Step 1: the current logo (or 'No logo yet') and the brand colour with a button preview and a contrast badge; no page scroll at 1278 x 635 beyond the settings list. Step 2: a 5-second toast 'Logo saved' and the new logo shows at once (no Save needed). Step 3: refused with 'Logo must be a PNG or JPEG image'; the old logo stays. Step 4: 'White button text is hard to read on this colour. Choose a darker one.' and nothing saved. Step 5: saved with a toast. Step 6: one entry per change with before and after. Step 7: Settings › Company & branding. Step 8: logo and colour are shown but cannot be changed. Step 9: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 1 · Organisation › 1.1 Company & branding · logo and colour (live)"
+                    ],
+                    "note": "Positive and negative (kit settings-branding.test.tsx; web yx-settings-s7.test.tsx; API retire-v2-settings.e2e-spec.ts and organizations.service.spec.ts). Logos and careers banners are now checked by their bytes; SVG is refused (it can carry script). The /v2 accent colour, text colour and sign-in watermark are not used by any YukthiX page, so they are not on 1.1."
+          },
+          {
+                    "id": "MT-V2-HIRE-ASK-FIRST",
+                    "area": "Retire /v2: 'Ask before sending' stage messages on the job board (answer 2434 follow-up, 18 Nov 2026)",
+                    "screen": "Hiring › Jobs › a job › Pipeline",
+                    "url": "http://localhost:3000/yx/hiring/jobs",
+                    "account": "Recruiter or admin admin-tester@demo-org.test (pipeline key); a job with a candidate in Applied; Mailpit at http://localhost:8025.",
+                    "steps": [
+                              "In Settings › Hiring › Stage message templates, set the Interview stage's email to 'Ask before sending' and save.",
+                              "Open the job's pipeline and move a candidate from Applied to Interview.",
+                              "Press Edit first, clear the message and press Send edited message.",
+                              "Type a short message and press Send edited message.",
+                              "Move another candidate to Interview and press Don't send.",
+                              "Move a candidate to a stage with no 'ask' message.",
+                              "Open Settings › Audit log.",
+                              "Act as another person and open the same pipeline."
+                    ],
+                    "expected": "Step 2: a question 'Send the Email message to <name>?' with the subject and message. Step 3: 'Enter the message.' and the cursor in Message; nothing sent. Step 4: a 5-second toast 'Email sent to <name>'; the email is in Mailpit and on the candidate's messages. Step 5: a toast 'Email not sent'; nothing in Mailpit. Step 6: no question. Step 7: the sent email and an 'ats.stage_message.skipped' entry for the skip. Step 8: the board is read-only; nothing to send.",
+                    "stories": [
+                              "Screens/Hiring/HIR-04 · Pipeline board › Ask before sending · email after a move",
+                              "Screens/Hiring/HIR-04 · Pipeline board › Ask before sending · SMS"
+                    ],
+                    "note": "Positive and negative (kit stage-message-prompt.test.tsx; web yx-hiring-hir04.test.tsx; API retire-v2-settings.e2e-spec.ts). One question per channel (email, SMS, WhatsApp); closing the question counts as Don't send. Only the board asks; the candidate record's 'Move to next stage' does not yet."
+          },
+          {
+                    "id": "MT-V2-NTF-HIRING-EMAILS",
+                    "area": "Retire /v2: approval, interview and sender emails on Settings 5.4 Notifications (answer 2429, 18 Nov 2026)",
+                    "screen": "Settings › Documents & Communication › Notifications",
+                    "url": "http://localhost:3000/yx/settings/documents/notifications",
+                    "account": "Admin admin-tester@demo-org.test (company settings, pipeline and approvals keys); hr@demo-org.test (HR settings only); Mailpit at http://localhost:8025.",
+                    "steps": [
+                              "As admin: open Settings › Notifications. Find 'Hiring emails'.",
+                              "Press Add address. Enter the name 'Plant hiring' and the address 'plant-hiring' (no @) and press Save address.",
+                              "Correct the address to plant.hiring@demo-org.test, tick 'Use when the recruiter does not choose' and save.",
+                              "Press Edit on 'Invitation to the candidate'. Clear the Subject and press Save wording.",
+                              "Write your own subject and save. Then schedule an interview for a candidate and open the email in Mailpit.",
+                              "Press Edit on 'Approval requested', write a subject and message with {{actorName}} and {{link}}, and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/approval-emails, /v2/settings/interview-emails and /v2/settings/sender-addresses.",
+                              "As hr@demo-org.test: open the page. As admin acting as another person: open it."
+                    ],
+                    "expected": "Step 1: three lists (addresses recruiters send from, interview emails, hiring approval emails) with Standard or Yours; no page scroll at 1278 x 635 beyond the settings list. Step 2: 'Enter an email address, like careers@yourcompany.in.' and nothing saved. Step 3: a 5-second toast 'Sender address saved'; it shows Default Yes. Step 4: 'Enter the subject.', the cursor in Subject, nothing saved. Step 5: toast 'Email wording saved'; the candidate's invitation uses your subject. Step 6: saved; approvers get your wording. Step 7: one entry per change with before and after. Step 8: Settings › Notifications. Step 9: HR sees no hiring email lists; acting shows the lists without Add or Edit.",
+                    "stories": [
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · add sender address",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · edit sender address",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · interview email (standard wording)",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · approval email, view only"
+                    ],
+                    "note": "Positive and negative (kit hiring-emails.test.tsx; web yx-settings-s8.test.tsx; API retire-v2-settings.e2e-spec.ts and the template service specs). The three APIs now refuse changes while acting; interview and approval saves are audited with before and after; approval wording is limited to 300 / 10,000 characters. Hiring approval emails apply to the old job and offer approval chains, which answers 2511-2512 move into P03 approvals."
+          },
+          {
+                    "id": "MT-V2-CUSTOM-FIELDS-ENTITY",
+                    "area": "Retire /v2: candidate and job custom fields on Settings › Custom fields (answer 2425, 18 Nov 2026)",
+                    "screen": "Settings › People & Access › Custom fields",
+                    "url": "http://localhost:3000/yx/settings/custom-fields",
+                    "account": "Admin admin-tester@demo-org.test (company settings and HR settings); hr@demo-org.test (HR settings only).",
+                    "steps": [
+                              "As admin: open Settings › Custom fields. Find 'Fields for' with Employees, Candidates and Jobs.",
+                              "Choose Candidates. Press Add custom field, leave the name empty and press Add field.",
+                              "Name it 'Notice period (days)', type Number, tick 'Must be filled in' and 'Ask on the application form', and add it.",
+                              "Open a job's careers page and start an application.",
+                              "Choose Jobs, add 'Cost centre' (must be filled in), then open Hiring › Jobs › Add job.",
+                              "Remove the Cost centre field and confirm.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/custom-fields.",
+                              "As hr@demo-org.test: open the page. As admin acting as another person: open it and choose Candidates."
+                    ],
+                    "expected": "Step 1: the switch shows, Employees chosen, with the employee fields as before; no page scroll at 1278 x 635. Step 2: 'Give the field a name.' and nothing saved. Step 3: the field shows with Must be filled in Yes and On the application form Yes. Step 4: the form asks for the notice period and will not send without it. Step 5: the new job form asks for the cost centre. Step 6: it leaves the job form; values already saved are kept. Step 7: one entry for each add, change and removal with before and after. Step 8: Settings › Custom fields. Step 9: HR sees only the employee fields (no switch); acting shows the candidate fields without Add, Edit or Remove.",
+                    "stories": [
+                              "Screens/People/PPL-03 · Person record › Settings · custom fields (candidates)",
+                              "Screens/People/PPL-03 · Person record › Settings · custom fields (jobs, view only)"
+                    ],
+                    "note": "Positive and negative (kit custom-fields.test.tsx; web yx-org-pages.test.tsx; API retire-v2-settings.e2e-spec.ts and custom-fields.service.spec.ts). Field definition changes are now audited with before and after (they were not before), and the candidate and job API refuses changes while acting."
+          },
+          {
+                    "id": "MT-V2-ROLES-HIRING-FIELDS-GROUPS",
+                    "area": "Retire /v2: hiring field access and staff groups on Settings › Roles & access (answers 2426, 2430, 25 Nov 2026)",
+                    "screen": "Settings › People & Access › Roles & access",
+                    "url": "http://localhost:3000/yx/settings/access?view=fields",
+                    "account": "Admin admin-tester@demo-org.test (company settings and user groups); hr@demo-org.test (no company settings).",
+                    "steps": [
+                              "As admin: open Settings › Roles & access. Find the Show switch with People, Waiting, Requests, Roles, Hiring fields and Groups.",
+                              "Choose Hiring fields. For Candidate fields, set Email for Interview panel to Hidden and press Save field access.",
+                              "Sign in as a panel member and open a candidate in a job you are on the panel for.",
+                              "As admin: set it back to Can change, then press Discard changes before saving.",
+                              "Choose Groups. Press New group and press Make group with the name empty; then type the name of a group that exists.",
+                              "Make 'Plant recruiters', press Members, choose two people and press Save members.",
+                              "Press Edit, rename it, then Delete and confirm.",
+                              "Open Settings › Audit log; then Settings › Recycle bin.",
+                              "Open the old addresses /v2/settings/field-permissions and /v2/settings/user-groups.",
+                              "As hr@demo-org.test: open Roles & access. As admin acting as another person: choose Groups and press New group."
+                    ],
+                    "expected": "Step 1: both tabs show; no page scroll at 1278 x 635. Step 2: a toast says 'Field access saved.'. Step 3: the candidate's email is blanked out for the panel member. Step 4: the matrix returns to what was saved. Step 5: 'Enter a name.', then 'Another group has this name.'; nothing saved. Step 6: the row lists the two members and a toast confirms. Step 7: the row is gone after the confirm, which says it goes to the recycle bin. Step 8: the field access change with before and after; group made, renamed (before and after), members changed (who joined and who left), deleted; the group is in the recycle bin. Step 9: Roles & access on the Hiring fields and Groups tabs. Step 10: HR sees neither tab; acting, saving is refused ('Not available while acting for someone else').",
+                    "stories": [
+                              "Screens/People/Access and privacy › Roles & access · hiring field access (2426)",
+                              "Screens/People/Access and privacy › Roles & access · staff groups (2430)",
+                              "Screens/People/Access and privacy › Roles & access · staff groups, none yet"
+                    ],
+                    "note": "Positive and negative (kit access.test.tsx; web yx-access-pages.test.tsx, next.config.test.ts; API retire-v2-settings.e2e-spec.ts, user-groups and field-permissions service specs). Both APIs now refuse changes while acting; the field matrix is audited with before and after, group renames with before and after, membership changes with who joined and who left (they were only a count)."
+          },
+          {
+                    "id": "MT-TIM39-BLOCK-NEXT-YEAR",
+                    "area": "Block leave may run into the next leave year when it starts within 60 days (answer 2629, 25 Nov 2026)",
+                    "screen": "Time › Block leave; Settings › Time & Leave › Leave types (Company choices)",
+                    "url": "http://localhost:3000/yx/time/block-leave",
+                    "account": "hr@demo-org.test (plans block leave, leave settings); panel@demo-org.test (manager, no settings key).",
+                    "steps": [
+                              "As HR: open Settings › Leave types. Under Company choices find 'A block may run into the next leave year if it starts within (days)'.",
+                              "Open Time › Block leave. For someone who needs block leave, press Plan block leave and choose 28 Dec to 8 Jan; press Plan block.",
+                              "Plan again with a first day more than 60 days from today that ends next year.",
+                              "Set the setting to 0 and plan 28 Dec to 8 Jan again; then set it back to 60.",
+                              "As panel@demo-org.test (manager): open the same settings page."
+                    ],
+                    "expected": "Step 1: the setting shows 60, marked as the starter value; no page scroll at 1278 x 635. Step 2: a toast says the block is planned; the row shows Planned with 28 Dec to 8 Jan. Step 3: refused: 'A block that runs into the next leave year starts by <today + 60 days>.' Step 4: refused: the last day must be by 31 Dec. Step 5: the setting cannot be changed (read only or not shown).",
+                    "stories": [],
+                    "note": "Positive and negative (API leave-rules.spec.ts with fixed late-December dates; time-leave-v2.e2e-spec.ts TIM-39 plans a window across 31 Dec in November and December, refuses a start beyond 60 days and refuses the setting change by a manager and an employee). The block is stored as the current leave year's plan; working days in the next year use that year's weekly offs and holidays."
+          },
+          {
+                    "id": "MT-E1-POSITIONS-SWITCH-ON",
+                    "area": "Enterprise E1: switch positions on (answer 2642, 25 Nov 2026)",
+                    "screen": "People › Positions › Switch on (POS-03)",
+                    "url": "http://localhost:3000/yx/people/positions",
+                    "account": "admin@demo-org.test (sends); hr@demo-org.test (approves; needs org.position.manage, employee.change.manage and .approve); panel@demo-org.test (manager, no key).",
+                    "steps": [
+                              "As admin: open People › Positions. It says the company does not use positions yet. Press Plan the switch-on.",
+                              "Check the seats the plan makes: one per group of the same job, with headcount and the first people's names.",
+                              "Press Send for approval with the reason empty; then type a reason of 10 characters or more and send.",
+                              "Still as admin: open the plan again and look for Approve.",
+                              "As hr@: open People › Positions › Switch on and press Approve and switch on.",
+                              "Open People › Positions; open one seat; open People › Org chart.",
+                              "As panel@ (manager): look for Positions in the People menu and open /yx/people/positions."
+                    ],
+                    "expected": "Step 1: the empty state explains positions; no page scroll at 1278 x 635. Step 3: the reason error shows; then a toast 'Plan sent for approval'. Step 4: the sender sees Withdraw only, never Approve. Step 5: a toast 'Positions are on' and the result line (seats made, people given a seat, anyone left out with the reason). Step 6: every person sits in a seat; the seat lists its people and the seat above. Step 7: no Positions menu item; the page says there is no access.",
+                    "stories": [
+                              "Screens/People/POS-01…04 · Positions · POS-03 · Switch on: the plan to send",
+                              "Screens/People/POS-01…04 · Positions · POS-03 · Switch on: another HR person approves",
+                              "Screens/People/POS-01…04 · Positions · POS-03 · Switched on, one person left out"
+                    ],
+                    "note": "Enterprise E1 (answers 2340, 2341, 2641-2643). Positive and negative: API positions.e2e-spec.ts and position-rules.spec.ts; kit positions.test.tsx; web yx-positions-pages.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E1-POSITIONS-CHANGES",
+                    "area": "Enterprise E1: seat changes, mass update and history (O1, O2, O8)",
+                    "screen": "People › Positions (POS-01, POS-02, POS-04)",
+                    "url": "http://localhost:3000/yx/people/positions",
+                    "account": "admin@demo-org.test (asks); hr@demo-org.test (approves from Approvals).",
+                    "steps": [
+                              "As admin: press New seat. Press Send for approval with nothing filled in.",
+                              "Fill title, department, location, designation, headcount 2, a reason, and a From date of tomorrow; send.",
+                              "On a seat with people, choose Change and set the headcount below the people in it; send.",
+                              "Choose Eliminate on a seat with people; send.",
+                              "Tick two seats and press Mass update; choose Cost centre and a new one; look at the preview; send.",
+                              "As hr@: approve both requests in Approvals. Open the seats as admin, with the date set to tomorrow.",
+                              "As admin: on a seat with a change waiting, look for Change and Withdraw."
+                    ],
+                    "expected": "Step 1: the field errors show and nothing is sent. Step 2: a toast 'Sent for approval'; the seat appears only after approval. Steps 3 and 4: refused with the reason shown in the drawer, which stays open. Step 5: the preview lists each seat with now and after; one request for both. Step 6: the new seat has a code POS-…; the history shows each dated version. Step 7: the seat says a change is waiting; Change is not offered; Withdraw removes the request.",
+                    "stories": [
+                              "Screens/People/POS-01…04 · Positions · POS-01 · Positions list",
+                              "Screens/People/POS-01…04 · Positions · POS-02 · Position record",
+                              "Screens/People/POS-01…04 · Positions · POS-04 · Mass update with preview"
+                    ],
+                    "note": "Enterprise E1 (answers 2340, 2341, 2641-2643). Positive and negative: API positions.e2e-spec.ts and position-rules.spec.ts; kit positions.test.tsx; web yx-positions-pages.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E1-POSITIONS-HIRE-REQUISITION",
+                    "area": "Enterprise E1: hires, requisitions and the org chart with positions on (O3, O4, O5)",
+                    "screen": "People › Add employee; Hire › Requisitions; People › Org chart",
+                    "url": "http://localhost:3000/yx/people/directory",
+                    "account": "admin@demo-org.test; recruiter@demo-org.test.",
+                    "steps": [
+                              "With positions on, add an employee without choosing a seat.",
+                              "Add an employee into a full seat; then into a frozen seat; then into a seat with room.",
+                              "As recruiter: raise a requisition for a new hire without a seat and without 'outside the plan'.",
+                              "Raise one against a full seat; then against a seat with one vacancy for 1 opening.",
+                              "Open People › Org chart."
+                    ],
+                    "expected": "Step 1: refused, 'choose the seat'. Step 2: full and frozen seats are refused with the reason; the seat with room is accepted. Step 3: refused, raise it against a seat or mark it outside the plan. Step 4: the full seat is refused ('no openings left'); the vacancy is accepted. Step 5: each empty seat shows as a vacancy under the person in the seat above it.",
+                    "stories": [],
+                    "note": "Enterprise E1 (answers 2340, 2341, 2641-2643). Positive and negative: API positions.e2e-spec.ts and position-rules.spec.ts; kit positions.test.tsx; web yx-positions-pages.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E1-2680-RESTRUCTURE-SEATS",
+                    "area": "Enterprise E1 follow-up: a seat column in the restructure plan (answer 2680)",
+                    "screen": "People › Restructure (PPL-09), step Checks › Each person",
+                    "url": "http://localhost:3000/yx/people/restructure",
+                    "account": "hr@demo-org.test (HR Admin) sends; panel@demo-org.test (a second HR person) approves. Positions switched on for the entity people land in.",
+                    "steps": [
+                              "Start a move inside the entity (or a merge into an entity that uses positions). Pick two people and a new department; go to the Checks step.",
+                              "Look at the Each person table. Leave the Seat cells empty.",
+                              "Choose a full seat for one person.",
+                              "Choose a seat with room for each person.",
+                              "Send for approval. As panel@, approve it.",
+                              "Repeat step 1 with an entity that does not use positions."
+                    ],
+                    "expected": "Step 2: a Seat column; each person shows \"Can't move\" with 'choose the seat'. Step 3: that person says the seat is full. Step 4: both are Ready; each list shows only the seats of the entity people land in, with the room left. Step 5: the sender cannot approve their own; after panel@ approves, the seat page shows the people in their seats from the move date. Step 6: no Seat column. No sideways scroll at 1278 x 635.",
+                    "stories": [],
+                    "note": "Answer 2680 (founder 25 Nov 2026). Positive and negative: API positions.e2e-spec.ts ('answer 2680'); kit restructure-live.test.tsx ('answer 2680')."
+          },
+          {
+                    "id": "MT-E1-2683-GIVE-SEAT",
+                    "area": "Enterprise E1 follow-up: Give a seat to someone the switch-on left out (answer 2683)",
+                    "screen": "People › Positions › a seat (POS-02), card People in the seat",
+                    "url": "http://localhost:3000/yx/people/positions",
+                    "account": "hr@demo-org.test sends; panel@demo-org.test approves; a viewer with org.structure.view only.",
+                    "steps": [
+                              "Open a seat with a vacancy in an entity where someone has no seat (for example the HR person who approved the switch-on).",
+                              "Press Give a seat, then Send for approval with nothing filled in.",
+                              "Choose the person, keep today's date, write a reason, and send.",
+                              "Try to approve the change yourself in People › Changes.",
+                              "As panel@, approve it. Open the seat again.",
+                              "Open a full seat; then open any seat as the viewer."
+                    ],
+                    "expected": "Step 1: a Give a seat button on the People in the seat card. Step 2: 'Choose the person.' and 'Say why, in 10 characters or more.'; nothing is sent. Step 3: a toast 'Sent for approval'. Step 4: refused: someone else approves. Step 5: the person shows in the seat and is no longer offered. Step 6: no Give a seat on a full seat, and none for the viewer.",
+                    "stories": [
+                              "People › Positions › POS-02 · Give a seat (answer 2683)"
+                    ],
+                    "note": "Answer 2683 (founder 25 Nov 2026). Positive and negative: API positions.e2e-spec.ts ('answer 2683'); kit positions.test.tsx; web yx-positions-pages.test.tsx."
+          },
+          {
+                    "id": "MT-E4-LEDGER-MAPPING",
+                    "area": "Enterprise E4: ledger mapping and the suspense account (O19, O20)",
+                    "screen": "Pay › Ledger mapping (PAY-62); Settings › Payroll & Statutory › Accounting & costing (4.12)",
+                    "url": "http://localhost:3000/yx/payroll/accounting",
+                    "account": "payroll@demo-org.test (Payroll Admin, ledger key); finance@demo-org.test (journal export only); hr@demo-org.test (settings).",
+                    "steps": [
+                              "As payroll@: open Pay › Ledger mapping. Press Add mapping and Save mapping with nothing filled in.",
+                              "Map Net pay (payable) to 2100 Net salary payable for the company; then Basic (expense) to 5110 for one cost centre.",
+                              "Press Set suspense account and save 9999 Payroll suspense.",
+                              "Remove the Basic cost-centre override and confirm.",
+                              "As finance@: open the same page.",
+                              "As hr@: open Settings › Payroll & Statutory › Accounting & costing. Look at the suspense, costing split and export format settings; change the export format to SAP and save."
+                    ],
+                    "expected": "Step 1: the field errors show and nothing is saved. Step 2: a toast 'Ledger mapping saved'; the override shows its cost centre. Step 3: the suspense card shows 'Company: 9999 · Payroll suspense'. Step 4: a confirm says the company default is used instead; a toast 'Mapping removed'. Step 5: read only: no Add, Change or Remove. Step 6: the page shows the three settings with their starter values and a link 'Edit ledger mapping'; the change waits for a second person when that switch is on. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Pay/PAY-62 · Ledger mapping · PAY-62 · Ledger mapping with the suspense account",
+                              "Screens/Pay/PAY-62 · Ledger mapping · PAY-62 · Read only (journal export key)"
+                    ],
+                    "note": "Enterprise E4 (answers 2653-2655; Oracle O19-O22). Positive and negative: API costing.spec.ts, ledger.spec.ts and payroll-5c.e2e-spec.ts; kit ledger-mapping.test.tsx and payments-live.test.tsx; web yx-ledger-mapping.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E4-JOURNAL",
+                    "area": "Enterprise E4: the run journal with suspense, dimensions, formats and reversal (O20-O22)",
+                    "screen": "Pay › Runs › a run › Payments & files › Journal export",
+                    "url": "http://localhost:3000/yx/payroll/runs",
+                    "account": "payroll@demo-org.test; finance@demo-org.test.",
+                    "steps": [
+                              "On an approved run with one pay line unmapped and no suspense account, open Journal export and press Export journal.",
+                              "Set the suspense account (MT-E4-LEDGER-MAPPING step 3) and open the journal again.",
+                              "Export as SAP; then as Oracle GL; open both files.",
+                              "Map the unmapped line and open the journal again.",
+                              "Reopen the month (two approvals), then open the run's Journal export.",
+                              "Press Export reversing journal and open the file."
+                    ],
+                    "expected": "Step 1: 'Map every pay line to a ledger account first.' and nothing is exported. Step 2: an alert '₹X is in suspense (9999 · Payroll suspense)' with the fix list; the export works. Step 3: SAP has posting key 40/S for debits and 50/H for credits; Oracle has ENTERED_DR and ENTERED_CR; both have cost centre, department, location and project columns; a ledger name starting with = is quoted with an apostrophe. Step 4: nothing in suspense. Step 5: the alert says the run was reopened after its journal went to the books; only 'Export reversing journal' is offered. Step 6: every debit of the last export is a credit and back; the file name ends in -reversal.",
+                    "stories": [],
+                    "note": "Enterprise E4 (answers 2653-2655; Oracle O19-O22). Positive and negative: API costing.spec.ts, ledger.spec.ts and payroll-5c.e2e-spec.ts; kit ledger-mapping.test.tsx and payments-live.test.tsx; web yx-ledger-mapping.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-2515-OFFER-LETTERS",
+                    "area": "Retire /v2: offer templates become Letters 'offer' templates (answer 2515, 18 Nov 2026)",
+                    "screen": "Settings › Letter templates (5.2); Hire › offer builder (HIR-09); Settings › Hiring (6.1)",
+                    "url": "http://localhost:3000/yx/settings/letters",
+                    "account": "Admin admin-tester@demo-org.test (letter templates); recruiter@demo-org.test (offers); HR hr-tester@demo-org.test.",
+                    "steps": [
+                              "Lead first, once: in apps/api run `npm run build` then `npm run offers:to-letters`. Note the line 'Offer templates moved to Letters: N. Failed: 0.'",
+                              "Run `npm run offers:to-letters` again.",
+                              "As admin: open Settings › Letter templates.",
+                              "Open the moved offer template in the editor (Edit).",
+                              "As recruiter: open a candidate's application in Hire and press Make offer; open the Letter choice.",
+                              "As admin: open Settings › Hiring, find 'Offer letters the candidate signs', switch one off and save.",
+                              "Open the old addresses /v2/offer-template and /offer-template.",
+                              "As an employee (arjun@demo-org.test): open /offer-template."
+                    ],
+                    "expected": "Step 1: each demo offer template is moved. Step 2: 'moved: 0. Failed: 0.'; no second copy in Letters. Step 3: each old offer template is listed with letter type 'offer', its old name, version 1, switched on; 'Person signs' is on only where e-sign was on; a name HR already used in Letters is a new draft version instead. Step 4: the first line is the bold 'Subject: …', then the old text line by line; old fields show as letter fields (candidate name → Full name, job title → Designation, company → Company name, recruiter → Who signs (name), compensation → Offered pay, start date → Joining day, expiry → Accept the offer by, link → Where the person accepts). Step 5: the Letter list shows the Letters offer templates (not the old ones); an offer drafts with the chosen one. Step 6: 5-second toast; in Letters that template's 'Person signs' is off. Step 7: both land on Settings › Letter templates. Step 8: no access.",
+                    "stories": [
+                              "Screens/People/PPL-29 · Letter templates · Live",
+                              "Screens/Hiring/HIR-09 · Offer builder · Live"
+                    ],
+                    "note": "Positive and negative (API offer-letters.e2e-spec.ts: moved with mapped fields and person signs, name clash → draft, re-run makes nothing, other company never sees it, GET old routes 301 to /yx/settings/letters, POST/PATCH/DELETE 410, signed out 401; hiring-hir09 / hir28 e2e use moved templates in the builder; unit offer-letters.spec.ts; web next.config.test.ts). Issuing the offer as a P05 letter with OTP e-accept is the next step (out of scope)."
+          },
+          {
+                    "id": "MT-C17-BULK-NOT-APPROVE",
+                    "area": "Batch C item 17: bulk Do not approve (answer 2503, 18 Nov 2026)",
+                    "screen": "Approvals (PLT-04)",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "Manager panel@demo-org.test (Divya Raghunathan) with at least two waiting requests from arjun@demo-org.test (raise two leave or work-from-home requests as Arjun first).",
+                    "steps": [
+                              "As Divya: open Approvals, tick two requests (one may be high risk).",
+                              "Press 'Do not approve 2'. Press 'Do not approve 2' in the dialog with the Reason empty.",
+                              "Type 'Budget is frozen this quarter' and press 'Do not approve 2'.",
+                              "As Arjun: open the bell and Me › My requests.",
+                              "As Divya: tick a request that is decided on its own page (a payroll reopen), if any; also check the 100 limit message by selecting more than 100 (demo: skip if fewer)."
+                    ],
+                    "expected": "Step 1: the bulk bar shows 'Do not approve 2' (Approve 2 only when all are low risk, else the low-risk message). Step 2: field error 'Say why, so the people who asked know.', focus in Reason, nothing sent. Step 3: 5-second toast 'Not approved: 2 requests. The people who asked are told why.'; both leave the list; any refused one is listed with why. Step 4: both show Not approved with the same reason. Step 5: 'Some of these are decided on their own page. Open them one by one.' / 'Choose 100 requests or fewer at a time.'. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · bulk do not approve (one reason for all)"
+                    ],
+                    "note": "Positive and negative (kit inbox.test.tsx, platform.test.tsx; API service-desk-esm.e2e-spec.ts: blank reason 400, 101 ids 400, other approver refused, shared reason on each request, repeat refused)."
+          },
+          {
+                    "id": "MT-C4-OVERSEE-REASSIGN",
+                    "area": "Batch C item 4: HR sees everyone's pending approvals and reassigns (answers 2500 to 2502, 18 Nov 2026)",
+                    "screen": "Approvals (PLT-04) › Everyone's pending",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "HR hr-tester@demo-org.test (HR Admin role, gets workflow.approvals.oversee); manager panel@demo-org.test (Divya); employee arjun@demo-org.test.",
+                    "steps": [
+                              "As Arjun: raise a leave request (it waits for Divya).",
+                              "As HR: open Approvals › Everyone's pending. Open Arjun's request.",
+                              "Press Reassign, then Reassign again with nothing filled in.",
+                              "Choose Arjun himself, give the reason 'Divya is away' and press Reassign.",
+                              "Choose another manager or HR person, reason 'Divya is away', press Reassign.",
+                              "As Divya: open the bell and Approvals. As the new approver: open Approvals and approve it.",
+                              "As Divya, for another waiting request: open it, press Reassign and move it to a colleague with a reason.",
+                              "As Arjun (no key): open /yx/approvals and look for the Everyone's pending tab."
+                    ],
+                    "expected": "Step 2: the tab lists every pending approval in HR's scope with 'Waiting for' (the current approver); the panel has only Reassign (no Approve). Step 3: 'Choose who approves it instead.' and 'Say why you are moving it, so both approvers know.'; nothing moves. Step 4: 'The person who asked cannot approve their own request. Choose someone else.' (a reason under 10 characters is refused first: 'Say why you are moving it in at least 10 characters, so both approvers know.'). Step 5: 5-second toast 'Reassigned to <name>: … Both approvers are told.'; the row now waits for them. Step 6: Divya's bell says it moved, with the reason; the request left her list; the new approver's bell and email say 'Reassigned to you: …' and they can approve. Step 7: works the same without the HR key. Step 8: no Everyone's pending tab. Audit log shows workflow.task.reassigned with from, to and reason.",
+                    "stories": [
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · everyone’s pending (HR)",
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · reassign with a reason"
+                    ],
+                    "note": "Positive and negative (kit inbox.test.tsx; API approvals-oversee.e2e-spec.ts: company-wide vs legal-entity scope, no key 403, other company empty, no reason / requester / inactive / same approver / bad id 400, not holder or out of scope or other company 404, decided 409, maker-checker earlier-step approver refused, logged + audited + both told). Requests about nobody (for example a candidate's offer) are seen only by a company-wide overseer."
+          },
+          {
+                    "id": "MT-C26-DESK",
+                    "area": "Batch C item 26: three-column approvals desk at 1440 px or wider (answer 2504, 18 Nov 2026)",
+                    "screen": "Approvals (PLT-04)",
+                    "url": "http://localhost:3000/yx/approvals",
+                    "account": "Manager panel@demo-org.test (Divya) with a few waiting requests of two kinds.",
+                    "steps": [
+                              "Open Approvals in a browser window 1440 px wide or wider (100 % zoom on a large screen).",
+                              "Choose a kind in the left column (for example Leave).",
+                              "Click a request in the list, then approve or do not approve it from the right column.",
+                              "Make the window narrower than 1440 px (or a laptop at 150 %, 1278 x 635) and open a request."
+                    ],
+                    "expected": "Step 1: three columns: kinds of request (All · n and each kind), the list, and 'Choose a request.' on the right; no page scroll sideways. Step 2: the list shows only that kind. Step 3: the request opens in the right column (no drawer); the decision works and shows the 5-second toast; the next request takes its place. Step 4: the kinds are back above the list and the request opens in the drawer as before; no page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · three-column desk (1440 px or wider)",
+                              "Screens/Platform/Inbox & requests · PLT-04 · Approvals · desk, nothing open yet",
+                              "Forms · Segment, vertical"
+                    ],
+                    "note": "Positive and negative (kit inbox.test.tsx: desk columns, kind filter, decide in the pane, 1440 desk vs 1439 drawer). Measured headless at 1440 x 900: columns 176/480/384 px with 16 px gaps, no overflow; 1278 x 635 inbox, everyone, bulk dialog and reassign drawer: no page scroll, no touching blocks."
+          },
+          {
+                    "id": "MT-C15-TEAM-DOTS",
+                    "area": "Batch C item 15: team calendar dots and legend; the day card live (answer 2509, 18 Nov 2026)",
+                    "screen": "Time › Leave calendar (TIM-20) and the day card (TIM-03)",
+                    "url": "http://localhost:3000/yx/time/team",
+                    "account": "Manager panel@demo-org.test (Divya, 7 reports); HR hr-tester@demo-org.test; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As Divya: open Time › Leave calendar (People × days).",
+                              "Point at a dot, then click a dot of one of her reports.",
+                              "In the day card, click another day of the month, then close the card.",
+                              "As HR: open Time › Leave calendar.",
+                              "As Divya: open /yx/time/team/day?person=<an employee id outside her team>&on=<a past date>.",
+                              "As Arjun: open Time › Leave calendar if shown."
+                    ],
+                    "expected": "Step 1: each report's worked days up to today show a dot: Present (filled green), Late (ring), Worked from home (square), Half day (half filled), Absent (filled red), Missing punch (dashed ring); leave stays a chip; the legend lists only the kinds on screen; her own row has no dots. No page scroll at 1278 x 635. Step 2: the tooltip names the person, date and kind; the dot looks clickable (hover border, pointer, focus ring) and opens the designed day card: her month with that day open in the drawer (punches, shift, late marks). Step 3: the drawer shows that day; closing goes back to the leave calendar. Step 4: people and leave as before, no dots (answer 2509: peers and HR come with C2). Step 5: no access, nothing about the person. Step 6: no dots.",
+                    "stories": [
+                              "Screens/Time/TIM-20 · Team leave calendar · Manager · people × days, with attendance dots and legend",
+                              "Screens/Time/TIM-03 · Day card"
+                    ],
+                    "note": "Positive and negative (kit leave-live.test.tsx: legend, dot opens the card, non-team none, dots-only shows the grid; attendance-live.test.tsx: DayCardScreen live and 404; API time-rules.spec teamDot; time-leave.e2e: manager sees dots for the report only, not own row, HR none, employee none, other company none). DayCardScreen left the design-live-guard known list."
+          },
+          {
+                    "id": "MT-C6-LATE-WAIVERS",
+                    "area": "Batch C item 6: bulk waive late-mark penalties before payroll (answers 2505, 2506, 18 Nov 2026)",
+                    "screen": "Time › Periods (TIM-11) › Late marks; the day card (TIM-03)",
+                    "url": "http://localhost:3000/yx/time/periods",
+                    "account": "HR hr-tester@demo-org.test (attendance.lock); manager panel@demo-org.test (Divya).",
+                    "steps": [
+                              "As HR: Settings › Time 3.5 Late penalty: set 'Each late mark over the free ones costs' to 1 day (note the old value).",
+                              "Open Time › Periods. On an open month press Late marks.",
+                              "Tick two late marks, press Waive 2, type 'Too short' and press Waive 2.",
+                              "Type a full reason (10+ characters, for example 'Bus breakdown on the Hosur road') and press Waive 2.",
+                              "Open one of those people's day card for that day (Muster › person › the day).",
+                              "Back in Late marks, tick a waived mark, press Undo 1 waiver, give a reason and confirm.",
+                              "Open Late marks on a locked month.",
+                              "As Divya (no attendance.lock): open /yx/time/periods.",
+                              "Put the late penalty setting back."
+                    ],
+                    "expected": "Step 2: a drawer lists each late mark (person, day, late by, Penalty: Counts or Waived with who and why). No page scroll at 1278 x 635. Step 3: 'Say why in at least 10 characters.' with focus in Reason; nothing sent. Step 4: 5-second toast 'Waived 2 late marks. They no longer count towards the penalty.'; both rows show Waived with HR's name and the reason; the payroll feed for the month (Time › Payroll feed) has one day less unpaid per waived mark over the free ones. Step 5: the late mark is still there with 'Late mark waived by … : reason. It does not count towards the late penalty.' Step 6: toast 'Undone 1 waiver. Those late marks count again.'; Counts again. Step 7: 'This month is locked' and no tick boxes. Step 8: no access. Audit log: time.late_mark.waived / time.late_mark.waiver_undone with the reason.",
+                    "stories": [
+                              "Screens/Time/TIM-11 · Periods · Late marks · waive before the lock",
+                              "Screens/Time/TIM-11 · Periods · Late marks · waive 2 with one reason",
+                              "Screens/Time/TIM-11 · Periods · Late marks · locked month (read only)"
+                    ],
+                    "note": "Positive and negative (kit time-ops-live.test.tsx: waive, reason under 10 refused, undo, locked read only; API time-ops.e2e: list, manager/HR exec 403, other company 404, short reason, empty list, day outside the month 400, no late mark skipped, repeat skipped, feed LOP drops and returns on undo, day card shows waived, audited, locked month 409 for waive and undo, never deleted). New table late_mark_waivers (migration 202617z0000533, RLS + support-session excluded, in rls-isolation). Answer 2505 'a manager can only ask': no manager request flow built yet (question 2527)."
+          },
+          {
+                    "id": "MT-C16-SHORT-HOURS",
+                    "area": "Batch C item 16: Short hours and Breaks reports (answers 2507, 2508, 18 Nov 2026)",
+                    "screen": "Time › Reports (TIM-16) › Short hours and breaks; Settings › Time 3.5",
+                    "url": "http://localhost:3000/yx/time/reports",
+                    "account": "Manager panel@demo-org.test (Divya); HR hr-tester@demo-org.test; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As Divya: open Time › Reports and choose 'Short hours and breaks' for last month.",
+                              "Look at a person whose shift has clock-in-again off.",
+                              "As HR: Settings › Time 3.5 'Short hours and breaks': change 'Frequent breaks: more breaks than this in a day' from 3 to 2 and save.",
+                              "As Divya: reload the report.",
+                              "Export the report as CSV.",
+                              "As Arjun: open Time › Reports if shown.",
+                              "As HR: put the setting back to 3."
+                    ],
+                    "expected": "Step 1: one row per report: Under 4 h, 4–6 h and 6–8 h (days worked short of the shift), Frequent-break days, Breaks, Break time; the note above names the bands and the frequent-break rule. No page scroll at 1278 x 635. Step 2: 'Breaks not recorded' in their row and the info note 'Breaks are not recorded for …' (never a zero). Step 3: 5-second toast. Step 4: the frequent-break days follow the new number. Step 5: the CSV has the same rows, with 'Not recorded' where breaks are not recorded. Step 6: no team rows (an employee sees no one).",
+                    "stories": [
+                              "Screens/Time/TIM-16 · Attendance reports · Short hours and breaks",
+                              "Screens/Time/TIM-16 · Attendance reports · Short hours and breaks · manager"
+                    ],
+                    "note": "Positive and negative (API time-rules.spec: band limits, breaks from break punches and clock-in-again gaps, frequent rule; time-ops.e2e: bands, breaks null while clock-in-again is off, counted when on, setting changes the frequent days, employee none, other company none, bad month 400; kit time-ops-live: columns, not-recorded row and note, empty). Settings: attendance.short_hours.band1/2/3 (4/6/8 h), attendance.frequent_breaks.count (3) and .minutes (60), per company, entity or location."
+          },
+          {
+                    "id": "MT-2524-OFFER-ISSUE",
+                    "area": "Hire: offers issued as P05 letters with OTP e-accept (M10 D4, answers 2515 / 2523 / 2524, 18 Nov 2026)",
+                    "screen": "Hire › offer (HIR-09 / HIR-28 send); candidate offer page /yx/offer/<link> (T9-09); Settings › Letter templates (5.2); Settings › Hiring (6.1)",
+                    "url": "http://localhost:3000/yx/settings/letters",
+                    "account": "Admin admin-tester@demo-org.test (letter templates, signatories); recruiter@demo-org.test (offers, holds the offer-pay key); a recruiter without the offer-pay key; arjun@demo-org.test (employee); the candidate's mailbox in Mailpit (http://localhost:8025).",
+                    "steps": [
+                              "As admin: Settings › Letter templates. Open an active 'offer' template, check 'The person' is 'Accepts it' (the helper says the candidate signs with a one-time code). Note the legal entity's signatory under Signatories.",
+                              "As admin: Settings › Hiring (6.1). Look for 'Offer letters the candidate signs electronically'.",
+                              "As recruiter: make an offer for a candidate on a job of that legal entity with that Letter, send it for approval, have it approved, then press Send.",
+                              "Negative: before step 3, remove the entity's signatory (or use a job with no department while the template uses {{department}}) and press Send.",
+                              "Negative: as the recruiter without the offer-pay key, press Send on an approved offer whose letter shows pay.",
+                              "Open Mailpit: the candidate's email.",
+                              "Open the offer link from the email (or the candidate's own page › View offer). Press 'Download the offer letter'.",
+                              "Open the verify link printed on the letter (QR / check line).",
+                              "On the offer page: tick the agreement, press 'Email me a code', enter a wrong 6-digit code and press 'Sign and accept'.",
+                              "Enter the right code from the email and press 'Sign and accept'. Press it again (or reload and try again).",
+                              "As recruiter: open the offer in Hire. Look at Activity and the letter reference; download the sealed copy.",
+                              "Decline path: send a second offer, open its link, press Decline and confirm.",
+                              "Older offer: open an offer drafted before this change (text letter, no Letters template) and press Send.",
+                              "As admin of another company (or arjun@demo-org.test): open /yx/hiring/offers/<id of step 3>."
+                    ],
+                    "expected": "Step 1: 'Accepts it' with the one-time-code helper on offer templates. Step 2: no e-sign field on 6.1 any more (answer 2523). Step 3: 5-second toast; the offer is Sent. Step 4: refused with a plain message naming what is missing ('Name who signs for their legal entity first: Settings › Letter templates.' or 'Missing: department.'); the offer stays Approved; no email, no letter number used. Step 5: refused ('This offer letter shows pay: sending it needs ats.offer.compensation.view.'). Step 6: subject 'Your offer from <legal entity> for <job>'; the PDF attachment is named like KO…-OFR-2026-000001.pdf; the letter shows every field filled (name, designation, department, location, joining day, pay, accept-by date, the link), the reference number, the check line and the signatory's name, title and signature image. Step 7: the page shows Pay, Start date, Answer by and 'Letter <reference>'; the download is the same issued PDF. Step 8: the public check page shows the legal entity, 'Offer letter', the candidate's name and 'current'. Step 9: 'That code is not right or has expired. Ask for a new one.'; still open, nothing saved. Step 10: 'Offer accepted' toast; the second try says the offer is no longer available. Step 11: Activity 'issued offer letter <reference> and sent it to the candidate', 'the candidate signed and accepted the offer', 'the sealed copy … was made'; the sealed copy has the letter pages and the acceptance page (time, IP, device, one-time code, the letter's fingerprint). Step 12: 'Offer declined' toast; the offer shows Declined; the letter is never marked accepted. Step 13: it is sent as before (email text and its own PDF). Step 14: not found / no access.",
+                    "stories": [
+                              "Screens/Portals/T9-09 · Careers and candidate pages › Offer · issued company letter, sign with a code",
+                              "Screens/Portals/T9-09 · Careers and candidate pages › Offer · sign with a code (e-sign on)",
+                              "Screens/People/PPL-29 · Letter templates · Live"
+                    ],
+                    "note": "Positive and negative (API hiring-hir09.e2e: issued P05 letter with every field and the entity signatory, missing signatory / field refused with nothing issued, employee 403, no offer-pay key 403, other company 404, public letter by link only, verify page, wrong code 401 and expired code 401 with nothing saved, code single use, decline path, a failed email keeps the same letter number, audit letter.requested / letter.issued / offer.sent / offer.accepted / offer.declined; hir28 / offer-letters / lifecycle-6b / 6e / careers e2e; kit t9-09-live and hiring-live; web yx-careers-public). Letters of candidates are not in People › Letters (they are on the offer). The template's 'needs approval' is not asked for offers (the offer route is the approval)."
+          },
+          {
+                    "id": "MT-D-A3-COPY-LAST-WEEK",
+                    "area": "Batch D A3: copy last week on My timesheet (answer 2533, 18 Nov 2026)",
+                    "screen": "Time › My timesheet (TIM-15), Week tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "An employee allocated to a project with a timesheet last week (for example arjun@demo-org.test).",
+                    "steps": [
+                              "Open My timesheet on this week, with some hours already typed on Monday and an empty Tuesday up to today.",
+                              "Press Copy last week.",
+                              "Look at the days after today, a holiday or leave day, and any project you are no longer allocated to.",
+                              "Look at the daily notes of the copied days.",
+                              "Press Save draft and reload.",
+                              "Negative: go to last week (Previous week), and to a week already sent for approval."
+                    ],
+                    "expected": "Step 2: 5-second toast 'Copied <days> from <last week> into empty cells. Days from <tomorrow> fill in on the day. Save the draft to keep them.' Only empty cells up to today are filled; hours you typed stay. Step 3: future days, holidays, leave days, locked days and projects you are no longer on stay empty. Step 4: notes are not copied (each day still needs its own note if the company asks for one). Step 5: the copied hours stay. Step 6: no Copy last week button on another week or on a sent week. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · My timesheet"
+                    ],
+                    "note": "Positive and negative (kit ops-live.test: only empty cells, open days up to today, current projects only, notes not copied, no button on another week / a sent week / before last week loads). The live page loads last week's sheet while this week is shown; no API change."
+          },
+          {
+                    "id": "MT-D-A5-NOT-SENT",
+                    "area": "Batch D A5 and 2535: weeks not sent, for the person and their project manager (answers 2534, 2535, 18 Nov 2026)",
+                    "screen": "Time › My timesheet (TIM-15), Not sent tab; Projects › Timesheet approvals (PRJ-02), Not sent tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "An employee allocated to a project for past weeks (some never sent, one saved as a draft, one sent back); that project's manager; a manager of another project; arjun@demo-org.test.",
+                    "steps": [
+                              "As the employee: My timesheet › Not sent.",
+                              "Press Open week on a row.",
+                              "Back on Not sent, press Show older.",
+                              "Send one of the weeks, then open Not sent again.",
+                              "As the project manager: Projects › Timesheet approvals › Not sent.",
+                              "Press Remind on a person; press it again (or reload and try).",
+                              "Negative: as a manager of another project, open Timesheet approvals › Not sent.",
+                              "Negative: an employee with no project and not on a timesheet: My timesheet › Not sent."
+                    ],
+                    "expected": "Step 1: past weeks (never this week) newest first: 'Nothing saved', 'Draft, not sent' with hours saved, or 'Sent back'; weeks before joining, weeks with none of the person's own working days (their weekly offs from the shift pattern, roster or location, holidays and full-day leave; a six-day week's Saturday counts) and weeks with no allocation are not listed; a week in a locked month says 'Month locked: ask HR for a correction' and has no Open week. Step 2: the Week tab opens on that week. Step 3: up to a year of weeks. Step 4: the sent week has gone. Step 5: each person on your projects with weeks owed (only for your projects), weeks not sent, the oldest, how many were sent back and when last reminded. Step 6: 5-second toast 'Reminder sent to <name>'; the person gets a bell and email naming the weeks; the second try is refused ('… was reminded in the last day. Try again tomorrow.') and the button says 'Reminded today'. Step 7: 'Everyone has sent their weeks.' (nobody from other projects). Step 8: 'Every past week is sent.' No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Not sent · past weeks to send",
+                              "Screens/Hiring/PRJ-02 · Timesheet approvals › PM · Not sent tab (batch D 2535)"
+                    ],
+                    "note": "Positive and negative (API projects-p2.e2e: draft and nothing-saved weeks listed, this week never, an employee with none, weeks=99 400, the PM's list only for their projects, another PM empty, remind 404 for another PM, 403 acting for someone, once a day 409, audited, a sent week leaves the list, a week of Mon-Fri holidays is owed on a six-day week and not on a five-day week; kit ops-live and prj-02-live)."
+          },
+          {
+                    "id": "MT-D-A8-REQUEST-LEAVE",
+                    "area": "Batch D A8: request leave from the timesheet week (answer 2539, 18 Nov 2026)",
+                    "screen": "Time › My timesheet (TIM-15), Week tab; the Apply leave drawer (TIM-18)",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "An employee with leave balances (for example arjun@demo-org.test) and their manager.",
+                    "steps": [
+                              "Open My timesheet on this week, type some hours (do not save).",
+                              "Press Request leave.",
+                              "Choose a leave type and a day later this week, write a reason, press Send request.",
+                              "Close the drawer and look at the grid and the day header of that day.",
+                              "As the manager: approve the request; as the employee: reload My timesheet.",
+                              "Negative: on a week whose days are all in a locked month, look for Request leave."
+                    ],
+                    "expected": "Step 2: the Apply leave drawer opens on the same page, starting on today (or the week's Monday on another week). Step 3: 5-second toast 'Leave sent for approval'. Step 4: the hours you typed are still there; the day says 'Leave requested'. Step 5: the day shows as leave (greyed, 'On leave'). Step 6: no Request leave button. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Request leave from the week"
+                    ],
+                    "note": "Positive and negative (API time-leave.e2e: the week marks a pending day as leave requested, then leave when approved; kit ops-live: the drawer opens here on today, the requested day is labelled, no button without my leave). The web leave wiring is shared (lib/yx-my-leave.ts) by My leave and My timesheet."
+          },
+          {
+                    "id": "MT-D-B3-BILLABLE-TOTALS",
+                    "area": "Batch D B3: billable and non-billable totals on the project team (answer 2537, 18 Nov 2026)",
+                    "screen": "Projects › a project (PRJ-01), Team tab",
+                    "url": "http://localhost:3000/yx/projects",
+                    "account": "A project manager with a billable project whose team has approved, reduced, rejected and waiting timesheet lines; projects.manage admin.",
+                    "steps": [
+                              "Open the project › Team.",
+                              "Switch 'Hours for' to This month, then Since the start.",
+                              "Approve a waiting line in Timesheet approvals, then come back.",
+                              "Negative: reduce a line, reject another; come back and compare."
+                    ],
+                    "expected": "Step 1: 'Hours for' is a single-choice control on This week; columns Billable (approved), Non-billable (approved) and Total booked per person, with totals. Step 2: the numbers follow the range (weeks starting this month; everything). Step 3: the approved hours move from booked-only into Billable or Non-billable by the line's billable tick. Step 4: a reduced line counts its reduced hours as approved, a rejected one none; both stay in Total booked. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Projects/PRJ-01 · Projects and project workspace"
+                    ],
+                    "note": "Positive and negative (API unit capacity.spec teamHours / rangeFrom; projects-p2 e2e: a week sent and waiting is booked only, approved becomes billable, the week range leaves it out, a bad range 400; kit prj-01-live: columns, Segment asks again, an older API keeps Hours booked). Hours are per person on the project."
+          },
+          {
+                    "id": "MT-D-A14-NUDGE",
+                    "area": "Batch D A14: the Home nudge and the reminder before the weekly cut-off (answer 2536, 18 Nov 2026)",
+                    "screen": "Home (the 'You have not logged time today' card); Settings › Projects & timesheets (3.11); the bell and email",
+                    "url": "http://localhost:3000/yx/home",
+                    "account": "An employee allocated to a project (for example arjun@demo-org.test); an admin for Settings 3.11; an employee with no project allocation.",
+                    "steps": [
+                              "As admin: Settings › Projects & timesheets. Find 'Home nudge when today has no hours, from', 'Each week is due on' and 'The reminder goes at'.",
+                              "As the employee, on a working day after 4 pm, with no hours for today: open Home.",
+                              "Press Fill in today; add hours for today and save the draft; open Home again.",
+                              "Press Not now on the card (on another day with no hours).",
+                              "Wait for (or ask the lead to run) the hourly time job on the day before the due day after 10 am; check the bell and email.",
+                              "Negative: Home before 4 pm, on a weekly off or holiday, on full-day leave, and for an employee with no project allocation.",
+                              "Negative: as admin set the nudge to Off and the due day to No reminder; save."
+                    ],
+                    "expected": "Step 1: 4 pm, Friday and 10 am by default. Step 2: the card 'You have not logged time today' with Fill in today and Not now. Step 3: My timesheet opens; after saving today's hours the card is gone. Step 4: the card goes for this visit. Step 5: one bell and email 'Your timesheet is due tomorrow' naming the week, only for people allocated to a project whose week is not sent; no second one that week. Step 6: no card. Step 7: 5-second toast; no card and no reminder afterwards. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Home nudge · no hours today",
+                              "Screens/Projects/PRJ-01 · Projects and project workspace"
+                    ],
+                    "note": "Positive and negative (API projects-p2.e2e: nudge after 16:00 on a working day with no hours, none before, on the weekly off, without an allocation, for a sent week, after booking today, when switched off; settings 403 for a non-admin, a bad time 400; the reminder only the day before the cut-off from 10:00, once per person and week, audited, none when off; kit prj-01-live settings mapping). Settings are company-wide: timesheet.nudge.daily_from, timesheet.reminder.cutoff_day, timesheet.reminder.time. The reminder runs with the hourly time job."
+          },
+          {
+                    "id": "MT-D-B1-APPROVAL-DRILL",
+                    "area": "Batch D B1: timesheet approval drill-down, By project / By person (answers 2538, 2540, 18 Nov 2026)",
+                    "screen": "Projects › Timesheet approvals (PRJ-02), Waiting for me tab",
+                    "url": "http://localhost:3000/yx/projects/approvals",
+                    "account": "A project manager (projects.view) with sent weeks waiting on two projects, one person booked on both; a second PM of another project; the person themselves.",
+                    "steps": [
+                              "Open Timesheet approvals. Check the switch shows By project and By person, By project picked.",
+                              "Press 'Week by day' on a project's week, then press a day with hours.",
+                              "Pick By person. Check the person who booked on both your projects.",
+                              "Approve one card, and use 'Approve N within allocation' in the By person view.",
+                              "Negative: press a day showing 'no hours'; sign in as the other PM and as the person, open the page; pick By person again."
+                    ],
+                    "expected": "Step 1: a single-choice joined control (not chips); the Not sent tab still beside Waiting for me. Step 2: the week opens in place into Monday to Sunday with hours per day; the day opens into its tasks with each person's hours; the totals add up to the cards. Step 3: one section per person and week, one card per project (the project code beside 'allocated'); the same cards as before, no new ones. Step 4: a 5-second toast; the lines leave the list; bulk asks first and takes only lines within the allocation. Step 5: an empty day is not a button; the other PM and the person never see your lines in either view (By person only regroups, never widens). No page scroll at 1278 x 635 with the drill-down closed.",
+                    "stories": [
+                              "Screens/Projects/PRJ-02 · Timesheet approvals",
+                              "Data/Timesheet (M12)"
+                    ],
+                    "note": "Positive and negative (kit data.test TimesheetWeekDrill; prj-02-live: By person same cards, bulk by person, drill-down days and tasks, no days = no drill-down; projects-p2 e2e: days and the person on each line, every line listed waits for the viewer, other PM / person / acting see none). No phone layout (2540)."
+          },
+          {
+                    "id": "MT-2527-ASK-HR-WAIVE",
+                    "area": "Founder answer 2527: a manager asks HR to waive late marks of their own team (18 Nov 2026)",
+                    "screen": "Time › Muster (TIM-02, manager) › Late marks; HR: Time › Attendance periods (TIM-11) › Late marks",
+                    "url": "http://localhost:3000/yx/time/muster",
+                    "account": "Manager: panel@ (Divya) with reports who were late this month; HR: an attendance.lock holder (HR Admin); another employee who manages nobody.",
+                    "steps": [
+                              "As the manager open Muster for an open month, press Late marks.",
+                              "Tick two days that count, press 'Ask HR to waive 2', type a short reason ('Too short') and press the button.",
+                              "Type a reason of 10+ characters and send.",
+                              "As HR open Attendance periods › the month › Late marks. Decline one request with a reason; waive the other.",
+                              "As the manager open Late marks again and check the bell.",
+                              "Negative: as the employee with no reports open Muster; after HR locks the month, as the manager try to ask again."
+                    ],
+                    "expected": "Step 1: a drawer of the manager's own team's late marks only (never their own row, never other teams); each says Counts, Waived, Asked HR or Declined. Step 2: the reason field says 'Say why in at least 10 characters.' and takes focus; nothing is sent. Step 3: a 5-second toast 'Asked HR to waive 2 late marks…'; the rows say Asked HR; HR holders get a bell notice. Step 4: the rows show 'Asked by manager' with the reason; Decline needs 10+ characters; both give a 5-second toast. Step 5: one row Waived (with HR's reason), one Declined with HR's reason; the manager got a notice for each. Step 6: no Late marks button without reports; a locked month says 'This month is locked' with no ticks, and the API refuses (409). Audit log: time.late_mark.waiver_asked / waived / waiver_declined.",
+                    "stories": [
+                              "Screens/Time/TIM-02 · Muster",
+                              "Screens/Time/TIM-11 · Periods"
+                    ],
+                    "note": "Positive and negative (time-ops e2e: own team only, outside the team / a peer / another company 404, short reason and wrong month 400, acting for someone else 403, repeats skipped and said, HR told, decline HR-only with reason and once, waive answers the request, both sides told, audited, locked month 409 for asking while HR can still decline; kit time-ops-live: manager ask with field error, declined day asked again, locked read only, HR decline). New table late_mark_waiver_requests (RLS, support excluded, no delete)."
+          },
+          {
+                    "id": "MT-E-A4-WAITING-ON",
+                    "area": "Batch E A4: who a claim waits on (answers 2551, 2552, 2556, 18 Nov 2026)",
+                    "screen": "Expenses home (EXP-01), My claims; Expenses › Team claims",
+                    "url": "http://localhost:3000/yx/expenses",
+                    "account": "An employee with claims in each state (sent and waiting on the manager, sent back, approved and unpaid, paid, draft); their manager (panel@, Divya).",
+                    "steps": [
+                              "As the employee open Expenses. Read each claim tile.",
+                              "As the manager open Expenses › Team claims.",
+                              "Approve the employee's waiting claim as the manager, then open the employee's Expenses again.",
+                              "Negative: check a draft, a paid claim and a rejected claim."
+                    ],
+                    "expected": "Step 1: a sent claim says 'Waiting on <manager's name>' ('… and N more' when several hold the step); a shared step says 'HR' or 'Finance'; a sent-back claim says 'Waiting on You'; approved and unpaid says 'Waiting on Finance (payment)'. Step 2: a 'Waiting on' column with the same, the person's own name for a sent-back claim. Step 3: the tile moves to the next step's approver, or 'Finance (payment)'. Step 4: no 'Waiting on' line for a draft, a paid or a rejected claim. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Expenses/EXP-01 · Expenses home"
+                    ],
+                    "note": "Positive and negative (API home-rules.spec waitingOnText: person, and N more, shared role, claimant, finance for payment, none; expenses-r2 e2e: the claimant's and the manager's lists name the manager; kit expenses-live and expenses-round2 tests)."
+          },
+          {
+                    "id": "MT-E-A7-PAST-CLAIM-FILTERS",
+                    "area": "Batch E A7: past-claim filters (answer 2553, 18 Nov 2026)",
+                    "screen": "Expenses home (EXP-01), My claims",
+                    "url": "http://localhost:3000/yx/expenses",
+                    "account": "An employee with more than 25 claims across statuses, some paid (seed a few if needed).",
+                    "steps": [
+                              "Open Expenses. Press Filter › Status, tick Approved and Partly approved.",
+                              "Add 'Sent between' for last month, then 'Paid between'. Type part of a title in Search claims.",
+                              "Copy the page address into a new tab.",
+                              "Go to page 2 with the pages control.",
+                              "Negative: filter to a status you have none of; type junk in the address (?status=paid&page=-3); sign in as another employee with the same address."
+                    ],
+                    "expected": "Step 1: chips show the filter; the list shows only those statuses, 25 a page, newest first. Step 2: each filter narrows the list; dates are India days. Step 3: the same filtered list opens. Step 4: the next 25. Step 5: 'No claims match these filters.' with a hint (not 'No claims yet'); junk in the address is ignored; another employee only ever sees their own claims. No page scroll at 1278 x 635 with one page of tiles.",
+                    "stories": [
+                              "Screens/Expenses/EXP-01 · Expenses home"
+                    ],
+                    "note": "Positive and negative (expenses-r2 e2e GET /expenses/me/claims: status, title search, sent and paid dates, page 2, only my own for a peer / manager / other company, bad input 400; kit: Status filter asks for page 1, no match, error, address round trip with junk dropped). Claims have no number, so the search looks in the title."
+          },
+          {
+                    "id": "MT-E-B7-TAX-WINDOW-CARDS",
+                    "area": "Batch E B7: declaration and proof window cards (answer 2550; built in batch H part 2 E1)",
+                    "screen": "Me › Tax (PAY-22), Declarations tab; HR: Declare for an employee",
+                    "url": "http://localhost:3000/yx/me/tax",
+                    "account": "An employee with a current employment; HR with the tax window keys (opens or locks windows).",
+                    "steps": [
+                              "As the employee open Me › Tax › Declarations.",
+                              "As HR lock the declaration window early (Payroll › Proofs › windows), then open it again early.",
+                              "As the employee refresh Me › Tax.",
+                              "Negative: with the window locked try to add a declaration."
+                    ],
+                    "expected": "Step 1: one card per window (Declarations, Proofs) with its dates and an OPEN tag when open, Closed otherwise. Step 3: the card says 'locked by HR' or 'opened early by HR'. Step 4: no Add declaration button; the note says HR locked them. Same cards on HR's Declare for an employee.",
+                    "stories": [
+                              "Screens/Pay/PAY-22 · Tax workspace"
+                    ],
+                    "note": "Checked in batch E: already live (commit 4f01b811b), API returns windows on the workspace, kit employee-pay test 'E1: the window cards show OPEN or Closed'. No code change."
+          },
+          {
+                    "id": "MT-E-PAY01-FIRST-USE",
+                    "area": "Batch E (answer 2555): Payroll home 'payroll not set up' first-use state live",
+                    "screen": "Payroll home (PAY-01)",
+                    "url": "http://localhost:3000/yx/payroll",
+                    "account": "A payroll admin in a company (or entity) with no pay group yet; another with pay groups.",
+                    "steps": [
+                              "As the admin of the company with no pay group open Payroll.",
+                              "Press 'What you need before you start', then Close; press 'Set up payroll'.",
+                              "Negative: open Payroll in the company that has pay groups."
+                    ],
+                    "expected": "Step 1: 'Payroll isn't set up for this entity yet.' with the set-up line, a primary 'Set up payroll' and a bordered 'What you need before you start'; no Start payroll or off-cycle buttons. Step 2: the checklist dialog opens and closes; Set up payroll opens statutory set-up. Step 3: no first-use state; the run and checks show.",
+                    "stories": [
+                              "Screens/Pay/PAY-01 · Payroll home"
+                    ],
+                    "note": "The live page now renders the designed FirstUse piece (left design-live-guard.known.json)."
+          },
+          {
+                    "id": "MT-F-34-FIRST-RESPONSE",
+                    "area": "Batch F item 34: first-response column (answer 2570, 18 Nov 2026)",
+                    "screen": "Helpdesk › Agent desk (HLP-02) ticket list",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "An agent of a desk with an SLA policy (first response target); a requester; a desk with no SLA.",
+                    "steps": [
+                              "As the requester raise a ticket. As the agent open the Agent desk.",
+                              "Reply to the ticket as the agent; go back to the list.",
+                              "Find a ticket answered after its first-response target (or wait past a short target, then reply).",
+                              "Negative: raise a ticket on a desk with no SLA policy; sign in as an agent of another company."
+                    ],
+                    "expected": "Step 1: a 'First response' column next to Resolution SLA shows the time left (amber when at risk). Step 2: it says Met (green). Step 3: Breached (red). Step 4: a dash with no target; the other company's agent never sees the ticket. Column can be sorted. No page scroll at 1278 x 635 (the table scrolls inside itself).",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-02 · Agent desk"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp02 e2e: unanswered null, answered Met, breached-before-reply Breached, other company none; kit helpdesk-desk-live: Met, Breached, running clock, dash)."
+          },
+          {
+                    "id": "MT-F-GLPI4-REQUESTER-CHASE",
+                    "area": "Batch F GLPI 4: chase a requester who does not answer (answer 2571, 18 Nov 2026)",
+                    "screen": "Helpdesk › Desk set-up › Settings › Requesters; Ticket workspace (HLP-03) timeline; requester's ticket page",
+                    "url": "http://localhost:3000/yx/desk/setup",
+                    "account": "A desk admin (desk.settings.manage); an agent of the desk; an employee requester.",
+                    "steps": [
+                              "As the desk admin open Settings › Requesters. Check 'Remind requesters who do not answer, then solve the ticket' is on with 3 reminders and 5 business days.",
+                              "Set 'Solve after' to 2 and press Save settings.",
+                              "Set it back to 5 and save.",
+                              "As the agent move a ticket to 'Waiting on requester'. After the next business day starts (or in a test company, wait for the 15-minute job), open the ticket.",
+                              "As the requester open the ticket and the bell.",
+                              "Negative: the requester replies; switch the chase off on another desk and leave a ticket waiting."
+                    ],
+                    "expected": "Step 2: a field error 'Solve after more business days than the number of reminders.' takes focus; nothing is saved. Step 3: a 5-second toast 'Desk settings saved.' Step 4: the timeline shows 'Reminder sent to the requester' once a business day, at most 3; after 5 business days the ticket is Resolved with 'Solved after 5 business days with no reply'. Step 5: the requester sees the reminder on the ticket and a bell notice (neutral words for a sensitive ticket); they can reply to reopen within the reopen days. Step 6: a reply ends the chase; with the chase off no reminder is sent. Audit: desk.ticket.requester_chased, desk.ticket.auto_solved.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-03 · Ticket workspace"
+                    ],
+                    "note": "Positive and negative (unit requester-chase.spec: business days, weekends and holidays, at most N, solve, catch-up; service-desk-batch2 e2e: defaults, bad settings 400, agent 403, waiting day not counted, one reminder a day, repeat run none, solved after 5 days, audited, chase off none; kit desk.test: field error and focus, saved values, off sends only the switch)."
+          },
+          {
+                    "id": "MT-F-GLPI8-TEAM-TARGETS",
+                    "area": "Batch F GLPI 8: team targets (OLA) per team: first response and hand-off (answer 2572, 18 Nov 2026)",
+                    "screen": "Helpdesk › Desk set-up › Response targets; Ticket workspace (HLP-03) details; SLA dashboard (HLP-05)",
+                    "url": "http://localhost:3000/yx/desk/setup",
+                    "account": "A desk admin (desk.sla.manage); two agents in two teams (groups) of the desk; a desk lead with reports.",
+                    "steps": [
+                              "As the desk admin open Response targets, press 'Add team targets (OLA)', add 'Team first response' 30 min and 'Team hand-off' 60 min for every priority, save.",
+                              "As the lead give a new ticket to team A. Open it as an agent.",
+                              "Move it to team B before anyone answers; reply as a team B agent.",
+                              "Open the SLA dashboard for today.",
+                              "Negative: try to add 'Team first response' to a response target (SLA) policy; open the ticket as the requester; open the dashboard on a desk with no team targets."
+                    ],
+                    "expected": "Step 1: saved with a 5-second toast. Step 2: Details shows 'Team targets' with 'Team first response · Team A: 30 min left' beside First response. Step 3: team A's clock stops (not kept by them), team B's starts and is Met after the reply; the requester's First response and Resolution SLA are unchanged. Step 4: 'Team targets (OLA)' lists each team with 'N of M on time' per measure, missed ones in red. Step 5: the SLA policy refuses the measure (400); the requester never sees team targets; no Team targets card when none are set.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-05 · SLA dashboard",
+                              "Screens/Helpdesk/HLP-03 · Ticket workspace"
+                    ],
+                    "note": "Positive and negative (service-desk-batch2 e2e: SLA kind refuses it 400, agent 403, starts on a team, hand-off cancels, reply keeps it, SLA unchanged, dashboard teams, labels name the team; kit helpdesk-sla-live and helpdesk-ticket-live). Migration 202617z0000582 widens the metric checks."
+          },
+          {
+                    "id": "MT-F-33-ASK-YOUR-MANAGER",
+                    "area": "Batch F item 33: ask your manager (answer 2573, 18 Nov 2026)",
+                    "screen": "Desk set-up › Categories; Help centre (HLP-01) raise form; My cases (HLP-07) › Questions from your team",
+                    "url": "http://localhost:3000/yx/desk/my-cases",
+                    "account": "A desk admin; an employee with a manager (e.g. a report of panel@ Divya); the manager (panel@); a top manager with no manager.",
+                    "steps": [
+                              "As the desk admin add a category 'Laptop policy' with Who answers = The requester's manager.",
+                              "Try the same with Sensitive ticked.",
+                              "As the employee open Help centre, raise a ticket on that desk and pick 'Laptop policy'.",
+                              "As the manager open My cases (bell link). Open the question, press 'Answer and mark solved' with nothing written; then write an answer and press it again.",
+                              "As the employee open the ticket.",
+                              "Negative: as another manager and as the employee open My cases; raise the same topic as someone with no manager; answer an already solved question."
+                    ],
+                    "expected": "Step 1: the list says 'answered by the requester's manager'. Step 2: Who answers greys out with 'A sensitive category is always answered by the desk' and it saves as the desk (the API refuses 400 otherwise). Step 3: the topic says 'Your manager answers' and the field helper explains it. Step 4: a card 'Questions from your team (1 open)'; the empty answer says 'Write your answer first.' and takes focus; then a 5-second toast 'Answer sent and marked solved.' Step 5: the manager's answer shows as a reply, status Resolved; replying reopens it for the desk. Step 6: no card for others (404 on the question); with no manager the desk gets it; a solved one is read only (409). Audit: desk.ticket.routed_to_manager, desk.ticket.manager_answered.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-07 · My cases"
+                    ],
+                    "note": "Positive and negative (service-desk-esm e2e: agent 403, sensitive 400, bad value 400, help centre shows answeredBy, routed to the manager, others / person / other company 404, empty 400, answer and solve, again 409, person sees the reply, audited, no manager = desk, DB check; kit cases-live and desk tests). Migrations 202617z0000591 (column and checks) and 202617z0000592 (the asked manager may reply without a desk seat)."
+          },
+          {
+                    "id": "MT-F-GLPI10-SETUP-EXPORT-IMPORT",
+                    "area": "Batch F GLPI 10: copy a desk's set-up between companies (answer 2574, 18 Nov 2026)",
+                    "screen": "Helpdesk › Desk set-up › Copy set-up",
+                    "url": "http://localhost:3000/yx/desk/setup",
+                    "account": "A desk admin (desk.settings.manage) in a trial company and in the live company; an agent.",
+                    "steps": [
+                              "In the trial company open the desk › Copy set-up › Download set-up file. Open the file.",
+                              "In the live company open a desk › Copy set-up › import the file.",
+                              "Read the list, press 'Import N', confirm.",
+                              "Open Categories, Response targets, Codes and templates and Rules.",
+                              "Import the same file again.",
+                              "Negative: import a text file renamed .json; as an agent look for the tab; import a file whose template names a ticket type this desk lacks."
+                    ],
+                    "expected": "Step 1: a JSON file with categories, response and team targets, templates and rules; no people, tickets or files, no company ids. Step 2: a checked list: 'Will be added', 'Already here' (by name), 'Not added' with the reason; nothing is saved yet. Step 3: a 5-second toast 'Imported N…'. Step 4: the added items are there; rules are switched off; a rule that pointed at the other company's records was not added and says why. Step 5: everything shows 'Already here'. Step 6: 'This is not a set-up file' and nothing sent; no Copy set-up tab for an agent (403); the template is 'Not added' with 'No ticket type named …'. Audit: desk.setup.exported, desk.setup.imported.",
+                    "stories": [
+                              "Screens/Helpdesk/Desk set-up"
+                    ],
+                    "note": "Positive and negative (service-desk-esm e2e: agent 403, other company 403/404 for export and import, the file's keys, no company id, bad format 400, over 500 items 400, dry run writes nothing, import by name, rule with foreign ids not added, rules never active, a second import adds nothing, audited; kit setup-transfer test)."
+          },
+          {
+                    "id": "MT-F-30-GOALS-TO-CHASE",
+                    "area": "Batch F item 30: people with no goals or goals not updated, with Remind (answer 2575, 18 Nov 2026)",
+                    "screen": "Performance › home (PRF-01, manager) › Goals to chase; Settings › 6.3 Performance › Goals and reviews",
+                    "url": "http://localhost:3000/yx/performance",
+                    "account": "Manager panel@ (Divya) with reports, one with no goals in the period and one whose goals have no check-in for 30+ days; HR setup admin; an employee with no reports.",
+                    "steps": [
+                              "As the manager open Performance. Find 'Goals to chase'.",
+                              "Press Remind for the person with no goals; press it again.",
+                              "Switch to 'Not updated in 30 days' and remind that person.",
+                              "As HR set 'a goal shows as not updated after' to 14 days; back as the manager reload.",
+                              "Negative: as the employee with no reports open Performance; open the API for another manager's report."
+                    ],
+                    "expected": "Step 1: a single-choice switch 'No goals (n)' / 'Not updated in 30 days (n)' with a table of the manager's own team only. Step 2: a 5-second toast 'Reminder sent to …'; the button turns 'Reminded today'; the person gets a bell notice; a second try the same day is refused ('Already reminded in the last day'). Step 3: last check-in shows the date or 'Never'. Step 4: the label and list follow the new number of days. Step 5: no card without reports; another team's person is 404. No page scroll at 1278 x 635 with a short list.",
+                    "stories": [
+                              "Screens/Performance/PRF-01 · Performance home"
+                    ],
+                    "note": "Positive and negative (performance-pm2 e2e: nothing to chase when all have goals and checked in, a new period lists both, no team empty, other company 404, bad period 400, bad kind 400, not my team 404, remind once, repeat 409, audited; kit goal-gaps test). Setting perf.goal.stale_days (14, 30, 45, 60; default 30)."
+          },
+          {
+                    "id": "MT-F-31-GOAL-PROGRESS-SUMMARY",
+                    "area": "Batch F item 31: goal progress summary (answer 2576, 18 Nov 2026)",
+                    "screen": "Performance › My goals (PRF-02); a manager opening a report's goals",
+                    "url": "http://localhost:3000/yx/performance/goals",
+                    "account": "An employee with weighted goals (60 / 40) and check-ins (on track, at risk); their manager; an employee with goals not yet checked in.",
+                    "steps": [
+                              "As the employee open My goals for the current period.",
+                              "Check in one goal as off track; reload.",
+                              "As the manager open the employee's goals.",
+                              "Negative: open My goals as someone whose goals have no progress yet; and as someone with no goals."
+                    ],
+                    "expected": "Step 1: a row on top: 'Average progress N%' (weighted 60/40 by the goal weights) and pills 'n on track', 'n at risk', 'n off track', 'n done'. Step 2: the pills follow the new confidence. Step 3: the same summary for that person. Step 4: 'No progress yet' with zero pills; with no goals the empty state shows (no summary). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Performance/PRF-02 · My goals and check-in"
+                    ],
+                    "note": "Positive and negative (kit goal-summary test: weighted, simple average without weights, closed counts as done, nothing measured, empty). No API change: the server's progress is used as is."
+          },
+          {
+                    "id": "MT-F-32-QUICK-ACTIONS-PRIVATE-NOTES",
+                    "area": "Batch F item 32: quick actions and private notes about a person (answer 2577, 18 Nov 2026); PRF-07 feedback tasks re-wired (2579)",
+                    "screen": "Performance › Feedback (PRF-08) › Quick actions › Private notes; Performance › Feedback I was asked for",
+                    "url": "http://localhost:3000/yx/performance/feedback",
+                    "account": "A manager (panel@ Divya) and one of their reports; HR admin; the company admin.",
+                    "steps": [
+                              "As the manager open Feedback. Use Quick actions › Give praise, then Give a suggestion.",
+                              "Quick actions › Private notes. Choose a report; press Add note with nothing written; write a note and add it; change it; delete it.",
+                              "Add a note again. Sign in as the report, as HR and as the company admin and look for it anywhere (Feedback, the person's profile, reviews).",
+                              "Try to add a note about yourself.",
+                              "Open 'Feedback I was asked for' and answer a request."
+                    ],
+                    "expected": "Step 1: the composer opens with Praise or Suggestion already picked. Step 2: 'Write the note first.' takes focus; then 5-second toasts 'Note saved. Only you can see it.', 'Note changed.', 'Note deleted.' (delete asks first). Step 3: nobody else ever sees it (the database hides it too). Step 4: refused: notes are about colleagues. Step 5: the designed tasks list and answer form (anonymous, advisory). Plan a 1:1 opens 1:1s. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Performance/PRF-08 · Quick feedback",
+                              "Screens/Performance/PRF-07 · 360° nominations"
+                    ],
+                    "note": "Positive and negative (performance-pm2 e2e: author only for read, change and delete; the person, manager's manager, HR and another company see nothing; the database hides it from a company session; never about yourself 403; blank, too long, unknown field 400; audit without text; kit feedback-rail test). New table perf_person_notes (RLS tenant + RESTRICTIVE author_only + support excluded) in rls-isolation. FeedbackTasksScreen and PeerFormScreen are designed screens now (left the live-copy list)."
+          },
+          {
+                    "id": "MT-F-13-POSH-COMPLAINT-IC-CONSOLE",
+                    "area": "Batch F item 13: POSH complaint (CMP-10) and Internal Committee console (CMP-11) live (answer 2578, 18 Nov 2026)",
+                    "screen": "Helpdesk › Speak up › Sexual harassment › Continue to the complaint form (/yx/desk/posh); Helpdesk › Internal Committee (/yx/desk/ic)",
+                    "url": "http://localhost:3000/yx/desk/posh",
+                    "account": "An employee (not on the committee); an Internal Committee member (set in Speak-up set-up, list Internal Committee); HR admin; the company admin.",
+                    "steps": [
+                              "As the company admin, in Speak-up set-up remove every Internal Committee member. As the employee open Speak up › Sexual harassment › Continue to the complaint form.",
+                              "Put the committee back (one presiding officer). As the employee open the form again and press File complaint with nothing filled.",
+                              "Choose 'On her behalf' and press File complaint again.",
+                              "Pick a date more than 6 months ago.",
+                              "Pick a date about 4 months ago and leave the reason empty; then fill it, choose the workplace, who it is about, what happened, add one PDF, and file.",
+                              "As the committee member open Helpdesk › Internal Committee: Committee tab, then Complaints; press Open on the new complaint.",
+                              "As the employee, HR and the company admin look for Internal Committee in the menu and open /yx/desk/ic directly."
+                    ],
+                    "expected": "Step 1: 'The Internal Committee is not set up yet' with the Local Committee advice; no File button. Step 2: each field says what is missing under it (date, workplace, who, what happened) and focus moves to the first; nothing sent. Step 3: 'Write her name.' and 'Say how you know her.'. Step 4: red warning and a Raise a grievance button; File complaint sends nothing. Step 5: 'Tell the committee why…' until filled; then 'Your complaint is with the Internal Committee', reference POSH-000n, and the committee's clock. Step 6: the members with their roles and dates, 'Committee complete' (or 'not complete' without a presiding officer or an external member); the complaint with filed date, next due and 'Inquiry by' 90 days on; Open goes to the case workspace. Step 7: no menu item, and the page says Not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Compliance/CMP-10 · POSH complaint filing",
+                              "Screens/Compliance/CMP-09 · IC console"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e 10/10: GET /desk/speakup/ic for members only, 404 for the filer, HR, the admin, the ethics officer and another company; case list carries filedOn; menu count icComplaints only for members; kit posh-live test 10/10). No new table: the complaint is a speak-up report of kind posh. Annual report and awareness tabs and woman/tenure checks are not live yet (questions 2590-2592)."
+          },
+          {
+                    "id": "MT-G1-2591-IC-WOMAN-TERM",
+                    "area": "Batch G1 answer 2591: Internal Committee members record woman and term end; set-up and console warn (19 Nov 2026)",
+                    "screen": "Helpdesk › Speak-up set-up › Internal Committee (POSH) › Add; Helpdesk › Internal Committee",
+                    "url": "http://localhost:3000/yx/desk/speakup-setup",
+                    "account": "The company admin (speakup.setup.manage); an Internal Committee member; HR admin.",
+                    "steps": [
+                              "As the company admin open Speak-up set-up and press Add on the Internal Committee card. Choose a person and press Add with nothing else filled.",
+                              "Choose Presiding officer, 'Is this member a woman?' No, a term end, and press Add.",
+                              "Choose Yes; try a term end more than 3 years away (the calendar stops at 3 years); choose one 2 years away and Add.",
+                              "Add a man as a member with a 1-year term. Look at the IC card and the Internal Committee console as a member.",
+                              "Using a member added before 19 Nov (no woman or term recorded), open the IC card and the console.",
+                              "As HR (no speakup.setup.manage) open Speak-up set-up."
+                    ],
+                    "expected": "Step 1: 'Say whether this member is a woman.' and 'Choose the day their term ends.' under the fields; nothing saved. Step 2: 'The presiding officer must be a senior woman employee.'; nothing saved (the server refuses it too). Step 3: a 5-second toast '… added'; the table shows Woman Yes and the term end. Step 4: columns Woman and Term ends; when fewer than half are women the card and console say 'At least half the members must be women'; an ended term shows 'Ended' and '…: tenure ended on …'. Step 5: '…: woman or term end not recorded'. Step 6: no access. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-06 · Speak-up filing",
+                              "Screens/Compliance/CMP-09 · IC console"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e 11/11: missing woman or term 400, term today or beyond 3 years 400, a non-boolean 400, woman on another list 400, a man presiding 400, saved and returned; hlp07-09 13/13; kit set-up and console tests). Migration 611 adds woman and term_ends_on to speakup_team_members (Internal Committee only, checked in the database). No new table."
+          },
+          {
+                    "id": "MT-G1-2592-IC-PER-WORKPLACE",
+                    "area": "Batch G1 answer 2592: one company Internal Committee plus optional committees per workplace (19 Nov 2026)",
+                    "screen": "Helpdesk › Speak-up set-up › Internal Committee (POSH); Helpdesk › Speak up › Sexual harassment; Helpdesk › Internal Committee",
+                    "url": "http://localhost:3000/yx/desk/speakup-setup",
+                    "account": "The company admin; two employees for committees; an employee who files; a member of only the company committee.",
+                    "steps": [
+                              "As the company admin press Add on the Internal Committee card, choose Committee 'Hosur plant', a woman presiding officer with a term end, and Add. Add the same person to the Hosur committee again.",
+                              "Try a second presiding officer on the Hosur committee.",
+                              "Look at the Internal Committee card: the Committee column and the warnings.",
+                              "As an employee file a sexual harassment complaint with workplace Hosur plant; then one with another workplace.",
+                              "As the Hosur member open Helpdesk › Internal Committee and the first complaint; as a company-only member try to open the first complaint by its address.",
+                              "As a member of both committees open the console."
+                    ],
+                    "expected": "Step 1: toast '… added'; the second time 'This person is already on that committee.'. Step 2: 'This committee already has a presiding officer. Remove them first.'. Step 3: each row says Whole company or Hosur plant; warnings name the committee, e.g. 'Hosur plant: Add one external member'. Step 4: both filed; the Hosur one goes only to the Hosur committee, the other to the company committee. Step 5: the Hosur member sees the Hosur complaint and the console titled 'Internal Committee · Hosur plant'; the company-only member gets Not found. Step 6: 'Internal Committees · <company>' with a Committee column and each committee's checks. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-06 · Speak-up filing",
+                              "Screens/Compliance/CMP-09 · IC console"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e: a workplace on another list 400, unknown workplace 400, same person twice 409, second presiding 409, routing by workplace and fallback to the company, the case keeps its committee, outsiders 404, console per member; kit set-up and console tests). Migration 612: speakup_team_members.location_id (Internal Committee only) with the live key per committee, speakup_cases.ic_location_id. The presiding officer who signs a case's report is the one of that case's committee."
+          },
+          {
+                    "id": "MT-G1-2597-POSH-OWN-FIELDS",
+                    "area": "Batch G1 answers 2597 and 2590: the POSH complaint's own fields; one POSH workspace (19 Nov 2026)",
+                    "screen": "Helpdesk › Speak up › Sexual harassment complaint (/yx/desk/posh); Helpdesk › Cases › a POSH case",
+                    "url": "http://localhost:3000/yx/desk/posh",
+                    "account": "An employee who files; an Internal Committee member.",
+                    "steps": [
+                              "As the employee open the complaint form, choose 'On her behalf', fill her name and your relationship, a date about 4 months ago with the reason, tick 'I want to try conciliation first', fill the rest and file.",
+                              "As a committee member open the complaint from Cases (or the Internal Committee console).",
+                              "File another complaint for yourself, recent date, no conciliation; open it as the member.",
+                              "As the employee, try a grievance in Speak up: it has no on-behalf, late-reason or conciliation fields."
+                    ],
+                    "expected": "Step 1: filed with a reference. Step 2: the Report card shows 'What happened' with only what was written, 'Filed on behalf of: <name> (by her <relationship>)', 'Why it was not filed earlier: …', the late notice, and 'She asks to try conciliation first'. Step 3: none of those rows. Step 4: the fields are not there (the server also refuses them on a grievance). The case opens in the one POSH workspace (HLP-08); there is no separate POSH workspace design any more.",
+                    "stories": [
+                              "Screens/Compliance/CMP-10 · POSH complaint filing",
+                              "Screens/Helpdesk/HLP-08 · Cases (case team)"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e: fields on a grievance 400, her name without the relationship 400 and the other way, a non-boolean 400, a reason over 1,000 characters 400, saved and shown; kit cases-live and posh-live tests). Migration 613 adds on_behalf_name, on_behalf_relation, late_reason, conciliation_asked to speakup_cases (POSH only, checked in the database). Answer 2590: PoshCaseScreen and the design-only LoadingCase / ErrorCase removed; HLP-08's Loading and Error stories now draw the live workspace's own states."
+          },
+          {
+                    "id": "MT-G1-2596-MANAGER-EMAIL",
+                    "area": "Batch G1 answer 2596: the manager gets a no-details email when a question from their team reaches them (19 Nov 2026)",
+                    "screen": "Helpdesk › Help centre › raise a ticket in a category answered by the manager; the manager's email inbox; My cases › Asked of me",
+                    "url": "http://localhost:3000/yx/desk/help",
+                    "account": "An employee whose manager has a login (the demo manager panel@); a desk admin who set a category to 'Who answers: the requester's manager'.",
+                    "steps": [
+                              "As the employee raise a ticket in that category with a subject and description.",
+                              "Open the manager's email (the test mail catcher).",
+                              "As the manager open My cases › Asked of me.",
+                              "As the manager, in Profile › Notifications turn email off for this notice and repeat step 1."
+                    ],
+                    "expected": "Step 2: one email, subject 'You have a question from your team in YukthiX', body says to open My cases; no ticket number, subject, description or name. Step 3: the question with its details is there. Step 4: the bell shows it; no email.",
+                    "stories": [],
+                    "note": "Positive and negative (service-desk-esm e2e 29/29: exactly one email, to the manager only, with no ticket number and no subject words). The email follows the company's email switch and the person's notice settings like every other notice."
+          },
+          {
+                    "id": "MT-G1-2593-IC-REPORT-AWARENESS",
+                    "area": "Batch G1 answer 2593: the Internal Committee's annual report and awareness log live (19 Nov 2026)",
+                    "screen": "Helpdesk › Internal Committee › Annual report; Awareness log",
+                    "url": "http://localhost:3000/yx/desk/ic",
+                    "account": "The presiding officer of the company committee; another member of it; an employee; HR admin; the company admin.",
+                    "steps": [
+                              "As a committee member open Awareness log › Log a session and press Save session with nothing filled; then a date in the future; then a real session (name, date, attended, audience).",
+                              "Open Annual report as the member who does not preside.",
+                              "As the presiding officer open Annual report › Mark reviewed; press Mark reviewed in the dialog with nothing written; write the action taken and save.",
+                              "Press Mark sent to the employer, then Mark sent to the District Officer.",
+                              "As an employee, HR and the company admin open /yx/desk/ic."
+                    ],
+                    "expected": "Step 1: 'Name the session…', 'Choose the day it was held.', 'Enter how many attended.' under the fields; the calendar stops at today (the server also refuses a future day); then a 5-second toast 'Session logged.' and the row with its attendance in the total. Step 2: the counts (received, disposed of, pending more than 90 days, sessions) and 'The presiding officer moves the report on.'; no button. Step 3: 'Write the action taken in the year (or “None”).'; then 'Report marked reviewed.' and the trail moves to Reviewed. Step 4: the trail reaches 'Submitted to District Officer'; the header says the report is Sent. Step 5: Not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Compliance/CMP-09 · IC console"
+                    ],
+                    "note": "Positive and negative (service-desk-hlp06 e2e: outsiders 404, future day / short name / negative attendance / unknown field 400, the database hides the log from a non-member, a non-presiding member 403, steps out of order 409, reviewed without action 400, an old year 400, three audited steps; rls-isolation; kit posh-live 15/15). New tables posh_awareness_sessions and posh_annual_reports (RLS tenant + RESTRICTIVE ic_member_only per committee + support excluded) in rls-isolation. New routes POST /desk/speakup/ic/awareness and /ic/report in the endpoint-permissions list. The figures are counted from the committee's POSH complaints of the calendar year."
+          },
+          {
+                    "id": "MT-G2-12-ANNOUNCEMENTS",
+                    "area": "Batch G2 item 12: announcements (M09, ENG-03; answers 2601-2602) and the Engage feed (25 Nov 2026)",
+                    "screen": "Engage › Announcements (list, New, one announcement); Engage › Feed",
+                    "url": "http://localhost:3000/yx/engage/announcements",
+                    "account": "HR admin (engage.announce; also the System Admin); two employees at different locations; an employee with no job record; a manager without the key.",
+                    "steps": [
+                              "As HR open Engage › Announcements › New announcement. Press Publish with nothing filled.",
+                              "Write a title with '₹12,000' and tick Email.",
+                              "Fix the title. Choose Audience 'Location: <one plant>', watch the count; ask to acknowledge by a date; pin it; Publish and confirm.",
+                              "As an employee at that plant open Engage › Feed; as an employee elsewhere open it too.",
+                              "As the plant employee press Acknowledge.",
+                              "As HR open the announcement: read and acknowledged per person; press Remind; press it again; Export.",
+                              "Write another one, Schedule for later (tomorrow); check the list and the plant employee's feed.",
+                              "As the manager without the key open /yx/engage/announcements."
+                    ],
+                    "expected": "Step 1: 'Write a title…' and 'Write the message.' under the fields; nothing sent. Step 2: red 'Remove the amount before sending outside the app'; the confirm button stays off (the server refuses it too). Step 3: the count shows (e.g. 'Publish to 96 people'); toast 'Announcement published.'; the tracking page opens. Step 4: the plant employee sees it pinned at the top with 'Acknowledgement required by …'; the other employee does not see it; both get nothing else. A bell notice for the audience (and an email with the title and a link only when Email was ticked). Step 5: toast 'Acknowledged.' and 'You acknowledged this'. Step 6: rows say Acknowledged / Read, not acknowledged / Not read; Remind sends to the ones not acknowledged (toast with the number); then the button says 'Reminded today'; Export downloads a CSV. Step 7: the list says 'Scheduled for …'; the feed does not show it until 9 am that day. Step 8: no menu item, and the page says no access. Reminders also go by themselves on day 2 and day 5 to people who have not acknowledged. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-03 · Announcement composer and acknowledgement tracking",
+                              "Screens/Engage/ENG-01 · Feed and spaces"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e 8/8: key 403, audience by location and department, short title / empty or script-only message / amount by email / due day without acknowledging / past or far schedule / another company's place / nobody in the audience / unknown field 400, the message cleaned, only the audience sees and acknowledges (others 404), email title only, reminders once a day 409, scheduled kept back and sent once by the job, day-2 / day-5 job reminders to non-acknowledgers only, company B sees nothing incl. the database; rls 33/33; kit 9/9). New key engage.announce (System Admin and HR Admin). New tables eng_posts and eng_post_reads (RLS tenant + support excluded) in rls-isolation. New menu area Engage (Feed; Announcements with the key)."
+          },
+          {
+                    "id": "MT-G2-100-FEED-SPACES-MODERATION",
+                    "area": "Batch G2 item 100: the feed, spaces, posts, likes, comments, reports and moderation (M09 Q1-Q2, answer 2601; 25 Nov 2026)",
+                    "screen": "Engage › Feed (Feed and Spaces tabs; Write a post; Comment); Engage › Moderation",
+                    "url": "http://localhost:3000/yx/engage",
+                    "account": "Two employees at one plant (A, B) and one elsewhere (C); HR admin (engage.announce and engage.moderate; also the System Admin); an employee with no job record.",
+                    "steps": [
+                              "As A open Engage › Feed › Spaces: Company, each location, each department; you are a member of Company, your plant and your department.",
+                              "Write a post: press Post with nothing written; then post to your plant; then to Company; then write one with a blocked word (e.g. 'idiot').",
+                              "As B (same plant) and C (elsewhere) open the feed.",
+                              "As B like A's plant post, unlike it, like it again; open Comment, press Comment empty, then comment; write a comment with a blocked word.",
+                              "As B report A's post from the post's menu; report it again.",
+                              "As HR open Engage › Moderation: approve A's Company post, open the held post: press Warn author with no note, then with a note; Delete it (confirm); Restore a hidden one.",
+                              "As HR in Feed › Spaces press 'Turn on approval' for the plant; as A post there. Turn it off again.",
+                              "Settings › Policies › Engage feed: change the blocked words and 'reports that hide a post' to 2; report a post twice from two people.",
+                              "As an employee without engage.moderate open /yx/engage/moderation."
+                    ],
+                    "expected": "Step 2: 'Write the post.' under the field, nothing sent; the plant post appears at once (toast 'Posted.'); the Company post says 'Send for approval' and shows to A as 'Waiting for approval'; the blocked-word post warns before posting and shows as 'Held for review'. Step 3: B sees A's plant post, not the waiting or held ones; C sees none of A's posts. Step 4: the Like count goes up and down; comments show; 'Write the comment first.'; the blocked-word comment shows only to its author, held. Step 5: 'Thanks for reporting'; the second time the server refuses (already reported). Step 6: approving publishes it and A is told; 'Write the note first.' then 'Warning sent to the author.'; Delete asks first; each action tells A in the bell; the queue shows earlier actions and 'Repeat pattern' from 2. Step 7: A's post waits for approval. Step 8: the new words hold posts; 2 reports hide it until a moderator acts. Step 9: no menu item, no access. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-01 · Feed and spaces",
+                              "Screens/Engage/ENG-02 · Post composer",
+                              "Screens/Engage/ENG-11 · Moderation queue",
+                              "Screens/Performance/Kit · Growth building blocks"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e: spaces and membership, own spaces only 404, empty / too long 400, company space approval, blocked words hold posts and comments, likes toggle, comments only on readable posts 404, own report 400, twice 409, reports hide, moderation key 403, approve twice 409, restore clears reports, warn without note 400, unknown action 400, deleted 404, author told, audit without words, space approval on/off, never the company space 400, company B sees nothing; rls; kit engage-feed-live 11/11). New key engage.moderate (System Admin and HR Admin). New tables eng_spaces, eng_comments, eng_reactions, eng_reports, eng_mod_actions in rls-isolation. Settings engage.blocked_words and engage.hide_after_reports on Settings 5.7. Menu: Engage › Moderation with the key. Kit: CommentsDrawer (new, with a story)."
+          },
+          {
+                    "id": "MT-G2-73-KUDOS",
+                    "area": "Batch G2 item 73: kudos with company values and badges, the recognition wall (M09 Q4, answer 2603: badges only; 25 Nov 2026)",
+                    "screen": "Engage › Recognition (wall; Give kudos)",
+                    "url": "http://localhost:3000/yx/engage/recognition",
+                    "account": "Two employees (A, B); HR admin; an employee of another company.",
+                    "steps": [
+                              "As A open Engage › Recognition › Give kudos and press Send kudos with nothing chosen.",
+                              "Search for B, choose B, a company value and a badge, write a message and send.",
+                              "As B open the bell, Engage › Recognition and Engage › Feed; like the kudos.",
+                              "Filter the wall by another value.",
+                              "As A send a kudos whose message has a blocked word.",
+                              "Try to find yourself in 'Who do you want to thank?'.",
+                              "As HR change Settings › Policies › Engage feed › company values and badges; give a kudos again."
+                    ],
+                    "expected": "Step 1: 'Choose at least one person to thank.', 'Pick a company value for this kudos.', 'Write what they did.' under the fields; nothing sent. Step 2: toast 'Kudos sent to B.'; back on the wall it shows with B, the value and the badge. Step 3: B has a bell notice (and an email with no details); the kudos is on the wall and in the feed as Kudos; the Like count goes up. Step 4: 'No kudos for … yet' when none. Step 5: a warning before sending; the toast says it is held; it is not on the wall and B is not told; HR sees it in Moderation. Step 6: you are not in the list (the server refuses yourself too). Step 7: the new values and badges are the choices. The leaderboard card says there are no points or leaderboard (badges only). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-08 · Give kudos",
+                              "Screens/Engage/ENG-09 · Recognition wall and leaderboard"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e: choices and people never yourself, yourself / unknown value / unknown badge / another company / nobody / more than 20 / no message / unknown field (points) 400, posted on the company space and the wall, filter by value, the people thanked told (not the giver), likes, a blocked word holds it untold and in moderation, company B sees nothing; kit engage-recognition-live). New table eng_kudos in rls-isolation. Settings engage.values and engage.badges on 5.7. Menu: Engage › Recognition."
+          },
+          {
+                    "id": "MT-G2-74-75-SURVEYS-POLLS",
+                    "area": "Batch G2 items 74 and 75: surveys, pulse and eNPS with results and action plans; polls in the feed (M09 Q3, Q8; answer 2604; 25 Nov 2026)",
+                    "screen": "Engage › Surveys (list, New survey, results, action plans); a survey to take (from the feed or the bell); Engage › Team surveys (a manager); Engage › Feed › Write a post › Poll",
+                    "url": "http://localhost:3000/yx/engage/surveys",
+                    "account": "HR admin (engage.survey.manage; also the System Admin); a manager with at least 5 direct reports, and those reports; another employee; a manager with fewer than 5 reports.",
+                    "steps": [
+                              "As HR open Engage › Surveys › New survey. Press Save and exit with no name.",
+                              "Name it, choose Pulse, keep the questions, add one of your own; try 'Named' (it is only for onboarding and exit); choose a closing day a week away; Launch.",
+                              "Try to change the launched survey.",
+                              "As an employee open Engage › Feed: the Open survey card; Take survey; press Send answers with nothing answered; answer and send; open it again.",
+                              "As 4 of the manager's reports answer; as the manager open Engage › Team surveys › the survey; then let a 5th report answer and open it again; Create action plan: share it without a focus, then choose a focus, add an action with a due day, Share with team, Mark plan complete.",
+                              "As HR open the survey's results: choose a department with fewer than 5 answers; open Action plans.",
+                              "As HR close the survey; as an employee who has not answered try to answer.",
+                              "As an employee write a poll in your plant space: press Post with one option and no closing day; then 3 options and a closing day; as a colleague vote; vote again.",
+                              "As the manager with fewer than 5 reports open the team results."
+                    ],
+                    "expected": "Step 1: 'Name the survey…'; nothing saved. Step 2: Named cannot be chosen for a pulse; toast 'Survey launched to N people.'; everyone in the audience gets a bell notice. Step 3: refused (the anonymity mode is locked). Step 4: 'Answer at least one question.'; then 'Thank you, your answers are in'; opening again shows it is answered; the card goes away. Step 5: with 4 answers the manager sees 'Team results' hidden (fewer than 5) and no plan button; with 5 the eNPS and themes show; the plan needs a focus ('Choose the area to focus on.'), then toasts 'Plan shared with your team.' and 'Plan marked complete.'. Step 6: small departments are greyed out '(fewer than 5)'; the heat map hides them; the plan shows in Action plans. Step 7: the survey is closed for them. Step 8: 'Add at least 2 options.' and 'Choose the day the poll closes.'; the poll appears; the voter sees the results after voting; a second vote is refused. Step 9: no numbers. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-04 · Surveys list and builder",
+                              "Screens/Engage/ENG-05 · Take survey, pulse and eNPS",
+                              "Screens/Engage/ENG-06 · Survey results",
+                              "Screens/Engage/ENG-07 · Action plans",
+                              "Screens/Engage/ENG-01 · Feed and spaces",
+                              "Screens/Engage/ENG-02 · Post composer"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e: key 403, named pulse / closing before opening / smallest group 2 / bad options / duplicate ids / unknown kind / another company's place 400, draft edits, launch once (409), locked after launch (409), invitations and notices, answer checks (out of range, unknown option or question, nothing) 400, once only 409, uninvited and other company 404, the response stores no person and the audit no actor, team results hidden below the smallest group and plan refused there, plan states, completed 409, HR sees plans, company results with small departments refused, close once, answering a closed survey 409, a named exit survey keeps the person, the 3-day reminder only to non-answerers and only once, polls (1 option, same option twice, 6 options, past day, missing day, day without options 400; one vote 409; non-member 404; closed 409; counts after voting); kit engage-surveys-live 10/10). New key engage.survey.manage (System Admin and HR Admin). New tables eng_surveys, eng_survey_invites, eng_survey_responses, eng_action_plans, eng_poll_votes in rls-isolation. Setting engage.survey.min_group on 5.7. Menu: Engage › Surveys (key) or Team surveys (managers)."
+          },
+          {
+                    "id": "MT-G2-76-CELEBRATIONS",
+                    "area": "Batch G2 item 76: celebrations on the feed (birthdays without the year, work anniversaries, new joiners) with personal opt-outs (M09 Q5, answer 2605; 25 Nov 2026)",
+                    "screen": "Engage › Feed (Today strip; My celebrations card); Me › Profile (hide my birthday); Settings › Policies › Engage feed",
+                    "url": "http://localhost:3000/yx/engage",
+                    "account": "An employee whose birthday is today; one with a work anniversary today; one who joined this week; HR admin; an employee of another company.",
+                    "steps": [
+                              "Open Engage › Feed: the Today strip.",
+                              "As the person with the birthday hide the birthday in Me › Profile; open the feed again; show it again.",
+                              "In the feed's My celebrations card turn off 'My work anniversary' (as the person with the anniversary).",
+                              "As HR set Settings › Policies › Engage feed › 'Welcome new joiners' to off.",
+                              "As an employee of another company open their feed."
+                    ],
+                    "expected": "Step 1: 'Birthday today' (never the year), '<N> years with us', 'Joined today' or 'Joined this week'. Step 2: the birthday disappears while hidden and comes back. Step 3: toast 'Saved.'; the anniversary is gone from everyone's strip. Step 4: no new joiners shown. Step 5: none of this company's people. Promotions are not celebrated yet (answer 2605). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-01 · Feed and spaces",
+                              "Screens/Performance/Kit · Growth building blocks"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e: birthday without the year, anniversary in whole years, joiners of this week only, hidden birthday never shows, personal opt-outs per kind (bad value 400), company setting off, company B sees none; unit: 29 Feb on 28 Feb outside leap years). Nothing is posted or stored except the opt-outs (new table eng_celebration_optouts in rls-isolation). Settings engage.celebrate.birthdays / anniversaries / new_joiners on 5.7. Kit: CelebrationStrip moved into the kit; new CelebrationChoices (story)."
+          },
+          {
+                    "id": "MT-G3-LEARNING-PORT",
+                    "area": "Batch G3: Learning on PR #210's base, with session rating, the manager's training check, overdue timing (2609) and who sees results (2608) (25 Nov 2026)",
+                    "screen": "Learning › Sessions (one session: Attendance, Results, Feedback); Learning › My team › Training checks; the rating page from the notice; a person's record › Learning; Settings › Learning",
+                    "url": "http://localhost:3000/yx/learning/sessions",
+                    "account": "HR admin (L&D); a manager with a report who is also the session's trainer (panel@, Divya); the report; another employee; HR with training reports for one legal entity only; an employee of another company.",
+                    "steps": [
+                              "As HR make a classroom course (note its attendance share comes from Settings › Learning, 75% by default) and a session with Divya as trainer; nominate her report.",
+                              "As the report open the course and mark its items done.",
+                              "As Divya open the session: show the code; the report checks in; Divya marks the second slot.",
+                              "As HR confirm attendance after the last slot. As the report open the notice › rate the session: send with no rating, then 4 and 5 with a comment; try again.",
+                              "As Divya open the session page: look for Results and Feedback. As HR open it.",
+                              "Open the report's record › Learning as the report, as Divya, as HR (L&D) and as the entity-only training-reports HR.",
+                              "Set the check days to 30 (test DB: move the confirmation date back). Next morning as Divya open Learning › Training checks: send with no answer, then Partly; open it again.",
+                              "Give the report a mandatory course due yesterday; run the daily sweep on days +1, +7 and +14 (or move the due date). Set the HR days to 21 and repeat day +14.",
+                              "As the other employee and as another company's user open the session and the rating link."
+                    ],
+                    "expected": "Step 1: 'Session scheduled'; the course shows 75% (or the company setting). Step 2: items tick but the course stays In progress (a classroom course completes only by attending). Step 3: code check-in works; marks saved. Step 4: on confirm the report completes (1 of 2 slots at 50%/the share) and is asked to rate; 'Choose a rating.' twice; then a toast; a second rating is refused ('You rated this session already.'). Step 5: Divya sees Attendance and Feedback but no Results tab; HR sees Results and Feedback (1 response, 4 and 5, the comment, no name). Step 6: the result line ('Attended … slots') shows for the report, Divya and L&D, not for the entity-only training-reports HR (status only). Step 7: 'Choose one.'; then 'Recorded…' and the check disappears; the notice came once. Step 8: day +1 the report is reminded; day +7 Divya; day +14 the training-reports holders; with 21 days nothing at +14. Step 9: not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Learning/LRN-04 · Sessions and trainers",
+                              "Screens/Learning/LRN-05 · Trainer QR attendance",
+                              "Screens/Learning/LRN-12 · Session feedback and 60-day check"
+                    ],
+                    "note": "Positive and negative (learning e2e 12/12 incl. new: rating 1-5 only (400), not an attendee (404), another company (404), once (409); summary without names; trainer has no results (2608); checks only after the company's days, only own reports (404 for others), bad answer 400, asked once, answered once (404 after); person tab result for self, manager chain and L&D only (2608); classroom items never complete; course share from the setting; 2609 timings with the HR-days setting). New table learning_feedback in rls-isolation; new routes in endpoint-permissions; settings learning.attendance_share, learning.check_after_days, learning.overdue.manager_days, learning.overdue.hr_days; menu Learning › Training checks for managers. PR #210 base: courses, rules, compliance, requests, external training with bonds, trainers, sessions, QR, team view and the person's Learning tab (its own 10 e2e scenarios pass)."
+          },
+          {
+                    "id": "MT-G3D-SKILLS-NEEDS",
+                    "area": "Batch G3d: skills profile and suggestions, team skills, training needs and budgets, the committees' counts for HR (2620) and POSH awareness course completions in the annual report (2624) (25 Nov 2026)",
+                    "screen": "Learning › My skills (and Skills to confirm); Learning › Team skills; a report's skills; Learning › Needs & budgets; Learning › Compliance (Internal Committees card); Desk › Internal Committee (annual report); Course builder (POSH awareness switch)",
+                    "url": "http://localhost:3000/yx/learning/skills",
+                    "account": "HR admin (L&D, training reports company-wide); a manager (panel@, Divya) with reports; one report; HR with training reports for one legal entity; an Internal Committee member; an employee of another company.",
+                    "steps": [
+                              "As HR in Settings › Performance add a skill 'Forklift handling' under a domain, make it a competency and map it to the report's job title at level 3.",
+                              "As HR build a self-paced course with the skill 'forklift handling' (any case) and a required link; publish. As the report enrol and finish it.",
+                              "As the report open Learning › My skills: see the skill, the gap (required 3) and the banner; Review suggestions; Confirm. Try Confirm again from another tab.",
+                              "As Divya open Learning › Team skills, click the report, Set a level: save with nothing chosen, then level 4. As the report try the person URL of a colleague.",
+                              "As HR open Learning › Needs & budgets › Add need: save empty; then for the report, Skill gap, High, ₹5,000. Select it › Plan with a course (choose none, then a course). Close another need.",
+                              "Budgets tab › Set a budget: none chosen; then the report's department ₹4,000. Check Spent (completed course costs + approved external training) and 'Over by'.",
+                              "In the course builder turn on 'POSH awareness training' for a course; an employee completes it. As a committee member open the Internal Committee annual report.",
+                              "As HR open Learning › Compliance (Internal Committees card). As the entity-only HR open it. As another company open the same pages."
+                    ],
+                    "expected": "Step 2: on completion a pending suggestion (level 2, from the course) appears; skills not in the library are ignored. Step 3: My skills lists the skill 'Not assessed yet' against 3 with the gap; Confirm gives a toast and the level 2 from the course; the second confirm says it was decided already. Step 4: 'Choose the skill.' / 'Choose the level.'; then 'Level saved'; the matrix shows 4 against 3; a colleague's skills page is not found. Step 5: errors for name and person; then 'Need added.'; plan needs a course; the row shows Planned with the course. Step 6: 'Choose the department.'; then the row with Spent and 'Over by …'. Step 7: the report shows 'Awareness course completions 1' next to the sessions. Step 8: HR sees each committee with 'Fewer than 5' instead of complaint counts below 5, sessions and course completions, no names; the entity-only HR and other companies see no card (403). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Learning/LRN-09 · Team skills matrix",
+                              "Screens/Learning/LRN-10 · Skills profile",
+                              "Screens/Learning/LRN-15 · Skill suggestions to confirm",
+                              "Screens/Learning/LRN-11 · Training needs and budgets"
+                    ],
+                    "note": "Positive and negative (learning e2e 15/15 incl. G3d: suggestion from a completed course once; others 404, another company 404; L&D sees but neither decides nor assesses; decide once (409); assess by the manager only (403 self), level 1-5 (400), library skills only (400); team matrix for direct reports; needs L&D only (403), person or department not both (400), bad priority 400, plan needs a course (400), unknown ids 404; budget negative 400, unknown department 400, spent = completed course costs + approved external; 2620 counts company-wide training reports only (403 entity-scoped and employees), none below 5, no names; 2624 POSH course completions in the committee report; rls 33/33; kit learn-skills-live 9). New tables learning_skill_levels, learning_skill_suggestions, learning_needs, learning_budgets in rls-isolation; learning_courses.posh_awareness; new routes in endpoint-permissions; menu: My skills (everyone), Team skills (managers), Needs & budgets (learning.manage)."
+          },
+          {
+                    "id": "MT-G1-FOLLOWUPS-2623-2625",
+                    "area": "G1 follow-ups: Edit member on the Speak-up set-up lists (2625); an ended committee term takes no new complaint and the System Admin is reminded 30 days before (2623) (25 Nov 2026)",
+                    "screen": "Helpdesk › Speak-up set-up (Internal Committee and Industrial relations lists: Edit); the bell and email of the System Admin; filing a POSH complaint",
+                    "url": "http://localhost:3000/yx/desk/speakup-setup",
+                    "account": "System Admin (speakup.setup.manage); HR without the key; an employee filing a complaint; two Internal Committee members.",
+                    "steps": [
+                              "As the System Admin open Speak-up set-up. Check the Ethics and Escalation rows have no Edit; the Internal Committee and IR rows do.",
+                              "Edit a male committee member: make him Presiding officer; then a woman member to Presiding while another presides; then a term end of today and one more than 3 years away; then a valid change.",
+                              "As HR try the same change through the API (PATCH /desk/speakup/setup/members/:id).",
+                              "Set one member's term to end yesterday (test DB) and file a POSH complaint as an employee.",
+                              "Set a member's term to end in 20 days (test DB); run the daily sweep (speakup-ic-terms) twice; then change the term in Edit and run it again."
+                    ],
+                    "expected": "Step 1: Edit only on the IC and IR lists. Step 2: 'The presiding officer must be a senior woman employee.'; 'This committee already has a presiding officer. Change them first.'; 'The term must end after today.' / 'A term is at most 3 years.'; then a toast and the row shows the change; the audit log has the before and after. Step 3: 403. Step 4: the complaint reaches the other members only, never the one whose term ended. Step 5: the System Admins get one bell and email naming the member, the committee and the day; the second run sends nothing; after a term change one new note. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-06 · Speak-up set-up"
+                    ],
+                    "note": "Positive and negative (hlp06 e2e 15/15 incl. the new one: key 403, unknown 404, term today 400, over 3 years 400, man presiding 400, second presiding 409, bad type 400, other lists 400, audit before/after; ended term skips routing; reminder 30 days before, once, again after a term change, only System Admins; kit test for Edit). New column speakup_team_members.term_reminded_at; new route PATCH desk/speakup/setup/members/:id (speakup.setup.manage); new sweep speakup-ic-terms (07:00 IST); notification type helpdesk.ic.term_ending."
+          },
+          {
+                    "id": "MT-G4-LIBRARY-DOCS",
+                    "area": "G4: the report library (ANL-06, item 14) and company documents in folders with expiry (PPL-51, item 21) (25 Nov 2026)",
+                    "screen": "Analytics › Report library; People › Company documents (folders, Upload document, Replace, Remove, Download, New folder)",
+                    "url": "http://localhost:3000/yx/analytics/reports",
+                    "account": "System Admin; HR Admin (company documents and training reports); a manager with a report; a plain employee; an employee of another company.",
+                    "steps": [
+                              "As each account open Analytics › Report library (the plain employee: check the menu has no Analytics).",
+                              "As HR search 'training', mark Mandatory training compliance with the star, turn on Favourites only, then Open it. Sign in as the System Admin and look at the same report's star.",
+                              "As HR open People › Company documents › New folder: save with no name; then 'Licences' for everyone; try 'licences' again; make 'Board papers' for document managers only.",
+                              "Upload document: press Upload with nothing; then a renamed .txt as PDF; then a PDF with an expiry yesterday; then the factory licence expiring in 20 days.",
+                              "As the plain employee open Company documents: open the licence; try the Board papers folder address; download the licence.",
+                              "As HR replace the licence with a new PDF and expiry; try to remove the non-empty folder; run the daily sweep (company-docs-expiry) twice; set Settings › company documents reminder to 7 days and upload one expiring in 25 days; run the sweep.",
+                              "As another company's employee open the document's download address."
+                    ],
+                    "expected": "Step 1: each sees only reports their keys open (payroll for payroll keys, the team ones for the manager); the plain employee has none and no Analytics menu. Step 2: the star is personal (the System Admin's is off); Favourites only hides the rest; Open goes to the area's page. Step 3: 'Name the folder…'; then the folder; the second 'licences' is refused (exists). Step 4: errors for title, folder and file; the fake PDF is refused; the past expiry is refused; then 'uploaded. It opens once the virus check passes.' and the row shows Expiring soon. Step 5: the employee sees Licences only, not Board papers (not found), and the download is recorded in the audit log. Step 6: replace keeps one row with the new file; the folder can't be removed while it has documents; the uploader and document managers get one note; nothing for the 25-day one with a 7-day setting. Step 7: not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Analytics/ANL-06 · Report library",
+                              "Screens/People/PPL-51 · Company documents"
+                    ],
+                    "note": "Positive and negative (library-g4 e2e: entries by key or manager, favourites personal, favourite of a report not yours 404, bad body 400; folders by the key only (403), name too short 400, bad audience 400, duplicate name 409, managers folder hidden (404) from employees, upload needs a file (400), past expiry 400, fake PDF 400, unknown folder 404, download audited, clean files only, other company 404; replace; folder with documents 409; reminder once to uploader and managers, the company's days; remove 403/200/404). New key company.documents.manage (System Admin, HR Admin); new tables report_favourites, company_doc_folders, company_documents in rls-isolation; new routes in endpoint-permissions; setting company_docs.expiry_reminder_days (30); sweep company-docs-expiry; menu Analytics › Report library and People › Company documents. Scheduled report emails, the export log and team reports wait on 2690-2693."
+          },
+          {
+                    "id": "MT-2631-HIRING-SETTINGS",
+                    "area": "Answer 2631: the older /v2 hiring settings get YukthiX homes: pipelines on Settings › Hiring, Easy Apply on Job boards, campaigns on Talent pools; the /v2 pages are gone (25 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring (Pipeline templates: Add, Edit); Hiring › Job boards (Easy Apply); /v2/settings/pipelines, /v2/settings/easy-apply, /v2/campaigns",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "System Admin (pipelines:configure, org:manage_settings); a recruiter without the pipelines key; HR.",
+                    "steps": [
+                              "As the System Admin open Settings › Hiring › Pipeline templates › Add: save with no name; then 'Campus hiring'.",
+                              "Edit Campus hiring: move the first stage up; add a stage 'Aptitude'; on Interview add the statuses Scheduled and Done, turn on 'A test is passed' and save without a test, then with a test and 60%; turn on a checklist and save it empty; remove a stage that has candidates (on the default pipeline) and an empty one.",
+                              "On a job using Campus hiring, try to move a candidate into Interview without passing the test (the board refuses until it is met).",
+                              "As the recruiter open Settings › Hiring: the pipeline list has no Add or Edit.",
+                              "Open Hiring › Job boards › Easy Apply: copy the Indeed address; Set secret with 'short', then a 20-character secret; Turn off.",
+                              "Open /v2/settings/pipelines, /v2/settings/easy-apply and /v2/campaigns."
+                    ],
+                    "expected": "Step 1: 'Name the pipeline.'; then the pipeline with the default's stages. Step 2: 'Applied is already the first stage.'; the new stage; 'Choose the test.'; 'Add at least one item.'; saves give a toast; removing a stage with candidates says it still has entries; the empty one goes. Step 3: the move is refused until the rule is met. Step 4: view only. Step 5: 'Enter at least 16 characters.' (the server refuses short ones too); then Receiving applications; Turn off asks first, then Off. Step 6: each opens its YukthiX page (Settings › Hiring, Job boards, Talent pools). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.1 Hiring · edit pipeline, add pipeline, pipeline view only)",
+                              "Hiring · Job boards"
+                    ],
+                    "note": "Positive and negative (kit pipeline-sheet tests 4: new needs a name, test rule needs a test, first stage can't move up, refused removal shows the reason, view only, Easy Apply secret 16+; API UpdateEasyApplyConfigDto spec: short secret and unknown board refused, blank keeps, turn off; the pipelines API and its blueprint rules keep their own specs). The /v2 pipelines, easy-apply and campaigns pages are deleted and redirect. /v2/brand waits on 2698; stage-triggered campaigns on 2699."
+          },
+          {
+                    "id": "MT-G4-SCHEDULES-EXPORT-LOG",
+                    "area": "G4 (answers 2690-2692): scheduled report emails and the export log (ANL-08); /v2/brand retired (2698) (25 Nov 2026)",
+                    "screen": "Analytics › Schedules and exports (Schedules, Export log, New schedule, Stop, Download log)",
+                    "url": "http://localhost:3000/yx/analytics/schedules",
+                    "account": "System Admin (learning, expense reports, export log); HR Admin (training reports, performance reports); an auditor; a plain employee; another company's admin.",
+                    "steps": [
+                              "As the System Admin open Analytics › Schedules and exports › New schedule: save with nothing; then Mandatory training compliance, weekly, to yourself and HR; try the plain employee as a recipient.",
+                              "Run the report-schedules sweep after the next Monday 07:00 (test DB: move next run back). Check both mailboxes; run it again at once.",
+                              "Remove training reports from HR's profile; run the sweep again; look at Last run.",
+                              "As HR schedule Review completion (confidential) daily to yourself; run the sweep; open the email.",
+                              "Stop the System Admin's schedule; as HR try to stop it (API).",
+                              "Export Learning › Compliance as the System Admin, then open the Export log tab; Download log. As HR and as the plain employee open /yx/analytics/schedules. As another company's admin open the export log. As an auditor open it.",
+                              "Open /v2/brand."
+                    ],
+                    "expected": "Step 1: 'Choose the report.' / 'Choose at least one person.'; then 'Schedule saved.' with the next run Monday 7:00 am; the employee as recipient is refused (must open the report). Step 2: each gets their own compliance-training.csv; the second run sends nothing. Step 3: only the System Admin gets it; Last run says 'Sent to 1 of 2'. Step 4: the email has no attachment, only a link to sign in. Step 5: stopped; HR gets not found. Step 6: the log shows 'Training compliance' and then 'Export log' (the download is logged); HR and the employee see no Export log tab (403); other companies see none of it; the auditor sees the log only. Step 7: not found (retired). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Analytics/ANL-08 · Schedules and export log"
+                    ],
+                    "note": "Positive and negative (library-g4 e2e 5/5 incl. schedules: report you can't open 404, bad frequency 400, no recipients 400, recipient who can't open it 400, manager-only report 404, weekly runs Monday 07:00 IST, own copy each, claimed once, lost access gets nothing, confidential is a link, end only your own (404); export log: key only (403), bad date 400, CSV with header, its own download logged, other company empty; nextRunAt unit spec; kit report-schedules-live 2). New table report_schedules in rls-isolation; key exports.log.view (System Admin, auditor); routes in endpoint-permissions; sweep report-schedules every 15 minutes; menu Analytics › Schedules and exports."
+          },
+          {
+                    "id": "MT-ENGAGE-FOLLOWUPS-2664-2666-2668",
+                    "area": "Engage follow-ups (answers 2664, 2666, 2668): repeating and automatic surveys, Route to HR, results CSV (25 Nov 2026)",
+                    "screen": "Engage › Surveys (builder Settings step: Repeat / Send automatically), Survey results (Export CSV), Moderation (Route to HR)",
+                    "url": "http://localhost:3000/yx/engage/surveys",
+                    "account": "HR Admin (survey manage, moderate); an HR person who can raise a disciplinary case; a plain employee; another company's admin.",
+                    "steps": [
+                              "As HR make a pulse survey, set Repeat to Every month, launch it. Run the Engage jobs on the day a month later (test DB: move opens on back a month); run them again at once.",
+                              "Make an onboarding survey, tick 'Send it to each new joiner automatically', 30 days after joining, launch it. Add a joiner who joined 30 days ago and one who joined today; run the Engage jobs twice.",
+                              "Make an exit survey with automatic sending; accept a resignation; run the jobs.",
+                              "Try (API) a pulse survey with automatic sending, and an onboarding survey that repeats.",
+                              "Open a survey's results with one department below the smallest group; Export CSV. As the plain employee and another company's admin call the CSV link.",
+                              "In Moderation open a held post by someone with earlier actions; Route to HR. Press it again. Check the HR person's notifications and the author's. As the plain employee call the route link (API)."
+                    ],
+                    "expected": "Step 1: a new survey 'name · Mon YYYY' opens launched with invitations; the second run makes nothing. Step 2: only the 30-day joiner is invited, once; today's joiner waits. Step 3: the leaver is invited. Step 4: both refused (400). Step 5: a CSV of what the page shows; the small department is not in it (a note says so); no text answers; logged in the audit; employee 403, other company 404. Step 6: toast 'HR is told about …'; the second press says it was sent already; HR's notice names the author and the count, never the post's words; the author gets nothing; employee 403. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-04 · Survey builder",
+                              "Screens/Engage/ENG-06 · Survey results",
+                              "Screens/Engage/ENG-11 · Moderation"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e follow-ups 4: CSV key only/no text/small groups out/audit/other company 404; monthly repeat once; onboarding day 0 vs 30 once with notices; exit only accepted after launch; Route to HR 403/400/once 409/notice text/no author notice/other company 404; kit tests 4). Migration 741 engage_followups (columns on eng_surveys, route_hr action); new routes in endpoint-permissions; notification type engage.moderation.routed; jobs run with the 15-minute Engage jobs."
+          },
+          {
+                    "id": "MT-LEARNING-FOLLOWUPS-2672-2673-2675",
+                    "area": "Learning follow-ups (answers 2672, 2673, 2675): level gained per course skill, self-added skills the manager confirms, managers raise training needs (25 Nov 2026)",
+                    "screen": "Learning › course builder (Skills tab: Level gained), My skills (Add a skill), Skills to confirm, Team skills (Raise need), Needs & budgets",
+                    "url": "http://localhost:3000/yx/learning/skills",
+                    "account": "L&D (learning.manage); an employee (Arjun) and his manager (Divya, panel@); someone outside the team; another company's admin.",
+                    "steps": [
+                              "As L&D open a course › Skills: name two library skills, set Level gained 4 and 5, Save. Complete the course as an employee and open My skills › Review suggestions.",
+                              "As Arjun open My skills › Add a skill: send with nothing chosen; then pick a skill, level 3, 'How you know it', send. Send the same skill again. Try a skill he already holds at a higher level.",
+                              "As Arjun open Skills to confirm. As Divya open the notice, then Arjun's skills to confirm; Confirm it. As Arjun open My skills.",
+                              "As Divya open Team skills › Raise need for Arjun: clear the title and send; then send with the gap skill, priority High. Send the same skill again.",
+                              "As Arjun, L&D, someone outside the team and another company's admin try to raise a need for Arjun (API). As L&D open Needs & budgets."
+                    ],
+                    "expected": "Step 1: the suggestions are at levels 4 and 5 (courses saved before keep level 2). Step 2: 'Choose the skill.' / 'Choose the level.'; then toast 'Sent to your manager to confirm.'; the repeat says it is already waiting; the lower level is refused. Step 3: Arjun sees 'Waiting for the manager' and no Confirm; Divya got 'added … to their skills. Confirm or reject it.' and confirms; My skills shows the level with source 'Self, confirmed by the manager'. Step 4: the title message; then toast 'Training need for Arjun sent to L&D.'; the repeat says there is already an open need. Step 5: Arjun and L&D refused (403), outsiders not found (404); L&D sees the need as Skill gap, New, cost 0. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Learning/LRN-03 · Course builder",
+                              "Screens/Learning/LRN-10 · Skills profile",
+                              "Screens/Learning/LRN-15 · Skills to confirm",
+                              "Screens/Learning/LRN-09 · Team skills"
+                    ],
+                    "note": "Positive and negative (learning e2e 'answers 2672, 2673, 2675': levels must match skills 400, level 6 400, suggestion levels 4/5; self-add bad skill 400, level 0 400, already higher 400, twice 409, manager notified once, self decide 403, outsider 404, manager confirms, audit; raise need self/L&D 403, outsider/other company 404, bad priority 400, open need for the skill 409, L&D sees it, audit; kit tests 6). Migration 751 learning_skill_followups (skill_levels on courses, source 'self'); routes in endpoint-permissions; notification type learning.skill_added."
+          },
+          {
+                    "id": "MT-IT-ASSETS-ASSET-PAGE",
+                    "area": "IT assets (plan 26 Nov 2026), the part with no open question: the asset page with Details and History",
+                    "screen": "People › Assets › an asset (tag link): Details, History, Edit details",
+                    "url": "http://localhost:3000/yx/people/assets",
+                    "account": "IT / Admin coordinator (asset.view and asset.manage); HR Admin; an employee with no asset key; another company's admin.",
+                    "steps": [
+                              "As IT open People › Assets and press an asset's tag. Look at the Details tab, then History.",
+                              "Press Edit details: clear the name and save; then fill maker, model, purchase date, cost, invoice number, warranty 36 months and save.",
+                              "Issue the asset to an employee, let them confirm it in My assets, then take it back; open History again.",
+                              "Set the purchase date three years back with a 24-month warranty.",
+                              "As the employee with no asset key, and as another company's admin, open /yx/people/assets/<that id>. Open /yx/people/assets/<a random id> as IT."
+                    ],
+                    "expected": "Step 1: the page shows the name, kind and tag, the status, who has it, location and warranty; History lists who added it. Step 2: 'Enter the name.' and nothing saved; then toast '<name> (<tag>) saved.' and the warranty shows '36 months · ends <date>'. Step 3: History, newest first: took it back from <person> (<condition>), <person> confirmed they received it, issued it to <person> (<condition>), changed the details, added the asset. Step 4: the warranty shows 'ended' in red. Step 5: no access for the employee (403); not found for the other company and for an unknown asset (404). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset register (Asset page · details, history, edit details, view only, in stock warranty ended)"
+                    ],
+                    "note": "Positive and negative (lifecycle-6c e2e 'the asset page': warranty months 121 and -1 refused 400, details with warranty end 2026-01-31 + 13 months = 2027-02-28, five history events with who, holder cleared on return, IT reads it, employee 403, unknown 404, other company 404; kit asset-page tests 5). Migration 761 (maker, model, invoice_number, warranty_months on assets); route GET lifecycle/assets/:id (asset.view, checked per place)."
           }
 ]

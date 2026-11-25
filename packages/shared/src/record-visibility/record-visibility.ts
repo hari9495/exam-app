@@ -43,6 +43,9 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // Answer 1884: billing.view sits on the Finance templates (typically per legal entity); the plan and invoices are the
   // company's own, read-only, so a legal-entity grant reads the same company-wide plan.
   if (key === 'billing.view') return ['tenant', 'legal_entity'];
+  // Engage (batch G2) and Learning's course builder sit on the HR Admin template (typically per legal entity); they act
+  // company-wide only, so a legal-entity grant passes the route but confers nothing (the services check tenantWide).
+  if (key === 'engage.announce' || key === 'engage.moderate' || key === 'engage.survey.manage' || key === 'learning.manage' || key === 'company.documents.manage') return ['tenant', 'legal_entity'];
   // Visitors slice 1 (answer 613): reception and the log work per location (or entity); visitor settings are company-wide.
   if (key === 'visitors.desk.manage' || key === 'visitors.log.view' || key === 'visitors.rollcall.view') return ['tenant', 'legal_entity', 'location'];
   if (key === 'visitors.settings.manage' || key === 'visitors.watchlist.manage') return ['tenant'];
@@ -54,6 +57,11 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   // B8/E5 flexible benefits (answer 2456): HR Admin's template is per legal entity, so the key may be granted there to read
   // Settings 4.11; changing the company's flexible components or the unclaimed rule needs the company-wide grant.
   if (key === 'benefits.settings.manage') return ['tenant', 'legal_entity'];
+  // Enterprise E1 (answer 2681): HR Admin's template is per legal entity; seat changes are made in the entities the grant
+  // covers, and the switch-on plan needs the company-wide grant.
+  if (key === 'org.position.manage') return ['tenant', 'legal_entity'];
+  // Batch C item 4 (answer 2500): HR oversees pending approvals company-wide or for the people of a legal entity.
+  if (key === 'workflow.approvals.oversee') return ['tenant', 'legal_entity'];
   // Batch 2: an attendance month is locked per legal entity; rosters are planned for people, scoped like their records.
   if (key === 'attendance.lock' || key === 'attendance.lock.approve') return ['tenant', 'legal_entity'];
   if (key === 'roster.manage') return GRANT_SCOPE_TYPES;
@@ -81,6 +89,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'perf.comp.manage' || key === 'perf.comp.approve') return ['tenant', 'legal_entity'];
   // PM8: improvement plans are about people, scoped like their records.
   if (key === 'perf.pip.manage') return GRANT_SCOPE_TYPES;
+  // Learning: training reports are about people, scoped like their records; building courses and rules is company-wide.
+  if (key === 'learning.report.view') return GRANT_SCOPE_TYPES;
   if (key === 'expense.finance.review') return ['tenant', 'legal_entity'];
   // E4: the travel desk books for people in scope; advances are paid per legal entity.
   if (key === 'travel.booking.manage') return GRANT_SCOPE_TYPES;

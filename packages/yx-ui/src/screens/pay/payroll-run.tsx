@@ -29,6 +29,7 @@ import {
   Amount,
   DueDateStrip,
   FactRow,
+  FirstUse,
   PayFrame,
   RunProgress,
   RUN_STAGES,
@@ -287,7 +288,7 @@ function SamplePayrollHome({ state = 'ready', persona = 'pa', stage = 'In review
         errorTitle="We couldn't load payroll."
         rows={6}
         empty={
-          <EmptyState
+          <FirstUse
             title="Payroll isn't set up for this entity yet."
             description="Set up registrations, pay group, salary template and bank format. It takes about 30 minutes; you can save and come back."
             action={<StoryButton variant="primary" to={STORY.setup}>Set up payroll</StoryButton>}

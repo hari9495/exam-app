@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { PerformanceHomeScreen, type PerfHome, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { PerformanceHomeScreen, type GoalGaps, type PerfHome, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import { loadState } from '../../../../lib/yx-org';
 import { perfState, usePerf, usePerfWrite, refused } from '../../../../lib/yx-performance';
 
@@ -20,6 +20,9 @@ export default function YxPerformanceHomePage() {
   const home = usePerf<PerfHome>('/home');
   const hasTeam = Boolean(home.data && home.data.team.length > 0);
   const coach = usePerf<Coach>('/coach', hasTeam);
+  // Batch F item 30 (answer 2575): my team's people with no goals, or goals not updated, in the current period.
+  const periodId = home.data?.period?.id ?? null;
+  const gaps = usePerf<GoalGaps>(periodId ? `/goals/team-gaps?period=${encodeURIComponent(periodId)}` : '/goals/team-gaps', hasTeam && Boolean(periodId));
   const write = usePerfWrite();
   if (refused(home)) return <PerfNoAccessScreen title="Performance home" what="Performance" grantedBy="HR" active="Performance home" persona="emp" />;
   const c = coach.data;
@@ -45,6 +48,10 @@ export default function YxPerformanceHomePage() {
               onOptOut: async (optedOut) => void (await write('POST', '/coach/opt-out', { optedOut })),
             }
           : null,
+        gaps:
+          hasTeam && periodId
+            ? { state: loadState(gaps), data: gaps.data ?? null, onRetry: () => void gaps.refetch(), onRemind: (employeeId, kind) => write('POST', `/goals/team-gaps/${encodeURIComponent(employeeId)}/remind`, { period: periodId, kind }) }
+            : null,
       }}
     />
   );

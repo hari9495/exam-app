@@ -68,4 +68,31 @@ describe('Settings › Custom fields', () => {
     expect(screen.queryByRole('button', { name: 'Add custom field' })).toBeNull();
     expect(screen.queryByRole('button', { name: /^Edit / })).toBeNull();
   });
+
+  it('answer 2425: the switch shows candidate fields with required and application-form columns; a new one carries them', async () => {
+    const ue = userEvent.setup();
+    const onEntity = vi.fn();
+    const onCreate = vi.fn(async () => undefined);
+    render(<EmployeeFieldsScreen state="ready" entity="candidate" onEntity={onEntity} fields={[{ id: 'c1', label: 'Notice period', fieldType: 'number', options: null, dataClass: 'internal', required: true, showOnApply: true }]} canManage onCreate={onCreate} onUpdate={vi.fn()} onArchive={vi.fn()} />);
+    expect(screen.getByRole('heading', { name: 'Candidate fields' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /On the application form/ })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Sensitivity/ })).toBeNull();
+    await ue.click(screen.getByRole('radio', { name: 'Jobs' }));
+    expect(onEntity).toHaveBeenCalledWith('job');
+    await ue.click(screen.getByRole('button', { name: 'Add custom field' }));
+    expect(screen.queryByRole('radiogroup', { name: 'Who can see it' })).toBeNull();
+    await ue.type(screen.getByRole('textbox', { name: /Name/ }), 'Current CTC');
+    await ue.click(screen.getByRole('checkbox', { name: 'Must be filled in' }));
+    await ue.click(screen.getByRole('checkbox', { name: /Ask on the application form/ }));
+    await ue.click(screen.getByRole('button', { name: 'Add field' }));
+    expect(onCreate).toHaveBeenCalledWith({ label: 'Current CTC', fieldType: 'text', dataClass: 'internal', options: null, required: true, showOnApply: true });
+  });
+
+  it('answer 2425: job fields have no application-form choice; without the switch prop there is no switch', () => {
+    const { unmount } = render(<EmployeeFieldsScreen state="ready" entity="job" onEntity={vi.fn()} fields={[]} canManage onCreate={vi.fn()} onUpdate={vi.fn()} onArchive={vi.fn()} />);
+    expect(screen.queryByRole('columnheader', { name: /On the application form/ })).toBeNull();
+    unmount();
+    render(<EmployeeFieldsScreen state="ready" fields={EMPLOYEE_FIELDS} canManage onCreate={vi.fn()} onUpdate={vi.fn()} onArchive={vi.fn()} />);
+    expect(screen.queryByRole('radiogroup', { name: 'Fields for' })).toBeNull();
+  });
 });

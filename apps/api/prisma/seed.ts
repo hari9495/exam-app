@@ -123,6 +123,12 @@ export const PERMISSIONS = [
   { key: 'speakup.setup.manage', description: 'Choose the speak-up case officers: the grievance team, the ethics team, the Internal Committee and the escalation list' },
   // HLP-08 disciplinary show-cause cases (also in the disciplinary_cases migration).
   { key: 'case.disciplinary.raise', description: 'Open a disciplinary show-cause case about an employee (HR); the case is seen only by its HR members and the employee' },
+  // Batch G2 item 12 (answer 2602): announcements (also in the engage_announcements migration).
+  { key: 'engage.announce', description: 'Write and publish company announcements, choose who they go to and see who read and acknowledged them' },
+  // Batch G2 item 100: the feed's moderation queue (also in the engage_feed migration).
+  // Batch G2 item 74: surveys (also in the engage_surveys_polls migration).
+  { key: 'engage.survey.manage', description: 'Build, launch and close engagement, pulse, eNPS, onboarding and exit surveys; see company results above the smallest group and every action plan' },
+  { key: 'engage.moderate', description: 'Review held and reported posts and comments in the feed: approve, restore, keep hidden, delete or warn the author; switch a space to approval' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -224,6 +230,10 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'speakup.setup.manage',
     // HLP-08: HR opens disciplinary show-cause cases (never a manager by default).
     'case.disciplinary.raise',
+    // Batch G2 item 12 (answer 2602): announcements (System Admin and HR by default).
+    'engage.announce',
+    'engage.moderate',
+    'engage.survey.manage',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',
@@ -250,6 +260,12 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'perf.comp.approve',
     // PM8: improvement plans.
     'perf.pip.manage',
+    // Learning: courses and assignment rules; training compliance.
+    'learning.manage',
+    'learning.report.view',
+    // G4: company documents; the export log (2692).
+    'company.documents.manage',
+    'exports.log.view',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned', 'payroll.equity.own'],
   // Founder answer 511: a plain employee holds no interviewer key; being on an interview panel opens interviews.
@@ -264,7 +280,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // so an org admin can't accidentally hand it write access.
   // Employee records are not part of the permanent base role: P02 YX-SEC-15 time-boxes auditor access, so it
   // comes from an expiring role grant (the Auditor template in Roles & access).
-  auditor: ['org:view', 'results:view', 'audit:view', 'audit.view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
+  auditor: ['org:view', 'results:view', 'audit:view', 'audit.view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view', 'exports.log.view'],
 };
 
 async function main() {

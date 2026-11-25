@@ -4,6 +4,7 @@ import { Button } from '../../../components/button';
 import { Badge } from '../../../components/display';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
+import { Card } from '../../../components/shell';
 import { PasswordField, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
@@ -32,6 +33,8 @@ export interface JobBoardsScreenProps {
   onSave: (board: JobBoardRow, s: BoardSettings) => Promise<unknown>;
   onDelete: (boardId: string) => Promise<unknown>;
   onCopy: (text: string) => Promise<unknown>;
+  /** Answer 2631: applications sent by LinkedIn and Indeed (Easy Apply): the address to give the board and its secret. */
+  easyApply?: { providers: { id: string; label: string; configured: boolean; ingestUrl: string }[]; onSet: (provider: string, secret: string) => Promise<unknown>; onTurnOff: (provider: string) => Promise<unknown> };
 }
 
 export function JobBoardsScreen(p: JobBoardsScreenProps) {
@@ -84,6 +87,7 @@ export function JobBoardsScreen(p: JobBoardsScreenProps) {
           </FormField>
         </ConfirmDialog>
       )}
+      {p.easyApply && <EasyApplyCard {...p.easyApply} onCopy={p.onCopy} />}
       {editing && <BoardDialog board={editing} {...p} onClose={() => setEditing(null)} />}
       {deleting && (
         <ConfirmDialog open destructive onOpenChange={(o) => !o && setDeleting(null)} title={`Delete job board ${deleting.name}?`} consequence="Jobs stop posting to it. Recruiting costs already recorded stay." confirmLabel="Delete board" onConfirm={async () => { await p.onDelete(deleting.id); setDeleting(null); }} />
@@ -128,5 +132,63 @@ function BoardDialog(p: JobBoardsScreenProps & { board: JobBoardRow; onClose: ()
         </FormField>
       ))}
     </ConfirmDialog>
+  );
+}
+
+/** Answer 2631 (replaces the older /v2 Settings › Easy Apply): LinkedIn and Indeed send applications to the address shown,
+ *  with the shared secret set here; nothing is taken until a secret is set. */
+function EasyApplyCard({ providers, onSet, onTurnOff, onCopy }: NonNullable<JobBoardsScreenProps['easyApply']> & { onCopy: (t: string) => Promise<unknown> }) {
+  const [setting, setSetting] = useState<{ id: string; label: string } | null>(null);
+  const [secret, setSecret] = useState('');
+  const [tried, setTried] = useState(false);
+  const [copied, setCopied] = useState<string | null>(null);
+  return (
+    <Card title="Applications from LinkedIn and Indeed (Easy Apply)">
+      <Text as="p" size="sm" tone="secondary">
+        Give the board the address and the secret. Applications arrive on the job like any other; nothing is taken until a secret is set.
+      </Text>
+      <DataTable
+        label="Easy Apply"
+        rows={providers}
+        getRowId={(r) => r.id}
+        columns={[
+          { key: 'board', header: 'Board', value: (r) => r.label },
+          { key: 'status', header: 'Status', value: (r) => (r.configured ? 'on' : 'off'), render: (r) => (r.configured ? <Badge tone="success">Receiving applications</Badge> : <Badge tone="neutral">Off</Badge>) },
+          { key: 'url', header: 'Address for the board', value: (r) => r.ingestUrl, render: (r) => <span className="yx-mono">{r.ingestUrl}</span> },
+          {
+            key: 'actions',
+            header: 'Actions',
+            value: () => '',
+            render: (r) => (
+              <div className="yx-tim-row">
+                <Button size="sm" onClick={() => void onCopy(r.ingestUrl).then(() => setCopied(r.id))}>{copied === r.id ? 'Address copied' : 'Copy address'}</Button>
+                <Button size="sm" onClick={() => { setTried(false); setSecret(''); setSetting(r); }}>{r.configured ? 'Change secret' : 'Set secret'}</Button>
+                {r.configured && (
+                  <ConfirmDialog trigger={<Button size="sm" variant="danger">Turn off</Button>} title={`Turn off ${r.label} Easy Apply?`} consequence="Applications from the board are refused until a secret is set again." confirmLabel="Turn off" destructive onConfirm={async () => { await onTurnOff(r.id); }} />
+                )}
+              </div>
+            ),
+          },
+        ]}
+      />
+      {setting && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setSetting(null)}
+          title={`${setting.label} Easy Apply secret`}
+          confirmLabel="Save secret"
+          onConfirm={async () => {
+            setTried(true);
+            if (secret.trim().length < 16) return false;
+            await onSet(setting.id, secret.trim());
+            setSetting(null);
+          }}
+        >
+          <FormField id="ea-secret" label="Shared secret" required helper="At least 16 characters. The board sends it with every application; it is stored encrypted and never shown again." error={tried && secret.trim().length < 16 ? 'Enter at least 16 characters.' : null}>
+            <PasswordField value={secret} onChange={setSecret} autoComplete="new-password" />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </Card>
   );
 }

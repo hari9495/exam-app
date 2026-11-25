@@ -128,3 +128,10 @@ export function formatPhone(value: string | null | undefined): string {
   const n = parsePhoneNumberFromString(value, 'IN');
   return n?.isValid() ? n.formatInternational() : value;
 }
+
+/** Answer 2627: 360° answers held back below three, worded for one or many. */
+export function heldBackText(n: number): string {
+  return n === 1
+    ? '1 anonymous response is held back: fewer than 3 in the group, so it can’t be shown without identifying someone.'
+    : `${groupIndian(n)} anonymous responses are held back: fewer than 3 in the group, so they can’t be shown without identifying someone.`;
+}

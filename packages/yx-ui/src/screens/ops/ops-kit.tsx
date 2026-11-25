@@ -7,6 +7,8 @@ import { Badge, type BadgeTone } from '../../components/display';
 import { Button } from '../../components/button';
 import { Icon, Text } from '../../components/foundations';
 import { useToast } from '../../components/notify';
+import { DataTable } from '../../components/table';
+import { EmptyState } from '../../components/feedback';
 import { formatDate, formatINR, formatMoney } from '../../lib/format';
 import { clockState, clockText, slaState, slaText, type ClockItem, type ClockState, type SlaState } from './ops-rules';
 import './ops.css';
@@ -102,6 +104,46 @@ export function SlaBadge({ elapsedMin, targetMin, paused, met, label, atRiskPerc
       {label ? `${label}: ` : ''}
       {slaText(elapsedMin, targetMin, state)}
     </Badge>
+  );
+}
+
+/**
+ * Batch F item 34 (answer 2570): the first-response cell of a ticket list. While the clock runs, the time left (or over);
+ * once answered, Met or Breached; with no target, a dash.
+ */
+export function FirstResponseBadge({ outcome, clock }: { outcome: 'met' | 'breached' | null; clock: { elapsedMin: number; targetMin: number; paused?: boolean; atRiskPercent?: number } | null }) {
+  if (outcome === 'breached') return <Badge tone="danger">Breached</Badge>;
+  if (outcome === 'met') return <Badge tone="success">Met</Badge>;
+  if (clock) return <SlaBadge elapsedMin={clock.elapsedMin} targetMin={clock.targetMin} paused={clock.paused} atRiskPercent={clock.atRiskPercent} />;
+  return <span className="yx-ops-muted" aria-label="No first-response target">—</span>;
+}
+
+/** Batch F GLPI 8 (answer 2572): one team's internal targets (OLA) for a period, kept and missed per measure. */
+export interface TeamTargetRow {
+  groupId: string | null;
+  name: string;
+  response: { kept: number; missed: number };
+  handOff: { kept: number; missed: number };
+  tasks: { kept: number; missed: number };
+}
+const keptText = (x: { kept: number; missed: number }) => (x.kept + x.missed ? `${x.kept} of ${x.kept + x.missed} on time` : '—');
+/** The SLA dashboard's team targets (OLA): first response, hand-off and tasks per team; a missed one in red. */
+export function TeamTargetsTable({ rows, loading }: { rows: TeamTargetRow[]; loading?: boolean }) {
+  const cell = (x: { kept: number; missed: number }) => (x.missed ? <Badge tone="danger">{`${x.missed} missed · ${keptText(x)}`}</Badge> : <span>{keptText(x)}</span>);
+  return (
+    <DataTable
+      label="Team targets"
+      columns={[
+        { key: 'team', header: 'Team', value: (r: TeamTargetRow) => r.name, width: 200 },
+        { key: 'response', header: 'Team first response', value: (r) => r.response.missed, render: (r) => cell(r.response) },
+        { key: 'handoff', header: 'Hand-off', value: (r) => r.handOff.missed, render: (r) => cell(r.handOff) },
+        { key: 'tasks', header: 'Tasks', value: (r) => r.tasks.missed, render: (r) => cell(r.tasks) },
+      ]}
+      rows={rows}
+      getRowId={(r) => r.groupId ?? r.name}
+      state={loading ? 'loading' : 'ready'}
+      empty={<EmptyState compact title="No team targets finished in this period." />}
+    />
   );
 }
 

@@ -81,3 +81,31 @@ export function teamFigures(months: string[], claims: TeamClaim[], lines: { clai
     overLimitPrevious: before ? over.get(before)! : null,
   };
 }
+
+/** The open step of a claim's approval: its name, who approves it (the engine's specs) and the people holding a task. */
+export interface WaitingStep {
+  name: string;
+  approvers: { kind: string; userIds?: string[] }[];
+  /** Names of the people with an open task on this step, in task order. */
+  holders: string[];
+}
+
+const UNPAID = ['approved_unpaid', 'payment_failed', 'in_payroll', 'payout_queued'];
+
+/**
+ * Batch E A4 (answers 2551, 2552, 2556): who a claim is waiting on. A named step shows the person ("Asha Rao", or "Asha
+ * Rao and 2 more" when several hold it); a shared step its role ("HR", "Finance"); a claim sent back the person who
+ * claimed ("You" to themselves); approved and not yet paid "Finance (payment)". Anything else waits on no one (null).
+ */
+export function waitingOnText(c: { status: string; paymentStatus: string }, step: WaitingStep | null, claimant: string | null): string | null {
+  if (c.status === 'sent_back') return claimant ?? 'You';
+  if (c.status === 'submitted') {
+    if (!step) return null;
+    const shared = step.approvers.some((a) => a.kind === 'hr' || a.kind === 'user_group' || (a.kind === 'users' && (a.userIds?.length ?? 0) > 1));
+    if (shared) return step.approvers.some((a) => a.kind === 'hr') ? 'HR' : /finance/i.test(step.name) ? 'Finance' : step.name;
+    if (!step.holders.length) return step.name;
+    return step.holders.length === 1 ? step.holders[0]! : `${step.holders[0]} and ${step.holders.length - 1} more`;
+  }
+  if ((c.status === 'approved' || c.status === 'partly_approved') && UNPAID.includes(c.paymentStatus)) return 'Finance (payment)';
+  return null;
+}

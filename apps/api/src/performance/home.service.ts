@@ -89,6 +89,19 @@ export class PerformanceHomeService {
       const reportIds = base.reports.map((r) => r.id);
       const mySkips = new Set(skips.length && reportIds.length ? (await tx.review.findMany({ where: { organizationId: org, id: { in: skips.map((x) => x.id) }, managerEmployeeId: { in: reportIds } }, select: { id: true } })).map((r) => r.id) : []);
       for (const r of skips.filter((x) => mySkips.has(x.id))) actions.push({ id: `skip-${r.id}`, type: 'Review', title: `Skip-level review · ${r.cycle}`, who: r.employee, due: r.next.dueOn, href: `/yx/performance/reviews/${r.id}`, actionLabel: 'Review' });
+      // Answer 2626: 360° reviewers a report sent for approval wait for their manager here (not only in the bell).
+      const sent = me && !v.actingForOther ? await tx.review.findMany({ where: { organizationId: org, managerEmployeeId: me, status: 'open', nominationsSentAt: { not: null } }, select: { id: true, employeeId: true, cycleId: true } }) : [];
+      const open = sent.length ? await tx.feedbackNomination.groupBy({ by: ['reviewId'], where: { organizationId: org, reviewId: { in: sent.map((r) => r.id) }, status: 'proposed' }, _count: { _all: true } }) : [];
+      const toDecide = sent.filter((r) => open.some((o) => o.reviewId === r.id));
+      if (toDecide.length) {
+        const cycles = await tx.reviewCycle.findMany({ where: { organizationId: org, id: { in: toDecide.map((r) => r.cycleId) } }, select: { id: true, name: true, peerFeedback: true } });
+        const who = await this.names(tx, org, toDecide.map((r) => r.employeeId));
+        for (const r of toDecide) {
+          const cy = cycles.find((x) => x.id === r.cycleId);
+          const due = (cy?.peerFeedback as { dueOn?: string } | null)?.dueOn ?? null;
+          actions.push({ id: `nom-${r.id}`, type: 'Review', title: `Approve 360° reviewers · ${cy?.name ?? ''}`, who: who.get(r.employeeId) ?? '', due, href: `/yx/performance/reviews/${r.id}/nominations`, actionLabel: 'Review' });
+        }
+      }
       if (v.userId && !v.actingForOther) {
         const tasks = await tx.$queryRaw<{ subject_id: string; due_at: Date | null; title: string }[]>`
           SELECT r.subject_id::text, t.due_at, r.title FROM wf_tasks t JOIN wf_requests r ON r.organization_id = t.organization_id AND r.id = t.request_id

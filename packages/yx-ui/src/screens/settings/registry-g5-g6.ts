@@ -263,6 +263,52 @@ const notifications: SettingsPageDef = {
         { key: 'ntf.templates', label: 'Email and in-app wording', kind: 'link', linkScreenId: 'PLT-13', linkLabel: 'Edit notification wording', helper: 'Typed variables, preview, test send and reset to default.', synonyms: ['notification template', 'email text'] },
       ],
     },
+    // Answer 2429 (retiring /v2): the addresses recruiters send from, and the wording of the interview and approval emails.
+    {
+      title: 'Hiring emails',
+      settings: [
+        {
+          key: 'ntf.sender_addresses',
+          label: 'Addresses recruiters send from',
+          kind: 'list',
+          columns: ['Name', 'Address', 'Default'],
+          rows: [
+            ['Kaveri Foods Careers', 'careers@kaverifoods.in', 'Yes'],
+            ['Hosur plant hiring', 'hosur.jobs@kaverifoods.in', ''],
+          ],
+          addLabel: 'Add address',
+          helper: 'A recruiter picks one when they email a candidate. The default is used when they do not.',
+          synonyms: ['sender address', 'from address', 'reply address'],
+        },
+        {
+          key: 'ntf.interview_emails',
+          label: 'Interview emails',
+          kind: 'list',
+          columns: ['Email', 'Subject', 'Wording'],
+          rows: [
+            ['Invitation to the candidate', 'Interview invitation: {{jobTitle}} at {{orgName}}', 'Standard'],
+            ['Panel assignment', 'Interview panel assignment: {{candidateName}} for {{jobTitle}}', 'Standard'],
+            ['Interview cancelled', 'Interview cancelled: {{jobTitle}}', 'Yours'],
+          ],
+          fixedRows: true,
+          helper: 'Sent when an interview is proposed, confirmed, declined, moved or cancelled. Times and links are added for you.',
+          synonyms: ['interview invite', 'interview email', 'calendar invite'],
+        },
+        {
+          key: 'ntf.approval_emails',
+          label: 'Hiring approval emails',
+          kind: 'list',
+          columns: ['Email', 'Subject', 'Wording'],
+          rows: [
+            ['Approval requested', 'Standard email', 'Standard'],
+            ['Approved', 'Standard email', 'Standard'],
+          ],
+          fixedRows: true,
+          helper: 'Sent to approvers and to the person who asked, for job and offer approvals.',
+          synonyms: ['approval email', 'requisition approval'],
+        },
+      ],
+    },
     {
       title: 'Digests and quiet hours',
       settings: [
@@ -748,14 +794,37 @@ const hiring: SettingsPageDef = {
           starter: true,
           synonyms: ['interview feedback', 'rating form'],
         },
+        // Answer 2434 (retiring /v2): the email, SMS and WhatsApp wording recruiters send from the hiring screens.
+        {
+          key: 'hire.stage_messages',
+          label: 'Stage message templates',
+          kind: 'list',
+          columns: ['Template', 'Sent by', 'Stage', 'Sending'],
+          rows: [
+            ['Application received', 'Email', 'Applied', 'Sent by hand · Standard wording'],
+            ['Moving to interview', 'SMS', 'Interview', 'Ask before sending'],
+            ['Interview reminder', 'WhatsApp', 'No stage', 'Sent by hand'],
+          ],
+          addLabel: 'Add message template',
+          helper: 'Recruiters pick these when they email, text or WhatsApp a candidate. One tied to a stage is offered, or sent, when a candidate moves to that stage.',
+          starter: true,
+          synonyms: ['message templates', 'email templates', 'sms templates', 'whatsapp templates', 'candidate messages'],
+        },
         // Founder answer 291: a hiring manager's request starts with this recruiter, or none; never the manager themselves.
         // Founder answer 348: only people who hold the recruiter key are offered.
         { key: 'hire.default_recruiter', label: 'Default recruiter for new requisitions', kind: 'select', value: 'None', options: ['None', 'Neha Joshi', 'Arjun Kulkarni'], helper: 'A hiring manager’s request starts with this recruiter. Only people with the recruiter key are listed. None: it waits until recruiting assigns one. It is never the manager themselves.', starter: true, scope: 'Company', synonyms: ['recruiter', 'requisition', 'request a hire'] },
         // Founder answer 341: requisitions and the headcount plan, and the hiring manager's view of it.
         { key: 'hire.headcount_plan', label: 'Requisitions and the headcount plan', kind: 'segment', value: 'advisory', options: ['off', 'advisory', 'required'], optionLabels: { off: 'Not used', advisory: 'Advisory', required: 'Required' }, helper: 'Advisory: a requisition outside the plan needs the extra approver. Required: every requisition takes a place from an approved plan. Not used: the plan is not checked.', starter: true, scope: 'Company', synonyms: ['manpower plan', 'outside plan', 'budget'] },
+        // Answer 2427 (retiring /v2): who sees which candidates, and the daily reminders to the hiring team.
+        { key: 'hire.record_visibility', label: 'Recruiters see only their own candidates', kind: 'toggle', value: false, helper: 'On: a recruiter sees the candidates assigned to them or their groups, and candidates no one is assigned to. Hiring admins and HR see all. Off: every recruiter sees every candidate.', starter: true, scope: 'Company', synonyms: ['record visibility', 'assigned candidates', 'privacy'] },
+        { key: 'hire.reminders', label: 'Send the hiring team daily reminders', kind: 'toggle', value: false, helper: 'Once a day: tests waiting to be marked, invitations not taken, offers about to expire, interviews coming up and feedback still owed. Each person can turn their own emails off in their notification settings.', starter: true, scope: 'Company', synonyms: ['reminders', 'nudges', 'daily digest'] },
         // HIR-27 bulk interview day: slot length and how Auto-assign fills the day (company settings).
         { key: 'hire.interview_day_minutes', label: 'Each interview on an interview day lasts', kind: 'segment', value: '45', options: ['30', '45', '60', '90'], optionLabels: { '30': '30 min', '45': '45 min', '60': '1 hour', '90': '1½ hours' }, helper: 'Used for new interview days; a day keeps the length it was planned with.', starter: true, scope: 'Company', synonyms: ['interview day', 'walk-in', 'drive', 'slot length'] },
         { key: 'hire.interview_day_assign', label: 'Auto-assign on an interview day fills', kind: 'segment', value: 'by_slot', options: ['by_slot', 'by_panel'], optionLabels: { by_slot: 'Earliest slots first', by_panel: 'One panel at a time' }, helper: 'Earliest slots first: every panel starts together and candidates finish sooner. One panel at a time: a panel’s slots fill before the next panel is used.', starter: true, scope: 'Company', synonyms: ['interview day', 'walk-in', 'drive'] },
+        // Answers 2423 and 2510 (retiring /v2 Business hours): when a candidate may book an interview from the link we send.
+        { key: 'hire.interview_from', label: 'Candidates may book interviews from', kind: 'time', value: '09:30', helper: 'India time. Slots outside these hours and days are not offered when a candidate picks their own interview time.', starter: true, scope: 'Company', synonyms: ['business hours', 'interview hours', 'working hours', 'self-booking'] },
+        { key: 'hire.interview_to', label: 'Candidates may book interviews until', kind: 'time', value: '18:30', after: 'hire.interview_from', starter: true, scope: 'Company', synonyms: ['business hours', 'interview hours'] },
+        { key: 'hire.interview_days', label: 'Days candidates may book interviews', kind: 'multiselect', value: ['mon', 'tue', 'wed', 'thu', 'fri'], options: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], optionLabels: { mon: 'Monday', tue: 'Tuesday', wed: 'Wednesday', thu: 'Thursday', fri: 'Friday', sat: 'Saturday', sun: 'Sunday' }, helper: 'Holidays in the holiday calendar of the job’s location (else the company-wide calendar) are skipped too; optional holidays are not.', starter: true, scope: 'Company', synonyms: ['business hours', 'weekdays', 'holidays'] },
         { key: 'hire.plan_manager_view', label: 'Hiring managers see their department’s headcount plan', kind: 'toggle', value: true, helper: 'Read-only, their own department only. Off: only HR and hiring admins see the plan.', starter: true, scope: 'Company', synonyms: ['manpower plan', 'manager'] },
         { key: 'hire.plan_approvers', label: 'Headcount plan approvers', kind: 'multiselect', value: ['HR head', 'Finance head'], options: ['HR head', 'Finance head', 'CEO', 'Department head'], starter: true, scope: 'Company', synonyms: ['manpower plan', 'budget approval'] },
         { key: 'hire.outside_plan_approver', label: 'Extra approver for outside-plan or over-budget hiring', kind: 'select', value: 'Chief Financial Officer', options: ['Chief Financial Officer', 'Chief Executive Officer', 'Managing Director', 'HR head'], starter: true, scope: 'Company' },
@@ -771,7 +840,6 @@ const hiring: SettingsPageDef = {
         // HIR-09 founder answers 332, 334 and 337 (drawn 11 Nov 2026).
         { key: 'hire.band_approver', label: 'Who approves an offer above the grade pay range', kind: 'select', value: 'HR head', options: ['HR head', 'Hiring manager', 'Meenakshi Sundaram'], helper: 'One extra approval step, after the company’s offer route. A named person must be allowed to see offer pay. The person who sends the offer never approves it.', starter: true, scope: 'Company', synonyms: ['band', 'pay range', 'above range', 'extra approval'] },
         { key: 'hire.clawback_basis', label: 'Joining bonus repaid by someone who leaves within the clawback months', kind: 'radio', value: 'All of it', options: ['All of it', 'The part for the months not served'], helper: 'Recovered in the final settlement. A bonus not paid yet is simply not paid.', starter: true, scope: 'Company', synonyms: ['clawback', 'joining bonus recovery'] },
-        { key: 'hire.offer_esign', label: 'Offer letters the candidate signs electronically', kind: 'multiselect', value: [], options: ['Offer letter · Engineering', 'Offer letter · Plant'], helper: 'Signed with a one-time code sent to the candidate’s email. Every other letter is accepted by the link in the email.', starter: true, scope: 'Company', synonyms: ['e-sign', 'esign', 'otp', 'accept offer'] },
         { key: 'hire.offer_template', label: 'Offer letter template', kind: 'link', linkScreenId: 'PPL-29', linkLabel: 'Edit offer letter templates' },
         // Founder answer 341: pay transparency choices for new jobs (where no law decides).
         { key: 'hire.pay_range_show', label: 'Show the pay range on new jobs', kind: 'toggle', value: false, helper: 'On the careers page and job boards. Each job can still change it. Where a law requires it, the range always shows.', starter: true, scope: 'Company', synonyms: ['salary range', 'pay transparency', 'ctc'] },

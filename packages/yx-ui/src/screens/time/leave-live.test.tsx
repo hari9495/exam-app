@@ -211,6 +211,26 @@ describe('Leave calendar (TIM-20 live)', () => {
     expect(live.onRange).toHaveBeenCalledWith('2026-10-19', '2026-11-01');
   });
 
+  // Batch C item 15 (answer 2509): attendance dots for the manager's own team, with the legend; a dot opens the day card.
+  it('dots and legend for the people the server marks as the team; a dot opens their day card; none without attendance', async () => {
+    const onOpenDay = vi.fn();
+    const withDots: TeamCalendar = { ...CAL, people: [{ ...CAL.people[0]!, attendance: [{ on: '2026-10-14', dot: 'late' }, { on: '2026-10-15', dot: 'remote' }] }, { id: 'b', name: 'Ravi Kumar', code: null, me: false, holidays: [], days: [] }] };
+    render(<TeamLeaveCalendarScreen live={team({ data: withDots, onOpenDay })} />);
+    const legend = screen.getByRole('list', { name: 'Legend' });
+    expect(within(legend).getByText('Late')).toBeInTheDocument();
+    expect(within(legend).getByText('Worked from home')).toBeInTheDocument();
+    expect(within(legend).queryByText('Absent')).toBeNull();
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, .*: Late\. Open the day card/ }));
+    expect(onOpenDay).toHaveBeenCalledWith('a', '2026-10-14');
+    expect(screen.queryByRole('button', { name: /Ravi Kumar, .*Open the day card/ })).toBeNull();
+  });
+
+  it('only dots (no leave) still shows the calendar, not "No one is away"', () => {
+    render(<TeamLeaveCalendarScreen live={team({ data: { ...CAL, people: [{ ...CAL.people[0]!, days: [], attendance: [{ on: '2026-10-14', dot: 'present' }] }] } })} />);
+    expect(screen.queryByText(/No one is away/)).toBeNull();
+    expect(within(screen.getByRole('list', { name: 'Legend' })).getByText('Present')).toBeInTheDocument();
+  });
+
   it('no one away shows the empty state with the next range; no people says so', async () => {
     const live = team({ data: { ...CAL, people: [{ ...CAL.people[0]!, days: [] }] } });
     const { rerender } = render(<TeamLeaveCalendarScreen live={live} />);

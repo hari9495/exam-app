@@ -36,6 +36,7 @@ describe('notification catalog', () => {
       'workflow.approval.needed',
       'workflow.approval.reminder',
       'workflow.approval.decided',
+      'workflow.approval.reassigned',
       'workflow.approval.no_approver',
       'helpdesk.request.stage',
       'helpdesk.rule.notify',
@@ -97,11 +98,21 @@ describe('notification catalog', () => {
       'perf.pip.handed_over',
       'perf.pip.extended',
       // HLP-10 / HLP-11 company policies.
+      // Batch G2 item 12: announcements.
+      'engage.announcement.published',
+      'engage.announcement.reminder',
+      'engage.moderation.outcome',
+      'engage.kudos.received',
+      'engage.survey.open',
+      'engage.survey.reminder',
       'helpdesk.policy.to_acknowledge',
       'helpdesk.policy.overdue_report',
       'helpdesk.policy.to_publish',
       'helpdesk.policy.decided',
       'helpdesk.speakup.received',
+      'helpdesk.ic.term_ending',
+      'people.company_doc.expiring',
+      'engage.moderation.routed',
       'helpdesk.case.update',
       'helpdesk.case.task',
       'helpdesk.case.misconduct_reported',
@@ -121,6 +132,18 @@ describe('notification catalog', () => {
       // Settings (1522, 1523).
       'settings.change.waiting',
       'settings.change.decided',
+      'learning.before_7',
+      'learning.before_2',
+      'learning.overdue',
+      'learning.overdue_manager',
+      'learning.overdue_hr',
+      'learning.nominated',
+      'learning.waitlist_promoted',
+      'learning.session_changed',
+      'learning.nomination_declined',
+      'learning.rate_session',
+      'learning.training_check',
+      'learning.skill_added',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

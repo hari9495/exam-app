@@ -14,7 +14,7 @@ import type { ScopeUser } from '../access/scope';
 import { AttendanceOpsService } from './attendance-ops.service';
 import { DeviceBackfillService } from './device-backfill.service';
 import { IndustrialActionService } from './industrial-action.service';
-import { DeviceRefQueryDto, EntityQueryDto, ExceptionsQueryDto, EventDatesDto, EventVersionDto, IndustrialActionDto, LegalityDto, MarkPresentDto, OpsMonthQueryDto, OtDecisionDto, PageQueryDto, PeriodReasonDto, PeriodRefDto, PresenceConsentDto, PresenceSignalDto, ResolveDto } from './ops-dto';
+import { DeviceRefQueryDto, EntityQueryDto, ExceptionsQueryDto, EventDatesDto, EventVersionDto, IndustrialActionDto, LegalityDto, LateAskDto, LateDeclineDto, LateUndoDto, LateWaiveDto, TeamLateQueryDto, MarkPresentDto, OpsMonthQueryDto, OtDecisionDto, PageQueryDto, PeriodReasonDto, PeriodRefDto, PresenceConsentDto, PresenceSignalDto, ResolveDto } from './ops-dto';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
 import { PresenceService } from './presence.service';
@@ -43,7 +43,8 @@ class ApplyBackfillDto {
 // Time ops (29 Oct 2026): attendance, overtime and periods. Permissions (P02), checked again in the services:
 //   no key (self)              presence consent and my presence states (TIM-36)
 //   implicit (YX-SEC-04)       a manager: today's board, exceptions, reports and presence days of their team; deciding
-//                              overtime they hold the approval task for (TIM-09)
+//                              overtime they hold the approval task for (TIM-09); asking HR to waive their team's late
+//                              marks (answer 2527)
 //   attendance.view            HR: the same over the people in scope, and the women's night-shift register
 //   leave.approve              HR resolves exceptions and marks people present, over the person, never one's own day
 //   attendance.lock            freeze / open again (second step) / send a month (TIM-02, TIM-11), industrial action and
@@ -112,6 +113,51 @@ export class AttendanceOpsController {
     return this.periods.unfreeze(ctx, this.user(req), dto.legalEntityId, dto.month, dto.reason);
   }
 
+  // Batch C item 6 (answers 2505, 2506): late marks of an entity's month, and waiving or un-waiving their penalty.
+  @Get('periods/late-marks')
+  @RequirePermissions('attendance.lock')
+  lateMarks(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PeriodRefDto) {
+    return this.periods.lateMarks(ctx, this.user(req), q.legalEntityId, q.month);
+  }
+
+  @Post('periods/late-marks/waive')
+  @HttpCode(200)
+  @RequirePermissions('attendance.lock')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  waiveLate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LateWaiveDto) {
+    return this.periods.waiveLateMarks(ctx, this.user(req), dto.legalEntityId, dto.month, dto.items, dto.reason);
+  }
+
+  @Post('periods/late-marks/undo')
+  @HttpCode(200)
+  @RequirePermissions('attendance.lock')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  undoLate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LateUndoDto) {
+    return this.periods.undoLateWaivers(ctx, this.user(req), dto.legalEntityId, dto.month, dto.waiverIds, dto.reason);
+  }
+
+  /** Answer 2527: decline a manager's requests to waive late marks (a reason the manager sees). */
+  @Post('periods/late-marks/decline')
+  @HttpCode(200)
+  @RequirePermissions('attendance.lock')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  declineLate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LateDeclineDto) {
+    return this.periods.declineLateRequests(ctx, this.user(req), dto.legalEntityId, dto.month, dto.requestIds, dto.reason);
+  }
+
+  // Answer 2527 (implicit, YX-SEC-04): a manager's own team's late marks, and asking HR to waive some of them.
+  @Get('team/late-marks')
+  teamLateMarks(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: TeamLateQueryDto) {
+    return this.periods.teamLateMarks(ctx, this.user(req), q.month);
+  }
+
+  @Post('team/late-marks/ask')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  askLate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LateAskDto) {
+    return this.periods.askLateWaiver(ctx, this.user(req), dto.month, dto.items, dto.reason);
+  }
+
   @Post('periods/send')
   @HttpCode(200)
   @RequirePermissions('attendance.lock')
@@ -141,6 +187,12 @@ export class AttendanceOpsController {
   @Get('reports/attendance')
   attendanceReport(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OpsMonthQueryDto) {
     return this.ops.attendanceReport(ctx, this.user(req), q.month, q.legalEntityId);
+  }
+
+  // Batch C item 16: Short hours and Breaks (a manager's team, or attendance.view in scope).
+  @Get('reports/hours')
+  hoursReport(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OpsMonthQueryDto) {
+    return this.ops.hoursReport(ctx, this.user(req), q.month, q.legalEntityId);
   }
 
   @Get('reports/night')

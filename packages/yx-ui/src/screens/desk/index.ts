@@ -24,6 +24,7 @@ export { activityOf, type LiveTicket } from '../ops/helpdesk-ticket-live';
 export { SlaDashboardScreen } from '../ops/helpdesk';
 export { REPORT_COLUMNS, numText, npsText, type LiveSla, type SlaReportTab, type SlaDays } from '../ops/helpdesk-sla-live';
 export { DeskSetupScreen, type DeskSetupScreenProps } from './setup';
+export { DeskSetupTransfer, type DeskImportItem, type LiveDeskTransfer } from './setup-transfer';
 export { DeskPage, STATE_LABEL, PRIORITY_LABEL, OPEN_STATES, fillCanned, minutesText, when, browserTimeZone, CopyValue } from './desk-kit';
 export { TicketWorkRail, SlaCard, TasksCard, FamilyCard, SideCard, RemindCard, MaskedCard, ResolveDialog, EscalateDialog, TaskListCard, type TicketWorkProps } from './work';
 export { SlaTab, WorkSetupTab, DuplicatesCard, type SlaTabProps, type WorkSetupProps, type PolicyInput } from './setup-sla';
@@ -49,6 +50,8 @@ export { MyCasesScreen, CaseListScreen, CaseWorkspaceScreen, EthicsDeskScreen } 
 export { ReportMisconductScreen, type LiveReportMisconduct } from '../ops/cases-live';
 export { KIND_LABEL as CASE_KIND_LABEL, type LiveMyCases, type LiveCaseList, type LiveCaseWorkspace, type LiveEthicsDesk, type CaseTab } from '../ops/cases-live';
 export type { MyCaseRow, MyCaseDetail, CaseListRow, CaseDetail, EthicsRow, NoticeInput, ProposeInput, RaiseInput, DraftReport, MyMisconductReport, MisconductReportInput, IcReportInput, ReliefInput, AddMemberInput, MyReplyInput } from '../ops/cases-live-types';
+// CMP-10 POSH complaint and CMP-11 Internal Committee console: the designed screens with `live` (batch F item 13).
+export { PoshComplaintScreen, IcConsoleScreen, type LivePoshFiling, type PoshFilingInput, type LiveIcConsole, type IcAwarenessRow, type IcAwarenessInput, type IcAnnualReport } from '../ops/posh';
 // HLP-12 Accident case: the designed workspace and report with `live`.
 export { AccidentWorkspaceScreen, ReportAccidentScreen } from '../ops/cases-more';
 export type { LiveAccidentWorkspace, LiveReportAccident, AccidentDetail, AccidentManagerView, AccidentFormData, AccidentReportInput, AccidentFacts, EcInput as AccidentEcInput, EsicFormView, MedicalKind, AccidentDialog } from '../ops/accident-live';

@@ -1,3 +1,4 @@
+import { fileTypeFromBuffer } from 'file-type';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Organization, Prisma } from '@prisma/client';
 import { careersLayout, layoutProblem, type CareersLayout } from '../hiring/careers-rules';
@@ -26,7 +27,6 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
 import { UpdateScheduledReportSettingsDto } from './dto/update-scheduled-report-settings.dto';
-import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
 import { getSmsProvider } from '../sms/providers';
@@ -36,7 +36,6 @@ import { UpdateWhatsappConfigDto } from './dto/update-whatsapp-config.dto';
 import { UpdateHrisConfigDto } from './dto/update-hris-config.dto';
 import { isAllowedWebhookUrl } from '../integrations/webhook-url-allowlist';
 import { getHrisConnector } from '../hris/providers';
-import { BusinessHours, Holiday } from '@exam-platform/shared';
 import { getWhatsappProvider, listWhatsappProviders, WhatsappConfigField } from '../whatsapp/providers';
 
 export interface BrandingResponse {
@@ -130,10 +129,6 @@ export interface SmsConfigResponse {
   config: Record<string, unknown>;
 }
 
-export interface BusinessHoursResponse {
-  businessHours: BusinessHours | null;
-  holidays: Holiday[];
-}
 
 export interface CareersSettingsResponse {
   enabled: boolean;
@@ -164,12 +159,23 @@ export interface WhatsappProviderCatalogItem {
 }
 
 
+// Answer 2422 (Settings 1.1 logo): the type is read from the bytes, never the browser's word for it. SVG is refused: it
+// can carry script, and the stored file is served from a link anyone holding it can open.
 const ALLOWED_LOGO_MIME_TYPES: Record<string, string> = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
-  'image/svg+xml': '.svg',
 };
 const MAX_LOGO_SIZE_BYTES = 2 * 1024 * 1024;
+
+/** A logo or banner: at most 2 MB, and a real PNG or JPEG by its bytes. Returns the type read and its extension. */
+async function checkImage(file: Express.Multer.File, what: 'Logo' | 'Banner'): Promise<{ mime: string; extension: string }> {
+  if (!file?.buffer?.length) throw new BadRequestException(`Choose a ${what.toLowerCase()} file.`);
+  if (file.size > MAX_LOGO_SIZE_BYTES || file.buffer.length > MAX_LOGO_SIZE_BYTES) throw new BadRequestException(`${what} file must be 2MB or smaller`);
+  const sniffed = await fileTypeFromBuffer(file.buffer);
+  const extension = sniffed ? ALLOWED_LOGO_MIME_TYPES[sniffed.mime] : undefined;
+  if (!sniffed || !extension) throw new BadRequestException(`${what} must be a PNG or JPEG image`);
+  return { mime: sniffed.mime, extension };
+}
 
 
 @Injectable()
@@ -440,6 +446,9 @@ export class OrganizationsService {
 
   async updateBrandingColors(context: TenantContext, actorUserId: string, dto: UpdateBrandingColorsDto): Promise<BrandingResponse> {
     const organizationId = this.requireOrganizationId(context);
+    const pick = (o: { primaryColor: string | null; accentColor: string | null; textColor: string | null; loginWatermarkEnabled: boolean } | null) =>
+      o ? { primaryColor: o.primaryColor, accentColor: o.accentColor, textColor: o.textColor, loginWatermarkEnabled: o.loginWatermarkEnabled } : null;
+    const before = pick(await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { primaryColor: true, accentColor: true, textColor: true, loginWatermarkEnabled: true } }));
     const org = await this.prisma.organization.update({
       where: { id: organizationId },
       data: {
@@ -454,6 +463,8 @@ export class OrganizationsService {
       action: 'organization.branding_updated',
       entityType: 'organization',
       entityId: organizationId,
+      // Answer 2422: before and after.
+      metadata: { before, after: pick(org) },
     });
     return this.toBrandingResponse(org);
   }
@@ -461,16 +472,11 @@ export class OrganizationsService {
   async uploadLogo(context: TenantContext, actorUserId: string, file: Express.Multer.File): Promise<BrandingResponse> {
     const organizationId = this.requireOrganizationId(context);
 
-    const extension = ALLOWED_LOGO_MIME_TYPES[file.mimetype];
-    if (!extension) {
-      throw new BadRequestException('Logo must be a PNG, JPEG, or SVG image');
-    }
-    if (file.size > MAX_LOGO_SIZE_BYTES) {
-      throw new BadRequestException('Logo file must be 2MB or smaller');
-    }
+    const { mime, extension } = await checkImage(file, 'Logo');
+    const before = (await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { logoPath: true } }))?.logoPath ?? null;
 
     const blobPath = `logos/${organizationId}-${Date.now()}${extension}`;
-    const logoPath = await this.blobStorage.upload(blobPath, file.buffer, file.mimetype);
+    const logoPath = await this.blobStorage.upload(blobPath, file.buffer, mime);
 
     const org = await this.prisma.organization.update({ where: { id: organizationId }, data: { logoPath } });
     await this.audit.record(context, {
@@ -478,6 +484,7 @@ export class OrganizationsService {
       action: 'organization.logo_updated',
       entityType: 'organization',
       entityId: organizationId,
+      metadata: { before, after: logoPath },
     });
     return this.toBrandingResponse(org);
   }
@@ -1042,37 +1049,6 @@ export class OrganizationsService {
     return { enabled: dto.enabled, recipientUserIds };
   }
 
-  async getBusinessHours(context: TenantContext): Promise<BusinessHoursResponse> {
-    const organizationId = this.requireOrganizationId(context);
-    const org = await this.prisma.organization.findUnique({
-      where: { id: organizationId },
-      select: { businessHoursJson: true, holidaysJson: true },
-    });
-    return {
-      businessHours: org?.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
-      holidays: org?.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
-    };
-  }
-
-  async updateBusinessHours(context: TenantContext, actorUserId: string, dto: UpdateBusinessHoursDto): Promise<BusinessHoursResponse> {
-    const organizationId = this.requireOrganizationId(context);
-    const org = await this.prisma.organization.update({
-      where: { id: organizationId },
-      data: { businessHoursJson: JSON.stringify(dto.businessHours), holidaysJson: JSON.stringify(dto.holidays) },
-      select: { businessHoursJson: true, holidaysJson: true },
-    });
-    await this.audit.record(context, {
-      actorUserId,
-      action: 'organization.business_hours_updated',
-      entityType: 'organization',
-      entityId: organizationId,
-    });
-    return {
-      businessHours: org.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
-      holidays: org.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
-    };
-  }
-
   async getCareers(context: TenantContext): Promise<CareersSettingsResponse> {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({
@@ -1117,15 +1093,9 @@ export class OrganizationsService {
 
   async uploadCareersBanner(context: TenantContext, actorUserId: string, file: Express.Multer.File): Promise<{ bannerUrl: string | null }> {
     const organizationId = this.requireOrganizationId(context);
-    const extension = ALLOWED_LOGO_MIME_TYPES[file.mimetype];
-    if (!extension) {
-      throw new BadRequestException('Banner must be a PNG, JPEG, or SVG image');
-    }
-    if (file.size > MAX_LOGO_SIZE_BYTES) {
-      throw new BadRequestException('Banner file must be 2MB or smaller');
-    }
+    const { mime, extension } = await checkImage(file, 'Banner');
     const blobPath = `careers-banners/${organizationId}-${Date.now()}${extension}`;
-    const careersBannerPath = await this.blobStorage.upload(blobPath, file.buffer, file.mimetype);
+    const careersBannerPath = await this.blobStorage.upload(blobPath, file.buffer, mime);
     await this.prisma.organization.update({ where: { id: organizationId }, data: { careersBannerPath } });
     await this.audit.record(context, {
       actorUserId,

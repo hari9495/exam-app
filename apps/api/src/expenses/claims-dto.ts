@@ -319,6 +319,47 @@ export class ListQueryDto {
   legalEntityId?: string;
 }
 
+const CLAIM_STATUSES = ['draft', 'submitted', 'sent_back', 'approved', 'partly_approved', 'rejected', 'withdrawn'];
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Batch E A7 (answer 2553): filters on my own claims; the status list is comma separated. */
+export class MyClaimsQueryDto {
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.split(',').map((x) => x.trim()).filter(Boolean) : value))
+  @IsArray()
+  @ArrayMaxSize(7)
+  @IsIn(CLAIM_STATUSES, { each: true })
+  status?: string[];
+
+  @IsOptional()
+  @Matches(DAY, { message: 'Give dates as yyyy-mm-dd.' })
+  sentFrom?: string;
+
+  @IsOptional()
+  @Matches(DAY, { message: 'Give dates as yyyy-mm-dd.' })
+  sentTo?: string;
+
+  @IsOptional()
+  @Matches(DAY, { message: 'Give dates as yyyy-mm-dd.' })
+  paidFrom?: string;
+
+  @IsOptional()
+  @Matches(DAY, { message: 'Give dates as yyyy-mm-dd.' })
+  paidTo?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  page?: number;
+}
+
 export class ReceiptQueryDto {
   @IsOptional()
   @IsUUID()

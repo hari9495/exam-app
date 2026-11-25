@@ -118,13 +118,15 @@ export class LineApprovalsService {
           groups.get(key)!.items.push({
             id: `${s.id}:${p.id}`,
             timesheetId: s.id,
+            // Batch D B1 (answer 2538): the person, so the page can regroup these same lines by person (never more).
+            employeeId: s.employeeId,
             employee: name,
             allocationPercent: a?.percent ?? null,
             allocatedHours: a ? hrs(Math.round((a.percent / 100) * 40 * 60)) : 0,
             unallocated: mine.some((l) => l.unallocated),
             mismatch: mismatchOf(s),
             bulk: mine.every((l) => bulkOk({ unallocated: l.unallocated, weekMinutesOnProject: total, allocationPercent: a?.percent ?? null, withinAllocation: within })),
-            lines: mine.map((l) => ({ id: l.id, task: l.activity, hours: hrs(sum(l.minutes)), billable: l.billable, comments: sevenComments(l.dayComments), version: l.version })),
+            lines: mine.map((l) => ({ id: l.id, task: l.activity, hours: hrs(sum(l.minutes)), /** B1: Monday to Sunday, for the week → day → task drill-down. */ days: l.minutes.map(hrs), billable: l.billable, comments: sevenComments(l.dayComments), version: l.version })),
           });
         }
       }
@@ -142,7 +144,7 @@ export class LineApprovalsService {
       const within = (await settingFor(tx, c, 'projects.bulk.within_allocation', { legalEntityId: '' })) === 'on';
       const sheets = await tx.timesheet.findMany({ where: { organizationId: org, id: { in: [...new Set(lines.map((l) => l.timesheetId))] } } });
       for (const sId of new Set(lines.map((l) => l.timesheetId))) await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`tsl:${org}:${sId}`}))`;
-      const told: { userId: string | null; text: string; week: string }[] = [];
+      const told: { userId: string | null; text: string; week: string; sheetId: string }[] = [];
       for (const d of decisions) {
         const l = lines.find((x) => x.id === d.lineId)!;
         const s = sheets.find((x) => x.id === l.timesheetId)!;
@@ -168,7 +170,7 @@ export class LineApprovalsService {
         if (d.status !== 'approved') {
           const p = await tx.timesheetProject.findFirst({ where: { organizationId: org, id: l.projectId }, select: { code: true } });
           const person = await tx.employee.findFirst({ where: { organizationId: org, id: s.employeeId }, select: { userId: true } });
-          told.push({ userId: person?.userId ?? null, week: dateOf(s.weekStart), text: `${p?.code ?? 'Project'}${l.activity ? ` · ${l.activity}` : ''}: ${d.status === 'reduced' ? `reduced from ${hrs(sum(l.minutes))} h to ${d.hours} h` : `${hrs(sum(l.minutes))} h rejected`}. Reason: ${reason}` });
+          told.push({ userId: person?.userId ?? null, week: dateOf(s.weekStart), sheetId: s.id, text: `${p?.code ?? 'Project'}${l.activity ? ` · ${l.activity}` : ''}: ${d.status === 'reduced' ? `reduced from ${hrs(sum(l.minutes))} h to ${d.hours} h` : `${hrs(sum(l.minutes))} h rejected`}. Reason: ${reason}` });
         }
       }
       const finals = [];
@@ -177,7 +179,7 @@ export class LineApprovalsService {
     });
     for (const t of done.told.filter((x) => x.userId))
       await this.notifications
-        .notifySystem(ctx, [t.userId!], 'time.timesheet.line', { entityType: 'timesheet', entityId: t.week, contextText: t.text, linkPath: `/yx/time/timesheet?week=${t.week}` }, { subject: `Your timesheet for the week of ${fmt(t.week)}`, html: `<p>${escapeHtml(t.text)}</p>` })
+        .notifySystem(ctx, [t.userId!], 'time.timesheet.line', { entityType: 'timesheet', entityId: t.sheetId, contextText: t.text, linkPath: `/yx/time/timesheet?week=${t.week}` }, { subject: `Your timesheet for the week of ${fmt(t.week)}`, html: `<p>${escapeHtml(t.text)}</p>` })
         .catch((e: unknown) => this.logger.error(e));
     return { decided: decisions.length, weeks: done.finals };
   }

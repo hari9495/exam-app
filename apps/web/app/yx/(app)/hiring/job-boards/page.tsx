@@ -2,11 +2,12 @@
 
 import { JobBoardsScreen, type BoardProvider } from '@yukthix/ui/hiring';
 import { loadState } from '../../../../../lib/yx-org';
+import { useEasyApplyConfig, usePutEasyApplyConfig } from '../../../../../lib/hooks/useEasyApply';
 import { useCreateJobBoard, useDeleteJobBoard, useJobBoardProviders, useJobBoards, useSaveJobBoardConfig, useUpdateJobBoard } from '../../../../../lib/hooks/useJobBoards';
 
 // Hiring › Job boards (M10 batch AT3, founder D12): the job-board seam on the existing providers. Costs are on
 // Hiring › Recruiting costs (HIR-11).
-// Replaces /v2/settings/job-boards, which redirects here.
+// Replaces /v2/settings/job-boards and /v2/settings/easy-apply, which redirect here.
 export default function YxHiringJobBoardsPage() {
   const boards = useJobBoards();
   const providers = useJobBoardProviders();
@@ -14,6 +15,9 @@ export default function YxHiringJobBoardsPage() {
   const rename = useUpdateJobBoard();
   const remove = useDeleteJobBoard();
   const saveConfig = useSaveJobBoardConfig();
+  // Answer 2631: Easy Apply from LinkedIn and Indeed (replaces /v2 Settings › Easy Apply).
+  const easy = useEasyApplyConfig();
+  const putEasy = usePutEasyApplyConfig();
   return (
     <JobBoardsScreen
       state={loadState(boards)}
@@ -27,6 +31,7 @@ export default function YxHiringJobBoardsPage() {
       }}
       onDelete={(id) => remove.mutateAsync(id)}
       onCopy={(text) => navigator.clipboard.writeText(text)}
+      easyApply={easy.data ? { providers: easy.data.providers, onSet: (provider, secret) => putEasy.mutateAsync({ provider, secret }), onTurnOff: (provider) => putEasy.mutateAsync({ provider, enabled: false }) } : undefined}
     />
   );
 }

@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PostComposerScreen } from './engage-feed';
 import { BLOCKED, SPACES } from './engage-data';
+import { livePostComposer } from './engage-live-samples';
 
 const meta: Meta = { title: 'Screens/Engage/ENG-02 · Post composer', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -13,3 +14,7 @@ export const Event: S = { name: 'Event', render: () => <PostComposerScreen kind=
 export const CompanySpace: S = { name: 'Company-wide space (needs approval)', render: () => <PostComposerScreen spaces={SPACES} defaultSpace="co" defaultText="Our Diwali gift boxes are ready for pickup at reception." blockedWords={BLOCKED} /> };
 export const BlockedWord: S = { name: 'Blocked word warning', render: () => <PostComposerScreen spaces={SPACES} defaultSpace="chennai" defaultText="The new parking rule is a scam." blockedWords={BLOCKED} /> };
 export const Phone: S = { name: 'Phone', globals: PHONE, render: () => <PostComposerScreen device="phone" kind="Poll" spaces={SPACES} defaultSpace="chennai" defaultText="What should we serve on 20 Oct?" blockedWords={BLOCKED} /> };
+// Batch G2 item 100: posting to my own spaces.
+export const MySpaces: S = { name: 'Update to one of my spaces', render: () => <PostComposerScreen live={livePostComposer()} /> };
+export const MySpacesApproval: S = { name: 'Company space · sent for approval', render: () => <PostComposerScreen live={livePostComposer({ defaultSpace: 's-co' })} /> };
+export const MySpacesPoll: S = { name: 'Poll to one of my spaces', render: () => <PostComposerScreen live={livePostComposer({ today: new Date(2026, 9, 1) })} /> };

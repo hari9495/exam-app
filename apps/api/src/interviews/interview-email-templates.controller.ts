@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, Put, UseGuards } from '@nestjs/common';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -11,7 +12,8 @@ import { UpsertInterviewEmailTemplateDto } from './dto/upsert-interview-email-te
 // Gated on pipeline:manage — the same key interviews.controller uses to send/cancel interviews
 // (interview config is recruiter-managed, not an org:manage_settings concern).
 @Controller('interview-email-templates')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// Settings 5.4 (answer 2429): no change while acting for someone else.
+@UseGuards(JwtAuthGuard, PermissionsGuard, OwnSessionChangesGuard)
 export class InterviewEmailTemplatesController {
   constructor(private readonly templates: InterviewEmailTemplatesService) {}
 

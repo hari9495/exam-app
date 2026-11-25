@@ -60,7 +60,7 @@ const H24: CalendarSpec = { zone: 'UTC', hours: [1, 2, 3, 4, 5, 6, 7].map((weekd
 const LIVE = ['running', 'paused'];
 const DONE = ['solved', 'closed'];
 const iso = (d: Date) => d.toISOString().slice(0, 10);
-export const METRIC_LABEL: Record<Metric, string> = { assign: 'Time to assign', first_response: 'First response', next_response: 'Next response', resolution: 'Resolution', group: 'Team hand-off (OLA)', task: 'Task (OLA)' };
+export const METRIC_LABEL: Record<Metric, string> = { assign: 'Time to assign', first_response: 'First response', next_response: 'Next response', resolution: 'Resolution', group: 'Team hand-off (OLA)', group_response: 'Team first response (OLA)', task: 'Task (OLA)' };
 
 interface Notice {
   org: string;
@@ -309,14 +309,16 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
           : metric === 'first_response' ? Boolean(t.firstResponseAt) || resolved
           : metric === 'next_response' ? !awaiting
           : metric === 'group' ? !t.groupId || resolved
+          // A team's first response: an agent reply after the team got the ticket (GLPI 8).
+          : metric === 'group_response' ? !t.groupId || resolved || Boolean(running && lastAgent && lastAgent > running.startedAt)
           : resolved;
         if (!secs) {
           if (running) await this.stop(tx, running, v, 'cancelled', now, 'No target for this priority', cache);
           continue;
         }
-        if (running && metric === 'group' && running.groupId !== t.groupId) {
-          // An OLA ends when the group hands the ticket on.
-          await this.stop(tx, running, v, 'met', now, 'Handed to another group', cache);
+        if (running && (metric === 'group' || metric === 'group_response') && running.groupId !== t.groupId) {
+          // An OLA ends when the group hands the ticket on (a response target unanswered by the team is not kept by it).
+          await this.stop(tx, running, v, metric === 'group' ? 'met' : 'cancelled', now, 'Handed to another group', cache);
           if (!done) await this.start(tx, t, v, metric, secs, { startedAt: now, groupId: t.groupId, paused: pause, now, cache });
           continue;
         }
@@ -348,10 +350,11 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
           await this.log(tx, x, 'restart', { reason: 'Reopened', at: now });
           continue;
         }
-        if (metric !== 'next_response' && metric !== 'group' && forMetric.length) continue;
-        const startedAt = metric === 'next_response' ? lastRequester! : metric === 'group' ? now : t.createdAt;
+        if (metric === 'group_response' && forMetric.some((x) => x.groupId === t.groupId)) continue;
+        if (metric !== 'next_response' && metric !== 'group' && metric !== 'group_response' && forMetric.length) continue;
+        const startedAt = metric === 'next_response' ? lastRequester! : metric === 'group' || metric === 'group_response' ? now : t.createdAt;
         if (metric === 'next_response' && forMetric.some((x) => x.startedAt.getTime() === startedAt.getTime())) continue;
-        await this.start(tx, t, v, metric, secs, { startedAt, used: await usedFor(metric, startedAt), groupId: metric === 'group' ? t.groupId : null, paused: pause, now, cache });
+        await this.start(tx, t, v, metric, secs, { startedAt, used: await usedFor(metric, startedAt), groupId: metric === 'group' || metric === 'group_response' ? t.groupId : null, paused: pause, now, cache });
       }
     }
     await this.syncTasks(tx, t, now, cache);
@@ -629,7 +632,7 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
         id: x.id,
         kind: x.kind,
         metric: x.metric,
-        label: METRIC_LABEL[x.metric as Metric] + (x.groupId && x.metric === 'group' ? ` · ${groups.get(x.groupId) ?? ''}` : ''),
+        label: METRIC_LABEL[x.metric as Metric] + (x.groupId && (x.metric === 'group' || x.metric === 'group_response') ? ` · ${groups.get(x.groupId) ?? ''}` : ''),
         state: x.state,
         breached: Boolean(x.breachedAt),
         startedAt: x.startedAt,

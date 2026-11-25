@@ -129,6 +129,9 @@ export const Choices: StoryObj = {
           <FormField label="Part of PF wage" helper="Segment: one choice of 2 to 4. Disabled on a statutory component.">
             <Segment label="Part of PF wage" value="yes" onChange={() => undefined} options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }, { value: 'below', label: 'Below the ceiling' }]} disabled />
           </FormField>
+          <FormField label="Kind of request" helper="Segment, vertical: a column of groups (the approvals desk at 1440 px or wider).">
+            <Segment label="Kind of request" orientation="vertical" value="all" onChange={() => undefined} options={[{ value: 'all', label: 'All · 9' }, { value: 'leave', label: 'Leave · 5' }, { value: 'expense', label: 'Expense · 3' }, { value: 'wfh', label: 'Work from home · 1' }]} />
+          </FormField>
         </Section>
       </Stack>
     );

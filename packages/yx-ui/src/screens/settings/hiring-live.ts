@@ -4,6 +4,7 @@
 import { formatINR } from '../../lib/format';
 import type { ScorecardTemplateView } from '../hiring/live/types';
 import { asPerCent } from '../hiring/scorecard-template-sheet';
+import { stageMessageRow, type StageMessageView } from '../hiring/stage-message-sheet';
 import type { SettingDef, SettingsPageDef, SettingValue } from './settings-types';
 
 /** GET /hiring/settings. */
@@ -19,14 +20,14 @@ export interface HiringSettingsData {
   lastChange: { by: string; at: string; what: string } | null;
   pipelines: { id: string; name: string; isDefault: boolean; jobs: number; stages: { id: string; name: string; category: string; daysTarget: number | null; limit: number | null }[] }[];
   scorecards: ScorecardTemplateView[];
+  /** Answer 2434: the email, SMS and WhatsApp templates (the page reads the three template lists; absent: not shown). */
+  messages?: StageMessageView[];
   /** HIR-09 answer 332: people who may approve an offer above the range (they hold the offer-pay key). */
   offerApprovers?: { id: string; name: string }[];
   /** Answer 473: the company's locations in New York City (the bias-audit law's city rules). */
   nycLocations?: string[];
   /** Offers answer 376: the named band approver who left or lost the offer-pay key: their name (the step goes to the company admins). */
   staleBandApprover?: { id: string; name: string } | null;
-  /** HIR-09 answer 337: each offer letter template and its e-sign switch. */
-  offerLetters?: { id: string; name: string; esign: boolean }[];
 }
 
 /** Designed field → company setting. */
@@ -62,6 +63,13 @@ const KEY = {
   'hire.crm_send_window': 'hiring.crm.send_window',
   'hire.crm_daily_cap': 'hiring.crm.daily_cap',
   'hire.sourced_keep_days': 'hiring.sourced.keep_days',
+  // Answer 2427: kept on the organisation row, changed through this page.
+  'hire.record_visibility': 'hiring.record_visibility',
+  'hire.reminders': 'hiring.reminders',
+  // Answers 2423 and 2510: interview hours for self-booking.
+  'hire.interview_from': 'hiring.interview_hours.from',
+  'hire.interview_to': 'hiring.interview_hours.to',
+  'hire.interview_days': 'hiring.interview_hours.days',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -77,12 +85,15 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.bgv_decider_other_person': ['on', 'off'],
   'hire.resume_quarantine_notice': ['on', 'off'],
   'hire.bias_audit_nyc': ['on', 'off'],
+  'hire.record_visibility': ['on', 'off'],
+  'hire.reminders': ['on', 'off'],
 };
+const WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const BASIS: Record<string, string> = { full: 'All of it', pro_rata: 'The part for the months not served' };
 const BONUS = 'ats.referral.bonus_inr';
 const DAYS = 'ats.referral.qualify_days';
 /** The designed fields that are live; everything else on the designed page is left out. */
-const LIVE_FIELDS = new Set(['hire.pipelines', 'hire.scorecards', 'hire.referral_rules', 'hire.offer_esign', ...Object.keys(KEY)]);
+const LIVE_FIELDS = new Set(['hire.pipelines', 'hire.scorecards', 'hire.stage_messages', 'hire.referral_rules', ...Object.keys(KEY)]);
 
 const bonusLabel = (v: string) => formatINR(Number(v));
 const daysLabel = (v: string) => `${v} days`;
@@ -130,6 +141,12 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
             return [s.name, s.items.map((i, k) => `${i.label} ${pc[k]} %`).join(', ') || 'None yet', `1–${s.scaleMax}`, String(s.passBar)];
           }),
         };
+      case 'hire.stage_messages': {
+        // Answer 2434: Add and Edit open the stage message sheet (listEditors) for people with the pipelines key.
+        if (!data.messages) return null;
+        const names = new Map(data.pipelines.flatMap((p) => p.stages.map((st) => [st.id, data.pipelines.length > 1 ? `${p.name} › ${st.name}` : st.name] as const)));
+        return { ...base, readOnlyList: true, rowAction: undefined, starter: false, rows: data.messages.map((t) => stageMessageRow(t, (id) => names.get(id))) };
+      }
       case 'hire.default_recruiter': {
         const k = KEY[d.key];
         const options = ['none', ...people.map((p) => p.value)];
@@ -160,7 +177,9 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.notetaker_enabled':
       case 'hire.notetaker_ai_draft':
       case 'hire.bgv_decider_other_person':
-      case 'hire.resume_quarantine_notice': {
+      case 'hire.resume_quarantine_notice':
+      case 'hire.record_visibility':
+      case 'hire.reminders': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };
       }
@@ -200,6 +219,15 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
         const warning = stale ? `${stale.name} can no longer see offer pay or has left, so offers above the range go to the company admins instead. Choose someone else.` : undefined;
         return { ...base, kind: 'select', options, optionLabels: { hr_head: 'HR head', hiring_manager: 'Hiring manager', ...Object.fromEntries(approvers.map((p) => [p.value, p.label])), ...(stale ? { [stale.id]: `${stale.name} (cannot approve)` } : {}) }, value, warning, starter: value === data.defaults[k] && !warning };
       }
+      case 'hire.interview_from':
+      case 'hire.interview_to': {
+        const k = KEY[d.key];
+        return { ...base, value: v[k] ?? data.defaults[k]!, starter: v[k] === data.defaults[k] };
+      }
+      case 'hire.interview_days': {
+        const k = KEY[d.key];
+        return { ...base, value: (v[k] ?? data.defaults[k] ?? '').split(',').filter(Boolean), starter: v[k] === data.defaults[k] };
+      }
       case 'hire.offer_expiry': {
         // Answer 404: one expiry for single and bulk offers.
         const k = KEY[d.key];
@@ -209,11 +237,6 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.clawback_basis': {
         const k = KEY[d.key];
         return { ...base, options: ['full', 'pro_rata'], optionLabels: BASIS, value: v[k] ?? 'full', starter: v[k] === data.defaults[k] };
-      }
-      case 'hire.offer_esign': {
-        const letters = data.offerLetters ?? [];
-        if (!letters.length) return null;
-        return { ...base, options: letters.map((l) => l.id), optionLabels: Object.fromEntries(letters.map((l) => [l.id, l.name])), value: letters.filter((l) => l.esign).map((l) => l.id), starter: letters.every((l) => !l.esign) };
       }
       case 'hire.referral_rules':
         return {
@@ -231,7 +254,7 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
   };
   return {
     ...design,
-    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire, background-check and candidate data rules, AI notes on past candidates, telling candidates who are not selected, offers (the approver above the pay range, joining bonus clawback, e-signed letters), referral bonuses, who can apply for internal jobs, and the interview notetaker.',
+    summary: 'Pipeline and scorecard templates with stage targets, the default recruiter, the headcount plan, pay transparency, rehire, background-check and candidate data rules, AI notes on past candidates, telling candidates who are not selected, offers (the approver above the pay range, joining bonus clawback), referral bonuses, who can apply for internal jobs, and the interview notetaker.',
     related: undefined,
     scopes: undefined,
     sections: design.sections.map((sec) => ({ ...sec, settings: sec.settings.map(fill).filter((x): x is SettingDef => x !== null) })).filter((sec) => sec.settings.length > 0),
@@ -246,12 +269,10 @@ export function hiringSettingsChanges(values: Record<string, SettingValue>, rows
     if (!key) continue;
     const toggle = TOGGLE[field as keyof typeof KEY];
     const empty = field === 'hire.clawback_basis' ? 'full' : field === 'hire.band_approver' ? 'hr_head' : 'none';
-    out.push({ key, value: toggle ? toggle[value === true ? 0 : 1] : String(value ?? empty) });
+    // Answer 2510: the interview days in week order, as a comma list.
+    if (Array.isArray(value)) out.push({ key, value: WEEK.filter((w) => value.includes(w)).join(',') });
+    else out.push({ key, value: toggle ? toggle[value === true ? 0 : 1] : String(value ?? empty) });
   }
-  // HIR-09 answer 337: each offer letter whose e-sign switch changed ('offer_template.esign' = '<id>:on|off').
-  const chosen = values['hire.offer_esign'];
-  if (Array.isArray(chosen))
-    for (const l of data.offerLetters ?? []) if (chosen.includes(l.id) !== l.esign) out.push({ key: 'offer_template.esign', value: `${l.id}:${chosen.includes(l.id) ? 'on' : 'off'}` });
   const rule = rows['hire.referral_rules']?.[0];
   if (rule) {
     const bonus = (data.choices[BONUS] ?? []).find((c) => bonusLabel(c) === rule[1]);

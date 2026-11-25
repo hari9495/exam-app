@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, timeSettingsChanges, timeSettingsListChanges, timeSettingsOverrides, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
+import { SETTINGS_GROUPS, SettingsPageScreen, historyOnPage, pendingOnPage, timeSettingsChanges, timeSettingsListChanges, timeSettingsOverrides, timeSettingsPage, type PendingSettingChange, type RegistryDef, type SettingValue, type SettingsGroupDef, type TimeSettingsData } from '@yukthix/ui/hiring';
 import { loadState, todayIst, useOrg, useOrgWrite, useYxPermissions } from './yx-org';
 import { useYxNav } from './yx-shell';
 import { groupSlug } from './yx-settings-home';
@@ -20,7 +20,7 @@ type Named = { id: string; name: string; archivedAt?: string | null }[];
 const PLACE: Record<string, (name: string) => string> = { legal_entity: (n) => n, location: (n) => `${n} (location)`, department: (n) => `${n} (department)`, employment_type: (n) => `${n} (employment type)`, grade: (n) => `Grade ${n}` };
 type Page = SettingsGroupDef['pages'][number];
 
-export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson, decorate, extra }: {
+export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, secondPerson, decorate, extra, onSaveOther, onUploadImage, listEditors }: {
   slug: string;
   /** The drawn pages this route serves. */
   pageIds: readonly string[];
@@ -36,6 +36,12 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
   decorate?: (page: Page) => Page;
   /** S-7: a block the page shows besides its settings (2.2: the Special data erasure report). */
   extra?: React.ReactNode;
+  /** Answer 2422: saves the changed designed fields `decorate` added that are not company settings (1.1: the brand colour). */
+  onSaveOther?: (values: Record<string, SettingValue>) => Promise<void>;
+  /** Answer 2422: an image field's file, uploaded at once (1.1: the logo). */
+  onUploadImage?: (key: string, file: File) => Promise<unknown>;
+  /** Answer 2429: lists `decorate` added that open the caller's own sheet (5.4: the hiring emails). */
+  listEditors?: Record<string, (rowIndex: number | 'new') => void>;
 }) {
   const router = useRouter();
   const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => pageIds.includes(p.id) && groupSlug(p.title) === slug);
@@ -121,7 +127,11 @@ export function RegistrySettingsPage({ slug, pageIds, links, screens, canEdit, s
           for (const c of timeSettingsListChanges(rows, data!)) await write('PUT', '/settings', { key: c.key, value: c.value, scopeType: 'tenant' });
           // S-7 (answer 1484): values of their own for one place ("Different for").
           for (const o of timeSettingsOverrides(overrides ?? [], data!)) await write('PUT', '/settings', { key: o.key, value: o.value, scopeType: o.scopeType, scopeId: o.scopeId, ...(data!.registry[o.key]?.dated ? { validFrom: from } : {}) });
+          const other = Object.fromEntries(Object.entries(values).filter(([k]) => !data!.registry[k]));
+          if (onSaveOther && Object.keys(other).length) await onSaveOther(other);
         },
+        onUploadImage,
+        listEditors,
         onOpenScreen: (screenId) => {
           const href = linkOf(screenId) ?? screens?.[screenId];
           if (href) router.push(href);

@@ -140,6 +140,25 @@ export class UpdateDeskDto {
   @Max(90)
   autoCloseDays?: number | null;
 
+  /** Batch F GLPI 4 (answer 2571): chase a requester who does not answer. */
+  @IsOptional()
+  @IsBoolean()
+  chaseEnabled?: boolean;
+
+  /** Reminders at most (0 to 10), one a business day. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(10)
+  chaseMax?: number;
+
+  /** Business days with no reply before the ticket is solved (1 to 30, more than the reminders). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(30)
+  chaseSolveDays?: number;
+
   /** Minutes a new ticket waits for its best-matched agent before routing falls back (0: at once). */
   @IsOptional()
   @IsInt()
@@ -260,6 +279,31 @@ export class CategoryDto {
   @ArrayMaxSize(10)
   @Matches(/^[a-z0-9][a-z0-9 _-]{0,39}$/, { each: true, message: 'A skill is a short lower-case word, for example network.' })
   skills?: string[];
+
+  /** Batch F item 33 (answer 2573): who answers tickets of this category. */
+  @IsOptional()
+  @IsIn(['desk', 'manager'])
+  answeredBy?: 'desk' | 'manager';
+}
+
+/** Batch F GLPI 10 (answer 2574): a desk set-up file to import; dryRun says what would happen and writes nothing. */
+export class DeskImportDto {
+  @IsObject()
+  file!: Record<string, unknown>;
+
+  @IsOptional()
+  @IsBoolean()
+  dryRun?: boolean;
+}
+
+/** Batch F item 33: the manager's answer to a question from their team; `solve` marks it solved. */
+export class ManagerAnswerDto {
+  @Text(1, 20000)
+  text!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  solve?: boolean;
 }
 
 export class TicketTypeDto {
@@ -1385,7 +1429,7 @@ export class ReadsQueryDto {
 
 // ---- SLA (SD-1.14 to SD-1.17) ----
 
-export const SLA_METRIC_LIST = ['assign', 'first_response', 'next_response', 'resolution', 'group', 'task'] as const;
+export const SLA_METRIC_LIST = ['assign', 'first_response', 'next_response', 'resolution', 'group', 'group_response', 'task'] as const;
 export const MILESTONE_ACTION_LIST = ['notify_assignee', 'notify_group_leads', 'notify_desk_leads', 'raise_priority', 'move_to_group'] as const;
 
 export class MilestoneActionDto {

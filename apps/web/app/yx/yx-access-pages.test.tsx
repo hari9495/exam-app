@@ -127,6 +127,57 @@ describe('/yx/settings/access', () => {
     await waitFor(() => expect(posted).toEqual([['/access/roles/r-recep/delete', { reason: 'Not used' }]]));
   });
 });
+// Answers 2426 and 2430 (retiring /v2): hiring field access and staff groups are tabs of Roles & access.
+describe('/yx/settings/access · hiring fields and groups', () => {
+  const base = {
+    'GET /users/me': { id: 'u-admin', email: 'admin@demo-org.test', name: 'Admin', role: 'org_admin' },
+    'GET /access/users': [{ id: 'u-lakshmi', name: 'Lakshmi Venkatesan', email: 'hr@demo-org.test', role: 'panel', status: 'active', employeeId: 'p-lakshmi' }],
+    'GET /access/roles': [],
+    'GET /access/role-templates': [],
+    'GET /access/grants': [],
+    'GET /access/requests': { maxDays: 30, rows: [] },
+    'GET /org/legal-entities': [],
+    'GET /org/locations': [],
+    'GET /org/masters/departments': [],
+    'GET /access/users/u-lakshmi/effective': { userId: 'u-lakshmi', hasEmployeeRecord: true, keys: [] },
+  };
+
+  it('saves the field matrix and a new group, with the right calls', async () => {
+    const calls: { path: string; body: unknown }[] = [];
+    const keep = (value: unknown) => (path: string, init?: RequestInit) => (calls.push({ path, body: init?.body ? JSON.parse(String(init.body)) : null }), value);
+    route({
+      ...base,
+      [`GET ${PERMS_PATH}`]: ['org:manage_settings', 'users:manage_groups'],
+      'GET /organizations/field-permissions': {},
+      'PUT /organizations/field-permissions': keep({ candidate: { panel: { email: 'hidden' } } }),
+      'GET /user-groups': [],
+      'GET /users/teammates': [{ id: 'u-lakshmi', name: 'Lakshmi Venkatesan', email: 'hr@demo-org.test' }],
+      'POST /user-groups': keep({ id: 'g1', name: 'Plant recruiters', description: null, members: [] }),
+    });
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('view=fields'));
+    wrap(<YxRolesAccessPage />);
+    await ue.click(await screen.findByRole('combobox', { name: 'Email for Interview panel' }));
+    await ue.click(await screen.findByRole('option', { name: 'Hidden' }));
+    await ue.click(screen.getByRole('button', { name: 'Save field access' }));
+    await waitFor(() => expect(calls).toContainEqual({ path: '/organizations/field-permissions', body: { config: { candidate: { panel: { email: 'hidden' } } } } }));
+    await ue.click(screen.getByRole('radio', { name: /^Groups/ }));
+    await ue.click(screen.getAllByRole('button', { name: 'New group' })[0]!);
+    const dlg = screen.getByRole('dialog', { name: 'New group' });
+    await ue.type(within(dlg).getByRole('textbox', { name: /Name/ }), 'Plant recruiters');
+    await ue.click(within(dlg).getByRole('button', { name: 'Make group' }));
+    await waitFor(() => expect(calls).toContainEqual({ path: '/user-groups', body: { name: 'Plant recruiters' } }));
+  });
+
+  it('without the permissions the tabs are not there and nothing is asked of those APIs', async () => {
+    route({ ...base, [`GET ${PERMS_PATH}`]: [] });
+    wrap(<YxRolesAccessPage />);
+    expect(await screen.findByRole('radio', { name: 'People' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'Hiring fields' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /^Groups/ })).toBeNull();
+    expect(api.mock.calls.map((c) => String(c[0]))).not.toEqual(expect.arrayContaining([expect.stringMatching(/field-permissions|user-groups|teammates/)]));
+  });
+});
+
 
 const PROFILE = {
   employeeId: 'p-divya',

@@ -135,6 +135,27 @@ describe('PRJ-01 Project workspace (live)', () => {
     expect(l.onStatus).toHaveBeenCalledWith('closed', 3);
   });
 
+  it('B3 (answer 2537): the Team tab shows approved billable and non-billable and total booked over a range; the range asks again', async () => {
+    const onHoursRange = vi.fn();
+    const detail = { ...LIVE_PROJECT_DETAIL, hoursRange: 'week' as const, allocations: LIVE_PROJECT_DETAIL.allocations.map((a, i) => ({ ...a, hours: { billable: i ? 0 : 30, nonBillable: i ? 5 : 2, booked: i ? 6 : 34 } })) };
+    show(<ProjectWorkspaceScreen live={ws({ detail, onHoursRange })} />);
+    await ue.click(screen.getByRole('tab', { name: /^Team/ }));
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toEqual(expect.arrayContaining(['Billable (approved)', 'Non-billable (approved)', 'Total booked']));
+    expect(heads).not.toContain('Hours booked');
+    expect(screen.getByRole('radio', { name: 'This week' })).toBeChecked();
+    await ue.click(screen.getByRole('radio', { name: 'This month' }));
+    expect(onHoursRange).toHaveBeenCalledWith('month');
+  });
+
+  it('negative: an older API without range hours keeps the one Hours booked column', async () => {
+    show(<ProjectWorkspaceScreen live={ws()} />);
+    await ue.click(screen.getByRole('tab', { name: /^Team/ }));
+    const heads = screen.getAllByRole('columnheader').map((h) => h.textContent);
+    expect(heads).toContain('Hours booked');
+    expect(heads).not.toContain('Billable (approved)');
+  });
+
   it('a reader (no edit, no team) gets no actions', () => {
     show(<ProjectWorkspaceScreen live={ws({ detail: { ...LIVE_PROJECT_DETAIL, can: { edit: false, run: false, team: false, finance: false } } })} />);
     expect(screen.queryByRole('button', { name: 'Add allocation' })).toBeNull();
@@ -195,6 +216,21 @@ describe('Settings 3.11 and Shifts set-up (Projects P-1)', () => {
       { key: 'projects.booking.allocated_only', value: 'off' },
       { key: 'projects.burn.warn_pct', value: '70' },
     ]);
+  });
+
+  it('A14 (answer 2536): the nudge time, the due day and the reminder time show with the company values and save back', () => {
+    const vals = { ...data.values, 'timesheet.nudge.daily_from': '17:00', 'timesheet.reminder.cutoff_day': 'off', 'timesheet.reminder.time': '10:00' };
+    const all = projectSettingsPage(design, { ...data, values: vals, defaults: { ...data.defaults, 'timesheet.nudge.daily_from': '16:00', 'timesheet.reminder.cutoff_day': 'fri', 'timesheet.reminder.time': '10:00' } }).sections.flatMap((x) => x.settings);
+    expect(all.find((x) => x.key === 'prj.nudge_from')).toMatchObject({ value: '17:00', starter: false });
+    expect(all.find((x) => x.key === 'prj.cutoff_day')).toMatchObject({ value: 'off', optionLabels: expect.objectContaining({ off: 'No reminder' }) });
+    expect(all.find((x) => x.key === 'prj.reminder_time')).toMatchObject({ value: '10:00', starter: true });
+    expect(projectSettingsChanges({ 'prj.nudge_from': 'off', 'prj.cutoff_day': 'thu', 'prj.reminder_time': '09:00' })).toEqual([
+      { key: 'timesheet.nudge.daily_from', value: 'off' },
+      { key: 'timesheet.reminder.cutoff_day', value: 'thu' },
+      { key: 'timesheet.reminder.time', value: '09:00' },
+    ]);
+    // An older API without them never shows them with sample values.
+    expect(projectSettingsPage(design, data).sections.flatMap((x) => x.settings).some((x) => x.key === 'prj.nudge_from')).toBe(false);
   });
 
   it("Shifts set-up's projects tab says where projects went and has no editor", () => {

@@ -502,20 +502,20 @@ describe('PipelineService', () => {
   });
 
   describe('cancelRequisitionApproval', () => {
-    it('resolves isConfigurer, cancels the open request, and flips the job back to draft', async () => {
-      approvals.isConfigurer.mockResolvedValue(false);
-      approvals.cancelForSubject.mockResolvedValue({ subjectType: 'job', subjectId: 'job-1', gate: 'requisition' });
-      const tx = { job: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) } };
-      tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
+    it('withdraws the P03 request, passing whether the person configures approvals', async () => {
+      approvals.isConfigurer.mockResolvedValue(true);
+      hiring.withdraw.mockResolvedValue(true);
 
       await service.cancelRequisitionApproval(context, 'user-1', 'job-1');
 
-      expect(approvals.isConfigurer).toHaveBeenCalledWith(context, 'user-1');
-      expect(approvals.cancelForSubject).toHaveBeenCalledWith(context, 'job', 'job-1', 'user-1', false);
-      expect(tx.job.updateMany).toHaveBeenCalledWith({
-        where: { id: 'job-1', organizationId: 'org-1' },
-        data: { status: 'draft' },
-      });
+      expect(hiring.withdraw).toHaveBeenCalledWith(context, 'user-1', 'job-1', true);
+    });
+
+    it('refuses with 409 when nothing is waiting in P03 (the older engine is retired, answer 2511)', async () => {
+      approvals.isConfigurer.mockResolvedValue(false);
+      hiring.withdraw.mockResolvedValue(false);
+
+      await expect(service.cancelRequisitionApproval(context, 'user-1', 'job-1')).rejects.toThrow(ConflictException);
     });
   });
 
@@ -548,18 +548,18 @@ describe('PipelineService', () => {
 
     it('returns approval: null when there is no open request for the job', async () => {
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx()));
-      approvals.getSummariesFor.mockResolvedValue(new Map());
+      hiring.summaries.mockResolvedValue(new Map());
 
       const job = await service.getJob(context, 'job-1', 'org_admin');
 
-      expect(approvals.getSummariesFor).toHaveBeenCalledWith(context, 'job', ['job-1']);
+      expect(hiring.summaries).toHaveBeenCalledWith(context, ['job-1']);
       expect(job.approval).toBeNull();
     });
 
     it('attaches the approval summary with currentStep for a job with an open request', async () => {
       tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx()));
       const summary = { status: 'pending_approval', currentStep: 1, steps: [{ name: 'Step 1', state: 'approved' as const }] };
-      approvals.getSummariesFor.mockResolvedValue(new Map([['job-1', summary]]));
+      hiring.summaries.mockResolvedValue(new Map([['job-1', summary]]));
 
       const job = await service.getJob(context, 'job-1', 'org_admin');
 
@@ -1199,12 +1199,12 @@ describe('PipelineService', () => {
     };
     tenantPrisma.forTenant.mockImplementation((_c, fn) => fn(tx));
     const summary = { status: 'pending_approval', currentStep: 0, steps: [] };
-    approvals.getSummariesFor.mockResolvedValue(new Map([['job-1', summary]]));
+    hiring.summaries.mockResolvedValue(new Map([['job-1', summary]]));
 
     const jobs = await service.listJobs(context, undefined, 'org_admin');
 
-    expect(approvals.getSummariesFor).toHaveBeenCalledTimes(1);
-    expect(approvals.getSummariesFor).toHaveBeenCalledWith(context, 'job', ['job-1', 'job-2']);
+    expect(hiring.summaries).toHaveBeenCalledTimes(1);
+    expect(hiring.summaries).toHaveBeenCalledWith(context, ['job-1', 'job-2']);
     expect(jobs.find((j) => j.id === 'job-1')!.approval).toEqual(summary);
     expect(jobs.find((j) => j.id === 'job-2')!.approval).toBeNull();
   });

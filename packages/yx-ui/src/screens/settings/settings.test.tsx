@@ -32,9 +32,10 @@ const G = SETTINGS_GROUPS;
 const pages = G.flatMap((g) => g.pages);
 
 describe('settings registry (APX-D §3)', () => {
-  it('has 8 groups and 71 pages with the counts from the map', () => {
-    expect(G.map((g) => g.pages.length)).toEqual([8, 11, 12, 11, 9, 5, 9, 6]);
-    expect(pages).toHaveLength(71);
+  // Enterprise E4: 4.12 Accounting & costing.
+  it('has 8 groups and 72 pages with the counts from the map', () => {
+    expect(G.map((g) => g.pages.length)).toEqual([8, 11, 12, 12, 9, 5, 9, 6]);
+    expect(pages).toHaveLength(72);
   });
   it('has unique setting keys and every page has sections, an owner and a last change', () => {
     const keys = pages.flatMap((p) => allSettings(p).map((d) => d.key));

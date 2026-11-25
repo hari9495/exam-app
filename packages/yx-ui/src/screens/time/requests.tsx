@@ -31,7 +31,7 @@ import { canReopen, daysUntil, fmt12, fmtDuration, otCapFlag, regularisationRout
 import type { ViewState } from './attendance';
 // useToast, useTooEarly and useRun come from the import lines above (shared with the TIM-07 region).
 import { LiveGate, isoDate, liveTable, monthText, shiftMonth } from './ops';
-import type { DeviceBatch, DeviceDayView, DevicePreview, IndustrialEvent, IndustrialInput, IndustrialList, IndustrialOptions, LoadState, MyOvertime, OtCategory, OtClaim, OtReview, Periods, Preflight } from './live/types';
+import type { DeviceBatch, DeviceDayView, DevicePreview, IndustrialEvent, IndustrialInput, IndustrialList, IndustrialOptions, LateMarks, LoadState, MyOvertime, OtCategory, OtClaim, OtReview, Periods, Preflight } from './live/types';
 // TIM-08 live (Me › My shifts).
 import { useSaveErrors } from '../../components/field';
 import type { MyShifts } from './live/types';
@@ -2320,9 +2320,45 @@ export interface LivePeriods {
   /** TIM-11 two-step flow (company setting attendance.lock_flow): HR sends, payroll approves the lock. */
   onSend?: (legalEntityId: string, month: string) => Promise<unknown>;
   onApproveLock?: (legalEntityId: string, month: string) => Promise<unknown>;
+  /** Batch C item 6 (answers 2505, 2506): the month's late marks, and waiving or un-waiving their penalty. */
+  onLateMarks?: (legalEntityId: string, month: string) => Promise<LateMarks>;
+  onWaiveLate?: (legalEntityId: string, month: string, items: { employeeId: string; on: string }[], reason: string) => Promise<{ waived: unknown[]; skipped: { employeeId: string; on: string; message: string }[] }>;
+  onUndoLate?: (legalEntityId: string, month: string, waiverIds: string[], reason: string) => Promise<unknown>;
+  /** Answer 2527: decline managers' requests to waive. */
+  onDeclineLate?: (legalEntityId: string, month: string, requestIds: string[], reason: string) => Promise<unknown>;
+}
+
+/** Answer 2527 (manager): my team's late marks for the month, loaded when opened; asking HR to waive some of them. */
+export function TeamLateMarks({ month, onLoad, onAsk, onClose }: { month: string; onLoad: (month: string) => Promise<LateMarks>; onAsk: (month: string, items: { employeeId: string; on: string }[], reason: string) => Promise<{ skipped: { employeeId: string; on: string; message: string }[] } | void>; onClose: () => void }) {
+  const [data, setData] = useState<LateMarks | null>(null);
+  const [failed, setFailed] = useState(false);
+  const load = () => {
+    setFailed(false);
+    onLoad(month).then(setData, () => setFailed(true));
+  };
+  useEffect(load, [month]);
+  const title = `Late marks · ${monthText(month)} · Your team`;
+  if (!data)
+    return (
+      <Drawer open onOpenChange={(o) => !o && onClose()} title={title} size="lg">
+        {failed ? <EmptyState title="Could not load the late marks" description="Check your connection and try again." action={<Button onClick={load}>Try again</Button>} /> : <Skeleton height={240} />}
+      </Drawer>
+    );
+  return (
+    <LateMarksDrawer
+      title={title}
+      data={data}
+      onAsk={async (items, reason) => {
+        const out = await onAsk(month, items, reason);
+        load();
+        return out;
+      }}
+      onClose={onClose}
+    />
+  );
 }
 type LiveMonth = Periods['entities'][number]['months'][number];
-type LiveTarget = { entity: Periods['entities'][number]; m: LiveMonth; view: 'checklist' | 'reopen' | 'open_again' };
+type LiveTarget = { entity: Periods['entities'][number]; m: LiveMonth; view: 'checklist' | 'reopen' | 'open_again' | 'late' };
 /** Sent to payroll and still frozen: payroll approves it next. */
 const withPayroll = (m: LiveMonth) => Boolean(m.sentAt) && liveOpen(m);
 const liveOpen = (m: LiveMonth) => m.stage === 'open' || m.stage === 'frozen';
@@ -2377,6 +2413,7 @@ function LivePeriodsScreen({ live }: { live: LivePeriods }) {
                       {m.stage === 'frozen' && e.canLock && live.onUnfreeze && <Button size="sm" icon={Unlock} onClick={() => setTarget({ entity: e, m, view: 'open_again' })}>Open the month again</Button>}
                       {m.stage === 'locked' && m.reopenAsked && <span className="yx-tim-muted">Waiting for two approvals</span>}
                       {m.stage === 'filed' && <span className="yx-tim-muted">Filed: corrections only</span>}
+                      {e.canLock && live.onLateMarks && <Button size="sm" onClick={() => setTarget({ entity: e, m, view: 'late' })}>Late marks</Button>}
                     </div>
                   </Card>
                 ))}
@@ -2385,6 +2422,7 @@ function LivePeriodsScreen({ live }: { live: LivePeriods }) {
         ))}
       </LiveGate>
       {target?.view === 'checklist' && (liveOpen(target.m) ? <LiveLockDrawer target={target} live={live} onClose={() => setTarget(null)} /> : <LiveLockSummary target={target} onClose={() => setTarget(null)} onReopen={() => setTarget({ ...target, view: 'reopen' })} />)}
+      {target?.view === 'late' && live.onLateMarks && <LiveLateMarks target={target} live={live} onClose={() => setTarget(null)} />}
       {target?.view === 'reopen' && (
         <ReopenDialog name={`${monthText(target.m.month)} · ${target.entity.name}`} check={{ ok: true }} minLength={10} onClose={() => setTarget(null)} onSend={(reason) => live.onUnlock(target.entity.id, target.m.month, reason)} />
       )}
@@ -2392,6 +2430,204 @@ function LivePeriodsScreen({ live }: { live: LivePeriods }) {
         <ReopenDialog kind="open_again" name={`${monthText(target.m.month)} · ${target.entity.name}`} check={{ ok: true }} minLength={10} onClose={() => setTarget(null)} onSend={(reason) => live.onUnfreeze!(target.entity.id, target.m.month, reason)} />
       )}
     </TimePage>
+  );
+}
+
+/* ---------- Batch C item 6: late marks and their penalty waivers (answers 2505, 2506) ---------- */
+
+type LateRow = LateMarks['rows'][number];
+const lateKey = (r: Pick<LateRow, 'employeeId' | 'on'>) => `${r.employeeId}:${r.on}`;
+type LateDialog = 'waive' | 'undo' | 'decline' | 'ask';
+
+/**
+ * An entity's late marks for a month. While the month is unlocked, an attendance.lock holder waives the penalty of the
+ * ones chosen (one reason, 10+ characters, kept with each) or undoes waivers; the mark stays, shown as "Waived".
+ * Answer 2527: a manager's open requests show here too, and HR declines them with a reason the manager sees. With
+ * `onAsk` the same list is the manager's own team: they ask HR to waive the days they pick, with a reason.
+ */
+export function LateMarksDrawer({ title, data, onWaive, onUndo, onDecline, onAsk, onClose, defaultSelected, defaultDialog }: {
+  title: string;
+  data: LateMarks;
+  onWaive?: (items: { employeeId: string; on: string }[], reason: string) => Promise<{ skipped: { employeeId: string; on: string; message: string }[] } | void>;
+  onUndo?: (waiverIds: string[], reason: string) => Promise<unknown>;
+  /** Answer 2527 (HR): decline managers' open requests with one reason. */
+  onDecline?: (requestIds: string[], reason: string) => Promise<unknown>;
+  /** Answer 2527 (manager): ask HR to waive these late marks of my team. */
+  onAsk?: (items: { employeeId: string; on: string }[], reason: string) => Promise<{ skipped: { employeeId: string; on: string; message: string }[] } | void>;
+  onClose: () => void;
+  defaultSelected?: string[];
+  defaultDialog?: LateDialog;
+}) {
+  const { toast } = useToast();
+  const [dlg, setDlg] = useState<{ kind: LateDialog; keys: string[] } | null>(defaultDialog && defaultSelected ? { kind: defaultDialog, keys: defaultSelected } : null);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [skipped, setSkipped] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(defaultSelected ?? []);
+  const rows = data.rows;
+  const manager = Boolean(onAsk);
+  const waived = rows.filter((r) => r.waiver).length;
+  const asked = rows.filter((r) => r.request?.status === 'pending').length;
+  const open = (r: LateRow) => !r.waiver && r.request?.status !== 'pending';
+  const cols: TableColumn<LateRow>[] = [
+    { key: 'name', header: 'Person', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code ?? undefined }), width: 220 },
+    { key: 'on', header: 'Day', value: (r) => r.on, render: (r) => <DayDate date={new Date(`${r.on}T00:00:00`)} />, width: 150 },
+    { key: 'late', header: 'Late by', value: (r) => r.lateMinutes, render: (r) => fmtDuration(r.lateMinutes), width: 100 },
+    {
+      key: 'status',
+      header: 'Penalty',
+      value: (r) => (r.waiver ? 'Waived' : r.request?.status === 'pending' ? 'Asked' : r.request?.status === 'declined' ? 'Declined' : 'Counts'),
+      render: (r) => {
+        const [tone, word, note] = r.waiver
+          ? (['success', 'Waived', `${r.waiver.by} · ${r.waiver.reason}`] as const)
+          : r.request?.status === 'pending'
+            ? (['info', manager ? 'Asked HR' : 'Asked by manager', `${r.request.by} · ${r.request.reason}`] as const)
+            : r.request?.status === 'declined' && manager
+              ? (['warning', 'Declined', r.request.declineReason ?? ''] as const)
+              : (['warning', 'Counts', ''] as const);
+        return (
+          <span className="yx-tim-list__main">
+            <Badge tone={tone}>{word}</Badge>
+            {note && <span className="yx-tim-muted">{note}</span>}
+          </span>
+        );
+      },
+      width: 280,
+    },
+  ];
+  const close = () => {
+    setDlg(null);
+    setReason('');
+    setTried(false);
+  };
+  const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+  const TEXT: Record<LateDialog, { title: (n: number) => string; consequence: string; confirm: (n: number) => string; helper: string }> = {
+    waive: { title: (n) => `Waive the penalty of ${plural(n, 'late mark')}?`, consequence: 'The late marks stay on each day, shown as waived; they no longer count towards the penalty in the payroll feed.', confirm: (n) => `Waive ${n}`, helper: 'At least 10 characters. Kept with each waiver and in the audit log.' },
+    undo: { title: (n) => `Undo ${plural(n, 'waiver')}?`, consequence: 'The late marks count towards the penalty again.', confirm: (n) => `Undo ${n}`, helper: 'At least 10 characters. Kept with each waiver and in the audit log.' },
+    decline: { title: (n) => `Decline ${plural(n, 'request')} to waive?`, consequence: 'The late marks keep counting towards the penalty. The manager who asked is told, with your reason.', confirm: (n) => `Decline ${n}`, helper: 'At least 10 characters. The manager sees it.' },
+    ask: { title: (n) => `Ask HR to waive ${plural(n, 'late mark')}?`, consequence: 'HR waives or declines them from Late marks before the month is locked. You are told either way.', confirm: (n) => `Ask HR to waive ${n}`, helper: 'At least 10 characters. HR sees it.' },
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title={title} subtitle={`${plural(rows.length, 'late mark')} · ${waived} waived${asked ? ` · ${asked} asked` : ''}`} size="lg">
+      <div className="yx-tim-stack">
+        {!data.unlocked && (
+          <InlineAlert tone="info" title="This month is locked">
+            {manager ? 'Late marks can no longer be waived for it. HR corrects mistakes in the next payroll.' : 'Waivers can only be added or undone before the lock. Late marks after the lock are corrected in the next payroll.'}
+          </InlineAlert>
+        )}
+        {skipped.length > 0 && (
+          <InlineAlert tone="warning" title={`${skipped.length} not ${manager ? 'asked' : 'waived'}`} actions={<Button size="sm" onClick={() => setSkipped([])}>Dismiss</Button>}>
+            <ul className="yx-tim-list">{skipped.map((x) => <li key={x}>{x}</li>)}</ul>
+          </InlineAlert>
+        )}
+        <DataTable
+          label="Late marks"
+          columns={cols}
+          rows={rows}
+          getRowId={lateKey}
+          empty={<EmptyState title="No late marks this month" description={manager ? 'Days your team checked in late appear here.' : 'Days with a late check-in appear here.'} />}
+          selectable={data.unlocked || (!manager && asked > 0 && Boolean(onDecline))}
+          selectedIds={selected}
+          onSelectedChange={setSelected}
+          bulkActions={(keys) => {
+            const picked = rows.filter((r) => keys.includes(lateKey(r)));
+            if (manager) {
+              const can = picked.filter(open);
+              return can.length > 0 ? <Button size="sm" variant="primary" onClick={() => setDlg({ kind: 'ask', keys: can.map(lateKey) })}>Ask HR to waive {can.length}</Button> : null;
+            }
+            const free = data.unlocked ? picked.filter((r) => !r.waiver) : [];
+            const done = data.unlocked ? picked.filter((r) => r.waiver) : [];
+            const pending = picked.filter((r) => r.request?.status === 'pending');
+            return (
+              <>
+                {free.length > 0 && onWaive && <Button size="sm" variant="primary" onClick={() => setDlg({ kind: 'waive', keys: free.map(lateKey) })}>Waive {free.length}</Button>}
+                {pending.length > 0 && onDecline && <Button size="sm" onClick={() => setDlg({ kind: 'decline', keys: pending.map(lateKey) })}>Decline {pending.length}</Button>}
+                {done.length > 0 && onUndo && <Button size="sm" onClick={() => setDlg({ kind: 'undo', keys: done.map(lateKey) })}>Undo {plural(done.length, 'waiver')}</Button>}
+              </>
+            );
+          }}
+        />
+      </div>
+      {dlg && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && close()}
+          title={TEXT[dlg.kind].title(dlg.keys.length)}
+          consequence={TEXT[dlg.kind].consequence}
+          confirmLabel={TEXT[dlg.kind].confirm(dlg.keys.length)}
+          onConfirm={async () => {
+            setTried(true);
+            // Never a disabled button: pressed too early, the field says what is missing and takes focus.
+            if (reason.trim().length < 10) {
+              setTimeout(() => document.getElementById('late-reason')?.focus(), 0);
+              return false;
+            }
+            const picked = rows.filter((r) => dlg.keys.includes(lateKey(r)));
+            const why = reason.trim();
+            if (dlg.kind === 'waive' || dlg.kind === 'ask') {
+              const out = await (dlg.kind === 'waive' ? onWaive! : onAsk!)(picked.map((r) => ({ employeeId: r.employeeId, on: r.on })), why);
+              const left = out?.skipped ?? [];
+              setSkipped(left.map((x) => `${rows.find((r) => r.employeeId === x.employeeId)?.name ?? ''}, ${isoDate(x.on)}: ${x.message}`));
+              const n = picked.length - left.length;
+              if (n) toast({ tone: 'success', title: dlg.kind === 'waive' ? `Waived ${plural(n, 'late mark')}. They no longer count towards the penalty.` : `Asked HR to waive ${plural(n, 'late mark')}. You will be told when HR answers.` });
+            } else if (dlg.kind === 'undo') {
+              await onUndo!(picked.map((r) => r.waiver!.id), why);
+              toast({ tone: 'success', title: `Undone ${plural(picked.length, 'waiver')}. Those late marks count again.` });
+            } else {
+              await onDecline!(picked.map((r) => r.request!.id), why);
+              toast({ tone: 'success', title: `Declined ${plural(picked.length, 'request')}. The manager is told why.` });
+            }
+            close();
+            setSelected([]);
+          }}
+        >
+          <FormField id="late-reason" label="Reason" required helper={TEXT[dlg.kind].helper} error={tried && reason.trim().length < 10 ? 'Say why in at least 10 characters.' : null}>
+            <TextArea value={reason} onChange={setReason} rows={3} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </Drawer>
+  );
+}
+
+function LiveLateMarks({ target, live, onClose }: { target: LiveTarget; live: LivePeriods; onClose: () => void }) {
+  const [data, setData] = useState<LateMarks | null>(null);
+  const [failed, setFailed] = useState(false);
+  const load = () => {
+    setFailed(false);
+    live.onLateMarks!(target.entity.id, target.m.month).then(setData, () => setFailed(true));
+  };
+  useEffect(load, [target.entity.id, target.m.month]);
+  const title = `Late marks · ${monthText(target.m.month)} · ${target.entity.name}`;
+  if (!data)
+    return (
+      <Drawer open onOpenChange={(o) => !o && onClose()} title={title} size="lg">
+        {failed ? <EmptyState title="Could not load the late marks" description="Check your connection and try again." action={<Button onClick={load}>Try again</Button>} /> : <Skeleton height={240} />}
+      </Drawer>
+    );
+  return (
+    <LateMarksDrawer
+      title={title}
+      data={data}
+      onWaive={async (items, reason) => {
+        const out = await live.onWaiveLate!(target.entity.id, target.m.month, items, reason);
+        load();
+        return out;
+      }}
+      onUndo={async (ids, reason) => {
+        await live.onUndoLate!(target.entity.id, target.m.month, ids, reason);
+        load();
+      }}
+      onDecline={
+        live.onDeclineLate
+          ? async (ids, reason) => {
+              await live.onDeclineLate!(target.entity.id, target.m.month, ids, reason);
+              load();
+            }
+          : undefined
+      }
+      onClose={onClose}
+    />
   );
 }
 
@@ -2514,8 +2750,32 @@ function LiveLockSummary({ target, onClose, onReopen }: { target: LiveTarget; on
   );
 }
 
-export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = false, after = false, live }: {
+/** Answer 2527 (design): a manager's own team in September: one waived, one asked, one declined. */
+export const SAMPLE_TEAM_LATE: LateMarks = {
+  legalEntityId: 'kf',
+  month: '2026-09',
+  unlocked: true,
+  rows: TEAM.filter((p) => isMyReport(p.name)).slice(0, 3).flatMap((p, i) => [
+    { employeeId: p.id, name: p.name, code: p.code, on: `2026-09-${String(4 + i * 5).padStart(2, '0')}`, lateMinutes: 15 + i * 6, waiver: i === 0 ? { id: 'tw0', reason: 'Bus breakdown on the Hosur road, confirmed by transport', by: HR_ADMIN.name, at: '2026-09-28T06:00:00Z' } : null, request: i === 0 ? { id: 'tr0', reason: 'Bus breakdown on the Hosur road', by: ME.name, at: '2026-09-26T06:00:00Z', status: 'waived' as const, declineReason: null } : i === 1 ? { id: 'tr1', reason: 'Stayed back for the night audit the evening before', by: ME.name, at: '2026-09-26T06:00:00Z', status: 'pending' as const, declineReason: null } : null },
+    { employeeId: p.id, name: p.name, code: p.code, on: `2026-09-${String(16 + i).padStart(2, '0')}`, lateMinutes: 22, waiver: null, request: i === 2 ? { id: 'tr2', reason: 'Traffic diversion near the plant', by: ME.name, at: '2026-09-20T06:00:00Z', status: 'declined' as const, declineReason: 'Twelve minutes is inside the grace rule already' } : null },
+  ]),
+};
+
+/** Batch C item 6 (design): September's late marks at Kaveri Foods, two already waived. */
+const SAMPLE_LATE: LateMarks = {
+  legalEntityId: 'kf',
+  month: '2026-09',
+  unlocked: true,
+  rows: TEAM.slice(0, 5).flatMap((p, i) => [
+    { employeeId: p.id, name: p.name, code: p.code, on: `2026-09-${String(3 + i * 4).padStart(2, '0')}`, lateMinutes: 12 + i * 7, waiver: i === 1 ? { id: `w${i}`, reason: 'Bus breakdown on the Hosur road, confirmed by transport', by: HR_ADMIN.name, at: '2026-09-28T06:00:00Z' } : null, request: i === 3 ? { id: `r${i}`, reason: 'Stayed back for the night audit the evening before', by: ME.name, at: '2026-09-27T06:00:00Z', status: 'pending' as const, declineReason: null } : null },
+    ...(i % 2 === 0 ? [{ employeeId: p.id, name: p.name, code: p.code, on: `2026-09-${String(15 + i).padStart(2, '0')}`, lateMinutes: 25, waiver: i === 4 ? { id: `w${i}b`, reason: 'Heavy rain: the plant gate opened late', by: HR_ADMIN.name, at: '2026-09-28T06:00:00Z' } : null }] : []),
+  ]),
+};
+
+export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = false, after = false, live, late }: {
   persona?: 'hr' | 'pa'; openId?: string; dialog?: 'lock' | 'send' | 'reopen' | 'open_again';
+  /** Batch C item 6: September's late marks open ('list'), the waive dialog for two of them, or a locked month. Answer 2527: 'decline' a manager's request. */
+  late?: 'list' | 'waive' | 'locked' | 'decline';
   /** September locked on 1 Oct with payroll not yet run, so it can still be reopened. Use with `after`. */
   reopenable?: boolean;
   /** 1 Oct: September's inputs are frozen and every item is done, so it can be locked. */
@@ -2524,6 +2784,22 @@ export function PeriodsScreen({ persona = 'hr', openId, dialog, reopenable = fal
   live?: LivePeriods;
 }) {
   if (live) return <LivePeriodsScreen live={live} />;
+  if (late)
+    return (
+      <>
+        <SamplePeriods persona={persona} reopenable={reopenable} after={after} />
+        <LateMarksDrawer
+          title="Late marks · September 2026 · Kaveri Foods Pvt Ltd"
+          data={{ ...SAMPLE_LATE, unlocked: late !== 'locked' }}
+          onWaive={async () => ({ skipped: [] })}
+          onUndo={async () => undefined}
+          onDecline={async () => undefined}
+          onClose={() => undefined}
+          defaultSelected={late === 'waive' ? [`${SAMPLE_LATE.rows[0].employeeId}:${SAMPLE_LATE.rows[0].on}`, `${SAMPLE_LATE.rows[1].employeeId}:${SAMPLE_LATE.rows[1].on}`] : late === 'decline' ? SAMPLE_LATE.rows.filter((r) => r.request).map(lateKey) : undefined}
+          defaultDialog={late === 'waive' ? 'waive' : late === 'decline' ? 'decline' : undefined}
+        />
+      </>
+    );
   return <SamplePeriods persona={persona} openId={openId} dialog={dialog} reopenable={reopenable} after={after} />;
 }
 

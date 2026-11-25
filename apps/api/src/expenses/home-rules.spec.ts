@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { isOverLimit, istMonth, istMonthRange, lastMonths, payMonthFor, prevMonth, teamFigures } from './home-rules';
+import { isOverLimit, istMonth, istMonthRange, lastMonths, payMonthFor, prevMonth, teamFigures, waitingOnText } from './home-rules';
 
 const D = (x: string) => new Prisma.Decimal(x);
 
@@ -66,5 +66,24 @@ describe('team claims list (round 2)', () => {
     expect(isOverLimit({ outcome: 'not_allowed' })).toBe(false);
     expect(isOverLimit(null)).toBe(false);
     expect(isOverLimit(undefined)).toBe(false);
+  });
+
+  // Batch E A4 (answers 2551, 2552, 2556).
+  it('says who a claim waits on: a person, "and N more", a shared role, the claimant, finance for payment, else no one', () => {
+    const step = (approvers: { kind: string; userIds?: string[] }[], holders: string[], name = 'Manager') => ({ name, approvers, holders });
+    const sent = { status: 'submitted', paymentStatus: 'not_due' };
+    expect(waitingOnText(sent, step([{ kind: 'manager' }], ['Asha Rao']), null)).toBe('Asha Rao');
+    expect(waitingOnText(sent, step([{ kind: 'manager' }], ['Asha Rao', 'Vikram', 'Leela']), null)).toBe('Asha Rao and 2 more');
+    expect(waitingOnText(sent, step([{ kind: 'users', userIds: ['a', 'b'] }], ['A', 'B'], 'Finance check'), null)).toBe('Finance');
+    expect(waitingOnText(sent, step([{ kind: 'users', userIds: ['a'] }], ['Meena'], 'Finance check'), null)).toBe('Meena');
+    expect(waitingOnText(sent, step([{ kind: 'hr' }], ['X', 'Y']), null)).toBe('HR');
+    expect(waitingOnText(sent, step([{ kind: 'user_group', userIds: [] }], [], 'Travel desk'), null)).toBe('Travel desk');
+    expect(waitingOnText(sent, step([{ kind: 'cost_centre_owner' }], [], 'Cost-centre owner'), null)).toBe('Cost-centre owner');
+    expect(waitingOnText(sent, null, null)).toBeNull();
+    expect(waitingOnText({ status: 'sent_back', paymentStatus: 'not_due' }, null, null)).toBe('You');
+    expect(waitingOnText({ status: 'sent_back', paymentStatus: 'not_due' }, null, 'Priya Menon')).toBe('Priya Menon');
+    for (const p of ['approved_unpaid', 'payment_failed', 'in_payroll', 'payout_queued']) expect(waitingOnText({ status: 'approved', paymentStatus: p }, null, null)).toBe('Finance (payment)');
+    expect(waitingOnText({ status: 'partly_approved', paymentStatus: 'approved_unpaid' }, null, null)).toBe('Finance (payment)');
+    for (const c of [{ status: 'approved', paymentStatus: 'paid' }, { status: 'approved', paymentStatus: 'not_due' }, { status: 'rejected', paymentStatus: 'not_due' }, { status: 'draft', paymentStatus: 'not_due' }, { status: 'withdrawn', paymentStatus: 'not_due' }]) expect(waitingOnText(c, null, null)).toBeNull();
   });
 });

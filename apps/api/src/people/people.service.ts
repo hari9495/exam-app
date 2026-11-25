@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { positionsOn, seatVacancies } from '../positions/seat-rules';
 import { Prisma } from '@prisma/client';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, CompanyContext, Tx } from '../org-structure/org-structure.service';
@@ -225,9 +226,11 @@ export class PeopleService {
   private async vacancies(tx: Tx, c: CompanyContext, v: Viewer, present: Set<string>, date: string, entityId?: string) {
     if (v.actingForOther) return { positions: false, vacancies: [] };
     const all = v.grants.has('pipeline:manage') || tenantWide(v, 'employee.profile.view');
-    const open = await tx.job.findMany({ where: { organizationId: c.organizationId, status: 'open', deletedAt: null, ...(all ? {} : { hiringManagerId: v.userId ?? '00000000-0000-0000-0000-000000000000' }) }, select: { id: true, title: true, hiringManagerId: true, designationId: true, departmentId: true, department: true, locationId: true, location: true, legalEntityId: true, headcount: true }, take: 500 });
+    const open = await tx.job.findMany({ where: { organizationId: c.organizationId, status: 'open', deletedAt: null, ...(all ? {} : { hiringManagerId: v.userId ?? '00000000-0000-0000-0000-000000000000' }) }, select: { id: true, title: true, hiringManagerId: true, positionId: true, designationId: true, departmentId: true, department: true, locationId: true, location: true, legalEntityId: true, headcount: true }, take: 500 });
+    // Enterprise E1 (O3): with positions on, HR and recruiters see every empty seat; jobs on a seat are not drawn twice.
+    const seats = all && (await positionsOn(tx, c, '')) ? (await seatVacancies(tx, c.organizationId, date, entityId)).map(({ managerEmployeeId, ...x }) => ({ ...x, managerId: managerEmployeeId && present.has(managerEmployeeId) ? managerEmployeeId : null })) : [];
     const positions = all || open.length > 0;
-    if (date !== todayIst() || !open.length) return { positions, vacancies: [] };
+    if (date !== todayIst() || !open.length) return { positions, vacancies: seats };
     const managers = await tx.employee.findMany({ where: { organizationId: c.organizationId, userId: { in: open.flatMap((j) => (j.hiringManagerId ? [j.hiringManagerId] : [])) } }, select: { id: true, userId: true } });
     const locations = await tx.location.findMany({ where: { organizationId: c.organizationId, id: { in: open.flatMap((j) => (j.locationId ? [j.locationId] : [])) } }, select: { id: true, name: true, legalEntityId: true } });
     const employments = managers.length ? await tx.employment.findMany({ where: { organizationId: c.organizationId, employeeId: { in: managers.map((m) => m.id) }, joinedOn: { lte: new Date(`${date}T00:00:00Z`) }, OR: [{ exitedOn: null }, { exitedOn: { gte: new Date(`${date}T00:00:00Z`) } }] }, select: { employeeId: true, legalEntityId: true } }) : [];
@@ -235,12 +238,12 @@ export class PeopleService {
       const m = managers.find((x) => x.userId === j.hiringManagerId)?.id;
       return j.legalEntityId ?? locations.find((l) => l.id === j.locationId)?.legalEntityId ?? (m ? employments.find((e) => e.employeeId === m)?.legalEntityId : undefined) ?? null;
     };
-    const jobs = entityId ? open.filter((j) => entityOf(j) === entityId) : open;
+    const jobs = (entityId ? open.filter((j) => entityOf(j) === entityId) : open).filter((j) => !(seats.length && j.positionId));
     const designations = await tx.designation.findMany({ where: { organizationId: c.organizationId, id: { in: jobs.flatMap((j) => (j.designationId ? [j.designationId] : [])) } }, select: { id: true, name: true } });
     const departments = await tx.department.findMany({ where: { organizationId: c.organizationId, id: { in: jobs.flatMap((j) => (j.departmentId ? [j.departmentId] : [])) } }, select: { id: true, name: true } });
     return {
       positions,
-      vacancies: jobs.map((j) => {
+      vacancies: [...seats, ...jobs.map((j) => {
         const m = managers.find((x) => x.userId === j.hiringManagerId)?.id ?? null;
         return {
           id: `job:${j.id}`,
@@ -250,7 +253,7 @@ export class PeopleService {
           managerId: m && present.has(m) ? m : null,
           openings: j.headcount ?? 1,
         };
-      }),
+      })],
     };
   }
 

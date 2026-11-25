@@ -289,3 +289,10 @@ export class CorrectionDto {
   @MaxLength(300)
   reason!: string;
 }
+
+/** Batch D B3 (answer 2537): the Team tab's hours range. */
+export class HoursRangeQueryDto {
+  @IsOptional()
+  @IsIn(['week', 'month', 'all'])
+  range?: 'week' | 'month' | 'all';
+}

@@ -31,6 +31,11 @@ const DEFAULTS = {
   'hiring.notetaker.keep_days': '90',
   'hiring.bias_audit.nyc': 'off',
   'hiring.bgv.decider_other_person': 'on',
+  'hiring.record_visibility': 'off',
+  'hiring.reminders': 'off',
+  'hiring.interview_hours.from': '09:30',
+  'hiring.interview_hours.to': '18:30',
+  'hiring.interview_hours.days': 'mon,tue,wed,thu,fri',
 };
 const DATA: HiringSettingsData = {
   canEdit: true,
@@ -172,6 +177,20 @@ describe('Settings 6.1 Hiring (live)', () => {
     expect(hiringSettingsChanges(values, rows, DATA)).toEqual([{ key: 'hiring.bias_audit.nyc', value: 'on' }]);
   });
 
+  it('answer 2427: record visibility and the daily reminders are company switches on 6.1 (off by default) and save as on/off', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(live({ onSave }));
+    const own = screen.getByRole('checkbox', { name: /Recruiters see only their own candidates/ });
+    const rem = screen.getByRole('checkbox', { name: /Send the hiring team daily reminders/ });
+    expect(own).not.toBeChecked();
+    expect(rem).not.toBeChecked();
+    await ue.click(own);
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const [values, rows] = onSave.mock.calls[0]!;
+    expect(hiringSettingsChanges(values, rows, DATA)).toEqual([{ key: 'hiring.record_visibility', value: 'on' }]);
+  });
+
   it('answer 348: a default recruiter who no longer qualifies reads as None, with a warning naming them', () => {
     show(live({ page: hiringSettingsPage(design, { ...DATA, staleRecruiter: 'Kavya Rao' }) }));
     expect(screen.getByText(/Kavya Rao no longer holds the recruiter key or has left/)).toBeInTheDocument();
@@ -264,27 +283,66 @@ describe('Settings 6.1 Hiring (live)', () => {
     // An unchanged rule sends nothing.
     expect(hiringSettingsChanges({}, { 'hire.referral_rules': [['All roles', '₹25,000', '90 days', '']] }, DATA)).toEqual([]);
   });
-  it('HIR-09 answers 332, 334, 337: the band approver (a named person too), the clawback basis and e-signed letters', async () => {
+  it('HIR-09 answers 332, 334, 2523: the band approver (a named person too) and the clawback basis; e-sign is on Letter templates only', async () => {
     const data: HiringSettingsData = {
       ...DATA,
       values: { ...DATA.values, 'hiring.offer.band_approver': 'hr_head', 'hiring.offer.clawback_basis': 'full' },
       defaults: { ...DATA.defaults, 'hiring.offer.band_approver': 'hr_head', 'hiring.offer.clawback_basis': 'full' },
       offerApprovers: [{ id: 'u9', name: 'Meenakshi Sundaram' }],
-      offerLetters: [{ id: 't1', name: 'Offer letter', esign: false }, { id: 't2', name: 'Plant offer', esign: true }],
     };
     const page = hiringSettingsPage(design, data);
     const field = (k: string) => page.sections.flatMap((x) => x.settings).find((d) => d.key === k)!;
     expect(field('hire.band_approver')).toMatchObject({ value: 'hr_head', options: ['hr_head', 'hiring_manager', 'u9'], optionLabels: expect.objectContaining({ u9: 'Meenakshi Sundaram' }) });
     expect(field('hire.clawback_basis')).toMatchObject({ value: 'full', optionLabels: expect.objectContaining({ pro_rata: 'The part for the months not served' }) });
-    expect(field('hire.offer_esign')).toMatchObject({ value: ['t2'], optionLabels: { t1: 'Offer letter', t2: 'Plant offer' } });
-    expect(hiringSettingsChanges({ 'hire.band_approver': 'u9', 'hire.clawback_basis': 'pro_rata', 'hire.offer_esign': ['t1'] }, {}, data)).toEqual([
+    expect(hiringSettingsChanges({ 'hire.band_approver': 'u9', 'hire.clawback_basis': 'pro_rata' }, {}, data)).toEqual([
       { key: 'hiring.offer.band_approver', value: 'u9' },
       { key: 'hiring.offer.clawback_basis', value: 'pro_rata' },
-      { key: 'offer_template.esign', value: 't1:on' },
-      { key: 'offer_template.esign', value: 't2:off' },
     ]);
-    // Unchanged e-sign choice: nothing to save; a company with no offer letters gets no e-sign field.
-    expect(hiringSettingsChanges({ 'hire.offer_esign': ['t2'] }, {}, data)).toEqual([]);
-    expect(hiringSettingsPage(design, { ...data, offerLetters: [] }).sections.flatMap((x) => x.settings).some((d) => d.key === 'hire.offer_esign')).toBe(false);
+    // Answer 2523: the e-sign switch moved to Settings › Letter templates ("person signs"); 6.1 has no e-sign field.
+    expect(page.sections.flatMap((x) => x.settings).some((d) => d.key === 'hire.offer_esign')).toBe(false);
+  });
+  it('answer 2434: stage message templates list every channel with its stage; absent when the lists were not read', () => {
+    const data: HiringSettingsData = {
+      ...DATA,
+      messages: [
+        { channel: 'email', id: null, name: 'Application received', triggerStageId: 's1', triggerMode: 'manual', subject: 'Thanks', body: 'Hi', enabled: true, isDefault: true },
+        { channel: 'whatsapp', id: 'w1', name: 'Reminder', triggerStageId: null, triggerMode: 'manual', body: 'Hi', enabled: false, isDefault: false },
+      ],
+    };
+    const field = (p: ReturnType<typeof hiringSettingsPage>) => p.sections.flatMap((x) => x.settings).find((d) => d.key === 'hire.stage_messages');
+    expect(field(hiringSettingsPage(design, data))).toMatchObject({
+      kind: 'list',
+      readOnlyList: true,
+      rows: [
+        ['Application received', 'Email', 'Applied', 'Sent by hand · Standard wording'],
+        ['Reminder', 'WhatsApp', 'No stage', 'Sent by hand · Off'],
+      ],
+    });
+    expect(field(hiringSettingsPage(design, DATA))).toBeUndefined();
+    expect(hiringSettingsChanges({}, { 'hire.stage_messages': [['x', 'Email', 'No stage', 'Sent by hand']] }, data)).toEqual([]);
+  });
+  it('answers 2423 and 2510: interview hours (09:30 to 18:30, Monday to Friday by default) save as company settings', () => {
+    const page = hiringSettingsPage(design, DATA);
+    const field = (k: string) => page.sections.flatMap((x) => x.settings).find((d) => d.key === k)!;
+    expect(field('hire.interview_from')).toMatchObject({ kind: 'time', value: '09:30', starter: true });
+    expect(field('hire.interview_to')).toMatchObject({ kind: 'time', value: '18:30', after: 'hire.interview_from' });
+    expect(field('hire.interview_days')).toMatchObject({ kind: 'multiselect', value: ['mon', 'tue', 'wed', 'thu', 'fri'], starter: true });
+    expect(hiringSettingsChanges({ 'hire.interview_from': '10:00', 'hire.interview_days': ['sat', 'mon'] }, {}, DATA)).toEqual([
+      { key: 'hiring.interview_hours.from', value: '10:00' },
+      { key: 'hiring.interview_hours.days', value: 'mon,sat' },
+    ]);
+    const changed = hiringSettingsPage(design, { ...DATA, values: { ...DATA.values, 'hiring.interview_hours.days': 'mon,sat' } });
+    expect(changed.sections.flatMap((x) => x.settings).find((d) => d.key === 'hire.interview_days')).toMatchObject({ value: ['mon', 'sat'], starter: false });
+  });
+
+  it('answer 2510: an end time before the start is refused on the page, before anything is saved', async () => {
+    const onSave = vi.fn();
+    render(<ToastProvider><SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.1" live={{ page: hiringSettingsPage(design, DATA), canEdit: true, lastChange: null, state: 'ready', onSave, savedTitle: 'Hiring settings saved' } satisfies LiveSettingsPage} /></ToastProvider>);
+    const to = screen.getByLabelText(/^Candidates may book interviews until/);
+    await ue.clear(to);
+    await ue.type(to, '08:00');
+    await ue.tab();
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
