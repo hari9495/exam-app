@@ -28129,5 +28129,26 @@
                               "Screens/People/PPL-51 · Company documents"
                     ],
                     "note": "Positive and negative (library-g4 e2e: entries by key or manager, favourites personal, favourite of a report not yours 404, bad body 400; folders by the key only (403), name too short 400, bad audience 400, duplicate name 409, managers folder hidden (404) from employees, upload needs a file (400), past expiry 400, fake PDF 400, unknown folder 404, download audited, clean files only, other company 404; replace; folder with documents 409; reminder once to uploader and managers, the company's days; remove 403/200/404). New key company.documents.manage (System Admin, HR Admin); new tables report_favourites, company_doc_folders, company_documents in rls-isolation; new routes in endpoint-permissions; setting company_docs.expiry_reminder_days (30); sweep company-docs-expiry; menu Analytics › Report library and People › Company documents. Scheduled report emails, the export log and team reports wait on 2690-2693."
+          },
+          {
+                    "id": "MT-2631-HIRING-SETTINGS",
+                    "area": "Answer 2631: the older /v2 hiring settings get YukthiX homes: pipelines on Settings › Hiring, Easy Apply on Job boards, campaigns on Talent pools; the /v2 pages are gone (25 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring (Pipeline templates: Add, Edit); Hiring › Job boards (Easy Apply); /v2/settings/pipelines, /v2/settings/easy-apply, /v2/campaigns",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "System Admin (pipelines:configure, org:manage_settings); a recruiter without the pipelines key; HR.",
+                    "steps": [
+                              "As the System Admin open Settings › Hiring › Pipeline templates › Add: save with no name; then 'Campus hiring'.",
+                              "Edit Campus hiring: move the first stage up; add a stage 'Aptitude'; on Interview add the statuses Scheduled and Done, turn on 'A test is passed' and save without a test, then with a test and 60%; turn on a checklist and save it empty; remove a stage that has candidates (on the default pipeline) and an empty one.",
+                              "On a job using Campus hiring, try to move a candidate into Interview without passing the test (the board refuses until it is met).",
+                              "As the recruiter open Settings › Hiring: the pipeline list has no Add or Edit.",
+                              "Open Hiring › Job boards › Easy Apply: copy the Indeed address; Set secret with 'short', then a 20-character secret; Turn off.",
+                              "Open /v2/settings/pipelines, /v2/settings/easy-apply and /v2/campaigns."
+                    ],
+                    "expected": "Step 1: 'Name the pipeline.'; then the pipeline with the default's stages. Step 2: 'Applied is already the first stage.'; the new stage; 'Choose the test.'; 'Add at least one item.'; saves give a toast; removing a stage with candidates says it still has entries; the empty one goes. Step 3: the move is refused until the rule is met. Step 4: view only. Step 5: 'Enter at least 16 characters.' (the server refuses short ones too); then Receiving applications; Turn off asks first, then Off. Step 6: each opens its YukthiX page (Settings › Hiring, Job boards, Talent pools). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.1 Hiring · edit pipeline, add pipeline, pipeline view only)",
+                              "Hiring · Job boards"
+                    ],
+                    "note": "Positive and negative (kit pipeline-sheet tests 4: new needs a name, test rule needs a test, first stage can't move up, refused removal shows the reason, view only, Easy Apply secret 16+; API UpdateEasyApplyConfigDto spec: short secret and unknown board refused, blank keeps, turn off; the pipelines API and its blueprint rules keep their own specs). The /v2 pipelines, easy-apply and campaigns pages are deleted and redirect. /v2/brand waits on 2698; stage-triggered campaigns on 2699."
           }
 ]
