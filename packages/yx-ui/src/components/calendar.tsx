@@ -586,7 +586,7 @@ function TeamDotMark({ kind, label, onClick }: { kind: TeamDotKind; label: strin
           <span className="yx-teamcal__dot" data-dot={kind} aria-hidden="true" />
         </button>
       ) : (
-        <span className="yx-teamcal__dotbtn" tabIndex={0} aria-label={label}>
+        <span className="yx-teamcal__dotbtn" role="img" tabIndex={0} aria-label={label}>
           <span className="yx-teamcal__dot" data-dot={kind} aria-hidden="true" />
         </span>
       )}
