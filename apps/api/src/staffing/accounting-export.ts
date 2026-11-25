@@ -1,3 +1,4 @@
+import { csvCell as safeCsvCell } from '../performance/calibration-rules';
 // Answers 522 and 574: a month's issued invoices, credit notes and receipts of one GSTIN series as a Tally XML import and a Zoho Books CSV.
 // Ledger names, the GST split, TDS and round-off are company settings (6.2); the formats (Tally voucher type names and
 // date format, Zoho column headers) are the rule sets EXPORT.TALLY_XML and EXPORT.ZOHO_CSV, marked verify. Money is
@@ -177,7 +178,9 @@ ${vouchers.join('\n')}
 `;
 }
 
-const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+// Security review F14: a text cell starting with = + - @ cannot run as a formula in Excel; plain numbers (credit-note
+// amounts may be negative) stay numbers.
+const csvCell = (v: string) => (/^-?\d+(\.\d+)?$/.test(v) ? v : safeCsvCell(v));
 
 /** One CSV of a kind (Zoho imports invoices and credit notes separately): a row per invoice line. */
 export function zohoCsv(docs: ExportDoc[], kind: 'invoice' | 'credit_note', s: ExportSettings, rule: ZohoRule) {

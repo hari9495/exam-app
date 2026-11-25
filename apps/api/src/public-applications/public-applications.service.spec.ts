@@ -1413,7 +1413,7 @@ describe('PublicApplicationsService', () => {
   describe('easyApplyIngest (external Easy Apply)', () => {
     const configuredOrg = (secret: string) =>
       tenantPrisma.forTenant.mockImplementationOnce((_c: unknown, fn: (tx: any) => unknown) =>
-        fn({ organization: { findFirst: jest.fn().mockResolvedValue({ easyApplyConfigEncrypted: `enc(${JSON.stringify({ indeed: { secret } })})` }) } }),
+        fn({ organization: { findFirst: jest.fn().mockResolvedValue({ id: 'org-a', easyApplyConfigEncrypted: `enc(${JSON.stringify({ indeed: { secret } })})` }) } }),
       );
 
     it('is inert (404) when the org has no Easy Apply config', async () => {
@@ -1432,8 +1432,9 @@ describe('PublicApplicationsService', () => {
       await expect(service.easyApplyIngest('acme', 'indeed', 'WRONG', {})).rejects.toThrow(NotFoundException);
     });
 
-    it('verifies the secret, normalizes, and funnels into apply()', async () => {
+    it('verifies the secret, normalizes, and funnels into apply() for the same company job (positive)', async () => {
       configuredOrg('sekret');
+      jest.spyOn(service as any, 'resolveJob').mockResolvedValue({ organizationId: 'org-a' });
       const applySpy = jest.spyOn(service, 'apply').mockResolvedValue({ received: true });
       const payload = { applyToken: 'tok-abc', applicant: { name: 'Jane Doe', email: 'jane@x.com', phone: '555' }, resumeBase64: 'AA==' };
 
@@ -1441,6 +1442,15 @@ describe('PublicApplicationsService', () => {
 
       expect(out).toEqual({ received: true });
       expect(applySpy).toHaveBeenCalledWith('tok-abc', expect.objectContaining({ name: 'Jane Doe', email: 'jane@x.com', phone: '555', resumeBase64: 'AA==' }));
+    });
+
+    it('security review F12: another company apply token gets the closed-role 404 and nothing is applied (negative)', async () => {
+      configuredOrg('sekret');
+      jest.spyOn(service as any, 'resolveJob').mockResolvedValue({ organizationId: 'org-b' });
+      const applySpy = jest.spyOn(service, 'apply');
+      const payload = { applyToken: 'tok-of-b', applicant: { name: 'Jane Doe', email: 'jane@x.com', phone: '555' }, resumeBase64: 'AA==' };
+      await expect(service.easyApplyIngest('acme', 'indeed', 'sekret', payload)).rejects.toThrow('This role is not accepting applications');
+      expect(applySpy).not.toHaveBeenCalled();
     });
 
     it('returns a 400 for a verified-but-malformed payload', async () => {

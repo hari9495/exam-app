@@ -7,7 +7,7 @@ import { timeState, useTime, useTimeWrite } from '../../../../../lib/yx-time';
 const id = encodeURIComponent;
 
 // Team › Block leave (TIM-39): people whose role needs block leave (setting leave.block_leave.required). Managers see
-// their team read only; planning, nudging and the access pause need leave.view in scope.
+// their team read only; planning and the access pause need leave.approve in scope, a reminder leave.view (security review F6).
 export default function YxBlockLeavePage() {
   const router = useRouter();
   const list = useTime<BlockLeaveList>('/hr/block-leave');

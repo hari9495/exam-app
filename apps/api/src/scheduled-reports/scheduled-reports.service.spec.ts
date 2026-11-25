@@ -91,4 +91,10 @@ describe('renderDigestCsv', () => {
     expect(lines[1]).toContain('"Backend, Senior"'); // comma forces quoting
     expect(lines[1]).toContain('6'); // candidateCount
   });
+  it('security review F14: an exam name that starts like a formula cannot run; numbers are left as numbers', () => {
+    const evil = { ...analytics, examQuality: analytics.examQuality.map((e: Record<string, unknown>, i: number) => (i === 0 ? { ...e, examTitle: '=cmd|calc!A1' } : e)) } as typeof analytics;
+    const row = renderDigestCsv(evil).split('\n')[1];
+    expect(row.startsWith("'=cmd|calc!A1")).toBe(true);
+    expect(row).toContain(',6,');
+  });
 });

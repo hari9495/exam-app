@@ -7,6 +7,9 @@ import { TenantPrismaService, OrgSecretsCryptoService } from '@exam-platform/sha
 import { createHmac } from 'crypto';
 import { promises as dns } from 'node:dns';
 
+// Security review F13: the worker posts through the pinned fetch; here it hands over to the test's fetch mock.
+jest.mock('../common/ssrf', () => ({ ...jest.requireActual('../common/ssrf'), pinnedFetch: (...a: unknown[]) => (global as any).fetch(...a) }));
+
 describe('WebhookDeliveryWorkerService', () => {
   let worker: WebhookDeliveryWorkerService;
   let tenantPrisma: { forTenant: jest.Mock };
@@ -40,7 +43,6 @@ describe('WebhookDeliveryWorkerService', () => {
     const expectedSignature = createHmac('sha256', 'plaintext-secret').update(delivery.payloadJson).digest('hex');
     expect(global.fetch).toHaveBeenCalledWith('https://example.com/hook', {
       method: 'POST',
-      redirect: 'error',
       headers: { 'Content-Type': 'application/json', 'X-Webhook-Signature': expectedSignature },
       body: delivery.payloadJson,
     });

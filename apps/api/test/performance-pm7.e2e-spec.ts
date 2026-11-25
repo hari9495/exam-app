@@ -194,6 +194,21 @@ describe('Performance batch PM7', () => {
     expect(hrSheet.proposals.some((x) => typeof x.score === 'number')).toBe(true);
   });
 
+  it('security review F8: HR never sets their own raise; another person in the chain does (negative and positive)', async () => {
+    // Arjun is given the HR comp key for this test: the sheet lets him in as HR, but his own proposal stays closed to him.
+    const profile = await inA((tx) => tx.user.findFirstOrThrow({ where: { id: users.arjun }, select: { permissionProfileId: true } }));
+    await inA((tx) => tx.permissionProfile.update({ where: { id: profile.permissionProfileId! }, data: { permissionsJson: JSON.stringify(['perf.comp.manage', 'perf.cycle.manage', 'employee.change.manage', 'employee.salary.view', 'employee.salary.manage']) } }));
+    try {
+      const sheet = (await api('arjun', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as Sheet;
+      const own = sheet.proposals.find((p) => p.employeeId === emp.arjun)!;
+      const other = sheet.proposals.find((p) => p.employeeId === emp.sita)!;
+      expect((await api('arjun', 'put', `/comp-proposals/${own.id}`).send({ meritPct: 25, justification: 'I deserve it', version: own.version }).expect(403)).body.message).toMatch(/Your own raise/);
+      await api('arjun', 'put', `/comp-proposals/${other.id}`).send({ meritPct: other.meritPct, version: other.version }).expect(200);
+    } finally {
+      await inA((tx) => tx.permissionProfile.update({ where: { id: profile.permissionProfileId! }, data: { permissionsJson: JSON.stringify([]) } }));
+    }
+  });
+
   // Founder answer 12: market data is a salary-survey CSV per grade, checked row by row, versioned, audited, pay-scoped.
   it('PRF-10 market data: HR uploads a survey (bad rows listed, nothing saved); the sheet shows the range and stale data', async () => {
     const q = `/comp-market?legalEntityId=${ids.entity}`;

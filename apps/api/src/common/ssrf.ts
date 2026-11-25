@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { isPublicAddress, publicHttpsFetch } from '@exam-platform/shared';
 
 /**
  * Reusable SSRF guard for org-supplied outbound URLs (webhooks, HTTP-based
@@ -95,10 +96,27 @@ export function assertPublicHttpsUrl(url: URL): void {
     }
   }
 
+  // Security review F13: any IP literal is judged like the pinned fetch judges an address (CGNAT 100.64/10, 0/8, ::,
+  // multicast and reserved ranges included), not only by the ranges listed above.
+  if (!isPrivate && (isIPv4Literal || isIPv6Literal) && !isPublicAddress(host)) isPrivate = true;
+
   if (isPrivate) {
     throw new BadRequestException('url must not target a private/local address');
   }
 }
+
+/**
+ * Security review F13: publicHttpsFetch with fetch()'s shape, for code (and tests) that take a fetch. The connection goes
+ * to the address that was checked (pinned DNS), so a host cannot re-resolve inward between the check and the request,
+ * and redirects are never followed.
+ */
+export const pinnedFetch = ((input: string | URL | Request, init?: RequestInit) =>
+  publicHttpsFetch(input instanceof Request ? input.url : String(input), {
+    method: init?.method,
+    headers: init?.headers as Record<string, string> | undefined,
+    body: init?.body as string | undefined,
+    signal: init?.signal ?? null,
+  })) as typeof fetch;
 
 // ---- DNS-resolution-checked outbound HTTPS (org-supplied hosts, e.g. a generic OIDC issuer) ----
 // Answer 1902: the resolving lookup and the pinned fetch live in packages/shared (net/public-fetch), so the AI

@@ -368,6 +368,12 @@ describe('ApprovalsService.decide', () => {
     expect(tx.approvalRequest.updateMany).not.toHaveBeenCalled();
   });
 
+  it('security review F4: the submitter cannot approve their own request, even when listed on the step (negative)', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq({ chainSnapshotJson: JSON.stringify([{ position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['submitter-1'] }]) }));
+    await expect(service.decide(context, 'req-1', 'submitter-1', 'approved')).rejects.toThrow('You asked for this, so someone else approves it.');
+    expect(tx.approvalDecision.create).not.toHaveBeenCalled();
+  });
+
   it('the conditional update makes a second concurrent decide a no-op (409)', async () => {
     tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
     tx.approvalRequest.updateMany.mockResolvedValue({ count: 0 });
@@ -756,7 +762,8 @@ describe('ApprovalsService.getRequestDetail', () => {
     const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
 
-    const result = await service.getRequestDetail(context, 'req-1');
+    jest.spyOn(service, 'isConfigurer').mockResolvedValue(false);
+    const result = await service.getRequestDetail(context, 'req-1', 'mgr-2');
 
     expect(result.steps).toHaveLength(2);
     expect(result.decisions).toEqual(baseReq().decisions);
@@ -776,9 +783,20 @@ describe('ApprovalsService.getRequestDetail', () => {
     const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
 
-    const result = await service.getRequestDetail(context, 'req-1');
+    jest.spyOn(service, 'isConfigurer').mockResolvedValue(false);
+    const result = await service.getRequestDetail(context, 'req-1', 'submitter-1');
 
     expect(result.subject).toEqual({ candidateName: 'Jane Doe', compensation: '100k', status: 'approved' });
+  });
+
+  it('security review F3: someone neither submitter, approver nor approvals admin gets a 404; an admin reads it', async () => {
+    const tx = { approvalRequest: { findFirst: jest.fn().mockResolvedValue(baseReq()) }, job: { findFirst: jest.fn().mockResolvedValue({ title: 'Engineer', status: 'open' }) } };
+    const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
+    const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
+    const admin = jest.spyOn(service, 'isConfigurer').mockResolvedValue(false);
+    await expect(service.getRequestDetail(context, 'req-1', 'panel-9')).rejects.toThrow('Approval request not found');
+    admin.mockResolvedValue(true);
+    await expect(service.getRequestDetail(context, 'req-1', 'admin-1')).resolves.toMatchObject({ id: 'req-1' });
   });
 
   it('404s when the request is not found in-org', async () => {
@@ -786,7 +804,8 @@ describe('ApprovalsService.getRequestDetail', () => {
     const tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     const service = new ApprovalsService(tenantPrisma as any, {} as any, {} as any);
 
-    await expect(service.getRequestDetail(context, 'missing')).rejects.toThrow('Approval request not found');
+    jest.spyOn(service, 'isConfigurer').mockResolvedValue(true);
+    await expect(service.getRequestDetail(context, 'missing', 'admin-1')).rejects.toThrow('Approval request not found');
   });
 });
 

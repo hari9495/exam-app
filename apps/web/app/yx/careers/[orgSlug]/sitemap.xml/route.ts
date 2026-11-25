@@ -1,12 +1,15 @@
 import { API_BASE } from '../../../../../lib/api-client';
 import { originOf } from '../../../../../lib/request-origin';
+import { visitorIp } from '../../../../../lib/yx-careers';
 
 // M10 AT3 (S9): the careers sitemap for Google for Jobs. Built on each request, so a closed job is gone at once.
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 export async function GET(req: Request, { params }: { params: Promise<{ orgSlug: string }> }) {
   const { orgSlug } = await params;
-  const res = await fetch(`${API_BASE}/public/careers/${encodeURIComponent(orgSlug)}/sitemap`, { cache: 'no-store' }).catch(() => null);
+  // Security review F7: the crawler's IP, so the API limits it per company and per IP, not in one shared bucket.
+  const ip = visitorIp(req.headers);
+  const res = await fetch(`${API_BASE}/public/careers/${encodeURIComponent(orgSlug)}/sitemap`, { cache: 'no-store', ...(ip ? { headers: { 'X-Forwarded-For': ip } } : {}) }).catch(() => null);
   if (!res?.ok) return new Response('Not found', { status: 404 });
   const data = (await res.json()) as { jobs: { slug: string; updatedAt: string }[]; companies: string[] };
   const base = `${originOf(req.headers)}/yx/careers/${encodeURIComponent(orgSlug)}`;

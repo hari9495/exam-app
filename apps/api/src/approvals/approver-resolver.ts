@@ -49,6 +49,8 @@ export async function resolveSteps(
       });
       ids = await activeIds(tx, members.map((m: { userId: string }) => m.userId));
     }
+    // Security review F4: the person who asked never approves their own requisition or offer.
+    ids = ids.filter((u) => u !== args.submitterUserId);
     if (ids.length === 0) {
       skipped.push({ position: s.position, reason: `No approver resolved for step "${s.name}" (${s.approverType})` });
       continue;

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '../prisma/tenant-prisma.service';
 import { TenantContext } from '../prisma/tenant-context';
+import { requestActor } from './request-channel';
 
 export interface AuditEntry {
   actorUserId: string | null;
@@ -55,6 +56,9 @@ export class AuditService {
       }
     }
 
+    // Security review F2: while someone acts as another person, the row names the real actor too.
+    const impersonator = requestActor.getStore()?.impersonatorUserId ?? null;
+    const metadata = impersonator && impersonator !== entry.actorUserId ? { ...(entry.metadata ?? {}), impersonatorUserId: impersonator } : entry.metadata;
     await tx.auditLog.create({
       data: {
         organizationId: context.organizationId,
@@ -65,7 +69,7 @@ export class AuditService {
         action: entry.action,
         entityType: entry.entityType,
         entityId: entry.entityId,
-        metadataJson: entry.metadata ? JSON.stringify(entry.metadata) : null,
+        metadataJson: metadata ? JSON.stringify(metadata) : null,
       },
     });
   }

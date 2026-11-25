@@ -486,6 +486,8 @@ export class PerformanceCompService implements OnModuleInit {
         const p = await tx.compProposal.findFirstOrThrow({ where: { id: proposalId } });
         const a = await this.sheetAccess(tx, c, v, x);
         if (!a.hr && p.managerEmployeeId !== a.me) throw new NotFoundException('No such proposal.');
+        // Security review F8: nobody sets their own raise, HR included; their manager or another HR person does.
+        if (a.me && p.employeeId === a.me) throw new ForbiddenException('Your own raise is set by your manager or another HR person.');
         if (x.status !== 'open' || p.status !== 'draft') throw new ConflictException('Only a draft proposal in an open cycle changes.');
         if (p.version !== dto.version) throw new ConflictException('Someone else changed this proposal. Reload it.');
         const ctc = num(p.currentCtc)!;
@@ -524,7 +526,8 @@ export class PerformanceCompService implements OnModuleInit {
       const a = await this.sheetAccess(tx, c, v, x);
       if (x.status !== 'open') throw new ConflictException('This cycle is not open for proposals.');
       return withPayScope(tx, [x.legalEntityId], async () => {
-        const drafts = await tx.compProposal.findMany({ where: { organizationId: org, compCycleId: id, status: 'draft', ...(a.hr ? {} : { managerEmployeeId: a.me ?? '' }) } });
+        // Security review F8: the sender's own proposal never goes in their own batch; it waits for their manager or another HR person.
+        const drafts = await tx.compProposal.findMany({ where: { organizationId: org, compCycleId: id, status: 'draft', ...(a.hr ? {} : { managerEmployeeId: a.me ?? '' }), ...(a.me ? { employeeId: { not: a.me } } : {}) } });
         if (!drafts.length) throw new ConflictException('There is nothing to send.');
         const budgets = await this.budgets(tx, org, x);
         const over = budgets.filter((b) => b.over && drafts.some((p) => p.departmentId === b.departmentId));

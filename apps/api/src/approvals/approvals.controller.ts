@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -31,9 +31,10 @@ export class ApprovalsController {
     return this.approvals.listRequests(tenant, userId, scope ?? 'inbox', status);
   }
 
+  // Security review F3: the service lets in only the submitter, the chain's approvers and the approvals admins.
   @Get('requests/:id')
-  getRequestDetail(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.approvals.getRequestDetail(tenant, id);
+  getRequestDetail(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.approvals.getRequestDetail(tenant, id, userId);
   }
 
   // No @RequirePermissions here -- authorization is membership in the request's current

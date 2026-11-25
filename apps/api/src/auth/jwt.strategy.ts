@@ -1,4 +1,5 @@
 import { ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { requestActor } from '@exam-platform/shared';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
@@ -47,6 +48,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!(await staffDeskIpAllowed(this.tenantPrisma, payload, req.ip))) {
       throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
     }
+    // Security review F2: audit rows written in this request name the impersonator beside the person acted as.
+    const actor = requestActor.getStore();
+    if (actor) actor.impersonatorUserId = payload.impersonatorUserId ?? null;
     // Staff inside a company only through a live support session: read-only, every request recorded (P02 Q8).
     if (payload.actingSuperAdmin) {
       if (!payload.supportSessionId) throw new UnauthorizedException('Session expired');

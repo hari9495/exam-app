@@ -5,6 +5,7 @@ import { TenantPrismaService, OrgSecretsCryptoService, IntegrationEventType } fr
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from './redis-connection';
 import { INTEGRATION_DELIVERIES_QUEUE_NAME } from './integration-deliveries.queue';
 import { assertAllowedWebhookUrl, assertPublicWebhookTarget, IntegrationType } from '../integrations/webhook-url-allowlist';
+import { pinnedFetch } from '../common/ssrf';
 import { buildEventSummary } from '../integrations/formatting/event-summary';
 import { formatSlackMessage } from '../integrations/formatting/format-slack';
 import { formatTeamsMessage } from '../integrations/formatting/format-teams';
@@ -74,7 +75,8 @@ export class IntegrationDeliveryWorkerService implements OnModuleDestroy {
     try {
       // redirect:'error' so a redirecting endpoint can't bounce us past the host allowlist —
       // *.logic.azure.com (Teams) is tenant-controllable and could 307/308 to an internal host (SSRF).
-      response = await fetch(url, { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      // Security review F13: pinned DNS, and no redirect is ever followed.
+      response = await pinnedFetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     } catch (e) {
       await this.recordAttempt(delivery, integration, false, undefined, (e as Error).message);
       throw e;

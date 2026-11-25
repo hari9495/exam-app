@@ -1,4 +1,5 @@
 import { DashboardAnalytics, DashboardSummary } from '../dashboard/dashboard.service';
+import { csvCell as safeCsvCell } from '../performance/calibration-rules';
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -49,9 +50,9 @@ export function renderDigestHtml(orgName: string, analytics: DashboardAnalytics,
     </div>`;
 }
 
+// Security review F14: an exam name starting with = + - @ cannot run as a formula when the CSV is opened; numbers stay numbers.
 function csvCell(v: string | number): string {
-  const s = String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return typeof v === 'number' || /^-?\d+(\.\d+)?$/.test(v) ? String(v) : safeCsvCell(v);
 }
 
 // Per-exam breakdown for the week as a CSV string (attached to the digest email).

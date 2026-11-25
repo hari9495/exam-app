@@ -182,8 +182,9 @@ export class PipelineController {
     return this.pipelineService.unlinkExam(tenant, userId, id, examId);
   }
 
+  // Security review F5: rating a candidate is a write; results:view is the read key (the Auditor, people managers).
   @Post('entries/:id/feedback')
-  @RequirePermissions('results:view')
+  @RequirePermissions('pipeline:manage')
   addFeedback(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -199,8 +200,9 @@ export class PipelineController {
     return this.pipelineService.listFeedback(tenant, id, userId);
   }
 
+  // Security review F5: taking over a candidate is a write, so it needs the recruiting key, not results:view.
   @Patch('entries/:id/assignment')
-  @RequirePermissions('results:view')
+  @RequirePermissions('pipeline:manage')
   assignEntry(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
