@@ -11,8 +11,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession } from '../service-desk/desk-access';
 import type { ScopeUser } from '../access/scope';
-import { CheckDto, CourseDto, DecideDto, DeclineDto, FileItemDto, ManagerCheckDto, MarkDto, NominateDto, PeopleQueryDto, ReactionDto, SeatUserDto, SessionDto, SlotQueryDto } from './dto';
-import { SessionsService } from './sessions.service';
+import { CourseDto, DecideDto, DeclineDto, FileItemDto, NominateDto, PeopleQueryDto } from './dto';
 import { CoursesService } from './courses.service';
 
 // Batch G3a (M07) Learning. Keys (P02 YX-SEC-01):
@@ -146,113 +145,5 @@ export class MyLearningController {
   nominate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NominateDto) {
     assertOwnSession(req);
     return this.svc.nominate(ctx, req.user as ScopeUser, id, dto.userIds, dto.dueOn);
-  }
-}
-
-// Batch G3b: sessions. learning.manage schedules and closes them (whole company); the trainer of a session (an employee
-// login) sees it, shows the check-in code and marks attendance (checked in the service: others get 404).
-@Controller('learning/sessions')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
-export class SessionsController {
-  constructor(
-    private readonly svc: SessionsService,
-    private readonly courses: CoursesService,
-  ) {}
-
-  private async gate(req: Request) {
-    if (!(await this.courses.companyWide(req.user as ScopeUser))) throw new ForbiddenException('Sessions cover the whole company: this needs the key for the whole company.');
-  }
-
-  @Get()
-  list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.svc.list(ctx, req.user as ScopeUser);
-  }
-
-  @Post()
-  @RequirePermissions('learning.manage')
-  async create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SessionDto) {
-    assertOwnSession(req);
-    await this.gate(req);
-    return this.svc.create(ctx, dto);
-  }
-
-  @Get(':id')
-  detail(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.svc.detail(ctx, req.user as ScopeUser, id);
-  }
-
-  @Get(':id/code')
-  code(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: SlotQueryDto) {
-    assertOwnSession(req);
-    return this.svc.code(ctx, req.user as ScopeUser, id, q.slotId);
-  }
-
-  @Post(':id/marks')
-  mark(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MarkDto) {
-    assertOwnSession(req);
-    return this.svc.mark(ctx, req.user as ScopeUser, id, dto);
-  }
-
-  @Post(':id/withdraw')
-  @RequirePermissions('learning.manage')
-  async withdraw(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SeatUserDto) {
-    assertOwnSession(req);
-    await this.gate(req);
-    return this.svc.withdraw(ctx, id, dto.userId);
-  }
-
-  @Post(':id/close')
-  @RequirePermissions('learning.manage')
-  async close(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    assertOwnSession(req);
-    await this.gate(req);
-    return this.svc.close(ctx, req.user as ScopeUser, id);
-  }
-}
-
-// Batch G3b: my sessions (book, cancel, check in, rate) and a manager's 60-day checks.
-@Controller('learning/my/sessions')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
-export class MySessionsController {
-  constructor(private readonly svc: SessionsService) {}
-
-  @Get()
-  mine(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.svc.mine(ctx, req.user as ScopeUser);
-  }
-
-  @Get('checks')
-  checks(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.svc.checksDue(ctx, req.user as ScopeUser);
-  }
-
-  @Post(':id/book')
-  book(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    assertOwnSession(req);
-    return this.svc.book(ctx, req.user as ScopeUser, id);
-  }
-
-  @Post(':id/cancel')
-  cancel(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    assertOwnSession(req);
-    return this.svc.cancelSeat(ctx, req.user as ScopeUser, id);
-  }
-
-  @Post(':id/check-in')
-  checkIn(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CheckDto) {
-    assertOwnSession(req);
-    return this.svc.checkIn(ctx, req.user as ScopeUser, id, dto);
-  }
-
-  @Post(':id/reaction')
-  react(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReactionDto) {
-    assertOwnSession(req);
-    return this.svc.react(ctx, req.user as ScopeUser, id, dto);
-  }
-
-  @Post(':id/check')
-  check(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ManagerCheckDto) {
-    assertOwnSession(req);
-    return this.svc.managerCheck(ctx, req.user as ScopeUser, id, dto.aboutUserId, dto.applying, dto.comment);
   }
 }

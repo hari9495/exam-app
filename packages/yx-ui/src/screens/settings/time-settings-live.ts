@@ -241,9 +241,6 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Engage feed', key: 'engage.celebrate.birthdays', synonyms: ['birthdays', 'celebrations'] },
       { section: 'Engage feed', key: 'engage.celebrate.anniversaries', synonyms: ['work anniversary', 'celebrations'] },
       { section: 'Engage feed', key: 'engage.celebrate.new_joiners', synonyms: ['new joiners', 'welcome'] },
-      // Batch G3b: classroom sessions; completion by attendance, and the manager's later check.
-      { section: 'Learning', key: 'learning.attendance_share', synonyms: ['attendance', 'sessions', 'training'] },
-      { section: 'Learning', key: 'learning.check_after_days', synonyms: ['training check', 'manager check'] },
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },

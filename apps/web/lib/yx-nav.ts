@@ -571,15 +571,13 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  // Learning (batch G3, M07): my learning for everyone with a job; the course builder and sessions for learning.manage
-  // (a trainer opens their session from the notice; a manager's training check from theirs).
+  // Learning (batch G3, M07): my learning for everyone with a job; the course builder for learning.manage.
   const learning: NavArea = {
     id: 'learning',
     title: 'Learning',
     sections: sec(undefined, [
       ...when(!support && employee, L('learning-mine', 'My learning', '/yx/learning')),
       ...when(!support && has('learning.manage'), L('learning-courses', 'Courses', '/yx/learning/courses')),
-      ...when(!support && has('learning.manage'), L('learning-sessions', 'Sessions', '/yx/learning/sessions')),
     ]),
   };
 

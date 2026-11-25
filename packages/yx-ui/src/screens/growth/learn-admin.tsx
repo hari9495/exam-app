@@ -29,7 +29,6 @@ import { complianceCell, completionStatus, withdraw } from './growth-logic';
 import type { Course } from './learn-me';
 import type { LoadState } from './perf-goals';
 import { LiveCourseBuilderScreen, type LiveCourseBuilder } from './learn-courses-live';
-import { LiveSessionsScreen, LiveTrainerQrScreen, type LiveSessions, type LiveTrainerCode } from './learn-sessions-live';
 import './growth.css';
 
 /* ================================================================== LRN-03 · Course builder + learning paths */
@@ -476,11 +475,7 @@ function SessionPage({ page, persona, tab }: { page: SessionPageData; persona: '
 }
 
 /** LRN-04 Sessions (T3): list, one session record for attendees, attendance, results, feedback, cost (YX-LRN-08), trainer master; external trainer portal. */
-export function SessionsScreen(props: SessionsProps | { live: LiveSessions }) {
-  return 'live' in props ? <LiveSessionsScreen live={props.live} /> : <SessionsDesign {...props} />;
-}
-
-function SessionsDesign({ persona, view, sessions, page, trainers = [], tab, state = 'ready' }: SessionsProps) {
+export function SessionsScreen({ persona, view, sessions, page, trainers = [], tab, state = 'ready' }: SessionsProps) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const shown = useMemo(() => sessions.filter((s) => (!q || s.course.toLowerCase().includes(q.toLowerCase())) && filters.every((f) => matchesFilter((s as unknown as Record<string, unknown>)[f.key], f))), [sessions, filters, q]);
@@ -560,20 +555,7 @@ function SessionsDesign({ persona, view, sessions, page, trainers = [], tab, sta
 /* ================================================================== LRN-05 · Trainer QR attendance (phone) */
 
 /** LRN-05 Trainer QR screen (T8): rotating code per slot, live count, manual and kiosk-code fallback (M07 Q7). */
-export function TrainerQrScreen(props: TrainerQrProps | { live: LiveTrainerCode }) {
-  return 'live' in props ? <LiveTrainerQrScreen live={props.live} /> : <TrainerQrDesign {...props} />;
-}
-
-interface TrainerQrProps {
-  session: string;
-  slot: string;
-  present: string[];
-  expected: string[];
-  closed?: boolean;
-  manual?: boolean;
-}
-
-function TrainerQrDesign({ session, slot, present, expected, closed, manual }: TrainerQrProps) {
+export function TrainerQrScreen({ session, slot, present, expected, closed, manual }: { session: string; slot: string; present: string[]; expected: string[]; closed?: boolean; manual?: boolean }) {
   const [marked, setMarked] = useState<string[]>(present);
   return (
     <GrowthFrame area="learning" active="Sessions" persona="ld" device="phone" phone={{ title: 'Attendance', back: true, hideTabs: true }}>

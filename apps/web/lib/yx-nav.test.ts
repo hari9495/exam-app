@@ -541,11 +541,10 @@ describe('buildNav: Learning (batch G3)', () => {
   const learning = (over: Partial<NavInput>, keys: string[] = []) => labels(nav(keys, { employee: true, ...over }), 'learning');
   it('My learning for everyone with a job; Courses with learning.manage; nothing on a support session', () => {
     expect(learning({})).toEqual(['My learning']);
-    expect(learning({}, ['learning.manage'])).toEqual(['My learning', 'Courses', 'Sessions']);
+    expect(learning({}, ['learning.manage'])).toEqual(['My learning', 'Courses']);
     expect(learning({ support: true }, ['learning.manage'])).toEqual([]);
     const all = nav(['learning.manage'], { employee: true });
     expect(pageLink(all, '/yx/learning/courses/new')?.link.label).toBe('Courses');
     expect(pageLink(all, '/yx/learning/enrolments/x')?.link.label).toBe('My learning');
-    expect(pageLink(all, '/yx/learning/sessions/x/code')?.link.label).toBe('Sessions');
   });
 });

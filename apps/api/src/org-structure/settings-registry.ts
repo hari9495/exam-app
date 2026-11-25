@@ -170,9 +170,6 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'engage.celebrate.birthdays': { label: 'Engage: show birthdays on the feed (without the year)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'engage.celebrate.anniversaries': { label: 'Engage: show work anniversaries on the feed', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'engage.celebrate.new_joiners': { label: 'Engage: welcome new joiners on the feed (their first week)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
-  // Batch G3b (M07 Q7-Q8): the share of session slots attended that completes a course, and when the manager's check is asked.
-  'learning.attendance_share': { label: 'Learning: share of the session slots someone must attend to complete it (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '75', '80', '90', '100'], default: '75' },
-  'learning.check_after_days': { label: 'Learning: days after a session closes that managers are asked if the skill is applied', scopes: ['tenant'], dated: false, values: ['30', '45', '60', '90'], default: '60' },
   'engage.hide_after_reports': { label: 'Engage: reports that hide a post or comment until a moderator reviews it', scopes: ['tenant'], dated: false, values: ['2', '3', '5', '10'], default: '3' },
   'speakup.anonymous': { label: 'Speak-up: who may report without a name', scopes: ['tenant'], dated: false, values: ['all', 'ethics_only', 'off'], default: 'all' },
   'speakup.ack_days': { label: 'Speak-up: days for the case team to acknowledge a report', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '5', '7'], default: '2' },

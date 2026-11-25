@@ -14,6 +14,3 @@ export function addMonths(day: string, n: number): string {
   const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
   return new Date(Date.UTC(y, m - 1 + n, Math.min(d, last))).toISOString().slice(0, 10);
 }
-
-/** Share of slots attended, 0-100 (a session with no slots counts as none). */
-export const attendedShare = (attended: number, slots: number) => (slots ? Math.round((attended / slots) * 100) : 0);
