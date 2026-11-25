@@ -13156,6 +13156,8 @@ model SpeakupTeamMember {
   addedAt        DateTime  @default(now()) @map("added_at") @db.Timestamptz(3)
   removedBy      String?   @map("removed_by") @db.Uuid
   removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  /// Answer 2623: when the System Admin was reminded that this term ends within 30 days.
+  termRemindedAt DateTime? @map("term_reminded_at") @db.Timestamptz(3)
 
   @@map("speakup_team_members")
 }

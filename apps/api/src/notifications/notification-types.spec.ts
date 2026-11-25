@@ -110,6 +110,7 @@ describe('notification catalog', () => {
       'helpdesk.policy.to_publish',
       'helpdesk.policy.decided',
       'helpdesk.speakup.received',
+      'helpdesk.ic.term_ending',
       'helpdesk.case.update',
       'helpdesk.case.task',
       'helpdesk.case.misconduct_reported',

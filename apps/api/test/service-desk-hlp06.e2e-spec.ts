@@ -12,6 +12,7 @@ import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { REDIS_CONNECTION } from '../src/jobs/redis-connection';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { SpeakupService } from '../src/speakup/speakup.service';
 
 // HLP-06 speak-up filing end to end against the real database (forced RLS, the app role). Positive and negative: named
 // and anonymous reports, the company's anonymous setting, routing to the ethics team, the Internal Committee and the
@@ -33,7 +34,7 @@ describe('HLP-06 speak-up filing', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post', path: string) => request(server())[method](`/api/v1/desk/speakup${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'patch', path: string) => request(server())[method](`/api/v1/desk/speakup${path}`).set('Authorization', `Bearer ${token[who]}`);
   const pub = (path: string) => request(server()).post(`/api/v1/desk/speakup/public${path}`);
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
   // Answer 2591: the committee list asks whether a member is a woman and when the term ends.
@@ -202,6 +203,44 @@ describe('HLP-06 speak-up filing', () => {
     await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.ic1, role: 'presiding', ...IC }).expect(201);
   });
 
+  it('answer 2625: Edit member with the same checks as adding, audited; answer 2623: an ended term takes no new complaint, and the System Admin is reminded once 30 days before', async () => {
+    const chair = (await api('adminA', 'post', '/setup/members').send({ team: 'ic', userId: users.chair, woman: false, termEndsOn: shift(365) }).expect(201)).body.id;
+    const edit = (body: object, id = chair) => api('adminA', 'patch', `/setup/members/${id}`).send(body);
+    await api('hr', 'patch', `/setup/members/${chair}`).send({ woman: true }).expect(403);
+    await edit({ woman: true }, randomUUID()).expect(404);
+    await edit({ termEndsOn: today }).expect(400);
+    await edit({ termEndsOn: shift(3 * 365 + 5) }).expect(400);
+    await edit({ role: 'presiding' }).expect(400); // not a woman
+    await edit({ role: 'presiding', woman: true }).expect(409); // ic1 presides already
+    await edit({ woman: 'yes' }).expect(400);
+    const other = (await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { team: string }) => m.team === 'ethics');
+    await edit({ role: 'member' }, other.id).expect(400);
+    await edit({ woman: true, termEndsOn: shift(200) }).expect(200);
+    expect((await api('adminA', 'get', '/setup').expect(200)).body.members.find((m: { id: string }) => m.id === chair)).toMatchObject({ role: 'member', woman: true, termEndsOn: shift(200) });
+    const log = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { action: 'speakup.team_member_edited', entityId: chair } }));
+    expect(JSON.parse(log.metadataJson!)).toMatchObject({ before: { woman: false, termEndsOn: shift(365) }, after: { woman: true, termEndsOn: shift(200) } });
+    // 2623: a term that has ended takes no new complaint; the others on the committee still do.
+    await inA((tx) => tx.speakupTeamMember.update({ where: { id: chair }, data: { termEndsOn: new Date(`${shift(-1)}T00:00:00Z`) } }));
+    const filed = (await api('divya', 'post', '/reports').send({ kind: 'posh', summary: 'Unwelcome remarks during the night shift.' }).expect(201)).body;
+    expect((await inA((tx) => tx.speakupCaseMember.findMany({ where: { caseId: filed.id }, select: { userId: true } }))).map((m) => m.userId)).toEqual([users.ic1]);
+    // 2623: one note to the System Admins 30 days before; again only after the term is changed.
+    const svc = app.get(SpeakupService);
+    const bells = () => inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.adminA, type: 'helpdesk.ic.term_ending', entityId: chair } }));
+    await inA((tx) => tx.speakupTeamMember.update({ where: { id: chair }, data: { termEndsOn: new Date(`${shift(31)}T00:00:00Z`) } }));
+    await svc.remindIcTerms();
+    expect(await bells()).toBe(0);
+    await inA((tx) => tx.speakupTeamMember.update({ where: { id: chair }, data: { termEndsOn: new Date(`${shift(20)}T00:00:00Z`) } }));
+    await svc.remindIcTerms();
+    expect(await bells()).toBe(1);
+    expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.hr, type: 'helpdesk.ic.term_ending' } }))).toBe(0);
+    await svc.remindIcTerms();
+    expect(await bells()).toBe(1);
+    await edit({ termEndsOn: shift(25) }).expect(200);
+    await svc.remindIcTerms();
+    expect(await bells()).toBe(2);
+    await api('adminA', 'post', `/setup/members/${chair}/remove`).expect(201);
+  });
+
   it('answer 2592: a workplace committee takes that workplace’s POSH complaints; others go to the company committee; each committee’s presiding and console are its own', async () => {
     const loc = await inA(async (tx) => {
       const e = await tx.legalEntity.create({ data: { organizationId: org.A.id, name: 'HLP06 Foods', shortName: `H6${run.slice(0, 4).toUpperCase()}`, isDefault: true } });
@@ -257,7 +296,7 @@ describe('HLP-06 speak-up filing', () => {
     const rows = (await request(server()).get('/api/v1/desk/cases').set('Authorization', `Bearer ${token.ic1}`).expect(200)).body as { kind: string; ref: string; filedOn: string }[];
     expect(rows.find((c) => c.ref === 'POSH-0001')).toMatchObject({ kind: 'posh', filedOn: today });
     const counts = (who: Who) => request(server()).get('/api/v1/workspace/counts').set('Authorization', `Bearer ${token[who]}`).expect(200).then((r) => r.body);
-    expect((await counts('ic1')).icComplaints).toBe(5); // POSH-0001, two from the answer 2592 test, two from 2597
+    expect((await counts('ic1')).icComplaints).toBe(6); // POSH-0001, one from the 2623 test, two from the answer 2592 test, two from 2597
     expect((await counts('divya')).icComplaints).toBeUndefined();
     expect((await counts('ethics1')).icComplaints).toBeUndefined();
   });

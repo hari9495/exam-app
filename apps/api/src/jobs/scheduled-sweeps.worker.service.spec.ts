@@ -55,6 +55,7 @@ describe('ScheduledSweepsWorkerService', () => {
       questionReviews: { sweep: jest.fn().mockResolvedValue(0) },
       staffNotices: { retentionSweep: jest.fn().mockResolvedValue(0) },
       learning: { sweep: jest.fn().mockResolvedValue({ enrolled: 0, reminded: 0 }) },
+      speakup: { remindIcTerms: jest.fn().mockResolvedValue(0) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -95,6 +96,7 @@ describe('ScheduledSweepsWorkerService', () => {
       services.questionReviews as never,
       services.staffNotices as never,
       services.learning as never,
+      services.speakup as never,
     );
     return { service, queue, connection, services };
   };
@@ -154,6 +156,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'retention-expiry': services.deletions.releaseSweep,
       'question-review-nudges': services.questionReviews.sweep,
       'learning-daily': services.learning.sweep,
+      'speakup-ic-terms': services.speakup.remindIcTerms,
     };
     for (const { id } of SWEEP_SCHEDULE) {
       await mockWorker.processor!({ name: id });

@@ -93,4 +93,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'question-review-nudges', cron: '0 4 * * *' },
   // Learning: assignment rules, renewals, reminders and escalation, daily at 06:30 IST.
   { id: 'learning-daily', cron: '0 1 * * *' },
+  // Answer 2623: Internal Committee terms ending within 30 days, one note to the System Admins (07:00 IST).
+  { id: 'speakup-ic-terms', cron: '30 1 * * *' },
 ];

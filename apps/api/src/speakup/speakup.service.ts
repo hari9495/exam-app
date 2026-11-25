@@ -12,7 +12,7 @@ import { CompanyContext, Tx, audit, companyContext } from '../org-structure/org-
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { safeName } from '../service-desk/attachments.service';
-import { SPEAKUP_TEAMS, type AnnualReportStepDto, type AnonymousReportDto, type AwarenessSessionDto, type ReportDto, type SpeakupKind, type SpeakupTeam, type TeamMemberDto } from './dto';
+import { SPEAKUP_TEAMS, type AnnualReportStepDto, type AnonymousReportDto, type AwarenessSessionDto, type EditMemberDto, type ReportDto, type SpeakupKind, type SpeakupTeam, type TeamMemberDto } from './dto';
 import { isoDay } from '../cases/case-rules';
 import { jobsToday } from '../learning/learning-core';
 import { addDays, anonymousAllowed, caseNumber, newReplyCode, poshLate, readCode, route, showCode } from './speakup-rules';
@@ -147,7 +147,8 @@ export class SpeakupService {
     // Answer 2592: a POSH complaint goes to its workplace's committee when there is one, else to the company's.
     let icLocationId: string | null = null;
     if (dto.kind === 'posh') {
-      const ic = await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, select: { userId: true, locationId: true } });
+      // Answer 2623: a member whose term has ended receives no new complaint (a term ends at the end of its day).
+      const ic = (await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, select: { userId: true, locationId: true, termEndsOn: true } })).filter((m) => !m.termEndsOn || isoDay(m.termEndsOn)! >= today);
       icLocationId = dto.locationId && ic.some((m) => m.locationId === dto.locationId) ? dto.locationId : null;
       teams.ic = ic.filter((m) => m.locationId === icLocationId).map((m) => m.userId);
     }
@@ -617,6 +618,76 @@ export class SpeakupService {
       await audit(tx, c, 'speakup.team_member_added', 'speakup_team_member', m.id, { team: dto.team, userId: dto.userId, role, ...(dto.team === 'ic' ? { woman: dto.woman, termEndsOn: dto.termEndsOn!.slice(0, 10), locationId: committee } : {}) });
       return { id: m.id };
     });
+  }
+
+  /** Answer 2625: change a member with the same checks as adding; audited with what changed. */
+  async editMember(ctx: TenantContext, id: string, dto: EditMemberDto) {
+    return this.tx(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const m = await tx.speakupTeamMember.findFirst({ where: { organizationId: org, id, removedAt: null } });
+      if (!m) throw new NotFoundException('Not found.');
+      if (m.team !== 'ic' && m.team !== 'ir') throw new BadRequestException('There is nothing to change on this list; remove and add instead.');
+      if (m.team === 'ir') {
+        if (dto.woman !== undefined || dto.termEndsOn) throw new BadRequestException('Woman and term end are asked only for the Internal Committee.');
+        if (dto.role === 'presiding') throw new BadRequestException('The industrial relations team has company members and outside lawyers.');
+      }
+      const role = dto.role ?? (m.role as 'member' | 'presiding' | 'external');
+      const before = { role: m.role, woman: m.woman, termEndsOn: m.termEndsOn ? isoDay(m.termEndsOn) : null };
+      let after: Record<string, unknown> = { role };
+      if (m.team === 'ic') {
+        const woman = dto.woman ?? m.woman;
+        const term = dto.termEndsOn?.slice(0, 10) ?? before.termEndsOn;
+        if (woman == null) throw new BadRequestException('Say whether this member is a woman.');
+        if (!term) throw new BadRequestException('Choose the day their term ends.');
+        if (dto.termEndsOn) {
+          const today = todayIst();
+          if (term <= today) throw new BadRequestException('The term must end after today.');
+          if (term > addDays(today, 3 * 365 + 1)) throw new BadRequestException('A term is at most 3 years.');
+        }
+        if (role === 'presiding' && !woman) throw new BadRequestException('The presiding officer must be a senior woman employee.');
+        if (role === 'presiding' && m.role !== 'presiding' && (await tx.speakupTeamMember.findFirst({ where: { organizationId: org, team: 'ic', role: 'presiding', removedAt: null, locationId: m.locationId, id: { not: m.id } }, select: { id: true } }))) throw new ConflictException('This committee already has a presiding officer. Change them first.');
+        after = { role, woman, termEndsOn: term };
+      }
+      const termChanged = m.team === 'ic' && after.termEndsOn !== before.termEndsOn;
+      await tx.speakupTeamMember.update({ where: { id: m.id }, data: { role, ...(m.team === 'ic' ? { woman: after.woman as boolean, termEndsOn: day(after.termEndsOn as string) } : {}), ...(termChanged ? { termRemindedAt: null } : {}) } });
+      await audit(tx, c, 'speakup.team_member_edited', 'speakup_team_member', m.id, { team: m.team, userId: m.userId, before, after });
+      return { id: m.id };
+    });
+  }
+
+  /** Answer 2623: daily, the System Admins hear once about each committee term ending within 30 days. */
+  async remindIcTerms(): Promise<number> {
+    const today = todayIst();
+    const due = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.speakupTeamMember.findMany({ where: { team: 'ic', removedAt: null, termRemindedAt: null, termEndsOn: { gte: day(today), lte: day(addDays(today, 30)) } }, take: 500 }),
+    );
+    let sent = 0;
+    for (const org of [...new Set(due.map((d) => d.organizationId))]) {
+      try {
+        const out = await this.tenantPrisma.forTenant(this.system(org), async (tx) => {
+          const rows = due.filter((d) => d.organizationId === org);
+          const people = await tx.user.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.userId) } }, select: { id: true, name: true, email: true } });
+          const places = await tx.location.findMany({ where: { organizationId: org, id: { in: rows.flatMap((r) => (r.locationId ? [r.locationId] : [])) } }, select: { id: true, name: true } });
+          const admins = (await tx.user.findMany({ where: { organizationId: org, role: 'org_admin', status: 'active' }, select: { id: true } })).map((u) => u.id);
+          await tx.speakupTeamMember.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { termRemindedAt: new Date() } });
+          return {
+            admins,
+            texts: rows.map((r) => {
+              const u = people.find((p) => p.id === r.userId);
+              const place = r.locationId ? (places.find((p) => p.id === r.locationId)?.name ?? 'a workplace') : 'the whole company';
+              return { id: r.id, text: `${u?.name ?? u?.email ?? 'A member'}'s term on the Internal Committee (${place}) ends on ${isoDay(r.termEndsOn!)}. Extend the term or add a replacement.` };
+            }),
+          };
+        });
+        for (const t of out.texts) {
+          await this.notifications.notifySystem({ organizationId: org, isSuperAdmin: false }, out.admins, 'helpdesk.ic.term_ending', { entityType: 'speakup_team_member', entityId: t.id, contextText: t.text, linkPath: '/yx/desk/speakup-setup' }, { subject: 'An Internal Committee term ends soon', html: `<p>${t.text}</p>` }).catch((e: Error) => this.logger.warn(`IC term notice: ${e.message}`));
+          sent++;
+        }
+      } catch (e) {
+        this.logger.error(`IC term reminders for ${org} failed: ${(e as Error).message}`);
+      }
+    }
+    return sent;
   }
 
   /** Removing someone from a list stops new reports reaching them; cases already routed to them stay theirs (HLP-08 moves them). */

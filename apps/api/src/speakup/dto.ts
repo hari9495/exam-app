@@ -149,6 +149,21 @@ export class TeamReplyDto {
   body!: string;
 }
 
+/** Answer 2625: change a member on a list (Internal Committee: role, woman, term end; IR team: company or outside lawyer). */
+export class EditMemberDto {
+  @IsOptional()
+  @IsIn(['member', 'presiding', 'external'])
+  role?: 'member' | 'presiding' | 'external';
+
+  @IsOptional()
+  @IsBoolean()
+  woman?: boolean;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  termEndsOn?: string;
+}
+
 export class TeamMemberDto {
   @IsIn(SPEAKUP_TEAMS)
   team!: SpeakupTeam;

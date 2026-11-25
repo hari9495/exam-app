@@ -188,6 +188,30 @@ describe('HLP-06 Speak-up set-up (live)', () => {
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ team: 'ic', role: 'member', woman: false, locationId: 'loc-hsr' }));
   });
 
+  it('answer 2625: Edit member changes the woman and role with the same checks; only the Internal Committee and IR lists offer it', async () => {
+    const onEdit = vi.fn().mockRejectedValueOnce(new Error('This committee already has a presiding officer. Change them first.')).mockResolvedValue(undefined);
+    show(<SpeakUpSetupScreen live={liveSetup({ onEdit })} />);
+    const ethics = liveSetup().data!.members.find((m) => m.team === 'ethics')!;
+    await ue.click(screen.getByRole('button', { name: `More actions for ${ethics.name}` }));
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    await ue.keyboard('{Escape}');
+    await ue.click(screen.getByRole('button', { name: 'More actions for Lakshmi Venkatesan' }));
+    await ue.click(await screen.findByRole('button', { name: 'Edit' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('combobox', { name: /Person/ })).toBeNull();
+    await ue.click(within(dialog).getByRole('radio', { name: /Presiding officer/ }));
+    await ue.click(within(dialog).getByRole('radio', { name: 'No' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    expect(await screen.findByText('The presiding officer must be a senior woman employee.')).toBeInTheDocument();
+    expect(onEdit).not.toHaveBeenCalled();
+    await ue.click(within(dialog).getByRole('radio', { name: 'Yes' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    expect(await within(dialog).findByText(/already has a presiding officer/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('radio', { name: 'Member' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save changes' }));
+    expect(onEdit).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ role: 'member', woman: true }));
+  });
+
   it('no access without the key', () => {
     show(<SpeakUpSetupScreen live={liveSetup({ state: 'no-access' })} />);
     expect(screen.getByText(/HR does not/)).toBeInTheDocument();

@@ -17,6 +17,9 @@ export default function YxSpeakUpSetupPage() {
         onAdd: async (input) => {
           await write('/speakup/setup/members', 'POST', input);
         },
+        onEdit: async (m, input) => {
+          await write(`/speakup/setup/members/${encodeURIComponent(m)}`, 'PATCH', input);
+        },
         onRemove: async (m) => {
           await write(`/speakup/setup/members/${encodeURIComponent(m)}/remove`, 'POST');
         },
