@@ -826,3 +826,13 @@ Because of its size, the batch is built in five parts, each with its own commits
 - 2751: designed, not-live leftovers. Suggested answer: as listed above; `SkillsLibraryScreen` is dropped (2671), the `D` helper renamed so the guard stops counting it, and `AccessDeniedState`, `AvailabilityState` and `NotFoundState` go live in T2-G.
 - 2752: leaderboards (91). Suggested answer: stay off until points are chosen (2667).
 - 2753: items that turn out partly live. Suggested answer: the builder checks each item against the code at the start of its batch, lists the ones already live (with a manual test), and builds only what is missing.
+- Founder answers (26 Nov 2026, "ok for all") to the T2-A questions written on feat/yukthix-offer-issue, approved exactly as suggested:
+  - 2754: a gallery of starter leave types (casual 12, sick 12, earned 15 with carry-forward 30, maternity 26 weeks, paternity 5 days, comp-off, leave without pay), marked "starter" and editable, offered at first set-up and from Time › Set-up.
+  - 2755: a service band changes only the yearly days (and the ceiling, 2337); service counts from the joining date; a new band applies from the next credit after the anniversary; bands are part of the dated policy version.
+  - 2756: most days in a row counts back-to-back requests of the same type, with weekly offs and holidays between them counting as joined; refused above the limit.
+  - 2757: comp-off keeps the claim and the manager's approval; a company setting "credit automatically when the day is approved as worked by the roster", off by default; "take now, work later" stays as a negative balance.
+  - 2758: a leave type lists the types it cannot touch; weekly offs and holidays between still count as touching; refused on apply with the other type named.
+  - 2759: overview cards: "unplanned" = applied on or after its first day; "no leave taken" = no approved leave in 90 days (a company setting); managers see counts and names, never the type of sick or medical leave.
+  - 2760: peers are people with the same manager today; the peers view shows only "away", read-only.
+  - 2761: internal moves: the manager is told by default; a company setting "the manager approves releasing a person" (off by default) sends it through the approvals engine, and no answer in 5 working days goes to HR.
+  - 2762 (payroll review M3): a "manager or supervisor" field on the job record, set by HR, used for the Tamil Nadu and Delhi LWF exclusions.
