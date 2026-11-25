@@ -154,4 +154,32 @@ describe('Security review 2026-11-25: proofs', () => {
       expect(attacker).not.toBe(candidate);
     });
   });
+
+  // ---------------------------------------------------------------- F2 (Medium): audit rows name the real actor
+
+  describe('F2: an action taken while impersonating names the real actor in the audit log', () => {
+    let entryId: string;
+    beforeAll(async () => {
+      await inOrg('A', async (tx) => {
+        const job = await tx.job.create({ data: { organizationId: org.A.id, title: `Audit role ${run}`, createdById: users.recruiterA } });
+        const cand = await tx.candidate.create({ data: { organizationId: org.A.id, email: `audit-${run}@secrev.test`, name: 'Ravi Candidate' } });
+        entryId = (await tx.pipelineEntry.create({ data: { organizationId: org.A.id, jobId: job.id, candidateId: cand.id, enteredVia: 'manual', assignedUserId: users.recruiterA } })).id;
+      });
+    });
+    const rows = () => inOrg('A', (tx) => tx.auditLog.findMany({ where: { action: 'feedback.added', entityId: entryId }, orderBy: { createdAt: 'asc' } }));
+
+    it('the org admin acting as the recruiter is named beside the recruiter (positive)', async () => {
+      const acting = (await api('adminA', 'post', `/auth/impersonate/${users.recruiterA}`).expect(200)).body.accessToken as string;
+      await request(server()).post(`/api/v1/entries/${entryId}/feedback`).set('Authorization', `Bearer ${acting}`).send({ rating: 4, note: 'Good' }).expect(201);
+      const [row] = await rows();
+      expect(row.actorUserId).toBe(users.recruiterA);
+      expect(JSON.parse(row.metadataJson!)).toMatchObject({ impersonatorUserId: users.adminA });
+    });
+
+    it('the recruiter acting for themselves gets no impersonator on the row (negative)', async () => {
+      await api('recruiterA', 'post', `/entries/${entryId}/feedback`).send({ rating: 3, note: 'Fine' }).expect(201);
+      const all = await rows();
+      expect(JSON.parse(all[all.length - 1].metadataJson!)).not.toHaveProperty('impersonatorUserId');
+    });
+  });
 });
