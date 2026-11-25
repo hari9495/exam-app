@@ -580,3 +580,4 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2695: who sees company documents. Suggested answer: a new key company.documents.manage (System Admin and HR Admin) creates folders and uploads; every employee sees folders marked "Everyone"; a folder marked "Document managers only" is seen only by key holders.
 - 2696: expiring documents. Suggested answer: the uploader and the document managers are told once, 30 days before expiry (a company setting); an expired document stays listed, marked Expired, until someone removes or replaces it.
 - 2697: policies stay in Policies (with acknowledgement); company documents are reference files people read and download, with no acknowledgement. Suggested answer: yes.
+- Founder answers (25 Nov 2026, "ok for all"): 2670-2678 approved exactly as suggested above.
