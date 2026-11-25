@@ -44,6 +44,15 @@ describe('payroll statutory review (26 Nov 2026): figures the code gets wrong to
     expect(amount(r, 'esi_employee')).toBe('0.00');
   });
 
+  it('R3 (negative): above 176 a day the employee pays ESI; loss of pay counts against the paid days', () => {
+    const covered = { ...snapshot().profile, esi: 'yes' as const, esiCoveredThisPeriod: true };
+    // 6,000 over 31 days = 193.5 a day: 0.75% = 45.
+    expect(amount(calculatePayslip(snapshot({ segments: [{ ...snapshot().segments[0], lines: [{ code: 'basic', monthly: '6000' }] }], profile: covered }), RULES), 'esi_employee')).toBe('45.00');
+    // 6,000 a month with 10 days' loss of pay: 4,065 over 21 paid days = 193.6 a day, still above: 31.
+    const lop = calculatePayslip(snapshot({ segments: [{ ...snapshot().segments[0], lines: [{ code: 'basic', monthly: '6000' }] }], profile: covered, attendance: { lopDays: '10', source: 'feed', otMinutes: { normal: 0, weeklyOff: 0, holiday: 0 }, timesheetMinutes: 0 } }), RULES);
+    expect(Number(amount(lop, 'esi_employee'))).toBeGreaterThan(0);
+  });
+
   it('R4 Maharashtra PT: only women have the 25,000 exemption; a transgender or non-binary employee pays the general slab', () => {
     // Gross 58,900 in Maharashtra, October: 200. Code: no slab matches a gender other than male or female, so PT is 0.
     for (const gender of ['transgender', 'non_binary', 'prefer_not_to_say']) {

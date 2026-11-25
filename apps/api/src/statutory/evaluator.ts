@@ -81,11 +81,14 @@ export function pf(rs: RuleSet, i: { pfWage: Prisma.Decimal.Value; onActualWage:
 }
 
 /** ESI: covered for the whole contribution period once covered at its start; amounts rounded up to the rupee. */
-export function esi(rs: RuleSet, i: { esiWage: Prisma.Decimal.Value; covered: boolean }) {
+export function esi(rs: RuleSet, i: { esiWage: Prisma.Decimal.Value; covered: boolean; days?: number }) {
   const v = need(rs, 'esi');
   if (!i.covered) return { employee: ZERO, employer: ZERO, citation: cite(rs) };
   const wage = D(i.esiWage);
-  return { employee: round(wage.mul(D(v.employeeRate as string)), 'up'), employer: round(wage.mul(D(v.employerRate as string)), 'up'), citation: cite(rs) };
+  const employer = round(wage.mul(D(v.employerRate as string)), 'up');
+  // Review R3: no employee share when the average daily wage is at or below the exempt amount; the employer still pays.
+  const lowWage = v.dailyWageExempt !== undefined && !!i.days && i.days > 0 && wage.div(i.days).lte(D(v.dailyWageExempt as string));
+  return { employee: lowWage ? ZERO : round(wage.mul(D(v.employeeRate as string)), 'up'), employer, lowWage, citation: cite(rs) };
 }
 
 /** Is a wage within the ESI ceiling (the PwD ceiling with consent)? Decided at the start of a contribution period. */

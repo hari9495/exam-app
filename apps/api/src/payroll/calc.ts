@@ -272,8 +272,9 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   const esiRs = rule('IN.ESI');
   if (esiRs && s.profile.esi !== 'no') {
     const covered = s.profile.esi === 'yes' || s.profile.esiCoveredThisPeriod;
-    const r = esi(esiRs, { esiWage: earned('esiWage').add(addBack), covered });
-    add({ code: statCode('esi_employee'), name: nameOf(statCode('esi_employee'), 'ESI'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: covered ? `ESI on the ESI wage ${rupees(earned('esiWage').add(addBack))}, rounded up to the rupee (covered for this contribution period).` : 'Not covered by ESI this contribution period.', rule: r.citation });
+    // The average daily wage is over the days paid in the period (days employed less unpaid days).
+    const r = esi(esiRs, { esiWage: earned('esiWage').add(addBack), covered, days: Math.max(0, segDays - Number(unpaid)) });
+    add({ code: statCode('esi_employee'), name: nameOf(statCode('esi_employee'), 'ESI'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: !covered ? 'Not covered by ESI this contribution period.' : 'lowWage' in r && r.lowWage ? `No employee ESI: the average daily wage is at or below ₹${String(esiRs.values.dailyWageExempt)}; the employer still pays.` : `ESI on the ESI wage ${rupees(earned('esiWage').add(addBack))}, rounded up to the rupee (covered for this contribution period).`, rule: r.citation });
     add({ code: statCode('esi_employer'), name: nameOf(statCode('esi_employer'), 'ESI (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer ESI on the same wage, rounded up.', rule: r.citation });
   }
   const partial = !!s.sub && !s.sub.final;
