@@ -27468,5 +27468,22 @@
                               "Screens/People/Access and privacy › Roles & access · staff groups, none yet"
                     ],
                     "note": "Positive and negative (kit access.test.tsx; web yx-access-pages.test.tsx, next.config.test.ts; API retire-v2-settings.e2e-spec.ts, user-groups and field-permissions service specs). Both APIs now refuse changes while acting; the field matrix is audited with before and after, group renames with before and after, membership changes with who joined and who left (they were only a count)."
+          },
+          {
+                    "id": "MT-TIM39-BLOCK-NEXT-YEAR",
+                    "area": "Block leave may run into the next leave year when it starts within 60 days (answer 2629, 25 Nov 2026)",
+                    "screen": "Time › Block leave; Settings › Time & Leave › Leave types (Company choices)",
+                    "url": "http://localhost:3000/yx/time/block-leave",
+                    "account": "hr@demo-org.test (plans block leave, leave settings); panel@demo-org.test (manager, no settings key).",
+                    "steps": [
+                              "As HR: open Settings › Leave types. Under Company choices find 'A block may run into the next leave year if it starts within (days)'.",
+                              "Open Time › Block leave. For someone who needs block leave, press Plan block leave and choose 28 Dec to 8 Jan; press Plan block.",
+                              "Plan again with a first day more than 60 days from today that ends next year.",
+                              "Set the setting to 0 and plan 28 Dec to 8 Jan again; then set it back to 60.",
+                              "As panel@demo-org.test (manager): open the same settings page."
+                    ],
+                    "expected": "Step 1: the setting shows 60, marked as the starter value; no page scroll at 1278 x 635. Step 2: a toast says the block is planned; the row shows Planned with 28 Dec to 8 Jan. Step 3: refused: 'A block that runs into the next leave year starts by <today + 60 days>.' Step 4: refused: the last day must be by 31 Dec. Step 5: the setting cannot be changed (read only or not shown).",
+                    "stories": [],
+                    "note": "Positive and negative (API leave-rules.spec.ts with fixed late-December dates; time-leave-v2.e2e-spec.ts TIM-39 plans a window across 31 Dec in November and December, refuses a start beyond 60 days and refuses the setting change by a manager and an employee). The block is stored as the current leave year's plan; working days in the next year use that year's weekly offs and holidays."
           }
 ]

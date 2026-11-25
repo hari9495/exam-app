@@ -40,7 +40,7 @@ const DAY_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 
  */
 export const LEAVE_PAGE_KEYS: ReadonlySet<string> = new Set([
   'leave.notice_days.default', 'leave.on_behalf.approval', 'leave.send_back', 'leave.encashment.window', 'leave.year_end.encash_excess',
-  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.block_leave.days',
+  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.block_leave.days', 'leave.block_leave.next_year_days',
   'leave.optional_holiday.prorate_on_move', 'leave.year_start_month', 'leave.block_dates.mode',
 ]);
 
@@ -558,6 +558,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'leave.send_back': { label: 'Approvers can send leave back for changes', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   'leave.block_leave.required': { label: 'Block leave is required', scopes: ['tenant', 'legal_entity', 'location', 'department', 'designation'], dated: false, values: ['no', 'yes'], default: 'no' },
   'leave.block_leave.days': { label: 'Block leave length (working days in a row)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
+  // Answer 2629: a block may run into the next leave year when it starts within this many days.
+  'leave.block_leave.next_year_days': { label: 'A block may run into the next leave year if it starts within (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '30', '60', '90'], default: '60' },
   // TIM-42: public-holiday feeds (provider: to decide; dev-fake until then).
   'holiday.feeds': { label: 'Use public-holiday feeds', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // M02 Q5: regularisations a month with manager approval; beyond that HR approves too.

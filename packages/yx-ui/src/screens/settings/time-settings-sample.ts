@@ -423,6 +423,16 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "10"
   },
+  "leave.block_leave.next_year_days": {
+    "label": "A block may run into the next leave year if it starts within (days)",
+    "values": [
+      "0",
+      "30",
+      "60",
+      "90"
+    ],
+    "default": "60"
+  },
   "leave.optional_holiday.prorate_on_move": {
     "label": "Prorate optional holidays after a move to another office",
     "values": [

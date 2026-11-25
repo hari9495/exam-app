@@ -15,7 +15,7 @@ import { Facts, LeaveRules, asDate, dateOf, factsOn, grantCovers, hasBalance, ho
 import { addDays, daysBetween, isWeeklyOff, leaveYearOf } from './time-maths';
 import { cloneToYear, holidayCompOffDue, recountedDay, templateRows } from './holiday-rules';
 import { ScheduleBook, lockedDates } from './schedule';
-import { BLOCK_DATE_EXEMPT, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashTerms, encashWindowOpen, longestRun, toCsv } from './leave-rules';
+import { BLOCK_DATE_EXEMPT, blockWindowProblem, CompOffCredit, compOffExpiries, compOffUseBy, dailyPay, encashAmount, encashMax, encashTerms, encashWindowOpen, longestRun, toCsv } from './leave-rules';
 import { FEED_STATES, HOLIDAY_PROVIDER, HolidayProvider } from './holiday-feed.provider';
 import type { BlockDateDto, CompOffClaimDto, DateNoteDto, EncashDto, FeedDecideDto, LongAbsenceDto, ReportQueryDto } from './leave-v2.dto';
 
@@ -967,11 +967,24 @@ export class LeaveV2Service implements OnModuleInit {
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { f, today, year, need } = await this.blockTarget(tx, c, v, employeeId);
       if (dto.from <= today) throw new BadRequestException('Plan block leave from tomorrow or later.');
-      if (dto.to < dto.from || dto.to > year.end) throw new BadRequestException(`The last day is on or after the first, by ${fmt(year.end)}.`);
+      const nextYearDays = Number(await settingOn(tx, c, 'leave.block_leave.next_year_days', f, today));
+      const after = addDays(year.end, 1);
+      const nextYear = await leaveYearFor(tx, c, f, after);
+      const problem = blockWindowProblem({ from: dto.from, to: dto.to, today, yearEnd: year.end, nextYearEnd: nextYear.end, nextYearDays });
+      if (problem === 'next_year_late' && nextYearDays) throw new BadRequestException(`A block that runs into the next leave year starts by ${fmt(addDays(today, nextYearDays))}.`);
+      if (problem === 'beyond_next_year') throw new BadRequestException(`The last day is by ${fmt(nextYear.end)}.`);
+      if (problem) throw new BadRequestException(`The last day is on or after the first, by ${fmt(year.end)}.`);
       const book = await ScheduleBook.load(tx, c.organizationId);
       const s = await this.blockStatus(tx, c, book, f, year, need, today);
+      const offs = new Set(s.offs);
+      if (dto.to > year.end) {
+        // The days in the next leave year: its weekly offs and holidays are not in this year's list.
+        await book.prime([f.employeeId], after, dto.to);
+        const { map: hol } = await holidaysFor(tx, c.organizationId, f.locationId, after, dto.to, f.employeeId);
+        for (let d = after; d <= dto.to; d = addDays(d, 1)) if (hol.has(d) || (await book.day(f, d, false)).weeklyOff) offs.add(d);
+      }
       const span = new Set<string>();
-      for (let d = dto.from; d <= dto.to; d = addDays(d, 1)) if (!s.offs.has(d)) span.add(d);
+      for (let d = dto.from; d <= dto.to; d = addDays(d, 1)) if (!offs.has(d)) span.add(d);
       if (span.size < need) throw new BadRequestException(`Only ${days(span.size)} working days. Block leave is ${need} working days in a row.`);
       if (span.size > s.earnedLeft) throw new BadRequestException(`Only ${days(s.earnedLeft)} of earned leave left for a ${days(span.size)} block.`);
       const plan = await tx.blockLeavePlan.findFirst({ where: { organizationId: c.organizationId, employeeId, yearStart: asDate(year.start) } });
