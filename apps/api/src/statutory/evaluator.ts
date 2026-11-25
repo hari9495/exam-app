@@ -351,7 +351,14 @@ export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'ne
   else if (i.regime === 'new' && slabTax.gt(income.sub(limit))) rebate = slabTax.sub(income.sub(limit)); // marginal relief
   const afterRebate = slabTax.sub(rebate);
   const sc = [...r.surcharge].reverse().find((x) => income.gt(D(x.above)));
-  const surcharge = sc ? round(afterRebate.mul(D(sc.rate)), 'nearest') : ZERO;
+  let surcharge = sc ? round(afterRebate.mul(D(sc.rate)), 'nearest') : ZERO;
+  // Review R7, marginal relief: tax and surcharge never exceed the tax and surcharge at the threshold plus the income above it.
+  if (sc) {
+    const at = tds(rs, { ...i, taxable: sc.above });
+    const atThreshold = D(at.slabTax).sub(at.rebate).add(at.surcharge);
+    const room = atThreshold.add(income.sub(D(sc.above))).sub(afterRebate);
+    if (room.lt(surcharge)) surcharge = Prisma.Decimal.max(ZERO, room);
+  }
   const tax = round(afterRebate.add(surcharge).mul(D(1).add(D(v.cess as string))), 'nearest');
   return { slabTax, rebate, surcharge, tax, citation: cite(rs) };
 }

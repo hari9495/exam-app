@@ -86,6 +86,13 @@ describe('payroll statutory review (26 Nov 2026): figures the code gets wrong to
     expect(above.sub(atCrore).lte(new Prisma.Decimal(10000).mul('1.04'))).toBe(true);
   });
 
+  it('R7 (negative): far above a threshold the full surcharge applies; just below none', () => {
+    const rs = inForce(RULES, 'IN.TDS', ['IN'], '2026-10-01')!;
+    // 60,00,000 new regime: slab 13,80,000, surcharge 10% = 1,38,000 (relief would allow 10,80,000 + 10,00,000), cess 4%: 15,78,720.
+    expect(tds(rs, { taxable: '6000000', regime: 'new', age: 35 }).tax.toFixed(0)).toBe('1578720');
+    expect(tds(rs, { taxable: '5000000', regime: 'new', age: 35 }).surcharge.toFixed(0)).toBe('0');
+  });
+
   it('R8 employer NPS (80CCD(2), now s.124(1)(a)) is capped at 14% of basic + DA in the new regime', () => {
     // Basic 50,000 a month for the year = 6,00,000; 14% = 84,000. A claim of 2,00,000 is allowed in full today.
     const t: TaxInputs = {
