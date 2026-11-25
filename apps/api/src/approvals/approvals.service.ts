@@ -243,6 +243,8 @@ export class ApprovalsService {
       if (!req || req.status !== 'pending_approval') {
         throw new ConflictException('Request is not open for approval');
       }
+      // Security review F4: never one's own request, even when an older chain listed the submitter as an approver.
+      if (req.submittedByUserId === actorUserId) throw new ForbiddenException('You asked for this, so someone else approves it.');
       const steps: ResolvedStep[] = JSON.parse(req.chainSnapshotJson);
       const step = steps[req.currentStepPosition];
       if (!step || !step.approverUserIds.includes(actorUserId)) {

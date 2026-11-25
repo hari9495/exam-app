@@ -368,6 +368,12 @@ describe('ApprovalsService.decide', () => {
     expect(tx.approvalRequest.updateMany).not.toHaveBeenCalled();
   });
 
+  it('security review F4: the submitter cannot approve their own request, even when listed on the step (negative)', async () => {
+    tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq({ chainSnapshotJson: JSON.stringify([{ position: 0, name: 'Step 1', approverType: 'users', approverUserIds: ['submitter-1'] }]) }));
+    await expect(service.decide(context, 'req-1', 'submitter-1', 'approved')).rejects.toThrow('You asked for this, so someone else approves it.');
+    expect(tx.approvalDecision.create).not.toHaveBeenCalled();
+  });
+
   it('the conditional update makes a second concurrent decide a no-op (409)', async () => {
     tx.approvalRequest.findFirst.mockResolvedValue(twoStepReq());
     tx.approvalRequest.updateMany.mockResolvedValue({ count: 0 });

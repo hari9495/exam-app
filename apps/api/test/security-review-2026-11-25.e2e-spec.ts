@@ -117,6 +117,19 @@ describe('Security review 2026-11-25: proofs', () => {
       const res = await api('recruiterA', 'post', `/approvals/requests/${requestId}/decide`).send({ decision: 'approved' });
       expect(res.status).toBe(403);
     });
+
+    it('F3/F4: the submitter and an approver on the chain read it, and that approver approves (positive)', async () => {
+      const other = await inOrg('A', async (tx) => {
+        const job = await tx.job.create({ data: { organizationId: org.A.id, title: `Second hire ${run}`, createdById: users.recruiterA, status: 'pending_approval' } });
+        const steps = [{ position: 0, name: 'Panel lead', approverType: 'users', approverUserIds: [users.panelA] }];
+        return (await tx.approvalRequest.create({ data: { organizationId: org.A.id, gate: 'requisition', subjectType: 'job', subjectId: job.id, currentStepPosition: 0, submittedByUserId: users.recruiterA, chainSnapshotJson: JSON.stringify(steps) } })).id;
+      });
+      await api('recruiterA', 'get', `/approvals/requests/${other}`).expect(200);
+      await api('panelA', 'get', `/approvals/requests/${other}`).expect(200);
+      await api('adminB', 'get', `/approvals/requests/${other}`).expect(404);
+      await api('panelA', 'get', '/approvals/requests/not-a-uuid').expect(400);
+      expect((await api('panelA', 'post', `/approvals/requests/${other}/decide`).send({ decision: 'approved' }).expect(201)).body).toBeDefined();
+    });
   });
 
   // ---------------------------------------------------------------- F5 (Medium): read-only Auditor reassigns candidates
