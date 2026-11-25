@@ -559,3 +559,4 @@ Because of its size, the batch is built in five parts, each with its own commits
 - 2656: gross-up (company pays the tax) is per one-time pay item, needs the payroll approver, and shows on the payslip as tax paid by the company. A "paid separately" item gets its own bank file line in the same month. Suggested answer: yes.
 - 2657: each pay group gets an input cut-off date and a payslip release date per period. Late inputs roll to next month with a notice. Payslips stay hidden until the release date, and publishing early needs a reason. Suggested answer: yes.
 - 2658: PLT-24 Request-type builder, PLT-55 / 58 Workflow studio and versions, PLT-36 / 37 Validation rules and Why panel, PLT-54 Payout readiness and PAY-43 Group health stay out of this batch (platform tools at the end; partners not chosen). Suggested answer: yes.
+- Founder answers (25 Nov 2026, "ok for all"): 2640-2658 approved exactly as suggested above.
