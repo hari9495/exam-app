@@ -3364,10 +3364,10 @@ function LiveBlockLeavePlanner({ live }: { live: LiveBlockLeave }) {
                       <span className="yx-tim-muted">{r.plan ? `${formatDate(dateOfIso(r.plan.from))} – ${formatDate(dateOfIso(r.plan.to))} · ` : ''}{r.need} working days · {r.earnedLeft} days earned leave left</span>
                       <Badge tone={tone}>{label}</Badge>
                       {r.plan && startsIn > 1 && <DueBadge date={dateOfIso(r.plan.from)} today={today} prefix="Starts" />}
-                      {r.canPlan && r.status === 'not_planned' && (
+                      {(r.canNudge ?? r.canPlan) && r.status === 'not_planned' && (
                         <>
                           {r.nudgedAt ? <span className="yx-tim-muted">Nudged {formatDate(new Date(r.nudgedAt))}</span> : <Button size="sm" loading={busy === `n${r.employeeId}`} onClick={() => void run(`n${r.employeeId}`, () => live.onNudge(r.employeeId))}>Nudge to plan</Button>}
-                          <Button size="sm" onClick={() => { setTried(false); setPFrom(null); setPTo(null); setPlanFor(r); }}>Plan block leave</Button>
+                          {r.canPlan && <Button size="sm" onClick={() => { setTried(false); setPFrom(null); setPTo(null); setPlanFor(r); }}>Plan block leave</Button>}
                         </>
                       )}
                       {/* From the first day the pause runs (the server's hourly job) and ends by itself after the block. */}

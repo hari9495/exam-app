@@ -186,15 +186,16 @@ export class LeaveV2Controller {
     return this.v2.changeAbsence(ctx, this.user(req), id, 'early', dto);
   }
 
-  /** Managers see their team's rows read only; planning needs leave.view in scope. */
+  /** Managers see their team's rows read only; planning and pausing need leave.approve in scope, a reminder leave.view. */
   @Get('hr/block-leave')
   blockLeave(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.v2.blockLeave(ctx, this.user(req));
   }
 
+  // Security review F6: planning someone's block (and pausing their sign-in, below) is a write: leave.approve, not leave.view.
   @Post('hr/block-leave/:employeeId/plan')
   @HttpCode(200)
-  @RequirePermissions('leave.view')
+  @RequirePermissions('leave.approve')
   planBlock(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) id: string, @Body() dto: BlockPlanDto) {
     return this.v2.planBlock(ctx, this.user(req), id, dto);
   }
@@ -209,7 +210,7 @@ export class LeaveV2Controller {
 
   @Post('hr/block-leave/:employeeId/pause')
   @HttpCode(200)
-  @RequirePermissions('leave.view')
+  @RequirePermissions('leave.approve')
   pauseBlock(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) id: string, @Body() dto: PauseDto) {
     return this.v2.pauseBlock(ctx, this.user(req), id, dto.pause);
   }

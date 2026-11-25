@@ -924,7 +924,8 @@ export class LeaveV2Service implements OnModuleInit {
           const need = Number(await settingOn(tx, c, 'leave.block_leave.days', f, today));
           const year = await leaveYearFor(tx, c, f, today);
           const { offs: _offs, managerEmployeeId: _m, ...row } = await this.blockStatus(tx, c, book, f, year, need, today);
-          rows.push({ ...row, canPlan: has(v, 'leave.view') });
+          // Security review F6: plan and pause need leave.approve; a reminder (nudge) only leave.view.
+          rows.push({ ...row, canPlan: has(v, 'leave.approve'), canNudge: has(v, 'leave.view') });
         }
         return { today, rows };
       },
@@ -949,10 +950,11 @@ export class LeaveV2Service implements OnModuleInit {
     return { employeeId: f.employeeId, name: f.name, code: f.code, managerEmployeeId: f.managerEmployeeId, need, status, plan: plan?.fromOn ? { from: dateOf(plan.fromOn), to: dateOf(plan.toOn!), accessPause: plan.accessPause, version: plan.version } : null, nudgedAt: plan?.nudgedAt ?? null, earnedLeft: earned?.available ?? 0, offs };
   }
 
-  private async blockTarget(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string) {
+  /** Security review F6: planning and pausing check the write key (leave.approve) in scope; a reminder needs leave.view. */
+  private async blockTarget(tx: Tx, c: CompanyContext, v: Viewer, employeeId: string, key: TimeKey = 'leave.approve') {
     const own = await this.own(tx, c, v);
     const today = todayIn('Asia/Kolkata');
-    if (!(await grantCovers(tx, c, v, own, 'leave.view', employeeId, today))) throw new NotFoundException('Not found');
+    if (!(await grantCovers(tx, c, v, own, key, employeeId, today))) throw new NotFoundException('Not found');
     if (employeeId === own) throw new ForbiddenException('You cannot plan your own block leave here.');
     const f = await factsOn(tx, c.organizationId, employeeId, today);
     if (!f || (await settingOn(tx, c, 'leave.block_leave.required', f, today)) !== 'yes') throw new ConflictException('Block leave is not required for this person.');
@@ -992,7 +994,7 @@ export class LeaveV2Service implements OnModuleInit {
     const v = await this.leave.viewer(user);
     if (v.actingForOther) throw new ForbiddenException('Not available while acting for someone else.');
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const { f, today, year, need } = await this.blockTarget(tx, c, v, employeeId);
+      const { f, today, year, need } = await this.blockTarget(tx, c, v, employeeId, 'leave.view');
       const plan = await tx.blockLeavePlan.findFirst({ where: { organizationId: c.organizationId, employeeId, yearStart: asDate(year.start) } });
       if (plan?.nudgedAt && todayIn('Asia/Kolkata', plan.nudgedAt) === today) throw new ConflictException('Already nudged today.');
       if (plan) await tx.blockLeavePlan.update({ where: { id: plan.id }, data: { nudgedAt: new Date(), version: { increment: 1 }, updatedAt: new Date() } });
