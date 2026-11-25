@@ -10,3 +10,4 @@ export const List: S = { render: () => <ClientEstablishmentsScreen clients={CLIE
 export const AtMaximum: S = { name: 'Site at licence maximum', render: () => <ClientEstablishmentsScreen clients={CLIENTS} openId="cl1" /> };
 export const NotCovered: S = { name: 'Site not covered by any licence', render: () => <ClientEstablishmentsScreen clients={CLIENTS} openId="cl3" /> };
 export const Empty: S = { render: () => <ClientEstablishmentsScreen clients={[]} state="empty" /> };
+export const AddSite: S = { name: 'Add client site', render: () => <ClientEstablishmentsScreen clients={CLIENTS} adding /> };

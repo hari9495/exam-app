@@ -1,4 +1,4 @@
-import { accrualsDue, applyFloors, breakMinutes, checkInVerdict, countLeaveDays, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
+import { accrualsDue, applyFloors, breakMinutes, checkInVerdict, netWorked, sessionMs, countLeaveDays, fencesOf, geoPointsOf, evaluateDay, instantAt, ipInRanges, isWeeklyOff, leaveYearOf, minutesInto, roundTo, workOnFor, yearEndSplit, type CountRules, type DayInput, type HolidayOn } from './time-maths';
 
 const SUN = [{ weekday: 7 }];
 const SAT_SUN = [{ weekday: 6 }, { weekday: 7 }];
@@ -151,6 +151,35 @@ describe('check-in verdicts (YX-AT-01, YX-AT-23)', () => {
     expect(checkInVerdict({ fences: [blr], pin: null, ip: '8.8.8.8', mode: 'restricted' })).toMatchObject({ accepted: false, verdict: 'no_location' });
   });
 
+  describe('TIM-31 Multi: several points per location', () => {
+    // Main block 200 m and Annexe 80 m about 450 m apart (the design's Chennai office).
+    const loc = { id: 'maa', name: 'Chennai office', geoPoints: [{ name: 'Main block', lat: 12.9894, lng: 80.2481, radiusM: 200 }, { name: 'Annexe', lat: 12.9921, lng: 80.2512, radiusM: 80 }], geoLat: 12.9894, geoLng: 80.2481, geoRadiusM: 200, ipRanges: [] };
+    const fences = fencesOf(loc);
+    const at = (lat: number, lng: number) => checkInVerdict({ fences, pin: { lat, lng, accuracyM: 20 }, ip: null, mode: 'restricted' });
+
+    it('one fence per point, named after the location and the point', () => {
+      expect(fences.map((f) => [f.name, f.point, f.radiusM])).toEqual([['Chennai office', 'Main block', 200], ['Chennai office', 'Annexe', 80]]);
+    });
+    it('inside the second point only is inside (the first point is not the nearest edge)', () => {
+      expect(at(12.9921, 80.2512)).toMatchObject({ accepted: true, verdict: 'inside', locationId: 'maa', message: 'Inside Chennai office · Annexe' });
+    });
+    it('a small point near the pin does not hide a big point that contains it', () => {
+      // 70 m from a 60 m point, 150 m from a 200 m point: inside the big one.
+      const two = fencesOf({ ...loc, geoPoints: [{ name: 'Gate', lat: 0.00063, lng: 0, radiusM: 60 }, { name: 'Yard', lat: -0.00135, lng: 0, radiusM: 200 }] });
+      expect(checkInVerdict({ fences: two, pin: { lat: 0, lng: 0, accuracyM: 5 }, ip: null, mode: 'restricted' })).toMatchObject({ accepted: true, message: 'Inside Chennai office · Yard' });
+    });
+    it('the edge counts as inside; one metre more is outside every point', () => {
+      const edge = at(12.9894 + 200 / 111_195, 80.2481);
+      expect(edge.accepted).toBe(true);
+      expect(at(12.98, 80.2481)).toMatchObject({ accepted: false, verdict: 'outside' });
+    });
+    it('a location saved before the points keeps its one point (geo_lat / geo_lng / radius)', () => {
+      expect(geoPointsOf({ name: 'Old', geoPoints: [], geoLat: '12.9', geoLng: '77.5', geoRadiusM: 150 })).toEqual([{ name: 'Old', lat: 12.9, lng: 77.5, radiusM: 150 }]);
+      expect(geoPointsOf({ name: 'None', geoPoints: [], geoLat: null, geoLng: null, geoRadiusM: null })).toEqual([]);
+      expect(fencesOf({ id: 'x', name: 'Net only', geoPoints: [], geoLat: null, geoLng: null, geoRadiusM: null, ipRanges: ['10.0.0.0/8'] })).toEqual([{ locationId: 'x', name: 'Net only', lat: null, lng: null, radiusM: null, ipRanges: ['10.0.0.0/8'] }]);
+    });
+  });
+
   it('IPv4-mapped IPv6 and bad input', () => {
     expect(ipInRanges('::ffff:203.0.113.4', ['203.0.113.0/24'])).toBe(true);
     expect(ipInRanges('not-an-ip', ['203.0.113.0/24'])).toBe(false);
@@ -274,5 +303,36 @@ describe('the day engine (YX-AT-03, YX-AT-12)', () => {
     const r = evaluateDay({ ...base, punches: [{ at: at('09:31'), kind: 'in' }], fix: { kind: 'missed_out', inMinute: null, outMinute: 18 * 60 + 10 } });
     expect(r).toMatchObject({ status: 'present', regularised: true });
     expect(evaluateDay({ ...base, fix: { kind: 'full_day', inMinute: null, outMinute: null } }).status).toBe('present');
+  });
+});
+
+describe('answer 2477: clocking in again and office Wi-Fi', () => {
+  const at = (hhmm: string) => new Date(`2026-11-18T${hhmm}:00+05:30`);
+  const punches = [
+    { at: at('09:00'), kind: 'in' as const },
+    { at: at('12:00'), kind: 'out' as const },
+    { at: at('14:00'), kind: 'in' as const },
+    { at: at('18:00'), kind: 'out' as const },
+  ];
+  const rule = { breakMinutes: 30, breakAboveMinutes: 300 };
+
+  it('off (the default): first in to last out, less the break rule, as before', () => {
+    expect(netWorked(punches, at('09:00'), at('18:00'), rule)).toBe(540 - 30);
+  });
+  it('on: only the sessions count; the gap between out and in is not worked', () => {
+    expect(sessionMs(punches) / 60_000).toBe(420);
+    expect(netWorked(punches, at('09:00'), at('18:00'), { ...rule, reclockIn: true })).toBe(420 - 30);
+  });
+  it('a stray second in, or an out with nothing open, is ignored', () => {
+    expect(sessionMs([{ at: at('09:00'), kind: 'in' }, { at: at('09:30'), kind: 'in' }, { at: at('10:00'), kind: 'out' }, { at: at('10:30'), kind: 'out' }]) / 60_000).toBe(60);
+  });
+
+  const office = fencesOf({ id: 'l1', name: 'Chennai office', geoLat: null, geoLng: null, geoRadiusM: null, ipRanges: [], wifiNames: ['KF-Office'] });
+  it('the office Wi-Fi name (any case) is office evidence', () => {
+    expect(checkInVerdict({ fences: office, pin: null, ip: null, wifi: 'kf-office', mode: 'restricted' })).toMatchObject({ accepted: true, verdict: 'network', locationId: 'l1' });
+  });
+  it('another Wi-Fi, or none, is refused at a restricted place that has only Wi-Fi names', () => {
+    expect(checkInVerdict({ fences: office, pin: null, ip: null, wifi: 'Home-5G', mode: 'restricted' }).accepted).toBe(false);
+    expect(checkInVerdict({ fences: office, pin: null, ip: null, mode: 'restricted' }).accepted).toBe(false);
   });
 });

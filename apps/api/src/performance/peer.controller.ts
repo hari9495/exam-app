@@ -49,6 +49,20 @@ export class PerformancePeerController {
     return this.svc.nominate(ctx, this.user(req), id, dto);
   }
 
+  /** PRF-07: the employee sends their list to the manager (the service checks it is their review and the minimum). */
+  @Post('reviews/:id/nominations/send')
+  @HttpCode(200)
+  send(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.send(ctx, this.user(req), id);
+  }
+
+  /** PRF-07: the manager approves the whole list and the reviewers are invited (the service checks it is their report). */
+  @Post('reviews/:id/nominations/approve-all')
+  @HttpCode(200)
+  approveAll(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.approveAll(ctx, this.user(req), id);
+  }
+
   @Post('nominations/:id/approve')
   @HttpCode(200)
   approve(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {

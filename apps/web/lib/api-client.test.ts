@@ -1,5 +1,5 @@
 import { goTo } from './navigate';
-import { apiFetch, apiFetchBlob, resetSessionState, setStepUpHandler, setUnauthorizedHandler, STAFF_SESSION_KEY } from './api-client';
+import { apiFetch, apiFetchBlob, resetSessionState, salaryCheck, setStepUpHandler, setUnauthorizedHandler, STAFF_SESSION_KEY } from './api-client';
 
 jest.mock('./navigate', () => ({ goTo: jest.fn() }));
 
@@ -190,6 +190,24 @@ describe('apiFetch and the MFA floor (P12 YX-IAM-01/02)', () => {
     setStepUpHandler(async () => (stepped = true));
     await expect(apiFetch('/security/policy', { method: 'PATCH' }, 'tok')).resolves.toEqual({ ok: true });
     expect(auth).toEqual(['Bearer tok', 'Bearer tok']);
+  });
+
+  // Answer 2370: a cancelled "Confirm it's you" on a salary page is remembered so the page asks again, not "no access".
+  it('a cancelled salary re-check marks the page; a confirmed one clears it; other step-ups do not mark it', async () => {
+    const refused = (message: string) => new Response(JSON.stringify({ code: 'STEP_UP_REQUIRED', message }), { status: 403 });
+    salaryCheck.set(false);
+    setStepUpHandler(async () => false);
+    global.fetch = jest.fn(async () => refused('Confirm it is you with your second factor to continue.')) as unknown as typeof fetch;
+    await expect(apiFetch('/security/policy', { method: 'PATCH' }, 'tok')).rejects.toBeTruthy();
+    expect(salaryCheck.get()).toBe(false);
+    global.fetch = jest.fn(async () => refused('Confirm it is you to open salary details.')) as unknown as typeof fetch;
+    await expect(apiFetch('/payroll/runs', {}, 'tok')).rejects.toBeTruthy();
+    expect(salaryCheck.get()).toBe(true);
+    let stepped = false;
+    setStepUpHandler(async () => (stepped = true));
+    global.fetch = jest.fn(async () => (stepped ? new Response(JSON.stringify([]), { status: 200 }) : refused('Confirm it is you to open salary details.'))) as unknown as typeof fetch;
+    await expect(apiFetch('/payroll/runs', {}, 'tok')).resolves.toEqual([]);
+    expect(salaryCheck.get()).toBe(false);
   });
 
   it('returns null for 204 No Content instead of failing to parse it', async () => {

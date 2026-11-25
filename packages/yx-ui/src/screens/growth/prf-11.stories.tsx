@@ -13,3 +13,6 @@ export const EmployeeRecord: S = { name: 'Employee · 1:1 record', render: () =>
 export const Phone: S = { name: 'Employee · phone', globals: PHONE, render: () => <OneOnOneScreen persona="emp" device="phone" items={ONE_ON_ONES.filter((o) => o.employee === 'Divya Raghunathan')} openId="o2" /> };
 export const Empty: S = { render: () => <OneOnOneScreen persona="mgr" items={[]} /> };
 export const Loading: S = { render: () => <OneOnOneScreen persona="mgr" items={[]} state="loading" /> };
+export const Schedule: S = { name: 'Manager · schedule 1:1', render: () => <OneOnOneScreen persona="mgr" items={ONE_ON_ONES} scheduleOpen /> };
+export const AddAction: S = { name: 'Manager · add action item', render: () => <OneOnOneScreen persona="mgr" items={ONE_ON_ONES} openId="o1" actionOpen /> };
+export const Reschedule: S = { name: 'Manager · reschedule', render: () => <OneOnOneScreen persona="mgr" items={ONE_ON_ONES} openId="o1" rescheduleOpen /> };

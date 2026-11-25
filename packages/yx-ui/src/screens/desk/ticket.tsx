@@ -3,13 +3,13 @@ import { MessageSquare, Send, Ticket as TicketIcon, UserPlus, X } from 'lucide-r
 import { Button, IconButton } from '../../components/button';
 import { Badge, PersonLabel, Tag } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
-import { RichTextEditor } from '../../components/editor';
+import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { InsertArticleButton, articleLinkHtml, type ArticleOption } from './ticket-kb';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
 import { Dialog } from '../../components/overlay';
@@ -19,326 +19,9 @@ import { DeskPage, MessageBody, PRIORITY_LABEL, PriorityBadge, STATE_LABEL, Stat
 import { FileList } from './help';
 import type { Attachment, CannedResponse, DeskDetail, LoadState, Person, Presence, RequesterContext, TicketChange, TicketDetail, TimelineEntry } from './types';
 
-// HLP-03 Ticket workspace, wired (US-B-090, US-B-091, US-G-003, SD-1.08): replies and internal notes with mentions,
-// saved replies, files, who else is on the ticket, time, the requester's other tickets, the timeline. Collaborators
-// get notes only; a desk admin's view is read-only. Every action is checked again on the server.
-
-export interface TicketScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  ticket: TicketDetail | null;
-  detail: DeskDetail | null;
-  canned: CannedResponse[];
-  timeline: TimelineEntry[];
-  context: RequesterContext | null;
-  others: Presence[];
-  meName: string;
-  meId: string;
-  onBack: () => void;
-  onUpdate: (change: TicketChange) => Promise<void>;
-  onAssign: (userId: string | null) => Promise<void>;
-  onPost: (m: { kind: 'reply' | 'note'; bodyHtml: string; mentions: string[]; attachmentIds: string[]; statusId?: string }) => Promise<void>;
-  onEditNote?: (messageId: string, bodyHtml: string) => Promise<void>;
-  onUpload: (file: File) => Promise<Attachment>;
-  onOpenFile: (attachmentId: string) => Promise<void>;
-  onAddTime: (minutes: number, note: string) => Promise<void>;
-  onRunScenario: (scenarioId: string) => Promise<void>;
-  onConvert: (typeId: string, reason: string) => Promise<void>;
-  onAddCollaborator: (userId: string) => Promise<void>;
-  onRemoveCollaborator: (userId: string) => Promise<void>;
-  onAddWatcher: (personId: string) => Promise<void>;
-  onRemoveWatcher: (watcherId: string) => Promise<void>;
-  onSearchPeople: (q: string) => Promise<Person[]>;
-  /** Tells others this person is here, and whether typing (YX-SD-07). */
-  onTyping: (typing: boolean) => void;
-  onOpenTicket: (id: string) => void;
-  /** Batch 2 cards for the right-hand rail (response targets, tasks, related tickets, side threads, reminders). */
-  rail?: ReactNode;
-  /** Opens the resolve dialog (resolution code and note) instead of resolving at once. */
-  onResolveClick?: () => void;
-  /** Opens the support-level dialog (L1 / L2 / L3). */
-  onEscalateClick?: () => void;
-  /** Batch 4 (US-G-023): find an article the requester can open, to insert in the reply. */
-  onFindArticle?: (q: string) => Promise<ArticleOption[]>;
-  onArticleInserted?: (articleId: string) => void;
-}
-
-const empty = (html: string) => !html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
-
-export function TicketScreen(props: TicketScreenProps) {
-  const t = props.ticket;
-  const d = props.detail;
-  const { busy, error, run } = useRun();
-  const [mode, setMode] = useState<'reply' | 'note'>('reply');
-  const [draft, setDraft] = useState('');
-  const [editorKey, setEditorKey] = useState(0);
-  const [mentions, setMentions] = useState<string[]>([]);
-  const [files, setFiles] = useState<Attachment[]>([]);
-  const [after, setAfter] = useState<string | null>(null);
-  const [priorityAsk, setPriorityAsk] = useState<number | null>(null);
-  const [convertOpen, setConvertOpen] = useState(false);
-  useEffect(() => {
-    if (t && !t.canWork) setMode('note');
-  }, [t]);
-  useEffect(() => props.onTyping(!empty(draft)), [draft]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  if (!t || !d) return <DeskPage state={props.state === 'ready' ? 'loading' : props.state} onRetry={props.onRetry} what="this ticket">{null}</DeskPage>;
-
-  const first = (t.requester?.name ?? '').split(' ')[0] || 'the requester';
-  const statuses = d.statuses.filter((s) => s.active && (!s.ticketTypeId || s.ticketTypeId === t.typeId));
-  const agents = d.members.filter((m) => m.active && (m.role === 'agent' || m.role === 'lead'));
-  const mentionable = d.members.filter((m) => m.active && m.userId !== props.meId);
-  const collaborators = d.members.filter((m) => m.active && m.role === 'collaborator' && !t.collaborators.some((c) => c.userId === m.userId));
-  const solved = statuses.find((s) => s.systemState === 'solved');
-  const work = t.canWork;
-  const unsent = t.attachments.filter((a) => !a.messageId);
-  const byMessage = new Map<string, Attachment[]>();
-  for (const a of t.attachments) if (a.messageId) byMessage.set(a.messageId, [...(byMessage.get(a.messageId) ?? []), a]);
-  const typing = props.others.filter((o) => o.typing);
-  const update = (c: TicketChange) => void run('update', () => props.onUpdate(c));
-
-  const send = () =>
-    void run('send', async () => {
-      await props.onPost({ kind: mode, bodyHtml: draft, mentions: mode === 'note' ? mentions : [], attachmentIds: files.map((f) => f.id), statusId: mode === 'reply' ? (after ?? undefined) : undefined });
-      setDraft('');
-      setMentions([]);
-      setFiles([]);
-      setAfter(null);
-      setEditorKey((k) => k + 1);
-    });
-
-  return (
-    <DeskPage state={props.state} onRetry={props.onRetry} what="this ticket">
-      <ObjectHeader
-        name={t.subject}
-        icon={TicketIcon}
-        secondary={
-          <span>
-            <span className="yx-ops-mono">{t.number}</span> · {t.desk.name} · {t.type?.name} · raised {when(t.createdAt)} via {t.channel}
-          </span>
-        }
-        status={
-          <>
-            <StatusBadge label={t.status?.label ?? ''} state={t.systemState} />
-            <PriorityBadge priority={t.priority} />
-            {t.tier && <Badge tone="neutral">Level {t.tier}</Badge>}
-            {t.tracker && <Badge tone="info">Tracker</Badge>}
-            <TicketFlags sensitive={t.sensitive} private={t.private} vip={t.vip} />
-            {t.access === 'observer' && <Badge tone="neutral">Read-only: you set this desk up</Badge>}
-            {t.access === 'collaborator' && <Badge tone="neutral">You are a collaborator: notes only</Badge>}
-          </>
-        }
-        actions={
-          <>
-            <Button onClick={props.onBack}>Back to tickets</Button>
-            {work && t.assigneeUserId !== props.meId && (
-              <Button loading={busy === 'take'} onClick={() => void run('take', () => props.onAssign(props.meId))}>
-                Assign to me
-              </Button>
-            )}
-            {work && solved && t.systemState !== 'solved' && t.systemState !== 'closed' && (
-              <Button variant="primary" loading={busy === 'update'} onClick={() => (props.onResolveClick ? props.onResolveClick() : update({ statusId: solved.id }))}>
-                Resolve
-              </Button>
-            )}
-          </>
-        }
-        menu={
-          work ? (
-            <>
-              <MenuItem onSelect={() => setConvertOpen(true)}>Change ticket type</MenuItem>
-              {props.onEscalateClick && <MenuItem onSelect={props.onEscalateClick}>Move to another support level</MenuItem>}
-              {d.scenarios
-                .filter((s) => s.active)
-                .map((s) => (
-                  <MenuItem key={s.id} onSelect={() => void run('scenario', () => props.onRunScenario(s.id))}>
-                    Run “{s.name}”
-                  </MenuItem>
-                ))}
-            </>
-          ) : undefined
-        }
-      />
-      {props.others.length > 0 && (
-        <InlineAlert tone="warning" title={typing.length ? `${typing.map((o) => o.name).join(', ')} ${typing.length > 1 ? 'are' : 'is'} writing on this ticket` : `${props.others.map((o) => o.name).join(', ')} ${props.others.length > 1 ? 'are' : 'is'} also on this ticket`}>
-          Check before you reply so the requester is not answered twice.
-        </InlineAlert>
-      )}
-      {t.senderVerified === false && (
-        <InlineAlert tone="warning" title="Sender not verified">
-          We could not prove who sent this email. Do not share private details until you are sure.
-        </InlineAlert>
-      )}
-      {error && <InlineAlert tone="danger" title="That didn't work">{error}</InlineAlert>}
-      <div className="yx-ops-ws">
-        <div className="yx-ops-ws__main">
-          <Card title="Conversation">
-            <ol className="yx-ops-conv" aria-label="Conversation">
-              {t.messages.map((m) => (
-                <li key={m.id} className="yx-ops-msg" data-kind={m.kind === 'note' ? 'note' : m.side === 'agent' ? 'mine' : undefined}>
-                  <span className="yx-ops-msg__meta">
-                    <span className="yx-ops-msg__who">{m.author}</span>
-                    {m.kind === 'note' && <Badge tone="warning">Internal note: {first} never sees it</Badge>}
-                    {m.fromTicketId && <Badge tone="neutral">From a merged ticket</Badge>}
-                    {m.senderVerified === false && <Badge tone="warning">Not verified</Badge>}
-                    <span>{when(m.createdAt)}</span>
-                    {m.editedAt && <span>· edited</span>}
-                  </span>
-                  <MessageBody html={m.bodyHtml} />
-                  <FileList files={byMessage.get(m.id) ?? []} onOpen={(id) => void run(`file-${id}`, () => props.onOpenFile(id))} />
-                </li>
-              ))}
-            </ol>
-            <FileList files={unsent} onOpen={(id) => void run(`file-${id}`, () => props.onOpenFile(id))} title="Files not sent yet (internal)" />
-          </Card>
-          {(work || t.canNote) && (
-            <Card title="Respond">
-              <Tabs value={mode} onValueChange={(v) => setMode(v as 'reply' | 'note')}>
-                <TabsList aria-label="Response type">
-                  {work && <TabsTrigger value="reply">Reply to {first}</TabsTrigger>}
-                  <TabsTrigger value="note">Internal note</TabsTrigger>
-                </TabsList>
-                <TabsContent value={mode}>
-                  <div className="yx-ops-stack">
-                    {mode === 'note' && <p className="yx-ops-muted">Only people working this desk and the ticket’s collaborators see notes.</p>}
-                    <FormField label={mode === 'note' ? 'Note' : 'Reply'} hideLabel>
-                      <RichTextEditor key={editorKey} value={draft} onChange={setDraft} mergeFields={[]} placeholder={mode === 'note' ? 'Add a note for colleagues' : `Write to ${first}`} />
-                    </FormField>
-                    {mode === 'note' && (
-                      <FormField label="Tell colleagues" optional helper="They get a notice. A desk collaborator is added to this ticket.">
-                        <MultiSelect value={mentions} onChange={setMentions} options={mentionable.map((m) => ({ value: m.userId, label: m.name, description: m.role }))} placeholder="Choose people" />
-                      </FormField>
-                    )}
-                    <FormField label="Files" optional helper={`${d.desk.attachmentTypes.join(', ')} · up to ${d.desk.attachmentMaxMb} MB. Checked for viruses before anyone can open them.`}>
-                      <FileUpload
-                        key={editorKey}
-                        accept={d.desk.attachmentTypes.map((x) => `.${x}`)}
-                        maxSize={d.desk.attachmentMaxMb * 1024 * 1024}
-                        upload={async (file, h) => {
-                          h.onScanning();
-                          const a = await props.onUpload(file);
-                          setFiles((f) => [...f, a]);
-                        }}
-                      />
-                    </FormField>
-                    {mode === 'reply' && (
-                      <FormField label="Then set the status" optional>
-                        <Select value={after} onChange={setAfter} clearable options={statuses.map((s) => ({ value: s.id, label: s.label }))} placeholder="Keep as it is" />
-                      </FormField>
-                    )}
-                    <div className="yx-ops-row">
-                      {work && props.canned.length > 0 && (
-                        <Menu>
-                          <MenuTrigger asChild>
-                            <Button icon={MessageSquare}>Insert saved reply</Button>
-                          </MenuTrigger>
-                          <MenuContent>
-                            {props.canned
-                              .filter((c) => c.active)
-                              .map((c) => (
-                                <MenuItem key={c.id} onSelect={() => setDraft((x) => `${x}${fillCanned(c.bodyHtml, { firstName: first, number: t.number, agent: props.meName })}`)}>
-                                  {c.title}
-                                  {c.personal ? ' (mine)' : ''}
-                                </MenuItem>
-                              ))}
-                          </MenuContent>
-                        </Menu>
-                      )}
-                      {work && mode === 'reply' && props.onFindArticle && (
-                        <InsertArticleButton
-                          onFind={props.onFindArticle}
-                          onInsert={(a) => {
-                            setDraft((x) => `${x}${articleLinkHtml(a)}`);
-                            props.onArticleInserted?.(a.id);
-                          }}
-                        />
-                      )}
-                      <Button variant="primary" icon={Send} onClick={send} disabled={empty(draft)} loading={busy === 'send'}>
-                        {mode === 'note' ? 'Add note' : 'Send reply'}
-                      </Button>
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </Card>
-          )}
-          <Card title="Timeline">
-            {props.timeline.length === 0 ? (
-              <p className="yx-ops-muted">Nothing yet.</p>
-            ) : (
-              <ul className="yx-ops-list" aria-label="Timeline">
-                {props.timeline.map((e) => (
-                  <li key={e.id} className="yx-ops-list__item">
-                    <span className="yx-ops-list__main">
-                      <span>{eventText(e)}</span>
-                      <span className="yx-ops-list__sub">
-                        {e.by} · {when(e.at)}
-                        {e.reason ? ` · ${e.reason}` : ''}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Card>
-        </div>
-        <div className="yx-ops-ws__rail">
-          <Card title="Details">
-            <div className="yx-ops-stack">
-              <FormField label="Status">
-                <Select value={t.statusId} onChange={(v) => v && update({ statusId: v })} options={statuses.map((s) => ({ value: s.id, label: s.label, description: STATE_LABEL[s.systemState] }))} disabled={!work} />
-              </FormField>
-              <FormField label="Priority">
-                {work ? <Segment label="Priority" options={[1, 2, 3, 4].map((p) => ({ value: p, label: `P${p}` }))} value={t.priority} onChange={(p) => p !== t.priority && setPriorityAsk(p)} /> : <PriorityBadge priority={t.priority} />}
-              </FormField>
-              <FormField label="Owner">
-                <Select
-                  value={t.assigneeUserId}
-                  onChange={(v) => void run('assign', () => props.onAssign(v))}
-                  clearable={work && (t.canAssignOthers || t.assigneeUserId === props.meId)}
-                  options={agents.filter((m) => t.canAssignOthers || m.userId === props.meId || m.userId === t.assigneeUserId).map((m) => ({ value: m.userId, label: m.userId === props.meId ? `${m.name} (me)` : m.name }))}
-                  placeholder="Unassigned"
-                  disabled={!work}
-                />
-              </FormField>
-              <FormField label="Group">
-                <Select value={t.groupId} onChange={(v) => update({ groupId: v })} clearable options={d.groups.filter((g) => g.active).map((g) => ({ value: g.id, label: g.name }))} placeholder="No group" disabled={!work} />
-              </FormField>
-              <FormField label="Category">
-                <Select value={t.categoryId} onChange={(v) => update({ categoryId: v })} clearable options={d.categories.filter((c) => c.active).map((c) => ({ value: c.id, label: c.name, description: c.sensitive ? 'Sensitive: agents only' : undefined }))} placeholder="No category" disabled={!work} />
-              </FormField>
-              <TagEditor tags={t.tags} disabled={!work} onChange={(tags) => update({ tags })} />
-              <Switch label="Private" description="Only this desk’s agents and the ticket’s collaborators see it." checked={t.private} disabled={!work} onChange={(p) => update({ private: p })} />
-            </div>
-          </Card>
-          <Card title="Requester">
-            <RequesterPanel ticket={t} context={props.context} onOpenTicket={props.onOpenTicket} />
-          </Card>
-          <SourceCard ticket={t} />
-          <Card title="People on this ticket">
-            <PeoplePanel
-              ticket={t}
-              collaborators={collaborators}
-              work={work}
-              busy={busy}
-              onSearchPeople={props.onSearchPeople}
-              onAddWatcher={(id) => void run('watch', () => props.onAddWatcher(id))}
-              onRemoveWatcher={(id) => void run('unwatch', () => props.onRemoveWatcher(id))}
-              onAddCollaborator={(id) => void run('collab', () => props.onAddCollaborator(id))}
-              onRemoveCollaborator={(id) => void run('uncollab', () => props.onRemoveCollaborator(id))}
-            />
-          </Card>
-          <Card title="Time spent">
-            <TimePanel ticket={t} work={work} busy={busy === 'time'} onAdd={(m, n) => void run('time', () => props.onAddTime(m, n))} />
-          </Card>
-          {props.rail}
-        </div>
-      </div>
-      <PriorityDialog value={priorityAsk} onClose={() => setPriorityAsk(null)} onSave={(p, reason) => update({ priority: p, priorityReason: reason })} />
-      <ConvertDialog open={convertOpen} onOpenChange={setConvertOpen} types={d.types.filter((x) => x.active && x.id !== t.typeId)} onConvert={(typeId, reason) => void run('convert', () => props.onConvert(typeId, reason))} />
-    </DeskPage>
-  );
-}
+// Parts of the ticket workspace (US-B-090, US-B-091, US-G-003, SD-1.08): tags, the requester and their other tickets,
+// where it came from, people on the ticket, time, the priority and type dialogs, timeline words. The page itself is the
+// designed HLP-03 screen (ops/helpdesk.tsx with `live`, helpdesk-ticket-live.tsx).
 
 const EVENT_WORDS: Record<string, string> = {
   created: 'Ticket raised',
@@ -378,11 +61,12 @@ export function eventText(e: TimelineEntry): string {
   return e.from || e.to ? `${words}: ${e.from ?? '—'} → ${e.to ?? '—'}` : words;
 }
 
-function TagEditor({ tags, disabled, onChange }: { tags: string[]; disabled: boolean; onChange: (t: string[]) => void }) {
+export function TagEditor({ tags, disabled, onChange }: { tags: string[]; disabled: boolean; onChange: (t: string[]) => void }) {
   const [tag, setTag] = useState('');
   const ok = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,39}$/u.test(tag.trim()) && !tags.includes(tag.trim());
+  const early = useTooEarly(ok ? [] : [{ fieldId: 'tk-new-tag', message: tags.includes(tag.trim()) ? 'The ticket already has this tag.' : 'Write a tag: letters, digits, spaces or dashes, up to 40.' }]);
   return (
-    <FormField label="Tags">
+    <FormField id="tk-new-tag" label="Tags" error={early.errorOf('tk-new-tag')}>
       <div className="yx-ops-stack" data-gap="sm">
         {tags.length > 0 && (
           <span className="yx-ops-row">
@@ -398,8 +82,8 @@ function TagEditor({ tags, disabled, onChange }: { tags: string[]; disabled: boo
             <TextField size="sm" value={tag} onChange={setTag} aria-label="New tag" maxLength={40} />
             <Button
               size="sm"
-              disabled={!ok}
               onClick={() => {
+                if (early.stop()) return;
                 onChange([...tags, tag.trim()]);
                 setTag('');
               }}
@@ -414,7 +98,7 @@ function TagEditor({ tags, disabled, onChange }: { tags: string[]; disabled: boo
 }
 
 /** Batch 3: the customer company, plan and product, the screen help was asked from, and values read from the email. */
-function SourceCard({ ticket: t }: { ticket: TicketDetail }) {
+export function SourceCard({ ticket: t }: { ticket: TicketDetail }) {
   const read = Object.entries(t.fields ?? {}).filter(([k, v]) => k !== 'screen' && (typeof v === 'string' || typeof v === 'number'));
   const items = [
     ...(t.customer ? [{ label: 'Company', value: t.customer.account.name }, { label: 'Plan', value: t.customer.plan ?? 'No plan' }] : []),
@@ -430,7 +114,7 @@ function SourceCard({ ticket: t }: { ticket: TicketDetail }) {
   );
 }
 
-function RequesterPanel({ ticket, context, onOpenTicket }: { ticket: TicketDetail; context: RequesterContext | null; onOpenTicket: (id: string) => void }) {
+export function RequesterPanel({ ticket, context, onOpenTicket }: { ticket: TicketDetail; context: RequesterContext | null; onOpenTicket: (id: string) => void }) {
   const r = ticket.requester;
   return (
     <div className="yx-ops-stack" data-gap="sm">
@@ -466,12 +150,28 @@ function RequesterPanel({ ticket, context, onOpenTicket }: { ticket: TicketDetai
       ) : (
         <p className="yx-ops-muted">None you can see.</p>
       )}
-      <p className="yx-ops-muted">Assets show here from phase 3b-3.</p>
+      <p className="yx-ops-muted">Devices</p>
+      {context && context.assets.length ? (
+        <ul className="yx-ops-list" aria-label="The requester's devices">
+          {context.assets.map((d) => (
+            <li key={d.id} className="yx-ops-list__item">
+              <span className="yx-ops-list__main">
+                {d.name}
+                <span className="yx-ops-list__sub">
+                  {d.tag} · {d.category}
+                </span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="yx-ops-muted">None assigned in the asset register.</p>
+      )}
     </div>
   );
 }
 
-function PeoplePanel(p: {
+export function PeoplePanel(p: {
   ticket: TicketDetail;
   collaborators: { userId: string; name: string }[];
   work: boolean;
@@ -485,6 +185,7 @@ function PeoplePanel(p: {
   const [find, setFind] = useState('');
   const [found, setFound] = useState<Person[]>([]);
   const [collab, setCollab] = useState<string | null>(null);
+  const collabEarly = useTooEarly(!collab ? [{ fieldId: 'tk-collab', message: 'Choose who to add.' }] : []);
   useEffect(() => {
     if (!p.work || find.trim().length < 2) return setFound([]);
     const h = setTimeout(() => void p.onSearchPeople(find.trim()).then(setFound).catch(() => setFound([])), 250);
@@ -537,8 +238,10 @@ function PeoplePanel(p: {
       )}
       {p.work && p.collaborators.length > 0 && (
         <span className="yx-ops-row">
-          <Select size="sm" value={collab} onChange={setCollab} options={p.collaborators.map((c) => ({ value: c.userId, label: c.name }))} placeholder="Choose a collaborator" aria-label="Collaborator to add" />
-          <Button size="sm" disabled={!collab} loading={p.busy === 'collab'} onClick={() => collab && p.onAddCollaborator(collab)}>
+          <FormField id="tk-collab" label="Collaborator to add" hideLabel error={collabEarly.errorOf('tk-collab')}>
+            <Select size="sm" value={collab} onChange={setCollab} options={p.collaborators.map((c) => ({ value: c.userId, label: c.name }))} placeholder="Choose a collaborator" />
+          </FormField>
+          <Button size="sm" loading={p.busy === 'collab'} onClick={() => !collabEarly.stop() && collab && p.onAddCollaborator(collab)}>
             Add
           </Button>
         </span>
@@ -547,9 +250,10 @@ function PeoplePanel(p: {
   );
 }
 
-function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: boolean; busy: boolean; onAdd: (minutes: number, note: string) => void }) {
+export function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: boolean; busy: boolean; onAdd: (minutes: number, note: string) => void }) {
   const [minutes, setMinutes] = useState<number | null>(null);
   const [note, setNote] = useState('');
+  const early = useTooEarly(!minutes || minutes < 1 || minutes > 1440 ? [{ fieldId: 'tk-minutes', message: 'Enter the minutes, from 1 to 1440.' }] : []);
   return (
     <div className="yx-ops-stack" data-gap="sm">
       <p>
@@ -574,7 +278,7 @@ function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: 
       )}
       {work && (
         <>
-          <FormField label="Minutes">
+          <FormField id="tk-minutes" label="Minutes" error={early.errorOf('tk-minutes')}>
             <NumberField value={minutes} onChange={setMinutes} min={1} max={1440} />
           </FormField>
           <FormField label="What you did" optional>
@@ -584,8 +288,8 @@ function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: 
             <Button
               size="sm"
               loading={busy}
-              disabled={!minutes || minutes < 1 || minutes > 1440}
               onClick={() => {
+                if (early.stop()) return;
                 onAdd(minutes!, note.trim());
                 setMinutes(null);
                 setNote('');
@@ -600,8 +304,9 @@ function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail; work: 
   );
 }
 
-function PriorityDialog({ value, onClose, onSave }: { value: number | null; onClose: () => void; onSave: (p: number, reason: string) => void }) {
+export function PriorityDialog({ value, onClose, onSave }: { value: number | null; onClose: () => void; onSave: (p: number, reason: string) => void }) {
   const [reason, setReason] = useState('');
+  const early = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'tk-pri-reason', message: 'Say why (at least 3 letters).' }] : []);
   return (
     <Dialog
       open={value !== null}
@@ -613,8 +318,8 @@ function PriorityDialog({ value, onClose, onSave }: { value: number | null; onCl
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={reason.trim().length < 3}
             onClick={() => {
+              if (early.stop()) return;
               onSave(value!, reason.trim());
               setReason('');
               onClose();
@@ -625,16 +330,17 @@ function PriorityDialog({ value, onClose, onSave }: { value: number | null; onCl
         </>
       }
     >
-      <FormField label="Reason" required>
+      <FormField id="tk-pri-reason" label="Reason" required error={early.errorOf('tk-pri-reason')}>
         <TextField value={reason} onChange={setReason} maxLength={300} />
       </FormField>
     </Dialog>
   );
 }
 
-function ConvertDialog({ open, onOpenChange, types, onConvert }: { open: boolean; onOpenChange: (o: boolean) => void; types: { id: string; name: string }[]; onConvert: (typeId: string, reason: string) => void }) {
+export function ConvertDialog({ open, onOpenChange, types, onConvert }: { open: boolean; onOpenChange: (o: boolean) => void; types: { id: string; name: string }[]; onConvert: (typeId: string, reason: string) => void }) {
   const [typeId, setTypeId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const early = useTooEarly([...(!typeId ? [{ fieldId: 'tk-type', message: 'Choose the new type.' }] : []), ...(reason.trim().length < 3 ? [{ fieldId: 'tk-type-reason', message: 'Say why (at least 3 letters).' }] : [])]);
   return (
     <Dialog
       open={open}
@@ -646,8 +352,8 @@ function ConvertDialog({ open, onOpenChange, types, onConvert }: { open: boolean
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!typeId || reason.trim().length < 3}
             onClick={() => {
+              if (early.stop()) return;
               onConvert(typeId!, reason.trim());
               onOpenChange(false);
             }}
@@ -661,10 +367,10 @@ function ConvertDialog({ open, onOpenChange, types, onConvert }: { open: boolean
         <EmptyState compact title="No other ticket types on this desk." />
       ) : (
         <div className="yx-ops-stack">
-          <FormField label="New type" required>
+          <FormField id="tk-type" label="New type" required error={early.errorOf('tk-type')}>
             <Select value={typeId} onChange={setTypeId} options={types.map((x) => ({ value: x.id, label: x.name }))} />
           </FormField>
-          <FormField label="Reason" required>
+          <FormField id="tk-type-reason" label="Reason" required error={early.errorOf('tk-type-reason')}>
             <TextField value={reason} onChange={setReason} maxLength={300} />
           </FormField>
         </div>

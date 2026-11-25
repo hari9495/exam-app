@@ -24,6 +24,15 @@ const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').repl
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const CSAT_WORDS = ['', 'Very poor', 'Poor', 'OK', 'Good', 'Very good'];
 
+/** Answers 1643, 1682: a picked reason is one of the desk's own list (matched without case), kept as the desk words it. */
+export async function deskReason(tx: Tx, org: string, deskId: string, reason: string | null | undefined): Promise<string | null> {
+  if (!reason) return null;
+  const list = (await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: deskId }, select: { ratingReasons: true } })).ratingReasons;
+  const found = list.find((x) => x.toLowerCase() === reason.trim().toLowerCase());
+  if (!found) throw new BadRequestException('Choose one of the reasons shown.');
+  return found;
+}
+
 /** NPS from scores 0–10: % promoters (9–10) minus % detractors (0–6). */
 export function npsOf(scores: number[]): { nps: number | null; promoters: number; passives: number; detractors: number } {
   const promoters = scores.filter((s) => s >= 9).length;
@@ -96,17 +105,18 @@ export class SurveysService {
   }
 
   /** Records a CSAT once per ticket; a low score gives the lead a follow-up task. */
-  private async rateIn(tx: Tx, org: string, ticketId: string, personId: string, score: number, comment: string | null, channel: 'email' | 'app' | 'portal') {
+  private async rateIn(tx: Tx, org: string, ticketId: string, personId: string, score: number, comment: string | null, channel: 'email' | 'app' | 'portal', reason: string | null = null) {
     const t = await tx.sdTicket.findFirst({ where: { organizationId: org, id: ticketId } });
     if (!t) throw new NotFoundException('No such ticket.');
     if (!['solved', 'closed'].includes(t.systemState)) throw new BadRequestException('Rate a ticket once it is solved.');
+    reason = await deskReason(tx, org, t.deskId, reason);
     // CSAT per agent: the owner, or else the agent who answered last.
     const agentUserId = t.assigneeUserId ?? (await tx.sdTicketMessage.findFirst({ where: { organizationId: org, ticketId: t.id, kind: 'reply', side: 'agent', authorUserId: { not: null } }, orderBy: { createdAt: 'desc' }, select: { authorUserId: true } }))?.authorUserId ?? null;
-    const created = await tx.sdRating.createMany({ data: [{ organizationId: org, deskId: t.deskId, ticketId: t.id, personId, agentUserId, groupId: t.groupId, score, comment: comment ? maskPii(comment).text : null, channel }], skipDuplicates: true });
+    const created = await tx.sdRating.createMany({ data: [{ organizationId: org, deskId: t.deskId, ticketId: t.id, personId, agentUserId, groupId: t.groupId, score, comment: comment ? maskPii(comment).text : null, reason, channel }], skipDuplicates: true });
     if (!created.count) throw new ConflictException('This ticket is already rated. Thank you.');
     await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'rated', toValue: String(score), requesterVisible: true, byPersonId: personId } });
     await emit(tx, org, 'helpdesk.ticket.rated', { ticketId: t.id, deskId: t.deskId, score });
-    await audit(tx, { ctx: { organizationId: org, isSuperAdmin: false }, userId: null as unknown as string }, 'desk.ticket.rated', 'sd_ticket', t.id, { score, channel, personId });
+    await audit(tx, { ctx: { organizationId: org, isSuperAdmin: false }, userId: null as unknown as string }, 'desk.ticket.rated', 'sd_ticket', t.id, { score, reason, channel, personId });
     if (score <= 2) {
       const lead = await this.leadOf(tx, org, t.deskId);
       await tx.sdTask.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, sensitive: t.sensitive, private: t.private, title: `Follow up a low rating (${score} of 5) on ${t.number}`, assigneeUserId: lead, dueAt: new Date(Date.now() + 2 * 86_400_000) } });
@@ -127,23 +137,23 @@ export class SurveysService {
   }
 
   /** In the app: the requester rates their own solved ticket. */
-  async rateMine(r: Requester, ticketId: string, score: number, comment?: string) {
+  async rateMine(r: Requester, ticketId: string, score: number, comment?: string, reason?: string) {
     if (r.acting) throw new ForbiddenException('Not available while acting for someone else');
     const res = await this.tenantPrisma.forTenant(r.ctx, async (tx) => {
       const { t, personId } = await this.requesters.ownTicket(tx, r, ticketId);
       if (t.requesterPersonId !== personId) throw new ForbiddenException('Only the person who raised the ticket rates it.');
-      return this.rateIn(tx, r.ctx.organizationId, t.id, personId, score, comment ?? null, 'app');
+      return this.rateIn(tx, r.ctx.organizationId, t.id, personId, score, comment ?? null, 'app', reason ?? null);
     });
     await this.tellLead(r.ctx.organizationId, res);
     return { thanks: true };
   }
 
   /** In the portal: the outside requester rates their own solved ticket. */
-  async ratePortal(s: PortalSession, ticketId: string, score: number, comment: string | undefined, run: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>) {
+  async ratePortal(s: PortalSession, ticketId: string, score: number, comment: string | undefined, run: <T>(fn: (tx: Tx) => Promise<T>) => Promise<T>, reason?: string) {
     const res = await run(async (tx) => {
       const t = await tx.sdTicket.findFirst({ where: { organizationId: s.organizationId, id: ticketId, requesterPersonId: s.personId } });
       if (!t) throw new NotFoundException('No such ticket.');
-      return this.rateIn(tx, s.organizationId, t.id, s.personId, score, comment ?? null, 'portal');
+      return this.rateIn(tx, s.organizationId, t.id, s.personId, score, comment ?? null, 'portal', reason ?? null);
     });
     await this.tellLead(s.organizationId, res);
     return { thanks: true };
@@ -164,24 +174,27 @@ export class SurveysService {
       if (!row) throw new NotFoundException('This link has expired.');
       const company = (await tx.organization.findUnique({ where: { id: org }, select: { name: true } }))?.name ?? '';
       if (row.kind === 'csat') {
-        const t = await tx.sdTicket.findFirstOrThrow({ where: { organizationId: org, id: row.ticketId! }, select: { number: true } });
-        return { kind: 'csat', company, question: `How happy are you with the help on ticket ${t.number}?`, min: 1, max: 5, used: Boolean(row.usedAt) };
+        const t = await tx.sdTicket.findFirstOrThrow({ where: { organizationId: org, id: row.ticketId! }, select: { number: true, deskId: true } });
+        // Answer 1682: the desk's preset reasons, to pick one with the rating.
+        const reasons = (await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { ratingReasons: true } })).ratingReasons;
+        return { kind: 'csat', company, question: `How happy are you with the help on ticket ${t.number}?`, min: 1, max: 5, used: Boolean(row.usedAt), reasons };
       }
       const s = await tx.sdSurvey.findFirstOrThrow({ where: { organizationId: org, id: row.surveyId! }, select: { question: true } });
-      return { kind: 'nps', company, question: s.question, min: 0, max: 10, used: Boolean(row.usedAt) };
+      return { kind: 'nps', company, question: s.question, min: 0, max: 10, used: Boolean(row.usedAt), reasons: [] };
     });
   }
 
   /** The click: the first request uses the link up and records the score. */
-  async answerLink(org: string, token: string, score: number, comment?: string) {
+  async answerLink(org: string, token: string, score: number, comment?: string, reason?: string) {
     const out = await deskSystem(this.tenantPrisma, { organizationId: org, isSuperAdmin: false }, async (tx) => {
       const row = await this.tokenRow(tx, org, token);
       if (!row) throw new NotFoundException('This link has expired.');
       if (row.kind === 'csat' && (score < 1 || score > 5)) throw new BadRequestException('Choose 1 to 5.');
       if (row.kind === 'nps' && (score < 0 || score > 10)) throw new BadRequestException('Choose 0 to 10.');
+      if (row.kind === 'nps' && reason) throw new BadRequestException('A survey answer takes no reason.');
       const won = await tx.sdSurveyToken.updateMany({ where: { id: row.id, usedAt: null }, data: { usedAt: new Date() } });
       if (!won.count) throw new ConflictException({ statusCode: 409, code: 'LINK_USED', message: 'You already answered. Thank you.' });
-      if (row.kind === 'csat') return { kind: 'csat' as const, ...(await this.rateIn(tx, org, row.ticketId!, row.personId, score, comment ?? null, 'email')) };
+      if (row.kind === 'csat') return { kind: 'csat' as const, ...(await this.rateIn(tx, org, row.ticketId!, row.personId, score, comment ?? null, 'email', reason ?? null)) };
       return { kind: 'nps' as const, ...(await this.respondIn(tx, org, row.surveyId!, row.personId, score, comment ?? null)) };
     });
     if (out.lead) await this.tellLead(org, { ticket: out.ticket, lead: out.lead }, out.kind === 'csat' ? 'helpdesk.rating.low' : 'helpdesk.nps.detractor');

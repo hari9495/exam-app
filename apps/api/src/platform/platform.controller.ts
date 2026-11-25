@@ -14,6 +14,7 @@ import { CreateSmsAccountDto, DeliveriesQueryDto, UpdateSmsAccountDto } from '..
 import { SmsAccountsService } from '../sms-channel/sms-accounts.service';
 import {
   CompaniesQueryDto,
+  CompanySettingDto,
   CreateCompanyDto,
   ExtendTrialDto,
   LifecycleDto,
@@ -22,11 +23,12 @@ import {
   SupportApproveDto,
   SupportListQueryDto,
   SupportNoteDto,
-  SupportRequestDto,
-} from './dto';
+  SupportRequestDto, DeletionDto, LegalHoldDto } from './dto';
 import { PLATFORM, PlatformService } from './platform.service';
+import { CompanyDeletionService } from './company-deletion.service';
 import { PlatformStaffGuard } from './platform-staff.guard';
 import { SupportSessionsService } from './support-sessions.service';
+import { CustomerSuccessService } from './customer-success.service';
 
 // The YukthiX platform console API (P14 §7, YX-CONSOLE-01/02). Staff only, on their own platform session with their
 // security key (PlatformStaffGuard), and every route names its platform.* key (PermissionsGuard). Company data is
@@ -38,6 +40,7 @@ export class PlatformController {
     private readonly platform: PlatformService,
     private readonly support: SupportSessionsService,
     private readonly sms: SmsAccountsService,
+    private readonly deletions: CompanyDeletionService,
   ) {}
 
   // ---- companies ----
@@ -54,8 +57,10 @@ export class PlatformController {
     return this.platform.company(actor, id);
   }
 
+  // Answer 1053 (PLT-09): creating a company sends the first System Admin's invite: step-up (P12 YX-IAM-02).
   @Post('companies')
   @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
   createCompany(@CurrentTenant() ctx: TenantContext, @CurrentUserId() actor: string, @Body() dto: CreateCompanyDto) {
     return this.platform.createCompany(ctx, actor, dto);
   }
@@ -69,11 +74,83 @@ export class PlatformController {
     return this.platform.changeLifecycle(actor, id, dto);
   }
 
+  // Answer 1882: deleting a closed company's data after its kept days. One staff member asks, a second confirms; both
+  // with the security key, never while acting for someone else.
+  @Post('companies/:id/deletion')
+  @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
+  requestDeletion(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DeletionDto) {
+    ownSession(req);
+    return this.deletions.request(actor, id, dto.reason);
+  }
+
+  @Post('companies/:id/deletion/withdraw')
+  @HttpCode(204)
+  @RequirePermissions('platform.companies.manage')
+  async withdrawDeletion(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    await this.deletions.withdraw(actor, id);
+  }
+
+  @Post('companies/:id/deletion/confirm')
+  @HttpCode(200)
+  @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
+  confirmDeletion(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    return this.deletions.confirm(actor, id);
+  }
+
+  // Answer 2083: a legal hold on a deleted company keeps its kept records past their day; set and ended by staff with
+  // the security key, never while acting for someone else (audited).
+  @Post('companies/:id/legal-holds')
+  @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
+  setLegalHold(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LegalHoldDto) {
+    ownSession(req);
+    return this.deletions.setHold(actor, id, dto);
+  }
+
+  @Post('companies/:id/legal-holds/:holdId/end')
+  @HttpCode(200)
+  @RequirePermissions('platform.companies.manage')
+  @RequireStepUp()
+  endLegalHold(@Req() req: Request, @CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Param('holdId', ParseUUIDPipe) holdId: string, @Body() dto: DeletionDto) {
+    ownSession(req);
+    return this.deletions.endHold(actor, id, holdId, dto.reason);
+  }
+
+  // Answer 1973: the deletion certificate, downloaded from the console (audited).
+  @Get('companies/:id/deletion/certificate')
+  @RequirePermissions('platform.companies.view')
+  deletionCertificate(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.deletions.certificate(actor, id);
+  }
+
+  @Get('deletions')
+  @RequirePermissions('platform.companies.view')
+  deletionsList(@CurrentUserId() actor: string) {
+    return this.deletions.list(actor);
+  }
+
   @Post('companies/:id/extend-trial')
   @HttpCode(200)
   @RequirePermissions('platform.companies.manage')
   extendTrial(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ExtendTrialDto) {
     return this.platform.extendTrial(actor, id, dto);
+  }
+
+  // Careers answer 442: the company settings only YukthiX staff change, each allowed by the company's plan.
+  @Get('companies/:id/settings')
+  @RequirePermissions('platform.companies.view')
+  companySettings(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string) {
+    return this.platform.companySettings(actor, id);
+  }
+
+  @Patch('companies/:id/settings')
+  @RequirePermissions('platform.companies.manage')
+  changeCompanySetting(@CurrentUserId() actor: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CompanySettingDto) {
+    return this.platform.changeCompanySetting(actor, id, dto);
   }
 
   // ---- plans and prices (one plan per product, so the routes say products; /platform/plans is the exam app's) ----
@@ -186,7 +263,17 @@ export class PlatformController {
 @Controller('support-access')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class SupportAccessController {
-  constructor(private readonly support: SupportSessionsService) {}
+  constructor(
+    private readonly support: SupportSessionsService,
+    private readonly cs: CustomerSuccessService,
+  ) {}
+
+  // Answer 1048: the messages YukthiX staff sent to this company's System Admins (its own copies only).
+  @Get('messages')
+  @RequirePermissions('org.support_access.approve')
+  messages(@CurrentTenant() ctx: TenantContext) {
+    return this.cs.forCompany(ctx);
+  }
 
   @Get()
   @RequirePermissions('org.support_access.approve')

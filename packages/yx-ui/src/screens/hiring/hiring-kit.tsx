@@ -212,29 +212,40 @@ export function ConsentBadges({ email, whatsapp }: { email: ConsentValue; whatsa
 /* ------------------------------------------------------------------ HIR-05 ex-employee banner */
 
 export interface ExEmployeeInfo {
-  exitDate: Date;
-  exitType: string;
-  rehireEligible: boolean;
+  /** Null when the viewer may see the person but holds no exit key (flag only). */
+  exitDate: Date | null;
+  exitType: string | null;
+  /** Null when the viewer may not see rehire eligibility (the confidential exit key) or HR never set it. */
+  rehireEligible: boolean | null;
+  /** Why HR set or cleared it (shown to HR only). */
+  rehireReason?: string | null;
   clearedBy?: string;
+  /** The company's name for the hiring manager's line. */
+  company?: string;
 }
 
-/** YX-ATS-33: recruiter / HR see exit date, type and rehire eligibility; the hiring manager sees only the flag and yes / no. */
+/**
+ * YX-ATS-33: recruiter / HR see exit date, type and rehire eligibility; the hiring manager sees only the flag and yes / no.
+ * Nothing is rejected automatically: HR clears an ineligible flag with a reason.
+ */
 export function ExEmployeeBanner({ info, viewer, onClear }: { info: ExEmployeeInfo; viewer: 'recruiter' | 'hr' | 'hm'; onClear?: () => void }) {
-  const full = viewer !== 'hm';
-  const ineligible = !info.rehireEligible && !info.clearedBy;
+  const full = viewer !== 'hm' && info.exitDate != null;
+  const ineligible = info.rehireEligible === false && !info.clearedBy;
+  const eligible = info.rehireEligible == null ? null : info.rehireEligible ? 'yes' : info.clearedBy ? 'cleared by HR' : 'no';
   return (
     <InlineAlert
       tone={ineligible ? 'warning' : 'info'}
-      title={`Ex-employee · rehire eligible: ${info.rehireEligible ? 'yes' : info.clearedBy ? 'cleared by HR' : 'no'}`}
+      title={eligible ? `Ex-employee · rehire eligible: ${eligible}` : 'Ex-employee'}
       actions={viewer === 'hr' && ineligible && onClear ? <Button size="sm" onClick={onClear}>Clear flag with reason</Button> : undefined}
     >
       {full ? (
         <>
-          Left on {formatDate(info.exitDate)} ({info.exitType}).{' '}
-          {ineligible ? 'Screening can’t be passed until HR clears the flag with a reason. Nothing is rejected automatically.' : info.clearedBy ? `Flag cleared by ${info.clearedBy}.` : 'The hire will continue on the existing employee record.'}
+          Left on {formatDate(info.exitDate)}{info.exitType ? ` (${info.exitType})` : ''}.{' '}
+          {ineligible ? 'HR can clear the flag with a reason. Nothing is rejected automatically.' : info.clearedBy ? `Flag cleared by ${info.clearedBy}.` : eligible ? 'The hire will continue on the existing employee record.' : 'Ask HR about rehire eligibility. The hire will continue on the existing employee record.'}
+          {viewer === 'hr' && info.rehireReason ? ` HR note: ${info.rehireReason}` : ''}
         </>
       ) : (
-        'Past employee of Kaveri Foods. Details are visible to recruiters and HR.'
+        `Past employee${info.company ? ` of ${info.company}` : ''}. Details are visible to recruiters and HR.`
       )}
     </InlineAlert>
   );
@@ -548,4 +559,46 @@ export function StatusLine({ ok, children }: { ok: boolean; children: ReactNode 
 /** Two-column section grid used inside tabs and T4 sheets. */
 export function Columns({ children }: { children: ReactNode }) {
   return <div className="yx-hire-cols">{children}</div>;
+}
+
+/** The hiring screens' plain table (invoice lines, fee taper): a row header, cells, and label/value footer rows. */
+export function HireTable({ id, label, caption, hideCaption, head, rows, foot }: { id?: string; label: string; caption: string; hideCaption?: boolean; head: ReactNode[]; rows: { key: string | number; cells: ReactNode[] }[]; foot?: { label: ReactNode; value: ReactNode }[] }) {
+  return (
+    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label={label} id={id}>
+      <table className="yx-hire-ctc">
+        <caption className={hideCaption ? 'yx-visually-hidden' : undefined}>{caption}</caption>
+        <thead>
+          <tr>
+            {head.map((h, i) => (
+              <th scope="col" key={i}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key}>
+              <th scope="row">{r.cells[0]}</th>
+              {r.cells.slice(1).map((c, i) => (
+                <td key={i}>{c}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+        {foot && (
+          <tfoot>
+            {foot.map((f, i) => (
+              <tr key={i}>
+                <th scope="row" colSpan={head.length - 1}>
+                  {f.label}
+                </th>
+                <td>{f.value}</td>
+              </tr>
+            ))}
+          </tfoot>
+        )}
+      </table>
+    </div>
+  );
 }

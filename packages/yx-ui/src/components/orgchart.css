@@ -14,6 +14,7 @@
 .yx-org__zoom { min-width: var(--yx-space-10); text-align: center; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); font-variant-numeric: tabular-nums; }
 
 /* legend */
+.yx-org__note { font-weight: var(--yx-weight-medium); color: var(--yx-color-text); }
 .yx-org__legend { display: flex; flex-wrap: wrap; gap: var(--yx-space-4); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-secondary); }
 .yx-org__key { display: inline-flex; align-items: center; gap: var(--yx-space-2); }
 .yx-org__key::before { content: ""; width: var(--yx-space-6); border-top: var(--yx-border-width) solid var(--yx-org-line); }

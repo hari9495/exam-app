@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -11,7 +11,7 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Feedback and 1:1s wired to /performance (M06 batch PM3, PM-3.04).
+// PRF-08 Quick feedback and PRF-11 1:1s: the designed screens wired to /performance (M06 batch PM3; builder 2).
 const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
 const api = apiFetch as jest.Mock;
 function route(table: Record<string, unknown>) {
@@ -49,8 +49,8 @@ describe('Feedback and 1:1s (M06 batch PM3)', () => {
     wrap(<YxFeedbackPage />);
     expect(await screen.findByText('Thanks for the cover.')).toBeInTheDocument();
     expect(screen.getAllByText('Removed by HR').length).toBeGreaterThan(0);
-    await userEvent.click(screen.getByRole('button', { name: 'Give feedback' }));
-    expect(within(screen.getByRole('dialog')).getByRole('link', { name: 'Report a concern instead' })).toHaveAttribute('href', '/yx/desk/help');
+    await userEvent.click(screen.getAllByRole('button', { name: 'Give feedback' })[0]!);
+    expect(within(screen.getByRole('dialog')).getByRole('link', { name: 'Report a concern' })).toHaveAttribute('href', '/yx/desk/help');
   });
 
   it('the colleague picker searches the directory on the server, 25 at a time, with no cap', async () => {
@@ -64,26 +64,28 @@ describe('Feedback and 1:1s (M06 batch PM3)', () => {
       'GET /performance/feedback': { items: [] },
     });
     wrap(<YxFeedbackPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Give feedback' }));
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: 'For' }));
+    await userEvent.click((await screen.findAllByRole('button', { name: 'Give feedback' }))[0]!);
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('combobox', { name: /^To/ }));
     await userEvent.type(screen.getByPlaceholderText('Name, email, role or department'), 'Meen');
     expect(await screen.findByRole('option', { name: /Meena Pillai/ })).toBeInTheDocument();
     expect(asked[0]).toBe('/people/directory?limit=25');
     expect(asked).toContain('/people/directory?limit=25&q=Meen');
   });
 
-  it('a 1:1 saves the private note to its own route', async () => {
+  it('a 1:1 opens in the drawer of the list and saves the private note to its own route when you leave the box', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'm1' });
     const put: unknown[] = [];
-    const meeting = { id: 'm1', employee: 'Arjun', employeeId: 'e1', manager: 'Priya', managerEmployeeId: 'e3', role: 'employee', on: '2026-10-13', status: 'planned', sharedNotes: null, agenda: [], actions: [], privateNote: '', version: 1 };
+    const meeting = { id: 'm1', employee: 'Arjun', employeeId: 'e1', manager: 'Priya', managerEmployeeId: 'e3', role: 'employee', on: '2026-12-13', status: 'planned', sharedNotes: null, agenda: [], actions: [], privateNote: '', cadenceDays: 14, lastHeldOn: null, goals: [], version: 1 };
     route({
       'GET /rbac/me/permissions': [],
+      'GET /performance/one-on-ones': { pairs: [{ id: 'm1', role: 'employee', employee: 'Arjun', manager: 'Priya', partnerRole: 'Area Manager', on: '2026-12-13', status: 'planned', lastHeldOn: null, cadenceDays: 14, agendaItems: 0, openActions: 0 }], partners: [{ value: 'e3', label: 'Priya (my manager)' }], defaultCadenceDays: 14 },
       'GET /performance/one-on-ones/m1': meeting,
       'PUT /performance/one-on-ones/m1/private-note': (_p: string, init: RequestInit) => (put.push(JSON.parse(String(init.body))), meeting),
     });
     wrap(<YxOneOnOnePage />);
-    await userEvent.type(await screen.findByRole('textbox', { name: /Only you/ }), 'Ask about the course.');
-    await userEvent.click(screen.getByRole('button', { name: 'Save my note' }));
+    const note = await screen.findByRole('textbox', { name: 'My private notes' });
+    await userEvent.type(note, 'Ask about the course.');
+    fireEvent.blur(note);
     await waitFor(() => expect(put).toEqual([{ text: 'Ask about the course.' }]));
   });
 });

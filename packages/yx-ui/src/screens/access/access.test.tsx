@@ -4,10 +4,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { ToastProvider } from '../../components/notify';
 import { dateLabel } from '../org/org-kit';
 import { RolesAccessScreen, type RolesAccessScreenProps } from './roles-access';
-import { ProfileScreen, type ProfileScreenProps } from './profile';
+import { CancelDialog, ChangeDialog, PERSONAL_REQUIRED_DEFAULT, PersonalDialog } from './profile';
 import { ProfileRequestsScreen } from './profile-requests';
-import { AccessLogScreen } from './access-log';
-import { ACCESS_LOG, EFFECTIVE, GRANTS, PROFILE_MANAGER, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
+import { ACCESS_REQUESTS, EFFECTIVE, GRANTS, PROFILE_SELF, REQUESTS, ROLES, SCOPES, TEMPLATES, TODAY_ISO, USERS } from './data';
 
 // Radix dialogs and popovers toggle pointer-events while they open; the check is for real users, not here.
 const ue = userEvent.setup({ pointerEventsCheck: 0, delay: null }); // no pause per keystroke: form-filling tests ran past 5 s when the suite runs in parallel
@@ -46,6 +45,50 @@ const pick = async (label: string, option: string) => {
 };
 
 describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
+  // Answer 946: requests from "You don't have access" pages.
+  it('requests: approve gives the asker a role until a last day within the longest access', async () => {
+    const onApproveRequest = ok();
+    roles({ requests: ACCESS_REQUESTS, maxDays: 30, onApproveRequest, onRefuseRequest: ok(), initialView: 'requests' });
+    expect(screen.getByRole('radio', { name: 'Requests (1)' })).toBeChecked();
+    const row = screen.getByText('I cover for Suresh during the October run while he is on leave.').closest('tr') as HTMLElement;
+    await ue.click(within(row).getByRole('button', { name: 'Approve' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Give Anitha Rao access' });
+    expect(within(dialog).queryByRole('combobox', { name: 'Person' })).toBeNull();
+    await ue.click(within(dialog).getByRole('button', { name: /Give access|Send for approval/ }));
+    expect(within(dialog).getByText('Choose the role.')).toBeInTheDocument(); // never a disabled button
+    expect(onApproveRequest).not.toHaveBeenCalled();
+    await pick('Role', ROLES[0]!.confidential ? `${ROLES[0]!.name} (Confidential)` : ROLES[0]!.name);
+    await pick('Over', 'Whole company');
+    await ue.click(within(dialog).getByRole('button', { name: /Give access|Send for approval/ }));
+    await waitFor(() => expect(onApproveRequest).toHaveBeenCalledWith('ar-1', expect.objectContaining({ userId: 'u-anitha', permissionProfileId: ROLES[0]!.id, scopeType: 'tenant', validFrom: TODAY_ISO, validTo: '2026-10-12', reason: 'Access request: I cover for Suresh during the October run while he is on leave.' })));
+    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Access given.')).toBeInTheDocument();
+  });
+
+  it('requests: refusing needs a reason; one’s own request is decided by another admin; decided ones have no buttons', async () => {
+    const onRefuseRequest = ok();
+    roles({ meId: 'u-anitha', requests: ACCESS_REQUESTS, onApproveRequest: ok(), onRefuseRequest, initialView: 'requests' });
+    const own = screen.getByText('I cover for Suresh during the October run while he is on leave.').closest('tr') as HTMLElement;
+    expect(within(own).getByText('Yours: another admin decides')).toBeInTheDocument();
+    expect(within(own).queryByRole('button', { name: 'Approve' })).toBeNull();
+    const done = screen.getByText('I want to see who is lined up for my role.').closest('tr') as HTMLElement;
+    expect(within(done).queryByRole('button')).toBeNull();
+    expect(within(done).getByText('Succession plans stay with HR leadership.')).toBeInTheDocument();
+  });
+
+  it('requests: refuse asks why first', async () => {
+    const onRefuseRequest = ok();
+    roles({ requests: ACCESS_REQUESTS, onApproveRequest: ok(), onRefuseRequest, initialView: 'requests' });
+    const row = screen.getByText('I cover for Suresh during the October run while he is on leave.').closest('tr') as HTMLElement;
+    await ue.click(within(row).getByRole('button', { name: 'Refuse' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Refuse' }));
+    expect(within(dialog).getByText('Say why: they read it.')).toBeInTheDocument();
+    expect(onRefuseRequest).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Payroll runs stay with payroll.');
+    await ue.click(within(dialog).getByRole('button', { name: 'Refuse' }));
+    await waitFor(() => expect(onRefuseRequest).toHaveBeenCalledWith('ar-1', 'Payroll runs stay with payroll.'));
+  });
+
   it('a revoked grant shows when it ended', async () => {
     const mine = GRANTS.find((g) => g.userId === 'u-anitha')!;
     roles({ grants: [{ ...mine, status: 'revoked', revokedAt: '2026-10-14T09:30:00Z' }] });
@@ -88,7 +131,9 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getByText('Location: Hosur plant')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Revoke' }));
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Revoke' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Revoke' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(p.onRevoke).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox'), 'Moved to Chennai');
     await ue.click(within(dialog).getByRole('button', { name: 'Revoke' }));
     expect(p.onRevoke).toHaveBeenCalledWith('g-1', 'Moved to Chennai');
@@ -99,7 +144,9 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getByText('System Admins now: Ramesh Iyer.')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Make System Admin' }));
     const dialog = await screen.findByRole('dialog', { name: 'Make Anitha Rao a System Admin?' });
-    expect(within(dialog).getByRole('button', { name: 'Make System Admin' })).toBeDisabled();
+    await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(p.onSystemAdmin).not.toHaveBeenCalled();
     await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Runs HR and access');
     await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
     expect(p.onSystemAdmin).toHaveBeenCalledWith('u-anitha', true, 'Runs HR and access');
@@ -132,6 +179,40 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
     expect(screen.getAllByText('You asked: another admin decides').length).toBeGreaterThan(0);
   });
 
+  it('795: only a role nobody holds can be deleted; a reason is required; then it is gone with a toast', async () => {
+    const onDeleteRole = ok();
+    const unused = { id: 'r-recep', name: 'Reception', permissions: ['visitors.desk.manage'], confidential: false, companyWideOnly: [], grants: 0, assignedUsers: 0 };
+    roles({ roles: [...ROLES, unused], onDeleteRole, initialView: 'roles' });
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
+    expect(within(screen.getByRole('row', { name: /HR Admin/ })).queryByRole('button', { name: 'Delete' })).toBeNull();
+    await ue.click(within(screen.getByRole('row', { name: /Reception/ })).getByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('alertdialog').catch(() => screen.getByRole('dialog'));
+    await ue.click(within(dialog).getByRole('button', { name: 'Delete role' }));
+    expect(within(dialog).getByText('Enter a reason.')).toBeInTheDocument();
+    expect(onDeleteRole).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Walk-through role, not used');
+    await ue.click(within(dialog).getByRole('button', { name: 'Delete role' }));
+    await waitFor(() => expect(onDeleteRole).toHaveBeenCalledWith('r-recep', 'Walk-through role, not used'));
+    expect((await screen.findAllByText('Role "Reception" deleted.')).length).toBeGreaterThan(0);
+  });
+
+  it('795: without the delete action no Delete button shows', () => {
+    roles({ roles: [...ROLES, { id: 'r-x', name: 'Unused', permissions: [], confidential: false, companyWideOnly: [], grants: 0, assignedUsers: 0 }], initialView: 'roles' });
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  });
+
+  it('Give access is never disabled: pressed early it names each missing field and sends nothing', async () => {
+    const onGrant = vi.fn();
+    roles({ onGrant });
+    await ue.click(screen.getByRole('button', { name: 'Give access' }));
+    const dialog = await screen.findByRole('dialog');
+    const send = within(dialog).getByRole('button', { name: 'Give access' });
+    expect(send).toBeEnabled();
+    await ue.click(send);
+    for (const t of ['Choose the role.', 'Choose over whom.', 'Say why: it is kept on the record.']) expect(within(dialog).getByText(t)).toBeInTheDocument();
+    expect(onGrant).not.toHaveBeenCalled();
+  });
+
   it('a risk warning (YX-SEC-18) must be confirmed before the grant is sent again', async () => {
     const onGrant = vi.fn().mockRejectedValueOnce(coded('RISK_CONFIRMATION_REQUIRED', 'Opens Confidential data of 120 people, more than the limit of 25.')).mockResolvedValueOnce(undefined);
     roles({ onGrant });
@@ -150,68 +231,56 @@ describe('Roles & access (P02 §4.2–4.3, §4.6)', () => {
   });
 });
 
-function profile(over: Partial<ProfileScreenProps> = {}) {
-  const props: ProfileScreenProps = {
-    state: 'ready',
-    profile: PROFILE_SELF,
-    states: [{ code: 'IN-KA', name: 'Karnataka' }],
-    requests: REQUESTS.filter((r) => r.employeeId === 'p-divya'),
-    onSavePersonal: ok(),
-    onReveal: vi.fn().mockResolvedValue('BQRPR4821K'),
-    onRequestChange: ok(),
-    onCancelRequest: ok(),
-    ...over,
-  };
-  render(
-    <ToastProvider>
-      <ProfileScreen {...props} />
-    </ToastProvider>,
-  );
-  return props;
-}
-
-describe('Profile by sensitivity class (P02 §4.4–4.5)', () => {
-  it('with no one in scope, says so instead of "Pick a person"', () => {
-    profile({ profile: null, people: [], onPickPerson: vi.fn(), requests: [] });
-    expect(screen.getByText('No profiles to show')).toBeInTheDocument();
-    expect(screen.queryByText('Pick a person')).toBeNull();
-  });
-
-  it('saving personal details sends only what changed and says so in a toast', async () => {
-    const p = profile();
-    await ue.click(screen.getByRole('button', { name: 'Edit' }));
+describe('Profile dialogs (P02 §4.4–4.5; the person record PPL-03 opens them)', () => {
+  it('saving personal details sends the edited details', async () => {
+    const onSave = ok();
+    render(<PersonalDialog initial={PROFILE_SELF.personal!} states={[{ code: 'IN-KA', name: 'Karnataka' }]} required={PERSONAL_REQUIRED_DEFAULT} onSave={onSave} onClose={vi.fn()} />);
     const dialog = await screen.findByRole('dialog');
     const phone = within(dialog).getByRole('textbox', { name: /Personal phone/ });
     await ue.clear(phone);
     await ue.type(phone, '+91 98450 22233');
     await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(p.onSavePersonal).toHaveBeenCalledTimes(1));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
+    await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+    expect(onSave.mock.calls[0][0]).toMatchObject({ personalPhone: '+91 98450 22233', city: 'Bengaluru' });
   });
 
-  it('a manager sees neither Personal nor identity details, and no pay', () => {
-    profile({ profile: PROFILE_MANAGER, requests: [] });
-    expect(screen.getByText('Personal details are for the person and HR with personal-data access.')).toBeInTheDocument();
-    expect(screen.getByText('Identity and bank details are for the person and payroll.')).toBeInTheDocument();
-    expect(screen.getByText('Pay is visible only with pay access.')).toBeInTheDocument();
-    expect(screen.queryByText('divya.r.home@mail.test')).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Show full/ })).toBeNull();
+  it('required personal details are marked; Save names each missing one, focuses the first and sends nothing', async () => {
+    const onSave = ok();
+    const blank = { ...PROFILE_SELF.personal!, dateOfBirth: null, gender: null, personalPhone: null, city: '  ' };
+    render(<PersonalDialog initial={blank} states={[{ code: 'IN-KA', name: 'Karnataka' }]} required={PERSONAL_REQUIRED_DEFAULT} onSave={onSave} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getAllByText('Required')).toHaveLength(PERSONAL_REQUIRED_DEFAULT.length);
+    const save = within(dialog).getByRole('button', { name: 'Save' });
+    expect(save).toBeEnabled();
+    await ue.click(save);
+    for (const m of ['Choose the date of birth.', 'Choose the gender.', 'Enter the personal phone.', 'Enter the city.']) expect(within(dialog).getByText(m)).toBeInTheDocument();
+    expect(within(dialog).queryByText('Enter the address.')).toBeNull();
+    await waitFor(() => expect(document.activeElement?.closest('.yx-field')?.textContent).toMatch(/Date of birth/));
+    expect(onSave).not.toHaveBeenCalled();
   });
 
-  it('identifiers are masked; Show asks for the full value; Aadhaar has no Show without its grant (YX-SEC-08)', async () => {
-    const p = profile();
-    expect(screen.getByText('•••• 821K')).toBeInTheDocument();
-    expect(screen.getByText('•••• 0248')).toBeInTheDocument();
-    const shows = screen.getAllByRole('button', { name: /^Show full/ });
-    expect(shows).toHaveLength(3); // PAN, UAN, salary account; never Aadhaar here
-    await ue.click(shows[0]);
-    expect(p.onReveal).toHaveBeenCalledWith('pan');
-    expect(await screen.findByText('BQRPR4821K')).toBeInTheDocument();
+  it('a wrong email, a non-mobile phone and a birth date under 14 years are refused in the form', async () => {
+    const onSave = ok();
+    const year = new Date().getFullYear() - 10;
+    render(<PersonalDialog initial={{ ...PROFILE_SELF.personal!, personalEmail: 'divya.home', personalPhone: '+91 12345 67890', dateOfBirth: `${year}-01-01` }} states={[{ code: 'IN-KA', name: 'Karnataka' }]} onSave={onSave} onClose={vi.fn()} />);
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Enter a personal email like name@example.com.')).toBeInTheDocument();
+    expect(within(dialog).getByText('Enter a 10-digit mobile number starting with 6, 7, 8 or 9.')).toBeInTheDocument();
+    expect(within(dialog).getByText('The person must be at least 14 years old.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+    // Nothing is required here (the company list is empty): empty email and phone are fine; the age still is not.
+    for (const name of [/Personal email/, /Personal phone/]) await ue.clear(within(dialog).getByRole('textbox', { name }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).queryByText('Enter a personal email like name@example.com.')).toBeNull();
+    expect(within(dialog).queryByText(/starting with 6, 7, 8 or 9/)).toBeNull();
+    expect(within(dialog).getByText('The person must be at least 14 years old.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it('a PAN change is checked before it is sent, then goes to approval', async () => {
-    const p = profile();
-    await ue.click(screen.getByRole('button', { name: 'Request a change' }));
+    const onRequest = ok();
+    render(<ChangeDialog pending={[]} onRequest={onRequest} onClose={vi.fn()} />);
     const dialog = await screen.findByRole('dialog');
     await pick('What changes', 'PAN');
     const pan = within(dialog).getAllByRole('textbox')[0];
@@ -222,23 +291,23 @@ describe('Profile by sensitivity class (P02 §4.4–4.5)', () => {
     await ue.type(pan, 'bqrpr4822k');
     await ue.type(within(dialog).getAllByRole('textbox')[1], 'Typo on file');
     await ue.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
-    expect(p.onRequestChange).toHaveBeenCalledWith({ kind: 'pan', value: { pan: 'BQRPR4822K' }, reason: 'Typo on file' });
+    expect(onRequest).toHaveBeenCalledWith({ kind: 'pan', value: { pan: 'BQRPR4822K' }, reason: 'Typo on file' });
   });
 
   it('a change already waiting can be withdrawn with a reason', async () => {
-    const p = profile();
-    await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
+    const onCancel = ok();
+    render(<CancelDialog request={REQUESTS.find((r) => r.id === 'pr-1')!} onCancel={onCancel} onClose={vi.fn()} />);
     const dialog = await screen.findByRole('dialog');
     await ue.type(within(dialog).getByRole('textbox'), 'Wrong account');
     await ue.click(within(dialog).getByRole('button', { name: 'Withdraw' }));
-    expect(p.onCancelRequest).toHaveBeenCalledWith('pr-1', 'Wrong account');
+    expect(onCancel).toHaveBeenCalledWith('pr-1', 'Wrong account');
   });
 });
 
 describe('Identity and bank changes queue (P02 §4.5, YX-EMP-02)', () => {
   it('a duplicate value needs a reason to approve anyway', async () => {
     const onApprove = vi.fn().mockRejectedValueOnce(coded('DUPLICATE_IDENTIFIER', 'Arjun Kulkarni (KF-0142) already has this Reimbursement bank account.')).mockResolvedValueOnce(undefined);
-    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={onApprove} onReject={ok()} onOpenProfile={vi.fn()} />);
+    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={onApprove} onReject={ok()} onOpenProfile={vi.fn()} onProof={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     const dialog = await screen.findByRole('dialog');
     await ue.click(within(dialog).getByRole('button', { name: 'Approve' }));
@@ -249,20 +318,26 @@ describe('Identity and bank changes queue (P02 §4.5, YX-EMP-02)', () => {
     expect(onApprove).toHaveBeenLastCalledWith('pr-1', 'Joint account, checked');
   });
 
+  it('PPL-32: the approver opens the proof and sees the effective date; no proof says so', async () => {
+    const onProof = vi.fn(async () => {});
+    const { unmount } = render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], reason: null, proofDocumentId: 'd1', effectiveOn: '2026-10-01' }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={onProof} />);
+    await ue.click(screen.getByRole('button', { name: 'Approve' }));
+    let dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText(/Reason given/)).toBeNull();
+    expect(within(dialog).getByText(/Effective from/)).toBeInTheDocument();
+    await ue.click(within(dialog).getByRole('button', { name: 'Open the proof' }));
+    expect(onProof).toHaveBeenCalledWith('d1');
+    unmount();
+    render(<ProfileRequestsScreen state="ready" rows={REQUESTS} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={onProof} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Approve' })[0]);
+    dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('No proof attached.')).toBeInTheDocument();
+  });
+
   it('a change you raised shows Profile, never Approve', () => {
-    render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], mine: true }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} />);
+    render(<ProfileRequestsScreen state="ready" rows={[{ ...REQUESTS[0], mine: true }]} canDecide onApprove={ok()} onReject={ok()} onOpenProfile={vi.fn()} onProof={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Profile' })).toBeInTheDocument();
-  });
-});
-
-describe('Who accessed my data (P02 §7)', () => {
-  it('lists the looks, or says the company turned the view off', () => {
-    const { unmount } = render(<AccessLogScreen state="ready" log={ACCESS_LOG} />);
-    expect(screen.getAllByText('Suresh Pillai').length).toBeGreaterThan(0);
-    unmount();
-    render(<AccessLogScreen state="ready" log={{ enabled: false, entries: [] }} />);
-    expect(screen.getByText('Your company has turned this view off')).toBeInTheDocument();
   });
 });
 

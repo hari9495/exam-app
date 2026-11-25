@@ -8,7 +8,7 @@
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
-    "/node_modules/(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space)/.+\\.js$": [
+    "/node_modules/(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec|htmlparser2|domelementtype|domhandler|domutils|dom-serializer|entities)/.+\\.js$": [
       "ts-jest",
       {
         "tsconfig": {
@@ -21,15 +21,18 @@
   },
   "testTimeout": 30000,
   "setupFiles": [
+    "./fixtures/e2e-database.ts",
     "./fixtures/offline-hibp.ts",
     "./fixtures/bull-prefix.ts"
   ],
   "setupFilesAfterEnv": [
-    "./fixtures/bull-cleanup.ts"
+    "./fixtures/bull-cleanup.ts",
+    "./fixtures/sign-in-limits.ts",
+    "./fixtures/salary-recheck.ts"
   ],
   "maxWorkers": 1,
   "workerIdleMemoryLimit": "1GB",
   "transformIgnorePatterns": [
-    "/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space)/)"
+    "/node_modules/(?!(openid-client|oauth4webapi|jose|franc-min|trigram-utils|n-gram|collapse-white-space|file-type|strtok3|token-types|uint8array-extras|@tokenizer/inflate|@borewit/text-codec|htmlparser2|domelementtype|domhandler|domutils|dom-serializer|entities)/)[^/]+/(?!(.*/)?node_modules/)"
   ]
 }

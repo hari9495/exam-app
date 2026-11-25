@@ -1,4 +1,5 @@
 // Fictional sample data for Platform & shared screens (Kaveri Foods Pvt Ltd). Deterministic.
+import type { ApprovalStep } from '../../components/timeline';
 import { TODAY } from '../_kit/data';
 
 export const at = (day: number, h = 9, m = 0, month = 8) => new Date(2026, month, day, h, m);
@@ -43,13 +44,15 @@ export type ApprovalKind = 'Leave' | 'Expense' | 'Timesheet' | 'Regularisation' 
 export interface ApprovalRow {
   id: string;
   ref: string;
-  type: ApprovalKind;
+  /** A design kind, or a live request type ("Service request"). */
+  type: ApprovalKind | (string & {});
   requester: string;
   requesterRole: string;
   summary: string;
   detail: string;
   submitted: Date;
-  due: Date;
+  /** Null: the request has no due date (live). */
+  due: Date | null;
   step: string;
   lowRisk: boolean;
   policy: { ok: true } | { ok: false; reason: string };
@@ -63,6 +66,12 @@ export interface ApprovalRow {
   receipt?: { file: string; lines: string[] };
   /** Leave: who else in the team is off on these days. */
   teamOff?: { name: string; when: string }[];
+  /** Live: the route as the engine knows it (the design draws a sample one). */
+  timeline?: ApprovalStep[];
+  /** Live: decided on its own page with a fresh sign-in check (reopening a pay month). */
+  decideAt?: string | null;
+  /** Live: the approver may send it back for changes (leave; the company allows it). */
+  canSendBack?: boolean;
 }
 
 export const APPROVALS: ApprovalRow[] = [

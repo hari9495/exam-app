@@ -2,11 +2,9 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { TenantContext, TenantPrismaService, AiApiKeyResolverService, AiNotConfiguredError } from '@exam-platform/shared';
 import { QuotaService } from '../billing/quota.service';
 import { InterviewQuestionsClient, GeneratedInterviewQuestion } from './interview-questions.client';
-import { InterviewScorecardClient, GeneratedScorecard } from './interview-scorecard.client';
 
 const DEFAULT_QUESTION_COUNT = 8;
 const MAX_QUESTION_COUNT = 15;
-const MAX_NOTES_CHARS = 8000;
 
 @Injectable()
 export class InterviewAiService {
@@ -15,7 +13,6 @@ export class InterviewAiService {
     private readonly aiApiKeyResolver: AiApiKeyResolverService,
     private readonly quota: QuotaService,
     private readonly questionsClient: InterviewQuestionsClient,
-    private readonly scorecardClient: InterviewScorecardClient,
   ) {}
 
   async generateQuestions(
@@ -45,30 +42,6 @@ export class InterviewAiService {
     const questions = await this.questionsClient.generate({ ...ctx, focus: opts.focus ?? null }, count, aiProvider);
     await this.recordUsage(context, orgId, 'interview_questions', entryId);
     return { questions };
-  }
-
-  async generateScorecard(context: TenantContext, interviewId: string, notes: string): Promise<GeneratedScorecard> {
-    const orgId = context.organizationId as string;
-    const trimmed = (notes ?? '').trim();
-    if (!trimmed) throw new BadRequestException('notes are required to generate a scorecard');
-
-    const job = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const interview = await tx.interview.findFirst({ where: { id: interviewId, organizationId: orgId } });
-      if (!interview) throw new NotFoundException(`Interview ${interviewId} not found`);
-      const entry = await tx.pipelineEntry.findFirst({ where: { id: interview.pipelineEntryId, organizationId: orgId } });
-      const j = entry ? await tx.job.findFirst({ where: { id: entry.jobId, organizationId: orgId } }) : null;
-      return { title: j?.title ?? 'the role', description: j?.description ?? null };
-    });
-
-    const aiProvider = await this.resolveProvider(orgId);
-    await this.quota.assertWithinLimit(context, 'ai_credits');
-
-    const scorecard = await this.scorecardClient.generate(
-      { jobTitle: job.title, jobDescription: job.description, notes: trimmed.slice(0, MAX_NOTES_CHARS) },
-      aiProvider,
-    );
-    await this.recordUsage(context, orgId, 'interview_scorecard', interviewId);
-    return scorecard;
   }
 
   // Interactive endpoints (unlike the best-effort public autofill) surface a clear, actionable

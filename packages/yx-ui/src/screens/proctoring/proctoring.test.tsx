@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   blueprintCell,
   calcApply,
+  calcUnary,
   canReschedule,
   deliveryMode,
   filterByRisk,
@@ -48,7 +49,7 @@ describe('live console', () => {
   it('sorts by concern and filters by risk', () => {
     const sorted = sortByConcern(LIVE_TILES);
     expect(sorted[0].name).toBe('Sneha Iyer');
-    expect(filterByRisk(LIVE_TILES, 'high').every((t) => t.score < 50)).toBe(true);
+    expect(filterByRisk(LIVE_TILES, 'high').every((t) => (t.score ?? 100) < 50)).toBe(true);
     expect(filterByRisk(LIVE_TILES, 'all')).toHaveLength(LIVE_TILES.length);
   });
   it('requires a reason for proctor actions (YX-PROC-09)', () => {
@@ -153,6 +154,41 @@ describe('components', () => {
     expect(calcApply(1, '÷', 3)).toBeCloseTo(0.33333333);
   });
 
+  // Answer 2162: the scientific keys.
+  it('scientific calculator: powers, roots and angles in degrees or radians', async () => {
+    const user = userEvent.setup();
+    render(<Calculator scientific />);
+    const out = () => document.querySelector('output')?.textContent;
+    const press = async (...names: string[]) => {
+      for (const n of names) await user.click(screen.getByRole('button', { name: n }));
+    };
+    expect(screen.getByRole('region', { name: 'Scientific calculator' })).toBeInTheDocument();
+    await press('9', 'squared');
+    expect(out()).toBe('81');
+    await press('square root');
+    expect(out()).toBe('9');
+    await press('Clear', '2', 'to the power of', '1', '0', 'equals');
+    expect(out()).toBe('1024');
+    await press('Clear', '3', '0', 'sine');
+    expect(out()).toBe('0.5');
+    await press('Clear', '2', 'times', 'pi', 'equals');
+    expect(out()).toBe('6.2831853');
+    await press('Angles in degrees: switch to radians', 'Clear', 'pi', 'cosine');
+    expect(out()).toBe('-1');
+  });
+
+  it('negative: scientific keys refuse what has no answer', () => {
+    expect(calcUnary('sqrt', -4)).toBe('Error');
+    expect(calcUnary('log', 0)).toBe('Error');
+    expect(calcUnary('ln', -1)).toBe('Error');
+    expect(calcUnary('inverse', 0)).toBe('Error');
+    expect(calcUnary('tan', 90)).toBe('Error');
+    expect(calcUnary('tan', 45)).toBe(1);
+    expect(calcUnary('sin', 180)).toBe(0);
+    expect(calcApply(10, '^', 400)).toBe('Error');
+    expect(calcApply(2, '^', -1)).toBe(0.5);
+  });
+
   it('system check shows fix steps only for failed or warning checks', () => {
     render(<SystemCheckList checks={READINESS_CHECKS} onRetry={() => {}} />);
     const screenRow = screen.getByText('Screen share').closest('li')!;
@@ -191,8 +227,11 @@ describe('components', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'End attempt' }));
     const confirm = await screen.findByRole('alertdialog').catch(() => screen.getAllByRole('dialog').at(-1)!);
     const btn = within(confirm).getByRole('button', { name: 'End attempt' });
-    expect(btn).toBeDisabled();
+    fireEvent.click(btn);
+    expect(await within(confirm).findByText('Enter a reason of at least 10 characters. It is saved in the audit log.')).toBeInTheDocument();
+    expect(confirm).toBeInTheDocument();
     fireEvent.change(within(confirm).getByRole('textbox'), { target: { value: 'Second person seen three times' } });
-    expect(btn).toBeEnabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(confirm).not.toBeInTheDocument());
   });
 });

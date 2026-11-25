@@ -1,9 +1,12 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
+import { ResultsScope, ResultsScopeOf, ScopesResults } from '../rbac/results-scope';
 // Proctor interventions and evaluator grading are sensitive-role actions (P12 §3, YX-IAM-01).
-import { SensitiveRoleAction } from '../auth/step-up.decorator';
+import { RequireStepUp, SensitiveRoleAction } from '../auth/step-up.decorator';
+import { EndAttemptDto, PauseAttemptDto, ResumeAttemptDto } from './dto/end-attempt.dto';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -13,33 +16,55 @@ import { GradeCodeAnswerDto } from './dto/grade-code-answer.dto';
 import { BypassProctoringDto } from './dto/bypass-proctoring.dto';
 
 @Controller('attempts')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2006): no assessments change while acting for someone else.
+@UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class AttemptsAdminController {
   constructor(private readonly attemptsAdminService: AttemptsAdminService) {}
 
   @Get(':id/proctoring-events')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
   listProctoringEvents(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.attemptsAdminService.listProctoringEvents(tenant, id);
   }
 
+  // AS-0 (answer 2006): ending an attempt asks for the second factor again and a reason the candidate's record keeps.
   @Post(':id/force-submit')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
   @SensitiveRoleAction()
-  forceSubmit(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
-    return this.attemptsAdminService.forceSubmit(tenant, id, userId);
+  @RequireStepUp()
+  forceSubmit(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string, @Body() dto: EndAttemptDto) {
+    return this.attemptsAdminService.forceSubmit(tenant, id, userId, dto.reason.trim());
   }
 
+  // AS-5 (PRC-13, answer 2006): pausing and resuming from the live console, each with a reason the record keeps.
+  @Post(':id/pause')
+  @HttpCode(200)
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
+  pause(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PauseAttemptDto) {
+    return this.attemptsAdminService.pause(tenant, id, userId, dto.reason.trim(), dto.message?.trim() || null);
+  }
+
+  @Post(':id/resume')
+  @HttpCode(200)
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
+  resume(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ResumeAttemptDto) {
+    return this.attemptsAdminService.resume(tenant, id, userId, dto.reason.trim());
+  }
+
+  // AS-0: overturning the proctoring verdict (unblocking) asks for the second factor again.
   @Post(':id/unblock')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
   @SensitiveRoleAction()
+  @RequireStepUp()
   unblock(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.unblock(tenant, id, userId);
   }
 
+  // AS-0: excusing a candidate from proctoring overturns its verdict too.
   @Post(':id/proctoring-bypass')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
   @SensitiveRoleAction()
+  @RequireStepUp()
   bypassProctoring(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -50,14 +75,14 @@ export class AttemptsAdminController {
   }
 
   @Post(':id/proctoring-bypass/revoke')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
   @SensitiveRoleAction()
   revokeProctoringBypass(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.revokeProctoringBypass(tenant, id, userId);
   }
 
   @Post(':id/answers/:questionId/grade')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
   @SensitiveRoleAction()
   gradeCodeAnswer(
     @CurrentTenant() tenant: TenantContext,
@@ -69,15 +94,17 @@ export class AttemptsAdminController {
     return this.attemptsAdminService.gradeCodeAnswer(tenant, id, questionId, userId, dto.marksAwarded, dto.feedback);
   }
 
+  // AS-0: finishing the marking asks for the second factor again.
   @Post(':id/finalize-manual-grade')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
   @SensitiveRoleAction()
+  @RequireStepUp()
   finalizeManualGrade(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.finalizeManualGrade(tenant, id, userId);
   }
 
   @Post(':id/message')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
   sendMessage(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,
@@ -88,37 +115,39 @@ export class AttemptsAdminController {
   }
 
   @Get(':id/messages')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
   listMessages(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
     return this.attemptsAdminService.listMessages(tenant, id);
   }
 
   @Post(':id/reanalyze')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.proctor')
   reanalyze(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.reanalyze(tenant, userId, id);
   }
 
   @Get(':id/ai-insight')
   @RequirePermissions('results:view')
-  getInsight(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.attemptsAdminService.getInsight(tenant, id);
+  @ScopesResults()
+  getInsight(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @ResultsScopeOf() scope: ResultsScope) {
+    return this.attemptsAdminService.getInsight(tenant, id, scope);
   }
 
+  // A paid AI call: a writer's key, not a reader's (security fix).
   @Post(':id/ai-insight/regenerate')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
   regenerateInsight(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
     return this.attemptsAdminService.regenerateInsight(tenant, userId, id);
   }
 
   @Get(':id/answers/:questionId/code-review')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
   getCodeReview(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @Param('questionId') questionId: string) {
     return this.attemptsAdminService.getCodeReview(tenant, id, questionId);
   }
 
   @Post(':id/answers/:questionId/code-review/regenerate')
-  @RequirePermissions('exam:manage')
+  @RequireAnyPermission('exam:manage', 'asmt.evaluate')
   regenerateCodeReview(
     @CurrentTenant() tenant: TenantContext,
     @CurrentUserId() userId: string,

@@ -121,6 +121,9 @@ describe('MfaService', () => {
   beforeAll(() => {
     process.env.ORG_SECRETS_ENCRYPTION_KEY ??= 'a'.repeat(64);
     process.env.FRONTEND_URL = 'http://localhost:3000';
+    // A developer's apps/api/.env (WEBAUTHN_ORIGINS, WEBAUTHN_RP_ID) would win over FRONTEND_URL; these tests sign for localhost:3000.
+    delete process.env.WEBAUTHN_ORIGINS;
+    delete process.env.WEBAUTHN_RP_ID;
   });
 
   beforeEach(() => {

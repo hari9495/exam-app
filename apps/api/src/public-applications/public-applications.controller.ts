@@ -6,7 +6,7 @@ import { ParseResumeDto } from './dto/parse-resume.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
 import { UploadPortalResumeDto } from './dto/upload-portal-resume.dto';
 import { QuickApplyDto } from './dto/quick-apply.dto';
-import { UnsubscribeDto } from './dto/unsubscribe.dto';
+import { UnsubscribeDto, WhatsappOptInDto } from './dto/unsubscribe.dto';
 import { CareersAssistantDto } from './dto/careers-assistant.dto';
 import { PublicApplicationsThrottlerGuard } from './public-applications.throttler.guard';
 import { STRICT_WALK_IN_THROTTLE, PUBLIC_APPLY_THROTTLE } from '../rate-limit-tiers';
@@ -83,9 +83,29 @@ export class PublicApplicationsController {
     return this.service.getApplicationStatus(statusToken);
   }
 
+  // Answer 502: a New York City candidate asks for another process than the automated tool.
+  // Answer 561: "Message me on WhatsApp about jobs" on the status page (tick or untick).
+  @Post('applications/:statusToken/whatsapp')
+  @HttpCode(200)
+  setWhatsapp(@Param('statusToken') statusToken: string, @Body() dto: WhatsappOptInDto) {
+    return this.service.setStatusWhatsapp(statusToken, dto.optIn);
+  }
+
+  @Post('applications/:statusToken/alternative-process')
+  @HttpCode(200)
+  askAlternative(@Param('statusToken') statusToken: string) {
+    return this.service.askAlternative(statusToken);
+  }
+
   @Get('unsubscribe/:token')
   getUnsubscribe(@Param('token') token: string) {
     return this.service.getUnsubscribe(token);
+  }
+
+  @Post('unsubscribe/:token/whatsapp')
+  @HttpCode(200)
+  withdrawWhatsapp(@Param('token') token: string) {
+    return this.service.withdrawWhatsapp(token);
   }
 
   @Post('unsubscribe/:token')
@@ -115,6 +135,13 @@ export class PublicApplicationsController {
   @HttpCode(200)
   renewRetention(@Param('portalToken') portalToken: string) {
     return this.service.renewRetention(portalToken);
+  }
+
+  // Answer 691: the WhatsApp tick on the candidate page.
+  @Post('portal/:portalToken/whatsapp')
+  @HttpCode(200)
+  setPortalWhatsapp(@Param('portalToken') portalToken: string, @Body() dto: WhatsappOptInDto) {
+    return this.service.setPortalWhatsapp(portalToken, dto.optIn);
   }
 
   @Post('portal/:portalToken/talent-pool/withdraw')

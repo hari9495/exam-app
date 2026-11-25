@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { OrgStructureModule } from '../org-structure/org-structure.module';
 import { REDIS_CONNECTION, createRedisConnection } from './redis-connection';
 import { SCHEDULED_SWEEPS_QUEUE, createScheduledSweepsQueue } from './scheduled-sweeps.queue';
 import { ScheduledSweepsWorkerService } from './scheduled-sweeps.worker.service';
@@ -15,14 +16,26 @@ import { EmployeeHistoryModule } from '../employee-history/employee-history.modu
 import { PeopleModule } from '../people/people.module';
 import { AuthModule } from '../auth/auth.module';
 import { TalentModule } from '../talent/talent.module';
+import { TalentCrmModule } from '../talent-crm/talent-crm.module';
 import { InterviewingModule } from '../interviewing/interviewing.module';
+import { HiringModule } from '../hiring/hiring.module';
+import { VisitorsModule } from '../visitors/visitors.module';
+import { AccessModule } from '../access/access.module';
+import { HelpModule } from '../help/help.module';
+import { AssistantModule } from '../help/assistant/assistant.module';
+import { PlatformModule } from '../platform/platform.module';
 
 // Runs every recurring housekeeping sweep as a cron-driven BullMQ job scheduler (one dispatcher
 // worker), replacing the per-service unref'd setInterval timers. Imports each owning module for its
 // sweep/prune service; owns its own queue + worker reusing the shared Redis-connection factory
 // (mirrors HrisModule / BulkCandidateEmailModule).
+import { ProjectsModule } from '../projects/projects.module';
+import { QuestionsModule } from '../questions/questions.module';
+
 @Module({
   imports: [
+    ProjectsModule,
+    QuestionsModule,
     RemindersModule,
     ScheduledReportsModule,
     NotificationsModule,
@@ -36,7 +49,15 @@ import { InterviewingModule } from '../interviewing/interviewing.module';
     PeopleModule,
     AuthModule,
     TalentModule,
+    TalentCrmModule,
     InterviewingModule,
+    HiringModule,
+    VisitorsModule,
+    AccessModule,
+    HelpModule,
+    AssistantModule,
+    PlatformModule,
+    OrgStructureModule,
   ],
   providers: [
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },

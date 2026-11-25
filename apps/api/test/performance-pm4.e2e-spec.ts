@@ -69,7 +69,8 @@ describe('Performance batch PM4', () => {
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
-      ['admin2', 'A', 'org_admin', null],
+      // Founder 28 Oct 2026: only HR approves job changes, so the second admin also holds an HR approver role.
+      ['admin2', 'A', 'org_admin', ['employee.profile.view', 'employee.change.approve']],
       ['adminB', 'B', 'org_admin', null],
       ['head', 'A', 'panel', []],
       ['priya', 'A', 'panel', []],
@@ -261,8 +262,8 @@ describe('Performance batch PM4', () => {
     expect(own).toMatchObject({ status: 'acknowledged', finalScore: 4 });
     own = (await api('arjun', 'post', `/reviews/${ids.review}/disagree`).send({ text: 'The Madurai accounts were mine.' }).expect(200)).body;
     expect(own.disagreements).toEqual([expect.objectContaining({ status: 'open' })]);
-    await api('arjun', 'post', `/reviews/${ids.review}/disagree`).send({ text: 'Again' }).expect(409);
-    await api('priya', 'post', `/reviews/${ids.review}/disagree`).send({ text: 'Not mine' }).expect(404);
+    await api('arjun', 'post', `/reviews/${ids.review}/disagree`).send({ text: 'Again, the Madurai accounts were mine.' }).expect(409);
+    await api('priya', 'post', `/reviews/${ids.review}/disagree`).send({ text: 'Not mine to raise, but trying anyway.' }).expect(404);
     const list = (await api('adminA', 'get', `/cycles/${ids.cycle}/disagreements`).expect(200)).body;
     expect(list).toHaveLength(1);
     await api('adminA', 'post', `/disagreements/${list[0].id}/decide`).send({ status: 'upheld', hrNote: 'Accounts confirmed; the manager will look again.' }).expect(200);
@@ -274,7 +275,7 @@ describe('Performance batch PM4', () => {
     expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.review.reopened', entityId: ids.review } }))).toBe(1);
     // The window: a review released 40 days ago cannot be disagreed with.
     await inA((tx) => tx.review.updateMany({ where: { id: ids.halfArjun }, data: { status: 'released', releasedAt: new Date(Date.now() - 40 * 86_400_000) } }));
-    await api('arjun', 'post', `/reviews/${ids.halfArjun}/disagree`).send({ text: 'Too late' }).expect(409);
+    await api('arjun', 'post', `/reviews/${ids.halfArjun}/disagree`).send({ text: 'Too late, but I disagree all the same.' }).expect(409);
   });
 
   it('a manager change moves the open review to the new manager, keeps the old draft hidden, flags aligned goals (PM-4.07, D7)', async () => {

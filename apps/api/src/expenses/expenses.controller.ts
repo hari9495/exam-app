@@ -4,13 +4,14 @@ import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
 import { CategoryDto, EndDto, FxRatesDto, GstRegistrationDto, LimitsQueryDto, MileageRateDto, NewVersionDto, PerDiemRateDto, PolicyDto, TierDto } from './dto';
 import { ExpenseSetupService } from './setup.service';
 
 // Expenses batch E1 (M05-BUILD-DESIGN §18 "Setup", §16): company configuration under expense.policy.manage
-// (company-wide); categories, tiers and "my limits" are read by everyone who claims (implicit grant).
+// (company-wide), read also with expense.policy.view (HR, founder 3 Nov 2026); categories, tiers and "my limits" are read
+// by everyone who claims (implicit grant).
 @Controller('expenses')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ExpensesController {
@@ -21,7 +22,7 @@ export class ExpensesController {
   }
 
   @Get('setup-check')
-  @RequirePermissions('expense.policy.manage')
+  @RequireAnyPermission('expense.policy.manage', 'expense.policy.view')
   setupCheck(@CurrentTenant() ctx: TenantContext) {
     return this.setup.setupCheck(ctx);
   }
@@ -67,7 +68,7 @@ export class ExpensesController {
   }
 
   @Get('policies')
-  @RequirePermissions('expense.policy.manage')
+  @RequireAnyPermission('expense.policy.manage', 'expense.policy.view')
   policies(@CurrentTenant() ctx: TenantContext) {
     return this.setup.policies(ctx);
   }
@@ -91,7 +92,7 @@ export class ExpensesController {
   }
 
   @Get('rates')
-  @RequirePermissions('expense.policy.manage')
+  @RequireAnyPermission('expense.policy.manage', 'expense.policy.view')
   rates(@CurrentTenant() ctx: TenantContext) {
     return this.setup.rates(ctx);
   }
@@ -109,7 +110,7 @@ export class ExpensesController {
   }
 
   @Get('fx-rates')
-  @RequirePermissions('expense.policy.manage')
+  @RequireAnyPermission('expense.policy.manage', 'expense.policy.view')
   fxRates(@CurrentTenant() ctx: TenantContext) {
     return this.setup.fxRates(ctx);
   }
@@ -121,7 +122,7 @@ export class ExpensesController {
   }
 
   @Get('gst-registrations')
-  @RequirePermissions('expense.policy.manage')
+  @RequireAnyPermission('expense.policy.manage', 'expense.policy.view')
   gst(@CurrentTenant() ctx: TenantContext) {
     return this.setup.gstRegistrations(ctx);
   }

@@ -152,6 +152,8 @@ export class ComponentDto {
 
   @IsOptional() @IsBoolean() taxable?: boolean;
   @IsOptional() @IsBoolean() pfWage?: boolean;
+  /** B2: PF wage only while the rest of the PF wage is below the ceiling (needs pfWage). */
+  @IsOptional() @IsBoolean() pfBelowCeiling?: boolean;
   @IsOptional() @IsBoolean() esiWage?: boolean;
   @IsOptional() @IsBoolean() ptWage?: boolean;
   @IsOptional() @IsBoolean() gratuityWage?: boolean;
@@ -462,4 +464,88 @@ export class RuleDraftDto {
   @ArrayMaxSize(100)
   @IsObject({ each: true })
   golden!: { name: string; fn: string; input: Record<string, unknown>; expected: Record<string, unknown> }[];
+
+  /** Console C-1: what changed and why (shown to the reviewer). */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(500)
+  changeNote?: string;
+}
+
+/** Console C-1 (answer 1042): the drafter changes their draft; the statute, jurisdiction and version stay. */
+export class RuleUpdateDto {
+  @IsDateString(DATE)
+  validFrom!: string;
+
+  @IsOptional()
+  @IsDateString(DATE)
+  validTo?: string;
+
+  @IsObject()
+  values!: Record<string, unknown> & { kind: string };
+
+  @trim()
+  @IsString()
+  @Length(20, 500)
+  source!: string;
+
+  @IsIn(['OLD-ACT', 'CODE', 'IT-1961', 'IT-2025'])
+  lawVersion!: string;
+
+  @IsBoolean()
+  verify!: boolean;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsObject({ each: true })
+  golden!: { name: string; fn: string; input: Record<string, unknown>; expected: Record<string, unknown> }[];
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(500)
+  changeNote?: string;
+}
+
+/** Console C-1 (answer 1042): the reviewer asks for changes with a note the drafter reads. */
+export class RuleChangesDto {
+  @trim()
+  @IsString()
+  @Length(10, 500)
+  note!: string;
+}
+
+// ------------------------------------------------------------------------------------------ payroll budget (finance Home)
+
+export class BudgetQueryDto {
+  @IsUUID()
+  entityId!: string;
+
+  /** Financial year, e.g. 2026-27. */
+  @Matches(/^\d{4}-\d{2}$/)
+  taxYear!: string;
+}
+
+export class BudgetMonthDto {
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/)
+  month!: string;
+
+  /** Rupees; null clears the month. */
+  @IsOptional()
+  @Matches(MONEY)
+  amount!: string | null;
+}
+
+export class BudgetDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(12)
+  @ValidateNested({ each: true })
+  @Type(() => BudgetMonthDto)
+  months!: BudgetMonthDto[];
 }

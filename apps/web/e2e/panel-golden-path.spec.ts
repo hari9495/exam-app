@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import { skipPreV2Console } from './fixtures/pre-v2';
+import { addSectionWithQuestion } from './fixtures/sections';
 
 skipPreV2Console('panel-golden-path.spec.ts');
 
@@ -46,13 +47,13 @@ async function settleAttempt(page: import('@playwright/test').Page, token: strin
   });
   await page.goto(`/start?token=${token}`);
   await expect(page).toHaveURL(/\/welcome$/);
-  // The welcome page always shows the practice step first -- the exam title/Enable camera
+  // The welcome page always shows the practice step first -- the exam title/Turn on camera
   // only render once practice is skipped/completed.
   await page.getByRole('button', { name: /skip practice/i }).click();
   await expect(page.getByText(examTitle)).toBeVisible();
-  await page.getByRole('button', { name: 'Enable camera' }).click();
+  await page.getByRole('button', { name: 'Turn on camera' }).click();
   await page.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await page.getByRole('button', { name: 'Start exam' }).click();
+  await page.getByRole('button', { name: 'Start test' }).click();
   await expect(page).toHaveURL(/\/exam$/);
 
   await expect(page.getByText(questionText)).toBeVisible();
@@ -88,13 +89,7 @@ test('panel member views results, opens a candidate, compares, and exports', asy
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await expect(page.getByText('Section One')).toBeVisible();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /Panel path: 2 \+ 2\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /Panel path: 2 \+ 2\?/);
 
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);

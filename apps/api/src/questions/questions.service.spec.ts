@@ -1,10 +1,12 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { QuestionsService } from './questions.service';
 import { TenantPrismaService, BlobStorageService, AiApiKeyResolverService } from '@exam-platform/shared';
 import { JobsService } from '../jobs/jobs.service';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 import { AuditService } from '@exam-platform/shared';
+// Answer 2121: new drafts go into the review queue (its rules are tested in question-bank-followups.e2e-spec.ts).
+jest.mock('./bank/queue', () => ({ queueNewQuestion: jest.fn().mockResolvedValue({ duplicate: null, needsSecond: false }) }));
 
 // Direct-construction helper for tests that only care about aiGenerate's collaborators. Bypasses
 // Nest's (async) DI container so call sites can stay synchronous, and lets each test override just
@@ -466,12 +468,42 @@ describe('QuestionsService', () => {
     expect(result.tags).toEqual([{ id: 'tag-1', name: 'javascript' }]);
   });
 
+  // Answer 2121: the older update never changes an approved question or one in review (the bank's approval does).
+  it('refuses to change an approved question (409); the bank\'s approval passes approved and changes it', async () => {
+    const update = jest.fn().mockResolvedValue({ id: 'q-1', ...validDto, tags: [] });
+    const tx = {
+      question: { findFirst: jest.fn().mockResolvedValue({ id: 'q-1', status: 'active' }), update },
+      questionRevision: { findFirst: jest.fn().mockResolvedValue(null) },
+      questionOption: { deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
+      questionTag: { deleteMany: jest.fn() },
+      tag: { upsert: jest.fn().mockResolvedValue({ id: 'tag-new' }) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+    await expect(service.update(context, 'user-1', 'q-1', validDto)).rejects.toThrow(ConflictException);
+    expect(update).not.toHaveBeenCalled();
+    await service.update(context, 'user-1', 'q-1', validDto, { approved: true });
+    expect(update).toHaveBeenCalled();
+  });
+
+  it('negative: refuses to change a draft that is in review (409)', async () => {
+    const update = jest.fn();
+    const tx = {
+      question: { findFirst: jest.fn().mockResolvedValue({ id: 'q-1', status: 'draft' }), update },
+      questionRevision: { findFirst: jest.fn().mockResolvedValue({ id: 'r-1' }) },
+    };
+    tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
+    await expect(service.update(context, 'user-1', 'q-1', validDto)).rejects.toThrow(/in review/);
+    expect(update).not.toHaveBeenCalled();
+  });
+
   it('replaces a question\'s tags entirely on update, not merging with the prior set', async () => {
     const tx = {
       question: {
         findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
         update: jest.fn().mockResolvedValue({ id: 'q-1', ...validDto, tags: [] }),
       },
+      questionRevision: { findFirst: jest.fn().mockResolvedValue(null) },
+
       questionOption: { deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       questionTag: { deleteMany: jest.fn() },
       tag: { upsert: jest.fn().mockResolvedValue({ id: 'tag-new' }) },
@@ -505,6 +537,8 @@ describe('QuestionsService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
         update: jest.fn().mockResolvedValue({ id: 'q-1', ...dto, tags: [] }),
       },
+      questionRevision: { findFirst: jest.fn().mockResolvedValue(null) },
+
       questionOption: { deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       questionTag: { deleteMany: jest.fn() },
       tag: { upsert: jest.fn() },
@@ -533,6 +567,8 @@ describe('QuestionsService', () => {
           findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
           update: jest.fn().mockResolvedValue({ id: 'q-1', tags: [] }),
         },
+        questionRevision: { findFirst: jest.fn().mockResolvedValue(null) },
+
         questionOption: {
           deleteMany: jest.fn(),
           findMany: jest.fn().mockResolvedValue(
@@ -611,6 +647,8 @@ describe('QuestionsService', () => {
         findFirst: jest.fn().mockResolvedValue({ id: 'q-1', starterCode: 'function reverse(str) {\n  \n}' }),
         update: jest.fn().mockResolvedValue({ id: 'q-1', ...dto, starterCode: null, tags: [] }),
       },
+      questionRevision: { findFirst: jest.fn().mockResolvedValue(null) },
+
       questionOption: { deleteMany: jest.fn(), findMany: jest.fn().mockResolvedValue([]) },
       questionTag: { deleteMany: jest.fn() },
       tag: { upsert: jest.fn() },
@@ -770,23 +808,15 @@ describe('QuestionsService', () => {
   });
 
   describe('publish', () => {
-    it('publishes a draft question by setting status to active', async () => {
-      const tx = {
-        question: {
-          findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }),
-          update: jest.fn().mockResolvedValue({ id: 'q-1', status: 'active', tags: [] }),
-        },
-      };
+    // Answer 2121: the older publish never makes a question usable; it says to use the bank's review, and is audited.
+    it('refuses to publish (409): another person approves it in the question bank; the refusal is audited', async () => {
+      const update = jest.fn();
+      const tx = { question: { findFirst: jest.fn().mockResolvedValue({ id: 'q-1' }), update } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      const result = await service.publish(context, 'user-1', 'q-1');
-
-      expect(result.status).toBe('active');
-      expect(tx.question.update).toHaveBeenCalledWith({
-        where: { id: 'q-1' },
-        data: { status: 'active' },
-        include: { options: true, tags: { include: { tag: true } } },
-      });
+      await expect(service.publish(context, 'user-1', 'q-1')).rejects.toThrow(ConflictException);
+      await expect(service.publish(context, 'user-1', 'q-1')).rejects.toThrow(/another person approves it in the question bank/);
+      expect(update).not.toHaveBeenCalled();
     });
 
     it('throws NotFoundException when publishing a question that does not exist', async () => {

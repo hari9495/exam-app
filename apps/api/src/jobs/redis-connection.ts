@@ -56,3 +56,23 @@ export function createRedisConnection(): Redis {
   // worker already quit.
   return Object.assign(client, { onApplicationShutdown: () => client.disconnect() });
 }
+
+/**
+ * Resolves once a Redis client is connected, or after `ms` without it. A command sent before the connection is ready
+ * fails (offline queue off), or times out (the sign-in stores' 2 s command timeout) when connecting is slow, and the
+ * sign-in stores fail closed with 503: a fresh API (or e2e test app) could refuse its first sign-ins. Waiting at start
+ * closes that gap; after `ms` the app starts anyway (it is designed to run without Redis) and each command keeps its own
+ * fail-closed or fail-open handling for a real outage.
+ */
+export function whenReady(client: Pick<Redis, 'status' | 'once' | 'off'>, ms = 10_000): Promise<void> {
+  if (client.status === 'ready') return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      client.off('ready', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    client.once('ready', done);
+  });
+}

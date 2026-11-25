@@ -3,13 +3,13 @@ import { BellRing, Eye, GitMerge, Link2, ListChecks, MessagesSquare, Moon, Sciss
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { TextArea, TextField } from '../../components/inputs';
 import { Switch } from '../../components/choice';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
 import { Dialog } from '../../components/overlay';
-import { Card } from '../../components/shell';
+import { Card, DescriptionList } from '../../components/shell';
 import { X } from 'lucide-react';
 import { useRun } from '../org/org-kit';
 import { MessageBody, STATE_LABEL, minutesText, when } from './desk-kit';
@@ -57,10 +57,37 @@ const html = (text: string) => `<p>${text.replace(/&/g, '&amp;').replace(/</g, '
 /** "2026-10-09T15:00" in the viewer's zone, for datetime-local inputs. */
 const localInput = (d: Date) => new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 
+/** Answer 1648: the ticket's timing for agents, in business time (the desk calendar, as the targets above). */
+export function TimingFacts({ timing }: { timing: NonNullable<TicketWork['timing']> }) {
+  const span = (s: number) => (s < 60 ? 'under a minute' : minutesText(Math.round(s / 60)));
+  return (
+    <section aria-label="Ticket timing" className="yx-ops-stack" data-gap="sm">
+      <strong>Timing</strong>
+      <DescriptionList
+      items={[
+        { label: 'Average wait for a reply', value: timing.averageReplySeconds == null ? 'No agent reply yet' : `${span(timing.averageReplySeconds)} (${timing.agentReplies} ${timing.agentReplies === 1 ? 'reply' : 'replies'})` },
+        { label: 'On hold', value: timing.onHoldSeconds ? span(timing.onHoldSeconds) : 'Never' },
+        { label: 'Moved', value: timing.moves ? `${timing.moves} ${timing.moves === 1 ? 'time' : 'times'} (queue or owner)` : 'Never' },
+        { label: 'Agents involved', value: timing.agents.length ? timing.agents.join(', ') : 'None yet' },
+      ]}
+      />
+    </section>
+  );
+}
+
 /** US-G-016: each target with its running, paused and missed stretches, the reasons, and what a lead may approve. */
 export function SlaCard({ work, canWork, onBreachReason, onExclude }: { work: TicketWork; canWork: boolean; onBreachReason: TicketWorkProps['onBreachReason']; onExclude: TicketWorkProps['onExclude'] }) {
   const { busy, error, run } = useRun();
   const [reason, setReason] = useState<Record<string, string>>({});
+  // Never disabled (founder rule): a reason pressed too short shows its error and takes focus.
+  const [short, setShort] = useState<string | null>(null);
+  const tooShort = (key: string) => {
+    if ((reason[key] ?? '').trim().length >= 3) return false;
+    setShort(key);
+    document.getElementById(`sla-why-${key}`)?.focus();
+    return true;
+  };
+  const shortError = (key: string) => (short === key && (reason[key] ?? '').trim().length < 3 ? 'Say why (at least 3 letters).' : null);
   const shown = work.sla.filter((x) => x.state !== 'cancelled' || x.breached);
   return (
     <Card title="Response targets">
@@ -97,16 +124,20 @@ export function SlaCard({ work, canWork, onBreachReason, onExclude }: { work: Ti
                   {x.excluded && x.exclusionReason && <span className="yx-ops-muted">Left out because: {x.exclusionReason}</span>}
                   {x.breached && canWork && !x.breachReason && (
                     <span className="yx-ops-row">
-                      <TextField size="sm" aria-label={`Why ${x.label} was missed`} placeholder="Why was it missed?" value={reason[x.id] ?? ''} onChange={(v) => setReason({ ...reason, [x.id]: v })} maxLength={500} />
-                      <Button size="sm" disabled={(reason[x.id] ?? '').trim().length < 3} loading={busy === `r-${x.id}`} onClick={() => void run(`r-${x.id}`, () => onBreachReason(x.id, reason[x.id].trim()))}>
+                      <FormField id={`sla-why-${x.id}`} label={`Why ${x.label} was missed`} hideLabel error={shortError(x.id)}>
+                        <TextField size="sm" placeholder="Why was it missed?" value={reason[x.id] ?? ''} onChange={(v) => setReason({ ...reason, [x.id]: v })} maxLength={500} />
+                      </FormField>
+                      <Button size="sm" loading={busy === `r-${x.id}`} onClick={() => !tooShort(x.id) && void run(`r-${x.id}`, () => onBreachReason(x.id, reason[x.id].trim()))}>
                         Save reason
                       </Button>
                     </span>
                   )}
                   {x.breached && work.canExclude && !x.excluded && (
                     <span className="yx-ops-row">
-                      <TextField size="sm" aria-label={`Why leave ${x.label} out`} placeholder="Why leave it out of reports?" value={reason[`e${x.id}`] ?? ''} onChange={(v) => setReason({ ...reason, [`e${x.id}`]: v })} maxLength={500} />
-                      <Button size="sm" disabled={(reason[`e${x.id}`] ?? '').trim().length < 3} loading={busy === `e-${x.id}`} onClick={() => void run(`e-${x.id}`, () => onExclude(x.id, reason[`e${x.id}`].trim()))}>
+                      <FormField id={`sla-why-e${x.id}`} label={`Why leave ${x.label} out`} hideLabel error={shortError(`e${x.id}`)}>
+                        <TextField size="sm" placeholder="Why leave it out of reports?" value={reason[`e${x.id}`] ?? ''} onChange={(v) => setReason({ ...reason, [`e${x.id}`]: v })} maxLength={500} />
+                      </FormField>
+                      <Button size="sm" loading={busy === `e-${x.id}`} onClick={() => !tooShort(`e${x.id}`) && void run(`e-${x.id}`, () => onExclude(x.id, reason[`e${x.id}`].trim()))}>
                         Leave out of reports
                       </Button>
                     </span>
@@ -117,6 +148,7 @@ export function SlaCard({ work, canWork, onBreachReason, onExclude }: { work: Ti
           })}
         </ul>
       )}
+      {work.timing && <TimingFacts timing={work.timing} />}
     </Card>
   );
 }
@@ -128,6 +160,7 @@ export function TasksCard({ ticket, detail, work, meId, onAddTask, onUpdateTask 
   const [who, setWho] = useState<string | null>(null);
   const [group, setGroup] = useState<string | null>(null);
   const [due, setDue] = useState('');
+  const taskEarly = useTooEarly(!title.trim() ? [{ fieldId: 'task-title', message: 'Say what needs doing.' }] : []);
   const tasks = work?.tasks ?? [];
   const people = detail.members.filter((m) => m.active && m.role !== 'admin');
   const open = tasks.filter((k) => k.state === 'open' || k.state === 'in_progress').length;
@@ -164,7 +197,7 @@ export function TasksCard({ ticket, detail, work, meId, onAddTask, onUpdateTask 
         )}
         {ticket.canWork && (
           <>
-            <FormField label="New task">
+            <FormField id="task-title" label="New task" error={taskEarly.errorOf('task-title')}>
               <TextField size="sm" value={title} onChange={setTitle} maxLength={200} placeholder="What needs doing" />
             </FormField>
             <span className="yx-ops-row">
@@ -175,9 +208,9 @@ export function TasksCard({ ticket, detail, work, meId, onAddTask, onUpdateTask 
             <div className="yx-ops-row">
               <Button
                 size="sm"
-                disabled={!title.trim()}
                 loading={busy === 'add'}
                 onClick={() =>
+                  !taskEarly.stop() &&
                   void run('add', async () => {
                     await onAddTask({ title: title.trim(), ...(who ? { assigneeUserId: who } : {}), ...(group ? { groupId: group } : {}), ...(due ? { dueAt: new Date(due).toISOString() } : {}) });
                     setTitle('');
@@ -210,7 +243,8 @@ export function FamilyCard(p: Pick<TicketWorkProps, 'ticket' | 'work' | 'onFindT
       {b.number} · {b.subject}
     </button>
   );
-  const search = () => void run('find', async () => setFound((await p.onFindTicket(find.trim())).filter((x) => x.id !== t.id)));
+  const findEarly = useTooEarly(!find.trim() ? [{ fieldId: 'fam-find', message: 'Type a ticket number or words from its subject.' }] : []);
+  const search = () => !findEarly.stop() && void run('find', async () => setFound((await p.onFindTicket(find.trim())).filter((x) => x.id !== t.id)));
   return (
     <Card title="Related tickets">
       <div className="yx-ops-stack" data-gap="sm">
@@ -242,10 +276,10 @@ export function FamilyCard(p: Pick<TicketWorkProps, 'ticket' | 'work' | 'onFindT
         {t.canWork && (
           <>
             <Switch label="This is a tracker" description="Tickets linked as “tracked by” get one message and are solved when it is." checked={Boolean(t.tracker)} onChange={(v) => void run('tracker', () => p.onSetTracker(v))} />
-            <FormField label="Find a ticket" helper="Its number or words from its subject">
+            <FormField id="fam-find" label="Find a ticket" helper="Its number or words from its subject" error={findEarly.errorOf('fam-find')}>
               <span className="yx-ops-row">
                 <TextField size="sm" value={find} onChange={setFind} onKeyDown={(e) => e.key === 'Enter' && find.trim() && search()} />
-                <Button size="sm" disabled={!find.trim()} loading={busy === 'find'} onClick={search}>
+                <Button size="sm" loading={busy === 'find'} onClick={search}>
                   Find
                 </Button>
               </span>
@@ -326,6 +360,7 @@ function SplitDialog({ open, onOpenChange, ticket, onSplit }: { open: boolean; o
   const [messageId, setMessageId] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
   const { busy, error, run } = useRun();
+  const early = useTooEarly([...(!messageId ? [{ fieldId: 'split-msg', message: 'Choose the message to start from.' }] : []), ...(!subject.trim() ? [{ fieldId: 'split-subject', message: 'Write a subject for the new ticket.' }] : [])]);
   return (
     <Dialog
       open={open}
@@ -335,7 +370,7 @@ function SplitDialog({ open, onOpenChange, ticket, onSplit }: { open: boolean; o
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!messageId || !subject.trim()} loading={busy === 'split'} onClick={() => void run('split', async () => { await onSplit({ messageId: messageId!, subject: subject.trim() }); onOpenChange(false); })}>
+          <Button variant="primary" loading={busy === 'split'} onClick={() => !early.stop() && void run('split', async () => { await onSplit({ messageId: messageId!, subject: subject.trim() }); onOpenChange(false); })}>
             Make the new ticket
           </Button>
         </>
@@ -343,10 +378,10 @@ function SplitDialog({ open, onOpenChange, ticket, onSplit }: { open: boolean; o
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-        <FormField label="Start from this message" required>
+        <FormField id="split-msg" label="Start from this message" required error={early.errorOf('split-msg')}>
           <Select value={messageId} onChange={setMessageId} options={replies.map((m) => ({ value: m.id, label: `${m.author} · ${when(m.createdAt)}`, description: m.bodyHtml.replace(/<[^>]*>/g, ' ').slice(0, 80) }))} />
         </FormField>
-        <FormField label="Subject of the new ticket" required>
+        <FormField id="split-subject" label="Subject of the new ticket" required error={early.errorOf('split-subject')}>
           <TextField value={subject} onChange={setSubject} maxLength={200} />
         </FormField>
       </div>
@@ -363,6 +398,24 @@ export function SideCard(p: Pick<TicketWorkProps, 'ticket' | 'work' | 'desks' | 
   const [deskId, setDeskId] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [reply, setReply] = useState<Record<string, string>>({});
+  const [blank, setBlank] = useState<string | null>(null);
+  const startEarly = useTooEarly([
+    ...(!subject.trim() ? [{ fieldId: 'side-subject', message: 'Write a subject.' }] : []),
+    ...(channel === 'child_ticket' && !deskId ? [{ fieldId: 'side-desk', message: 'Choose the team.' }] : []),
+    ...(!text.trim() ? [{ fieldId: 'side-text', message: 'Write the message.' }] : []),
+  ]);
+  // Never disabled (founder rule): an empty thread reply shows its error and takes focus.
+  const sendReply = (id: string) => {
+    if (!(reply[id] ?? '').trim()) {
+      setBlank(id);
+      document.getElementById(`side-reply-${id}`)?.focus();
+      return;
+    }
+    void run(`m-${id}`, async () => {
+      await p.onSideMessage(id, html(reply[id].trim()));
+      setReply({ ...reply, [id]: '' });
+    });
+  };
   const t = p.ticket;
   const threads = p.work?.sideConversations ?? [];
   const canWrite = t.canWork || t.canNote;
@@ -395,8 +448,10 @@ export function SideCard(p: Pick<TicketWorkProps, 'ticket' | 'work' | 'desks' | 
             ))}
             {s.channel === 'note_thread' && s.state === 'open' && canWrite && (
               <span className="yx-ops-row">
-                <TextField size="sm" aria-label={`Write in ${s.subject}`} value={reply[s.id] ?? ''} onChange={(v) => setReply({ ...reply, [s.id]: v })} />
-                <Button size="sm" disabled={!(reply[s.id] ?? '').trim()} loading={busy === `m-${s.id}`} onClick={() => void run(`m-${s.id}`, async () => { await p.onSideMessage(s.id, html(reply[s.id].trim())); setReply({ ...reply, [s.id]: '' }); })}>
+                <FormField id={`side-reply-${s.id}`} label={`Write in ${s.subject}`} hideLabel error={blank === s.id && !(reply[s.id] ?? '').trim() ? 'Write the message first.' : null}>
+                  <TextField size="sm" value={reply[s.id] ?? ''} onChange={(v) => setReply({ ...reply, [s.id]: v })} />
+                </FormField>
+                <Button size="sm" loading={busy === `m-${s.id}`} onClick={() => sendReply(s.id)}>
                   Send
                 </Button>
                 {t.canWork && (
@@ -411,7 +466,7 @@ export function SideCard(p: Pick<TicketWorkProps, 'ticket' | 'work' | 'desks' | 
         {t.canWork && (
           <>
             <Segment label="Start" options={[{ value: 'note_thread', label: 'Internal thread' }, { value: 'child_ticket', label: 'Ask another team' }]} value={channel} onChange={setChannel} />
-            <FormField label="Subject" required>
+            <FormField id="side-subject" label="Subject" required error={startEarly.errorOf('side-subject')}>
               <TextField size="sm" value={subject} onChange={setSubject} maxLength={200} />
             </FormField>
             {channel === 'note_thread' ? (
@@ -419,19 +474,19 @@ export function SideCard(p: Pick<TicketWorkProps, 'ticket' | 'work' | 'desks' | 
                 <TextField size="sm" value={withWhom} onChange={setWithWhom} maxLength={200} placeholder="e.g. Network team" />
               </FormField>
             ) : (
-              <FormField label="Team (desk)" required helper="A child ticket is raised there with you as its requester.">
+              <FormField id="side-desk" label="Team (desk)" required error={startEarly.errorOf('side-desk')} helper="A child ticket is raised there with you as its requester.">
                 <Select size="sm" value={deskId} onChange={setDeskId} options={p.desks.filter((d) => d.audience === 'employee' && d.status === 'active').map((d) => ({ value: d.id, label: d.name }))} />
               </FormField>
             )}
-            <FormField label="Message" required>
+            <FormField id="side-text" label="Message" required error={startEarly.errorOf('side-text')}>
               <TextArea value={text} onChange={setText} rows={3} maxLength={20000} />
             </FormField>
             <div className="yx-ops-row">
               <Button
                 size="sm"
-                disabled={!subject.trim() || !text.trim() || (channel === 'child_ticket' && !deskId)}
                 loading={busy === 'start'}
                 onClick={() =>
+                  !startEarly.stop() &&
                   void run('start', async () => {
                     await p.onStartSide({ channel, subject: subject.trim(), bodyHtml: html(text.trim()), ...(channel === 'note_thread' && withWhom.trim() ? { withWhom: withWhom.trim() } : {}), ...(channel === 'child_ticket' ? { deskId: deskId! } : {}) });
                     setSubject('');
@@ -455,6 +510,7 @@ export function RemindCard(p: Pick<TicketWorkProps, 'work' | 'onRemind' | 'onSno
   const { busy, error, run } = useRun();
   const [at, setAt] = useState(localInput(new Date(Date.now() + 3_600_000)));
   const [note, setNote] = useState('');
+  const atEarly = useTooEarly(!at ? [{ fieldId: 'rem-at', message: 'Choose when.' }] : []);
   const mine = p.work?.reminders ?? [];
   return (
     <Card title="Remind me">
@@ -472,17 +528,17 @@ export function RemindCard(p: Pick<TicketWorkProps, 'work' | 'onRemind' | 'onSno
             </Button>
           </span>
         ))}
-        <FormField label="When">
+        <FormField id="rem-at" label="When" error={atEarly.errorOf('rem-at')}>
           <TextField size="sm" type="datetime-local" value={at} onChange={setAt} />
         </FormField>
         <FormField label="Note" optional>
           <TextField size="sm" value={note} onChange={setNote} maxLength={300} />
         </FormField>
         <span className="yx-ops-row">
-          <Button size="sm" icon={BellRing} disabled={!at} loading={busy === 'remind'} onClick={() => void run('remind', async () => { await p.onRemind(new Date(at).toISOString(), note.trim()); setNote(''); })}>
+          <Button size="sm" icon={BellRing} loading={busy === 'remind'} onClick={() => !atEarly.stop() && void run('remind', async () => { await p.onRemind(new Date(at).toISOString(), note.trim()); setNote(''); })}>
             Remind me
           </Button>
-          <Button size="sm" icon={Moon} disabled={!at} loading={busy === 'snooze'} onClick={() => void run('snooze', () => p.onSnooze(new Date(at).toISOString()))}>
+          <Button size="sm" icon={Moon} loading={busy === 'snooze'} onClick={() => !atEarly.stop() && void run('snooze', () => p.onSnooze(new Date(at).toISOString()))}>
             Snooze until then
           </Button>
         </span>
@@ -539,6 +595,14 @@ export function ResolveDialog({ open, onOpenChange, ticket, codes, required, lin
   const [message, setMessage] = useState('');
   const { busy, error, run } = useRun();
   const active = codes.filter((c) => c.active);
+  const early = useTooEarly(
+    required
+      ? [
+          ...(!code ? [{ fieldId: 'res-code', message: active.length ? 'Choose the resolution code.' : 'This desk has no resolution codes yet. Ask a desk admin to add one.' }] : []),
+          ...(!note.trim() ? [{ fieldId: 'res-note', message: 'Say what fixed it.' }] : []),
+        ]
+      : [],
+  );
   return (
     <Dialog
       open={open}
@@ -550,9 +614,8 @@ export function ResolveDialog({ open, onOpenChange, ticket, codes, required, lin
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={required && (!code || !note.trim())}
             loading={busy === 'resolve'}
-            onClick={() => void run('resolve', async () => { await onResolve({ ...(code ? { resolutionCode: code } : {}), ...(note.trim() ? { resolutionNote: note.trim() } : {}), ...(message.trim() ? { linkedReplyHtml: html(message.trim()) } : {}) }); onOpenChange(false); })}
+            onClick={() => !early.stop() && void run('resolve', async () => { await onResolve({ ...(code ? { resolutionCode: code } : {}), ...(note.trim() ? { resolutionNote: note.trim() } : {}), ...(message.trim() ? { linkedReplyHtml: html(message.trim()) } : {}) }); onOpenChange(false); })}
           >
             Resolve
           </Button>
@@ -561,10 +624,10 @@ export function ResolveDialog({ open, onOpenChange, ticket, codes, required, lin
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger">{error}</InlineAlert>}
-        <FormField label="Resolution code" required={required} optional={!required}>
+        <FormField id="res-code" label="Resolution code" required={required} optional={!required} error={early.errorOf('res-code')}>
           {active.length ? <Select value={code} onChange={setCode} clearable={!required} options={active.map((c) => ({ value: c.code, label: c.label }))} /> : <p className="yx-ops-muted">This desk has no codes yet.</p>}
         </FormField>
-        <FormField label="What fixed it" required={required} optional={!required}>
+        <FormField id="res-note" label="What fixed it" required={required} optional={!required} error={early.errorOf('res-note')}>
           <TextArea value={note} onChange={setNote} rows={3} maxLength={2000} />
         </FormField>
         {ticket.tracker && linked > 0 && (
@@ -583,6 +646,7 @@ export function EscalateDialog({ open, onOpenChange, ticket, detail, onEscalate 
   const [group, setGroup] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const { busy, error, run } = useRun();
+  const escEarly = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'esc-reason', message: 'Say why it moves (at least 3 letters).' }] : []);
   const groups = detail.groups.filter((g) => g.active && (!g.tier || g.tier === tier));
   return (
     <Dialog
@@ -593,7 +657,7 @@ export function EscalateDialog({ open, onOpenChange, ticket, detail, onEscalate 
       footer={
         <>
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={reason.trim().length < 3} loading={busy === 'esc'} onClick={() => void run('esc', async () => { await onEscalate({ tier, ...(group ? { groupId: group } : {}), reason: reason.trim() }); onOpenChange(false); })}>
+          <Button variant="primary" loading={busy === 'esc'} onClick={() => !escEarly.stop() && void run('esc', async () => { await onEscalate({ tier, ...(group ? { groupId: group } : {}), reason: reason.trim() }); onOpenChange(false); })}>
             Move to {tier}
           </Button>
         </>
@@ -607,7 +671,7 @@ export function EscalateDialog({ open, onOpenChange, ticket, detail, onEscalate 
         <FormField label="Hand to group" optional>
           <Select value={group} onChange={setGroup} clearable options={groups.map((g) => ({ value: g.id, label: g.name }))} placeholder="Keep the group" />
         </FormField>
-        <FormField label="Reason" required>
+        <FormField id="esc-reason" label="Reason" required error={escEarly.errorOf('esc-reason')}>
           <TextField value={reason} onChange={setReason} maxLength={500} />
         </FormField>
       </div>

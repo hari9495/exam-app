@@ -99,7 +99,11 @@ describe('Payroll batch 5a', () => {
       const created = await prisma.organization.create({ data: { name: `Pay5A Org ${k}`, slug: `pay5a-${k.toLowerCase()}-${run}`, planId } });
       org[k] = { id: created.id, slug: created.slug };
     }
-    const template = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)!.permissions;
+    // Founder 21 Oct 2026 (option A): only HR changes pay. These pay tests' payroll fixture also plays the HR person who
+    // sets the pay (the job-change key); payroll itself is refused a pay change (people-increment.e2e-spec.ts).
+    // Founder 28 Oct 2026: only HR approves job changes; the approver fixture also plays the HR approver who sees pay
+    // (payroll itself is refused: employee-history.e2e-spec.ts).
+    const template = (key: string) => [...ROLE_TEMPLATES.find((t) => t.key === key)!.permissions, ...(key === 'payroll_admin' ? ['employee.change.manage'] : key === 'payroll_approver' ? ['employee.change.approve'] : [])];
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
@@ -170,7 +174,7 @@ describe('Payroll batch 5a', () => {
     expect(rows.length).toBeGreaterThanOrEqual(13);
     for (const r of rows) expect(r).toMatchObject({ t: r.t, forced: true, tenant: true, support: true });
     // One person's pay, or entity pay files: the second guard, with no super-admin escape in it.
-    const guarded = ['exchange_file_links', 'exchange_files', 'pay_carry_forwards', 'pay_document_counters', 'pay_document_nominees', 'pay_documents', 'pay_import_batches', 'payroll_runs', 'payroll_withholds'];
+    const guarded = ['exchange_file_links', 'exchange_files', 'pay_carry_forwards', 'pay_document_counters', 'pay_document_nominees', 'pay_documents', 'pay_import_batches', 'payroll_budgets', 'payroll_runs', 'payroll_withholds'];
     expect(rows.filter((r) => r.guard).map((r) => r.t)).toEqual(guarded);
     const quals = await prisma.$queryRaw<{ q: string }[]>`SELECT pg_get_expr(p.polqual, p.polrelid) AS q FROM pg_policy p WHERE p.polname = 'pay_guard'`;
     for (const q of quals) expect(q.q).not.toMatch(/super_admin/);
@@ -475,10 +479,87 @@ describe('Payroll batch 5a', () => {
       }
       const s2 = (await request(server()).post(`/api/v1/public/pay/${org.A.slug}/portal/verify`).send({ email: `leaver.home@pay5a-${run}.test`, code: home }).expect(200)).body;
       expect((await request(server()).get(`/api/v1/public/pay/${org.A.slug}/portal/documents`).set('X-Pay-Portal', s2.token).expect(200)).body).toHaveLength(1);
+      // T9-02: who the session is for, and when access ends (7 years after the last day).
+      const lastDay = addDays(today, -3);
+      expect((await request(server()).get(`/api/v1/public/pay/${org.A.slug}/portal/me`).set('X-Pay-Portal', s2.token).expect(200)).body).toMatchObject({ nominee: null, lastDay, accessUntil: `${Number(lastDay.slice(0, 4)) + 7}${lastDay.slice(4)}` });
+      await request(server()).get(`/api/v1/public/pay/${org.A.slug}/portal/me`).expect(401);
+    });
+
+    it('the alumni login shows the same payslips by the same rules, and never someone else’s (T9-02)', async () => {
+      const home = `leaver.home@pay5a-${run}.test`;
+      email.send.mockClear();
+      await request(server()).post(`/api/v1/portal/alumni/${org.A.slug}/code`).send({ email: home }).expect(200);
+      let code = '';
+      for (let i = 0; i < 50 && !code; i++) {
+        const m = email.send.mock.calls.find(([x]) => x.to === home);
+        if (m) code = m[0].subject.slice(0, 6);
+        else await new Promise((r) => setTimeout(r, 100));
+      }
+      const t = (await request(server()).post(`/api/v1/portal/alumni/${org.A.slug}/verify`).send({ email: home, code }).expect(200)).body.token as string;
+      const alumni = (path: string) => request(server()).get(`/api/v1/portal/alumni/${org.A.slug}${path}`).set('X-Alumni-Portal', t);
+      const pay = (await alumni('/pay-documents').expect(200)).body as { id: string; kind: string }[];
+      expect(pay).toHaveLength(1);
+      expect((await alumni(`/pay-documents/${pay[0].id}/file`).expect(200)).headers['content-type']).toMatch(/pdf/);
+      // Another person's payslip (the employee's), even with its id: not found.
+      await alumni(`/pay-documents/${ids.doc}/file`).expect(404);
+      await request(server()).get(`/api/v1/portal/alumni/${org.A.slug}/pay-documents`).expect(401);
+      await request(server()).get(`/api/v1/portal/alumni/${org.B.slug}/pay-documents`).set('X-Alumni-Portal', t).expect(401);
     });
   });
 
   // ------------------------------------------------------------------------------------------ audit (PAY-1.05 … 1.08)
+
+  // ------------------------------------------------------------------------------------------ late corrections, round 2
+
+  describe('late corrections: a fixed choice (2282) and the leaver\'s F&F (2283)', () => {
+    const correct = (employeeId: string, on: string, shouldBe: string) =>
+      api('hrAdmin', 'post', '/payroll/corrections').send({ employeeId, on, kind: 'attendance', shouldBe, reason: 'Recorded late by the site office' });
+    const approve = async (id: string) => {
+      const task = await inA((tx) => tx.wfTask.findFirstOrThrow({ where: { organizationId: org.A.id, assigneeUserId: users.payAdmin, status: 'open' }, orderBy: { createdAt: 'desc' } }));
+      await api('payAdmin', 'post', `/workflow/approvals/tasks/${task.id}/decide`).send({ decision: 'approve' }).expect(200);
+      return inA((tx) => tx.payCorrection.findFirstOrThrow({ where: { id } }));
+    };
+
+    it('2282: what the day should have been is present, half day, unpaid or a company leave type; anything else is refused', async () => {
+      await inA((tx) => tx.leaveType.create({ data: { organizationId: org.A.id, code: 'LWP', name: 'Leave without pay', kind: 'lop', paid: false } }));
+      for (const bad of ['Present all day', 'on_leave', 'absent', 'leave:', 'leave:CL; drop'])
+        expect((await correct(ids.empEmp, `${lockMonth}-03`, bad).expect(400)).body.message).toEqual(expect.arrayContaining([expect.stringMatching(/Choose what the day should have been/)]));
+      expect((await correct(ids.empEmp, `${lockMonth}-03`, 'leave:NOPE').expect(400)).body.message).toMatch(/not one of your company/);
+      expect(await inA((tx) => tx.payCorrection.count({ where: { employeeId: ids.empEmp, workOn: new Date(`${lockMonth}-03T00:00:00Z`) } }))).toBe(0);
+      const ok = (await correct(ids.empEmp, `${lockMonth}-03`, 'leave:lwp').expect(201)).body;
+      expect((await inA((tx) => tx.payCorrection.findFirstOrThrow({ where: { id: ok.id } }))).change).toEqual({ shouldBe: 'leave:lwp' });
+      // Payroll's own list of leave types for the late request; another company's person and an employee get none.
+      expect((await api('payAdmin', 'get', '/payroll/leave-types').expect(200)).body).toEqual(expect.arrayContaining([{ code: 'LWP', name: 'Leave without pay' }]));
+      await api('emp', 'get', '/payroll/leave-types').expect(403);
+      expect(((await api('payAdminB', 'get', '/payroll/leave-types').expect(200)).body as { code: string }[]).some((t) => t.code === 'LWP')).toBe(false);
+    });
+
+    it('2283: for someone who left in the locked month the correction goes to their F&F; once settled it shows as settled (2300)', async () => {
+      // The leaver's last day was in the locked month, so the next open payroll (this month) no longer pays them.
+      await inA((tx) => tx.employment.updateMany({ where: { organizationId: org.A.id, employeeId: ids.leaverEmp }, data: { exitedOn: new Date(`${lockMonth}-20T00:00:00Z`) } }));
+      const leaving = (await correct(ids.leaverEmp, `${lockMonth}-11`, 'present').expect(201)).body;
+      const done = await approve(leaving.id);
+      expect(done.targetPeriod!.toISOString().slice(0, 7)).toBe(lockMonth);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.correction.approved', entityId: leaving.id, metadataJson: { contains: '"fnf":true' } } }))).toBe(1);
+      // Negative: someone still employed is paid in the next open month as before, and is not waiting for an F&F.
+      const staying = (await correct(ids.empEmp, `${lockMonth}-12`, 'present').expect(201)).body;
+      expect((await approve(staying.id)).targetPeriod!.toISOString().slice(0, 7)).not.toBe(lockMonth);
+      const waiting = (await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body as { id: string; employeeId: string; on: string; month: string; fnfId: string | null }[];
+      expect(waiting).toEqual([expect.objectContaining({ id: leaving.id, employeeId: ids.leaverEmp, on: `${lockMonth}-11`, month: lockMonth, fnfId: null })]);
+      await api('emp', 'get', '/payroll/corrections/waiting-fnf').expect(403);
+      expect((await api('payAdminB', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body).toEqual([]);
+      // The full and final settlement is settled before it was paid.
+      const em = await inA((tx) => tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: ids.leaverEmp } }));
+      const person = await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: ids.leaverEmp } }));
+      await inA(async (tx) => {
+        await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entityA}}`}, true)`;
+        const exit = await tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: em.id, employeeId: ids.leaverEmp, personId: person.personId!, exitType: 'resignation', initiatedBy: 'employee', reasonText: 'Moved city', submittedOn: new Date(`${lockMonth}-01T00:00:00Z`), noticePeriod: '0d', standardLwd: new Date(`${lockMonth}-20T00:00:00Z`), approvedLwd: new Date(`${lockMonth}-20T00:00:00Z`), status: 'accepted', acceptedAt: new Date() } });
+        await tx.fnfSettlement.create({ data: { organizationId: org.A.id, legalEntityId: ids.entityA, employeeId: ids.leaverEmp, employmentId: em.id, exitCaseId: exit.id, exitType: 'resignation', inputRevision: 1, lwd: new Date(`${lockMonth}-20T00:00:00Z`), deadline: new Date(`${lockMonth}-22T00:00:00Z`), status: 'settled' } });
+      });
+      // Answer 2300: settled first, it stays listed as settled until payroll adds it to an off-cycle correction run.
+      expect((await api('payAdmin', 'get', '/payroll/corrections/waiting-fnf').expect(200)).body).toEqual([expect.objectContaining({ id: leaving.id, state: 'settled' })]);
+    });
+  });
 
   describe('the audit log', () => {
     it('search in scope with masked pay values, a business-only timeline and an audited export', async () => {

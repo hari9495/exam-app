@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { YxToasts } from './yx-toasts';
 
 export const metadata: Metadata = { title: { absolute: 'YukthiX', template: '%s | YukthiX' } };
 
@@ -7,7 +8,8 @@ export default function YxLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="yx-root">
       {/* No language picker on sign-in until YukthiX's own screens are translated (founder, 19 Oct 2026). */}
-      {children}
+      {/* Public pages (check my report, join, portals) sit outside the signed-in layout; they need the kit toasts too. */}
+      <YxToasts>{children}</YxToasts>
     </div>
   );
 }

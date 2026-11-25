@@ -27,7 +27,7 @@ describe('Performance batch PM3', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'head' | 'priya' | 'arjun' | 'sita' | 'hr';
+  type Who = 'adminA' | 'adminB' | 'head' | 'priya' | 'arjun' | 'sita' | 'hr' | 'rev';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const emp = {} as Record<string, string>;
@@ -66,6 +66,7 @@ describe('Performance batch PM3', () => {
       ['arjun', 'A', 'panel', []],
       ['sita', 'A', 'panel', []],
       ['hr', 'A', 'panel', ['perf.concern.seal']],
+      ['rev', 'A', 'panel', ['perf.review.view']],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -121,6 +122,18 @@ describe('Performance batch PM3', () => {
     await api('sita', 'post', `/feedback/${b.id}/withdraw`).expect(200);
     await api('sita', 'post', `/feedback/${b.id}/withdraw`).expect(409);
     expect((await items('arjun', 'received')).map((x) => x.id)).not.toContain(b.id);
+  });
+
+  it('the record counts feedback this quarter: the person, their manager chain and HR; recipient-only only for the person', async () => {
+    const counts = (who: Who) => api(who, 'get', `/feedback/employee/${emp.arjun}/counts`);
+    // From the test above: one private praise to Arjun stays (the recipient-only one was withdrawn).
+    const quiet = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Quietly: well done on the audit.', visibility: 'recipient_only' }).expect(201)).body as Item;
+    const own = (await counts('arjun').expect(200)).body as { received: number; given: number };
+    const mgr = (await counts('priya').expect(200)).body as { received: number; given: number };
+    expect(own.received).toBe(mgr.received + 1); // the recipient-only one counts for Arjun only
+    expect((await counts('head').expect(200)).body.received).toBe(mgr.received);
+    await counts('sita').expect(404); // a peer may not ask
+    await api('sita', 'post', `/feedback/${quiet.id}/withdraw`).expect(200);
   });
 
   it('withdrawing ends after 24 hours', async () => {
@@ -196,6 +209,78 @@ describe('Performance batch PM3', () => {
     expect(await svc.sweepOrg(org.A.id, today)).toBe(0);
     const n = await inA((tx) => tx.userNotification.count({ where: { type: 'perf.one_on_one.reminder', recipientUserId: { in: [users.priya, users.arjun] } } }));
     expect(n).toBe(2);
+  });
+
+  // PRF-11 (designs, builder 2): a 1:1 repeats; marking it held plans the next on its rhythm; one row per pair.
+  it('PRF-11: a repeating 1:1 plans the next when held; dates in the past and bad rhythms are refused', async () => {
+    await api('priya', 'post', '/one-on-ones').send({ withEmployeeId: emp.sita, on: shift(today, -1), cadenceDays: 14 }).expect(400);
+    await api('priya', 'post', '/one-on-ones').send({ withEmployeeId: emp.sita, on: shift(today, 2), cadenceDays: 10 }).expect(400);
+    type M = { id: string; version: number; status: string; cadenceDays: number | null; goals: unknown[]; actions: { text: string }[] };
+    let m = (await api('priya', 'post', '/one-on-ones').send({ withEmployeeId: emp.sita, on: shift(today, 2), cadenceDays: 14 }).expect(201)).body as M;
+    expect(m).toMatchObject({ cadenceDays: 14, goals: [] });
+    m = (await api('sita', 'post', `/one-on-ones/${m.id}/actions`).send({ text: 'Share the route plan', ownerEmployeeId: emp.sita }).expect(201)).body;
+    await api('arjun', 'put', `/one-on-ones/${m.id}`).send({ status: 'held', version: m.version }).expect(404);
+    await api('priya', 'put', `/one-on-ones/${m.id}`).send({ on: shift(today, -3), version: m.version }).expect(400);
+    m = (await api('priya', 'put', `/one-on-ones/${m.id}`).send({ status: 'held', version: m.version }).expect(200)).body;
+    expect(m.status).toBe('held');
+    await api('priya', 'put', `/one-on-ones/${m.id}`).send({ status: 'held', version: m.version }).expect(409);
+    type P = { id: string; role: string; employee: string; partnerRole: string; on: string; lastHeldOn: string | null; cadenceDays: number | null; openActions: number; agendaItems: number };
+    const pairs = (await api('priya', 'get', '/one-on-ones').expect(200)).body as { pairs: P[]; defaultCadenceDays: number };
+    expect(pairs.defaultCadenceDays).toBe(14);
+    const sita = pairs.pairs.find((p) => p.employee.startsWith('Sita'))!;
+    expect(sita).toMatchObject({ role: 'manager', partnerRole: 'Executive', on: shift(today, 16), lastHeldOn: shift(today, 2), cadenceDays: 14, openActions: 1 });
+    expect(sita.id).not.toBe(m.id);
+    // The employee sees the same pair from their side; the open action moved to the next 1:1.
+    expect(((await api('sita', 'get', '/one-on-ones').expect(200)).body.pairs as P[]).map((p) => p.id)).toEqual([sita.id]);
+    const next = (await api('sita', 'get', `/one-on-ones/${sita.id}`).expect(200)).body as M & { lastHeldOn: string };
+    expect(next.actions.map((a) => a.text)).toEqual(['Share the route plan']);
+    expect(next.lastHeldOn).toBe(shift(today, 2));
+    const moved = (await api('sita', 'put', `/one-on-ones/${sita.id}`).send({ on: shift(today, 20), version: next.version }).expect(200)).body as { version: number };
+    expect(moved.version).toBe(next.version + 1);
+    expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.one_on_one.rescheduled', entityId: sita.id } }))).toBeTruthy();
+    expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.one_on_one.held', entityId: m.id } }))).toBeTruthy();
+  });
+
+  // PRF-08: "them, their manager and HR"; the company default; goals only for those who may see them.
+  it('PRF-08: feedback shown to HR reaches the manager chain too; goals link only for those who see them', async () => {
+    await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Public praise please', visibility: 'public' }).expect(400);
+    const hrItem = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Thanks for the clean dealer report.', visibility: 'with_hr' }).expect(201)).body as Item & { visibility: string };
+    expect(hrItem.visibility).toBe('with_hr');
+    expect((await items('priya', 'team')).map((x) => x.id)).toContain(hrItem.id);
+    const plain = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Good call with the distributor.' }).expect(201)).body as { visibility: string; id: string };
+    expect(plain.visibility).toBe('private');
+    expect((await api('arjun', 'get', '/feedback?view=received').expect(200)).body.defaultVisibility).toBe('private');
+    expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.feedback.given', entityId: plain.id } }))).toBeTruthy();
+    // A peer may not see Arjun's goals: no options, and linking one is refused; his manager may.
+    expect((await api('sita', 'get', `/feedback/goal-options/${emp.arjun}`).expect(200)).body.goals).toEqual([]);
+    await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Linked to a goal I cannot see.', goalId: randomUUID() }).expect(400);
+    await api('priya', 'get', `/feedback/goal-options/${emp.arjun}`).expect(200);
+    await api('priya', 'get', '/feedback/goal-options/not-a-uuid').expect(400);
+    await api('adminB', 'get', `/feedback/goal-options/${emp.arjun}`).expect(200).expect(({ body }) => expect(body.goals).toEqual([]));
+    await api('priya', 'post', '/feedback-requests').send({ aboutEmployeeId: emp.arjun, askedEmployeeIds: [emp.sita], question: 'How was the route plan?' }).expect(201);
+    const asked = (await api('sita', 'get', '/feedback-requests').expect(200)).body.requests as { askedAt: string }[];
+    expect(asked[0]!.askedAt).toBeTruthy();
+  });
+
+  // Founder answer 9: HR with review access read feedback shared "with them, their manager and HR"; nobody else.
+  it('answer 9: HR with review access read only the feedback shared with HR, each read recorded; others cannot', async () => {
+    const shared = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'suggestion', text: 'Share the dealer visit plan a week ahead.', visibility: 'with_hr' }).expect(201)).body as { id: string };
+    const quiet = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'praise', text: 'Only for Arjun to read.', visibility: 'recipient_only' }).expect(201)).body as { id: string };
+    const sealed = (await api('sita', 'post', '/feedback').send({ toEmployeeId: emp.arjun, kind: 'suggestion', text: 'This belongs to the concern channel.', visibility: 'with_hr' }).expect(201)).body as { id: string };
+    await api('hr', 'post', `/feedback/${sealed.id}/seal`).send({ reason: 'Passed to the confidential channel' }).expect(200);
+    const got = (await api('rev', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(200)).body.items as { id: string; from: string; text: string }[];
+    expect(got.map((x) => x.id)).toContain(shared.id);
+    expect(got.map((x) => x.id)).not.toContain(quiet.id);
+    expect(got.map((x) => x.id)).not.toContain(sealed.id);
+    expect(got.find((x) => x.id === shared.id)).toMatchObject({ from: expect.stringMatching(/^Sita/), text: 'Share the dealer visit plan a week ahead.' });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.feedback.hr_viewed', entityId: emp.arjun } }))).toBe(1);
+    // A manager, a peer, HR who only seal concerns, another company: refused.
+    await api('priya', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(403);
+    await api('sita', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(403);
+    await api('hr', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(403);
+    await api('adminB', 'get', `/feedback/employee/${emp.arjun}/shared`).expect(404);
+    await api('rev', 'get', '/feedback/employee/not-a-uuid/shared').expect(400);
+    await api('rev', 'get', `/feedback/employee/${randomUUID()}/shared`).expect(404);
   });
 
   it('keeps companies apart', async () => {

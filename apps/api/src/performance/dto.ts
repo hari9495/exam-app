@@ -195,9 +195,21 @@ export class CompetencyDto {
   @Type(() => RoleLevelDto)
   roles!: RoleLevelDto[];
 
+  /** PRF-14: the question-bank tag used as the skills test; null takes it off, left out keeps it. */
+  @IsOptional()
+  @IsUUID()
+  questionTagId?: string | null;
+
   @IsOptional()
   @IsInt()
   version?: number;
+}
+
+/** PRF-14 Import: the CSV file's text (the page reads the file; at most 256 KB). */
+export class CompetencyImportDto {
+  @IsString()
+  @Length(1, 256 * 1024)
+  csv!: string;
 }
 
 export class CompetencyLevelDto {
@@ -413,8 +425,8 @@ export class FeedbackDto {
   text!: string;
 
   @IsOptional()
-  @IsIn(['private', 'recipient_only'])
-  visibility?: 'private' | 'recipient_only';
+  @IsIn(['private', 'recipient_only', 'with_hr'])
+  visibility?: 'private' | 'recipient_only' | 'with_hr';
 
   @IsOptional()
   @IsUUID()
@@ -465,6 +477,11 @@ export class OneOnOneDto {
 
   @Matches(ISO)
   on!: string;
+
+  /** PRF-11: repeats every 7, 14 or 30 days; null or absent = one-off. */
+  @IsOptional()
+  @IsIn([7, 14, 30])
+  cadenceDays?: number | null;
 }
 
 export class OneOnOneUpdateDto {
@@ -519,4 +536,28 @@ export class ActionDto {
   @IsOptional()
   @IsUUID()
   goalId?: string | null;
+}
+
+// ------------------------------------------------------------------------------------------ PRF-02 / PRF-03 (design wiring)
+
+export class DecideGoalsDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsUUID()
+  periodId!: string;
+
+  @IsIn(['approve', 'send_back'])
+  decision!: 'approve' | 'send_back';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+}
+
+export class SuggestParentDto {
+  @IsUUID()
+  parentGoalId!: string;
 }

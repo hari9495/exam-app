@@ -1,5 +1,6 @@
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { RuleError } from '../rules-engine/conditions';
-import { approvalSubject, needOf, parseSteps, verdict } from './approvals-engine.service';
+import { ApprovalsEngine, approvalSubject, needOf, parseSteps, verdict } from './approvals-engine.service';
 
 describe('P03 quorum (US-G-044)', () => {
   it('any one, all, at least N and a percentage', () => {
@@ -34,10 +35,15 @@ describe('P03 steps are data, checked at save', () => {
     expect(s[1].skipIf?.items).toHaveLength(1);
   });
 
+  it('accepts the owner of the application picked in the form (Helpdesk plan item 3)', () => {
+    expect(parseSteps([{ name: 'App owner', approvers: [{ kind: 'app_owner', field: 'cc' }], mode: 'any' }], fields)[0].approvers).toEqual([{ kind: 'app_owner', field: 'cc' }]);
+  });
+
   it.each([
     ['no approvers', [{ name: 'X', approvers: [], mode: 'any' }]],
     ['a manager six levels up', [{ name: 'X', approvers: [{ kind: 'manager', level: 6 }], mode: 'any' }]],
     ['a cost centre from a missing field', [{ name: 'X', approvers: [{ kind: 'cost_centre_owner', field: 'nope' }], mode: 'any' }]],
+    ['an application owner from a missing field', [{ name: 'X', approvers: [{ kind: 'app_owner', field: 'nope' }], mode: 'any' }]],
     ['a timeout action without hours', [{ name: 'X', approvers: [{ kind: 'manager' }], mode: 'any', onTimeout: 'approve' }]],
     ['an unknown part', [{ name: 'X', approvers: [{ kind: 'manager' }], mode: 'any', run: 'code' }]],
     ['seven steps', Array.from({ length: 7 }, (_, i) => ({ name: `S${i}`, approvers: [{ kind: 'manager' }], mode: 'any' }))],
@@ -51,14 +57,52 @@ describe('approvalSubject (email subjects in plain words, founder review 19 Oct 
   it('says who asks for what, never the step name, and never names them twice', () => {
     expect(approvalSubject({ ...leave, type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');
     expect(approvalSubject({ title: 'Loan of ₹50,000.00', text: 'Loan: Payroll approval', type: 'workflow.approval.needed' }, 'Meera Iyer', false)).toBe('Meera Iyer asks for Loan of ₹50,000.00');
+    // Founder 23 Oct 2026: never "Arjun Kulkarni asks for Resignation of Arjun Kulkarni".
+    expect(approvalSubject({ title: 'Resignation of Arjun Kulkarni', text: 'Exit: Manager', type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Resignation from Arjun Kulkarni');
   });
   it('reminders, escalations and the decision sent to the person who asked', () => {
     expect(approvalSubject({ ...leave, text: 'Still waiting for you: Manager', type: 'workflow.approval.reminder' }, 'Arjun Kulkarni', false)).toBe('Still waiting for your approval: Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');
     expect(approvalSubject({ ...leave, text: 'Escalated to you: Manager', type: 'workflow.approval.needed' }, 'Arjun Kulkarni', false)).toBe('Escalated to you: Arjun Kulkarni asks for Casual leave, 21 Oct (1 day)');
-    expect(approvalSubject({ ...leave, text: 'Approved', type: 'workflow.approval.decided' }, 'Arjun Kulkarni', true)).toBe('Approved: your request for Casual leave, 21 Oct (1 day)');
-    expect(approvalSubject({ ...leave, text: 'Not approved', type: 'workflow.approval.decided' }, 'Arjun Kulkarni', true)).toBe('Not approved: your request for Casual leave, 21 Oct (1 day)');
+    expect(approvalSubject({ ...leave, text: 'Approved', type: 'workflow.approval.decided' }, 'Arjun Kulkarni', true)).toBe('Casual leave, 21 Oct (1 day) approved');
+    expect(approvalSubject({ ...leave, text: 'Not approved', type: 'workflow.approval.decided', reason: 'Team is short that week' }, 'Arjun Kulkarni', true)).toBe('Casual leave, 21 Oct (1 day) not approved: Team is short that week');
+    expect(approvalSubject({ ...leave, text: 'Sent back for changes', type: 'workflow.approval.decided', reason: 'Move it by a week' }, 'Arjun Kulkarni', true)).toBe('Casual leave, 21 Oct (1 day) sent back for changes: Move it by a week');
+    // Founder test 26 Oct 2026 (PPL-28): what, for whom, and why; never "your request for … to approve".
+    expect(approvalSubject({ title: 'Appointment letter for Arjun Kulkarni', text: 'Not approved', type: 'workflow.approval.decided', reason: 'test only' }, 'Lakshmi Venkatesan', true)).toBe('Appointment letter for Arjun Kulkarni not approved: test only');
   });
   it('without a known person it still reads plainly', () => {
     expect(approvalSubject({ ...leave, type: 'workflow.approval.needed' }, null, false)).toBe('A request waits for you: Arjun Kulkarni: Casual leave, 21 Oct (1 day)');
+  });
+});
+
+describe('PLT-04 bulk decide (decideMany)', () => {
+  const ctx = { organizationId: 'org', isSuperAdmin: false };
+  const engine = new ApprovalsEngine(null as never, null as never, null as never);
+  afterEach(() => jest.restoreAllMocks());
+
+  it('decides each task on its own and reports each: refusals say why and never stop the others', async () => {
+    const decide = jest.spyOn(engine, 'decide').mockImplementation(async (_c, _u, taskId) => {
+      if (taskId === 'theirs') throw new NotFoundException('No such approval.');
+      if (taskId === 'closed') throw new ConflictException('This approval is already closed.');
+      if (taskId === 'own-page') throw new ConflictException({ statusCode: 409, code: 'DECIDE_ON_ITS_PAGE', message: 'Decide this on its own page: Reopen a pay month.' });
+      if (taskId === 'broken') throw new Error('db down');
+      return { id: `r-${taskId}`, status: 'approved', currentStep: 0 };
+    });
+    const out = await engine.decideMany(ctx, 'me', ['a', 'theirs', 'a', 'closed', 'own-page', 'broken', 'b'], 'approve', null);
+    // Each task once, in order, through the single-decision checks.
+    expect(decide.mock.calls.map((c) => c[2])).toEqual(['a', 'theirs', 'closed', 'own-page', 'broken', 'b']);
+    expect(out.results).toEqual([
+      { taskId: 'a', ok: true, requestStatus: 'approved' },
+      { taskId: 'theirs', ok: false, message: 'No such approval.' },
+      { taskId: 'closed', ok: false, message: 'This approval is already closed.' },
+      { taskId: 'own-page', ok: false, message: 'Decide this on its own page: Reopen a pay month.' },
+      { taskId: 'broken', ok: false, message: 'Not decided. Try this one again.' },
+      { taskId: 'b', ok: true, requestStatus: 'approved' },
+    ]);
+  });
+
+  it('not approving needs a reason before any task is touched', async () => {
+    const decide = jest.spyOn(engine, 'decide');
+    await expect(engine.decideMany(ctx, 'me', ['a'], 'reject', '  ')).rejects.toBeInstanceOf(BadRequestException);
+    expect(decide).not.toHaveBeenCalled();
   });
 });

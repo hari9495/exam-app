@@ -357,6 +357,7 @@ export function PerksScreen({ device = 'desktop', enabled = true, offers, catego
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const [consent, setConsent] = useState(!!consentOpen);
   const [share, setShare] = useState<string[]>(['Work email']);
+  const [triedShare, setTriedShare] = useState(false);
   const [issued, setIssued] = useState<string | null>(code ?? null);
   const offer = offers.find((o) => o.id === open);
   const byCat = useMemo(() => Object.fromEntries(categories.map((c) => [c, offers.filter((o) => o.category === c)])), [categories, offers]);
@@ -404,9 +405,11 @@ export function PerksScreen({ device = 'desktop', enabled = true, offers, catego
   const consentBody = offer && (
     <div className="yx-growth-stack">
       <Text>Choose what {offer.partner} receives to give you this offer. Only the fields you tick are sent.</Text>
-      {offer.fields.map((f) => (
-        <Checkbox key={f} checked={share.includes(f)} onChange={(c) => setShare((xs) => (c ? [...xs, f] : xs.filter((x) => x !== f)))} label={f} description={f === 'Work email' ? 'To send your code and verify you work here' : f === 'Mobile number' ? 'For delivery updates' : 'To address the order'} />
-      ))}
+      <FormField label="Details to share" hideLabel required error={triedShare && share.length === 0 ? 'Choose at least one detail to share.' : null}>
+        {offer.fields.map((f) => (
+          <Checkbox key={f} checked={share.includes(f)} onChange={(c) => setShare((xs) => (c ? [...xs, f] : xs.filter((x) => x !== f)))} label={f} description={f === 'Work email' ? 'To send your code and verify you work here' : f === 'Mobile number' ? 'For delivery updates' : 'To address the order'} />
+        ))}
+      </FormField>
       <InlineAlert tone="info">
         {offer.partner} uses these under its own privacy notice. You can withdraw by writing to them. YukthiX may earn a commission; it doesn’t change the price you pay. <Link href="#g46">Read the full notice</Link>
       </InlineAlert>
@@ -417,8 +420,9 @@ export function PerksScreen({ device = 'desktop', enabled = true, offers, catego
       <Button onClick={() => setConsent(false)}>Cancel</Button>
       <Button
         variant="primary"
-        disabled={share.length === 0}
         onClick={() => {
+          setTriedShare(true);
+          if (share.length === 0) return;
           setConsent(false);
           setIssued('KAVERI-PERK-7Q2M');
         }}
@@ -468,7 +472,7 @@ export function PerksScreen({ device = 'desktop', enabled = true, offers, catego
     </Text>
   );
   const redeemBtn = offer && !issued && (
-    <Button variant="primary" fullWidth={device === 'phone'} onClick={() => setConsent(true)}>
+    <Button variant="primary" fullWidth={device === 'phone'} onClick={() => { setTriedShare(false); setConsent(true); }}>
       Redeem offer
     </Button>
   );
@@ -496,7 +500,7 @@ export function PerksScreen({ device = 'desktop', enabled = true, offers, catego
         </Drawer>
       )}
       {offer && (
-        <ConfirmDialog open={consent} onOpenChange={setConsent} title="Share details to redeem" confirmLabel={`Share ${share.length} ${share.length === 1 ? 'field' : 'fields'} and get code`} confirmDisabled={share.length === 0} onConfirm={() => { setConsent(false); setIssued('KAVERI-PERK-7Q2M'); }} size="md">
+        <ConfirmDialog open={consent} onOpenChange={setConsent} title="Share details to redeem" confirmLabel={`Share ${share.length} ${share.length === 1 ? 'field' : 'fields'} and get code`} onConfirm={() => { setTriedShare(true); if (share.length === 0) return false; setConsent(false); setIssued('KAVERI-PERK-7Q2M'); }} size="md">
           {consentBody}
         </ConfirmDialog>
       )}

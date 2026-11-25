@@ -1,6 +1,12 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { OffersService } from './offers.service';
 
+// HIR-05 under-18 holds are covered by test/hiring-rest.e2e-spec.ts; these mocks have no candidate table.
+jest.mock('../talent-crm/minor', () => ({ minorHold: jest.fn(async () => null) }));
+
+// Careers answers 356/362: the public brand read has its own tests (e2e); stub it here.
+jest.mock('../public-applications/public-brand', () => ({ publicBrand: jest.fn(async () => ({ orgName: 'Acme', orgLogo: null, careersSlug: null, accent: null, whiteLabel: false })) }));
+
 describe('OffersService', () => {
   let service: OffersService;
   let tenantPrisma: { forTenant: jest.Mock };
@@ -274,7 +280,7 @@ describe('OffersService', () => {
         expect.objectContaining({
           to: 'asha@x.com',
           organizationId: 'org-1',
-          html: expect.stringContaining(`/offer/${mintedToken}`),
+          html: expect.stringContaining(`/yx/offer/${mintedToken}`),
           attachments: [{ filename: 'offer-letter.pdf', content: expect.any(Buffer) }],
         }),
       );
@@ -287,11 +293,12 @@ describe('OffersService', () => {
           pdfPath: 'https://blob.test/container/offers/org-1/tok-1.pdf',
           sentAt: expect.any(Date),
           sentByUserId: 'user-1',
+          esign: false,
         },
       });
       expect(audit.record).toHaveBeenCalledWith(
         context,
-        expect.objectContaining({ actorUserId: 'user-1', action: 'offer.sent', entityId: 'offer-1', metadata: { to: 'asha@x.com' } }),
+        expect.objectContaining({ actorUserId: 'user-1', action: 'offer.sent', entityId: 'offer-1', metadata: { to: 'asha@x.com', esign: false } }),
       );
       expect(out).toMatchObject({ status: 'sent', pdfPath: 'https://blob.test/container/offers/org-1/tok-1.pdf' });
 

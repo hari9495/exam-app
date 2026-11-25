@@ -26,6 +26,7 @@
 @container (max-width: 720px) { .yx-pay-grid > [data-span] { grid-column: span 12; } .yx-pay-split { grid-template-columns: minmax(0, 1fr); } }
 .yx-pay-stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }
 .yx-pay-row { display: flex; flex-wrap: wrap; gap: var(--yx-space-3); align-items: center; }
+.yx-pay-windows { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: var(--yx-space-3); }
 .yx-pay-split { display: grid; grid-template-columns: minmax(0, 1fr) calc(var(--yx-space-16) * 5); gap: var(--yx-space-6); align-items: start; }
 @media (max-width: 1023px) { .yx-pay-split { grid-template-columns: minmax(0, 1fr); } }
 .yx-pay-panel {
@@ -168,18 +169,6 @@
 .yx-pay-progress__fails li > span { flex: 1 1 calc(var(--yx-space-16) * 3); }
 .yx-pay-nowrap { white-space: nowrap; }
 
-/* Irreversible sheet */
-.yx-pay-irrev { display: flex; flex-direction: column; gap: var(--yx-space-4); }
-.yx-pay-impact { margin: var(--yx-space-2) 0 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-3); }
-.yx-pay-impact > div { padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); }
-.yx-pay-impact dt { font-size: var(--yx-text-xs); color: var(--yx-color-text-secondary); }
-.yx-pay-impact dd { margin: var(--yx-space-1) 0 0; font-size: var(--yx-text-lg); font-weight: var(--yx-weight-semibold); font-variant-numeric: tabular-nums; }
-.yx-pay-mc { display: flex; flex-direction: column; gap: var(--yx-space-1); align-items: flex-start; font-size: var(--yx-text-sm); }
-.yx-pay-mc p { margin: 0; }
-.yx-pay-mc .yx-pay-mc__note { color: var(--yx-color-text-secondary); }
-/* Why the confirm button is disabled, beside it in the footer (B7). */
-.yx-pay-irrev__why { margin-right: auto; align-self: center; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
-
 /* Compare bars */
 /* One shared grid (rows are subgrids), so every track has the same length whatever its value and note say. */
 .yx-pay-bars { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: calc(var(--yx-space-16) * 2) minmax(0, 1fr) max-content; column-gap: var(--yx-space-3); row-gap: var(--yx-space-2); }
@@ -262,10 +251,6 @@
 .yx-pay-disclosure p, .yx-pay-disclosure ul { margin: 0; }
 
 /* Slider (what-if) */
-.yx-pay-slider { display: flex; flex-direction: column; gap: var(--yx-space-1); }
-.yx-pay-slider__head { display: flex; justify-content: space-between; font-size: var(--yx-text-sm); }
-.yx-pay-slider input[type="range"] { width: 100%; min-height: var(--yx-target-min); accent-color: var(--yx-color-action-primary); }
-.yx-pay-slider input[type="range"]:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 2px; }
 
 /* Phone helpers */
 .yx-pay-phone-actions { display: flex; flex-direction: column; gap: var(--yx-space-2); }
@@ -285,3 +270,24 @@
 .yx-pay-scroll { overflow-x: auto; max-width: 100%; }
 .yx-pay-narrow { max-width: 320px; }
 .yx-pay-fixed { margin: 0; padding-left: var(--yx-space-5); columns: 2; font-size: var(--yx-text-sm); }
+/* PAY-01 · several pay groups: one compact stage row per group's run */
+.yx-pay-grouprows { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-pay-grouprows > li { display: grid; grid-template-columns: minmax(0, 2fr) minmax(120px, 1.2fr) minmax(0, 1fr) auto auto; gap: var(--yx-space-3); align-items: center; padding: var(--yx-space-2) var(--yx-space-3); border: 1px solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
+.yx-pay-grouprows__name { display: flex; flex-direction: column; min-width: 0; }
+.yx-pay-grouprows__bar { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, 1fr); gap: var(--yx-space-1); }
+.yx-pay-grouprows__bar li { height: var(--yx-space-2); border-radius: var(--yx-radius-badge); background: var(--yx-color-border); }
+.yx-pay-grouprows__bar li[data-state="done"] { background: var(--yx-color-success-text); }
+.yx-pay-grouprows__bar li[data-state="current"] { background: var(--yx-color-action-primary); }
+.yx-pay-grouprows__bar li[data-state="blocked"] { background: var(--yx-color-danger-text); }
+.yx-pay-grouprows__stage { font-size: var(--yx-text-sm); }
+.yx-pay-grouprows__act { justify-self: end; }
+@media (max-width: 720px) { .yx-pay-grouprows > li { grid-template-columns: 1fr auto; } .yx-pay-grouprows__bar { grid-column: 1 / -1; } }
+
+/* Keka ideas (2026-11): the payslips of a tax year as a month list beside the payslip (PAY-21). */
+.yx-pay-months { display: grid; grid-template-columns: calc(var(--yx-space-16) * 3.5) minmax(0, 1fr); gap: var(--yx-space-6); align-items: start; }
+.yx-pay-months__list { display: flex; flex-direction: column; gap: var(--yx-space-3); }
+.yx-pay-months__list ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-1); }
+/* A month: the kit's button, label left and net pay right; the open payslip's month is marked as current. */
+.yx-pay-months__item { justify-content: space-between; }
+.yx-pay-months__item[aria-current='true'] { background: var(--yx-color-bg-selected); border-color: var(--yx-color-action-primary); color: var(--yx-color-action-primary); font-weight: var(--yx-weight-medium); }
+@media (max-width: 1023px) { .yx-pay-months { grid-template-columns: minmax(0, 1fr); } }

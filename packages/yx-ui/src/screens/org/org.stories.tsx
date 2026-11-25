@@ -3,8 +3,8 @@ import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { LegalEntitiesScreen } from './entities';
 import { LocationsScreen } from './locations';
 import { StructureScreen } from './structure';
-import { CompanySettingsScreen, type CompanySettingsScreenProps } from './settings';
-import { ENTITIES, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
+import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, STATES, TODAY_ISO } from './data';
+import { ErasureCard } from './erasure-card';
 
 const meta: Meta = { title: 'Screens/Settings/Organisation', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -17,8 +17,6 @@ const LINKS: StoryLink[] = [
   { id: 'entities', label: 'Legal entities', href: '#entities', group: 'Organisation' },
   { id: 'locations', label: 'Locations', href: '#locations', group: 'Organisation' },
   { id: 'structure', label: 'Structure', href: '#structure', group: 'Organisation' },
-  { id: 'company-rules', label: 'Company rules', href: '#rules', group: 'Organisation' },
-  { id: 'access-settings', label: 'Access and privacy', href: '#privacy', group: 'Access' },
 ];
 const Frame = ({ active, children }: { active: StoryLink['id']; children: React.ReactNode }) => (
   <LinksFrame active={active} links={LINKS}>
@@ -109,57 +107,8 @@ export const NoAccess: S = {
   ),
 };
 
-const settings: Omit<CompanySettingsScreenProps, 'section'> = {
-  state: 'ready',
-  registry: SETTING_REGISTRY,
-  overrides: SETTING_OVERRIDES,
-  choices: SETTING_CHOICES,
-  canManage: true,
-  heldGuards: ['access.role.manage'],
-  today: TODAY_ISO,
-  onSave: () => wait(),
-  onRemove: () => wait(),
-};
+/** Answer 1781: the erasure dry run on Settings › 2.2 Directory & privacy, off (what it would delete today). */
+export const ErasureDryRun: S = { render: () => <ErasureCard report={ERASURE_DRY_RUN} /> };
 
-/** Group 1: probation per entity and grade, a scheduled attendance mode for the Hosur plant. */
-export const CompanyRules: S = {
-  render: () => (
-    <Frame active="company-rules">
-      <CompanySettingsScreen section="organisation" {...settings} />
-    </Frame>
-  ),
-};
-
-/** Group 2: manager access narrowed to direct reports. */
-export const AccessAndPrivacy: S = {
-  render: () => (
-    <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} />
-    </Frame>
-  ),
-};
-
-/** Settings admin without access management: guarded settings are disabled with the reason. */
-export const AccessAndPrivacyGuarded: S = {
-  render: () => (
-    <Frame active="access-settings">
-      <CompanySettingsScreen section="access" {...settings} heldGuards={[]} />
-    </Frame>
-  ),
-};
-
-export const CompanyRulesLoading: S = {
-  render: () => (
-    <Frame active="company-rules">
-      <CompanySettingsScreen section="organisation" {...settings} state="loading" />
-    </Frame>
-  ),
-};
-
-export const CompanyRulesError: S = {
-  render: () => (
-    <Frame active="company-rules">
-      <CompanySettingsScreen section="organisation" {...settings} state="error" onRetry={() => {}} />
-    </Frame>
-  ),
-};
+/** On, with people due at the next run and one not done last night. */
+export const ErasureOnDue: S = { render: () => <ErasureCard report={ERASURE_ON_DUE} /> };

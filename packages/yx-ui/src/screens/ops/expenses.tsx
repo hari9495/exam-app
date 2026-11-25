@@ -1,13 +1,13 @@
 // Expenses screens (M05), under Pay: EXP-01 expenses home, EXP-02 claim composer, EXP-03 claim review, EXP-04 trip,
 // EXP-05 advance card + request.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, Camera, Car, Check, FileText, Plane, Plus, Receipt, RotateCcw, Send, Trash2, X } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { Button, IconButton } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
-import { FieldRow, FormField } from '../../components/field';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup, Switch } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -19,10 +19,16 @@ import { ApprovalTimeline } from '../../components/timeline';
 import { NeedsActionList } from '../../components/dashboard';
 import { StatCard } from '../../components/charts';
 import { formatDate, formatINR } from '../../lib/format';
-import { Actions, CameraFrame, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, StatusTrail, Workspace, type CameraState } from './ops-kit';
+import { Actions, CameraFrame, CardGrid, Facts, MoneyLead, OpsDesk, ReceiptImage, StatusTrail, Workspace, useSay, type CameraState } from './ops-kit';
 import { checkLine, flagText, fxFlagged, fxVariancePct, mileageAmount, perDiemAmount, recoveryInstalments, reductionText, settlement } from './ops-rules';
 import type { ListState } from './helpdesk';
+import { CardLinesCard, LiveClaimComposer, LiveClaimReview, LiveExpensesHome, NewClaimDialog, type LiveClaim, type LiveHome } from './expenses-live';
+import { SavedExpensesCard, type LiveSavedExpenses } from './expenses-saved';
+import { Segment } from '../../components/segment';
+import { LiveAdvanceRecord, LiveAdvancesList, LiveTripRecord, LiveTripsList, type LiveAdvance, type LiveAdvances, type LiveTrip, type LiveTrips } from './expenses-travel-live';
 import type { ApprovalStatus, Claim, ExpenseLine, PaymentStatus } from './expenses-data';
+import { LiveTeamClaims, type LiveTeam } from './expenses-team-live';
+import { TEAM } from './expenses-live-samples';
 
 export type Device = 'desk' | 'phone';
 export type ExpPersona = 'emp' | 'mgr' | 'fin';
@@ -55,8 +61,61 @@ export interface ExpensesHomeProps {
   toPay: Claim[];
   today: Date;
   state?: ListState;
+  /** Someone with more than one view (their own claims, approvals, finance) switches with a Segment. */
+  views?: boolean;
+  /** The "New claim" dialog open (name the claim first). */
+  naming?: boolean;
+  /** EXP-08: company card lines waiting for the employee to explain. */
+  cardLines?: number;
+  /** Keka ideas (2026-11): the saved expenses waiting to be claimed (the design's sample ones). */
+  saved?: boolean;
 }
-export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready' }: ExpensesHomeProps) {
+export interface TeamClaimsProps {
+  today: string;
+  /** 'empty': nothing sent this month; 'no-access': someone with no one reporting to them. */
+  state?: 'ready' | 'empty' | 'no-access';
+  /** Opened from the "Over-limit lines" card: only claims with over-limit lines. */
+  over?: boolean;
+}
+/** EXP-01 › Team claims (round 2): a manager's read-only list of their direct reports' claims. The live app passes `live`. */
+export function TeamClaimsScreen(props: TeamClaimsProps | { live: LiveTeam }) {
+  return 'live' in props ? <LiveTeamClaims live={props.live} /> : <SampleTeamClaims {...props} />;
+}
+function SampleTeamClaims({ today, state = 'ready', over: startOver = false }: TeamClaimsProps) {
+  const [month, setMonth] = useState(today.slice(0, 7));
+  const [over, setOver] = useState(startOver);
+  const team = { ...TEAM, month, claims: state === 'empty' || month !== today.slice(0, 7) ? [] : TEAM.claims };
+  return <LiveTeamClaims live={{ state: state === 'no-access' ? 'no-access' : 'ready', onRetry: () => {}, team, today, month, onMonth: setMonth, over, onOver: setOver, onOpen: () => {} }} />;
+}
+
+/** Keka ideas: the design's saved expenses (two with a receipt, one declared). */
+const SAMPLE_SAVED: LiveSavedExpenses = {
+  currency: 'INR',
+  today: '2026-09-29',
+  drafts: [{ id: 'dr1', title: 'Hosur plant audit' }],
+  items: [
+    { id: 's1', spentOn: '2026-09-28', amount: '640.00', categoryCode: null, merchant: 'Ola cab to the airport', description: null, receipt: true, createdAt: '2026-09-28T03:00:00.000Z' },
+    { id: 's2', spentOn: '2026-09-26', amount: '1850.00', categoryCode: null, merchant: 'Lunch with distributor', description: null, receipt: true, createdAt: '2026-09-26T09:00:00.000Z' },
+    { id: 's3', spentOn: '2026-09-24', amount: '120.00', categoryCode: null, merchant: 'Auto to the client office', description: null, receipt: false, createdAt: '2026-09-24T09:00:00.000Z' },
+  ],
+  onAdd: async () => {},
+  onRemove: async () => {},
+  onClaim: async () => {},
+};
+
+/** EXP-01 Expenses home. The live app passes `live` (employee, approver or finance view). */
+export function ExpensesHomeScreen(props: ExpensesHomeProps | { live: LiveHome }) {
+  return 'live' in props ? <LiveExpensesHome live={props.live} /> : <SampleExpensesHome {...props} />;
+}
+const VIEWS = [
+  { value: 'emp', label: 'My expenses' },
+  { value: 'mgr', label: 'Waiting for me' },
+  { value: 'fin', label: 'Finance' },
+];
+function SampleExpensesHome({ device = 'desk', persona = 'emp', claims, toPay, today, state = 'ready', views, naming, cardLines, saved }: ExpensesHomeProps) {
+  const savedCard = saved ? <SavedExpensesCard live={SAMPLE_SAVED} /> : null;
+  const switcher = views ? <Segment label="Show" value={persona} onChange={() => {}} options={VIEWS} /> : null;
+  const dialog = naming ? <NewClaimDialog open onClose={() => {}} onStart={async () => {}} /> : null;
   const pending = claims.filter((c) => c.status === 'Submitted' || (c.status !== 'Rejected' && c.payment !== 'Paid' && c.payment !== 'Not due'));
   const toReceive = claims.filter((c) => c.status === 'Submitted' || (c.status !== 'Rejected' && c.payment !== 'Paid')).reduce((s, c) => s + claimTotals(c).netPayable, 0);
   const claimList =
@@ -105,6 +164,7 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
           <Button icon={Plane}>Request a trip</Button>
           <Button icon={Car}>Add mileage</Button>
         </Actions>
+        {savedCard}
         <h2 className="yx-ops-card__title">My claims</h2>
         {claimList}
       </PhoneFrame>
@@ -114,6 +174,7 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
     return (
       <OpsDesk area="expenses" active="Expenses home">
         <PageHeader title="Expenses" description="Claims and trips waiting for you, and your team's spend." />
+        {switcher}
         <NeedsActionList
           title="Waiting for you"
           today={today}
@@ -140,6 +201,7 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
     return (
       <OpsDesk area="expenses" active="Expenses home" counts={{ 'To pay': unpaid.length }}>
         <PageHeader title="Expenses" description="What to pay, flagged claims and advances past their settlement window." actions={<Button variant="primary">Open to-pay queue</Button>} />
+        {switcher}
         <CardGrid min="sm">
           <StatCard label="To pay" value={unpaid.reduce((s, c) => s + claimTotals(c).netPayable, 0)} money drill={{ label: `View ${unpaid.length} claims`, href: '#topay' }} />
           <StatCard label="Payment failed" value={toPay.filter((c) => c.payment === 'Payment failed').length} drill={{ label: 'Re-route failed payments', href: '#failed' }} />
@@ -148,6 +210,20 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
         </CardGrid>
         <Card title="October payroll cut-off">
           <p className="yx-ops-p">Claims approved by 23 Oct 2026 are paid in the October payroll. {unpaid.filter((c) => c.route !== 'Direct payout').length} claims are queued for it.</p>
+        </Card>
+        <Card title="Flagged for audit">
+          <DataTable
+            label="Claims flagged for audit"
+            columns={[
+              { key: 'p', header: 'Person', value: (c: Claim) => c.employee },
+              { key: 't', header: 'Claim', value: (c) => c.title, width: 240 },
+              { key: 'a', header: 'Claimed', type: 'money', value: (c) => claimTotals(c).claimed },
+              { key: 'r', header: 'Risk', value: (c) => c.flags ?? 0, render: (c) => <Badge tone="warning">{c.flags} policy flags</Badge> },
+            ]}
+            rows={claims.filter((c) => c.flags)}
+            getRowId={(c) => c.id}
+            rowButtons={() => <Button size="sm">Check</Button>}
+          />
         </Card>
       </OpsDesk>
     );
@@ -167,17 +243,29 @@ export function ExpensesHomeScreen({ device = 'desk', persona = 'emp', claims, t
           </>
         }
       />
+      {switcher}
       <Workspace
-        main={<Card title="My claims">{claimList}</Card>}
+        main={
+          savedCard ? (
+            <div className="yx-ops-stack">
+              {savedCard}
+              <Card title="My claims">{claimList}</Card>
+            </div>
+          ) : (
+            <Card title="My claims">{claimList}</Card>
+          )
+        }
         rail={
           <>
             <MoneyLead label="You will receive" amount={toReceive} sub="Approved claims are paid in the next payroll unless finance pays sooner" />
+            {cardLines ? <CardLinesCard count={cardLines} /> : null}
             <Card title="Open advance">
               <Facts items={[{ label: 'ADV-0087 balance', value: formatINR(0) }, { label: 'Settle by', value: '16 Oct 2026' }]} />
             </Card>
           </>
         }
       />
+      {dialog}
     </OpsDesk>
   );
 }
@@ -274,10 +362,21 @@ export interface ClaimComposerProps {
   camera?: CameraState | null;
   submitted?: boolean;
   trip?: string;
+  /** The "Add a line" sheet open. */
+  addOpen?: boolean;
 }
-export function ClaimComposerScreen({ device = 'desk', title, lines: initial, advance, gstOn, camera = null, submitted, trip }: ClaimComposerProps) {
+/** EXP-02 Claim composer. The live app passes `live` for the person claiming. */
+export function ClaimComposerScreen(props: ClaimComposerProps | { live: LiveClaim }) {
+  return 'live' in props ? <LiveClaimComposer live={props.live} /> : <SampleClaimComposer {...props} />;
+}
+function SampleClaimComposer({ device = 'desk', title, lines: initial, advance, gstOn, camera = null, submitted: sentBefore, trip, addOpen }: ClaimComposerProps) {
   const [lines, setLines] = useState(initial);
-  const [addOpen, setAddOpen] = useState(false);
+  const [submitted, setSubmitted] = useState(!!sentBefore);
+  const { say, toast } = useSay();
+  const saySubmitted = () => toast({ tone: 'success', title: 'Claim submitted', description: `${title} went to Sana Nizami for approval. Lines over the limit also go to the department head.` });
+  // The "just submitted" design state shows the toast the person sees after pressing Submit claim.
+  useEffect(() => void (sentBefore && saySubmitted()), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [isAdding, setAddOpen] = useState(!!addOpen);
   const [kind, setKind] = useState('receipt');
   const [km, setKm] = useState<number | null>(42);
   const total = lines.reduce((s, l) => s + (l.kind === 'mileage' || l.kind === 'field-draft' ? mileageAmount(l.km ?? 0, l.rate ?? 0) : l.kind === 'per-diem' ? perDiemAmount(l.days ?? 0, l.rate ?? 0) : l.fx ? Math.round(l.fx.amount * (l.fx.entered ?? l.fx.rate)) : l.amount), 0);
@@ -301,6 +400,7 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
             { value: 'receipt', label: 'A receipt', description: 'We read merchant, date, amount and GST' },
             { value: 'mileage', label: 'Mileage', description: 'Distance × rate for your vehicle' },
             { value: 'perdiem', label: 'Per diem', description: 'Days × rate for the city tier' },
+            { value: 'bill', label: 'A bill without a receipt', description: 'Type it in; you declare it was spent for work' },
           ]}
         />
       </FormField>
@@ -318,13 +418,9 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
       {kind === 'perdiem' && <p className="yx-ops-muted">₹1,200 a day in Tier 1 cities for your grade.</p>}
     </div>
   );
+  const submit = () => say((lines.length === 0 && 'Add a line first: a receipt, mileage or per diem.') || (blocked && 'Remove or fix the blocked line first.'), () => (setSubmitted(true), saySubmitted()));
   const body = submitted ? (
-    <div className="yx-ops-stack">
-      <InlineAlert tone="success" title="Claim submitted">
-        {title} went to Sana Nizami for approval. Lines over the limit also go to the department head.
-      </InlineAlert>
-      {lead}
-    </div>
+    <div className="yx-ops-stack">{lead}</div>
   ) : (
     <div className="yx-ops-stack">
       {device === 'phone' && lead}
@@ -346,12 +442,12 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
             <Button icon={Camera} fullWidth onClick={() => setAddOpen(true)}>
               Add another receipt
             </Button>
-            <Button variant="primary" icon={Send} fullWidth disabled={blocked || lines.length === 0}>
+            <Button variant="primary" icon={Send} fullWidth onClick={submit}>
               Submit claim
             </Button>
           </div>
         )}
-        <BottomSheet open={addOpen} onOpenChange={setAddOpen} title="Add a line" footer={<Button variant="primary" fullWidth onClick={() => setAddOpen(false)}>Add line</Button>}>
+        <BottomSheet open={isAdding} onOpenChange={setAddOpen} title="Add a line" footer={<Button variant="primary" fullWidth onClick={() => setAddOpen(false)}>Add line</Button>}>
           {addForm}
         </BottomSheet>
       </PhoneFrame>
@@ -369,7 +465,7 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
                 Add line
               </Button>
               <Button>Save draft</Button>
-              <Button variant="primary" icon={Send} disabled={blocked || lines.length === 0}>
+              <Button variant="primary" icon={Send} onClick={submit}>
                 Submit claim
               </Button>
             </>
@@ -377,7 +473,7 @@ export function ClaimComposerScreen({ device = 'desk', title, lines: initial, ad
         }
       />
       <Workspace main={body} rail={submitted ? null : <>{lead}{gstOn && <p className="yx-ops-muted">GST capture is on for your company. Check the supplier GSTIN on each line.</p>}</>} />
-      <Drawer open={addOpen} onOpenChange={setAddOpen} title="Add a line" footer={<><Button onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => setAddOpen(false)}>Add line</Button></>}>
+      <Drawer open={isAdding} onOpenChange={setAddOpen} title="Add a line" footer={<><Button onClick={() => setAddOpen(false)}>Cancel</Button><Button variant="primary" onClick={() => setAddOpen(false)}>Add line</Button></>}>
         {addForm}
       </Drawer>
     </OpsDesk>
@@ -397,11 +493,16 @@ export interface ClaimReviewProps {
   reasonMissing?: boolean;
   selected?: string;
 }
-export function ClaimReviewScreen({ claim, today, persona = 'mgr', reducing = null, reasonMissing, selected }: ClaimReviewProps) {
+/** EXP-03 Claim review. The live app passes `live` for the approver whose turn it is, finance and anyone in scope. */
+export function ClaimReviewScreen(props: ClaimReviewProps | { live: LiveClaim }) {
+  return 'live' in props ? <LiveClaimReview live={props.live} /> : <SampleClaimReview {...props} />;
+}
+function SampleClaimReview({ claim, today, persona = 'mgr', reducing = null, reasonMissing, selected }: ClaimReviewProps) {
   const [sel, setSel] = useState(selected ?? claim.lines[0].id);
   const [reduce, setReduce] = useState<string | null>(reducing);
   const [newAmt, setNewAmt] = useState<number | null>(reducing ? 7500 : null);
   const [reason, setReason] = useState(reasonMissing ? '' : 'Hotel cap Tier 1 for G4–G6');
+  const reasonEarly = useTooEarly(reason.trim() ? [] : [{ fieldId: 'cr-reason', message: 'Enter a reason. The employee sees it next to the amount.' }]);
   const [decisions, setDecisions] = useState<Record<string, 'approved' | 'rejected'>>({});
   const line = claim.lines.find((l) => l.id === sel)!;
   const t = claimTotals(claim);
@@ -504,7 +605,7 @@ export function ClaimReviewScreen({ claim, today, persona = 'mgr', reducing = nu
         footer={
           <>
             <Button onClick={() => setReduce(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!reason.trim()}>
+            <Button variant="primary" onClick={() => reasonEarly.stop()}>
               Save reduction
             </Button>
           </>
@@ -515,7 +616,7 @@ export function ClaimReviewScreen({ claim, today, persona = 'mgr', reducing = nu
             <FormField label="Approve" required>
               <CurrencyField value={newAmt} onChange={setNewAmt} />
             </FormField>
-            <FormField label="Reason" required error={reason.trim() ? null : 'Enter a reason. The employee sees it next to the amount.'}>
+            <FormField id="cr-reason" label="Reason" required error={reason.trim() ? null : 'Enter a reason. The employee sees it next to the amount.'}>
               <TextField value={reason} onChange={setReason} />
             </FormField>
             <InlineAlert tone="info">The employee will see: “{reductionText(newAmt ?? 0, claim.lines.find((l) => l.id === reduce)!.amount, reason || '…')}”</InlineAlert>
@@ -593,8 +694,45 @@ export function TripRequestForm() {
     </div>
   );
 }
-export function TripScreen({ device = 'desk', trip, view = 'record', spent = 19794, settled }: { device?: Device; trip: TripData; view?: 'request' | 'record'; spent?: number; settled?: boolean }) {
+export interface TripScreenProps {
+  device?: Device;
+  trip: TripData;
+  /** 'list': the Trips page (the request sheet opens over it). */
+  view?: 'list' | 'request' | 'record';
+  spent?: number;
+  settled?: boolean;
+}
+/** EXP-04 Trip: the trips list with its request sheet, and one trip. The live app passes `live`. */
+export function TripScreen(props: TripScreenProps | { live: LiveTrips | LiveTrip }) {
+  if (!('live' in props)) return <SampleTrip {...props} />;
+  return props.live.view === 'list' ? <LiveTripsList live={props.live} /> : <LiveTripRecord live={props.live} />;
+}
+function SampleTripsList({ trip }: { trip: TripData }) {
+  return (
+    <DataTable
+      label="Trips"
+      columns={[
+        { key: 'p', header: 'Trip', value: (t: TripData) => t.purpose, width: 260 },
+        { key: 'd', header: 'Dates', value: (t) => `${formatDate(t.from)} to ${formatDate(t.to)}`, width: 230 },
+        { key: 'e', header: 'Estimate', type: 'money', value: (t) => t.estimate },
+        { key: 's', header: 'Status', value: (t) => t.status, render: (t) => <Badge tone="success">{t.status}</Badge> },
+      ]}
+      rows={[trip, { ...trip, id: 'TRP-0219', purpose: 'Dubai trade show', from: new Date(2026, 10, 2), to: new Date(2026, 10, 6), estimate: 145000, status: 'Requested' }]}
+      getRowId={(t) => t.id}
+      rowButtons={() => <Button size="sm">Open</Button>}
+    />
+  );
+}
+function SampleTrip({ device = 'desk', trip, view = 'record', spent = 19794, settled }: TripScreenProps) {
   const s = settlement(spent, trip.advance);
+  if (view === 'list')
+    return (
+      <OpsDesk area="expenses" active="Trips">
+        <PageHeader title="Trips" description="Ask before you travel. An approved trip gets its advance, and its bookings and claims stay together." actions={<Button variant="primary" icon={Plane}>Request a trip</Button>} />
+        <Segment label="Show" value="mine" onChange={() => {}} options={[{ value: 'mine', label: 'My trips' }, { value: 'approvals', label: 'Waiting for me (1)' }, { value: 'desk', label: 'To book (2)' }]} />
+        <SampleTripsList trip={trip} />
+      </OpsDesk>
+    );
   if (view === 'request') {
     if (device === 'phone')
       return (
@@ -607,7 +745,8 @@ export function TripScreen({ device = 'desk', trip, view = 'record', spent = 197
       );
     return (
       <OpsDesk area="expenses" active="Trips">
-        <PageHeader title="Trips" />
+        <PageHeader title="Trips" description="Ask before you travel. An approved trip gets its advance, and its bookings and claims stay together." />
+        <SampleTripsList trip={trip} />
         <Drawer open onOpenChange={() => {}} size="lg" title="Request a trip" subtitle="Your manager approves; an approved advance is created automatically." footer={<><Button>Cancel</Button><Button variant="primary">Send for approval</Button></>}>
           <TripRequestForm />
         </Drawer>
@@ -629,7 +768,7 @@ export function TripScreen({ device = 'desk', trip, view = 'record', spent = 197
           Return {formatINR(s.toReturn)} by 16 Oct 2026. After that it is recovered from salary in up to 3 instalments.
         </InlineAlert>
       )}
-      {settled && <InlineAlert tone="success">Settled on 29 Sep 2026.</InlineAlert>}
+      {settled && <InlineAlert tone="info">Settled on 29 Sep 2026.</InlineAlert>}
     </Card>
   );
   const body = (
@@ -703,8 +842,36 @@ export interface AdvanceScreenProps {
   requestOpen?: boolean;
   forex?: { currency: string; amount: number; spent: number; issueRate: number; returnRate: number; returnedOn: Date };
   persona?: 'emp' | 'fin';
+  /** The Advances page: my advances, those waiting for me and finance's, as a list. */
+  list?: boolean;
 }
-export function AdvanceScreen({ device = 'desk', advance, today, requestOpen, forex, persona = 'emp' }: AdvanceScreenProps) {
+/** EXP-05 Advance card + request: the advances list, and one advance with its balance ledger. The live app passes `live`. */
+export function AdvanceScreen(props: AdvanceScreenProps | { live: LiveAdvances | LiveAdvance }) {
+  if (!('live' in props)) return props.list ? <SampleAdvancesList {...props} /> : <SampleAdvance {...props} />;
+  return props.live.view === 'list' ? <LiveAdvancesList live={props.live} /> : <LiveAdvanceRecord live={props.live} />;
+}
+function SampleAdvancesList({ advance }: AdvanceScreenProps) {
+  const rows = [advance, { ...advance, id: 'ADV-0061', purpose: 'Imprest, Hosur plant petty expenses', amount: 15000 }];
+  return (
+    <OpsDesk area="expenses" active="Advances">
+      <PageHeader title="Advances" description="Money paid to you before you spend it. Your claims settle it first; what is left you return." actions={<Button variant="primary">Request an advance</Button>} />
+      <Segment label="Show" value="mine" onChange={() => {}} options={[{ value: 'mine', label: 'My advances' }, { value: 'approvals', label: 'Waiting for me (1)' }, { value: 'payout', label: 'Finance (3)' }]} />
+      <DataTable
+        label="Advances"
+        columns={[
+          { key: 'p', header: 'Advance', value: (a: AdvanceData) => a.purpose, width: 260 },
+          { key: 'a', header: 'Paid', type: 'money', value: (a) => a.amount },
+          { key: 'b', header: 'Open balance', type: 'money', value: (a) => a.ledger.reduce((s, l) => s + l.amount, 0) },
+          { key: 'd', header: 'Settle by', type: 'date', value: (a) => a.windowEnds },
+        ]}
+        rows={rows}
+        getRowId={(a) => a.id}
+        rowButtons={() => <Button size="sm">Open</Button>}
+      />
+    </OpsDesk>
+  );
+}
+function SampleAdvance({ device = 'desk', advance, today, requestOpen, forex, persona = 'emp' }: AdvanceScreenProps) {
   const [open, setOpen] = useState(!!requestOpen);
   const [amt, setAmt] = useState<number | null>(15000);
   const balance = advance.ledger.reduce((s, l) => s + l.amount, 0);

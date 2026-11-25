@@ -148,7 +148,7 @@ describe('AgenciesService', () => {
           findFirst: jest.fn().mockResolvedValue({ id: 'agency-1', name: 'Old Name', contactEmail: null, active: true, portalToken: 'tok-1', organizationId: 'org-1' }),
           update: jest.fn().mockResolvedValue({ id: 'agency-1', name: 'New Name', contactEmail: 'x@ex.com', active: false, portalToken: 'tok-1', organizationId: 'org-1' }),
         },
-        job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1' }]) },
+        job: { findMany: jest.fn().mockResolvedValue([{ id: 'job-1' }]), count: jest.fn().mockResolvedValue(0) }, // no client job among them
         agencyJob: { findMany: jest.fn().mockResolvedValue([]), deleteMany: jest.fn(), createMany: jest.fn(), count: jest.fn().mockResolvedValue(1) },
         agencySubmission: { count: jest.fn().mockResolvedValue(0) },
       };

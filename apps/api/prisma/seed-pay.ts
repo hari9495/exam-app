@@ -50,7 +50,7 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.component.manage', description: 'Manage the pay component library and its wage flags' },
   { key: 'payroll.template.manage', description: 'Build salary templates and their versions' },
   { key: 'payroll.import.run', description: 'Import opening balances, as-paid lines and previous-employer income for the legal entities in scope' },
-  { key: 'platform.statutory.manage', description: 'Draft and publish statutory rule sets (YukthiX staff; the publisher is never the drafter)' },
+  { key: 'platform.statutory.manage', description: 'Rules editor: draft, review and publish statutory rule sets (YukthiX staff; the publisher is never the drafter)' },
   // Batch 5c (also in the payroll_5c migration).
   { key: 'payroll.run.view', description: 'See payroll runs, payslips and their workings for the legal entities in scope' },
   { key: 'payroll.run.prepare', description: 'Create, calculate, review, submit and void payroll runs for the legal entities in scope' },
@@ -90,11 +90,17 @@ export const PAY_PERMISSIONS = [
   { key: 'payroll.special.manage', description: 'Special pay: piece-rate, incentives and commission, tips, on-call, union dues, settlements, lay-off and VRS, sent to payroll for approval' },
   { key: 'payroll.ewa.manage', description: 'Earned wage access: the policy, draws and their payment and recovery' },
   { key: 'payroll.equity.manage', description: 'Equity plans: valuations, grants, vesting, exercises and the cap table' },
+  { key: 'payroll.equity.own', description: 'See your own equity grants and vesting, and exercise your vested units' },
   { key: 'payroll.notice.waive', description: 'Waive the recovery of an unserved notice period for one leaver, with a reason' },
   { key: 'payroll.writeoff.approve', description: 'Write off the rest of an overpayment raised by someone else, with a reason (needs a fresh second sign-in step)' },
+  { key: 'payroll.bonus.manage', description: 'Work out the statutory bonus of a legal entity, enter the surplus and deductions, send it for approval and pay it through an off-cycle bonus run' },
+  { key: 'payroll.bonus.approve', description: 'Approve or send back a statutory bonus computation someone else made' },
+  { key: 'payroll.reports.view', description: 'See and export payroll reports (salary register, reconciliation, variance, CTC, arrears, year to date, bank advice, hold ageing, gratuity provision, loan ledger) for the legal entities in scope' },
 ];
-export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.change.approve', 'employee.salary.view', 'employee.identity.view', 'employee.identity.approve', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', 'payroll.arrears.approve', 'payroll.writeoff.approve', 'consultant.invoice.approve'];
-export const PAYROLL_ADMIN_5A = ['employee.change.manage', 'payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage', 'statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage', 'payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive', 'consultant.manage', 'payroll.special.manage', 'payroll.ewa.manage', 'payroll.equity.manage'];
+export const PAYROLL_APPROVER = ['org:view', 'org.structure.view', 'employee.profile.view', 'employee.salary.view', 'employee.identity.view', 'payroll.period.view', 'payroll.period.reopen', 'payroll.document.view', 'payroll.file.view', 'payroll.file.release', 'payroll.run.view', 'payroll.run.approve', 'payroll.loan.approve', 'payroll.bankfile.release', 'payroll.payment_mode.approve', 'payroll.arrears.approve', 'payroll.writeoff.approve', 'consultant.invoice.approve', 'payroll.bonus.approve', 'payroll.reports.view'];
+/** Keys payroll no longer holds (founder 21 Oct 2026): job changes, adding people, probation decisions, the annual increment, approving bank and identity changes; 28 Oct 2026: approving job changes. */
+export const PAYROLL_NOT_HR = ['employee.change.manage', 'employee.change.approve', 'employee.identity.approve'];
+export const PAYROLL_ADMIN_5A = ['payroll.period.view', 'payroll.period.reopen', 'payroll.correction.approve', 'payroll.document.view', 'payroll.document.issue', 'payroll.file.view', 'audit.view', 'payroll.setup.manage', 'payroll.statutory.setup', 'payroll.component.manage', 'payroll.template.manage', 'payroll.import.run', 'payroll.run.view', 'payroll.run.prepare', 'payroll.input.manage', 'payroll.hold.manage', 'payroll.loan.manage', 'payroll.journal.export', 'payroll.cost_rate.view', 'payroll.bankfile.generate', 'payroll.payment.record', 'payroll.payslip.publish', 'payroll.query.handle', 'tax.workspace.view', 'tax.proof.verify', 'tax.regime.override', 'payroll.ledger.manage', 'statutory.filing.view', 'statutory.filing.generate', 'statutory.filing.download', 'statutory.challan.manage', 'payroll.offcycle.prepare', 'payroll.arrears.approve', 'payroll.fnf.manage', 'payroll.notice.waive', 'consultant.manage', 'payroll.special.manage', 'payroll.ewa.manage', 'payroll.equity.manage', 'attendance.lock.approve', 'leave.liability.view', 'payroll.bonus.manage', 'payroll.reports.view'];
 // The Finance Approver template as it is today (payroll approvals, bank file release, paying expense claims).
 export const FINANCE_APPROVER = ['org:view', ...ROLE_TEMPLATES.find((t) => t.key === 'finance_approver')!.permissions];
 
@@ -104,6 +110,8 @@ export async function seedPay(tx: Tx, organizationId: string, passwordHash: stri
   const payrollAdmin = await tx.permissionProfile.findFirst({ where: { ...org, name: 'Payroll Admin' } });
   if (payrollAdmin) {
     const keys = new Set<string>([...(JSON.parse(payrollAdmin.permissionsJson) as string[]), ...PAYROLL_ADMIN_5A]);
+    // Founder 21 Oct 2026: payroll does not do HR work, so earlier seeds' job-change key goes.
+    for (const k of PAYROLL_NOT_HR) keys.delete(k);
     await tx.permissionProfile.update({ where: { id: payrollAdmin.id }, data: { permissionsJson: JSON.stringify([...keys]) } });
   }
   if (await tx.user.findFirst({ where: { ...org, email: 'payroll-approver@demo-org.test' } })) return;

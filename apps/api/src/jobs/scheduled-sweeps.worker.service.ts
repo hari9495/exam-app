@@ -1,3 +1,5 @@
+import { EmployeeImportDraftsService } from '../people/employee-import-drafts.service';
+import { ErasureService } from '../people/erasure.service';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -18,6 +20,25 @@ import { IdentityProvidersService } from '../auth/identity-providers.service';
 import { CandidateRetentionService } from '../talent/retention.service';
 import { HiringBoardService } from '../interviewing/hiring-board.service';
 import { ScorecardsService } from '../interviewing/scorecards.service';
+import { HiringSettingsService } from '../hiring/hiring-settings.service';
+import { CampaignsService } from '../talent-crm/campaigns.service';
+import { CrmConsentsService } from '../talent-crm/consents.service';
+import { VisitorsService } from '../visitors/visitors.service';
+import { WalkInsService } from '../visitors/walkins.service';
+import { AccessRequestsService } from '../access/access-requests.service';
+import { NotFoundRetentionService } from '../help/not-found-retention.service';
+import { AssistantService } from '../help/assistant/assistant.service';
+import { IncidentsService } from '../platform/incidents.service';
+import { CsFollowupService } from '../platform/cs-followup.service';
+import { StaffRolesService } from '../platform/staff-roles.service';
+import { StaffNoticesService } from '../platform/staff-notices.service';
+import { AnalyticsService } from '../platform/analytics.service';
+import { CompanyDeletionService } from '../platform/company-deletion.service';
+import { QuestionReviewNudgesService } from '../questions/bank/review-nudges.service';
+import { SettingChangeNoticesService } from '../org-structure/setting-change-notices.service';
+
+import { ProjectsService } from '../projects/projects.service';
+import { ProjectCostService } from '../projects/project-cost.service';
 
 function msg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -50,9 +71,33 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     candidateRetention: CandidateRetentionService,
     hiringBoard: HiringBoardService,
     scorecards: ScorecardsService,
+    importDrafts: EmployeeImportDraftsService,
+    erasure: ErasureService,
+    hiringSettings: HiringSettingsService,
+    campaigns: CampaignsService,
+    crmConsents: CrmConsentsService,
+    visitors: VisitorsService,
+    walkIns: WalkInsService,
+    accessRequests: AccessRequestsService,
+    notFoundRetention: NotFoundRetentionService,
+    assistant: AssistantService,
+    incidents: IncidentsService,
+    csFollowup: CsFollowupService,
+    staffRoles: StaffRolesService,
+    projects: ProjectsService,
+    settingNotices: SettingChangeNoticesService,
+    projectCost: ProjectCostService,
+    analytics: AnalyticsService,
+    deletions: CompanyDeletionService,
+    questionReviews: QuestionReviewNudgesService,
+    staffNotices: StaffNoticesService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
+      // Projects P-1 (answer 1405).
+      'project-burn': () => projects.burnSweep(),
+      // Projects P-5 (1412, 1413, 1445).
+      'project-cost': () => projectCost.costSweep(),
       'notification-digests': () => notificationDigest.sweep(),
       'staff-reminders': () => reminders.sweep(),
       'scheduled-reports': () => scheduledReports.sweep(),
@@ -60,7 +105,8 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'recycle-bin-retention': () => recycleBinRetention.prune(),
       'api-usage-retention': () => apiUsageRetention.prune(),
       'face-retention': () => faceRetention.prune(),
-      'proctoring-retention': () => proctoringRetention.prune(),
+      // AS-5 part 3 (PRC-28): candidates' erasure requests first, then the retention sweep.
+      'proctoring-retention': async () => (await proctoringRetention.eraseRequested()) + (await proctoringRetention.prune()) + (await proctoringRetention.pruneAccommodation()),
       'drip-steps': () => drip.sweep(),
       'employee-changes': () => employeeHistory.applyDue(),
       // M01 §3.4 / YX-LC-01: probation review reminders, escalation and opt-in auto-confirmation.
@@ -70,6 +116,35 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'candidate-retention': () => candidateRetention.sweep(),
       // M10 AT5: rejection messages after their undo window, and scorecard reminders at 24 h / 48 h.
       'hiring-due': () => Promise.all([hiringBoard.sendDue(), scorecards.remind()]),
+      'import-drafts-retention': () => importDrafts.prune(),
+      // People follow-up 12: Special data past privacy.retention.special_years, companies that turned it on.
+      'privacy-erasure': () => erasure.sweep(),
+      // Founder answer 385: tell the hiring settings holders once when the default recruiter goes stale.
+      'hiring-default-recruiter': () => hiringSettings.staleRecruiterSweep(),
+      // HIR-20: due campaign steps (inside the send window, under the daily cap), and sourced profiles past their limit.
+      'crm-campaigns': () => campaigns.sweep(),
+      'sourced-purge': () => crmConsents.purgeSourced(),
+      // Visitors answers 611 and 608: close forgotten check-outs at the end of the window; delete visits after the period.
+      'visitors-close': () => visitors.closeSweep(),
+      'visitors-retention': () => visitors.retentionSweep(),
+      'visitors-walkins': () => walkIns.sweep(),
+      // Help answers 973 and 974.
+      'access-request-reminders': () => accessRequests.remindSweep(),
+      'not-found-retention': () => notFoundRetention.prune(),
+      'assistant-retention': () => assistant.sweep(),
+      // Console C-8 (answer 1124).
+      'incident-breach-reminders': () => incidents.remindSweep(),
+      'cs-health-snapshot': () => csFollowup.nightly(),
+      'staff-invite-expiry': () => staffRoles.expireInvites(),
+      // Answer 2222.
+      'staff-notices-retention': () => staffNotices.retentionSweep(),
+      'settings-change-lapse': () => settingNotices.lapseSweep(),
+      // Console 1216.
+      'analytics-summary': () => analytics.summariseNightly(),
+      // Settings 1976: kept statutory records past their day.
+      'retention-expiry': () => deletions.releaseSweep(),
+      // Assessments answer 2129.
+      'question-review-nudges': () => questionReviews.sweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

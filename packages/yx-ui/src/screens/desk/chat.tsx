@@ -3,7 +3,8 @@ import { MessageSquare, Paperclip, Phone, Send, Star } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
@@ -44,6 +45,7 @@ export function ChatWindow(props: {
   const [text, setText] = useState('');
   const [buttons, setButtons] = useState('');
   const { busy, error, run } = useRun();
+  const sendEarly = useTooEarly(!text.trim() && !buttons.trim() ? [{ fieldId: 'chat-msg', message: 'Write a message.' }] : []);
   const end = useRef<HTMLDivElement>(null);
   const messages = props.session.messages ?? [];
   useEffect(() => {
@@ -74,7 +76,7 @@ export function ChatWindow(props: {
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       {props.canWrite && (
         <div className="yx-ops-stack" data-gap="sm">
-          <FormField label="Message" hideLabel>
+          <FormField id="chat-msg" label="Message" hideLabel error={sendEarly.errorOf('chat-msg')}>
             <TextArea
               rows={2}
               value={text}
@@ -97,7 +99,7 @@ export function ChatWindow(props: {
             </FormField>
           )}
           <div className="yx-ops-row">
-            <Button variant="primary" icon={Send} loading={busy === 'send'} disabled={!text.trim() && !buttons.trim()} onClick={() => void send()}>
+            <Button variant="primary" icon={Send} loading={busy === 'send'} onClick={() => !sendEarly.stop() && void send()}>
               Send
             </Button>
             {props.onUpload && (
@@ -123,6 +125,7 @@ export function ChatWindow(props: {
 }
 
 function ChatBubble({ m, mine, canReply, onReply, onOpenFile }: { m: ChatMessage; mine: boolean; canReply: boolean; onReply: (text: string) => void; onOpenFile?: (fileId: string) => void }) {
+  const { toast } = useToast();
   if (m.author === 'system') {
     return (
       <li className="yx-chat__system">
@@ -141,7 +144,7 @@ function ChatBubble({ m, mine, canReply, onReply, onOpenFile }: { m: ChatMessage
           {m.card.buttons?.length ? (
             <div className="yx-ops-row">
               {m.card.buttons.map((b) => (
-                <Button key={b.label} size="sm" disabled={!canReply} onClick={() => onReply(b.reply)}>
+                <Button key={b.label} size="sm" onClick={() => (canReply ? onReply(b.reply) : toast({ title: 'Only the person asking can answer with these buttons, while the chat is open.' }))}>
                   {b.label}
                 </Button>
               ))}
@@ -150,7 +153,19 @@ function ChatBubble({ m, mine, canReply, onReply, onOpenFile }: { m: ChatMessage
         </div>
       )}
       {m.file && (
-        <Button size="sm" icon={Paperclip} disabled={m.file.scan !== 'clean' || !onOpenFile} onClick={() => onOpenFile?.(m.file!.id)}>
+        <Button
+          size="sm"
+          icon={Paperclip}
+          onClick={() =>
+            m.file!.scan === 'pending'
+              ? toast({ title: 'This file is still being checked for viruses. Try again in a moment.' })
+              : m.file!.scan !== 'clean'
+                ? toast({ title: 'The virus check blocked this file, so it cannot be opened.' })
+                : onOpenFile
+                  ? onOpenFile(m.file!.id)
+                  : toast({ title: 'Files cannot be opened here.' })
+          }
+        >
           {m.file.name} {m.file.scan === 'pending' ? '(being checked)' : m.file.scan === 'clean' ? '' : '(blocked)'}
         </Button>
       )}
@@ -178,7 +193,7 @@ export interface RequesterChatProps {
   onOpenFile: (fileId: string) => void;
   onTyping: () => void;
   onEnd: () => Promise<unknown>;
-  onRate: (score: number, comment: string) => Promise<unknown>;
+  onRate: (score: number, comment: string, reason?: string) => Promise<unknown>;
   onOpenTicket: (ticketId: string) => void;
   onPick: (kind: PickKind, q: string) => Promise<PickOption[]>;
 }
@@ -192,8 +207,11 @@ export function RequesterChatScreen(props: RequesterChatProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [score, setScore] = useState<number | null>(null);
   const [comment, setComment] = useState('');
+  const [reason, setReason] = useState<string | null>(null);
   const { busy, error, run } = useRun();
   const queue = props.queues.find((q) => q.id === queueId) ?? null;
+  const startEarly = useTooEarly(queue ? [] : [{ fieldId: 'chat-queue', message: 'Choose who to chat with.' }]);
+  const rateEarly = useTooEarly(score ? [] : [{ fieldId: 'chat-score', message: 'Choose how many stars.' }]);
   const c = props.current;
   return (
     <DeskPage title="Chat with us" description="Ask a quick question and someone from the team answers here." state={props.state} onRetry={props.onRetry} what="chat">
@@ -228,7 +246,7 @@ export function RequesterChatScreen(props: RequesterChatProps) {
                 <EmptyState compact title="Chat is not open right now." description="Raise a ticket from the help centre instead." />
               ) : (
                 <>
-                  <FormField label="Who do you want to chat with?" required>
+                  <FormField id="chat-queue" label="Who do you want to chat with?" required error={startEarly.errorOf('chat-queue')}>
                     <Select value={queueId} onChange={(v) => setQueueId(v)} options={props.queues.map((q) => ({ value: q.id, label: `${q.name} (${q.desk})`, description: q.online ? 'Someone is there now' : 'Nobody is there now: we will make a ticket if nobody joins' }))} />
                   </FormField>
                   <FormField label="What is it about?" optional>
@@ -239,9 +257,9 @@ export function RequesterChatScreen(props: RequesterChatProps) {
                   <div className="yx-ops-row">
                     <Button
                       variant="primary"
-                      disabled={!queue}
                       loading={busy === 'start'}
                       onClick={() =>
+                        !startEarly.stop() &&
                         void run('start', async () => {
                           const problems = formProblems(queue!.preChat, answers);
                           setErrors(problems);
@@ -280,12 +298,19 @@ export function RequesterChatScreen(props: RequesterChatProps) {
               <ChatWindow session={c} me="requester" live={props.live} canWrite={c.state !== 'ended'} onSend={props.onSend} onUpload={props.onUpload} onOpenFile={props.onOpenFile} onTyping={props.onTyping} />
               {c.state === 'ended' && c.rating === null && (
                 <div className="yx-ops-stack" data-gap="sm">
-                  <Segment label="How was this chat?" value={score} onChange={setScore} options={[1, 2, 3, 4, 5].map((n) => ({ value: n, label: <span aria-label={`${n} out of 5`}>{'★'.repeat(n)}</span> }))} />
+                  <FormField id="chat-score" label="How was this chat?" hideLabel error={rateEarly.errorOf('chat-score')}>
+                    <Segment label="How was this chat?" value={score} onChange={setScore} options={[1, 2, 3, 4, 5].map((n) => ({ value: n, label: <span aria-label={`${n} out of 5`}>{'★'.repeat(n)}</span> }))} />
+                  </FormField>
+                  {(c.ratingReasons ?? []).length > 0 && (
+                    <FormField label="The main reason" optional>
+                      <Select value={reason} onChange={setReason} clearable placeholder="Choose a reason" options={c.ratingReasons!.map((r) => ({ value: r, label: r }))} />
+                    </FormField>
+                  )}
                   <FormField label="Anything to add?" optional>
                     <TextField value={comment} onChange={setComment} maxLength={500} />
                   </FormField>
                   <div className="yx-ops-row">
-                    <Button icon={Star} disabled={!score} loading={busy === 'rate'} onClick={() => void run('rate', () => props.onRate(score!, comment.trim()))}>
+                    <Button icon={Star} loading={busy === 'rate'} onClick={() => !rateEarly.stop() && void run('rate', () => props.onRate(score!, comment.trim(), reason ?? undefined))}>
                       Rate this chat
                     </Button>
                   </div>
@@ -363,6 +388,7 @@ export function AgentChatScreen(props: AgentChatProps) {
   const [tab, setTab] = useState<'chats' | 'calls'>('chats');
   const { busy, error, run } = useRun();
   const [handTo, setHandTo] = useState<string | null>(null);
+  const handEarly = useTooEarly(handTo ? [] : [{ fieldId: 'chat-hand', message: 'Choose a queue or a person.' }]);
   const c = props.current;
   const waiting = props.sessions.filter((s) => s.state === 'queued');
   const active = props.sessions.filter((s) => s.state === 'active');
@@ -440,14 +466,16 @@ export function AgentChatScreen(props: AgentChatProps) {
                 <ChatWindow session={c} me="agent" live={props.live} canWrite={c.state === 'active' && mine} allowCards onSend={props.onSend} onUpload={props.onUpload} onOpenFile={props.onOpenFile} onTyping={props.onTyping} />
                 {c.state !== 'ended' && (
                   <div className="yx-ops-row">
-                    <Select
-                      aria-label="Hand over to"
-                      placeholder="Hand over to…"
-                      value={handTo}
-                      onChange={setHandTo}
-                      options={[...props.queues.filter((q) => q.id !== c.queueId).map((q) => ({ value: `q:${q.id}`, label: `Queue: ${q.name}` })), ...props.agents.filter((a) => a.id !== c.agentUserId).map((a) => ({ value: `a:${a.id}`, label: a.name }))]}
-                    />
-                    <Button disabled={!handTo} loading={busy === 'hand'} onClick={() => void run('hand', async () => {
+                    <FormField id="chat-hand" label="Hand over to" hideLabel error={handEarly.errorOf('chat-hand')}>
+                      <Select
+                        aria-label="Hand over to"
+                        placeholder="Hand over to…"
+                        value={handTo}
+                        onChange={setHandTo}
+                        options={[...props.queues.filter((q) => q.id !== c.queueId).map((q) => ({ value: `q:${q.id}`, label: `Queue: ${q.name}` })), ...props.agents.filter((a) => a.id !== c.agentUserId).map((a) => ({ value: `a:${a.id}`, label: a.name }))]}
+                      />
+                    </FormField>
+                    <Button loading={busy === 'hand'} onClick={() => !handEarly.stop() && void run('hand', async () => {
                       await props.onTransfer(handTo!.startsWith('q:') ? { queueId: handTo!.slice(2) } : { agentUserId: handTo!.slice(2) });
                       setHandTo(null);
                     })}>
@@ -498,12 +526,14 @@ function InteractionsCard(props: AgentChatProps) {
   const [callRef, setCallRef] = useState('');
   const [outcome, setOutcome] = useState<'open' | 'resolved'>('resolved');
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const logEarly = useTooEarly(subject.trim() ? [] : [{ fieldId: 'call-subject', message: 'Say what it was about.' }]);
   return (
     <div className="yx-ops-stack">
       <Card title="Log a call or a walk-up">
         <div className="yx-ops-stack">
           <Segment label="How did they reach you?" value={channel} onChange={setChannel} options={[{ value: 'call', label: 'Phone call' }, { value: 'walk_up', label: 'Walked up' }]} />
-          <FormField label="What was it about?" required>
+          <FormField id="call-subject" label="What was it about?" required error={logEarly.errorOf('call-subject')}>
             <TextField value={subject} onChange={setSubject} maxLength={200} />
           </FormField>
           <FormField label="Notes" optional helper="Personal data like card or Aadhaar numbers is hidden when saved.">
@@ -521,8 +551,8 @@ function InteractionsCard(props: AgentChatProps) {
               variant="primary"
               icon={Phone}
               loading={busy === 'log'}
-              disabled={!subject.trim()}
               onClick={() =>
+                !logEarly.stop() &&
                 void run('log', async () => {
                   await props.onLog({ channel, subject: subject.trim(), notes: notes.trim(), outcome, ...(callRef.trim() ? { callRef: callRef.trim() } : {}) });
                   setSubject('');
@@ -555,7 +585,8 @@ function InteractionsCard(props: AgentChatProps) {
                   )}
                   {i.outcome === 'open' && (
                     <>
-                      <Button size="sm" disabled={!i.person} loading={busy === `p${i.id}`} onClick={() => void run(`p${i.id}`, () => props.onPromote(i))}>
+                      <Button size="sm" loading={busy === `p${i.id}`} onClick={() => (i.person ? void run(`p${i.id}`, () => props.onPromote(i)) : toast({ title: 'A ticket needs a person, and nobody is linked to this contact.' }))}>
+
                         Make a ticket
                       </Button>
                       <Button size="sm" loading={busy === `c${i.id}`} onClick={() => void run(`c${i.id}`, () => props.onCloseInteraction(i))}>

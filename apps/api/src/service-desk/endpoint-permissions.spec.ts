@@ -39,7 +39,7 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
     expect(undeclared(PortalController).sort()).toEqual(['confirm', 'get', 'info', 'list', 'me', 'meToo', 'raise', 'reply', 'request', 'signIn', 'signOut', 'verify']);
     // Batch 4: the requester's own help, ratings and privacy requests; the portal's; and the public, keyless surfaces
     // (help centre, one-click rating link, wall screen link, sign-up, SCIM with its own bearer token).
-    expect(undeclared(MyHelpController).sort()).toEqual(['askPrivacy', 'kbArticle', 'kbClick', 'kbFeedback', 'kbHome', 'privacyExport', 'privacyRequests', 'rate', 'suggest']);
+    expect(undeclared(MyHelpController).sort()).toEqual(['askPrivacy', 'kbArticle', 'kbClick', 'kbFeedback', 'kbHome', 'kbPage', 'privacyExport', 'privacyRequests', 'rate', 'suggest']);
     expect(undeclared(PortalHelpController).sort()).toEqual(['article', 'feedback', 'privacyAsk', 'privacyExport', 'privacyList', 'rate', 'suggest']);
     expect(undeclared(PublicHelpController).sort()).toEqual(['article', 'feedback', 'home', 'search', 'sitemap']);
     expect(undeclared(RateLinkController).sort()).toEqual(['answer', 'comment', 'info']);
@@ -51,7 +51,8 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
   it('3b-2: the catalogue, cart and requests of the requester, and P03 approvals, are implicit (own records only)', () => {
     expect(undeclared(MyCatalogController).sort()).toEqual(['cancel', 'cancelItem', 'catalogue', 'checkout', 'guide', 'itemPage', 'pick', 'request', 'resolveGuide']);
     // An approver is anyone a request names (P03): the engine checks the task is theirs.
-    expect(undeclared(WorkflowController).sort()).toEqual(['decide', 'delegate', 'delegations', 'history', 'inbox', 'mine', 'people', 'request', 'revoke']);
+    // decideMany: only tasks the caller holds (each refused otherwise); teamHistory: requests the caller holds or held a task for.
+    expect(undeclared(WorkflowController).sort()).toEqual(['decide', 'decideMany', 'delegate', 'delegations', 'history', 'inbox', 'mine', 'people', 'request', 'revoke', 'teamHistory']);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskCatalogController.prototype.askApproval)).toEqual(['desk.ticket.work']);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskRulesController.prototype.create)).toEqual(['desk.rule.manage']);
   });
@@ -69,6 +70,8 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
 
   it('the console desk needs the staff key; asking for access also needs the support-session key (SD-1.31)', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, ConsoleDeskController.prototype.requestAccess)).toEqual(['platform.support_desk.work', 'platform.support.request']);
+    // Answer 1051: the cross-company Not found look-up is a Support desk key route.
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, ConsoleDeskController.prototype.reference)).toEqual(['platform.support_desk.work']);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, YukthixSupportController.prototype.raise)).toEqual(['org.yukthix_support.raise']);
   });
 

@@ -25,6 +25,10 @@ import {
   CategoryDto,
   CollaboratorDto,
   ConvertDto,
+  TicketFieldDto,
+  TicketFieldValuesDto,
+  TicketAppDto,
+  TicketDeviceDto,
   CreateDeskDto,
   EditNoteDto,
   GroupDto,
@@ -75,6 +79,7 @@ import {
   UpdateSlaPolicyDto,
   UpdateTaskDto,
 } from './dto';
+import { MyDesksQueryDto } from './dto-esm';
 import { MeService } from './me.service';
 import { SlaService } from './sla.service';
 import { WorkService } from './work.service';
@@ -130,7 +135,7 @@ export class DeskSetupController {
   }
 
   @Get('users')
-  @RequireAnyPermission('desk.member.manage', 'desk.report.manage', 'desk.kb.publish')
+  @RequireAnyPermission('desk.member.manage', 'desk.report.manage', 'desk.kb.publish', 'desk.settings.manage')
   async users(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: SearchQueryDto) {
     return this.desks.users(await this.access.actor(req, t), q.search);
   }
@@ -154,6 +159,21 @@ export class DeskSetupController {
   async endMember(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('memberId', ParseUUIDPipe) memberId: string) {
     assertOwnSession(req);
     return this.desks.endMember(await this.access.actor(req, t), id, memberId);
+  }
+
+  /** Answers 1641, 1650: the desk's own ticket fields. */
+  @Post('desks/:id/fields')
+  @RequirePermissions('desk.settings.manage')
+  async addField(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketFieldDto) {
+    assertOwnSession(req);
+    return this.desks.saveField(await this.access.actor(req, t), id, null, dto);
+  }
+
+  @Patch('desks/:id/fields/:fieldId')
+  @RequirePermissions('desk.settings.manage')
+  async editField(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('fieldId', ParseUUIDPipe) fieldId: string, @Body() dto: TicketFieldDto) {
+    assertOwnSession(req);
+    return this.desks.saveField(await this.access.actor(req, t), id, fieldId, dto);
   }
 
   @Post('desks/:id/groups')
@@ -405,6 +425,30 @@ export class DeskTicketsController {
     return this.tickets.assign(await this.access.actor(req, t), id, dto);
   }
 
+  /** ITSM answer 2057: an IT desk's agent sets or clears the application a ticket is about. */
+  @Put('tickets/:id/app')
+  @RequirePermissions('desk.ticket.work')
+  async setApp(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketAppDto) {
+    assertOwnSession(req);
+    return this.tickets.setApp(await this.access.actor(req, t), id, dto.appId);
+  }
+
+  /** Answer 1661: an IT desk's agent sets or clears the device a ticket is about. */
+  @Put('tickets/:id/device')
+  @RequirePermissions('desk.ticket.work')
+  async setDevice(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketDeviceDto) {
+    assertOwnSession(req);
+    return this.tickets.setDevice(await this.access.actor(req, t), id, dto.assetId);
+  }
+
+  /** Answers 1641, 1650: an agent sets the ticket's own field values (the ones their role may see). */
+  @Put('tickets/:id/fields')
+  @RequirePermissions('desk.ticket.work')
+  async setFields(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketFieldValuesDto) {
+    assertOwnSession(req);
+    return this.tickets.setFields(await this.access.actor(req, t), id, dto.values);
+  }
+
   @Post('tickets/:id/convert')
   @HttpCode(200)
   @RequirePermissions('desk.ticket.work')
@@ -574,8 +618,8 @@ export class MyTicketsController {
   }
 
   @Get('desks')
-  desks(@Req() req: Request, @CurrentTenant() t: TenantContext) {
-    return this.requesters.desks(this.requesters.who(req, t));
+  desks(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: MyDesksQueryDto) {
+    return this.requesters.desks(this.requesters.who(req, t), q.for);
   }
 
   @Get('tickets')
@@ -658,6 +702,14 @@ export class DeskWorkController {
   @RequirePermissions(VIEW)
   async overview(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.work.overview(await this.actor(req, t), id);
+  }
+
+  /** Answer 1649: the command palette's "go to ticket <number>" (only tickets this agent may open). */
+  @Get('tickets/by-number/:number')
+  @RequirePermissions(VIEW)
+  async byNumber(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('number') number: string) {
+    if (!/^[A-Za-z0-9-]{1,40}$/.test(number)) throw new NotFoundException('No such ticket.');
+    return this.tickets.byNumber(await this.actor(req, t), number);
   }
 
   @Get('tickets/:id/sla')

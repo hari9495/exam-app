@@ -4,6 +4,9 @@ import { GrantScope, GrantScopeType, TENANT_SCOPE, grantScopesFor } from '../rec
 import { isGrantOnlyKey } from '../field-permissions/employee-fields';
 import { LEGACY_ALIASES, withAliasSources } from './ats-keys';
 
+/** A YukthiX console key (platform.x.y): held only through staff roles, never through a company role. */
+export const isPlatformKey = (key: string) => /^platform\.[a-z_]+\.[a-z_]+$/.test(key);
+
 export interface PermissionSubject {
   role: string;
   organizationId: string | null;
@@ -38,6 +41,19 @@ export async function resolveScopedGrants(
     out.set(key, list);
   };
   for (const key of await baseGrants(prisma, tenantPrisma, subject, withAliasSources(keys))) add(key, TENANT_SCOPE);
+  // Console staff roles (answers 1058, 1086): YukthiX staff hold the platform keys of the roles they were given, read
+  // outside any company (the table is visible only there). Nobody holds every key by default.
+  if (subject.role === 'super_admin' && !subject.organizationId && subject.userId) {
+    const want = keys.filter(isPlatformKey);
+    if (want.length) {
+      const rows = await tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: false }, (tx) =>
+        tx.$queryRaw<{ key: string }[]>`
+          SELECT DISTINCT k.key FROM platform_staff_roles r JOIN platform_role_keys k ON k.role = r.role
+          WHERE r.user_id = ${subject.userId}::uuid AND k.key = ANY(${want}::text[])`,
+      );
+      for (const r of rows) add(r.key, TENANT_SCOPE);
+    }
+  }
 
   const organizationId = subject.organizationId ?? null;
   if (organizationId && subject.userId) {
@@ -45,7 +61,7 @@ export async function resolveScopedGrants(
     // Active today in India time (the company calendar; P01 entities are IST-based until P21 lands).
     const grants = await tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
       tx.$queryRaw<{ scope_type: GrantScopeType; target: string | null; permissions_json: string }[]>`
-        SELECT g.scope_type, COALESCE(g.legal_entity_id, g.location_id, g.department_id)::text AS target, p.permissions_json
+        SELECT g.scope_type, COALESCE(g.legal_entity_id, g.location_id, g.department_id, g.employee_id)::text AS target, p.permissions_json
         FROM role_grants g
         JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
         WHERE g.organization_id = ${organizationId}::uuid AND g.user_id = ${userId}::uuid AND g.status = 'active'
@@ -53,7 +69,7 @@ export async function resolveScopedGrants(
           AND (g.valid_to IS NULL OR g.valid_to >= (now() AT TIME ZONE 'Asia/Kolkata')::date)`,
     );
     for (const g of grants) {
-      for (const key of JSON.parse(g.permissions_json) as string[]) add(key, { type: g.scope_type, id: g.target });
+      for (const key of JSON.parse(g.permissions_json) as string[]) if (!isPlatformKey(key)) add(key, { type: g.scope_type, id: g.target });
     }
   }
   // Founder D2 (M10): an older hiring key is held when a company-wide `ats.*` key that stands in for it is held. The older
@@ -81,7 +97,7 @@ async function baseGrants(prisma: PrismaService, tenantPrisma: TenantPrismaServi
     const profile = await tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
       tx.permissionProfile.findUnique({ where: { id: profileId }, select: { permissionsJson: true } }),
     );
-    const fromProfile = profile ? (JSON.parse(profile.permissionsJson) as string[]) : [];
+    const fromProfile = profile ? (JSON.parse(profile.permissionsJson) as string[]).filter((k) => !isPlatformKey(k)) : [];
     // A System Admin who also holds a profile (e.g. the HR head made System Admin, founder 8 Oct 2026) keeps the
     // System Admin keys too: the profile adds to the role, it never takes the admin's own keys away.
     if (subject.role !== 'org_admin') return fromProfile;
@@ -103,7 +119,7 @@ async function baseGrants(prisma: PrismaService, tenantPrisma: TenantPrismaServi
     );
     if (override) {
       // An override never confers HR or pay keys, even one stored before they were refused (P02 §4.6, R1).
-      return (JSON.parse(override.permissionsJson) as string[]).filter((k) => !isGrantOnlyKey(k));
+      return (JSON.parse(override.permissionsJson) as string[]).filter((k) => !isGrantOnlyKey(k) && !isPlatformKey(k));
     }
   }
   const grants = await prisma.rolePermission.findMany({

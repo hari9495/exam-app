@@ -8,9 +8,11 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, Viewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { personForEmployee } from '../people/persons';
+import { showDate } from '../people/employee-import';
 import { joinerInScope, ownOf } from '../documents/person-access';
 import { LifecycleJourneysService } from './journeys.service';
 import { PreboardingPortalService } from './portal.service';
+import { offerRehire, rehireOverridesIn } from './rehire-policy';
 
 // LIFE-1.07 joiners before day one (M01 §3.5, Q1, D3; founder D2): HR adds a joiner by hand or imports many, the
 // P01 person is found or made (an email or phone that already belongs to someone is never linked silently), and the
@@ -34,6 +36,8 @@ export interface JoinerInput {
   templateId?: string | null;
   /** Lifecycle 6e: a campus batch the joiner belongs to. */
   batchId?: string | null;
+  /** PPL-12 (from an offer only): rehire choices changed from the company policy, each with a reason. */
+  rehire?: Record<string, { value: string; reason?: string | null }>;
 }
 
 const CSV_COLUMNS = ['given_name', 'family_name', 'email', 'phone', 'joining_on', 'legal_entity', 'location', 'department', 'designation', 'employment_type', 'manager_code'] as const;
@@ -64,7 +68,8 @@ export class JoinersService {
     if (d.managerEmployeeId && !(await tx.employment.findFirst({ where: { organizationId: org, employeeId: d.managerEmployeeId, exitedOn: null }, select: { id: true } }))) throw new BadRequestException('The manager must be a current employee.');
   }
 
-  private async addIn(tx: Tx, c: CompanyContext, v: Viewer, dto: JoinerInput, source: 'direct' | 'import' | 'offer', offerId: string | null = null) {
+  /** CL-7 (answer 637): a contract worker joins from their deployment (source 'contract_worker', on the same person). */
+  async addIn(tx: Tx, c: CompanyContext, v: Viewer, dto: JoinerInput, source: 'direct' | 'import' | 'offer' | 'contract_worker', offerId: string | null = null, contractDeploymentId: string | null = null) {
     const org = c.organizationId;
     if (!ISO.test(dto.joiningOn)) throw new BadRequestException('Give the joining day as a date.');
     if (dto.joiningOn < todayIst()) throw new BadRequestException('The joining day cannot be in the past. Add people who already joined as employees.');
@@ -98,6 +103,7 @@ export class JoinersService {
         hrOwnerUserId: c.userId!,
         status: 'invited',
         offerId,
+        contractDeploymentId,
         personType: rehireOf ? 'rehire' : 'new',
         rehireOf,
         batchId: dto.batchId ?? null,
@@ -129,7 +135,7 @@ export class JoinersService {
     return { id: res.pb.id, journeyId: res.journeyId };
   }
 
-  private async afterAdd(ctx: CompanyContext, user: ScopeUser, added: { pb: Prisma.PreboardingGetPayload<object>; journeyId: string }[]) {
+  async afterAdd(ctx: CompanyContext, user: ScopeUser, added: { pb: Prisma.PreboardingGetPayload<object>; journeyId: string }[]) {
     for (const a of added) {
       await this.journeys.afterStart(ctx, a.journeyId, user.userId ?? null);
       // LIFE-2.01: the joiner is invited to the pre-boarding portal (when HR gave a personal email).
@@ -137,7 +143,7 @@ export class JoinersService {
     }
     const managers = await this.tenantPrisma.forTenant(ctx, (tx) => tx.employee.findMany({ where: { organizationId: ctx.organizationId, id: { in: added.map((a) => a.pb.managerEmployeeId).filter((x): x is string => Boolean(x)) }, userId: { not: null } }, select: { userId: true } }));
     const p = added.length === 1 ? await this.tenantPrisma.forTenant(ctx, (tx) => tx.person.findFirst({ where: { organizationId: ctx.organizationId, id: added[0].pb.personId }, select: { givenName: true, familyName: true, preferredName: true } })) : null;
-    const text = p ? `${displayName(p)} joins your team on ${added[0].pb.joiningOn.toISOString().slice(0, 10)}` : 'Someone is joining your team';
+    const text = p ? `${displayName(p)} joins your team on ${showDate(added[0].pb.joiningOn.toISOString().slice(0, 10))}` : 'Someone is joining your team';
     if (managers.length) void this.notifications.notify(ctx, user.userId!, managers.map((m) => m.userId!), 'lifecycle.joiner.added', { entityType: 'preboarding', entityId: added[0].pb.id, contextText: text, linkPath: '/yx/people/team' }).catch(() => undefined);
   }
 
@@ -145,18 +151,37 @@ export class JoinersService {
   async fromOffer(ctx: TenantContext, user: ScopeUser, offerId: string, dto: JoinerInput) {
     const v = await this.journeys.viewer(user);
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const o = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId, status: 'accepted' } });
-      if (!o) throw new NotFoundException('No accepted offer with this id.');
+      const { email, rehire } = await offerRehire(tx, c.organizationId, offerId);
       if (await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, offerId, status: { not: 'cancelled' } }, select: { id: true } })) throw new ConflictException('This offer already has a joiner.');
-      const cand = await tx.candidate.findFirstOrThrow({ where: { organizationId: c.organizationId, id: o.candidateId }, select: { email: true } });
-      const emp = await tx.employee.findFirst({ where: { organizationId: c.organizationId, workEmail: cand.email }, select: { id: true } });
-      if (emp && (await tx.employment.findFirst({ where: { organizationId: c.organizationId, employeeId: emp.id, exitedOn: null }, select: { id: true } }))) {
-        throw new ConflictException('This is a current employee. Their move is a transfer or promotion on their record (People › Job changes), not onboarding (YX-LC-11).');
+      if (dto.rehire && !rehire) throw new BadRequestException('Rehire choices are only for someone who worked here before.');
+      // Answer 401: an offer from a bulk batch that names a People joiner batch joins it, when HR picked no batch and the
+      // joiner keeps the batch's legal entity and joining day (otherwise HR is told why it did not).
+      let batchId = dto.batchId;
+      let batchNote: string | null = null;
+      if (batchId === undefined) {
+        const o = await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: offerId }, select: { batchId: true } });
+        const ob = o?.batchId ? await tx.offerBatch.findFirst({ where: { organizationId: c.organizationId, id: o.batchId }, select: { joinerBatchId: true } }) : null;
+        const jb = ob?.joinerBatchId ? await tx.joinerBatch.findFirst({ where: { organizationId: c.organizationId, id: ob.joinerBatchId } }) : null;
+        if (jb) {
+          const day = jb.joiningOn.toISOString().slice(0, 10);
+          if (jb.status === 'open' && jb.legalEntityId === dto.legalEntityId && day === dto.joiningOn) batchId = jb.id;
+          else batchNote = `Not added to the batch ${jb.name}: ${jb.status !== 'open' ? 'it is closed' : jb.legalEntityId !== dto.legalEntityId ? 'it is for another legal entity' : `it joins on ${day}`}.`;
+        }
       }
-      return this.addIn(tx, c, v, { ...dto, email: dto.email ?? cand.email }, 'offer', offerId);
+      // An ex-employee joins on their own record (a rehire), never as a second person (PPL-12).
+      const res = await this.addIn(tx, c, v, { ...dto, batchId, email: dto.email ?? email, personId: rehire?.personId ?? dto.personId }, 'offer', offerId);
+      // PPL-12: choices HR changed in the Create drawer's impact preview, each with its reason (as on the checklist).
+      if (dto.rehire && Object.keys(dto.rehire).length) {
+        const overrides = await rehireOverridesIn(tx, c, dto.legalEntityId, dto.rehire);
+        if (Object.keys(overrides).length) {
+          res.pb = await tx.preboarding.update({ where: { id: res.pb.id }, data: { rehireOverrides: overrides, version: { increment: 1 } } });
+          await audit(tx, c, 'preboarding.rehire.options', 'preboarding', res.pb.id, { overrides });
+        }
+      }
+      return { ...res, batchNote };
     });
     await this.afterAdd(ctx as CompanyContext, user, [res]);
-    return { id: res.pb.id, journeyId: res.journeyId };
+    return { id: res.pb.id, journeyId: res.journeyId, batchId: res.pb.batchId, batchNote: res.batchNote };
   }
 
   /** CSV import (Q1): a preview with every row's problems, then commit adds only the rows without problems. */
@@ -274,7 +299,8 @@ export class JoinersService {
     const open = j ? await tx.journeyTask.count({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } } }) : 0;
     const overdue = j ? await tx.journeyTask.count({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] }, dueOn: { lt: asDate(todayIst()) } } }) : 0;
     // The first few open tasks by name, for the Home's readiness tags.
-    const pending = j ? (await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } }, orderBy: { dueOn: 'asc' }, take: 3, select: { title: true } })).map((t) => t.title) : [];
+    const next = j ? await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: j.id, status: { in: ['open', 'waiting'] } }, orderBy: { dueOn: 'asc' }, take: 3, select: { title: true, dueOn: true, ownerType: true } }) : [];
+    const pending = next.map((t) => t.title);
     return {
       id: r.id,
       personId: r.personId,
@@ -295,6 +321,9 @@ export class JoinersService {
       openTasks: open,
       overdueTasks: overdue,
       pendingTasks: pending,
+      // The board card's next step (PPL-11) and when the joiner was added (days in pre-boarding).
+      nextTask: next[0] ? { title: next[0].title, dueOn: iso(next[0].dueOn), ownerType: next[0].ownerType } : null,
+      addedOn: r.createdAt.toISOString().slice(0, 10),
       personType: r.personType,
       batchId: r.batchId,
       buddyEmployeeId: r.buddyEmployeeId,
@@ -311,7 +340,10 @@ export class JoinersService {
       if (!r) throw new NotFoundException('No such joiner.');
       const own = await ownOf(tx, c, v);
       if (r.managerEmployeeId !== own.employeeId && !(await joinerInScope(tx, c, v, v.grants.has('lifecycle.onboarding.view') ? 'lifecycle.onboarding.view' : 'lifecycle.onboarding.manage', r))) throw new ForbiddenException('You cannot see this joiner.');
-      return this.rowView(tx, c.organizationId, r);
+      // PPL-15: the requisition (the job the accepted offer was for) an unwind opens again, and whether it holds a plan slot.
+      const offer = r.offerId ? await tx.offer.findFirst({ where: { organizationId: c.organizationId, id: r.offerId }, select: { pipelineEntryId: true } }) : null;
+      const entry = offer ? await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: offer.pipelineEntryId }, select: { job: { select: { title: true, headcountPlanLineId: true } } } }) : null;
+      return { ...(await this.rowView(tx, c.organizationId, r)), requisition: entry ? { title: entry.job.title, planned: Boolean(entry.job.headcountPlanLineId) } : null };
     });
   }
 
@@ -327,7 +359,7 @@ export class JoinersService {
   }
 
   /** YX-LC-13 postpone: a new joining day moves the checklist's unfinished tasks by the same days. */
-  async postpone(ctx: TenantContext, user: ScopeUser, id: string, dto: { joiningOn: string; reason: string; version: number }) {
+  async postpone(ctx: TenantContext, user: ScopeUser, id: string, dto: { joiningOn: string; reason?: string; version: number }) {
     const v = await this.journeys.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const r = await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, id } });
@@ -336,18 +368,23 @@ export class JoinersService {
       if (r.status !== 'invited') throw new ConflictException('This joiner is no longer waiting to join.');
       if (!ISO.test(dto.joiningOn) || dto.joiningOn < todayIst()) throw new BadRequestException('The new joining day must be today or later.');
       if (r.version !== dto.version) throw new ConflictException('Someone else changed this joiner. Reload it.');
-      return { ok: true, moved: await this.moveIn(tx, c, r, dto.joiningOn, dto.reason) };
+      const moved = await this.moveIn(tx, c, r, dto.joiningOn, dto.reason);
+      // The manager was told the first joining day; tell them the new one (founder 23 Oct 2026).
+      const m = r.managerEmployeeId ? await tx.employee.findFirst({ where: { organizationId: c.organizationId, id: r.managerEmployeeId, userId: { not: null } }, select: { userId: true } }) : null;
+      const p = await tx.person.findFirst({ where: { organizationId: c.organizationId, id: r.personId }, select: { givenName: true, familyName: true, preferredName: true } });
+      if (m?.userId && p && user.userId) void this.notifications.notify(c, user.userId, [m.userId], 'lifecycle.joiner.added', { entityType: 'preboarding', entityId: r.id, contextText: `${displayName(p)} now joins your team on ${showDate(dto.joiningOn)}`, linkPath: '/yx/people/team' }).catch(() => undefined);
+      return { ok: true, moved };
     });
   }
 
   /** YX-LC-13: a new joining day; every unfinished checklist task moves by the same days (also for a whole batch, 6e). */
-  async moveIn(tx: Tx, c: CompanyContext, r: Prisma.PreboardingGetPayload<object>, joiningOn: string, reason: string) {
+  async moveIn(tx: Tx, c: CompanyContext, r: Prisma.PreboardingGetPayload<object>, joiningOn: string, reason?: string) {
     const id = r.id;
     const n = await tx.preboarding.updateMany({ where: { organizationId: c.organizationId, id, version: r.version, status: 'invited' }, data: { joiningOn: asDate(joiningOn), version: { increment: 1 } } });
     if (!n.count) throw new ConflictException('Someone else changed this joiner. Reload it.');
     const j = await tx.journey.findFirst({ where: { organizationId: c.organizationId, subjectType: 'preboarding', subjectId: id, kind: 'onboarding' } });
     const moved = j ? await this.journeys.reanchorIn(tx, c, j.id, joiningOn) : 0;
-    await audit(tx, c, 'preboarding.joining_date.changed', 'preboarding', id, { from: iso(r.joiningOn), to: joiningOn, reason: reason.trim().slice(0, 300) });
+    await audit(tx, c, 'preboarding.joining_date.changed', 'preboarding', id, { from: iso(r.joiningOn), to: joiningOn, reason: reason?.trim().slice(0, 300) ?? null });
     await tx.eventOutbox.create({ data: { organizationId: c.organizationId, eventType: 'preboarding.joining_date.changed', payload: { preboardingId: id, from: iso(r.joiningOn), to: joiningOn } } });
     return moved;
   }

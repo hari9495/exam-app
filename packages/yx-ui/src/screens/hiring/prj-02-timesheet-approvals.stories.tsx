@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { TimesheetApprovalsPhone, TimesheetApprovalsScreen } from './projects';
+import { TimesheetApprovalsPhone, TimesheetApprovalsScreen, type LiveTimesheetApprovals } from './projects';
+import { LIVE_LINE_APPROVALS } from './projects-live-fixtures';
 import { APPROVAL_GROUPS } from './projects-data';
 
 const meta: Meta = { title: 'Screens/Projects/PRJ-02 · Timesheet approvals', parameters: { layout: 'fullscreen' } };
@@ -15,3 +16,15 @@ export const Empty: S = { name: 'Empty · all caught up', render: () => <Timeshe
 export const Loading: S = { name: 'Loading', render: () => <TimesheetApprovalsScreen groups={APPROVAL_GROUPS} state="loading" /> };
 export const Error: S = { name: 'Error', render: () => <TimesheetApprovalsScreen groups={APPROVAL_GROUPS} state="error" /> };
 export const Phone: S = { name: 'phone', globals: PHONE, render: () => <TimesheetApprovalsPhone groups={APPROVAL_GROUPS.slice(0, 1)} /> };
+
+// Projects P-2 (answers 1406 to 1408, 1442): the live states.
+const ok = async () => undefined;
+const live = (over: Partial<LiveTimesheetApprovals> = {}): LiveTimesheetApprovals => ({ state: 'ready', data: LIVE_LINE_APPROVALS, onDecide: ok, onBulk: ok, ...over });
+export const LiveByProject: S = { name: 'Live · my lines by project and week', render: () => <TimesheetApprovalsScreen live={live()} /> };
+export const LiveBulk: S = { name: 'Live · bulk approve within allocation', render: () => <TimesheetApprovalsScreen live={live({ defaultBulk: true })} /> };
+export const LiveEmpty: S = { name: 'Live · all caught up', render: () => <TimesheetApprovalsScreen live={live({ data: { withinAllocation: true, groups: [] } })} /> };
+export const LiveLoading: S = { name: 'Live · loading', render: () => <TimesheetApprovalsScreen live={live({ state: 'loading', data: null })} /> };
+export const LiveError: S = { name: 'Live · error', render: () => <TimesheetApprovalsScreen live={live({ state: 'error', data: null })} /> };
+
+// Projects P-4 (answer 1541): the week against attendance on a card.
+export const LiveMismatch: S = { name: 'Live · timesheet against attendance', render: () => <TimesheetApprovalsScreen live={live({ data: { ...LIVE_LINE_APPROVALS, groups: [{ ...LIVE_LINE_APPROVALS.groups[0]!, items: [{ ...LIVE_LINE_APPROVALS.groups[0]!.items[1]!, mismatch: 'Timesheet 42 h vs attendance 40 h worked' }] }] } })} /> };

@@ -1,0 +1,388 @@
+import { act, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '../../components/notify';
+import { PreRegisterScreen, VisitorDeskScreen, VisitorKioskScreen } from './visitors';
+import type { VisitView } from './visitors-data';
+import type { KioskNeeds, LiveVisitorKiosk } from './visitor-kiosk';
+import { SETTINGS_GROUPS } from '../settings/settings-groups';
+import { visitorSettingsChanges, visitorSettingsPage, visitorTypesFromRows, type VisitorSettingsData, type VisitorTypesData } from '../settings/visitors-live';
+
+// Visitors slice 2 (answers 601, 602, 604, 606, 610): the visitor kiosk, walk-ins and deciding at the desk, the host's
+// approval card, visitor types on Settings 3.12. Positive and negative.
+const ue = userEvent.setup({ pointerEventsCheck: 0 });
+const show = (ui: React.ReactElement) => render(<ToastProvider>{ui}</ToastProvider>);
+const TODAY = new Date(2026, 10, 12);
+const SAMPLE = { id: '', name: '', mobile: '', company: '', purpose: 'Meeting' as const, host: '', location: '', from: TODAY, to: TODAY, status: 'Expected' as const };
+const NEEDS: KioskNeeds = { notice: { text: 'Wear your badge.', version: 'v-1' }, nda: { title: 'Visitor NDA', text: 'Keep it confidential.', versionId: 'nda1' }, induction: { title: 'Plant safety induction', text: 'Wear shoes.', versionId: 'ind1' } };
+
+const kiosk = (over: Partial<LiveVisitorKiosk> = {}): LiveVisitorKiosk => ({
+  state: 'ready',
+  onRetry: vi.fn(),
+  info: { company: 'Kaveri Foods', location: 'Chennai office', open: true, photo: false, retentionDays: 90, types: [{ value: 't1', label: 'Contractor' }] },
+  needs: vi.fn(async () => NEEDS),
+  walkIn: vi.fn(async () => ({ state: 'waiting' as const, id: 'w1', host: 'Anita' })),
+  status: vi.fn(async () => ({ state: 'badge' as const, name: 'Priyanka Sethi', host: 'Anita', badge: 'V-0414', passCode: 'V-AAAA-BBBB' })),
+  pass: vi.fn(async () => ({ state: 'notice' as const, id: 'p1', name: 'Kiran Rao', host: 'Anita', needs: { ...NEEDS, nda: null } })),
+  checkIn: vi.fn(async () => ({ state: 'badge' as const, name: 'Kiran Rao', host: 'Anita', badge: 'V-0415', passCode: 'V-CCCC-DDDD' })),
+  pollMs: 20,
+  ...over,
+});
+
+describe('VIS-03 kiosk (live)', () => {
+  it('walk-in: details are required (errors), the NDA and induction each need their tick, then waiting and the badge', async () => {
+    const live = kiosk({ pollMs: 400 });
+    show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText('Enter your name.')).toBeInTheDocument();
+    expect(screen.getByText('Enter the name of the person you are meeting.')).toBeInTheDocument();
+    await ue.type(screen.getByLabelText(/^Your name/), 'Priyanka Sethi');
+    await ue.type(screen.getByLabelText(/^Mobile/), '9811044319');
+    await ue.type(screen.getByLabelText(/^Company/), 'Fairview');
+    await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita Desai');
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Before you enter')).toBeInTheDocument();
+    expect(live.needs).toHaveBeenCalledWith({ typeId: null, mobile: '9811044319', company: 'Fairview', name: 'Priyanka Sethi' });
+    expect(screen.getByText(/Keep it confidential/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('checkbox', { name: 'I have read and accept the visitor notice' }));
+    await ue.click(screen.getByRole('button', { name: 'Accept and continue' }));
+    expect(screen.getByText('Tick to accept Visitor NDA.')).toBeInTheDocument();
+    expect(live.walkIn).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('checkbox', { name: 'I accept Visitor NDA' }));
+    await ue.click(screen.getByRole('checkbox', { name: /I have read Plant safety induction/ }));
+    await ue.click(screen.getByRole('button', { name: 'Accept and continue' }));
+    await waitFor(() => expect(live.walkIn).toHaveBeenCalledWith(expect.objectContaining({ name: 'Priyanka Sethi', hostName: 'Anita Desai', photoBase64: null, noticeVersion: 'v-1', ndaVersionId: 'nda1', inductionVersionId: 'ind1' })));
+    expect(await screen.findByText("We've told Anita")).toBeInTheDocument();
+    expect(await screen.findByText("You're checked in")).toBeInTheDocument();
+    expect(live.status).toHaveBeenCalledWith('w1');
+  });
+
+  it('pass: the code is required; then only what is left to read; a refused or closed kiosk says see reception', async () => {
+    const live = kiosk();
+    const { unmount } = show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Scan my QR pass' }));
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(screen.getByText(/Type the code under your QR pass/)).toBeInTheDocument();
+    await ue.type(screen.getByLabelText(/^Pass code/), 'V-7KQ2-MX4P');
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Before you enter')).toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Visitor NDA/ })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('checkbox', { name: 'I have read and accept the visitor notice' }));
+    await ue.click(screen.getByRole('checkbox', { name: /Plant safety induction/ }));
+    await ue.click(screen.getByRole('button', { name: 'Accept and continue' }));
+    await waitFor(() => expect(live.checkIn).toHaveBeenCalledWith('p1', { noticeVersion: 'v-1', ndaVersionId: null, inductionVersionId: 'ind1' }));
+    expect(await screen.findByText("You're checked in")).toBeInTheDocument();
+    unmount();
+    const refused = kiosk({ pass: vi.fn(async () => ({ state: 'see-reception' as const })) });
+    const r2 = show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={refused} />);
+    await ue.click(screen.getByRole('button', { name: 'Scan my QR pass' }));
+    await ue.type(screen.getByLabelText(/^Pass code/), 'V-7KQ2-MX4P');
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    expect(await screen.findByText('Please see the reception desk')).toBeInTheDocument();
+    r2.unmount();
+    show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={kiosk({ info: { ...kiosk().info!, open: false } })} />);
+    expect(screen.getByText('Please see the reception desk')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Scan my QR pass' })).not.toBeInTheDocument();
+  });
+
+  it('the host declines: the kiosk says so', async () => {
+    const live = kiosk({ status: vi.fn(async () => ({ state: 'rejected' as const, host: 'Anita' })), info: { ...kiosk().info!, types: [] } });
+    show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
+    expect(screen.queryByLabelText(/You are visiting as/)).not.toBeInTheDocument();
+    await ue.type(screen.getByLabelText(/^Your name/), 'P S');
+    await ue.type(screen.getByLabelText(/^Mobile/), '9811044319');
+    await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita');
+    await ue.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('Before you enter');
+    for (const c of screen.getAllByRole('checkbox')) await ue.click(c);
+    await act(async () => void (await ue.click(screen.getByRole('button', { name: 'Accept and continue' }))));
+    expect(await screen.findByText("Your visit can't go ahead today")).toBeInTheDocument();
+  });
+});
+
+const v = (over: Partial<VisitView> = {}): VisitView => ({
+  id: 'w1', name: 'Mohan Lal', mobile: '+919000011111', email: null, company: 'Acme', purpose: 'vendor', host: 'Anita Desai', location: 'Chennai office', locationId: 'maa',
+  startsAt: '2026-11-12T08:30:00.000Z', endsAt: '2026-11-12T12:30:00.000Z', status: 'waiting', statusText: 'Waiting for host', passCode: 'V-7KQ2-MX4P', badge: null, vehicle: null, noticeAcceptedAt: '2026-11-12T08:30:00.000Z', checkedInAt: null, checkedOutAt: null, walkIn: true, approvalDueAt: '2026-11-12T08:40:00.000Z', ...over,
+});
+const walkIns = (over = {}) => ({
+  types: [{ value: 't1', label: 'Customer' }],
+  hosts: vi.fn(async () => [{ value: 'h1', label: 'Anita Desai' }]),
+  needs: vi.fn(async () => ({ ...NEEDS, induction: null, inHours: false, hours: '09:00 to 18:30' })),
+  onAdd: vi.fn(async () => ({ name: 'Mohan Lal' })),
+  onDecide: vi.fn(async () => undefined),
+  visitNeeds: vi.fn(async () => ({ ...NEEDS, nda: null })),
+  ...over,
+});
+const desk = (over = {}) => ({
+  state: 'ready' as const, onRetry: vi.fn(), locations: [{ value: 'maa', label: 'Chennai office' }], locationId: 'maa', onLocation: vi.fn(), today: TODAY,
+  visits: [v()], canChange: true, idCapture: 'off' as const, onIdImage: vi.fn(), onFind: vi.fn(), onCheckIn: vi.fn(async () => v({ status: 'on_site', statusText: 'On site' })), onCheckOut: vi.fn(), walkIns: walkIns(), ...over,
+});
+
+describe('VIS-01 walk-ins at the desk (live)', () => {
+  it('adds a walk-in: name, mobile, host, the reason outside the hours and each tick are required; then the host is asked', async () => {
+    const live = desk({ visits: [] });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Add walk-in' }));
+    const d = screen.getByRole('dialog', { name: /Add a walk-in/ });
+    await waitFor(() => expect(live.walkIns.needs).toHaveBeenCalled());
+    await ue.click(within(d).getByRole('button', { name: 'Ask the host' }));
+    for (const t of ["Enter the visitor's name.", 'Choose who they are visiting.', /Say why they come in now/, 'Tick that the visitor read and accepted the notice.', 'Tick that the visitor accepted Visitor NDA.']) expect(within(d).getByText(t)).toBeInTheDocument();
+    expect(live.walkIns.onAdd).not.toHaveBeenCalled();
+    await ue.type(within(d).getByLabelText(/^Visitor's name/), 'Mohan Lal');
+    await ue.type(within(d).getByLabelText(/^Mobile/), '9000011111');
+    await ue.click(within(d).getByRole('combobox', { name: 'Visiting' }));
+    await ue.click(await screen.findByRole('option', { name: /Anita Desai/ }));
+    await ue.type(within(d).getByLabelText(/^Why now/), 'Urgent boiler repair');
+    await ue.click(within(d).getByRole('checkbox', { name: 'The visitor read and accepted the notice' }));
+    await ue.click(within(d).getByRole('checkbox', { name: 'The visitor accepted Visitor NDA' }));
+    await ue.click(within(d).getByRole('button', { name: 'Ask the host' }));
+    await waitFor(() => expect(live.walkIns.onAdd).toHaveBeenCalledWith(expect.objectContaining({ name: 'Mohan Lal', hostUserId: 'h1', ndaVersionId: 'nda1', inductionVersionId: null, hoursReason: 'Urgent boiler repair', noticeVersion: 'v-1' })));
+    expect((await screen.findAllByText('Mohan Lal is waiting for the host')).length).toBeGreaterThan(0);
+  });
+
+  it('negative: the notice cannot be accepted before it shows; Ask the host says to wait and sends nothing', async () => {
+    const live = desk({ visits: [], walkIns: walkIns({ needs: vi.fn(() => new Promise<never>(() => undefined)) }) });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Add walk-in' }));
+    const d = screen.getByRole('dialog', { name: /Add a walk-in/ });
+    await ue.type(within(d).getByLabelText(/^Visitor's name/), 'Mohan Lal');
+    await ue.type(within(d).getByLabelText(/^Mobile/), '9000011111');
+    await ue.click(within(d).getByRole('combobox', { name: 'Visiting' }));
+    await ue.click(await screen.findByRole('option', { name: /Anita Desai/ }));
+    expect(within(d).getByRole('checkbox', { name: 'The visitor read and accepted the notice' })).toBeDisabled();
+    await ue.click(within(d).getByRole('button', { name: 'Ask the host' }));
+    expect(within(d).getByText('Wait for the notice to show, then let the visitor read it.')).toBeInTheDocument();
+    expect(live.walkIns.onAdd).not.toHaveBeenCalled();
+  });
+
+  it('decide for the host: only after the timeout; a refusal needs the reason; acting: no walk-in button', async () => {
+    const before = desk({ visits: [v({ approvalDueAt: new Date(Date.now() + 5 * 60_000).toISOString() })] });
+    const { unmount } = show(<VisitorDeskScreen visits={[]} today={TODAY} live={before} />);
+    expect(screen.getByText(/is waiting for Anita Desai to approve. After/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Decide for host' })).not.toBeInTheDocument();
+    unmount();
+    const after = desk({ visits: [v({ approvalDueAt: new Date(Date.now() - 60_000).toISOString() })] });
+    const r = show(<VisitorDeskScreen visits={[]} today={TODAY} live={after} />);
+    await ue.click(screen.getByRole('button', { name: 'Decide for host' }));
+    const d = screen.getByRole('dialog', { name: /Decide for Anita Desai/ });
+    await ue.click(within(d).getByRole('radio', { name: 'The visit cannot go ahead' }));
+    await ue.click(within(d).getByRole('button', { name: 'Decline the visit' }));
+    expect(within(d).getByText('Say why the visit cannot go ahead.')).toBeInTheDocument();
+    expect(after.walkIns.onDecide).not.toHaveBeenCalled();
+    await ue.type(within(d).getByLabelText(/^Reason/), 'Host on leave');
+    await ue.click(within(d).getByRole('button', { name: 'Decline the visit' }));
+    await waitFor(() => expect(after.walkIns.onDecide).toHaveBeenCalledWith('w1', false, 'Host on leave'));
+    r.unmount();
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={desk({ canChange: false })} />);
+    expect(screen.queryByRole('button', { name: 'Add walk-in' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Decide for host' })).not.toBeInTheDocument();
+  });
+
+  it('check-in of a typed visit asks for the induction tick, then sends it', async () => {
+    const live = desk({ visits: [v({ id: 'e1', status: 'expected', statusText: 'Expected', walkIn: false })] });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Check in' }));
+    const d = screen.getByRole('dialog', { name: /Check in Mohan Lal/ });
+    await waitFor(() => expect(live.walkIns.visitNeeds).toHaveBeenCalledWith('e1'));
+    await ue.click(within(d).getByRole('button', { name: 'Check in' }));
+    expect(await within(d).findByText('Tick that the visitor read Plant safety induction.')).toBeInTheDocument();
+    await ue.click(within(d).getByRole('checkbox', { name: 'The visitor read Plant safety induction' }));
+    await ue.click(within(d).getByRole('button', { name: 'Check in' }));
+    await waitFor(() => expect(live.onCheckIn).toHaveBeenCalledWith('e1', { noticeAccepted: false, inductionAccepted: true }));
+  });
+});
+
+describe('VIS-03 kiosk camera (walk-through 11 Nov 2026)', () => {
+  it('a camera that starts after the photo step closed is stopped, not left on for the next visitor', async () => {
+    const stop = vi.fn();
+    let resolve!: (s: MediaStream) => void;
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn(() => new Promise<MediaStream>((r) => (resolve = r))) } });
+    const live = kiosk({ info: { company: 'Kaveri Foods', location: 'Chennai office', open: true, photo: true, retentionDays: 90, types: [] }, needs: vi.fn(async () => ({ ...NEEDS, nda: null, induction: null })) });
+    const r = show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
+    await ue.type(screen.getByLabelText(/^Your name/), 'Rekha Shah');
+    await ue.type(screen.getByLabelText(/^Mobile/), '9000080102');
+    await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita');
+    await ue.click(screen.getByRole('button', { name: /^Next$/ }));
+    await waitFor(() => expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled());
+    r.unmount();
+    resolve({ getTracks: () => [{ stop }] } as unknown as MediaStream);
+    await waitFor(() => expect(stop).toHaveBeenCalled());
+  });
+});
+
+describe('Visitors walk answers 800 and 797', () => {
+  it('800: a watch-listed walk-in is sent to reception right after the details; the camera never starts; no walk-in', async () => {
+    const getUserMedia = vi.fn();
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia } });
+    const live = kiosk({ info: { company: 'Kaveri Foods', location: 'Chennai office', open: true, photo: true, retentionDays: 90, types: [] }, needs: vi.fn(async () => ({ state: 'see-reception' as const })) });
+    show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
+    await ue.type(screen.getByLabelText(/^Your name/), 'Manish Gupta');
+    await ue.type(screen.getByLabelText(/^Mobile/), '9000080102');
+    await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita');
+    await ue.click(screen.getByRole('button', { name: /^Next$/ }));
+    expect(await screen.findByText('Please see the reception desk')).toBeInTheDocument();
+    expect(live.needs).toHaveBeenCalledWith(expect.objectContaining({ name: 'Manish Gupta' }));
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(screen.queryByText('Look at the camera')).toBeNull();
+    expect(live.walkIn).not.toHaveBeenCalled();
+  });
+  it('800 (negative): someone not on the list goes on to the photo', async () => {
+    Object.defineProperty(navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: vi.fn(() => new Promise(() => undefined)) } });
+    const live = kiosk({ info: { company: 'Kaveri Foods', location: 'Chennai office', open: true, photo: true, retentionDays: 90, types: [] } });
+    show(<VisitorKioskScreen visit={SAMPLE} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: "I don't have a pass" }));
+    await ue.type(screen.getByLabelText(/^Your name/), 'Rekha Shah');
+    await ue.type(screen.getByLabelText(/^Mobile/), '9000080102');
+    await ue.type(screen.getByLabelText(/^Who are you meeting/), 'Anita');
+    await ue.click(screen.getByRole('button', { name: /^Next$/ }));
+    expect(await screen.findByText('Look at the camera')).toBeInTheDocument();
+  });
+  it('797: a declined walk-in is counted as declined, not as checked out', () => {
+    const live = desk({ visits: [v({ id: 'd1', name: 'Rohit Menon', status: 'declined', statusText: 'Rejected' }), v({ id: 'o1', name: 'Kiran Rao', status: 'checked_out', statusText: 'Checked out', checkedInAt: '2026-11-12T08:31:00Z', checkedOutAt: '2026-11-12T09:10:00Z' })] });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    expect(screen.getByText(/1 checked out · 1 declined/)).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Declined/ })).toBeInTheDocument();
+  });
+  it('797 (negative): with none declined there is no declined tab or count', () => {
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={desk({ visits: [v({ id: 'o1', status: 'checked_out', statusText: 'Checked out', checkedInAt: '2026-11-12T08:31:00Z', checkedOutAt: '2026-11-12T09:10:00Z' })] })} />);
+    expect(screen.queryByRole('tab', { name: /Declined/ })).toBeNull();
+    expect(screen.queryByText(/declined/)).toBeNull();
+  });
+});
+
+describe('VIS-01 Decide now on each waiting row (walk-through 11 Nov 2026)', () => {
+  it('each walk-in past its host time has Decide now for itself; one still in its host time has none', async () => {
+    const past = new Date(Date.now() - 60_000).toISOString();
+    const live = desk({ visits: [v({ id: 'w1', name: 'Farah Khan', approvalDueAt: past }), v({ id: 'w2', name: 'Ishaan Menon', approvalDueAt: past }), v({ id: 'w3', name: 'Gopal Iyer', approvalDueAt: new Date(Date.now() + 5 * 60_000).toISOString() })] });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    expect(screen.getAllByRole('button', { name: 'Decide now' })).toHaveLength(2);
+    const second = screen.getByRole('row', { name: /Ishaan Menon/ });
+    await ue.click(within(second).getByRole('button', { name: 'Decide now' }));
+    const d = screen.getByRole('dialog', { name: /Decide for Anita Desai/ });
+    expect(within(d).getAllByText('Ishaan Menon').length).toBeGreaterThan(0);
+    await ue.click(within(d).getByRole('button', { name: 'Let them in' }));
+    await waitFor(() => expect(live.walkIns.onDecide).toHaveBeenCalledWith('w2', true, null));
+    expect(within(screen.getByRole('row', { name: /Gopal Iyer/ })).queryByRole('button', { name: 'Decide now' })).not.toBeInTheDocument();
+  });
+  it('acting for someone else: no Decide now', () => {
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={desk({ canChange: false, visits: [v({ approvalDueAt: new Date(Date.now() - 60_000).toISOString() })] })} />);
+    expect(screen.queryByRole('button', { name: 'Decide now' })).not.toBeInTheDocument();
+  });
+});
+
+describe('VIS-01 the walk-in photo at the desk (713, live)', () => {
+  it('reception sees the photo on the list and in Decide for host; a visit without a photo never fetches one', async () => {
+    const photo = vi.fn(async () => 'blob:desk-1');
+    const live = desk({ visits: [v({ hasPhoto: true, approvalDueAt: new Date(Date.now() - 60_000).toISOString() }), v({ id: 'e2', name: 'Kiran Rao', status: 'expected', statusText: 'Expected', walkIn: false })], walkIns: walkIns({ photo }) });
+    show(<VisitorDeskScreen visits={[]} today={TODAY} live={live} />);
+    await waitFor(() => expect(screen.getAllByRole('img', { name: 'Photo of Mohan Lal' })[0]).toHaveAttribute('src', 'blob:desk-1'));
+    await ue.click(screen.getByRole('button', { name: 'Decide for host' }));
+    const d = screen.getByRole('dialog', { name: /Decide for Anita Desai/ });
+    await waitFor(() => expect(within(d).getByRole('img', { name: 'Photo of Mohan Lal' })).toHaveAttribute('src', 'blob:desk-1'));
+    expect(within(d).getByText('Acme')).toBeInTheDocument();
+    expect(photo).not.toHaveBeenCalledWith('e2');
+  });
+});
+
+describe('VIS-02 the host approval card (live)', () => {
+  const approvals = (over = {}) => ({ rows: [{ id: 'w1', name: 'Priyanka Sethi', company: 'Fairview', purpose: 'audit', location: 'Chennai office', arrivedAt: '2026-11-12T04:01:00.000Z', dueAt: '2026-11-12T04:11:00.000Z', hasPhoto: true }], photo: vi.fn(async () => 'blob:photo-1'), onDecide: vi.fn(async () => undefined), ...over });
+  const pre = (over = {}) => ({ state: 'ready' as const, onRetry: vi.fn(), visits: [], locations: [{ value: 'maa', label: 'Chennai office' }], today: TODAY, canChange: true, onInvite: vi.fn(), onCancel: vi.fn(), approvals: approvals(), ...over });
+
+  it('shows the walk-in with the photo; approve (toast); the photo URL is dropped when the card goes', async () => {
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const live = pre();
+    const { rerender } = show(<PreRegisterScreen visits={[]} today={TODAY} live={live} />);
+    await waitFor(() => expect(screen.getByRole('img', { name: 'Photo of Priyanka Sethi' })).toHaveAttribute('src', 'blob:photo-1'));
+    expect(screen.getByText(/Fairview · Audit · at Chennai office reception/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(live.approvals.onDecide).toHaveBeenCalledWith('w1', true));
+    rerender(<ToastProvider><PreRegisterScreen visits={[]} today={TODAY} live={{ ...live, approvals: { ...live.approvals, rows: [] } }} /></ToastProvider>);
+    expect(screen.queryByText('A walk-in is asking for you')).not.toBeInTheDocument();
+    expect(revoke).toHaveBeenCalledWith('blob:photo-1');
+    revoke.mockRestore();
+  });
+
+  it('711 send someone: a colleague is required; the search and the send go for this walk-in; the toast names them', async () => {
+    const colleagues = vi.fn(async () => [{ value: 'c9', label: 'Ravi Kumar', description: 'ravi@kaveri.example' }]);
+    const onSend = vi.fn(async () => ({ to: 'Ravi Kumar', dueAt: '2026-11-12T04:21:00.000Z' }));
+    const live = pre({ approvals: approvals({ colleagues, onSend }) });
+    show(<PreRegisterScreen visits={[]} today={TODAY} live={live} />);
+    await ue.click(screen.getByRole('button', { name: 'Send someone' }));
+    const d = screen.getByRole('dialog', { name: 'Send someone to meet Priyanka Sethi' });
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    expect(within(d).getByText('Choose who meets them.')).toBeInTheDocument();
+    expect(onSend).not.toHaveBeenCalled();
+    await waitFor(() => expect(colleagues).toHaveBeenCalledWith('w1', ''));
+    await ue.click(within(d).getByRole('combobox', { name: 'Who meets them' }));
+    await ue.click(await screen.findByRole('option', { name: /Ravi Kumar/ }));
+    await ue.click(within(d).getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith('w1', 'c9'));
+    expect((await screen.findAllByText('Ravi Kumar has the card now')).length).toBeGreaterThan(0);
+    expect(screen.queryByRole('dialog', { name: 'Send someone to meet Priyanka Sethi' })).not.toBeInTheDocument();
+  });
+
+  it('an under-18 walk-in says so on the card, with the adult', () => {
+    show(<PreRegisterScreen visits={[]} today={TODAY} live={pre({ approvals: approvals({ rows: [{ ...approvals().rows[0], name: 'Ishaan Menon', minorAdult: 'Priya Menon', hasPhoto: false }] }) })} />);
+    expect(screen.getByText(/under 18, with Priya Menon/)).toBeInTheDocument();
+  });
+
+  it('711: no Send someone without the send, or while acting', () => {
+    const { unmount } = show(<PreRegisterScreen visits={[]} today={TODAY} live={pre()} />);
+    expect(screen.queryByRole('button', { name: 'Send someone' })).not.toBeInTheDocument();
+    unmount();
+    show(<PreRegisterScreen visits={[]} today={TODAY} live={pre({ canChange: false, approvals: approvals({ colleagues: vi.fn(), onSend: vi.fn() }) })} />);
+    expect(screen.queryByRole('button', { name: 'Send someone' })).not.toBeInTheDocument();
+  });
+
+  it('acting for someone else: no buttons; no photo: the placeholder', () => {
+    const live = pre({ canChange: false, approvals: approvals({ rows: [{ ...approvals().rows[0], hasPhoto: false }] }) });
+    show(<PreRegisterScreen visits={[]} today={TODAY} live={live} />);
+    expect(screen.getByText('A walk-in is asking for you')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve' })).not.toBeInTheDocument();
+    expect(live.approvals.photo).not.toHaveBeenCalled();
+  });
+});
+
+describe('Settings 3.12: answers 791 and 794 (live)', () => {
+  const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '3.12')!;
+  it('791: all day is a toggle; until midnight reads "00:00 (midnight)"; both save as company settings', () => {
+    const data: VisitorSettingsData = { canEdit: true, values: { 'visitors.all_day': 'off', 'visitors.hours_from': '09:00', 'visitors.hours_to': '24:00' }, defaults: { 'visitors.all_day': 'off', 'visitors.hours_from': '09:00', 'visitors.hours_to': '18:30' }, choices: { 'visitors.hours_from': ['00:00', '09:00'], 'visitors.hours_to': ['18:30', '24:00'] }, labels: { 'visitors.hours_to': { '24:00': '00:00 (midnight)' } }, overrides: {}, lastChange: null };
+    const all = visitorSettingsPage(design, data).sections.flatMap((s) => s.settings);
+    expect(all.find((s) => s.key === 'vis.all_day')).toMatchObject({ kind: 'toggle', value: false, starter: true });
+    expect(all.find((s) => s.key === 'vis.hours_to')).toMatchObject({ kind: 'select', value: '24:00', optionLabels: { '24:00': '00:00 (midnight)' } });
+    expect(all.find((s) => s.key === 'vis.hours_from')!.options).toContain('00:00');
+    expect(visitorSettingsChanges({ 'vis.all_day': true })).toEqual([{ key: 'visitors.all_day', value: 'on' }]);
+  });
+  it('794: rows are matched to types by name, so removing one in the middle keeps the others; archived ones are named', () => {
+    const types: VisitorTypesData = { archived: ['Vendor demo'], types: [{ id: 'a', name: 'Customer', escort: false, ndaPolicyId: null, nda: null, inductionPolicyId: null, induction: null }, { id: 'b', name: 'Supplier', escort: false, ndaPolicyId: null, nda: null, inductionPolicyId: null, induction: null }, { id: 'c', name: 'Contractor', escort: true, ndaPolicyId: null, nda: null, inductionPolicyId: null, induction: null }], policies: [] };
+    expect(visitorTypesFromRows([['Customer', 'No', 'No', 'No'], ['Contractor', 'Yes', 'No', 'No']], types).map((r) => r.id)).toEqual(['a', 'c']);
+    const data: VisitorSettingsData = { canEdit: true, values: {}, defaults: {}, choices: {}, labels: {}, overrides: {}, lastChange: null };
+    const list = visitorSettingsPage(design, data, types).sections.flatMap((s) => s.settings).find((s) => s.key === 'vis.types')!;
+    expect(list.helper).toMatch(/A type visits used is archived/);
+    expect(list.helper).toMatch(/Archived: Vendor demo\./);
+    expect(visitorSettingsPage(design, data, { ...types, archived: [] }).sections.flatMap((s) => s.settings).find((s) => s.key === 'vis.types')!.helper).not.toMatch(/Archived:/);
+  });
+});
+
+describe('Settings 3.12: kiosk and visitor types (live)', () => {
+  const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '3.12')!;
+  const data: VisitorSettingsData = { canEdit: true, values: { 'visitors.kiosk': 'off' }, defaults: { 'visitors.kiosk': 'off' }, choices: {}, labels: {}, overrides: {}, lastChange: null };
+  const types: VisitorTypesData = { types: [{ id: 'a', name: 'Contractor', escort: true, ndaPolicyId: 'p1', nda: 'Visitor NDA', inductionPolicyId: null, induction: null }], policies: [{ id: 'p1', title: 'Visitor NDA' }, { id: 'p2', title: 'Plant safety induction' }] };
+  it('the kiosk is a toggle, off by default; types show their policies and save back by place', () => {
+    const page = visitorSettingsPage(design, data, types);
+    const all = page.sections.flatMap((s) => s.settings);
+    expect(all.find((s) => s.key === 'vis.kiosk')).toMatchObject({ kind: 'toggle', value: false, starter: true });
+    const list = all.find((s) => s.key === 'vis.types')!;
+    expect(list.rows).toEqual([['Contractor', 'Yes', 'Visitor NDA', 'No']]);
+    expect(list.columnOptions?.NDA).toEqual(['No', 'Visitor NDA', 'Plant safety induction']);
+    expect(visitorTypesFromRows([['Contractor', 'No', 'Visitor NDA', 'Plant safety induction'], ['Customer', 'No', 'No', 'No']], types)).toEqual([
+      { id: 'a', name: 'Contractor', escort: false, ndaPolicyId: 'p1', inductionPolicyId: 'p2' },
+      { name: 'Customer', escort: false, ndaPolicyId: null, inductionPolicyId: null },
+    ]);
+    expect(visitorSettingsPage(design, data).sections.flatMap((s) => s.settings).some((s) => s.key === 'vis.types')).toBe(false);
+  });
+});

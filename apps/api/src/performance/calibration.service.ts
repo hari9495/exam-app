@@ -9,7 +9,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { holdersOf } from '../time/time-core';
 import { bandFor } from './perf-rules';
 import { changeProblem, distribution, guideProblem, type Guide } from './calibration-rules';
-import type { CalibrationChangeDto, SessionDto } from './review-dto';
+import type { CalibrationChangeDto, PotentialDto, SessionDto } from './review-dto';
 
 // Performance batch PM6 (M06-BUILD-DESIGN §11; PM-6.01, 6.02): calibration sessions.
 //   sessions   HR (perf.cycle.manage) opens a session for a cycle's finished reviews (all, or some departments) and
@@ -158,22 +158,28 @@ export class PerformanceCalibrationService {
           selfIndication: selfAvg(r.id),
           skipAgreed: entries.some((x) => x.reviewId === r.id && x.stage === 'skip'),
           protectedLeave: elig.get(r.employeeId) === 'protected_leave',
+          // PRF-09 9-box: 1 low, 2 medium, 3 high. The facilitator's value wins; until then the manager's proposal (PRF-05).
+          potential: r.potential ?? r.proposedPotential,
+          proposedPotential: r.proposedPotential,
         };
       });
       const min = Number(await settingFor(tx, c, 'perf.report.min_cell', { legalEntityId: '' }));
       const guide = (s.guide as Guide | null) ?? null;
       const changes = await tx.calibrationChange.findMany({ where: { organizationId: org, sessionId: id }, orderBy: { at: 'asc' } });
+      const users = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [s.facilitatorUserId, ...changes.map((x) => x.byUserId)].filter((u): u is string => Boolean(u)) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
       return {
         id: s.id,
         name: s.name,
+        facilitator: users.get(s.facilitatorUserId) ?? '',
+        openedOn: s.createdAt.toISOString(),
         cycle: cycle.name,
         status: s.status,
         guide,
         scale: sc,
         rows,
         distribution: distribution(rows, sc.bands.map((b) => b.label), guide, min),
-        changes: changes.map((x) => ({ reviewId: x.reviewId, employee: rows.find((r) => r.reviewId === x.reviewId)?.employee ?? '', from: num(x.fromScore), to: num(x.toScore), fromBand: x.fromBand, toBand: x.toBand, reason: x.reason, at: x.at.toISOString() })),
-        can: { change: facilitator && s.status === 'open', signOff: facilitator && s.status === 'open' },
+        changes: changes.map((x) => ({ reviewId: x.reviewId, employee: rows.find((r) => r.reviewId === x.reviewId)?.employee ?? '', from: num(x.fromScore), to: num(x.toScore), fromBand: x.fromBand, toBand: x.toBand, reason: x.reason, at: x.at.toISOString(), by: x.byUserId ? (users.get(x.byUserId) ?? '') : '' })),
+        can: { change: facilitator && s.status === 'open', signOff: facilitator && s.status === 'open', potential: facilitator && s.status === 'open' },
       };
     });
   }
@@ -203,6 +209,23 @@ export class PerformanceCalibrationService {
       await tx.calibrationChange.create({ data: { organizationId: org, sessionId: id, reviewId: r.id, fromScore: from, toScore: to, fromBand: from === null ? null : (bandFor(sc.bands, from)?.label ?? null), toBand, reason: dto.reason.trim(), byUserId: v.userId } });
       await tx.review.update({ where: { id: r.id }, data: { calibratedScore: to, band: toBand, version: { increment: 1 } } });
       await audit(tx, c, 'perf.calibration.changed', 'review', r.id, { from, to, reason: dto.reason.trim() });
+    });
+    return this.board(ctx, user, id);
+  }
+
+  /** PRF-09 9-box: only the facilitator, only with a reason, while the session is open; recorded like a rating change. */
+  async potential(ctx: TenantContext, user: ScopeUser, id: string, dto: PotentialDto) {
+    const v = await this.viewer(user);
+    await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { s, facilitator } = await this.session(tx, c, v, id);
+      if (!facilitator) throw new ForbiddenException('Only the facilitator changes potential in a session.');
+      if (s.status !== 'open') throw new ConflictException('This session is signed off.');
+      const r = await tx.review.findFirst({ where: { organizationId: org, id: dto.reviewId, calibrationSessionId: id } });
+      if (!r) throw new NotFoundException('That review is not in this session.');
+      if (r.potential === dto.potential) throw new ConflictException('That is already the potential.');
+      await tx.review.update({ where: { id: r.id }, data: { potential: dto.potential, version: { increment: 1 } } });
+      await audit(tx, c, 'perf.calibration.potential', 'review', r.id, { before: r.potential, after: dto.potential, reason: dto.reason.trim() });
     });
     return this.board(ctx, user, id);
   }

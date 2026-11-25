@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Headers, HttpCode, Ip, Param, ParseUUIDPipe, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -17,6 +17,7 @@ import {
   DocumentListDto,
   FileListDto,
   HrCorrectionDto,
+  LopReversalDto,
   IssueDocumentDto,
   LateCorrectionDto,
   LegalHoldDto,
@@ -107,10 +108,48 @@ export class PayrollController {
     return this.periods.lateRequest(ctx, this.user(req), dto);
   }
 
+  /** Answer 2282: the company's active leave types (code and name) for a late request's "it was this leave". */
+  @Get('leave-types')
+  @RequirePermissions('payroll.input.manage')
+  leaveTypes(@CurrentTenant() ctx: TenantContext) {
+    return this.periods.leaveTypes(ctx);
+  }
+
+  /** Answer 2283 (PAY-01): late corrections of people who have left, waiting for their full and final settlement. */
+  @Get('corrections/waiting-fnf')
+  @RequirePermissions('payroll.run.view')
+  waitingForFnf(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.periods.waitingForFnf(ctx, this.user(req));
+  }
+
+  /** PAY-04: the month's stage per legal entity for the LOP input (frozen or locked takes a late request). */
+  @Get('input-periods/:month')
+  @RequirePermissions('payroll.input.manage')
+  inputStages(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('month') month: string) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) throw new BadRequestException('The month is like 2026-10.');
+    return this.periods.inputStages(ctx, this.user(req), month);
+  }
+
+  /** PAY-04 late request from the LOP input (a frozen or locked month); someone else approves it for payroll. */
+  @Post('input-corrections')
+  @RequirePermissions('payroll.input.manage')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  inputCorrection(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: HrCorrectionDto) {
+    return this.periods.inputCorrection(ctx, this.user(req), dto);
+  }
+
   @Post('corrections')
   @RequirePermissions('attendance.lock')
   hrCorrection(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: HrCorrectionDto) {
     return this.periods.hrCorrection(ctx, this.user(req), dto);
+  }
+
+  /** Batch A item 8 (D15): HR reverses loss of pay for days of a locked month (one HR correction a day, paid next run). */
+  @Post('corrections/lop-reversal')
+  @RequirePermissions('attendance.lock')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  reverseLop(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LopReversalDto) {
+    return this.periods.reverseLop(ctx, this.user(req), dto);
   }
 
   @Post('device-batches')
@@ -299,6 +338,13 @@ export class PublicPayController {
   @Throttle(STRICT_AUTH_THROTTLE)
   portalVerify(@Param('org') org: string, @Body() dto: PortalVerifyDto) {
     return this.documents.portalVerify(org.slice(0, 100), dto);
+  }
+
+  /** Who the session is for (the former employee, or the nominee) and when access ends: the portal's own person only. */
+  @Get(':org/portal/me')
+  @Throttle(PUBLIC_API_THROTTLE)
+  portalMe(@Param('org') org: string, @Headers('x-pay-portal') token?: string) {
+    return this.documents.portalMe(org.slice(0, 100), token);
   }
 
   @Get(':org/portal/documents')

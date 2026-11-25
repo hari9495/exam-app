@@ -7,7 +7,7 @@ import {
   RequestPanel,
   ResolveDialog,
   TicketKbCard,
-  TicketScreen,
+  TicketWorkspaceScreen,
   TicketWorkRail,
   type ArticleOption,
   type TicketArticleLink,
@@ -37,11 +37,13 @@ import { apiFetch } from '../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../lib/auth-context';
 import { useCurrentUser } from '../../../../../../lib/hooks/useCurrentUser';
 import { deskState, useDesk, useDeskFile, useDeskUpload, useDeskWrite } from '../../../../../../lib/yx-desk';
+import { setDeskPaletteTicket } from '../../../../../../lib/yx-desk-palette';
 
-// Service desk › Tickets › one ticket (HLP-03, M14 SD-1.08 … SD-1.17): reply, note, assign, files, time, the requester's
-// other tickets, who else is on it (YX-SD-07, every 15 seconds), and batch 2: response targets with their timeline,
-// tasks, related tickets (link, merge, split, parent, tracker), side conversations, reminders, snooze, hidden personal
-// data, resolve with a code and support levels.
+// Helpdesk › Tickets › one ticket: the designed HLP-03 workspace with `live` (Helpdesk design wiring, round 3). Reply,
+// note, assign, files, time, the requester's other tickets, who else is on it (YX-SD-07, every 15 seconds); the side
+// cards: request and approvals, move / share / documents / follow-ups, articles, related tickets (link, merge, split,
+// parent, tracker), tasks, side conversations, response targets, reminders, snooze, hidden personal data; resolve with
+// a code and support levels.
 export default function YxDeskTicketPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -92,67 +94,103 @@ export default function YxDeskTicketPage() {
   const t = ticket.data;
   const version = t?.version ?? 0;
   const d = detail.data;
+  // Answer 1649: Ctrl K's saved replies and scenarios for this ticket (the page's own handlers; the API checks the key).
+  const [insertReply, setInsertReply] = useState<{ key: number; cannedId: string } | null>(null);
+  const runScenario = useRef<(id: string) => Promise<void>>(async () => undefined);
+  runScenario.current = async (scenarioId) => {
+    await write(`${path}/scenarios/${encodeURIComponent(scenarioId)}`, 'POST', { version });
+  };
+  useEffect(() => {
+    if (!t) return;
+    setDeskPaletteTicket({
+      id: t.id,
+      number: t.number,
+      canWork: Boolean(t.canWork),
+      canned: (canned.data ?? []).filter((c) => c.active).map((c) => ({ id: c.id, title: c.title })),
+      scenarios: (d?.scenarios ?? []).filter((x) => x.active).map((x) => ({ id: x.id, name: x.name })),
+      insertReply: (cannedId) => setInsertReply((x) => ({ key: (x?.key ?? 0) + 1, cannedId })),
+      runScenario: (id) => runScenario.current(id),
+    });
+  }, [t, canned.data, d]);
+  useEffect(() => () => setDeskPaletteTicket(null), []);
   const deskRules = desks.data?.find((x) => x.id === deskId);
   const open = (other: string) => router.push(`/yx/desk/tickets/${encodeURIComponent(other)}`);
   return (
     <>
-      <TicketScreen
-        state={deskState(ticket)}
-        onRetry={() => void ticket.refetch()}
-        ticket={t ?? null}
-        detail={d ?? null}
-        canned={canned.data ?? []}
-        timeline={timeline.data ?? []}
-        context={context.data ?? null}
-        others={others}
-        meName={me.data?.name || me.data?.email || 'Me'}
-        meId={me.data?.id ?? ''}
-        onBack={() => router.push('/yx/desk/tickets')}
-        onUpdate={async (change) => {
+      <TicketWorkspaceScreen
+        live={{
+        state: deskState(ticket),
+        onRetry: () => void ticket.refetch(),
+        ticket: t ?? null,
+        detail: d ?? null,
+        work: work.data ?? null,
+        canned: canned.data ?? [],
+        insertReply,
+        timeline: timeline.data ?? [],
+        context: context.data ?? null,
+        others,
+        meName: me.data?.name || me.data?.email || 'Me',
+        meId: me.data?.id ?? '',
+        autoCloseDays: deskRules?.autoCloseDays ?? null,
+        onUpdate: async (change) => {
           await write(path, 'PATCH', { version, ...change });
-        }}
-        onAssign={async (userId) => {
+        },
+        onAssign: async (userId) => {
           await write(`${path}/assign`, 'POST', { userId });
-        }}
-        onPost={async (m) => {
+        },
+        onPost: async (m) => {
           await write(`${path}/messages`, 'POST', m);
-        }}
-        onUpload={(file) => upload(`${path}/attachments`, file)}
-        onOpenFile={(attachmentId) => openFile(`${path}/attachments/${encodeURIComponent(attachmentId)}/link`)}
-        onAddTime={async (minutes, note) => {
+        },
+        onUpload: (file) => upload(`${path}/attachments`, file),
+        onOpenFile: (attachmentId) => openFile(`${path}/attachments/${encodeURIComponent(attachmentId)}/link`),
+        onAddTime: async (minutes, note) => {
           await write(`${path}/time-entries`, 'POST', { minutes, ...(note ? { note } : {}) });
-        }}
-        onRunScenario={async (scenarioId) => {
+        },
+        onRunScenario: async (scenarioId) => {
           await write(`${path}/scenarios/${encodeURIComponent(scenarioId)}`, 'POST', { version });
-        }}
-        onConvert={async (typeId, reason) => {
+        },
+        onSetFields: async (values) => {
+          await write(`${path}/fields`, 'PUT', { values });
+        },
+        onConvert: async (typeId, reason) => {
           await write(`${path}/convert`, 'POST', { typeId, reason });
-        }}
-        onAddCollaborator={async (userId) => {
+        },
+        onAddCollaborator: async (userId) => {
           await write(`${path}/collaborators`, 'POST', { userId });
-        }}
-        onRemoveCollaborator={async (userId) => {
+        },
+        onRemoveCollaborator: async (userId) => {
           await write(`${path}/collaborators/${encodeURIComponent(userId)}`, 'DELETE');
-        }}
-        onAddWatcher={async (personId) => {
+        },
+        onAddWatcher: async (personId) => {
           await write(`${path}/watchers`, 'POST', { personId });
-        }}
-        onRemoveWatcher={async (watcherId) => {
+        },
+        onRemoveWatcher: async (watcherId) => {
           await write(`${path}/watchers/${encodeURIComponent(watcherId)}`, 'DELETE');
-        }}
-        onSearchPeople={(q) => apiFetch(`/desk/people?search=${encodeURIComponent(q)}`, {}, token) as Promise<Person[]>}
-        onTyping={(now) => {
+        },
+        onSearchPeople: (q) => apiFetch(`/desk/people?search=${encodeURIComponent(q)}`, {}, token) as Promise<Person[]>,
+        onTyping: (now) => {
           if (now !== typing.current) {
             typing.current = now;
             beat();
           }
-        }}
-        onOpenTicket={open}
-        onFindArticle={(q) => apiFetch(`/desk${path}/kb?q=${encodeURIComponent(q)}`, {}, token) as Promise<ArticleOption[]>}
-        onArticleInserted={(articleId) => void write(`${path}/kb-links`, 'POST', { articleId, kind: 'linked' }).catch(() => undefined)}
-        onResolveClick={() => setResolving(true)}
-        onEscalateClick={() => setEscalating(true)}
-        rail={
+        },
+        onOpenTicket: open,
+        onFindArticle: (q) => apiFetch(`/desk${path}/kb?q=${encodeURIComponent(q)}`, {}, token) as Promise<ArticleOption[]>,
+        onPickPlace: (kind, q, locationId) => apiFetch(`/desk/facilities/pick?kind=${kind}&q=${encodeURIComponent(q)}${locationId ? `&locationId=${encodeURIComponent(locationId)}` : ''}`, {}, token) as Promise<PickOption[]>,
+        onSetPlace: async (p) => {
+          await write(`${path}/place`, 'PUT', p);
+        },
+        onPickDevice: (q) => apiFetch(`/desk/pick/assets?deskId=${encodeURIComponent(deskId ?? '')}&q=${encodeURIComponent(q)}`, {}, token) as Promise<PickOption[]>,
+        onSetDevice: async (assetId) => {
+          await write(`${path}/device`, 'PUT', { assetId });
+        },
+        onSetApp: async (appId) => {
+          await write(`${path}/app`, 'PUT', { appId });
+        },
+        onArticleInserted: (articleId) => void write(`${path}/kb-links`, 'POST', { articleId, kind: 'linked' }).catch(() => undefined),
+        onResolveClick: () => setResolving(true),
+        onEscalateClick: () => setEscalating(true),
+        rail:
           t && d ? (
             <>
             {request.data && (
@@ -254,8 +292,8 @@ export default function YxDeskTicketPage() {
               onUnmask={async (valueId) => ((await write<{ value: string }>(`${path}/unmask/${encodeURIComponent(valueId)}`, 'POST')).value)}
             />
             </>
-          ) : null
-        }
+          ) : null,
+        }}
       />
       {t && d && resolving && (
         <ResolveDialog

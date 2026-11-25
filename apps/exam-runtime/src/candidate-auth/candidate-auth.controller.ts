@@ -1,4 +1,7 @@
-import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, HttpCode, Post, Req, Res, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { IsUUID } from 'class-validator';
+import { CandidateJwtAuthGuard } from './candidate-jwt-auth.guard';
+import { CurrentCandidate, CandidateSession } from './current-candidate.decorator';
 import { authCookieSecure } from '@exam-platform/shared';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -9,6 +12,11 @@ import { STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { resolveClientIp } from '../network/resolve-client-ip';
 
 const CANDIDATE_REFRESH_COOKIE = 'candidate_refresh_token';
+
+export class SwitchTestDto {
+  @IsUUID()
+  invitationId!: string;
+}
 
 // Persistent (not session) cookie so a full browser close + reopen on the same machine
 // silently resumes via /refresh, rather than forcing the candidate to re-click the email
@@ -39,6 +47,17 @@ export class CandidateAuthController {
   @Throttle(STRICT_AUTH_THROTTLE)
   async redeem(@Body() dto: RedeemInvitationDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const tokens = await this.candidateAuthService.redeem(dto.token, resolveClientIp(req));
+    res.cookie(CANDIDATE_REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
+    return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
+  }
+
+  /** AS-3 (PRC-21): open another of this candidate's own tests at the same company. */
+  @Post('switch')
+  @HttpCode(200)
+  @UseGuards(CandidateJwtAuthGuard)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  async switchTest(@CurrentCandidate() candidate: CandidateSession, @Body() dto: SwitchTestDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const tokens = await this.candidateAuthService.switchTo(candidate.invitationId, dto.invitationId, resolveClientIp(req));
     res.cookie(CANDIDATE_REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions());
     return { accessToken: tokens.accessToken, refreshToken: tokens.refreshToken };
   }

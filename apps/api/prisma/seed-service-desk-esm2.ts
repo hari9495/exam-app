@@ -3,6 +3,7 @@ import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { EmployeeHistoryService } from '../src/employee-history/employee-history.service';
 import { todayIst } from '../src/org-structure/org-validation';
 import { addRole, personForEmployee } from '../src/people/persons';
+import { startProbation } from '../src/people/probation';
 import { installPack } from '../src/service-desk/desks.service';
 import { nextRun } from '../src/service-desk/recurrence';
 import { htmlToText, textToHtml } from '../src/service-desk/rich-text';
@@ -145,6 +146,8 @@ async function hireNikhil(tx: Tx, organizationId: string, hrUserId: string, join
   const employee = await tx.employee.create({ data: { ...org, personId, givenName: 'Nikhil', familyName: 'Rao', workEmail: 'nikhil.rao@kaverifoods.test', createdBy: hrUserId } });
   const employment = await tx.employment.create({ data: { ...org, employeeId: employee.id, legalEntityId: entity, employeeCode: 'KF-0201', codeScopeKey: entity, joinedOn: day(joinOn), createdBy: hrUserId } });
   await addRole(tx, ctx, personId, 'employee', { table: 'employments', id: employment.id }, employment.joinedOn);
+  // He joins on probation: the plan the app makes for every joiner on probation (People > Probation lists him).
+  await startProbation(tx, ctx as Parameters<typeof startProbation>[1], employment.id, joinOn, { legalEntityId: entity, employmentTypeId: await id('employmentType', 'PERM'), gradeId: null });
   const change = await tx.employeeChange.create({
     data: {
       ...org,

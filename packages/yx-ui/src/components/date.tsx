@@ -124,6 +124,9 @@ export const DatePicker = forwardRef<HTMLInputElement, DatePickerProps>(function
       </PopoverAnchor>
       <PopoverContent className="yx-calendar" onOpenAutoFocus={(e) => e.preventDefault()} onKeyDown={closeOnEscape(setOpen)}>
         <DayPicker
+          // Always six weeks, so the calendar keeps one height from month to month (founder, 22 Oct 2026).
+          fixedWeeks
+          showOutsideDays
           mode="single"
           selected={value ?? undefined}
           defaultMonth={value ?? min ?? undefined}

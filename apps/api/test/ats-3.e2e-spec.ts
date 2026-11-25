@@ -138,18 +138,25 @@ describe('Recruitment batch AT3', () => {
     const res = await apply({ email, name: 'Someone Else', resumeBase64: pdf('replacement'), consents: [{ purpose: 'application', version: 2 }] }).expect(201);
     expect(res.body).toEqual({ received: true });
     expect(JSON.stringify(res.body)).not.toMatch(/token/i);
-    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: email, html: expect.stringContaining('/portal/') }));
+    expect(send).toHaveBeenCalledWith(expect.objectContaining({ to: email, html: expect.stringContaining('/yx/candidate/') }));
     const after = await inA((tx) => tx.candidate.findFirstOrThrow({ where: { email }, include: { profile: true } }));
     expect(after.name).toBe(before.name);
     expect(after.profile?.resumePath).toBe(before.profile?.resumePath);
   });
 
-  it('bots and bad files: the honeypot stores nothing, EICAR is refused, oversize and bad fields fail validation', async () => {
+  it('bots and bad files: the honeypot stores nothing, EICAR is quarantined after the commit, oversize and bad fields fail validation', async () => {
     send.mockClear();
     await apply({ email: `bot-${run}@x.test`, website: 'http://spam.example', consents: [{ purpose: 'application', version: 2 }] }).expect(201).expect({ received: true });
     expect(send).not.toHaveBeenCalled();
-    await apply({ email: `virus-${run}@x.test`, resumeBase64: Buffer.from(`%PDF-1.7\n${EICAR}`).toString('base64'), consents: [{ purpose: 'application', version: 2 }] }).expect(400);
-    expect(await inA((tx) => tx.candidate.count({ where: { email: { in: [`bot-${run}@x.test`, `virus-${run}@x.test`] } } }))).toBe(0);
+    // Question 125: the scan runs after the commit; an infected résumé is quarantined (recruiters can never open it).
+    await apply({ email: `virus-${run}@x.test`, resumeBase64: Buffer.from(`%PDF-1.7\n${EICAR}`).toString('base64'), consents: [{ purpose: 'application', version: 2 }] }).expect(201);
+    expect(await inA((tx) => tx.candidate.count({ where: { email: `bot-${run}@x.test` } }))).toBe(0);
+    let scan = 'pending';
+    for (let i = 0; i < 50 && scan === 'pending'; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+      scan = (await inA((tx) => tx.candidateProfile.findFirst({ where: { candidate: { email: `virus-${run}@x.test` } } })))?.resumeScan ?? 'pending';
+    }
+    expect(scan).toBe('infected');
 
     await apply({ email: `x-${run}@x.test`, name: '<img src=x onerror=alert(1)>', consents: [{ purpose: 'application', version: 2 }] }).expect(400);
     await apply({ email: 'not-an-email', consents: [{ purpose: 'application', version: 2 }] }).expect(400);

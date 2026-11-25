@@ -66,13 +66,17 @@ interface TypeRule {
   compensation?: boolean;
   /** Facts the change must carry. */
   requires: readonly Fact[];
+  /** PPL-04: the type means nothing without a new value for one of these (checked against the date too). */
+  changes?: readonly AssignmentField[];
 }
 
 // M01 §3.3: one change action with types; each type declares the facts it can change.
 export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   join: { assignment: 'all', status: ['probation', 'confirmed'], compensation: true, requires: ['assignment', 'status'] },
-  promotion: { assignment: ['designationId', 'gradeId', 'skillClass'], compensation: true, requires: ['assignment'] },
-  transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
+  // A promotion moves the designation or the grade (the comp cycle may promote within the grade); a transfer moves the
+  // location or the department (a reorganisation inside one entity, PPL-09).
+  promotion: { assignment: ['designationId', 'gradeId', 'skillClass'], compensation: true, requires: ['assignment'], changes: ['designationId', 'gradeId'] },
+  transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'], changes: ['locationId', 'departmentId'] },
   redesignation: { assignment: ['designationId', 'skillClass'], requires: ['assignment'] },
   // M01 §3.2: the primary manager and the dotted lines change through the same change type.
   manager_change: { assignment: ['managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
@@ -128,10 +132,36 @@ export function payloadProblem(type: ChangeType, p: ChangePayload): string | nul
     if ((annualCtc === undefined) === (increasePercent === undefined)) return 'Give either the new annual CTC or the increase percentage.';
     if (type === 'join' && increasePercent !== undefined) return 'A join gives the annual CTC, not an increase.';
   }
+  if (rule.changes && !rule.changes.some((k) => p.assignment?.[k])) return `A ${label(type)} needs a new ${rule.changes.map(fieldWord).join(' or ')}.`;
   return null;
 }
 
 export const label = (type: ChangeType) => type.replace(/_/g, ' ');
+/** "designationId" → "designation". */
+export const fieldWord = (k: AssignmentField) => k.replace(/Id$/, '').replace(/([A-Z])/g, ' $1').toLowerCase();
+
+/**
+ * PPL-04: the type's own fields, given and all the same as on the date, change nothing (a "transfer" to where the
+ * person already works). Null when the change moves at least one of them.
+ */
+export function unchangedProblem(type: ChangeType, p: ChangePayload, now: Partial<AssignmentValues> | null): string | null {
+  const keys = (TYPE_RULES[type].changes ?? []).filter((k) => p.assignment?.[k]);
+  if (!keys.length || !now || keys.some((k) => p.assignment![k] !== now[k])) return null;
+  return `A ${label(type)} needs a new ${keys.map(fieldWord).join(' or ')}: that is the one in force on that date.`;
+}
+
+/**
+ * The company's rule for what a promotion must move (setting promotion.must_change): 'either' a new designation or
+ * grade (payloadProblem already checks it), 'both', or only the 'grade' / 'designation'. "New" means given and not the
+ * one in force on the date. Null when the promotion meets the rule.
+ */
+export function promotionRuleProblem(rule: string, p: ChangePayload, now: Partial<AssignmentValues> | null): string | null {
+  const moves = (k: 'designationId' | 'gradeId') => Boolean(p.assignment?.[k]) && p.assignment![k] !== now?.[k];
+  const need = rule === 'both' ? (['designationId', 'gradeId'] as const) : rule === 'grade' ? (['gradeId'] as const) : rule === 'designation' ? (['designationId'] as const) : [];
+  const missing = need.filter((k) => !moves(k));
+  if (!missing.length) return null;
+  return `Your company's rule: a promotion needs a new ${missing.map(fieldWord).join(' and a new ')}${rule === 'both' ? ' (both change)' : ''}.`;
+}
 
 /** Hours a week: above 0, at most 80, in half hours (the database checks the same). */
 export const hoursOk = (h: string) => /^\d{1,2}(\.\d{1,2})?$/.test(h) && Number(h) > 0 && Number(h) <= 80 && Number.isInteger(Number(h) * 2);

@@ -1,8 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Button } from './button';
-import { ConfirmDialog, Dialog, ShortcutHelp, TypeToConfirmDialog, useShortcutHelp } from './overlay';
+import { ConfirmDialog, Dialog, ShortcutHelp, shortcutGroups, SHORTCUT_GROUPS, TypeToConfirmDialog, useShortcutHelp } from './overlay';
+import { useState } from 'react';
+import { FormField } from './field';
+import { TextArea } from './inputs';
 import {
   ApprovalInbox,
   AssistantPanel,
@@ -47,7 +50,7 @@ describe('Toasts', () => {
     act(() => void vi.advanceTimersByTime(60_000));
     expect(stack().getByText("We couldn't approve the expense. Try again.")).toBeInTheDocument();
     // errors are announced assertively
-    expect(screen.getByRole('alert')).toHaveTextContent("We couldn't approve the expense");
+    expect(document.querySelector('[aria-live="assertive"]')).toHaveTextContent("We couldn't approve the expense");
   });
 
   it('shows at most 3; the 4th waits in the queue until a slot frees', () => {
@@ -75,7 +78,8 @@ describe('Toasts', () => {
 
   it('useToast outside the provider explains the fix', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    expect(() => render(<Grab />)).toThrow(/ToastProvider/);
+    // renderHook is not wrapped in the test set-up's ToastProvider.
+    expect(() => renderHook(() => useToast())).toThrow(/ToastProvider/);
   });
 });
 
@@ -131,6 +135,44 @@ describe('Dialogs', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
+  it('returning false keeps it open: the button stays enabled and the field explains what to do', async () => {
+    const u = userEvent.setup();
+    const onUnmerge = vi.fn();
+    function Unmerge() {
+      const [note, setNote] = useState('');
+      const [tried, setTried] = useState(false);
+      return (
+        <ConfirmDialog
+          defaultOpen
+          destructive
+          title="Unmerge Suresh K Nair?"
+          confirmLabel="Unmerge"
+          onConfirm={() => {
+            setTried(true);
+            if (!note.trim()) return false;
+            onUnmerge(note.trim());
+          }}
+        >
+          <FormField label="Audit note" required error={tried && !note.trim() ? 'Enter a reason for the audit log.' : null}>
+            <TextArea value={note} onChange={setNote} />
+          </FormField>
+        </ConfirmDialog>
+      );
+    }
+    render(<Unmerge />);
+    const btn = screen.getByRole('button', { name: 'Unmerge' });
+    expect(btn).toBeEnabled();
+    await u.click(btn);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('Enter a reason for the audit log.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(onUnmerge).not.toHaveBeenCalled();
+    await u.type(screen.getByLabelText(/Audit note/), 'Different people');
+    await u.click(btn);
+    expect(onUnmerge).toHaveBeenCalledWith('Different people');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
   it('type-to-confirm enables the danger button only on an exact match', async () => {
     const u = userEvent.setup();
     const onConfirm = vi.fn();
@@ -160,8 +202,38 @@ describe('Dialogs', () => {
     render(<T />);
     fireEvent.keyDown(screen.getByLabelText('Search'), { key: '?' });
     expect(screen.queryByRole('dialog')).toBeNull();
+    fireEvent.keyDown(document.body, { key: '?', ctrlKey: true });
+    expect(screen.queryByRole('dialog')).toBeNull();
     fireEvent.keyDown(document.body, { key: '?' });
-    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toHaveTextContent('Approve the selected request');
+    expect(screen.getByRole('dialog', { name: 'Keyboard shortcuts' })).toHaveTextContent('Search everything and run actions');
+  });
+
+  it('951: focus moves into the list and Esc closes it', async () => {
+    const u = userEvent.setup();
+    function T() {
+      const help = useShortcutHelp();
+      return <ShortcutHelp {...help} />;
+    }
+    render(<T />);
+    fireEvent.keyDown(document.body, { key: '?' });
+    const d = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
+    await waitFor(() => expect(d.contains(document.activeElement)).toBe(true));
+    await u.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('951: lists only shortcuts that work; N L and N E only for people who have them', () => {
+    const all = SHORTCUT_GROUPS.flatMap((g) => g.items.map((i) => i.keys.join(' ')));
+    for (const gone of ['A', 'R', 'G P', 'G T', 'G Y', '/', 'Ctrl J']) expect(all).not.toContain(gone);
+    const none = shortcutGroups([]).flatMap((g) => g.items.map((i) => i.keys.join(' ')));
+    expect(none).toEqual(expect.arrayContaining(['Ctrl K', '?', 'Esc', 'J K', 'Enter']));
+    expect(none).not.toContain('N L');
+    expect(none).not.toContain('N E');
+    expect(shortcutGroups(['N L']).flatMap((g) => g.items.map((i) => i.keys.join(' ')))).toEqual(expect.arrayContaining(['N L']));
+    render(<ShortcutHelp defaultOpen groups={shortcutGroups(['N E'])} />);
+    const d = screen.getByRole('dialog', { name: 'Keyboard shortcuts' });
+    expect(d).toHaveTextContent('Claim an expense');
+    expect(d).not.toHaveTextContent('Apply for leave');
   });
 });
 

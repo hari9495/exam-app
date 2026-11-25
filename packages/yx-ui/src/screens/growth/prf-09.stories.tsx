@@ -14,3 +14,5 @@ export const ManagerView: S = { name: 'Manager · own team movable', render: () 
 export const NineBox: S = { name: '9-box (wave 6)', render: () => <CalibrationScreen persona="hr" session={SESSION} people={CAL_PEOPLE} guide={GUIDE} changes={CAL_CHANGES} tab="ninebox" /> };
 export const ChangeLog: S = { name: 'Changes log', render: () => <CalibrationScreen persona="hr" session={SESSION} people={CAL_PEOPLE} guide={GUIDE} changes={CAL_CHANGES} tab="changes" /> };
 export const Empty: S = { name: 'Empty (no manager ratings yet)', render: () => <CalibrationScreen persona="hr" session={SESSION} people={[]} guide={GUIDE} changes={[]} /> };
+export const Close: S = { name: 'HR · close calibration', render: () => <CalibrationScreen persona="hr" session={SESSION} people={CAL_PEOPLE} guide={GUIDE} changes={CAL_CHANGES} closeOpen /> };
+export const LoadError: S = { name: 'Error', render: () => <CalibrationScreen persona="hr" session={SESSION} people={[]} guide={GUIDE} changes={[]} state="error" /> };

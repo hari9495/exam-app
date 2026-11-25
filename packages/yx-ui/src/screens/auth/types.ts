@@ -124,6 +124,10 @@ export interface SecurityPolicy {
   /** "Continue with Google" / "Continue with Microsoft" on the sign-in screen (off by default). */
   googleSignIn: boolean;
   microsoftSignIn: boolean;
+  /** Batch B item 1: confirm it's you again before salary pages (on by default). */
+  salaryRecheck: boolean;
+  /** Ask again after 5, 10 or 15 minutes (15 is the YukthiX maximum). */
+  salaryRecheckMinutes: number;
 }
 
 /** The YukthiX floor (Q8): companies may only be stricter. Returned with the policy. */

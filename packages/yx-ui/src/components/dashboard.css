@@ -54,7 +54,7 @@
 }
 
 /* Needs your action */
-.yx-actions { display: flex; flex-direction: column; gap: var(--yx-space-2); min-width: 0; }
+.yx-actions { display: flex; flex-direction: column; gap: var(--yx-space-2); min-width: 0; container: yx-actions / inline-size; }
 .yx-actions__header { display: flex; align-items: baseline; justify-content: space-between; gap: var(--yx-space-3); }
 .yx-actions__count { color: var(--yx-color-text-secondary); font-weight: var(--yx-weight-medium); font-variant-numeric: tabular-nums; }
 .yx-actions__all { font-size: var(--yx-text-sm); white-space: nowrap; }
@@ -77,6 +77,11 @@
 .yx-actions__buttons { display: flex; gap: var(--yx-space-2); flex: none; }
 @media (max-width: 767px) {
   .yx-actions__item { flex-direction: column; align-items: stretch; }
+  .yx-actions__title { white-space: normal; }
+}
+/* In a narrow column (My team's "Waiting for you") the request reads in full, buttons below (founder, 22 Oct 2026). */
+@container yx-actions (max-width: 34rem) {
+  .yx-actions__item { flex-direction: column; align-items: stretch; gap: var(--yx-space-2); }
   .yx-actions__title { white-space: normal; }
 }
 

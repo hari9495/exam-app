@@ -167,3 +167,8 @@
 /* Same on a selected / open table row, whose tint is the button's own fill. */
 [data-unread] .yx-button[data-variant="review"], .yx-table tbody tr:is([data-active], :has([role="checkbox"][data-state="checked"])) .yx-button[data-variant="review"] { border-color: var(--yx-color-info-text); }
 [data-unread] .yx-button[data-variant="review"]:hover:not(:disabled), .yx-table tbody tr:is([data-active], :has([role="checkbox"][data-state="checked"])) .yx-button[data-variant="review"]:hover:not(:disabled) { box-shadow: inset 0 0 0 var(--yx-border-width) var(--yx-color-info-text); }
+
+/* RowButton: a whole list row people press (batch A list view). */
+.yx-row-button { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-3); width: 100%; padding: var(--yx-space-2) var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.yx-row-button:hover { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border-strong); }
+.yx-row-button:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: 1px; }

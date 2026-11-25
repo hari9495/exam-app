@@ -169,10 +169,12 @@ describe('RosterGrid', () => {
     expect(screen.getByText(/1 warning to check/)).toBeInTheDocument();
 
     // A rest gap blocks publishing until it is fixed.
-    expect(screen.getByRole('button', { name: 'Publish roster' })).toBeDisabled();
+    // Never disabled: pressing Publish goes to the conflict instead of asking to publish.
     expect(screen.getByText('Fix 1 conflict to publish')).toBeInTheDocument();
-    await u.click(screen.getByRole('button', { name: 'Go to cell' }));
+    grid.querySelector<HTMLElement>('[data-cell="0:0"]')!.focus();
+    await u.click(screen.getByRole('button', { name: 'Publish roster' }));
     expect(grid.querySelector('[data-cell="0:1"]')).toHaveFocus();
+    expect(screen.queryByText(/Publish the roster for/)).not.toBeInTheDocument();
     await u.keyboard('{Delete}');
     await u.click(screen.getByRole('button', { name: 'Publish roster' }));
     await u.click(screen.getByRole('button', { name: 'Publish roster' }));
@@ -236,6 +238,34 @@ describe('mentions', () => {
     expect(screen.getByText('No comments yet.')).toBeInTheDocument();
     await u.click(screen.getByRole('button', { name: 'Post comment' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Write a comment before you post it.');
+  });
+});
+
+describe('append-only comment thread (HIR-07 answer 322)', () => {
+  const now = new Date('2026-11-12T06:00:00Z');
+  const mine = { id: 'c1', author: { id: 'e2', name: 'Arjun Kulkarni' }, body: 'Named the boundary cases.', at: now };
+  it('has no edit, attachment, private note or resolve, even for a fresh own comment', () => {
+    render(<CommentThread currentUser={{ id: 'e2', name: 'Arjun Kulkarni' }} people={[]} defaultComments={[mine]} now={now} canWritePrivate appendOnly />);
+    expect(screen.queryByRole('button', { name: 'Edit comment' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Attach file' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Resolve thread' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument();
+  });
+
+  it('waits for the server: shows the saved comment, or the refusal and keeps the draft', async () => {
+    const u = userEvent.setup();
+    const onAdd = vi.fn().mockRejectedValueOnce(new Error('Comments are not allowed while acting for someone else.')).mockResolvedValueOnce({ id: 'srv-1' });
+    render(<CommentThread currentUser={{ id: 'e2', name: 'Arjun Kulkarni' }} people={[]} now={now} appendOnly onAdd={onAdd} />);
+    const box = screen.getByRole('textbox', { name: 'Comment' });
+    await u.type(box, 'Also strong on SQL.');
+    await u.click(screen.getByRole('button', { name: 'Post comment' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Comments are not allowed while acting for someone else.');
+    expect(box).toHaveValue('Also strong on SQL.');
+    expect(box).toHaveFocus();
+    await u.click(screen.getByRole('button', { name: 'Post comment' }));
+    expect(await screen.findByText('Also strong on SQL.', { selector: 'span' })).toBeInTheDocument();
+    expect(box).toHaveValue('');
+    expect(onAdd).toHaveBeenCalledTimes(2);
   });
 });
 

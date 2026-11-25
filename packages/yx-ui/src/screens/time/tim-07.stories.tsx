@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { AttendanceRequestSheet } from './requests';
+import { AttendanceRequestSheet, OnDutySentBackSheet } from './requests';
 
 const meta: Meta<typeof AttendanceRequestSheet> = { title: 'Screens/Time/TIM-07 · Attendance request', component: AttendanceRequestSheet, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -12,7 +12,10 @@ export const LateRequest: S = { name: 'Locked date · late request', args: { loc
 export const Wfh: S = { name: 'WFH', args: { type: 'wfh' } };
 export const OnDuty: S = { name: 'On duty with location', args: { type: 'on_duty' } };
 export const Ot: S = { name: 'OT pre-approval', args: { type: 'ot' } };
+export const Permission: S = { name: 'Hourly permission · day stays present', args: { type: 'permission' } };
+export const PermissionOverLimit: S = { name: 'Hourly permission · monthly limit used', args: { type: 'permission', permissionUsed: 2 } };
 export const Invalid: S = { name: 'Validation error', args: { error: true } };
 export const Sent: S = { name: 'Sent', args: { submitted: true } };
 export const Phone: S = { name: 'Phone', args: { surface: 'phone' }, ...phone };
 export const PhoneWfh: S = { name: 'Phone · WFH', args: { surface: 'phone', type: 'wfh' }, ...phone };
+export const OnDutySentBack: StoryObj<typeof OnDutySentBackSheet> = { name: 'On duty · sent back, change and send again', render: () => <OnDutySentBackSheet /> };

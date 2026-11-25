@@ -50,6 +50,8 @@ export interface JourneyTask {
   form: FormDef | null;
   /** Document tasks: the document type asked for. */
   documentType: string | null;
+  /** The person's document for a document task, when one is in: "uploaded" waits for HR to verify, "rejected" needs another file. */
+  documentStatus?: string | null;
   /** Letter tasks: the letter type HR issues (6b: the task closes from the issued letter). */
   letterType?: string | null;
   answers: Record<string, unknown> | null;
@@ -66,6 +68,9 @@ export interface JourneyTask {
   journeyId?: string;
   journeyKind?: JourneyKind;
   person?: string;
+  /** My tasks only: whose checklist, so HR can upload or issue the letter from here (PPL-47). */
+  personId?: string;
+  subject?: { type: string; id: string };
   anchorOn?: string;
 }
 
@@ -80,8 +85,13 @@ export interface Journey {
   status: 'active' | 'done' | 'cancelled';
   progress: number;
   template: string;
+  /** PPL-15: an onboarding's joiner: still to join, joined (marked so), or cancelled with the outcome. */
+  joiner?: { status: string; outcome: string | null; joined: boolean } | null;
   owner: string | null;
   canManage: boolean;
+  /** PPL-13: a task owner or the joiner's manager gets only their own tasks, out of `taskTotal`. */
+  ownTasksOnly?: boolean;
+  taskTotal?: number;
   today: string;
   tasks: JourneyTask[];
 }
@@ -117,6 +127,8 @@ export interface LifeJourneyRow {
 
 export interface Joiner {
   id: string;
+  /** PPL-15: the accepted offer's requisition (its job) and whether it holds a headcount-plan slot (the joiner record only). */
+  requisition?: { title: string; planned: boolean } | null;
   personId: string;
   name: string;
   email: string | null;
@@ -135,6 +147,9 @@ export interface Joiner {
   openTasks: number;
   overdueTasks: number;
   version: number;
+  /** The next open task (the board card's next step) and the day the joiner was added. */
+  nextTask?: { title: string; dueOn: string; ownerType: OwnerType } | null;
+  addedOn?: string;
   /** 6e */
   personType?: 'new' | 'rehire';
   batchId?: string | null;
@@ -193,7 +208,12 @@ export interface QueueDocument {
   expiresOn: string | null;
   rejectReason: string | null;
   file: { name: string; scanStatus: 'pending' | 'clean' | 'infected'; size: number } | null;
-  uploadedAt?: string;
+  uploadedAt?: string | null;
+  /** Who uploaded the current file (HR or the person). */
+  uploadedBy?: string | null;
+  verifiedAt?: string | null;
+  /** How many files were uploaded over time (a person's documents). */
+  versions?: number;
   version: number;
 }
 
@@ -237,8 +257,19 @@ export interface PortalAnswers {
   identity: { legalName: string; pan: string; aadhaar: string | null; uan: string | null } | null;
   bank: { holderName: string; account: string; ifsc: string } | null;
   emergency: { name: string; relation: string; phone: string } | null;
-  nominees: { name: string; relation: string; sharePercent: number }[] | null;
-  tax: { regime: 'new' | 'old' } | null;
+  nominees: PortalNominee[] | null;
+  /** previousIncome: Form 12B, income from an earlier employer this financial year (whole rupees). */
+  tax: { regime: 'new' | 'old'; previousIncome?: { grossSalary: number; tds: number } | null } | null;
+}
+
+/** A nominee's share per scheme (T9-01): PF, gratuity and group insurance; each scheme adds up to 100. */
+export interface PortalNominee {
+  name: string;
+  relation: string;
+  dateOfBirth?: string | null;
+  pf: number;
+  gratuity: number;
+  insurance: number;
 }
 
 export interface Letter {
@@ -249,7 +280,10 @@ export interface Letter {
   person?: string;
   referenceNo: string | null;
   verifyCode: string | null;
-  status: 'pending_approval' | 'rejected' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  status: 'draft' | 'discarded' | 'pending_approval' | 'rejected' | 'held' | 'rendering' | 'awaiting_signature' | 'issued' | 'superseded' | 'withdrawn';
+  /** PPL-28: a held letter (HR's register only): who held it, when and why. */
+  hold?: { reason: string; by: string | null; at: string | null } | null;
+  /** Why it could not be made, in plain words (only while it waits to be made). */
   renderError: string | null;
   issuedAt: string | null;
   personSigns: boolean;
@@ -270,10 +304,26 @@ export interface PortalMe {
   sections: Record<SectionKey, 'done' | 'to_do'>;
   answers: PortalAnswers;
   steppedUp: boolean;
-  documents: { typeKey: string; name: string; status: string; rejectReason: string | null; personUploads: boolean }[];
+  documents: { typeKey: string; name: string; status: string; rejectReason: string | null; personUploads: boolean; dueOn?: string | null }[];
   bgv: { notice: string; items: string[]; consented: boolean; consentedAt: string | null } | null;
   letters: Letter[];
   esignAccepted: boolean;
+  /** The joiner's own checklist tasks (HR's, IT's and the manager's are not sent). Dates are YYYY-MM-DD. */
+  tasks: { id: string; title: string; dueOn: string; status: 'done' | 'to_do' }[];
+  /** `bring`: what to bring on day one, as HR wrote it (setting joining.bring_on_day_one), one thing a line. */
+  firstDay: { reportingTime: string; address: string | null; buddy: string | null; batch: string | null; bring: string };
+  /** Set while the joining day is the one HR moved it to. */
+  dateMoved: { from: string } | null;
+  closed?: undefined;
+}
+
+/** A joining that closed: the outcome and the joiner's letters, read-only. `on` is the day it closed (YYYY-MM-DD). */
+export interface PortalClosed {
+  company: string;
+  name: string;
+  closed: { outcome: 'joined' | 'withdrawn' | 'reneged' | 'cancelled'; on: string | null };
+  /** Founder 2 Nov 2026: a closed joining can still download its letters (never accept or change them). */
+  letters: Letter[];
 }
 
 export interface JoinerForms {
@@ -303,16 +353,33 @@ export interface LetterTemplate {
   requiresApproval: boolean;
   personSigns: boolean;
   companyDsc: boolean;
+  /** Company policy: a person holds one issued letter of this type; another is refused unless it is a correction. */
+  onePerPerson: boolean;
   version: number;
   status: 'draft' | 'active' | 'retired';
   previewViewed: boolean;
   createdAt: string;
 }
 
+/** PPL-28 bulk issue: who gets the letter ("no_appointment": current employees with no appointment letter in YukthiX). */
+export interface BulkLetterQuery {
+  templateId: string;
+  source: 'people' | 'no_appointment';
+  personIds?: string[];
+}
+
+/** The API's bulk preview: each person will get the letter, or why not. A null name is someone the issuer cannot reach. */
+export interface BulkLetterCheck {
+  letterType: string;
+  rows: { personId: string; name: string | null; ready: boolean; reason: string | null }[];
+}
+
 export interface LetterTemplates {
   templates: LetterTemplate[];
-  starters: { letterType: string; name: string; added: boolean }[];
-  fields: { key: string; label: string; personal: boolean; flag: boolean }[];
+  /** update: the company added an older revision of this starter; the new one is offered as a draft version. */
+  starters: { letterType: string; name: string; onePerPerson: boolean; added: boolean; update: boolean }[];
+  /** optional: blank when not recorded (wrapped in {{#field}} … {{/field}}); flag: a yes / no section. */
+  fields: { key: string; label: string; cls: 'internal' | 'personal' | 'pay'; flag: boolean; optional: boolean }[];
 }
 
 export interface Signatory {
@@ -331,6 +398,10 @@ export interface ReadyOffer {
   phone: string | null;
   startDate: string;
   jobTitle: string;
+  /** Where the job is (PPL-12). */
+  location?: string | null;
+  /** The day the offer was accepted (null for older offers). */
+  acceptedOn?: string | null;
   personType: 'new' | 'ex_employee' | 'internal';
 }
 
@@ -347,6 +418,8 @@ export interface ExitCase {
   initiatedBy: 'employee' | 'company';
   reasonCode: string | null;
   reasonText: string | null;
+  /** Why HR or the employee withdrew it (HR and the leaver only). */
+  withdrawalReason?: string | null;
   submittedOn: string;
   requestedLwd: string | null;
   noticePeriod: string;
@@ -365,6 +438,8 @@ export interface ExitRow extends ExitCase {
   employeeCode: string | null;
   clearance: { open: number; total: number };
   interview: 'sent' | 'submitted' | 'skipped' | null;
+  /** The leaver's manager (the list's Manager column). */
+  manager?: string | null;
   canManage: boolean;
 }
 export interface ClearanceItem {
@@ -377,6 +452,8 @@ export interface ClearanceItem {
   recoveryAmount: string | null;
   recoveryReason: string | null;
   signedOffAt: string | null;
+  /** PPL-20: an open item its owner marked blocked (the reason); absent or null when not blocked. */
+  blockedReason?: string | null;
   version: number;
 }
 export interface MyClearanceItem extends ClearanceItem {
@@ -434,7 +511,8 @@ export interface AssetRow {
   status: 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
   version: number;
   canManage: boolean;
-  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; acknowledged: boolean } | null;
+  /** leavingOn: the holder's last working day when they are leaving (the return can then carry an F&F recovery). */
+  holder: { assignmentId: string; employeeId: string | null; name: string; issuedOn: string; condition: string; acknowledged: boolean; leavingOn?: string | null } | null;
 }
 export interface MyAsset {
   assignmentId: string;
@@ -479,6 +557,8 @@ export interface AlumniMe {
   name: string;
   lastDay: string;
   accessUntil: string;
+  /** A nominee or legal heir signed in (the payee's name). */
+  nominee?: string | null;
   letters: Letter[];
 }
 export interface MyDocuments {
@@ -511,6 +591,13 @@ export interface Batch {
   status: 'open' | 'closed';
   version: number;
   members: { id: string; personId: string; name: string; status: string; joiningOn: string }[];
+  /** Members from an accepted offer or with an issued appointment letter; members still on a letter of intent only. */
+  offersIssued?: number;
+  lettersOfIntent?: number;
+  /** Open checklist tasks of the members waiting to join (a new batch day moves them). */
+  openTasks?: number;
+  /** The viewer may change this batch (company-wide, or a legal-entity scope on its entity). */
+  canManage?: boolean;
 }
 export interface Payee {
   id?: string;
@@ -539,7 +626,15 @@ export interface AbscondingRow {
   id: string;
   employeeId: string;
   name: string;
+  designation: string | null;
+  location: string | null;
   lastPresentOn: string;
+  firstAbsentOn: string;
+  /** The absconding policy that applies, e.g. "Starter template v1 (company-edited)". */
+  policy: string;
+  /** The day payroll put the salary on hold; null when it is not on hold. */
+  salaryHeldSince: string | null;
+  salaryReleased: boolean;
   status: 'running' | 'stopped' | 'abandoned';
   stoppedReason: string | null;
   exitCaseId: string | null;
@@ -562,6 +657,8 @@ export interface IrPermission {
   authority: string;
   status: 'applied' | 'granted' | 'deemed' | 'refused';
   decidedOn: string | null;
+  /** The government order number of a grant (optional). */
+  orderNumber?: string | null;
   version: number;
 }
 export interface VrsSchemeRow {
@@ -586,9 +683,37 @@ export interface MyVrsScheme {
   minAge: number;
   minServiceYears: number;
   eligible: boolean;
+  /** PPL-40: the person's age (null: no date of birth on the record) and completed years of service today. */
+  age?: number | null;
+  serviceYears?: number;
+  /** PPL-40 "Your estimate" (eligible only; null when no pay is on record): rupees as whole-number strings. */
+  estimate?: { benefit: string; benefitBasis: string; gratuity: string; leaveDays: string; leaveEncashment: string } | null;
+}
+/** The letter editor's paragraphs (the API's documents/letters Block): colours, highlights and sizes are the editor's presets. */
+export interface EditorRun {
+  text: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  color?: string;
+  highlight?: string;
+  /** Points. */
+  size?: number;
+  link?: string;
 }
 export interface EditorParagraph {
-  text: string;
-  bold: boolean;
-  heading: boolean;
+  kind: 'normal' | 'heading' | 'subheading' | 'bullet' | 'numbered' | 'quote';
+  /** List items: 0 to 3. */
+  level?: number;
+  runs: EditorRun[];
+}
+
+/** PPL-23: what the death-in-service flow needs besides the case (GET /lifecycle/exits/:id/death). */
+export interface DeathFacts {
+  about: string | null;
+  contactUserId: string | null;
+  contacts: Choice[];
+  certificate: { status: string } | null;
+  claimItemIds: string[];
 }

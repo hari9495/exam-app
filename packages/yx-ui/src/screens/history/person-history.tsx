@@ -12,7 +12,8 @@ import { dayKey } from '../../lib/dates';
 import { dateLabel, EditorDrawer, useRun } from '../org/org-kit';
 import { TextArea } from '../../components/inputs';
 import { Segment } from '../../components/segment';
-import { ChangeDrawer, ChangeStatusBadge, money, STATUS_LABEL, TYPE_LABEL, WhenBadge, SKILL_CLASS_LABEL } from './history-kit';
+import { ChangeStatusBadge, money, STATUS_LABEL, TYPE_LABEL, WhenBadge, SKILL_CLASS_LABEL } from './history-kit';
+import { ChangeActionDrawer } from '../people/changes';
 import type { AsOfView, ChangeInput, ChangeOptions, ChangeRecord, HistoryView, Impact, LoadState, PersonOption, ServiceDates, ServiceDatesInput } from './types';
 
 // People › Job history (P06 §4.7, §7; PPL-03 History tab): the record as on any date, past or scheduled,
@@ -286,7 +287,7 @@ export function PersonHistoryScreen({ state, onRetry, people, personId, onPickPe
                   </ul>
                 </Card>
               )}
-              {changing && change && personId && <ChangeDrawer options={change.options} employeeId={personId} onPreview={change.onPreview} onSubmit={change.onSubmit} onClose={() => setChanging(false)} />}
+              {changing && change && personId && <ChangeActionDrawer options={change.options} employeeId={personId} onPreview={change.onPreview} onSubmit={change.onSubmit} onClose={() => setChanging(false)} />}
             </>
           )}
         </>

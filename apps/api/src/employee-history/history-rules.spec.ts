@@ -1,4 +1,4 @@
-import { affectedMonths, applyFact, fold, FoldError, fyStart, localToday, payloadProblem, reach, AssignmentValues, CompensationValues } from './history-rules';
+import { affectedMonths, applyFact, fold, FoldError, fyStart, localToday, payloadProblem, reach, unchangedProblem, promotionRuleProblem, AssignmentValues, CompensationValues } from './history-rules';
 
 // P06 rules that need no database: change types (M01 §3.3), the fold that turns changes into dated rows
 // (§4.3, §4.4, YX-HIS-06), retro reach (YX-HIS-12) and affected periods (§4.5).
@@ -27,8 +27,44 @@ describe('change types (M01 §3.3)', () => {
     expect(payloadProblem('salary_revision', { compensation: { annualCtc: '1', increasePercent: '2' } })).toMatch(/either/);
     expect(payloadProblem('transfer', { assignment: { costCentres: [{ costCentreId: 'a', percent: '60' }, { costCentreId: 'b', percent: '30' }] } })).toMatch(/total 100/);
     expect(payloadProblem('transfer', { assignment: { costCentres: [{ costCentreId: 'a', percent: '50' }, { costCentreId: 'a', percent: '50' }] } })).toMatch(/twice/);
-    expect(payloadProblem('transfer', { assignment: { costCentres: [{ costCentreId: 'a', percent: '33.34' }, { costCentreId: 'b', percent: '66.66' }] } })).toBeNull();
+    expect(payloadProblem('transfer', { assignment: { locationId: 'x', costCentres: [{ costCentreId: 'a', percent: '33.34' }, { costCentreId: 'b', percent: '66.66' }] } })).toBeNull();
     expect(payloadProblem('transfer', { assignment: {} })).toMatch(/sets nothing/);
+  });
+
+  it('PPL-04 / PPL-09: a transfer moves the location or department, a promotion the designation or grade, to a value not already in force', () => {
+    expect(payloadProblem('transfer', { assignment: { dottedLineManagerIds: [] } })).toBe('A transfer needs a new location or department.');
+    expect(payloadProblem('transfer', { assignment: { departmentId: 'd2' } })).toBeNull();
+    expect(payloadProblem('promotion', { assignment: { skillClass: 'skilled' } })).toBe('A promotion needs a new designation or grade.');
+    expect(payloadProblem('promotion', { assignment: { gradeId: 'g2' } })).toBeNull();
+    expect(unchangedProblem('transfer', { assignment: { locationId: 'loc' } }, A)).toMatch(/needs a new location: that is the one in force/);
+    expect(unchangedProblem('transfer', { assignment: { locationId: 'loc2' } }, A)).toBeNull();
+    expect(unchangedProblem('promotion', { assignment: { designationId: 'des', gradeId: 'g1' } }, A)).toMatch(/new designation or grade/);
+    expect(unchangedProblem('promotion', { assignment: { designationId: 'des', gradeId: 'g2' } }, A)).toBeNull();
+    expect(unchangedProblem('manager_change', { assignment: { managerEmployeeId: 'm1' } }, A)).toBeNull();
+  });
+});
+
+describe('what a promotion must change (setting promotion.must_change)', () => {
+  const desig = { assignment: { designationId: 'lead' } };
+  const grade = { assignment: { gradeId: 'g2' } };
+  const both = { assignment: { designationId: 'lead', gradeId: 'g2' } };
+
+  it('either (the starting rule): a new designation or grade is enough', () => {
+    for (const p of [desig, grade, both]) expect(promotionRuleProblem('either', p, A)).toBeNull();
+  });
+
+  it('both: each must be new; the same grade as today does not count', () => {
+    expect(promotionRuleProblem('both', both, A)).toBeNull();
+    expect(promotionRuleProblem('both', desig, A)).toMatch(/needs a new grade \(both change\)/);
+    expect(promotionRuleProblem('both', grade, A)).toMatch(/needs a new designation/);
+    expect(promotionRuleProblem('both', { assignment: { designationId: 'lead', gradeId: 'g1' } }, A)).toMatch(/new grade/);
+  });
+
+  it('grade only or designation only: that one must be new', () => {
+    expect(promotionRuleProblem('grade', grade, A)).toBeNull();
+    expect(promotionRuleProblem('grade', desig, A)).toMatch(/needs a new grade\.$/);
+    expect(promotionRuleProblem('designation', desig, A)).toBeNull();
+    expect(promotionRuleProblem('designation', grade, A)).toMatch(/needs a new designation\.$/);
   });
 });
 

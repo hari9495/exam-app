@@ -6,6 +6,7 @@ import { PayAuditService } from './audit.service';
 import { PayDocumentsService } from './documents.service';
 import { PaySetupService } from './setup.service';
 import { FnfService } from './fnf.service';
+import { PayInputsService } from './inputs.service';
 
 const QUEUE = 'payroll-jobs';
 const DAY = 24 * 3_600_000;
@@ -23,6 +24,7 @@ export class PayrollJobs implements OnModuleInit, OnModuleDestroy {
     private readonly documents: PayDocumentsService,
     private readonly setup: PaySetupService,
     private readonly fnf: FnfService,
+    private readonly inputs: PayInputsService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -34,6 +36,8 @@ export class PayrollJobs implements OnModuleInit, OnModuleDestroy {
     await this.queue.upsertJobScheduler('payroll-document-retention', { every: DAY }, { name: 'document-retention', data: {} });
     await this.queue.upsertJobScheduler('payroll-coverage', { every: DAY }, { name: 'coverage', data: {} });
     await this.queue.upsertJobScheduler('payroll-fnf-due', { every: DAY / 4 }, { name: 'fnf-due', data: {} });
+    // HLP-12 answer 65: injury days from approved injury leave, this month and last (locked months untouched).
+    await this.queue.upsertJobScheduler('payroll-injury-days', { every: DAY }, { name: 'injury-days', data: {} });
   }
 
   async onModuleDestroy() {
@@ -51,6 +55,7 @@ export class PayrollJobs implements OnModuleInit, OnModuleDestroy {
     if (name === 'document-retention') return this.documents.purgeExpired();
     if (name === 'coverage') return this.setup.evaluateCoverage();
     if (name === 'fnf-due') return this.fnf.alertDue();
+    if (name === 'injury-days') return this.inputs.fillInjuryAll();
     return null;
   }
 }

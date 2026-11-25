@@ -29,6 +29,8 @@ export const TIME_PERMISSIONS = [
   { key: 'attendance.view', description: 'View punches, days and the muster of the people in scope' },
   { key: 'roster.manage', description: 'Plan and publish rosters for the people in scope (managers plan their own team without it)' },
   { key: 'attendance.lock', description: 'Lock and unlock attendance periods of the legal entities in scope (needs a fresh second sign-in step)' },
+  { key: 'attendance.lock.approve', description: 'Approve the lock of an attendance month that HR sent (two-step lock, needs a fresh second sign-in step)' },
+  { key: 'leave.liability.view', description: 'Open the leave liability report (unused leave that can be cashed in) and its export for the people in scope; money only with employee.salary.view' },
   { key: 'leave.eligibility.override', description: 'Let one person through a leave eligibility check (maternity, paternity) with a reason, for the people in scope' },
 ];
 
@@ -117,7 +119,7 @@ export async function seedTime(tx: Tx, organizationId: string) {
   const tenant = { forTenant: (_c: unknown, fn: (t: Tx) => unknown) => fn(tx) } as unknown as TenantPrismaService;
   const engine = new ApprovalsEngine(tenant, { notifySystem: async () => undefined } as never, { deliver: async () => undefined } as never);
   const days = new DayEngine();
-  const leave = new LeaveService(null as never, tenant, engine, days);
+  const leave = new LeaveService(null as never, tenant, engine, days, { notifySystem: async () => undefined } as never);
   leave.onModuleInit();
   const c = { organizationId, isSuperAdmin: false, userId: null };
 

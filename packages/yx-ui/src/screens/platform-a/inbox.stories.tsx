@@ -28,6 +28,7 @@ export const PLT04Bulk: S = { name: 'PLT-04 · Approvals · bulk approve 2 leave
 export const PLT04BulkMixed: S = { name: 'PLT-04 · Approvals · bulk blocked (high risk selected)', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} defaultSelected={['a1', 'a4']} /> };
 export const PLT04Card: S = { name: 'PLT-04 · Approvals · card open (policy flag)', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} openId="a4" /> };
 export const PLT04Reject: S = { name: 'PLT-04 · Approvals · reject with reason', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} openId="a4" defaultDecision="reject" /> };
+export const PLT04SendBack: S = { name: 'PLT-04 · Approvals · send back for changes', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} openId="a1" defaultDecision="sendback" /> };
 export const PLT04Proxy: S = { name: 'PLT-04 · Approvals · raised on behalf', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} openId="a6" /> };
 export const PLT04Empty: S = { name: 'PLT-04 · Approvals · empty', render: () => <ApprovalsInboxScreen waiting={[]} sent={[]} history={[]} /> };
 export const PLT04Loading: S = { name: 'PLT-04 · Approvals · loading', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} state="loading" /> };

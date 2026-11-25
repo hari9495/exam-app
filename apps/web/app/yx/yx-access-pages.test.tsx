@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
+import { AS_OF, HISTORY } from '../../../../packages/yx-ui/src/screens/history/data';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
@@ -9,6 +10,8 @@ import YxRolesAccessPage from './(app)/settings/access/page';
 import YxProfilePage from './(app)/people/profile/page';
 import YxProfileRequestsPage from './(app)/people/profile-requests/page';
 import YxPrivacyPage from './(app)/me/privacy/page';
+import YxPayAccessPage from './(app)/people/pay-access/page';
+import { PersonRecord } from './(app)/people/person-record';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
@@ -100,6 +103,29 @@ describe('/yx/settings/access', () => {
     await ue.click(within(dialog).getByRole('button', { name: 'Make System Admin' }));
     await waitFor(() => expect(posted).toEqual([['/access/users/u-lakshmi/system-admin', { reason: 'HR head' }]]));
   });
+
+  it('deletes a role nobody holds through the access API, with the reason (795)', async () => {
+    const posted: unknown[] = [];
+    route({
+      'GET /users/me': { id: 'u-admin', email: 'admin@demo-org.test', name: 'Admin', role: 'org_admin' },
+      'GET /access/users': [{ id: 'u-lakshmi', name: 'Lakshmi Venkatesan', email: 'hr@demo-org.test', role: 'panel', status: 'active', employeeId: 'p-lakshmi' }],
+      'GET /access/roles': [{ id: 'r-recep', name: 'Reception', permissions: ['visitors.desk.manage'], confidential: false, companyWideOnly: [], grants: 0, assignedUsers: 0 }],
+      'GET /access/role-templates': [],
+      'GET /access/grants': [],
+      'GET /org/legal-entities': [],
+      'GET /org/locations': [],
+      'GET /org/masters/departments': [],
+      'GET /access/users/u-lakshmi/effective': { userId: 'u-lakshmi', hasEmployeeRecord: true, keys: [] },
+      'POST /access/roles/r-recep/delete': (path: string, init: RequestInit) => (posted.push([path, JSON.parse(String(init.body))]), { id: 'r-recep', archived: true }),
+    });
+    wrap(<YxRolesAccessPage />);
+    await ue.click(await screen.findByRole('radio', { name: 'Roles' }).catch(() => screen.findByRole('button', { name: 'Roles' })));
+    await ue.click(await screen.findByRole('button', { name: 'Delete' }));
+    const dialog = await screen.findByRole('dialog').catch(() => screen.findByRole('alertdialog'));
+    await ue.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Not used');
+    await ue.click(within(dialog).getByRole('button', { name: 'Delete role' }));
+    await waitFor(() => expect(posted).toEqual([['/access/roles/r-recep/delete', { reason: 'Not used' }]]));
+  });
 });
 
 const PROFILE = {
@@ -124,14 +150,47 @@ describe('/yx/people/profile', () => {
       'GET /people/profile-requests': { rows: [] },
       'GET /org/reference': { states: [{ code: 'IN-KA', name: 'Karnataka', country: 'IN' }], regions: [] },
       'POST /people/employees/p-divya/identity/reveal': (_: string, init: RequestInit) => (reveals.push(JSON.parse(String(init.body))), { field: 'pan', value: 'BQRPR4821K' }),
+      'GET /people/employees/p-divya/as-of': { ...AS_OF, employee: { ...AS_OF.employee, id: 'p-divya' } },
+      'GET /people/employees/p-divya/history': HISTORY,
+      'GET /people/employees/p-divya/person': { id: 'per-divya', roles: [] },
+      'GET /people/profile-requests?status=pending': { rows: [] },
+      'GET /me/leave': { balances: [] },
     });
+    // The designed person record (PPL-03): identity values masked until Show, and the look is recorded by the API.
     wrap(<YxProfilePage />);
-    expect(await screen.findByText('•••• 821K')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Show full PAN' }));
+    expect(await screen.findByText('XXXXXX821K')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /^Show PAN/ }));
     expect(await screen.findByText('BQRPR4821K')).toBeInTheDocument();
     expect(reveals).toEqual([{ field: 'pan' }]);
-    await ue.click(screen.getByRole('button', { name: 'Open job history' }));
-    expect(push).toHaveBeenCalledWith('/yx/people/history?person=p-divya');
+  });
+});
+
+describe('/yx/people/profile personal details (PPL-03, founder 28 Oct 2026)', () => {
+  it("the company's required details are marked; a missing one is named on Save, then the filled form is sent", async () => {
+    const puts: unknown[] = [];
+    route({
+      [`GET ${PERMS_PATH}`]: [],
+      'GET /people/me': { employeeId: 'p-divya', name: 'Divya Raghunathan' },
+      'GET /people/employees/p-divya/profile': { ...PROFILE, personalRequired: ['dateOfBirth', 'gender', 'personalPhone', 'addressLine1', 'city', 'stateCode'] },
+      'GET /people/profile-requests': { rows: [] },
+      'GET /org/reference': { states: [{ code: 'IN-KA', name: 'Karnataka', country: 'IN' }], regions: [] },
+      'GET /people/employees/p-divya/as-of': { ...AS_OF, employee: { ...AS_OF.employee, id: 'p-divya' } },
+      'GET /people/employees/p-divya/history': HISTORY,
+      'GET /people/employees/p-divya/person': { id: 'per-divya', roles: [] },
+      'GET /people/profile-requests?status=pending': { rows: [] },
+      'GET /me/leave': { balances: [] },
+      'PUT /people/employees/p-divya/personal': (_: string, init: RequestInit) => (puts.push(JSON.parse(String(init.body))), PROFILE.personal),
+    });
+    wrap(<YxProfilePage />);
+    await screen.findByText('XXXXXX821K');
+    await ue.click(screen.getAllByRole('button', { name: 'Edit' })[0]);
+    const dialog = await screen.findByRole('dialog', { name: 'Edit personal details' });
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    expect(within(dialog).getByText('Enter the address.')).toBeInTheDocument();
+    expect(puts).toEqual([]);
+    await ue.type(within(dialog).getByRole('textbox', { name: /^Address(?! line 2)/ }), '14, 3rd Cross, Jayanagar');
+    await ue.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(puts).toEqual([expect.objectContaining({ addressLine1: '14, 3rd Cross, Jayanagar', city: 'Bengaluru' })]));
   });
 });
 
@@ -164,11 +223,68 @@ describe('/yx/people/profile-requests', () => {
   });
 });
 
+// PPL-50 Team pay access (founder 28 Oct 2026): the manager asks from the Pay tab; HR decides on People › Team pay access.
+const PAY_ASK = { id: 'pa-1', manager: { id: 'p-divya', name: 'Divya Raghunathan' }, scope: 'person', person: { id: 'p-arjun', name: 'Arjun Kulkarni' }, covers: 'Arjun Kulkarni', reason: 'Retention case', days: 30, state: 'first', askedAt: '2026-10-27T09:40:00Z', first: null, decided: null, validTo: null };
+
+describe('/yx/people/pay-access', () => {
+  it('HR approves the first step with a shorter length; the API gets the choice', async () => {
+    const bodies: unknown[] = [];
+    route({
+      [`GET ${PERMS_PATH}`]: ['employee.pay_access.approve'],
+      'GET /people/pay-access': { days: 30, scope: 'team', rows: [{ ...PAY_ASK, canDecide: true, team: [{ id: 'p-arjun', name: 'Arjun Kulkarni' }, { id: 'p-kavya', name: 'Kavya Reddy' }] }] },
+      'POST /people/pay-access/pa-1/decision': (_: string, init: RequestInit) => (bodies.push(JSON.parse(String(init.body))), { ...PAY_ASK, state: 'second' }),
+    });
+    wrap(<YxPayAccessPage />);
+    await ue.click(await screen.findByRole('button', { name: 'Decide' }));
+    const drawer = await screen.findByRole('dialog', { name: /Team pay access for Divya Raghunathan/ });
+    await ue.click(within(drawer).getByRole('combobox', { name: 'How long' }));
+    await ue.click(await screen.findByRole('option', { name: '7 days' }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Approve' }));
+    await waitFor(() => expect(bodies).toEqual([{ decision: 'approve', days: '7', scope: 'person', employeeId: 'p-arjun' }]));
+  });
+
+  it('someone without the key gets the no-access state', async () => {
+    route({ [`GET ${PERMS_PATH}`]: [], 'GET /people/pay-access': () => Promise.reject(Object.assign(new Error('Forbidden'), { status: 403 })) });
+    wrap(<YxPayAccessPage />);
+    expect(await screen.findByText(/You don't have access to team pay access requests/)).toBeInTheDocument();
+  });
+});
+
+describe('/yx/people/directory/[id] (a manager, PPL-50)', () => {
+  it('the Pay tab offers Request access; the request goes to HR', async () => {
+    const asks: unknown[] = [];
+    route({
+      [`GET ${PERMS_PATH}`]: [],
+      'GET /people/me': { employeeId: 'p-divya', name: 'Divya Raghunathan' },
+      'GET /people/employees/p-arjun/profile': { ...PROFILE, employeeId: 'p-arjun', name: 'Arjun Kulkarni', self: false, classes: { internal: true, personal: false, identity: false, aadhaar: false, pay: false }, personal: null, identity: null, can: { editPersonal: false, requestChange: false, reveal: false } },
+      'GET /people/employees/p-arjun/as-of': { ...AS_OF, employee: { ...AS_OF.employee, id: 'p-arjun' }, payAccess: false },
+      'GET /people/employees/p-arjun/history': HISTORY,
+      'GET /people/employees/p-arjun/person': { id: 'per-arjun', roles: [] },
+      'GET /people/profile-requests': { rows: [] },
+      'GET /people/pay-access/mine': { days: 30, scope: 'team', team: [{ id: 'p-arjun', name: 'Arjun Kulkarni' }, { id: 'p-kavya', name: 'Kavya Reddy' }], requests: [] },
+      'POST /people/pay-access': (_: string, init: RequestInit) => (asks.push(JSON.parse(String(init.body))), { ...PAY_ASK, canDecide: false }),
+    });
+    wrap(<PersonRecord personParam="p-arjun" path="/yx/people/directory/p-arjun" />);
+    await ue.click(await screen.findByRole('tab', { name: 'Pay' }));
+    expect(await screen.findByText('Pay needs a salary grant for your team. Ask HR to give you access.')).toBeInTheDocument();
+    await ue.click(await screen.findByRole('button', { name: 'Request access' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Ask HR for access to pay' });
+    expect(within(dialog).getByRole('radio', { name: 'My whole team (2)' })).toBeChecked();
+    await ue.click(within(dialog).getByRole('radio', { name: 'Only Arjun' }));
+    await ue.type(within(dialog).getByRole('textbox', { name: /Why you need it/ }), 'Retention case');
+    await ue.click(within(dialog).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(asks).toEqual([{ scope: 'person', employeeId: 'p-arjun', reason: 'Retention case' }]));
+  });
+});
+
 describe('/yx/me/privacy', () => {
   it('lists who looked at my sensitive data', async () => {
-    route({ 'GET /people/me/access-log': { enabled: true, entries: [{ id: 'a-1', at: '2026-10-06T10:12:00Z', who: 'Suresh Pillai', what: 'Pay', className: 'confidential' }] } });
+    route({ 'GET /people/me/access-log': { enabled: true, company: 'Kaveri Foods', entries: [{ id: 'a-1', at: '2026-10-06T10:12:00Z', who: 'Suresh Pillai', role: 'Payroll Manager', what: 'Pay', context: 'Your pay history', className: 'confidential' }] } });
     wrap(<YxPrivacyPage />);
+    expect(await screen.findByText(/What Kaveri Foods holds about you/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: /Who accessed my data/ }));
     expect((await screen.findAllByText('Suresh Pillai')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Your pay history').length).toBeGreaterThan(0);
   });
 });
 

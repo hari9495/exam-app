@@ -3,10 +3,18 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { buildViewer, tenantWide, type ScopeUser } from '../access/scope';
-import { todayIst } from '../org-structure/org-validation';
+import { isCidr, todayIst } from '../org-structure/org-validation';
+import { SETTINGS, locationValuesInForce, resolveSetting } from '../org-structure/settings-registry';
 import { AssignPolicyDto, AttendanceRuleDto, CalendarDto, HolidayDto, LeaveTypeDto, PolicyDto, PolicyVersionDto } from './dto';
 import { LeaveService } from './leave.service';
-import { DEFAULT_RULE, LeaveRules, asDate, dateOf, parseLines, parseRules } from './time-core';
+import { DEFAULT_RULE, LeaveRules, asDate, dateOf, factoriesActFrom, parseLines, parseRules, maternityValues, policyFor, statutoryMinimum, typeOn, yearChangeFor } from './time-core';
+import { leaveYearWith, monthsIn, shortYearEnd, statutoryProblem, yearChangeProblem } from './leave-rules';
+import { addDays, geoPointsOf, type GeoPoint } from './time-maths';
+
+const fullDay = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+import { FEED_STATES } from './holiday-feed.provider';
+
+const MOVE_KEY = 'leave.optional_holiday.prorate_on_move';
 import { WeeklyOffRule } from './time-maths';
 
 // HR › Leave set-up (TIM-26 / 27 / 28) and the attendance basics of each location: company configuration, so the
@@ -52,14 +60,47 @@ export class TimeSetupService {
         tx.holiday.findMany({ where: { organizationId: org }, orderBy: { holidayOn: 'asc' } }),
         tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' } }),
         tx.locationAttendanceRule.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } }),
-        tx.statutoryRuleSet.findMany({ where: { statute: 'IN.SE' }, orderBy: { jurisdiction: 'asc' } }),
+        // HLP-14 answer 131: the factory leave table too, when one of the company's locations is a registered factory.
+        tx.location.count({ where: { organizationId: org, archivedAt: null, registeredFactory: true } }).then((n) => tx.statutoryRuleSet.findMany({ where: { statute: { in: n ? ['IN.SE', 'IN.FACTORIES.LEAVE'] : ['IN.SE'] }, status: 'published', OR: [{ validTo: null }, { validTo: { gte: new Date() } }] }, orderBy: [{ statute: 'asc' }, { jurisdiction: 'asc' }] })),
         tx.legalEntity.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
       ]);
       const scopeName = await this.scopeNames(tx, org, assignments.map((a) => ({ type: a.scopeType, id: a.scopeId })));
+      // Answer 141: the Factories Act setting rows, and the departments / employment types it excludes today.
+      const faSettings = await tx.setting.findMany({ where: { organizationId: org, key: 'attendance.factories_act' } });
+      const faRows = faSettings.map((x) => ({ id: x.id, scopeType: x.scopeType, scopeId: x.scopeId, value: x.value, validFrom: x.validFrom ? dateOf(x.validFrom) : null }));
+      const faToday = todayIst();
+      const faLatest = new Map<string, (typeof faRows)[number]>();
+      for (const r of faRows) if ((r.scopeType === 'department' || r.scopeType === 'employment_type') && r.validFrom !== null && r.validFrom <= faToday) {
+        const k = `${r.scopeType}:${r.scopeId}`;
+        if (!faLatest.has(k) || faLatest.get(k)!.validFrom! < r.validFrom) faLatest.set(k, r);
+      }
+      const faOwn = locationValuesInForce(faRows, faToday);
+      const faNames = await this.scopeNames(tx, org, [...faLatest.values()].filter((r) => r.value === 'not_covered').map((r) => ({ type: r.scopeType, id: r.scopeId })));
+      const faExclusions = [...faLatest.values()].filter((r) => r.value === 'not_covered').map((r) => ({ scopeType: r.scopeType, name: faNames.get(r.scopeId) ?? 'Archived record' }));
       const today = todayIst();
+      const grades = await tx.grade.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+      // Answer 2477: who may take a leave type, by employment type.
+      const employmentTypes = await tx.employmentType.findMany({ where: { organizationId: org }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+      const working = await tx.exceptionalWorkingDay.findMany({ where: { organizationId: org }, orderBy: { workOn: 'asc' } });
+      const [moveRows, drafts, feedWaiting] = await Promise.all([
+        tx.setting.findMany({ where: { organizationId: org, key: MOVE_KEY } }),
+        tx.holidayDraft.findMany({ where: { organizationId: org }, orderBy: { holidayOn: 'asc' } }),
+        tx.holidayFeedChange.groupBy({ by: ['calendarId'], where: { organizationId: org, status: 'waiting' }, _count: { _all: true } }),
+      ]);
+      // Founder decision 2: the notice a type without its own number asks for (company value; sick leave 0).
+      const noticeRows = await tx.setting.findMany({ where: { organizationId: org, key: 'leave.notice_days.default' } });
+      const noticeDefault = Number(resolveSetting(SETTINGS['leave.notice_days.default'], noticeRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org }, today).value);
+      // TIM-27 Statutory: what the law fixes for maternity (and paternity where a state rule gives it).
+      const law = { maternity: await statutoryMinimum(tx, org, 'maternity', today), paternity: await statutoryMinimum(tx, org, 'paternity', today) };
+      // HLP-12 answer 62: the set-up offers "Add injury leave" while the company has no type with the injury leave code.
+      const injury = await this.injuryCode(tx, c);
       return {
         today,
-        types: types.map((t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version })),
+        injuryLeave: { code: injury, missing: !types.some((t) => t.code.toUpperCase() === injury.toUpperCase()) },
+        types: await Promise.all(types.map(async (t) => ({ id: t.id, code: t.code, name: t.name, kind: t.kind, paid: t.paid, colour: t.colour, active: t.active, rules: t.rules as unknown as LeaveRules, version: t.version, statutory: law[t.kind as keyof typeof law] ?? null,
+          // Answer 2477: the dated versions, newest first (a waiting one shows its date).
+          versions: (await tx.leaveTypeVersion.findMany({ where: { organizationId: org, leaveTypeId: t.id }, orderBy: { validFrom: 'desc' }, take: 20 })).map((v) => ({ validFrom: dateOf(v.validFrom), paid: v.paid, rules: parseRules(v.rules) })) }))),
+        maternity: await maternityValues(tx, today),
         policies: policies.map((p) => ({
           id: p.id,
           name: p.name,
@@ -67,15 +108,29 @@ export class TimeSetupService {
           versions: versions.filter((v) => v.policyId === p.id).map((v) => ({ id: v.id, validFrom: dateOf(v.validFrom), lines: v.lines, note: v.note })),
           assignments: assignments.filter((a) => a.policyId === p.id).map((a) => ({ id: a.id, scopeType: a.scopeType, scopeId: a.scopeId, scopeName: a.scopeType === 'tenant' ? 'Whole company' : (scopeName.get(a.scopeId) ?? ''), validFrom: dateOf(a.validFrom), removable: dateOf(a.validFrom) > today })),
         })),
-        calendars: calendars.map((cal) => ({
-          id: cal.id,
-          name: cal.name,
-          locationId: cal.locationId,
-          halfDayOpenHalf: cal.halfDayOpenHalf,
-          optionalLimit: cal.optionalLimit,
-          holidays: holidays.filter((h) => h.calendarId === cal.id).map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })),
-        })),
+        calendars: calendars.map((cal) => {
+          const loc = locations.find((l) => l.id === cal.locationId);
+          return {
+            id: cal.id,
+            name: cal.name,
+            locationId: cal.locationId,
+            halfDayOpenHalf: cal.halfDayOpenHalf,
+            optionalLimit: cal.optionalLimit,
+            onWeeklyOff: cal.onWeeklyOff,
+            // Founder decision (TIM-26): optional holidays after a move, per location (the company value until set).
+            onMove: resolveSetting(SETTINGS[MOVE_KEY], moveRows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org, ...(loc ? { location: loc.id, legal_entity: loc.legalEntityId ?? undefined } : {}) }, today).value === 'no' ? 'reset' : 'share',
+            publishedAt: cal.publishedAt,
+            waitingFeedChanges: feedWaiting.find((w) => w.calendarId === cal.id)?._count._all ?? 0,
+            holidays: holidays.filter((h) => h.calendarId === cal.id).map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })),
+            // Batch A item 9 (D11): holidays or weekly offs marked as working days.
+            workingDays: working.filter((w) => w.calendarId === cal.id).map((w) => ({ id: w.id, on: dateOf(w.workOn), reason: w.reason })),
+            drafts: drafts.filter((h) => h.calendarId === cal.id).map((h) => ({ id: h.id, on: dateOf(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay, confirm: h.confirm, source: h.source })),
+          };
+        }),
+        templates: Object.fromEntries(locations.filter((l) => FEED_STATES[l.state]).map((l) => [l.id, FEED_STATES[l.state]])),
         locations: locations.map((l) => {
+          // Answer 141: where the location's Factories Act coverage comes from (department / employment type exclusions listed apart).
+          const fa = factoriesActFrom(l.registeredFactory, resolveSetting(SETTINGS['attendance.factories_act'], faRows, { tenant: org, legal_entity: l.legalEntityId, location: l.id }, today));
           const mine = rules.filter((r) => r.locationId === l.id);
           const now = mine.find((r) => dateOf(r.validFrom) <= today);
           return {
@@ -84,19 +139,94 @@ export class TimeSetupService {
             state: l.state,
             timezone: l.timezone,
             geofence: l.geoLat !== null && l.geoRadiusM ? { lat: Number(l.geoLat), lng: Number(l.geoLng), radiusM: l.geoRadiusM } : null,
+            // TIM-31 Multi: every check-in point; `updatedAt` is sent back with a change (someone else's change first: 409).
+            points: geoPointsOf(l),
+            updatedAt: l.updatedAt,
             ipRanges: l.ipRanges,
+            wifiNames: l.wifiNames,
+            registeredFactory: l.registeredFactory,
+            // Answer 151: the location's own setting value: "mark it as a registered factory", or "no longer needed".
+            factoriesAct: { covered: fa.covered, source: fa.source, scopeType: fa.scopeType, exclusions: l.registeredFactory ? faExclusions : [], locationSetting: faOwn.get(l.id) ?? null },
             rule: now ? this.ruleView(now) : { ...DEFAULT_RULE, validFrom: null, starter: true },
             upcoming: mine.filter((r) => dateOf(r.validFrom) > today).map((r) => this.ruleView(r)),
           };
         }),
         entities,
-        statutory: statutory.map((s) => ({ jurisdiction: s.jurisdiction, version: s.version, validFrom: dateOf(s.validFrom), values: s.values, source: s.source, verify: s.verify })),
+        grades,
+        employmentTypes,
+        ...(await this.coverage(tx, org, today, assignments, policies)),
+        noticeDefault,
+        // TIM-27: the company values a type follows until it sets its own (named in the editor's helpers).
+        leaveDefaults: Object.fromEntries(
+          await Promise.all(
+            ['leave.encashment.max_days', 'leave.encashment.min_left', 'leave.encashment.divisor', 'leave.notice_period.leave', 'leave.long_absence.accrues'].map(async (key) => {
+              const rows = await tx.setting.findMany({ where: { organizationId: org, key } });
+              return [key, String(resolveSetting(SETTINGS[key], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org }, today).value)];
+            }),
+          ),
+        ),
+        statutory: statutory.map((s) => ({ statute: s.statute, jurisdiction: s.jurisdiction, version: s.version, validFrom: dateOf(s.validFrom), values: s.values, source: s.source, verify: s.verify })),
       };
     });
   }
 
+  /**
+   * TIM-28: who each policy covers today (with the saved order), the per-person overrides, the people no policy covers
+   * (first 50 by joining date), and the order today and any saved for later.
+   */
+  private async coverage(tx: Tx, org: string, today: string, assignments: Prisma.LeavePolicyAssignmentGetPayload<object>[], policies: { id: string; archivedAt: Date | null }[]) {
+    const orders = await tx.leavePolicyOrder.findMany({ where: { organizationId: org }, orderBy: { validFrom: 'desc' } });
+    const now = orders.find((o) => dateOf(o.validFrom) <= today) ?? null;
+    const later = orders.find((o) => dateOf(o.validFrom) > today) ?? null;
+    const people = await tx.$queryRaw<{ id: string; name: string; code: string | null; joinedOn: Date; entity: string; location: string; department: string; designation: string; grade: string | null; type: string }[]>`
+      SELECT DISTINCT ON (e.id) e.id::text, concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name) AS name, m.employee_code::text AS code,
+             m.joined_on AS "joinedOn", a.legal_entity_id::text AS entity, a.location_id::text AS location, a.department_id::text AS department,
+             a.designation_id::text AS designation, a.grade_id::text AS grade, a.employment_type_id::text AS type
+      FROM employees e
+      JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]')
+      JOIN employments m ON m.organization_id = e.organization_id AND m.id = a.employment_id AND (m.exited_on IS NULL OR m.exited_on >= ${today}::date)
+      WHERE e.organization_id = ${org}::uuid
+      ORDER BY e.id, a.valid_from DESC`;
+    const count = new Map<string, number>();
+    const uncovered: { id: string; name: string; code: string | null; joinedOn: string }[] = [];
+    for (const p of people) {
+      const ctx = { tenant: org, employee: p.id, designation: p.designation, grade: p.grade ?? undefined, employment_type: p.type, department: p.department, location: p.location, legal_entity: p.entity };
+      const id = policyFor(assignments, now?.policyIds ?? null, ctx, today);
+      if (id) count.set(id, (count.get(id) ?? 0) + 1);
+      else uncovered.push({ id: p.id, name: p.name, code: p.code, joinedOn: dateOf(p.joinedOn) });
+    }
+    uncovered.sort((a, b) => b.joinedOn.localeCompare(a.joinedOn));
+    const overrides = new Map<string, number>();
+    for (const a of assignments) if (a.scopeType === 'employee' && dateOf(a.validFrom) <= today) overrides.set(a.policyId, (overrides.get(a.policyId) ?? 0) + 1);
+    const live = new Set(policies.filter((p) => !p.archivedAt).map((p) => p.id));
+    return {
+      coverage: Object.fromEntries([...live].map((id) => [id, { people: count.get(id) ?? 0, overrides: overrides.get(id) ?? 0 }])),
+      covered: people.length - uncovered.length,
+      uncovered: { count: uncovered.length, people: uncovered.slice(0, 50) },
+      order: { current: now ? now.policyIds.filter((id) => live.has(id)) : null, currentFrom: now ? dateOf(now.validFrom) : null, upcoming: later ? { validFrom: dateOf(later.validFrom), policyIds: later.policyIds.filter((id) => live.has(id)) } : null },
+    };
+  }
+
+  /** TIM-28: the policy order from a date; a saved later order may be redone, one in force never changes (P06). */
+  saveOrder(ctx: TenantContext, user: ScopeUser, dto: { policyIds: string[]; validFrom: string }) {
+    return this.run(ctx, user, true, async (tx, c) => {
+      const org = c.organizationId;
+      const today = todayIst();
+      if (dto.validFrom < today) throw new BadRequestException('Choose today or a later date: earlier months stay as they were.');
+      if (new Set(dto.policyIds).size !== dto.policyIds.length) throw new BadRequestException('Each policy appears once in the order.');
+      const live = await tx.leavePolicy.findMany({ where: { organizationId: org, archivedAt: null }, select: { id: true } });
+      if (dto.policyIds.length !== live.length || dto.policyIds.some((id) => !live.some((p) => p.id === id))) throw new BadRequestException('The order must list every policy once. Reload the page and try again.');
+      const existing = await tx.leavePolicyOrder.findFirst({ where: { organizationId: org, validFrom: asDate(dto.validFrom) } });
+      if (existing && dto.validFrom <= today) throw new ConflictException('An order is already in force from today. Save the change from a later date.');
+      if (existing) await tx.leavePolicyOrder.update({ where: { id: existing.id }, data: { policyIds: dto.policyIds, createdBy: c.userId ?? null } });
+      else await tx.leavePolicyOrder.create({ data: { organizationId: org, validFrom: asDate(dto.validFrom), policyIds: dto.policyIds, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.policy.order_saved', 'leave_policy', org, { validFrom: dto.validFrom, policyIds: dto.policyIds, replaced: existing?.policyIds ?? null });
+      return { validFrom: dto.validFrom, policyIds: dto.policyIds };
+    });
+  }
+
   private ruleView(r: Prisma.LocationAttendanceRuleGetPayload<object>) {
-    return { validFrom: dateOf(r.validFrom), shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs, checkIn: r.checkIn, alsoAllowed: r.alsoAllowed, starter: false };
+    return { validFrom: dateOf(r.validFrom), shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs, checkIn: r.checkIn, alsoAllowed: r.alsoAllowed, reclockIn: r.reclockIn, starter: false };
   }
 
   async scopeNames(tx: Tx, org: string, scopes: { type: string; id: string }[]): Promise<Map<string, string>> {
@@ -119,11 +249,38 @@ export class TimeSetupService {
 
   createType(ctx: TenantContext, user: ScopeUser, dto: LeaveTypeDto) {
     return this.run(ctx, user, true, async (tx, c) => {
-      const rules = this.checkType(dto);
+      const rules = await this.checkType(tx, c, dto);
       if (await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, code: dto.code } })) throw new ConflictException(`The code ${dto.code} is already used.`);
       const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code: dto.code, name: dto.name, kind: dto.kind, paid: dto.paid, colour: dto.colour ?? 'blue', rules: rules as unknown as Prisma.InputJsonValue, active: dto.active ?? true, createdBy: c.userId ?? null } });
+      // Answer 2477: version 1, in force from the start.
+      await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, validFrom: asDate('2000-01-01'), rules: rules as unknown as Prisma.InputJsonValue, paid: dto.paid, createdBy: c.userId ?? null } });
       await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules });
       return { id: t.id };
+    });
+  }
+
+  /** The leave type code accident cases use for injury leave (the company setting accident.injury_leave_type). */
+  private async injuryCode(tx: Tx, c: CompanyContext): Promise<string> {
+    const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'accident.injury_leave_type' } });
+    return String(resolveSetting(SETTINGS['accident.injury_leave_type'], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, todayIst()).value).trim();
+  }
+
+  /**
+   * HLP-12 founder answer 62: "Add injury leave", only when HR presses it. Creates the company's injury leave type
+   * (the code from accident.injury_leave_type): unpaid (ESI pays the benefit; payroll pays injury pay where it is due)
+   * with no balance, so it works for everyone at once without a policy line; no notice, as accidents are not planned.
+   * HR can change it afterwards like any type.
+   */
+  addInjuryLeave(ctx: TenantContext, user: ScopeUser) {
+    return this.run(ctx, user, true, async (tx, c) => {
+      const code = await this.injuryCode(tx, c);
+      if (!/^[A-Z][A-Z0-9]{0,7}$/.test(code)) throw new ConflictException(`The injury leave code "${code}" in Company rules is not a leave type code (1 to 8 capital letters or digits). Change "Accidents: the leave type code for injury leave" first.`);
+      if (await tx.leaveType.findFirst({ where: { organizationId: c.organizationId, code } })) throw new ConflictException(`A leave type with the code ${code} already exists. Open it from Leave types to change it.`);
+      const rules = parseRules({ noticeDays: 0 });
+      const t = await tx.leaveType.create({ data: { organizationId: c.organizationId, code, name: 'Injury leave', kind: 'lop', paid: false, colour: 'red', rules: rules as unknown as Prisma.InputJsonValue, active: true, createdBy: c.userId ?? null } });
+      await tx.leaveTypeVersion.create({ data: { organizationId: c.organizationId, leaveTypeId: t.id, validFrom: asDate('2000-01-01'), rules: rules as unknown as Prisma.InputJsonValue, paid: false, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.type.created', 'leave_type', t.id, { code: t.code, kind: t.kind, rules, via: 'add_injury_leave' });
+      return { id: t.id, code };
     });
   }
 
@@ -135,19 +292,39 @@ export class TimeSetupService {
       if (dto.kind !== t.kind) throw new BadRequestException('A leave type keeps its kind. Add a new type instead.');
       // G1 (gap pass T1): the leave type screen does not show pay steps yet, so an edit that leaves them out keeps them.
       const old = t.rules as Record<string, unknown>;
-      const rules = this.checkType({ ...dto, rules: { paySteps: old.paySteps ?? null, payWindow: old.payWindow ?? 'leave_year', ...(dto.rules ?? {}) } });
-      await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, paid: dto.paid, colour: dto.colour ?? t.colour, rules: rules as unknown as Prisma.InputJsonValue, active: dto.active ?? t.active, version: { increment: 1 }, updatedAt: new Date() } });
-      await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, from: { name: t.name, paid: t.paid, rules: t.rules, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active } });
-      return { id: t.id };
+      const rules = await this.checkType(tx, c, { ...dto, rules: { paySteps: old.paySteps ?? null, payWindow: old.payWindow ?? 'leave_year', ...(dto.rules ?? {}) } });
+      // Answer 2477: the rules and pay are dated. A change from today applies now; one dated ahead waits as a new version
+      // (or replaces the one already waiting on that date). Versions in force never change, so past leave keeps its rules.
+      const today = todayIst();
+      const from = dto.validFrom ?? today;
+      if (from < today) throw new BadRequestException('A change applies from today or a later date. Earlier leave keeps the rules it had.');
+      const org = c.organizationId;
+      const now = await typeOn(tx, org, t, from);
+      const waiting = await tx.leaveTypeVersion.findFirst({ where: { organizationId: org, leaveTypeId: t.id, validFrom: asDate(from) } });
+      const changed = JSON.stringify(parseRules(now.rules)) !== JSON.stringify(rules) || now.paid !== dto.paid;
+      if (changed || waiting) {
+        if (waiting && from > today) await tx.leaveTypeVersion.update({ where: { id: waiting.id }, data: { rules: rules as unknown as Prisma.InputJsonValue, paid: dto.paid, createdBy: c.userId ?? null } });
+        else if (waiting) throw new ConflictException('The rules already changed today. A further change applies from tomorrow or later.');
+        else await tx.leaveTypeVersion.create({ data: { organizationId: org, leaveTypeId: t.id, validFrom: asDate(from), rules: rules as unknown as Prisma.InputJsonValue, paid: dto.paid, createdBy: c.userId ?? null } });
+      }
+      const applyNow = from <= today;
+      await tx.leaveType.update({ where: { id: t.id }, data: { name: dto.name, colour: dto.colour ?? t.colour, active: dto.active ?? t.active, ...(applyNow ? { paid: dto.paid, rules: rules as unknown as Prisma.InputJsonValue } : {}), version: { increment: 1 }, updatedAt: new Date() } });
+      await audit(tx, c, 'leave.type.changed', 'leave_type', t.id, { code: t.code, validFrom: from, from: { name: t.name, paid: now.paid, rules: now.rules, active: t.active }, to: { name: dto.name, paid: dto.paid, rules, active: dto.active ?? t.active } });
+      return { id: t.id, validFrom: from };
     });
   }
 
-  private checkType(dto: LeaveTypeDto): LeaveRules {
+  private async checkType(tx: Tx, c: CompanyContext, dto: LeaveTypeDto): Promise<LeaveRules> {
     const rules = parseRules(dto.rules);
     if (dto.kind === 'lop' && dto.paid) throw new BadRequestException('Leave without pay is unpaid.');
     // YX-LV-14: an unpaid type carries no balance, so it has nothing to go below zero.
     if (dto.kind === 'lop' && rules.negativeLimit) throw new BadRequestException('Leave without pay has no balance, so it cannot go below zero.');
     if (!dto.paid && rules.paySteps) throw new BadRequestException('Only paid leave has pay steps.');
+    // TIM-27 Year end: cash-in limits and the payout only mean something for a type that can be cashed in.
+    if (!rules.encashable && (rules.encashMaxDays !== null || rules.encashMinLeft !== null || rules.encashDivisor !== null)) throw new BadRequestException('Turn on "Can be cashed in" before setting cash-in limits or the payout.');
+    // TIM-27 Statutory: a kind the law sets can't be made shorter or less paid than the law (a company may give more).
+    const problem = statutoryProblem(await statutoryMinimum(tx, c.organizationId, dto.kind, todayIst()), { name: dto.name, paid: dto.paid, active: dto.active ?? true, rules });
+    if (problem) throw new BadRequestException(problem);
     return rules;
   }
 
@@ -223,8 +400,17 @@ export class TimeSetupService {
       const cal = await tx.holidayCalendar.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!cal) throw new NotFoundException('No such calendar.');
       if ((dto.locationId ?? null) !== cal.locationId) throw new BadRequestException('A calendar stays with its location.');
-      await tx.holidayCalendar.update({ where: { id }, data: { name: dto.name, halfDayOpenHalf: dto.halfDayOpenHalf ?? cal.halfDayOpenHalf, optionalLimit: dto.optionalLimit ?? cal.optionalLimit, version: { increment: 1 }, updatedAt: new Date() } });
-      await audit(tx, c, 'holiday.calendar.changed', 'holiday_calendar', id, { name: dto.name, halfDayOpenHalf: dto.halfDayOpenHalf, optionalLimit: dto.optionalLimit });
+      await tx.holidayCalendar.update({ where: { id }, data: { name: dto.name, halfDayOpenHalf: dto.halfDayOpenHalf ?? cal.halfDayOpenHalf, optionalLimit: dto.optionalLimit ?? cal.optionalLimit, onWeeklyOff: dto.onWeeklyOff ?? cal.onWeeklyOff, version: { increment: 1 }, updatedAt: new Date() } });
+      if (dto.onMove) {
+        // "When someone moves" is the location's value of the company setting (TIM-23 prorating), kept per location.
+        if (!cal.locationId) throw new BadRequestException('The company calendar follows the company setting for moves. Change it in Settings.');
+        const where = { organizationId: c.organizationId, key: MOVE_KEY, scopeType: 'location', scopeId: cal.locationId };
+        const row = await tx.setting.findFirst({ where });
+        const value = dto.onMove === 'share' ? 'yes' : 'no';
+        if (row) await tx.setting.update({ where: { id: row.id }, data: { value, updatedBy: c.userId ?? null } });
+        else await tx.setting.create({ data: { ...where, value, updatedBy: c.userId ?? null } });
+      }
+      await audit(tx, c, 'holiday.calendar.changed', 'holiday_calendar', id, { name: dto.name, halfDayOpenHalf: dto.halfDayOpenHalf, optionalLimit: dto.optionalLimit, onWeeklyOff: dto.onWeeklyOff, onMove: dto.onMove });
       return { id };
     });
   }
@@ -241,17 +427,6 @@ export class TimeSetupService {
     });
   }
 
-  removeHoliday(ctx: TenantContext, user: ScopeUser, id: string) {
-    return this.run(ctx, user, true, async (tx, c) => {
-      const h = await tx.holiday.findFirst({ where: { organizationId: c.organizationId, id } });
-      if (!h) throw new NotFoundException('Not found');
-      // A holiday already passed has shaped balances and attendance; it stays.
-      if (dateOf(h.holidayOn) < todayIst()) throw new ConflictException('That holiday has passed, so it stays on the calendar.');
-      await tx.holiday.delete({ where: { id } });
-      await audit(tx, c, 'holiday.removed', 'holiday', id, { calendarId: h.calendarId, on: dateOf(h.holidayOn), name: h.name });
-    });
-  }
-
   // ------------------------------------------------------------------------------------------ attendance basics per location
 
   setRule(ctx: TenantContext, user: ScopeUser, locationId: string, dto: AttendanceRuleDto) {
@@ -263,9 +438,50 @@ export class TimeSetupService {
       if (dto.shiftStart === dto.shiftEnd) throw new BadRequestException('The shift ends at a different time from when it starts.');
       const at = { organizationId: org, locationId, validFrom: asDate(dto.validFrom) };
       if (await tx.locationAttendanceRule.findFirst({ where: at })) throw new ConflictException('There is already a change from that date. Choose another date.');
-      const r = await tx.locationAttendanceRule.create({ data: { ...at, shiftName: dto.shiftName ?? 'General', shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs as unknown as Prisma.InputJsonValue, checkIn: dto.checkIn, createdBy: c.userId ?? null } });
-      await audit(tx, c, 'attendance.rule.added', 'location', locationId, { validFrom: dto.validFrom, shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs, checkIn: dto.checkIn });
+      const r = await tx.locationAttendanceRule.create({ data: { ...at, shiftName: dto.shiftName ?? 'General', shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs as unknown as Prisma.InputJsonValue, checkIn: dto.checkIn, reclockIn: dto.reclockIn ?? false, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'attendance.rule.added', 'location', locationId, { validFrom: dto.validFrom, shiftStart: dto.shiftStart, shiftEnd: dto.shiftEnd, graceMinutes: dto.graceMinutes, weeklyOffs: offs, checkIn: dto.checkIn, reclockIn: dto.reclockIn ?? false });
       return { id: r.id };
+    });
+  }
+
+  /** TIM-31: the office networks of a location (the same field Settings › Locations edits), each line a valid range. */
+  setNetworks(ctx: TenantContext, user: ScopeUser, locationId: string, input: string[], wifi?: string[]) {
+    const wifiNames = wifi === undefined ? undefined : [...new Set(wifi.map((w) => w.trim()).filter(Boolean))];
+    const lines = input.map((r) => r.trim());
+    const bad = lines.findIndex((r) => r !== '' && !isCidr(r));
+    if (bad >= 0) throw new BadRequestException(`Line ${bad + 1}: ${lines[bad]} is not a valid range. Each part must be 0–255, e.g. 10.20.4.0/24.`);
+    const ipRanges = [...new Set(lines.filter(Boolean))];
+    return this.run(ctx, user, true, async (tx, c) => {
+      const row = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: locationId, archivedAt: null } });
+      if (!row) throw new NotFoundException('No such location.');
+      await tx.location.update({ where: { id: locationId }, data: { ipRanges, ...(wifiNames ? { wifiNames } : {}) } });
+      await audit(tx, c, 'org.location.networks_changed', 'location', locationId, { before: { ipRanges: row.ipRanges, wifiNames: row.wifiNames }, after: { ipRanges, wifiNames: wifiNames ?? row.wifiNames } });
+      return { id: locationId, ipRanges, wifiNames: wifiNames ?? row.wifiNames };
+    });
+  }
+
+  /**
+   * TIM-31 Multi: a location's check-in points (a punch inside any of them is inside). The first point is also kept in
+   * geo_lat / geo_lng / geo_radius_m, which Settings › Locations shows. Names are unique per location.
+   */
+  setPoints(ctx: TenantContext, user: ScopeUser, locationId: string, input: GeoPoint[], seen?: string) {
+    const points = input.map((p) => ({ name: p.name.trim(), lat: p.lat, lng: p.lng, radiusM: p.radiusM }));
+    const names = points.map((p) => p.name.toLowerCase());
+    const twice = names.findIndex((n, i) => names.indexOf(n) !== i);
+    if (twice >= 0) throw new BadRequestException(`Two points are called "${points[twice].name}". Give each point its own name.`);
+    return this.run(ctx, user, true, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`location:${c.organizationId}:${locationId}`}))`;
+      const row = await tx.location.findFirst({ where: { organizationId: c.organizationId, id: locationId, archivedAt: null } });
+      if (!row) throw new NotFoundException('No such location.');
+      if (seen && new Date(seen).getTime() !== row.updatedAt.getTime()) throw new ConflictException('Someone else changed this location. Reload to see their change, then make yours.');
+      const before = geoPointsOf(row);
+      const head = points[0];
+      const saved = await tx.location.update({
+        where: { id: locationId },
+        data: { geoPoints: points as unknown as Prisma.InputJsonValue, geoLat: head?.lat ?? null, geoLng: head?.lng ?? null, geoRadiusM: head?.radiusM ?? null },
+      });
+      await audit(tx, c, 'org.location.points_changed', 'location', locationId, { before, after: points });
+      return { id: locationId, points, updatedAt: saved.updatedAt };
     });
   }
 
@@ -288,16 +504,89 @@ export class TimeSetupService {
   yearEndPreview(ctx: TenantContext, user: ScopeUser, yearEnd: string) {
     return this.run(ctx, user, false, async (tx, c) => {
       const rows = await this.leave.yearEndRows(tx, c, yearEnd);
-      return { yearEnd, rows, lapses: rows.filter((r) => r.lapse > 0).length };
+      const posted = await this.postedRuns(tx, c, yearEnd);
+      // TIM-29: requests still waiting with days in the closing year are listed to decide first.
+      return { yearEnd, rows, lapses: rows.filter((r) => r.lapse > 0).length, payOuts: rows.filter((r) => r.encash > 0).length, posted, pending: await this.leave.yearEndPending(tx, c, yearEnd) };
     });
   }
 
-  /** Checked here; the posting runs on the BullMQ worker (idempotent by period key). */
-  async yearEndCheck(ctx: TenantContext, user: ScopeUser, yearEnd: string) {
+  /** Year ends already posted for the date: who posted, when, for which policies. */
+  private async postedRuns(tx: Tx, c: CompanyContext, yearEnd: string) {
+    const runs = await tx.leaveYearRun.findMany({ where: { organizationId: c.organizationId, yearEnd: asDate(yearEnd) }, orderBy: { postedAt: 'asc' } });
+    if (!runs.length) return null;
+    const by = runs[0].postedBy ? await tx.user.findFirst({ where: { organizationId: c.organizationId, id: runs[0].postedBy }, select: { name: true, email: true } }) : null;
+    return { at: runs[0].postedAt, by: by?.name || by?.email || null, policies: runs.length };
+  }
+
+  /**
+   * Checked and recorded here (once per policy and last day: a second run is refused), then the posting runs on the
+   * BullMQ worker (safe to re-run by period key).
+   */
+  async yearEndCheck(ctx: TenantContext, user: ScopeUser, yearEnd: string, acknowledgePending = false) {
     if (yearEnd > todayIst()) throw new BadRequestException('Run year end on or after the last day of the leave year.');
     return this.run(ctx, user, true, async (tx, c) => {
-      await audit(tx, c, 'leave.year_end.requested', 'leave_year_end', c.organizationId, { yearEnd });
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`year-end:${c.organizationId}:${yearEnd}`}))`;
+      const done = await this.postedRuns(tx, c, yearEnd);
+      if (done) throw new ConflictException({ statusCode: 409, code: 'YEAR_END_POSTED', message: `Year end for ${fullDay(yearEnd)} was already posted${done.by ? ` by ${done.by}` : ''}. Correct a balance with an adjustment instead.` });
+      // TIM-29: pending requests block posting unless HR posts anyway (they stay pending into the new year).
+      const pending = await this.leave.yearEndPending(tx, c, yearEnd);
+      if (pending.length && !acknowledgePending) throw new ConflictException({ statusCode: 409, code: 'YEAR_END_PENDING', message: `${pending.length} leave ${pending.length === 1 ? 'request is' : 'requests are'} still waiting. Decide ${pending.length === 1 ? 'it' : 'them'} first, or post anyway and ${pending.length === 1 ? 'it stays' : 'they stay'} pending in the new year.`, pending: pending.length });
+      const rows = await this.leave.yearEndRows(tx, c, yearEnd);
+      const policies = [...new Set(rows.map((r) => r.policyId))];
+      for (const policyId of policies) {
+        const mine = rows.filter((r) => r.policyId === policyId);
+        const sum = (k: 'carry' | 'encash' | 'lapse') => Math.round(mine.reduce((x, r) => x + r[k], 0) * 100) / 100;
+        await tx.leaveYearRun.create({ data: { organizationId: c.organizationId, yearEnd: asDate(yearEnd), policyId, totals: { people: new Set(mine.map((r) => r.employeeId)).size, carried: sum('carry'), paidOut: sum('encash'), lapsed: sum('lapse') }, postedBy: c.userId ?? null } });
+      }
+      await audit(tx, c, 'leave.year_end.requested', 'leave_year_end', c.organizationId, { yearEnd, pendingCarried: pending.length, policies: policies.length });
       return { organizationId: c.organizationId, userId: c.userId ?? null };
+    });
+  }
+
+  // ------------------------------------------------------------------------------------------ TIM-29 leave-year change
+
+  /** The entity's leave year today and the change it would get: from the first day of its next leave year. */
+  private async yearChangePlan(tx: Tx, c: CompanyContext, legalEntityId: string, newStartMonth: number) {
+    const org = c.organizationId;
+    const entity = await tx.legalEntity.findFirst({ where: { organizationId: org, id: legalEntityId, archivedAt: null }, select: { id: true, name: true } });
+    if (!entity) throw new NotFoundException('No such legal entity.');
+    const today = todayIst();
+    const rows = await tx.setting.findMany({ where: { organizationId: org, key: 'leave.year_start_month' } });
+    const setMonth = Number(resolveSetting(SETTINGS['leave.year_start_month'], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: org, legal_entity: legalEntityId }, today).value);
+    const change = await yearChangeFor(tx, org, legalEntityId, today);
+    const year = leaveYearWith(today, setMonth, change);
+    const scheduled = change && change.fromOn > today ? change : null;
+    const fromOn = addDays(year.end, 1);
+    const oldStartMonth = Number(fromOn.slice(5, 7));
+    const shortEnd = shortYearEnd(fromOn, newStartMonth);
+    return { entity, today, year, fromOn, oldStartMonth, shortEnd, scheduled, months: monthsIn(fromOn, shortEnd) };
+  }
+
+  /** GET setup/year-change: the preview per person, and any change already scheduled for the entity. */
+  yearChangePreview(ctx: TenantContext, user: ScopeUser, legalEntityId: string, newStartMonth: number) {
+    return this.run(ctx, user, false, async (tx, c) => {
+      const plan = await this.yearChangePlan(tx, c, legalEntityId, newStartMonth);
+      const problem = plan.scheduled ? null : plan.year.short ? 'A short year is running now. Change the leave year again after it ends.' : yearChangeProblem(plan.fromOn, plan.oldStartMonth, newStartMonth, plan.today);
+      const rows = problem || plan.scheduled ? [] : await this.leave.transitionRows(tx, c, legalEntityId, plan.fromOn, plan.shortEnd, plan.today);
+      return { entity: plan.entity, oldStartMonth: plan.oldStartMonth, newStartMonth, fromOn: plan.fromOn, shortEnd: plan.shortEnd, months: plan.months, problem, scheduled: plan.scheduled ? { ...plan.scheduled, shortEnd: shortYearEnd(plan.scheduled.fromOn, plan.scheduled.newStartMonth) } : null, rows };
+    });
+  }
+
+  /**
+   * POST setup/year-change: schedules the change (once per entity and date; a second one while one waits is refused).
+   * Nothing is posted now: from that date the accrual job credits the short year and its year end applies the caps.
+   */
+  scheduleYearChange(ctx: TenantContext, user: ScopeUser, legalEntityId: string, newStartMonth: number) {
+    return this.run(ctx, user, true, async (tx, c) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`year-change:${c.organizationId}:${legalEntityId}`}))`;
+      const plan = await this.yearChangePlan(tx, c, legalEntityId, newStartMonth);
+      if (plan.scheduled) throw new ConflictException({ statusCode: 409, code: 'YEAR_CHANGE_SCHEDULED', message: `${plan.entity.name} already moves to a new leave year on ${fullDay(plan.scheduled.fromOn)}. Only one change can wait at a time.` });
+      if (plan.year.short) throw new ConflictException('A short year is running now. Change the leave year again after it ends.');
+      const problem = yearChangeProblem(plan.fromOn, plan.oldStartMonth, newStartMonth, plan.today);
+      if (problem) throw new BadRequestException(problem);
+      const row = await tx.leaveYearChange.create({ data: { organizationId: c.organizationId, legalEntityId, fromOn: asDate(plan.fromOn), oldStartMonth: plan.oldStartMonth, newStartMonth, createdBy: c.userId ?? null } });
+      await audit(tx, c, 'leave.year_change.scheduled', 'legal_entity', legalEntityId, { fromOn: plan.fromOn, shortYearEnd: plan.shortEnd, from: plan.oldStartMonth, to: newStartMonth, changeId: row.id });
+      return { id: row.id, fromOn: plan.fromOn, shortEnd: plan.shortEnd, months: plan.months };
     });
   }
 }

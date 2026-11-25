@@ -2,7 +2,7 @@
 // (P02 §4.2–4.6, §7): the shapes the API returns and accepts.
 export type { LoadState } from '../org/types';
 
-export type ScopeType = 'tenant' | 'legal_entity' | 'location' | 'department_subtree' | 'all_reports' | 'direct_reports';
+export type ScopeType = 'tenant' | 'legal_entity' | 'location' | 'department_subtree' | 'all_reports' | 'direct_reports' | 'one_report';
 
 export interface Choice {
   value: string;
@@ -69,6 +69,23 @@ export interface EffectiveAccess {
   keys: { key: string; label: string; people: number; scopes: { type: ScopeType; id: string | null }[] }[];
 }
 
+/** Answer 946: a request sent from a "You don't have access" page, decided in Roles & access › Requests. */
+export interface AccessRequestRow {
+  id: string;
+  user: { id: string; name: string };
+  /** The page it was asked from ("/yx/payroll/runs") and what that page called itself ("payroll runs"). */
+  page: string;
+  what: string;
+  reason: string;
+  days: number;
+  askedAt: string;
+  /** waiting: for a System Admin; approval: granted, the Confidential role waits for a second admin (Waiting); open: until validTo. */
+  state: 'waiting' | 'approval' | 'open' | 'refused' | 'ended';
+  validTo: string | null;
+  decidedBy: string | null;
+  decisionNote: string | null;
+}
+
 export interface GrantInput {
   userId: string;
   permissionProfileId: string;
@@ -89,6 +106,9 @@ export interface ScopeChoices {
 
 // ---- the record by class ----
 
+/** The personal details a company may require (Settings › Company rules › Personal details everyone must have). */
+export type PersonalField = 'dateOfBirth' | 'gender' | 'maritalStatus' | 'personalEmail' | 'personalPhone' | 'addressLine1' | 'addressLine2' | 'city' | 'stateCode' | 'postalCode';
+
 export interface PersonalDetails {
   dateOfBirth: string | null;
   gender: string | null;
@@ -101,10 +121,11 @@ export interface PersonalDetails {
   postalCode: string | null;
   country: string | null;
   hideBirthday: boolean;
+  maritalStatus?: string | null;
 }
 
-export type RevealField = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'bank_salary' | 'bank_reimbursement';
-export type RequestKind = 'bank_salary' | 'bank_reimbursement' | 'pan' | 'aadhaar' | 'uan' | 'esic' | 'legal_name';
+export type RevealField = 'pan' | 'aadhaar' | 'uan' | 'esic' | 'passport' | 'bank_salary' | 'bank_reimbursement';
+export type RequestKind = 'bank_salary' | 'bank_reimbursement' | 'pan' | 'aadhaar' | 'uan' | 'esic' | 'legal_name' | 'passport' | 'bank_international';
 
 export interface IdentityView {
   legalName: string | null;
@@ -112,7 +133,11 @@ export interface IdentityView {
   aadhaar: string | null;
   uan: string | null;
   esic: string | null;
+  passport?: string | null;
+  passportExpiresOn?: string | null;
   bankAccounts: { purpose: 'salary' | 'reimbursement'; holderName: string; ifsc: string; account: string | null; usableFrom: string }[];
+  /** PPL-46: the salary account abroad (IBAN masked). */
+  internationalAccount?: { country: string; iban: string; bic: string; currency: string; usableFrom: string } | null;
   pending: { requestId: string; kind: RequestKind }[];
 }
 
@@ -124,14 +149,48 @@ export interface ProfileView {
   joinedOn: string | null;
   classes: { internal: boolean; personal: boolean; identity: boolean; aadhaar: boolean; pay: boolean };
   personal: PersonalDetails | null;
+  /** The personal details the company requires (Settings › Company rules); null without the Personal class. */
+  personalRequired?: PersonalField[] | null;
   identity: IdentityView | null;
-  can: { editPersonal: boolean; requestChange: boolean; reveal: boolean };
+  /** Internal class: the work phone. */
+  work?: { phone: string | null; email?: string | null } | null;
+  /** Internal: the birthday as MM-DD (null when hidden or unknown). */
+  birthday?: string | null;
+  personId?: string;
+  /** PPL-03 family, nominations and emergency contacts (Personal class; null without it). */
+  family?: FamilyView | null;
+  can: { editPersonal: boolean; requestChange: boolean; reveal: boolean; editWork?: boolean; editFamily?: boolean };
+}
+
+export interface FamilyView {
+  members: { id: string; name: string; relation: string; dateOfBirth: string | null; dependant: boolean }[];
+  nominations: { scheme: string; familyMemberId: string | null; name: string; relation: string; sharePercent: number }[];
+  /** Schemes the person should name a nominee for. */
+  expectedSchemes: string[];
+  contacts: { name: string; relation: string; phone: string }[];
+  maritalChangedAt: string | null;
+  nominationsReviewedAt: string | null;
 }
 
 export interface ProfileRequestInput {
   kind: RequestKind;
-  value: Partial<Record<'pan' | 'aadhaar' | 'uan' | 'esic' | 'legalName' | 'holderName' | 'accountNumber' | 'ifsc', string>>;
-  reason: string;
+  value: Partial<Record<'pan' | 'aadhaar' | 'uan' | 'esic' | 'legalName' | 'holderName' | 'accountNumber' | 'ifsc' | 'passport' | 'passportExpiresOn', string>>;
+  reason?: string;
+  /** PPL-32: the proof on the person's record, and the day a new legal name took effect. */
+  proofDocumentId?: string;
+  effectiveOn?: string;
+}
+
+/** PPL-32: my Change identity or bank details page (GET /people/me/change-form). */
+export interface ChangeForm {
+  employeeId: string;
+  personId: string;
+  proofRequired: boolean;
+  /** The document type that proves each kind (none for UAN and ESIC). */
+  proofTypes: Partial<Record<RequestKind, string>>;
+  coolingHours: number;
+  /** What is on file now, masked; null when nothing is. */
+  current: Record<RequestKind, Record<string, string | null> | null>;
 }
 
 export interface ProfileRequest {
@@ -142,7 +201,7 @@ export interface ProfileRequest {
   label: string;
   proposed: Record<string, string | null>;
   current: Record<string, string | null> | null;
-  reason: string;
+  reason: string | null;
   status: 'pending' | 'approved' | 'rejected' | 'cancelled';
   requestedBy: string | null;
   requestedAt: string;
@@ -151,9 +210,18 @@ export interface ProfileRequest {
   decidedAt: string | null;
   decisionNote: string | null;
   overrideReason: string | null;
+  proofDocumentId: string | null;
+  effectiveOn: string | null;
+  /** An approved bank account: when pay starts going to it (after the cooling period). */
+  usableFrom: string | null;
 }
 
 export interface AccessLog {
   enabled: boolean;
-  entries: { id: string; at: string; who: string; what: string; className: 'confidential' | 'special' }[];
+  /** The company's name, for the Privacy page heading (PPL-33). */
+  company: string;
+  /** PPL-33: years each class is kept after the person leaves (company policy); missing on an older API. */
+  retention?: { internal: number; personal: number; confidential: number; special: number };
+  /** role: who they are to me ("Your manager", their designation); context: where they saw it. */
+  entries: { id: string; at: string; who: string; role: string | null; what: string; context: string; className: 'confidential' | 'special' }[];
 }

@@ -62,7 +62,9 @@ export interface CoverageRow {
   statute: string;
   headcount: number;
   threshold: number;
-  status: 'not_covered' | 'approaching' | 'covered';
+  /** crossed: covered by law but neither switched on nor applied for (PAY-30; blocks run approval). */
+  status: 'not_covered' | 'approaching' | 'covered' | 'crossed';
+  registration?: 'on' | 'applied_awaited' | null;
   crossedOn: string | null;
   ruleVersion: string;
   evaluatedAt: string;
@@ -107,6 +109,8 @@ export interface PayComponent {
   kind: ComponentKind;
   taxable: boolean;
   pfWage: boolean;
+  /** B2: with pfWage, counts only while the month's other PF wage is below the PF ceiling. */
+  pfBelowCeiling?: boolean;
   esiWage: boolean;
   ptWage: boolean;
   gratuityWage: boolean;
@@ -163,6 +167,8 @@ export interface Breakup {
   } | null;
   verify: boolean;
   warnings?: string[];
+  /** PAY-12: a back-dated revision's arrears for months already paid (the first month prorated). */
+  arrears?: { month: string; days: number; of: number; amount: string }[];
 }
 
 export interface SalaryTemplate {
@@ -222,6 +228,9 @@ export interface CompensationInput {
   entryMode: 'ctc' | 'fixed';
   annualCtc?: string;
   fixed?: Record<string, string>;
+  /** PAY-12 Hourly: paid by the month (default), or by an hourly or daily rate from approved timesheets or days. */
+  payBasis?: 'monthly' | 'hourly' | 'daily';
+  rate?: string;
 }
 
 export interface StatutoryProfileRow {

@@ -50,6 +50,28 @@ export class FaceVerificationService {
     private readonly crypto: OrgSecretsCryptoService,
   ) {}
 
+  /**
+   * Answer 2205: one comparison against the enrolment photo, outside the voting used during the test. 'skip' when the
+   * model or the enrolment is not there (the candidate must never be stuck on a check that cannot run).
+   */
+  async checkOnce(attemptId: string, organizationId: string, snapshot: Buffer): Promise<'match' | 'mismatch' | 'skip'> {
+    if (!this.faceEmbedder.isAvailable()) return 'skip';
+    try {
+      const enrolment = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) =>
+        tx.faceEnrolment.findUnique({ where: { attemptId }, select: { embedding: true } }),
+      );
+      if (!enrolment?.embedding) return 'skip';
+      const reference = decodeEmbedding(this.crypto.decrypt(enrolment.embedding));
+      const live = await this.faceEmbedder.embed(snapshot);
+      if (!live) return 'skip';
+      // An uncertain score is not evidence of another person: only a clear mismatch holds the candidate.
+      return classifySimilarity(cosineSimilarity(reference, live)) === 'mismatch' ? 'mismatch' : 'match';
+    } catch (error) {
+      this.logger.warn(`Face re-check could not run for attempt ${attemptId}: ${String(error)}`);
+      return 'skip';
+    }
+  }
+
   async verifySnapshot(
     attemptId: string,
     organizationId: string,

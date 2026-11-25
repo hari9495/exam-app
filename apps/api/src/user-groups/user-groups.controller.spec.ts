@@ -6,7 +6,7 @@ import { UserGroupsController } from './user-groups.controller';
 import { UserGroupsService } from './user-groups.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { PERMISSIONS_KEY } from '../rbac/permissions.decorator';
+import { PERMISSIONS_ANY_KEY, PERMISSIONS_KEY } from '../rbac/permissions.decorator';
 
 class MockGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
@@ -122,9 +122,9 @@ describe('UserGroupsController', () => {
   describe('permissions metadata', () => {
     const reflector = new Reflector();
 
-    it('directory and mine require results:view', () => {
-      expect(reflector.get(PERMISSIONS_KEY, UserGroupsController.prototype.directory)).toEqual(['results:view']);
-      expect(reflector.get(PERMISSIONS_KEY, UserGroupsController.prototype.mine)).toEqual(['results:view']);
+    it('directory and mine need results:view or candidate view (AS-0: the Interview coordinator)', () => {
+      expect(reflector.get(PERMISSIONS_ANY_KEY, UserGroupsController.prototype.directory)).toEqual(['results:view', 'candidate:view']);
+      expect(reflector.get(PERMISSIONS_ANY_KEY, UserGroupsController.prototype.mine)).toEqual(['results:view', 'candidate:view']);
     });
 
     it('admin routes require users:manage_groups', () => {

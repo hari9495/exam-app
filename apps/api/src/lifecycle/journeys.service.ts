@@ -161,6 +161,11 @@ export class LifecycleJourneysService implements OnModuleInit {
         if (!n.count) throw new ConflictException('Someone else changed this checklist. Reload it.');
         t = await tx.journeyTemplate.findFirstOrThrow({ where: { organizationId: org, id } });
       } else {
+        // A starter is copied once per company (the copy is edited, never a second one); the lock makes a double click safe.
+        if (dto.starterKey) {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`journey-starter:${org}:${dto.starterKey}`}))`;
+          if (await tx.journeyTemplate.findFirst({ where: { organizationId: org, starterKey: dto.starterKey }, select: { id: true } })) throw new ConflictException('You already have a copy of this starter. Reload the page to see it.');
+        }
         t = await tx.journeyTemplate.create({ data: { organizationId: org, kind: dto.kind, name: dto.name, legalEntityId: dto.legalEntityId ?? null, locationId: dto.locationId ?? null, departmentId: dto.departmentId ?? null, starterKey: dto.starterKey ?? null, active: dto.active, createdBy: c.userId ?? null } });
       }
       // Only the law's tasks are locked, and they stay in every copy of a starter, locked; only their owner and day may change.
@@ -316,7 +321,7 @@ export class LifecycleJourneysService implements OnModuleInit {
   // ------------------------------------------------------------------------------------------ access
 
   /** What the viewer may do on a journey: HR in scope runs it; the manager and assignees see it. */
-  async access(tx: Tx, c: CompanyContext, v: Viewer, j: Journey): Promise<{ manage: boolean; see: boolean; own: { employeeId: string | null; personId: string | null }; groups: string[] }> {
+  async access(tx: Tx, c: CompanyContext, v: Viewer, j: Journey): Promise<{ manage: boolean; see: boolean; full: boolean; manager: boolean; own:{ employeeId: string | null; personId: string | null }; groups: string[] }> {
     const own = await ownOf(tx, c, v);
     const groups = v.userId ? (await tx.userGroupMember.findMany({ where: { organizationId: c.organizationId, userId: v.userId }, select: { groupId: true } })).map((g) => g.groupId) : [];
     const reach = async (key: string) => {
@@ -329,10 +334,13 @@ export class LifecycleJourneysService implements OnModuleInit {
       return Boolean(e && covers(started(await grantPeriods(tx, c, v, key, e.id, own.employeeId), todayIst()), todayIst()));
     };
     const manage = !v.actingForOther && own.personId !== j.personId && (await reach('lifecycle.onboarding.manage'));
-    let see = manage || (await reach('lifecycle.onboarding.view'));
+    // PPL-13: HR (manage or view in scope) sees every task; a task owner (IT, Admin, a named person) or the joiner's manager
+    // opens the checklist too, but sees only their own tasks (the manager also the buddy's).
+    const full = manage || (await reach('lifecycle.onboarding.view'));
+    const manager = Boolean(own.employeeId && j.subjectType === 'preboarding' && (await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, id: j.subjectId, managerEmployeeId: own.employeeId }, select: { id: true } })));
+    let see = full || manager;
     if (!see && v.userId) see = Boolean(await tx.journeyTask.findFirst({ where: { organizationId: c.organizationId, journeyId: j.id, OR: [{ assigneeUserId: v.userId }, ...(groups.length ? [{ assigneeGroupId: { in: groups } }] : [])] }, select: { id: true } }));
-    if (!see && own.employeeId && j.subjectType === 'preboarding') see = Boolean(await tx.preboarding.findFirst({ where: { organizationId: c.organizationId, id: j.subjectId, managerEmployeeId: own.employeeId }, select: { id: true } }));
-    return { manage, see, own, groups };
+    return { manage, see, full, manager, own, groups };
   }
 
   private canDo(t: Task, v: Viewer, a: { manage: boolean; groups: string[] }) {
@@ -387,13 +395,22 @@ export class LifecycleJourneysService implements OnModuleInit {
       if (!j) throw new NotFoundException('No such checklist.');
       const a = await this.access(tx, c, v, j);
       if (!a.see) throw new ForbiddenException('You cannot see this checklist.');
-      const tasks = (await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: id } })).sort((x, y) => x.sortOrder - y.sortOrder);
+      const all = (await tx.journeyTask.findMany({ where: { organizationId: org, journeyId: id } })).sort((x, y) => x.sortOrder - y.sortOrder);
+      // PPL-13 is the joining checklist: life events and leaving keep showing every task (the person's survey as "answered").
+      const ownOnly = !a.full && j.kind === 'onboarding';
+      const tasks = !ownOnly ? all : all.filter((x) => this.canDo(x, v, a) || (a.manager && (x.ownerType === 'manager' || x.ownerType === 'buddy')));
       const n = await this.names(tx, org, [...tasks.map((t) => t.assigneeUserId), ...tasks.map((t) => t.completedBy), j.ownerUserId], tasks.map((t) => t.assigneeGroupId));
       const p = await tx.person.findFirstOrThrow({ where: { organizationId: org, id: j.personId } });
       const t = await tx.journeyTemplate.findFirst({ where: { organizationId: org, id: j.templateId }, select: { name: true } });
       // G1: the journey's name and steps in the reader's language where the company translated them.
       const words = await journeyWords(tx, c, [j]);
       const today = todayIst();
+      // PPL-15: a joiner's own state, so the header never says "joined" before they did, or "joins" once cancelled.
+      const pb = j.subjectType === 'preboarding' ? await tx.preboarding.findFirst({ where: { organizationId: org, id: j.subjectId }, select: { status: true, outcome: true, joinedAt: true } }) : null;
+      // A document task stays open until HR verifies the file; say when the file is already in (or was refused).
+      const docKeys = tasks.flatMap((x) => (x.kind === 'document' && (x.config as { typeKey?: string }).typeKey ? [(x.config as { typeKey: string }).typeKey] : []));
+      const docs = docKeys.length ? await tx.document.findMany({ where: { organizationId: org, personId: j.personId, typeKey: { in: docKeys } }, select: { typeKey: true, status: true } }) : [];
+      const docStatus = (x: (typeof tasks)[number]) => (x.kind === 'document' ? (docs.find((d) => d.typeKey === (x.config as { typeKey?: string }).typeKey)?.status ?? null) : null);
       return {
         id: j.id,
         kind: j.kind,
@@ -405,10 +422,14 @@ export class LifecycleJourneysService implements OnModuleInit {
         status: j.status,
         progress: j.progress,
         template: words.template(j.templateId, t?.name ?? ''),
+        joiner: pb ? { status: pb.status, outcome: pb.outcome, joined: Boolean(pb.joinedAt) } : null,
         owner: n.user(j.ownerUserId),
         canManage: a.manage,
+        // PPL-13: the viewer sees only their own tasks, out of this many.
+        ownTasksOnly: ownOnly,
+        taskTotal: all.filter((x) => x.status !== 'cancelled').length,
         today,
-        tasks: tasks.map((x) => ({ ...this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId)), title: words.step(j.id, x.key, x.title) })),
+        tasks: tasks.map((x) => ({ ...this.taskView(x, n, this.canDo(x, v, a), today, a.manage || (v.userId !== null && x.completedBy === v.userId)), title: words.step(j.id, x.key, x.title), documentStatus: docStatus(x) })),
       };
     });
   }
@@ -432,7 +453,7 @@ export class LifecycleJourneysService implements OnModuleInit {
           .map((t) => {
             const j = journeys.find((x) => x.id === t.journeyId)!;
             const p = persons.find((x) => x.id === j.personId)!;
-            return { ...this.taskView(t, n, true, today), title: words.step(j.id, t.key, t.title), journeyId: j.id, journeyKind: j.kind, person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), anchorOn: iso(j.anchorOn) };
+            return { ...this.taskView(t, n, true, today), title: words.step(j.id, t.key, t.title), journeyId: j.id, journeyKind: j.kind, person: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), personId: j.personId, subject: { type: j.subjectType, id: j.subjectId }, anchorOn: iso(j.anchorOn) };
           }),
       };
     });

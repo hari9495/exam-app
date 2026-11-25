@@ -1,11 +1,16 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBase64, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, IsUrl, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Recruitment batch AT2 request bodies (M10-BUILD-DESIGN §18.1).
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 
 export class PlanLineDto {
+  /** HIR-01 revision: the approved line this row changes (kept so linked jobs stay on it); none = a new line. */
+  @IsOptional()
+  @IsUUID()
+  id?: string | null;
+
   @IsUUID()
   designationId!: string;
 
@@ -113,6 +118,9 @@ export class CareersEntityDto {
   primaryColor?: string | null;
 }
 
+/** HIR-11 cost types a person enters (posting = a job-board cost recorded before HIR-11). */
+export const COST_TYPES_ENTERED = ['job_board', 'agency_fee', 'event', 'other'] as const;
+
 export class RecruitingCostDto {
   @IsOptional()
   @IsUUID()
@@ -136,6 +144,11 @@ export class RecruitingCostDto {
   @Matches(/^[A-Z]{3}$/, { message: 'Use a 3-letter currency code like INR.' })
   currency!: string;
 
+  /** HIR-11: what the money was for. Referral bonuses and assessments are posted by the system, never typed here. */
+  @IsOptional()
+  @IsIn(COST_TYPES_ENTERED, { message: 'Choose job board, agency fee, event or other.' })
+  costType?: (typeof COST_TYPES_ENTERED)[number];
+
   @IsOptional()
   @IsDateString({ strict: true })
   period?: string | null;
@@ -145,4 +158,57 @@ export class RecruitingCostDto {
   @IsString()
   @MaxLength(500)
   note?: string | null;
+}
+
+/** HIR-02 answer 253: why the requisition is cancelled (required). */
+export class CancelRequisitionDto {
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** Settings 6.1 Hiring: one changed company setting (the service checks the key and value against the registry). */
+export class HiringSettingChangeDto {
+  @Matches(/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/)
+  @MaxLength(100)
+  key!: string;
+
+  @IsString()
+  @MaxLength(100)
+  value!: string;
+}
+
+export class SaveHiringSettingsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  // Every setting on 6.1 (23 today, and it grows) plus one e-sign switch per offer letter can change in one save.
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => HiringSettingChangeDto)
+  changes!: HiringSettingChangeDto[];
+}
+
+/** HIR-23: one category's numbers, as the auditor reported them (no candidate identities). */
+export class BiasCategoryDto {
+  @IsString() @MaxLength(100) label!: string;
+  @IsInt() @Min(0) @Max(10_000_000) assessed!: number;
+  @IsInt() @Min(0) @Max(10_000_000) selected!: number;
+}
+
+export class BiasResultsDto {
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => BiasCategoryDto) sex!: BiasCategoryDto[];
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => BiasCategoryDto) race!: BiasCategoryDto[];
+}
+
+/** HIR-23: record an independent bias audit (the report is a PDF up to 5 MB). */
+export class RecordBiasAuditDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'The audit date is YYYY-MM-DD.' }) auditedOn!: string;
+  @IsString() @MinLength(2) @MaxLength(200) auditor!: string;
+  @IsUrl({ protocols: ['https'], require_protocol: true }, { message: 'The published summary is a web address starting with https://' }) @MaxLength(500) summaryUrl!: string;
+  @ValidateNested() @Type(() => BiasResultsDto) results!: BiasResultsDto;
+  @IsString() @IsBase64() reportBase64!: string;
+  @IsString() @MinLength(1) @MaxLength(200) reportName!: string;
+  @IsOptional() @IsString() @MaxLength(1000) note?: string;
 }

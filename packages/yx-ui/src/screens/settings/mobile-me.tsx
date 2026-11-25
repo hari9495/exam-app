@@ -27,6 +27,7 @@ import {
   Target,
   UserRound,
   Users,
+  Ambulance,
 } from 'lucide-react';
 import { Avatar, Badge, PersonLabel } from '../../components/display';
 import { Button } from '../../components/button';
@@ -227,6 +228,7 @@ export function MobileMeTabScreen({ servingNotice, hasVisitors = true }: { servi
       <MList label="Help">
         <MRow icon={LifeBuoy} title="Help centre and my tickets" />
         <MRow icon={ShieldAlert} title="Speak up" sub="Grievance, POSH or ethics concern" />
+        <MRow icon={Ambulance} title="Report an accident" sub="An injury at work, yours or someone else's" />
       </MList>
       <MList label="Settings">
         {hasVisitors && <MRow icon={DoorOpen} title="My visitors" sub="1 expected today" />}

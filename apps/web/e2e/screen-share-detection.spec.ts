@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import { skipPreV2Console } from './fixtures/pre-v2';
+import { addSectionWithQuestion } from './fixtures/sections';
 
 skipPreV2Console('screen-share-detection.spec.ts');
 
@@ -30,12 +31,7 @@ test('multi-monitor gates exam start, and a display added mid-exam raises a live
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /Screen path: 2 \+ 2\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /Screen path: 2 \+ 2\?/);
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
 
@@ -80,19 +76,19 @@ test('multi-monitor gates exam start, and a display added mid-exam raises a live
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
   await candidatePage.getByRole('button', { name: /skip practice/i }).click();
-  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('button', { name: 'Turn on camera' }).click();
   await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
 
   // Gate: start refused while a second display is "connected"
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
-  await expect(candidatePage.getByText('Please disconnect additional displays before starting the exam.')).toBeVisible();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
+  await expect(candidatePage.getByText('Please disconnect additional displays before starting the test.')).toBeVisible();
   await expect(candidatePage).toHaveURL(/\/welcome$/);
 
   // "Disconnect" the display and retry -- proceeds into the exam
   await candidatePage.evaluate(() => {
     (window as unknown as { __MOCK_IS_EXTENDED__?: boolean }).__MOCK_IS_EXTENDED__ = false;
   });
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
   await expect(candidatePage.getByText('Screen path: 2 + 2?')).toBeVisible();
 

@@ -1,0 +1,600 @@
+// YX-04 Customer success, live (YukthiX console C-2, answers 1047, 1048): the designed CustomerSuccessScreen with the API's
+// tenant health, churn alerts (from the platform settings) and messages to company System Admins. Rendered through
+// `CustomerSuccessScreen live={…}`; the console layout around it is the live ConsoleShell.
+import { useState } from 'react';
+import { Plus } from 'lucide-react';
+import { Button } from '../../components/button';
+import { Badge } from '../../components/display';
+import { Card, DescriptionList, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { EmptyState, InlineAlert } from '../../components/feedback';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
+import { NumberField, TextArea, TextField } from '../../components/inputs';
+import { MultiSelect, Select } from '../../components/select';
+import { Segment } from '../../components/segment';
+import { Drawer } from '../../components/drawer';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
+import { useToast } from '../../components/notify';
+import { formatDate } from '../../lib/format';
+import { ConsolePage } from '../console/console-kit';
+import type { LoadState } from '../console/types';
+import { HEALTH_LABEL, healthBand } from './portals-logic';
+import { Fact, FactRow } from './portals-kit';
+import { FilteredTable, opts } from './list-kit';
+
+export interface CsHealthRow {
+  id: string;
+  name: string;
+  slug: string;
+  lifecycle: string;
+  products: string[];
+  health: number;
+  factors: string[];
+  adminLastSignIn: string | null;
+  openTickets: number;
+  alerts: string[];
+  /** Answer 1082 (1165): the score less the snapshot of 30 days before (null without one), the churn risk, the owner. */
+  trend?: number | null;
+  churn?: 'low' | 'medium' | 'high';
+  owner?: { id: string; name: string; left?: boolean } | null;
+}
+/** Answer 1083 (1165): an alert's follow-up. */
+export interface CsFollowup {
+  id: string;
+  organizationId: string;
+  company: string;
+  rule: string;
+  text: string;
+  status: 'open' | 'contacted' | 'resolved';
+  owner: { id: string; name: string | null; left?: boolean } | null;
+  openedAt: string;
+  resolvedAt: string | null;
+  autoResolved: boolean;
+  version: number;
+  notes: { id: string; note: string; by: string | null; at: string }[];
+}
+export interface CsMessageRow {
+  id: string;
+  subject: string;
+  body: string;
+  companyIds: string[];
+  status: 'pending_approval' | 'sent' | 'rejected' | 'withdrawn';
+  writtenBy: string;
+  mine: boolean;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  version: number;
+}
+export interface CsSettingRow {
+  key: string;
+  label: string;
+  value: number;
+  default: number;
+  min: number;
+  max: number;
+}
+export interface LiveCustomerSuccess {
+  state: LoadState;
+  onRetry: () => void;
+  rows: CsHealthRow[];
+  messages: CsMessageRow[];
+  settings: CsSettingRow[];
+  /** Staff may change the alert thresholds (the Customer success key). */
+  canManage: boolean;
+  onWrite: (input: { companyIds: string[]; subject: string; body: string }) => Promise<unknown>;
+  onApprove: (id: string, version: number) => Promise<unknown>;
+  onReject: (id: string, version: number, note: string) => Promise<unknown>;
+  /** Answer 1087: the writer takes back their own message while it waits. */
+  onWithdraw?: (id: string, version: number) => Promise<unknown>;
+  /** Answer 1183: the rules change only on Console › Platform settings (security key and a reason). */
+  onOpenPlatformSettings?: () => void;
+  /** Answers 1082, 1083 (1165): who may own (active staff with the Customer success role), the alert follow-ups. */
+  owners?: { id: string; name: string }[];
+  followups?: CsFollowup[];
+  onSetOwner?: (companyId: string, ownerUserId: string | null) => Promise<unknown>;
+  onUpdateAlert?: (id: string, version: number, change: { status?: CsFollowup['status']; ownerUserId?: string | null }) => Promise<unknown>;
+  onOutreach?: (id: string, note: string) => Promise<unknown>;
+  /** Stories: the tab shown first, the composer open with these companies. */
+  tab?: 'health' | 'alerts' | 'messages';
+  composerFor?: string[];
+}
+
+const LIFE: Record<string, string> = { trial: 'Trial', active: 'Active', suspended: 'Suspended', closed: 'Closed' };
+const STATUS: Record<CsMessageRow['status'], { label: string; tone: 'warning' | 'success' | 'neutral' }> = { pending_approval: { label: 'Waiting for approval', tone: 'warning' }, sent: { label: 'Sent', tone: 'success' }, rejected: { label: 'Sent back', tone: 'neutral' }, withdrawn: { label: 'Withdrawn', tone: 'neutral' } };
+const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+
+/** YX-04 live: tenant health, churn-risk alerts and the admin message composer (second approval for more than one company). */
+export function LiveCustomerSuccessScreen({ live }: { live: LiveCustomerSuccess }) {
+  const [composer, setComposer] = useState<string[] | null>(live.composerFor ?? null);
+  const [assigning, setAssigning] = useState<string[] | null>(null);
+  const names = new Map(live.rows.map((r) => [r.id, r.name]));
+  const alerting = live.rows.filter((r) => r.alerts.length);
+  const waiting = live.messages.filter((m) => m.status === 'pending_approval');
+  return (
+    <ConsolePage
+      crumb="Customer success"
+      title="Customer success"
+      description="Health from account signals only: admin sign-ins, open support tickets, ratings and billing. Never employee names or HR data."
+      state={live.state}
+      onRetry={live.onRetry}
+      what="customer health"
+      actions={
+        <Button variant="primary" icon={Plus} onClick={() => setComposer([])}>
+          Message admins
+        </Button>
+      }
+    >
+      <FactRow label="Health">
+        <Fact label="Companies" value={live.rows.length} />
+        <Fact label="At risk" value={live.rows.filter((r) => healthBand(r.health) === 'at-risk').length} tone="danger" />
+        <Fact label="With alerts" value={alerting.length} tone="warning" />
+      </FactRow>
+      <Tabs defaultValue={live.tab ?? 'health'}>
+        <TabsList aria-label="Customer success">
+          <TabsTrigger value="health">Tenant health</TabsTrigger>
+          <TabsTrigger value="alerts" count={alerting.length}>
+            Churn-risk alerts
+          </TabsTrigger>
+          <TabsTrigger value="messages" count={waiting.length}>
+            Messages
+          </TabsTrigger>
+        </TabsList>
+        <TabsContent value="health">
+          {live.onSetOwner && live.rows.some((r) => r.owner?.left) && (
+            <Card title="Owner left" actions={<Button size="sm" onClick={() => setAssigning(live.rows.filter((r) => r.owner?.left).map((r) => r.id))}>Assign owner</Button>}>
+              <ul className="yx-ps-list" aria-label="Companies whose owner left">
+                {live.rows
+                  .filter((r) => r.owner?.left)
+                  .map((r) => (
+                    <li key={r.id}>
+                      <div className="yx-ps-list__main">
+                        <span className="yx-ps-list__title">{r.name}</span>
+                        <span className="yx-ps-list__meta">{r.owner!.name} is no longer active. Their open alerts move with the company to the new owner.</span>
+                      </div>
+                      <Button size="sm" onClick={() => setAssigning([r.id])}>
+                        Assign owner
+                      </Button>
+                    </li>
+                  ))}
+              </ul>
+            </Card>
+          )}
+          <FilteredTable
+            label="Tenant health"
+            rows={live.rows}
+            getRowId={(r) => r.id}
+            searchText={(r) => `${r.name} ${r.slug}`}
+            fields={[
+              { key: 'band', label: 'Band', type: 'multi', options: opts(['Healthy', 'Watch', 'At risk']) },
+              { key: 'lifecycle', label: 'Lifecycle', type: 'multi', options: opts(['Trial', 'Active', 'Suspended']) },
+            ]}
+            views={[{ id: 'all', name: 'All companies' }, { id: 'risk', name: 'At risk', shared: true }]}
+            viewFilters={{ risk: [{ key: 'band', type: 'multi', values: ['At risk'] }] }}
+            columns={[
+              { key: 'name', header: 'Company', value: (r) => r.name, width: 220 },
+              { key: 'health', header: 'Score', type: 'number', value: (r) => r.health, width: 80 },
+              { key: 'band', header: 'Band', type: 'status', value: (r) => HEALTH_LABEL[healthBand(r.health)], statusTone: (v) => (v === 'Healthy' ? 'success' : v === 'Watch' ? 'warning' : 'danger'), width: 100 },
+              { key: 'trend', header: '30-day change', type: 'number', value: (r) => r.trend ?? 0, render: (r) => (r.trend === null || r.trend === undefined ? 'No history yet' : `${r.trend > 0 ? '+' : ''}${r.trend}`), width: 130 },
+              { key: 'churn', header: 'Churn risk', type: 'status', value: (r) => (r.churn ? CHURN_LABEL[r.churn] : ''), statusTone: (v) => (v === 'High' ? 'danger' : v === 'Medium' ? 'warning' : 'success'), width: 110 },
+              { key: 'factors', header: 'Main factor', value: (r) => r.factors[0] ?? 'No issues', width: 260 },
+              { key: 'lifecycle', header: 'Lifecycle', type: 'status', value: (r) => LIFE[r.lifecycle] ?? r.lifecycle, statusTone: (v) => (v === 'Active' ? 'success' : v === 'Trial' ? 'info' : 'danger'), width: 110 },
+              { key: 'signin', header: 'Last admin sign-in', value: (r) => r.adminLastSignIn ?? '', render: (r) => (r.adminLastSignIn ? formatDate(new Date(r.adminLastSignIn)) : 'Never'), width: 150 },
+              { key: 'tickets', header: 'Open tickets', type: 'number', value: (r) => r.openTickets, width: 110 },
+              { key: 'owner', header: 'CS owner', value: (r) => r.owner?.name ?? 'Nobody yet', render: (r) => (r.owner?.left ? <Badge tone="warning">{`Owner left · ${r.owner.name}`}</Badge> : (r.owner?.name ?? 'Nobody yet')), width: 170 },
+            ]}
+            empty={<EmptyState title="No customer companies yet." />}
+            bulkActions={(ids) => (
+              <>
+                {live.onSetOwner && (
+                  <Button size="sm" onClick={() => setAssigning(ids)}>
+                    Assign owner
+                  </Button>
+                )}
+                <Button size="sm" onClick={() => setComposer(ids)}>
+                  Message admins
+                </Button>
+              </>
+            )}
+          />
+        </TabsContent>
+        <TabsContent value="alerts">
+          <div className="yx-ps-stack">
+            {live.followups ? (
+              <Followups items={live.followups} owners={live.owners ?? []} onUpdate={live.onUpdateAlert} onOutreach={live.onOutreach} />
+            ) : (
+            <Card title="Companies with alerts">
+              {alerting.length ? (
+                <ul className="yx-ps-list" aria-label="Churn-risk alerts">
+                  {alerting.map((r) => (
+                    <li key={r.id}>
+                      <div className="yx-ps-list__main">
+                        <span className="yx-ps-list__title">{r.name}</span>
+                        <span className="yx-ps-list__meta">
+                          {r.alerts.join(' · ')} · score {r.health}
+                        </span>
+                      </div>
+                      <Button size="sm" onClick={() => setComposer([r.id])}>
+                        Message admins
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState compact title="No churn-risk alerts." description="Alerts appear here when a company crosses one of the rules below." />
+              )}
+            </Card>
+            )}
+            <AlertRules settings={live.settings} onOpenPlatformSettings={live.onOpenPlatformSettings} />
+          </div>
+        </TabsContent>
+        <TabsContent value="messages">
+          <MessageList messages={live.messages} names={names} onApprove={live.onApprove} onReject={live.onReject} onWithdraw={live.onWithdraw} />
+        </TabsContent>
+      </Tabs>
+      {assigning && live.onSetOwner && <AssignOwner ids={assigning} owners={live.owners ?? []} onSetOwner={live.onSetOwner} onClose={() => setAssigning(null)} />}
+      {composer && <LiveComposer rows={live.rows} initial={composer} onClose={() => setComposer(null)} onWrite={live.onWrite} />}
+    </ConsolePage>
+  );
+}
+
+const CHURN_LABEL: Record<NonNullable<CsHealthRow['churn']>, string> = { low: 'Low', medium: 'Medium', high: 'High' };
+const FOLLOWUP: Record<CsFollowup['status'], { label: string; tone: 'warning' | 'info' | 'success' }> = { open: { label: 'Open', tone: 'warning' }, contacted: { label: 'Contacted', tone: 'info' }, resolved: { label: 'Resolved', tone: 'success' } };
+
+/** Answer 1082: the drawn "Assign owner" bulk action; owners are active staff with the Customer success role. */
+function AssignOwner({ ids, owners, onSetOwner, onClose }: { ids: string[]; owners: { id: string; name: string }[]; onSetOwner: NonNullable<LiveCustomerSuccess['onSetOwner']>; onClose: () => void }) {
+  const [owner, setOwner] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useToast();
+  const early = useTooEarly(owner ? [] : [{ fieldId: 'cs-owner', message: 'Choose the owner.' }]);
+  return (
+    <Dialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="sm"
+      title={`Assign an owner to ${ids.length} ${ids.length === 1 ? 'company' : 'companies'}`}
+      description="Only active staff with the Customer success role. New alerts for these companies go to the owner."
+      notice={failed && <InlineAlert tone="danger" title={failed} />}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy}
+            onClick={async () => {
+              if (early.stop()) return;
+              setBusy(true);
+              setFailed(null);
+              try {
+                for (const id of ids) await onSetOwner(id, owner);
+                toast({ tone: 'success', title: 'Owner assigned' });
+                onClose();
+              } catch (e) {
+                setFailed(errorText(e));
+              } finally {
+                setBusy(false);
+              }
+            }}
+          >
+            Assign
+          </Button>
+        </>
+      }
+    >
+      <FormField id="cs-owner" label="CS owner" required error={early.errorOf('cs-owner')}>
+        <Select aria-label="CS owner" value={owner} onChange={setOwner} options={owners.map((o) => ({ value: o.id, label: o.name }))} />
+      </FormField>
+    </Dialog>
+  );
+}
+
+/** Answer 1083: each alert's owner, status and outreach, as drawn (Log outreach). Resolved alerts close by themselves. */
+function Followups({ items, owners, onUpdate, onOutreach }: { items: CsFollowup[]; owners: { id: string; name: string }[]; onUpdate?: LiveCustomerSuccess['onUpdateAlert']; onOutreach?: LiveCustomerSuccess['onOutreach'] }) {
+  const [logging, setLogging] = useState<CsFollowup | null>(null);
+  const [editing, setEditing] = useState<CsFollowup | null>(null);
+  const [note, setNote] = useState('');
+  const [status, setStatus] = useState<CsFollowup['status']>('open');
+  const [owner, setOwner] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useToast();
+  const noteEarly = useTooEarly(note.trim() ? [] : [{ fieldId: 'cs-outreach', message: 'Write what you did or agreed.' }]);
+  const run = async (fn: () => Promise<unknown>, done: string, close: () => void) => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+      close();
+    } catch (e) {
+      setFailed(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!items.length) return <Card title="Churn-risk alerts"><EmptyState compact title="No churn-risk alerts." description="Alerts appear here when a company crosses one of the rules below." /></Card>;
+  return (
+    <Card title="Churn-risk alerts">
+      {failed && !logging && !editing && <InlineAlert tone="danger" title={failed} />}
+      <ul className="yx-ps-list" aria-label="Churn-risk alerts">
+        {items.map((a) => (
+          <li key={a.id}>
+            <div className="yx-ps-list__main">
+              <span className="yx-ps-list__title">
+                {a.company} · {a.text}
+              </span>
+              <span className="yx-ps-list__meta">
+                {a.owner?.left ? `Owner left (${a.owner.name})` : a.owner?.name ? `Owner ${a.owner.name}` : 'No owner yet'} · opened {formatDate(new Date(a.openedAt))}
+                {a.autoResolved ? ' · resolved by itself' : ''}
+                {a.notes[0] ? ` · last note: “${a.notes[0].note}”` : ''}
+              </span>
+            </div>
+            <Badge tone={FOLLOWUP[a.status].tone}>{FOLLOWUP[a.status].label}</Badge>
+            {a.status !== 'resolved' && onUpdate && (
+              <Button size="sm" onClick={() => (setStatus(a.status), setOwner(a.owner?.id ?? null), setFailed(null), setEditing(a))}>
+                Owner and status
+              </Button>
+            )}
+            {a.status !== 'resolved' && onOutreach && (
+              <Button size="sm" onClick={() => (setNote(''), setFailed(null), noteEarly.reset(), setLogging(a))}>
+                Log outreach
+              </Button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {logging && onOutreach && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setLogging(null)}
+          size="sm"
+          title={`Log outreach: ${logging.company}`}
+          description="What you did or agreed. Kept with the alert and in the audit log; an open alert becomes Contacted."
+          notice={failed && <InlineAlert tone="danger" title={failed} />}
+          footer={
+            <>
+              <Button onClick={() => setLogging(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={() => !noteEarly.stop() && void run(() => onOutreach(logging.id, note.trim()), 'Outreach logged', () => setLogging(null))}>
+                Log outreach
+              </Button>
+            </>
+          }
+        >
+          <FormField id="cs-outreach" label="Note" required error={noteEarly.errorOf('cs-outreach')}>
+            <TextArea rows={3} value={note} onChange={setNote} maxLength={1000} />
+          </FormField>
+        </Dialog>
+      )}
+      {editing && onUpdate && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setEditing(null)}
+          size="sm"
+          title={`${editing.company} · ${editing.text}`}
+          notice={failed && <InlineAlert tone="danger" title={failed} />}
+          footer={
+            <>
+              <Button onClick={() => setEditing(null)}>Cancel</Button>
+              <Button variant="primary" loading={busy} onClick={() => void run(() => onUpdate(editing.id, editing.version, { status, ownerUserId: owner }), 'Alert saved', () => setEditing(null))}>
+                Save
+              </Button>
+            </>
+          }
+        >
+          <FormField label="Status">
+            <Segment label="Status" value={status} onChange={(v) => setStatus(v as CsFollowup['status'])} options={[{ value: 'open', label: 'Open' }, { value: 'contacted', label: 'Contacted' }, { value: 'resolved', label: 'Resolved' }]} />
+          </FormField>
+          <FormField id="cs-alert-owner" label="Owner">
+            <Select aria-label="Owner" value={owner} onChange={setOwner} options={owners.map((o) => ({ value: o.id, label: o.name }))} />
+          </FormField>
+        </Dialog>
+      )}
+    </Card>
+  );
+}
+
+/** Answer 1047: the churn alert rules are platform settings with defaults. */
+function AlertRules({ settings, onOpenPlatformSettings }: { settings: CsSettingRow[]; onOpenPlatformSettings?: () => void }) {
+  return (
+    <Card title="Alert rules" actions={onOpenPlatformSettings ? <Button size="sm" onClick={onOpenPlatformSettings}>Change in Platform settings</Button> : undefined}>
+      <div className="yx-ps-stack">
+        <DescriptionList items={settings.map((s) => ({ label: s.label, value: s.value === s.default ? `${s.value} (the default)` : `${s.value} (default ${s.default})` }))} />
+        <p className="yx-ps-muted">Changed in Console › Platform settings, with your security key and a reason.</p>
+      </div>
+    </Card>
+  );
+}
+
+/** Answer 1048: messages written by staff; one to more than one company waits for a second staff member. */
+function MessageList({ messages, names, onApprove, onReject, onWithdraw }: { messages: CsMessageRow[]; names: Map<string, string>; onApprove: LiveCustomerSuccess['onApprove']; onReject: LiveCustomerSuccess['onReject']; onWithdraw?: LiveCustomerSuccess['onWithdraw'] }) {
+  const [approving, setApproving] = useState<CsMessageRow | null>(null);
+  const [withdrawing, setWithdrawing] = useState<CsMessageRow | null>(null);
+  const [rejecting, setRejecting] = useState<CsMessageRow | null>(null);
+  const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useToast();
+  const noteEarly = useTooEarly(note.trim() ? [] : [{ fieldId: 'cs-reject-note', message: 'Say why you are sending it back.' }]);
+  const who = (m: CsMessageRow) => (m.companyIds.length === 1 ? (names.get(m.companyIds[0]!) ?? '1 company') : `${m.companyIds.length} companies`);
+  if (!messages.length) return <EmptyState title="No messages yet." description="Use Message admins to write to the System Admins of one or more companies." />;
+  return (
+    <Card>
+      {failed && <InlineAlert tone="danger" title={failed} />}
+      <ul className="yx-ps-list" aria-label="Messages">
+        {messages.map((m) => (
+          <li key={m.id}>
+            <div className="yx-ps-list__main">
+              <span className="yx-ps-list__title">{m.subject}</span>
+              <span className="yx-ps-list__meta">
+                To the System Admins of {who(m)} · written by {m.mine ? 'you' : m.writtenBy} on {formatDate(new Date(m.createdAt))}
+                {m.decidedBy ? ` · ${m.status === 'rejected' ? 'sent back' : 'approved'} by ${m.decidedBy}` : ''}
+                {m.decisionNote ? ` · “${m.decisionNote}”` : ''}
+              </span>
+            </div>
+            <Badge tone={STATUS[m.status].tone}>{STATUS[m.status].label}</Badge>
+            {m.status === 'pending_approval' &&
+              (m.mine ? (
+                <>
+                  <span className="yx-ps-muted">Another staff member approves it</span>
+                  {onWithdraw && (
+                    <Button size="sm" onClick={() => setWithdrawing(m)}>
+                      Withdraw
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Button size="sm" onClick={() => (setNote(''), setRejecting(m))}>
+                    Send back
+                  </Button>
+                  <Button size="sm" variant="approve" onClick={() => setApproving(m)}>
+                    Approve and send
+                  </Button>
+                </>
+              ))}
+          </li>
+        ))}
+      </ul>
+      {approving && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setApproving(null)}
+          title={`Send “${approving.subject}” to ${who(approving)}?`}
+          consequence="Their System Admins get it in the bell and by email (as they chose). It cannot be taken back."
+          confirmLabel="Approve and send"
+          onConfirm={async () => {
+            setFailed(null);
+            try {
+              await onApprove(approving.id, approving.version);
+              toast({ tone: 'success', title: 'Message sent', description: `To the System Admins of ${who(approving)}.` });
+            } catch (e) {
+              setFailed(errorText(e));
+            }
+          }}
+        />
+      )}
+      {withdrawing && onWithdraw && (
+        <ConfirmDialog
+          open
+          onOpenChange={(o) => !o && setWithdrawing(null)}
+          title={`Withdraw “${withdrawing.subject}”?`}
+          consequence="Nothing is sent, and it can no longer be approved. You can write it again."
+          confirmLabel="Withdraw"
+          onConfirm={async () => {
+            setFailed(null);
+            try {
+              await onWithdraw(withdrawing.id, withdrawing.version);
+              toast({ tone: 'success', title: 'Message withdrawn' });
+            } catch (e) {
+              setFailed(errorText(e));
+            }
+          }}
+        />
+      )}
+      {rejecting && (
+        <Dialog
+          open
+          onOpenChange={(o) => !o && setRejecting(null)}
+          size="sm"
+          title="Send the message back?"
+          description="The writer sees your reason. Nothing is sent."
+          footer={
+            <>
+              <Button onClick={() => setRejecting(null)}>Cancel</Button>
+              <Button
+                variant="primary"
+                loading={busy}
+                onClick={async () => {
+                  if (noteEarly.stop()) return;
+                  setBusy(true);
+                  setFailed(null);
+                  try {
+                    await onReject(rejecting.id, rejecting.version, note.trim());
+                    setRejecting(null);
+                    toast({ tone: 'success', title: 'Message sent back' });
+                  } catch (e) {
+                    setFailed(errorText(e));
+                    setRejecting(null);
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+              >
+                Send back
+              </Button>
+            </>
+          }
+        >
+          <FormField id="cs-reject-note" label="Reason" required error={noteEarly.errorOf('cs-reject-note')}>
+            <TextArea rows={3} value={note} onChange={setNote} maxLength={500} />
+          </FormField>
+        </Dialog>
+      )}
+    </Card>
+  );
+}
+
+/** The live composer: companies, subject and message; more than one company waits for a second staff member. */
+function LiveComposer({ rows, initial, onClose, onWrite }: { rows: CsHealthRow[]; initial: string[]; onClose: () => void; onWrite: LiveCustomerSuccess['onWrite'] }) {
+  const [companies, setCompanies] = useState<string[]>(initial);
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const { toast } = useToast();
+  const many = companies.length > 1;
+  const early = useTooEarly(
+    [
+      !companies.length && { fieldId: 'cs-companies', message: 'Choose at least one company.' },
+      subject.trim().length < 3 && { fieldId: 'cs-subject', message: 'Write a subject of at least 3 characters.' },
+      /[<>]/.test(subject) && { fieldId: 'cs-subject', message: 'Write the subject without < or >.' },
+      !body.trim() && { fieldId: 'cs-body', message: 'Write the message.' },
+    ].filter(Boolean) as { fieldId: string; message: string }[],
+  );
+  const send = async () => {
+    if (early.stop()) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onWrite({ companyIds: companies, subject: subject.trim(), body: body.trim() });
+      onClose();
+      toast(many ? { tone: 'success', title: 'Sent for approval', description: 'Another staff member approves it before it goes.' } : { tone: 'success', title: 'Message sent', description: `To the System Admins of ${rows.find((r) => r.id === companies[0])?.name ?? 'the company'}.` });
+    } catch (e) {
+      setFailed(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      size="lg"
+      title="Message company admins"
+      subtitle="Goes to the companies' System Admins only, in the bell and by email (as each chose); never to employees."
+      notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} onClick={() => void send()}>
+            {many ? 'Send for approval' : 'Send'}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-ps-stack">
+        <FormField id="cs-companies" label="Companies" required error={early.errorOf('cs-companies')} helper={many ? 'More than one company: another staff member approves the message before it is sent.' : undefined}>
+          <MultiSelect value={companies} onChange={setCompanies} options={rows.map((r) => ({ value: r.id, label: r.name }))} searchable placeholder="Choose companies" />
+        </FormField>
+        <FormField id="cs-subject" label="Subject" required error={early.errorOf('cs-subject')}>
+          <TextField value={subject} onChange={setSubject} maxLength={120} />
+        </FormField>
+        <FormField id="cs-body" label="Message" required helper="Plain text, up to 4,000 characters. The company also finds it in Settings › Support access." error={early.errorOf('cs-body')}>
+          <TextArea rows={6} value={body} onChange={setBody} maxLength={4000} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}

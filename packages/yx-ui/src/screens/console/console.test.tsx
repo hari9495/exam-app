@@ -1,7 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { CompaniesScreen, companyInput, slugFrom } from './companies';
+import { CompaniesScreen, slugFrom } from './companies';
 import { CompanyScreen, supportInput, type CompanyScreenProps } from './company';
 import { PlansScreen, priceInput } from './plans';
 import { SupportSessionsScreen } from './support';
@@ -16,11 +16,8 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const ok = () => vi.fn().mockResolvedValue(undefined);
 
 describe('platform console: inputs mirror the API rules', () => {
-  it('a company needs a name, a valid code, an admin and a product', () => {
+  it('a company code comes from its name (the wizard checks the rest: platform-a/tenant-wizard-live.test)', () => {
     expect(slugFrom('Godavari Agro Pvt. Ltd.')).toBe('godavari-agro-pvt-ltd');
-    const good = { name: 'Godavari Agro', slug: 'godavari-agro', adminName: 'Sunita Rao', adminEmail: 'sunita@godavari.test', products: ['hrms'] };
-    expect(companyInput(good).input).toEqual(good);
-    expect(companyInput({ ...good, slug: 'Bad Code', products: [], adminEmail: 'nope' }).errors.map((e) => e.fieldId)).toEqual(['co-slug', 'co-admin-email', 'co-products']);
   });
 
   it('a support request needs a real reason; the ticket is optional', () => {
@@ -49,32 +46,22 @@ describe('platform console: inputs mirror the API rules', () => {
 });
 
 describe('Companies', () => {
-  it('lists companies, filters by name, opens one and creates a company in trial', async () => {
+  it('lists companies, filters by name, opens one; New company opens the wizard (answer 1053)', async () => {
     const onOpen = vi.fn();
-    const onCreate = ok();
-    render(<CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage onOpen={onOpen} onCreate={onCreate} />);
+    const onNew = vi.fn();
+    render(<CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage onOpen={onOpen} onNew={onNew} />);
     expect(screen.getByText('Kaveri Foods')).toBeInTheDocument();
     await ue.type(screen.getByPlaceholderText('Search by name or code'), 'godavari');
     expect(screen.queryByText('Kaveri Foods')).not.toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Open' }));
     expect(onOpen).toHaveBeenCalledWith('c2');
-
     await ue.click(screen.getByRole('button', { name: 'New company' }));
-    const drawer = await screen.findByRole('dialog');
-    await ue.click(within(drawer).getByRole('button', { name: 'Create company' }));
-    expect(await within(drawer).findByText('Fix these before saving')).toBeInTheDocument();
-    expect(onCreate).not.toHaveBeenCalled();
-    await ue.type(within(drawer).getByRole('textbox', { name: /Company name/ }), 'Tunga Textiles');
-    expect(within(drawer).getByRole('textbox', { name: /Company code/ })).toHaveValue('tunga-textiles');
-    await ue.click(within(drawer).getByRole('checkbox', { name: /YukthiX HR/ }));
-    await ue.type(within(drawer).getByRole('textbox', { name: /^Name/ }), 'Meena Pillai');
-    await ue.type(within(drawer).getByRole('textbox', { name: /Work email/ }), 'meena@tunga.test');
-    await ue.click(within(drawer).getByRole('button', { name: 'Create company' }));
-    await waitFor(() => expect(onCreate).toHaveBeenCalledWith({ name: 'Tunga Textiles', slug: 'tunga-textiles', adminName: 'Meena Pillai', adminEmail: 'meena@tunga.test', products: ['hrms'] }));
+    expect(onNew).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
   it('staff without the manage key see no New company button', () => {
-    render(<CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage={false} onOpen={vi.fn()} onCreate={ok()} />);
+    render(<CompaniesScreen state="ready" companies={COMPANIES} products={PRODUCTS} canManage={false} onOpen={vi.fn()} onNew={vi.fn()} />);
     expect(screen.queryByRole('button', { name: 'New company' })).not.toBeInTheDocument();
   });
 });
@@ -100,6 +87,75 @@ describe('One company', () => {
     render(<CompanyScreen {...props} />);
     return props;
   }
+
+  // Answer 1881: the company's own request to close its account, beside Close.
+  it("1881: the company's closure request shows with its reason; Close beside it asks for a reason and closes", async () => {
+    const p = company({ company: { ...COMPANY, lifecycle: 'active', closureRequest: { status: 'requested', reason: 'Moving to another tool', askedAt: '2026-11-13T10:00:00Z', keepUntil: null } } });
+    expect(screen.getByText(/asked to close its account on 13 Nov 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Reason: Moving to another tool/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Close company' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.type(within(dialog).getByRole('textbox'), 'The company asked in writing');
+    await ue.click(within(dialog).getByRole('button', { name: 'Close company' }));
+    await waitFor(() => expect(p.onLifecycle).toHaveBeenCalledWith('close', 'The company asked in writing'));
+  });
+
+  it('1881 negative: a company that did not ask shows no request', () => {
+    company();
+    expect(screen.queryByText(/asked to close its account/)).toBeNull();
+  });
+
+  it('1881 negative: a viewer sees the request without Close; once closed, the kept-until day', () => {
+    const { unmount } = render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'active', closureRequest: { status: 'requested', reason: 'Moving', askedAt: '2026-11-13T10:00:00Z', keepUntil: null } }, sessions: [], canManage: false, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok() } as CompanyScreenProps)} />);
+    expect(screen.getByText(/asked to close its account/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close company' })).toBeNull();
+    unmount();
+    company({ company: { ...COMPANY, lifecycle: 'closed', closureRequest: { status: 'closed', reason: 'Moving', askedAt: '2026-11-13T10:00:00Z', keepUntil: '2026-12-13' } } });
+    expect(screen.getByText(/Data is kept until 13 Dec 2026/)).toBeInTheDocument();
+  });
+
+  // Answer 1882: deleting a closed company's data, asked by one staff member and confirmed by a second.
+  it('1882: a closed company offers Ask to delete (a reason first); a second staff member confirms; the asker can withdraw', async () => {
+    const closed = { ...COMPANY, lifecycle: 'closed' as const };
+    const ask = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<CompanyScreen {...({ state: 'ready', company: { ...closed, deletion: null }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ask } as CompanyScreenProps)} />);
+    await ue.click(screen.getByRole('button', { name: 'Ask to delete the data' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('button', { name: 'Ask to delete' }));
+    expect(ask).not.toHaveBeenCalled();
+    await ue.type(within(dialog).getByRole('textbox'), 'Closed and kept days over');
+    await ue.click(within(dialog).getByRole('button', { name: 'Ask to delete' }));
+    await waitFor(() => expect(ask).toHaveBeenCalledWith('Closed and kept days over'));
+    unmount();
+    const confirm = vi.fn().mockResolvedValue(undefined);
+    const second = render(<CompanyScreen {...({ state: 'ready', company: { ...closed, deletion: { id: 'd1', mine: false, askedAt: '2026-11-13T10:00:00Z', reason: 'Kept days over' } }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onConfirmDeletion: confirm } as CompanyScreenProps)} />);
+    await ue.click(screen.getByRole('button', { name: 'Confirm deletion' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Delete all data' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    second.unmount();
+    render(<CompanyScreen {...({ state: 'ready', company: { ...closed, deletion: { id: 'd1', mine: true, askedAt: '2026-11-13T10:00:00Z', reason: 'Kept days over' } }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onConfirmDeletion: confirm, onWithdrawDeletion: ok() } as CompanyScreenProps)} />);
+    expect(screen.getByText(/A second staff member confirms it/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Confirm deletion' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Withdraw' })).toBeInTheDocument();
+  });
+
+  it('1973/1975: a deleted company says until when its statutory records are kept and downloads the certificate; negative: no new deletion', async () => {
+    const download = vi.fn().mockResolvedValue(undefined);
+    render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'closed', deleted: { at: '2026-12-20T10:00:00Z', recordsKeptUntil: '2034-12-20', certificateSha256: 'a'.repeat(64) } }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ok(), onDownloadCertificate: download } as CompanyScreenProps)} />);
+    expect(screen.getByText(/kept read-only until/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Ask to delete the data' })).toBeNull();
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Download certificate' }));
+    expect(download).toHaveBeenCalledTimes(1);
+  });
+
+  it('1882 negative: an open company and a viewer see no deletion at all', () => {
+    const { unmount } = render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'active' }, sessions: [], canManage: true, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ok() } as CompanyScreenProps)} />);
+    expect(screen.queryByText(/data/i, { selector: '.yx-alert__title' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ask to delete the data' })).toBeNull();
+    unmount();
+    render(<CompanyScreen {...({ state: 'ready', company: { ...COMPANY, lifecycle: 'closed' }, sessions: [], canManage: false, canSupport: false, now: NOW, onBack: vi.fn(), onLifecycle: ok(), onExtendTrial: ok(), onRequestSupport: ok(), onOpenSession: ok(), onEndSession: ok(), onWithdrawRequest: ok(), onAskDeletion: ok() } as CompanyScreenProps)} />);
+    expect(screen.queryByRole('button', { name: 'Ask to delete the data' })).toBeNull();
+  });
 
   it('every lifecycle move asks for a written reason (YX-CONSOLE-02)', async () => {
     const p = company();

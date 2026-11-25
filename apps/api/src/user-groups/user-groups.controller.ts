@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } fro
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { UserGroupsService } from './user-groups.service';
@@ -16,14 +16,15 @@ export class UserGroupsController {
   constructor(private readonly service: UserGroupsService) {}
 
   // Staff-readable (pickers/filters) -- NOTE these two must precede ':id' style routes below.
+  // AS-0: candidate view is enough (the Interview coordinator reads jobs and candidates, never test results).
   @Get('directory')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   directory(@CurrentTenant() tenant: TenantContext) {
     return this.service.directory(tenant);
   }
 
   @Get('mine')
-  @RequirePermissions('results:view')
+  @RequireAnyPermission('results:view', 'candidate:view')
   mine(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string) {
     return this.service.mine(tenant, userId);
   }

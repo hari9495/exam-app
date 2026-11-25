@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
-import { EmptyState } from '../../components/feedback';
+import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FieldRow, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
@@ -22,6 +22,7 @@ interface Draft {
   lng: number | null;
   radiusM: number | null;
   ipRanges: string;
+  factory: boolean;
 }
 
 const CIDR = /^(\d{1,3}(\.\d{1,3}){3}\/\d{1,2}|[0-9A-Fa-f:]+\/\d{1,3})$/;
@@ -61,6 +62,7 @@ export function locationInput(d: Draft): { input: LocationInput | null; errors: 
       minWageZone: d.minWageZone.trim() || null,
       geofence: d.fence ? { lat: d.lat!, lng: d.lng!, radiusM: d.radiusM! } : null,
       ipRanges,
+      registeredFactory: d.factory,
     },
     errors,
   };
@@ -79,6 +81,7 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
     lng: location?.geofence?.lng ?? null,
     radiusM: location?.geofence?.radiusM ?? 200,
     ipRanges: location?.ipRanges.join('\n') ?? '',
+    factory: Boolean(location?.registeredFactory),
   });
   const [dirty, setDirty] = useState(false);
   const { busy, error, run } = useRun();
@@ -143,6 +146,23 @@ function LocationEditor({ location, entities, states, onClose, onSave }: { locat
           <FormField id="loc-mw" label="Minimum wage zone" optional>
             <TextField value={draft.minWageZone} onChange={(minWageZone) => set({ minWageZone })} maxLength={40} />
           </FormField>
+          {/* Answer 151: an old location-level Factories Act value; nothing moves by itself. */}
+          {location?.factoriesActSetting === 'covered' && !draft.factory && (
+            <InlineAlert tone="info" title="Mark the location as a registered factory to make it the one source">
+              The Factories Act setting for this location covers it today (Settings › Attendance). Tick Registered factory below and save; the setting can then be removed.
+            </InlineAlert>
+          )}
+          {location?.factoriesActSetting && draft.factory && (
+            <InlineAlert tone="info" title="The Factories Act setting for this location is no longer needed">
+              The Registered factory flag decides coverage here. Remove the value for this location in Settings › Attendance.
+            </InlineAlert>
+          )}
+          <Checkbox
+            label="Registered factory"
+            description="Factories Act here: overtime at the legal rate, the 240-day earned leave rule and the factory leave minimum, except departments or employment types set to Not covered in Settings › Attendance."
+            checked={draft.factory}
+            onChange={(factory) => set({ factory })}
+          />
         </FormSection>
         <FormSection title="Address">
           <AddressFields prefix="loc-addr" draft={draft.address} onChange={(address) => set({ address })} states={states} errorOf={errorOf} required />
@@ -210,6 +230,7 @@ export function LocationsScreen(props: LocationsScreenProps) {
       hideable: false,
     },
     { key: 'state', header: 'State', value: (l) => stateName(l.state), width: 150 },
+    { key: 'factory', header: 'Factory', value: (l) => (l.registeredFactory ? 'Registered factory' : '—'), width: 160, optional: true },
     {
       key: 'checkin',
       header: 'Check-in',

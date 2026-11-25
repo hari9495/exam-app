@@ -29,6 +29,7 @@ import {
   type ComponentStatus,
 } from './portals-logic';
 import './portals.css';
+import { useKitWords } from '../../components/kit-words';
 
 /* ================================================================== */
 /* Language switcher (P04 Q4)                                          */
@@ -42,13 +43,14 @@ export const PORTAL_LANGUAGES = [
 ];
 
 /** Uncontrolled in the portal stories; pass `value` and `onChange` where the choice is kept (the live sign-in). */
-export function LanguageSwitcher({ defaultValue = 'en', size = 'sm', value, onChange }: { defaultValue?: string; size?: 'sm' | 'md'; value?: string; onChange?: (lang: string) => void }) {
+export function LanguageSwitcher({ defaultValue = 'en', size = 'sm', value, onChange, languages = PORTAL_LANGUAGES }: { defaultValue?: string; size?: 'sm' | 'md'; value?: string; onChange?: (lang: string) => void; /** The languages offered; a page lists only those it is written in. */ languages?: { value: string; label: string }[] }) {
   const [own, setOwn] = useState<string | null>(defaultValue);
   const lang = value ?? own;
+  const words = useKitWords();
   return (
     <div className="yx-lang">
       <Icon icon={Globe2} />
-      <Select aria-label="Language" size={size} options={PORTAL_LANGUAGES} value={lang} onChange={(v) => (onChange && v ? onChange(v) : setOwn(v))} />
+      <Select aria-label={words.language} size={size} options={languages} value={lang} onChange={(v) => (onChange && v ? onChange(v) : setOwn(v))} />
     </div>
   );
 }
@@ -66,14 +68,18 @@ export interface FooterNotices {
   terms?: string;
   /** Where each notice lives; the stories leave them out (#). */
   hrefs?: Partial<Record<FooterNotice, string>>;
+  /** The notices' names in the page's language (English when left out). */
+  labels?: Partial<Record<FooterNotice, string>>;
 }
 
 export type FooterNotice = 'privacy' | 'terms' | 'accessibility' | 'cookies' | 'grievance' | 'openSource';
 
-export function PortalFooterLinks({ privacy, cookies, terms = 'Terms of use', hrefs = {} }: FooterNotices) {
-  const links: [FooterNotice, string][] = [['privacy', privacy], ['terms', terms], ['accessibility', 'Accessibility statement'], ...(cookies ? [['cookies', 'Cookie notice'] as [FooterNotice, string]] : []), ['grievance', 'Grievance officer'], ['openSource', 'Open-source notices']];
+export function PortalFooterLinks({ privacy, cookies, terms = 'Terms of use', hrefs = {}, labels = {} }: FooterNotices) {
+  const named: [FooterNotice, string][] = [['privacy', privacy], ['terms', terms], ['accessibility', 'Accessibility statement'], ...(cookies ? [['cookies', 'Cookie notice'] as [FooterNotice, string]] : []), ['grievance', 'Grievance officer'], ['openSource', 'Open-source notices']];
+  const links = named.map(([k, l]): [FooterNotice, string] => [k, labels[k] ?? l]);
+  const words = useKitWords();
   return (
-    <nav className="yx-portal-notices" aria-label="Legal notices">
+    <nav className="yx-portal-notices" aria-label={words.legalNotices}>
       {links.map(([k, l]) => (
         <a key={k} href={hrefs[k] ?? '#'}>
           {l}
@@ -98,10 +104,12 @@ export type PortalAccess =
 export interface TenantPortalProps {
   tenant: string;
   portal: string;
-  nav?: { label: string; active?: boolean; href?: string }[];
+  nav?: { label: string; active?: boolean; href?: string; onNavigate?: () => void }[];
   /** Tenant accent as hex (with or without #). Used only if it reaches 4.5:1 on white (§38). */
   accent?: string;
   whiteLabel?: boolean;
+  /** Careers answer 357: the company's logo in the header. */
+  logoUrl?: string | null;
   access: PortalAccess;
   footer: FooterNotices;
   /** Primary action pinned at the bottom of the viewport (T8 pattern). */
@@ -109,14 +117,18 @@ export interface TenantPortalProps {
   /** Narrow single-column content (forms, sign-in). */
   narrow?: boolean;
   language?: string;
-  /** No language picker (the live sign-in until YukthiX's screens are translated: a picker that changes nothing). */
+  /** No language picker (a page not written in other languages: a picker that changes nothing). */
   noLanguage?: boolean;
+  /** A signed-in portal (live): "Sign out" sits in the header band next to the access note, not in the page body. */
+  onSignOut?: () => void;
   /** Keeps the language choice; without it the switcher is uncontrolled. */
   onLanguageChange?: (lang: string) => void;
+  /** The languages the picker offers (default: every portal language). */
+  languages?: { value: string; label: string }[];
   children: ReactNode;
 }
 
-export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, footer, pinned, narrow, noLanguage, language = 'en', onLanguageChange, children }: TenantPortalProps) {
+export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, logoUrl, access, footer, pinned, narrow, noLanguage, onSignOut, language = 'en', onLanguageChange, languages, children }: TenantPortalProps) {
   const res = resolveTenantAccent(accent);
   const style = res.accent ? ({ '--yx-tenant-accent': res.accent } as CSSProperties) : undefined;
   const user = access.kind === 'otp' ? access.identity : undefined;
@@ -128,12 +140,18 @@ export function TenantPortal({ tenant, portal, nav, accent, whiteLabel, access, 
         nav={nav}
         user={user}
         whiteLabel={whiteLabel}
+        tenantLogoUrl={logoUrl}
         foot={<PortalFooterLinks {...footer} />}
         aside={
           // In the header band, so the page body keeps its height for the content (sign-in fits one laptop screen).
           <div className="yx-tportal__bar">
             <AccessNote access={access} />
-            {!noLanguage && <LanguageSwitcher defaultValue={language} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />}
+            {onSignOut && (
+              <Button size="sm" onClick={onSignOut}>
+                Sign out
+              </Button>
+            )}
+            {!noLanguage && <LanguageSwitcher defaultValue={language} languages={languages} {...(onLanguageChange ? { value: language, onChange: onLanguageChange } : {})} />}
           </div>
         }
       >
@@ -183,10 +201,12 @@ export interface OtpInputProps {
   invalid?: boolean;
   disabled?: boolean;
   label?: string;
+  /** Given to the first box, so a field error can take focus there. */
+  id?: string;
 }
 
 /** One box per digit: typing moves forward, Backspace moves back, paste fills all boxes, arrows move. */
-export function OtpInput({ value, onChange, length = OTP_LENGTH, invalid, disabled, label = 'Verification code' }: OtpInputProps) {
+export function OtpInput({ value, onChange, length = OTP_LENGTH, invalid, disabled, label = 'Verification code', id }: OtpInputProps) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = Array.from({ length }, (_, i) => value[i] ?? '');
   const set = (i: number, d: string) => {
@@ -207,6 +227,7 @@ export function OtpInput({ value, onChange, length = OTP_LENGTH, invalid, disabl
       {digits.map((d, i) => (
         <input
           key={i}
+          id={i === 0 ? id : undefined}
           ref={(el) => {
             refs.current[i] = el;
           }}
@@ -267,7 +288,23 @@ export interface OtpSignInProps {
   onSignedIn?: () => void;
   /** Contact for "no access" and lock messages. */
   helpContact?: string;
+  /** The live sign-in: the server sends and checks the code. */
+  live?: LiveOtpSignIn;
 }
+
+/**
+ * The live portals (pay documents, consultants, joining, alumni). The server never says whether an address may sign in;
+ * its refusals arrive as plain sentences (a send refused for too many tries carries the real wait).
+ */
+export interface LiveOtpSignIn {
+  onSendCode: (email: string) => Promise<unknown>;
+  onVerify: (email: string, code: string) => Promise<unknown>;
+  /** How long a code works on the server. */
+  validMinutes: number;
+}
+
+const errorText = (e: unknown) => (e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+const focusId = (id: string) => setTimeout(() => document.getElementById(id)?.focus(), 0);
 
 /**
  * External-portal sign-in: email or mobile → one-time code. No passwords (YX-SEC-21).
@@ -287,32 +324,75 @@ export function OtpSignIn({
   secondFactor,
   onSignedIn,
   helpContact = 'the HR team',
+  live,
 }: OtpSignInProps) {
   const [stage, setStage] = useState<OtpStage>(defaultStage);
   const [dest, setDest] = useState(destination);
   const [destError, setDestError] = useState<string | null>(null);
   const [code, setCode] = useState(defaultCode);
+  const [codeError, setCodeError] = useState<string | null>(null);
   const [attempts, setAttempts] = useState(defaultAttempts);
   const [ack, setAck] = useState(false);
   const [ackError, setAckError] = useState(false);
   const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState<'send' | 'resend' | 'verify' | null>(null);
+  // A send the server refused, in its words (too many tries says the real wait: "Try again in 42 seconds").
+  const [refused, setRefused] = useState<string | null>(null);
   const { phase, left } = otpPhase(attempts);
   const effectiveStage = phase === 'locked' && stage === 'code' ? 'locked' : stage;
+  const minutes = live?.validMinutes ?? OTP_VALID_MINUTES;
 
+  const sendCode = async (which: 'send' | 'resend') => {
+    if (!live) return setStage('code');
+    setBusy(which);
+    setRefused(null);
+    try {
+      await live.onSendCode(dest.trim());
+      setStage('code');
+      setCode('');
+      setCodeError(null);
+    } catch (e) {
+      setRefused(errorText(e));
+    } finally {
+      setBusy(null);
+    }
+  };
   const send = () => {
-    const email = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dest);
+    const email = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(dest.trim());
     const mobile = /^\d{10}$/.test(dest.replace(/\D/g, '').slice(-10)) && dest.replace(/\D/g, '').length >= 10;
     const ok = channel === 'email' ? email : channel === 'mobile' ? mobile : email || mobile;
     if (!ok) {
-      setDestError(channel === 'mobile' ? 'Enter a 10-digit mobile number.' : 'Enter the email address the invitation was sent to.');
+      setDestError(channel === 'mobile' ? 'Enter a 10-digit mobile number.' : live ? 'Enter your email address, like name@example.com.' : 'Enter the email address the invitation was sent to.');
+      focusId('otp-dest');
       return;
     }
     setDestError(null);
-    setStage('code');
+    void sendCode('send');
   };
-  const verify = () => {
+  const verify = async () => {
     if (notice && !ack) {
       setAckError(true);
+      return;
+    }
+    // Never a disabled button (founder rule): pressed too early, the field says what is missing and takes focus.
+    if (code.length < OTP_LENGTH) {
+      setCodeError(`Enter the ${OTP_LENGTH}-digit code.`);
+      focusId('otp-code');
+      return;
+    }
+    setCodeError(null);
+    if (live) {
+      setBusy('verify');
+      try {
+        await live.onVerify(dest.trim(), code);
+        setDone(true);
+      } catch (e) {
+        setCodeError(errorText(e));
+        setCode('');
+        focusId('otp-code');
+      } finally {
+        setBusy(null);
+      }
       return;
     }
     if (code === demoCode) {
@@ -343,8 +423,9 @@ export function OtpSignIn({
       {effectiveStage === 'identify' && (
         <>
           <FormField
+            id="otp-dest"
             label={channel === 'mobile' ? 'Mobile number' : channel === 'either' ? 'Email or mobile number' : 'Email address'}
-            helper={channel === 'mobile' ? 'We send a code by SMS or WhatsApp.' : 'Use the address your invitation came to.'}
+            helper={channel === 'mobile' ? 'We send a code by SMS or WhatsApp.' : live ? 'Use the email address the company has for you.' : 'Use the address your invitation came to.'}
             error={destError}
             required
           >
@@ -358,20 +439,25 @@ export function OtpSignIn({
               autoComplete={channel === 'mobile' ? 'tel' : 'email'}
             />
           </FormField>
-          <Button variant="primary" fullWidth onClick={send}>
+          {refused && (
+            <InlineAlert tone="danger" title="Code not sent">
+              {refused}
+            </InlineAlert>
+          )}
+          <Button variant="primary" fullWidth onClick={send} loading={busy === 'send'}>
             Send code
           </Button>
-          <p className="yx-signin__fine">We never ask for a password here. Codes are valid for {OTP_VALID_MINUTES} minutes.</p>
+          <p className="yx-signin__fine">We never ask for a password here. Codes are valid for {minutes} minutes.</p>
         </>
       )}
 
       {effectiveStage === 'code' && (
         <>
           <p className="yx-signin__sent" aria-live="polite">
-            We sent a {OTP_LENGTH}-digit code to <strong>{maskDestination(dest || 'name@example.com')}</strong>. It is valid for {OTP_VALID_MINUTES} minutes.
+            {live ? 'If this address may sign in, we sent' : 'We sent'} a {OTP_LENGTH}-digit code to <strong>{maskDestination(dest || 'name@example.com')}</strong>. It is valid for {minutes} minutes.
           </p>
-          <FormField label="Verification code" hideLabel error={phase === 'wrong' ? `That code didn't match. ${left} attempts left.` : null}>
-            <OtpInput value={code} onChange={setCode} invalid={phase === 'wrong'} />
+          <FormField id="otp-code" label="Verification code" hideLabel error={codeError ?? (phase === 'wrong' ? `That code didn't match. ${left} attempts left.` : null)}>
+            <OtpInput id="otp-code" value={code} onChange={setCode} invalid={Boolean(codeError) || phase === 'wrong'} />
           </FormField>
           {notice && (
             <Checkbox
@@ -388,14 +474,26 @@ export function OtpSignIn({
               description={ackError ? 'Confirm you have read the notice to continue.' : undefined}
             />
           )}
-          <Button variant="primary" fullWidth onClick={verify} disabled={code.length < OTP_LENGTH}>
+          {refused && (
+            <InlineAlert tone="danger" title="Code not sent">
+              {refused}
+            </InlineAlert>
+          )}
+          <Button variant="primary" fullWidth onClick={() => void verify()} loading={busy === 'verify'}>
             Verify and continue
           </Button>
           <div className="yx-signin__row">
-            <Button size="sm" disabled={resendIn > 0}>
-              {resendLabel(resendIn)}
+            <Button size="sm" disabled={!live && resendIn > 0} loading={busy === 'resend'} onClick={live ? () => void sendCode('resend') : undefined}>
+              {resendLabel(live ? 0 : resendIn)}
             </Button>
-            <Button size="sm" onClick={() => setStage('identify')}>
+            <Button
+              size="sm"
+              onClick={() => {
+                setStage('identify');
+                setRefused(null);
+                setCodeError(null);
+              }}
+            >
               Change {channel === 'mobile' ? 'number' : 'address'}
             </Button>
           </div>
@@ -427,7 +525,8 @@ export function OtpSignIn({
 /** A portal's sign-in page: the tenant shell (narrow) with the OTP sign-in card. */
 export function PortalSignInScreen({ tenant, portal, accent, whiteLabel, footer, signIn }: { tenant: string; portal: string; accent?: string; whiteLabel?: boolean; footer: FooterNotices; signIn: OtpSignInProps }) {
   return (
-    <TenantPortal tenant={tenant} portal={portal} accent={accent} whiteLabel={whiteLabel} narrow access={{ kind: 'signin' }} footer={footer}>
+    // Live: no language picker until YukthiX's screens are translated (a picker that changes nothing).
+    <TenantPortal tenant={tenant} portal={portal} accent={accent} whiteLabel={whiteLabel} narrow noLanguage={Boolean(signIn.live)} access={{ kind: 'signin' }} footer={footer}>
       <OtpSignIn {...signIn} />
     </TenantPortal>
   );
@@ -453,7 +552,10 @@ export interface ConsentPanelProps {
   noticeVersion: string;
   acceptLabel: string;
   declineLabel?: string;
-  onAccept?: (ids: string[]) => void;
+  /** May be async: the button shows it is busy; if it fails, the panel stays as it was (the caller shows why). */
+  onAccept?: (ids: string[]) => void | Promise<unknown>;
+  /** Where the full notice opens; null when the summary already is the full notice (no link). */
+  noticeHref?: string | null;
   onDecline?: () => void;
   defaultChecked?: string[];
   /** Show the "you declined" outcome. */
@@ -474,11 +576,13 @@ export function ConsentPanel({
   defaultChecked = [],
   defaultDeclined,
   declinedText,
+  noticeHref = '#',
 }: ConsentPanelProps) {
   const [checked, setChecked] = useState<string[]>(defaultChecked);
   const [showErr, setShowErr] = useState(false);
   const [declined, setDeclined] = useState(!!defaultDeclined);
   const [accepted, setAccepted] = useState(false);
+  const [busy, setBusy] = useState(false);
   const missing = purposes.filter((p) => p.required && !checked.includes(p.id));
   if (declined)
     return (
@@ -518,7 +622,16 @@ export function ConsentPanel({
         </InlineAlert>
       )}
       <p className="yx-consent__notice">
-        <Icon icon={ShieldCheck} /> Read the full <a href="#">{noticeLabel}</a> · version {noticeVersion}
+        <Icon icon={ShieldCheck} />{' '}
+        {noticeHref === null ? (
+          <>
+            This is the full {noticeLabel} · version {noticeVersion}
+          </>
+        ) : (
+          <>
+            Read the full <a href={noticeHref}>{noticeLabel}</a> · version {noticeVersion}
+          </>
+        )}
       </p>
       <div className="yx-consent__actions">
         <Button
@@ -531,10 +644,16 @@ export function ConsentPanel({
         </Button>
         <Button
           variant="primary"
+          loading={busy}
           onClick={() => {
             if (missing.length) return setShowErr(true);
-            setAccepted(true);
-            onAccept?.(checked);
+            const r = onAccept?.(checked);
+            if (!(r instanceof Promise)) return setAccepted(true);
+            setBusy(true);
+            r.then(
+              () => setAccepted(true),
+              () => undefined,
+            ).finally(() => setBusy(false));
           }}
         >
           {acceptLabel}

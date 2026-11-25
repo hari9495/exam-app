@@ -1,46 +1,51 @@
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { GoalsScreen, type GoalPeriod, type GoalSummary } from '@yukthix/ui/performance';
-import type { MasterRecord } from '@yukthix/ui/org';
-import { loadState, useOrg, useYxPermissions } from '../../../../lib/yx-org';
-import { usePerf, usePerfWrite } from '../../../../lib/yx-performance';
+import { PerformanceHomeScreen, type PerfHome, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { loadState } from '../../../../lib/yx-org';
+import { perfState, usePerf, usePerfWrite, refused } from '../../../../lib/yx-performance';
 
-// Goals (PRF-01 / PRF-02, M06 batch PM2): my goals with the weights check, my team's, and the company's and teams'.
-export default function YxGoalsPage() {
+interface Coach {
+  state: 'ready' | 'not-manager' | 'company-off';
+  weekOf: string;
+  optedOut: boolean;
+  nudges: { id: string; person: string; signal: string; action: string; link: string }[];
+}
+
+// PRF-01 Performance home: the designed screen with the viewer's own goals and review, their team's and, for HR who run
+// cycles, the company's cycles and outcomes (GET /performance/home decides what each role sees). A manager's home also
+// carries the PRF-16 coach card (founder 3 Nov 2026), from the same API as /yx/performance/coach.
+export default function YxPerformanceHomePage() {
   const router = useRouter();
-  const perms = useYxPermissions();
-  const periods = usePerf<GoalPeriod[]>('/goal-periods');
-  const [chosen, setChosen] = useState<string | null>(null);
-  const [view, setView] = useState<'mine' | 'team' | 'company'>('mine');
-  const periodId = chosen ?? periods.data?.find((p) => p.status === 'open')?.id ?? periods.data?.[0]?.id ?? null;
-  const goals = usePerf<{ goals: GoalSummary[]; totalWeight: number | null }>(periodId ? `/goals?period=${periodId}&view=${view}` : null);
-  const align = usePerf<{ id: string; title: string; owner: string }[]>(periodId ? `/goals/align-options?period=${periodId}` : null);
-  const canManage = perms.has('perf.goal.manage');
-  const departments = useOrg<MasterRecord[]>('/masters/departments', canManage);
+  const home = usePerf<PerfHome>('/home');
+  const hasTeam = Boolean(home.data && home.data.team.length > 0);
+  const coach = usePerf<Coach>('/coach', hasTeam);
   const write = usePerfWrite();
+  if (refused(home)) return <PerfNoAccessScreen title="Performance home" what="Performance" grantedBy="HR" active="Performance home" persona="emp" />;
+  const c = coach.data;
+  const coachState = loadState(coach);
   return (
-    <GoalsScreen
-      state={loadState(periods, ...(periodId ? [goals] : []))}
-      onRetry={() => void Promise.all([periods.refetch(), goals.refetch()])}
-      periods={periods.data ?? []}
-      periodId={periodId}
-      onPeriod={setChosen}
-      view={view}
-      onView={setView}
-      goals={goals.data?.goals ?? []}
-      totalWeight={goals.data?.totalWeight ?? null}
-      canManage={canManage}
-      departments={(departments.data ?? []).filter((d) => !d.archivedAt).map((d) => ({ value: d.id, label: d.name }))}
-      alignOptions={align.data ?? []}
-      onCreate={async (input) => {
-        const g = await write<{ id: string }>('POST', '/goals', input);
-        router.push(`/yx/performance/goals/${encodeURIComponent(g.id)}`);
+    <PerformanceHomeScreen
+      live={{
+        state: perfState(loadState(home)),
+        onRetry: () => void home.refetch(),
+        data: home.data ?? null,
+        onCheckIn: (id, input) => write('POST', `/goals/${encodeURIComponent(id)}/checkins`, input),
+        coach: hasTeam
+          ? {
+              state: coachState === 'ready' && c ? c.state : coachState === 'loading' ? 'loading' : 'error',
+              onRetry: () => void coach.refetch(),
+              firstName: null,
+              weekOf: c ? new Date(`${c.weekOf}T00:00:00`) : new Date(),
+              optedOut: c?.optedOut ?? false,
+              nudges: c?.nudges ?? [],
+              looksAt: [],
+              onAct: (n) => n.link && router.push(n.link),
+              onDismiss: async (id) => void (await write('POST', '/coach/dismiss', { key: id })),
+              onOptOut: async (optedOut) => void (await write('POST', '/coach/opt-out', { optedOut })),
+            }
+          : null,
       }}
-      onSubmitGoals={() => write('POST', '/goals/submit', { periodId })}
-      onAddPeriod={(p) => write('POST', '/goal-periods', p)}
-      onOpen={(id) => router.push(`/yx/performance/goals/${encodeURIComponent(id)}`)}
     />
   );
 }

@@ -12,9 +12,19 @@ import { writeBankFile, type BankLayout, type BankRow } from '../statutory/bank-
 import { asDate, dateOf } from '../time/time-core';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import type { ConfirmationDto } from './dto';
-import type { DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultRowDto } from './dto-5d';
+import type { DisbursementDto, ExpediteBankDto, GenerateBankFileDto, PaymentModeDto, PaymentResultRowDto, RepayDto } from './dto-5d';
 import { ExchangeFilesService } from './exchange-files.service';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
+import { plainSalary, splitAmounts, splitsAt, SPLIT_LABEL } from '../people/pay-split';
+
+/** PPL-46: one payment to an account abroad (the outward remittance list released with the bank file). */
+type Remit = { slip: Slip; code: string; name: string; iban: string; bic: string; currency: string; amount: Prisma.Decimal; narration: string };
+/** Remittance list cells: letters, digits, space, dot and dash only (no commas, quotes or spreadsheet formulas). */
+const cell = (s: string, max: number) => s.replace(/[^A-Za-z0-9 .-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+export function remittanceCsv(rows: Remit[]): Buffer {
+  const head = 'employee_code,name,iban,bic,payout_currency,amount_inr,narration';
+  return Buffer.from([head, ...rows.map((r) => [cell(r.code, 30), cell(r.name, 70), r.iban, r.bic, r.currency, r.amount.toFixed(2), cell(r.narration, 30)].join(','))].join('\r\n') + '\r\n', 'utf8');
+}
 
 // Pay-out (M03-BUILD-DESIGN §9.7, §11.2, PAY-4.01 … 4.03, D11): the bank file of an approved run from a published
 // format (approved, unheld, bank-mode payslips whose account is past the bank-change cooling period), released by
@@ -77,6 +87,23 @@ export class PayoutService implements OnModuleInit {
     return tx.payslip.findMany({ where: { organizationId: org, runId: run.id, calcVersion: run.calcVersion, status: 'approved', ...where }, orderBy: { createdAt: 'asc' } });
   }
 
+  /**
+   * Founder 30 Oct 2026 (item 10): payslips freed by a hold released to "next bank file" are paid in the bank file of
+   * the entity's next regular run, not their own run's. Such a hold keeps no run (releasedRunId null) until a regular run's
+   * bank file claims it; a hold released before this rule (its own run kept) or to an off-cycle payment stays with its run.
+   * Each row: an approved, unheld payslip still waiting to be paid that was approved while the hold was open.
+   */
+  private routed(tx: Tx, org: string, legalEntityId: string) {
+    return tx.$queryRaw<{ payslipId: string; runId: string; holdId: string; to: string | null; periodStart: Date }[]>`
+      SELECT p.id::text AS "payslipId", p.run_id::text AS "runId", w.id::text AS "holdId", w.released_run_id::text AS "to", p.period_start AS "periodStart"
+      FROM payroll_withholds w
+      JOIN payslips p ON p.organization_id = w.organization_id AND p.employment_id = w.employment_id
+      WHERE w.organization_id = ${org}::uuid AND w.legal_entity_id = ${legalEntityId}::uuid AND w.released_at IS NOT NULL
+        AND p.status = 'approved' AND NOT p.held AND p.payment_status IN ('pending', 'failed', 'returned') AND p.run_id IS NOT NULL
+        AND p.approved_at >= w.created_at AND p.approved_at <= w.released_at
+        AND (w.released_run_id IS NULL OR w.released_run_id <> p.run_id)`;
+  }
+
   /** The signed-in person's employee records, merged persons included (nobody pays, records or releases their own pay). */
   private async ownEmployeeIds(tx: Tx) {
     const [{ ids }] = await tx.$queryRaw<{ ids: string[] }[]>`SELECT app_current_employee_ids()::text[] AS ids`;
@@ -135,6 +162,14 @@ export class PayoutService implements OnModuleInit {
       const run = await this.runFor(tx, c, v, runId, ['payroll.bankfile.generate']);
       this.requireApproved(run);
       await tx.$queryRaw`SELECT id FROM payroll_runs WHERE organization_id = ${org}::uuid AND id = ${run.id}::uuid FOR UPDATE`;
+      return this.writeBank(tx, c, v, run, dto);
+    });
+  }
+
+  /** The bank file itself; `only` makes a file for one payslip (a re-pay now), to its salary or reimbursement account. */
+  private async writeBank(tx: Tx, c: CompanyContext, v: Viewer, run: Run, dto: GenerateBankFileDto, only?: { payslipId: string; purpose: 'salary' | 'reimbursement' }) {
+    {
+      const org = c.organizationId;
       const before = await tx.bankFile.count({ where: { organizationId: org, runId: run.id } });
       if (before && !dto.reason) throw new BadRequestException('This run already has a bank file. Say why a new one is needed.');
       const payDate = dto.payDate ?? todayIst();
@@ -143,7 +178,13 @@ export class PayoutService implements OnModuleInit {
       const fmt = inForce(await this.rules.published(), 'IN.BANKFMT', [key], payDate);
       // Founder decision 5d-D1 (9 Oct 2026): only the generic format for now; the pilot's bank format is loaded as data (a bank-format rule set) once a real sample file is checked (M03 §19.4).
       if (!fmt) throw new ConflictException(`No published bank format "${key}" is in force on ${payDate}.`);
-      const slips = await this.slips(tx, org, run, { held: false, paymentStatus: { in: REPAYABLE }, net: { gt: 0 } });
+      const routed = await this.routed(tx, org, run.legalEntityId);
+      const away = routed.filter((x) => x.runId === run.id && x.to !== run.id).map((x) => x.payslipId);
+      const own = await this.slips(tx, org, run, { held: false, paymentStatus: { in: REPAYABLE }, net: { gt: 0 }, ...(only ? { id: only.payslipId } : { id: { notIn: away } }) });
+      // Item 10: released held pay of earlier months joins the next regular run's file (never a re-pay or off-cycle file).
+      const into = only || run.runType !== 'regular' ? [] : routed.filter((x) => x.runId !== run.id && (x.to === null || x.to === run.id) && x.periodStart < run.periodStart);
+      const carried = into.length ? await tx.payslip.findMany({ where: { organizationId: org, id: { in: into.map((x) => x.payslipId) }, net: { gt: 0 } }, orderBy: { createdAt: 'asc' } }) : [];
+      const slips = [...own, ...carried];
       const employments = await tx.employment.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employmentId) } }, select: { id: true, employeeCode: true } });
       const modeOf = await this.modesOn(
         tx,
@@ -151,13 +192,26 @@ export class PayoutService implements OnModuleInit {
         slips.map((s) => s.employmentId),
         payDate,
       );
-      const accounts = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: slips.map((s) => s.employeeId) }, purpose: 'salary', validTo: null } });
+      const accounts = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: slips.map((s) => s.employeeId) }, purpose: only?.purpose ?? 'salary', validTo: null } });
       const now = new Date();
       const rows: (BankRow & { slip: Slip })[] = [];
+      // PPL-46: a split in force pays each of its accounts (a re-pay to one account, `only`, never splits).
+      const splits = only ? new Map() : await splitsAt(tx, org, slips.map((s) => s.employeeId), now);
+      const splitIds = [...splits.keys()];
+      const allBanks = splitIds.length ? await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: splitIds }, validTo: null } }) : [];
+      const abroad = splitIds.length ? await tx.employeeIntlBankAccount.findMany({ where: { organizationId: org, employeeId: { in: splitIds }, validTo: null } }) : [];
+      const people = splitIds.length ? await tx.employee.findMany({ where: { organizationId: org, id: { in: splitIds } }, select: { id: true, givenName: true, familyName: true } }) : [];
+      const remits: Remit[] = [];
       const excluded: { employeeId: string; reason: string }[] = [];
       // 5g-D2: a death-in-service F&F pays each nominee or heir directly, by share, to their own account.
       const deaths = await tx.fnfSettlement.findMany({ where: { organizationId: org, exitType: 'death', OR: [{ runId: run.id }, { secondRunId: run.id }] } });
+      // PAY-10: an invalid IFSC waits for the corrected account (the reimbursement account route is a different account).
+      const ifscWait = only?.purpose === 'reimbursement' ? new Set<string>() : await waitingForIfsc(tx, org, slips);
       for (const s of slips) {
+        if (ifscWait.has(s.id)) {
+          excluded.push({ employeeId: s.employeeId, reason: 'Waiting for the employee to correct the IFSC of their bank account.' });
+          continue;
+        }
         const death = deaths.find((d) => d.employmentId === s.employmentId);
         if (death) {
           const payees = (death.payees as { name: string; sharePercent: string; accountEnc?: string | null; ifsc?: string | null }[]) ?? [];
@@ -176,8 +230,35 @@ export class PayoutService implements OnModuleInit {
         }
         const a = accounts.find((x) => x.employeeId === s.employeeId);
         const mode = modeOf(s.employmentId);
+        const split = splits.get(s.employeeId);
+        if (mode === 'bank' && !plainSalary(split)) {
+          const code = employments.find((e) => e.id === s.employmentId)?.employeeCode ?? '';
+          const r = splitAmounts(s.net, split!, false);
+          if (!r.ok) {
+            excluded.push({ employeeId: s.employeeId, reason: `The pay split cannot be paid: ${r.error}` });
+            continue;
+          }
+          const parts = r.amounts.filter((x) => x.amount.gt(0));
+          const missing = parts.find((x) => (x.account === 'abroad' ? !abroad.some((b) => b.employeeId === s.employeeId) : !allBanks.some((b) => b.employeeId === s.employeeId && b.purpose === x.account)));
+          const cooling = parts.map((x) => (x.account === 'abroad' ? abroad.find((b) => b.employeeId === s.employeeId) : allBanks.find((b) => b.employeeId === s.employeeId && b.purpose === x.account))).find((b) => b && b.usableFrom > now);
+          if (missing) excluded.push({ employeeId: s.employeeId, reason: `The pay split uses the ${SPLIT_LABEL[missing.account].toLowerCase()}, which is not on file.` });
+          else if (cooling) excluded.push({ employeeId: s.employeeId, reason: `An account of the pay split is in its cooling period until ${cooling.usableFrom.toISOString()}.` });
+          else
+            for (const x of parts) {
+              const narration = `Salary ${dateOf(s.periodStart).slice(0, 7)}`;
+              if (x.account === 'abroad') {
+                const b = abroad.find((y) => y.employeeId === s.employeeId)!;
+                const p = people.find((y) => y.id === s.employeeId);
+                remits.push({ slip: s, code, name: p ? [p.givenName, p.familyName].filter(Boolean).join(' ') : code, iban: this.open(org, s.employeeId, b.ibanEnc), bic: b.bic, currency: b.currency, amount: x.amount, narration });
+              } else {
+                const b = allBanks.find((y) => y.employeeId === s.employeeId && y.purpose === x.account)!;
+                rows.push({ slip: s, account: this.open(org, s.employeeId, b.accountEnc), ifsc: b.ifsc, name: b.holderName, amount: x.amount.toFixed(2), code, narration });
+              }
+            }
+          continue;
+        }
         if (mode !== 'bank') excluded.push({ employeeId: s.employeeId, reason: `Paid by ${mode} (disbursement register).` });
-        else if (!a) excluded.push({ employeeId: s.employeeId, reason: 'No salary bank account.' });
+        else if (!a) excluded.push({ employeeId: s.employeeId, reason: `No ${only?.purpose ?? 'salary'} bank account.` });
         else if (a.usableFrom > now) excluded.push({ employeeId: s.employeeId, reason: `A new bank account is in its cooling period until ${a.usableFrom.toISOString()}.` });
         else
           rows.push({
@@ -187,17 +268,20 @@ export class PayoutService implements OnModuleInit {
             name: a.holderName,
             amount: s.net.toFixed(2),
             code: employments.find((e) => e.id === s.employmentId)?.employeeCode ?? '',
-            narration: `Salary ${dateOf(run.periodStart).slice(0, 7)}`,
+            narration: `Salary ${dateOf(s.periodStart).slice(0, 7)}`,
           });
       }
-      if (!rows.length) throw new ConflictException({ statusCode: 409, message: 'Nobody in this run is waiting to be paid by bank.', excluded });
+      if (!rows.length && !remits.length) throw new ConflictException({ statusCode: 409, message: 'Nobody in this run is waiting to be paid by bank.', excluded });
       let out: Awaited<ReturnType<typeof writeBankFile>>;
       try {
         out = await writeBankFile(fmt.values as unknown as BankLayout, rows, { debitAccount: dto.debitAccount, date: payDate });
       } catch (e) {
         throw new BadRequestException(`The bank file could not be written: ${(e as Error).message}`);
       }
-      const total = rows.reduce((t, r) => t.add(r.amount), D(0));
+      const domestic = rows.reduce((t, r) => t.add(r.amount), D(0));
+      const abroadTotal = remits.reduce((t, r) => t.add(r.amount), D(0));
+      // The bank file record covers every payslip it pays, in India and abroad: its total is their net pay.
+      const total = domestic.add(abroadTotal);
       const month = dateOf(run.periodStart).slice(0, 7);
       const f = await this.files.generateIn(tx, c, {
         legalEntityId: run.legalEntityId,
@@ -209,9 +293,24 @@ export class PayoutService implements OnModuleInit {
         contentType: out.contentType,
         data: out.data,
         rows: rows.length,
-        totals: { net: total.toFixed(2) },
+        totals: { net: domestic.toFixed(2) },
         by: v.userId!,
       });
+      const rf = remits.length
+        ? await this.files.generateIn(tx, c, {
+            legalEntityId: run.legalEntityId,
+            kind: 'remittance',
+            ownerType: 'payroll_run',
+            ownerId: run.id,
+            periodStart: dateOf(run.periodStart),
+            fileName: `remittance-${month}-${before + 1}.csv`,
+            contentType: 'text/csv; charset=utf-8',
+            data: remittanceCsv(remits),
+            rows: remits.length,
+            totals: { net: abroadTotal.toFixed(2) },
+            by: v.userId!,
+          })
+        : null;
       const bf = await tx.bankFile.create({
         data: {
           organizationId: org,
@@ -223,16 +322,21 @@ export class PayoutService implements OnModuleInit {
           debitAccountLast4: dto.debitAccount.slice(-4),
           generationNo: before + 1,
           regenerationReason: before ? dto.reason! : null,
-          payslipIds: [...new Set(rows.map((r) => r.slip.id))],
+          payslipIds: [...new Set([...rows, ...remits].map((r) => r.slip.id))],
           total,
           generatedBy: v.userId!,
+          remittanceFileId: rf?.id ?? null,
         },
       });
+      const claimed = into.filter((x) => bf.payslipIds.includes(x.payslipId));
+      if (claimed.length) await tx.payrollWithhold.updateMany({ where: { organizationId: org, id: { in: [...new Set(claimed.map((x) => x.holdId))] }, releasedRunId: null }, data: { releasedRunId: run.id } });
       await audit(tx, c, 'payroll.bankfile.generated', 'bank_file', bf.id, {
         runId: run.id,
+        releasedHeldPay: claimed.map((x) => x.payslipId),
         fileId: f.id,
         format: `${key} ${fmt.version}`,
         rows: rows.length,
+        abroadRows: remits.length,
         excluded: excluded.length,
         generation: bf.generationNo,
         reason: bf.regenerationReason,
@@ -245,9 +349,11 @@ export class PayoutService implements OnModuleInit {
         total: total.toFixed(2),
         sha256: f.sha256,
         format: { key, version: fmt.version, label: (fmt.values as unknown as BankLayout).label },
+        // PPL-46: the outward remittance list (accounts abroad), released with this file.
+        remittance: rf ? { fileId: rf.id, rows: remits.length, total: abroadTotal.toFixed(2), sha256: rf.sha256 } : null,
         excluded,
       };
-    });
+    }
   }
 
   async bankFiles(ctx: TenantContext, user: ScopeUser, runId: string) {
@@ -296,11 +402,15 @@ export class PayoutService implements OnModuleInit {
         const slips = await tx.payslip.findMany({ where: { organizationId: org, id: { in: bf.payslipIds } } });
         const total = slips.reduce((t, s) => t.add(s.net), D(0));
         const fileTotal = (f.totals as Record<string, string>).net;
+        // PPL-46: the remittance list goes with it (checked against its hash too); a slip may be split over several rows.
+        const rf = bf.remittanceFileId ? await tx.exchangeFile.findFirst({ where: { organizationId: org, id: bf.remittanceFileId } }) : null;
+        if (bf.remittanceFileId && (!rf || rf.status !== 'generated')) throw new ConflictException('The remittance list of this file changed. Generate it again.');
+        if (rf) await this.files.checked(rf);
+        const abroadTotal = rf ? D((rf.totals as Record<string, string>).net ?? '0') : D(0);
         if (
           slips.length !== bf.payslipIds.length ||
-          slips.length !== f.rowCount ||
           !total.eq(bf.total) ||
-          !total.eq(D(fileTotal ?? '0')) ||
+          !total.eq(D(fileTotal ?? '0').add(abroadTotal)) ||
           slips.some((s) => s.status !== 'approved' || s.held || !REPAYABLE.includes(s.paymentStatus))
         ) {
           throw new ConflictException('The payslips changed after this file was generated. Generate it again.');
@@ -308,7 +418,8 @@ export class PayoutService implements OnModuleInit {
         const me = await this.ownEmployeeIds(tx);
         if (slips.some((s) => me.has(s.employeeId))) throw new ForbiddenException('This file pays you, so someone else must release it.');
         await tx.payslip.updateMany({ where: { organizationId: org, id: { in: bf.payslipIds } }, data: { paymentStatus: 'sent' } });
-        await audit(tx, c, 'payroll.bankfile.released', 'bank_file', bf.id, { runId: bf.runId, fileId: f.id, rows: f.rowCount, sha256: f.sha256 });
+        if (rf) await tx.exchangeFile.update({ where: { id: rf.id }, data: { status: 'released', releasedBy: v.userId!, releasedAt: new Date() } });
+        await audit(tx, c, 'payroll.bankfile.released', 'bank_file', bf.id, { runId: bf.runId, fileId: f.id, rows: f.rowCount, sha256: f.sha256, remittance: rf ? { fileId: rf.id, rows: rf.rowCount, sha256: rf.sha256 } : null });
       },
     });
   }
@@ -329,11 +440,14 @@ export class PayoutService implements OnModuleInit {
       const status = (r.status ?? '').toLowerCase();
       if (!['paid', 'failed', 'returned'].includes(status) || !r.employee_code) throw new BadRequestException(`Row ${i + 2}: needs an employee_code and a status of paid, failed or returned.`);
       if (r.reference && !/^[A-Za-z0-9/-]{1,60}$/.test(r.reference)) throw new BadRequestException(`Row ${i + 2}: the reference is letters, digits, / and -.`);
+      const cause = (r.cause ?? '').toLowerCase();
+      if (cause && !['ifsc', 'account', 'other'].includes(cause)) throw new BadRequestException(`Row ${i + 2}: the cause is ifsc, account or other.`);
       return {
         employeeCode: r.employee_code.slice(0, 30),
         status: status as 'paid' | 'failed' | 'returned',
         bankReference: r.reference || undefined,
         reason: r.reason ? r.reason.slice(0, 300) : undefined,
+        cause: (cause || undefined) as PaymentResultRowDto['cause'],
       };
     });
   }
@@ -350,7 +464,11 @@ export class PayoutService implements OnModuleInit {
       const run = await this.runFor(tx, c, v, runId, ['payroll.payment.record']);
       this.requireApproved(run);
       await tx.$queryRaw`SELECT id FROM payroll_runs WHERE organization_id = ${org}::uuid AND id = ${run.id}::uuid FOR UPDATE`;
-      const slips = await this.slips(tx, org, run);
+      const files0 = await tx.bankFile.findMany({ where: { organizationId: org, runId: run.id }, select: { payslipIds: true } });
+      const own = await this.slips(tx, org, run);
+      // Item 10: released held pay of earlier runs that this run's bank file carried.
+      const carried = await tx.payslip.findMany({ where: { organizationId: org, status: 'approved', runId: { not: run.id }, id: { in: [...new Set(files0.flatMap((f) => f.payslipIds))] } }, orderBy: { createdAt: 'asc' } });
+      const slips = [...own, ...carried];
       const codes = await tx.employment.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employmentId) } }, select: { id: true, employeeCode: true } });
       const me = await this.ownEmployeeIds(tx);
       const problems: string[] = [];
@@ -364,6 +482,7 @@ export class PayoutService implements OnModuleInit {
         else if (s.paymentStatus !== 'sent') problems.push(`${at}: the payslip is ${s.paymentStatus}, not waiting for a bank result.`);
         if (r.status !== 'paid' && !r.reason) problems.push(`${at}: say why the payment ${r.status === 'failed' ? 'failed' : 'came back'}.`);
         if (source === 'manual' && !r.reason) problems.push(`${at}: a result entered by hand needs a reason.`);
+        if (r.cause && r.status === 'paid') problems.push(`${at}: a paid row has no failure cause.`);
         if (s) seen.add(s.id);
         return { r, s: s! };
       });
@@ -380,13 +499,14 @@ export class PayoutService implements OnModuleInit {
             status: r.status,
             bankReference: r.bankReference ?? null,
             reason: r.reason ?? null,
+            cause: r.status === 'paid' ? null : (r.cause ?? null),
             source,
             recordedBy: v.userId!,
           },
         });
         await tx.payslip.update({ where: { id: s.id }, data: { paymentStatus: r.status } });
         if (r.status !== 'paid') {
-          await audit(tx, c, 'payment.failed', 'payslip', s.id, { employeeId: s.employeeId, status: r.status, reason: r.reason });
+          await audit(tx, c, 'payment.failed', 'payslip', s.id, { employeeId: s.employeeId, status: r.status, reason: r.reason, cause: r.cause ?? null });
           await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'payment.failed', payload: { payslipId: s.id, runId: run.id, kind: 'payslip', employeeId: s.employeeId, status: r.status } } });
           const u = (await tx.employee.findFirst({ where: { organizationId: org, id: s.employeeId }, select: { userId: true } }))?.userId;
           if (u)
@@ -394,7 +514,10 @@ export class PayoutService implements OnModuleInit {
               to: [u],
               type: 'payroll.payment.failed',
               entityId: s.id,
-              text: 'Your salary payment did not go through. Check your bank details in your profile; payroll will pay it again.',
+              text:
+                r.cause === 'ifsc'
+                  ? 'Your salary payment did not go through: the bank says the IFSC of your account is not valid. Correct it in your profile; payroll pays it again once it is fixed.'
+                  : 'Your salary payment did not go through. Check your bank details in your profile; payroll will pay it again.',
               link: '/yx/me/profile',
               subject: 'Your salary payment did not go through',
             });
@@ -406,6 +529,7 @@ export class PayoutService implements OnModuleInit {
         failed: todo.filter((t) => t.r.status !== 'paid').length,
       });
       await this.settle(tx, c, run);
+      for (const other of await tx.payrollRun.findMany({ where: { organizationId: org, id: { in: [...new Set(todo.map((t) => t.s.runId).filter((x): x is string => !!x && x !== run.id))] } } })) await this.settle(tx, c, other);
       return { recorded: todo.length, runStatus: (await tx.payrollRun.findFirstOrThrow({ where: { id: run.id }, select: { status: true } })).status };
     });
     await this.send(ctx.organizationId!, notices);
@@ -434,6 +558,50 @@ export class PayoutService implements OnModuleInit {
       await tx.$queryRaw`SELECT bank_account_use_now(${org}::uuid, ${a.id}::uuid)`;
       await audit(tx, c, 'payroll.bank.expedited', 'payslip', s.id, { employeeId: s.employeeId, account: `•••• ${a.accountLast4}`, pennyDropReference: dto.pennyDropReference, reason: dto.reason });
       return { payslipId: s.id, account: `•••• ${a.accountLast4}`, usableNow: true };
+    });
+  }
+
+  /**
+   * Pay a failed or returned payment again (founder 29 Oct 2026). The payslip goes back to "pending" (so a second call
+   * is refused: 409). Next bank file: the run's next file picks it up. Off-cycle or reimbursement account: a bank file for
+   * this one payslip is made now (needs the bank file key too) and someone else releases it, as for any bank file.
+   */
+  async repay(ctx: TenantContext, user: ScopeUser, payslipId: string, dto: RepayDto) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'payroll.payment.record');
+      await payScope(tx, ids);
+      await tx.$queryRaw`SELECT id FROM payslips WHERE organization_id = ${org}::uuid AND id = ${payslipId}::uuid FOR UPDATE`;
+      const s = await tx.payslip.findFirst({ where: { organizationId: org, id: payslipId } });
+      if (!s || !s.runId || !ids.includes(s.legalEntityId)) throw new NotFoundException('Not found');
+      if ((await this.ownEmployeeIds(tx)).has(s.employeeId)) throw new ForbiddenException('Someone else arranges your own pay.');
+      if (s.status !== 'approved' || !['failed', 'returned'].includes(s.paymentStatus))
+        throw new ConflictException(s.paymentStatus === 'pending' ? 'This payment is already waiting to be paid; nothing to pay again.' : 'Only a payment that failed or came back can be paid again.');
+      // PAY-10: an invalid IFSC is paid again through the bank only once the employee's corrected account is on file.
+      if (dto.route !== 'reimbursement_account' && (await waitingForIfsc(tx, org, [s])).has(s.id))
+        throw new ConflictException({ statusCode: 409, code: 'WAITING_FOR_IFSC', message: 'Waiting for the employee to correct the IFSC of their bank account. Pay it again once the corrected account is on file, or pay to a verified reimbursement account.' });
+      let file: Awaited<ReturnType<PayoutService['writeBank']>> | null = null;
+      if (dto.route !== 'next_bank_file') {
+        if (!(await entitiesFor(tx, c, v, 'payroll.bankfile.generate')).includes(s.legalEntityId))
+          throw new ForbiddenException('Paying now makes a bank file, which needs the bank file key. Choose Next bank file, or ask someone who makes bank files.');
+        if (!dto.debitAccount) throw new BadRequestException('Enter the account the bank debits (6 to 20 digits).');
+        const run = await tx.payrollRun.findFirstOrThrow({ where: { organizationId: org, id: s.runId } });
+        this.requireApproved(run);
+        file = await this.writeBank(tx, c, v, run, { debitAccount: dto.debitAccount, reason: `Pay again: ${dto.reason}` }, { payslipId: s.id, purpose: dto.route === 'reimbursement_account' ? 'reimbursement' : 'salary' });
+      }
+      await tx.payslip.update({ where: { id: s.id }, data: { paymentStatus: 'pending' } });
+      await audit(tx, c, 'payroll.payment.repay', 'payslip', s.id, { employeeId: s.employeeId, runId: s.runId, route: dto.route, reason: dto.reason, amount: s.net.toFixed(2), was: s.paymentStatus, bankFileId: file?.id ?? null });
+      return { payslipId: s.id, paymentStatus: 'pending', route: dto.route, bankFile: file ? { id: file.id, fileId: file.fileId, total: file.total } : null };
+    });
+  }
+
+  /** "Show pay" on the payments page (founder 29 Oct 2026): each time is recorded, nothing else changes. */
+  async payViewed(ctx: TenantContext, user: ScopeUser, runId: string) {
+    const v = await this.viewer(user);
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const run = await this.runFor(tx, c, v, runId, ['payroll.payment.record', 'payroll.run.view', 'payroll.bankfile.generate', 'payroll.bankfile.release']);
+      await audit(tx, c, 'payroll.pay.shown', 'payroll_run', run.id, { page: 'payments' });
     });
   }
 
@@ -590,4 +758,20 @@ export class PayoutService implements OnModuleInit {
       return { id: d.id, payslipId: s.id, mode: d.mode, paymentStatus: 'cash' };
     });
   }
+}
+
+/**
+ * PAY-10: of these failed payslips, the ones whose latest bank failure was an invalid IFSC and whose employee has not put
+ * a new salary account on file since then ("waiting for corrected IFSC").
+ */
+export async function waitingForIfsc(tx: Tx, org: string, slips: { id: string; employeeId: string; paymentStatus: string }[]): Promise<Set<string>> {
+  const failed = slips.filter((s) => s.paymentStatus === 'failed' || s.paymentStatus === 'returned');
+  if (!failed.length) return new Set();
+  const recs = await tx.paymentRecord.findMany({ where: { organizationId: org, payslipId: { in: failed.map((s) => s.id) }, status: { in: ['failed', 'returned'] } }, orderBy: { recordedAt: 'desc' }, select: { payslipId: true, cause: true, recordedAt: true } });
+  const latest = new Map<string, (typeof recs)[number]>();
+  for (const r of recs) if (!latest.has(r.payslipId)) latest.set(r.payslipId, r);
+  const ifsc = failed.filter((s) => latest.get(s.id)?.cause === 'ifsc');
+  if (!ifsc.length) return new Set();
+  const accounts = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: { in: ifsc.map((s) => s.employeeId) }, purpose: 'salary' }, select: { employeeId: true, validFrom: true } });
+  return new Set(ifsc.filter((s) => !accounts.some((a) => a.employeeId === s.employeeId && a.validFrom > latest.get(s.id)!.recordedAt)).map((s) => s.id));
 }

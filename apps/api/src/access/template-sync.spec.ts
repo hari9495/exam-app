@@ -27,4 +27,25 @@ describe('role template sync', () => {
     expect(conf).toEqual({ granted: ['audit.view'], skipped: ['employee.salary.view'], keys: ['audit.view', 'org:view'] });
     expect(upgrade(['org:view'], ['org:view', 'employee.salary.view'], false).granted).toEqual(['employee.salary.view']);
   });
+
+  it('HR Admin sees Special data (founder 27 Oct 2026); a held copy gets it through a second admin, an unheld one at once', () => {
+    const hr = ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!;
+    expect(hr.permissions).toContain('employee.aadhaar.view');
+    const before = TEMPLATE_HISTORY.hr_admin.find((v) => !v.includes('employee.aadhaar.view') && v.includes('employee.identity.approve'))!;
+    expect(templateOf(before)?.template).toBe('hr_admin');
+    expect(upgrade(before, hr.permissions, true).skipped).toContain('employee.aadhaar.view');
+    expect(upgrade(before, hr.permissions, false).granted).toContain('employee.aadhaar.view');
+  });
+
+  it('walk 2: a past version that also got payroll.equity.own (PAY-58 migration) still follows its template', () => {
+    // The demo company's Recruiter: the template before answer 452 plus the equity key.
+    const recruiter = ROLE_TEMPLATES.find((t) => t.key === 'recruiter')!;
+    const before = TEMPLATE_HISTORY.recruiter.find((v) => !v.includes('ats.staffing.view'))!;
+    const demo = ['ats.assessment.view', 'ats.candidate.manage', 'ats.costs.manage', 'ats.interview.schedule', 'ats.job.manage', 'ats.offer.manage', 'ats.report.view', 'payroll.equity.own'];
+    expect(before).toBeDefined();
+    expect(templateOf(demo)?.template).toBe('recruiter');
+    expect(upgrade(demo, recruiter.permissions, true).granted).toContain('ats.staffing.view');
+    expect(templateOf([...demo, 'company.own.key'])).toBeNull();
+  });
 });
+

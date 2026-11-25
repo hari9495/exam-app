@@ -21,12 +21,17 @@ test('finance sets a Tier 2 hotel cap', async ({ browser }) => {
   if (await starters.isVisible()) await starters.click();
   await expect(limitsTab).toBeVisible({ timeout: 30_000 });
 
-  // The starter policy is in force: its limits change only as a new version.
-  await expect(page.getByRole('button', { name: 'Save as a new version' })).toBeDisabled();
+  // The starter policy is in force: a changed limit is saved only as a new version (then left unsaved here).
+  const matrix = page.getByRole('tabpanel', { name: 'Limits matrix' });
+  await expect(matrix).toContainText(/v\d+, from .+Standard: everyone/);
+  await matrix.getByRole('textbox', { name: 'Hotel and lodging, Tier 2' }).fill('3333');
+  await expect(matrix.getByRole('button', { name: /^Save as v\d+$/ })).toBeVisible();
+  await expect(matrix.getByRole('button', { name: 'Save limits' })).toHaveCount(0);
+  await matrix.getByRole('button', { name: 'Discard' }).click();
 
   // A policy for later, for everyone: edited in place.
   await page.getByRole('button', { name: 'Copy as a new policy' }).click();
-  const sheet = page.getByRole('dialog');
+  const sheet = page.getByRole('dialog', { name: 'Copy as a new policy' });
   await sheet.getByRole('textbox', { name: /^Name/ }).fill(`Hotels ${tag}`);
   await sheet.getByRole('radio', { name: 'Everyone' }).click();
   const later = new Date(Date.now() + 330 * 60_000 + 45 * 86_400_000).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -35,16 +40,16 @@ test('finance sets a Tier 2 hotel cap', async ({ browser }) => {
   await sheet.getByRole('button', { name: 'Save policy' }).click();
   await expect(sheet).toHaveCount(0, { timeout: 30_000 });
 
-  await page.getByRole('combobox', { name: 'Policy' }).click();
-  await page.getByRole('option', { name: new RegExp(`Hotels ${tag}`) }).click();
-  await expect(page.getByText(/^Starts /)).toBeVisible();
-  const cell = page.getByRole('textbox', { name: 'Hotel and lodging, Tier 2' });
-  await cell.fill('3600');
-  await page.getByRole('button', { name: 'Save limits' }).click();
-  await expect(page.getByRole('button', { name: 'Save limits' })).toBeDisabled({ timeout: 30_000 });
+  const open = async () => {
+    await page.getByRole('table', { name: 'Other policies' }).getByRole('row', { name: new RegExp(`Hotels ${tag}`) }).getByRole('button', { name: 'Edit limits' }).click();
+    await expect(matrix).toContainText(new RegExp(`v[0-9]+, starts .+Hotels ${tag}: everyone`), { timeout: 30_000 });
+  };
+  await open();
+  await matrix.getByRole('textbox', { name: 'Hotel and lodging, Tier 2' }).fill('3600');
+  await matrix.getByRole('button', { name: 'Save limits' }).click();
+  await expect(matrix.getByRole('button', { name: 'Save limits' })).toHaveCount(0, { timeout: 30_000 }); // nothing left unsaved
 
   await page.reload();
-  await page.getByRole('combobox', { name: 'Policy' }).click();
-  await page.getByRole('option', { name: new RegExp(`Hotels ${tag}`) }).click();
-  await expect(page.getByRole('textbox', { name: 'Hotel and lodging, Tier 2' })).toHaveValue('3600');
+  await open();
+  await expect(matrix.getByRole('textbox', { name: 'Hotel and lodging, Tier 2' })).toHaveValue('3600');
 });

@@ -1,6 +1,6 @@
 // Story and test data in the YukthiX story world (review/RULES.md "Data facts"): Kaveri Foods, fictional
 // identifiers, documentation IP ranges. TODAY is 29 Sep 2026.
-import type { CompanyRules, LegalEntity, MasterLists, OrgLocation, PayRange, SettingDef, SettingOverride, SettingScopeChoices, StateOption } from './types';
+import type { CompanyRules, ErasureReport, LegalEntity, MasterLists, OrgLocation, PayRange, StateOption } from './types';
 
 export const TODAY_ISO = '2026-09-29';
 
@@ -74,7 +74,8 @@ const loc = (id: string, legalEntityId: string, name: string, code: string, city
 export const LOCATIONS: OrgLocation[] = [
   loc('loc-blr', 'le-kfpl', 'Bengaluru head office', 'BLR-HO', 'Bengaluru', 'IN-KA', '560025', '14 Residency Road', { lat: 12.9716, lng: 77.5946, radiusM: 150 }, ['203.0.113.0/24']),
   loc('loc-maa', 'le-tn', 'Chennai office', 'MAA-OFF', 'Chennai', 'IN-TN', '600032', '5 Guindy Industrial Estate', { lat: 13.0067, lng: 80.2206, radiusM: 150 }, ['198.51.100.16/28']),
-  loc('loc-hsr', 'le-tn', 'Hosur plant', 'HSR-PLT', 'Hosur', 'IN-TN', '635126', '22 SIPCOT Industrial Complex', { lat: 12.7409, lng: 77.8253, radiusM: 300 }, ['10.20.0.0/16']),
+  // HLP-14 answer 132: the plant is a registered factory (Time adds the factory leave minimum there).
+  { ...loc('loc-hsr', 'le-tn', 'Hosur plant', 'HSR-PLT', 'Hosur', 'IN-TN', '635126', '22 SIPCOT Industrial Complex', { lat: 12.7409, lng: 77.8253, radiusM: 300 }, ['10.20.0.0/16']), registeredFactory: true },
   loc('loc-mys', 'le-kfpl', 'Mysuru depot', 'MYS-DEP', 'Mysuru', 'IN-KA', '570001', '3 Sayyaji Rao Road', null, [], '2026-06-30T18:30:00Z'),
 ];
 
@@ -116,35 +117,22 @@ export const PAY_RANGES: PayRange[] = [
 ];
 
 /** GET /org/settings registry (P01 §4.6), as the API sends it. */
-export const SETTING_REGISTRY: Record<string, SettingDef> = {
-  'employee_change.retro_limit': { label: 'Past-dated changes may go back to', scopes: ['tenant'], dated: false, values: ['current_fy', 'previous_fy'], default: 'current_fy' },
-  'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: false, values: ['3', '6', '9', '12'], default: '6' },
-  'probation.review_lead_days': { label: 'Probation review reminder (days before the end)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '15', '30'], default: '15' },
-  'probation.max_total_months': { label: 'Probation with extensions lasts at most (months)', scopes: ['tenant', 'legal_entity', 'employment_type'], dated: false, values: ['6', '9', '12', '18', '24'], default: '12' },
-  'probation.auto_confirm_after_days': { label: 'Confirm automatically after the end date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['off', '0', '7', '15', '30'], default: 'off' },
-  'access.manager.view_scope': { label: 'Managers can view', scopes: ['tenant'], dated: false, values: ['all_reports', 'direct_reports'], default: 'all_reports', guard: 'access.role.manage' },
-  'access.risk.confidential_threshold': { label: 'Warn when a grant opens Confidential data of more than (people)', scopes: ['tenant'], dated: false, values: ['5', '10', '25', '50', '100', '250'], default: '25', guard: 'access.role.manage' },
-  'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
-  'employee.bank_change.cooling_hours': { label: 'New bank accounts are used for pay after (hours)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '24', '48', '72'], default: '48', guard: 'access.role.manage' },
-  'home.pay_on_employee_home': { label: 'Show net pay on the employee home', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
-  'attendance.mode': { label: 'Attendance mode', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['punch', 'assumed_present', 'timesheet'], default: 'punch' },
-  'attendance.missing_punch_effect': { label: 'Missing punches', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['block_payroll_approval', 'warning_only'], default: 'block_payroll_approval' },
-  'attendance.factories_act': { label: 'Factories Act (overtime is paid at the legal rate)', scopes: ['tenant', 'legal_entity', 'location', 'department', 'employment_type'], dated: true, values: ['covered', 'not_covered'], default: 'not_covered' },
-};
-
-export const SETTING_OVERRIDES: SettingOverride[] = [
-  { id: 's-1', key: 'probation.default_months', scopeType: 'legal_entity', scopeId: 'le-tn', value: '3', validFrom: null },
-  { id: 's-2', key: 'probation.default_months', scopeType: 'grade', scopeId: 'gr-m1', value: '12', validFrom: null },
-  { id: 's-3', key: 'attendance.mode', scopeType: 'tenant', scopeId: 'org', value: 'punch', validFrom: '2026-04-01' },
-  { id: 's-4', key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-blr', value: 'assumed_present', validFrom: '2026-04-01' },
-  { id: 's-5', key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-hsr', value: 'timesheet', validFrom: '2026-11-01' },
-  { id: 's-6', key: 'access.manager.view_scope', scopeType: 'tenant', scopeId: 'org', value: 'direct_reports', validFrom: null },
+const ERASURE_WHO: ErasureReport['who'] = [
+  { name: 'Ravi Kumar', employeeCode: 'YX-0142', day: '2024-03-31', neverJoined: false },
+  { name: 'Meena Iyer', employeeCode: 'YX-0207', day: '2024-08-15', neverJoined: false },
+  { name: 'Farhan Ali', employeeCode: null, day: '2025-01-10', neverJoined: true },
+  { name: 'Sunita Rao', employeeCode: 'YX-0311', day: '2025-06-30', neverJoined: false },
 ];
-
-export const SETTING_CHOICES: SettingScopeChoices = {
-  legal_entity: ENTITIES.filter((e) => !e.archivedAt).map((e) => ({ value: e.id, label: e.name })),
-  location: LOCATIONS.map((l) => ({ value: l.id, label: l.name })),
-  department: MASTERS.departments.map((d) => ({ value: d.id, label: d.name })),
-  employment_type: MASTERS['employment-types'].map((t) => ({ value: t.id, label: t.name })),
-  grade: MASTERS.grades.map((g) => ({ value: g.id, label: g.name })),
+/** Settings › Access and privacy: the Special data erasure, off, before HR's first run (dry run only, with who). */
+export const ERASURE_DRY_RUN: ErasureReport = { enabled: false, due: { people: 4, aadhaar: 4, documents: 7, backgroundChecks: 3, disability: 1 }, who: ERASURE_WHO, lastRun: null };
+/** On, after a night's run in which one person could not be done; no one is due now. */
+/** On, with two people due at the next run (one an offer that never joined). */
+export const ERASURE_ON_DUE: ErasureReport = {
+  enabled: true,
+  due: { people: 2, aadhaar: 2, documents: 2, backgroundChecks: 1, disability: 0 },
+  who: [
+    { name: 'Arjun Mehta', employeeCode: 'YX-0388', day: '2025-10-28', neverJoined: false },
+    { name: 'Divya Nair', employeeCode: null, day: '2025-10-29', neverJoined: true },
+  ],
+  lastRun: { at: '2026-10-29T22:45:00Z', people: 4, aadhaar: 4, documents: 7, backgroundChecks: 3, disability: 1, failed: 0 },
 };

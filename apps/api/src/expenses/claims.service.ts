@@ -8,7 +8,8 @@ import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, started, tenantWi
 import { ApprovalsEngine, type StepSpec } from '../workflow/approvals-engine.service';
 import { FilesService } from '../documents/files.service';
 import { holdersOf, hrApprovers } from '../time/time-core';
-import { checkLimit, dupKey, gstMathsProblem, gstinProblem, itcStatusOf, merchantsAlike, mileageAmount, perDiemAmount, receiptNeed, riskOf, ruleFor, taxablePart, tierFor } from './checks';
+import { flexClaimBlockers } from '../payroll/flex.service';
+import { COMPANY_PAID, checkLimit, dupKey, gstMathsProblem, gstinProblem, itcStatusOf, merchantsAlike, mileageAmount, perDiemAmount, receiptNeed, riskOf, ruleFor, taxablePart, tierFor } from './checks';
 import type { ApproveAmountDto, ClaimDto, LineDto } from './claims-dto';
 import { checkEinvoiceQr, keysFromPem } from './einvoice';
 import { RECEIPT_READER, type ReceiptReader } from './ocr';
@@ -16,7 +17,8 @@ import { lowConfidence, type OcrFields } from './ocr-parse';
 import { ExpenseSetupService } from './setup.service';
 import { ExpensePaymentsService } from './payments.service';
 import { closeTripIfDone, settleAdvanceByClaim } from './trips.service';
-import { FX_TOLERANCE_PCT, LOOK_ALIKE_BITS, toPay, variancePct } from './fx';
+import { TEAM_LIST_STATUSES, isOverLimit, istMonthRange, lastMonths, payMonthFor, teamFigures } from './home-rules';
+import { LOOK_ALIKE_BITS, toPay, variancePct } from './fx';
 import { fxRateFor } from './setup.service';
 
 // Expenses batch E2 (M05-BUILD-DESIGN §8, §9, §13, §15; XP-2.01 … XP-2.08): claims and lines, snap-first receipts
@@ -66,7 +68,17 @@ export class ExpenseClaimsService implements OnModuleInit {
       distinctSteps: true,
       onDecided: (tx, req, outcome) => this.decided(tx, req, outcome),
       requesterLink: (req) => `/yx/expenses/claims/${req.subjectId}`,
+      // The engine's shared "Send back for changes" (founder, 30 Oct 2026); always allowed for a claim still waiting.
+      sendBack: { allowed: (tx, req) => this.sendBackAllowed(tx, req), apply: (tx, req, reason) => this.sentBack(tx, req, reason) },
+      inboxNotes: (tx, reqs) => this.inboxNotes(tx, reqs),
     });
+  }
+
+  /** Home's row note (PLT-02): claims with a bill over its policy limit, for the approver holding them (one query). */
+  private async inboxNotes(tx: Tx, reqs: Prisma.WfRequestGetPayload<object>[]) {
+    const lines = await tx.expenseLine.findMany({ where: { organizationId: reqs[0].organizationId, claimId: { in: reqs.map((r) => r.subjectId) }, removedAt: null }, select: { claimId: true, policyResult: true } });
+    const over = new Set(lines.filter((l) => isOverLimit(l.policyResult)).map((l) => l.claimId));
+    return new Map(reqs.filter((r) => over.has(r.subjectId)).map((r) => [r.id, 'Over the policy limit, so it needs a full review']));
   }
 
   private viewer(user: ScopeUser) {
@@ -78,6 +90,14 @@ export class ExpenseClaimsService implements OnModuleInit {
   private async myEmployee(tx: Tx, org: string, v: Viewer) {
     if (!v.userId || v.actingForOther) return null;
     return tx.employee.findFirst({ where: { organizationId: org, userId: v.userId }, select: { id: true, personId: true, userId: true } });
+  }
+
+  /** The currency of my current legal entity (a saved receipt is read in it); INR when there is no assignment. */
+  private async myCurrency(tx: Tx, org: string, employeeId: string): Promise<string> {
+    const today = asDate(todayIst());
+    const job = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId, supersededAt: null, validFrom: { lte: today }, OR: [{ validTo: null }, { validTo: { gte: today } }] }, orderBy: { validFrom: 'desc' }, select: { legalEntityId: true } });
+    if (!job) return 'INR';
+    return (await tx.legalEntity.findFirst({ where: { organizationId: org, id: job.legalEntityId }, select: { currency: true } }))?.currency ?? 'INR';
   }
 
   private async access(tx: Tx, c: CompanyContext, v: Viewer, claim: Claim): Promise<Access> {
@@ -218,12 +238,14 @@ export class ExpenseClaimsService implements OnModuleInit {
     });
   }
 
-  private lineView(l: Line, seeGst: boolean) {
+  private lineView(l: Line, seeGst: boolean, receiptMime: string | undefined) {
     const ocr = (l.ocr ?? null) as { fields?: OcrFields; adapter?: string; confirmed?: boolean; einvoice?: string } | null;
     return {
       id: l.id,
       lineNo: l.lineNo,
       categoryCode: l.categoryCode,
+      projectId: l.projectId,
+      rebill: l.rebill,
       spentOn: iso(l.spentOn),
       merchant: l.merchant,
       city: l.city,
@@ -232,6 +254,8 @@ export class ExpenseClaimsService implements OnModuleInit {
       payMode: l.payMode,
       description: l.description,
       hasReceipt: Boolean(l.receiptFileId),
+      // Round 2: what the receipt thumbnail shows (a photo, or a PDF tile); the file itself comes from the receipt route.
+      receiptType: l.receiptFileId ? (receiptMime === 'application/pdf' ? 'pdf' : 'image') : null,
       selfDeclared: l.selfDeclared,
       claimed: l.claimed.toFixed(2),
       approved: money(l.approved),
@@ -250,9 +274,27 @@ export class ExpenseClaimsService implements OnModuleInit {
     };
   }
 
+  /** Answer 1419: the project named on a line (switched on, not closed; re-billing needs its client). */
+  private async projectFor(tx: Tx, c: CompanyContext, projectId: string) {
+    if ((await settingFor(tx, c, 'projects.expenses.enabled', { legalEntityId: '' })) !== 'on') throw new BadRequestException('Expenses are not linked to projects in your company.');
+    const p = await tx.timesheetProject.findFirst({ where: { organizationId: c.organizationId, id: projectId }, select: { id: true, status: true, code: true, clientId: true } });
+    if (!p) throw new BadRequestException('Choose a project of this company.');
+    if (p.status === 'closed') throw new BadRequestException(`${p.code} is closed. Choose an open project.`);
+    return p;
+  }
+
+  /** Answer 1419: the projects a claimant may name (open projects; none when the company has it off). */
+  private async projectChoices(tx: Tx, c: CompanyContext) {
+    if ((await settingFor(tx, c, 'projects.expenses.enabled', { legalEntityId: '' })) !== 'on' || (await settingFor(tx, c, 'projects.enabled', { legalEntityId: '' })) !== 'on') return null;
+    const ps = await tx.timesheetProject.findMany({ where: { organizationId: c.organizationId, status: { in: ['active', 'on_hold'] } }, select: { id: true, code: true, name: true, clientId: true }, orderBy: { code: 'asc' }, take: 500 });
+    return ps.map((p) => ({ id: p.id, code: p.code, name: p.name, client: Boolean(p.clientId) }));
+  }
+
   private async view(tx: Tx, c: CompanyContext, claim: Claim, a: Access) {
     const org = c.organizationId;
     const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null }, orderBy: { lineNo: 'asc' } });
+    const receiptIds = lines.map((l) => l.receiptFileId).filter((x): x is string => Boolean(x));
+    const mimes = new Map(receiptIds.length ? (await tx.file.findMany({ where: { organizationId: org, id: { in: receiptIds } }, select: { id: true, mime: true } })).map((f) => [f.id, f.mime]) : []);
     const changes = await tx.expenseLineChange.findMany({ where: { organizationId: org, claimId: claim.id }, orderBy: { createdAt: 'asc' } });
     const flags = await tx.expenseFlag.findMany({ where: { organizationId: org, claimId: claim.id }, orderBy: { createdAt: 'asc' } });
     const person = (await this.names(tx, org, [claim.employeeId])).get(claim.employeeId) ?? '';
@@ -262,13 +304,17 @@ export class ExpenseClaimsService implements OnModuleInit {
     return {
       ...this.summary(claim, person),
       decisionNote: claim.decisionNote,
-      lines: lines.map((l) => this.lineView(l, true)),
+      lines: lines.map((l) => this.lineView(l, true, mimes.get(l.receiptFileId ?? ''))),
+      // Answer 1419: the projects a line can name (null: the company has it off).
+      projects: await this.projectChoices(tx, c),
       changes: changes.map((x) => ({ lineId: x.lineId, from: x.oldAmount.toFixed(2), to: x.newAmount.toFixed(2), reason: x.reason, at: x.createdAt.toISOString() })),
       // Flags name other claims only by reference, so nothing of another person leaks (§15).
       flags: flags.map((f) => ({ id: f.id, lineId: f.lineId, kind: f.kind, detail: f.detail, status: f.status, note: f.note })),
       payment: claim.route ? { route: claim.route, month: pay?.payMonth ? iso(pay.payMonth).slice(0, 7) : null, paidOn: claim.paidAt ? iso(claim.paidAt) : null } : null,
-      route: route ? { status: route.status, currentStep: route.currentStep, steps: (route.steps as { name: string; state: string }[]).map((s) => ({ name: s.name, state: s.state })) } : null,
+      // EXP-03 design: who holds each step and when it was decided, for the approval timeline.
+      route: route ? { status: route.status, currentStep: route.currentStep, steps: await this.routeSteps(tx, org, claim.wfRequestId!, route.steps as { name: string; state: string }[]) } : null,
       can: {
+        own: a.own,
         edit: a.own && (claim.status === 'draft' || claim.status === 'sent_back'),
         withdraw: a.own && claim.status === 'submitted',
         decide: Boolean(a.openTaskId),
@@ -278,7 +324,37 @@ export class ExpenseClaimsService implements OnModuleInit {
     };
   }
 
+  private async routeSteps(tx: Tx, org: string, requestId: string, steps: { name: string; state: string }[]) {
+    const tasks = await tx.wfTask.findMany({ where: { organizationId: org, requestId }, select: { step: true, assigneeUserId: true, decidedAt: true }, orderBy: { createdAt: 'asc' } });
+    const users = tasks.length ? await tx.user.findMany({ where: { id: { in: [...new Set(tasks.map((t) => t.assigneeUserId))] } }, select: { id: true, name: true } }) : [];
+    const name = new Map(users.map((u) => [u.id, u.name]));
+    return steps.map((s, i) => {
+      const mine = tasks.filter((t) => t.step === i);
+      const at = mine.map((t) => t.decidedAt).filter((d): d is Date => Boolean(d)).sort((x, y) => y.getTime() - x.getTime())[0];
+      return { name: s.name, state: s.state, approvers: [...new Set(mine.map((t) => name.get(t.assigneeUserId) ?? '').filter(Boolean))], decidedAt: at?.toISOString() ?? null };
+    });
+  }
+
   // ------------------------------------------------------------------------------------------ receipts (snap first, §8.1)
+
+  /** Reads a receipt (OCR, and a signed e-invoice QR, which wins). The values are suggestions until confirmed. */
+  private async readReceipt(file: { originalname: string; buffer: Buffer }, mime: string, currency: string) {
+    const read = await this.reader.read(file.buffer, mime, { name: file.originalname, country: 'IN', currency });
+    const qr = read.qr ? checkEinvoiceQr(read.qr, this.qrKeys) : null;
+    const fields: OcrFields = { ...read.fields };
+    let einvoice: string | null = null;
+    if (qr && qr.status !== 'not_einvoice' && qr.fields) {
+      // A signed e-invoice wins over OCR: its values are exact (§13.4). An unverified one only suggests.
+      const conf = qr.status === 'verified' ? 1 : 0.5;
+      fields.gstin = { value: qr.fields.sellerGstin, confidence: conf };
+      fields.invoiceNo = { value: qr.fields.docNo, confidence: conf };
+      if (qr.fields.docDate) fields.date = { value: qr.fields.docDate, confidence: conf };
+      if (qr.fields.total) fields.amount = { value: qr.fields.total, confidence: conf };
+      einvoice = qr.status === 'verified' ? 'verified' : `unverified: ${qr.reason}`;
+    }
+    const ocr = { adapter: read.adapter, fields, confirmed: false, einvoice, billedTo: qr && qr.status !== 'not_einvoice' ? qr.fields?.buyerGstin ?? null : null, irn: qr && qr.status === 'verified' ? qr.fields.irn : null };
+    return { read, fields, einvoice, ocr };
+  }
 
   /**
    * Stores a receipt (virus-scanned before anyone opens it) and reads it. Without lineId it becomes a new draft line
@@ -296,20 +372,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${org}:receipt:${stored.sha256}`}))`;
       const same = await this.liveLineWith(tx, org, { receiptSha256: stored.sha256 }, lineId ?? null);
       if (same) throw new ConflictException({ statusCode: 409, code: 'SAME_RECEIPT', message: same.claimId === id ? 'This receipt is already on this claim.' : 'This receipt is already on another claim. A receipt can be claimed once.' });
-      const read = await this.reader.read(file.buffer, stored.mime, { name: file.originalname, country: 'IN', currency: claim.currency });
-      const qr = read.qr ? checkEinvoiceQr(read.qr, this.qrKeys) : null;
-      const fields: OcrFields = { ...read.fields };
-      let einvoice: string | null = null;
-      if (qr && qr.status !== 'not_einvoice' && qr.fields) {
-        // A signed e-invoice wins over OCR: its values are exact (§13.4). An unverified one only suggests.
-        const conf = qr.status === 'verified' ? 1 : 0.5;
-        fields.gstin = { value: qr.fields.sellerGstin, confidence: conf };
-        fields.invoiceNo = { value: qr.fields.docNo, confidence: conf };
-        if (qr.fields.docDate) fields.date = { value: qr.fields.docDate, confidence: conf };
-        if (qr.fields.total) fields.amount = { value: qr.fields.total, confidence: conf };
-        einvoice = qr.status === 'verified' ? 'verified' : `unverified: ${qr.reason}`;
-      }
-      const ocr = { adapter: read.adapter, fields, confirmed: false, einvoice, billedTo: qr && qr.status !== 'not_einvoice' ? qr.fields?.buyerGstin ?? null : null, irn: qr && qr.status === 'verified' ? qr.fields.irn : null };
+      const { read, fields, einvoice, ocr } = await this.readReceipt(file, stored.mime, claim.currency);
       let line: Line;
       if (lineId) {
         const cur = await tx.expenseLine.findFirst({ where: { organizationId: org, id: lineId, claimId: id, removedAt: null } });
@@ -383,6 +446,122 @@ export class ExpenseClaimsService implements OnModuleInit {
     return rows.find((r) => live.some((x) => x.id === r.claimId)) ?? null;
   }
 
+  // ------------------------------------------------------------------------------------------ saved expenses
+
+  /**
+   * Keka ideas (2026-11): expenses saved first, claimed later. My own saved spends not yet in a claim, newest first.
+   */
+  async myItems(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const me = await this.myEmployee(tx, c.organizationId, v);
+      if (!me) return { items: [] };
+      const rows = await tx.expenseItem.findMany({ where: { organizationId: c.organizationId, employeeId: me.id, claimedAt: null, removedAt: null }, orderBy: [{ spentOn: 'desc' }, { createdAt: 'desc' }], take: 200 });
+      return { items: rows.map((r) => ({ id: r.id, spentOn: iso(r.spentOn), amount: r.amount.toFixed(2), categoryCode: r.categoryCode, merchant: r.merchant, description: r.description, receipt: Boolean(r.receiptFileId), fromReceipt: Boolean(r.ocr && !(r.ocr as { confirmed?: boolean }).confirmed), createdAt: r.createdAt.toISOString() })) };
+    });
+  }
+
+  /** Saves one spend for later (a receipt is optional; the same receipt is never saved or claimed twice). */
+  async addItem(ctx: TenantContext, user: ScopeUser, dto: { spentOn?: string; amount?: string; categoryCode?: string | null; merchant?: string | null; description?: string | null }, file?: { originalname: string; buffer: Buffer }) {
+    if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    // Answer 2252: with a receipt, an amount or date left out is read from it; without one both are needed.
+    if (!file?.buffer?.length && (!dto.spentOn || !dto.amount)) throw new BadRequestException('Enter the date and the amount, or add the receipt to read them from.');
+    if (dto.spentOn && dto.spentOn > todayIst()) throw new BadRequestException('A bill cannot be dated in the future.');
+    if (dto.amount && !(Number(dto.amount) > 0)) throw new BadRequestException('Enter an amount above zero.');
+    const v = await this.viewer(user);
+    const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const me = await this.myEmployee(tx, org, v);
+      if (!me) throw new ForbiddenException('Only employees can claim expenses.');
+      if (dto.categoryCode && !(await tx.expenseCategory.findFirst({ where: { organizationId: org, code: dto.categoryCode, active: true } }))) throw new BadRequestException('Choose an expense category in use.');
+      let stored: { id: string; sha256: string; mime: string } | null = null;
+      if (file?.buffer?.length) {
+        stored = await this.files.storeIn(tx, c, { area: 'expense', name: file.originalname, data: file.buffer, allowedMime: RECEIPT_MIME, maxMb: 10, via: 'self' });
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${org}:receipt:${stored.sha256}`}))`;
+        const onClaim = await this.liveLineWith(tx, org, { receiptSha256: stored.sha256 }, null);
+        const saved = await tx.expenseItem.findFirst({ where: { organizationId: org, receiptSha256: stored.sha256, claimedAt: null, removedAt: null }, select: { id: true } });
+        if (onClaim || saved) throw new ConflictException({ statusCode: 409, code: 'SAME_RECEIPT', message: onClaim ? 'This receipt is already on a claim. A receipt can be claimed once.' : 'This receipt is already in your saved expenses.' });
+      }
+      let spentOn = dto.spentOn ?? null;
+      let amount = dto.amount ?? null;
+      let merchant = dto.merchant?.trim() || null;
+      let ocr: Prisma.InputJsonValue | undefined;
+      if (stored && file) {
+        const r = await this.readReceipt(file, stored.mime, await this.myCurrency(tx, org, me.id));
+        const readDate = r.fields.date?.value && r.fields.date.value <= todayIst() ? r.fields.date.value : null;
+        const readAmount = r.fields.amount?.value && Number(r.fields.amount.value) > 0 ? Number(r.fields.amount.value).toFixed(2) : null;
+        // Values the person typed stand; only what they left out is filled. Typed both: the line needs no check.
+        ocr = { ...r.ocr, confirmed: Boolean(dto.spentOn && dto.amount) } as unknown as Prisma.InputJsonValue;
+        spentOn ??= readDate;
+        amount ??= readAmount;
+        merchant ??= r.fields.merchant?.value?.slice(0, 120) || null;
+      }
+      const missing = [...(spentOn ? [] : ['date']), ...(amount ? [] : ['amount'])];
+      if (missing.length) throw new BadRequestException(`The ${missing.join(' and ')} could not be read from the receipt. Enter ${missing.length > 1 ? 'them' : 'it'}.`);
+      const item = await tx.expenseItem.create({ data: { organizationId: org, employeeId: me.id, spentOn: asDate(spentOn!), amount: amount!, categoryCode: dto.categoryCode || null, merchant, description: dto.description?.trim() || null, receiptFileId: stored?.id ?? null, receiptSha256: stored?.sha256 ?? null, ...(ocr ? { ocr } : {}) } });
+      await audit(tx, c, 'expense.item.saved', 'expense_item', item.id, { receipt: Boolean(stored), read: Boolean(ocr) });
+      return { id: item.id, fileId: stored?.id ?? null };
+    });
+    // The virus check runs after the commit, as for a claim's receipt.
+    if (res.fileId) void this.files.scan(ctx.organizationId!, res.fileId).catch(() => undefined);
+    return { id: res.id };
+  }
+
+  /** Removes a saved spend I have not claimed yet (kept, marked removed). */
+  async removeItem(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const me = await this.myEmployee(tx, c.organizationId, v);
+      const n = me ? await tx.expenseItem.updateMany({ where: { organizationId: c.organizationId, id, employeeId: me.id, claimedAt: null, removedAt: null }, data: { removedAt: new Date() } }) : { count: 0 };
+      if (!n.count) throw new NotFoundException('No such saved expense.');
+      await audit(tx, c, 'expense.item.removed', 'expense_item', id, {});
+      return { removed: true };
+    });
+  }
+
+  /** Picks saved spends into my draft claim: each becomes a line (its receipt moves with it) and leaves the saved list. */
+  async claimItems(ctx: TenantContext, user: ScopeUser, claimId: string, itemIds: string[]) {
+    const v = await this.viewer(user);
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { claim, a } = await this.claimOr404(tx, c, v, claimId);
+      this.editable(claim, a);
+      if (!a.own) throw new ForbiddenException('Only the person claiming adds their saved expenses.');
+      const items = await tx.expenseItem.findMany({ where: { organizationId: org, id: { in: itemIds }, employeeId: claim.employeeId, claimedAt: null, removedAt: null }, orderBy: { spentOn: 'asc' } });
+      if (items.length !== new Set(itemIds).size) throw new NotFoundException('Some of these saved expenses are not yours or were already claimed.');
+      const fallback = await this.defaultCategory(tx, org);
+      for (const it of items) {
+        const spentOn = iso(it.spentOn);
+        const amount = it.amount.toFixed(2);
+        const line = await tx.expenseLine.create({
+          data: {
+            organizationId: org,
+            claimId,
+            lineNo: await this.nextLineNo(tx, org, claimId),
+            categoryCode: it.categoryCode ?? fallback,
+            spentOn: it.spentOn,
+            merchant: it.merchant,
+            description: it.description,
+            claimed: amount,
+            receiptFileId: it.receiptFileId,
+            receiptSha256: it.receiptSha256,
+            // Answer 2252: what was read moves with it; read values the person did not type are checked on the line.
+            ...(it.ocr ? { ocr: it.ocr as Prisma.InputJsonValue } : {}),
+            // No receipt: a declared bill, as "A bill without a receipt" (the policy check asks for one when needed).
+            selfDeclared: !it.receiptFileId,
+            dupKey: dupKey(claim.employeeId, spentOn, amount),
+          },
+        });
+        // Guarded on not yet claimed: two presses at once claim it once.
+        const n = await tx.expenseItem.updateMany({ where: { id: it.id, claimedAt: null }, data: { claimedLineId: line.id, claimedAt: new Date() } });
+        if (!n.count) throw new ConflictException('A saved expense was just claimed. Reload the page.');
+      }
+      await this.retotal(tx, org, claimId);
+      await audit(tx, c, 'expense.items.claimed', 'expense_claim', claimId, { items: items.length });
+    });
+    return this.get(ctx, user, claimId);
+  }
+
   // ------------------------------------------------------------------------------------------ lines
 
   async addLine(ctx: TenantContext, user: ScopeUser, id: string, dto: LineDto) {
@@ -405,6 +584,9 @@ export class ExpenseClaimsService implements OnModuleInit {
       const cur = lineId ? await tx.expenseLine.findFirst({ where: { organizationId: org, id: lineId, claimId: id, removedAt: null } }) : null;
       if (lineId && !cur) throw new NotFoundException('No such line.');
       if (cur && dto.version !== undefined && cur.version !== dto.version) throw new ConflictException('Someone else changed this line. Reload it.');
+      // EXP-08: a line matched to the card statement was paid by the company card, so it is never paid to the employee.
+      if (cur && cur.payMode === 'company_card' && dto.payMode !== 'company_card' && (await tx.expenseCardLine.count({ where: { organizationId: org, matchedLineId: cur.id } })))
+        throw new BadRequestException('This line is on the company card statement, so it stays a company card line.');
       const tiers = await tx.cityTier.findMany({ where: { organizationId: org } });
       const country = dto.country ?? 'IN';
       const tier = tierFor(tiers, dto.city ?? null, country);
@@ -447,7 +629,12 @@ export class ExpenseClaimsService implements OnModuleInit {
       const ours = (await tx.entityGstRegistration.findMany({ where: { organizationId: org, legalEntityId: claim.legalEntityId }, select: { gstin: true } })).map((x) => x.gstin);
       const itc = itcStatusOf({ gstOn, gstEligible: cat.gstEligible, blocked: Boolean(cat.itcBlockedReason), supplierGstin: g.supplierGstin ?? null, invoiceNo: g.invoiceNo ?? null, billedTo: g.billedToGstin ?? null, placeOfSupply: g.placeOfSupply ?? null, ourGstins: ours });
       const prevOcr = (cur?.ocr ?? null) as Record<string, unknown> | null;
+      // Projects P-5 (answer 1419): a line may name a project only when the company switched it on.
+      const project = dto.projectId ? await this.projectFor(tx, c, dto.projectId) : null;
+      if (dto.rebill && !project?.clientId) throw new BadRequestException('Re-billing needs a project with a client.');
       const data = {
+        projectId: project?.id ?? null,
+        rebill: Boolean(project && dto.rebill),
         categoryCode: cat.code,
         spentOn: asDate(dto.spentOn),
         merchant: dto.merchant ?? null,
@@ -598,7 +785,7 @@ export class ExpenseClaimsService implements OnModuleInit {
   }
 
   private async retotal(tx: Tx, org: string, claimId: string) {
-    const sum = await tx.expenseLine.aggregate({ where: { organizationId: org, claimId, removedAt: null, payMode: { not: 'company_paid' } }, _sum: { claimed: true } });
+    const sum = await tx.expenseLine.aggregate({ where: { organizationId: org, claimId, removedAt: null, payMode: { notIn: COMPANY_PAID } }, _sum: { claimed: true } });
     await tx.expenseClaim.update({ where: { id: claimId }, data: { claimedTotal: sum._sum.claimed ?? 0, version: { increment: 1 } } });
   }
 
@@ -654,6 +841,7 @@ export class ExpenseClaimsService implements OnModuleInit {
     const cats = new Map((await tx.expenseCategory.findMany({ where: { organizationId: org } })).map((x) => [x.code, x]));
     const employment = await tx.employment.findFirstOrThrow({ where: { organizationId: org, id: claim.employmentId } });
     const windowDays = Number(await settingFor(tx, c, 'expense.claim_window_days', { legalEntityId: claim.legalEntityId }));
+    const fxTolerance = Number(await settingFor(tx, c, 'expense.fx_tolerance_pct', { legalEntityId: claim.legalEntityId }));
     const today = todayIst();
     for (const l of lines) {
       const cat = cats.get(l.categoryCode)!;
@@ -664,7 +852,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       if (!l.confirmed) blockers.push({ lineId: l.id, text: `${name}: check the distance from your field day and save the line.` });
       // F12: an entered rate needs its statement, and is flagged when far from the company rate (B18).
       if (l.fxSource === 'manual' && !l.fxProofFileId) blockers.push({ lineId: l.id, text: `${name}: upload the statement that shows your rate.` });
-      if (l.fxSource === 'manual' && l.fxVariancePct && l.fxVariancePct.abs().gt(FX_TOLERANCE_PCT)) flags.push({ kind: 'fx_rate', detail: `${name}: the rate entered is ${l.fxVariancePct.toFixed(2)} % from the company rate.`, lineId: l.id });
+      if (l.fxSource === 'manual' && l.fxVariancePct && l.fxVariancePct.abs().gt(fxTolerance)) flags.push({ kind: 'fx_rate', detail: `${name}: the rate entered is ${l.fxVariancePct.toFixed(2)} % from the company rate.`, lineId: l.id });
       // F4: a re-photographed receipt (a near-identical image of another live bill in the company).
       if (l.receiptPhash) {
         // shortcut: compares against every live line of the company; add an index-friendly prefilter when volumes grow.
@@ -738,6 +926,8 @@ export class ExpenseClaimsService implements OnModuleInit {
         const b = pd[j].perDiem as { from: string; to: string };
         if (a.from <= b.to && b.from <= a.to) blockers.push({ lineId: pd[j].id, text: `Line ${pd[j].lineNo}: these per-diem days are already on line ${pd[i].lineNo}.` });
       }
+    // B8/E5 (answer 2407): a flexible-benefit category may not take the person's balance below zero.
+    blockers.push(...(await flexClaimBlockers(tx, org, claim, lines)));
     return { lines, blockers, flags };
   }
 
@@ -776,9 +966,12 @@ export class ExpenseClaimsService implements OnModuleInit {
         payload: { claimed_total: Number(fresh.claimedTotal), cost_centre_id: (await this.costCentreOf(tx, org, claim.employeeId)) ?? '' },
         payloadFields: [],
         fallbackUserIds: fallback,
+        fallbackWording: { who: 'HR', check: "Check the person's manager or the cost-centre owner" },
         ...(risk === 'high' ? { risk: 'high' as const } : {}),
       });
-      await tx.expenseClaim.update({ where: { id }, data: { status: 'submitted', risk, wfRequestId: sub.id, submittedAt: new Date(), decidedAt: null, decisionNote: null, sendBackPending: false, version: { increment: 1 } } });
+      await tx.expenseClaim.update({ where: { id }, data: { status: 'submitted', risk, wfRequestId: sub.id, submittedAt: new Date(), decidedAt: null, decisionNote: null, version: { increment: 1 } } });
+      // Sent back for changes and now sent again: the whole route starts over as a new request (like leave).
+      if (claim.status === 'sent_back') await audit(tx, c, 'expense.claim.resent', 'expense_claim', id, { employeeId: claim.employeeId, previousRequestId: claim.wfRequestId, newRequestId: sub.id });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.submitted', payload: { claimId: id, lines: r.lines.length, flags: r.flags.length } } });
       if (r.flags.length) await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.flagged', payload: { claimId: id, kinds: [...new Set(r.flags.map((f) => f.kind))] } } });
       await audit(tx, c, 'expense.claim.submitted', 'expense_claim', id, { lines: r.lines.length, risk, steps: steps.map((s) => s.name) });
@@ -851,22 +1044,34 @@ export class ExpenseClaimsService implements OnModuleInit {
     });
   }
 
-  /** Approve, reject (with a reason) or send back (the employee edits and submits again), as the open task's holder. */
+  /** Approve, reject (with a reason) or send back for changes (with what to change), as the open task's holder. */
   async decide(ctx: TenantContext, user: ScopeUser, id: string, decision: 'approve' | 'reject' | 'send_back', reason: string | undefined) {
     const v = await this.viewer(user);
     const taskId = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const { claim, a } = await this.claimOr404(tx, c, v, id);
       if (!a.openTaskId || claim.status !== 'submitted') throw new ForbiddenException('This claim is not waiting for you.');
       if (decision !== 'approve' && (reason?.trim().length ?? 0) < 3) throw new BadRequestException(decision === 'send_back' ? 'Say what the employee should change.' : 'Say why you are not approving it.');
-      if (decision === 'send_back') await tx.expenseClaim.update({ where: { id }, data: { sendBackPending: true } });
       return a.openTaskId;
     });
-    try {
-      await this.engine.decide({ ...ctx, organizationId: ctx.organizationId! }, v.userId!, taskId, decision === 'approve' ? 'approve' : 'reject', reason?.trim() || null);
-    } finally {
-      if (decision === 'send_back') await this.tenantPrisma.forTenant(ctx, (tx) => tx.expenseClaim.updateMany({ where: { organizationId: ctx.organizationId!, id, status: 'submitted' }, data: { sendBackPending: false } }));
-    }
+    await this.engine.decide({ ...ctx, organizationId: ctx.organizationId! }, v.userId!, taskId, decision, reason?.trim() || null);
     return this.get(ctx, user, id);
+  }
+
+  private async sendBackAllowed(tx: Tx, req: Prisma.WfRequestGetPayload<object>) {
+    const claim = await tx.expenseClaim.findFirst({ where: { organizationId: req.organizationId, id: req.subjectId }, select: { status: true, wfRequestId: true } });
+    return claim?.status === 'submitted' && claim.wfRequestId === req.id;
+  }
+
+  /** Sent back for changes (engine decision, its transaction): the claim goes back to the employee to change and send again. */
+  private async sentBack(tx: Tx, req: Prisma.WfRequestGetPayload<object>, reason: string) {
+    const org = req.organizationId;
+    // The same rule on the claim page and in the approvals inbox.
+    if (reason.trim().length < 3) throw new BadRequestException('Say what the employee should change.');
+    const done = await tx.expenseClaim.updateMany({ where: { organizationId: org, id: req.subjectId, status: 'submitted', wfRequestId: req.id }, data: { status: 'sent_back', decidedAt: new Date(), decisionNote: reason, version: { increment: 1 } } });
+    if (!done.count) throw new ConflictException('This claim is no longer waiting for approval.');
+    await tx.expenseLine.updateMany({ where: { organizationId: org, claimId: req.subjectId }, data: { approved: null, reduceReason: null } });
+    await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.sent_back', payload: { claimId: req.subjectId } } });
+    await audit(tx, { organizationId: org, isSuperAdmin: false }, 'expense.claim.sent_back', 'expense_claim', req.subjectId, { wfRequestId: req.id, reason });
   }
 
   /** P03 effect, once, in the decision's own transaction. */
@@ -876,11 +1081,9 @@ export class ExpenseClaimsService implements OnModuleInit {
     if (!claim || claim.status !== 'submitted' || claim.wfRequestId !== req.id) return;
     const last = await tx.wfAction.findFirst({ where: { organizationId: org, requestId: req.id }, orderBy: { createdAt: 'desc' }, select: { reason: true } });
     if (outcome === 'rejected') {
-      const back = claim.sendBackPending;
-      await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: back ? 'sent_back' : 'rejected', sendBackPending: false, decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
-      if (back) await tx.expenseLine.updateMany({ where: { organizationId: org, claimId: claim.id }, data: { approved: null, reduceReason: null } });
-      await tx.eventOutbox.create({ data: { organizationId: org, eventType: back ? 'expense.claim.sent_back' : 'expense.claim.rejected', payload: { claimId: claim.id } } });
-      if (!back) await closeTripIfDone(tx, org, claim.tripId);
+      await tx.expenseClaim.update({ where: { id: claim.id }, data: { status: 'rejected', decidedAt: new Date(), decisionNote: last?.reason ?? null, version: { increment: 1 } } });
+      await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'expense.claim.rejected', payload: { claimId: claim.id } } });
+      await closeTripIfDone(tx, org, claim.tripId);
       return;
     }
     const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null } });
@@ -891,7 +1094,7 @@ export class ExpenseClaimsService implements OnModuleInit {
       const approved = l.approved ?? l.claimed;
       if (l.approved && l.approved.lt(l.claimed)) reduced = true;
       const over = (l.policyResult as { overBy?: string } | null)?.overBy ?? '0';
-      const payable = l.payMode === 'company_paid' ? D(0) : approved;
+      const payable = COMPANY_PAID.includes(l.payMode) ? D(0) : approved;
       total = total.add(payable);
       await tx.expenseLine.update({ where: { id: l.id }, data: { approved, taxableAmount: taxablePart(cats.get(l.categoryCode)?.taxable ?? 'never', payable.toFixed(2), over) } });
     }
@@ -930,6 +1133,43 @@ export class ExpenseClaimsService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ home (EXP-01)
 
+  /** My direct reports today (the manager on their current job). */
+  private directReports(tx: Tx, org: string, managerId: string, today: string) {
+    return tx.$queryRaw<{ id: string }[]>`
+      SELECT DISTINCT a.employee_id::text AS id FROM employee_assignments a
+      WHERE a.organization_id = ${org}::uuid AND a.manager_employee_id = ${managerId}::uuid AND a.superseded_at IS NULL
+        AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)`;
+  }
+
+  /**
+   * Team claims (founder answer 1, round 2): read only, for a manager; the claims my direct reports today sent in an IST
+   * month (this month when not given), with their over-limit lines. Drafts and withdrawn claims stay private. A row opens
+   * only when the manager may open the claim anyway (an approver on it, scope or finance): the list itself grants nothing.
+   */
+  async team(ctx: TenantContext, user: ScopeUser, month?: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const today = todayIst();
+      const me = await this.myEmployee(tx, org, v);
+      const reports = me ? await this.directReports(tx, org, me.id, today) : [];
+      if (!reports.length) throw new ForbiddenException('Team claims are for managers. No one reports to you today.');
+      const m = month ?? today.slice(0, 7);
+      const { from, to } = istMonthRange(m);
+      const rows = await tx.expenseClaim.findMany({ where: { organizationId: org, employeeId: { in: reports.map((r) => r.id) }, status: { in: TEAM_LIST_STATUSES }, submittedAt: { gte: from, lt: to } }, orderBy: { submittedAt: 'desc' }, take: 500 });
+      const lines = rows.length ? await tx.expenseLine.findMany({ where: { organizationId: org, claimId: { in: rows.map((x) => x.id) }, removedAt: null }, select: { claimId: true, policyResult: true } }) : [];
+      const over = new Map<string, number>();
+      for (const l of lines) if (isOverLimit(l.policyResult)) over.set(l.claimId, (over.get(l.claimId) ?? 0) + 1);
+      const people = await this.names(tx, org, rows.map((x) => x.employeeId));
+      const claims = [];
+      for (const x of rows) {
+        const a = await this.access(tx, c, v, x);
+        claims.push({ ...this.summary(x, people.get(x.employeeId) ?? ''), overLimit: over.get(x.id) ?? 0, canOpen: a.approver || a.scope || a.finance });
+      }
+      return { month: m, people: reports.length, claims };
+    });
+  }
+
   async home(ctx: TenantContext, user: ScopeUser) {
     const v = await this.viewer(user);
     const mine = await this.list(ctx, user, 'mine');
@@ -937,6 +1177,24 @@ export class ExpenseClaimsService implements OnModuleInit {
     const review = v.grants.has('expense.finance.review') ? (await this.list(ctx, user, 'review')).claims.length : null;
     // YX-EXP-06: what the person will receive from claims approved but not yet paid.
     const toReceive = mine.claims.filter((x) => x.paymentStatus === 'approved_unpaid' || x.paymentStatus === 'in_payroll' || x.paymentStatus === 'payout_queued').reduce((t, x) => t.add(D(x.netPayable)), D(0));
-    return { claims: mine.claims, waitingForMe: waiting, toReview: review, toReceive: toReceive.toFixed(2) };
+    // EXP-01 design: the manager's team figures (direct reports today) and the payroll cut-off line (company setting).
+    const more = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const today = todayIst();
+      const me = await this.myEmployee(tx, org, v);
+      const job = me ? await tx.employeeAssignment.findFirst({ where: { organizationId: org, employeeId: me.id, supersededAt: null, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] }, orderBy: { validFrom: 'desc' }, select: { legalEntityId: true } }) : null;
+      const cutoffDay = Number(await settingFor(tx, c, 'expense.payroll_cutoff_day', { legalEntityId: job?.legalEntityId ?? '' }));
+      const reports = me ? await this.directReports(tx, org, me.id, today) : [];
+      let team = null;
+      if (reports.length) {
+        const months = lastMonths(today, 5);
+        const since = new Date(asDate(`${months[0]}-01`).getTime() - 330 * 60_000);
+        const claims = await tx.expenseClaim.findMany({ where: { organizationId: org, employeeId: { in: reports.map((r) => r.id) }, submittedAt: { gte: since } }, select: { id: true, status: true, submittedAt: true, claimedTotal: true, approvedTotal: true } });
+        const lines = claims.length ? await tx.expenseLine.findMany({ where: { organizationId: org, claimId: { in: claims.map((x) => x.id) }, removedAt: null }, select: { claimId: true, policyResult: true } }) : [];
+        team = { people: reports.length, ...teamFigures(months, claims, lines) };
+      }
+      return { team, payroll: { cutoffDay, month: payMonthFor(today, cutoffDay) } };
+    });
+    return { claims: mine.claims, waitingForMe: waiting, toReview: review, toReceive: toReceive.toFixed(2), ...more };
   }
 }

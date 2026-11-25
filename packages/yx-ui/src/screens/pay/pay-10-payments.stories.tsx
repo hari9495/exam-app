@@ -13,3 +13,8 @@ export const Files: S = { name: 'Bank files', args: { tab: 'files' } };
 export const Journal: S = { name: 'Journal export (finance approver)', args: { tab: 'journal', persona: 'fin' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const ErrorState: S = { name: 'Error', args: { state: 'error' } };
+// Payment modes (founder decision 3): who is paid by cash or cheque instead of the bank; someone else approves it.
+export const PaymentModes: S = { name: 'Payment modes · cash and cheque people', args: { tab: 'modes' } };
+export const PaymentModesAsk: S = { name: 'Payment modes · ask for a mode (drawer)', args: { tab: 'modes', asking: true } };
+export const PaymentModesEmpty: S = { name: 'Payment modes · empty, everyone by bank', args: { tab: 'modes', modes: 'empty' } };
+export const PaymentModesNoAccess: S = { name: 'Payment modes · no access', args: { tab: 'modes', modes: 'no-access' } };

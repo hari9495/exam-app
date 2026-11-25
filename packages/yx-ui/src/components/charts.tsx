@@ -310,7 +310,8 @@ export function BarChart(props: BarChartProps) {
   const { keep, hidden } = suppressGroups(groupSizes, categories.length, minGroupSize);
   const cats = keep.map((i) => categories[i]);
   const ser = limitSeries(series).map((s) => ({ ...s, values: keep.map((i) => s.values[i] ?? null) }));
-  const empty = cats.length === 0 || ser.every((s) => s.values.every((v) => v == null));
+  // All zero draws a made-up 0–1 axis (₹0, ₹0, ₹1 …), so it is shown as empty too.
+  const empty = cats.length === 0 || ser.every((s) => s.values.every((v) => v == null || v === 0));
   const valueLabels = props.valueLabels ?? (ser.length === 1 || stacked);
   const fmt = (v: number) => formatValue(v, money);
   const multi = ser.length > 1;

@@ -6,10 +6,13 @@ import { KeyRound, Lock } from 'lucide-react';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { ConfirmDialog } from '../../components/overlay';
-import { ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
+import { Icon } from '../../components/foundations';
 import { ErrorSummary, FormField, StickySaveBar, useUnsavedChangesGuard, useSaveErrors } from '../../components/field';
 import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { Select } from '../../components/select';
+import { DatePicker } from '../../components/date';
+import { useToastIfAny } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import { DesktopFrame, type PanelSection } from '../_kit/frames';
 import { AuditLine, LawTable, SearchResults, SettingField, SettingsSearchBox, type HistoryEntry } from './settings-kit';
@@ -27,10 +30,15 @@ import {
   validateDraft,
   type Draft,
 } from './settings-logic';
-import type { SettingDef, SettingsGroupDef, SettingsPageDef } from './settings-types';
+import type { LastChange, SettingDef, SettingValue, SettingsGroupDef, SettingsPageDef } from './settings-types';
 import './settings.css';
 
-export type LoadState = 'ready' | 'loading' | 'error';
+/** A date as YYYY-MM-DD in local time (the day picked). */
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** no-access: the API refused this page (Hiring walk, answer 476): the page says so, never a load error. */
+/** mfa: the company asks for a second factor before admin pages open (the API's MFA_REQUIRED 403); not a load failure. */
+export type LoadState = 'ready' | 'loading' | 'error' | 'no-access' | 'mfa';
 
 /**
  * Settings panel (founder review 30 Sep 2026): the 8 groups, and only the open group's pages, so it isn't a 71-line
@@ -70,6 +78,36 @@ function SettingsSkeleton() {
 
 /* ============================== Settings home (PLT-10 pattern) ============================== */
 
+/**
+ * Settings S-1 (answer 1322), live: `groups` holds only the pages the viewer may open, each the front door to its live
+ * editor (`pageHref`); the drawn examples (recent changes, starter counts, last changed) are left out.
+ */
+export interface LiveSettingsNav {
+  pageHref: (pageId: string) => string;
+  groupHref: (groupId: number) => string;
+  /** In-app navigation; a Ctrl or Cmd click keeps the browser's own new tab. */
+  onNavigate: (href: string) => void;
+  onRetry?: () => void;
+  /** Answer 1461: the last changes on pages the viewer may open, newest first (from the audit log). */
+  recent?: { id: string; what: string; from: string; to: string; who: string; at: string; pageId: string }[];
+  /** Answer 1563: the company audit log, for those who may read it. */
+  auditHref?: string;
+}
+
+/** Pages a live home card lists before "N more" (the rest are on the group page). */
+const LIVE_CARD_PAGES = 4;
+
+function liveLink(live: LiveSettingsNav, href: string) {
+  return {
+    href,
+    onClick: (e: React.MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      live.onNavigate(href);
+    },
+  };
+}
+
 export interface SettingsHomeScreenProps {
   groups: SettingsGroupDef[];
   defaultQuery?: string;
@@ -80,6 +118,7 @@ export interface SettingsHomeScreenProps {
   onOpen?: (pageId: string, key?: string) => void;
   /** Modules not ready for go-live (from the set-up hub). */
   setupNeeded?: boolean;
+  live?: LiveSettingsNav;
 }
 
 /** Last changes, newest first (from the audit log). */
@@ -91,7 +130,7 @@ const RECENT_CHANGES = [
   { what: 'PF wage ceiling', from: 'Actual basic', to: '₹15,000', who: 'Suresh Pillai', when: '1 Jul', pageId: '4.7' },
 ];
 
-export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, state = 'ready', onOpen, setupNeeded }: SettingsHomeScreenProps) {
+export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, state = 'ready', onOpen, setupNeeded, live }: SettingsHomeScreenProps) {
   const [query, setQuery] = useState(defaultQuery);
   const index = useMemo(() => buildIndex(groups), [groups]);
   const can = (id: string) => !manageable || manageable.includes(id);
@@ -102,20 +141,22 @@ export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, stat
     <Frame groups={groups} home>
       <PageHeader
         title="Settings"
-        description="Every company policy has one place to change it. Values marked Starter default came from the YukthiX starter template and are yours to edit."
-        facts={`${groups.length} groups · ${total} pages · Kaveri Foods Pvt Ltd`}
+        description={live ? 'Every company policy has one place to change it. Search, or open a group.' : 'Every company policy has one place to change it. Values marked Starter default came from the YukthiX starter template and are yours to edit.'}
+        actions={live && state === 'ready' ? <SettingsSearchBox value={query} onChange={setQuery} placeholder="Search, e.g. probation" /> : undefined}
+        facts={live ? `${groups.length} group${groups.length === 1 ? '' : 's'} · ${total} page${total === 1 ? '' : 's'} you can open` : `${groups.length} groups · ${total} pages · Kaveri Foods Pvt Ltd`}
       />
       {state === 'loading' && <SettingsSkeleton />}
-      {state === 'error' && <ErrorState title="We couldn't load settings." description="Check your connection and retry. Nothing you saved is lost." onRetry={() => {}} reference="SET-7F21C" />}
+      {state === 'error' && <ErrorState title="We couldn't load settings." description="Check your connection and retry. Nothing you saved is lost." onRetry={live?.onRetry ?? (() => {})} reference="SET-7F21C" />}
+      {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what="any settings page" />}
       {state === 'ready' && (
         <>
-          <SettingsSearchBox value={query} onChange={setQuery} />
-          {!query.trim() && setupNeeded && (
+          {!live && <SettingsSearchBox value={query} onChange={setQuery} />}
+          {!query.trim() && setupNeeded && !live && (
             <InlineAlert tone="warning" title="Set-up needed: 3 modules are not ready for go-live" actions={<Button size="sm">Open set-up hub</Button>}>
               Payroll bank details, leave year and the holiday calendar for Hosur plant are incomplete.
             </InlineAlert>
           )}
-          {!query.trim() && (
+          {!query.trim() && !live && (
             <div className="yx-set-overview">
               <Card title="Recently changed" actions={<a className="yx-link" href="#settings/2.10">Audit log</a>}>
                 <ul className="yx-set-recent">
@@ -140,11 +181,59 @@ export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, stat
               </Card>
             </div>
           )}
-          <SearchResults results={results} query={query} onClear={() => setQuery('')} onOpen={(r) => onOpen?.(r.pageId, r.isPage ? undefined : r.key)} />
+          {!query.trim() && live?.recent && live.recent.length > 0 && (
+            <Card title="Recently changed" actions={live.auditHref ? <a className="yx-link" {...liveLink(live, live.auditHref)}>Audit log</a> : undefined}>
+              <ul className="yx-set-recent yx-set-recent--live">
+                {live.recent.slice(0, 3).map((c) => (
+                  <li key={c.id}>
+                    <a {...liveLink(live, live.pageHref(c.pageId))}>
+                      <span className="yx-set-recent__what">{c.what}</span>
+                      <span className="yx-set-helper">
+                        {c.from} → {c.to} · {c.who} · {formatDate(parseIso(c.at.slice(0, 16)))}
+                      </span>
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          <SearchResults
+            results={results}
+            query={query}
+            onClear={() => setQuery('')}
+            onOpen={(r) => (live ? live.onNavigate(live.pageHref(r.pageId)) : onOpen?.(r.pageId, r.isPage ? undefined : r.key))}
+            hrefOf={live ? (r) => live.pageHref(r.pageId) : undefined}
+          />
           {!query.trim() && (
-            <div className="yx-set-groups">
+            <div className={live ? 'yx-set-groups yx-set-groups--live' : 'yx-set-groups'}>
               {groups.map((g) => {
                 const pages = g.pages.filter((p) => can(p.id));
+                // Live: the group's first pages and the rest on its group page, so the home fits one screen.
+                if (live) {
+                  const more = g.pages.length - LIVE_CARD_PAGES;
+                  return (
+                    <Card
+                      key={g.id}
+                      title={<a {...liveLink(live, live.groupHref(g.id))}>{g.title}</a>}
+                      className="yx-set-group-card yx-set-group-card--live"
+                      actions={
+                        more > 0 ? (
+                          <a className="yx-set-group-card__more" aria-label={`All ${g.pages.length} pages in ${g.title}`} {...liveLink(live, live.groupHref(g.id))}>
+                            +{more} more
+                          </a>
+                        ) : undefined
+                      }
+                    >
+                      <ul>
+                        {g.pages.slice(0, LIVE_CARD_PAGES).map((p) => (
+                          <li key={p.id}>
+                            <a {...liveLink(live, live.pageHref(p.id))}>{p.title}</a>
+                          </li>
+                        ))}
+                      </ul>
+                    </Card>
+                  );
+                }
                 return (
                   <Card key={g.id} title={g.title} className="yx-set-group-card">
                     <p className="yx-set-helper">{g.summary}</p>
@@ -176,23 +265,43 @@ export function SettingsHomeScreen({ groups, defaultQuery = '', manageable, stat
 
 /* ============================== Group page ============================== */
 
-export function SettingsGroupScreen({ groups, groupId, state = 'ready', onOpen }: { groups: SettingsGroupDef[]; groupId: number; state?: LoadState; onOpen?: (pageId: string) => void }) {
-  const g = groups.find((x) => x.id === groupId)!;
+/** Live (S-1): `groups` holds only the pages the viewer may open; a group with none of them shows no access. */
+export function SettingsGroupScreen({ groups, groupId, state = 'ready', onOpen, live }: { groups: SettingsGroupDef[]; groupId: number; state?: LoadState; onOpen?: (pageId: string) => void; live?: LiveSettingsNav }) {
+  const g = groups.find((x) => x.id === groupId);
+  if (!g && state === 'loading')
+    return (
+      <Frame groups={groups}>
+        <SettingsSkeleton />
+      </Frame>
+    );
+  if (!g || state === 'no-access')
+    return (
+      <Frame groups={groups}>
+        <NoAccessState grantedBy="your System Admin" what="the pages of this settings group" />
+      </Frame>
+    );
   return (
     <Frame groups={groups}>
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: g.title }]} />}
+        breadcrumbs={live ? undefined : <Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: g.title }]} />}
         title={g.title}
         description={g.summary}
-        facts={`${g.pages.length} pages`}
+        facts={`${g.pages.length} page${g.pages.length === 1 ? '' : 's'}${live ? ' you can open' : ''}`}
       />
       {state === 'loading' && <SettingsSkeleton />}
-      {state === 'error' && <ErrorState title={`We couldn't load ${g.title}.`} description="Retry in a moment. Your saved settings are safe." onRetry={() => {}} reference="SET-G4A09" />}
+      {state === 'error' && <ErrorState title={`We couldn't load ${g.title}.`} description="Retry in a moment. Your saved settings are safe." onRetry={live?.onRetry ?? (() => {})} reference="SET-G4A09" />}
       {state === 'ready' && (
-        <ul className="yx-set-pages">
+        <ul className={live ? 'yx-set-pages yx-set-pages--live' : 'yx-set-pages'}>
           {g.pages.map((p) => {
             const starters = allSettings(p).filter((d) => d.starter).length;
-            return (
+            return live ? (
+              <li key={p.id} className="yx-set-page-row">
+                <a className="yx-set-page-row__title" {...liveLink(live, live.pageHref(p.id))}>
+                  {p.title}
+                </a>
+                <span className="yx-set-page-row__meta">{p.summary}</span>
+              </li>
+            ) : (
               <li key={p.id} className="yx-set-page-row">
                 <a className="yx-set-page-row__title" href={`#settings/${p.id}`} onClick={(e) => (e.preventDefault(), onOpen?.(p.id))}>
                   {p.title}
@@ -223,6 +332,50 @@ export function SettingsGroupScreen({ groups, groupId, state = 'ready', onOpen }
 
 export type SaveOutcome = 'ok' | 'fail';
 
+/**
+ * A settings page with real data (Settings 6.1 Hiring first). The page is the designed page with the company's values
+ * (fields with no setting behind them yet are left out by the caller). Saving is the API's; done is a toast (5 s), a
+ * refusal stays on the page with its reason.
+ */
+export interface LiveSettingsPage {
+  page: SettingsPageDef;
+  /** The viewer holds the page's key: otherwise every value is read-only. */
+  canEdit: boolean;
+  /** Who changed the page last (none yet: not shown). */
+  lastChange: LastChange | null;
+  /** Answer 1326: the page's earlier changes (the last 20 with lastChange), newest first. */
+  history?: HistoryEntry[];
+  /** Answer 1724: "See all in the audit log" in the history drawer, for those who may read the audit log. */
+  auditHref?: string;
+  state?: LoadState;
+  onRetry?: () => void;
+  /** The changed values (by setting key) and the edited lists (rows by key). Rejects with a plain message. */
+  /** `overrides`: values changed while a "Different for" scope was chosen (answer 495), as key, scope label and value. */
+  onSave: (values: Record<string, SettingValue>, rows: Record<string, string[][]>, overrides?: { key: string; scope: string; value: SettingValue }[], appliesFrom?: string) => Promise<void>;
+  /** Settings S-7 (answer 1562): the page has dated settings; their changes apply from this day (today by default). */
+  appliesFrom?: { today: string };
+  /** Settings S-7: what the page shows besides its settings (2.2: the Special data erasure report). */
+  extra?: React.ReactNode;
+  /** list kind: a row's extra button (`rowAction`), e.g. Stage targets of a pipeline. */
+  onRowAction?: (key: string, rowIndex: number) => void;
+  /**
+   * list kind, by setting key: Add and each row's Edit open the caller's editor (e.g. scorecard templates, saved through
+   * their own API at once) instead of the row drawer. Pass a key only when the viewer may change that list.
+   */
+  listEditors?: Record<string, (rowIndex: number | 'new') => void>;
+  onOpenScreen?: (screenId: string) => void;
+  /** Title of the success toast. */
+  savedTitle?: string;
+  /** state 'mfa': opens My security, where the second factor is added. */
+  onSetUpMfa?: () => void;
+  /** Answer 1325: saving sends the changes to a second person instead; nothing changes until they approve. */
+  secondPerson?: boolean;
+  /** Answer 1325: changes waiting for a second person (mine: the viewer asked, so they may only withdraw it). */
+  pending?: { id: string; label: string; from: string; to: string; by: string; at: string; mine: boolean }[];
+  onApprove?: (id: string) => Promise<void>;
+  onReject?: (id: string) => Promise<void>;
+}
+
 export interface SettingsPageScreenProps {
   groups: SettingsGroupDef[];
   pageId: string;
@@ -241,6 +394,7 @@ export interface SettingsPageScreenProps {
   /** Show the validation summary immediately (invalid story). */
   defaultShowErrors?: boolean;
   onOpenScreen?: (screenId: string) => void;
+  live?: LiveSettingsPage;
 }
 
 export function SettingsPageScreen({
@@ -255,23 +409,43 @@ export function SettingsPageScreen({
   saveOutcome = 'ok',
   defaultShowErrors,
   onOpenScreen,
+  live,
 }: SettingsPageScreenProps) {
-  const { group, page } = findPage(groups, pageId);
+  const found = findPage(groups, pageId);
+  const group = found.group;
+  const page = live?.page ?? found.page;
+  if (live) {
+    history = live.history;
+    readOnly = !live.canEdit;
+    state = live.state ?? 'ready';
+    onOpenScreen = live.onOpenScreen;
+  }
+  const lastChange = live ? live.lastChange : page.lastChange;
   return (
     <Frame groups={groups} pageId={pageId}>
       <PageHeader
-        breadcrumbs={<Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: group.title, href: `#settings/group/${group.id}` }, { label: page.title }]} />}
+        breadcrumbs={live ? undefined : <Breadcrumbs items={[{ label: 'Settings', href: '#settings' }, { label: group.title, href: `#settings/group/${group.id}` }, { label: page.title }]} />}
         title={page.title}
         description={page.summary}
-        status={readOnly ? <Badge tone="neutral">View only</Badge> : undefined}
-        facts={page.lastChange ? <AuditLine compact change={page.lastChange} history={history} /> : undefined}
+        status={readOnly && state !== 'no-access' ? <Badge tone="neutral">View only</Badge> : undefined}
+        facts={lastChange ? <AuditLine compact change={lastChange} history={history} auditHref={live?.auditHref} /> : undefined}
       />
+      {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what={`${page.title} settings`} />}
+      {state === 'mfa' && (
+        <EmptyState
+          icon={<Icon icon={KeyRound} size="md" />}
+          title="Add a passkey or an authenticator app to open this page"
+          description="Your company asks for a second step at sign-in before its admin pages open. Set it up once in My security, then come back here."
+          action={live?.onSetUpMfa ? <Button variant="primary" onClick={live.onSetUpMfa}>Set it up</Button> : undefined}
+        />
+      )}
       {state === 'loading' && <SettingsSkeleton />}
       {state === 'error' && (
-        <ErrorState title={`We couldn't load ${page.title}.`} description="Retry in a moment. Nothing has changed on this page." onRetry={() => {}} reference="SET-P3E77" />
+        <ErrorState title={`We couldn't load ${page.title}.`} description="Retry in a moment. Nothing has changed on this page." onRetry={live?.onRetry ?? (() => {})} reference="SET-P3E77" />
       )}
       {state === 'ready' && (
         <SettingsForm
+          live={live}
           key={page.id}
           page={page}
           readOnly={readOnly}
@@ -285,6 +459,66 @@ export function SettingsPageScreen({
         />
       )}
     </Frame>
+  );
+}
+
+/** Answer 1325: the changes waiting for a second person. The person who asked may only withdraw; anyone else approves or rejects. */
+function PendingChanges({ live }: { live: LiveSettingsPage }) {
+  const toaster = useToastIfAny();
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<string | null>(null);
+  const act = async (key: string, fn: () => Promise<void>, done: string) => {
+    setBusy(key);
+    setFailed(null);
+    try {
+      await fn();
+      toaster?.toast({ tone: 'success', title: done });
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not go through. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  return (
+    <Card title="Waiting for a second person">
+      {failed && <InlineAlert tone="danger" title={failed} />}
+      <ul className="yx-set-pending">
+        {live.pending!.map((p) => (
+          <li key={p.id} className="yx-set-pending__row">
+            <span className="yx-set-pending__what">
+              <span>
+                <strong>{p.label}</strong>: {p.from} → {p.to}
+              </span>
+              <span className="yx-set-helper">
+                Asked by {p.mine ? 'you' : p.by} on {formatDate(parseIso(p.at.slice(0, 16)))}
+              </span>
+            </span>
+            <span className="yx-set-pending__actions">
+              {p.mine ? (
+                live.onReject && (
+                  <Button size="sm" loading={busy === `w${p.id}`} onClick={() => void act(`w${p.id}`, () => live.onReject!(p.id), 'Change withdrawn')}>
+                    Withdraw
+                  </Button>
+                )
+              ) : (
+                <>
+                  {live.onReject && (
+                    <Button size="sm" loading={busy === `r${p.id}`} onClick={() => void act(`r${p.id}`, () => live.onReject!(p.id), 'Change rejected')}>
+                      Reject
+                    </Button>
+                  )}
+                  {live.onApprove && (
+                    <Button size="sm" variant="primary" loading={busy === `a${p.id}`} onClick={() => void act(`a${p.id}`, () => live.onApprove!(p.id), 'Change approved and applied')}>
+                      Approve
+                    </Button>
+                  )}
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 
@@ -312,7 +546,7 @@ function runs(defs: SettingDef[]): SettingDef[][] {
   return out;
 }
 
-type SaveStatus = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved'; approval: boolean } | { kind: 'failed' };
+type SaveStatus = { kind: 'idle' } | { kind: 'saving' } | { kind: 'saved'; approval: boolean } | { kind: 'failed'; message?: string };
 
 function SettingsForm({
   page,
@@ -324,7 +558,9 @@ function SettingsForm({
   saveOutcome,
   defaultShowErrors,
   onOpenScreen,
+  live,
 }: Omit<SettingsPageScreenProps, 'groups' | 'pageId' | 'state'> & { page: SettingsPageDef }) {
+  const toaster = useToastIfAny();
   const base = useMemo(() => initialDraft(page), [page]);
   const [draft, setDraft] = useState<Draft>({ ...base, ...defaultDraft });
   const defsAll = allSettings(page);
@@ -332,18 +568,30 @@ function SettingsForm({
   const [picked, setPicked] = useState(page.typePicker?.options[0] ?? '');
   const [rows, setRows] = useState<Record<string, string[][]>>({});
   const [status, setStatus] = useState<SaveStatus>({ kind: 'idle' });
+  // Walk-through 10 Nov 2026: the save bar is at the bottom of long pages, so a failed save scrolls its message into view.
+  const failedRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (status.kind !== 'failed' || !failedRef.current) return;
+    failedRef.current.scrollIntoView?.({ block: 'center' });
+    failedRef.current.focus({ preventScroll: true });
+  }, [status]);
   const [confirmSensitive, setConfirmSensitive] = useState(false);
   const [scope, setScope] = useState(defaultScope ?? page.scopes?.[0] ?? 'Company');
+  const [appliesFrom, setAppliesFrom] = useState(live?.appliesFrom?.today ?? '');
   const [requested, setRequested] = useState(false);
 
   const changed = changedKeys(page, draft);
+  const datedChanged = Boolean(live?.appliesFrom) && defsAll.some((d) => d.dated && (changed.includes(d.key) || Object.keys(draft).some((k) => k.startsWith(`${d.key}@`))));
   // Edits made while a "Different for" scope is chosen are kept as key@scope.
   const overrideOf = (d: SettingDef) => d.overrides?.find((o) => o.scope === scope);
   const overrideEdits = Object.keys(draft).filter((k) => {
     if (!k.includes('@')) return false;
     const [key, sc] = k.split('@');
-    const o = defsAll.find((d) => d.key === key)?.overrides?.find((x) => x.scope === sc);
-    return o != null && JSON.stringify(draft[k]) !== JSON.stringify(o.value);
+    const d = defsAll.find((x) => x.key === key);
+    const o = d?.overrides?.find((x) => x.scope === sc);
+    // S-7 (answer 1484): a first value of its own counts once it differs from the company value it started from.
+    if (o == null) return Boolean(d?.scopeable?.includes(sc!)) && JSON.stringify(draft[k]) !== JSON.stringify(d?.value ?? null);
+    return JSON.stringify(draft[k]) !== JSON.stringify(o.value);
   }).length;
   const listChanged = Object.keys(rows).length + overrideEdits;
   const dirty = changed.length + listChanged > 0;
@@ -353,10 +601,34 @@ function SettingsForm({
   const saveErrors = useSaveErrors(errorList, defaultShowErrors);
   const defs = allSettings(page);
   const sensitiveChanged = defs.some((d) => d.sensitive && changed.includes(d.key));
-  const approval = needsSecondApprover(page);
+  // Live, the API decides (answer 1325); the drawing's rule (group 4) is for the stories.
+  const approval = live ? Boolean(live.secondPerson) : needsSecondApprover(page);
 
   const doSave = async () => {
     setStatus({ kind: 'saving' });
+    if (live) {
+      try {
+        const overrides = Object.keys(draft)
+          .filter((k) => k.includes('@'))
+          .map((k) => {
+            const [key, sc] = k.split('@') as [string, string];
+            return { key, scope: sc, value: draft[k] ?? null, was: defsAll.find((d) => d.key === key)?.overrides?.find((x) => x.scope === sc)?.value };
+          })
+          .filter((o) => JSON.stringify(o.value) !== JSON.stringify(o.was ?? null))
+          .map(({ key, scope: sc, value }) => ({ key, scope: sc, value }));
+        await live.onSave(Object.fromEntries(changed.map((k) => [k, draft[k] ?? null])), rows, overrides, live.appliesFrom ? appliesFrom : undefined);
+        setRows({});
+        setStatus({ kind: 'idle' });
+        toaster?.toast(
+          approval
+            ? { tone: 'success', title: 'Sent for approval', description: "Nothing changes until another person with HR's settings key approves it." }
+            : { tone: 'success', title: live.savedTitle ?? 'Settings saved', description: 'Recorded in the audit log with before and after values.' },
+        );
+      } catch (e) {
+        setStatus({ kind: 'failed', message: e instanceof Error && e.message ? e.message : undefined });
+      }
+      return;
+    }
     await Promise.resolve();
     setStatus(saveOutcome === 'fail' ? { kind: 'failed' } : { kind: 'saved', approval });
   };
@@ -399,29 +671,35 @@ function SettingsForm({
   const field = (d: SettingDef) => {
     if (d.showWhen && (draft[d.showWhen.key] ?? null) !== d.showWhen.equals) return null;
     const ov = overrideOf(d);
-    const dk = ov ? `${d.key}@${scope}` : d.key;
+    const dk = ov || (live && d.scopeable?.includes(scope) && scope !== (page.scopes?.[0] ?? 'Company')) ? `${d.key}@${scope}` : d.key;
     const shown: SettingDef = ov
       ? { ...d, scope: `Overridden for ${scope}`, overrides: undefined, dated: ov.validFrom ? { validFrom: ov.validFrom } : d.dated, starter: false }
       : scope !== (page.scopes?.[0] ?? 'Company') && !d.scope
         ? { ...d, scope: 'Inherited from Kaveri Foods Pvt Ltd' }
         : d;
+    // Answer 495 (live): with another scope chosen, a setting that is one value for the company is shown, not changed.
+    const companyOnly = Boolean(live) && !ov && scope !== (page.scopes?.[0] ?? 'Company') && !d.scopeable?.includes(scope);
+    // S-7 (answer 1484): a first value of its own here starts from the company value.
+    const own = !ov && !companyOnly && scope !== (page.scopes?.[0] ?? 'Company');
     return (
     <SettingField
       key={d.key}
       def={shown}
-      value={ov ? (draft[dk] ?? ov.value) : (draft[d.key] ?? d.value ?? null)}
+      value={ov ? (draft[dk] ?? ov.value) : own ? (draft[dk] ?? draft[d.key] ?? d.value ?? null) : (draft[d.key] ?? d.value ?? null)}
       onPickOverride={(sc) => setScope(sc)}
       onChange={(v) => {
         setDraft((x) => ({ ...x, [dk]: v }));
         if (status.kind !== 'saving') setStatus({ kind: 'idle' });
       }}
       error={saveErrors.errorOf(`setting-${d.key}`) ?? null}
-      readOnly={readOnly}
+      readOnly={readOnly || companyOnly}
       highlighted={highlightKey === d.key}
       onResetScope={() => setDraft((x) => ({ ...x, [d.key]: d.value ?? null }))}
       rows={rows[d.key]}
       onRowsChange={(r) => setRows((x) => ({ ...x, [d.key]: r }))}
       onOpenLink={onOpenScreen}
+      onRowAction={live?.onRowAction ? (i) => live.onRowAction!(d.key, i) : undefined}
+      onListEdit={live?.listEditors?.[d.key]}
     />
     );
   };
@@ -435,9 +713,11 @@ function SettingsForm({
           tone="info"
           title="You can view these settings but not change them"
           actions={
-            <Button size="sm" icon={KeyRound} disabled={requested} onClick={() => setRequested(true)}>
-              {requested ? 'Access requested' : 'Request access'}
-            </Button>
+            live ? undefined : (
+              <Button size="sm" icon={KeyRound} disabled={requested} onClick={() => setRequested(true)}>
+                {requested ? 'Access requested' : 'Request access'}
+              </Button>
+            )
           }
         >
           Only the {page.permissionHolder} can change this page.
@@ -448,7 +728,14 @@ function SettingsForm({
       {page.scopes && page.scopes.length > 1 && (
         <div className="yx-set-toolbar">
           <FormField label="Apply changes to" helper="Anything you don't change here keeps the value from the level above.">
-            <Select value={scope} onChange={(v) => v && setScope(v)} options={[...page.scopes, ...overrideScopes].map((s) => ({ value: s, label: s }))} disabled={readOnly} />
+            <Select value={scope} onChange={(v) => v && setScope(v)} options={[...new Set([...page.scopes, ...overrideScopes])].map((s) => ({ value: s, label: s }))} disabled={readOnly} />
+          </FormField>
+        </div>
+      )}
+      {datedChanged && !readOnly && (
+        <div className="yx-set-toolbar">
+          <FormField label="Applies from" helper="Dated settings change from this day; earlier days keep the value they had.">
+            <DatePicker value={appliesFrom ? parseIso(appliesFrom) : null} onChange={(d) => d && setAppliesFrom(isoOf(d))} />
           </FormField>
         </div>
       )}
@@ -457,6 +744,8 @@ function SettingsForm({
           Values without an override show "Inherited from Kaveri Foods Pvt Ltd". Use Reset on a field to go back to the inherited value.
         </InlineAlert>
       )}
+      {live?.pending && live.pending.length > 0 && <PendingChanges live={live} />}
+      {live?.extra}
       <ErrorSummary errors={saveErrors.shownErrors} />
       {status.kind === 'saved' && (
         <InlineAlert tone="success" title={status.approval ? 'Changes sent for approval' : 'Changes saved'}>
@@ -466,9 +755,11 @@ function SettingsForm({
         </InlineAlert>
       )}
       {status.kind === 'failed' && (
-        <InlineAlert tone="danger" title="We couldn't save your changes" actions={<Button size="sm" onClick={() => void doSave()}>Retry</Button>}>
-          Your edits are kept on this page. Retry, or copy reference SET-S91B2 for support.
-        </InlineAlert>
+        <div ref={failedRef} tabIndex={-1}>
+          <InlineAlert tone="danger" title="We couldn't save your changes" actions={<Button size="sm" onClick={() => void doSave()}>Retry</Button>}>
+            {status.message ? `${status.message} Your edits are kept on this page.` : 'Your edits are kept on this page. Retry, or copy reference SET-S91B2 for support.'}
+          </InlineAlert>
+        </div>
       )}
 
       {/* Long pages get a jump list (founder review 30 Sep 2026). */}
@@ -567,7 +858,7 @@ function SettingsForm({
       {showBar && (
         <StickySaveBar dirty={dirty} ref={barRef}>
           <span className="yx-set-impact">
-            {changed.length + listChanged} change{changed.length + listChanged === 1 ? '' : 's'} · affects {affected} employees
+            {changed.length + listChanged} change{changed.length + listChanged === 1 ? '' : 's'}{live ? '' : ` · affects ${affected} employees`}
           </span>
           <Button onClick={discard} disabled={!dirty || status.kind === 'saving'}>
             Discard changes
@@ -581,7 +872,7 @@ function SettingsForm({
         open={confirmImpact}
         onOpenChange={setConfirmImpact}
         title={`Send ${impact.length + listChanged} change${impact.length + listChanged === 1 ? '' : 's'} for approval?`}
-        consequence={`Affects ${affected} employees. The approver sees the same summary.`}
+        consequence={live ? "Another person with HR's settings key approves them; they apply then. The approver sees the same summary." : `Affects ${affected} employees. The approver sees the same summary.`}
         confirmLabel="Send for approval"
         onConfirm={doSave}
       >
@@ -598,7 +889,7 @@ function SettingsForm({
         open={confirmSensitive}
         onOpenChange={setConfirmSensitive}
         title="Save this high-impact change?"
-        consequence={`${defs.filter((d) => d.sensitive && changed.includes(d.key)).map((d) => d.label).join(', ')} affects everyone in the company. You'll be asked to confirm it's you, and the change is audited.`}
+        consequence={`${defs.filter((d) => d.sensitive && changed.includes(d.key)).map((d) => d.label).join(', ')} is a high-impact change: it can stop people clocking in or change their pay. You'll be asked to confirm it's you, and the change is audited.`}
         confirmLabel="Confirm and save"
         onConfirm={doSave}
       />

@@ -8,6 +8,7 @@ import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { inForce, layoff as layoffRule, minWage, minWageTableFor } from '../statutory/evaluator';
 import { asDate, dateOf, monthRange } from '../time/time-core';
+import { addDays } from '../time/time-maths';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import type { AuthorisationDto, ClawbackDto, IncentivePlanDto, IncentiveResultsDto, LayoffDto, OncallRuleDto, OncallSlotDto, OutputRowDto, RateCardDto, SettlementDto, TipPoolDto, UnionDto, VrsDto } from './dto-5i';
 import { MODULE_SOURCES, PayrollIntakeService } from './intake.service';
@@ -263,34 +264,60 @@ export class SpecialPayService implements OnModuleInit {
   }
 
   /** The month's piece pay per person, topped up to the minimum wage for the days worked (P07 IN.MW at the work place). */
+  private async pieceMonth(tx: Tx, org: string, entityId: string, month: string) {
+    const { from, to } = monthRange(month);
+    const outputs = await tx.pieceOutput.findMany({ where: { organizationId: org, legalEntityId: entityId, workDate: { gte: asDate(from), lte: asDate(to) } } });
+    const cards = (await tx.pieceRateCard.findMany({ where: { organizationId: org, legalEntityId: entityId } })).map((x) => ({ operationCode: x.operationCode, rate: x.rate.toString(), validFrom: dateOf(x.validFrom), validTo: x.validTo ? dateOf(x.validTo) : null }));
+    const rules = await this.rules.published();
+    const people: { employeeId: string; daysWorked: number; minimumDaily: string; earnings: Prisma.Decimal; minimum: Prisma.Decimal; topUp: Prisma.Decimal }[] = [];
+    for (const employmentId of [...new Set(outputs.map((o) => o.employmentId))]) {
+      const mine = outputs.filter((o) => o.employmentId === employmentId);
+      const asg = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(to) }, OR: [{ validTo: null }, { validTo: { gte: asDate(from) } }] }, orderBy: { validFrom: 'desc' } });
+      const loc = asg ? await tx.location.findFirst({ where: { organizationId: org, id: asg.locationId }, select: { state: true, minWageZone: true } }) : null;
+      const mwRs = inForce(rules, 'IN.MW', ['IN'], to);
+      const daily = mwRs && loc ? minWage(mwRs, { table: minWageTableFor(rules, loc.state, to), zone: loc.minWageZone, skill: asg?.skillClass ?? null }).daily.toFixed(2) : '0';
+      let r: ReturnType<typeof pieceRate>;
+      try {
+        r = pieceRate(cards, mine.map((o) => ({ workDate: dateOf(o.workDate), operationCode: o.operationCode, quantity: o.quantity.toString() })), daily);
+      } catch (e) {
+        this.fail(e);
+      }
+      people.push({ employeeId: mine[0].employeeId, daysWorked: r.daysWorked, minimumDaily: daily, earnings: r.earnings, minimum: r.minimum, topUp: r.topUp });
+    }
+    return { outputs: outputs.length, people };
+  }
+
   async postPiece(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
     const v = await this.viewer(user);
     return this.posting(ctx, async (tx, c) => {
-      const org = c.organizationId;
       await this.entity(tx, c, v, entityId);
-      const { from, to } = monthRange(month);
-      const outputs = await tx.pieceOutput.findMany({ where: { organizationId: org, legalEntityId: entityId, workDate: { gte: asDate(from), lte: asDate(to) } } });
-      if (!outputs.length) throw new BadRequestException(`No output is keyed for ${month}.`);
-      const cards = (await tx.pieceRateCard.findMany({ where: { organizationId: org, legalEntityId: entityId } })).map((x) => ({ operationCode: x.operationCode, rate: x.rate.toString(), validFrom: dateOf(x.validFrom), validTo: x.validTo ? dateOf(x.validTo) : null }));
-      const rules = await this.rules.published();
+      const m = await this.pieceMonth(tx, c.organizationId, entityId, month);
+      if (!m.outputs) throw new BadRequestException(`No output is keyed for ${month}.`);
       const lines: Line[] = [];
-      for (const employmentId of [...new Set(outputs.map((o) => o.employmentId))]) {
-        const mine = outputs.filter((o) => o.employmentId === employmentId);
-        const asg = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId, supersededAt: null, validFrom: { lte: asDate(to) }, OR: [{ validTo: null }, { validTo: { gte: asDate(from) } }] }, orderBy: { validFrom: 'desc' } });
-        const loc = asg ? await tx.location.findFirst({ where: { organizationId: org, id: asg.locationId }, select: { state: true, minWageZone: true } }) : null;
-        const mwRs = inForce(rules, 'IN.MW', ['IN'], to);
-        const daily = mwRs && loc ? minWage(mwRs, { table: minWageTableFor(rules, loc.state, to), zone: loc.minWageZone, skill: asg?.skillClass ?? null }).daily.toFixed(2) : '0';
-        let r: ReturnType<typeof pieceRate>;
-        try {
-          r = pieceRate(cards, mine.map((o) => ({ workDate: dateOf(o.workDate), operationCode: o.operationCode, quantity: o.quantity.toString() })), daily);
-        } catch (e) {
-          this.fail(e);
-        }
-        const who = mine[0].employeeId;
-        lines.push({ employeeId: who, componentCode: 'piece_pay', amount: r.earnings.toFixed(2), label: `Piece-rate pay for ${r.daysWorked} days in ${month}.`, meta: { days: String(r.daysWorked) } });
-        if (r.topUp.gt(0)) lines.push({ employeeId: who, componentCode: 'min_wage_topup', amount: r.topUp.toFixed(2), label: `Top-up to the minimum wage of ₹${daily} a day for ${r.daysWorked} days worked.`, meta: { minimum: r.minimum.toFixed(2) } });
+      for (const r of m.people) {
+        lines.push({ employeeId: r.employeeId, componentCode: 'piece_pay', amount: r.earnings.toFixed(2), label: `Piece-rate pay for ${r.daysWorked} days in ${month}.`, meta: { days: String(r.daysWorked) } });
+        if (r.topUp.gt(0)) lines.push({ employeeId: r.employeeId, componentCode: 'min_wage_topup', amount: r.topUp.toFixed(2), label: `Top-up to the minimum wage of ₹${r.minimumDaily} a day for ${r.daysWorked} days worked.`, meta: { minimum: r.minimum.toFixed(2) } });
       }
       return this.post(tx, c, v, { kind: 'piece', entityId, month, sourceRef: `piece:${entityId}:${month}`, lines, title: month });
+    });
+  }
+
+  /**
+   * PAY-31 earnings check: the same piece pay and minimum-wage top-up the month would send, read before it is sent.
+   * Nothing is kept. An output with no rate in force is refused (400) as on sending, so the page shows what to fix.
+   */
+  async pieceCheck(ctx: TenantContext, user: ScopeUser, entityId: string, month: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      await this.entity(tx, c, v, entityId);
+      const m = await this.pieceMonth(tx, c.organizationId, entityId, month);
+      const sent = await tx.specialPosting.findFirst({ where: { organizationId: c.organizationId, kind: 'piece', sourceRef: `piece:${entityId}:${month}`, status: { in: ['pending', 'approved'] } }, select: { status: true } });
+      return {
+        month,
+        sent: sent?.status ?? null,
+        people: m.people.map((r) => ({ employeeId: r.employeeId, daysWorked: r.daysWorked, minimumDaily: r.minimumDaily, earnings: r.earnings.toFixed(2), minimum: r.minimum.toFixed(2), topUp: r.topUp.toFixed(2) })),
+        totalTopUp: m.people.reduce((t, r) => t.add(r.topUp), ZERO).toFixed(2),
+      };
     });
   }
 
@@ -300,23 +327,116 @@ export class SpecialPayService implements OnModuleInit {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, entityId);
-      const rows = await tx.incentivePlan.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: { name: 'asc' } });
-      return rows.map((p) => ({ id: p.id, name: p.name, kind: p.kind, metric: p.metric, targetAmount: p.targetAmount.toFixed(2), tiers: p.tiers as unknown as Tier[], capPercent: p.capPercent?.toString() ?? null, clawbackDays: p.clawbackDays, status: p.status }));
+      const rows = await tx.incentivePlan.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: [{ name: 'asc' }, { planVersion: 'desc' }] });
+      return rows.map((p) => ({
+        id: p.id,
+        name: p.name,
+        kind: p.kind,
+        metric: p.metric,
+        targetAmount: p.targetAmount.toFixed(2),
+        tiers: p.tiers as unknown as Tier[],
+        capPercent: p.capPercent?.toString() ?? null,
+        clawbackDays: p.clawbackDays,
+        status: p.status,
+        effectiveFrom: p.effectiveFrom ? dateOf(p.effectiveFrom) : null,
+        effectiveTo: p.effectiveTo ? dateOf(p.effectiveTo) : null,
+        payoutFrequency: p.payoutFrequency,
+        metricSource: p.metricSource,
+        departmentId: p.departmentId,
+        locationId: p.locationId,
+        planVersion: p.planVersion,
+        previousId: p.previousId,
+        version: p.version,
+      }));
     });
   }
 
-  async addPlan(ctx: TenantContext, user: ScopeUser, dto: IncentivePlanDto) {
-    const v = await this.viewer(user);
+  /** PAY-32: the plan's terms checked: tiers, dates the right way round, and a department and location of the entity. */
+  private async planTerms(tx: Tx, org: string, dto: IncentivePlanDto) {
     try {
       incentive({ targetAmount: dto.targetAmount, tiers: dto.tiers, capPercent: dto.capPercent ?? null }, '100', '100');
     } catch (e) {
       this.fail(e);
     }
+    if (dto.effectiveFrom && dto.effectiveTo && dto.effectiveTo <= dto.effectiveFrom) throw new BadRequestException('Effective to must be after Effective from.');
+    if (dto.departmentId && !(await tx.department.findFirst({ where: { organizationId: org, id: dto.departmentId }, select: { id: true } }))) throw new BadRequestException('That department is not in this company.');
+    if (dto.locationId && !(await tx.location.findFirst({ where: { organizationId: org, id: dto.locationId, legalEntityId: dto.legalEntityId }, select: { id: true } }))) throw new BadRequestException('That location is not in this legal entity.');
+    return {
+      name: dto.name,
+      kind: dto.kind,
+      metric: dto.metric,
+      targetAmount: D(dto.targetAmount),
+      tiers: dto.tiers as unknown as Prisma.InputJsonValue,
+      capPercent: dto.capPercent ? D(dto.capPercent) : null,
+      clawbackDays: dto.clawbackDays,
+      effectiveFrom: asDate(dto.effectiveFrom ?? todayIst()),
+      effectiveTo: dto.effectiveTo ? asDate(dto.effectiveTo) : null,
+      payoutFrequency: dto.payoutFrequency ?? 'monthly',
+      metricSource: dto.metricSource ?? 'manual',
+      departmentId: dto.departmentId ?? null,
+      locationId: dto.locationId ?? null,
+    };
+  }
+
+  async addPlan(ctx: TenantContext, user: ScopeUser, dto: IncentivePlanDto) {
+    const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, dto.legalEntityId);
-      const p = await tx.incentivePlan.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, kind: dto.kind, metric: dto.metric, targetAmount: D(dto.targetAmount), tiers: dto.tiers as unknown as Prisma.InputJsonValue, capPercent: dto.capPercent ? D(dto.capPercent) : null, clawbackDays: dto.clawbackDays, createdBy: v.userId! } });
-      await audit(tx, c, 'payroll.incentive.plan_added', 'incentive_plan', p.id, { name: dto.name, kind: dto.kind, tiers: dto.tiers.length });
-      return { id: p.id };
+      const terms = await this.planTerms(tx, c.organizationId, dto);
+      const p = await tx.incentivePlan.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, ...terms, status: dto.draft ? 'draft' : 'active', createdBy: v.userId! } });
+      await audit(tx, c, dto.draft ? 'payroll.incentive.plan_drafted' : 'payroll.incentive.plan_added', 'incentive_plan', p.id, { name: dto.name, kind: dto.kind, tiers: dto.tiers.length, payoutFrequency: terms.payoutFrequency, metricSource: terms.metricSource });
+      return { id: p.id, status: p.status };
+    });
+  }
+
+  /** PAY-32: a draft's changes (only a draft; optimistic on the version read). */
+  async updatePlan(ctx: TenantContext, user: ScopeUser, id: string, dto: IncentivePlanDto & { version: number }) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const p = await this.planFor(tx, c, v, id);
+      if (p.legalEntityId !== dto.legalEntityId) throw new BadRequestException('A plan stays in its legal entity.');
+      if (p.status !== 'draft') throw new ConflictException('A published plan is not changed. Make a new version of it.');
+      const terms = await this.planTerms(tx, c.organizationId, dto);
+      const n = await tx.incentivePlan.updateMany({ where: { organizationId: c.organizationId, id, version: dto.version, status: 'draft' }, data: { ...terms, version: { increment: 1 } } });
+      if (!n.count) throw new ConflictException('Someone else changed this draft. Reload it and try again.');
+      await audit(tx, c, 'payroll.incentive.plan_changed', 'incentive_plan', id, { name: dto.name, planVersion: p.planVersion });
+      return { id, status: 'draft', version: dto.version + 1 };
+    });
+  }
+
+  /** PAY-32: a draft is published; a new version ends the one it replaces the day before it starts. */
+  async publishPlan(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await tx.$queryRaw`SELECT id FROM incentive_plans WHERE organization_id = ${org}::uuid AND id = ${id}::uuid FOR UPDATE`;
+      const p = await this.planFor(tx, c, v, id);
+      if (p.status !== 'draft') throw new ConflictException('This plan is already published.');
+      const from = dateOf(p.effectiveFrom ?? asDate(todayIst()));
+      if (p.previousId) {
+        const prev = await tx.incentivePlan.findFirstOrThrow({ where: { organizationId: org, id: p.previousId } });
+        if (prev.effectiveFrom && dateOf(prev.effectiveFrom) >= from) throw new ConflictException(`The new version must start after the published one (${dateOf(prev.effectiveFrom)}).`);
+        await tx.incentivePlan.update({ where: { id: prev.id }, data: { effectiveTo: asDate(addDays(from, -1)), version: { increment: 1 } } });
+      }
+      await tx.incentivePlan.update({ where: { id }, data: { status: 'active', version: { increment: 1 } } });
+      await audit(tx, c, 'payroll.incentive.plan_published', 'incentive_plan', id, { planVersion: p.planVersion, effectiveFrom: from, replaces: p.previousId });
+      return { id, status: 'active' };
+    });
+  }
+
+  /** PAY-32: a new draft version of a published plan, from a later date (results before it stay on the published one). */
+  async newPlanVersion(ctx: TenantContext, user: ScopeUser, id: string, effectiveFrom: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const p = await this.planFor(tx, c, v, id);
+      if (p.status !== 'active') throw new ConflictException('Only a published plan gets a new version.');
+      if (p.effectiveFrom && dateOf(p.effectiveFrom) >= effectiveFrom) throw new BadRequestException(`The new version starts after ${dateOf(p.effectiveFrom)}.`);
+      if (await tx.incentivePlan.findFirst({ where: { organizationId: org, previousId: p.id, status: 'draft' }, select: { id: true } })) throw new ConflictException('A new version of this plan is already being drafted.');
+      const { id: _i, createdAt: _c, version: _v, status: _s, createdBy: _b, ...copy } = p;
+      const n = await tx.incentivePlan.create({ data: { ...copy, tiers: p.tiers as Prisma.InputJsonValue, effectiveFrom: asDate(effectiveFrom), effectiveTo: p.effectiveTo && dateOf(p.effectiveTo) > effectiveFrom ? p.effectiveTo : null, planVersion: p.planVersion + 1, previousId: p.id, status: 'draft', createdBy: v.userId! } });
+      await audit(tx, c, 'payroll.incentive.plan_versioned', 'incentive_plan', n.id, { from: p.id, planVersion: n.planVersion, effectiveFrom });
+      return { id: n.id, status: 'draft', planVersion: n.planVersion };
     });
   }
 
@@ -334,20 +454,33 @@ export class SpecialPayService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const p = await this.planFor(tx, c, v, planId);
+      if (p.status === 'draft') throw new ConflictException('This plan is a draft. Publish it before entering results.');
       if (p.status !== 'active') throw new ConflictException('This plan is switched off.');
+      // PAY-32: inside the plan's dates; a quarterly plan pays in the last month of each quarter.
+      if ((p.effectiveFrom && dto.month < dateOf(p.effectiveFrom).slice(0, 7)) || (p.effectiveTo && dto.month > dateOf(p.effectiveTo).slice(0, 7))) throw new BadRequestException(`${dto.month} is outside the plan's dates.`);
+      if (p.payoutFrequency === 'quarterly' && Number(dto.month.slice(5)) % 3 !== 0) throw new BadRequestException('A quarterly plan pays in the last month of each quarter (March, June, September, December).');
       const posted = await tx.incentiveResult.count({ where: { organizationId: org, planId, month: monthStart(dto.month), postingId: { not: null } } });
       if (posted) throw new ConflictException(`${dto.month}'s results are already sent to payroll.`);
       const { from, to } = monthRange(dto.month);
       const out = [];
       for (const r of dto.rows) {
         const e = await this.employment(tx, org, p.legalEntityId, r.employeeId, from, to);
+        // PAY-32: only people the plan is for (its department and location, when set).
+        if (p.departmentId || p.locationId) {
+          const a = await tx.employeeAssignment.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(to) }, OR: [{ validTo: null }, { validTo: { gte: asDate(from) } }] }, orderBy: { validFrom: 'desc' }, select: { departmentId: true, locationId: true } });
+          if (!a || (p.departmentId && a.departmentId !== p.departmentId) || (p.locationId && a.locationId !== p.locationId)) throw new BadRequestException('That person is not in the department or location this plan is for.');
+        }
         let x: ReturnType<typeof incentive>;
         try {
           x = incentive({ targetAmount: p.targetAmount.toString(), tiers: p.tiers as unknown as Tier[], capPercent: p.capPercent?.toString() ?? null }, r.quota, r.actual);
         } catch (err) {
           this.fail(err);
         }
-        const data = { quota: D(r.quota), actual: D(r.actual), amount: x.amount, workings: { plan: p.name, attainment: x.attainment, capped: x.capped, bands: x.bands } as unknown as Prisma.InputJsonValue, createdBy: v.userId! };
+        // PAY-33: part of it may wait for the customer's payment; never more than the incentive, always with the reason.
+        const held = D(r.held ?? 0);
+        if (held.gt(x.amount)) throw new BadRequestException(`The held part (₹${held.toFixed(2)}) cannot be more than the incentive (₹${x.amount.toFixed(2)}).`);
+        if (held.gt(0) && !r.heldReason) throw new BadRequestException('Say why part of the incentive is held, such as the customer has not paid yet.');
+        const data = { quota: D(r.quota), actual: D(r.actual), amount: x.amount, heldAmount: held, heldReason: held.gt(0) ? r.heldReason! : null, workings: { plan: p.name, attainment: x.attainment, capped: x.capped, bands: x.bands } as unknown as Prisma.InputJsonValue, createdBy: v.userId! };
         const row = await tx.incentiveResult.upsert({
           where: { organizationId_planId_employmentId_month: { organizationId: org, planId, employmentId: e.id, month: monthStart(dto.month) } },
           create: { organizationId: org, legalEntityId: p.legalEntityId, planId, employeeId: r.employeeId, employmentId: e.id, month: monthStart(dto.month), ...data },
@@ -365,7 +498,7 @@ export class SpecialPayService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.planFor(tx, c, v, planId);
       const rows = await tx.incentiveResult.findMany({ where: { organizationId: c.organizationId, planId, month: monthStart(month) } });
-      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, quota: r.quota.toFixed(2), actual: r.actual.toFixed(2), amount: r.amount.toFixed(2), workings: r.workings, posted: Boolean(r.postingId) }));
+      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, quota: r.quota.toFixed(2), actual: r.actual.toFixed(2), amount: r.amount.toFixed(2), held: r.heldAmount.toFixed(2), heldReason: r.heldReason, released: Boolean(r.releasedPostingId), workings: r.workings, posted: Boolean(r.postingId) }));
     });
   }
 
@@ -375,8 +508,43 @@ export class SpecialPayService implements OnModuleInit {
       const org = c.organizationId;
       const p = await this.planFor(tx, c, v, planId);
       const rows = await tx.incentiveResult.findMany({ where: { organizationId: org, planId, month: monthStart(month), postingId: null } });
-      const out = await this.post(tx, c, v, { kind: 'incentive', entityId: p.legalEntityId, month, sourceRef: `incentive:${planId}:${month}`, lines: rows.map((r) => ({ employeeId: r.employeeId, componentCode: 'incentive', amount: r.amount.toFixed(2), label: `${p.name}, ${month}: ${(r.workings as { attainment: string }).attainment} % of quota.` })), title: `${p.name}, ${month}` });
+      // PAY-33: the held part waits for the customer's payment; the rest goes now.
+      const out = await this.post(tx, c, v, {
+        kind: 'incentive',
+        entityId: p.legalEntityId,
+        month,
+        sourceRef: `incentive:${planId}:${month}`,
+        lines: rows.map((r) => ({ employeeId: r.employeeId, componentCode: 'incentive', amount: r.amount.sub(r.heldAmount).toFixed(2), label: `${p.name}, ${month}: ${(r.workings as { attainment: string }).attainment} % of quota${r.heldAmount.gt(0) ? `; ₹${r.heldAmount.toFixed(2)} held until the customer pays` : ''}.` })),
+        title: `${p.name}, ${month}`,
+      });
       await tx.incentiveResult.updateMany({ where: { organizationId: org, id: { in: rows.map((r) => r.id) } }, data: { postingId: out.posting.id } });
+      return out;
+    });
+  }
+
+  /** PAY-33: the held part of a result, once the customer has paid, sent to payroll in a month (approved like any posting). */
+  async releaseHeld(ctx: TenantContext, user: ScopeUser, planId: string, resultId: string, month: string) {
+    const v = await this.viewer(user);
+    return this.posting(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const p = await this.planFor(tx, c, v, planId);
+      const r = await tx.incentiveResult.findFirst({ where: { organizationId: org, planId, id: resultId } });
+      if (!r) throw new NotFoundException('Not found');
+      if (!r.heldAmount.gt(0)) throw new ConflictException('Nothing of this result is held.');
+      if (!r.postingId) throw new ConflictException("Send the month's results to payroll first; the held part follows them.");
+      if (r.releasedPostingId) throw new ConflictException('The held part is already released.');
+      if (month < dateOf(r.month).slice(0, 7)) throw new BadRequestException('Release it in the result month or later.');
+      const out = await this.post(tx, c, v, {
+        kind: 'incentive',
+        entityId: p.legalEntityId,
+        month,
+        sourceRef: `incentive-release:${r.id}`,
+        lines: [{ employeeId: r.employeeId, componentCode: 'incentive', amount: r.heldAmount.toFixed(2), label: `${p.name}, ${dateOf(r.month).slice(0, 7)}: the part held until the customer paid.` }],
+        title: `${p.name}, held part of ${dateOf(r.month).slice(0, 7)}`,
+      });
+      const n = await tx.incentiveResult.updateMany({ where: { organizationId: org, id: r.id, releasedPostingId: null }, data: { releasedPostingId: out.posting.id } });
+      if (!n.count) throw new ConflictException('The held part is already released.');
+      await audit(tx, c, 'payroll.incentive.held_released', 'incentive_result', r.id, { employeeId: r.employeeId, amount: r.heldAmount.toFixed(2), month, reason: r.heldReason });
       return out;
     });
   }
@@ -423,8 +591,37 @@ export class SpecialPayService implements OnModuleInit {
       const org = c.organizationId;
       const results = await tx.incentiveResult.findMany({ where: { organizationId: org }, orderBy: { month: 'desc' }, take: 120 });
       const clawbacks = await tx.incentiveClawback.findMany({ where: { organizationId: org }, orderBy: { month: 'desc' }, take: 120 });
+      // PAY-33: how often the plan pays (its quarter), the tier reached (the last band the attainment got into), the held part.
+      const plans = await tx.incentivePlan.findMany({ where: { organizationId: org, id: { in: [...new Set(results.map((r) => r.planId))] } }, select: { id: true, payoutFrequency: true, clawbackDays: true } });
+      const quarterOf = (m: string) => {
+        const n = Math.floor(((Number(m.slice(5, 7)) + 8) % 12) / 3) + 1;
+        const fy = Number(m.slice(0, 4)) - (Number(m.slice(5, 7)) < 4 ? 1 : 0);
+        return { quarter: `Q${n}`, taxYear: `${fy}-${String((fy + 1) % 100).padStart(2, '0')}` };
+      };
       return {
-        results: results.map((r) => ({ id: r.id, plan: (r.workings as { plan?: string }).plan ?? null, month: dateOf(r.month).slice(0, 7), quota: r.quota.toFixed(2), actual: r.actual.toFixed(2), amount: r.amount.toFixed(2), workings: r.workings, sentToPayroll: Boolean(r.postingId) })),
+        results: results.map((r) => {
+          const m = dateOf(r.month).slice(0, 7);
+          const plan = plans.find((x) => x.id === r.planId);
+          const bands = ((r.workings as { bands?: { from: number; to: number | null }[] }).bands ?? []);
+          const tier = bands.length ? { from: bands[bands.length - 1].from, to: bands[bands.length - 1].to } : null;
+          return {
+            id: r.id,
+            plan: (r.workings as { plan?: string }).plan ?? null,
+            month: m,
+            ...quarterOf(m),
+            payoutFrequency: plan?.payoutFrequency ?? 'monthly',
+            clawbackDays: plan?.clawbackDays ?? 0,
+            tier,
+            quota: r.quota.toFixed(2),
+            actual: r.actual.toFixed(2),
+            amount: r.amount.toFixed(2),
+            held: r.heldAmount.toFixed(2),
+            heldReason: r.heldReason,
+            heldReleased: Boolean(r.releasedPostingId),
+            workings: r.workings,
+            sentToPayroll: Boolean(r.postingId),
+          };
+        }),
         clawbacks: clawbacks.map((x) => ({ id: x.id, month: dateOf(x.month).slice(0, 7), amount: x.amount.toFixed(2), reason: x.reason })),
       };
     });
@@ -506,17 +703,18 @@ export class SpecialPayService implements OnModuleInit {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, entityId);
-      return (await tx.oncallRule.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: { name: 'asc' } })).map((r) => ({ id: r.id, name: r.name, standbyAmount: r.standbyAmount.toFixed(2), calloutMinHours: r.calloutMinHours.toString(), calloutRate: r.calloutRate.toFixed(2), multiplier: r.multiplier.toString() }));
+      return (await tx.oncallRule.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId }, orderBy: { name: 'asc' } })).map((r) => ({ id: r.id, name: r.name, standbyAmount: r.standbyAmount.toFixed(2), calloutMinHours: r.calloutMinHours.toString(), calloutRate: r.calloutRate.toFixed(2), multiplier: r.multiplier.toString(), holidayMultiplier: r.holidayMultiplier?.toString() ?? null, payStandbyWhenCalled: r.payStandbyWhenCalled, countTowardsWeekly: r.countTowardsWeekly }));
     });
   }
 
   async addOncallRule(ctx: TenantContext, user: ScopeUser, dto: OncallRuleDto) {
     const v = await this.viewer(user);
     if (Number(dto.multiplier) < 1) throw new BadRequestException('The call-out multiplier is at least 1.');
+    if (dto.holidayMultiplier && Number(dto.holidayMultiplier) < Number(dto.multiplier)) throw new BadRequestException(`The public-holiday multiplier must be at least the normal-day multiplier (${dto.multiplier}×).`);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, dto.legalEntityId);
-      const r = await tx.oncallRule.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, standbyAmount: D(dto.standbyAmount), calloutMinHours: D(dto.calloutMinHours), calloutRate: D(dto.calloutRate), multiplier: D(dto.multiplier), createdBy: v.userId! } });
-      await audit(tx, c, 'payroll.oncall.rule_added', 'oncall_rule', r.id, { name: dto.name });
+      const r = await tx.oncallRule.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, standbyAmount: D(dto.standbyAmount), calloutMinHours: D(dto.calloutMinHours), calloutRate: D(dto.calloutRate), multiplier: D(dto.multiplier), holidayMultiplier: dto.holidayMultiplier ? D(dto.holidayMultiplier) : null, payStandbyWhenCalled: dto.payStandbyWhenCalled ?? true, countTowardsWeekly: dto.countTowardsWeekly ?? false, createdBy: v.userId! } });
+      await audit(tx, c, 'payroll.oncall.rule_added', 'oncall_rule', r.id, { name: dto.name, holidayMultiplier: dto.holidayMultiplier ?? null, payStandbyWhenCalled: dto.payStandbyWhenCalled ?? true, countTowardsWeekly: dto.countTowardsWeekly ?? false });
       return { id: r.id };
     });
   }
@@ -533,8 +731,8 @@ export class SpecialPayService implements OnModuleInit {
       if (await tx.specialPosting.findFirst({ where: { organizationId: org, kind: 'oncall', sourceRef: `oncall:${rule.legalEntityId}:${month}`, status: { in: ['pending', 'approved'] } } })) throw new ConflictException(`${month}'s on-call pay is already sent to payroll.`);
       const e = await this.employment(tx, org, rule.legalEntityId, dto.employeeId, dto.slotDate, dto.slotDate);
       try {
-        const s = await tx.oncallSlot.create({ data: { organizationId: org, legalEntityId: rule.legalEntityId, ruleId: rule.id, employeeId: dto.employeeId, employmentId: e.id, slotDate: asDate(dto.slotDate), calloutHours: dto.calloutHours ? D(dto.calloutHours) : null, createdBy: v.userId! } });
-        await audit(tx, c, 'payroll.oncall.slot_added', 'oncall_slot', s.id, { employeeId: dto.employeeId, date: dto.slotDate, calloutHours: dto.calloutHours ?? null });
+        const s = await tx.oncallSlot.create({ data: { organizationId: org, legalEntityId: rule.legalEntityId, ruleId: rule.id, employeeId: dto.employeeId, employmentId: e.id, slotDate: asDate(dto.slotDate), calloutHours: dto.calloutHours ? D(dto.calloutHours) : null, onHoliday: dto.onHoliday ?? false, createdBy: v.userId! } });
+        await audit(tx, c, 'payroll.oncall.slot_added', 'oncall_slot', s.id, { employeeId: dto.employeeId, date: dto.slotDate, calloutHours: dto.calloutHours ?? null, onHoliday: dto.onHoliday ?? false });
         return { id: s.id };
       } catch (err) {
         if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException('This person already has that on-call slot on that day.');
@@ -549,7 +747,7 @@ export class SpecialPayService implements OnModuleInit {
       await this.entity(tx, c, v, entityId);
       const { from, to } = monthRange(month);
       const rows = await tx.oncallSlot.findMany({ where: { organizationId: c.organizationId, legalEntityId: entityId, slotDate: { gte: asDate(from), lte: asDate(to) } }, orderBy: { slotDate: 'asc' } });
-      return rows.map((s) => ({ id: s.id, ruleId: s.ruleId, employeeId: s.employeeId, slotDate: dateOf(s.slotDate), calloutHours: s.calloutHours?.toString() ?? null }));
+      return rows.map((s) => ({ id: s.id, ruleId: s.ruleId, employeeId: s.employeeId, slotDate: dateOf(s.slotDate), calloutHours: s.calloutHours?.toString() ?? null, onHoliday: s.onHoliday }));
     });
   }
 
@@ -566,9 +764,12 @@ export class SpecialPayService implements OnModuleInit {
         for (const rule of rules) {
           const mine = slots.filter((s) => s.employeeId === employeeId && s.ruleId === rule.id);
           if (!mine.length) continue;
-          const r = oncall({ standbyAmount: rule.standbyAmount.toString(), calloutMinHours: rule.calloutMinHours.toString(), calloutRate: rule.calloutRate.toString(), multiplier: rule.multiplier.toString() }, mine.map((s) => ({ calloutHours: s.calloutHours?.toString() ?? null })));
-          lines.push({ employeeId, componentCode: 'standby_allowance', amount: r.standby.toFixed(2), label: `${rule.name}: ${mine.length} on-call slots in ${month}.` });
-          if (r.callouts) lines.push({ employeeId, componentCode: 'callout_pay', amount: r.callout.toFixed(2), label: `${rule.name}: ${r.callouts} call-outs (at least ${rule.calloutMinHours.toString()} hours each at ${rule.multiplier.toString()} ×).` });
+          const r = oncall(
+            { standbyAmount: rule.standbyAmount.toString(), calloutMinHours: rule.calloutMinHours.toString(), calloutRate: rule.calloutRate.toString(), multiplier: rule.multiplier.toString(), holidayMultiplier: rule.holidayMultiplier?.toString() ?? null, payStandbyWhenCalled: rule.payStandbyWhenCalled },
+            mine.map((s) => ({ calloutHours: s.calloutHours?.toString() ?? null, onHoliday: s.onHoliday })),
+          );
+          if (r.standby.gt(0)) lines.push({ employeeId, componentCode: 'standby_allowance', amount: r.standby.toFixed(2), label: `${rule.name}: ${mine.length} on-call slots in ${month}${rule.payStandbyWhenCalled ? '' : ' (no standby on a slot with a call-out)'}.` });
+          if (r.callouts) lines.push({ employeeId, componentCode: 'callout_pay', amount: r.callout.toFixed(2), label: `${rule.name}: ${r.callouts} call-outs (at least ${rule.calloutMinHours.toString()} hours each at ${rule.multiplier.toString()} ×${r.holidayCallouts && rule.holidayMultiplier ? `; ${r.holidayCallouts} on a public holiday at ${rule.holidayMultiplier.toString()} ×` : ''}).` });
         }
       }
       return this.post(tx, c, v, { kind: 'oncall', entityId, month, sourceRef: `oncall:${entityId}:${month}`, lines, title: month });
@@ -673,7 +874,44 @@ export class SpecialPayService implements OnModuleInit {
       if (!u || !ids.includes(u.legalEntityId)) throw new NotFoundException('Not found');
       const p = await tx.specialPosting.findFirst({ where: { organizationId: org, kind: 'union', sourceRef: `union:${u.legalEntityId}:${month}`, status: 'approved' } });
       const lines = ((p?.lines ?? []) as unknown as Line[]).filter((l) => l.meta?.unionId === u.id);
-      return { union: u.name, month, approved: Boolean(p), members: lines.map((l) => ({ employeeId: l.employeeId, amount: l.amount })), total: lines.reduce((t, l) => t.add(l.amount), ZERO).toFixed(2) };
+      const r = await tx.unionRemittance.findFirst({ where: { organizationId: org, unionId: u.id, month: monthStart(month) } });
+      return {
+        union: u.name,
+        month,
+        approved: Boolean(p),
+        members: lines.map((l) => ({ employeeId: l.employeeId, amount: l.amount })),
+        total: lines.reduce((t, l) => t.add(l.amount), ZERO).toFixed(2),
+        remitted: r ? { amount: r.amount.toFixed(2), paidOn: dateOf(r.paidOn), reference: r.reference, recordedBy: r.recordedBy, recordedAt: r.createdAt } : null,
+      };
+    });
+  }
+
+  /**
+   * PAY-36 "Mark remitted": the union was paid its dues for the month. Only an approved check-off can be remitted; the
+   * amount is that check-off's total for the union (never typed); once per union and month; audited (money).
+   */
+  async markRemitted(ctx: TenantContext, user: ScopeUser, unionId: string, dto: { month: string; paidOn: string; reference: string }) {
+    const v = await this.viewer(user);
+    if (dto.paidOn > todayIst()) throw new BadRequestException('The payment date cannot be in the future.');
+    if (dto.paidOn < `${dto.month}-01`) throw new BadRequestException('The dues are paid on or after the first day of their month.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'payroll.special.manage');
+      await payScope(tx, ids);
+      const u = await tx.union.findFirst({ where: { organizationId: org, id: unionId } });
+      if (!u || !ids.includes(u.legalEntityId)) throw new NotFoundException('Not found');
+      const p = await tx.specialPosting.findFirst({ where: { organizationId: org, kind: 'union', sourceRef: `union:${u.legalEntityId}:${dto.month}`, status: 'approved' } });
+      if (!p) throw new ConflictException(`The union dues for ${dto.month} are not approved yet. Send them to payroll and get them approved first.`);
+      const amount = (p.lines as unknown as Line[]).filter((l) => l.meta?.unionId === u.id).reduce((t, l) => t.add(l.amount), ZERO);
+      if (amount.lte(0)) throw new ConflictException('No dues were deducted for this union that month.');
+      try {
+        const r = await tx.unionRemittance.create({ data: { organizationId: org, legalEntityId: u.legalEntityId, unionId: u.id, month: monthStart(dto.month), amount, paidOn: asDate(dto.paidOn), reference: dto.reference, recordedBy: v.userId! } });
+        await audit(tx, c, 'payroll.union.remitted', 'union_remittance', r.id, { unionId: u.id, month: dto.month, amount: amount.toFixed(2), paidOn: dto.paidOn, reference: dto.reference });
+        return { id: r.id, amount: amount.toFixed(2), paidOn: dto.paidOn, reference: dto.reference };
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This month is already marked as remitted to this union.');
+        throw e;
+      }
     });
   }
 
@@ -683,10 +921,18 @@ export class SpecialPayService implements OnModuleInit {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, dto.legalEntityId);
       if (dto.unionId && !(await tx.union.findFirst({ where: { organizationId: c.organizationId, id: dto.unionId, legalEntityId: dto.legalEntityId } }))) throw new NotFoundException('Not found');
-      const s = await tx.wageSettlement.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, unionId: dto.unionId ?? null, title: dto.title, effectiveFrom: asDate(dto.effectiveFrom), signedOn: asDate(dto.signedOn), rates: dto.rates as unknown as Prisma.InputJsonValue, createdBy: v.userId! } });
-      await audit(tx, c, 'payroll.settlement.added', 'wage_settlement', s.id, { title: dto.title, effectiveFrom: dto.effectiveFrom, categories: dto.rates.length });
-      return { id: s.id };
+      return { id: (await this.settlementIn(tx, c, v.userId!, dto)).id };
     });
+  }
+
+  /**
+   * Records a wage settlement in the caller's transaction (PAY-37 pays it later: payroll previews, posts it for a pay month
+   * and someone else approves). HLP-13 uses it for a dispute settlement its IR team approved; nothing is paid here.
+   */
+  async settlementIn(tx: Tx, c: CompanyContext, by: string, dto: Omit<SettlementDto, 'unionId'> & { unionId?: string; source?: string }) {
+    const s = await tx.wageSettlement.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, unionId: dto.unionId ?? null, title: dto.title, effectiveFrom: asDate(dto.effectiveFrom), signedOn: asDate(dto.signedOn), rates: dto.rates as unknown as Prisma.InputJsonValue, createdBy: by } });
+    await audit(tx, c, 'payroll.settlement.added', 'wage_settlement', s.id, { title: dto.title, effectiveFrom: dto.effectiveFrom, categories: dto.rates.length, ...(dto.source ? { source: dto.source } : {}) });
+    return s;
   }
 
   /**
@@ -698,26 +944,49 @@ export class SpecialPayService implements OnModuleInit {
   async postSettlement(ctx: TenantContext, user: ScopeUser, id: string, month: string) {
     const v = await this.viewer(user);
     return this.posting(ctx, async (tx, c) => {
-      const org = c.organizationId;
-      const ids = await entitiesFor(tx, c, v, 'payroll.special.manage');
-      await payScope(tx, ids);
-      const s = await tx.wageSettlement.findFirst({ where: { organizationId: org, id } });
-      if (!s || !ids.includes(s.legalEntityId)) throw new NotFoundException('Not found');
-      const effective = dateOf(s.effectiveFrom);
-      if (effective.slice(0, 7) >= month) throw new BadRequestException('Arrears are for months before the pay month.');
-      const rates = s.rates as unknown as { category: string; monthlyIncrease: string }[];
-      const plain = await tx.employeeAssignment.findMany({ where: { organizationId: org, supersededAt: null, validTo: null, skillClass: { in: rates.map((r) => r.category) } } });
-      const ems = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: s.legalEntityId, id: { in: plain.map((a) => a.employmentId) }, joinedOn: { lt: monthStart(month) }, OR: [{ exitedOn: null }, { exitedOn: { gte: monthStart(month) } }] }, select: { id: true, employeeId: true, joinedOn: true } });
-      const asgs = plain.filter((a) => ems.some((e) => e.id === a.employmentId)).map((a) => ({ ...a, employment: ems.find((e) => e.id === a.employmentId)! }));
-      const lines: Line[] = [];
-      for (const a of asgs) {
-        const rate = rates.find((r) => r.category === a.skillClass)!;
-        const from = dateOf(a.employment.joinedOn) > effective ? dateOf(a.employment.joinedOn) : effective;
-        const x = settlementArrears(rate.monthlyIncrease, from, month);
-        lines.push({ employeeId: a.employment.employeeId, componentCode: 'settlement_arrears', amount: x.total.toFixed(2), label: `${s.title}: ₹${rate.monthlyIncrease} a month for ${a.skillClass} from ${from} to the end of the month before ${month}.` });
-      }
+      const { s, workers } = await this.settlementWorkers(tx, c, v, id, month);
+      const lines: Line[] = workers.map((w) => ({ employeeId: w.employeeId, componentCode: 'settlement_arrears', amount: w.total, label: `${s.title}: ₹${w.monthlyIncrease} a month for ${w.category} from ${w.from} to the end of the month before ${month}.` }));
       return this.post(tx, c, v, { kind: 'settle', entityId: s.legalEntityId, month, sourceRef: `settle:${s.id}`, lines, title: s.title });
     });
+  }
+
+  /**
+   * PAY-37 Categories and Worksheet: the workers each category reaches (today's skill class, in the entity, joined before
+   * the pay month and not gone), and each worker's arrears month by month, as the posting would send them. Nothing saved.
+   */
+  async settlementPreview(ctx: TenantContext, user: ScopeUser, id: string, month: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { s, rates, workers } = await this.settlementWorkers(tx, c, v, id, month);
+      const categories = rates.map((r) => {
+        const mine = workers.filter((w) => w.category === r.category);
+        return { category: r.category, monthlyIncrease: D(r.monthlyIncrease).toFixed(2), workers: mine.length, arrears: mine.reduce((t, w) => t.add(w.total), D(0)).toFixed(2) };
+      });
+      return { settlementId: s.id, month, categories, employees: workers.map(({ monthlyIncrease: _m, ...w }) => w), total: workers.reduce((t, w) => t.add(w.total), D(0)).toFixed(2) };
+    });
+  }
+
+  private async settlementWorkers(tx: Tx, c: CompanyContext, v: Viewer, id: string, month: string) {
+    const org = c.organizationId;
+    const ids = await entitiesFor(tx, c, v, 'payroll.special.manage');
+    await payScope(tx, ids);
+    const s = await tx.wageSettlement.findFirst({ where: { organizationId: org, id } });
+    if (!s || !ids.includes(s.legalEntityId)) throw new NotFoundException('Not found');
+    const effective = dateOf(s.effectiveFrom);
+    if (effective.slice(0, 7) >= month) throw new BadRequestException('Arrears are for months before the pay month.');
+    const rates = s.rates as unknown as { category: string; monthlyIncrease: string }[];
+    const plain = await tx.employeeAssignment.findMany({ where: { organizationId: org, supersededAt: null, validTo: null, skillClass: { in: rates.map((r) => r.category) } } });
+    const ems = await tx.employment.findMany({ where: { organizationId: org, legalEntityId: s.legalEntityId, id: { in: plain.map((a) => a.employmentId) }, joinedOn: { lt: monthStart(month) }, OR: [{ exitedOn: null }, { exitedOn: { gte: monthStart(month) } }] }, select: { id: true, employeeId: true, joinedOn: true } });
+    const workers = plain
+      .filter((a) => ems.some((e) => e.id === a.employmentId))
+      .map((a) => {
+        const em = ems.find((e) => e.id === a.employmentId)!;
+        const rate = rates.find((r) => r.category === a.skillClass)!;
+        const from = dateOf(em.joinedOn) > effective ? dateOf(em.joinedOn) : effective;
+        const x = settlementArrears(rate.monthlyIncrease, from, month);
+        return { employeeId: em.employeeId, category: a.skillClass!, monthlyIncrease: rate.monthlyIncrease, from, months: x.months, total: x.total.toFixed(2) };
+      });
+    return { s, rates, workers };
   }
 
   async addLayoff(ctx: TenantContext, user: ScopeUser, entityId: string, dto: LayoffDto) {

@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { apiFetch } from './api-client';
 import { useAuth } from './auth-context';
-import type { CountKey } from './yx-nav';
+import type { CountKey, NavArea } from './yx-nav';
 
 // The app frame's data (design audit step 1): the company and period chosen in the top bar, the side-menu counts and
 // global search. The scope is a per-browser convenience, so localStorage is fine (it is never a permission: the API
@@ -76,9 +76,11 @@ export function recentMonths(today = new Date(), n = 6): { value: string; label:
 
 export function useWorkspaceCounts() {
   const { accessToken } = useAuth();
+  // The top bar's company: the Probation count follows it, like the list.
+  const { scope } = useScope();
   return useQuery<Partial<Record<CountKey | 'notifications', number>>>({
-    queryKey: ['yx', 'workspace', 'counts'],
-    queryFn: () => apiFetch('/workspace/counts', {}, accessToken ?? undefined),
+    queryKey: ['yx', 'workspace', 'counts', scope.entity ?? ''],
+    queryFn: () => apiFetch(`/workspace/counts${scope.entity ? `?legalEntityId=${encodeURIComponent(scope.entity)}` : ''}`, {}, accessToken ?? undefined),
     enabled: Boolean(accessToken),
     refetchInterval: 60_000,
     retry: false,
@@ -112,3 +114,7 @@ export function useWorkspaceSearch(raw: string) {
   const typed = raw.trim().replace(/^[@#>?]\s*/, '');
   return { data: q.length >= 2 ? query.data : undefined, loading: typed.length >= 2 && (typed.slice(0, 100) !== q || query.isFetching) };
 }
+
+/** The viewer's menu (built once by the app frame), for pages that list what the viewer may open (Settings home, S-1). */
+export const YxNavContext = createContext<{ nav: NavArea[]; ready: boolean }>({ nav: [], ready: false });
+export const useYxNav = () => useContext(YxNavContext);

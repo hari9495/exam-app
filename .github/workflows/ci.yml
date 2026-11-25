@@ -11,6 +11,11 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+# Private-repo runners have about 7 GB, so Node's default heap is about 2 GB; the jest, Next and Storybook steps ran
+# out of it (18 Nov 2026, PR #221). 6 GB still leaves room for Postgres and Redis on the runner.
+env:
+  NODE_OPTIONS: --max-old-space-size=6144
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -21,12 +26,12 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: examapp
+          POSTGRES_DB: examapp_e2e
           POSTGRES_PASSWORD: ci-throwaway
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d examapp"
+          --health-cmd "pg_isready -U postgres -d examapp_e2e"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7-alpine
@@ -70,13 +75,13 @@ jobs:
           PGHOST: localhost
           PGPASSWORD: ci-throwaway
           POSTGRES_USER: postgres
-          POSTGRES_DB: examapp
+          POSTGRES_DB: examapp_e2e
         run: |
           owner_pw=$(openssl rand -hex 24); app_pw=$(openssl rand -hex 24)
           echo "::add-mask::$owner_pw"; echo "::add-mask::$app_pw"
           APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
-          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
-          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp_e2e?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp_e2e?schema=public" >> "$GITHUB_ENV"
           # Per-run key for encrypted org secrets (SSO client secrets, TOTP secrets) used by the e2e suites.
           org_key=$(openssl rand -hex 32); echo "::add-mask::$org_key"
           echo "ORG_SECRETS_ENCRYPTION_KEY=$org_key" >> "$GITHUB_ENV"
@@ -156,12 +161,12 @@ jobs:
       postgres:
         image: postgres:17
         env:
-          POSTGRES_DB: examapp
+          POSTGRES_DB: examapp_e2e
           POSTGRES_PASSWORD: ci-throwaway
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U postgres -d examapp"
+          --health-cmd "pg_isready -U postgres -d examapp_e2e"
           --health-interval 5s --health-timeout 5s --health-retries 10
       redis:
         image: redis:7-alpine
@@ -194,13 +199,13 @@ jobs:
           PGHOST: localhost
           PGPASSWORD: ci-throwaway
           POSTGRES_USER: postgres
-          POSTGRES_DB: examapp
+          POSTGRES_DB: examapp_e2e
         run: |
           owner_pw=$(openssl rand -hex 24); app_pw=$(openssl rand -hex 24)
           echo "::add-mask::$owner_pw"; echo "::add-mask::$app_pw"
           APP_DB_OWNER_PASSWORD=$owner_pw APP_DB_APP_PASSWORD=$app_pw sh docker/postgres/init/01-roles.sh
-          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
-          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp?schema=public" >> "$GITHUB_ENV"
+          echo "MIGRATION_DATABASE_URL=postgresql://examapp_owner:$owner_pw@localhost:5432/examapp_e2e?schema=public" >> "$GITHUB_ENV"
+          echo "DATABASE_URL=postgresql://examapp_app:$app_pw@localhost:5432/examapp_e2e?schema=public" >> "$GITHUB_ENV"
           # The suites boot the whole AppModule, which signs tokens: per-run secrets, never stored anywhere.
           for name in ORG_SECRETS_ENCRYPTION_KEY JWT_ACCESS_SECRET JWT_REFRESH_SECRET CANDIDATE_JWT_ACCESS_SECRET CANDIDATE_JWT_REFRESH_SECRET INTERNAL_SERVICE_SECRET; do
             value=$(openssl rand -hex 32); echo "::add-mask::$value"; echo "$name=$value" >> "$GITHUB_ENV"
@@ -214,6 +219,9 @@ jobs:
 
       - name: API e2e suites (shard ${{ matrix.shard }}/4)
         working-directory: apps/api
+        # seed-panel-role builds a fresh database, which needs the service container's superuser (not docker exec).
+        env:
+          PG_SUPERUSER_URL: postgresql://postgres:ci-throwaway@localhost:5432/postgres
         run: npx jest --config ./test/jest-e2e.json --shard=${{ matrix.shard }}/4
 
   # A fresh database takes every migration in order, and Prisma then reports it up to date (no failed, missing or

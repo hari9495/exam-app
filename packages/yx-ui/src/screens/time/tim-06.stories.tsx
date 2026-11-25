@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ShiftEditorScreen } from './roster';
 
-const meta: Meta<typeof ShiftEditorScreen> = { title: 'Screens/Time/TIM-06 · Shift editor and patterns', component: ShiftEditorScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof ShiftEditorScreen> = { title: 'Screens/Time/TIM-06 · Shift editor and patterns', component: ShiftEditorScreen, render: (args) => <ShiftEditorScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof ShiftEditorScreen>;
 

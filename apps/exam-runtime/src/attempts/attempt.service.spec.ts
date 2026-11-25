@@ -24,6 +24,12 @@ import { FaceVerificationService } from '../face/face-verification.service';
 import { QuotaService } from '../billing/quota.service';
 import { ApiInternalClient } from '../api-internal-client/api-internal.client';
 
+// AS-6 (answer 2237): every stubbed transaction has no applicant privacy notice unless a test gives one.
+const withNotice = <T,>(tx: T): T => {
+  if (tx && typeof tx === 'object' && !('consentNotice' in tx)) (tx as Record<string, unknown>).consentNotice = { findFirst: jest.fn().mockResolvedValue(null) };
+  return tx;
+};
+
 // The cap-count query folds case AND width (see sanitize-metadata.ts / scc-task-5-report.md),
 // so a plain `.toContain('"screenshot":')` assertion is case- and width-sensitive in JS and
 // would pass on a stored `"ｓcreenshot":` that the real query still matches. Fold the same way
@@ -98,7 +104,7 @@ describe('AttemptService', () => {
     // production would exercise it. Individual tests still layer `.mockImplementationOnce(...)`
     // on top for the specific tx/return value their assertions need; this default only fires for
     // calls a test doesn't explicitly stub.
-    tenantPrisma = { forTenant: jest.fn((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(defaultTx())), withoutTenantScope: jest.fn() };
+    tenantPrisma = { forTenant: jest.fn((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(defaultTx()))), withoutTenantScope: jest.fn() };
     settlement = {
       settleIfExpired: jest.fn(),
       finalize: jest.fn(),
@@ -158,10 +164,23 @@ describe('AttemptService', () => {
     service = moduleRef.get(AttemptService);
   });
 
+  // AS-4a: the runner reads the company's runner settings, whether the survey was answered, and the stored answer (an
+  // older copy kept on the device never wins). A test that does not care about them gets "nothing there".
+  function withRunnerDefaults(scopedTx: unknown) {
+    const tx = scopedTx as Record<string, Record<string, unknown> | undefined>;
+    if (!tx || typeof tx !== 'object') return;
+    tx.setting = { findFirst: jest.fn().mockResolvedValue(null), ...(tx.setting ?? {}) };
+    tx.attemptSurvey = { findUnique: jest.fn().mockResolvedValue(null), ...(tx.attemptSurvey ?? {}) };
+    tx.answer = { findUnique: jest.fn().mockResolvedValue(null), ...(tx.answer ?? {}) };
+    // AS-6 (answer 2237): the company's applicant privacy notice; none by default.
+    tx.consentNotice = { findFirst: jest.fn().mockResolvedValue(null), ...(tx.consentNotice ?? {}) };
+  }
+
   function mockBootstrapThenScoped(scopedTx: unknown) {
+    withRunnerDefaults(scopedTx);
     tenantPrisma.forTenant
       .mockImplementationOnce(() => Promise.resolve(invitationRecord))
-      .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+      .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)));
   }
 
   // reportProctoringEvent and webcamViolation split their work across two separate scoped
@@ -170,10 +189,11 @@ describe('AttemptService', () => {
   // underlying tx mock, exactly as two separate interactive transactions against the same
   // tenant would.
   function mockBootstrapThenTwoScopedCalls(scopedTx: unknown, invitation: unknown = invitationRecord) {
+    withRunnerDefaults(scopedTx);
     tenantPrisma.forTenant
       .mockImplementationOnce(() => Promise.resolve(invitation))
-      .mockImplementationOnce((_ctx, fn) => fn(scopedTx))
-      .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+      .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)))
+      .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)));
   }
 
   // webcamSnapshot (ADO #6809): only resolveContext's invitation lookup still goes through
@@ -188,10 +208,11 @@ describe('AttemptService', () => {
   // third bootstrap-scoped forTenant call, sandwiched between the invitation lookup and the
   // scoped attempt-data call that the other methods' mockBootstrapThenScoped doesn't need.
   function mockBootstrapWithLogoThenScoped(scopedTx: unknown, logoPath: string | null = null) {
+    withRunnerDefaults(scopedTx);
     tenantPrisma.forTenant
       .mockImplementationOnce(() => Promise.resolve(invitationRecord))
       .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath }))
-      .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+      .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)));
   }
 
   describe('getCurrent', () => {
@@ -210,6 +231,7 @@ describe('AttemptService', () => {
             { id: 'section-2', title: 'Section Two', selectionMode: 'pool', poolSize: 5, questions: [] },
           ]),
         },
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       mockBootstrapWithLogoThenScoped(tx);
 
@@ -217,10 +239,13 @@ describe('AttemptService', () => {
 
       expect(result).toEqual({
         candidateName: 'Ada Lovelace',
+        privacyNotice: null,
         exam: {
           title: 'Backend Round', instructions: 'Be honest', durationMinutes: 60,
           schedulingEnabled: false, availabilityWindowStart: null, availabilityWindowEnd: null,
           proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+          // AS-2 (answer 2008): no company value, so the default retention.
+          evidenceRetentionDays: 30,
         },
         schedulingWindowState: null,
         sections: [
@@ -236,12 +261,12 @@ describe('AttemptService', () => {
     it('returns the organization primaryColor alongside the logo when the org has one set', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null) },
-        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(invitationRecord))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null, primaryColor: '#B23B3B' }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getCurrent(session);
 
@@ -262,6 +287,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(1000);
@@ -288,6 +317,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(1000);
@@ -311,6 +344,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(1000);
@@ -333,6 +370,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, languageMode: 'fixed', allowedLanguages: null, starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       });
 
       it('is true when the exam has screenCaptureEnabled and there is no bypass', async () => {
@@ -341,7 +382,7 @@ describe('AttemptService', () => {
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithCapture }))
           .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(txFor(attempt))));
         settlement.settleIfExpired.mockResolvedValue(attempt);
         settlement.remainingSeconds.mockReturnValue(1000);
 
@@ -356,7 +397,7 @@ describe('AttemptService', () => {
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithoutCapture }))
           .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(txFor(attempt))));
         settlement.settleIfExpired.mockResolvedValue(attempt);
         settlement.remainingSeconds.mockReturnValue(1000);
 
@@ -376,7 +417,7 @@ describe('AttemptService', () => {
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithCapture }))
           .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(txFor(attempt)));
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(txFor(attempt))));
         settlement.settleIfExpired.mockResolvedValue(attempt);
         settlement.remainingSeconds.mockReturnValue(1000);
 
@@ -387,6 +428,16 @@ describe('AttemptService', () => {
       });
     });
 
+    it('AS-2 (answer 2008): tells the candidate the company retention before consent, kept inside 30 to 365 days', async () => {
+      for (const [stored, shown] of [['180', 180], ['7', 30], ['1000', 365], ['x', 30]] as const) {
+        const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue({ value: stored }) } };
+        mockBootstrapWithLogoThenScoped(tx);
+        const result = (await service.getCurrent(session)) as { exam: { evidenceRetentionDays: number } };
+        expect([stored, result.exam.evidenceRetentionDays]).toEqual([stored, shown]);
+        expect(tx.setting.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ key: 'asmt.retention', scopeType: 'tenant' }) }));
+      }
+    });
+
     it('falls back to 0 questions for a pool section with poolSize unset', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null) },
@@ -395,6 +446,7 @@ describe('AttemptService', () => {
             { id: 'section-1', title: 'Section One', selectionMode: 'pool', poolSize: null, questions: [] },
           ]),
         },
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       mockBootstrapWithLogoThenScoped(tx);
 
@@ -404,11 +456,11 @@ describe('AttemptService', () => {
     });
 
     it('returns the effective duration (exam duration + extraTimePercent) when the invitation has an accommodation', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, extraTimePercent: 50 }))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getCurrent(session);
 
@@ -444,6 +496,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([{ questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false }]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -453,6 +509,7 @@ describe('AttemptService', () => {
 
       expect(result).toEqual({
         candidateName: 'Ada Lovelace',
+        privacyNotice: null,
         status: 'in_progress',
         remainingSeconds: 3300,
         exam: { title: 'Backend Round', proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] } },
@@ -462,14 +519,17 @@ describe('AttemptService', () => {
             questions: [{
               id: 'q1', text: 'What is 2+2?', type: 'single_mcq', marks: 5,
               languageMode: 'fixed', allowedLanguages: [],
-              starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null,
-              options: [{ id: 'opt-a', text: '4', imageUrl: null }, { id: 'opt-b', text: '5', imageUrl: null }],
+              starterCode: null, allowStdin: false, snippetCode: null, snippetLanguage: null, imageUrl: null, imageAlt: null,
+              options: [{ id: 'opt-a', text: '4', imageUrl: null, imageAlt: null }, { id: 'opt-b', text: '5', imageUrl: null, imageAlt: null }],
             }],
           },
         ],
         answers: [{ questionId: 'q1', selectedOptionIds: ['opt-a'], isMarkedForReview: false, answerFiles: [] }],
         messages: [],
         feedback: null,
+        runner: { calculator: 'none', breaksAllowed: undefined, breaksUsed: undefined, breakMinutes: undefined, breakEndsAt: null, offlineMinutes: 5, timeCreditCapMinutes: 10, offlineCreditSeconds: NaN, surveyDone: false, aiAllowed: false },
+        pauseMessage: null,
+        faceRecheckTriesLeft: null,
         faceWarningAt: null,
         organizationName: 'Acme Corp',
         organizationLogoUrl: null,
@@ -500,6 +560,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -511,7 +575,7 @@ describe('AttemptService', () => {
         id: 'code-q1', text: 'Reverse a string', type: 'code', marks: 10,
         languageMode: 'fixed', allowedLanguages: ['python', 'java'],
         starterCode: 'def reverse(s):\n    pass', allowStdin: true,
-        snippetCode: null, snippetLanguage: null, imageUrl: null,
+        snippetCode: null, snippetLanguage: null, imageUrl: null, imageAlt: null,
         options: [],
       });
     });
@@ -538,6 +602,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -573,6 +641,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -583,10 +655,10 @@ describe('AttemptService', () => {
       expect((result as any).sections[0].questions[0]).toEqual({
         id: 'mcq-q1', text: 'What does this code print?', type: 'single_mcq', marks: 5,
         languageMode: 'fixed', allowedLanguages: [], starterCode: null, allowStdin: false,
-        snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png',
+        snippetCode: 'x = [1, 2, 3]\nprint(x[::-1])', snippetLanguage: 'python', imageUrl: 'http://localhost:3001/uploads/question-images/stem.png', imageAlt: null,
         options: [
-          { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png' },
-          { id: 'opt-b', text: '[1, 2, 3]', imageUrl: null },
+          { id: 'opt-a', text: '[3, 2, 1]', imageUrl: 'http://localhost:3001/uploads/question-images/opt-a.png', imageAlt: null },
+          { id: 'opt-b', text: '[1, 2, 3]', imageUrl: null, imageAlt: null },
         ],
       });
     });
@@ -607,6 +679,10 @@ describe('AttemptService', () => {
         },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -614,10 +690,10 @@ describe('AttemptService', () => {
 
       const result = await service.getCurrent(session);
 
-      expect((result as any).sections[0].questions[0].options).toEqual([{ id: 'opt-b', text: '5' }, { id: 'opt-a', text: '4' }]);
+      expect((result as any).sections[0].questions[0].options).toEqual([{ id: 'opt-b', text: '5', imageAlt: null }, { id: 'opt-a', text: '4', imageAlt: null }]);
     });
 
-    it('returns unread messages and marks them read', async () => {
+    it('returns the proctor\'s unread messages and leaves them unread (answer 2269: read on Got it or a reply)', async () => {
       const attempt = {
         id: 'attempt-1', status: 'in_progress', startedAt: new Date(),
         questionOrderJson: '[]', sectionSnapshotJson: '[]', optionOrderJson: null,
@@ -636,15 +712,12 @@ describe('AttemptService', () => {
       const result = await service.getCurrent(session);
 
       expect((result as any).messages).toEqual([{ id: 'msg-1', body: 'Please stay on the exam tab', sentAt: unreadMessage.sentAt }]);
-      expect(tx.candidateMessage.findMany).toHaveBeenCalledWith({ where: { attemptId: 'attempt-1', readAt: null } });
-      expect(tx.candidateMessage.updateMany).toHaveBeenCalledWith({
-        where: { attemptId: 'attempt-1', readAt: null },
-        data: { readAt: expect.any(Date) },
-      });
+      expect(tx.candidateMessage.findMany).toHaveBeenCalledWith({ where: { attemptId: 'attempt-1', readAt: null, fromCandidate: false }, orderBy: { sentAt: 'asc' } });
+      expect(tx.candidateMessage.updateMany).not.toHaveBeenCalled();
     });
 
     it('resolves tenant context via an unscoped bootstrap lookup, an unscoped logo lookup, then a properly scoped call', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockBootstrapWithLogoThenScoped(tx);
 
       await service.getCurrent(session);
@@ -678,6 +751,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(100);
@@ -700,6 +777,11 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'code', marks: 10, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 0, maxScore: 10, percentage: 0, passFail: null }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -723,6 +805,11 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -733,7 +820,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getCurrent(session);
 
@@ -752,6 +839,11 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 5, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -760,7 +852,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getCurrent(session);
 
@@ -779,6 +871,11 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([{ id: 'q1', text: 'Q', type: 'single_mcq', marks: 5, options: [] }]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 3, maxScore: 5, percentage: 60, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -787,7 +884,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getCurrent(session);
 
@@ -820,6 +917,11 @@ describe('AttemptService', () => {
             ]),
         },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -829,7 +931,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getCurrent(session);
 
@@ -878,6 +980,11 @@ describe('AttemptService', () => {
             ]),
         },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 30, maxScore: 30, percentage: 100, passFail: 'pass' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -887,7 +994,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getCurrent(session);
 
@@ -925,6 +1032,11 @@ describe('AttemptService', () => {
             ]),
         },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
+        integrityIncident: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn(), update: jest.fn() },
         result: { findUnique: jest.fn().mockResolvedValue({ score: 5, maxScore: 10, percentage: 50, passFail: 'fail' }) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
@@ -934,7 +1046,7 @@ describe('AttemptService', () => {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(examWithVisibility))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getCurrent(session);
 
@@ -945,7 +1057,7 @@ describe('AttemptService', () => {
     });
 
     it('includes the resolved proctoring config in the pre-start preview, because the welcome screen gates the camera prompt on it', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
@@ -970,6 +1082,10 @@ describe('AttemptService', () => {
         question: { findMany: jest.fn().mockResolvedValue([]) },
         answer: { findMany: jest.fn().mockResolvedValue([]) },
         candidateMessage: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn() },
+
+        setting: { findFirst: jest.fn().mockResolvedValue(null) },
+
+        attemptSurvey: { findUnique: jest.fn().mockResolvedValue(null) },
       };
       settlement.settleIfExpired.mockResolvedValue(attempt);
       settlement.remainingSeconds.mockReturnValue(3300);
@@ -995,8 +1111,8 @@ describe('AttemptService', () => {
     function mockBootstrapThenScoped(scopedTx: unknown, invitation: unknown = invitationRecord) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(invitation))
-        .mockImplementationOnce((_ctx, fn) => fn(scopedTx))
-        .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)))
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)));
     }
 
     it('creates a new attempt snapshotting the question order and section structure when none exists', async () => {
@@ -1017,7 +1133,7 @@ describe('AttemptService', () => {
         data: {
           invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1',
           questionOrderJson: JSON.stringify(['q1', 'q2']),
-          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1', 'q2'] }]),
+          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1', 'q2'], cutoffPercent: null }]),
           optionOrderJson: null,
           deviceFingerprint: undefined,
           consentAt: expect.any(Date),
@@ -1042,7 +1158,7 @@ describe('AttemptService', () => {
         data: {
           invitationId: 'inv-1', candidateId: 'cand-1', examId: 'exam-1',
           questionOrderJson: JSON.stringify(['q1']),
-          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'] }]),
+          sectionSnapshotJson: JSON.stringify([{ sectionId: 'section-1', title: 'Section One', targetDurationMinutes: null, questionIds: ['q1'], cutoffPercent: null }]),
           optionOrderJson: null,
           deviceFingerprint: 'fp-abc123',
           consentAt: expect.any(Date),
@@ -1149,8 +1265,8 @@ describe('AttemptService', () => {
       const createdData = tx.attempt.create.mock.calls[0][0].data;
       const snapshot = JSON.parse(createdData.sectionSnapshotJson);
       expect(snapshot).toEqual([
-        { sectionId: 'section-1', title: 'Section One', targetDurationMinutes: 20, weightPercent: 60, questionIds: ['q1'] },
-        { sectionId: 'section-2', title: 'Section Two', targetDurationMinutes: null, weightPercent: 40, questionIds: ['q2'] },
+        { sectionId: 'section-1', title: 'Section One', targetDurationMinutes: 20, weightPercent: 60, questionIds: ['q1'], cutoffPercent: null },
+        { sectionId: 'section-2', title: 'Section Two', targetDurationMinutes: null, weightPercent: 40, questionIds: ['q2'], cutoffPercent: null },
       ]);
     });
 
@@ -1218,8 +1334,8 @@ describe('AttemptService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: randomizedExam }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)))
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       await service.start(session, { consent: true });
 
@@ -1362,7 +1478,7 @@ describe('AttemptService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: nonProctoredExam }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.start(session, { consent: true });
 
@@ -1396,8 +1512,8 @@ describe('AttemptService', () => {
     function mockRestrictedInvitation(tx: unknown, allowedIpRange: string | null) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, allowedIpRange } }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)))
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
     }
 
     it('blocks redeem from a disallowed IP with the observed IP in the message, and audit-logs it', async () => {
@@ -1422,7 +1538,7 @@ describe('AttemptService', () => {
     it('allows start from an IP inside the range', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
-        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       mockRestrictedInvitation(tx, '203.0.113.0/24');
 
@@ -1435,7 +1551,7 @@ describe('AttemptService', () => {
     it('skips the check entirely when allowedIpRange is null', async () => {
       const tx = {
         attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) },
-        examSection: { findMany: jest.fn().mockResolvedValue([]) },
+        examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) },
       };
       mockRestrictedInvitation(tx, null);
 
@@ -1494,31 +1610,33 @@ describe('AttemptService', () => {
     function mockInvitationWithExam(scopedTx: unknown, scheduledExam: Record<string, unknown>) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: scheduledExam }))
-        .mockImplementationOnce((_ctx, fn) => fn(scopedTx))
-        .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)))
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)));
     }
 
     function mockInvitationWithExamAndLogo(scopedTx: unknown, scheduledExam: Record<string, unknown>) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: scheduledExam }))
         .mockImplementationOnce(() => Promise.resolve({ name: 'Acme Corp', logoPath: null }))
-        .mockImplementationOnce((_ctx, fn) => fn(scopedTx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(scopedTx)));
     }
 
     it('getCurrent() returns schedulingWindowState "not_open" before the window opens, with no attempt created', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockInvitationWithExamAndLogo(tx, notYetOpenExam);
 
       const result = await service.getCurrent(session);
 
       expect(result).toEqual({
         candidateName: 'Ada Lovelace',
+        privacyNotice: null,
         exam: {
           title: notYetOpenExam.title, instructions: notYetOpenExam.instructions, durationMinutes: notYetOpenExam.durationMinutes,
           schedulingEnabled: true,
           availabilityWindowStart: notYetOpenExam.availabilityWindowStart,
           availabilityWindowEnd: notYetOpenExam.availabilityWindowEnd,
           proctoring: { enableAntiCheating: true, webcamEnabled: true, enforcement: 'block', strikeLimit: 3, disabledSignals: [] },
+          evidenceRetentionDays: 30,
         },
         schedulingWindowState: 'not_open',
         sections: [],
@@ -1530,7 +1648,7 @@ describe('AttemptService', () => {
     });
 
     it('getCurrent() returns schedulingWindowState "closed" after the window has passed, with no attempt created', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn() }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockInvitationWithExamAndLogo(tx, closedExam);
 
       const result = await service.getCurrent(session);
@@ -1540,7 +1658,7 @@ describe('AttemptService', () => {
     });
 
     it('getCurrent() returns schedulingWindowState "open" within the window', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockInvitationWithExamAndLogo(tx, openExam);
 
       const result = await service.getCurrent(session);
@@ -1549,7 +1667,7 @@ describe('AttemptService', () => {
     });
 
     it('getCurrent() returns schedulingWindowState null for a non-scheduled exam', async () => {
-      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) } };
+      const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) }, examSection: { findMany: jest.fn().mockResolvedValue([]) }, setting: { findFirst: jest.fn().mockResolvedValue(null) } };
       mockBootstrapWithLogoThenScoped(tx);
 
       const result = await service.getCurrent(session);
@@ -1621,8 +1739,8 @@ describe('AttemptService', () => {
       expect(result).toEqual({ questionId: 'q1', selectedOptionIds: ['opt-a'], answerText: null, isMarkedForReview: false });
       expect(tx.answer.upsert).toHaveBeenCalledWith({
         where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'q1' } },
-        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false },
-        update: { selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false, answeredAt: expect.any(Date) },
+        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false, clientSavedAt: expect.any(Date) },
+        update: { selectedOptionIdsJson: JSON.stringify(['opt-a']), isMarkedForReview: false, answeredAt: expect.any(Date), clientSavedAt: expect.any(Date) },
       });
     });
 
@@ -1640,8 +1758,8 @@ describe('AttemptService', () => {
       expect(result).toEqual({ questionId: 'q1', selectedOptionIds: [], answerText: null, isMarkedForReview: true });
       expect(tx.answer.upsert).toHaveBeenCalledWith({
         where: { attemptId_questionId: { attemptId: 'attempt-1', questionId: 'q1' } },
-        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true },
-        update: { selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true, answeredAt: expect.any(Date) },
+        create: { attemptId: 'attempt-1', questionId: 'q1', selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true, clientSavedAt: expect.any(Date) },
+        update: { selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview: true, answeredAt: expect.any(Date), clientSavedAt: expect.any(Date) },
       });
     });
 
@@ -1733,6 +1851,7 @@ describe('AttemptService', () => {
         create: {
           attemptId: 'attempt-1',
           questionId: 'code-question-1',
+          clientSavedAt: expect.any(Date),
           selectedOptionIdsJson: JSON.stringify([]),
           answerText: 'function reverse(s) { return s; }',
           codeLanguage: null,
@@ -1743,6 +1862,7 @@ describe('AttemptService', () => {
           codeLanguage: null,
           isMarkedForReview: false,
           answeredAt: expect.any(Date),
+          clientSavedAt: expect.any(Date),
         },
       });
     });
@@ -1766,6 +1886,7 @@ describe('AttemptService', () => {
         create: {
           attemptId: 'attempt-1',
           questionId: 'essay-question-1',
+          clientSavedAt: expect.any(Date),
           selectedOptionIdsJson: JSON.stringify([]),
           answerText: 'My considered response.',
           isMarkedForReview: false,
@@ -1774,8 +1895,29 @@ describe('AttemptService', () => {
           answerText: 'My considered response.',
           isMarkedForReview: false,
           answeredAt: expect.any(Date),
+          clientSavedAt: expect.any(Date),
         },
       });
+    });
+
+    it('AS-4a, answer 2122: stores the question version answered and the device time; an older device copy never overwrites a newer one', async () => {
+      const versioned = { ...question, version: 3 };
+      const newer = { selectedOptionIdsJson: JSON.stringify(['opt-b']), answerText: null, isMarkedForReview: false, clientSavedAt: new Date('2026-11-16T10:05:00Z') };
+      const tx = {
+        attempt: { findUnique: jest.fn().mockResolvedValue(attempt) },
+        question: { findFirstOrThrow: jest.fn().mockResolvedValue(versioned) },
+        answer: { upsert: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue(newer) },
+      };
+      settlement.settleIfExpired.mockResolvedValue(attempt);
+      mockBootstrapThenScoped(tx);
+      const stale = await service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-a'], clientSavedAt: '2026-11-16T10:00:00.000Z' });
+      expect(stale).toEqual({ questionId: 'q1', selectedOptionIds: ['opt-b'], answerText: null, isMarkedForReview: false, stale: true });
+      expect(tx.answer.upsert).not.toHaveBeenCalled();
+
+      tx.answer.findUnique.mockResolvedValue({ ...newer, clientSavedAt: new Date('2026-11-16T09:00:00Z') });
+      mockBootstrapThenScoped(tx);
+      await service.answer(session, { questionId: 'q1', selectedOptionIds: ['opt-a'], clientSavedAt: '2026-11-16T10:00:00.000Z' });
+      expect(tx.answer.upsert).toHaveBeenCalledWith(expect.objectContaining({ create: expect.objectContaining({ questionVersion: 3, clientSavedAt: new Date('2026-11-16T10:00:00.000Z') }) }));
     });
 
     it('persists telemetryJson on the code-question upsert when telemetry is provided', async () => {
@@ -1797,6 +1939,7 @@ describe('AttemptService', () => {
         create: {
           attemptId: 'attempt-1',
           questionId: 'code-question-1',
+          clientSavedAt: expect.any(Date),
           selectedOptionIdsJson: JSON.stringify([]),
           answerText: 'print(1)',
           codeLanguage: null,
@@ -1808,6 +1951,7 @@ describe('AttemptService', () => {
           codeLanguage: null,
           isMarkedForReview: false,
           answeredAt: expect.any(Date),
+          clientSavedAt: expect.any(Date),
           telemetryJson: JSON.stringify(telemetry),
         },
       });
@@ -2177,7 +2321,7 @@ describe('AttemptService', () => {
         };
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithDisabledSignal }))
-          .mockImplementationOnce((_ctx, fn) => fn(tx));
+          .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
         const result = await service.reportProctoringEvent(session, { eventType: 'right_click' });
 
@@ -2195,7 +2339,7 @@ describe('AttemptService', () => {
         const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithDisabledSignal }))
-          .mockImplementationOnce((_ctx, fn) => fn(tx));
+          .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
         settlement.registerBrowserActivityViolation.mockResolvedValue({
           attempt: { ...attempt, browserActivityViolationCount: 1, status: 'paused' },
           strike: 1,
@@ -2215,7 +2359,7 @@ describe('AttemptService', () => {
       function mockScoped(examOverride: unknown, tx: unknown) {
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examOverride }))
-          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(tx)));
       }
 
       // Same as mockScoped, but for the cases that actually upload a screen capture: those run
@@ -2224,8 +2368,8 @@ describe('AttemptService', () => {
       function mockScopedTwice(examOverride: unknown, tx: unknown) {
         tenantPrisma.forTenant
           .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examOverride }))
-          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx))
-          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(tx)))
+          .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(tx)));
       }
 
       it('uploads it outside the transaction, then merges the resulting URL into the event metadata and atomically increments Attempt.screenCaptureCount in a second, separate transaction when screenCaptureEnabled is true', async () => {
@@ -2906,7 +3050,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(attempt) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(invitationWithDisabledExam))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.webcamViolation(session, { reason: 'no_face', snapshot: 'x' });
 
@@ -3502,7 +3646,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
       leaderboardService.computeCandidateView.mockResolvedValue({
         you: { rank: 5, correctCount: 3 },
         top: [{ rank: 1, correctCount: 4, label: 'Candidate 1', isYou: false }],
@@ -3525,7 +3669,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
       leaderboardService.computeCandidateView.mockResolvedValue({ you: null, top: [] });
 
       await service.getLeaderboard(session);
@@ -3537,7 +3681,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'submitted' }) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'none' } }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getLeaderboard(session);
 
@@ -3549,7 +3693,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'pending_manual_grade' }) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'pass_fail' } }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.getLeaderboard(session);
 
@@ -3561,7 +3705,7 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'auto_submitted' }) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: { ...exam, feedbackVisibility: 'score' } }))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
       leaderboardService.computeCandidateView.mockResolvedValue({
         you: { rank: 2, correctCount: 8 },
         top: [],
@@ -3653,7 +3797,7 @@ describe('AttemptService', () => {
     function mockScoped(exam: unknown, tx: unknown) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam }))
-        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(tx)));
     }
 
     it('writes nothing and returns the current status unchanged when the exam has screenCaptureEnabled false', async () => {
@@ -4025,9 +4169,9 @@ describe('AttemptService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithScreenCapture }))
-        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx))
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(tx)))
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithScreenCapture }))
-        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(tx)));
       settlement.resumeFromPause.mockResolvedValue({ ...startedAttempt, status: 'in_progress' });
 
       await service.screenShareState(session, { active: true });
@@ -4052,9 +4196,9 @@ describe('AttemptService', () => {
       };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithScreenCapture }))
-        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx))
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(tx)))
         .mockImplementationOnce(() => Promise.resolve({ ...invitationRecord, exam: examWithScreenCapture }))
-        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(tx));
+        .mockImplementationOnce((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(tx)));
       settlement.registerBrowserActivityViolation.mockResolvedValue({
         attempt: { ...runningAttempt, status: 'paused', browserActivityViolationCount: 1 },
         strike: 1,
@@ -4174,8 +4318,8 @@ describe('AttemptService', () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(lockdownInvitation))
-        .mockImplementationOnce((_ctx, fn) => fn(tx))
-        .mockImplementationOnce((_ctx, fn) => fn(tx));
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)))
+        .mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.start({ invitationId: 'inv-1' }, { consent: true }, '', {
         configKeyHash: requestConfigKeyHash(requestUrl, configKey),
@@ -4188,7 +4332,7 @@ describe('AttemptService', () => {
     it('does not demand SEB when the exam has lockdown off', async () => {
       const tx = { attempt: { findUnique: jest.fn().mockResolvedValue({ id: 'attempt-1', status: 'in_progress' }) } };
       mockBootstrapThenScoped(tx);
-      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(tx));
+      tenantPrisma.forTenant.mockImplementationOnce((_ctx, fn) => fn(withNotice(tx)));
 
       const result = await service.start({ invitationId: 'inv-1' }, { consent: true }, '', {
         configKeyHash: undefined,
@@ -4234,7 +4378,7 @@ describe('AttemptService', () => {
     function mockBootstrapThenAllScoped(scopedTx: unknown, invitation: unknown = invitationWithCapture) {
       tenantPrisma.forTenant
         .mockImplementationOnce(() => Promise.resolve(invitation))
-        .mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(scopedTx));
+        .mockImplementation((_ctx: unknown, fn: (tx: unknown) => unknown) => fn(withNotice(scopedTx)));
     }
 
     it('skips without calling the AI when screen capture is not enabled on the exam', async () => {

@@ -1,11 +1,17 @@
+import { hiddenFromManager } from '../internal-applications/internal-applications.service';
+import { nycNotice } from '../hiring/bias-audit';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { audit, inCompany } from '../org-structure/org-structure.service';
 import { PipelineService } from '../pipeline/pipeline.service';
 import { InvitationsService } from '../invitations/invitations.service';
 import { CandidateEmailsService } from '../candidate-emails/candidate-emails.service';
+import { CandidateEmailTemplatesService } from '../candidate-emails/candidate-email-templates.service';
+import { DEFAULT_TEMPLATES } from '../candidate-emails/default-templates';
+import { SETTINGS, resolveSetting } from '../org-structure/settings-registry';
 import { ScorecardsService } from './scorecards.service';
 import type { RejectDto } from './interviewing-dto';
+import { ResultsScope } from '../rbac/results-scope';
 
 export const REJECT_DELAY_HOURS = [0, 24] as const;
 
@@ -22,11 +28,12 @@ export class HiringBoardService {
     private readonly pipeline: PipelineService,
     private readonly invitations: InvitationsService,
     private readonly emails: CandidateEmailsService,
+    private readonly templates: CandidateEmailTemplatesService,
     private readonly scorecards: ScorecardsService,
   ) {}
 
-  async board(ctx: TenantContext, jobId: string, role: string, userId: string) {
-    const b = await this.pipeline.getBoard(ctx, jobId, role, userId);
+  async board(ctx: TenantContext, jobId: string, role: string, userId: string, results?: ResultsScope) {
+    const b = await this.pipeline.getBoard(ctx, jobId, role, userId, results);
     const entryIds = Object.values(b.columns).flat().map((r) => r.entryId);
     const extra = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const results = await this.scorecards.entryResults(tx, c.organizationId, entryIds);
@@ -37,25 +44,43 @@ export class HiringBoardService {
         select: { startsAt: true, id: true, interview: { select: { pipelineEntryId: true, confirmedSlotId: true } } },
       });
       const pending = await tx.pendingRejection.findMany({ where: { organizationId: c.organizationId, entryId: { in: entryIds }, sentAt: null, undoneAt: null }, select: { entryId: true, sendAt: true } });
-      return { results, next, pending };
+      // HIR-13: an internal applicant's current manager never sees the application (unless they hire for the job).
+      const hidden = await hiddenFromManager(tx, c.organizationId, userId, entryIds);
+      // Answer 474: New York City applicants who asked for another process than the automated tool.
+      const alternative = new Map((await tx.pipelineEntry.findMany({ where: { organizationId: c.organizationId, id: { in: entryIds }, alternativeRequestedAt: { not: null } }, select: { id: true, alternativeRequestedAt: true } })).map((e) => [e.id, e.alternativeRequestedAt]));
+      // Answer 502: the notice applies to this job (the recruiter may record a request for another process).
+      const toolNotice = Boolean(await nycNotice(tx, c, jobId));
+      // Answer 531: candidates added by hand who were never sent the notice.
+      const untold = new Set(toolNotice ? (await tx.pipelineEntry.findMany({ where: { organizationId: c.organizationId, id: { in: entryIds }, enteredVia: 'manual', toolNoticeAt: null }, select: { id: true } })).map((e) => e.id) : []);
+      return { results, next, pending, hidden, alternative, toolNotice, untold };
     });
     const columns = Object.fromEntries(
       Object.entries(b.columns).map(([stageId, rows]) => [
         stageId,
-        rows.map((r) => {
+        rows.filter((r) => !extra.hidden.has(r.entryId)).map((r) => {
           const res = extra.results.get(r.entryId);
           const slot = extra.next.find((s) => s.interview.pipelineEntryId === r.entryId && (!s.interview.confirmedSlotId || s.interview.confirmedSlotId === s.id));
           const p = extra.pending.find((x) => x.entryId === r.entryId);
-          return { ...r, scorecards: res ?? null, nextInterviewAt: slot?.startsAt ?? null, rejectionPendingUntil: p?.sendAt ?? null };
+          return { ...r, scorecards: res ?? null, nextInterviewAt: slot?.startsAt ?? null, rejectionPendingUntil: p?.sendAt ?? null, alternativeRequestedAt: extra.alternative.get(r.entryId) ?? null, toolNotice: extra.toolNotice, toolNoticeNeeded: extra.untold.has(r.entryId) };
         }),
       ]),
     );
     return { pipeline: b.pipeline, columns };
   }
 
-  /** Moves an application to a status; entering a stage with an attached test sends that test once. */
-  async move(ctx: TenantContext, userId: string, entryId: string, statusId: string) {
-    const r = await this.pipeline.patchEntry(ctx, userId, entryId, { statusId });
+  /**
+   * Moves an application to a status; entering a stage with an attached test sends that test once. Rejecting has its own
+   * route (it needs a reason), so a Rejected status is refused here. Moving a rejected application back cancels its
+   * waiting rejection message. HIR-04: `fromStatusId` (the card's status) refuses a repeat or an out-of-date card.
+   */
+  async move(ctx: TenantContext, userId: string, entryId: string, statusId: string, fromStatusId?: string) {
+    const target = await this.tenantPrisma.forTenant(ctx, (tx) => tx.pipelineStatus.findFirst({ where: { id: statusId, organizationId: ctx.organizationId as string }, select: { stage: { select: { category: true } } } }));
+    if (target?.stage.category === 'rejected') throw new BadRequestException('Use Reject to reject a candidate: it asks for a reason.');
+    const r = await this.pipeline.patchEntry(ctx, userId, entryId, { statusId }, fromStatusId ? { expectStatusId: fromStatusId } : {});
+    await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { count } = await tx.pendingRejection.updateMany({ where: { organizationId: c.organizationId, entryId, sentAt: null, undoneAt: null }, data: { undoneAt: new Date() } });
+      if (count) await audit(tx, c, 'ats.rejection.undone', 'pipeline_entry', entryId, { movedTo: statusId });
+    });
     await this.autoSendTests(ctx, entryId).catch((e) => this.logger.error(`Auto-send test failed for ${entryId}: ${e instanceof Error ? e.message : String(e)}`));
     return r;
   }
@@ -72,21 +97,62 @@ export class HiringBoardService {
   }
 
   /** Rejects with a reason; the optional message is sent now or after the delay (undo is possible until then). */
-  async reject(ctx: TenantContext, userId: string, entryId: string, dto: RejectDto) {
+  /**
+   * Answer 502: the recruiter records that a New York City candidate asked for another process (by phone or email). Only
+   * where the notice applies (409 otherwise); a second record changes nothing. Audited with who recorded it.
+   */
+  /** Answer 531: send the NYC notice to a hand-added candidate who was never told (rules in PipelineService.sendToolNotice). */
+  sendToolNotice(ctx: TenantContext, userId: string, entryId: string) {
+    return this.pipeline.sendToolNotice(ctx, userId, entryId);
+  }
+
+  async recordAlternative(ctx: TenantContext, userId: string, entryId: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const e = await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: entryId }, select: { id: true, jobId: true, alternativeRequestedAt: true } });
+      if (!e) throw new NotFoundException('Application not found.');
+      if (!(await nycNotice(tx, c, e.jobId))) throw new ConflictException('No automated tool is used for this job (the New York City setting is off or the job is not in New York City).');
+      if (e.alternativeRequestedAt) return { alternativeRequestedAt: e.alternativeRequestedAt };
+      const at = new Date();
+      await tx.pipelineEntry.update({ where: { id: e.id }, data: { alternativeRequestedAt: at } });
+      await audit(tx, c, 'candidate.alternative_process.recorded', 'pipeline_entry', e.id, { jobId: e.jobId, by: userId });
+      return { alternativeRequestedAt: at };
+    });
+  }
+
+  async reject(ctx: TenantContext, userId: string, entryId: string, dto: RejectDto & { fromStatusId?: string }) {
+    if (!dto.reason?.trim()) throw new BadRequestException('Enter a reason. It is saved on the record.');
     const prev = await this.tenantPrisma.forTenant(ctx, (tx) => tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: ctx.organizationId as string }, select: { statusId: true, rejected: true } }));
     if (!prev) throw new NotFoundException('Application not found.');
     if (prev.rejected) throw new ConflictException('This application is already rejected.');
-    await this.pipeline.patchEntry(ctx, userId, entryId, { rejected: true, reason: dto.reason }, { skipComms: true });
+    await this.pipeline.patchEntry(ctx, userId, entryId, { rejected: true, reason: dto.reason.trim() }, { skipComms: true, ...(dto.fromStatusId ? { expectStatusId: dto.fromStatusId } : {}) });
+    // HIR-04: no message given (the board asks only for a reason) = the candidate hears nothing, unless the company's
+    // setting says to send the Rejected stage's template; it still waits 24 hours so the rejection can be undone.
+    if (!dto.message) dto = { ...dto, message: (await this.rejectionTemplate(ctx, entryId)) ?? undefined, delayHours: 24 };
     const delay = dto.delayHours ?? 24;
     if (dto.message && delay === 0) {
       await this.emails.sendMessage(ctx, userId, entryId, { templateId: dto.message.templateId ?? null, subject: dto.message.subject, body: dto.message.body, source: 'manual' });
-      return { rejected: true, messageSentAt: new Date(), undoUntil: null };
+      return { rejected: true, messageSentAt: new Date(), undoUntil: null, emailing: true };
     }
     const sendAt = new Date(Date.now() + delay * 3_600_000);
     await this.tenantPrisma.forTenant(ctx, (tx) =>
       tx.pendingRejection.create({ data: { organizationId: ctx.organizationId as string, entryId, previousStatusId: prev.statusId, templateId: dto.message?.templateId ?? null, subject: dto.message?.subject ?? null, body: dto.message?.body ?? null, sendAt, createdBy: userId } }),
     );
-    return { rejected: true, messageSentAt: null, undoUntil: sendAt };
+    return { rejected: true, messageSentAt: null, undoUntil: sendAt, emailing: Boolean(dto.message) };
+  }
+
+  /** The Rejected stage's email when the company's setting `hiring.reject.email_candidate` is on, else null. */
+  private async rejectionTemplate(ctx: TenantContext, entryId: string) {
+    const stageId = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'hiring.reject.email_candidate' } });
+      const on = resolveSetting(SETTINGS['hiring.reject.email_candidate'], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: null })), { tenant: c.organizationId }, null).value === 'on';
+      if (!on) return null;
+      const e = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: c.organizationId }, select: { status: { select: { stageId: true } } } });
+      return e?.status?.stageId ?? null;
+    });
+    if (!stageId) return null;
+    // The company's own template for its Rejected stage, else the built-in "Not moving forward".
+    const tpl = (await this.templates.resolveForStage(ctx, stageId)) ?? DEFAULT_TEMPLATES.find((d) => d.key === 'not_moving_forward');
+    return tpl ? { templateId: 'id' in tpl ? tpl.id : null, subject: tpl.subject, body: tpl.body } : null;
   }
 
   /** Undo a rejection while its message is still waiting: the application goes back to where it was. */
@@ -99,7 +165,7 @@ export class HiringBoardService {
       await audit(tx, c, 'ats.rejection.undone', 'pipeline_entry', entryId);
       return p;
     });
-    if (pending.previousStatusId) await this.pipeline.patchEntry(ctx, userId, entryId, { statusId: pending.previousStatusId }, { skipComms: true });
+    if (pending.previousStatusId) await this.pipeline.patchEntry(ctx, userId, entryId, { statusId: pending.previousStatusId }, { skipComms: true, skipRehireCheck: true });
     else await this.pipeline.patchEntry(ctx, userId, entryId, { rejected: false }, { skipComms: true });
     return { undone: true };
   }

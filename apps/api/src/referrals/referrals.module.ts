@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { StorageModule } from '@exam-platform/shared';
 import { JobsModule } from '../jobs/jobs.module';
+import { PayrollModule } from '../payroll/payroll.module';
+import { RulesEngineModule } from '../rules-engine/rules-engine.module';
 import { ReferralsService } from './referrals.service';
 import { ReferralsController } from './referrals.controller';
 
@@ -9,7 +11,7 @@ import { ReferralsController } from './referrals.controller';
 // pipeline entry (enteredVia='referral'), then tracks the referral + its reward on the Referral row.
 // TenantPrismaService + AuditService are globally provided.
 @Module({
-  imports: [StorageModule, JobsModule],
+  imports: [StorageModule, JobsModule, PayrollModule, RulesEngineModule],
   controllers: [ReferralsController],
   providers: [ReferralsService],
 })

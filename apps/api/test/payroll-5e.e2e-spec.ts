@@ -11,6 +11,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
+import { payReady } from './fixtures/pay-ready';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -87,7 +88,11 @@ describe('Payroll batch 5e (income tax)', () => {
       const created = await prisma.organization.create({ data: { name: `Pay5E Org ${k}`, slug: `pay5e-${k.toLowerCase()}-${run}`, planId } });
       org[k] = { id: created.id, slug: created.slug };
     }
-    const template = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)!.permissions;
+    // Founder 21 Oct 2026 (option A): only HR changes pay. These pay tests' payroll fixture also plays the HR person who
+    // sets the pay (the job-change key); payroll itself is refused a pay change (people-increment.e2e-spec.ts).
+    // Founder 28 Oct 2026: only HR approves job changes; the approver fixture also plays the HR approver who sees pay
+    // (payroll itself is refused: employee-history.e2e-spec.ts).
+    const template = (key: string) => [...ROLE_TEMPLATES.find((t) => t.key === key)!.permissions, ...(key === 'payroll_admin' ? ['employee.change.manage'] : key === 'payroll_approver' ? ['employee.change.approve'] : [])];
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
@@ -131,6 +136,8 @@ describe('Payroll batch 5e (income tax)', () => {
       ids.desig = (await tx.designation.create({ data: { ...o, name: 'Analyst', code: 'AN' } })).id;
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
     });
+    // Batch H A2: approval needs the entity's TAN, PAN and PT registrations.
+    await payReady(tenantPrisma, org.A.id, ids.entity);
     const hire = async (who: Who, code: string) =>
       (
         await api('adminA', 'post', '/people/employees')
@@ -201,6 +208,9 @@ describe('Payroll batch 5e (income tax)', () => {
   });
 
   it('workspace: the regime is the employee’s until the cut-off; after it only payroll changes it, with a reason', async () => {
+    // A first visit asks for several things at once; none may collide while the workspace is created (was 409).
+    const first = await Promise.all(['/tax/me/workspace', '/tax/me/tax-sheet', '/tax/me/declarations', '/tax/me/workspace'].map((u) => api('emp1', 'get', u)));
+    expect(first.map((r) => r.status)).toEqual([200, 200, 200, 200]);
     const ws = (await api('emp1', 'get', '/tax/me/workspace').expect(200)).body;
     expect(ws).toMatchObject({ taxYear: ty, regime: 'new', lawVersion: Number(ty.slice(0, 4)) >= 2026 ? 'IT-2025' : 'IT-1961' });
     ids.ws1 = ws.id;
@@ -219,14 +229,22 @@ describe('Payroll batch 5e (income tax)', () => {
           .expect(200)
       ).body.otherIncome,
     ).toEqual([{ kind: 'interest', amount: '12000' }]);
-    // 5e-D3: a treaty claim is kept and flagged for payroll to handle by hand (a run check too).
-    expect(
-      (
-        await api('emp2', 'patch', '/tax/me/workspace')
-          .send({ dtaaCountry: 'SG', trcValidTo: `${Number(ty.slice(0, 4)) + 1}-03-31` })
-          .expect(200)
-      ).body,
-    ).toMatchObject({ dtaaCountry: 'SG', treatyHandledByHand: true });
+    // 5e-D3: a treaty claim is kept and flagged for payroll to handle by hand (a run check too). Founder answer 2 (30 Oct
+    // 2026): it goes to payroll with the TRC and counts only once approved; the workspace is never patched directly.
+    const trcTo = `${Number(ty.slice(0, 4)) + 1}-03-31`;
+    await api('emp2', 'patch', '/tax/me/workspace').send({ dtaaCountry: 'SG', trcValidTo: trcTo }).expect(409);
+    const rq = (
+      await api('emp2', 'post', '/tax/me/residency')
+        .field('residentialStatus', 'non_resident')
+        .field('trcValidTo', trcTo)
+        .field('dtaaCountry', 'SG')
+        .field('form10fFiled', 'true')
+        .attach('file', Buffer.from('%PDF-1.4 tax residency certificate'), 'trc.pdf')
+        .expect(201)
+    ).body;
+    expect((await api('emp2', 'get', '/tax/me/workspace').expect(200)).body).toMatchObject({ dtaaCountry: null, residencyRequest: { id: rq.id, status: 'pending' } });
+    await api('payAdmin', 'post', `/tax/residency/${rq.id}/decision`).send({ decision: 'approve' }).expect(200);
+    expect((await api('emp2', 'get', '/tax/me/workspace').expect(200)).body).toMatchObject({ dtaaCountry: 'SG', residentialStatus: 'non_resident', treatyHandledByHand: true });
     expect((await api('payAdminB', 'get', '/tax/workspaces').expect(200)).body).toEqual([]);
   });
 
@@ -246,7 +264,8 @@ describe('Payroll batch 5e (income tax)', () => {
     await api('emp1', 'post', '/tax/me/declarations')
       .send({
         lines: [
-          { ...rent, landlordName: 'R Iyer', landlordPan: 'ABCPI1234K' },
+          // Batch H (H15): under the 2025 Act (Form No. 124) the relationship to the landlord comes with the PAN.
+          { ...rent, landlordName: 'R Iyer', landlordPan: 'ABCPI1234K', landlordRelationship: 'not_related' },
           { subjectKey: 'sec80c', amount: '150000' },
         ],
       })
@@ -304,12 +323,27 @@ describe('Payroll batch 5e (income tax)', () => {
     expect(Number(tdsLine.amount)).toBeGreaterThan(0);
     const sheet = (await api('emp1', 'get', '/tax/me/tax-sheet').expect(200)).body;
     expect(sheet).toMatchObject({ payslipId: slip.id, sheet: { monthTds: tdsLine.amount.toFixed(2), regime: 'old' } });
+    // PAY-22 tax by month: 12 months from April; this month deducted what the payslip did, the months left the spread.
+    const months = sheet.months as { month: string; tds: string; kind: string }[];
+    expect(months).toHaveLength(12);
+    expect(months[0].month.slice(5)).toBe('04');
+    expect(months.find((m) => m.month === sheet.month)).toEqual({ month: sheet.month, tds: tdsLine.amount.toFixed(2), kind: 'deducted' });
+    const ahead = months.filter((m) => m.kind === 'projected');
+    expect(ahead.filter((m) => m.tds === sheet.sheet.monthTds)).toHaveLength(Math.min(ahead.length, sheet.sheet.remainingPeriods - 1));
     // Before the proof cut-off the declared 80C counts (the partly approved amount only after it).
     expect(sheet.sheet.deductions).toEqual([expect.objectContaining({ key: 'sec80c', allowed: '150000.00' })]);
     expect(Number(sheet.sheet.exemptions.hra)).toBeGreaterThan(0);
     const cmp = (await api('emp1', 'post', '/tax/me/regime-compare').expect(200)).body;
     expect(cmp.regimes.map((r: { regime: string }) => r.regime)).toEqual(['new', 'old']);
     expect(cmp.regimes[1].annualTax).toBe(sheet.sheet.tax.total);
+    // PAY-41 what-if: rent and home loan interest go through the same engine; the old regime gets lower; nothing is saved.
+    const declaredBefore = (await api('emp1', 'get', '/tax/me/declarations').expect(200)).body.lines;
+    const what = (await api('emp1', 'post', '/tax/me/regime-compare').send({ rentMonthly: '60000', homeLoanInterest: '150000' }).expect(200)).body;
+    expect(what.whatIf).toMatchObject({ rentMonthly: '60000.00', homeLoanInterest: '150000.00', homeLoanCap: expect.any(String) });
+    expect(Number(what.regimes[1].annualTax)).toBeLessThan(Number(cmp.regimes[1].annualTax));
+    expect(what.regimes[0].annualTax).toBe(cmp.regimes[0].annualTax);
+    expect((await api('emp1', 'get', '/tax/me/declarations').expect(200)).body.lines).toEqual(declaredBefore);
+    for (const bad of [{ rentMonthly: '-1' }, { homeLoanInterest: 'lots' }, { rentMonthly: '1000', extra: 'x' }, { metro: 'yes' }]) await api('emp1', 'post', '/tax/me/regime-compare').send(bad).expect(400);
     // No PAN on file: never a block; the higher of the slab tax (nil here) and the no-PAN rate (PAY-5.05).
     const two = (await api('emp2', 'get', '/tax/me/tax-sheet').expect(200)).body.sheet;
     expect(two.tax).toMatchObject({ noPanApplied: true });

@@ -14,8 +14,9 @@ import { inForce } from '../statutory/evaluator';
 import { dateOf } from '../time/time-core';
 import type { ConfirmationDto } from './dto';
 import type { QueryRaiseDto, QueryUpdateDto } from './dto-5d';
-import { entitiesFor, payHolders, payScope, payViewer, requireSelf, withPayScope } from './pay-access';
+import { entitiesFor, payHolders, payScope, payViewer, publishesAlone, requireSelf, systemAdmins, withPayScope } from './pay-access';
 import { payslipValues, renderPayslipPdf, type SlipData } from './payslip-pdf';
+import { plainSalary, splitAmounts, splitsAt, SPLIT_LABEL } from '../people/pay-split';
 import { sha256 } from './pay-file-store';
 
 // Payslips to employees (M03-BUILD-DESIGN §9.8, §11.1, PAY-4.04 … 4.06): publish an approved run (step-up, typed phrase)
@@ -71,7 +72,7 @@ export class PayslipsService {
 
   // ------------------------------------------------------------------------------------------ publish (PAY-4.04)
 
-  async publish(ctx: TenantContext, user: ScopeUser, runId: string, confirmation: ConfirmationDto) {
+  async publish(ctx: TenantContext, user: ScopeUser, runId: string, confirmation: ConfirmationDto, selfApprovalReason?: string) {
     const v = await this.viewer(user);
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -85,11 +86,14 @@ export class PayslipsService {
       const slips = await tx.payslip.findMany({ where: { organizationId: org, runId: run.id, calcVersion: run.calcVersion, status: 'approved' } });
       const phrase = `PUBLISH ${slips.length}`;
       if (confirmation.phrase !== phrase) throw new BadRequestException(`Type ${phrase} to confirm.`);
+      // PAY-09: the sole payroll admin publishes alone only with a reason; it is kept in the audit event and the System Admins are told.
+      const alone = await publishesAlone(tx, org, run.legalEntityId, v.userId!);
+      if (alone && !selfApprovalReason) throw new BadRequestException({ statusCode: 400, code: 'SELF_APPROVAL_REASON', message: 'No one else can publish these payslips: give a reason to publish them yourself (the System Admins are told).' });
       await tx.payrollRun.update({ where: { id: run.id }, data: { publishedAt: new Date(), version: { increment: 1 } } });
-      await audit(tx, c, 'payslip.published', 'payroll_run', run.id, { people: slips.length, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact } });
+      await audit(tx, c, 'payslip.published', 'payroll_run', run.id, { people: slips.length, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact }, selfApproval: alone, reason: alone ? selfApprovalReason : null });
       const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: slips.map((s) => s.employeeId) } }, select: { id: true, userId: true } });
       const emailOn = (await settingFor(tx, c, 'payroll.payslip_email', { legalEntityId: run.legalEntityId })) === 'on';
-      return { run, slips, users: people.map((p) => p.userId).filter((u): u is string => Boolean(u)), emailOn };
+      return { run, slips, users: people.map((p) => p.userId).filter((u): u is string => Boolean(u)), emailOn, admins: alone ? await systemAdmins(tx, org) : [] };
     });
     const org = ctx.organizationId!;
     const month = dateOf(out.run.periodStart).slice(0, 7);
@@ -102,6 +106,10 @@ export class PayslipsService {
         { subject: 'Your payslip is ready', html: '<p>Your payslip is ready. Open YukthiX to see it.</p>' },
       )
       .catch((e) => this.logger.warn(`payslip notices: ${(e as Error).message}`));
+    if (out.admins.length)
+      await this.notifications
+        .notifySystem({ organizationId: org, isSuperAdmin: false }, out.admins, 'payroll.payslip.published', { entityType: 'payroll_run', entityId: out.run.id, contextText: `Payslips for ${month} were published by the only payroll admin. Reason: ${selfApprovalReason}`, linkPath: `/yx/payroll/runs/${out.run.id}` }, { subject: 'Payslips published by the only payroll admin', html: '<p>Payslips were published by the only payroll admin, with a reason. Open YukthiX to see it.</p>' })
+        .catch((e) => this.logger.warn(`self-publish notice: ${(e as Error).message}`));
     const emailed = out.emailOn ? await this.emailAll(org, out.slips) : null;
     return { id: out.run.id, publishedPeople: out.slips.length, emailed };
   }
@@ -250,6 +258,22 @@ export class PayslipsService {
     });
   }
 
+  /**
+   * PPL-46: the accounts a split pay sends this payslip's net to, with each amount (the split in force when the payslip
+   * was approved; shortcut: the split as saved, not the bank file's rows; read the bank file when a split changes mid-run).
+   */
+  private async splitOf(tx: Tx, org: string, s: Slip) {
+    const split = (await splitsAt(tx, org, [s.employeeId], s.approvedAt ?? new Date())).get(s.employeeId);
+    if (plainSalary(split)) return null;
+    const r = splitAmounts(s.net, split!, false);
+    if (!r.ok) return null;
+    const banks = await tx.employeeBankAccount.findMany({ where: { organizationId: org, employeeId: s.employeeId, validTo: null }, select: { purpose: true, accountLast4: true } });
+    const abroad = await tx.employeeIntlBankAccount.findFirst({ where: { organizationId: org, employeeId: s.employeeId, validTo: null }, select: { ibanLast4: true } });
+    return r.amounts
+      .filter((x) => x.amount.gt(0))
+      .map((x) => ({ label: SPLIT_LABEL[x.account], last4: (x.account === 'abroad' ? abroad?.ibanLast4 : banks.find((b) => b.purpose === x.account)?.accountLast4) ?? '····', amount: x.amount.toFixed(2) }));
+  }
+
   /** Draws one payslip from its stored lines with the entity's active layout (every wage-slip particular shown). */
   private async render(tx: Tx, org: string, s: Slip, opts: { watermark?: string; password?: string }) {
     const month = dateOf(s.periodStart).slice(0, 7);
@@ -283,6 +307,7 @@ export class PayslipsService {
       net: s.net.toFixed(2),
       lines: lines.map((l) => ({ code: l.componentCode, name: l.name, kind: l.kind, amount: l.amount.toFixed(2), quantity: l.quantity?.toFixed(2) ?? null })),
       bankLast4: bank?.accountLast4 ?? null,
+      bankSplit: await this.splitOf(tx, org, s),
       resultHash: s.resultHash,
     };
     const labels: Record<string, string> = Object.fromEntries(mandatory.map((m) => [m.key, m.label]));
@@ -320,8 +345,9 @@ export class PayslipsService {
     return { id: out.id, status: 'open' };
   }
 
-  private view(q: Prisma.PayslipQueryGetPayload<object>, mine: boolean) {
+  private view(q: Prisma.PayslipQueryGetPayload<object>, mine: boolean, line: { name: string; amount: string; explanation: string | null } | null = null) {
     return {
+      line,
       id: q.id,
       payslipId: q.payslipId,
       employeeId: q.employeeId,
@@ -348,7 +374,35 @@ export class PayslipsService {
         orderBy: { updatedAt: 'desc' },
         take: 300,
       });
-      return rows.map((q) => this.view(q, me.includes(q.employeeId)));
+      // The line the query is about (PAY-20 thread): its name, amount and the explanation the calculation saved.
+      const lines = await tx.payslipLine.findMany({
+        where: { organizationId: c.organizationId, OR: rows.filter((q) => q.lineCode).map((q) => ({ payslipId: q.payslipId, componentCode: q.lineCode! })) },
+        select: { payslipId: true, componentCode: true, name: true, amount: true, explanation: true },
+      });
+      const lineOf = (q: (typeof rows)[number]) => {
+        const l = q.lineCode ? lines.find((x) => x.payslipId === q.payslipId && x.componentCode === q.lineCode) : undefined;
+        return l ? { name: l.name, amount: l.amount.toFixed(2), explanation: l.explanation } : null;
+      };
+      return rows.map((q) => this.view(q, me.includes(q.employeeId), lineOf(q)));
+    });
+  }
+
+  private async askerUser(tx: Tx, org: string, employeeId: string) {
+    return (await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { userId: true } }))?.userId ?? null;
+  }
+
+  /** People a query can be assigned to: they handle payslip queries for its legal entity; never the person who asked. */
+  async handlers(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'payroll.query.handle');
+      await payScope(tx, ids);
+      const q = await tx.payslipQuery.findFirst({ where: { organizationId: org, id } });
+      if (!q || !ids.includes(q.legalEntityId)) throw new NotFoundException('Not found');
+      const asker = await this.askerUser(tx, org, q.employeeId);
+      const users = await tx.user.findMany({ where: { organizationId: org, id: { in: (await payHolders(tx, org, 'payroll.query.handle', q.legalEntityId, todayIst())).filter((u) => u !== asker) } }, select: { id: true, name: true, email: true } });
+      return users.map((u) => ({ userId: u.id, name: u.name || u.email, me: u.id === v.userId })).sort((a, b) => a.name.localeCompare(b.name));
     });
   }
 
@@ -372,6 +426,10 @@ export class PayslipsService {
       if (dto.reply && ((q.replies as Reply[]) ?? []).length >= 50) throw new ConflictException('This query has 50 replies; close it and raise a new one.');
       if (dto.assigneeUserId && !(await payHolders(tx, org, 'payroll.query.handle', q.legalEntityId, todayIst())).includes(dto.assigneeUserId))
         throw new BadRequestException('Assign the query to someone who handles payslip queries for this entity.');
+      if (dto.assigneeUserId && dto.assigneeUserId === (await this.askerUser(tx, org, q.employeeId))) throw new BadRequestException('A query cannot be assigned to the person who asked it.');
+      // Founder 29 Oct 2026: payroll closes a query only after answering it (the employee may close their own).
+      if (staff && dto.status === 'closed' && !dto.reply && !((q.replies as Reply[]) ?? []).some((r) => r.side === 'payroll'))
+        throw new ConflictException('Reply to the employee before closing the query.');
       const name = (await tx.user.findFirst({ where: { organizationId: org, id: v.userId! }, select: { name: true, email: true } })) ?? { name: '', email: '' };
       const replies = [
         ...((q.replies as Reply[]) ?? []),

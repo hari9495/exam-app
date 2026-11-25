@@ -20,8 +20,9 @@ import {
 } from '../../components/shell';
 import { IconButton } from '../../components/button';
 import { Drawer } from '../../components/drawer';
+import { AccessibilityMenu } from '../../components/accessibility';
 import { AssistantPanel, type AssistantMessage } from '../../components/notify';
-import { Monogram, PoweredBy } from '../../components/brand';
+import { Monogram, PoweredBy, TenantLogo } from '../../components/brand';
 import { ENTITIES, ME } from './data';
 import { timeCounts } from '../time/time-data';
 import './frames.css';
@@ -104,7 +105,11 @@ export interface LiveFrame {
   scope?: ReactNode;
   /** <ProfileMenu>. */
   profile: ReactNode;
+  /** <AccessibilityMenu> saving to the person's account (answer 2330); left out, it keeps the choices in this browser. */
+  accessibility?: ReactNode;
   onHelp?: () => void;
+  /** Answer 992: What's new has unread entries (a dot on Help). */
+  helpUnread?: boolean;
   /** Notices above every page, e.g. a support session or "Secure your account". */
   banner?: ReactNode;
   /** Below the top level: Area › Page. */
@@ -203,14 +208,14 @@ function LiveDesktopFrame({ area, panelTitle, panel, railItems, live, children }
             ))}
           </SidePanel>
         }
-        topBar={<TopBar onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} profile={live.profile} />}
+        topBar={<TopBar onSearch={live.onSearch} entity={live.scope} notifications={live.notifications} onHelp={live.onHelp} helpUnread={live.helpUnread} profile={live.profile} accessibility={live.accessibility} />}
         mobileTabBar={mobileTabs.length ? <MobileTabBar items={mobileTabs} activeId={mobileActive} onSelect={(id) => go(tabs[id as keyof typeof tabs])} /> : undefined}
         panelCollapsed={live.panelCollapsed}
         onPanelCollapsedChange={live.onPanelCollapsedChange}
       >
         <div className="yx-screen">
           {live.banner}
-          {live.breadcrumbs && live.breadcrumbs.length > 1 && <Breadcrumbs items={live.breadcrumbs} />}
+          {live.breadcrumbs && live.breadcrumbs.length > 1 && <div className="yx-screen__crumbs"><Breadcrumbs items={live.breadcrumbs} /></div>}
           <InLiveFrame.Provider value={true}>{children}</InLiveFrame.Provider>
         </div>
       </AppShell>
@@ -289,7 +294,7 @@ export interface PortalFrameProps {
   /** Portal name, e.g. "Candidate portal", "Client portal". */
   portal: string;
   /** `href` where the page is live; the stories leave it out (#). */
-  nav?: { label: string; active?: boolean; href?: string }[];
+  nav?: { label: string; active?: boolean; href?: string; onNavigate?: () => void }[];
   user?: string;
   /** Right end of the header band (a tenant portal's note and language picker). */
   aside?: ReactNode;
@@ -297,24 +302,35 @@ export interface PortalFrameProps {
   foot?: ReactNode;
   children: ReactNode;
   whiteLabel?: boolean;
+  /** Careers answer 357: the company's logo in the header (the name stays as its alt text and fallback). */
+  tenantLogoUrl?: string | null;
 }
 
 /** T9 external-portal shell (APX-D §4): tenant header, simple top nav, Powered by YukthiX footer. */
-export function PortalFrame({ tenant, portal, nav = [], user, aside, foot, children, whiteLabel }: PortalFrameProps) {
+export function PortalFrame({ tenant, portal, nav = [], user, aside, foot, children, whiteLabel, tenantLogoUrl }: PortalFrameProps) {
   return (
     <div className="yx-portal">
       <header className="yx-portal__head">
-        <span className="yx-portal__tenant">{tenant}</span>
+        <span className="yx-portal__tenant">{tenantLogoUrl ? <TenantLogo src={tenantLogoUrl} name={tenant} /> : tenant}</span>
         <span className="yx-portal__name">{portal}</span>
         <nav className="yx-portal__nav" aria-label={portal}>
           {nav.map((n) => (
-            <a key={n.label} href={n.href ?? '#'} aria-current={n.active ? 'page' : undefined}>
+            <a
+              key={n.label}
+              href={n.href ?? '#'}
+              aria-current={n.active ? 'page' : undefined}
+              // A portal kept signed in only in the page (a one-time-code session) changes tab without reloading it;
+              // a modified click (new tab or window) keeps the plain link.
+              onClick={n.onNavigate ? (e) => { if (e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) { e.preventDefault(); n.onNavigate!(); } } : undefined}
+            >
               {n.label}
             </a>
           ))}
         </nav>
         {user && <span className="yx-portal__user">{user}</span>}
         {aside}
+        {/* Answer 2331: every sign-in, candidate and portal page carries it (kept in this browser); never turned off. */}
+        <AccessibilityMenu />
       </header>
       <main className="yx-portal__body">{children}</main>
       <footer className="yx-portal__foot">

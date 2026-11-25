@@ -21,9 +21,11 @@ export function useLife<T>(path: string | null) {
 export function useLifeWrite() {
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  return async <T = unknown>(method: 'POST' | 'PUT', path: string, body?: unknown): Promise<T> => {
+  return async <T = unknown>(method: 'POST' | 'PUT' | 'DELETE', path: string, body?: unknown): Promise<T> => {
     const result = await apiFetch(path, { method, ...(body === undefined ? {} : body instanceof FormData ? { body } : { body: JSON.stringify(body) }) }, accessToken ?? undefined);
     await queryClient.invalidateQueries({ queryKey: ['lifecycle'] });
+    // The side-menu counts (Clearance, Exit cases, Documents…) follow at once, not a minute later.
+    void queryClient.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
     return result as T;
   };
 }
@@ -38,21 +40,30 @@ export function useDocumentDownload() {
 }
 
 /** Complete, skip and (HR, on one person's checklist) upload, preview and issue actions on checklist tasks. */
+/**
+ * Task actions. A journey record passes its person (or null when the viewer does not manage it); My checklist tasks
+ * passes nothing and each task names its own person (PPL-47). The API checks every call.
+ */
 export function useTaskActions(personId?: string | null, subject?: { type: string; id: string } | null): TaskActions {
   const write = useLifeWrite();
   const pdf = usePdfPost();
+  const who = (t: JourneyTask) => personId ?? t.personId ?? '';
+  const about = (t: JourneyTask) => subject ?? t.subject ?? null;
   return {
     onComplete: (t: JourneyTask, payload) => write('POST', `/lifecycle/tasks/${encodeURIComponent(t.id)}/complete`, { version: t.version, ...payload }),
     onSkip: (t: JourneyTask, reason: string) => write('POST', `/lifecycle/tasks/${encodeURIComponent(t.id)}/skip`, { version: t.version, reason }),
-    ...(personId
+    ...(personId !== null
       ? {
           onUpload: (t: JourneyTask, file: File) => {
             const form = new FormData();
             form.append('file', file);
-            return write('POST', `/documents/people/${encodeURIComponent(personId)}/${encodeURIComponent(t.documentType ?? '')}`, form);
+            return write('POST', `/documents/people/${encodeURIComponent(who(t))}/${encodeURIComponent(t.documentType ?? '')}`, form);
           },
-          onPreviewLetter: (t: JourneyTask) => pdf('/letters/preview', { letterType: t.letterType, personId }, 'preview.pdf'),
-          onIssueLetter: (t: JourneyTask) => write('POST', '/letters/issue', { letterType: t.letterType, personId, ...(subject ? { subjectType: subject.type, subjectId: subject.id } : {}) }),
+          onPreviewLetter: (t: JourneyTask) => pdf('/letters/preview', { letterType: t.letterType, personId: who(t) }, 'preview.pdf'),
+          onIssueLetter: (t: JourneyTask) => {
+            const s = about(t);
+            return write('POST', '/letters/issue', { letterType: t.letterType, personId: who(t), ...(s ? { subjectType: s.type, subjectId: s.id } : {}) });
+          },
         }
       : {}),
   };

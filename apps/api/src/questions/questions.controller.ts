@@ -4,7 +4,9 @@ import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions, RequireAnyPermission } from '../rbac/permissions.decorator';
+import { SeesAnswerKeys, ShowsAnswerKeys, withoutAnswerKey } from '../rbac/answer-keys';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -16,14 +18,17 @@ import { STRICT_AI_GENERATE_THROTTLE, MODERATE_UPLOAD_THROTTLE } from '../rate-l
 import { generateBulkUploadTemplate } from './bulk-upload-template';
 
 @Controller('questions')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2006): no assessments change while acting for someone else.
+@UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class QuestionsController {
   constructor(private readonly questionsService: QuestionsService) {}
 
+  // Answer 2141: a new question is a draft nobody can use until another person approves it in the question bank, as the
+  // bank's own New question does (answer 2009).
   @Post()
   @RequirePermissions('question_bank:manage')
   create(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: CreateQuestionDto) {
-    return this.questionsService.create(tenant, userId, dto);
+    return this.questionsService.create(tenant, userId, dto, { status: 'draft' });
   }
 
   @Post('ai-generate')
@@ -62,7 +67,9 @@ export class QuestionsController {
 
   @Get()
   @RequireAnyPermission('question_bank:manage', 'question_bank:view')
-  list(
+  @ShowsAnswerKeys()
+  async list(
+    @SeesAnswerKeys() keys: boolean,
     @CurrentTenant() tenant: TenantContext,
     @Query('topic') topic?: string,
     @Query('difficulty') difficulty?: string,
@@ -72,7 +79,9 @@ export class QuestionsController {
     @Query('pageSize') pageSize?: string,
     @Query('search') search?: string,
   ) {
-    return this.questionsService.list(tenant, { topic, difficulty, status, tagId, page, pageSize, search });
+    const page_ = await this.questionsService.list(tenant, { topic, difficulty, status, tagId, page, pageSize, search });
+    // A reader of the bank (question_bank:view) sees the questions without their answer keys (security fix).
+    return keys ? page_ : { ...page_, data: page_.data.map(withoutAnswerKey) };
   }
 
   @Get('code-languages')
@@ -83,8 +92,10 @@ export class QuestionsController {
 
   @Get(':id')
   @RequireAnyPermission('question_bank:manage', 'question_bank:view')
-  findOne(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.questionsService.findOne(tenant, id);
+  @ShowsAnswerKeys()
+  async findOne(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @SeesAnswerKeys() keys: boolean) {
+    const q = await this.questionsService.findOne(tenant, id);
+    return keys ? q : withoutAnswerKey(q);
   }
 
   @Patch(':id')

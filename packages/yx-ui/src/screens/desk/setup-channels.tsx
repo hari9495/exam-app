@@ -4,7 +4,8 @@ import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { NumberField, PasswordField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
@@ -110,6 +111,7 @@ export function EmailTab(props: EmailSetupProps & { detail: DeskDetail }) {
   const [original, setOriginal] = useState<InboundEmailDetail | null>(null);
   const [domain, setDomain] = useState('');
   const { busy, error, run } = useRun();
+  const domainEarly = useTooEarly(domain.includes('.') ? [] : [{ fieldId: 'em-domain', message: 'Give your domain, like yourcompany.com.' }]);
   return (
     <DeskPage state={props.state} onRetry={undefined} what="the email set-up">
       <div className="yx-ops-stack">
@@ -229,8 +231,10 @@ export function EmailTab(props: EmailSetupProps & { detail: DeskDetail }) {
               </div>
             ))}
             <span className="yx-ops-row">
-              <TextField size="sm" aria-label="Your domain" placeholder="Your domain" value={domain} onChange={setDomain} maxLength={253} />
-              <Button size="sm" disabled={!domain.includes('.')} loading={busy === 'domain'} onClick={() => void run('domain', async () => { await props.onAddDomain(domain.trim().toLowerCase()); setDomain(''); })}>
+              <FormField id="em-domain" label="Your domain" hideLabel error={domainEarly.errorOf('em-domain')}>
+                <TextField size="sm" placeholder="Your domain" value={domain} onChange={setDomain} maxLength={253} />
+              </FormField>
+              <Button size="sm" loading={busy === 'domain'} onClick={() => !domainEarly.stop() && void run('domain', async () => { await props.onAddDomain(domain.trim().toLowerCase()); setDomain(''); })}>
                 Add domain
               </Button>
             </span>
@@ -318,7 +322,11 @@ function MailboxDrawer({ mailbox, detail, domains, onClose, onSave }: { mailbox:
   const fields = kind ? (CREDENTIALS[kind] ?? []) : [];
   const credsFilled = fields.every((f) => cred[f.key]?.trim());
   const credsTouched = fields.some((f) => cred[f.key]?.trim());
-  const ready = Boolean(kind && address.includes('@') && (mailbox ? !credsTouched || credsFilled : credsFilled));
+  const early = useTooEarly([
+    ...(kind ? [] : [{ fieldId: 'mb-kind', message: 'Choose how mail reaches us.' }]),
+    ...(address.includes('@') ? [] : [{ fieldId: 'mb-address', message: 'Give the email address.' }]),
+    ...(mailbox && !credsTouched ? [] : fields.filter((f) => !cred[f.key]?.trim()).map((f) => ({ fieldId: `mb-${f.key}`, message: `Give the ${f.label.toLowerCase()}.` }))),
+  ]);
   const save = () =>
     run('save', () =>
       onSave({
@@ -343,7 +351,7 @@ function MailboxDrawer({ mailbox, detail, domains, onClose, onSave }: { mailbox:
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" icon={Mail} disabled={!ready} loading={busy === 'save'} onClick={() => void save()}>
+          <Button variant="primary" icon={Mail} loading={busy === 'save'} onClick={() => !early.stop() && void save()}>
             {mailbox ? 'Save mailbox' : 'Add mailbox'}
           </Button>
         </>
@@ -353,10 +361,10 @@ function MailboxDrawer({ mailbox, detail, domains, onClose, onSave }: { mailbox:
         {error && <InlineAlert tone="danger" title="The mailbox was not saved">{error}</InlineAlert>}
         {!mailbox && (
           <>
-            <FormField label="How mail reaches us" required helper={kind ? KIND_HELP[kind] : undefined}>
+            <FormField id="mb-kind" error={early.errorOf('mb-kind')} label="How mail reaches us" required helper={kind ? KIND_HELP[kind] : undefined}>
               <Select value={kind} onChange={setKind} options={(Object.keys(KIND_LABEL) as MailboxKind[]).map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
             </FormField>
-            <FormField label="Email address" required>
+            <FormField id="mb-address" label="Email address" required error={early.errorOf('mb-address')}>
               <TextField type="email" value={address} onChange={setAddress} maxLength={254} placeholder="support@yourcompany.com" />
             </FormField>
           </>
@@ -366,15 +374,15 @@ function MailboxDrawer({ mailbox, detail, domains, onClose, onSave }: { mailbox:
             {mailbox && <p className="yx-ops-muted">Sign-in details are kept locked and never shown. Fill these in only to change them.</p>}
             {fields.map((f) =>
               f.secret ? (
-                <FormField key={f.key} label={f.label} required={!mailbox}>
+                <FormField key={f.key} id={`mb-${f.key}`} error={early.errorOf(`mb-${f.key}`)} label={f.label} required={!mailbox}>
                   <PasswordField value={cred[f.key] ?? ''} onChange={(v) => setCred((c) => ({ ...c, [f.key]: v }))} autoComplete="new-password" />
                 </FormField>
               ) : f.number ? (
-                <FormField key={f.key} label={f.label} required={!mailbox}>
+                <FormField key={f.key} id={`mb-${f.key}`} error={early.errorOf(`mb-${f.key}`)} label={f.label} required={!mailbox}>
                   <NumberField value={cred[f.key] ? Number(cred[f.key]) : null} onChange={(v) => setCred((c) => ({ ...c, [f.key]: v === null ? '' : String(v) }))} min={1} max={65535} />
                 </FormField>
               ) : (
-                <FormField key={f.key} label={f.label} required={!mailbox}>
+                <FormField key={f.key} id={`mb-${f.key}`} error={early.errorOf(`mb-${f.key}`)} label={f.label} required={!mailbox}>
                   <TextField value={cred[f.key] ?? ''} onChange={(v) => setCred((c) => ({ ...c, [f.key]: v }))} maxLength={254} />
                 </FormField>
               ),
@@ -395,7 +403,7 @@ function MailboxDrawer({ mailbox, detail, domains, onClose, onSave }: { mailbox:
           <Select value={categoryId} onChange={setCategoryId} clearable options={detail.categories.filter((c) => c.active).map((c) => ({ value: c.id, label: c.name }))} placeholder="No category" />
         </FormField>
         <FormField label="Type for new tickets" optional>
-          <Select value={typeId} onChange={setTypeId} clearable options={detail.types.filter((t) => t.active).map((t) => ({ value: t.id, label: t.name }))} placeholder="The desk’s first type" />
+          <Select value={typeId} onChange={setTypeId} clearable options={detail.types.filter((t) => t.active && t.kind !== 'change' && t.kind !== 'problem').map((t) => ({ value: t.id, label: t.name }))} placeholder="The desk’s first type" />
         </FormField>
         <FormField label="Send replies from" helper="Your own domain once all its checks pass; until then YukthiX’s address with your desk name.">
           <Select value={domainId} onChange={setDomainId} clearable options={domains.map((d) => ({ value: d.id, label: d.domain, description: d.status === 'verified' ? 'All checks pass' : 'Checks not passed yet' }))} placeholder="YukthiX’s address" />
@@ -496,38 +504,48 @@ function RuleForm({ rule, detail, onCancel, onSave }: { rule: MailRule | null; d
   const [active, setActive] = useState(rule?.active ?? true);
   const { busy, error, run } = useRun();
   const actionValue = action === 'route' ? (categoryId ? { categoryId } : null) : action === 'tag' ? (tag.trim() ? { tag: tag.trim().toLowerCase() } : null) : action === 'priority' ? { priority } : action === 'parse_field' ? (key.trim() && /^[a-z][a-z0-9_]{0,39}$/.test(saveAs) ? { key: key.trim(), field: saveAs } : null) : {};
-  const ready = Boolean(name.trim() && field && action && value.trim() && actionValue && (field !== 'header' || /^[A-Za-z0-9-]{1,100}$/.test(headerName)));
+  const early = useTooEarly([
+    ...(name.trim() ? [] : [{ fieldId: 'mr-name', message: 'Name the rule.' }]),
+    ...(field ? [] : [{ fieldId: 'mr-field', message: 'Choose what to look at.' }]),
+    ...(field === 'header' && !/^[A-Za-z0-9-]{1,100}$/.test(headerName) ? [{ fieldId: 'mr-header', message: 'Give the header name, like X-Priority.' }] : []),
+    ...(value.trim() ? [] : [{ fieldId: 'mr-value', message: 'Give the words to match.' }]),
+    ...(action ? [] : [{ fieldId: 'mr-action', message: 'Choose what happens.' }]),
+    ...(action === 'route' && !categoryId ? [{ fieldId: 'mr-category', message: 'Choose the category.' }] : []),
+    ...(action === 'tag' && !tag.trim() ? [{ fieldId: 'mr-tag', message: 'Give the tag.' }] : []),
+    ...(action === 'parse_field' && !key.trim() ? [{ fieldId: 'mr-key', message: 'Give the words just before the value.' }] : []),
+    ...(action === 'parse_field' && !/^[a-z][a-z0-9_]{0,39}$/.test(saveAs) ? [{ fieldId: 'mr-saveas', message: 'Use small letters, digits and _ , like order_number.' }] : []),
+  ]);
   return (
     <Card title={rule ? `Edit ${rule.name}` : 'New rule'}>
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The rule was not saved">{error}</InlineAlert>}
-        <FormField label="Rule name" required>
+        <FormField id="mr-name" label="Rule name" required error={early.errorOf('mr-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
-        <FormField label="Look at" required>
+        <FormField id="mr-field" label="Look at" required error={early.errorOf('mr-field')}>
           <Select value={field} onChange={setField} options={(Object.keys(FIELD_LABEL) as RuleField[]).map((f) => ({ value: f, label: FIELD_LABEL[f] }))} />
         </FormField>
         {field === 'header' && (
-          <FormField label="Header name" required helper="Like X-Priority">
+          <FormField id="mr-header" error={early.errorOf('mr-header')} label="Header name" required helper="Like X-Priority">
             <TextField value={headerName} onChange={setHeaderName} maxLength={100} />
           </FormField>
         )}
         <FormField label="Match">
           <Segment label="Match" options={(Object.keys(OP_LABEL) as RuleOp[]).map((o) => ({ value: o, label: OP_LABEL[o] }))} value={op} onChange={setOp} />
         </FormField>
-        <FormField label="Words to match" required>
+        <FormField id="mr-value" label="Words to match" required error={early.errorOf('mr-value')}>
           <TextField value={value} onChange={setValue} maxLength={200} />
         </FormField>
-        <FormField label="Then" required>
+        <FormField id="mr-action" label="Then" required error={early.errorOf('mr-action')}>
           <Select value={action} onChange={setAction} options={(Object.keys(ACTION_LABEL) as RuleAction[]).map((a) => ({ value: a, label: ACTION_LABEL[a] }))} />
         </FormField>
         {action === 'route' && (
-          <FormField label="Category" required>
+          <FormField id="mr-category" label="Category" required error={early.errorOf('mr-category')}>
             <Select value={categoryId} onChange={setCategoryId} options={detail.categories.filter((c) => c.active).map((c) => ({ value: c.id, label: c.name }))} />
           </FormField>
         )}
         {action === 'tag' && (
-          <FormField label="Tag" required>
+          <FormField id="mr-tag" label="Tag" required error={early.errorOf('mr-tag')}>
             <TextField value={tag} onChange={setTag} maxLength={40} />
           </FormField>
         )}
@@ -538,10 +556,10 @@ function RuleForm({ rule, detail, onCancel, onSave }: { rule: MailRule | null; d
         )}
         {action === 'parse_field' && (
           <>
-            <FormField label="Words just before the value" required helper="Like “Order number:”">
+            <FormField id="mr-key" error={early.errorOf('mr-key')} label="Words just before the value" required helper="Like “Order number:”">
               <TextField value={key} onChange={setKey} maxLength={100} />
             </FormField>
-            <FormField label="Save it as" required helper="Small letters, digits and _ , like order_number">
+            <FormField id="mr-saveas" error={early.errorOf('mr-saveas')} label="Save it as" required helper="Small letters, digits and _ , like order_number">
               <TextField value={saveAs} onChange={setSaveAs} maxLength={40} />
             </FormField>
           </>
@@ -550,7 +568,7 @@ function RuleForm({ rule, detail, onCancel, onSave }: { rule: MailRule | null; d
         <Checkbox checked={active} onChange={setActive} label="Rule is on" />
         <span className="yx-ops-row">
           <Button onClick={onCancel}>Cancel</Button>
-          <Button variant="primary" disabled={!ready} loading={busy === 'save'} onClick={() => void run('save', () => onSave({ name: name.trim(), field: field!, ...(field === 'header' ? { headerName } : {}), op, value: value.trim(), action: action!, actionValue: actionValue ?? {}, stop, active }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave({ name: name.trim(), field: field!, ...(field === 'header' ? { headerName } : {}), op, value: value.trim(), action: action!, actionValue: actionValue ?? {}, stop, active }))}>
             Save rule
           </Button>
         </span>
@@ -575,6 +593,7 @@ export interface PortalSetupProps {
 
 export function PortalTab(props: PortalSetupProps & { desks: DeskSummary[] }) {
   const [edit, setEdit] = useState<PortalView | 'new' | null>(null);
+  const { toast } = useToast();
   const customerDesks = props.desks.filter((d) => d.audience === 'customer' && d.status === 'active');
   return (
     <DeskPage state={props.state} what="the help pages">
@@ -608,7 +627,7 @@ export function PortalTab(props: PortalSetupProps & { desks: DeskSummary[] }) {
           </ul>
         )}
         <div className="yx-ops-row">
-          <Button icon={Plus} disabled={!customerDesks.length} onClick={() => setEdit('new')}>
+          <Button icon={Plus} onClick={() => (customerDesks.length ? setEdit('new') : toast({ title: 'Create a Customer support desk first.' }))}>
             New help page
           </Button>
           {!customerDesks.length && <span className="yx-ops-muted">Create a Customer support desk first.</span>}
@@ -634,7 +653,13 @@ function PortalDrawer({ portal, desks, onClose, onSave }: { portal: PortalView |
   const { busy, error, run } = useRun();
   const slugOk = /^[a-z0-9][a-z0-9-]{1,39}$/.test(slug);
   const accentOk = !accent || /^#[0-9a-fA-F]{6}$/.test(accent);
-  const ready = Boolean(name.trim() && slugOk && deskIds.length && accentOk && (signUp !== 'allowed_domains' || list(domains).length));
+  const early = useTooEarly([
+    ...(name.trim() ? [] : [{ fieldId: 'pt-name', message: 'Name the help page.' }]),
+    ...(slugOk ? [] : [{ fieldId: 'pt-slug', message: 'Use 2 to 40 small letters, digits and dashes' }]),
+    ...(deskIds.length ? [] : [{ fieldId: 'pt-desks', message: 'Choose at least one desk.' }]),
+    ...(signUp === 'allowed_domains' && !list(domains).length ? [{ fieldId: 'pt-domains', message: 'Give at least one email domain.' }] : []),
+    ...(accentOk ? [] : [{ fieldId: 'pt-accent', message: 'Use # and six letters or digits' }]),
+  ]);
   return (
     <Drawer
       open
@@ -646,9 +671,9 @@ function PortalDrawer({ portal, desks, onClose, onSave }: { portal: PortalView |
           <Button onClick={onClose}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!ready}
             loading={busy === 'save'}
             onClick={() =>
+              !early.stop() &&
               void run('save', () =>
                 onSave({ name: name.trim(), slug, deskIds, signUp, allowedDomains: signUp === 'allowed_domains' ? list(domains) : [], openRequests, ...(accent ? { accentColour: accent } : {}), loginTitle: title.trim(), loginText: text.trim(), readingAids: aids, status }),
               )
@@ -661,25 +686,25 @@ function PortalDrawer({ portal, desks, onClose, onSave }: { portal: PortalView |
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The help page was not saved">{error}</InlineAlert>}
-        <FormField label="Name" required>
+        <FormField id="pt-name" label="Name" required error={early.errorOf('pt-name')}>
           <TextField value={name} onChange={setName} maxLength={100} placeholder="Customer help" />
         </FormField>
-        <FormField label="Web address part" required helper={`2 to 40 small letters, digits or dashes. The page lives at …/yx/portal/<company>/${slug || 'help'}`} error={slug && !slugOk ? 'Use small letters, digits and dashes' : null}>
+        <FormField id="pt-slug" label="Web address part" required rule="2 to 40 small letters, digits or dashes." helper={`The page lives at …/yx/portal/<company>/${slug || 'help'}`} error={slug && !slugOk ? 'Use small letters, digits and dashes' : early.errorOf('pt-slug')}>
           <TextField value={slug} onChange={(v) => setSlug(v.toLowerCase())} maxLength={40} />
         </FormField>
-        <FormField label="Desks on this page" required helper="Customer support desks only.">
+        <FormField id="pt-desks" error={early.errorOf('pt-desks')} label="Desks on this page" required helper="Customer support desks only.">
           <MultiSelect value={deskIds} onChange={setDeskIds} options={desks.map((d) => ({ value: d.id, label: d.name }))} placeholder="Choose desks" />
         </FormField>
         <FormField label="Who can sign in">
           <Segment label="Who can sign in" options={SIGN_UP} value={signUp} onChange={setSignUp} />
         </FormField>
         {signUp === 'allowed_domains' && (
-          <FormField label="Email domains" required helper="Separated by commas, like acme.com, acme.in">
+          <FormField id="pt-domains" error={early.errorOf('pt-domains')} label="Email domains" required helper="Separated by commas, like acme.com, acme.in">
             <TextField value={domains} onChange={setDomains} maxLength={1000} />
           </FormField>
         )}
         <Checkbox checked={openRequests} onChange={setOpenRequests} label="Let people send a request without an account" description="They confirm their email address by opening a link before the ticket is made." />
-        <FormField label="Brand colour" optional helper="A web colour code: # and six letters or digits." error={accentOk ? null : 'Use # and six letters or digits'}>
+        <FormField id="pt-accent" label="Brand colour" optional helper="A web colour code: # and six letters or digits." error={accentOk ? null : 'Use # and six letters or digits'}>
           <TextField value={accent} onChange={setAccent} maxLength={7} />
         </FormField>
         <FormField label="Sign-in title" optional>
@@ -776,6 +801,7 @@ function BannerDrawer({ banner, openTickets, onClose, onSave }: { banner: Banner
   const [starts, setStarts] = useState(toLocal(banner?.startsAt ?? null));
   const [ends, setEnds] = useState(toLocal(banner?.endsAt ?? null));
   const { busy, error, run } = useRun();
+  const early = useTooEarly([...(text.trim() ? [] : [{ fieldId: 'bn-text', message: 'Say what people see.' }]), ...(starts && ends && ends <= starts ? [{ fieldId: 'bn-ends', message: 'Pick a time after the start' }] : [])]);
   const tickets = banner?.ticket && !openTickets.some((t) => t.id === banner.ticket!.id) ? [...openTickets, { id: banner.ticket.id, number: banner.ticket.number, subject: '' }] : openTickets;
   return (
     <Drawer
@@ -785,7 +811,7 @@ function BannerDrawer({ banner, openTickets, onClose, onSave }: { banner: Banner
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!text.trim() || Boolean(starts && ends && ends <= starts)} loading={busy === 'save'} onClick={() => void run('save', () => onSave({ text: text.trim(), severity, audience, ticketId, startsAt: fromLocal(starts), endsAt: fromLocal(ends) }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave({ text: text.trim(), severity, audience, ticketId, startsAt: fromLocal(starts), endsAt: fromLocal(ends) }))}>
             {banner ? 'Save banner' : 'Post banner'}
           </Button>
         </>
@@ -793,7 +819,7 @@ function BannerDrawer({ banner, openTickets, onClose, onSave }: { banner: Banner
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The banner was not saved">{error}</InlineAlert>}
-        <FormField label="What people see" required helper="Say what is wrong and what to do, in one or two lines.">
+        <FormField id="bn-text" error={early.errorOf('bn-text')} label="What people see" required helper="Say what is wrong and what to do, in one or two lines.">
           <TextArea value={text} onChange={setText} rows={3} maxLength={300} />
         </FormField>
         <FormField label="How serious">
@@ -808,7 +834,7 @@ function BannerDrawer({ banner, openTickets, onClose, onSave }: { banner: Banner
         <FormField label="Show from" optional helper="Empty: from now.">
           <TextField type="datetime-local" value={starts} onChange={setStarts} />
         </FormField>
-        <FormField label="Show until" optional helper="Empty: until you end it." error={starts && ends && ends <= starts ? 'Pick a time after the start' : null}>
+        <FormField id="bn-ends" label="Show until" optional helper="Empty: until you end it." error={starts && ends && ends <= starts ? 'Pick a time after the start' : null}>
           <TextField type="datetime-local" value={ends} onChange={setEnds} />
         </FormField>
       </div>

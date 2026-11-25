@@ -64,6 +64,7 @@
   border-radius: var(--yx-radius-round); background: var(--yx-color-bg-inverse); color: var(--yx-color-text-inverse); font-size: var(--yx-text-xs);
 }
 .yx-tim-punches__src, .yx-tim-punches__verdict { display: flex; gap: var(--yx-space-2); align-items: center; flex-wrap: wrap; }
+.yx-tim-punches__note { grid-column: 1 / -1; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); overflow-wrap: anywhere; }
 .yx-tim-punches__where { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); min-width: 0; }
 
 /* Shift bar */
@@ -202,13 +203,15 @@
 [data-code="L"], [data-code="HD"] { background: var(--yx-color-warning-bg); border-color: var(--yx-color-warning-border); }
 /* A request waiting for approval is information, not risk: neutral. */
 [data-code="R"] { background: var(--yx-color-bg-surface); border-color: var(--yx-color-border-strong); }
-[data-code="A"], [data-code="MP"], [data-code="LOP"] { background: var(--yx-color-danger-bg); border-color: var(--yx-color-danger-border); }
-[data-code="A"] .yx-tim-month__code, [data-code="MP"] .yx-tim-month__code { color: var(--yx-color-danger-text); }
-[data-code="CL"], [data-code="EL"], [data-code="SL"] { background: var(--yx-color-info-bg); border-color: var(--yx-color-info-border); }
+[data-code="A"], [data-code="MP"], [data-code="MI"], [data-code="LOP"] { background: var(--yx-color-danger-bg); border-color: var(--yx-color-danger-border); }
+[data-code="A"] .yx-tim-month__code, [data-code="MP"] .yx-tim-month__code, [data-code="MI"] .yx-tim-month__code { color: var(--yx-color-danger-text); }
+[data-code="CL"], [data-code="EL"], [data-code="SL"], [data-code="LV"] { background: var(--yx-color-info-bg); border-color: var(--yx-color-info-border); }
 [data-code="H"] { background: var(--yx-color-ai-bg); border-color: var(--yx-color-ai-border); }
 [data-code="WO"] { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border); }
 [data-code="WFH"], [data-code="OD"] { border-style: dashed; }
 [data-code="TODAY"] { border-color: var(--yx-color-action-primary); }
+/* TIM-37: strike, lockout, lay-off days are neither absence nor leave. */
+[data-code="ST"], [data-code="LO"], [data-code="LF"] { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-border-strong); border-style: dotted; }
 
 .yx-tim-legend { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-tim-legend__list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: var(--yx-space-2) var(--yx-space-4); font-size: var(--yx-text-sm); }
@@ -294,3 +297,6 @@
 .yx-tim-keypad button:hover { background: var(--yx-color-bg-subtle); }
 button.yx-tim-cov { cursor: pointer; border: 0; font: inherit; }
 button.yx-tim-cov:hover { box-shadow: inset 0 0 0 var(--yx-border-width) currentColor; }
+/* A place picker under a page subtitle (TIM-34 with several locations): wide enough for a location name, never the full row. */
+.yx-tim-place { width: max-content; min-width: calc(var(--yx-space-16) * 3); max-width: 100%; }
+/* Batch A item 5 (A1): a day of the month as a list row; the whole row opens the day panel. */

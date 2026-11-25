@@ -2,6 +2,9 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { PipelineService } from './pipeline.service';
 import { computeCriteriaHash } from '../candidate-fit/candidate-fit.core';
 
+// HIR-05 under-18 holds are covered by test/hiring-rest.e2e-spec.ts; these mocks have no candidate table.
+jest.mock('../talent-crm/minor', () => ({ minorHold: jest.fn(async () => null) }));
+
 // getJob always loads job custom-field defs+values (unconditionally, no dto to gate on); every
 // getJob test tx needs these two, defaulting to "no custom fields defined" so pre-existing tests
 // that don't care about this feature are unaffected.
@@ -11,6 +14,23 @@ function withJobCustomFieldMocks(tx: any) {
   // getJob also unconditionally loads the job's current board publications (jobBoardIds) --
   // default to "not published anywhere" so pre-existing tests are unaffected.
   tx.jobBoardPublication = { findMany: jest.fn().mockResolvedValue([]), ...tx.jobBoardPublication };
+  return tx;
+}
+
+// HIR-24: the pay law (no location: none), the company's pay settings (defaults) and the company boards (none).
+function withPayMocks(tx: any) {
+  if (!tx || typeof tx !== 'object') return tx;
+  tx.location = { findFirst: jest.fn().mockResolvedValue(null), ...tx.location };
+  tx.statutoryRuleSet = { findMany: jest.fn().mockResolvedValue([]), ...tx.statutoryRuleSet };
+  tx.setting = { findMany: jest.fn().mockResolvedValue([]), ...tx.setting };
+  tx.jobBoard = { findMany: jest.fn().mockResolvedValue([]), ...tx.jobBoard };
+  // A new job's audit row is written in its own transaction (no second pooled connection while the number row is locked).
+  tx.auditLog = { create: jest.fn(), ...tx.auditLog };
+  // HIR-03 answers 222, 225, 229: the job number counter, the company's default entity (India) and the recruiter.
+  tx.$queryRaw = tx.$queryRaw ?? jest.fn().mockResolvedValue([{ n: 1 }]);
+  tx.legalEntity = { findFirst: jest.fn().mockResolvedValue(null), ...tx.legalEntity };
+  tx.user = { findFirst: jest.fn().mockResolvedValue({ id: 'u' }), ...tx.user };
+  tx.jobBoardPublication = { findMany: jest.fn().mockResolvedValue([]), count: jest.fn().mockResolvedValue(0), ...tx.jobBoardPublication };
   return tx;
 }
 
@@ -26,8 +46,15 @@ function withRecomputeMocks(tx: any) {
   // default it off (no-op) so pre-existing hire tests that don't care about this feature are
   // unaffected; a test that does care overrides tx.organization itself.
   tx.organization = { findFirst: jest.fn().mockResolvedValue({ autoArchiveSiblingsOnHire: false }), ...tx.organization };
+  // HIR-05 answer 272: a move past the first stage reads the first stage, then the rehire block (mocked to none below).
+  tx.pipelineStage = { findFirst: jest.fn().mockResolvedValue(null), ...tx.pipelineStage };
   return tx;
 }
+
+// The rehire block (answer 272) has its own tests; here nobody is blocked.
+jest.mock('../lifecycle/rehire-policy', () => ({ rehireBlock: jest.fn().mockResolvedValue(null) }));
+// Answer 502: the New York City notice has its own tests (bias-audit spec, HIR-23 e2e); none applies here.
+jest.mock('../hiring/bias-audit', () => ({ nycNotice: jest.fn().mockResolvedValue(null), noticeEmail: jest.fn() }));
 
 describe('PipelineService', () => {
   let service: PipelineService;
@@ -92,18 +119,24 @@ describe('PipelineService', () => {
     surveys = { triggerOnStageChange: jest.fn().mockResolvedValue(undefined) };
     // M10 AT2: requisitions run on P03 through the hiring service (its own e2e covers the route).
     hiring = { startsAsDraft: jest.fn(async () => (await approvals.getChains()).requisition.enabled), submit: jest.fn(), withdraw: jest.fn().mockResolvedValue(false), summaries: jest.fn().mockResolvedValue(new Map()), checkLinks: jest.fn() };
-    service = new PipelineService(tenantPrisma as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any, drip as any, surveys as any, hiring as any);
+    // HIR-24: every job create / read / pay change also reads the pay law, the company's pay settings and the boards.
+    const withPay = { forTenant: (c: unknown, fn: (tx: any) => unknown) => tenantPrisma.forTenant(c, (tx: any) => fn(withPayMocks(tx))) };
+    service = new PipelineService(withPay as any, audit as any, templates as any, messages as any, smsTemplates as any, candidateSms as any, whatsappTemplates as any, candidateWhatsapp as any, integrationEvents as any, notifications as any, approvals as any, pipelines as any, fieldPerms as any, jobBoardPoster as any, hrisExport as any, drip as any, surveys as any, hiring as any);
   });
 
   it('createJob writes org-scoped and audits', async () => {
     const create = jest.fn().mockResolvedValue({ id: 'job-1', title: 'Backend Eng' });
-    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { create } }));
+    const auditLog = { create: jest.fn() };
+    tenantPrisma.forTenant.mockImplementation((_c, fn) => fn({ job: { create }, auditLog }));
     const out = await service.createJob(context, 'user-1', { title: 'Backend Eng' });
     expect(out).toEqual({ id: 'job-1', title: 'Backend Eng' });
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({ organizationId: 'org-1', title: 'Backend Eng', description: undefined, createdById: 'user-1', status: 'open' }),
     });
-    expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.created', entityId: 'job-1' }));
+    // Written in the job's own transaction, after the job.
+    expect(auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ organizationId: 'org-1', action: 'job.created', entityType: 'job', entityId: 'job-1' }) });
+    expect(auditLog.create.mock.invocationCallOrder[0]).toBeGreaterThan(create.mock.invocationCallOrder[0]);
+    expect(audit.record).not.toHaveBeenCalledWith(context, expect.objectContaining({ action: 'job.created' }));
   });
 
   describe('job custom fields', () => {
@@ -1723,6 +1756,7 @@ describe('PipelineService', () => {
       it('blocks the move with BadRequestException naming the stage + unmet item, and never calls update', async () => {
         const update = jest.fn();
         const tx = {
+          pipelineStage: { findFirst: jest.fn().mockResolvedValue(null) },
           pipelineEntry: {
             findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null, blueprintChecklistJson: null }),
             update,
@@ -1742,6 +1776,7 @@ describe('PipelineService', () => {
       it('allows the move when rules are met (update called)', async () => {
         const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
         const tx = {
+          pipelineStage: { findFirst: jest.fn().mockResolvedValue(null) },
           pipelineEntry: {
             findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'cand-1', job: { pipelineId: 'p1' }, status: null, blueprintChecklistJson: null }),
             update,
@@ -2020,6 +2055,7 @@ describe('PipelineService', () => {
       const update = jest.fn().mockResolvedValue({ id: 'en1', statusId: 'st-int' });
       const candidateUpdate = jest.fn().mockResolvedValue({});
       const tx = {
+        pipelineStage: { findFirst: jest.fn().mockResolvedValue(null) },
         pipelineEntry: {
           findFirst: jest.fn().mockResolvedValue({ id: 'en1', jobId: 'job-1', candidateId: 'c1', job: { pipelineId: 'p1' }, status: null }),
           update,

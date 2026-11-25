@@ -24,13 +24,16 @@ import {
 import { DesktopFrame, PhoneFrame, SCREEN_RAIL, type PanelSection } from '../_kit/frames';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, AiBadge, Avatar, type BadgeTone } from '../../components/display';
-import { Icon, Text } from '../../components/foundations';
+import { Icon, Text, VisuallyHidden } from '../../components/foundations';
 import { InlineAlert } from '../../components/feedback';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from '../../components/menu';
 import { RadioGroup } from '../../components/choice';
-import { ConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog } from '../../components/overlay';
+import { PlainTable } from '../../components/plain-table';
+import { MultiSelect, Select } from '../../components/select';
 import { FormField } from '../../components/field';
-import { TextArea } from '../../components/inputs';
+import { Segment } from '../../components/segment';
+import { TextArea, TextField } from '../../components/inputs';
 import { formatDate } from '../../lib/format';
 import { cx } from '../../lib/cx';
 import {
@@ -263,10 +266,12 @@ export interface RatingScaleProps {
   disabled?: boolean;
   /** Labels per point; default M06 Q3 five labels. */
   labels?: readonly string[];
+  /** The company's scale (live data): each level's value and label, in order. Wins over `labels`. */
+  levels?: readonly { value: number; label: string }[];
 }
 
 /** 1–5 labelled rating (M06 Q3); the label is always written next to the number. */
-export function RatingScale({ value, onChange, label, disabled, labels = RATING_LABELS }: RatingScaleProps) {
+export function RatingScale({ value, onChange, label, disabled, labels = RATING_LABELS, levels }: RatingScaleProps) {
   return (
     <RadioGroup
       className="yx-rating-scale"
@@ -275,18 +280,18 @@ export function RatingScale({ value, onChange, label, disabled, labels = RATING_
       disabled={disabled}
       value={value == null ? '' : String(value)}
       onChange={(v) => onChange?.(Number(v))}
-      options={labels.map((l, i) => ({ value: String(i + 1), label: `${i + 1} · ${l}` }))}
+      options={(levels ?? labels.map((l, i) => ({ value: i + 1, label: l }))).map((l) => ({ value: String(l.value), label: `${l.value} · ${l.label}` }))}
     />
   );
 }
 
 /** Final score with its band (YX-PERF-07), or "pending" (YX-PERF-02, never 0). */
-export function ScoreBand({ score, pendingText = 'Pending' }: { score: number | null; pendingText?: string }) {
+export function ScoreBand({ score, pendingText = 'Pending', band }: { score: number | null; pendingText?: string; band?: string | null }) {
   if (score == null) return <Badge tone="neutral">{pendingText}</Badge>;
   return (
     <span className="yx-score-band">
       <span className="yx-score-band__num">{score.toFixed(2)}</span>
-      <Badge tone={score >= 3.5 ? 'success' : score >= 2.5 ? 'info' : 'warning'}>{bandFor(score)}</Badge>
+      <Badge tone={score >= 3.5 ? 'success' : score >= 2.5 ? 'info' : 'warning'}>{band ?? bandFor(score)}</Badge>
     </span>
   );
 }
@@ -354,6 +359,7 @@ export function NineBox({ people: initial, onMove, readOnly, defaultPending }: N
   const [people, setPeople] = useState(initial);
   const [pending, setPending] = useState<{ id: string; performance: number; potential: number } | null>(defaultPending ?? null);
   const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const cells: [number, number][] = [];
   for (const pot of [3, 2, 1]) for (const perf of [1, 2, 3]) cells.push([perf, pot]);
@@ -434,21 +440,24 @@ export function NineBox({ people: initial, onMove, readOnly, defaultPending }: N
           if (!o) {
             setPending(null);
             setReason('');
+            setTried(false);
           }
         }}
         title={who && pending ? `Move ${who.name} to ${nineBoxLabel(pending.performance, pending.potential)}?` : 'Move person'}
         consequence="The change is recorded with the before and after position, your reason and your name."
         confirmLabel="Move with reason"
-        confirmDisabled={reason.trim().length < 10}
         onConfirm={() => {
+          setTried(true);
+          if (reason.trim().length < 10) return false;
           if (!pending) return;
           setPeople((ps) => ps.map((p) => (p.id === pending.id ? { ...p, performance: pending.performance as 1 | 2 | 3, potential: pending.potential as 1 | 2 | 3 } : p)));
           onMove?.(pending.id, pending.performance, pending.potential, reason);
           setPending(null);
           setReason('');
+          setTried(false);
         }}
       >
-        <FormField label="Reason" required helper="At least 10 characters. Visible to HR and the calibration group, never to the employee.">
+        <FormField label="Reason" required rule="At least 10 characters." helper="Visible to HR and the calibration group, never to the employee." error={tried && reason.trim().length < 10 ? 'Enter a reason of at least 10 characters.' : null}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </ConfirmDialog>
@@ -767,28 +776,46 @@ export interface CoachNudge {
   /** Rule-computed signal the manager already has access to (YX-AST-10). */
   signal: string;
   action: string;
+  /** Live: where the action opens (1:1s, feedback, the goal). */
+  link?: string;
 }
 
 /** Weekly coach card on manager home: Act / Dismiss per nudge, opt-out link. AI only wrote the wording. */
-export function CoachCard({ nudges: initial, weekOf, onAct, optedOut, onOptOut }: { nudges: CoachNudge[]; weekOf: Date; onAct?: (n: CoachNudge) => void; optedOut?: boolean; onOptOut?: () => void }) {
+export function CoachCard({ nudges: initial, weekOf, onAct, optedOut, onOptOut, onOptIn, onDismiss, companyOff }: { nudges: CoachNudge[]; weekOf: Date; onAct?: (n: CoachNudge) => void; optedOut?: boolean; onOptOut?: () => void; /** Live: turn nudges on again from the card. */ onOptIn?: () => void; /** Live: hide this nudge for the week. */ onDismiss?: (n: CoachNudge) => void; /** The company turned the coach off (perf.coach.frequency). */ companyOff?: boolean }) {
   const [nudges, setNudges] = useState(initial);
   const [acted, setActed] = useState<string[]>([]);
+  const head = (
+    <header className="yx-coach__head">
+      <span className="yx-coach__title">{optedOut || companyOff ? 'Manager coach' : `Manager coach · week of ${formatDate(weekOf)}`}</span>
+      <AiBadge />
+    </header>
+  );
+  if (companyOff)
+    return (
+      <section className="yx-coach" aria-label="Manager coach">
+        {head}
+        <Text tone="secondary">Your company has turned off coach nudges. HR can turn them on in Settings › Company rules.</Text>
+      </section>
+    );
   if (optedOut)
     return (
       <section className="yx-coach" aria-label="Manager coach">
-        <header className="yx-coach__head">
-          <span className="yx-coach__title">Manager coach</span>
-          <AiBadge />
-        </header>
-        <Text tone="secondary">You turned off coach nudges. Turn them on again in Me › Preferences. HR doesn’t see this choice.</Text>
+        {head}
+        {onOptIn ? (
+          <>
+            <Text tone="secondary">You turned off coach nudges. HR doesn’t see this choice.</Text>
+            <Link href="#coach-optin" onClick={(e) => { e.preventDefault(); onOptIn(); }}>
+              Turn coach nudges on
+            </Link>
+          </>
+        ) : (
+          <Text tone="secondary">You turned off coach nudges. Turn them on again in Me › Preferences. HR doesn’t see this choice.</Text>
+        )}
       </section>
     );
   return (
     <section className="yx-coach" aria-label="Manager coach">
-      <header className="yx-coach__head">
-        <span className="yx-coach__title">Manager coach · week of {formatDate(weekOf)}</span>
-        <AiBadge />
-      </header>
+      {head}
       <Text size="sm" tone="secondary">
         Based only on team data you can already see. Nothing changes until you act.
       </Text>
@@ -816,7 +843,15 @@ export function CoachCard({ nudges: initial, weekOf, onAct, optedOut, onOptOut }
                   >
                     {n.action}
                   </Button>
-                  <IconButton icon={X} label={`Dismiss nudge about ${n.person}`} size="sm" onClick={() => setNudges((xs) => xs.filter((x) => x.id !== n.id))} />
+                  <IconButton
+                    icon={X}
+                    label={`Dismiss nudge about ${n.person}`}
+                    size="sm"
+                    onClick={() => {
+                      setNudges((xs) => xs.filter((x) => x.id !== n.id));
+                      onDismiss?.(n);
+                    }}
+                  />
                 </>
               )}
             </li>
@@ -844,7 +879,7 @@ export function BiasFlagList({ flags, onAccept, onIgnore, decided = {} }: { flag
     <ul className="yx-bias" aria-label="Wording suggestions">
       {flags.map((f) => (
         <li key={f.id} className="yx-bias__item" data-decided={decided[f.id]}>
-          <Icon icon={f.kind === 'Rating and text disagree' ? CircleAlert : ShieldAlert} />
+          <Icon icon={f.kind === 'Rating and text disagree' || f.kind === 'Rating spread against peers' ? CircleAlert : ShieldAlert} />
           <div className="yx-bias__text">
             <span className="yx-bias__kind">{f.kind}</span>
             <span>
@@ -886,6 +921,118 @@ export function SplitLayout({ main, side, className }: { main: ReactNode; side: 
     <div className={cx('yx-growth-split', className)}>
       <div className="yx-growth-split__main">{main}</div>
       <aside className="yx-growth-split__side">{side}</aside>
+    </div>
+  );
+}
+
+/* ================================================================== 9-box potential (PRF-05 → PRF-09) */
+
+export const POTENTIAL_LABELS: Record<1 | 2 | 3, string> = { 1: 'Low', 2: 'Medium', 3: 'High' };
+
+/**
+ * The manager's proposed 9-box potential in the manager review (founder 3 Nov 2026): a pick-one Segment, or the chosen
+ * word when read-only. The calibration facilitator decides; the employee never sees it.
+ */
+export function PotentialChoice({ value, onChange, readOnly }: { value: 1 | 2 | 3 | null; onChange?: (v: 1 | 2 | 3) => void; readOnly?: boolean }) {
+  return (
+    <FormField id="rv-potential" label="Potential, for calibration" optional helper="Your proposal for the 9-box; the calibration facilitator decides. The employee does not see it.">
+      {readOnly ? (
+        <Text>{value ? POTENTIAL_LABELS[value] : 'Not proposed'}</Text>
+      ) : (
+        <Segment label="Potential" value={value} onChange={(v) => onChange?.(v)} options={([1, 2, 3] as const).map((v) => ({ value: v, label: POTENTIAL_LABELS[v] }))} />
+      )}
+    </FormField>
+  );
+}
+
+/* ================================================================== Calibration sessions planned in the cycle wizard */
+
+/** A calibration session set up before launch: made when the cycle launches; finished reviews go into it. */
+export interface PlannedSession {
+  name: string;
+  facilitatorUserId: string;
+  /** Empty = every department. */
+  departmentIds: string[];
+}
+
+/** PRF-04 "Stages and deadlines": the calibration sessions of a cycle, added and removed before launch. */
+export function CalibrationPlan({ sessions, onChange, facilitators, departments }: { sessions: PlannedSession[]; onChange: (next: PlannedSession[]) => void; facilitators: { value: string; label: string }[]; departments: { value: string; label: string }[] }) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [facilitator, setFacilitator] = useState<string | null>(null);
+  const [depts, setDepts] = useState<string[]>([]);
+  const [tried, setTried] = useState(false);
+  const label = (list: { value: string; label: string }[], v: string) => list.find((x) => x.value === v)?.label ?? 'Unknown';
+  const nameError = !tried ? null : name.trim().length < 2 ? 'Name the session.' : sessions.some((x) => x.name.toLowerCase() === name.trim().toLowerCase()) ? 'Another session has this name.' : null;
+  const facError = tried && !facilitator ? 'Choose who runs the session.' : null;
+  const close = () => {
+    setAdding(false);
+    setTried(false);
+    setName('');
+    setFacilitator(null);
+    setDepts([]);
+  };
+  const add = () => {
+    setTried(true);
+    const bad = name.trim().length < 2 || sessions.some((x) => x.name.toLowerCase() === name.trim().toLowerCase()) ? 'cal-name' : !facilitator ? 'cal-facilitator' : null;
+    if (bad) return void document.getElementById(bad)?.focus();
+    onChange([...sessions, { name: name.trim(), facilitatorUserId: facilitator!, departmentIds: depts }]);
+    close();
+  };
+  return (
+    <div className="yx-growth-stack" data-gap="sm">
+      <div className="yx-growth-row" data-between="">
+        <h3 className="yx-growth-h">Calibration sessions</h3>
+        <Button id="cal-add" size="sm" onClick={() => setAdding(true)}>
+          Add session
+        </Button>
+      </div>
+      {sessions.length ? (
+        <PlainTable
+          label="Calibration sessions"
+          columns={[
+            { key: 'name', header: 'Session', rowHeader: true, cell: (x) => x.name },
+            { key: 'facilitator', header: 'Facilitator', cell: (x) => label(facilitators, x.facilitatorUserId) },
+            { key: 'departments', header: 'Departments', cell: (x) => (x.departmentIds.length ? x.departmentIds.map((d) => label(departments, d)).join(', ') : 'Every department') },
+            { key: 'remove', header: <VisuallyHidden>Remove</VisuallyHidden>, cell: (x) => <Button size="sm" onClick={() => onChange(sessions.filter((y) => y !== x))}>Remove</Button> },
+          ]}
+          rows={sessions}
+          getRowId={(x) => x.name}
+        />
+      ) : (
+        <Text size="sm" tone="secondary">
+          No sessions yet. Add one so finished reviews wait for calibration; without one, HR opens sessions from the control room.
+        </Text>
+      )}
+      <Text size="sm" tone="secondary">
+        Sessions open when the cycle launches. Each finished review goes into the first session that takes its department.
+      </Text>
+      <Dialog
+        open={adding}
+        onOpenChange={(o) => (o ? setAdding(true) : close())}
+        size="md"
+        title="Add a calibration session"
+        footer={
+          <>
+            <Button onClick={close}>Cancel</Button>
+            <Button variant="primary" onClick={add}>
+              Add session
+            </Button>
+          </>
+        }
+      >
+        <div className="yx-growth-stack">
+          <FormField id="cal-name" label="Session name" required error={nameError}>
+            <TextField value={name} onChange={setName} maxLength={100} />
+          </FormField>
+          <FormField id="cal-facilitator" label="Facilitator" required error={facError} helper="People who can run calibration sessions.">
+            <Select aria-label="Facilitator" value={facilitator} onChange={setFacilitator} options={facilitators} searchable placeholder="Choose a facilitator" />
+          </FormField>
+          <FormField id="cal-departments" label="Departments" optional helper="Leave empty for every department.">
+            <MultiSelect aria-label="Departments" value={depts} onChange={setDepts} options={departments} placeholder="Every department" />
+          </FormField>
+        </div>
+      </Dialog>
     </div>
   );
 }

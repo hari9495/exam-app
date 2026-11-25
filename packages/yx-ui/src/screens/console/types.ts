@@ -31,6 +31,29 @@ export interface CompanyDetail extends CompanyRow {
   lifecycleChangedAt: string;
   admins: { name: string | null; email: string; status: string }[];
   history: CompanyHistoryEntry[];
+  /** Answer 1881: the company's own request to close its account (Settings 8.5), for the staff who close it. */
+  closureRequest?: { status: 'requested' | 'closed'; reason: string; askedAt: string; keepUntil: string | null } | null;
+  /** Answer 1882: an open request to delete the company's data; `mine` when the viewer asked (a second person confirms). */
+  deletion?: { id: string; mine: boolean; askedAt: string; reason: string } | null;
+  /** Answers 1973, 1975: the data was deleted; the statutory records are kept read-only until a day; the certificate. */
+  deleted?: {
+    at: string;
+    recordsKeptUntil: string | null;
+    certificateSha256: string | null;
+    /** Answer 2081: each kept group removed after its day, with its certificate's SHA-256. */
+    removals?: { group: 'audit' | 'pay' | 'filings' | 'company'; removedAt: string; sha256: string }[];
+    /** Answer 2083: legal holds in force on the deleted company (staff set them from the console). */
+    holds?: { id: string; caseRef: string; reason: string; until: string }[];
+  } | null;
+}
+
+/** Careers answer 442: GET platform/companies/:id/settings (the settings only YukthiX changes, each allowed by the plan). */
+export interface CompanySettingsView {
+  id: string;
+  name: string;
+  /** What the company's plan includes (its products' features, D15). */
+  features: string[];
+  settings: { key: string; label: string; value: string; default: string; values: string[]; feature: string; included: boolean }[];
 }
 
 export interface NewCompany {
@@ -122,4 +145,23 @@ export interface PlatformAuditEntry {
   company: string | null;
   companyId: string | null;
   details: Record<string, unknown> | null;
+}
+
+/** C-5 (answer 1053): one product or feature on a company's page, and whether it is on. */
+export interface CompanyFeature {
+  key: string;
+  label: string;
+  on: boolean;
+  /** product: in the company's plan; setting: a plan feature YukthiX turns on (Company settings). C-4 adds 'switch'. */
+  source: 'product' | 'setting' | 'switch';
+  /** Why it is off, e.g. "Not in the plan". */
+  note?: string;
+}
+
+/** Answer 2083: a legal hold staff set on a deleted company (case, why, until which day). */
+export interface LegalHoldInput {
+  caseRef: string;
+  reason: string;
+  /** YYYY-MM-DD. */
+  until: string;
 }

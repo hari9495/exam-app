@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type TextareaHTMLAttributes,
 } from 'react';
+import { useKitWords } from './kit-words';
 import { CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatTime, groupIndian, parseTime } from '../lib/format';
@@ -71,6 +72,7 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(function 
 
 export const PasswordField = forwardRef<HTMLInputElement, Omit<TextFieldProps, 'type' | 'suffix'>>(function PasswordField(props, ref) {
   const [shown, setShown] = useState(false);
+  const words = useKitWords();
   return (
     <TextField
       ref={ref}
@@ -78,7 +80,7 @@ export const PasswordField = forwardRef<HTMLInputElement, Omit<TextFieldProps, '
       autoComplete="current-password"
       {...props}
       suffix={
-        <button type="button" className="yx-input__toggle" aria-label={shown ? 'Hide password' : 'Show password'} aria-pressed={shown} onClick={() => setShown((s) => !s)}>
+        <button type="button" className="yx-input__toggle" aria-label={shown ? words.hidePassword : words.showPassword} aria-pressed={shown} onClick={() => setShown((s) => !s)}>
           <Icon icon={shown ? EyeOff : Eye} />
         </button>
       }
@@ -242,7 +244,7 @@ export const MaskedField = forwardRef<HTMLInputElement, MaskedFieldProps>(functi
       ref={ref}
       inputMode={spec.inputMode}
       autoCapitalize={kind === 'pan' || kind === 'ifsc' ? 'characters' : undefined}
-      autoComplete={kind === 'phone' ? 'tel-national' : 'off'}
+      autoComplete={kind === 'phone' ? 'tel-national' : kind === 'intlPhone' ? 'tel' : 'off'}
       spellCheck={false}
       className="yx-input--mono"
       placeholder={placeholder ?? spec.placeholder}

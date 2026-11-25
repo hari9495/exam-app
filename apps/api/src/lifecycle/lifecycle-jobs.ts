@@ -3,6 +3,7 @@ import { Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { DocumentsService } from '../documents/documents.service';
+import { ReverificationService } from '../documents/reverification.service';
 import { FilesService } from '../documents/files.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { LettersService } from '../documents/letters/letters.service';
@@ -10,6 +11,7 @@ import { PreboardingPortalService } from './portal.service';
 import { LastDayService } from './last-day.service';
 import { ExitExtrasService } from './exit-extras.service';
 import { LifeEventsService } from './life-events.service';
+import { OfferBuilderService } from '../offers/offer-builder.service';
 
 const QUEUE = 'lifecycle-jobs';
 
@@ -24,12 +26,14 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly journeys: LifecycleJourneysService,
     private readonly documents: DocumentsService,
+    private readonly reverification: ReverificationService,
     private readonly files: FilesService,
     private readonly letters: LettersService,
     private readonly portal: PreboardingPortalService,
     private readonly lastDay: LastDayService,
     private readonly extras: ExitExtrasService,
     private readonly lifeEvents: LifeEventsService,
+    private readonly offers: OfferBuilderService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -56,9 +60,13 @@ export class LifecycleJobs implements OnModuleInit, OnModuleDestroy {
         await this.lastDay.sweep();
         // Lifecycle 6f: life-event journeys start (and close when the leave or transfer is called off).
         await this.lifeEvents.sweep();
+        // HIR-09 answer 335: on the joining day, HR is told once about offer conditions still open.
+        await this.offers.joiningDaySweep();
       }
       if (name === 'daily') {
         await this.documents.expirySweep();
+        // PPL-42: asked fresh copies that are due and not uploaded remind the person (then weekly).
+        await this.reverification.remindSweep();
         await this.portal.remind();
         // Lifecycle 6e: absconding timelines (and their start from unauthorised absence), retirements and contract ends.
         await this.extras.abscondingSweep();

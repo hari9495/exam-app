@@ -10,6 +10,8 @@ export interface PayRun {
   month: string;
   runType: 'regular' | 'offcycle';
   offcycleKind: OffcycleKind | null;
+  /** F&F runs: "FNF-2026-0041". */
+  reference?: string | null;
   status: RunStatus;
   calcVersion: number;
   totals: { people: number; gross: string; deductions: string; net: string; employerCost: string; failed: number; skipped: number } | null;
@@ -20,6 +22,10 @@ export interface PayRun {
   /** Only on the single run. */
   entityName?: string;
   preparedByMe?: boolean;
+  /** PAY-09: the viewer is the only one who may publish these payslips, so a reason is asked for. */
+  publishAlone?: boolean;
+  /** PAY-29: the run's pay group (only on the single run). */
+  payGroup?: { name: string; frequency: 'monthly' | 'weekly' | 'fortnightly' | string } | null;
   approval?: { canDecide: boolean; phrase: string; step: number; steps: number } | null;
   /** PAY-9.01: a weekly or fortnightly group's run pays one period of the month. */
   subPeriod?: number | null;
@@ -72,6 +78,8 @@ export interface RunReadiness {
   people: number;
   period: string;
   checks: RunCheck[];
+  /** PAY-02: the run's people by location and attendance mode (company settings), open exceptions and manual LOP entered. */
+  groups?: { group: string; mode: 'punch_block' | 'punch_warn' | 'assumed_present' | 'timesheet'; employees: number; exceptions: number; lopEntered: number; attendanceStage: string }[];
 }
 
 export interface RunProgressData {
@@ -98,6 +106,8 @@ export interface RunPayslip {
   verify: boolean;
   held: boolean;
   paymentStatus: string;
+  /** PAY-10: "ifsc" = failed for an invalid IFSC and waiting for the employee's corrected account. */
+  waitingFor?: 'ifsc' | null;
 }
 
 export interface PayslipLine {
@@ -114,6 +124,11 @@ export interface PayslipLine {
 
 export interface PayslipDetail extends RunPayslip {
   lines: PayslipLine[];
+  /**
+   * Founder answer 6 (PAY-21): the month's days from the attendance feed, with the frozen feed's totals. Null for
+   * off-cycle and weekly payslips.
+   */
+  days?: { list: { day: number; kind: 'paid' | 'lop' | 'holiday' | 'off' | 'leave' | 'future' }[]; calendarDays: number | null; paidDays: string | null; lopDays: string | null } | null;
 }
 
 export interface RunVariance {
@@ -195,12 +210,51 @@ export interface HubCard {
   late: boolean;
   penaltyEstimate: string | null;
   verifyDueDate: boolean;
+  /** CMP-12 (founder answer 22): supplementary filings and excess records of this card's month. */
+  children?: HubChild[];
+}
+
+/** A supplementary filing or an excess record under the month's card (GET statutory/hub). */
+export interface HubChild {
+  id: string;
+  kind: 'supplementary' | 'excess_adjustment' | 'excess_refund';
+  status: string;
+  amount: string | null;
+  reason: string | null;
+  people: number | null;
+  employeeShare: string;
+  employerShare: string;
+  causedBy: string[];
+  reference: string | null;
+  fileId: string | null;
+  correctsId: string | null;
+  createdAt: string;
+  penalties: { kind: string; daysLate: number; base: string; rate: string; amount: string; ruleVersion: string }[];
+}
+
+/** GET statutory/missing-ids (CMP-07, founder answer 22). */
+export interface MissingIdView {
+  id: string;
+  employeeId: string;
+  name: string;
+  code: string;
+  department: string | null;
+  issue: 'pan_missing' | 'pan_inoperative' | 'uan_missing' | 'esi_missing' | 'bank_missing' | 'bank_waiting';
+  blocks: boolean;
+}
+export interface MissingIds {
+  entityId: string;
+  people: number;
+  counts: { pan: number; uan: number; esi: number; bank: number };
+  rows: MissingIdView[];
 }
 
 export interface StatutoryHub {
   entityId: string;
   month: string;
   today: string;
+  /** CMP-01: registrations the entity has not recorded ("IN.PF", "IN.PT IN-KA"). */
+  setupMissing?: string[];
   cards: HubCard[];
   tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean };
 }
@@ -214,6 +268,8 @@ export interface FilingRow {
   fileId: string | null;
   rows?: number;
   reference?: string | null;
+  /** Answer 842: the bank's challan receipt PDF is kept. */
+  receipt?: boolean;
 }
 
 export interface TdsReturnRow {
@@ -229,16 +285,47 @@ export interface TdsReturnRow {
   tds: string;
   reconciliation: { difference?: string } | null;
   validation: { validator: string; ok: boolean; errors: string[]; version?: string | null } | null;
+  /** CMP-05: rows per month and where they come from, and the PAN warnings (null once filed). */
+  completeness?: ReturnCompleteness | null;
+}
+
+export interface ReturnCompleteness {
+  months: { month: string; rows: number; source: 'payroll' | 'imported' | 'nil' | 'none'; missing: boolean; nil?: { id: string; version: number; reason: string; recordedAt: string } | null }[];
+  panWarnings: { employeeId: string; employeeCode: string; name: string; issue: 'pan_missing' | 'pan_inoperative' }[];
+  panWarningCount: number;
+  panChecked: number;
 }
 
 export interface FnfItem {
   id: string;
   componentCode: string;
+  /** A deduction (a recovery) is money the leaver owes; an employer line is paid by the company (not to the leaver). */
+  kind: 'earning' | 'deduction' | 'employer';
   amount: string;
   label: string | null;
+  /** What the line is, and how it is worked out. */
+  title: string;
+  how: string;
+  /** Due within the 2-working-day deadline (Code on Wages). */
+  wage: boolean;
+  /** Pulled from another module (clearance recoveries, expense advances and claims). */
+  auto: boolean;
+  /** An approved expense claim paid with the settlement (held or changed in Expenses, not here). */
+  claim: boolean;
   held: string | null;
+  /** A short category for a hold the system made ("permission needed", "not returned yet"); the full reason is `held`. */
+  heldTag: string | null;
   inRun: string | null;
   byPayroll: boolean;
+}
+
+/** A line of the F&F run's payslip that is not a settlement line: salary to the last day, statutory deductions, TDS, loans. */
+export interface FnfSlipLine {
+  code: string;
+  name: string;
+  group: 'earning' | 'recovery' | 'tds' | 'statutory';
+  amount: string;
+  how: string;
 }
 
 export interface FnfSettlementView {
@@ -248,15 +335,28 @@ export interface FnfSettlementView {
   lwd: string;
   deadline: string;
   overdue: boolean;
+  /** PPL-22 absconding: recovery-only, the net payable held until the person claims it (no wage deadline runs). */
+  heldForClaim?: boolean;
   status: string;
   runId: string | null;
+  /** "FNF-2026-0041". */
+  runReference: string | null;
   runStatus: string | null;
   secondRunId: string | null;
   net: string | null;
+  /** Working days to the deadline on the person's holiday calendar (negative once overdue). */
+  workingDaysLeft: number;
   items: FnfItem[];
+  /** null until the run is calculated with the current lines. */
+  salary: FnfSlipLine[] | null;
+  /** tds, statutory, rounding and net are null until the run is calculated with the current lines; held lines are outside the totals. */
+  totals: { earnings: string; wageLines: string; recoveries: string; tds: string | null; statutory: string | null; rounding: string | null; net: string | null; held: string };
+  gratuity: { eligible: boolean; years: number; months: number; counted: number; minYears: number; dueBy: string } | null;
   payees: { kind: string; name: string; relation: string; sharePercent: string; accountLast4: string | null; ifsc: string | null; amount: string | null }[];
   noticeWaived: { by: string; reason: string } | null;
   taxNote?: string;
+  /** PAY-11 Retrenchment: whether the government's permission is needed and the one recorded in People › Exits. */
+  permission?: { needed: boolean; workers: number; granted: boolean; status: string | null; reference: string | null } | null;
   version: number;
 }
 

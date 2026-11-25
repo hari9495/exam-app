@@ -15,13 +15,14 @@ class MockGuard implements CanActivate {
 
 describe('AgencySubmissionsController', () => {
   let controller: AgencySubmissionsController;
-  let service: { list: jest.Mock; accept: jest.Mock; reject: jest.Mock };
+  let service: { list: jest.Mock; accept: jest.Mock; reject: jest.Mock; assertNotClientJob: jest.Mock };
   const tenant = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(async () => {
     service = {
       list: jest.fn().mockResolvedValue([{ id: 'sub-1' }]),
       accept: jest.fn().mockResolvedValue({ id: 'sub-1', status: 'accepted' }),
+      assertNotClientJob: jest.fn().mockResolvedValue(undefined),
       reject: jest.fn().mockResolvedValue({ id: 'sub-1', status: 'rejected' }),
     };
     const moduleRef = await Test.createTestingModule({
@@ -56,6 +57,7 @@ describe('AgencySubmissionsController', () => {
     const result = await controller.accept(tenant, 'user-1', 'sub-1');
     expect(service.accept).toHaveBeenCalledWith(tenant, 'sub-1', 'user-1');
     expect(result).toEqual({ id: 'sub-1', status: 'accepted' });
+    expect(service.assertNotClientJob).toHaveBeenCalledWith(tenant, 'sub-1');
   });
 
   it('reject delegates to the service with tenant, id, and the authed user id', async () => {
@@ -69,5 +71,11 @@ describe('AgencySubmissionsController', () => {
     expect(reflector.get(PERMISSIONS_KEY, AgencySubmissionsController.prototype.list)).toEqual(['pipeline:manage']);
     expect(reflector.get(PERMISSIONS_KEY, AgencySubmissionsController.prototype.accept)).toEqual(['pipeline:manage']);
     expect(reflector.get(PERMISSIONS_KEY, AgencySubmissionsController.prototype.reject)).toEqual(['pipeline:manage']);
+  });
+
+  it('a client job is refused on the older accept (it goes through Forward to client)', async () => {
+    service.assertNotClientJob.mockRejectedValueOnce(new Error('This is a client job'));
+    await expect(controller.accept(tenant, 'user-1', 'sub-1')).rejects.toThrow('client job');
+    expect(service.accept).not.toHaveBeenCalled();
   });
 });

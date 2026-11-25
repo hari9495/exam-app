@@ -13,13 +13,6 @@ const STRIPE_API_VERSION = '2024-06-20';
 // libraries default to 5 minutes.
 const WEBHOOK_TOLERANCE_SECONDS = 300;
 
-export interface StripeCheckoutSession {
-  id: string;
-  url: string | null;
-}
-export interface StripePortalSession {
-  url: string;
-}
 export interface StripeInvoice {
   id: string;
   number: string | null;
@@ -98,43 +91,6 @@ export class StripeClient {
       throw new ServiceUnavailableException(`Payment provider error: ${err}`);
     }
     return json as T;
-  }
-
-  createCustomer(input: { name: string; email?: string; organizationId: string }): Promise<{ id: string }> {
-    return this.request('POST', '/v1/customers', {
-      name: input.name,
-      ...(input.email ? { email: input.email } : {}),
-      metadata: { organizationId: input.organizationId },
-    });
-  }
-
-  createCheckoutSession(input: {
-    customerId: string;
-    priceId: string;
-    successUrl: string;
-    cancelUrl: string;
-    organizationId: string;
-    planId: string;
-  }): Promise<StripeCheckoutSession> {
-    return this.request('POST', '/v1/checkout/sessions', {
-      mode: 'subscription',
-      customer: input.customerId,
-      client_reference_id: input.organizationId,
-      success_url: input.successUrl,
-      cancel_url: input.cancelUrl,
-      line_items: [{ price: input.priceId, quantity: 1 }],
-      // Stamp the org + target plan onto the subscription so subscription.* webhooks (which don't
-      // carry the checkout session) can still resolve the org and the plan it should land on.
-      subscription_data: { metadata: { organizationId: input.organizationId, planId: input.planId } },
-      metadata: { organizationId: input.organizationId, planId: input.planId },
-    });
-  }
-
-  createBillingPortalSession(input: { customerId: string; returnUrl: string }): Promise<StripePortalSession> {
-    return this.request('POST', '/v1/billing_portal/sessions', {
-      customer: input.customerId,
-      return_url: input.returnUrl,
-    });
   }
 
   async listInvoices(input: { customerId: string; limit?: number }): Promise<StripeInvoice[]> {

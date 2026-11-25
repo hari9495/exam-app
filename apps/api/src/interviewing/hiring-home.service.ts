@@ -41,12 +41,13 @@ export class HiringHomeService {
     if (!ctx.organizationId || !user.userId || user.actingSuperAdmin) return null;
     const me = user.userId;
     const keys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId, userId: me }, [...KEYS]);
-    if (!keys.size) return null;
+    const mine = await this.scorecards.mine(ctx, me);
+    // Founder answer 511: a panellist without any hiring key still gets their interviews and scorecards here.
+    if (!keys.size && !mine.length) return null;
     const out: HiringHome = {};
     const now = new Date();
     const today = todayIst(now);
 
-    const mine = await this.scorecards.mine(ctx, me);
     const live = mine.filter((i) => i.status !== 'cancelled' && i.confirmed && i.when && i.endsAt);
     out.scorecardsDue = live
       .filter((i) => i.endsAt! <= now && (i.scorecard === 'not_started' || i.scorecard === 'draft'))
@@ -72,11 +73,14 @@ export class HiringHomeService {
       const jobIds = myJobs.map((j) => j.id);
       const open = myJobs.filter((j) => j.status === 'open');
 
+      // HIR-09: offers now wait on the P03 engine ('ats.offer'); the person's open tasks there count too.
+      const myTasks = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: me, status: 'open' }, select: { requestId: true }, take: 500 });
+      const p03 = myTasks.length ? await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: myTasks.map((t) => t.requestId) }, requestType: 'ats.offer', status: 'pending' }, select: { subjectId: true } }) : [];
       const offerRows = await tx.offer.findMany({
         where: {
           organizationId: org,
           OR: [
-            { id: { in: toApprove }, status: 'pending_approval' },
+            { id: { in: [...toApprove, ...p03.map((r) => r.subjectId)] }, status: 'pending_approval' },
             ...(keys.has('pipeline:manage') ? [{ status: { in: ['draft', 'approved'] }, pipelineEntry: { jobId: { in: jobIds } } }] : []),
           ],
         },

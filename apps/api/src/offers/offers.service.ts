@@ -1,6 +1,12 @@
-import { randomUUID } from 'crypto';
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Offer } from '@prisma/client';
+import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
+import { acceptanceCopy } from '../documents/letters/pdf';
+import { FilesService } from '../documents/files.service';
+import { createHash, randomUUID } from 'crypto';
+import { minorHold } from '../talent-crm/minor';
+import type { Tx } from '../org-structure/org-structure.service';
+import { todayIst } from '../org-structure/org-validation';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, Optional, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { Offer, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
@@ -10,6 +16,8 @@ import { CreateOfferDto } from './dto/create-offer.dto';
 import { buildOfferPdf } from './offer-pdf';
 import { renderOfferTemplate } from './offer-render';
 import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
+import { OtpService } from '../auth/otp.service';
+import { publicBrand } from '../public-applications/public-brand';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const PDF_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -29,6 +37,11 @@ export class OffersService {
     private readonly audit: AuditService,
     private readonly integrationEvents: IntegrationEventsService,
     private readonly approvals: ApprovalsService,
+    // HIR-09 e-sign: the one-time code the candidate signs with (optional so older unit tests build without it).
+    @Optional() private readonly otp?: OtpService,
+    @Optional() private readonly internal?: InternalApplicationsService,
+    // Answer 377: the sealed copy of an e-signed offer is stored like a letter's (private, the files table).
+    @Optional() private readonly files?: FilesService,
   ) {}
 
   async createOffer(context: TenantContext, actorUserId: string, entryId: string, dto: CreateOfferDto): Promise<Offer> {
@@ -45,10 +58,13 @@ export class OffersService {
       letterBody = letterBody ?? template.body;
     }
 
-    return this.tenantPrisma.forTenant(context, async (tx) => {
+    const made = await this.tenantPrisma.forTenant(context, async (tx) => {
       const orgId = context.organizationId as string;
       const entry = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: orgId } });
       if (!entry) throw new NotFoundException(`Pipeline entry ${entryId} not found`);
+      // HIR-05 under 18 (rule set HIR.MINOR): no offer until a parent or guardian consents.
+      const minor = await minorHold(tx as unknown as Tx, orgId, entry.candidateId, todayIst(), 'offer');
+      if (minor) throw new ConflictException(minor);
 
       const offer = await tx.offer.create({
         data: {
@@ -72,6 +88,59 @@ export class OffersService {
       });
       return offer;
     });
+    // HIR-13: an internal applicant's manager may be told at the offer (company setting).
+    await this.internal?.tellAtOffer(context, entryId);
+    return made;
+  }
+
+  /**
+   * Answer 377 (YX-DOC-12 for offers): the issued letter's pages, then the acceptance page (who, when, IP, device, the
+   * one-time-code check and the letter's SHA-256) through the letters' acceptanceCopy; stored privately in files.
+   */
+  async sealCopy(organizationId: string, offerId: string): Promise<{ fileId: string }> {
+    const ctx = { organizationId, isSuperAdmin: false };
+    const o = await this.tenantPrisma.forTenant(ctx, (tx) => tx.offer.findFirst({ where: { organizationId, id: offerId }, include: { pipelineEntry: { include: { candidate: { select: { name: true, email: true } } } } } }));
+    if (!o) throw new NotFoundException('Offer not found');
+    if (o.acceptanceFileId) return { fileId: o.acceptanceFileId };
+    const ev = o.esignEvidence as { at?: string; ip?: string | null; device?: string | null; channel?: string; assurance?: string } | null;
+    if (o.status !== 'accepted' || !o.esign || !ev?.at) throw new ConflictException('Only an offer accepted with e-sign has a sealed copy.');
+    try {
+      if (!this.files) throw new Error('file storage is not set up');
+      const letter = o.pdfPath ? await this.blobStorage.downloadToBuffer(o.pdfPath) : await this.previewPdf(ctx, offerId);
+      const copy = await acceptanceCopy(letter, {
+        title: o.letterSubject.slice(0, 120) || 'Offer letter',
+        referenceNo: `Offer ${o.id.slice(0, 8)}`,
+        letterSha256: createHash('sha256').update(letter).digest('hex'),
+        who: `${o.pipelineEntry.candidate.name} (${o.pipelineEntry.candidate.email})`,
+        at: ev.at,
+        channel: ev.channel === 'sms' ? 'text message' : 'email',
+        ip: ev.ip ?? null,
+        device: ev.device ?? null,
+        assurance: ev.assurance ?? 'one-time code',
+      });
+      return await this.tenantPrisma.forTenant(ctx, async (tx) => {
+        const file = await this.files!.storeIn(tx, ctx as never, { area: 'offers', name: `offer-${o.id.slice(0, 8)}-accepted.pdf`, data: copy, allowedMime: ['application/pdf'], maxMb: 25, via: 'system' });
+        await tx.file.update({ where: { id: file.id }, data: { scanStatus: 'clean', scanDetail: 'generated by YukthiX', scannedAt: new Date() } });
+        const n = await tx.offer.updateMany({ where: { id: o.id, organizationId, acceptanceFileId: null }, data: { acceptanceFileId: file.id } });
+        if (!n.count) return { fileId: (await tx.offer.findUniqueOrThrow({ where: { id: o.id }, select: { acceptanceFileId: true } })).acceptanceFileId! };
+        await this.audit.record(ctx, { actorUserId: null, action: 'offer.esign_copy_made', entityType: 'offer', entityId: o.id, metadata: { fileId: file.id, sha256: createHash('sha256').update(copy).digest('hex') } });
+        return { fileId: file.id };
+      });
+    } catch (e) {
+      await this.audit.record(ctx, { actorUserId: null, action: 'offer.esign_copy_failed', entityType: 'offer', entityId: o.id, metadata: { error: (e as Error).message.slice(0, 200) } }).catch(() => undefined);
+      throw new ServiceUnavailableException('The sealed copy could not be made. Try "Make the sealed copy" again.');
+    }
+  }
+
+  /** Answer 377: the sealed copy for staff (the letter shows pay: the controller checks the pay key). */
+  async sealedCopy(context: TenantContext, offerId: string): Promise<{ file: Buffer; name: string }> {
+    const row = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const o = await tx.offer.findFirst({ where: { organizationId: context.organizationId as string, id: offerId }, select: { acceptanceFileId: true } });
+      if (!o) throw new NotFoundException('Offer not found');
+      if (!o.acceptanceFileId) throw new NotFoundException('This offer has no sealed copy.');
+      return tx.file.findFirstOrThrow({ where: { organizationId: context.organizationId as string, id: o.acceptanceFileId } });
+    });
+    return { file: await this.files!.bytes(row), name: row.fileName };
   }
 
   async previewPdf(context: TenantContext, offerId: string): Promise<Buffer> {
@@ -204,7 +273,10 @@ export class OffersService {
         include: { pipelineEntry: { include: { candidate: true, job: true } } },
       });
       if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
-      if (gateEnabled) {
+      // HIR-09: an offer with CTC versions is sent only once approved (its route, or the auto-pass when it has none).
+      if (offer.currentVersion > 0) {
+        if (offer.status !== 'approved') throw new ConflictException(offer.status === 'sent' ? 'Offer already sent' : 'Send the offer for approval first.');
+      } else if (gateEnabled) {
         if (offer.status !== 'approved') throw new ConflictException('Offer not approved');
       } else if (offer.status !== 'draft') {
         throw new BadRequestException('Offer already sent');
@@ -217,11 +289,13 @@ export class OffersService {
       const actorName = actorUserId
         ? ((await tx.user.findUnique({ where: { id: actorUserId }, select: { name: true } }))?.name ?? '')
         : '';
-      return { offer, candidate: offer.pipelineEntry.candidate, job: offer.pipelineEntry.job, org, actorName, offerToken };
+      // Founder decision 4: e-sign only when the offer's template switches it on (accepting by the link otherwise).
+      const esign = offer.templateId ? Boolean((await tx.offerTemplate.findFirst({ where: { organizationId: orgId, id: offer.templateId }, select: { esign: true } }))?.esign) : false;
+      return { offer, candidate: offer.pipelineEntry.candidate, job: offer.pipelineEntry.job, org, actorName, offerToken, esign };
     });
 
     // Phase 2 (outside any tx): rendering + network calls (PDF build, blob upload, SMTP send).
-    const offerLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/offer/${prep.offerToken}`;
+    const offerLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/offer/${prep.offerToken}`;
     const rendered = renderOfferTemplate(prep.offer.letterSubject, prep.offer.letterBody, {
       candidateName: prep.candidate.name,
       jobTitle: prep.job.title,
@@ -271,14 +345,14 @@ export class OffersService {
       }
       const updated = await tx.offer.update({
         where: { id: offerId },
-        data: { status: 'sent', pdfPath, sentAt: new Date(), sentByUserId: actorUserId },
+        data: { status: 'sent', pdfPath, sentAt: new Date(), sentByUserId: actorUserId, esign: prep.esign },
       });
       await this.audit.record(context, {
         actorUserId,
         action: 'offer.sent',
         entityType: 'offer',
         entityId: offerId,
-        metadata: { to: prep.candidate.email },
+        metadata: { to: prep.candidate.email, esign: prep.esign },
       });
       return updated;
     });
@@ -318,6 +392,8 @@ export class OffersService {
             status: true,
             pdfPath: true,
             sentByUserId: true,
+            esign: true,
+            letterBody: true,
           },
         }),
     );
@@ -347,15 +423,37 @@ export class OffersService {
     return {
       jobTitle: details.jobTitle,
       orgName: details.orgName,
+      // Careers answer 362: the company's logo, colour, careers link and white-label on the offer page.
+      brand: await publicBrand(this.tenantPrisma, this.blobStorage, offer.organizationId),
       compensation: offer.compensation,
       startDate: offer.startDate,
       expiresAt: offer.expiresAt,
       status: offer.status,
       pdfUrl,
+      // HIR-09: the candidate signs with a one-time code only when the company's template asks for it.
+      esign: offer.esign,
     };
   }
 
-  async respondPublic(token: string, action: 'accept' | 'decline'): Promise<Offer> {
+  private esignKey = (offerId: string) => `offer-esign:${offerId}`;
+
+  /** HIR-09 e-sign, step 1: a one-time code to the candidate's email (rate-limited per offer and per address). */
+  async sendEsignCode(token: string, ip: string | null) {
+    const offer = await this.resolveOfferByToken(token);
+    if (!offer.esign || offer.status !== 'sent' || offer.expiresAt < new Date()) throw new ConflictException('This offer is no longer available');
+    if (!this.otp) throw new ConflictException('Signing is not available right now. Try again later.');
+    const email = await this.tenantPrisma.forTenant({ organizationId: offer.organizationId, isSuperAdmin: true }, async (tx) => {
+      const entry = await tx.pipelineEntry.findUnique({ where: { id: offer.pipelineEntryId }, select: { candidate: { select: { email: true } } } });
+      return entry?.candidate.email ?? null;
+    });
+    if (!email) throw new ConflictException('This offer is no longer available');
+    await this.otp.reserveSend(this.esignKey(offer.id), ip);
+    const code = await this.otp.issue(this.esignKey(offer.id), { email });
+    this.otp.deliver('email', email, code, 'mfa', offer.organizationId, { userId: '' });
+    return { sent: true, to: email.replace(/^(.).*(@.*)$/, '$1•••$2') };
+  }
+
+  async respondPublic(token: string, action: 'accept' | 'decline', sign: { code?: string; disclosureAccepted?: boolean; ip?: string | null; device?: string | null } = {}): Promise<Offer> {
     const offer = await this.resolveOfferByToken(token);
     // Generic conflict messages -- same anti-oracle reasoning as the NotFound above, just
     // surfaced as 409s once the token itself is known-good.
@@ -364,6 +462,15 @@ export class OffersService {
 
     const context = { organizationId: offer.organizationId, isSuperAdmin: true };
     const newStatus = action === 'accept' ? 'accepted' : 'declined';
+    // HIR-09 e-sign (the template switched it on): accepting needs the disclosure read and the emailed one-time code;
+    // the evidence (when, from where, the letter's fingerprint) is kept on the offer. Declining never needs a code.
+    let esignEvidence: Record<string, unknown> | null = null;
+    if (action === 'accept' && offer.esign) {
+      if (!sign.disclosureAccepted) throw new BadRequestException({ statusCode: 400, code: 'ESIGN_DISCLOSURE', message: 'Read and accept how electronic signing works first.' });
+      if (!sign.code || !this.otp) throw new BadRequestException({ statusCode: 400, code: 'ESIGN_CODE', message: 'Enter the code we emailed you to sign the offer.' });
+      if (!(await this.otp.check(this.esignKey(offer.id), sign.code))) throw new UnauthorizedException('That code is not right or has expired. Ask for a new one.');
+      esignEvidence = { at: new Date().toISOString(), ip: sign.ip ?? null, device: sign.device?.slice(0, 300) ?? null, channel: 'email', assurance: 'one-time code', letterSha256: createHash('sha256').update(offer.letterBody).digest('hex') };
+    }
 
     const updated = await this.tenantPrisma.forTenant(context, async (tx) => {
       // Compound-precondition write, not a pre-tx-guarded update: two concurrent public
@@ -373,7 +480,7 @@ export class OffersService {
       const respondedAt = new Date();
       const result = await tx.offer.updateMany({
         where: { id: offer.id, organizationId: offer.organizationId, status: 'sent' },
-        data: { status: newStatus, respondedAt },
+        data: { status: newStatus, respondedAt, ...(esignEvidence ? { esignEvidence: esignEvidence as Prisma.InputJsonValue } : {}) },
       });
       if (result.count === 0) {
         throw new ConflictException('This offer is no longer available');
@@ -383,9 +490,13 @@ export class OffersService {
         action: action === 'accept' ? 'offer.accepted' : 'offer.declined',
         entityType: 'offer',
         entityId: offer.id,
+        ...(esignEvidence ? { metadata: { esign: true } } : {}),
       });
       return { ...offer, status: newStatus, respondedAt } as Offer;
     });
+    // Answer 377: the sealed copy, after the acceptance is recorded (it never undoes it). A copy that cannot be made is
+    // audited and shown on the offer with "Make the sealed copy"; never silently missing.
+    if (esignEvidence) await this.sealCopy(offer.organizationId, offer.id).catch(() => undefined);
 
     // Recruiter notification + fit-scored candidate lookup: OUTSIDE the tx above --
     // emailService.send is a network call and must never run inside a forTenant callback

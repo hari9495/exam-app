@@ -121,8 +121,9 @@ describe('Performance batch PM5', () => {
     ids.cycle = c.id;
     await api('priya', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) }).expect(403);
     await api('adminA', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 4, maxNominees: 2, dueOn: shift(today, 10) }).expect(400);
-    await api('adminA', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) }).expect(200);
+    const on = (await api('adminA', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) }).expect(200)).body;
     const cur = (await api('adminA', 'get', `/cycles/${c.id}`).expect(200)).body;
+    expect(on.version).toBe(cur.version); // the set-up wizard launches with this version
     expect(cur.peerFeedback).toEqual({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) });
     expect((await api('adminA', 'post', `/cycles/${c.id}/launch`).send({ version: cur.version }).expect(200)).body.reviews).toBe(1);
     await api('adminA', 'put', `/cycles/${c.id}/peer-feedback`).send({ minNominees: 2, maxNominees: 4, dueOn: shift(today, 10) }).expect(409);
@@ -149,9 +150,27 @@ describe('Performance batch PM5', () => {
     expect(list.can.propose).toBe(true);
     const of = (e: string) => list.nominations.find((n) => n.reviewerEmployeeId === e)!.id;
     await api('arjun', 'post', `/nominations/${of(emp.kiran)}/withdraw`).expect(200);
-    // The manager approves three; the employee cannot approve their own.
+    // PRF-07: proposing tells nobody; the employee sends the list once, and the manager is told then.
+    const told = () => inA((tx) => tx.userNotification.findMany({ where: { type: 'perf.nomination.proposed', recipientUserId: users.priya } }));
+    expect(await told()).toHaveLength(0);
+    type L = { viewer: string; employee: string; cycle: string; sentAt: string | null; can: { send: boolean; decide: boolean } };
+    expect(((await api('arjun', 'get', `/reviews/${ids.review}/nominations`).expect(200)).body as L)).toMatchObject({ viewer: 'employee', cycle: `FY ${run}`, sentAt: null, can: { send: true } });
+    await api('priya', 'post', `/reviews/${ids.review}/nominations/send`).expect(403);
+    await api('arjun', 'post', `/reviews/${ids.review}/nominations/send`).expect(200);
+    await api('arjun', 'post', `/reviews/${ids.review}/nominations/send`).expect(409);
+    const after = (await api('arjun', 'get', `/reviews/${ids.review}/nominations`).expect(200)).body as L;
+    expect(after.sentAt).toBeTruthy();
+    expect(after.can.send).toBe(false);
+    const sent = await told();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.linkPath).toBe(`/yx/performance/reviews/${ids.review}/nominations`);
+    expect(((await api('priya', 'get', `/reviews/${ids.review}/nominations`).expect(200)).body as L)).toMatchObject({ viewer: 'manager', employee: expect.stringMatching(/^Arjun/), can: { decide: true } });
+    // The manager approves the whole list at once; the employee cannot approve their own; another company cannot.
     await api('arjun', 'post', `/nominations/${of(emp.sita)}/approve`).expect(403);
-    for (const e of [emp.sita, emp.meena, emp.lakshmi]) await api('priya', 'post', `/nominations/${of(e)}/approve`).expect(200);
+    await api('arjun', 'post', `/reviews/${ids.review}/nominations/approve-all`).expect(403);
+    await api('adminB', 'post', `/reviews/${ids.review}/nominations/approve-all`).expect(404);
+    expect((await api('priya', 'post', `/reviews/${ids.review}/nominations/approve-all`).expect(200)).body.approved).toBe(3);
+    expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.nomination.approved_all', entityId: ids.review } }))).toBeTruthy();
     await api('priya', 'post', `/nominations/${of(emp.sita)}/approve`).expect(409);
   });
 

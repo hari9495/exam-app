@@ -25,6 +25,8 @@ export async function loadRuleSets(tx: Prisma.TransactionClient, sets: RuleFileS
     const problems = [...checkShape(s), ...s.golden.flatMap((g) => runGolden(s, g))];
     if (problems.length) throw new Error(`${name} does not pass its checks: ${problems.join('; ')}`);
     const [{ id }] = await tx.$queryRaw<{ id: string }[]>`SELECT statutory_save_draft(${s.statute}, ${s.jurisdiction}, ${s.version}, ${s.validFrom}::date, ${s.validTo}::date, ${JSON.stringify(s.values)}::jsonb, ${s.source}, ${s.lawVersion}, ${s.verify}, ${JSON.stringify(s.golden)}::jsonb, ${drafter}::uuid) AS id`;
+    // Console answer 1042: only a version in review is published.
+    await tx.$executeRaw`SELECT statutory_send_for_review(${id}::uuid, ${drafter}::uuid)`;
     await tx.$executeRaw`SELECT statutory_publish(${id}::uuid, ${publisher}::uuid)`;
     published.push(name);
   }

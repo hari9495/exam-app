@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import * as RD from '@radix-ui/react-dialog';
+import { useInertBehind, useInertBehindRef } from '../lib/inert';
 import { X } from 'lucide-react';
 import { Button, IconButton } from './button';
 import { InlineAlert } from './feedback';
@@ -54,6 +55,7 @@ export function Dialog({ open, defaultOpen = false, onOpenChange, trigger, title
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
   const returnTo = useRef<HTMLElement | null>(null);
   const [panel, setPanel] = useState<HTMLDivElement | null>(null);
+  useInertBehind(panel);
   const block = (e: Event) => {
     if (destructive || preventClose) e.preventDefault();
   };
@@ -73,10 +75,10 @@ export function Dialog({ open, defaultOpen = false, onOpenChange, trigger, title
           onOpenAutoFocus={(e) => {
             // Still the element focused before opening; used when there is no trigger (controlled use).
             returnTo.current = document.activeElement as HTMLElement | null;
-            // Focus the first field, else the first footer button (Cancel, the safe choice); never ✕ (founder review 30 Sep 2026).
+            // Focus the first field you type or pick in (not an upload box), else the first footer button (Cancel, the safe choice); never ✕ (founder review 30 Sep 2026).
             const root = e.currentTarget as HTMLElement;
             const target =
-              root.querySelector<HTMLElement>('.yx-dialog__body :is(input, textarea, [role="combobox"]):not(:disabled)') ??
+              root.querySelector<HTMLElement>('.yx-dialog__body :is(input:not([type="file"]), textarea, [role="combobox"]):not(:disabled)') ??
               root.querySelector<HTMLElement>('.yx-dialog__foot button:not(:disabled)');
             if (target) {
               e.preventDefault();
@@ -122,10 +124,12 @@ export interface ConfirmDialogProps extends OpenProps {
   destructive?: boolean;
   /** Confirm button colour. 'approve' is solid green for Approve / Award / Agree (R7). Defaults to 'danger' when destructive, else 'primary'. */
   confirmVariant?: 'primary' | 'approve' | 'danger';
-  /** May be async. The dialog shows a loading button, closes on success and shows the error inline on failure. */
-  onConfirm: () => void | Promise<void>;
+  /** May be async. The dialog shows a loading button, closes on success and shows the error inline on failure.
+   *  Return `false` to stay open with no error: the caller shows its own field error (enabled + explain on click, §16). */
+  onConfirm: () => void | boolean | Promise<void | boolean>;
   children?: ReactNode;
-  /** Keeps the confirm button disabled (used by TypeToConfirmDialog). */
+  /** Keeps the confirm button disabled. Only when unavoidable (type-to-confirm, a request already running); for a
+   *  missing or invalid field keep it enabled, show the field error on click and return `false` from onConfirm. */
   confirmDisabled?: boolean;
   size?: 'sm' | 'md';
 }
@@ -146,9 +150,9 @@ export function ConfirmDialog({ open, defaultOpen = false, onOpenChange, trigger
     setError(null);
     setPending(true);
     try {
-      await onConfirm();
+      const ok = await onConfirm();
       setPending(false);
-      change(false);
+      if (ok !== false) change(false);
     } catch (err) {
       setPending(false);
       setError(errorText(err));
@@ -228,6 +232,7 @@ export interface BottomSheetProps extends OpenProps {
 
 /** Mobile replacement for menus and drawers: slides up from the bottom, max 90 % of the screen height (§37). */
 export function BottomSheet({ open, defaultOpen = false, onOpenChange, trigger, title, description, children, footer }: BottomSheetProps) {
+  const sheetRef = useInertBehindRef();
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
   return (
     <RD.Root open={isOpen} onOpenChange={setOpen}>
@@ -235,6 +240,7 @@ export function BottomSheet({ open, defaultOpen = false, onOpenChange, trigger, 
       <RD.Portal>
         <RD.Overlay className="yx-dialog__scrim" />
         <RD.Content
+          ref={sheetRef}
           className="yx-sheet"
           tabIndex={-1}
           // Focus the sheet, not the Close button: no ring on ✕ when it opens (founder review 30 Sep 2026).
@@ -263,36 +269,47 @@ export function BottomSheet({ open, defaultOpen = false, onOpenChange, trigger, 
 
 /* ---------- ShortcutHelp (§14) ---------- */
 
-const SHORTCUT_GROUPS: { title: string; items: [keys: string[], what: string][] }[] = [
-  {
-    title: 'Lists and approvals',
-    items: [
-      [['J', 'K'], 'Move down or up the list'],
-      [['Enter'], 'Open the selected item'],
-      [['A'], 'Approve the selected request'],
-      [['R'], 'Reject the selected request'],
-    ],
-  },
-  {
-    title: 'Go to',
-    items: [
-      [['G', 'P'], 'People'],
-      [['G', 'T'], 'Time'],
-      [['G', 'Y'], 'Pay'],
-    ],
-  },
+/** One shortcut: its keys, pressed one after the other ("then") or either of them ("or"). */
+export interface Shortcut {
+  keys: string[];
+  what: string;
+  join?: 'then' | 'or';
+}
+export interface ShortcutGroup {
+  title: string;
+  items: Shortcut[];
+}
+
+/**
+ * Answer 951: only shortcuts that work in the app (never a planned one). N L and N E work only for people who can apply
+ * for leave or claim expenses: pass `shortcutGroups(...)` with the live app's two-key shortcuts.
+ */
+export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'Anywhere',
     items: [
-      [['/'], 'Search this list'],
-      [['Ctrl K'], 'Search everything and run actions'],
-      [['Ctrl J'], 'Ask YukthiX'],
-      [['N', 'L'], 'Apply for leave'],
-      [['N', 'E'], 'Claim an expense'],
-      [['?'], 'Show these shortcuts'],
+      { keys: ['Ctrl K'], what: 'Search everything and run actions (⌘ K on a Mac)' },
+      { keys: ['N', 'L'], what: 'Apply for leave' },
+      { keys: ['N', 'E'], what: 'Claim an expense' },
+      { keys: ['?'], what: 'Show these shortcuts' },
+      { keys: ['Esc'], what: 'Close a dialog, panel or menu' },
+    ],
+  },
+  {
+    title: 'Lists (after you move to a row)',
+    items: [
+      { keys: ['J', 'K'], what: 'Move down or up (or use the arrow keys)', join: 'or' },
+      { keys: ['Enter'], what: 'Open the row' },
+      { keys: ['Space', 'X'], what: 'Tick the row, where rows can be ticked', join: 'or' },
     ],
   },
 ];
+
+/** The list for the live app: the two-key shortcuts the person really has (for example ['N L']). */
+export function shortcutGroups(sequences: string[]): ShortcutGroup[] {
+  const has = new Set(sequences);
+  return SHORTCUT_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => i.keys.length < 2 || i.join === 'or' || has.has(i.keys.join(' '))) }));
+}
 
 const isTyping = (el: EventTarget | null) =>
   el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
@@ -313,20 +330,20 @@ export function useShortcutHelp() {
   return { open, onOpenChange: setOpen };
 }
 
-export function ShortcutHelp(props: Omit<OpenProps, 'trigger'> & { trigger?: ReactElement }) {
+export function ShortcutHelp({ groups = SHORTCUT_GROUPS, ...props }: Omit<OpenProps, 'trigger'> & { trigger?: ReactElement; groups?: ShortcutGroup[] }) {
   return (
     <Dialog {...props} title="Keyboard shortcuts" size="sm">
       <div className="yx-shortcuts">
-        {SHORTCUT_GROUPS.map((g) => (
+        {groups.map((g) => (
           <section key={g.title} className="yx-shortcuts__group">
             <h3 className="yx-shortcuts__title">{g.title}</h3>
             <dl className="yx-shortcuts__list">
-              {g.items.map(([keys, what]) => (
+              {g.items.map(({ keys, what, join = 'then' }) => (
                 <div key={what} className="yx-shortcuts__row">
                   <dt className="yx-shortcuts__keys">
                     {keys.map((k, i) => (
                       <span key={k}>
-                        {i > 0 && <span className="yx-shortcuts__then">{keys[0] === 'J' ? 'or' : 'then'}</span>}
+                        {i > 0 && <span className="yx-shortcuts__then">{join}</span>}
                         <Kbd>{k}</Kbd>
                       </span>
                     ))}

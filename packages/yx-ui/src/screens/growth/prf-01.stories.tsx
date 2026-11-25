@@ -16,3 +16,4 @@ export const ManagerPhone: S = { name: 'Manager · phone', globals: PHONE, rende
 export const NoCycleRunning: S = { name: 'HR · empty (no cycle)', render: () => <PerformanceHomeScreen persona="hr" state="empty" name="Lakshmi" actions={[]} goals={[]} /> };
 export const Loading: S = { render: () => <PerformanceHomeScreen persona="emp" state="loading" name="Divya" actions={[]} goals={[]} /> };
 export const Failed: S = { name: 'Error', render: () => <PerformanceHomeScreen persona="mgr" state="error" name="Karthik" actions={[]} goals={[]} /> };
+export const EmployeeEarlierReviews: S = { name: 'Employee · earlier reviews', render: () => <PerformanceHomeScreen persona="emp" name="Divya" actions={EMP_ACTIONS} goals={mine} stages={MY_STAGES} feedback={FEEDBACK_RECEIVED} earlierReviews={[{ id: 'r-fy26', cycle: 'Annual review FY 2025-26' }, { id: 'r-h2', cycle: 'Half-yearly review H2 FY 2025-26' }]} /> };

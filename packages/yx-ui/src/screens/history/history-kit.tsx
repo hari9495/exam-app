@@ -1,18 +1,12 @@
-import { useMemo, useState } from 'react';
 import { Badge } from '../../components/display';
-import { Button } from '../../components/button';
-import { DatePicker } from '../../components/date';
-import { Drawer } from '../../components/drawer';
 import { InlineAlert } from '../../components/feedback';
-import { ErrorSummary, FormField, FormSection, type FormErrorItem, useSaveErrors } from '../../components/field';
+import { type FormErrorItem } from '../../components/field';
 import { Text } from '../../components/foundations';
-import { TextArea, TextField } from '../../components/inputs';
-import { Segment } from '../../components/segment';
-import { MultiSelect, Select } from '../../components/select';
 import { dayKey } from '../../lib/dates';
-import { formatMoney } from '../../lib/format';
-import { dateLabel, daysBetweenIso, useRun } from '../org/org-kit';
-import type { ChangeInput, ChangeOptions, ChangePayload, ChangeStatus, ChangeType, ChoiceOption, Impact, ImpactLine } from './types';
+import { formatDate, formatMoney } from '../../lib/format';
+import { dateLabel, daysBetweenIso } from '../org/org-kit';
+import '../people/people.css';
+import type { ChangeInput, ChangeOptions, ChangePayload, ChangeStatus, ChangeType, ChoiceOption, Impact, ImpactLine, MoveHandlers, MoveInput, PromotionRule, TransferOptions } from './types';
 
 // Pieces shared by the job-history screens.
 
@@ -54,9 +48,9 @@ export function WhenBadge({ date, today }: { date: string; today: string }) {
 }
 
 export const money = (amount: string, currency: string) => formatMoney(Number(amount), currency);
-const moneyLine = (v: string | null) => (v ? v.replace(/^([A-Z]{3}) (\S+)$/, (_, c: string, a: string) => money(a, c)) : '—');
+export const moneyLine = (v: string | null) => (v ? v.replace(/^([A-Z]{3}) (\S+)$/, (_, c: string, a: string) => money(a, c)) : '—');
 
-function Lines({ lines, money: isMoney }: { lines: ImpactLine[]; money?: boolean }) {
+export function Lines({ lines, money: isMoney }: { lines: ImpactLine[]; money?: boolean }) {
   return (
     <ul className="yx-hist__lines">
       {lines.map((l) => (
@@ -71,9 +65,9 @@ function Lines({ lines, money: isMoney }: { lines: ImpactLine[]; money?: boolean
   );
 }
 
-const monthName = (key: string) => {
+export const monthName = (key: string) => {
   const [y, m] = key.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, 1)).toLocaleString('en-IN', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+  return formatDate(new Date(y, m - 1, 1)).replace(/^\d+ /, '');
 };
 
 /** P06 §4.3 impact preview (YX-HIS-11). */
@@ -88,6 +82,11 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
       ) : (
         impact.pay.length > 0 && <Lines lines={impact.pay} money />
       )}
+      {impact.warnings?.map((w) => (
+        <InlineAlert key={w} tone="warning" title="Check before you approve">
+          {w}
+        </InlineAlert>
+      ))}
       {impact.retro && (
         <InlineAlert tone="warning" title="This changes the past">
           {`Payroll will settle the difference for ${impact.retro.months.map(monthName).join(', ')} in the next run. Payslips already issued stay as they are.`}
@@ -112,13 +111,20 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
 
 /* ---------- raising a change (PPL-04) ---------- */
 
-const RAISABLE: Exclude<ChangeType, 'join'>[] = ['promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction'];
-type Field = 'locationId' | 'departmentId' | 'designationId' | 'gradeId' | 'skillClass' | 'employmentTypeId' | 'managerEmployeeId' | 'costCentreId';
+/** PPL-04: a move to another legal entity is a one-person restructure (PPL-09 engine), not a job change. */
+export const MOVE = 'entity_transfer' as const;
+export type Raisable = Exclude<ChangeType, 'join'> | typeof MOVE;
+export const kindLabel = (t: Raisable) => (t === MOVE ? 'Inter-entity transfer' : TYPE_LABEL[t]);
+export const RAISABLE: Exclude<ChangeType, 'join'>[] = ['promotion', 'transfer', 'redesignation', 'manager_change', 'salary_revision', 'employment_type_change', 'confirmation', 'correction'];
+export type ChangeField = 'locationId' | 'departmentId' | 'designationId' | 'gradeId' | 'skillClass' | 'employmentTypeId' | 'managerEmployeeId' | 'costCentreId';
 /** 5c-D2: the minimum-wage skill class of the job (payroll checks pay against the state table for it). */
 export const SKILL_CLASS_LABEL: Record<string, string> = { unskilled: 'Unskilled', semi_skilled: 'Semi-skilled', skilled: 'Skilled', highly_skilled: 'Highly skilled' };
-const FIELDS: Record<Exclude<ChangeType, 'join'>, Field[]> = {
-  promotion: ['designationId', 'gradeId', 'skillClass'],
-  transfer: ['locationId', 'departmentId', 'managerEmployeeId', 'costCentreId'],
+/** PPL-04 design: each type asks only for what it needs (a transfer is the new location; a promotion the new job). */
+export const FIELDS: Record<Raisable, ChangeField[]> = {
+  promotion: ['designationId', 'gradeId'],
+  transfer: ['locationId'],
+  // The department and designation stay unless a new one is chosen (the engine checks the new entity may use them).
+  entity_transfer: ['locationId', 'departmentId', 'designationId', 'employmentTypeId'],
   redesignation: ['designationId', 'skillClass'],
   manager_change: ['managerEmployeeId'],
   salary_revision: [],
@@ -130,14 +136,19 @@ const FIELDS: Record<Exclude<ChangeType, 'join'>, Field[]> = {
   notice_withdrawal: [],
   exit: [],
 };
-const PAY_TYPES = new Set(['promotion', 'salary_revision', 'correction']);
+/** The fields a type cannot be sent without (the API refuses a transfer without a new location, a promotion without a new job). */
+const REQUIRED: Partial<Record<Raisable, ChangeField[]>> = { transfer: ['locationId'], entity_transfer: ['locationId'], redesignation: ['designationId'], manager_change: ['managerEmployeeId'] };
+/** A promotion's required fields follow the company's rule; 'either' needs one of the two (checked in changeInput). */
+const PROMOTION_REQUIRED: Record<PromotionRule, ChangeField[]> = { either: [], both: ['designationId', 'gradeId'], grade: ['gradeId'], designation: ['designationId'] };
+export const requiredFor = (type: Raisable, rule: PromotionRule): ChangeField[] => (type === 'promotion' ? PROMOTION_REQUIRED[rule] : (REQUIRED[type] ?? []));
+export const PAY_TYPES = new Set(['promotion', 'salary_revision', 'correction']);
 /** G1 (gap pass C1): contracted hours change with the employment type, or by a correction. */
-const HOURS_TYPES = new Set(['employment_type_change', 'correction']);
+export const HOURS_TYPES = new Set(['employment_type_change', 'correction']);
 /** Hours a week: above 0, at most 80, in half hours (the API checks the normal week too). */
 const hoursOk = (h: string) => /^\d{1,2}(\.5)?$/.test(h) && Number(h) > 0 && Number(h) <= 80;
-/** M01 Q5: dotted-line managers move with a manager change or a transfer. */
-const DOTTED_TYPES = new Set(['manager_change', 'transfer']);
-const FIELD_LABEL: Record<Field, string> = {
+/** M01 Q5: dotted-line managers move with a manager change (PPL-04 design: not on the transfer form). */
+export const DOTTED_TYPES = new Set(['manager_change']);
+export const FIELD_LABEL: Record<ChangeField, string> = {
   locationId: 'Location',
   departmentId: 'Department',
   designationId: 'Designation',
@@ -150,9 +161,9 @@ const FIELD_LABEL: Record<Field, string> = {
 
 export interface ChangeDraft {
   employeeId: string | null;
-  changeType: Exclude<ChangeType, 'join'> | null;
+  changeType: Raisable | null;
   effectiveDate: Date | null;
-  values: Partial<Record<Field, string | null>>;
+  values: Partial<Record<ChangeField, string | null>>;
   /** null: dotted-line managers stay as they are; a list replaces them. */
   dotted: string[] | null;
   payMode: 'amount' | 'percent';
@@ -163,17 +174,54 @@ export interface ChangeDraft {
   hoursValue?: string;
   reason: string;
   overrideReason: string;
+  /** PPL-04 inter-entity transfer: the new legal entity and the options for this move. */
+  entityId?: string | null;
+  transfer?: TransferOptions | null;
+}
+
+type MoveFact = 'departmentId' | 'designationId' | 'employmentTypeId';
+/** PPL-04: the job facts a move must choose anew, because the person's current one is not open to the new entity. */
+export function moveNeeds(current: Partial<Record<MoveFact, string | null>> | null, o: Pick<ChangeOptions, 'departments' | 'designations' | 'employmentTypes'>, entityId: string | null): MoveFact[] {
+  if (!current || !entityId) return [];
+  const lists: Record<MoveFact, ChoiceOption[]> = { departmentId: o.departments, designationId: o.designations, employmentTypeId: o.employmentTypes };
+  return (Object.keys(lists) as MoveFact[]).filter((f) => {
+    const now = lists[f].find((x) => x.value === current[f]);
+    return Boolean(current[f]) && (!now || !forEntity([now], entityId).length);
+  });
+}
+
+/** PPL-04: the one-person move, or what to fix. The restructure engine checks everything again. */
+export function moveInput(d: ChangeDraft, o: Pick<ChangeOptions, 'retroLimit'>, fromEntityId: string | null, needs: readonly MoveFact[] = []): { input: MoveInput | null; errors: FormErrorItem[] } {
+  const errors: FormErrorItem[] = [];
+  if (!d.employeeId) errors.push({ fieldId: 'ch-person', message: 'Choose the person' });
+  if (!d.effectiveDate) errors.push({ fieldId: 'ch-date', message: 'Choose the date it takes effect' });
+  if (!d.entityId) errors.push({ fieldId: 'ch-entity', message: 'Choose the new legal entity' });
+  if (!d.values.locationId) errors.push({ fieldId: 'ch-locationId', message: 'Choose the new location' });
+  for (const f of needs) if (!d.values[f]) errors.push({ fieldId: `ch-${f}`, message: `Choose the new ${FIELD_LABEL[f].toLowerCase()}` });
+  if (d.reason.trim().length < 3) errors.push({ fieldId: 'ch-reason', message: 'Enter the reason for this change' });
+  const date = d.effectiveDate ? dayKey(d.effectiveDate) : null;
+  const beforeLimit = Boolean(date && date < o.retroLimit);
+  if (beforeLimit && d.overrideReason.trim().length < 10) errors.push({ fieldId: 'ch-override', message: 'Explain why this goes back before the limit (10 characters or more)' });
+  if (errors.length || !d.transfer || !fromEntityId) return { input: null, errors };
+  const { departmentId, designationId, employmentTypeId } = d.values;
+  return {
+    input: { employeeId: d.employeeId!, fromEntityId, intoEntityId: d.entityId!, effectiveDate: date!, locationId: d.values.locationId!, ...(departmentId ? { departmentId } : {}), ...(designationId ? { designationId } : {}), ...(employmentTypeId ? { employmentTypeId } : {}), options: d.transfer, reason: d.reason.trim(), ...(beforeLimit ? { overrideReason: d.overrideReason.trim() } : {}) },
+    errors,
+  };
 }
 
 /** The request body, or what to fix. The API checks everything again. */
-export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'retroLimit'>): { input: ChangeInput | null; errors: FormErrorItem[] } {
+export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'retroLimit'>, rule: PromotionRule = 'either'): { input: ChangeInput | null; errors: FormErrorItem[] } {
   const errors: FormErrorItem[] = [];
   if (!d.employeeId) errors.push({ fieldId: 'ch-person', message: 'Choose the person' });
   if (!d.changeType) errors.push({ fieldId: 'ch-type', message: 'Choose the kind of change' });
   if (!d.effectiveDate) errors.push({ fieldId: 'ch-date', message: 'Choose the date it takes effect' });
   const type = d.changeType;
   const payload: ChangePayload = {};
-  if (type) {
+  if (type && type !== MOVE) {
+    const missing = requiredFor(type, rule).filter((f) => !d.values[f]);
+    for (const f of missing) errors.push({ fieldId: `ch-${f}`, message: `Choose the new ${FIELD_LABEL[f].toLowerCase()}` });
+    if (type === 'promotion' && rule === 'either' && !d.values.designationId && !d.values.gradeId) missing.push('designationId'), errors.push({ fieldId: 'ch-designationId', message: 'Choose the new designation or grade' });
     const assignment: NonNullable<ChangePayload['assignment']> = {};
     for (const f of FIELDS[type]) {
       const v = d.values[f];
@@ -197,7 +245,7 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
       else payload.compensation = d.payMode === 'amount' ? { annualCtc: pay } : { increasePercent: pay };
     }
     if (type === 'salary_revision' && !payload.compensation && !errors.some((e) => e.fieldId === 'ch-pay')) errors.push({ fieldId: 'ch-pay', message: 'Enter the new pay' });
-    if (!payload.assignment && !payload.status && !payload.compensation && type !== 'salary_revision' && !errors.some((e) => e.fieldId === 'ch-hours')) errors.push({ fieldId: 'ch-values', message: 'Choose at least one new value' });
+    if (!payload.assignment && !payload.status && !payload.compensation && type !== 'salary_revision' && !missing.length && !errors.some((e) => e.fieldId === 'ch-hours')) errors.push({ fieldId: 'ch-values', message: 'Choose at least one new value' });
   }
   if (d.reason.trim().length < 3) errors.push({ fieldId: 'ch-reason', message: 'Enter the reason for this change' });
   const date = d.effectiveDate ? dayKey(d.effectiveDate) : null;
@@ -205,154 +253,44 @@ export function changeInput(d: ChangeDraft, o: Pick<ChangeOptions, 'canPay' | 'r
   if (beforeLimit && d.overrideReason.trim().length < 10) errors.push({ fieldId: 'ch-override', message: 'Explain why this goes back before the limit (10 characters or more)' });
   if (errors.length) return { input: null, errors };
   return {
-    input: { employeeId: d.employeeId!, changeType: type!, effectiveDate: date!, payload, reason: d.reason.trim(), ...(beforeLimit ? { overrideReason: d.overrideReason.trim() } : {}) },
+    input: { employeeId: d.employeeId!, changeType: type as Exclude<ChangeType, 'join'>, effectiveDate: date!, payload, reason: d.reason.trim(), ...(beforeLimit ? { overrideReason: d.overrideReason.trim() } : {}) },
     errors,
   };
 }
 
-const forEntity = (list: ChoiceOption[], entity: string | null) => list.filter((x) => !entity || x.entities.length === 0 || x.entities.includes(entity));
+export const forEntity = (list: ChoiceOption[], entity: string | null) => list.filter((x) => !entity || x.entities.length === 0 || x.entities.includes(entity));
+
+/** "A", "A or B", "A, B or C", "A, B, C or 2 others". */
+export function orList(names: string[]): string {
+  const shown = names.length > 4 ? [...names.slice(0, 3), `${names.length - 3} others`] : names;
+  return shown.length > 1 ? `${shown.slice(0, -1).join(', ')} or ${shown[shown.length - 1]}` : (shown[0] ?? '');
+}
+
+/** PPL-04: the route line at the top of the change form ("Goes to Priya Nair."), or null when it cannot be told. */
+export const routeLine = (approvers: string[] | null) => (approvers?.length ? `Goes to ${orList(approvers)}.` : null);
+
+/** PPL-04 "Save draft": the form as stored (dates as yyyy-mm-dd), and back. */
+export const draftForm = (d: ChangeDraft) => ({ ...d, effectiveDate: d.effectiveDate ? dayKey(d.effectiveDate) : null });
+export function draftFromForm(form: Record<string, unknown>): ChangeDraft {
+  const f = form as Partial<Omit<ChangeDraft, 'effectiveDate'>> & { effectiveDate?: string | null };
+  const ymd = typeof f.effectiveDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(f.effectiveDate) ? f.effectiveDate.split('-').map(Number) : null;
+  return { ...EMPTY_CHANGE, ...f, values: { ...(f.values ?? {}) }, effectiveDate: ymd ? new Date(ymd[0], ymd[1] - 1, ymd[2]) : null } as ChangeDraft;
+}
+export const EMPTY_CHANGE: ChangeDraft = { employeeId: null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, hours: 'keep', hoursValue: '', reason: '', overrideReason: '', entityId: null, transfer: null };
 
 export interface ChangeDrawerProps {
   options: ChangeOptions;
   /** Fixed when opened from a person's record. */
   employeeId?: string;
+  /** A saved draft to carry on with. */
+  initial?: ChangeDraft;
   onPreview: (input: ChangeInput) => Promise<Impact>;
   onSubmit: (input: ChangeInput) => Promise<void>;
+  /** Who will decide it (names), for the route line; recomputed when the person, date or pay changes. */
+  onRoute?: (employeeId: string, effectiveDate: string | null, pay: boolean) => Promise<string[]>;
+  /** "Save draft": keep the half-filled change for later. */
+  onSaveDraft?: (draft: ChangeDraft) => Promise<void>;
+  /** PPL-04 inter-entity transfer (HR only; without it the type is not offered). */
+  move?: MoveHandlers;
   onClose: () => void;
-}
-
-/** Pick the kind of change, the date and the new values; preview the impact; send it for approval. */
-export function ChangeDrawer({ options, employeeId, onPreview, onSubmit, onClose }: ChangeDrawerProps) {
-  const [draft, setDraft] = useState<ChangeDraft>({ employeeId: employeeId ?? null, changeType: null, effectiveDate: null, values: {}, dotted: null, payMode: 'amount', pay: '', confirm: false, hours: 'keep', hoursValue: '', reason: '', overrideReason: '' });
-  const [impact, setImpact] = useState<Impact | null>(null);
-  const [dirty, setDirty] = useState(false);
-  const { busy, error, run } = useRun();
-  const set = (patch: Partial<ChangeDraft>) => {
-    setDraft((d) => ({ ...d, ...patch }));
-    setImpact(null);
-    setDirty(true);
-  };
-  const { input, errors } = changeInput(draft, options);
-  const saveErrors = useSaveErrors(errors);
-  const { errorOf } = saveErrors;
-  const person = options.people.find((p) => p.id === draft.employeeId) ?? null;
-  const entity = person?.legalEntityId ?? null;
-  const choices: Record<Field, { value: string; label: string }[]> = useMemo(
-    () => ({
-      locationId: forEntity(options.locations, entity),
-      departmentId: forEntity(options.departments, entity),
-      designationId: forEntity(options.designations, entity),
-      gradeId: forEntity(options.grades, entity),
-      skillClass: Object.entries(SKILL_CLASS_LABEL).map(([value, label]) => ({ value, label })),
-      employmentTypeId: forEntity(options.employmentTypes, entity),
-      costCentreId: forEntity(options.costCentres, entity),
-      managerEmployeeId: (options.managers ?? options.people).filter((p) => p.id !== draft.employeeId).map((p) => ({ value: p.id, label: `${p.name}${p.employeeCode ? ` · ${p.employeeCode}` : ''}` })),
-    }),
-    [options, entity, draft.employeeId],
-  );
-  const date = draft.effectiveDate ? dayKey(draft.effectiveDate) : null;
-  const preview = () => {
-    if (!input) return saveErrors.reveal();
-    void run('preview', async () => setImpact(await onPreview(input)));
-  };
-  const submit = () => {
-    if (!input || !impact) return saveErrors.reveal();
-    void run('submit', () => onSubmit(input)).then((ok) => ok && onClose());
-  };
-  const types = (options.types ?? RAISABLE).filter((t) => t !== 'salary_revision' || options.canPay);
-  return (
-    <Drawer
-      open
-      onOpenChange={(o) => !o && onClose()}
-      size="md"
-      dirty={dirty}
-      title={person ? `Change for ${person.name}` : 'New job change'}
-      subtitle="Someone else approves it before it takes effect."
-      footer={
-        <>
-          <Button onClick={onClose} disabled={busy !== null}>Cancel</Button>
-          <Button loading={busy === 'preview'} onClick={preview}>Preview impact</Button>
-          <Button variant="primary" loading={busy === 'submit'} disabled={!impact} onClick={submit}>Send for approval</Button>
-        </>
-      }
-    >
-      <form className="yx-org__editor" onSubmit={(e) => { e.preventDefault(); preview(); }} noValidate>
-        <ErrorSummary errors={saveErrors.shownErrors} />
-        <FormSection title="The change">
-          {!employeeId && (
-            <FormField id="ch-person" label="Person" required error={errorOf('ch-person')}>
-              <Select value={draft.employeeId} onChange={(v) => set({ employeeId: v, values: {} })} options={options.people.map((p) => ({ value: p.id, label: `${p.name}${p.employeeCode ? ` · ${p.employeeCode}` : ''}` }))} searchable aria-label="Person" />
-            </FormField>
-          )}
-          <FormField id="ch-type" label="Kind of change" required error={errorOf('ch-type')}>
-            <Select value={draft.changeType} onChange={(v) => set({ changeType: v, values: {}, dotted: null, pay: '', confirm: false, hours: 'keep', hoursValue: '' })} options={types.map((t) => ({ value: t, label: TYPE_LABEL[t] }))} aria-label="Kind of change" />
-          </FormField>
-          <FormField id="ch-date" label="Takes effect on" required helper="The day starts at midnight where the person works." error={errorOf('ch-date')}>
-            <DatePicker value={draft.effectiveDate} onChange={(effectiveDate) => set({ effectiveDate })} aria-label="Takes effect on" />
-          </FormField>
-          {date && date < options.today && (
-            <InlineAlert tone="warning">{draft.changeType === 'correction' ? 'This corrects the record from that date. The earlier record is kept and marked as corrected.' : 'This date is in the past. Payroll settles any difference in the next run.'}</InlineAlert>
-          )}
-        </FormSection>
-        {draft.changeType && (
-          <FormSection title="New values">
-            {errorOf('ch-values') && <InlineAlert tone="danger">{errorOf('ch-values')}</InlineAlert>}
-            {FIELDS[draft.changeType].map((f) => (
-              <FormField key={f} id={`ch-${f}`} label={FIELD_LABEL[f]} optional={draft.changeType === 'correction' || draft.changeType === 'transfer' || f === 'gradeId' || f === 'skillClass'}>
-                <Select value={draft.values[f] ?? null} onChange={(v) => set({ values: { ...draft.values, [f]: v } })} options={choices[f]} searchable clearable placeholder="No change" aria-label={FIELD_LABEL[f]} />
-              </FormField>
-            ))}
-            {DOTTED_TYPES.has(draft.changeType) && (
-              <FormField label="Dotted-line managers" helper="They see the person and give feedback; they do not approve requests.">
-                <Segment label="Dotted-line managers" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'set' as const, label: 'Set new ones' }]} value={draft.dotted === null ? 'keep' : 'set'} onChange={(v) => set({ dotted: v === 'keep' ? null : [] })} />
-              </FormField>
-            )}
-            {DOTTED_TYPES.has(draft.changeType) && draft.dotted !== null && (
-              <FormField id="ch-dotted" label="New dotted-line managers" optional helper="Leave empty to remove them all.">
-                <MultiSelect value={draft.dotted} onChange={(dotted) => set({ dotted })} options={choices.managerEmployeeId} searchable aria-label="New dotted-line managers" />
-              </FormField>
-            )}
-            {HOURS_TYPES.has(draft.changeType) && (
-              <FormField label="Hours a week" helper="Full-time follows the normal week where the person works. FTE is worked out from it.">
-                <Segment label="Hours a week" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'full' as const, label: 'Full-time' }, { value: 'set' as const, label: 'Part-time' }]} value={draft.hours ?? 'keep'} onChange={(hours) => set({ hours })} />
-              </FormField>
-            )}
-            {HOURS_TYPES.has(draft.changeType) && draft.hours === 'set' && (
-              <FormField id="ch-hours" label="Part-time hours a week" required helper="For example 24 or 37.5." error={errorOf('ch-hours')}>
-                <TextField value={draft.hoursValue ?? ''} onChange={(hoursValue) => set({ hoursValue: hoursValue.trim() })} inputMode="decimal" maxLength={4} />
-              </FormField>
-            )}
-            {draft.changeType === 'confirmation' && <Text as="p" tone="secondary">The probation ends and the person is confirmed from this date.</Text>}
-            {draft.changeType === 'correction' && (
-              <FormField label="Employment status">
-                <Segment label="Employment status" options={[{ value: 'keep' as const, label: 'No change' }, { value: 'confirmed' as const, label: 'Confirmed' }]} value={draft.confirm ? 'confirmed' : 'keep'} onChange={(v) => set({ confirm: v === 'confirmed' })} />
-              </FormField>
-            )}
-            {options.canPay && PAY_TYPES.has(draft.changeType) && (
-              <>
-                <FormField label="Pay given as">
-                  <Segment label="Pay given as" options={[{ value: 'amount' as const, label: 'New annual CTC' }, { value: 'percent' as const, label: 'Increase %' }]} value={draft.payMode} onChange={(payMode) => set({ payMode, pay: '' })} />
-                </FormField>
-                <FormField id="ch-pay" label={draft.payMode === 'amount' ? 'Annual CTC (₹)' : 'Increase (%)'} optional={draft.changeType !== 'salary_revision'} helper={draft.payMode === 'percent' ? 'Applied to the pay in force on the date, even if that changes later.' : undefined} error={errorOf('ch-pay')}>
-                  <TextField value={draft.pay} onChange={(pay) => set({ pay: pay.trim() })} inputMode="decimal" maxLength={16} />
-                </FormField>
-              </>
-            )}
-          </FormSection>
-        )}
-        <FormSection title="Why">
-          <FormField id="ch-reason" label="Reason" required helper="Shown on the person's timeline and to the approver." error={errorOf('ch-reason')}>
-            <TextArea value={draft.reason} onChange={(reason) => set({ reason })} rows={2} maxLength={1000} />
-          </FormField>
-          {date && date < options.retroLimit && (
-            <FormField id="ch-override" label="Why go back this far" required helper={`Dates before ${dateLabel(options.retroLimit)} need a System Admin and a reason.`} error={errorOf('ch-override')}>
-              <TextArea value={draft.overrideReason} onChange={(overrideReason) => set({ overrideReason })} rows={2} maxLength={1000} />
-            </FormField>
-          )}
-        </FormSection>
-        {impact ? <ImpactPanel impact={impact} /> : <Text as="p" tone="secondary" size="sm">Preview the impact to send it for approval.</Text>}
-        {error && <InlineAlert tone="danger" title="Not sent">{error}</InlineAlert>}
-      </form>
-    </Drawer>
-  );
 }

@@ -1,22 +1,32 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import clsx from 'clsx';
 import Editor from '@monaco-editor/react';
 // Side-effect import: points the Monaco loader at self-hosted /monaco/vs before
 // the editor mounts, so a code question works on CDN-blocked exam networks.
 import '../../../lib/monaco-setup';
-import { Bookmark, ChevronDown, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { Play } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Modal } from '../../../components/ui';
-import { CandidateButton } from '../components/CandidateButton';
-import { CodeOutputPanel } from '../components/CodeOutputPanel';
-import { QuestionNavigator, flattenQuestions } from '../components/QuestionNavigator';
+import { Button, FileUpload, FormField, InlineAlert, Select, TextArea } from '@yukthix/ui';
+import { CodeRunOutput, TestRunnerScreen, type LiveRunner, type LiveRunnerQuestion } from '@yukthix/ui/assessments';
 import { SpokenAnswerRecorder } from '../components/SpokenAnswerRecorder';
-import { ProctoringWarningOverlay, ProctoringBlockOverlay, FaceWarningOverlay } from '../components/ProctoringOverlay';
-import { ScreenShareRequiredOverlay } from '../components/ScreenShareRequiredOverlay';
-import { TimerBar } from '../components/TimerBar';
-import { useAttemptQuery, useAnswerMutation, useAnswerFileMutation, useSubmitAttempt, useRunCode, useCodeLanguages, useWebcamResume, useAckFaceWarning, useScreenShareState, RunCodeResult } from '../../../lib/hooks/useAttempt';
+import {
+  useAttemptQuery,
+  useAnswerMutation,
+  useAnswerFileMutation,
+  useSubmitAttempt,
+  useRunCode,
+  useCodeLanguages,
+  useWebcamResume,
+  useAckFaceWarning,
+  useScreenShareState,
+  useRunnerActions,
+  useCandidateHelp,
+  useFaceRecheck,
+  useProctorMessages,
+  useAssistant,
+  RunCodeResult,
+} from '../../../lib/hooks/useAttempt';
 import { useCountdown } from '../../../lib/hooks/useCountdown';
 import { useEditorTelemetry } from '../../../lib/hooks/useEditorTelemetry';
 import { useProctoringMonitor } from '../../../lib/hooks/useProctoringMonitor';
@@ -25,30 +35,20 @@ import { usePeriodicScreenAnalysis } from '../../../lib/hooks/usePeriodicScreenA
 import { useWebcamMonitor } from '../../../lib/hooks/useWebcamMonitor';
 import { useCandidateAuth } from '../../../lib/candidate-auth-context';
 import { reportClientError } from '../../../lib/client-error-reporter';
-import { AttemptAnswerSummary, AttemptQuestion, isAttemptStarted } from '../../../lib/types';
+import { AttemptAnswerSummary, AttemptQuestion, AttemptSection, isAttemptStarted } from '../../../lib/types';
 import { monacoLanguageFor } from '../../../lib/monaco-language';
+import { cameraFrame, pauseFor } from '../../../lib/proctoring-pause';
+
+// AS-4a part 2 (answers 2161, 2162): the in-test page is the designed runner (PRC-26). Its sections, review mode,
+// "answer any N" sections, phone question list, pictures and code snippets, calculator, display settings, breaks and
+// the connection banner come from the kit; this page keeps what only the browser can do: proctoring and screen sharing,
+// the code editor and runs, file and spoken answers, saving, and submitting.
 
 // Fixed global file-upload policy — mirrors ANSWER_FILE_* in the exam-runtime attempt.service.ts.
 // The server re-validates; these just give the candidate an instant, friendlier rejection.
 const ANSWER_FILE_MAX_BYTES = 10 * 1024 * 1024;
 const ANSWER_FILE_MAX_COUNT = 10;
-const ANSWER_FILE_ACCEPT =
-  '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.png,.jpg,.jpeg,.zip';
-const ANSWER_FILE_ALLOWED_TYPES = new Set([
-  'application/pdf',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'application/vnd.ms-powerpoint',
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-  'text/plain',
-  'text/csv',
-  'image/png',
-  'image/jpeg',
-  'application/zip',
-  'application/x-zip-compressed',
-]);
+const ANSWER_FILE_ACCEPT = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv', '.png', '.jpg', '.jpeg', '.zip'];
 
 function readFileAsDataUri(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -65,95 +65,77 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function markButtonClasses(marked: boolean | undefined) {
-  return clsx(
-    // Sized as a real button, not a hairline pill: candidates were struggling to hit it.
-    // whitespace-nowrap keeps "Mark for review" on one line beside the question meta.
-    // active:scale + focus ring give an immediate press response so the toggle feels
-    // instant, independent of the debounced save behind it.
-    'whitespace-nowrap rounded-md border px-3 py-2 text-sm font-medium transition-all active:scale-[0.97] focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-candidate-review-border',
-    marked
-      ? 'border-candidate-review-border bg-candidate-review-bg text-candidate-review'
-      : 'border-candidate-border text-candidate-text-secondary hover:bg-candidate-bg',
-  );
-}
+/** Every question of every section in one list, in order (the runner steps through this). */
+const flattenQuestions = (sections: AttemptSection[]) => sections.flatMap((section) => section.questions);
 
-function optionClasses(selected: boolean) {
-  return clsx(
-    'rounded-lg border px-3 py-2 text-left text-sm transition-colors',
-    selected
-      ? 'border-[1.5px] border-candidate-primary bg-candidate-primary-light font-semibold text-candidate-primary'
-      // An unselected option had no hover feedback at all despite being a clickable button.
-      : 'border-candidate-border text-candidate-text-secondary hover:border-candidate-primary/40 hover:bg-candidate-bg',
-  );
+/** Seconds since `since` (ms), ticking each second while set. */
+function useSecondsSince(since: number | null): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (since === null) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [since]);
+  return since === null ? 0 : Math.max(0, Math.floor((now - since) / 1000));
 }
 
 export default function CandidateExamPage() {
   const router = useRouter();
   const { accessToken, isLoading: authLoading } = useCandidateAuth();
   const { data: current, isError } = useAttemptQuery();
-  const { saveAnswer, flush } = useAnswerMutation();
+  const { saveAnswer, flush, queued, connection, offlineSince } = useAnswerMutation();
   const answerFile = useAnswerFileMutation();
   const [fileError, setFileError] = useState<string | null>(null);
   const submitAttempt = useSubmitAttempt();
+  const runner = useRunnerActions();
+  const help = useCandidateHelp();
   const runCode = useRunCode();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [navigatorOpen, setNavigatorOpen] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  // When set, the candidate is stepping through only the questions in that state (reached from
-  // the submit dialog's "For review" / "Unanswered" tiles). A banner then lets them cycle just
-  // that subset instead of walking every question.
-  const [reviewFilter, setReviewFilter] = useState<'marked' | 'unanswered' | null>(null);
   const [localSelections, setLocalSelections] = useState<Record<string, string[]>>({});
   const [localCodeValues, setLocalCodeValues] = useState<Record<string, string>>({});
   const [stdinValues, setStdinValues] = useState<Record<string, string>>({});
   const [runResults, setRunResults] = useState<Record<string, RunCodeResult>>({});
   const [runErrors, setRunErrors] = useState<Record<string, string>>({});
   const [selectedLanguages, setSelectedLanguages] = useState<Record<string, string>>({});
-  // Optimistic mark-for-review state: the button appearance is otherwise driven off the
-  // server answer, which only updates after the 800ms save debounce + round-trip + refetch --
-  // so the toggle felt dead for ~3s. Track the intended value locally and show it immediately.
+  // Optimistic mark-for-review state: the server answer only updates after the save debounce + round-trip + refetch,
+  // so the toggle would feel dead for seconds. Track the intended value locally and show it at once.
   const [localMarkedForReview, setLocalMarkedForReview] = useState<Record<string, boolean>>({});
+  const [finishError, setFinishError] = useState<string | null>(null);
 
   const attemptState = current && isAttemptStarted(current) ? current : null;
-  const isPaused = attemptState?.status === 'paused';
+  // AS-4a: a break is a pause the candidate asked for; the runner shows it, not the proctoring overlay.
+  const onBreak = attemptState?.status === 'paused' && attemptState.pausedReason === 'break';
   const isBlocked = attemptState?.status === 'blocked';
-  const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress' && !isPaused && !isBlocked);
+  const isTerminal = Boolean(attemptState && attemptState.status !== 'in_progress' && attemptState.status !== 'paused' && !isBlocked);
   const started = attemptState?.status === 'in_progress';
   const proctoringConfig = attemptState?.exam.proctoring;
   const [lastViolationReason, setLastViolationReason] = useState<string>('no_face');
   const [lastViolationSource, setLastViolationSource] = useState<'webcam' | 'browser_activity'>('webcam');
   const hasLiveViolationSource = useRef(false);
   const captureEnabled = proctoringConfig?.screenCaptureEnabled === true;
-  // Server-authoritative: false under a recruiter bypass even though captureEnabled (from
-  // exam.proctoring.screenCaptureEnabled) stays true -- a bypass narrows what is punished, not
-  // what is watched, so the hook below still stays enabled (the candidate can still share and
-  // still get frames captured), but only screenShareRequired gates the blocking overlay.
+  // Server-authoritative: false under a recruiter bypass even though captureEnabled stays true -- a bypass narrows
+  // what is punished, not what is watched, so capture stays enabled but only screenShareRequired gates the overlay.
   const screenShareRequired = attemptState?.screenShareRequired === true;
   const screenShareState = useScreenShareState();
-  // Guards the "POST { active: false } once" requirement -- reset whenever a share becomes
-  // active (below) so a later stop-and-restart cycle posts again, but not on every render
-  // while the candidate simply sits on the share-required overlay. Set true *before* mutating
-  // (not in onSuccess) because onEnded and this hook's own effect both call this for the same
-  // stop event, milliseconds apart -- onSuccess would leave a window where both fire the POST.
-  // Reset on error (rather than left permanently stuck) so the attempt isn't silently stuck
-  // in_progress with the clock running because one transient POST failed.
+  // Guards the "POST { active: false } once" requirement -- reset whenever a share becomes active so a later
+  // stop-and-restart posts again, but not on every render while the candidate sits on the overlay. Set true *before*
+  // mutating because onEnded and the effect both call this for the same stop event; reset on error so one failed POST
+  // cannot leave the attempt running with the clock on.
   const postedShareInactiveRef = useRef(false);
-  // reason: 'ended' -- the browser's own Stop-sharing control fired, a genuine and
-  // strike-worthy stop. 'absent' -- this component mounted (or re-mounted, e.g. after a
-  // refresh) with no live stream; a getDisplayMedia stream cannot survive navigation, so this
-  // is indistinguishable from a tab crash and must pause without costing a strike.
+  // 'ended': the browser's own Stop-sharing control fired (strike-worthy). 'absent': mounted with no live stream (a
+  // refresh), indistinguishable from a tab crash: pauses without a strike.
   function postShareInactive(reason: 'ended' | 'absent') {
     if (postedShareInactiveRef.current) return;
     postedShareInactiveRef.current = true;
     screenShareState.mutate(
       { active: false, reason },
-      { onError: () => { postedShareInactiveRef.current = false; } },
+      {
+        onError: () => {
+          postedShareInactiveRef.current = false;
+        },
+      },
     );
   }
-  // onEnded fires from the browser's own "Stop sharing" control (see useScreenCapture) --
-  // it's identity-stable through that hook's internal ref mirror, so passing a fresh closure
-  // here every render is fine.
   const screenCapture = useScreenCapture(captureEnabled, () => postShareInactive('ended'));
   useEffect(() => {
     if (!captureEnabled || screenCapture.active) {
@@ -161,11 +143,10 @@ export default function CandidateExamPage() {
       return;
     }
     postShareInactive('absent');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [captureEnabled, screenCapture.active]);
 
-  // Remote-access detection: while the attempt is live and a share is active, periodically
-  // send a frame of the shared monitor for server-side AI analysis (AnyDesk/TeamViewer/etc.
-  // UI is visible on the monitor even though the browser can't see other processes).
+  // Remote-access detection: while live and sharing, periodically send a frame of the shared monitor for analysis.
   usePeriodicScreenAnalysis(started && captureEnabled && screenCapture.active, screenCapture.capture);
 
   const [isRequestingShare, setIsRequestingShare] = useState(false);
@@ -201,12 +182,8 @@ export default function CandidateExamPage() {
     proctoringConfig,
     screenCapture.capture,
   );
-  // If this mount never saw a live violation event (e.g. the page reloaded while
-  // already paused/blocked from an earlier session), use the server-reported pause
-  // owner instead of defaulting to webcam -- otherwise a browser-activity pause would
-  // render the wrong heading/strike count after a refresh. This reads the
-  // server-authoritative reason directly rather than guessing from the counters (which
-  // could be wrong, e.g. on a tie, or once a strike escalates past the other owner's count).
+  // A mount that never saw a live violation (a reload while paused) reads the server's pause owner instead of
+  // defaulting to webcam, so the heading and strike count stay right after a refresh.
   useEffect(() => {
     if (hasLiveViolationSource.current) return;
     if (!attemptState || (attemptState.status !== 'paused' && attemptState.status !== 'blocked')) return;
@@ -214,36 +191,61 @@ export default function CandidateExamPage() {
       setLastViolationReason('browser_activity_unspecified');
       setLastViolationSource('browser_activity');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [attemptState?.status, attemptState?.pausedReason]);
-  // Resuming from a browser-activity pause has nothing to re-verify (unlike webcam, which
-  // re-checks face presence) -- it's the same generic "clear the pause" transition either way,
-  // so the existing webcam-resume endpoint/mutation is reused rather than adding a duplicate one.
+  // Resuming from a browser-activity pause reuses the webcam-resume endpoint (the same "clear the pause" transition).
   const webcamResume = useWebcamResume();
-  // Stage-3 face 'warn': a non-freezing heads-up. Shown while the attempt is live and the server
-  // has stamped faceWarningAt; dismissing acks it server-side. Pause/block take precedence below.
+  // Stage-3 face 'warn': a non-freezing heads-up while live; dismissing acks it. Pause/block take precedence.
   const ackFaceWarning = useAckFaceWarning();
-  const isFacePause = attemptState?.pausedReason === 'face_mismatch';
   const showFaceWarning = started && Boolean(attemptState?.faceWarningAt);
+  // Answer 2205: the face check after approved extra time.
+  const faceRecheck = useFaceRecheck();
+  const proctorMessages = useProctorMessages();
+  // AS-6 part 2 (answer 2272): the approved assistant, only in an AI-allowed test.
+  const assistant = useAssistant(Boolean(attemptState?.runner?.aiAllowed));
+  const [faceCheckFailed, setFaceCheckFailed] = useState<string | null>(null);
+  async function handleFaceCheck() {
+    setFaceCheckFailed(null);
+    try {
+      const out = await faceRecheck.mutateAsync(await cameraFrame());
+      if (out.matched === false && out.triesLeft !== 0)
+        setFaceCheckFailed(`That did not match your photo. Face the camera in good light and try again${out.triesLeft ? ` (${out.triesLeft} ${out.triesLeft === 1 ? 'try' : 'tries'} left)` : ''}, or wait for your proctor.`);
+    } catch (error) {
+      setFaceCheckFailed(error instanceof Error && error.message ? error.message : 'We could not use your camera. Check it is not in use by another app.');
+    }
+  }
 
   async function finishSubmit() {
     if (submitAttempt.isPending) return;
-    await flush();
-    await submitAttempt.mutateAsync();
-    router.push('/submitted');
+    setFinishError(null);
+    try {
+      await flush();
+      await submitAttempt.mutateAsync();
+      router.push('/submitted');
+    } catch (error) {
+      setFinishError(error instanceof Error && error.message ? error.message : 'It did not go through.');
+    }
   }
 
-  const remainingSeconds = useCountdown(
-    attemptState?.remainingSeconds,
-    () => {
-      finishSubmit();
-    },
-    attemptState?.status === 'in_progress',
-  );
+  const remainingSeconds = useCountdown(attemptState?.remainingSeconds, () => void finishSubmit(), started);
 
-  const totalSecondsRef = useRef<number | null>(null);
-  if (totalSecondsRef.current === null && attemptState?.remainingSeconds) {
-    totalSecondsRef.current = attemptState.remainingSeconds;
-  }
+  // A break ends on its own when its time is up (the server settles it too); ask once so the runner comes back.
+  const breakEndsAt = onBreak && attemptState?.runner?.breakEndsAt ? Date.parse(attemptState.runner.breakEndsAt) : null;
+  const breakElapsed = useSecondsSince(breakEndsAt === null ? null : breakEndsAt - (attemptState?.runner?.breakMinutes ?? 0) * 60_000);
+  const breakSecondsLeft = breakEndsAt === null ? 0 : Math.max(0, (attemptState?.runner?.breakMinutes ?? 0) * 60 - breakElapsed);
+  const breakEndAsked = useRef(false);
+  useEffect(() => {
+    if (!onBreak) {
+      breakEndAsked.current = false;
+      return;
+    }
+    if (breakEndsAt !== null && breakSecondsLeft === 0 && !breakEndAsked.current) {
+      breakEndAsked.current = true;
+      runner.endBreak().catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onBreak, breakEndsAt, breakSecondsLeft]);
+  const offlineSeconds = useSecondsSince(offlineSince);
 
   useEffect(() => {
     if (!authLoading && !accessToken) {
@@ -261,15 +263,12 @@ export default function CandidateExamPage() {
   const question = questions[currentIndex];
   const editorTelemetry = useEditorTelemetry(question?.type === 'code' ? question.id : null);
   const answers: AttemptAnswerSummary[] = attemptState?.answers ?? [];
-  const existingAnswer = answers.find((answer) => answer.questionId === question?.id);
-  // The mark-for-review flag a question is currently shown with: the optimistic local value
-  // if the candidate just toggled it, otherwise whatever the server last returned.
-  const markedForReview = (questionId: string, serverValue: boolean | undefined) =>
-    localMarkedForReview[questionId] ?? Boolean(serverValue);
-  const currentMarked = question ? markedForReview(question.id, existingAnswer?.isMarkedForReview) : false;
+  const answerOf = (questionId: string) => answers.find((answer) => answer.questionId === questionId);
+  const existingAnswer = question ? answerOf(question.id) : undefined;
+  // The flag a question shows: the optimistic local value if just toggled, otherwise the server's.
+  const markedForReview = (questionId: string) => localMarkedForReview[questionId] ?? Boolean(answerOf(questionId)?.isMarkedForReview);
 
-  // Drop an optimistic override once the server's answer agrees with it, so a stale local
-  // value can never mask a later server change (e.g. a recruiter action on another device).
+  // Drop an optimistic override once the server agrees, so a stale local value never masks a later server change.
   useEffect(() => {
     setLocalMarkedForReview((prev) => {
       const keys = Object.keys(prev);
@@ -287,160 +286,83 @@ export default function CandidateExamPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [answers]);
-  const selectedOptionIds = question ? localSelections[question.id] ?? existingAnswer?.selectedOptionIds ?? [] : [];
-  const codeValue = question ? localCodeValues[question.id] ?? existingAnswer?.answerText ?? question.starterCode ?? '' : '';
+  const selectionOf = (q: AttemptQuestion) => localSelections[q.id] ?? answerOf(q.id)?.selectedOptionIds ?? [];
+  const textOf = (q: AttemptQuestion) => localCodeValues[q.id] ?? answerOf(q.id)?.answerText ?? (q.type === 'code' ? q.starterCode ?? '' : '');
+  const codeValue = question ? textOf(question) : '';
   const stdinValue = question ? stdinValues[question.id] ?? '' : '';
   const runResult = question ? runResults[question.id] ?? null : null;
   const runError = question ? runErrors[question.id] ?? null : null;
   const currentCodeLanguage =
     question && question.type === 'code'
       ? selectedLanguages[question.id] ??
-        (question.languageMode === 'fixed' && question.allowedLanguages.length === 1
-          ? question.allowedLanguages[0]
-          : (existingAnswer?.codeLanguage ?? ''))
+        (question.languageMode === 'fixed' && question.allowedLanguages.length === 1 ? question.allowedLanguages[0] : (existingAnswer?.codeLanguage ?? ''))
       : '';
-  const needsLanguagePick = question?.type === 'code' && !currentCodeLanguage;
   const codeLanguagesQuery = useCodeLanguages(Boolean(question && question.type === 'code' && question.languageMode === 'any'));
   const languageOptions = question?.type === 'code' ? (question.languageMode === 'fixed' ? question.allowedLanguages : (codeLanguagesQuery.data ?? []).map((entry) => entry.language)) : [];
-  // Single source of truth for "is this answered": the submit dialog counts these AND jumps
-  // to them, so a second copy of the rule would eventually disagree with the tally shown.
-  // Typed against the base AttemptQuestion (rather than the flattened-with-extras shape) so it
-  // can be filtered over both the flat `questions` list and a raw `section.questions` array.
+  // One rule for "answered": the navigator, Finish and review mode all read it. What the candidate just typed or
+  // chose counts at once (it is already kept on this device).
   const isQuestionAnswered = (q: AttemptQuestion) => {
-    const a = answers.find((ans) => ans.questionId === q.id);
+    const a = answerOf(q.id);
     if (q.type === 'file_upload' || q.type === 'spoken') return Boolean(a && a.answerFiles && a.answerFiles.length > 0);
-    if (q.type === 'code' || q.type === 'essay') return Boolean(a && a.answerText && a.answerText.trim() !== '');
-    return Boolean(a && a.selectedOptionIds.length > 0);
+    if (q.type === 'code' || q.type === 'essay') return (localCodeValues[q.id] ?? a?.answerText ?? '').trim() !== '';
+    return selectionOf(q).length > 0;
   };
-  const isQuestionMarkedForReview = (q: (typeof questions)[number]) =>
-    markedForReview(q.id, answers.find((ans) => ans.questionId === q.id)?.isMarkedForReview);
 
-  const answeredCount = questions.filter(isQuestionAnswered).length;
-  const reviewCount = questions.filter(isQuestionMarkedForReview).length;
-  const unansweredCount = questions.length - answeredCount;
-  // A section with a requiredCount contributes that many "needed" answers, not its full question
-  // count -- otherwise the chip tells a candidate they have 5 to do when 3 finishes the section.
-  // Answers beyond the requirement are free (best-N), so a section is capped at its requirement.
-  const requiredTotal = (attemptState?.sections ?? []).reduce(
-    (sum, section) => sum + (section.requiredCount ?? section.questions.length),
-    0,
-  );
-  const answeredTowardRequirement = (attemptState?.sections ?? []).reduce((sum, section) => {
-    const answeredInSection = section.questions.filter(isQuestionAnswered).length;
-    return sum + Math.min(answeredInSection, section.requiredCount ?? section.questions.length);
-  }, 0);
-  // Warn, never block: the timer auto-submits, so a hard gate is unenforceable and would only
-  // punish a candidate who ran out of time.
-  const shortSections = (attemptState?.sections ?? [])
-    .map((section) => ({
-      title: section.title,
-      required: section.requiredCount ?? section.questions.length,
-      answered: section.questions.filter(isQuestionAnswered).length,
-    }))
-    .filter((section) => section.answered < section.required);
-  const markedIndices = questions.reduce<number[]>((acc, q, i) => (isQuestionMarkedForReview(q) ? [...acc, i] : acc), []);
-  const unansweredIndices = questions.reduce<number[]>((acc, q, i) => (!isQuestionAnswered(q) ? [...acc, i] : acc), []);
-  const activeFilterIndices = reviewFilter === 'marked' ? markedIndices : reviewFilter === 'unanswered' ? unansweredIndices : [];
-  const reviewPos = activeFilterIndices.indexOf(currentIndex); // -1 if the current question no longer matches
-
-  // Leave review mode once nothing matches (e.g. the last unanswered question got answered, or
-  // the last mark was cleared) so the banner doesn't linger empty.
-  useEffect(() => {
-    if (reviewFilter && activeFilterIndices.length === 0) setReviewFilter(null);
-  }, [reviewFilter, activeFilterIndices.length]);
-
-  if (isError || !attemptState) {
+  if (isError || !attemptState || !question || isTerminal) {
     return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
   }
 
-  if (!question || isTerminal) {
-    return <p className="p-8 text-sm text-candidate-text-tertiary">Loading…</p>;
-  }
+  // Answer 2231: every reason the test stops shows in the designed runner's paused view. A block wins over the share
+  // prompt (there is nothing to resume into); the share prompt is gated on screenShareRequired (bypass-aware).
+  const pause = pauseFor({
+    status: attemptState.status,
+    pausedReason: attemptState.pausedReason,
+    violationReason: lastViolationReason,
+    violationSource: lastViolationSource,
+    webcamViolations: attemptState.webcamViolationCount,
+    browserViolations: attemptState.browserActivityViolationCount,
+    strikeLimit: proctoringConfig?.strikeLimit ?? 3,
+    pauseMessage: attemptState.pauseMessage,
+    faceRecheckTriesLeft: attemptState.faceRecheckTriesLeft,
+    shareNeeded: screenShareRequired && !screenCapture.active && !isBlocked,
+    shareError: screenCapture.error,
+    onShare: () => void handleShareScreen(),
+    sharing: isRequestingShare,
+    onContinue: () => webcamResume.mutate(),
+    continuing: webcamResume.isPending,
+    continueFailed: webcamResume.isError,
+    onFaceCheck: () => void handleFaceCheck(),
+    faceChecking: faceRecheck.isPending,
+    faceCheckFailed,
+  });
 
-  // The block overlay takes precedence -- a blocked attempt has nothing to resume into,
-  // sharing again wouldn't change that, so don't mask it with the share prompt. Gated on
-  // screenShareRequired (server-computed, bypass-aware), not captureEnabled -- a bypassed
-  // attempt must not be blocked over a share it was never going to be punished for missing.
-  if (screenShareRequired && !screenCapture.active && !isBlocked) {
-    return <ScreenShareRequiredOverlay error={screenCapture.error} onShare={handleShareScreen} pending={isRequestingShare} />;
-  }
-
-  function toggleOption(optionId: string) {
-    const isMulti = question!.type === 'multi_mcq';
-    const next = isMulti
-      ? selectedOptionIds.includes(optionId)
-        ? selectedOptionIds.filter((id) => id !== optionId)
-        : [...selectedOptionIds, optionId]
-      : [optionId];
-    setLocalSelections((prev) => ({ ...prev, [question!.id]: next }));
-    // Preserve the current (possibly optimistic) review flag so answering doesn't clear it.
-    saveAnswer(question!.id, next, currentMarked);
-  }
-
-  function toggleMarkForReview() {
-    const next = !currentMarked;
-    // Flip the UI immediately; the debounced save + refetch reconciles it afterwards.
-    setLocalMarkedForReview((prev) => ({ ...prev, [question!.id]: next }));
-    if (question!.type === 'code') {
-      saveAnswer(question!.id, [], next, codeValue, editorTelemetry.snapshot(), currentCodeLanguage);
-    } else if (question!.type === 'essay') {
-      saveAnswer(question!.id, [], next, codeValue);
-    } else {
-      saveAnswer(question!.id, selectedOptionIds, next);
-    }
-  }
+  const byId = new Map(questions.map((q) => [q.id, q]));
+  const saveWithMark = (q: AttemptQuestion, marked: boolean) => {
+    if (q.type === 'code') saveAnswer(q.id, [], marked, textOf(q), editorTelemetry.snapshot(), currentCodeLanguage);
+    else if (q.type === 'essay') saveAnswer(q.id, [], marked, textOf(q));
+    else saveAnswer(q.id, selectionOf(q), marked);
+  };
 
   function handleCodeChange(value: string | undefined) {
     const next = value ?? '';
     setLocalCodeValues((prev) => ({ ...prev, [question!.id]: next }));
-    saveAnswer(question!.id, [], currentMarked, next, editorTelemetry.snapshot(), currentCodeLanguage);
+    saveAnswer(question!.id, [], markedForReview(question!.id), next, editorTelemetry.snapshot(), currentCodeLanguage);
   }
 
-  // Essay: free prose stored in answerText (reuses the code text channel), no language/telemetry.
-  function handleEssayChange(value: string) {
-    setLocalCodeValues((prev) => ({ ...prev, [question!.id]: value }));
-    saveAnswer(question!.id, [], currentMarked, value);
-  }
-
-  async function handleFilePick(files: FileList | null) {
-    if (!question || !files || files.length === 0) return;
-    const questionId = question.id;
-    const alreadyUploaded = (existingAnswer?.answerFiles ?? []).length;
+  async function uploadFile(file: File) {
+    const questionId = question!.id;
+    // The kit checks size and type before this; the count and an empty file are ours.
+    if ((existingAnswer?.answerFiles ?? []).length >= ANSWER_FILE_MAX_COUNT) throw new Error(`You can upload at most ${ANSWER_FILE_MAX_COUNT} files for this question.`);
+    if (file.size === 0) throw new Error(`"${file.name}" is empty.`);
     setFileError(null);
-    // Upload sequentially so the count check stays honest and errors point at one file.
-    let uploadedSoFar = alreadyUploaded;
-    for (const file of Array.from(files)) {
-      if (uploadedSoFar >= ANSWER_FILE_MAX_COUNT) {
-        setFileError(`You can upload at most ${ANSWER_FILE_MAX_COUNT} files for this question.`);
-        break;
-      }
-      if (file.size === 0) {
-        setFileError(`"${file.name}" is empty.`);
-        continue;
-      }
-      if (file.size > ANSWER_FILE_MAX_BYTES) {
-        setFileError(`"${file.name}" is larger than 10 MB.`);
-        continue;
-      }
-      if (file.type && !ANSWER_FILE_ALLOWED_TYPES.has(file.type)) {
-        setFileError(`"${file.name}" is not an allowed file type.`);
-        continue;
-      }
-      try {
-        const dataUri = await readFileAsDataUri(file);
-        await answerFile.upload.mutateAsync({ questionId, fileName: file.name, dataUri });
-        uploadedSoFar += 1;
-      } catch (error) {
-        setFileError(error instanceof Error ? error.message : `Couldn't upload "${file.name}".`);
-      }
-    }
+    const dataUri = await readFileAsDataUri(file);
+    await answerFile.upload.mutateAsync({ questionId, fileName: file.name, dataUri });
   }
 
   async function handleFileRemove(fileId: string) {
-    if (!question) return;
     setFileError(null);
     try {
-      await answerFile.remove.mutateAsync({ questionId: question.id, fileId });
+      await answerFile.remove.mutateAsync({ questionId: question!.id, fileId });
     } catch (error) {
       setFileError(error instanceof Error ? error.message : "Couldn't remove that file.");
     }
@@ -459,28 +381,12 @@ export default function CandidateExamPage() {
       { questionId, code: codeValue, codeLanguage: currentCodeLanguage, stdin: question.allowStdin ? stdinValue : undefined },
       {
         onSuccess: (result) => setRunResults((prev) => ({ ...prev, [questionId]: result })),
-        // error.message carries the server's real message (e.g. the run-cap or
-        // sandbox_unavailable text set in apps/exam-runtime's runCode()) rather than a
-        // hardcoded string here, matching this codebase's established onError convention.
+        // error.message carries the server's real message (the run cap, the sandbox being down).
         onError: (error) => {
-          setRunErrors((prev) => ({
-            ...prev,
-            [questionId]: error instanceof Error ? error.message : "Couldn't run your code right now, try again.",
-          }));
-          // Run failures were the one candidate-facing failure with NO server-side trace: JS
-          // crashes, unhandled rejections and failed answer-saves all report, this did not. So
-          // when candidates reported "error 0" on 2026-08-08 there was nothing to look at, and
-          // the cause had to be reasoned about rather than read.
-          //
-          // The HTTP status is the diagnostic that matters. status 0 means the browser never
-          // completed an HTTP exchange at all, which for this app points at exam-runtime's
-          // non-standard :3002 port being filtered by the candidate's network -- everything else
-          // goes over 443. A real status (429 run-cap, 503 sandbox down) means something else.
-          //
-          // Caveat, deliberately accepted: this report also posts to :3002, so in the very case
-          // it most wants to catch it will not arrive either. Its ABSENCE alongside a candidate
-          // reporting "error 0" is then itself the evidence, and every non-network run failure
-          // still lands. See docs/superpowers/plans/2026-08-06-exam-runtime-subdomain.md.
+          setRunErrors((prev) => ({ ...prev, [questionId]: error instanceof Error ? error.message : "Couldn't run your code right now, try again." }));
+          // The HTTP status is the diagnostic that matters: 0 means no HTTP exchange at all (the runtime's port
+          // filtered by the candidate's network); a real status (429, 503) means something else. This report also
+          // goes to the runtime, so its absence alongside a candidate's "error 0" is itself the evidence.
           const status = (error as { status?: number } | null)?.status;
           reportClientError(accessToken, {
             kind: 'code_run_failed',
@@ -492,482 +398,194 @@ export default function CandidateExamPage() {
     );
   }
 
-  async function handleConfirmSubmit() {
-    setConfirmOpen(false);
-    await finishSubmit();
+  /** Code, file and spoken questions: the parts only this page has (the runner shows the text, picture and snippet). */
+  function renderQuestion() {
+    const q = question!;
+    if (q.type === 'code') {
+      if (!currentCodeLanguage)
+        return (
+          <FormField label="Choose a language before you start">
+            <Select
+              aria-label="Choose a language before you start"
+              value={null}
+              placeholder="Select a language"
+              options={languageOptions.map((lang) => ({ value: lang, label: lang }))}
+              onChange={(lang) => lang && setSelectedLanguages((prev) => ({ ...prev, [q.id]: lang }))}
+            />
+          </FormField>
+        );
+      return (
+        <>
+          <div className="overflow-hidden rounded-lg border border-[#2D2D2D]">
+            <div className="flex items-center justify-end bg-[#1E1E1E] px-3 py-2">
+              <span className="rounded-sm bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">{currentCodeLanguage}</span>
+            </div>
+            <Editor
+              height="400px"
+              path={q.id}
+              language={monacoLanguageFor(currentCodeLanguage)}
+              value={codeValue}
+              onChange={handleCodeChange}
+              onMount={(editor) => editorTelemetry.onEditorMount(editor)}
+              options={{ minimap: { enabled: false }, fontSize: 13, padding: { top: 12 } }}
+              theme="vs-dark"
+            />
+          </div>
+          {q.allowStdin ? (
+            <FormField label="Standard input (optional)">
+              <TextArea rows={2} value={stdinValue} onChange={(v) => setStdinValues((prev) => ({ ...prev, [q.id]: v }))} />
+            </FormField>
+          ) : null}
+          <div>
+            <Button icon={Play} loading={runCode.isPending} onClick={handleRun}>
+              Run
+            </Button>
+          </div>
+          {/* Answer 2234: the run output is the kit's results panel (runs left shown there). */}
+          <CodeRunOutput result={runResult} error={runError} />
+        </>
+      );
+    }
+    if (q.type === 'file_upload') {
+      const files = existingAnswer?.answerFiles ?? [];
+      return (
+        <>
+          {files.length > 0 ? (
+            <ul className="flex flex-col gap-2" aria-label="Your files">
+              {files.map((file) => (
+                <li key={file.id} className="flex items-center justify-between gap-3 rounded-md border border-candidate-border px-3 py-2 text-sm">
+                  <span className="min-w-0 flex-1 truncate" title={file.fileName}>
+                    {file.fileName}
+                  </span>
+                  <span className="shrink-0 text-candidate-text-tertiary">{formatFileSize(file.size)}</span>
+                  <Button size="sm" onClick={() => void handleFileRemove(file.id)} disabled={answerFile.remove.isPending} aria-label={`Remove ${file.fileName}`}>
+                    Remove
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-candidate-text-tertiary">No files uploaded yet.</p>
+          )}
+          <FormField label={`Upload files (up to ${ANSWER_FILE_MAX_COUNT}, 10 MB each)`}>
+            <FileUpload key={q.id} accept={ANSWER_FILE_ACCEPT} maxSize={ANSWER_FILE_MAX_BYTES} disabled={files.length >= ANSWER_FILE_MAX_COUNT} upload={(file) => uploadFile(file)} />
+          </FormField>
+          {fileError ? (
+            <InlineAlert tone="danger" title="That did not work">
+              {fileError}
+            </InlineAlert>
+          ) : null}
+        </>
+      );
+    }
+    if (q.type === 'spoken')
+      return (
+        <SpokenAnswerRecorder
+          key={q.id}
+          existing={existingAnswer?.answerFiles?.[0]}
+          uploading={answerFile.upload.isPending}
+          disabled={answerFile.upload.isPending || answerFile.remove.isPending}
+          onUpload={(fileName, dataUri) => answerFile.upload.mutateAsync({ questionId: q.id, fileName, dataUri }).then(() => undefined)}
+          onRemove={(fileId) => answerFile.remove.mutateAsync({ questionId: q.id, fileId }).then(() => undefined)}
+        />
+      );
+    return null;
   }
 
-  // From the submit dialog's tallies: enter a mode that steps through only the questions in
-  // that state. Jumps to the first match, opens the review banner, and closes the dialog.
-  function enterReviewFilter(filter: 'marked' | 'unanswered') {
-    const indices = filter === 'marked' ? markedIndices : unansweredIndices;
-    if (indices.length === 0) return;
-    setReviewFilter(filter);
-    setCurrentIndex(indices[0]);
-    setConfirmOpen(false);
-  }
+  const toLive = (q: (typeof questions)[number]): LiveRunnerQuestion => ({
+    id: q.id,
+    type: q.type === 'multi_mcq' ? 'multiple' : q.type === 'single_mcq' || q.type === 'true_false' ? 'single' : q.type === 'essay' ? 'essay' : 'other',
+    text: q.text,
+    marks: q.marks,
+    image: q.imageUrl ? { src: q.imageUrl, alt: q.imageAlt } : null,
+    snippet: q.snippetCode ? { language: q.snippetLanguage, code: q.snippetCode } : null,
+    options: q.options.map((o) => ({ id: o.id, label: o.text, image: o.imageUrl ? { src: o.imageUrl, alt: o.imageAlt } : null })),
+    value: selectionOf(q),
+    answerText: q.type === 'essay' ? textOf(q) : '',
+    answered: isQuestionAnswered(q),
+    markedForReview: markedForReview(q.id),
+  });
 
-  // Move to the next/previous question within the active filter. If the current question is no
-  // longer in the set (e.g. it was just answered), step to the first/last remaining match.
-  function stepReview(dir: -1 | 1) {
-    if (activeFilterIndices.length === 0) return;
-    const nextPos = reviewPos === -1 ? (dir === 1 ? 0 : activeFilterIndices.length - 1) : reviewPos + dir;
-    if (nextPos < 0 || nextPos >= activeFilterIndices.length) return;
-    setCurrentIndex(activeFilterIndices[nextPos]);
-  }
+  const run = attemptState.runner;
+  const proctored = Boolean(proctoringConfig?.webcamEnabled || captureEnabled);
+  const live: LiveRunner = {
+    testName: attemptState.exam.title,
+    candidateName: attemptState.candidateName,
+    proctored,
+    proctoringNote: proctored ? [proctoringConfig?.webcamEnabled ? 'Camera on' : null, captureEnabled && screenCapture.active ? 'Screen shared' : null].filter(Boolean).join(' · ') || undefined : undefined,
+    seconds: remainingSeconds,
+    status: onBreak ? 'break' : pause ? 'paused' : 'running',
+    pause,
+    notice:
+      showFaceWarning && !pause
+        ? {
+            title: 'Identity check warning',
+            message: "Your face didn't clearly match your enrolment photo. Your test is still running: centre yourself and face the camera. Repeated warnings may pause your test.",
+            actionLabel: 'I understand',
+            onAction: () => ackFaceWarning.mutate(),
+            busy: ackFaceWarning.isPending,
+          }
+        : null,
+    assistant:
+      run?.aiAllowed && assistant.view.data
+        ? {
+            log: assistant.view.data.log,
+            turnsLeft: assistant.view.data.turnsLeft,
+            limit: assistant.view.data.limit,
+            onAsk: (message) => assistant.ask.mutateAsync({ message, questionId: question?.id ?? null }),
+          }
+        : null,
+    // Answer 2269: the proctor's messages; "Got it" marks them read, a reply goes to the proctor's console.
+    messages: {
+      items: attemptState.messages ?? [],
+      onRead: () => proctorMessages.read.mutateAsync(),
+      onReply: (text) => proctorMessages.reply.mutateAsync(text),
+    },
+    breakSecondsLeft,
+    breaksLeft: run ? Math.max(0, run.breaksAllowed - run.breaksUsed) : 0,
+    breakMinutes: run?.breakMinutes ?? 0,
+    onStartBreak: async () => {
+      await flush();
+      return runner.startBreak();
+    },
+    onEndBreak: runner.endBreak,
+    connection,
+    queued,
+    offlineSeconds,
+    offlineMinutes: run?.offlineMinutes ?? 5,
+    creditSeconds: run?.offlineCreditSeconds ?? 0,
+    creditCapMinutes: run?.timeCreditCapMinutes ?? 10,
+    approvedHelp: help.data?.approved ?? [],
+    saveStatus: connection !== 'online' ? 'offline' : queued > 0 ? 'saving' : 'saved',
+    sections: attemptState.sections.map((s) => ({ name: s.title, count: s.questions.length, required: s.requiredCount })),
+    questions: questions.map(toLive),
+    current: currentIndex,
+    onNavigate: setCurrentIndex,
+    onAnswer: (lq, value) => {
+      const q = byId.get(lq.id)!;
+      setLocalSelections((prev) => ({ ...prev, [q.id]: value }));
+      // Keep the (possibly optimistic) review flag so answering does not clear it.
+      saveAnswer(q.id, value, markedForReview(q.id));
+    },
+    onAnswerText: (lq, text) => {
+      setLocalCodeValues((prev) => ({ ...prev, [lq.id]: text }));
+      saveAnswer(lq.id, [], markedForReview(lq.id), text);
+    },
+    onMark: (lq, marked) => {
+      // Flip at once; the debounced save and refetch reconcile it afterwards.
+      setLocalMarkedForReview((prev) => ({ ...prev, [lq.id]: marked }));
+      saveWithMark(byId.get(lq.id)!, marked);
+    },
+    renderQuestion: () => renderQuestion(),
+    calculator: run?.calculator ?? 'none',
+    onFinish: () => void finishSubmit(),
+    finishing: submitAttempt.isPending,
+    finishError,
+  };
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-      {isPaused ? (
-        <ProctoringWarningOverlay
-          // A face_mismatch pause is a direct action, not a strike -- omit the count. All others
-          // ride the strike ladder and show Warning X/Y.
-          strike={isFacePause ? undefined : lastViolationSource === 'browser_activity' ? attemptState.browserActivityViolationCount : attemptState.webcamViolationCount}
-          strikeLimit={isFacePause ? undefined : proctoringConfig?.strikeLimit ?? 3}
-          reason={isFacePause ? 'face_mismatch' : lastViolationReason}
-          onContinue={() => webcamResume.mutate()}
-          continuePending={webcamResume.isPending}
-          continueError={webcamResume.isError}
-        />
-      ) : null}
-      {isBlocked ? <ProctoringBlockOverlay /> : null}
-      {/* Non-freezing warn: only when live (pause/block overlays above take precedence). */}
-      {showFaceWarning && !isPaused && !isBlocked ? (
-        <FaceWarningOverlay onDismiss={() => ackFaceWarning.mutate()} dismissPending={ackFaceWarning.isPending} />
-      ) : null}
-      <div
-        data-testid="dimmable-content"
-        // @types/react's stable release doesn't type the `inert` DOM attribute yet (only
-        // experimental.d.ts does) — cast bridges that gap so keyboard/screen-reader users
-        // can't reach the dimmed content while an overlay covers it.
-        {...(((isPaused || isBlocked) ? { inert: '' } : {}) as React.HTMLAttributes<HTMLDivElement>)}
-        // Fills the screen on large displays rather than stopping at a fixed width and
-        // leaving hundreds of pixels of dead margin. Past 2xl the cap is dropped entirely and
-        // the padding becomes the gutter; the width is kept usable by widening the navigator
-        // and splitting the options into two columns rather than stretching single rows.
-        className={clsx(
-          'mx-auto flex w-full min-h-0 max-w-6xl flex-1 flex-col overflow-hidden p-4 xl:max-w-7xl xl:p-6 2xl:max-w-none 2xl:px-10',
-          (isPaused || isBlocked) && 'pointer-events-none blur-xs select-none',
-        )}
-      >
-      <div className="mb-4 shrink-0 rounded-lg border border-candidate-border bg-white px-4 py-3">
-        <div className="mb-2 flex items-center justify-between">
-          <button
-            onClick={() => setNavigatorOpen((open) => !open)}
-            className="rounded-sm bg-candidate-primary-light px-3 py-1 text-xs font-bold text-candidate-primary lg:hidden"
-          >
-            <span className="inline-flex items-center gap-1">
-              Q{currentIndex + 1}/{questions.length}
-              <ChevronDown className="h-3 w-3" aria-hidden="true" />
-            </span>
-          </button>
-          {/* Left-aligned by request. On desktop the Q-navigator button beside this is
-              lg:hidden, so this block is the row's only child and justify-between leaves it
-              at the start; on mobile the button takes the left slot and this sits opposite. */}
-          <div className="flex flex-col items-start text-left">
-            <span className="hidden font-display text-sm font-bold text-candidate-text lg:inline">{attemptState.exam.title}</span>
-            <span className="text-xs text-candidate-text-tertiary">{attemptState.candidateName}</span>
-          </div>
-        </div>
-        <TimerBar
-          remainingSeconds={remainingSeconds}
-          totalSeconds={totalSecondsRef.current ?? remainingSeconds}
-          progressLabel={`${answeredTowardRequirement}/${requiredTotal} answered`}
-        />
-      </div>
-
-      {reviewFilter && activeFilterIndices.length > 0 ? (
-        <div
-          className={clsx(
-            'mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border px-4 py-2.5',
-            reviewFilter === 'marked'
-              ? 'border-candidate-review-border bg-candidate-review-bg'
-              : 'border-candidate-border bg-candidate-bg',
-          )}
-        >
-          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-candidate-text">
-            {reviewFilter === 'marked' ? (
-              <Bookmark className="h-4 w-4 text-candidate-review" fill="currentColor" aria-hidden="true" />
-            ) : null}
-            Reviewing {reviewFilter === 'marked' ? 'marked for review' : 'unanswered'} — {(reviewPos === -1 ? 0 : reviewPos) + 1} of{' '}
-            {activeFilterIndices.length}
-          </span>
-          <div className="flex items-center gap-2">
-            <CandidateButton
-              variant="secondary"
-              onClick={() => stepReview(-1)}
-              disabled={reviewPos <= 0}
-              aria-label={`Previous ${reviewFilter === 'marked' ? 'marked-for-review' : 'unanswered'} question`}
-            >
-              <span className="inline-flex items-center gap-1">
-                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" /> Prev
-              </span>
-            </CandidateButton>
-            <CandidateButton
-              variant="secondary"
-              onClick={() => stepReview(1)}
-              disabled={reviewPos !== -1 && reviewPos >= activeFilterIndices.length - 1}
-              aria-label={`Next ${reviewFilter === 'marked' ? 'marked-for-review' : 'unanswered'} question`}
-            >
-              <span className="inline-flex items-center gap-1">
-                Next <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </span>
-            </CandidateButton>
-            <button
-              type="button"
-              onClick={() => setReviewFilter(null)}
-              className="rounded-md px-2.5 py-2 text-sm font-medium text-candidate-text-secondary hover:bg-white/60"
-            >
-              Show all questions
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      <div className="flex min-h-0 flex-1 gap-4 overflow-hidden xl:gap-6">
-        <div className="flex-1 overflow-y-auto rounded-lg border border-candidate-border bg-white p-4">
-          <div className="mb-3 flex items-start justify-between gap-3">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              {/* Where the candidate is in the paper. The word "Section" and the position are
-                  what carry the meaning for a first-timer -- the title itself is whatever the
-                  recruiter typed ("test", "S1"), so it is shown as a suffix, not on its own.
-                  The position is only added when there is more than one section to move between. */}
-              <span className="w-fit max-w-full truncate rounded-md bg-candidate-primary-light px-2.5 py-1 font-display text-xs font-semibold text-candidate-primary">
-                Section{attemptState.sections.length > 1 ? ` ${question.sectionIndex + 1} of ${attemptState.sections.length}` : ''}
-                {question.sectionTitle ? `: ${question.sectionTitle}` : ''}
-                {question.sectionRequiredCount != null
-                  ? ` — answer any ${question.sectionRequiredCount} of ${question.sectionQuestionCount}`
-                  : ''}
-              </span>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-candidate-text-tertiary">
-                Question {currentIndex + 1} of {questions.length} ·{' '}
-                {question.type === 'code' ? 'Code' : question.type === 'essay' ? 'Essay' : question.type === 'file_upload' ? 'File upload' : question.type === 'spoken' ? 'Spoken' : question.type === 'multi_mcq' ? 'Multiple choice' : 'Single choice'} ·{' '}
-                {question.marks} marks
-              </span>
-            </div>
-            <button type="button" onClick={toggleMarkForReview} aria-pressed={currentMarked} className={markButtonClasses(currentMarked)}>
-              <span className="inline-flex items-center gap-1.5">
-                <Bookmark className="h-4 w-4" fill={currentMarked ? 'currentColor' : 'none'} aria-hidden="true" />
-                {currentMarked ? 'Marked for review' : 'Mark for review'}
-              </span>
-            </button>
-          </div>
-          <p className="mb-4 font-display text-sm text-candidate-text">{question.text}</p>
-          {question.imageUrl ? (
-            <img src={question.imageUrl} alt="Question illustration" className="mb-4 max-h-64 rounded-lg object-contain" />
-          ) : null}
-          {question.snippetCode ? (
-            <div className="mb-4 overflow-hidden rounded-md">
-              <div className="bg-[#1E1E1E] px-3 py-1.5">
-                <span className="rounded-sm bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
-                  {question.snippetLanguage ?? 'plaintext'}
-                </span>
-              </div>
-              <pre className="overflow-x-auto bg-[#1E1E1E] px-3 py-2 font-mono text-xs text-candidate-text-faint">{question.snippetCode}</pre>
-            </div>
-          ) : null}
-          {question.type === 'code' ? (
-            <>
-              {needsLanguagePick ? (
-                <div className="mb-3 flex flex-col gap-2 rounded-md border border-candidate-border bg-candidate-bg p-3">
-                  <label htmlFor="code-language-select" className="text-xs font-medium text-candidate-text-secondary">
-                    Choose a language before you start
-                  </label>
-                  <select
-                    id="code-language-select"
-                    aria-label="Choose A Language Before You Start"
-                    className="rounded-sm border border-candidate-border px-2 py-1 text-sm"
-                    value=""
-                    onChange={(e) => {
-                      const lang = e.target.value;
-                      if (!lang) return;
-                      setSelectedLanguages((prev) => ({ ...prev, [question.id]: lang }));
-                    }}
-                  >
-                    <option value="" disabled>
-                      Select a language…
-                    </option>
-                    {languageOptions.map((lang) => (
-                      <option key={lang} value={lang}>
-                        {lang}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              ) : (
-                <>
-                  <div className="overflow-hidden rounded-lg border border-[#2D2D2D]">
-                    <div className="flex items-center justify-between bg-[#1E1E1E] px-3 py-2">
-                      <span className="inline-flex items-center gap-1.5" aria-hidden="true">
-                        <span className="h-2.5 w-2.5 rounded-full bg-[#FF5F56]" />
-                        <span className="h-2.5 w-2.5 rounded-full bg-[#FFBD2E]" />
-                        <span className="h-2.5 w-2.5 rounded-full bg-[#27C93F]" />
-                      </span>
-                      <span className="rounded-sm bg-[#2D2D2D] px-2 py-0.5 text-[11px] font-semibold text-candidate-text-faint">
-                        {currentCodeLanguage}
-                      </span>
-                    </div>
-                    <Editor
-                      height="400px"
-                      path={question.id}
-                      language={monacoLanguageFor(currentCodeLanguage)}
-                      value={codeValue}
-                      onChange={handleCodeChange}
-                      onMount={(editor) => editorTelemetry.onEditorMount(editor)}
-                      options={{ minimap: { enabled: false }, fontSize: 13, padding: { top: 12 } }}
-                      theme="vs-dark"
-                    />
-                  </div>
-                  {question.allowStdin ? (
-                    <div className="mt-3 flex flex-col gap-1">
-                      <label htmlFor="stdin-input" className="text-xs font-medium text-candidate-text-secondary">
-                        Standard input (optional)
-                      </label>
-                      <textarea
-                        id="stdin-input"
-                        aria-label="Standard Input (Optional)"
-                        value={stdinValue}
-                        onChange={(e) => setStdinValues((prev) => ({ ...prev, [question.id]: e.target.value }))}
-                        className="rounded-md border border-candidate-border px-2.5 py-1.5 font-mono text-xs"
-                        rows={2}
-                      />
-                    </div>
-                  ) : null}
-                  <div className="mt-3 flex items-center gap-3">
-                    <CandidateButton variant="secondary" onClick={handleRun} disabled={runCode.isPending}>
-                      <span className="inline-flex items-center gap-1.5">
-                        <Play className="h-3.5 w-3.5" aria-hidden="true" />
-                        {runCode.isPending ? 'Running…' : 'Run'}
-                      </span>
-                    </CandidateButton>
-                    {runResult ? <span className="text-xs text-candidate-text-faint">{runResult.runsRemaining} runs left</span> : null}
-                  </div>
-                  <CodeOutputPanel result={runResult} error={runError} />
-                </>
-              )}
-            </>
-          ) : question.type === 'essay' ? (
-            <div className="flex flex-col gap-1">
-              <textarea
-                aria-label="Your answer"
-                value={codeValue}
-                onChange={(e) => handleEssayChange(e.target.value)}
-                placeholder="Write your answer here…"
-                rows={12}
-                className="w-full rounded-md border border-candidate-border bg-white px-3 py-2 text-sm leading-relaxed text-candidate-text"
-              />
-              <span className="self-end text-xs text-candidate-text-faint">{codeValue.trim().length} characters</span>
-            </div>
-          ) : question.type === 'file_upload' ? (
-            <div className="flex flex-col gap-3">
-              {(existingAnswer?.answerFiles ?? []).length > 0 ? (
-                <ul className="flex flex-col gap-2">
-                  {(existingAnswer?.answerFiles ?? []).map((file) => (
-                    <li
-                      key={file.id}
-                      className="flex items-center justify-between gap-3 rounded-md border border-candidate-border bg-candidate-bg px-3 py-2 text-sm"
-                    >
-                      <span className="min-w-0 flex-1 truncate text-candidate-text" title={file.fileName}>
-                        {file.fileName}
-                      </span>
-                      <span className="shrink-0 text-xs text-candidate-text-faint">{formatFileSize(file.size)}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleFileRemove(file.id)}
-                        disabled={answerFile.remove.isPending}
-                        aria-label={`Remove ${file.fileName}`}
-                        className="shrink-0 rounded-sm px-2 py-1 text-xs font-medium text-candidate-text-secondary hover:bg-candidate-border/40 disabled:opacity-50"
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-candidate-text-faint">No files uploaded yet.</p>
-              )}
-              <label className="flex flex-col gap-1">
-                <span className="text-xs font-medium text-candidate-text-secondary">
-                  Upload files (up to {ANSWER_FILE_MAX_COUNT}, 10 MB each — documents, spreadsheets, images, PDFs or ZIPs)
-                </span>
-                <input
-                  type="file"
-                  multiple
-                  accept={ANSWER_FILE_ACCEPT}
-                  aria-label="Upload files for your answer"
-                  disabled={answerFile.upload.isPending || (existingAnswer?.answerFiles ?? []).length >= ANSWER_FILE_MAX_COUNT}
-                  onChange={(e) => {
-                    void handleFilePick(e.target.files);
-                    e.target.value = '';
-                  }}
-                  className="text-sm text-candidate-text-secondary file:mr-3 file:rounded-md file:border-0 file:bg-candidate-primary file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:opacity-90 disabled:opacity-50"
-                />
-              </label>
-              {answerFile.upload.isPending ? (
-                <span className="text-xs text-candidate-text-faint">Uploading…</span>
-              ) : null}
-              {fileError ? (
-                <span role="alert" className="text-xs text-candidate-danger">
-                  {fileError}
-                </span>
-              ) : null}
-            </div>
-          ) : question.type === 'spoken' ? (
-            <SpokenAnswerRecorder
-              key={question.id}
-              existing={existingAnswer?.answerFiles?.[0]}
-              uploading={answerFile.upload.isPending}
-              disabled={answerFile.upload.isPending || answerFile.remove.isPending}
-              onUpload={(fileName, dataUri) => answerFile.upload.mutateAsync({ questionId: question.id, fileName, dataUri }).then(() => undefined)}
-              onRemove={(fileId) => answerFile.remove.mutateAsync({ questionId: question.id, fileId }).then(() => undefined)}
-            />
-          ) : (
-            // Two columns once there is real width to use: a single option row stretched
-            // across a 2560px screen is mostly empty space with a radio button on the left.
-            <div className="grid grid-cols-1 gap-2 2xl:grid-cols-2">
-              {question.options.map((option) => {
-                const selected = selectedOptionIds.includes(option.id);
-                return (
-                  <button key={option.id} onClick={() => toggleOption(option.id)} className={optionClasses(selected)}>
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        className={clsx(
-                          'inline-block h-3.5 w-3.5 shrink-0 border-2',
-                          // Square = multi-select (checkbox affordance), round = single-select radio.
-                          question.type === 'multi_mcq' ? 'rounded-[3px]' : 'rounded-full',
-                          selected ? 'border-candidate-primary bg-candidate-primary shadow-[inset_0_0_0_2px_white]' : 'border-candidate-text-faint',
-                        )}
-                        aria-hidden="true"
-                      />
-                      {option.imageUrl ? (
-                        <img src={option.imageUrl} alt="Option illustration" className="h-10 w-10 rounded-sm object-cover" />
-                      ) : null}
-                      {option.text}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-          <div className="mt-4 flex justify-between">
-            <CandidateButton variant="secondary" disabled={currentIndex === 0} onClick={() => setCurrentIndex((i) => i - 1)}>
-              <span className="inline-flex items-center gap-1">
-                <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-                Previous
-              </span>
-            </CandidateButton>
-            {currentIndex < questions.length - 1 ? (
-              <CandidateButton onClick={() => setCurrentIndex((i) => i + 1)}>
-                <span className="inline-flex items-center gap-1">
-                  Next
-                  <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-                </span>
-              </CandidateButton>
-            ) : (
-              <CandidateButton onClick={() => setConfirmOpen(true)}>Review & Submit</CandidateButton>
-            )}
-          </div>
-        </div>
-
-        {/* The extra width on a large screen goes to the navigator rather than stretching the
-            question text further — the numbers and per-section counts genuinely read better. */}
-        <div className="hidden w-56 shrink-0 overflow-y-auto lg:block xl:w-64 2xl:w-80">
-          <QuestionNavigator sections={attemptState.sections} answers={answers} currentIndex={currentIndex} onSelect={setCurrentIndex} />
-          <CandidateButton onClick={() => setConfirmOpen(true)} className="mt-3 w-full text-xs">
-            Review & Submit
-          </CandidateButton>
-        </div>
-      </div>
-
-      {navigatorOpen && (
-        <div className="fixed inset-0 z-10 flex items-end bg-candidate-text/30 lg:hidden" onClick={() => setNavigatorOpen(false)}>
-          <div className="w-full rounded-t-xl bg-candidate-bg p-4" onClick={(event) => event.stopPropagation()}>
-            <QuestionNavigator
-              sections={attemptState.sections}
-              answers={answers}
-              currentIndex={currentIndex}
-              onSelect={(index) => {
-                setCurrentIndex(index);
-                setNavigatorOpen(false);
-              }}
-            />
-          </div>
-        </div>
-      )}
-
-      <Modal open={confirmOpen} title="Submit exam?" onClose={() => setConfirmOpen(false)}>
-        <p className="mb-4 text-sm text-candidate-text-secondary">You won&apos;t be able to change your answers after this.</p>
-        {shortSections.length > 0 && (
-          <p className="mb-4 rounded-md bg-status-warning-bg px-3 py-2 text-sm text-status-warning">
-            {shortSections.map((s) => `${s.title}: ${s.answered} of ${s.required} answered`).join('; ')}
-          </p>
-        )}
-        <div className="mb-4 grid grid-cols-3 gap-2">
-          <div className="rounded-md bg-candidate-primary-light p-2 text-center">
-            <div className="text-lg font-bold text-candidate-primary">{answeredCount}</div>
-            <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">Answered</div>
-          </div>
-          {/* Clickable when there is somewhere to go: enters a mode that steps through only the
-              questions in that state. Rendered as a plain tile at zero so there is no dead
-              control to press. */}
-          {reviewCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => enterReviewFilter('marked')}
-              aria-label={`Review the ${reviewCount} questions marked for review`}
-              className="rounded-md bg-candidate-review-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-review-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-candidate-review-border"
-            >
-              <div className="text-lg font-bold text-candidate-review">{reviewCount}</div>
-              <div className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-candidate-review">
-                For review <ChevronRight className="h-3 w-3" aria-hidden="true" />
-              </div>
-            </button>
-          ) : (
-            <div className="rounded-md bg-candidate-review-bg p-2 text-center">
-              <div className="text-lg font-bold text-candidate-review">{reviewCount}</div>
-              <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">For review</div>
-            </div>
-          )}
-          {unansweredCount > 0 ? (
-            <button
-              type="button"
-              onClick={() => enterReviewFilter('unanswered')}
-              aria-label={`Review the ${unansweredCount} unanswered questions`}
-              className="rounded-md bg-candidate-bg p-2 text-center transition hover:ring-2 hover:ring-inset hover:ring-candidate-border focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-candidate-primary"
-            >
-              <div className="text-lg font-bold text-candidate-text-secondary">{unansweredCount}</div>
-              <div className="inline-flex items-center gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-candidate-text-secondary">
-                Unanswered <ChevronRight className="h-3 w-3" aria-hidden="true" />
-              </div>
-            </button>
-          ) : (
-            <div className="rounded-md bg-candidate-bg p-2 text-center">
-              <div className="text-lg font-bold text-candidate-text-secondary">{unansweredCount}</div>
-              <div className="text-[10px] uppercase tracking-wide text-candidate-text-tertiary">Unanswered</div>
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2">
-          <CandidateButton variant="secondary" onClick={() => setConfirmOpen(false)}>
-            Keep reviewing
-          </CandidateButton>
-          <CandidateButton onClick={handleConfirmSubmit} disabled={submitAttempt.isPending}>
-            {submitAttempt.isPending ? 'Submitting…' : 'Submit'}
-          </CandidateButton>
-        </div>
-      </Modal>
-
-      <Modal open={submitAttempt.isError} title="Couldn't submit" onClose={() => undefined}>
-        <p className="mb-4 text-sm text-candidate-text-secondary">
-          Your submission didn&apos;t go through. Your answers are saved — please retry.
-        </p>
-        <div className="flex justify-end">
-          <CandidateButton onClick={() => finishSubmit()} className="bg-candidate-danger hover:opacity-90">
-            Retry
-          </CandidateButton>
-        </div>
-      </Modal>
-      </div>
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      <TestRunnerScreen live={live} />
     </div>
   );
 }

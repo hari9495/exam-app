@@ -1,15 +1,18 @@
 import { Body, Controller, Delete, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { DrivesService } from './drives.service';
 import { CreateDriveDto } from './dto/create-drive.dto';
+import { ResultsScope, ResultsScopeOf, ScopesResults } from '../rbac/results-scope';
 
 @Controller()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2006): no assessments change while acting for someone else.
+@UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class DrivesController {
   constructor(private readonly drivesService: DrivesService) {}
 
@@ -44,13 +47,15 @@ export class DrivesController {
 
   @Get('drives/:id/live')
   @RequirePermissions('results:view')
-  liveRoster(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.drivesService.liveRoster(tenant, id);
+  @ScopesResults()
+  liveRoster(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @ResultsScopeOf() scope: ResultsScope) {
+    return this.drivesService.liveRoster(tenant, id, scope);
   }
 
   @Get('drives/:id/results')
   @RequirePermissions('results:view')
-  results(@CurrentTenant() tenant: TenantContext, @Param('id') id: string) {
-    return this.drivesService.results(tenant, id);
+  @ScopesResults()
+  results(@CurrentTenant() tenant: TenantContext, @Param('id') id: string, @ResultsScopeOf() scope: ResultsScope) {
+    return this.drivesService.results(tenant, id, scope);
   }
 }

@@ -2,13 +2,16 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { Request } from 'express';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
-import { buildViewer, covers, grantPeriods } from '../access/scope';
+import { buildViewer, covers, grantPeriods, inScopeSql } from '../access/scope';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { cleanHtml, htmlToText, textToHtml } from './rich-text';
 import { DeskActor, audit, companyOf, emit } from './desk-access';
-import { RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
+import { ITSM_KINDS, RaiseTicketDto, RequesterReplyDto, WatcherDto } from './dto';
 import { Ticket, TicketsService } from './tickets.service';
+import { assetsOf } from './asset-pick';
+import { fieldsFor, raiseFieldsOf, shownFields } from './ticket-fields';
+import { checkPlace } from './facilities.service';
 
 // The requester's side (M14 §6.1 implicit role, YX-SD-16): raise, follow, reply and add watchers. No permission key:
 // every route works only on the person's own records (requester, requested-for or watcher) and never returns internal
@@ -93,18 +96,30 @@ export class RequesterService {
     const personId = await this.personOf(tx, r, false);
     const t = personId ? await tx.sdTicket.findFirst({ where: { id, organizationId: org } }) : null;
     const ids = personId ? await this.idsOf(tx, org, personId) : [];
-    if (!t || !personId || !(await this.follows(tx, org, ids, t))) throw new NotFoundException('No such ticket.');
+    if (!t || !personId || ITSM_KINDS.includes(t.kind) || !(await this.follows(tx, org, ids, t))) throw new NotFoundException('No such ticket.');
     return { t, personId, ids };
   }
 
   /** Employee help desks the person can raise to, with the parts of their set-up the raise form shows. */
-  async desks(r: Requester) {
+  async desks(r: Requester, forPersonId?: string) {
     const org = r.ctx.organizationId;
     return this.tx(r, async (tx) => {
       const desks = await tx.sdDesk.findMany({ where: { organizationId: org, status: 'active', kind: { not: 'customer_support' } }, orderBy: { name: 'asc' } });
       const ids = desks.map((d) => d.id);
-      const types = await tx.sdTicketType.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const types = await tx.sdTicketType.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true, kind: { notIn: [...ITSM_KINDS] } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
       const cats = await tx.sdCategory.findMany({ where: { organizationId: org, deskId: { in: ids }, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      const cache = new Map();
+      const closed = new Map(await Promise.all(desks.map(async (d) => [d.id, await this.tickets.sla.closedNow(tx, org, d, new Date(), cache)] as const)));
+      // Answer 1685: asked for the person the ticket is for (raising for someone else needs the on-behalf right).
+      let whose = desks.some((d) => d.kind === 'it') || forPersonId ? await this.personOf(tx, r, Boolean(forPersonId)) : null;
+      if (forPersonId && forPersonId !== whose) {
+        await this.checkOnBehalf(tx, r, forPersonId, whose!);
+        whose = forPersonId;
+      }
+      const hasDevice = Boolean(whose && (await assetsOf(tx, org, whose, '')).length);
+      const fieldsOf = await raiseFieldsOf(tx, org, new Map(desks.map((d) => [d.id, types.find((t) => t.deskId === d.id)?.id])));
+      // ITSM answer 2057: an IT desk asks "Which application?" (optional) from the company's list.
+      const apps = desks.some((d) => d.kind === 'it') ? await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [];
       return desks.map((d) => ({
         id: d.id,
         name: d.name,
@@ -113,6 +128,14 @@ export class RequesterService {
         attachmentMaxMb: d.attachmentMaxMb,
         types: types.filter((t) => t.deskId === d.id).map((t) => ({ id: t.id, name: t.name })),
         categories: cats.filter((c) => c.deskId === d.id).map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive })),
+        closed: closed.get(d.id) ?? null,
+        // Answer 1662: an IT desk asks "Which device?" when the person has one assigned.
+        askDevice: d.kind === 'it' && hasDevice,
+        // Answer 1911: a facilities desk asks which building and area.
+        askPlace: d.kind === 'facilities',
+        // Answer 1842: the desk's fields everyone sees, filled on the raise form.
+        fields: fieldsOf(d.id),
+        apps: d.kind === 'it' ? apps : [],
       }));
     });
   }
@@ -124,6 +147,19 @@ export class RequesterService {
       if (!desk || desk.kind === 'customer_support') throw new NotFoundException('No such desk.');
       const personId = (await this.personOf(tx, r, true))!;
       if (dto.requestedForPersonId) await this.checkOnBehalf(tx, r, dto.requestedForPersonId, personId);
+      // Answer 1662: "Which device?" on an IT desk, one of the devices assigned now to the person it is for.
+      if (dto.assetId) {
+        if (desk.kind !== 'it') throw new BadRequestException('Only IT desk tickets name a device.');
+        const mine = await assetsOf(tx, r.ctx.organizationId, dto.requestedForPersonId ?? personId, '');
+        if (!mine.some((x) => x.id === dto.assetId)) throw new BadRequestException('Choose one of your own devices from the list.');
+      }
+      // Answer 1911: a facilities ticket may name its building and an area of it (checked: live, of this company, the area of that building).
+      let place: { locationId: string | null; areaId: string | null } = { locationId: null, areaId: null };
+      if (dto.locationId || dto.areaId) {
+        if (desk.kind !== 'facilities') throw new BadRequestException('Only facilities tickets name a building or area.');
+        place = await checkPlace(tx, r.ctx.organizationId, { locationId: dto.locationId ?? null, areaId: dto.areaId ?? null });
+      }
+      if (dto.appId && desk.kind !== 'it') throw new BadRequestException('Only IT desk tickets name an application.');
       return this.tickets.createIn(tx, r, {
         deskId: dto.deskId,
         typeId: dto.typeId,
@@ -142,9 +178,37 @@ export class RequesterService {
         authorPersonId: personId,
         // US-B-100: the screen the in-app help drawer was opened on.
         custom: dto.screen ? { screen: dto.screen } : undefined,
+        originArticleId: dto.originArticleId,
+        originQuery: dto.originQuery,
+        assetId: dto.assetId,
+        fields: dto.fields,
+        locationId: place.locationId,
+        areaId: place.areaId,
+        appId: dto.appId,
       });
     });
     return { id: t.id, number: t.number };
+  }
+
+  /**
+   * Answer 1846: the colleagues this person may raise for (request.raise_on_behalf over them today, the same check as
+   * checkOnBehalf), never themselves; names and department only. `l` is the escaped ILIKE pattern.
+   */
+  async onBehalfPeople(tx: Tx, r: Requester, l: string) {
+    const org = r.ctx.organizationId;
+    const viewer = await buildViewer(this.prisma, this.tenantPrisma, { ...r.user, userId: r.userId, organizationId: org }, ['request.raise_on_behalf']);
+    const own = (await tx.employee.findFirst({ where: { organizationId: org, userId: r.userId }, select: { id: true } }))?.id ?? null;
+    const me = await this.personOf(tx, r, false);
+    const rows = await tx.$queryRaw<{ id: string; name: string; department: string | null }[]>`
+      SELECT p.id, concat_ws(' ', coalesce(nullif(p.preferred_name, ''), p.given_name), p.family_name) AS name,
+             (SELECT d.name::text FROM employee_assignments a JOIN departments d ON d.organization_id = a.organization_id AND d.id = a.department_id
+              WHERE a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL AND a.valid_to IS NULL LIMIT 1) AS department
+      FROM employees e JOIN persons p ON p.organization_id = e.organization_id AND p.id = e.person_id
+      WHERE e.organization_id = ${org}::uuid AND p.status = 'active' AND p.id IS DISTINCT FROM ${me}::uuid
+        AND (p.given_name ILIKE ${l} OR p.family_name ILIKE ${l} OR p.preferred_name ILIKE ${l})
+        AND ${inScopeSql(r.ctx, viewer, 'request.raise_on_behalf', Prisma.sql`e.id`, Prisma.sql`${todayIst()}::date`, own)}
+      ORDER BY p.given_name, p.family_name LIMIT 20`;
+    return rows.map((x) => ({ id: x.id, label: x.name, detail: x.department }));
   }
 
   /** US-G-004 / P02: raising for someone else needs request.raise_on_behalf over that employee today. */
@@ -164,21 +228,41 @@ export class RequesterService {
       if (!personId) return [];
       const ids = await this.idsOf(tx, org, personId);
       const watched = await this.visibleIds(tx, org, ids);
-      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched }, private: false, sensitive: false }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
+      // ITSM: changes and problems are IT's own records, never in anyone's "My tickets" (answer 1931).
+      const rows = await tx.sdTicket.findMany({ where: { organizationId: org, kind: { notIn: [...ITSM_KINDS] }, OR: [...(this.mine(org, ids).OR ?? []), { id: { in: watched }, private: false, sensitive: false }] }, orderBy: { updatedAt: 'desc' }, take: 200 });
       const statuses = new Map((await tx.sdStatus.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.statusId) } }, select: { id: true, label: true } })).map((s) => [s.id, s.label]));
-      const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
-      return rows.map((t) => ({
-        id: t.id,
-        number: t.number,
-        subject: t.subject,
-        desk: desks.get(t.deskId) ?? '',
-        status: statuses.get(t.statusId) ?? '',
-        systemState: t.systemState,
-        private: t.private || t.sensitive,
-        role: ids.includes(t.requesterPersonId) ? 'requester' : t.requestedForPersonId && ids.includes(t.requestedForPersonId) ? 'requested_for' : 'watcher',
-        createdAt: t.createdAt,
-        updatedAt: t.updatedAt,
-      }));
+      const desks = new Map((await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: rows.map((t) => t.deskId) } }, select: { id: true, name: true, reopenWindowDays: true, requesterCanReopen: true, autoCloseDays: true, ratingReasons: true } })).map((d) => [d.id, d]));
+      // HLP-01: the resolution promise on open tickets, and on solved ones when it closes, until when a reply reopens
+      // it (the desk's own settings) and whether the person who raised it can still rate it.
+      const clocks = await this.tickets.sla.requesterClocks(tx, org, rows.filter((t) => !['solved', 'closed'].includes(t.systemState)).map((t) => t.id));
+      const done = rows.filter((t) => ['solved', 'closed'].includes(t.systemState)).map((t) => t.id);
+      const rated = new Map((done.length ? await tx.sdRating.findMany({ where: { organizationId: org, ticketId: { in: done } }, select: { ticketId: true, score: true } }) : []).map((x) => [x.ticketId, x.score]));
+      const day = 86_400_000;
+      return rows.map((t) => {
+        const d = desks.get(t.deskId);
+        const solved = t.systemState === 'solved' && t.resolvedAt;
+        const isRequester = ids.includes(t.requesterPersonId);
+        return {
+          id: t.id,
+          number: t.number,
+          subject: t.subject,
+          desk: d?.name ?? '',
+          status: statuses.get(t.statusId) ?? '',
+          systemState: t.systemState,
+          private: t.private || t.sensitive,
+          role: isRequester ? 'requester' : t.requestedForPersonId && ids.includes(t.requestedForPersonId) ? 'requested_for' : 'watcher',
+          createdAt: t.createdAt,
+          updatedAt: t.updatedAt,
+          clock: clocks.get(t.id) ?? null,
+          resolvedAt: t.resolvedAt,
+          closedAt: t.closedAt,
+          closesOn: solved && d?.autoCloseDays ? new Date(t.resolvedAt!.getTime() + d.autoCloseDays * day) : null,
+          reopenUntil: solved && d?.requesterCanReopen ? new Date(t.resolvedAt!.getTime() + d.reopenWindowDays * day) : null,
+          rating: rated.get(t.id) ?? null,
+          canRate: isRequester && !rated.has(t.id) && ['solved', 'closed'].includes(t.systemState),
+          ratingReasons: d?.ratingReasons ?? [],
+        };
+      });
     });
   }
 
@@ -211,6 +295,9 @@ export class RequesterService {
         desk: { name: desk.name, attachmentTypes: desk.attachmentTypes, attachmentMaxMb: desk.attachmentMaxMb },
         rating: rating?.score ?? null,
         canRate: !rating && ['solved', 'closed'].includes(t.systemState) && ids.includes(t.requesterPersonId),
+        ratingReasons: desk.ratingReasons,
+        // Answers 1641, 1650: only the fields the requester may see, and only filled ones (never the staff-only values).
+        deskFields: shownFields(await fieldsFor(tx, org, t.deskId, t.typeId), t.fieldValues, 'requester', true).map((f) => ({ label: f.label, value: f.display })),
         status: status?.label ?? '',
         systemState: t.systemState,
         private: t.private || t.sensitive,

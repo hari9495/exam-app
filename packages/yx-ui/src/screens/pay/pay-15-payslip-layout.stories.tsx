@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PayslipLayoutScreen } from './comp-setup';
 
-const meta: Meta<typeof PayslipLayoutScreen> = { title: 'Screens/Pay/PAY-15 · Payslip layout editor', component: PayslipLayoutScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof PayslipLayoutScreen> = { title: 'Screens/Pay/PAY-15 · Payslip layout editor', component: PayslipLayoutScreen, render: (args) => <PayslipLayoutScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof PayslipLayoutScreen>;
 

@@ -29,7 +29,7 @@ export interface Requisition {
   replacementFor?: string | null;
   proposedMax: number;
   positions: number;
-  status: 'Draft' | 'Pending approval' | 'Approved' | 'Sent back' | 'Filled' | 'Closed';
+  status: 'Draft' | 'Pending approval' | 'Approved' | 'Sent back' | 'Filled' | 'Closed' | 'Cancelled';
   raised: Date;
   waitingOn?: string;
 }
@@ -52,10 +52,12 @@ export interface Job {
   title: string;
   department: string;
   location: string;
-  type: 'Full time' | 'Contract' | 'Campus';
+  /** Full time, Contract, Campus (live: the job's employment type in words). */
+  type: string;
   recruiter: string;
   hiringManager: string;
-  status: 'Open' | 'Draft' | 'On hold' | 'Closed';
+  /** Live jobs add 'Waiting for approval' (a requisition sent for approval). */
+  status: 'Open' | 'Draft' | 'On hold' | 'Closed' | 'Waiting for approval';
   applicants: number;
   inPipeline: number;
   posted: Date | null;

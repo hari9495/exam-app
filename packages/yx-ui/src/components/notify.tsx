@@ -35,7 +35,7 @@ import { useControllable } from './overlay';
 
 /* ======================= Toasts (§25) ======================= */
 
-export type ToastTone = 'default' | 'success' | 'error';
+export type ToastTone = 'default' | 'success' | 'warning' | 'error';
 
 export interface ToastOptions {
   title: ReactNode;
@@ -43,6 +43,8 @@ export interface ToastOptions {
   tone?: ToastTone;
   /** Shows "Undo" wherever the action can be reversed (§25). */
   onUndo?: () => void;
+  /** One next step, such as "Open it" (closes the toast). */
+  action?: { label: string; onClick: () => void };
 }
 
 interface ToastItem extends ToastOptions {
@@ -60,14 +62,22 @@ const ToastContext = createContext<ToastApi | null>(null);
 export const TOAST_DURATION = 5000;
 export const TOAST_MAX = 3;
 
+/** The toast API when a ToastProvider is present, else null (for kit parts that also render on their own). */
+export const useToastIfAny = (): ToastApi | null => useContext(ToastContext);
+
 export function useToast(): ToastApi {
   const api = useContext(ToastContext);
   if (!api) throw new Error('useToast must be used inside <ToastProvider>.');
   return api;
 }
 
-/** Bottom-left stack, at most 3 on screen; extra toasts wait in a queue until a slot frees (§25). */
+/** Bottom-left stack, at most 3 on screen; extra toasts wait in a queue until a slot frees (§25). Inside another
+ * ToastProvider it adds nothing: the outer one shows the toasts (one stack per page). */
 export function ToastProvider({ children }: { children: ReactNode }) {
+  return useContext(ToastContext) ? <>{children}</> : <ToastHost>{children}</ToastHost>;
+}
+
+function ToastHost({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<ToastItem[]>([]);
   const [announce, setAnnounce] = useState({ polite: '', assertive: '' });
   const nextId = useRef(1);
@@ -101,10 +111,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={{ toast, dismiss }}>
       {children}
-      <div className="yx-visually-hidden" aria-live="polite" role="status">
+      {/* Plain live regions (no status/alert role), so a page's own status and alert messages stay the only ones. */}
+      <div className="yx-visually-hidden" aria-live="polite" aria-atomic="true" data-toast-announce="polite">
         {announce.polite}
       </div>
-      <div className="yx-visually-hidden" aria-live="assertive" role="alert">
+      <div className="yx-visually-hidden" aria-live="assertive" aria-atomic="true" data-toast-announce="assertive">
         {announce.assertive}
       </div>
       <section
@@ -140,7 +151,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   );
 }
 
-const TOAST_ICON = { default: Info, success: CheckCircle2, error: AlertCircle } as const;
+const TOAST_ICON = { default: Info, success: CheckCircle2, warning: AlertTriangle, error: AlertCircle } as const;
 
 function Toast({ item, paused, onDismiss }: { item: ToastItem; paused: boolean; onDismiss: () => void }) {
   const tone = item.tone ?? 'default';
@@ -174,6 +185,17 @@ function Toast({ item, paused, onDismiss }: { item: ToastItem; paused: boolean; 
           }}
         >
           Undo
+        </Button>
+      )}
+      {item.action && (
+        <Button
+          size="sm"
+          onClick={() => {
+            item.action?.onClick();
+            onDismiss();
+          }}
+        >
+          {item.action.label}
         </Button>
       )}
       <IconButton icon={X} label="Close" size="sm" noTooltip onClick={onDismiss} />
@@ -303,7 +325,10 @@ export interface NotificationCentreProps {
   onMarkAllRead: () => void;
   /** Called when an item is opened. */
   onOpenItem?: (item: NotificationItem) => void;
-  settingsHref: string;
+  /** Notification settings; omitted where there are none (the YukthiX console, answer 2093). */
+  settingsHref?: string;
+  /** The server's unread count, when the list shows only the latest notices (answer 2093). */
+  unreadCount?: number;
   /** The full inbox (PLT-03), when the app has one. */
   allHref?: string;
   open?: boolean;
@@ -333,9 +358,9 @@ function groupByDay<T extends { at: Date }>(items: T[], now: Date) {
   return groups;
 }
 
-export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsHref, allHref, open, defaultOpen = false, onOpenChange, now, loading }: NotificationCentreProps) {
+export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsHref, unreadCount, allHref, open, defaultOpen = false, onOpenChange, now, loading }: NotificationCentreProps) {
   const [isOpen, setOpen] = useControllable(open, defaultOpen, onOpenChange);
-  const unread = items.filter((i) => !i.read).length;
+  const unread = unreadCount ?? items.filter((i) => !i.read).length;
   const ref = now ?? new Date();
   const label = unread ? `Notifications, ${unread} unread` : 'Notifications';
 
@@ -422,9 +447,11 @@ export function NotificationCentre({ items, onMarkAllRead, onOpenItem, settingsH
               See all notifications
             </Link>
           )}
-          <Link href={settingsHref} onClick={() => setOpen(false)}>
-            Notification settings
-          </Link>
+          {settingsHref && (
+            <Link href={settingsHref} onClick={() => setOpen(false)}>
+              Notification settings
+            </Link>
+          )}
         </footer>
       </PopoverContent>
     </Popover>
@@ -640,6 +667,8 @@ export interface TimesheetApprovalLine {
   task?: string;
   hours: number;
   billable?: boolean;
+  /** Answers 1734, 1787: the person's comment for each day of this row, Monday to Sunday (the row's approver reads them). */
+  comments?: string[];
 }
 
 export type LineDecision =
@@ -737,6 +766,7 @@ function TimesheetLineRow({ line, decision, onDecide }: { line: TimesheetApprova
         <span className="yx-tsa__project">{line.project}</span>
         {line.task && <span className="yx-tsa__task">{line.task}</span>}
         {line.billable && <span className="yx-tsa__task">Billable</span>}
+        {(line.comments ?? []).map((c, d) => (c ? <span key={d} className="yx-tsa__note">{`${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d]}: ${c}`}</span> : null))}
       </div>
       <div className="yx-tsa__hours">
         {decision?.status === 'reduced' ? (

@@ -41,6 +41,8 @@ export interface ClockContext {
   deviceApproved: boolean;
   /** When already clocked out, the time, "18:41". */
   outAt?: string;
+  /** Answer 2477: the shift lets people clock in again after clocking out (off by default). */
+  reclockIn?: boolean;
 }
 
 export interface ClockBlock {
@@ -59,6 +61,8 @@ export function fmt12(hhmm: string) {
 
 /** Which buttons are live and, if clocking in or out is refused, the plain reason (M02 §B1, YX-AT-23, YX-MOB-05/08/18). */
 export function evaluateClock(c: ClockContext): { actions: ClockAction[]; block: ClockBlock | null } {
+  // Answer 2477: clocked out on a shift that allows it: clocking in again is checked like the first clock-in (place, device).
+  if (c.state === 'out' && c.reclockIn) return evaluateClock({ ...c, state: 'not_in', shift: { ...c.shift, opensBeforeMin: 1440 } });
   if (c.state === 'out')
     return {
       actions: [],
@@ -142,7 +146,15 @@ export interface Punch {
   verdict: 'inside' | 'outside' | 'field' | 'network';
   offline?: boolean;
   device?: string;
+  /** Live app: the server refused this punch, with the reason (kept and shown, never counted). */
+  refusal?: string;
+  /** A short note the person kept with this punch (WithNote); shown under it on the day card. */
+  note?: string;
+  /** Batch A A9 (answer 2312): office, remote or unknown, as the server stored it at punch time. Stories work it out from the verdict. */
+  place?: WorkPlace;
 }
+export type WorkPlace = 'office' | 'remote' | 'unknown';
+export const PLACE_LABEL: Record<WorkPlace, string> = { office: 'Office', remote: 'Remote', unknown: 'Not known' };
 
 /** Worked minutes from paired in/out punches minus breaks; an open "in" counts to `now`. */
 export function workedMinutes(punches: Punch[], now?: number): number {
@@ -244,7 +256,8 @@ export function geofenceVerdict(pin: { lat: number; lng: number; accuracyM: numb
 
 /* ---------- attendance month ---------- */
 
-export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'LOP' | 'FUT' | 'TODAY';
+// LV (leave of a type the day engine does not name) and MI (missing check-in) come from the live day engine.
+export type DayCode = 'P' | 'A' | 'L' | 'HD' | 'CL' | 'EL' | 'SL' | 'LV' | 'H' | 'WO' | 'WFH' | 'OD' | 'R' | 'MP' | 'MI' | 'LOP' | 'FUT' | 'TODAY' | 'ST' | 'LO' | 'LF';
 
 export const DAY_CODE_LABEL: Record<DayCode, string> = {
   P: 'Present',
@@ -254,15 +267,21 @@ export const DAY_CODE_LABEL: Record<DayCode, string> = {
   CL: 'Casual leave',
   EL: 'Earned leave',
   SL: 'Sick leave',
+  LV: 'On leave',
   H: 'Holiday',
   WO: 'Weekly off',
   WFH: 'Work from home',
   OD: 'On duty',
   R: 'Regularisation pending',
   MP: 'Missing check-out',
+  MI: 'Missing check-in',
   LOP: 'Unpaid leave',
   FUT: 'Upcoming',
   TODAY: 'Today',
+  // TIM-37 industrial action: marked with its kind, not absence or leave.
+  ST: 'Strike',
+  LO: 'Lockout',
+  LF: 'Lay-off',
 };
 
 export interface AttendanceDay {
@@ -276,7 +295,7 @@ export interface AttendanceDay {
   /** Recorded check-out ("19:25") when the day's punches must match `workedMin` exactly. */
   outAt?: string;
   /** Overtime approval; month totals count paid (approved) overtime only, not pending or taken as comp-off. */
-  otStatus?: 'pending' | 'approved' | 'comp-off';
+  otStatus?: 'pending' | 'approved' | 'comp-off' | 'unclaimed';
   note?: string;
 }
 
@@ -288,16 +307,16 @@ export function monthSummary(days: AttendanceDay[], today: Date = new Date(2026,
   // Today counts once checked in late, as the legend counts it under Late (so Present + Late + WFH adds up).
   const lateToday = days.filter((d) => d.code === 'TODAY' && (d.lateMin ?? 0) > 0).length;
   const present = c('P') + c('L') + c('WFH') + c('OD') + c('HD') * 0.5 + lateToday;
-  const leave = c('CL') + c('EL') + c('SL') + c('HD') * 0.5;
+  const leave = c('CL') + c('EL') + c('SL') + c('LV') + c('HD') * 0.5;
   // An absence in an open month can still be fixed, so it is not unpaid yet; a locked month shows it as LOP.
   const lop = c('LOP');
   const absent = c('A');
   const lateMarks = days.filter((d) => (d.lateMin ?? 0) > 0).length;
   const otMin = days.reduce((a, d) => a + (d.otStatus === 'pending' || d.otStatus === 'comp-off' ? 0 : d.otMin ?? 0), 0);
   const compOffMin = days.reduce((a, d) => a + (d.otStatus === 'comp-off' ? d.otMin ?? 0 : 0), 0);
-  const pending = c('R') + c('MP');
+  const pending = c('R') + c('MP') + c('MI');
   /** Days the person must act on (missing punch, absent) vs regularisations already waiting for approval. */
-  const toFix = days.filter((d) => d.code === 'MP' || d.code === 'A');
+  const toFix = days.filter((d) => d.code === 'MP' || d.code === 'MI' || d.code === 'A');
   const waiting = c('R');
   const payable = days.filter((d) => d.code !== 'FUT' && daysUntil(d.date, today) < 0).length - lop - absent;
   return { counts, present, leave, lop, absent, lateMarks, otMin, otHours: Math.round((otMin / 60) * 100) / 100, compOffMin, pending, toFix, waiting, payable };

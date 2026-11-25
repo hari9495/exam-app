@@ -44,7 +44,9 @@ export const SUPPORT_READABLE = [
   '/auth/sessions',
   '/auth/login-history',
 ];
-const readable = (path: string) => SUPPORT_READABLE.some((p) => path === p || path.startsWith(`${p}/`));
+// Answer 1052: from /help, only Helpdesk › Look up a reference (GET, one code); the rest of /help stays out of scope.
+export const SUPPORT_READABLE_ROUTES = [/^\/help\/not-found\/[A-Za-z0-9-]{1,20}$/];
+const readable = (path: string) => SUPPORT_READABLE.some((p) => path === p || path.startsWith(`${p}/`)) || SUPPORT_READABLE_ROUTES.some((r) => r.test(path));
 
 /**
  * Called by JwtStrategy for a token minted inside a support session: refuses it once the session has ended,

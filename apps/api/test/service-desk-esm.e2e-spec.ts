@@ -44,7 +44,7 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
     });
   // The company calendar is India time (todayIst), so the test's "today" is too (UTC lags it after 6:30 pm UTC).
   const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
-  const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; title: string; summary: { label: string; value: string }[]; onBehalfOf: string | null }[];
+  const inbox = async (who: Who) => (await api(who, 'get', '/workflow/approvals/inbox').expect(200)).body as { taskId: string; requestId: string; title: string; summary: { label: string; value: string }[]; onBehalfOf: string | null }[];
   const decide = (who: Who, taskId: string, decision: 'approve' | 'reject', reason?: string) => api(who, 'post', `/workflow/approvals/tasks/${taskId}/decide`).send({ decision, ...(reason ? { reason } : {}) });
   /** Events are handled by the outbox dispatcher (this process or another API on the same database): wait for the run. */
   const runsOf = async (ruleId: string, until: (rows: { outcome: string; recordId: string }[]) => boolean) => {
@@ -147,6 +147,12 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
 
     ids.it = (await api('adminA', 'post', '/desk/desks').send({ name: 'IT help', key: 'IT', kind: 'it' }).expect(201)).body.id;
     ids.itB = (await api('adminB', 'post', '/desk/desks').send({ name: 'B IT', key: 'BIT', kind: 'it' }).expect(201)).body.id;
+    // Since Helpdesk item 1 a new IT desk gets the IT starter items; this suite builds its own catalogue from nothing, so
+    // the starter items are set aside (retired, renamed) before it starts.
+    for (const [desk, o] of [[ids.it, org.A.id], [ids.itB, org.B.id]] as const)
+      await system(async (tx) => {
+        for (const i of await tx.sdCatalogItem.findMany({ where: { deskId: desk } })) await tx.sdCatalogItem.update({ where: { id: i.id }, data: { state: 'retired', name: `Starter ${i.name}` } });
+      }, o);
     for (const [who, role] of [['agent', 'agent'], ['lead', 'lead'], ['deskAdmin', 'admin']] as const) await api('adminA', 'post', `/desk/desks/${ids.it}/members`).send({ userId: users[who], role }).expect(201);
     await system(async (tx) => {
       const g = await tx.sdGroup.findFirstOrThrow({ where: { deskId: ids.it } });
@@ -396,8 +402,46 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
       const bell = await system((tx) => tx.userNotification.findMany({ where: { recipientUserId: users.hrAdmin, type: 'workflow.approval.no_approver', entityId: req.id } }));
       expect(bell).toHaveLength(1);
       expect(bell[0].contextText).toContain('Cost-centre owner');
+      expect(bell[0].contextText).toMatch(/so the desk's team leads got it\. Check the manager or cost-centre owner/);
       expect(send.mock.calls.some(([m]) => m.to === `hrAdmin@esm-${run}.test`)).toBe(true);
       await api('emp', 'post', `/desk/my/requests/${out.requests[0].ticketId}/cancel`).send({ reason: 'Test done' }).expect(200);
+    });
+
+    it('PLT-04 bulk decide checks each task on its own and reports each; team history shows decisions on requests I hold', async () => {
+      const order = async () => (await api('emp', 'post', '/desk/my/catalog/checkout').send({ items: [{ itemId: ids.laptop, answers: { model: 'std', cc: ids.cc } }] }).expect(201)).body.requests[0].ticketId as string;
+      const tickets = [await order(), await order()];
+      const mine = (await api('mgr', 'get', '/workflow/approvals/inbox').expect(200)).body.filter((x: { title: string }) => x.title.startsWith('New laptop')) as { taskId: string; requestId: string }[];
+      expect(mine).toHaveLength(2);
+      const bulk = (who: Who, body: Record<string, unknown>) => api(who, 'post', '/workflow/approvals/tasks/decide').send(body);
+      // Not approving needs a reason; no task is touched.
+      await bulk('mgr', { taskIds: mine.map((t) => t.taskId), decision: 'reject' }).expect(400);
+      // Someone else's tasks are refused one by one (as "not found"), never decided.
+      expect((await bulk('other', { taskIds: [mine[0].taskId], decision: 'approve' }).expect(200)).body).toEqual({ results: [{ taskId: mine[0].taskId, ok: false, message: 'No such approval.' }] });
+      const stranger = randomUUID();
+      const res = (await bulk('mgr', { taskIds: [mine[0].taskId, stranger, mine[1].taskId, mine[0].taskId], decision: 'approve' }).expect(200)).body;
+      expect(res.results).toEqual([
+        { taskId: mine[0].taskId, ok: true, requestStatus: 'pending' },
+        { taskId: stranger, ok: false, message: 'No such approval.' },
+        { taskId: mine[1].taskId, ok: true, requestStatus: 'pending' },
+      ]);
+      // Decided already: said for each, not silently skipped.
+      expect((await bulk('mgr', { taskIds: [mine[0].taskId], decision: 'approve' }).expect(200)).body.results[0]).toEqual({ taskId: mine[0].taskId, ok: false, message: 'This approval is already closed.' });
+      await bulk('mgr', { taskIds: [], decision: 'approve' }).expect(400);
+      await bulk('mgr', { taskIds: ['not-a-uuid'], decision: 'approve' }).expect(400);
+      // The cost-centre owner says no to one; the manager sees that in Team history, with the reason.
+      const cco = (await inbox('cco')).filter((x) => mine.some((t) => t.requestId === x.requestId)); // only this test's two orders; earlier tests leave others open
+      expect(cco).toHaveLength(2);
+      await decide('cco', cco[0].taskId, 'reject', 'Use the spare one').expect(200);
+      type H = { requestId: string; decision: string; by: string; byMe: boolean; reason: string | null; requestStatus: string };
+      const history = (await api('mgr', 'get', '/workflow/approvals/team-history').expect(200)).body as H[];
+      const ours = history.filter((h) => mine.some((t) => t.requestId === h.requestId));
+      expect(ours.filter((h) => h.byMe && h.decision === 'approved')).toHaveLength(2);
+      expect(ours.find((h) => h.decision === 'rejected')).toMatchObject({ by: `cco ${run}`, byMe: false, reason: 'Use the spare one', requestStatus: 'rejected' });
+      // The person who only asked, and someone who held no task, see none of it there.
+      expect(((await api('emp', 'get', '/workflow/approvals/team-history').expect(200)).body as H[]).filter((h) => mine.some((t) => t.requestId === h.requestId))).toEqual([]);
+      expect(((await api('other', 'get', '/workflow/approvals/team-history').expect(200)).body as H[]).filter((h) => mine.some((t) => t.requestId === h.requestId))).toEqual([]);
+      expect((await api('empB', 'get', '/workflow/approvals/team-history').expect(200)).body).toEqual([]);
+      for (const t of tickets) await api('emp', 'post', `/desk/my/requests/${t}/cancel`).send({ reason: 'Test done' });
     });
 
     it('delegation: by hand (open tasks move, "on behalf of" is kept) and from leave (to the manager)', async () => {
@@ -487,8 +531,12 @@ describe('Service Desk 3b-2 batch 1: catalogue, approvals, automation', () => {
     it('a rule over its hourly limit pauses itself', async () => {
       const rule = (await api('deskAdmin', 'post', '/desk/rules').send({ deskId: ids.it, name: 'Limited', maxRunsPerHour: 1, trigger: { type: 'created' }, condition: { id: 'g', join: 'and', items: [{ id: 'c1', field: 'subject', operator: 'contains', value: 'limit-me' }] }, actions: [{ type: 'add_tag', tag: 'limited' }] }).expect(201)).body;
       await api('deskAdmin', 'post', `/desk/rules/${rule.id}/status`).send({ version: rule.version, status: 'active' }).expect(200);
-      for (const n of [1, 2]) await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `limit-me ${n} ${run}`, description: 'x' }).expect(201);
-      const runs = await runsOf(rule.id, (r) => r.some((x) => x.outcome === 'limit_stopped'));
+      // ITSM answer 2075: the app's own dispatcher (every 5 s) runs beside this test's dispatch(); two tickets raised
+      // together could be handled at the same moment. So wait for the first ticket's run before raising the second.
+      const first = (await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `limit-me 1 ${run}`, description: 'x' }).expect(201)).body;
+      expect((await runsOf(rule.id, (r) => r.some((x) => x.outcome === 'matched' && x.recordId === first.id))).find((x) => x.outcome === 'matched')).toMatchObject({ recordId: first.id });
+      const second = (await api('emp', 'post', '/desk/my/tickets').send({ deskId: ids.it, subject: `limit-me 2 ${run}`, description: 'x' }).expect(201)).body;
+      const runs = await runsOf(rule.id, (r) => r.some((x) => x.outcome === 'limit_stopped' && x.recordId === second.id));
       expect(runs.map((x) => x.outcome).filter((o) => o !== 'not_matched')).toEqual(['matched', 'limit_stopped']);
       expect((await system((tx) => tx.rule.findFirstOrThrow({ where: { id: rule.id } }))).status).toBe('paused');
     });

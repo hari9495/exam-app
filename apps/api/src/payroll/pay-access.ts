@@ -2,6 +2,7 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
+import { todayIst } from '../org-structure/org-validation';
 import { Viewer, buildViewer, has, tenantWide, type ScopeUser } from '../access/scope';
 
 // Batch 5a access (M03-BUILD-DESIGN §6.2, §12.1). Every payroll route declares its key (YX-SEC-01); here the key's
@@ -76,6 +77,11 @@ export const PAY_KEYS = [
   'payroll.special.manage',
   'payroll.ewa.manage',
   'payroll.equity.manage',
+  // PAY-24 statutory bonus.
+  'payroll.bonus.manage',
+  'payroll.bonus.approve',
+  // PAY-25 payroll reports.
+  'payroll.reports.view',
 ] as const;
 export type PayKey = (typeof PAY_KEYS)[number];
 
@@ -101,6 +107,9 @@ export async function entitiesFor(tx: Tx, c: CompanyContext, v: Viewer, key: Pay
 export async function requireEntity(tx: Tx, c: CompanyContext, v: Viewer, key: PayKey, entityId: string) {
   if (!(await entitiesFor(tx, c, v, key)).includes(entityId)) throw new NotFoundException('Not found');
 }
+
+/** Pay run statuses whose lines may still change (after them a run is submitted or approved). */
+export const PAY_RUN_EDITABLE: readonly string[] = ['draft', 'calculated', 'in_review', 'reopened'];
 
 /** Tells the database pay guard which legal entities this transaction may read and write (transaction-local). */
 export async function payScope(tx: Tx, entityIds: readonly string[]) {
@@ -134,6 +143,28 @@ export async function payHolders(tx: Tx, org: string, key: PayKey, entityId: str
     WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND p.permissions_json LIKE ${like}
       AND g.valid_from <= ${today}::date AND (g.valid_to IS NULL OR g.valid_to >= ${today}::date)
       AND (g.scope_type = 'tenant' OR (g.scope_type = 'legal_entity' AND g.legal_entity_id = ${entityId}::uuid))
+    LIMIT 25`;
+  return rows.map((r) => r.id);
+}
+
+/** PAY-09: true when this person is the only one who may publish the entity's payslips (sole payroll admin). */
+export async function publishesAlone(tx: Tx, org: string, entityId: string, me: string): Promise<boolean> {
+  return !(await payHolders(tx, org, 'payroll.payslip.publish', entityId, todayIst())).some((u) => u !== me);
+}
+
+/** PAY-25: the active people who grant roles company-wide (access.role.manage in their profile or a tenant-wide grant). */
+export async function roleGranters(tx: Tx, org: string): Promise<string[]> {
+  const like = '%"access.role.manage"%';
+  const today = todayIst();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT u.id::text FROM users u JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id
+    WHERE u.organization_id = ${org}::uuid AND u.status = 'active' AND p.permissions_json LIKE ${like}
+    UNION
+    SELECT g.user_id::text FROM role_grants g
+    JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
+    JOIN users u ON u.organization_id = g.organization_id AND u.id = g.user_id AND u.status = 'active'
+    WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND p.permissions_json LIKE ${like} AND g.scope_type = 'tenant'
+      AND g.valid_from <= ${today}::date AND (g.valid_to IS NULL OR g.valid_to >= ${today}::date)
     LIMIT 25`;
   return rows.map((r) => r.id);
 }

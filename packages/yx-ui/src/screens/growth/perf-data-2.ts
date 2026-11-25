@@ -149,7 +149,9 @@ export const COMPETENCIES: Competency[] = [
       { role: 'Quality Manager', level: 5 },
     ],
     usedIn: ['Half-yearly review', 'Annual review', 'Probation review'],
-    skillsTest: 'Food safety basics (20 questions)',
+    skillsTest: 'Food safety basics',
+    skillsTestTagId: 't1',
+    skillsTestQuestions: 20,
   },
   {
     id: 'k2',

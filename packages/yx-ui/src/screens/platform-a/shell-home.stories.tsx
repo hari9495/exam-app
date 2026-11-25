@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { d } from './platform-data';
 import {
@@ -7,13 +7,13 @@ import {
 import { ShieldCheck, UserRound } from 'lucide-react';
 import { CommandPalette, ProfileMenu } from '../../components/shell';
 import { NotificationCentre } from '../../components/notify';
-import { InlineAlert } from '../../components/feedback';
+import { InlineAlert, NoticeBar } from '../../components/feedback';
 import { Button } from '../../components/button';
 import { PageHeader } from '../../components/shell';
 import { DesktopFrame, SCREEN_RAIL } from '../_kit/frames';
 import { peoplePanel } from '../people/people-kit';
 import { TODAY } from '../_kit/data';
-import { HomeClockCard } from '../time/live/my-attendance';
+import { HomeClockCard } from '../time/attendance';
 import type { MyAttendance } from '../time/live/types';
 
 const meta: Meta = { title: 'Screens/Platform/Shell & homes', parameters: { layout: 'fullscreen' } };
@@ -24,7 +24,7 @@ const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };
 /* PLT-01 */
 // Slots the live app needs (design audit step 1): banners above every page, breadcrumbs below the top level, Me and
 // My security in the account menu, and server search that says it is searching.
-const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
+const liveFrame = (over: { paletteOpen?: boolean; banner?: ReactNode } = {}) => (
   <DesktopFrame
     area="people"
     panelTitle="People"
@@ -36,7 +36,7 @@ const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
       onHelp: () => {},
       notifications: <NotificationCentre items={[]} onMarkAllRead={() => {}} settingsHref="#notification-preferences" now={TODAY} />,
       profile: <ProfileMenu name="Lakshmi Venkatesan" email="lakshmi.v@kaverifoods.in" links={[{ label: 'Me', icon: UserRound, onSelect: () => {} }, { label: 'My security', icon: ShieldCheck, onSelect: () => {} }]} />,
-      banner: (
+      banner: over.banner ?? (
         <InlineAlert tone="warning" title="Support session in Kaveri Foods until 15 Oct, 6:00 pm" actions={<Button size="sm">Leave the company</Button>}>
           Read-only. Pay, identity and bank details are hidden, and the company sees every page you open.
         </InlineAlert>
@@ -49,6 +49,15 @@ const liveFrame = (over: { paletteOpen?: boolean } = {}) => (
   </DesktopFrame>
 );
 export const PLT01LiveSlots: S = { name: 'PLT-01 · App shell · live slots (banner, breadcrumbs, Me menu)', render: () => liveFrame() };
+// The MFA notice (founder 20 Oct 2026): one line, hidden until tomorrow with the close button; after the deadline it stays.
+export const PLT01Mfa: S = {
+  name: 'PLT-01 · App shell · secure your account (one line, can hide for today)',
+  render: () => liveFrame({ banner: <NoticeBar action={<a className="yx-link" href="#me-security">Set it up</a>} onDismiss={() => {}}>Add a passkey or an authenticator app by 2 Nov 2026. After that, admin pages pause.</NoticeBar> }),
+};
+export const PLT01MfaOverdue: S = {
+  name: 'PLT-01 · App shell · secure your account, overdue (cannot hide)',
+  render: () => liveFrame({ banner: <NoticeBar tone="danger" action={<a className="yx-link" href="#me-security">Set it up</a>}>Admin pages are paused until you add a passkey or an authenticator app.</NoticeBar> }),
+};
 export const PLT01Searching: S = { name: 'PLT-01 · App shell · search waiting for the server', render: () => liveFrame({ paletteOpen: true }) };
 export const PLT01Shell: S = { name: 'PLT-01 · App shell · HR (all entities, period)', render: () => <AppShellScreen persona="hr" /> };
 export const PLT01Employee: S = { name: 'PLT-01 · App shell · employee rail', render: () => <AppShellScreen persona="employee" /> };
@@ -189,13 +198,13 @@ export const PLT02EmployeeLivePayNone: S = {
 const LIVE_MGR = {
   ...LIVE_EMP,
   team: {
-    summary: '11 in · 2 on leave · 1 not checked in · 0 late',
     total: 14,
     href: '#today',
-    rows: [
-      { id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in · General shift started 9:30 am', nudge: true },
-      { id: 't2', name: 'Meera Krishnan', secondary: 'Sick leave today' },
-      { id: 't3', name: 'Rahul Nair', secondary: 'Casual leave today' },
+    groups: [
+      { key: 'leave' as const, label: 'On leave', people: [{ id: 't2', name: 'Meera Krishnan', secondary: 'Sick leave today' }, { id: 't3', name: 'Rahul Nair', secondary: 'Casual leave today' }] },
+      { key: 'not_in' as const, label: 'Not in yet', people: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'General shift started 9:30 am', nudge: true }] },
+      { key: 'late' as const, label: 'Late', people: [] },
+      { key: 'away' as const, label: 'Working from home or on duty', people: [{ id: 't4', name: 'Vikram Rao', secondary: 'Working from home' }] },
     ],
   },
   off: [
@@ -206,6 +215,8 @@ const LIVE_MGR = {
   ],
   offHref: '#leave-calendar',
   onNudge: () => new Promise<void>((r) => setTimeout(r, 600)),
+  // One-click Approve: the row leaves with a toast naming it.
+  onApprove: () => new Promise<void>((r) => setTimeout(r, 600)),
   stats: [
     { id: 'late', title: 'Late', label: 'Late check-ins this week', value: 3, previous: 5, previousLabel: 'last week', drill: { label: 'View late marks', href: '#muster' } },
     { id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: 6, drill: { label: 'Open reviews', href: '#reviews' } },
@@ -227,7 +238,7 @@ export const PLT02ManagerLiveNudged: S = {
 };
 export const PLT02ManagerLiveQuiet: S = {
   name: 'PLT-02 · Role home · manager, live, quiet week',
-  render: () => <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...LIVE_MGR, team: { ...LIVE_MGR.team, summary: '14 in · 0 on leave · 0 not checked in · 0 late', rows: [] }, off: [], goals: [] }} />,
+  render: () => <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...LIVE_MGR, team: { ...LIVE_MGR.team, groups: LIVE_MGR.team.groups.map((g) => ({ ...g, people: [] })) }, off: [], goals: [] }} />,
 };
 export const PLT02FinanceHidden: S = {
   name: 'PLT-02 · Role home · finance, amounts hidden',
@@ -235,7 +246,7 @@ export const PLT02FinanceHidden: S = {
 };
 export const PLT02Finance: S = { name: 'PLT-02 · Role home · finance', render: () => <RoleHomeScreen persona="finance" data={FIN} defaultHideAmounts={false} /> };
 // Finance, live (home parity 20 Oct 2026): the designed finance widgets with live data only. Left out until they have a
-// source: "Payroll cost" against budget, Announcements, Coming up, the professional tax
+// source: Announcements, Coming up, the professional tax
 // row (no due date on record) and "All payments" (no such page yet).
 const LIVE_FIN: Omit<LiveHome, 'amounts'> = {
   ...LIVE_HR,
@@ -258,6 +269,17 @@ const LIVE_FIN: Omit<LiveHome, 'amounts'> = {
     { id: 'o4', date: '15 Oct', what: 'Provident Fund', amount: 2412100, status: 'Challan not generated', tone: 'neutral', action: 'Generate challan', href: '#statutory' },
     { id: 'o5', date: '15 Oct', what: 'ESI', amount: 556300, status: 'Challan not generated', tone: 'neutral', action: 'Generate challan', href: '#statutory' },
   ],
+  trend: {
+    months: [
+      { label: 'Apr', name: 'April', cost: 20850000, budget: 21400000 },
+      { label: 'May', name: 'May', cost: 20910000, budget: 21400000 },
+      { label: 'Jun', name: 'June', cost: 21120000, budget: 21400000 },
+      { label: 'Jul', name: 'July', cost: 21300000, budget: 21400000 },
+      { label: 'Aug', name: 'August', cost: 21280000, budget: 21400000 },
+      { label: 'Sep', name: 'September', cost: 21560000, budget: 21400000 },
+    ],
+    budgetHref: '#budget',
+  },
   approval: { month: 'September', preparedBy: 'Anita Desai', role: 'Payroll executive', on: '28 Sep', previousMonth: 'August', changePct: 1.4, flagged: 3, threshold: '20', href: '#run' },
   due: undefined,
   moves: undefined,
@@ -283,6 +305,11 @@ function FinanceLive({ quiet, hidden: start = false }: { quiet?: boolean; hidden
 }
 export const PLT02FinanceLive: S = { name: 'PLT-02 · Role home · finance, live', render: () => <FinanceLive /> };
 export const PLT02FinanceLiveHidden: S = { name: 'PLT-02 · Role home · finance, live, amounts hidden', render: () => <FinanceLive hidden /> };
+// No payroll budget set yet (21 Oct 2026): the chart says so and, for someone who sets it, links to Payroll budget.
+export const PLT02FinanceLiveNoBudget: S = {
+  name: 'PLT-02 · Role home · finance, live, no budget yet',
+  render: () => <RoleHomeScreen persona="finance" data={FIN} live={{ ...LIVE_FIN, trend: { ...LIVE_FIN.trend!, months: LIVE_FIN.trend!.months.map((m) => ({ ...m, budget: null })) } }} />,
+};
 export const PLT02FinanceLiveQuiet: S = { name: 'PLT-02 · Role home · finance, live, nothing yet', render: () => <FinanceLive quiet /> };
 // The payroll preparer (Suresh in the demo): the run he prepared waits for someone else, so nothing needs his action
 // and there is no "Payroll approval" card; no claims card without the payout key.
@@ -374,7 +401,7 @@ export const PLT20Empty: S = { name: 'PLT-20 · Command palette · no results', 
 
 /* PLT-21 */
 const HITS: SearchHit[] = [
-  { id: 'h1', source: 'People', title: 'Arjun Mehta', subtitle: 'KF-0231 · QA Engineer · Quality · Chennai office', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(28) },
+  { id: 'h1', source: 'People', title: 'Arjun Mehta', subtitle: 'KF-0231 · Kaveri Foods Pvt Ltd (Tamil Nadu) · QA Engineer · Quality · Chennai office', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(28) },
   { id: 'h2', source: 'Requests', title: 'LV-26-01842 · Casual leave', subtitle: 'Arjun Mehta · 1–2 Oct · Waiting for Karthik Subramanian', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(29) },
   { id: 'h3', source: 'Documents', title: 'Appointment letter · Arjun Mehta', subtitle: 'Letters · signed 12 Jan 2024', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(12, 0) },
   { id: 'h4', source: 'Tickets', title: 'TKT-5519 · Arjun: PF passbook not updated', subtitle: 'Helpdesk · Open · Payroll queue', entity: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', updated: d(24) },

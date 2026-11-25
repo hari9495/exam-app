@@ -66,7 +66,9 @@ function isAttemptedManual(type: string, answer: { answerText: string | null; an
 // cleared by screenShareState's active:true path. face_mismatch is set by stage-3 face
 // enforcement (attempt.service.ts#applyFaceMismatchEnforcement) when faceMismatchAction is 'pause'
 // or 'block' -- direct action, not strike-based, so it has no strikeLimit escalation of its own.
-export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch';
+// AS-5 part 2: 'proctor' (paused from the live console, with a reason; only a proctor resumes it) and 'face_recheck'
+// (answer 2205: after time above the cap is approved, the candidate's face is checked again before resuming).
+export type PauseReason = 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break' | 'proctor' | 'face_recheck';
 
 // Mirrors what AttemptService stamps into Attempt.sectionSnapshotJson at attempt-start. Read
 // (rather than re-queried from ExamSection) deliberately: the snapshot is the frozen, per-attempt
@@ -79,6 +81,8 @@ interface SectionSnapshotEntry {
   weightPercent: number;
   requiredCount: number | null;
   questionIds: string[];
+  /** Answer 2154: frozen at the start, like the weight. Absent on older snapshots: no cut-off. */
+  cutoffPercent?: number | null;
 }
 
 // Attempts that STARTED before section weighting shipped carry a snapshot with no weightPercent
@@ -115,6 +119,7 @@ function toGradableSections(
     // "all required", never as 0, which would score every section out of nothing.
     requiredCount: section.requiredCount ?? null,
     questionIds: section.questionIds,
+    cutoffPercent: section.cutoffPercent ?? null,
   }));
 }
 
@@ -122,6 +127,8 @@ export interface SettlementExam {
   id: string;
   organizationId: string;
   durationMinutes: number;
+  /** AS-4a: the length of one break (exams.break_minutes); the timer stops for at most this long per break. */
+  breakMinutes?: number;
   passCriteriaPercent: number;
   enableAntiCheating: boolean;
   webcamProctoringEnabled: boolean;
@@ -152,21 +159,52 @@ export class AttemptSettlementService {
   ) {}
 
   remainingSeconds(
-    exam: Pick<SettlementExam, 'durationMinutes'>,
-    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string },
+    exam: Pick<SettlementExam, 'durationMinutes' | 'breakMinutes'>,
+    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string; pausedReason?: string | null },
   ): number {
+    // AS-4a: a candidate's break stops the timer for at most the break's length; past it, the time runs again.
+    if (attempt.status === 'paused' && attempt.pausedReason === 'break' && attempt.pausedAt) {
+      return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt, attempt.pausedDurationMs + this.breakCreditMs(exam, attempt.pausedAt), null);
+    }
     const frozenAt = attempt.status === 'paused' || attempt.status === 'blocked' ? attempt.pausedAt : null;
     return computeRemainingSeconds(exam.durationMinutes, attempt.startedAt, attempt.pausedDurationMs, frozenAt);
   }
 
+  /** AS-4a: the break time given back so far: the time since the break started, at most the break's length. */
+  breakCreditMs(exam: Pick<SettlementExam, 'breakMinutes'>, pausedAt: Date, now = Date.now()): number {
+    return Math.max(0, Math.min(now - pausedAt.getTime(), (exam.breakMinutes ?? 5) * 60_000));
+  }
+
+  /** AS-4a: ends a candidate's break, giving back at most its length. Only a break; a proctor's pause stays. */
+  async endBreak(tx: Prisma.TransactionClient, exam: Pick<SettlementExam, 'breakMinutes'>, attempt: Attempt): Promise<Attempt> {
+    if (attempt.status !== 'paused' || attempt.pausedReason !== 'break' || !attempt.pausedAt) return attempt;
+    const credit = this.breakCreditMs(exam, attempt.pausedAt);
+    // Guarded on the row still being on this break: two requests ending it at once credit it once.
+    const res = await tx.attempt.updateMany({
+      where: { id: attempt.id, status: 'paused', pausedReason: 'break', pausedAt: attempt.pausedAt },
+      data: { status: 'in_progress', pausedAt: null, pausedReason: null, pausedDurationMs: attempt.pausedDurationMs + credit },
+    });
+    const updated = await tx.attempt.findUniqueOrThrow({ where: { id: attempt.id } });
+    if (res.count) {
+      void this.broadcaster
+        .emitAttemptStatus(attempt.examId, { attemptId: updated.id, candidateId: attempt.candidateId, status: updated.status })
+        .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
+    }
+    return updated;
+  }
+
   private isExpired(
-    exam: Pick<SettlementExam, 'durationMinutes'>,
-    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string },
+    exam: Pick<SettlementExam, 'durationMinutes' | 'breakMinutes'>,
+    attempt: { startedAt: Date; pausedDurationMs: number; pausedAt: Date | null; status: string; pausedReason?: string | null },
   ): boolean {
     return this.remainingSeconds(exam, attempt) <= 0;
   }
 
   async settleIfExpired(tx: Prisma.TransactionClient, exam: SettlementExam, attempt: Attempt): Promise<Attempt> {
+    // AS-4a: a break past its length ends on its own (the candidate left, or never pressed "End break").
+    if (attempt.status === 'paused' && attempt.pausedReason === 'break' && attempt.pausedAt && Date.now() - attempt.pausedAt.getTime() >= (exam.breakMinutes ?? 5) * 60_000) {
+      attempt = await this.endBreak(tx, exam, attempt);
+    }
     if (attempt.status !== 'in_progress' || !this.isExpired(exam, attempt)) {
       return attempt;
     }
@@ -259,6 +297,7 @@ export class AttemptSettlementService {
         maxScore: summary.maxScore,
         percentage: summary.percentage,
         passFail: hasManualQuestions ? null : summary.passFail,
+        cutoffMissed: hasManualQuestions ? [] : summary.cutoffMissed,
       },
     });
 
@@ -395,7 +434,7 @@ export class AttemptSettlementService {
         .map((answer) => ({ questionId: answer.questionId, marksAwarded: answer.marksAwarded }));
 
       const sectionsForAttempt = toGradableSections(attempt.sectionSnapshotJson, questionIds, weightOverrides);
-      const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent, sectionsForAttempt);
+      const summary = computeResult(await voidIntegritySection(tx, attempt, gradedAnswers), questions, exam.passCriteriaPercent, sectionsForAttempt);
 
       if (
         summary.score === result.score
@@ -407,7 +446,7 @@ export class AttemptSettlementService {
       }
       await tx.result.update({
         where: { attemptId: attempt.id },
-        data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail },
+        data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail, cutoffMissed: summary.cutoffMissed },
       });
       updated += 1;
     }
@@ -454,11 +493,11 @@ export class AttemptSettlementService {
       marksAwarded: answersByQuestionId.get(question.id)?.marksAwarded ?? 0,
     }));
     const sections = toGradableSections(attempt.sectionSnapshotJson, questions.map((question) => question.id));
-    const summary = computeResult(gradedAnswers, questions, exam.passCriteriaPercent, sections);
+    const summary = computeResult(await voidIntegritySection(tx, attempt, gradedAnswers), questions, exam.passCriteriaPercent, sections);
 
     await tx.result.update({
       where: { attemptId: attempt.id },
-      data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail },
+      data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail, cutoffMissed: summary.cutoffMissed },
     });
 
     const finalized = await tx.attempt.update({ where: { id: attempt.id }, data: { status: 'submitted' } });
@@ -678,6 +717,36 @@ export class AttemptSettlementService {
     return { attempt: updated, strike, event };
   }
 
+  /**
+   * Answer 2265: score a finished attempt again after an integrity decision ("section not counted" final, or overturned
+   * on appeal). Nothing to do before it is scored or while marking is open (finalizing applies the same rule).
+   */
+  async rescoreForIntegrity(tx: Prisma.TransactionClient, attemptId: string): Promise<{ rescored: boolean }> {
+    const attempt = await tx.attempt.findUnique({ where: { id: attemptId }, include: { invitation: { include: { exam: true } }, result: true } });
+    if (!attempt?.result || attempt.status === 'pending_manual_grade') return { rescored: false };
+    const exam = attempt.invitation.exam;
+    const questionIds: string[] = JSON.parse(attempt.questionOrderJson);
+    const questions = await tx.question.findMany({ where: { id: { in: questionIds } }, select: { id: true, marks: true } });
+    const answers = await tx.answer.findMany({ where: { attemptId }, select: { questionId: true, marksAwarded: true } });
+    const graded = answers
+      .filter((a): a is { questionId: string; marksAwarded: number } => a.marksAwarded !== null)
+      .map((a) => ({ questionId: a.questionId, marksAwarded: a.marksAwarded }));
+    const sections = toGradableSections(attempt.sectionSnapshotJson, questionIds);
+    const summary = computeResult(await voidIntegritySection(tx, attempt, graded), questions, exam.passCriteriaPercent, sections);
+    await tx.result.update({ where: { attemptId }, data: { score: summary.score, maxScore: summary.maxScore, percentage: summary.percentage, passFail: summary.passFail } });
+    await tx.auditLog.create({
+      data: {
+        organizationId: exam.organizationId,
+        actorUserId: null,
+        action: 'result.rescored_for_integrity',
+        entityType: 'attempt',
+        entityId: attemptId,
+        metadataJson: JSON.stringify({ before: { score: attempt.result.score, percentage: attempt.result.percentage, passFail: attempt.result.passFail }, after: summary }),
+      },
+    });
+    return { rescored: true };
+  }
+
   async resumeFromPause(
     tx: Prisma.TransactionClient,
     attempt: Attempt,
@@ -706,4 +775,20 @@ export class AttemptSettlementService {
       .catch((error) => this.logger.error('Failed to broadcast attempt status', error as Error));
     return updated;
   }
+}
+
+/**
+ * Answer 2265: a final "section not counted" verdict (not overturned on appeal) scores that section's answers as zero;
+ * the section still counts toward the maximum, as the verdict's "that section's score is voided" says.
+ */
+export async function voidIntegritySection<T extends { questionId: string; marksAwarded: number }>(
+  tx: Prisma.TransactionClient,
+  attempt: { id: string; sectionSnapshotJson: string },
+  graded: T[],
+): Promise<T[]> {
+  const inc = await tx.integrityIncident.findUnique({ where: { attemptId: attempt.id }, select: { status: true, verdict: true, sectionTitle: true, appeal: { select: { status: true } } } });
+  if (!inc || inc.status !== 'decided' || inc.verdict !== 'section' || !inc.sectionTitle || inc.appeal?.status === 'overturned') return graded;
+  const snapshot = JSON.parse(attempt.sectionSnapshotJson) as SectionSnapshotEntry[];
+  const voided = new Set(snapshot.filter((sec) => sec.title === inc.sectionTitle).flatMap((sec) => sec.questionIds));
+  return graded.map((a) => (voided.has(a.questionId) ? { ...a, marksAwarded: 0 } : a));
 }

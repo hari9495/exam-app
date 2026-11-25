@@ -121,4 +121,13 @@ export class UpdateSecurityPolicyDto {
   @Min(FLOOR.lockMinutes.min)
   @Max(FLOOR.lockMinutes.max)
   lockMinutes?: number;
+
+  // Batch B item 1: ask again before salary pages (on by default); turning it off is a policy change (step-up, audited).
+  @Present()
+  @IsBoolean()
+  salaryRecheck?: boolean;
+
+  @Present()
+  @IsIn(FLOOR.salaryRecheckMinutes)
+  salaryRecheckMinutes?: number;
 }

@@ -10,6 +10,13 @@ import { addDays, todayIst } from '../org-structure/org-validation';
 import { planFor } from './customers.service';
 import { DeskAccessService, DeskActor, activeOn, audit, deskSystem, has, visibleTickets } from './desk-access';
 import { CustomReportDto, KpiTargetDto, ReportRunDto, ScheduleDto, WallboardDto } from './dto-ops';
+import { ClockView, SlaService, clockState } from './sla.service';
+import { OPEN_STATES } from './tickets.service';
+import { Viewer, fieldTable, sees } from './ticket-fields';
+
+/** Answer 1844: a report column of a desk field. */
+const FIELD_COLUMN = /^field:([a-z][a-z0-9_]{0,39})$/;
+const fieldViewerOn = (a: DeskActor) => (deskId: string): Viewer => (a.roles.get(deskId) === 'lead' ? 'lead' : 'agent');
 
 // SD-1.27 reports (US-B-098, US-B-110, US-B-111, US-G-026 … US-G-028, US-G-223). Dashboards, the KPI history, the
 // report library and the wallboard show counts only, so they count every ticket of the desks the person may report on
@@ -59,6 +66,15 @@ export function forecast(values: number[], ahead: number): number[] {
   return Array.from({ length: ahead }, (_, k) => Math.max(0, Math.round((my + slope * (n + k - mx)) * 10) / 10));
 }
 
+/** HLP-05: the Monday (India date) of every week that touches from … to, oldest first. */
+export function weekStarts(from: string, to: string): string[] {
+  const d = new Date(`${from}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - ((d.getUTCDay() + 6) % 7));
+  const out: string[] = [];
+  for (; d.toISOString().slice(0, 10) <= to; d.setUTCDate(d.getUTCDate() + 7)) out.push(d.toISOString().slice(0, 10));
+  return out;
+}
+
 /** Columns a custom report may hold (US-B-111): never message text. */
 export const REPORT_COLUMNS: Record<string, string> = {
   number: 'Number',
@@ -77,6 +93,7 @@ export const REPORT_COLUMNS: Record<string, string> = {
   first_response: 'First reply',
   resolved: 'Solved',
   rating: 'Rating',
+  rating_reason: 'Rating reason',
   tags: 'Tags',
 };
 
@@ -105,6 +122,7 @@ export class ReportsService {
     private readonly access: DeskAccessService,
     private readonly email: EmailService,
     private readonly notifications: NotificationsService,
+    private readonly sla: SlaService,
   ) {}
 
   /** Desks a person reports on: where they lead, work or run the desk; the Service Desk admin: every desk. */
@@ -193,6 +211,121 @@ export class ReportsService {
         agents: agents.map((x) => ({ userId: x.user_id, name: x.name ?? '', solved: n(x.solved), open: n(x.open), resolutionHours: num(x.resolution_h), rating: num(x.rating) })),
       };
     });
+  }
+
+  // ------------------------------------------------------------------------------------------ HLP-05 SLA dashboard
+
+  /** Kept / missed response targets per desk and measure, finished in from … to (the dashboard's counting rule). */
+  private async targetsIn(tx: Tx, org: string, desks: string[], from: Date, to: Date) {
+    return tx.$queryRaw<{ desk_id: string; metric: string; kept: bigint; missed: bigint }[]>`
+      SELECT desk_id, metric, count(*) FILTER (WHERE state = 'met' AND breached_at IS NULL AND NOT excluded) AS kept, count(*) FILTER (WHERE breached_at IS NOT NULL AND NOT excluded) AS missed
+      FROM sd_sla_timers WHERE organization_id = ${org}::uuid AND desk_id = ANY(${desks}::uuid[]) AND kind = 'sla' AND metric IN ('first_response', 'resolution')
+        AND ((met_at >= ${from} AND met_at < ${to}) OR (breached_at >= ${from} AND breached_at < ${to}))
+      GROUP BY desk_id, metric`;
+  }
+
+  /**
+   * HLP-05: response targets by desk for a period and the period before it, the weekly trend, open tickets with their
+   * live resolution clock (business minutes on the desk's calendar, the SLA engine's own maths), the ones at risk or
+   * missed, and each agent's load. Counts cover every ticket of the desks (YX-HD-03: numbers show); the at-risk list
+   * holds only tickets the person may open.
+   */
+  async slaDashboard(a: DeskActor, q: ReportRunDto) {
+    const { from, to, f, t } = this.range(q.from, q.to);
+    const before = { from: new Date(2 * from.getTime() - to.getTime()), to: from };
+    const desks = await this.tenantPrisma.forTenant(a.ctx, (tx) => this.deskScope(tx, a, q.deskId));
+    const org = a.ctx.organizationId;
+    const pct = (k: number, m: number) => (k + m ? Math.round((k * 1000) / (k + m)) / 10 : null);
+    const sum = (rows: { metric: string; kept: bigint; missed: bigint }[], metric: string) =>
+      rows.filter((r) => r.metric === metric).reduce((s, r) => [s[0] + Number(r.kept), s[1] + Number(r.missed)], [0, 0]);
+    const counts = await deskSystem(this.tenantPrisma, a.ctx, async (tx) => {
+      const [now, prev, deskRows, weekly, funnel, funnelBefore] = await Promise.all([
+        this.targetsIn(tx, org, desks, from, to),
+        this.targetsIn(tx, org, desks, before.from, before.to),
+        tx.sdDesk.findMany({ where: { organizationId: org, id: { in: desks } }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+        tx.$queryRaw<{ wk: string; metric: string; kept: bigint; missed: bigint }[]>`
+          SELECT to_char(date_trunc('week', (CASE WHEN breached_at >= ${from} AND breached_at < ${to} THEN breached_at ELSE met_at END) AT TIME ZONE 'Asia/Kolkata'), 'YYYY-MM-DD') AS wk, metric,
+            count(*) FILTER (WHERE state = 'met' AND breached_at IS NULL AND NOT excluded) AS kept, count(*) FILTER (WHERE breached_at IS NOT NULL AND NOT excluded) AS missed
+          FROM sd_sla_timers WHERE organization_id = ${org}::uuid AND desk_id = ANY(${desks}::uuid[]) AND kind = 'sla' AND metric IN ('first_response', 'resolution')
+            AND ((met_at >= ${from} AND met_at < ${to}) OR (breached_at >= ${from} AND breached_at < ${to}))
+          GROUP BY 1, 2`,
+        this.funnelIn(tx, org, desks, from, to),
+        this.funnelIn(tx, org, desks, before.from, before.to),
+      ]);
+      const where = { organizationId: org, deskId: { in: desks }, systemState: { in: OPEN_STATES }, mergedIntoId: null };
+      // shortcut: the newest 5000 open tickets get a live clock; a desk set with more needs a stored clock state.
+      const open = await tx.sdTicket.findMany({ where, select: { id: true, deskId: true, assigneeUserId: true }, orderBy: { createdAt: 'desc' }, take: 5000 });
+      const openCount = await tx.sdTicket.count({ where });
+      const clocks = await this.sla.clocks(tx, org, open.map((x) => x.id), ['resolution']);
+      const state = new Map(open.map((x) => { const c = clocks.get(x.id)?.resolution; return [x.id, c ? clockState(c) : null]; }));
+      const late = open.filter((x) => state.get(x.id) === 'at-risk' || state.get(x.id) === 'breached');
+      const ids = [...new Set(open.map((x) => x.assigneeUserId).filter((x): x is string => !!x))];
+      const [users, ratings, target] = await Promise.all([
+        tx.user.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true, email: true } }),
+        tx.$queryRaw<{ agent_user_id: string; avg: unknown }[]>`
+          SELECT agent_user_id, avg(score) AS avg FROM sd_ratings
+          WHERE organization_id = ${org}::uuid AND desk_id = ANY(${desks}::uuid[]) AND agent_user_id = ANY(${ids}::uuid[]) AND created_at >= ${from} AND created_at < ${to}
+          GROUP BY agent_user_id`,
+        q.deskId ? tx.sdSlaComplianceTarget.findFirst({ where: { organizationId: org, deskId: q.deskId, metric: 'resolution', priority: null } }) : null,
+      ]);
+      const deskName = (id: string) => deskRows.find((d) => d.id === id)?.name ?? 'A desk';
+      const fr = sum(now, 'first_response');
+      const frBefore = sum(prev, 'first_response');
+      // "Answered by an article": the self-service rate of the funnel; no searches and no tickets is no figure.
+      const rate = (steps: { key: string; count: number }[]) => (steps.find((s) => s.key === 'solved')!.count + steps.find((s) => s.key === 'raised')!.count ? steps.find((s) => s.key === 'rate')!.count : null);
+      const week = (metric: string) =>
+        weekStarts(f, t).map((wk) => {
+          const r = weekly.filter((x) => x.wk === wk && x.metric === metric);
+          return { week: wk, metPct: pct(r.reduce((s, x) => s + Number(x.kept), 0), r.reduce((s, x) => s + Number(x.missed), 0)) };
+        });
+      return {
+        from: f,
+        to: t,
+        open: openCount,
+        breachedNow: open.filter((x) => state.get(x.id) === 'breached').length,
+        atRiskCount: late.length,
+        firstResponseMetPct: pct(fr[0], fr[1]),
+        firstResponseMetPctBefore: pct(frBefore[0], frBefore[1]),
+        articlePct: rate(funnel),
+        articlePctBefore: rate(funnelBefore),
+        resolutionTarget: target ? Number(target.targetPercent) : null,
+        queues: deskRows.map((d) => {
+          const r = now.find((x) => x.desk_id === d.id && x.metric === 'resolution');
+          return { deskId: d.id, name: d.name, met: Number(r?.kept ?? 0), breached: Number(r?.missed ?? 0) };
+        }),
+        weeks: week('resolution'),
+        firstResponseWeeks: week('first_response'),
+        agents: ids
+          .map((id) => {
+            const mine = open.filter((x) => x.assigneeUserId === id);
+            const u = users.find((x) => x.id === id);
+            return { userId: id, name: u?.name ?? u?.email ?? 'Agent', desks: [...new Set(mine.map((x) => deskName(x.deskId)))].join(', '), open: mine.length, atRisk: mine.filter((x) => late.includes(x)).length, rating: num(ratings.find((x) => x.agent_user_id === id)?.avg) };
+          })
+          .sort((x, y) => y.atRisk - x.atRisk || y.open - x.open || x.name.localeCompare(y.name)),
+        late: late.map((x) => ({ id: x.id, clock: clocks.get(x.id)!.resolution! })),
+        names: Object.fromEntries(deskRows.map((d) => [d.id, d.name])) as Record<string, string>,
+      };
+    });
+    // The list holds only tickets this person may open (sensitive and private ones stay with their own team).
+    const seen = await this.tenantPrisma.forTenant(a.ctx, async (tx) =>
+      tx.sdTicket.findMany({
+        where: { AND: [await visibleTickets(tx, a), { id: { in: counts.late.map((x) => x.id) } }] },
+        select: { id: true, number: true, subject: true, deskId: true, priority: true, assigneeUserId: true },
+      }),
+    );
+    const people = await this.tenantPrisma.forTenant(a.ctx, (tx) => tx.user.findMany({ where: { organizationId: org, id: { in: seen.map((x) => x.assigneeUserId).filter((x): x is string => !!x) } }, select: { id: true, name: true, email: true } }));
+    const clock = new Map(counts.late.map((x) => [x.id, x.clock]));
+    const used = (c: ClockView) => c.usedMinutes / Math.max(1, c.targetMinutes);
+    const atRisk = seen
+      .map((x) => {
+        const p = people.find((u) => u.id === x.assigneeUserId);
+        return { id: x.id, number: x.number, subject: x.subject, deskId: x.deskId, deskName: counts.names[x.deskId] ?? 'A desk', priority: x.priority, assignee: p ? { id: p.id, name: p.name ?? p.email } : null, resolution: clock.get(x.id)! };
+      })
+      .sort((x, y) => used(y.resolution) - used(x.resolution))
+      .slice(0, 100);
+    const { late, names, ...rest } = counts;
+    void names;
+    return { ...rest, atRisk, atRiskHidden: late.length - seen.length };
   }
 
   // ------------------------------------------------------------------------------------------ KPI snapshots (US-G-026)
@@ -317,12 +450,17 @@ export class ReportsService {
           return { columns: ['Requester', 'Tickets', 'Still open', 'Average rating'], rows: r.map((x) => [x.who, Number(x.n), Number(x.open), num(x.rating)]) };
         }
         case 'csat': {
-          const r = await tx.$queryRaw<{ desk: string; who: string | null; n: bigint; avg: unknown; happy: bigint }[]>`
-            SELECT d.name AS desk, coalesce(u.name, u.email, 'Nobody') AS who, count(*) AS n, avg(r.score) AS avg, count(*) FILTER (WHERE r.score >= 4) AS happy
+          // Answer 1643: the reasons given, most often first ("Slow 3 · Not solved 1").
+          const r = await tx.$queryRaw<{ desk: string; who: string | null; n: bigint; avg: unknown; happy: bigint; reasons: string | null }[]>`
+            SELECT d.name AS desk, coalesce(u.name, u.email, 'Nobody') AS who, count(*) AS n, avg(r.score) AS avg, count(*) FILTER (WHERE r.score >= 4) AS happy,
+              (SELECT string_agg(x.reason || ' ' || x.c, ' · ' ORDER BY x.c DESC, x.reason) FROM (
+                SELECT q.reason, count(*) AS c FROM sd_ratings q
+                WHERE q.organization_id = r.organization_id AND q.desk_id = r.desk_id AND q.agent_user_id IS NOT DISTINCT FROM r.agent_user_id AND q.reason IS NOT NULL
+                  AND q.created_at >= ${from} AND q.created_at < ${to} GROUP BY q.reason) x) AS reasons
             FROM sd_ratings r JOIN sd_desks d ON d.organization_id = r.organization_id AND d.id = r.desk_id LEFT JOIN users u ON u.organization_id = r.organization_id AND u.id = r.agent_user_id
             WHERE r.organization_id = ${org}::uuid AND r.desk_id = ANY(${desks}::uuid[]) AND r.created_at >= ${from} AND r.created_at < ${to}
-            GROUP BY d.name, u.name, u.email ORDER BY d.name, n DESC`;
-          return { columns: ['Desk', 'Agent', 'Ratings', 'Average (1–5)', 'Happy %'], rows: r.map((x) => [x.desk, x.who ?? '', Number(x.n), num(x.avg), Number(x.n) ? Math.round((Number(x.happy) * 1000) / Number(x.n)) / 10 : null]) };
+            GROUP BY r.organization_id, r.desk_id, r.agent_user_id, d.name, u.name, u.email ORDER BY d.name, n DESC`;
+          return { columns: ['Desk', 'Agent', 'Ratings', 'Average (1–5)', 'Happy %', 'Reasons given'], rows: r.map((x) => [x.desk, x.who ?? '', Number(x.n), num(x.avg), Number(x.n) ? Math.round((Number(x.happy) * 1000) / Number(x.n)) / 10 : null, x.reasons ?? '']) };
         }
         case 'funnel': {
           const f = await this.funnelIn(tx, org, desks, from, to);
@@ -401,11 +539,31 @@ export class ReportsService {
     });
   }
 
+  /** Answer 1844: the desk fields a report may show (`field:<key>`): those this person sees on a desk they report on. */
+  async fieldColumns(a: DeskActor) {
+    if (!has(a, 'desk.report.view')) throw new ForbiddenException('You cannot see desk reports (desk.report.view).');
+    return this.tenantPrisma.forTenant(a.ctx, (tx) => this.fieldColumnsIn(tx, a));
+  }
+
+  private async fieldColumnsIn(tx: Tx, a: DeskActor) {
+    const defs = await tx.sdTicketField.findMany({ where: { organizationId: a.ctx.organizationId, deskId: { in: await this.deskScope(tx, a) }, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
+    const out = new Map<string, string>();
+    for (const f of defs) if (!out.has(f.key) && sees(f, fieldViewerOn(a)(f.deskId))) out.set(f.key, f.label);
+    return [...out].map(([key, label]) => ({ value: `field:${key}`, label }));
+  }
+
   async saveCustom(a: DeskActor, id: string | null, dto: CustomReportDto) {
     if (!has(a, 'desk.report.manage')) throw new ForbiddenException('You cannot build reports (desk.report.manage).');
-    const bad = dto.columns.filter((c) => !REPORT_COLUMNS[c]);
+    const bad = dto.columns.filter((c) => !REPORT_COLUMNS[c] && !FIELD_COLUMN.test(c));
     if (bad.length) throw new BadRequestException(`Unknown columns: ${bad.join(', ')}`);
     return this.tenantPrisma.forTenant(a.ctx, async (tx) => {
+      // Answer 1844: only fields this person sees (a team-lead-only field needs a lead seat on its desk).
+      const asked = dto.columns.filter((c) => FIELD_COLUMN.test(c));
+      if (asked.length) {
+        const ok = new Set((await this.fieldColumnsIn(tx, a)).map((c) => c.value));
+        const no = asked.filter((c) => !ok.has(c));
+        if (no.length) throw new BadRequestException(`You cannot report on these fields: ${no.map((c) => c.slice(6)).join(', ')}`);
+      }
       if (dto.filters.deskIds?.length) {
         const mine = await this.deskScope(tx, a);
         if (dto.filters.deskIds.some((d) => !mine.includes(d))) throw new BadRequestException('Choose desks you report on.');
@@ -464,7 +622,7 @@ export class ReportsService {
         tx.user.findMany({ where: { organizationId: org, id: { in: ids('assigneeUserId') } }, select: { id: true, name: true, email: true } }),
         tx.person.findMany({ where: { organizationId: org, id: { in: ids('requesterPersonId') } }, select: { id: true, givenName: true, familyName: true } }),
         tx.sdCustomerAccount.findMany({ where: { organizationId: org, id: { in: ids('customerAccountId') } }, select: { id: true, name: true } }),
-        tx.sdRating.findMany({ where: { organizationId: org, ticketId: { in: tickets.map((t) => t.id) } }, select: { ticketId: true, score: true } }),
+        tx.sdRating.findMany({ where: { organizationId: org, ticketId: { in: tickets.map((t) => t.id) } }, select: { ticketId: true, score: true, reason: true } }),
       ]);
       const name = <T extends { id: string }>(list: T[], id: string | null, pick: (x: T) => string) => (id ? (list.find((x) => x.id === id) ? pick(list.find((x) => x.id === id)!) : '') : '');
       const cell = (t: (typeof tickets)[number], c: string): string | number | null => {
@@ -485,14 +643,25 @@ export class ReportsService {
           case 'first_response': return t.firstResponseAt?.toISOString() ?? null;
           case 'resolved': return t.resolvedAt?.toISOString() ?? null;
           case 'rating': return ratings.find((x) => x.ticketId === t.id)?.score ?? null;
+          case 'rating_reason': return ratings.find((x) => x.ticketId === t.id)?.reason ?? null;
           case 'tags': return t.tags.join(' ');
           default: return null;
         }
       };
+      // Answer 1844: desk field columns, each shown only where this person sees that field (leads-only to the desk's leads).
+      const wanted = r.columns.map((c) => FIELD_COLUMN.exec(c)?.[1]).filter((k): k is string => Boolean(k));
+      const defs = wanted.length && tickets.length ? await tx.sdTicketField.findMany({ where: { organizationId: org, deskId: { in: ids('deskId') }, key: { in: wanted }, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }) : [];
+      const fields = fieldTable(defs, tickets, fieldViewerOn(a));
+      const fieldCell = new Map(tickets.map((t, i) => [t.id, fields.cells[i]]));
+      const cellOf = (t: (typeof tickets)[number], c: string) => {
+        const k = FIELD_COLUMN.exec(c)?.[1];
+        return k ? (fieldCell.get(t.id)?.get(k) ?? null) : cell(t, c);
+      };
+      const title = (c: string) => REPORT_COLUMNS[c] ?? fields.labels.get(c.slice(6)) ?? c.slice(6);
       await audit(tx, a, 'desk.report.run', 'sd_report', r.id, { rows: tickets.length });
       // A report that lists tickets counts as reading them (US-G-030).
       if (tickets.length) await tx.sdTicketRead.createMany({ data: tickets.map((t) => ({ organizationId: org, deskId: t.deskId, ticketId: t.id, userId: a.userId, access: 'export' })) });
-      return { title: r.name, columns: r.columns.map((c) => REPORT_COLUMNS[c]), rows: tickets.map((t) => r.columns.map((c) => cell(t, c))) };
+      return { title: r.name, columns: r.columns.map(title), rows: tickets.map((t) => r.columns.map((c) => cellOf(t, c))) };
     });
   }
 

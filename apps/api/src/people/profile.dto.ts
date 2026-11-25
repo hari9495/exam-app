@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsDateString, IsEmail, IsIdentityCard, IsIn, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateNested, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBIC, IsBoolean, IsDateString, IsEmail, IsIBAN, IsIdentityCard, IsIn, IsInt, IsISO4217CurrencyCode, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested, ValidateIf } from 'class-validator';
 import { PAN } from '../org-structure/org-validation';
+import { SPLIT_ACCOUNTS, SPLIT_RULES } from './pay-split';
 
 // Bodies for the employee's Personal data (P02 §4.4) and identity / bank change requests (§4.5). Every field
 // is whitelisted by the global pipe; identifiers are checked with proven validators (validator.js Verhoeff for
@@ -8,6 +9,7 @@ import { PAN } from '../org-structure/org-validation';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 export const GENDERS = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'] as const;
+export const MARITAL = ['single', 'married', 'separated', 'divorced', 'widowed', 'prefer_not_to_say'] as const;
 
 /** Personal class fields; null clears one, absent leaves it. */
 export class PersonalDetailsDto {
@@ -17,7 +19,7 @@ export class PersonalDetailsDto {
   @IsOptional() @IsIn(GENDERS)
   gender?: string | null;
 
-  @IsOptional() @IsEmail() @MaxLength(254)
+  @IsOptional() @IsEmail({}, { message: 'Enter a personal email like name@example.com.' }) @MaxLength(254)
   personalEmail?: string | null;
 
   @IsOptional() @IsString() @MaxLength(30)
@@ -43,9 +45,38 @@ export class PersonalDetailsDto {
 
   @IsOptional() @IsBoolean()
   hideBirthday?: boolean;
+
+  @IsOptional() @IsIn(MARITAL)
+  maritalStatus?: string | null;
 }
 
-export const REQUEST_KINDS = ['bank_salary', 'bank_reimbursement', 'pan', 'aadhaar', 'uan', 'esic', 'legal_name'] as const;
+/** PPL-03 Additional details: definition id -> value (null or '' clears); each value is checked against its field type. */
+export class CustomFieldValuesDto {
+  @IsObject()
+  values!: Record<string, unknown>;
+}
+
+/** Work phone (Internal): HR with employee.profile.edit; null clears it. */
+export class WorkPhoneDto {
+  @IsOptional() @IsString() @MaxLength(30)
+  workPhone!: string | null;
+}
+
+export const REQUEST_KINDS = ['bank_salary', 'bank_reimbursement', 'pan', 'aadhaar', 'uan', 'esic', 'legal_name', 'passport', 'bank_international', 'correction', 'pay_split'] as const;
+/** PPL-33: what a correction is about: the rows of "What we hold" (by class). */
+export const CORRECTION_FIELDS = ['public', 'internal', 'personal', 'confidential', 'special'] as const;
+
+/** PPL-46: one line of a split (an account on file, its rule and value: rupees for fixed, per cent for percent). */
+export class SplitLineDto {
+  @IsIn(SPLIT_ACCOUNTS)
+  account!: (typeof SPLIT_ACCOUNTS)[number];
+
+  @IsIn(SPLIT_RULES)
+  rule!: (typeof SPLIT_RULES)[number];
+
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100_000_000)
+  value!: number;
+}
 export type RequestKind = (typeof REQUEST_KINDS)[number];
 
 /** The proposed value; only the part the kind needs is read (the rest must be absent). */
@@ -66,6 +97,13 @@ export class ProposedValueDto {
   @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsString() @MinLength(1) @MaxLength(200)
   legalName?: string;
 
+  // A passport number: 6 to 9 capital letters and digits (India: a letter and 7 digits).
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @Matches(/^[A-Z0-9]{6,9}$/, { message: 'passport is 6 to 9 capital letters and digits' })
+  passport?: string;
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsDateString({ strict: true }) @Matches(DATE, { message: 'passportExpiresOn is a date (YYYY-MM-DD)' })
+  passportExpiresOn?: string;
+
   @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsString() @MinLength(1) @MaxLength(200)
   holderName?: string;
 
@@ -75,6 +113,30 @@ export class ProposedValueDto {
   // RBI IFSC: four letters, a zero, six letters or digits.
   @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @Matches(/^[A-Z]{4}0[A-Z0-9]{6}$/, { message: 'ifsc is 11 characters, e.g. HDFC0001234' })
   ifsc?: string;
+
+  // PPL-46: an account abroad. IBAN country length and mod-97 check digits, and BIC, by validator.js (ISO 13616, ISO 9362).
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @Matches(/^[A-Z]{2}$/, { message: 'country is an ISO 3166-1 alpha-2 code' })
+  country?: string;
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @Matches(/^[A-Z0-9]{15,34}$/, { message: 'iban is written without spaces, in capitals' }) @IsIBAN({ message: 'That IBAN fails its country length or check digits.' })
+  iban?: string;
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsBIC({ message: 'bic is an 8 or 11 character BIC, like ECBKAEAD' })
+  bic?: string;
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsISO4217CurrencyCode({ message: 'currency is an ISO 4217 code, like AED' })
+  currency?: string;
+
+  // PPL-33: a correction says which data is wrong and what it should be.
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsIn(CORRECTION_FIELDS)
+  correctionField?: (typeof CORRECTION_FIELDS)[number];
+
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsString() @MinLength(3) @MaxLength(500)
+  correctionText?: string;
+
+  // PPL-46: the split of net pay over the accounts on file.
+  @ValidateIf((o: ProposedValueDto, v) => v !== undefined) @IsArray() @ArrayMinSize(1) @ArrayMaxSize(3) @ValidateNested({ each: true }) @Type(() => SplitLineDto)
+  split?: SplitLineDto[];
 }
 
 export class ProfileRequestDto {
@@ -85,8 +147,17 @@ export class ProfileRequestDto {
   @Type(() => ProposedValueDto)
   value!: ProposedValueDto;
 
-  @IsString() @MinLength(1) @MaxLength(500)
-  reason!: string;
+  // PPL-32: the proof says why; a reason is optional.
+  @IsOptional() @IsString() @MaxLength(500)
+  reason?: string;
+
+  /** The proof, uploaded to the person's own documents first (PPL-32). */
+  @IsOptional() @IsUUID()
+  proofDocumentId?: string;
+
+  /** A legal name: the day it took effect (the gazette or marriage date). */
+  @IsOptional() @IsDateString({ strict: true }) @Matches(DATE, { message: 'effectiveOn is a date (YYYY-MM-DD)' })
+  effectiveOn?: string;
 }
 
 export class ProfileDecisionDto {
@@ -103,10 +174,16 @@ export class ProfileReasonDto {
   reason!: string;
 }
 
-export const REVEAL_FIELDS = ['pan', 'aadhaar', 'uan', 'esic', 'bank_salary', 'bank_reimbursement'] as const;
+export const REVEAL_FIELDS = ['pan', 'aadhaar', 'uan', 'esic', 'passport', 'bank_salary', 'bank_reimbursement'] as const;
 export class RevealDto {
   @IsIn(REVEAL_FIELDS)
   field!: (typeof REVEAL_FIELDS)[number];
+}
+
+/** PPL-33: my data as JSON (default) or PDF. */
+export class MyDataDto {
+  @IsOptional() @IsIn(['json', 'pdf'])
+  format?: string;
 }
 
 export class ProfileRequestListDto {
@@ -121,6 +198,102 @@ export const KIND_FIELDS: Record<RequestKind, (keyof ProposedValueDto)[]> = {
   uan: ['uan'],
   esic: ['esic'],
   legal_name: ['legalName'],
+  passport: ['passport', 'passportExpiresOn'],
   bank_salary: ['holderName', 'accountNumber', 'ifsc'],
   bank_reimbursement: ['holderName', 'accountNumber', 'ifsc'],
+  bank_international: ['country', 'iban', 'bic', 'currency'],
+  correction: ['correctionField', 'correctionText'],
+  pay_split: ['split'],
 };
+
+// ---- PPL-03 family, nominations and emergency contacts (Personal class) ----
+
+export const NOMINATION_SCHEMES = ['pf', 'eps', 'gratuity', 'group_term'] as const;
+
+export class FamilyMemberDto {
+  /** An existing member keeps its id (its nominations stay pointed at it); absent adds one. */
+  @IsOptional() @IsUUID()
+  id?: string;
+
+  @IsString() @MinLength(1) @MaxLength(100)
+  name!: string;
+
+  @IsString() @MinLength(1) @MaxLength(40)
+  relation!: string;
+
+  @IsOptional() @IsDateString({ strict: true }) @Matches(DATE, { message: 'dateOfBirth is a date (YYYY-MM-DD)' })
+  dateOfBirth?: string | null;
+
+  @IsBoolean()
+  dependant!: boolean;
+}
+
+export class NominationDto {
+  @IsIn(NOMINATION_SCHEMES)
+  scheme!: (typeof NOMINATION_SCHEMES)[number];
+
+  /** The nominee: an index into members (a nominee is always one of the person's family). */
+  @IsInt() @Min(0)
+  member!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0.01) @Max(100)
+  sharePercent!: number;
+}
+
+/** The whole family and the nominations in one save, so shares are checked against the family as saved. */
+export class FamilyDto {
+  @IsArray() @ArrayMaxSize(20) @ValidateNested({ each: true }) @Type(() => FamilyMemberDto)
+  members!: FamilyMemberDto[];
+
+  @IsArray() @ArrayMaxSize(40) @ValidateNested({ each: true }) @Type(() => NominationDto)
+  nominations!: NominationDto[];
+}
+
+export class EmergencyContactDto {
+  @IsString() @MinLength(1) @MaxLength(100)
+  name!: string;
+
+  @IsString() @MinLength(1) @MaxLength(40)
+  relation!: string;
+
+  @IsString() @MaxLength(30)
+  phone!: string;
+}
+
+/** In calling order: the first is called first. */
+export class EmergencyContactsDto {
+  @IsArray() @ArrayMaxSize(5) @ValidateNested({ each: true }) @Type(() => EmergencyContactDto)
+  contacts!: EmergencyContactDto[];
+}
+
+/** Nominees are members of the family being saved, each once per scheme, and each scheme's shares total exactly 100. */
+export function nominationProblem(memberCount: number, nominations: Pick<NominationDto, 'scheme' | 'member' | 'sharePercent'>[]): string | null {
+  const totals = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const n of nominations) {
+    if (!Number.isInteger(n.member) || n.member < 0 || n.member >= memberCount) return 'A nominee must be one of the family members.';
+    if (seen.has(`${n.scheme}:${n.member}`)) return 'A family member is nominated once per scheme.';
+    seen.add(`${n.scheme}:${n.member}`);
+    // In hundredths, so 33.33 + 33.33 + 33.34 is exactly 100.
+    totals.set(n.scheme, (totals.get(n.scheme) ?? 0) + Math.round(n.sharePercent * 100));
+  }
+  for (const [scheme, total] of totals) if (total !== 10000) return `The ${SCHEME_LABEL[scheme] ?? scheme} shares must total 100% (now ${total / 100}%).`;
+  return null;
+}
+
+export const SCHEME_LABEL: Record<string, string> = { pf: 'PF', eps: 'EPS', gratuity: 'Gratuity', group_term: 'Group term insurance', all: 'All schemes' };
+
+/** PPL-33: the person's nominee for their data rights (DPDP Act 2023, s.14); an email or a phone to reach them. */
+export class PrivacyNomineeDto {
+  @IsString() @MinLength(2) @MaxLength(100)
+  name!: string;
+
+  @IsString() @MinLength(2) @MaxLength(40)
+  relation!: string;
+
+  @IsOptional() @IsEmail({}, { message: 'Enter an email like name@example.com.' }) @MaxLength(254)
+  email?: string;
+
+  @IsOptional() @Matches(/^\+?[0-9]{8,15}$/, { message: 'Enter a phone number of 8 to 15 digits, with + and the country code if abroad.' })
+  phone?: string;
+}

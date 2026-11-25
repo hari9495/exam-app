@@ -1,0 +1,68 @@
+import { challanRows, coverOf, daysPresent, packDue, packState, placementBlock, type OwnLicenceLike } from './own-licence-rules';
+
+const lic = (over: Partial<OwnLicenceLike> = {}): OwnLicenceLike => ({ id: 'l1', licenceNo: 'TN/OSH/CL/2026/2211', clientSiteId: 's1', states: ['IN-TN'], maxWorkers: 50, validFrom: '2026-01-01', validTo: '2027-03-31', status: 'verified', ...over });
+
+describe('own licence rules (CL-8)', () => {
+  it('the site’s own licence first, else a single licence for the state; only verified and in force', () => {
+    const site = { id: 's1', state: 'IN-TN' };
+    const single = lic({ id: 'l2', clientSiteId: null, licenceNo: 'TN/SINGLE' });
+    expect(coverOf([single, lic()], site, '2026-06-01')!.id).toBe('l1');
+    expect(coverOf([single], site, '2026-06-01')!.id).toBe('l2');
+    expect(coverOf([single], { id: 's9', state: 'IN-KL' }, '2026-06-01')).toBeNull();
+    expect(coverOf([lic({ status: 'pending' })], site, '2026-06-01')).toBeNull();
+    expect(coverOf([lic()], site, '2027-04-01')).toBeNull();
+  });
+
+  it('the 51st under a licence of 50 is blocked; the 50th is not', () => {
+    expect(placementBlock({ licence: lic(), deployed: 49, threshold: 50, site: 'Ambattur' })).toBeNull();
+    expect(placementBlock({ licence: lic(), deployed: 50, threshold: 50, site: 'Ambattur' })).toMatch(/allows 50 at Ambattur; 50 are placed/);
+  });
+
+  it('without a licence: allowed below the state threshold, blocked at it', () => {
+    expect(placementBlock({ licence: null, deployed: 48, threshold: 50, site: 'Kochi' })).toBeNull();
+    expect(placementBlock({ licence: null, deployed: 49, threshold: 50, site: 'Kochi' })).toMatch(/No licence of ours covers Kochi/);
+    expect(placementBlock({ licence: null, deployed: 200, threshold: null, site: 'Kochi' })).toBeNull();
+  });
+
+  it('a pack is due on the site’s day of the next month; its state', () => {
+    expect(packDue('2026-09', 10)).toBe('2026-10-10');
+    expect(packDue('2026-12', 15)).toBe('2027-01-15');
+    expect(packState({ uploadedOn: null, acceptedAt: null }, '2026-10-10', '2026-10-09')).toBe('Generated');
+    expect(packState({ uploadedOn: null, acceptedAt: null }, '2026-10-10', '2026-10-11')).toBe('Overdue');
+    expect(packState({ uploadedOn: '2026-10-08', acceptedAt: null }, '2026-10-10', '2026-10-20')).toBe('Uploaded');
+    expect(packState({ uploadedOn: '2026-10-08', acceptedAt: '2026-10-09' }, '2026-10-10', '2026-10-20')).toBe('Accepted');
+  });
+
+  it('days present count half days as half', () => {
+    expect(daysPresent(['present', 'half_day', 'absent', 'leave', 'present'])).toBe(2.5);
+  });
+});
+
+describe('client pack remittances (answer 821)', () => {
+  const reg = [{ statute: 'IN.PF', registrationNo: 'TNMAS0012345000' }, { statute: 'IN.ESI', registrationNo: '51000123450001001' }];
+  it('a filed PF and ESI each give a row with the challan; nothing missing', () => {
+    const out = challanRows(reg, [{ statute: 'IN.PF', reference: 'TRRN 3112600012345', amount: '48210.00', filedOn: '2026-11-12' }, { statute: 'IN.ESI', reference: 'ESIC-CH-778812', amount: '9120.00', filedOn: '2026-11-13' }]);
+    expect(out.missing).toEqual([]);
+    expect(out.rows).toEqual([
+      ['PF', 'TNMAS0012345000', 'TRRN 3112600012345', '48210.00', '2026-11-12', 'Filed'],
+      ['ESI', '51000123450001001', 'ESIC-CH-778812', '9120.00', '2026-11-13', 'Filed'],
+    ]);
+  });
+  it('negative: a registered statute not filed is named as missing; one not registered is left out', () => {
+    expect(challanRows(reg, [{ statute: 'IN.PF', reference: 'T1', amount: '1.00', filedOn: '2026-11-12' }]).missing).toEqual(['ESI challan']);
+    expect(challanRows(reg, []).missing).toEqual(['PF challan', 'ESI challan']);
+    expect(challanRows([reg[0]!], []).rows).toEqual([['PF', 'TNMAS0012345000', '', '', '', 'Not filed yet']]);
+    expect(challanRows([], [])).toEqual({ rows: [], missing: [] });
+  });
+  it('841: PT gives its row when registered (for the site’s state); not filed is named; not registered is left out', () => {
+    const pt = [...reg, { statute: 'IN.PT', registrationNo: 'PTTN998877' }];
+    const filed = [{ statute: 'IN.PF', reference: 'T1', amount: '1.00', filedOn: '2026-11-12' }, { statute: 'IN.ESI', reference: 'E1', amount: '2.00', filedOn: '2026-11-12' }];
+    expect(challanRows(pt, [...filed, { statute: 'IN.PT', reference: 'PT-1', amount: '416.00', filedOn: '2026-11-20' }]).rows.at(-1)).toEqual(['PT', 'PTTN998877', 'PT-1', '416.00', '2026-11-20', 'Filed']);
+    expect(challanRows(pt, filed).missing).toEqual(['PT challan']);
+    // Answer 882: outside the state's PT months an unfiled PT is not missing; a filed one still shows.
+    expect(challanRows(pt, filed, false)).toEqual({ rows: [...challanRows(reg, filed).rows, ['PT', 'PTTN998877', '', '', '', 'Not due this month']], missing: [] });
+    expect(challanRows(pt, [...filed, { statute: 'IN.PT', reference: 'PT-1', amount: '416.00', filedOn: '2026-09-30' }], false).rows.at(-1)).toEqual(['PT', 'PTTN998877', 'PT-1', '416.00', '2026-09-30', 'Filed']);
+    expect(challanRows(reg, filed, false).missing).toEqual([]);
+    expect(challanRows(reg, [...filed, { statute: 'IN.PT', reference: 'PT-1', amount: '416.00', filedOn: '2026-11-20' }]).rows.map((r) => r[0])).toEqual(['PF', 'ESI']);
+  });
+});

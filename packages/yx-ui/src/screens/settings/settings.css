@@ -135,6 +135,15 @@
 .yx-tour__body { margin: 0; }
 .yx-tour__foot { display: flex; justify-content: space-between; gap: var(--yx-space-2); flex-wrap: wrap; }
 .yx-tour__foot > div { display: flex; gap: var(--yx-space-2); }
+.yx-tour__hint { margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
+.yx-tour__title:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-1); }
+/* Answer 944: the live tour floats over the page, bottom right; never modal, never a trap. */
+.yx-tour--floating { position: fixed; right: var(--yx-space-6); bottom: var(--yx-space-6); z-index: calc(var(--yx-z-drawer) - 1); width: min(360px, calc(100vw - 2 * var(--yx-space-4))); }
+@media (max-width: 767px) { .yx-tour--floating { right: var(--yx-space-4); bottom: var(--yx-space-4); } }
+@media (prefers-reduced-motion: no-preference) { .yx-tour--floating { animation: yx-tour-in 160ms ease-out; } }
+@keyframes yx-tour-in { from { opacity: 0; transform: translateY(var(--yx-space-2)); } to { opacity: 1; transform: none; } }
+[data-tour-active] { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-1); border-radius: var(--yx-radius-card); }
+.yx-help-tours { display: flex; flex-direction: column; gap: var(--yx-space-4); }
 .yx-tour-stage { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--yx-space-6); align-items: start; }
 .yx-tour-target { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-1); border-radius: var(--yx-radius-card); }
 @media (max-width: 767px) { .yx-tour-stage { grid-template-columns: 1fr; } }
@@ -229,6 +238,7 @@ html:has(.yx-phone) { scroll-padding-bottom: calc(var(--yx-space-16) + var(--yx-
 .yx-set-overrides { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-1) var(--yx-space-2); margin-top: var(--yx-space-1); font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
 .yx-set-overrides__item { min-height: var(--yx-space-6); padding: 0 var(--yx-space-2); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-badge); background: var(--yx-color-bg-surface); color: var(--yx-color-link); font: inherit; cursor: pointer; }
 .yx-set-overrides__item:hover { background: var(--yx-color-bg-subtle); }
+.yx-set-overrides__note { color: var(--yx-color-text-secondary); }
 .yx-set-overrides__item:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
 .yx-set-lawtable__rule { text-align: left; font-weight: var(--yx-weight-medium); color: var(--yx-color-text); background: none; white-space: normal; }
 .yx-set-list__table th.yx-set-lawtable__rule { background: none; color: var(--yx-color-text); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
@@ -239,3 +249,33 @@ html:has(.yx-phone) { scroll-padding-bottom: calc(var(--yx-space-16) + var(--yx-
 
 button.yx-m-row:hover, a.yx-m-row:hover { background: var(--yx-color-bg-subtle); }
 .yx-set-recent a:hover { background: var(--yx-color-bg-subtle); }
+
+/* Settings S-1 live (answer 1322): the home, its results and a group page fit 1278 x 635 (no page scroll). */
+.yx-set-groups--live { grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 3)), 1fr)); gap: var(--yx-space-3); }
+/* Live: the group title and each page are links, so they read as links (link colour; underline on hover). */
+.yx-set-group-card--live .yx-card__title a, .yx-set-group-card--live li a { color: var(--yx-color-link); }
+.yx-set-group-card--live li a { padding: 0; }
+.yx-set-group-card__more, .yx-set-group-card a.yx-set-group-card__more { color: var(--yx-color-link); }
+.yx-set-group-card__more { white-space: nowrap; }
+.yx-set-results--live .yx-set-result__value, .yx-set-pages--live .yx-set-page-row__meta { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.yx-set-results--live .yx-set-results__list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 5)), 1fr)); }
+.yx-set-results--live .yx-set-results__list li + li { border-top: 0; }
+.yx-set-results--live .yx-set-results__list li { border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-set-pages--live { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-3); border: 0; background: none; }
+.yx-set-pages--live .yx-set-page-row, .yx-set-pages--live .yx-set-page-row + .yx-set-page-row { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); padding: var(--yx-space-3); }
+/* Walk fix (S-1): "+N more" stays on the title's first line, and every card in a row starts its links at the same height. */
+.yx-set-groups--live .yx-set-group-card--live { display: grid; grid-row: span 2; grid-template-rows: subgrid; row-gap: 0; }
+.yx-set-group-card--live .yx-card__head { flex-wrap: nowrap; align-items: flex-start; }
+.yx-set-group-card--live .yx-card__actions { flex-shrink: 0; }
+/* Answer 1325: changes waiting for a second person. */
+.yx-set-pending { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--yx-space-3); }
+.yx-set-pending__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2) var(--yx-space-4); }
+.yx-set-pending__row + .yx-set-pending__row { border-top: var(--yx-border-width) solid var(--yx-color-border); padding-top: var(--yx-space-3); }
+.yx-set-pending__actions { display: flex; gap: var(--yx-space-2); }
+.yx-set-pending__what { display: grid; gap: var(--yx-space-1); }
+
+/* S-5 (1461): the live home's Recently changed, one line per change so the home keeps to one screen. */
+.yx-set-recent--live a { flex-direction: row; flex-wrap: wrap; column-gap: var(--yx-space-2); padding: var(--yx-space-1) 0; }
+
+/* S-8: a drawer's fields, stacked on the token gap. */
+.yx-set-stack { display: flex; flex-direction: column; gap: var(--yx-space-4); min-width: 0; }

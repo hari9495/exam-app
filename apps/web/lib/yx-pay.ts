@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LoadState } from '@yukthix/ui/pay';
 import { apiFetch, apiFetchBlob } from './api-client';
 import { useAuth } from './auth-context';
@@ -10,6 +10,13 @@ import { useAuth } from './auth-context';
 export function usePay<T>(path: string | null) {
   const { accessToken } = useAuth();
   return useQuery<T>({ queryKey: ['payroll', path], queryFn: () => apiFetch(`/payroll${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken && path), retry: false });
+}
+
+/** Several GETs under /payroll at once (same cache keys as usePay); the results by path, only those loaded. */
+export function usePays<T>(paths: string[]): Record<string, T> {
+  const { accessToken } = useAuth();
+  const qs = useQueries({ queries: paths.map((path) => ({ queryKey: ['payroll', path], queryFn: (): Promise<T> => apiFetch(`/payroll${path}`, {}, accessToken ?? undefined), enabled: Boolean(accessToken), retry: false })) });
+  return Object.fromEntries(paths.flatMap((p, i) => (qs[i].data === undefined ? [] : [[p, qs[i].data as T]])));
 }
 
 /** Calls the payroll API (POST unless told otherwise) and refreshes every payroll query (and the approvals inbox). */
@@ -37,6 +44,12 @@ export function usePayDownload() {
     const { blob, filename } = await apiFetchBlob(path, {}, accessToken ?? undefined);
     saveBlob(blob, filename ?? fallbackName);
   };
+}
+
+/** A file as a Blob for the kit's in-page viewers (PAY-21 payslip PDF, PAY-23 proof files); the same signed-in call as a download. */
+export function usePayBlob() {
+  const { accessToken } = useAuth();
+  return async (path: string) => (await apiFetchBlob(path, {}, accessToken ?? undefined)).blob;
 }
 
 export function saveBlob(blob: Blob, name: string) {

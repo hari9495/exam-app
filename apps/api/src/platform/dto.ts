@@ -1,5 +1,5 @@
-import { Transform } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 
 // Platform console inputs (P14 §6 flow 5, P02 Q8). Every staff action that touches a company carries a reason
 // (YX-CONSOLE-02).
@@ -26,6 +26,25 @@ export class CompaniesQueryDto {
   @IsOptional()
   @IsIn(LIFECYCLE_STATES)
   lifecycle?: string;
+}
+
+/** PLT-09 (answer 1053): the default legal entity's basics, set as the company is created. */
+export class NewLegalEntityDto {
+  @trim()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(200)
+  name!: string;
+
+  @IsOptional()
+  @trim()
+  @Matches(/^[A-Z]{5}[0-9]{4}[A-Z]$/, { message: 'PAN is 5 letters, 4 digits, 1 letter, like ABCDE1234F' })
+  pan?: string;
+
+  @IsOptional()
+  @trim()
+  @Matches(/^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/, { message: 'GSTIN is 15 characters, like 29ABCDE1234F1Z5' })
+  gstin?: string;
 }
 
 export class CreateCompanyDto {
@@ -56,6 +75,26 @@ export class CreateCompanyDto {
   @ArrayUnique()
   @Matches(/^[a-z][a-z0-9_]{1,31}$/, { each: true })
   products!: string[];
+
+  /** PLT-09 (answer 1053): the default legal entity's basics; without them it is named after the company. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NewLegalEntityDto)
+  legalEntity?: NewLegalEntityDto;
+}
+
+/** Careers answer 442: one company setting YukthiX staff change (console › Company settings). */
+export class CompanySettingDto {
+  @IsString()
+  @MaxLength(100)
+  key!: string;
+
+  @IsString()
+  @MaxLength(100)
+  value!: string;
+
+  @Reason(5)
+  reason!: string;
 }
 
 export class LifecycleDto {
@@ -64,6 +103,28 @@ export class LifecycleDto {
 
   @Reason(5)
   reason!: string;
+}
+
+/** Answer 1882: why a closed company's data is deleted now. */
+export class DeletionDto {
+  @Reason(5)
+  reason!: string;
+}
+
+/** Answer 2083: a legal hold YukthiX staff set on a deleted company. */
+export class LegalHoldDto {
+  @trim()
+  @IsString()
+  @MinLength(1, { message: 'Give the case or matter reference' })
+  @MaxLength(100)
+  caseRef!: string;
+
+  @Reason(10)
+  reason!: string;
+
+  /** The last day of the hold (India date). */
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Give the last day as YYYY-MM-DD' })
+  until!: string;
 }
 
 export class ExtendTrialDto {
@@ -153,4 +214,43 @@ export class PlatformAuditQueryDto {
   @IsOptional()
   @IsIn(['true', 'false'])
   reads?: string;
+}
+
+// Console C-4 (answers 1049, 1050).
+export class FlagDefaultDto {
+  @IsBoolean()
+  on!: boolean;
+
+  @Reason(5)
+  reason!: string;
+}
+
+export class FlagOverrideDto {
+  /** true or false for this company; null puts it back on the default. */
+  @IsOptional()
+  @IsIn([true, false, null])
+  on!: boolean | null;
+
+  @Reason(5)
+  reason!: string;
+}
+
+export class FlagReasonDto {
+  @Reason(5)
+  reason!: string;
+}
+
+/** DPDP Rule 7: when the first notice to the Data Protection Board was sent, and a note (how, reference). */
+export class BoardNoticeDto {
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})$/, { message: 'Give the date and time the notice was sent.' })
+  sentAt!: string;
+
+  @Reason(5)
+  note!: string;
+}
+
+export class ContainDto {
+  @Reason(10)
+  reason!: string;
 }

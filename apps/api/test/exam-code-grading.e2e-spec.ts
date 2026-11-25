@@ -5,8 +5,10 @@ import { randomUUID } from 'crypto';
 import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
+import { markSteppedUp } from './fixtures/step-up';
 import { EmailService } from '../src/email/email.service';
 import { PistonClient } from '../../exam-runtime/src/code-execution/piston-client';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Exam code-grading HTTP flow', () => {
   let adminApp: INestApplication;
@@ -70,7 +72,7 @@ describe('Exam code-grading HTTP flow', () => {
       .send({ title: 'Section One' })
       .expect(201);
 
-    const questionResponse = await request(adminHttp)
+    const questionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -83,7 +85,7 @@ describe('Exam code-grading HTTP flow', () => {
         starterCode: 'function reverse(str) {\n  \n}',
         options: [],
       })
-      .expect(201);
+      .expect(201));
     codeQuestionId = questionResponse.body.id;
 
     await request(adminHttp)
@@ -171,6 +173,7 @@ describe('Exam code-grading HTTP flow', () => {
       .send({ marksAwarded: 8, feedback: 'Good approach' })
       .expect(201);
 
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     const finalizeResponse = await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
@@ -221,6 +224,7 @@ describe('Exam code-grading HTTP flow', () => {
     expect(pendingResponse.body.find((r: any) => r.attemptId === attemptId)).toBeUndefined();
 
     // Nothing is pending, so a manual finalize is rejected.
+    await markSteppedUp(tenantPrisma, recruiterAccessToken); // AS-0 (2006): the second factor again
     await request(adminHttp)
       .post(`/api/v1/attempts/${attemptId}/finalize-manual-grade`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)

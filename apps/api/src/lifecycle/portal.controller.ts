@@ -5,8 +5,9 @@ import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { LetterFileQueryDto } from '../documents/letters/dto';
-import { BankSectionDto, BgvConsentDto, EmergencySectionDto, IdentitySectionDto, NomineesSectionDto, PersonalSectionDto, PortalCodeDto, PortalEmailDto, PortalSignDto, PortalVerifyDto, TaxSectionDto } from './portal-dto';
+import { BankSectionDto, BgvConsentDto, DeclineOfferDto, EmergencySectionDto, IdentitySectionDto, NomineesSectionDto, PersonalSectionDto, PortalCodeDto, PortalEmailDto, PortalSignDto, PortalVerifyDto, TaxSectionDto } from './portal-dto';
 import { PreboardingPortalService } from './portal.service';
+import { JoiningService } from './joining.service';
 
 // The pre-boarding portal (T9-01, LIFE-2.01 / 2.02), outside the staff app: a one-time code to the joiner's personal
 // email, then a session token in the X-Join-Portal header. Every route works only for that one joiner.
@@ -17,7 +18,10 @@ const meta = (req: Request) => ({ ip: req.ip ?? null, device: String(req.headers
 @Controller('portal/join/:org')
 @Throttle(PUBLIC_API_THROTTLE)
 export class PreboardingPortalController {
-  constructor(private readonly portal: PreboardingPortalService) {}
+  constructor(
+    private readonly portal: PreboardingPortalService,
+    private readonly joining: JoiningService,
+  ) {}
 
   @Post('code')
   @HttpCode(200)
@@ -93,6 +97,17 @@ export class PreboardingPortalController {
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 20 * 1024 * 1024, files: 1 } }))
   upload(@Param('org') org: string, @Param('typeKey') typeKey: string, @UploadedFile() file: Express.Multer.File | undefined, @Headers('x-join-portal') token?: string) {
     return this.portal.upload(slugOf(org), token, typeKey.slice(0, 40), file);
+  }
+
+  /** T9-01 "Decline offer": the joiner reneges with a reason; HR is told; the page then shows the outcome. */
+  @Post('decline')
+  @HttpCode(200)
+  @Throttle(STRICT_AUTH_THROTTLE)
+  async decline(@Param('org') org: string, @Body() dto: DeclineOfferDto, @Headers('x-join-portal') token?: string) {
+    const s = await this.portal.openJoining(slugOf(org), token);
+    const r = await this.joining.declineByJoiner(s.org, s.preboardingId, dto);
+    await this.portal.tellHrDeclined(s.org, s.preboardingId, r.hr, r.who, r.reason);
+    return { declined: true };
   }
 
   @Post('bgv-consent')

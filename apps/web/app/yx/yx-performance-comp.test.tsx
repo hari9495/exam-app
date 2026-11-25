@@ -6,6 +6,7 @@ import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxCompSheetPage from './(app)/performance/comp/[id]/page';
 import YxMyPayBandPage from './(app)/performance/pay-band/page';
+import YxMarketDataPage from './(app)/performance/comp/market/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -32,7 +33,7 @@ beforeEach(() => {
 });
 
 describe('Comp review (M06 batch PM7)', () => {
-  it('a manager change puts the proposal with its version', async () => {
+  it('a manager change puts the proposal with its version; the manager never sees pay-gap figures', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'c1' });
     const put: unknown[] = [];
     const sheet = {
@@ -50,18 +51,45 @@ describe('Comp review (M06 batch PM7)', () => {
       'PUT /performance/comp-proposals/p1': (_p: string, init: RequestInit) => (put.push(JSON.parse(String(init.body))), {}),
     });
     wrap(<YxCompSheetPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Change' }));
+    await userEvent.click(await screen.findByText('Arjun'));
     const d = screen.getByRole('dialog');
     const merit = within(d).getByRole('textbox', { name: /Merit increase/ });
     await userEvent.clear(merit);
     await userEvent.type(merit, '6');
-    await userEvent.click(within(d).getByRole('button', { name: 'Save' }));
+    await userEvent.click(within(d).getByRole('button', { name: 'Save justification' }));
     await waitFor(() => expect(put).toEqual([{ meritPct: 6, promotionToDesignationId: null, promotionAmount: 0, bonusAmount: 0, justification: null, version: 4 }]));
+    expect(screen.getByText(/Pay-gap figures are for HR and finance/)).toBeInTheDocument();
+    expect(api.mock.calls.some(([path]) => String(path).includes('pay-equity'))).toBe(false);
   });
 
   it('my pay band shows where I sit', async () => {
     route({ 'GET /performance/me/pay-band': { visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, position: 'below', quartile: null } });
     wrap(<YxMyPayBandPage />);
     expect(await screen.findByText(/You are below the range/)).toBeInTheDocument();
+  });
+
+  it('market data: the latest survey per grade for the chosen company; a refused upload lists the rows to fix (answer 12)', async () => {
+    const posted: unknown[] = [];
+    route({
+      'GET /rbac/me/permissions': ['perf.comp.manage'],
+      'GET /org/legal-entities': [{ id: 'le', name: 'Kaveri Foods' }],
+      'GET /performance/comp-market': { staleMonths: 12, latest: { version: 1, source: 'Aon 2026', currency: 'INR', asOf: '2026-04-01', stale: false, rows: [{ grade: 'G3', min: 510000, median: 600000, max: 720000 }] }, versions: [{ version: 1, source: 'Aon 2026', currency: 'INR', asOf: '2026-04-01', fileName: 'aon.csv', rows: 1, uploadedBy: 'Lakshmi', uploadedAt: '2026-04-02T09:00:00.000Z' }] },
+      'POST /performance/comp-market': (_p: string, init: RequestInit) => {
+        posted.push(JSON.parse(String(init.body)));
+        throw Object.assign(new Error('1 row needs fixing. Nothing was saved.'), { status: 400, body: { errors: [{ row: 2, message: 'No grade "G9" in this company.' }] } });
+      },
+    });
+    const { container } = wrap(<YxMarketDataPage />);
+    expect(await screen.findByText('Current survey · version 1')).toBeInTheDocument();
+    expect(screen.getByText(/Version 1 · Aon 2026/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Upload survey' }));
+    expect(screen.getByText('Choose the CSV file.')).toBeInTheDocument();
+    expect(posted).toEqual([]);
+    await userEvent.upload(container.querySelector('input[type="file"]') as HTMLInputElement, new File(['grade,min,median,max,currency\nG9,1,2,3,INR\n'], 'bad.csv', { type: 'text/csv' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Source/ }), 'Aon 2027');
+    await userEvent.type(screen.getByRole('textbox', { name: /As of/ }), '01/10/2026{Enter}');
+    await userEvent.click(screen.getByRole('button', { name: 'Upload survey' }));
+    expect(await screen.findByText('No grade "G9" in this company.')).toBeInTheDocument();
+    expect(posted).toEqual([{ legalEntityId: 'le', source: 'Aon 2027', asOf: '2026-10-01', fileName: 'bad.csv', csv: 'grade,min,median,max,currency\nG9,1,2,3,INR\n' }]);
   });
 });

@@ -2,6 +2,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { SettingsGroupScreen, SettingsPageScreen } from './settings-screens';
 import { SETTINGS_GROUPS } from './settings-groups';
+import { ConnectionDrawer, ShownOnceDrawer, aiPage, calendarPage, developersPage, integrationsPage, type IntegrationsState } from './integrations-live';
 import './settings.css';
 
 const meta: Meta = {
@@ -32,3 +33,22 @@ export const P7_8: S = { name: '7.8 Analytics', render: () => <SettingsPageScree
 export const P7_8_ReadOnly: S = { name: '7.8 Analytics · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="7.8" readOnly /> };
 export const P7_9: S = { name: '7.9 Deepfake detection', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="7.9" /> };
 export const P7_9_ReadOnly: S = { name: '7.9 Deepfake detection · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="7.9" readOnly /> };
+
+// Settings S-10 (answer 1327): group 7 live on the checked routes; secrets written, never read back.
+const STATE: IntegrationsState = {
+  smtpConfigured: true, smtpHost: 'smtp.kaverifoods.in', smtpPort: 587, emailFromAddress: 'hr@kaverifoods.in',
+  aiKeyConfigured: true, aiProvider: 'anthropic', aiBaseUrl: null, aiModelFast: null, aiModelStandard: null,
+  embeddingConfigured: false, embeddingBaseUrl: null, embeddingModel: null,
+  apiKeyConfigured: true, apiKeyPrefix: 'pk_live_3f9a', apiKeyCreatedAt: '2026-11-01T09:00:00Z',
+  webhookConfigured: true, webhookUrl: 'https://hooks.kaverifoods.in/…a1b2',
+  hrisExportConfigured: false, hrisExportEnabled: false, hrisProvider: 'generic', hrisTargetUrl: null,
+};
+const g7 = (id: string) => SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === id)!;
+const live = (id: string, page: ReturnType<typeof aiPage>) => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId={id} live={{ page, canEdit: false, lastChange: null, onSave: async () => undefined }} />;
+const SMS = [{ id: 'twilio', label: 'Twilio', configFields: [{ key: 'accountSid', label: 'Account SID', secret: false, required: true }, { key: 'authToken', label: 'Auth token', secret: true, required: true }] }];
+export const P7_1_Live: S = { name: '7.1 Integrations · live', render: () => live('7.1', integrationsPage(g7('7.1'), { apps: [{ id: 'a1', type: 'slack', label: 'Hiring alerts', events: ['candidate.applied', 'offer.accepted'], status: 'active', lastDeliveryAt: '2026-11-12T10:00:00Z', lastError: null }], state: STATE, sms: { enabled: true, provider: 'twilio', configured: true, config: { accountSid: 'AC12' } }, smsProviders: SMS, whatsapp: null, whatsappProviders: [] })) };
+export const P7_5_Live: S = { name: '7.5 Calendar & chat · live', render: () => live('7.5', calendarPage(g7('7.5'), [{ provider: 'google', connected: true, connectedEmail: 'lakshmi@kaverifoods.in' }, { provider: 'microsoft', connected: false, connectedEmail: null }])) };
+export const P7_6_Live: S = { name: '7.6 AI · live', render: () => live('7.6', aiPage(g7('7.6'), STATE)) };
+export const P7_7_Live: S = { name: '7.7 Developers · live', render: () => live('7.7', developersPage(g7('7.7'), STATE, [{ id: 'd1', eventType: 'candidate.hired', status: 'delivered', httpStatusCode: 200, createdAt: '2026-11-12T10:00:00Z' }], { totals: { requests: 1240, throttled: 3 }, byEndpoint: [{ endpoint: 'GET /public/candidates', requests: 1200, throttled: 3 }] })) };
+export const ConnectionSecretKept: S = { name: '7.1 · Set up SMS (secret kept)', render: () => <ConnectionDrawer title="Set up SMS" keepSecrets initial={{ enabled: true, provider: 'twilio', accountSid: 'AC12' }} fields={() => [{ key: 'enabled', label: 'Send SMS messages', kind: 'toggle' }, { key: 'accountSid', label: 'Account SID', kind: 'text', required: true }, { key: 'authToken', label: 'Auth token', kind: 'secret', required: true }]} saveLabel="Save SMS" onClose={() => {}} onSave={async () => undefined} /> };
+export const SecretShownOnce: S = { name: '7.7 · API key shown once', render: () => <ShownOnceDrawer title="Your API key" value="pk_live_3f9a0c1d…" onClose={() => {}} /> };

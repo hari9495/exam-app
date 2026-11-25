@@ -10,3 +10,4 @@ type S = StoryObj;
 export const List: S = { name: 'Licences · renewal due', render: () => <OwnLicencesScreen licences={OWN_LICENCES} today={TODAY} /> };
 export const Blocked: S = { name: '51st deployment blocked', render: () => <OwnLicencesScreen licences={OWN_LICENCES} today={TODAY} blocked /> };
 export const Empty: S = { render: () => <OwnLicencesScreen licences={[]} today={TODAY} /> };
+export const AddLicence: S = { name: 'Add licence', render: () => <OwnLicencesScreen licences={OWN_LICENCES} today={TODAY} adding /> };

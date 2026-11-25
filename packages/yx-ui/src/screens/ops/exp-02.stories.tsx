@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ClaimComposerScreen } from './expenses';
 import { MUMBAI_LINES } from './expenses-data';
 import type { ExpenseLine } from './expenses-data';
+import { CATEGORIES, DRAFT, READ_LINE } from './expenses-live-samples';
 
 const meta: Meta = { title: 'Screens/Expenses/EXP-02 · Claim composer', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -24,3 +25,22 @@ export const PhoneCamera: S = { name: 'Receipt capture · phone', globals: PHONE
 export const PhoneReading: S = { name: 'Reading receipt · phone', globals: PHONE, render: () => <ClaimComposerScreen device="phone" title="New claim" lines={MUMBAI_LINES.slice(0, 1)} advance={0} camera="processing" /> };
 export const PhoneDenied: S = { name: 'Camera off · phone', globals: PHONE, render: () => <ClaimComposerScreen device="phone" title="New claim" lines={[]} advance={0} camera="denied" /> };
 export const Phone: S = { name: 'Claim · phone (you will receive)', globals: PHONE, render: () => <ClaimComposerScreen device="phone" title="Mumbai distributor meet" lines={MUMBAI_LINES} advance={10000} /> };
+export const AddLine: S = { name: 'Add a line · what are you adding', render: () => <ClaimComposerScreen title="Mumbai distributor meet" lines={MUMBAI_LINES} advance={10000} addOpen /> };
+const noop = async () => ({});
+export const CheckReadLine: S = {
+  name: 'Line read from a receipt · check and confirm',
+  render: () => (
+    <ClaimComposerScreen
+      live={{ state: 'ready', onRetry: () => {}, claim: { ...DRAFT, lines: [...DRAFT.lines.slice(0, 2), READ_LINE] }, categories: CATEGORIES, today: '2026-09-20', onBack: () => {}, onUploadReceipt: noop, onSaveLine: noop, onRemoveLine: noop, onSubmit: noop, onWithdraw: noop, onOpenReceipt: noop, onApproveAmount: noop, onDecide: noop, onFlag: noop }}
+    />
+  ),
+};
+// Projects P-5 (answer 1419): with project expenses switched on, a line names its project and may be re-billed.
+export const AddLineProject: S = {
+  name: 'Add a line · project and re-bill (Projects on)',
+  render: () => (
+    <ClaimComposerScreen
+      live={{ state: 'ready', onRetry: () => {}, claim: { ...DRAFT, projects: [{ id: 'p1', code: 'NRP-WEB', name: 'Nilgiri Retail web rebuild', client: true }, { id: 'p3', code: 'INT-ADM', name: 'Internal administration', client: false }] }, categories: CATEGORIES, today: '2026-09-20', startAdd: 'bill', onBack: () => {}, onUploadReceipt: noop, onSaveLine: noop, onRemoveLine: noop, onSubmit: noop, onWithdraw: noop, onOpenReceipt: noop, onApproveAmount: noop, onDecide: noop, onFlag: noop }}
+    />
+  ),
+};

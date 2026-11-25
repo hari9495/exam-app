@@ -46,24 +46,27 @@ test('HR issues the appointment letter → the System Admin approves → issued 
   await pick(hr, sheet, 'Employment type', /Permanent/);
   await pick(hr, sheet, 'Manager', /Divya Raghunathan/);
   await sheet.getByRole('button', { name: 'Add joiner' }).click();
-  await expect(hr.getByText(`${first} was added`)).toBeVisible({ timeout: 30_000 });
-  await hr.getByRole('row', { name: new RegExp(first) }).getByRole('button', { name: 'Checklist' }).click();
+  // The designed toast and board (PPL-11): a card opens the journey record.
+  await expect(hr.getByText(`${first} added`).first()).toBeVisible({ timeout: 30_000 });
+  await hr.getByRole('button', { name: `${first} Rao`, exact: true }).click();
   await hr.waitForURL(/\/yx\/people\/onboarding\/[^/]+$/);
   const checklist = hr.url();
 
   // Issue the appointment letter from its task (it needs approval).
-  await hr.getByRole('row', { name: /Issue the appointment letter/ }).getByRole('button', { name: 'Issue letter' }).click();
+  await hr.getByRole('listitem').filter({ hasText: 'Issue the appointment letter' }).getByRole('button', { name: 'Issue letter' }).click();
   await hr.getByRole('dialog').getByRole('button', { name: 'Issue letter' }).click();
   await expect(hr.getByRole('dialog')).toHaveCount(0);
 
   // Lakshmi signs letters herself, so the System Admin approves it.
   const admin = await signedIn(browser, 'admin@demo-org.test', 'DevAdmin123!');
   await admin.goto('/yx/approvals');
-  const card = admin.locator('section').filter({ has: admin.getByRole('heading', { name: /Appointment letter to approve/ }) }).last();
-  await expect(card).toBeVisible();
-  await expect(card.getByText(new RegExp(first))).toBeVisible();
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(card).toHaveCount(0);
+  // Approvals is a table: the letter's row names the joiner; it opens, and Approve completes it.
+  const request = admin.getByRole('row', { name: new RegExp(`Appointment letter.*${first}`) }).first();
+  await expect(request).toBeVisible({ timeout: 30_000 });
+  await request.click();
+  const open = admin.getByRole('dialog', { name: new RegExp(`Appointment letter.*${first}`) });
+  await open.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(admin.getByRole('row', { name: new RegExp(`Appointment letter.*${first}`) })).toHaveCount(0, { timeout: 30_000 });
 
   // Issued: in the register with its reference, and the checklist task closed by itself.
   await expect(async () => {
@@ -72,16 +75,19 @@ test('HR issues the appointment letter → the System Admin approves → issued 
   }).toPass({ timeout: 60_000 });
   const row = hr.getByRole('row', { name: new RegExp(first) }).first();
   await expect(row.getByText(/\/APT\/\d{4}\/\d{6}/)).toBeVisible();
-  const checkHref = await row.getByRole('link', { name: 'Check page' }).getAttribute('href');
+  // The designed register (PPL-28): the row's menu copies the verification link.
+  await hr.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await row.getByRole('button', { name: /actions|more/i }).click();
+  await hr.getByRole('menuitem', { name: 'Copy verification link' }).click();
+  const checkHref = await hr.evaluate(() => navigator.clipboard.readText());
   const check = await (await browser.newContext()).newPage();
-  await check.goto(checkHref!);
-  await check.getByRole('button', { name: 'Check' }).click();
+  await check.goto(checkHref!); // the public check page checks the code in its address at once
   await expect(check.getByText(/Appointment letter/)).toBeVisible();
   await expect(check.getByText(/current|valid/i).first()).toBeVisible();
   await expect(async () => {
     await hr.goto(checklist);
-    await hr.getByRole('radio', { name: 'All tasks' }).click();
-    await expect(hr.getByRole('row', { name: /Issue the appointment letter/ }).getByText('Done', { exact: true })).toBeVisible({ timeout: 2_000 });
+    await expect(hr.getByRole('heading', { name: / · onboarding/ })).toBeVisible();
+    await expect(hr.getByRole('list', { name: /open tasks/ }).getByText('Issue the appointment letter')).toHaveCount(0, { timeout: 2_000 });
   }).toPass({ timeout: 60_000 });
 
   // Mark joined with the identity check: an employee now.

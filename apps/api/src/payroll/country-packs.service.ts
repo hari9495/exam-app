@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -22,6 +23,24 @@ import { serviceYearsBetween } from './special';
 // gratuity is computed here for the F&F to pay as an item.
 
 const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
+
+export type NecCopyForm = { legalName: string; tinKind: string; tinLast4: string; address: unknown };
+/** The recipient's 1099-NEC copy B as a PDF (masked TINs; pure, so a test reads it back). */
+export function necCopyPdf(year: number, payer: string, ein: string, form: NecCopyForm, paid: string): Promise<Buffer> {
+  const a = form.address as { street: string; city: string; state: string; zip: string };
+  const doc = new PDFDocument({ size: 'LETTER', margin: 50, info: { Title: `1099-NEC ${year}` } });
+  const parts: Buffer[] = [];
+  doc.on('data', (b: Buffer) => parts.push(b));
+  const done = new Promise<Buffer>((res) => doc.on('end', () => res(Buffer.concat(parts))));
+  doc.fontSize(16).text(`Form 1099-NEC (${year}) — copy B for the recipient`).moveDown();
+  writeText(doc.fontSize(10), `Payer: ${payer}`).text(`Payer EIN: •••••${ein.slice(-4)}`).moveDown();
+  writeText(doc, `Recipient: ${form.legalName}`);
+  writeText(doc, `${a.street}, ${a.city}, ${a.state} ${a.zip}`).text(`Recipient TIN (${form.tinKind}): •••••${form.tinLast4}`).moveDown();
+  doc.fontSize(12).text(`Box 1, nonemployee compensation: $${paid}`).moveDown();
+  doc.fontSize(8).text('This is important tax information and is being furnished to the IRS (data prepared by YukthiX; filed by the payer).');
+  doc.end();
+  return done;
+}
 interface Manifest {
   country: string;
   currency: string;
@@ -284,20 +303,10 @@ export class CountryPackService {
       const x = await this.necRows(tx, c.organizationId, entityId, year);
       const r = x.rows.find((y) => y.consultantId === consultantId && y.due && y.form);
       if (!r) throw new NotFoundException('No 1099-NEC is due for this contractor and year.');
-      const a = r.form!.address as { street: string; city: string; state: string; zip: string };
-      const doc = new PDFDocument({ size: 'LETTER', margin: 50, info: { Title: `1099-NEC ${year}` } });
-      const parts: Buffer[] = [];
-      doc.on('data', (b: Buffer) => parts.push(b));
-      const done = new Promise<Buffer>((res) => doc.on('end', () => res(Buffer.concat(parts))));
-      doc.fontSize(16).text(`Form 1099-NEC (${year}) — copy B for the recipient`).moveDown();
       const ein = ((await tx.entityCountryPack.findFirst({ where: { organizationId: c.organizationId, legalEntityId: entityId } }))?.settings as Record<string, string> | undefined)?.ein ?? '';
-      doc.fontSize(10).text(`Payer: ${e.name}`).text(`Payer EIN: •••••${ein.slice(-4)}`).moveDown();
-      doc.text(`Recipient: ${r.form!.legalName}`).text(`${a.street}, ${a.city}, ${a.state} ${a.zip}`).text(`Recipient TIN (${r.form!.tinKind}): •••••${r.form!.tinLast4}`).moveDown();
-      doc.fontSize(12).text(`Box 1, nonemployee compensation: $${r.paid}`).moveDown();
-      doc.fontSize(8).text('This is important tax information and is being furnished to the IRS (data prepared by YukthiX; filed by the payer).');
-      doc.end();
+      const file = await necCopyPdf(year, e.name, ein, r.form! as NecCopyForm, String(r.paid));
       await audit(tx, c, 'payroll.1099.copy_downloaded', 'consultant', consultantId, { year });
-      return { file: await done, name: `1099-nec-${year}-${r.name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase()}.pdf` };
+      return { file, name: `1099-nec-${year}-${r.name.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase()}.pdf` };
     });
   }
 }

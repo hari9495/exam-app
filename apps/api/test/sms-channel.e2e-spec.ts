@@ -19,6 +19,7 @@ import { markSteppedUp } from './fixtures/step-up';
 import { trackEmailCodes, trackOtpSends } from './fixtures/sms';
 import { OtpService } from '../src/auth/otp.service';
 import { ipBucket } from '../src/auth/login-protection.service';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // P04 SMS channel end to end, against the real database (forced RLS, app role), real Redis and a local
 // mock HTTP gateway (no real provider): accounts with write-only secrets, failover, retries only where
@@ -163,6 +164,7 @@ describe('SMS channel (P04 §4.4/§4.5a; YX-NTF-07/10/11/12/13/14)', () => {
         )
       ).id;
     }
+    await giveStaffRoles(users.platform!, ['security_lead']);
     for (const [name, k] of [['adminA', 'A'], ['adminB', 'B'], ['adminA2', 'A'], ['platform', null]] as const) {
       const res = await request(server())
         // YukthiX platform staff sign in through their own path only (W-005).

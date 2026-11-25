@@ -10,6 +10,7 @@ import { logPresence } from './team.service';
 import { PRIVATE_BY_DEFAULT, STARTER_HOURS, STARTER_PACKS, starterFor, starterPriority } from './starter';
 import { EMPTY_FORM } from '../rules-engine/forms';
 import { DeskActor, activeOn, audit, canSetUp, emit, has, isAgentOn, requireSetUp, requireWork } from './desk-access';
+import { FieldRow, RuleError, checkFieldSet, sees } from './ticket-fields';
 import {
   AddMemberDto,
   AgentStatusDto,
@@ -19,7 +20,9 @@ import {
   CategoryDto,
   CreateDeskDto,
   GroupDto,
+  TicketFieldDto,
   HolidayDto,
+  ITSM_KINDS,
   MatrixDto,
   ScenarioDto,
   StatusDto,
@@ -98,6 +101,9 @@ export class DesksService {
       requesterCanReopen: d.requesterCanReopen,
       autoCloseDays: d.autoCloseDays,
       routingWaitMinutes: d.routingWaitMinutes,
+      atRiskPercent: d.atRiskPercent,
+      ratingReasons: d.ratingReasons,
+      closedMessage: d.closedMessage,
       status: d.status,
       version: d.version,
     };
@@ -153,7 +159,7 @@ export class DesksService {
     return this.tx(a, async (tx) => {
       const desk = await this.desk(tx, a, id);
       const w = { organizationId: org, deskId: id };
-      const [types, statuses, categories, groups, groupMembers, matrix, members, scenarios] = await Promise.all([
+      const [types, statuses, categories, groups, groupMembers, matrix, members, scenarios, fields] = await Promise.all([
         tx.sdTicketType.findMany({ where: w, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
         tx.sdStatus.findMany({ where: w, orderBy: [{ sortOrder: 'asc' }, { label: 'asc' }] }),
         tx.sdCategory.findMany({ where: w, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] }),
@@ -162,6 +168,7 @@ export class DesksService {
         tx.sdPriorityMatrix.findMany({ where: w }),
         tx.sdDeskMember.findMany({ where: { ...w, OR: [{ validTo: null }, { validTo: { gte: day(todayIst()) } }] }, orderBy: { createdAt: 'asc' } }),
         tx.sdScenario.findMany({ where: w, orderBy: { name: 'asc' } }),
+        tx.sdTicketField.findMany({ where: w, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }),
       ]);
       const users = await tx.user.findMany({ where: { organizationId: org, id: { in: members.map((m) => m.userId) } }, select: { id: true, name: true, email: true } });
       const name = new Map(users.map((u) => [u.id, u]));
@@ -189,6 +196,10 @@ export class DesksService {
           active: iso(m.validFrom)! <= today,
         })),
         scenarios: limited ? [] : scenarios.filter((s) => s.active || canSetUp(a, id, 'desk.settings.manage')).map((s) => ({ id: s.id, name: s.name, actions: s.actions, active: s.active })),
+        // Answers 1641, 1650: the desk's own fields. Set-up sees them all; a seat sees those its role may see.
+        fields: fields
+          .filter((f) => canSetUp(a, id, 'desk.settings.manage') || (f.active && sees(f, a.roles.get(id) === 'lead' ? 'lead' : 'agent')))
+          .map((f) => ({ id: f.id, key: f.key, label: f.label, fieldType: f.fieldType, ticketTypeId: f.ticketTypeId, options: f.options, dependsOn: f.dependsOn, optionsBy: f.optionsBy, visibility: f.visibility, requiredToSolve: f.requiredToSolve, sortOrder: f.sortOrder, active: f.active, version: f.version })),
         myRole: a.roles.get(id) ?? null,
         canSetUp: canSetUp(a, id, 'desk.settings.manage'),
         canManageMembers: canSetUp(a, id, 'desk.member.manage'),
@@ -212,6 +223,7 @@ export class DesksService {
       }
       if (dto.calendarId && !(await tx.businessCalendar.findFirst({ where: { organizationId: org, id: dto.calendarId }, select: { id: true } }))) throw new BadRequestException('No such calendar.');
       const { version, nextNumber, ...fields } = dto;
+      if (fields.ratingReasons) fields.ratingReasons = fields.ratingReasons.map((x) => x.trim().replace(/\s+/g, ' '));
       const res = await tx.sdDesk.updateMany({ where: { organizationId: org, id, version }, data: { ...fields, version: { increment: 1 } } });
       if (res.count === 0) throw new ConflictException('Someone else changed this desk. Reload to see the latest.');
       if (nextNumber !== undefined) {
@@ -230,8 +242,9 @@ export class DesksService {
 
   /** Staff people of the company who can be given a seat. */
   async users(a: DeskActor, search?: string) {
-    // Colleagues to give a seat to, or (batch 4) to send a scheduled report to: names and work emails only.
-    if (!has(a, 'desk.member.manage') && !has(a, 'desk.report.manage') && !has(a, 'desk.kb.publish')) throw new ForbiddenException('You cannot look up colleagues here.');
+    // Colleagues to give a seat to, or (batch 4) to send a scheduled report to, or (ITSM-1) to name on the change board:
+    // names and work emails only.
+    if (!has(a, 'desk.member.manage') && !has(a, 'desk.report.manage') && !has(a, 'desk.kb.publish') && !has(a, 'desk.settings.manage')) throw new ForbiddenException('You cannot look up colleagues here.');
     return this.tx(a, (tx) =>
       tx.user.findMany({
         where: { organizationId: a.ctx.organizationId, status: 'active', ...(search ? { OR: [{ name: { contains: search, mode: 'insensitive' } }, { email: { contains: search, mode: 'insensitive' } }] } : {}) },
@@ -311,6 +324,69 @@ export class DesksService {
     if (seats.length !== ids.length) throw new BadRequestException('Everyone in a group needs an agent or lead seat on this desk.');
   }
 
+  /**
+   * Answers 1641, 1650: adds or changes one of the desk's own ticket fields. The desk's whole set (with this change) is
+   * checked by the forms engine, so a drop-down may depend only on a drop-down of the same tickets and list only its own
+   * values under each parent value. The key and the kind never change (old values keep their meaning).
+   */
+  async saveField(a: DeskActor, deskId: string, fieldId: string | null, dto: TicketFieldDto) {
+    requireSetUp(a, deskId, 'desk.settings.manage');
+    const org = a.ctx.organizationId;
+    try {
+      return await this.tx(a, async (tx) => {
+        await this.desk(tx, a, deskId);
+        if (dto.ticketTypeId && !(await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, id: dto.ticketTypeId }, select: { id: true } }))) throw new BadRequestException('No such ticket type on this desk.');
+        const all = await tx.sdTicketField.findMany({ where: { organizationId: org, deskId } });
+        const cur = fieldId ? all.find((f) => f.id === fieldId) : null;
+        if (fieldId && !cur) throw new NotFoundException('No such field.');
+        if (cur && dto.version !== undefined && dto.version !== cur.version) throw new ConflictException('Someone changed this field. Reload to see the latest.');
+        if (cur && dto.key && dto.key !== cur.key) throw new BadRequestException('A field keeps its key. Add a new field instead.');
+        if (cur && dto.fieldType !== cur.fieldType) throw new BadRequestException('A field keeps its kind. Add a new field instead.');
+        if (!cur && !dto.key) throw new BadRequestException('Give the field a key.');
+        if (!cur && all.some((f) => f.key === dto.key)) throw new ConflictException('A field with that key already exists on this desk.');
+        const next = {
+          key: cur?.key ?? dto.key!,
+          label: dto.label,
+          fieldType: dto.fieldType,
+          ticketTypeId: dto.ticketTypeId === undefined ? (cur?.ticketTypeId ?? null) : dto.ticketTypeId,
+          options: dto.fieldType === 'choice' ? (dto.options ?? (cur?.options as { value: string; label: string }[]) ?? []) : [],
+          dependsOn: dto.fieldType === 'choice' ? (dto.dependsOn === undefined ? (cur?.dependsOn ?? null) : dto.dependsOn) : null,
+          optionsBy: dto.fieldType === 'choice' ? (dto.optionsBy === undefined ? ((cur?.optionsBy as Record<string, string[]>) ?? null) : dto.optionsBy) : null,
+          visibility: dto.visibility ?? cur?.visibility ?? 'all',
+          requiredToSolve: dto.requiredToSolve ?? cur?.requiredToSolve ?? false,
+          sortOrder: dto.sortOrder ?? cur?.sortOrder ?? all.length,
+          active: dto.active ?? cur?.active ?? true,
+        };
+        if (next.fieldType === 'choice' && !next.options.length) throw new BadRequestException('A drop-down needs at least one choice.');
+        // Answer 1843: agents could never solve if they had to fill a field only team leads see.
+        if (next.requiredToSolve && next.visibility === 'leads') throw new BadRequestException('A field only team leads see cannot be required before solving. Show it to the desk staff, or make it optional.');
+        const row = { ...(cur ?? { id: 'new', organizationId: org, deskId, version: 0, createdBy: a.userId, createdAt: new Date(), updatedAt: new Date() }), ...next } as FieldRow;
+        const set = [...all.filter((f) => f.id !== cur?.id), row].filter((f) => f.active);
+        // A dependent drop-down and its parent apply to the same tickets: the parent is for every type, or for the child's own.
+        for (const f of set.filter((x) => x.dependsOn)) {
+          const p = set.find((x) => x.key === f.dependsOn);
+          if (p && p.ticketTypeId && p.ticketTypeId !== f.ticketTypeId) throw new BadRequestException(`"${f.label}" depends on "${p.label}", which is for another ticket type.`);
+          if (p && p.visibility !== 'all' && f.visibility === 'all') throw new BadRequestException(`"${f.label}" depends on "${p.label}", which the requester cannot see. Hide "${f.label}" from the requester too.`);
+          if (p && p.visibility === 'leads' && f.visibility !== 'leads') throw new BadRequestException(`"${f.label}" depends on "${p.label}", which only team leads see. Make "${f.label}" team lead only too.`);
+        }
+        if (cur && !next.active && set.some((f) => f.dependsOn === cur.key)) throw new BadRequestException('Another field depends on this one. Change or switch that one off first.');
+        try {
+          for (const ty of [null, ...new Set(set.map((f) => f.ticketTypeId).filter((x): x is string => Boolean(x)))]) checkFieldSet(set.filter((f) => f.ticketTypeId === null || f.ticketTypeId === ty));
+        } catch (e) {
+          if (e instanceof RuleError) throw new BadRequestException(e.message);
+          throw e;
+        }
+        const data = { ...next, options: next.options as Prisma.InputJsonValue, optionsBy: (next.optionsBy ?? Prisma.DbNull) as Prisma.InputJsonValue };
+        const id = cur ? cur.id : (await tx.sdTicketField.create({ data: { organizationId: org, deskId, ...data, createdBy: a.userId } })).id;
+        if (cur) await tx.sdTicketField.update({ where: { id: cur.id }, data: { ...data, version: { increment: 1 }, updatedAt: new Date() } });
+        await audit(tx, a, cur ? 'desk.field.updated' : 'desk.field.created', 'sd_ticket_field', id, { deskId, key: next.key, label: next.label, fieldType: next.fieldType, visibility: next.visibility, requiredToSolve: next.requiredToSolve, active: next.active });
+        return { id };
+      });
+    } catch (e) {
+      uniqueViolation(e, 'A field with that key already exists on this desk.');
+    }
+  }
+
   async saveGroup(a: DeskActor, deskId: string, groupId: string | null, dto: GroupDto) {
     requireSetUp(a, deskId, 'desk.settings.manage');
     const org = a.ctx.organizationId;
@@ -371,7 +447,9 @@ export class DesksService {
     const org = a.ctx.organizationId;
     try {
       return await this.tx(a, async (tx) => {
-        await this.desk(tx, a, deskId);
+        const desk = await this.desk(tx, a, deskId);
+        // Answer 1931: change and problem types only on IT desks.
+        if ('kind' in dto && ITSM_KINDS.includes(dto.kind) && desk.kind !== 'it') throw new BadRequestException('Change and problem types are for IT desks only.');
         let id = typeId;
         if (id) {
           const res = await tx.sdTicketType.updateMany({ where: { organizationId: org, deskId, id }, data: dto });
@@ -692,11 +770,12 @@ export async function installPack(tx: Tx, a: { ctx: DeskActor['ctx']; userId: st
     if (!team || (await tx.sdCatalogItem.findFirst({ where: { ...d, name: it.name }, select: { id: true } }))) continue;
     let cat = await tx.sdCategory.findFirst({ where: { ...d, name: it.category }, select: { id: true } });
     cat ??= await tx.sdCategory.create({ data: { ...d, name: it.category, defaultGroupId: team.id, sortOrder: 50 }, select: { id: true } });
-    const approval = it.managerApproves ? [{ name: 'Manager', approvers: [{ kind: 'manager', level: 1 }], mode: 'any' }] : [];
+    const approval = it.approval ?? (it.managerApproves ? [{ name: 'Manager', approvers: [{ kind: 'manager', level: 1 }], mode: 'any' }] : []);
     const fulfilment = it.tasks.map((t) => ({ title: t.title, groupId: team.id, olaHours: t.olaHours }));
-    const draft = { bodyHtml: '', media: [], form: EMPTY_FORM, approval, fulfilment };
+    const form = it.form ?? EMPTY_FORM;
+    const draft = { bodyHtml: '', media: [], form, approval, fulfilment };
     const row = await tx.sdCatalogItem.create({ data: { ...d, categoryId: cat.id, name: it.name, shortText: it.shortText, state: 'published', currentVersion: 1, deliveryDays: it.deliveryDays, journeyOnly: Boolean(it.journeyOnly), sortOrder: 100 + i, draft: draft as unknown as Prisma.InputJsonValue, createdBy: a.userId } });
-    await tx.sdCatalogItemVersion.create({ data: { ...d, itemId: row.id, version: 1, form: EMPTY_FORM as unknown as Prisma.InputJsonValue, approval: approval as unknown as Prisma.InputJsonValue, fulfilment: fulfilment as unknown as Prisma.InputJsonValue, publishedBy: a.userId } });
+    await tx.sdCatalogItemVersion.create({ data: { ...d, itemId: row.id, version: 1, form: form as unknown as Prisma.InputJsonValue, approval: approval as unknown as Prisma.InputJsonValue, fulfilment: fulfilment as unknown as Prisma.InputJsonValue, publishedBy: a.userId } });
     items++;
   }
   let sla = false;

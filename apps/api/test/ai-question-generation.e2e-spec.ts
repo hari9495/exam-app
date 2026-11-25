@@ -85,7 +85,7 @@ describe('AI Question Generation flow', () => {
     return statusBody;
   }
 
-  it('generates draft questions end-to-end, keeps them out of the active list, and publishes one', async () => {
+  it('generates draft questions end-to-end, keeps them out of the active list, and puts them in the review queue', async () => {
     fakeQuestionGenerationClient.generate.mockResolvedValueOnce([
       {
         type: 'single_mcq',
@@ -130,17 +130,20 @@ describe('AI Question Generation flow', () => {
       .expect(200);
     expect(activeListResponse.body.data.map((q: { id: string }) => q.id)).not.toContain(questionId);
 
-    const publishResponse = await request(adminHttp)
+    // Answer 2121: an AI draft is in the review queue with the person who asked as its author; the older publish refuses.
+    const draft = draftListResponse.body.data.find((q: { id: string }) => q.id === questionId);
+    expect(draft).toMatchObject({ status: 'draft', marks: 2, negativeMarks: 1 });
+    const revision = await tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: false }, (tx) => tx.questionRevision.findFirstOrThrow({ where: { questionId } }));
+    expect(revision).toMatchObject({ state: 'in_review', kind: 'new' });
+    await request(adminHttp)
       .post(`/api/v1/questions/${questionId}/publish`)
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
-      .expect(201);
-    expect(publishResponse.body).toMatchObject({ status: 'active', marks: 2, negativeMarks: 1 });
-
+      .expect(409);
     const activeListAfterPublish = await request(adminHttp)
       .get('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .expect(200);
-    expect(activeListAfterPublish.body.data.map((q: { id: string }) => q.id)).toContain(questionId);
+    expect(activeListAfterPublish.body.data.map((q: { id: string }) => q.id)).not.toContain(questionId);
   });
 
   it('fails the job with zero questions created when the Claude client throws', async () => {

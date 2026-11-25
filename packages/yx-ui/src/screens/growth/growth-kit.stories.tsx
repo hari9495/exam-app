@@ -6,6 +6,9 @@ import {
   EnpsScale,
   GoalTree,
   NineBox,
+  PotentialChoice,
+  CalibrationPlan,
+  type PlannedSession,
   PollBlock,
   PostCard,
   ProgressRing,
@@ -48,6 +51,42 @@ export const Rating: S = {
         <RatingScale label="Rating" value={v} onChange={setV} />
         <ScoreBand score={v} />
         <ScoreBand score={null} />
+      </div>
+    );
+  },
+};
+export const RatingCompanyScale: S = {
+  name: 'Rating · the company’s own scale and band',
+  render: () => {
+    const [v, setV] = useState<number | null>(2);
+    return (
+      <div style={box}>
+        <RatingScale label="Rating" value={v} onChange={setV} levels={[{ value: 1, label: 'Below' }, { value: 2, label: 'Meets' }, { value: 3, label: 'Above' }, { value: 4, label: 'Far above' }]} />
+        <ScoreBand score={2.6} band="Solid performer" />
+      </div>
+    );
+  },
+};
+export const Potential: S = {
+  name: 'Potential · the manager’s proposal',
+  render: () => {
+    const [v, setV] = useState<1 | 2 | 3 | null>(null);
+    return (
+      <div style={box}>
+        <PotentialChoice value={v} onChange={setV} />
+        <PotentialChoice value={3} readOnly />
+      </div>
+    );
+  },
+};
+export const CalibrationSessions: S = {
+  name: 'Calibration sessions · planned in the cycle wizard',
+  render: () => {
+    const [v, setV] = useState<PlannedSession[]>([{ name: 'Quality lab', facilitatorUserId: 'u1', departmentIds: ['qa'] }]);
+    return (
+      <div style={box}>
+        <CalibrationPlan sessions={v} onChange={setV} facilitators={[{ value: 'u1', label: 'Lakshmi Rao' }, { value: 'u2', label: 'Aisha Khan' }]} departments={[{ value: 'qa', label: 'Quality' }, { value: 'pr', label: 'Production' }]} />
+        <CalibrationPlan sessions={[]} onChange={() => {}} facilitators={[]} departments={[]} />
       </div>
     );
   },

@@ -7,6 +7,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { bandsProblem, scaleProblem, templateProblem, type SectionIn } from './perf-rules';
 import type { CompetencyDto, ScaleDto, SkillDto, TemplateDto } from './dto';
 import { STARTER_COMPETENCIES, STARTER_DOMAINS, STARTER_SCALE, STARTER_TEMPLATES } from './starters';
+import { ImportFileProblem, parseCompetencyCsv, type RowProblem } from './competency-import';
 
 // Performance batch PM1 (M06-BUILD-DESIGN §5.2, §6, §9.1; PM-1.01 … 1.04): rating scales and bands, review templates
 // (versions; a template in use is never changed in place), the company skills library in its first form and the
@@ -330,6 +331,13 @@ export class PerformanceSetupService {
       starter: Boolean(x.starterKey),
       levels: levels.map((l) => ({ level: l.level, label: l.label, behaviours: l.behaviours })),
       roles: roles.map((r) => ({ designationId: r.designationId, designation: names.get(r.designationId) ?? '', level: r.expectedLevel, validFrom: iso(r.validFrom) })),
+      // PRF-14: the question-bank tag used as the skills test, with its active questions.
+      skillsTest: x.questionTagId ? await this.tagView(tx, org, x.questionTagId) : null,
+      // PRF-14: competencies are rated in every active review template with a competencies section.
+      usedIn: (
+        await tx.$queryRaw<{ name: string }[]>`SELECT DISTINCT t.name FROM review_templates t JOIN review_template_sections s ON s.organization_id = t.organization_id AND s.template_id = t.id
+          WHERE t.organization_id = ${org}::uuid AND t.status = 'active' AND s.kind = 'competencies' ORDER BY t.name`
+      ).map((t) => t.name),
       version: x.version,
     };
   }
@@ -342,6 +350,77 @@ export class PerformanceSetupService {
       for (const x of rows) out.push(await this.competencyView(tx, c.organizationId, x, today));
       return out;
     });
+  }
+
+  private async tagView(tx: Tx, org: string, tagId: string) {
+    const t = await tx.tag.findFirst({ where: { organizationId: org, id: tagId }, select: { id: true, name: true } });
+    if (!t) return null;
+    const questions = await tx.question.count({ where: { organizationId: org, status: 'active', tags: { some: { tagId } } } });
+    return { tagId: t.id, name: t.name, questions };
+  }
+
+  /** PRF-14: the company's question-bank tags a competency may use as its skills test (names and counts only). */
+  questionTags(ctx: TenantContext) {
+    return this.run(ctx, async (tx, c) => {
+      const rows = await tx.$queryRaw<{ id: string; name: string; n: number }[]>`
+        SELECT t.id::text, t.name, COUNT(q.id)::int AS n FROM tags t
+        LEFT JOIN question_tags qt ON qt.tag_id = t.id
+        LEFT JOIN questions q ON q.id = qt.question_id AND q.organization_id = t.organization_id AND q.status = 'active'
+        WHERE t.organization_id = ${c.organizationId}::uuid GROUP BY t.id, t.name ORDER BY t.name LIMIT 500`;
+      return rows.map((t) => ({ value: t.id, label: t.name, questions: t.n }));
+    });
+  }
+
+  /** A tag of this company, or a refusal (another company's tag is "not found" here too). */
+  private async tagOf(tx: Tx, org: string, tagId: string | null | undefined) {
+    if (tagId === undefined || tagId === null) return tagId;
+    if (!(await tx.tag.findFirst({ where: { organizationId: org, id: tagId }, select: { id: true } }))) throw new BadRequestException('Choose a question tag of this company.');
+    return tagId;
+  }
+
+  /**
+   * PRF-14 Import: every row is checked (the file, then designations and names inside the company); if any row has a
+   * problem nothing is saved and the rows are listed. Otherwise all competencies are made in one transaction.
+   */
+  async importCompetencies(ctx: TenantContext, csv: string) {
+    let parsed: ReturnType<typeof parseCompetencyCsv>;
+    try {
+      parsed = parseCompetencyCsv(csv);
+    } catch (e) {
+      if (e instanceof ImportFileProblem) throw new BadRequestException(e.message);
+      throw e;
+    }
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const problems: RowProblem[] = [...parsed.problems];
+      const designations = await tx.designation.findMany({ where: { organizationId: org }, select: { id: true, name: true } });
+      const byName = new Map(designations.map((d) => [d.name.toLowerCase(), d.id]));
+      const skills = await tx.$queryRaw<{ name: string; domain: string }[]>`
+        SELECT lower(s.name) AS name, lower(p.name) AS domain FROM company_skills s JOIN company_skills p ON p.organization_id = s.organization_id AND p.id = s.parent_id
+        WHERE s.organization_id = ${org}::uuid AND s.status = 'active' AND s.kind = 'skill'`;
+      const taken = new Set(skills.map((s) => `${s.domain}|${s.name}`));
+      for (const r of parsed.rows) {
+        const out: string[] = [];
+        const unknown = r.roles.filter((x) => !byName.has(x.designation.toLowerCase())).map((x) => x.designation);
+        if (unknown.length) out.push(`No designation called ${unknown.join(', ')} in this company.`);
+        if (taken.has(`${GROUP_DOMAIN[r.group].toLowerCase()}|${r.name.toLowerCase()}`)) out.push('A competency with this name is already in this group. Change it on the page instead.');
+        if (out.length) problems.push({ line: r.line, name: r.name, problems: out });
+      }
+      if (problems.length) {
+        problems.sort((a, b) => a.line - b.line);
+        throw new BadRequestException({ message: `${problems.length === 1 ? '1 row has a problem' : `${problems.length} rows have problems`}. Nothing was imported. Fix the file and import it again.`, problems });
+      }
+      const today = todayIst();
+      for (const r of parsed.rows) {
+        const domain = await this.domainFor(tx, org, r.group);
+        const skill = await tx.companySkill.create({ data: { organizationId: org, kind: 'skill', name: r.name, parentId: domain.id } });
+        const x = await tx.competency.create({ data: { organizationId: org, companySkillId: skill.id, group: r.group, description: r.description } });
+        await tx.competencyLevel.createMany({ data: r.levels.map((label, i) => ({ organizationId: org, competencyId: x.id, level: i + 1, label })) });
+        await this.writeRoles(tx, org, x.id, r.roles.map((x) => ({ designationId: byName.get(x.designation.toLowerCase())!, level: x.level, validFrom: today })), r.levels.length);
+        await audit(tx, c, 'perf.competency.imported', 'competency', x.id, { name: r.name, line: r.line });
+      }
+      return { imported: parsed.rows.length };
+    }).catch(this.duplicate('A competency in the file has the same name as one already saved. Nothing was imported.'));
   }
 
   private async domainFor(tx: Tx, org: string, group: CompetencyDto['group']) {
@@ -379,18 +458,19 @@ export class PerformanceSetupService {
         const cur = await tx.competency.findFirst({ where: { organizationId: org, id } });
         if (!cur) throw new NotFoundException('No such competency.');
         if (cur.status !== 'active') throw new ConflictException('A retired competency is not changed.');
-        const n = await tx.competency.updateMany({ where: { organizationId: org, id, version: dto.version ?? -1 }, data: { group: dto.group, description: dto.description ?? null, version: { increment: 1 } } });
+        const questionTagId = await this.tagOf(tx, org, dto.questionTagId);
+        const n = await tx.competency.updateMany({ where: { organizationId: org, id, version: dto.version ?? -1 }, data: { group: dto.group, description: dto.description ?? null, ...(questionTagId !== undefined ? { questionTagId } : {}), version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this competency. Reload it.');
         await tx.companySkill.update({ where: { id: cur.companySkillId }, data: { name: dto.name, parentId: domain.id } });
         await tx.competencyLevel.deleteMany({ where: { organizationId: org, competencyId: id } });
         x = await tx.competency.findFirstOrThrow({ where: { id } });
       } else {
         const skill = await tx.companySkill.create({ data: { organizationId: org, kind: 'skill', name: dto.name, parentId: domain.id } });
-        x = await tx.competency.create({ data: { organizationId: org, companySkillId: skill.id, group: dto.group, description: dto.description ?? null } });
+        x = await tx.competency.create({ data: { organizationId: org, companySkillId: skill.id, group: dto.group, description: dto.description ?? null, questionTagId: (await this.tagOf(tx, org, dto.questionTagId)) ?? null } });
       }
       await tx.competencyLevel.createMany({ data: dto.levels.map((l, i) => ({ organizationId: org, competencyId: x.id, level: i + 1, label: l.label, behaviours: l.behaviours ?? null })) });
       await this.writeRoles(tx, org, x.id, dto.roles, dto.levels.length);
-      await audit(tx, c, id ? 'perf.competency.updated' : 'perf.competency.created', 'competency', x.id, { name: dto.name });
+      await audit(tx, c, id ? 'perf.competency.updated' : 'perf.competency.created', 'competency', x.id, { name: dto.name, ...(dto.questionTagId !== undefined ? { questionTagId: dto.questionTagId } : {}) });
       return this.competencyView(tx, org, x, todayIst());
     }).catch(this.duplicate('A skill with that name already exists in this group.'));
   }
@@ -408,6 +488,34 @@ export class PerformanceSetupService {
       await tx.roleCompetencyMap.updateMany({ where: { organizationId: org, competencyId: id, OR: [{ validTo: null }, { validTo: { gt: asDate(end) } }] }, data: { validTo: asDate(end) } });
       await audit(tx, c, 'perf.competency.retired', 'competency', id, {});
       return this.competencyView(tx, org, await tx.competency.findFirstOrThrow({ where: { id } }), todayIst());
+    });
+  }
+
+  /**
+   * PRF-14: merge a competency into another. The merged one is retired (it stays on past reviews) and its skill points
+   * to the kept one; each job title it was mapped to and the kept one is not, moves over at the same level (capped at the
+   * kept one's highest level), from today.
+   */
+  async mergeCompetency(ctx: TenantContext, id: string, intoId: string) {
+    if (id === intoId) throw new BadRequestException('A competency cannot be merged into itself.');
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const from = await tx.competency.findFirst({ where: { organizationId: org, id, status: 'active' } });
+      const into = await tx.competency.findFirst({ where: { organizationId: org, id: intoId, status: 'active' } });
+      if (!from || !into) throw new NotFoundException('Both competencies must be in use.');
+      const today = todayIst();
+      const open = (competencyId: string) => tx.roleCompetencyMap.findMany({ where: { organizationId: org, competencyId, validFrom: { lte: asDate(today) }, OR: [{ validTo: null }, { validTo: { gte: asDate(today) } }] } });
+      const keep = new Set((await open(intoId)).map((r) => r.designationId));
+      const max = await tx.competencyLevel.count({ where: { organizationId: org, competencyId: intoId } });
+      const moved = (await open(id)).filter((r) => !keep.has(r.designationId));
+      if (moved.length) await tx.roleCompetencyMap.createMany({ data: moved.map((r) => ({ organizationId: org, competencyId: intoId, designationId: r.designationId, expectedLevel: Math.min(r.expectedLevel, max), validFrom: asDate(today) })) });
+      const end = dayBefore(today);
+      await tx.roleCompetencyMap.deleteMany({ where: { organizationId: org, competencyId: id, validFrom: { gt: asDate(end) } } });
+      await tx.roleCompetencyMap.updateMany({ where: { organizationId: org, competencyId: id, OR: [{ validTo: null }, { validTo: { gt: asDate(end) } }] }, data: { validTo: asDate(end) } });
+      await tx.competency.update({ where: { id }, data: { status: 'retired', version: { increment: 1 } } });
+      await tx.companySkill.update({ where: { id: from.companySkillId }, data: { status: 'merged', mergedIntoId: into.companySkillId } });
+      await audit(tx, c, 'perf.competency.merged', 'competency', id, { into: intoId, rolesMoved: moved.length });
+      return this.competencyView(tx, org, await tx.competency.findFirstOrThrow({ where: { id: intoId } }), today);
     });
   }
 

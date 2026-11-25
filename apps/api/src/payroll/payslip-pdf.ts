@@ -1,6 +1,7 @@
 import { randomBytes } from 'crypto';
 import PDFDocument from 'pdfkit';
 import { writeLabel, type LocalLanguage } from '../documents/payslip-languages';
+import { writeText } from '../documents/pdf-text';
 
 // The payslip PDF (M03-BUILD-DESIGN §11.1, PAY-4.04, YX-PAY-12 / 35): rendered from the stored lines through the
 // entity's active layout; the Code on Wages particulars are always shown (the layout cannot hide them). The same renderer
@@ -26,6 +27,8 @@ export interface SlipData {
   net: string;
   lines: SlipLine[];
   bankLast4: string | null;
+  /** PPL-46: a split pay, each account with what it gets; replaces the single account. */
+  bankSplit?: { label: string; last4: string; amount: string }[] | null;
   resultHash: string;
 }
 
@@ -52,7 +55,7 @@ export function payslipValues(d: SlipData): Record<string, string> {
     reimbursements: list('reimbursement'),
     grossPay: inr(d.gross),
     netPay: inr(d.net),
-    bankAccount: d.bankLast4 ? `•••• ${d.bankLast4}` : '—',
+    bankAccount: d.bankSplit?.length ? d.bankSplit.map((b) => `${b.label} •••• ${b.last4} ${inr(b.amount)}`).join(' · ') : d.bankLast4 ? `•••• ${d.bankLast4}` : '—',
   };
 }
 
@@ -87,11 +90,7 @@ export function renderPayslipPdf(
       .on('end', () => resolve(Buffer.concat(out)))
       .on('error', reject);
     if (opts.preview) doc.fontSize(9).fillColor('#a33').text('PREVIEW — sample figures, not a payslip', { align: 'right' }).fillColor('#000');
-    doc
-      .moveDown()
-      .fontSize(14)
-      .text(values.employerName ?? '')
-      .fontSize(11);
+    writeText(doc.moveDown().fontSize(14), values.employerName ?? '').fontSize(11);
     writeLabel(doc, local, 'payslip', 'Payslip', '');
     doc.moveDown();
     for (const b of blocks.filter((x) => x.shown)) {
@@ -99,14 +98,9 @@ export function renderPayslipPdf(
       writeLabel(doc, local, b.key, labels[b.key] ?? b.key, values[b.key] ?? '—');
     }
     if (opts.watermark) {
-      doc
-        .save()
-        .rotate(-35, { origin: [300, 420] })
-        .fontSize(28)
-        .fillColor('#999', 0.18)
-        .text(opts.watermark, 60, 400, { width: 480, align: 'center' })
-        .restore();
-      doc.fillColor('#666', 1).fontSize(8).text(opts.watermark, 48, 780, { width: 500, align: 'center' });
+      doc.save().rotate(-35, { origin: [300, 420] }).fontSize(28).fillColor('#999', 0.18);
+      writeText(doc, opts.watermark, 60, 400, { width: 480, align: 'center' }).restore();
+      writeText(doc.fillColor('#666', 1).fontSize(8), opts.watermark, 48, 780, { width: 500, align: 'center' });
     }
     doc.end();
   });

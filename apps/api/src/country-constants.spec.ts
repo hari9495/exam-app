@@ -9,7 +9,7 @@ import { join, relative } from 'path';
 // A real need for an exception goes in ALLOWED with the reason (file:line text must match).
 
 const ROOT = join(__dirname);
-const DIRS = ['payroll', 'statutory', 'time'];
+const DIRS = ['payroll', 'statutory', 'time', 'policies'];
 
 /** Figures that are law somewhere in India: PF / ESI ceilings, EPS / PF / ESI rates, PT caps, tax slabs and rebates. */
 const KNOWN = /(?<![\w.])(15000|15_000|21000|21_000|25000|25_000|1800|1_800|1250|1_250|2500|2_500|250000|250_000|300000|300_000|400000|400_000|500000|500_000|700000|700_000|1200000|1_200_000|1275000|1_275_000|50000|50_000|75000|75_000|0\.12|0\.0325|0\.0075|0\.0833|0\.0367|8\.33|3\.67|3\.25|0\.75|0\.04)(?![\w.])/;
@@ -18,7 +18,9 @@ const STATUTE = /\b(pf|epf|eps|edli|esi|esic|uan|professional[\s_-]?tax|ptax|lwf
 /** A number that could be a legal figure: 3+ digits, or a decimal (a rate). Times and sizes have their own names. */
 const FIGURE = /(?<![\w.$'"`-])(\d{3,}(_\d{3})*|\d+\.\d+)(?![\w.'"`])/;
 
-const ALLOWED: { file: string; text: string; why: string }[] = [];
+const ALLOWED: { file: string; text: string; why: string }[] = [
+  { file: 'payroll/reports.service.ts', text: 'const EXPORT_LIMIT = 50_000;', why: 'a row cap on the CSV export so one request cannot pull an unbounded file; not a legal figure' },
+];
 
 function files(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

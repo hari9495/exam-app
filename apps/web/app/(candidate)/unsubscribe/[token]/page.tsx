@@ -9,6 +9,8 @@ import { TerminalCard } from '../../components/TerminalCard';
 interface UnsubscribeState {
   optedOut: boolean;
   orgName: string;
+  /** Answer 561: they ticked "Message me on WhatsApp about jobs"; withdrawable here. */
+  whatsappOptedIn?: boolean;
 }
 
 export default function UnsubscribePage() {
@@ -53,6 +55,20 @@ export default function UnsubscribePage() {
     }
   }
 
+  // Answer 561: stop WhatsApp messages about jobs (opting in again is on the application page).
+  async function stopWhatsapp() {
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/public/unsubscribe/${token}/whatsapp`, { method: 'POST' });
+      if (!res.ok) throw new Error('not ok');
+      setState((prev) => (prev ? { ...prev, whatsappOptedIn: false } : prev));
+    } catch {
+      setFailed(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (failed) {
     return <TerminalCard tone="error" title="Invalid link" body="This unsubscribe link isn't valid." />;
   }
@@ -70,9 +86,18 @@ export default function UnsubscribePage() {
           : 'You are subscribed to emails from this organization.'
       }
     >
-      <CandidateButton disabled={saving} onClick={() => setOptedOut(!state.optedOut)}>
-        {saving ? 'Saving…' : state.optedOut ? 'Re-subscribe' : 'Unsubscribe'}
-      </CandidateButton>
+      <div className="flex flex-col items-center gap-2">
+        <CandidateButton disabled={saving} onClick={() => setOptedOut(!state.optedOut)}>
+          {saving ? 'Saving…' : state.optedOut ? 'Re-subscribe' : 'Unsubscribe'}
+        </CandidateButton>
+        {state.whatsappOptedIn ? (
+          <CandidateButton variant="secondary" disabled={saving} onClick={() => void stopWhatsapp()}>
+            Stop WhatsApp messages about jobs
+          </CandidateButton>
+        ) : state.whatsappOptedIn === false ? (
+          <p className="text-sm text-candidate-text-secondary">You get no WhatsApp messages about jobs from this organization.</p>
+        ) : null}
+      </div>
     </TerminalCard>
   );
 }

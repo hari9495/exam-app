@@ -10,3 +10,5 @@ export const MyData: S = { name: 'My data (classes, retention, download, correct
 export const Accessed: S = { name: 'Who accessed my data', render: () => <MyDataScreen tab="access" /> };
 export const Off: S = { name: 'Who accessed · turned off by the company', render: () => <MyDataScreen tab="access" viewOff /> };
 export const Phone: S = { name: '· phone', ...phone, render: () => <WhoAccessedPhone /> };
+export const Correction: S = { name: 'Request a correction · what is wrong, sent to HR', render: () => <MyDataScreen dialog="correct" /> };
+export const Nominate: S = { name: 'Nominate someone · who acts for you on your data', render: () => <MyDataScreen dialog="nominate" /> };

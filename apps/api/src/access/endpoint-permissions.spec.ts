@@ -7,6 +7,7 @@ import { EmployeeHistoryController } from '../employee-history/employee-history.
 import { OrgStructureController } from '../org-structure/org-structure.controller';
 import { LifecycleController } from '../lifecycle/lifecycle.controller';
 import { DocumentsController } from '../documents/documents.controller';
+import { ReverificationController } from '../documents/reverification.controller';
 import { LettersController } from '../documents/letters/letters.controller';
 import { ExitsController } from '../lifecycle/exits.controller';
 import { PerformanceSetupController } from '../performance/setup.controller';
@@ -17,11 +18,21 @@ import { PerformancePeerController } from '../performance/peer.controller';
 import { PerformanceCalibrationController } from '../performance/calibration.controller';
 import { PerformanceCompController } from '../performance/comp.controller';
 import { PerformancePipsController } from '../performance/pips.controller';
+import { PerformanceHomeController } from '../performance/home.controller';
+import { PerformanceB3Controller } from '../performance/b3.controller';
 import { SpecialCasesController } from '../lifecycle/special-cases.controller';
 import { ExpensesController } from '../expenses/expenses.controller';
 import { ExpenseClaimsController } from '../expenses/claims.controller';
 import { ExpenseTripsController } from '../expenses/trips.controller';
 import { ExpenseReportsController } from '../expenses/reports.controller';
+import { EmployeeImportController } from '../people/employee-import.controller';
+import { PeopleRegistersController } from '../lifecycle/people-registers.controller';
+import { RestructureController } from '../people/restructure.controller';
+import { PersonPanelsController } from '../people/person-panels.controller';
+import { BfsiController } from '../people/bfsi.controller';
+import { MyPoliciesController, PoliciesAdminController } from '../policies/policies.controller';
+import { SpeakupController } from '../speakup/speakup.controller';
+import { CasesController, EthicsController, MisconductReportsController, MyCasesController } from '../cases/cases.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -33,8 +44,18 @@ const IMPLICIT: Record<string, string[]> = {
     'team', // the manager's own team
     'reports', // HR in scope, the person, managers above
     'person', // HR in scope or the person
+    'emergencyContacts', // the person, or HR with employee.profile.edit
+    'customFields', // each value only where its class lets the viewer see it
+    'setCustomFields', // the service checks each field's class and the editing grant
+    'updateFamily', // HR with employee.profile.edit in scope (the service checks)
     'me', // one's own record
     'accessLog', // who looked at one's own data
+    'myChangeForm', // one's own identity and bank change page (PPL-32)
+    'myData', // one's own data as a file (PPL-33)
+    'myNominee', // one's own nominee for one's data rights (PPL-33)
+    'setNominee',
+    'removeNominee',
+    'paySplit', // the person, or employee.identity.manage in scope (PPL-46; checked by the service)
     'profile', // classes decided per record
     'reveal', // the person, or identity / Aadhaar keys in scope (checked by the service)
     'updatePersonal', // the person, or employee.profile.edit in scope
@@ -42,46 +63,77 @@ const IMPLICIT: Record<string, string[]> = {
     'profileRequests', // own requests and those in scope
     'cancelProfileChange', // the requester or the person
     'probations', // HR in scope, or the manager's team
+    'activity', // anyone who may open the record; each kind of entry by its own key (checked by the service)
+    'workPhone', // employee.profile.edit in scope (checked by the service)
   ],
   EmployeeHistoryController: ['list', 'asOf', 'timeline', 'serviceDates'],
   OrgStructureController: ['reference'], // public reference data (states, regions)
   AccessController: [],
+  // PPL-34 on: the person record's panels, each with its class's key (the service checks scope per person).
+  PersonPanelsController: ['myDisability', 'declareDisability', 'withdrawDisability'], // one's own disability declaration (PPL-38)
+  // PPL-43: a designated person's own declaration (the service checks the designation).
+  BfsiController: ['myBfsi', 'addHolding', 'removeHolding', 'addRelated', 'removeRelated', 'saveCoi', 'submitBfsi', 'myPreclearance', 'requestPreclearance', 'reportTrade'],
   // Lifecycle 6a: the services decide per joiner, checklist, task and document (self, assignee, manager, HR in scope).
   LifecycleController: ['joiningSoon', 'joiner', 'myTasks', 'firstThirtyDays', 'journey', 'complete', 'skip'],
-  DocumentsController: ['types', 'mine', 'upload', 'file'],
+  ReverificationController: ['forPerson'], // PPL-42: the person, HR in scope or the manager (decided by the service)
+  // PPL-03: a manager's read-only view of the team's Public and Internal documents.
+  // PPL-30: share links to my own issued letters and pay documents (the service refuses anyone else's).
+  DocumentsController: ['types', 'mine', 'upload', 'file', 'forTeam', 'myShares', 'share', 'revokeShare'],
   // Batch 6b: my letters and my acceptance; the file route decides per letter (self, or HR in scope).
-  LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate'], // 6d: my own instant certificate
+  LettersController: ['mine', 'file', 'signCode', 'sign', 'certificate', 'certificates'], // 6d / PPL-31: my own certificates
   // Batches 6c / 6d: my resignation, interview, assets and clearance items, and my team's probation reviews and exits.
   // Batch 6e: VRS schemes open to me, and applying.
   SpecialCasesController: ['myVrs', 'applyVrs'],
   // M05 E1: everyone who claims reads the categories, tiers and their own limits.
   ExpensesController: ['categories', 'tiers', 'myLimits'],
   // M05 E2: the service decides per claim (claimant, approver whose turn it is, expense.claim.view in scope, finance).
-  ExpenseClaimsController: ['home', 'list', 'create', 'get', 'rename', 'receipt', 'addLine', 'updateLine', 'removeLine', 'receiptFile', 'fxProof', 'fxProofFile', 'check', 'submit', 'withdraw', 'approveAmount', 'decide'],
+  // Saved expenses (Keka ideas): the person's own only; the service matches the employee and their own draft claim.
+  ExpenseClaimsController: ['home', 'list', 'create', 'get', 'rename', 'receipt', 'addLine', 'updateLine', 'removeLine', 'receiptFile', 'fxProof', 'fxProofFile', 'check', 'submit', 'withdraw', 'approveAmount', 'decide', 'myItems', 'addItem', 'removeItem', 'claimItems'],
   // E4: the traveller, the approver whose task it is and the travel desk (in scope) are decided per trip or advance.
   ExpenseTripsController: ['list', 'create', 'get', 'update', 'submit', 'cancel', 'addBooking', 'partner', 'removeBooking', 'bookingFile', 'advances', 'request', 'advance', 'amount'],
   ExpenseReportsController: [],
   // M06 PM1: performance set-up is all behind perf.setup.manage.
   PerformanceSetupController: [],
+  // PRF-01: the home; each part is the viewer's own, their team's, or HR's with perf.cycle.manage (checked by the service).
+  PerformanceHomeController: ['home'],
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
-  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'checkIn', 'drop', 'cascade'],
+  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
-  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone'],
-  // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope).
-  PerformanceReviewsController: ['list', 'get', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
+  // counts: the record's Performance tab, counts only; the service checks who may ask.
+  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions'],
+  // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope); pdf: the same
+  // view as a file (PRF-05 / PRF-06).
+  PerformanceReviewsController: ['list', 'get', 'pdf', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
   // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).
-  PerformancePeerController: ['nominations', 'options', 'nominate', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
+  PerformancePeerController: ['nominations', 'options', 'nominate', 'send', 'approveAll', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
   // PM6: the board is open to its facilitator, HR and the managers of the people in it (decided per session).
   PerformanceCalibrationController: ['board'],
   // PM7: a manager's own team in a comp cycle, decided per cycle; my own pay band.
-  PerformanceCompController: ['cycles', 'sheet', 'updateProposal', 'submit', 'myPayBand'],
+  PerformanceCompController: ['cycles', 'sheet', 'updateProposal', 'submit', 'myPayBand', 'decide'], // decide: the holder of an approval task of the cycle (PRF-10)
   // PM8: a plan is about one person; the person, their manager chain and HR in scope, decided per plan.
   PerformancePipsController: ['list', 'propose', 'get', 'acknowledge', 'checkin'],
-  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff'],
+  // PRF-13: the new manager's own hand-overs (or HR, checked again); PRF-15: the employee's own dispute; PRF-16: my coach
+  // card and the 1:1's manager; PRF-17: the review's current manager. The service decides per record (404 otherwise).
+  PerformanceB3Controller: ['handoverMine', 'handoverOptions', 'handoverDecide', 'myDispute', 'raise', 'addFile', 'coach', 'optOut', 'dismiss', 'agenda', 'assistant', 'draft', 'check', 'flag'],
+  // People › Import, buddies, union register and succession: every route has its key.
+  EmployeeImportController: [],
+  PoliciesAdminController: [],
+  // HLP-06: the form and one's own named report; cases: being routed to the case is the access (404 otherwise).
+  SpeakupController: ['form', 'file', 'addFile', 'cases', 'caseDetail', 'teamReply'],
+  // HLP-07/08/09: membership of the case is the access (404 otherwise); My cases is one's own part.
+  CasesController: ['list', 'detail', 'message', 'notice', 'delay', 'moreTime', 'propose', 'approve', 'sendBack', 'icReport', 'vote', 'sign', 'relief', 'reliefDone', 'recuse', 'addMember', 'upload', 'file', 'letter'],
+  EthicsController: ['reports', 'severity', 'route'],
+  MyCasesController: ['mine', 'one', 'message', 'reply', 'moreTime', 'upload', 'file'],
+  // HLP-08 answer 55: a manager about their own reports (the reporting line is the access).
+  MisconductReportsController: ['mine', 'people', 'file'],
+  MyPoliciesController: ['mine', 'one', 'myFile', 'code', 'acknowledge'], // HLP-10: one's own policies (audience checked per policy)
+  PeopleRegistersController: [],
+  RestructureController: [],
+  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, CasesController, EthicsController, MyCasesController, MisconductReportsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

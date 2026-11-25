@@ -27,11 +27,13 @@ import {
   tdsLateInterest,
   ticketCloseInfo,
 } from './ops-rules';
-import { PolicyAcknowledge, RaiseTicketForm, quizScore, suggestArticles } from './helpdesk';
+import { PolicyAcknowledge, RaiseTicketForm, RateTicketCard, quizScore, suggestArticles } from './helpdesk';
 import { ShowCauseReply, RestrictedNotFound } from './cases';
-import { LineCard, claimTotals } from './expenses';
+import { ClaimComposerScreen, LineCard, claimTotals } from './expenses';
+import { PreRegisterScreen, VisitorKioskScreen } from './visitors';
+import { MY_VISITORS, VISITS } from './visitors-data';
 import { stepIndex } from './compliance';
-import { ARTICLES, POLICIES } from './helpdesk-data';
+import { ARTICLES, POLICIES, TICKETS } from './helpdesk-data';
 import { SHOW_CAUSE, IC_MEMBERS } from './cases-data';
 import { MUMBAI_LINES, MY_CLAIMS } from './expenses-data';
 
@@ -45,6 +47,15 @@ describe('helpdesk SLA', () => {
     expect(slaState(240, 240)).toBe('breached');
     expect(slaState(300, 240, { paused: true })).toBe('paused');
     expect(slaState(300, 240, { met: true })).toBe('met');
+  });
+
+  it('HLP-05b: the desk\'s own at-risk point moves the warning (50 % vs 90 %), never the breach', () => {
+    expect(slaState(60, 100, { atRiskPercent: 50 })).toBe('at-risk');
+    expect(slaState(60, 100, { atRiskPercent: 90 })).toBe('on-track');
+    expect(slaState(49, 100, { atRiskPercent: 50 })).toBe('on-track');
+    expect(slaState(90, 100, { atRiskPercent: 90 })).toBe('at-risk');
+    expect(slaState(100, 100, { atRiskPercent: 90 })).toBe('breached');
+    expect(slaState(42, 70, { atRiskPercent: 60 })).toBe('at-risk');
   });
   it('closes 3 days after resolving and can be reopened for 7 more days', () => {
     const r = ticketCloseInfo(d(27, 8), TODAY);
@@ -179,15 +190,19 @@ describe('flows', () => {
     await u.type(screen.getByRole('textbox', { name: /Subject/ }), 'payslip loss of pay');
     expect(screen.getByText('Why does my payslip show loss of pay?')).toBeInTheDocument();
   });
-  it('enables Acknowledge only after confirming the policy', async () => {
+  it('Acknowledge is never greyed out: pressed before ticking it says what is missing; ticked, it records and toasts', async () => {
     const u = userEvent.setup();
     render(<PolicyAcknowledge policy={POLICIES[3]} today={TODAY} />);
     const btn = screen.getByRole('button', { name: 'Acknowledge' });
-    expect(btn).toBeDisabled();
-    await u.click(screen.getByRole('checkbox'));
     expect(btn).toBeEnabled();
     await u.click(btn);
+    expect(screen.getByText('Tick that you have read and understood the policy.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox')).toHaveFocus();
+    expect(screen.queryByText('Acknowledged')).toBeNull();
+    await u.click(screen.getByRole('checkbox'));
+    await u.click(btn);
     expect(screen.getByText('Acknowledged')).toBeInTheDocument();
+    expect(screen.getAllByText(`${POLICIES[3].title} acknowledged`).length).toBeGreaterThan(0);
   });
   it('requires every quiz answer right', () => {
     expect(quizScore({}).passed).toBe(false);
@@ -204,5 +219,46 @@ describe('flows', () => {
     render(<RestrictedNotFound />);
     expect(screen.getByText('Not found')).toBeInTheDocument();
     expect(screen.queryByText(/access/i)).toBeNull();
+  });
+});
+
+// Founder rules 28 Oct 2026: no greyed-out button (pressed too early it says why); done is a toast.
+describe('house rules (Ops)', () => {
+  it('rating: Send rating pressed with no choice shows the field error and sends nothing; with a choice it toasts', async () => {
+    const u = userEvent.setup();
+    render(<RateTicketCard ticket={TICKETS[0]!} today={TODAY} resolvedOn={TODAY} />);
+    await u.click(screen.getByRole('button', { name: 'Send rating' }));
+    expect(screen.getByText('Choose a rating from 1 to 5.')).toBeInTheDocument();
+    expect(screen.queryByText('Thanks. Your rating is saved.')).toBeNull();
+    await u.click(screen.getByLabelText('5 Very good'));
+    await u.click(screen.getByRole('button', { name: 'Send rating' }));
+    expect(screen.getAllByText('Thanks. Your rating is saved.').length).toBeGreaterThan(0);
+    expect(screen.queryByRole('button', { name: 'Send rating' })).toBeNull();
+  });
+
+  it('claim: Submit with no lines says why and stays a draft', async () => {
+    const u = userEvent.setup();
+    render(<ClaimComposerScreen title="Empty claim" lines={[]} advance={0} />);
+    await u.click(screen.getByRole('button', { name: 'Submit claim' }));
+    expect(screen.getAllByText('Add a line first: a receipt, mileage or per diem.').length).toBeGreaterThan(0);
+    expect(screen.getByText('Draft')).toBeInTheDocument();
+  });
+
+  it('visitor invite: Send invite closes the form and toasts; nothing shows before', async () => {
+    const u = userEvent.setup();
+    render(<PreRegisterScreen visits={MY_VISITORS} today={TODAY} formOpen />);
+    expect(screen.queryByText('Invite sent')).toBeNull();
+    await u.click(screen.getByRole('button', { name: 'Send invite' }));
+    expect((await screen.findAllByText('Invite sent')).length).toBeGreaterThan(0);
+  });
+
+  it('kiosk notice: Accept and continue before ticking shows the error on the checkbox', async () => {
+    const u = userEvent.setup();
+    render(<VisitorKioskScreen step="notice" visit={VISITS[0]!} today={TODAY} />);
+    await u.click(screen.getByRole('button', { name: 'Accept and continue' }));
+    expect(screen.getByText('Tick to accept the notice before you continue.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'I have read and accept the visitor notice' })).toHaveFocus();
+    // Slice 2 (606): the NDA and the induction say so too.
+    expect(screen.getByText('Tick to accept the visitor NDA.')).toBeInTheDocument();
   });
 });

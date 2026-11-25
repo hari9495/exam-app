@@ -2,13 +2,20 @@ import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Tx } from '../org-structure/org-structure.service';
 import { SettingDef, resolveSetting } from '../org-structure/settings-registry';
-import { Facts, LocationRule, asDate, dateOf, rulesFor } from './time-core';
+import { Facts, LocationRule, asDate, dateOf, rulesFor, workingDaysFor } from './time-core';
 import { isWeeklyOff } from './time-maths';
 import { PatternDef, Scheduled, ShiftTimes, crossesMidnight, overlapsNight, patternCell, resolveDay } from './time-rules';
 
 // Who works which shift on which date (M02 §B2, Q1): a published roster entry, else the shift pattern assigned by
 // scope and date, else the location's default shift and weekly offs. One loader per request or job: the company's
 // shifts, patterns and assignments are read once; roster entries per person and range.
+
+/** TIM-06: a version's flexi or split fields as the day engine reads them (a fixed shift adds nothing, so it is judged as before). */
+export function versionKind(kind: string, v: Pick<Prisma.ShiftVersionGetPayload<object>, 'coreStartMinute' | 'coreEndMinute' | 'firstEndMinute' | 'secondStartMinute' | 'otAfterMinutes'>): Partial<ShiftTimes> {
+  if (kind === 'flexi') return { kind, coreStart: v.coreStartMinute, coreEnd: v.coreEndMinute, otAfterMinutes: v.otAfterMinutes };
+  if (kind === 'split') return { kind, firstEnd: v.firstEndMinute, secondStart: v.secondStartMinute };
+  return {};
+}
 
 const PATTERN_DEF: SettingDef = { label: 'Shift pattern', scopes: ['employee', 'department', 'location', 'legal_entity', 'tenant'], dated: true, values: [], default: '' };
 
@@ -19,7 +26,7 @@ export class ScheduleBook {
   private constructor(
     private readonly tx: Tx,
     private readonly org: string,
-    readonly shifts: Map<string, { id: string; code: string; name: string; night: boolean; colour: string; active: boolean; versions: { from: string; v: Prisma.ShiftVersionGetPayload<object> }[] }>,
+    readonly shifts: Map<string, { id: string; code: string; name: string; night: boolean; reclockIn: boolean; colour: string; active: boolean; kind: string; versions: { from: string; v: Prisma.ShiftVersionGetPayload<object> }[] }>,
     private readonly patterns: Map<string, PatternDef & { name: string }>,
     private readonly assignments: Prisma.ShiftPatternAssignmentGetPayload<object>[],
   ) {}
@@ -34,7 +41,7 @@ export class ScheduleBook {
     return new ScheduleBook(
       tx,
       org,
-      new Map(shifts.map((s) => [s.id, { id: s.id, code: s.code, name: s.name, night: s.night, colour: s.colour, active: s.active, versions: versions.filter((v) => v.shiftId === s.id).map((v) => ({ from: dateOf(v.validFrom), v })) }])),
+      new Map(shifts.map((s) => [s.id, { id: s.id, code: s.code, name: s.name, night: s.night, reclockIn: s.reclockIn, colour: s.colour, active: s.active, kind: s.kind, versions: versions.filter((v) => v.shiftId === s.id).map((v) => ({ from: dateOf(v.validFrom), v })) }])),
       new Map(patterns.map((p) => [p.id, { kind: p.kind as PatternDef['kind'], cycle: p.cycle as (string | null)[], name: p.name }])),
       assignments,
     );
@@ -45,7 +52,7 @@ export class ScheduleBook {
     const s = this.shifts.get(shiftId);
     const v = s?.versions.find((x) => x.from <= on)?.v;
     if (!s || !v) return null;
-    return { shiftId: s.id, name: s.name, night: s.night, shiftStart: v.startMinute, shiftEnd: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes };
+    return { shiftId: s.id, name: s.name, night: s.night, reclockIn: s.reclockIn, shiftStart: v.startMinute, shiftEnd: v.endMinute, graceMinutes: v.graceMinutes, halfDayMinutes: v.halfDayMinutes, fullDayMinutes: v.fullDayMinutes, breakMinutes: v.breakMinutes, breakAboveMinutes: v.breakAboveMinutes, ...versionKind(s.kind, v) };
   }
 
   /** Loads published roster entries for people and dates (else each day is read on its own). */
@@ -62,6 +69,11 @@ export class ScheduleBook {
       this.roster.set(k, r ? { shiftId: r.shiftId, isOff: r.isOff } : null);
     }
     return this.roster.get(k)!;
+  }
+
+  /** A shift pattern's name (PPL-03 Job tab). */
+  patternName(id: string): string | null {
+    return this.patterns.get(id)?.name ?? null;
   }
 
   /** The pattern cell for the person on a date: undefined when no pattern applies (then the location decides). */
@@ -83,10 +95,14 @@ export class ScheduleBook {
     return this.rules.get(locationId)!;
   }
 
-  /** The location's default shift on a date, as a shift. */
+  private workingDays = new Map<string, Set<string>>();
+
+  /** The location's default shift on a date, as a shift. A weekly off HR marked as working (D11) is worked. */
   async locationDay(f: Facts, on: string): Promise<{ rule: ShiftTimes; weeklyOff: boolean; base: LocationRule }> {
     const base = (await this.locationRule(f.locationId))(on);
-    return { rule: { ...base, shiftId: null, name: base.shiftName, night: crossesMidnight(base) }, weeklyOff: isWeeklyOff(on, base.weeklyOffs), base };
+    if (!this.workingDays.has(f.locationId)) this.workingDays.set(f.locationId, await workingDaysFor(this.tx, this.org, f.locationId));
+    const worked = this.workingDays.get(f.locationId)!.has(on);
+    return { rule: { ...base, shiftId: null, name: base.shiftName, night: crossesMidnight(base) }, weeklyOff: isWeeklyOff(on, base.weeklyOffs) && !worked, base };
   }
 
   /** Q1: what the person works on a date (`roster` false: ignoring the roster, i.e. the pattern or location). */

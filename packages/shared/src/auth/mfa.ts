@@ -10,6 +10,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'platform:manage_organizations',
   'org:manage_users',
   'org:manage_settings',
+  // Answer 1901: integrations (API keys, webhooks, the AI key) are admin-grade.
+  'integration.manage',
   'org:manage_billing',
   'approvals:configure',
   'candidate:data_rights',
@@ -50,10 +52,18 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'lifecycle.exit.view',
   'lifecycle.exit.manage',
   'lifecycle.exit.confidential.view',
+  // People › Succession (Confidential).
+  'succession.manage',
+  // PPL-38: disability declarations (Special).
+  'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer.
+  'compliance.declaration.manage',
   'payroll.period.view',
   'payroll.period.reopen',
   'payroll.period.reopen.approve',
   'payroll.correction.approve',
+  // Founder decision 5 (29 Oct 2026): approving an attendance lock (TIM-11 two-step flow).
+  'attendance.lock.approve',
   'payroll.document.view',
   'payroll.document.issue',
   'payroll.file.view',
@@ -102,6 +112,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'expense.policy.manage',
   // E4: paying advances moves money.
   'expense.payout.manage',
+  // B8/E5: flexible benefit amounts decide what people are paid.
+  'benefits.settings.manage',
   'payroll.offcycle.prepare',
   'payroll.arrears.approve',
   'payroll.fnf.manage',
@@ -119,6 +131,8 @@ export const MFA_SENSITIVE_PERMISSIONS: readonly string[] = [
   'perf.comp.manage',
   // PM8: improvement plans and the exit link.
   'perf.pip.manage',
+  // Builder 3: escalated rating disputes and their evidence export (PRF-15).
+  'perf.dispute.manage',
   // M10: offer pay, candidate data rights and headcount budgets.
   'ats.offer.compensation.view',
   'ats.candidate.data_rights',
@@ -135,6 +149,8 @@ export const OTP_FALLBACK_BARRED_PERMISSIONS: readonly string[] = [
   'platform:manage_organizations',
   'org:manage_users',
   'org:manage_settings',
+  // Answer 1901: integrations (API keys, webhooks, the AI key) are admin-grade.
+  'integration.manage',
   'org:manage_billing',
   // Payroll Admin.
   'org.entity.statutory.manage',
@@ -181,12 +197,13 @@ export const NON_STEP_UP_MFA_METHODS: readonly string[] = ['otp', 'idp', 'enrolm
 // Step-up met: AAL2 proven on this session within the step-up window by a YukthiX passkey,
 // authenticator app or recovery code (NON_STEP_UP_MFA_METHODS never count).
 // No grace: an account without a factor cannot step up, so it cannot take step-up actions.
-export function stepUpSatisfied(session: SessionAssurance, now = Date.now()): boolean {
+// windowSeconds: a shorter window for one purpose (the salary re-check, batch B item 1); never longer than the platform's.
+export function stepUpSatisfied(session: SessionAssurance, now = Date.now(), windowSeconds = stepUpWindowSeconds()): boolean {
   return (
     session.assuranceLevel === 'aal2' &&
     session.mfaMethod !== null &&
     !NON_STEP_UP_MFA_METHODS.includes(session.mfaMethod) &&
     session.mfaVerifiedAt !== null &&
-    now - session.mfaVerifiedAt.getTime() <= stepUpWindowSeconds() * 1000
+    now - session.mfaVerifiedAt.getTime() <= Math.min(windowSeconds, stepUpWindowSeconds()) * 1000
   );
 }

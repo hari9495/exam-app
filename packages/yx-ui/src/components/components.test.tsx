@@ -3,7 +3,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { Fingerprint, Plus, Smartphone, Trash2 } from 'lucide-react';
-import { Button, IconButton } from './button';
+import { Button, IconButton, RowButton } from './button';
 import { FormField, ErrorSummary } from './field';
 import { CurrencyField, MaskedField, TextField, TimeField } from './inputs';
 import { Checkbox, MethodCards } from './choice';
@@ -35,6 +35,17 @@ describe('Button', () => {
     render(<IconButton icon={Trash2} label="Delete row" />);
     expect(screen.getByRole('button', { name: 'Delete row' })).toBeInTheDocument();
   });
+  it('row button is a keyboard-reachable button that opens on Enter', async () => {
+    const onClick = vi.fn();
+    render(<RowButton aria-label="3 Nov 2026: Present" onClick={onClick}><span>3 Nov 2026</span></RowButton>);
+    const b = screen.getByRole('button', { name: '3 Nov 2026: Present' });
+    expect(b).toHaveAttribute('type', 'button');
+    expect(b).toHaveClass('yx-row-button');
+    await userEvent.tab();
+    expect(b).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('FormField', () => {
@@ -50,6 +61,32 @@ describe('FormField', () => {
     expect(input).toHaveAttribute('aria-required', 'true');
     expect(input).toHaveAccessibleDescription(/Enter an email.*We send payslips here/);
   });
+  it('the rule shows before the helper and hides while an error says the same, also while typing', async () => {
+    const u = userEvent.setup();
+    function Reason() {
+      const [v, setV] = useState('');
+      return (
+        <FormField label="Reason" required rule="At least 5 characters." helper="Shown to the approvers." error={v.trim().length < 5 ? 'Enter a reason of at least 5 characters.' : null}>
+          <TextField value={v} onChange={setV} />
+        </FormField>
+      );
+    }
+    const { rerender } = render(
+      <FormField label="Reason" rule="At least 5 characters." helper="Shown to the approvers.">
+        <TextField value="" onChange={() => {}} />
+      </FormField>,
+    );
+    expect(screen.getByText('At least 5 characters. Shown to the approvers.')).toBeInTheDocument();
+    rerender(<Reason />);
+    expect(screen.getByText('Enter a reason of at least 5 characters.')).toBeInTheDocument();
+    expect(screen.getByText('Shown to the approvers.')).toBeInTheDocument();
+    expect(screen.queryByText(/At least 5 characters\./)).toBeNull();
+    // While typing the error steps aside, so the rule comes back: never an empty line under the field.
+    await u.type(screen.getByLabelText(/Reason/), 'ab');
+    expect(screen.queryByText('Enter a reason of at least 5 characters.')).toBeNull();
+    expect(screen.getByText('At least 5 characters. Shown to the approvers.')).toBeInTheDocument();
+  });
+
   it('error summary links focus the field', async () => {
     render(
       <>
@@ -201,6 +238,18 @@ describe('Select', () => {
     await u.click(await screen.findByRole('option', { name: /Earned leave/ }));
     expect(screen.getByText('2 selected')).toBeInTheDocument();
   });
+  it('multi-select: the × on a chip removes that choice without opening the list', async () => {
+    const u = userEvent.setup();
+    function M() {
+      const [v, setV] = useState<string[]>(['cl', 'el']);
+      return <MultiSelect aria-label="Types" options={opts} value={v} onChange={setV} />;
+    }
+    render(<M />);
+    await u.click(screen.getByRole('button', { name: /^Remove Earned leave/ }));
+    expect(screen.queryByRole('button', { name: /^Remove Earned leave/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Remove / })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Types' })).toHaveAttribute('aria-expanded', 'false');
+  });
   it('multi-select hands its search to the host when it searches the server', async () => {
     const u = userEvent.setup();
     const onSearchChange = vi.fn();
@@ -269,6 +318,22 @@ describe('DatePicker', () => {
     await u.click(screen.getByText('elsewhere'));
     expect(screen.getByText('Choose a date on or after 1 Sep 2026')).toBeInTheDocument();
   });
+
+  it("says why a typed date is refused, over the form's own required message", async () => {
+    const u = userEvent.setup();
+    render(
+      <>
+        <FormField label="New joining date" required error="Pick the new joining date.">
+          <DatePicker value={null} onChange={() => {}} min={new Date(2026, 10, 11)} />
+        </FormField>
+        <button>elsewhere</button>
+      </>,
+    );
+    await u.type(screen.getByLabelText(/New joining date/), '03 Nov 2026');
+    await u.click(screen.getByText('elsewhere'));
+    expect(screen.getByText('Choose a date on or after 11 Nov 2026')).toBeInTheDocument();
+    expect(screen.queryByText('Pick the new joining date.')).toBeNull();
+  });
 });
 
 describe('FileUpload', () => {
@@ -298,6 +363,13 @@ describe('FileUpload', () => {
     expect(screen.getByText(/Uploading 50%/)).toBeInTheDocument();
     await act(async () => finish());
     expect(await screen.findByText(/Uploaded/)).toBeInTheDocument();
+  });
+
+  it('on a phone it can open the back camera for a document (capture)', () => {
+    const { container, rerender } = render(<FileUpload upload={vi.fn()} />);
+    expect(container.querySelector('input[type=file]')).not.toHaveAttribute('capture');
+    rerender(<FileUpload upload={vi.fn()} capture="environment" />);
+    expect(container.querySelector('input[type=file]')).toHaveAttribute('capture', 'environment');
   });
 
   it('the field label and the error summary can focus it (the zone shows the ring); Browse files is the tab stop', () => {
@@ -372,5 +444,76 @@ describe('MethodCards', () => {
     expect(passkey).toHaveAttribute('aria-busy', 'true');
     expect(passkey).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Authenticator app' })).toBeDisabled();
+  });
+});
+
+describe('NoAccessState', () => {
+  it('names who grants access in one sentence; a note stays its own sentence (people audit c)', async () => {
+    const { NoAccessState } = await import('./feedback');
+    render(<NoAccessState what="the annual increment" grantedBy="HR" note="It needs the salary grant and the right to change jobs." />);
+    expect(screen.getByText("You don't have access to the annual increment")).toBeInTheDocument();
+    expect(screen.getByText('It needs the salary grant and the right to change jobs. Ask HR to give you access.')).toBeInTheDocument();
+  });
+
+  // Answer 946: Request access, only where the app provides it.
+  it('shows no Request access without the app (stories, a company that turned it off)', async () => {
+    const { NoAccessState, AccessRequestContext } = await import('./feedback');
+    render(<NoAccessState what="payroll runs" grantedBy="HR" />);
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+    render(<AccessRequestContext.Provider value={() => null}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    expect(screen.queryByRole('button', { name: 'Request access' })).toBeNull();
+  });
+
+  it('sends a reason and how long; pressed early it names the field and moves focus there', async () => {
+    const { NoAccessState, AccessRequestContext } = await import('./feedback');
+    const send = vi.fn().mockResolvedValue(undefined);
+    render(<AccessRequestContext.Provider value={() => ({ maxDays: 30, send })}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    await userEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Why do you need access/ }), 'short');
+    const sendButton = screen.getByRole('button', { name: 'Send request' });
+    expect(sendButton).not.toBeDisabled();
+    await userEvent.click(sendButton);
+    expect(screen.getByText('Say why you need access, in a sentence or more.')).toBeInTheDocument();
+    expect(document.activeElement?.id).toBe('ra-reason');
+    expect(send).not.toHaveBeenCalled();
+    await userEvent.type(screen.getByRole('textbox', { name: /Why do you need access/ }), ' I cover the October run.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(send).toHaveBeenCalledWith({ what: 'payroll runs', reason: 'short I cover the October run.', days: 7 });
+  });
+
+  it('a refusal from the server stays on the form; a waiting request says so; a refused one may ask again', async () => {
+    const { NoAccessState, AccessRequestContext } = await import('./feedback');
+    const send = vi.fn().mockRejectedValue(new Error('You already asked for access to this page.'));
+    const { unmount } = render(<AccessRequestContext.Provider value={() => ({ maxDays: 7, send, startOpen: true })}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    await userEvent.type(screen.getByRole('textbox', { name: /Why do you need access/ }), 'I cover the October run.');
+    await userEvent.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(await screen.findByText('You already asked for access to this page.')).toBeInTheDocument();
+    unmount();
+    const { unmount: again } = render(<AccessRequestContext.Provider value={() => ({ maxDays: 7, send, sent: { askedAt: '2026-11-11', state: 'waiting' } })}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    expect(screen.getByText('Access requested')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Request access|Ask again/ })).toBeNull();
+    again();
+    render(<AccessRequestContext.Provider value={() => ({ maxDays: 7, send, sent: { askedAt: '2026-11-11', state: 'refused', note: 'Not for this role.' } })}><NoAccessState what="payroll runs" grantedBy="HR" /></AccessRequestContext.Provider>);
+    expect(screen.getByText('Not for this role.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Ask again' })).toBeInTheDocument();
+  });
+});
+
+describe('Not found reference (answer 947)', () => {
+  it('a "Not found" state shows the app reference; other empty states never do', async () => {
+    const { EmptyState, NotFoundReferenceContext } = await import('./feedback');
+    render(
+      <NotFoundReferenceContext.Provider value="NF-7KQ2MP">
+        <EmptyState title="Not found" description="This person doesn't exist in your company." />
+        <EmptyState title="No leave types yet." />
+      </NotFoundReferenceContext.Provider>,
+    );
+    expect(screen.getAllByText('Reference NF-7KQ2MP')).toHaveLength(1);
+  });
+
+  it('without a reference nothing is shown', async () => {
+    const { EmptyState } = await import('./feedback');
+    render(<EmptyState title="Not found" />);
+    expect(screen.queryByText(/Reference/)).toBeNull();
   });
 });

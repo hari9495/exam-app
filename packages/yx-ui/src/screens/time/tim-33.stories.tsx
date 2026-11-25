@@ -14,3 +14,5 @@ export const Photo: S = { name: 'Camera photo', args: { view: 'photo' } };
 export const Conveyance: S = { name: 'Distance → draft mileage', args: { view: 'conveyance' } };
 export const Withdrawn: S = { name: 'Consent withdrawn', args: { view: 'withdrawn' } };
 export const Pwa: S = { name: 'Web app · only while open', args: { view: 'pwa' } };
+// Founder decision 6 (29 Oct 2026): the same withdraw dialog as presence (TIM-36), from the tracking banner.
+export const WithdrawConsent: S = { name: 'Withdraw consent · confirm', args: { view: 'withdraw' } };

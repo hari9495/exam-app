@@ -295,4 +295,16 @@ describe('Expenses batch E3', () => {
     await app.get(PermissionProfilesService).update({ organizationId: org.A.id, isSuperAdmin: false }, users.adminA, copy.id, { permissions: old });
     expect((await inA((tx) => tx.permissionProfile.findUniqueOrThrow({ where: { id: copy.id } }))).templateKey).toBeNull();
   });
+
+  it('EXP-06 cut-off line: To pay names the payroll month from the company setting; others are refused', async () => {
+    const tp = (await api('fin', 'get', '/expenses/to-pay').expect(200)).body as { payroll: { cutoffDay: number; month: string } };
+    // The month follows whatever the company's setting says (the edges are unit-tested).
+    const day = Number(today.slice(8, 10));
+    const next = today.slice(5, 7) === '12' ? `${Number(today.slice(0, 4)) + 1}-01` : `${today.slice(0, 4)}-${String(Number(today.slice(5, 7)) + 1).padStart(2, '0')}`;
+    expect(tp.payroll.month).toBe(day <= tp.payroll.cutoffDay ? today.slice(0, 7) : next);
+    expect([15, 20, 23, 25, 28]).toContain(tp.payroll.cutoffDay);
+    await api('ravi', 'get', '/expenses/to-pay').expect(403);
+    await api('mgr', 'get', '/expenses/to-pay').expect(403);
+    await api('fin', 'get', '/expenses/to-pay?legalEntityId=nope').expect(400);
+  });
 });

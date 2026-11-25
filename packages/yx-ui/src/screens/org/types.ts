@@ -68,6 +68,10 @@ export interface OrgLocation {
   minWageZone: string | null;
   geofence: Geofence | null;
   ipRanges: string[];
+  /** HLP-14 answer 132: a registered factory (Time adds the factory leave minimum there). */
+  registeredFactory?: boolean;
+  /** Answer 151: this location's own attendance.factories_act value in force today (null: none). */
+  factoriesActSetting?: string | null;
   archivedAt: string | null;
 }
 
@@ -80,6 +84,7 @@ export interface LocationInput {
   minWageZone: string | null;
   geofence: Geofence | null;
   ipRanges: string[];
+  registeredFactory: boolean;
 }
 
 export type MasterKind = 'departments' | 'designations' | 'grades' | 'employment-types' | 'cost-centres';
@@ -161,6 +166,12 @@ export interface SettingDef {
   default: string;
   /** A second key needed to change it (access and fraud guards). */
   guard?: string;
+  /** The value is a comma list of any of `values` (none: empty), e.g. which fields are required. */
+  multi?: true;
+  /** The value is short text HR writes (one thing a line), up to this many characters; `values` is empty. */
+  text?: { maxLength: number };
+  /** Labels of the values when the list is the platform's (HLP-14: the industries). */
+  labels?: Record<string, string>;
 }
 
 export interface SettingOverride {
@@ -172,6 +183,8 @@ export interface SettingOverride {
   value: unknown;
   /** YYYY-MM-DD, dated keys only. */
   validFrom: string | null;
+  /** Answer 151: a location's Factories Act value is no longer needed (the location is a registered factory). */
+  noLongerNeeded?: 'registered_factory';
 }
 
 export interface SettingInput {
@@ -184,3 +197,28 @@ export interface SettingInput {
 
 /** The records each scope can name, by scope. */
 export type SettingScopeChoices = Partial<Record<SettingScope, { value: string; label: string }[]>>;
+
+/** GET people/privacy-erasure: what the nightly Special data erasure would delete today and from whom, and its last run (counts only). */
+export interface ErasureCounts {
+  people: number;
+  aadhaar: number;
+  documents: number;
+  backgroundChecks: number;
+  /** Disability declarations whose details and certificate go (the yes/no answer stays). */
+  disability: number;
+}
+/** One person in the dry run: never a value, only who. */
+export interface ErasurePerson {
+  name: string;
+  /** Null for an offer that never joined. */
+  employeeCode: string | null;
+  /** YYYY-MM-DD: the last day, or the day the joining was cancelled. */
+  day: string;
+  neverJoined: boolean;
+}
+export interface ErasureReport {
+  enabled: boolean;
+  due: ErasureCounts;
+  who: ErasurePerson[];
+  lastRun: (ErasureCounts & { at: string; failed: number }) | null;
+}

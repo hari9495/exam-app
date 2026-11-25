@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { ResetPasswordScreen } from '@yukthix/ui/auth';
 import { apiFetch } from '../../../../lib/api-client';
+import { SignInLanguage } from '../../../../lib/sign-in-language';
 
 // The link in the YukthiX reset email (P12 §6.1): a new password twice. The API checks the company's
 // minimum length and the breach list, and signs the person out everywhere.
@@ -29,17 +30,19 @@ export default function YxResetPasswordPage() {
   };
 
   return (
-    <ResetPasswordScreen
-      password={password}
-      confirm={confirm}
-      onPasswordChange={setPassword}
-      onConfirmChange={setConfirm}
-      onSubmit={() => void submit()}
-      done={done}
-      busy={busy}
-      error={error}
-      signInHref="/yx/sign-in"
-      forgotHref="/yx/forgot-password"
-    />
+    <SignInLanguage>
+      <ResetPasswordScreen
+        password={password}
+        confirm={confirm}
+        onPasswordChange={setPassword}
+        onConfirmChange={setConfirm}
+        onSubmit={() => void submit()}
+        done={done}
+        busy={busy}
+        error={error}
+        signInHref="/yx/sign-in"
+        forgotHref="/yx/forgot-password"
+      />
+    </SignInLanguage>
   );
 }

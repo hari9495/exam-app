@@ -34,9 +34,35 @@ Things deliberately left for launch. Development runs locally until then (test k
 | 27 | Push notifications for the agent app (Service Desk 3b-2, SD-2.27) | Replace the dev transport (`APPROVAL_CHANNELS=dev-fake`) with FCM (Android) and APNs (iOS) senders; the app registers its push token through `POST /api/v1/workflow/channel-links` (provider `push`) | SLA warnings and approval pushes show the ticket number only |
 | 28 | Agent mailbox sign-in (Service Desk 3b-2, SD-2.24) | "Connect my mailbox" with Microsoft and Google delegated OAuth (each agent consents for their own mailbox, `Mail.Read` / `gmail.readonly`); until then agents paste app values (step-up). Never set `DESK_CHANNELS=dev-fake` in production (laptop demo transport and demo mailbox; ignored when `NODE_ENV=production`) | Only threads matching a ticket are read; unlinking wipes the grant |
 | 29 | Help widget frame (Service Desk 3b-2, SD-2.20) | Serve `/yx/widget/*` with `Content-Security-Policy: frame-ancestors <the widget's allowed sites>` (edge rule or middleware reading the widget's sites) and cache `/yx-widget.js` with a short TTL | The frame already trusts messages only from the allowed sites and the API checks the site again |
+| 30 | Privacy and grievance contact (founder answer 3 Nov 2026) | Set `NEXT_PUBLIC_YX_PRIVACY_EMAIL` on the web host to the grievance officer's mailbox, rebuild the web app, then open /yx/legal/privacy and /yx/legal/grievance and check the address shows and opens an email | A public mailbox, not a secret. Until it is set the pages say the contact isn't published yet (APX-G G-23) |
+| 31 | Hindi sign-in wording: native review (founder answer 3 Nov 2026) | A native Hindi reader checks every Hindi line in `packages/yx-ui/src/screens/auth/words.ts` (marked NEEDS NATIVE REVIEW BEFORE GO-LIVE) on the live pages, then removes the mark | Keep the meaning of the answers that must not reveal an account ("अगर … तो …") |
+| 32 | Staffing GST rule data (staffing slice 3, 10 Nov 2026) | The CA checks the rule sets GST.STAFFING_RATE (18%, SAC 998519, CGST + SGST intra-state, IGST inter-state) and GST.STATE_CODES, then clears their verify flag | Before the first client invoice is issued |
+| 33 | E-invoice window (staffing slice 3) | The CA confirms GST.EINVOICE_WINDOW (report within 30 days for AATO of ₹10 crore or more; warn from day 25) and which companies turn on Settings › Staffing desk › e-invoicing | The IRP is not connected: invoices are reported on the IRP by hand |
+| 34 | TDS sections for staffing (staffing slice 3) | The CA and counsel check TDS.SECTIONS (194C 1% individual or HUF, 2% others; 194J 10%, 2% technical) and the Income-tax Act 2025 section numbers from 1 Apr 2026 | Used for client TDS on receipts and vendor invoices |
+| 35 | GST invoice and credit note contents (staffing slice 3) | Counsel and the CA review invoice and credit note fields against CGST Rules r.46 and r.53 (16-character numbers per series, place of supply, reason on the credit note) | Before the invoice PDF is built (question 492) |
+| 36 | GST invoice PDF fields (staffing round 4, 10 Nov 2026) | The CA checks the rule set GST.INVOICE_R46 (the r.46 tax invoice and r.53 credit note fields, labels and order) against a sample PDF, then clears its verify flag | Before the first PDF goes to a client |
+| 37 | Tally and Zoho export formats (staffing round 5, 10 Nov 2026) | The CA imports a month's export into a test company in Tally Prime and into Zoho Books, checks the vouchers, ledgers, GST, round-off and credit notes, and then clears the verify flag of the rule sets EXPORT.TALLY_XML and EXPORT.ZOHO_CSV | Ledgers are created in Tally first; tax names must match Zoho's tax rates |
+| 38 | Contract labour law data (CL-1, 10 Nov 2026) | Counsel checks the rule set IN.CLRA for Tamil Nadu and Karnataka (Contract Labour Act 1970 to 20 Nov 2025: 20 workers; OSH Code 2020 from 21 Nov 2025: 50 workers, multi-state licences; minimum age 18) and the LIN format (question 671), then clears the verify flag | Before the first contractor licence is relied on to allow deployment |
+| 39 | Contract labour wage check (CL-4, 10 Nov 2026) | The compliance owner checks the IN.MW state tables used for contractor sites (zone and skill of each site's minimum-wage zone) and the challan checks before the first payment hold, then clears the verify flags | Bills are held on these checks |
+| 40 | Payroll rules marked "verify" (M03 §19.3, 5c-D3) | The compliance owner and the partner CA check the subsistence allowance (IESO Act s.10A: half for the first 90 days, three-fourths after), maternity benefit (Maternity Benefit Act s.5: the average daily wage, up to 26 weeks; ESI pays where it covers her) and injury pay (Employees' Compensation Act s.4(1)(d): half-monthly 25% of monthly wages after the waiting period; ESI pays where it covers) in `apps/api/src/statutory/packs/in-run.json`, then publish a version without the verify mark through the console (two staff) | Until then every payslip line from them shows "verify". Injury days are entered after the legal waiting period (nothing deducts it automatically) |
+| 41 | Minimum-wage data still open (M03 §19.3, 5c-D1) | Load Uttar Pradesh minimum wages and the Tamil Nadu dearness allowance for the year from the official orders (`scripts/load-min-wages.ts`, two staff) | Until then UP falls back to the national floor and Tamil Nadu is checked on its basic rate, with a warning |
+| 42 | The pilot customer's bank file format (M03 §19.5, 5d-D1) | Get a real sample bulk-payment file from the pilot customer's bank, check it, and load its layout as a bank-format rule set (two staff); set it on the pilot's pay groups | Until then bank files use the generic NEFT / RTGS XLSX format |
+| 43 | TDS File Validation Utility (M03 §19.8, 5f-D1) — **files obtained 10 Oct 2026** | Source: https://tinpan.proteantech.in/downloads/e-tds/eTDS-download-regular.html. `TDS_STANDALONE_FVU_9.5.zip` (returns up to FY 2025-26) SHA-256 `7b549a29e9682d89acf88ecc0b53732c794a8700a474ee8e52d7c8bd2912ed0c`; `TDS_STANDALONE_FVU_1.2.zip` (from TY 2026-27) SHA-256 `21f7a5a45b42cdd2c952aa633a0049d6c81612e87d43d1d02720bd781943c06d`. Kept outside git; the API checks the hash before each use (`FVU_RELEASES` in `apps/api/src/statutory/fvu.ts`). Worker: `FVU_DIR` (the ZIPs), `FVU_JRE_IMAGE` pinned by digest (tested with `eclipse-temurin@sha256:207ecae0b2b104dfc6dfa763d1e9cd2041cb344800a180e24cb1a28ed533ff90`, 17-jre), `FVU_ARGS`. Open: the FVU's unattended command-line contract is undocumented (see the DECISION NEEDED in `fvu.ts`); get it from Protean or have filers run the FVU themselves. Then validate one real return and compare with the published file format. A later FVU release means a new download, a new hash, a code change to `FVU_RELEASES` and a review | Until then the fake validator is used in development and CI, and production refuses to validate a return |
+| 44 | Statutory data for the compliance owner (M03 §19.8, 5f-D3) | Confirm against the portals: each state's PT and LWF return layout, the PF (para 32A) and ESI (reg. 31C) damages rates, the register formats per state (Code on Wages forms), and the PF ELI fields in the ECR (ELI is built later) | The files and rule sets stay marked verify |
+| 45 | FVU command-line specification (M03 §19.9, 5g-D1) | Ask Protean (NSDL) for the FVU's unattended command-line contract (arguments, result files, exit codes); then set `FVU_DIR`, `FVU_JRE_IMAGE` and `FVU_ARGS` and validate one real return in the sandbox | Until then the filer runs the FVU on their own computer and uploads the .fvu, which YukthiX checks against the return it made |
+| 46 | Exit tax exemptions and heirs (M03 §19.9, 5g-D2, 5g-D3) | The partner CA confirms the `IN.EXIT-EXEMPT` limits for both Acts and that no TDS applies to heirs' shares of a death-in-service settlement | The rule set and the settlement stay marked verify |
+| 47 | Receipt OCR worker (M05-BUILD-DESIGN §14.6, §22.2) — **built 12 Oct 2026 from approved downloads** | Image from `apps/ocr-worker` (base `python:3.12-slim-bookworm@sha256:2ed6491b93cd49272ee6de2b5a38440c3448360322c089fc23e370722d74179d`; Python packages by SHA-256 from PyPI in `requirements.lock` and `models.lock`; 43 Debian packages at exact versions from snapshot.debian.org `20261012T000000Z` in `debian.lock`; models from huggingface.co/PaddlePaddle at commits `0d63e78e2b680928f6b1747d76a08db6e645efb7` (PP-OCRv5_mobile_det), `267c36e24c331595590fe7bd72bde2436fd286f2` (en_PP-OCRv5_mobile_rec), `cd237a44b0e359d4fe38310a416203cf7403faa5` (PP-LCNet_x1_0_textline_ori), file SHA-256s in §22.2). Before go-live: build in CI from the same pins, run it isolated (network none, non-root, read-only, limits) with a spool directory shared with the API, set `EXPENSE_OCR_ADAPTER=paddle-worker` and `EXPENSE_OCR_SPOOL`, run the contract test (`apps/api/test/ocr-worker.e2e-spec.ts`) against it, and check the THIRD-PARTY-LICENSES file ships. Also set `EINVOICE_QR_PUBLIC_KEYS` from the e-invoice portal's published keys | Until then claims use manual entry (`EXPENSE_OCR_ADAPTER=none`); tests and CI use the fake reader |
+| 48 | Expense exchange-rate feeds (M05-BUILD-DESIGN §14.2, §22 D2) — **built 12 Oct 2026 with the company rate table only** | FBIL and ECB imports are not built or switched on until their reuse terms are confirmed in writing. ECB's site says its euro reference rates are "for information purposes only" and discourages using them for transactions, and allows reuse with the ECB cited as source; FBIL's reuse terms could not be confirmed from its site. **Founder decision 12 Oct 2026:** the pilot uses the company rate table; before the global launch choose a paid, licensed FX feed whose terms allow use for payments, add it as a feed and record its source and terms here; ECB and FBIL stay off | Finance keeps the company rate table (Settings › Expenses › Exchange rates); employees can enter their card or bank rate with the statement, flagged when more than 3 % off |
 
 
 ## Sign-in without a company code (founder decision 7 Oct 2026)
+
+- [ ] **Privacy and grievance contact (DPDP Act).** Choose the address (e.g. `privacy@yukthix.app`), set
+  `NEXT_PUBLIC_YX_PRIVACY_EMAIL` on the web app; the privacy notice, accessibility statement and grievance officer pages
+  show it. Lawyers finalise the full texts of all legal pages (SI-08, 19 Oct 2026).
+- [ ] **Platform email sender.** Set `SMTP_FROM_ADDRESS` on the API to a YukthiX address on a domain with SPF and DKIM
+  (e.g. `YukthiX <no-reply@yukthix.app>`). Without it the sender falls back to `no-reply@exam-platform.test`, which
+  real mailboxes reject or mark as spam. Sign-in codes, password resets and account emails all use it (SI-09, 19 Oct 2026).
 
 - [ ] **Base domain.** Set `YX_BASE_DOMAIN` (e.g. `yukthix.app`) on the API. Each company then signs in at
       `https://<company slug>.yukthix.app`; the API takes the company from the Host / Origin only when it is
@@ -74,3 +100,59 @@ Things deliberately left for launch. Development runs locally until then (test k
 - [ ] **Remembered company.** After a sign-in the device keeps an HttpOnly, signed `yx_company` cookie (180 days)
       so the screen says "Signing in to <company> · Not your company?". It is signed with
       `ORG_SECRETS_ENCRYPTION_KEY` (HKDF, purpose `remembered-company`): rotating that key forgets every device.
+- [ ] **Policy acknowledgements: how long to keep them.** Ask counsel (DPDP Act 2023, Evidence Act / BSA 63). If they
+      agree, build the company setting "Keep policy acknowledgements for" with the default employment plus 8 years
+      (founder answer, 3 Nov 2026). Until then acknowledgements are kept with no end date.
+- [ ] **Speak-up and case records: how long to keep them.** Ask counsel (DPDP Act 2023). If they agree, build the company
+      setting with the default 8 years after the case closes (founder answer, 4 Nov 2026). Until then kept with no end date.
+- [ ] **POSH day counting.** Ask counsel whether POSH Rules time limits are working days. If yes, switch the POSH rule
+      sets to working days on the company holiday calendar (founder answer, 4 Nov 2026). Today they count calendar days.
+- [ ] **Witnesses in cases.** Ask counsel what a witness may see; then build the witness invite step (founder, 4 Nov 2026).
+- [ ] **Accident case legal numbers.** Counsel checks the ESIC accident report deadline, the EC Act payment days, interest
+      rate, wage ceiling and the Schedule IV age factors in rule sets IN.ESI.ACCIDENT and IN.EC.CLAIM (all marked verify);
+      then the age factor fills from the date of birth (founder, 4 Nov 2026).
+- [ ] **Standing orders reply days.** Counsel confirms the 7 days in IN.SO.MODEL and whether they are working days
+      (founder, 4 Nov 2026).
+- [ ] **Domestic inquiry.** Counsel reviews the inquiry steps and major penalties before they are built (founder, 4 Nov 2026).
+- [ ] **Collective dispute clocks.** Counsel confirms the conciliation report (60 days) and settlement copy (10 days, may
+      differ by state) in the HLP-13 rule set, and reviews tribunal stages before they are built (founder, 4 Nov 2026).
+- [ ] **Injury pay sample payslip.** Payroll checks one payslip where injury days overlap unpaid injury leave from the
+      attendance feed: the unpaid days must be taken off once, not twice (HLP-12 answer 65, 4 Nov 2026).
+- [ ] **AI policy writer: apply to Time.** Counsel reviews before an "apply to Time" step loads AI policy numbers into
+      Time's leave policies (HLP-14 answer 102, 4 Nov 2026). Today the AI policy is text only.
+- [ ] **New state and industry law tables.** Counsel checks the Maharashtra, Telangana and Delhi tables and any industry
+      tables before go-live (all marked verify; HLP-14 answer 104, 4 Nov 2026).
+- [ ] **Factories Act annual leave table.** Counsel reviews the Manufacturing / Food and consumer goods industry table
+      before it is relied on (HLP-14 answer 111, 4 Nov 2026).
+- [ ] **OSH Code leave figures.** Check the OSH Code 2020 s.32 Gazette text (rate, 180 days, carry forward) in
+      IN.FACTORIES.LEAVE, and counsel lists state amendments to the Factories Act leave rules (answers 111, 134, 4 Nov 2026).
+- [ ] **Factory workers only.** Counsel confirms which employment types count as factory workers for the leave minimum and
+      the 1-in-20 rate (HLP-14 answers 142, 144, 4 Nov 2026).
+- [ ] **Old Factories Act scopes.** After go-live, once no company has a company / entity / location value for
+      attendance.factories_act, stop offering those scopes (keep department and employment type) (answer 152, 4 Nov 2026).
+- [ ] **Pay transparency law rows.** Counsel checks HIR.PAY_TRANSPARENCY (New York, California, Colorado, Washington,
+      Illinois, EU directive; all verify) before any job outside India is published (Hiring answer 228, 9 Nov 2026).
+- [ ] **Joining bonus clawback wording.** Counsel checks the clawback clause in offer letters and the full / pro-rata
+      recovery in the final settlement (Hiring answer 373, 10 Nov 2026).
+- [ ] **Visitor privacy notice (G-27).** The DPO writes the visitor privacy notice (APX-G G-27: what is recorded, why,
+      for how long, who sees it, the visitor's rights) and the company template; it shows on the visitor's pass page and
+      at reception before entry, with the retention days from Settings 3.12 (Visitors slice 1, 15 Nov 2026).
+- [ ] **Visitor photo and NDA records.** The DPO confirms the visitor privacy notice (G-27) covers the photo (shown to the
+      host only while deciding, deleted with the visit) and the NDA acknowledgement kept for a year (Visitors slice 2,
+      10 Nov 2026).
+- [ ] **Bias audit law row.** Counsel checks HIR.BIAS_AUDIT (NYC Local Law 144: the city names that count as New York
+      City, the 12 months an audit lasts, the sex and race / ethnicity categories; marked verify) before any company turns on
+      "We use an automated tool for jobs in New York City" (HIR-23, 13 Nov 2026).
+- [ ] **NYC notice days and AI notes.** Counsel confirms whether the 10 business days skip US public holidays, and
+      whether AI notes on past candidates need their own notice (Hiring answers 501, 503, 10 Nov 2026).
+- [ ] **Sourced profiles (DPDP).** Counsel checks that a person found outside YukthiX (a public profile, a referral, an
+      event) may be emailed once to ask for consent, the source note recruiters must write, and the company limit after
+      which the profile is erased with no consent (hiring.sourced.keep_days, default 30); and the consent email wording
+      (HIR-20, 10 Nov 2026).
+- [ ] **Under-18 candidates.** Counsel checks HIR.MINOR (DPDP Act s.9: verifiable consent of a parent or lawful guardian,
+      no tracking or profiling of a child; Child and Adolescent Labour Act 1986: no work under 14, 14 to 18 barred from
+      hazardous work): the age of 18, held at screening and no offer until the guardian consents (marked verify), and
+      whether an emailed consent link is "verifiable" enough (HIR-05, 10 Nov 2026).
+- [ ] **Campaign messages.** Counsel checks the campaign rules: talent-pool consent plus the channel opt-in, the send
+      window (default 9 am to 9 pm IST) and the daily cap, the unsubscribe link in every email, and WhatsApp only for
+      people who opted in (HIR-20, 10 Nov 2026).

@@ -25,9 +25,10 @@ function twoWorkdays(): [string, string] {
 }
 
 async function earnedAvailable(page: Page): Promise<number> {
-  const card = page.locator('section[aria-label="Balances"] > *').filter({ has: page.getByRole('heading', { name: 'Earned leave' }) });
-  const text = (await card.locator('.yx-tim-big').textContent()) ?? '';
-  return Number(text.trim().split(' ')[0]);
+  // My leave (redesigned): each leave type is a region with its heading and "n days available" (held days are taken off).
+  const card = page.getByRole('region').filter({ has: page.getByRole('heading', { name: 'Earned leave', level: 3 }) });
+  const text = (await card.getByRole('paragraph').filter({ hasText: /days? available/ }).first().textContent()) ?? '';
+  return parseFloat(text.trim());
 }
 
 test('Arjun applies for 2 days of earned leave → Divya approves → the balance drops; Arjun checks in inside the geofence', async ({ browser }) => {
@@ -42,48 +43,58 @@ test('Arjun applies for 2 days of earned leave → Divya approves → the balanc
   await arjun.goto('/yx/time/leave');
   await expect(arjun.getByRole('heading', { name: 'Earned leave' })).toBeVisible();
   const before = await earnedAvailable(arjun);
-  await arjun.getByRole('button', { name: 'Apply for leave' }).click();
-  const sheet = arjun.getByRole('dialog');
+  await arjun.getByRole('button', { name: 'Apply leave' }).click();
+  const sheet = arjun.getByRole('dialog', { name: 'Apply leave' });
   await sheet.getByRole('combobox', { name: /Leave/ }).click();
   await arjun.getByRole('option', { name: /Earned leave/ }).click();
-  await sheet.getByLabel(/First day/).fill(from);
-  await sheet.getByLabel(/Last day/).fill(to);
-  // The live summary comes from the server's own rules.
-  await expect(sheet.getByText('Counts as')).toBeVisible();
-  await expect(sheet.locator('.yx-tim-effect')).toContainText('2 days');
-  await expect(sheet.locator('.yx-tim-effect')).toContainText(String(before - 2));
+  await sheet.getByRole('textbox', { name: /^From/ }).fill(from);
+  await sheet.getByRole('textbox', { name: /^To/ }).fill(to);
+  await sheet.getByRole('textbox', { name: /^To/ }).press('Tab');
+  // The live summary comes from the server's own rules: 2 days counted, the balance after them.
+  const summary = sheet.getByRole('region', { name: 'Leave summary' });
+  await expect(summary.getByRole('definition').first()).toHaveText('2');
+  await expect(summary).toContainText(`Balance after${before - 2}`);
   await sheet.getByRole('textbox', { name: /Reason/ }).fill('Family visit to Mysuru');
-  await sheet.getByRole('button', { name: 'Send for approval' }).click();
+  await sheet.getByRole('button', { name: 'Send request' }).click();
   await expect(sheet).toHaveCount(0);
   await expect(arjun.getByText('Waiting for approval').first()).toBeVisible();
   // While it waits, the days are held: available drops, the balance does not.
   await expect.poll(() => earnedAvailable(arjun)).toBe(before - 2);
 
-  // 2. Divya, his manager, approves in Approvals.
+  // 2. Divya, his manager, approves in Approvals: the request opens with its reason and the team view; her approval
+  // completes it (the step after hers needs no one for this request).
+  const short = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
+  const named = new RegExp(`Arjun Kulkarni: Earned leave, ${short(from)} to ${short(to)}`);
   const divya = await (await browser.newContext()).newPage();
   await signIn(divya, 'panel@demo-org.test', PASSWORD);
   await divya.waitForURL((url) => !url.pathname.includes('sign-in'));
   await divya.goto('/yx/approvals');
-  const card = divya.locator('section').filter({ has: divya.getByRole('heading', { name: /Arjun Kulkarni: Earned leave/ }) }).last();
-  await expect(card).toBeVisible();
-  await expect(card.getByText('Family visit to Mysuru')).toBeVisible();
-  await expect(card.getByText('Team', { exact: true })).toBeVisible();
-  await card.getByRole('button', { name: 'Approve', exact: true }).click();
-  await expect(card).toHaveCount(0);
+  const request = divya.getByRole('row', { name: named });
+  await expect(request).toBeVisible({ timeout: 30_000 });
+  await request.click();
+  const open = divya.getByRole('dialog', { name: named });
+  await expect(open.getByRole('region', { name: 'Context' })).toContainText('Reason: Family visit to Mysuru');
+  await expect(open.getByRole('region', { name: 'Context' })).toContainText('Team:');
+  await open.getByRole('button', { name: 'Approve', exact: true }).click();
+  await expect(request).toHaveCount(0, { timeout: 30_000 });
 
   // 3. Arjun's request is approved and the balance (the ledger sum) is 2 lower.
   await arjun.reload();
   await expect(arjun.getByRole('heading', { name: 'Earned leave' })).toBeVisible();
   await expect.poll(() => earnedAvailable(arjun)).toBe(before - 2);
-  await expect(arjun.getByText(/Balance \d+(\.\d+)? ·/).first()).toBeVisible();
-  const row = arjun.getByRole('row').filter({ hasText: 'Earned leave' }).first();
-  await expect(row.getByText('Approved')).toBeVisible();
+  // The ledger balance itself is now 2 lower too (while it waited only the available days were held).
+  await expect(arjun.getByRole('region').filter({ has: arjun.getByRole('heading', { name: 'Earned leave', level: 3 }) }).getByText(/^Balance /)).toHaveText(`Balance ${before - 2}`);
+  const long = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+  const row = arjun.getByRole('list', { name: 'My leave requests' }).getByRole('listitem').filter({ hasText: `Earned leave · ${long(from)} – ${long(to)}` });
+  await expect(row).toContainText('Approved');
 
   // 4. Arjun checks in (or out, if a check-in is already recorded today) from inside the Bengaluru geofence.
-  await arjun.goto('/yx/time/attendance');
-  const punch = arjun.getByRole('button', { name: /^Check (in|out)$/ });
+  // The clock is the "My attendance today" page now (My month links to it).
+  await arjun.goto('/yx/time/attendance?view=today');
+  const punch = arjun.getByRole('button', { name: /^Clock (in|out)$/ });
   await expect(punch).toBeVisible();
   await punch.click();
-  await expect(arjun.getByText(/Checked (in|out)\. Inside Bengaluru head office/)).toBeVisible();
-  await expect(arjun.getByRole('list', { name: 'Punches today' }).getByText(/Inside · Bengaluru head office/).first()).toBeVisible();
+  await expect(arjun.getByRole('status').filter({ hasText: /^(In|Out) recorded\.$/ })).toBeVisible();
+  // Today's punches name the place and that the punch was inside its geofence.
+  await expect(arjun.getByText(/At Bengaluru head office \(\d+ m from centre\)/).first()).toBeVisible();
 });

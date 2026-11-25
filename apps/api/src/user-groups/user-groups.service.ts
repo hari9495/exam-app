@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
+import { toBin } from '../recycle-bin/bin';
 import { CreateUserGroupDto } from './dto/create-user-group.dto';
 import { UpdateUserGroupDto } from './dto/update-user-group.dto';
 
@@ -82,8 +83,11 @@ export class UserGroupsService {
   async remove(context: TenantContext, actorUserId: string, id: string): Promise<{ id: string }> {
     const orgId = context.organizationId as string;
     await this.tenantPrisma.forTenant(context, async (tx) => {
-      const existing = await tx.userGroup.findFirst({ where: { id, organizationId: orgId }, select: { id: true } });
+      const existing = await tx.userGroup.findFirst({ where: { id, organizationId: orgId } });
       if (!existing) throw new NotFoundException(`User group ${id} not found`);
+      // Answer 2439: the group and its members wait in the recycle bin (candidate assignments to it are not restored).
+      const members = await tx.userGroupMember.findMany({ where: { organizationId: orgId, groupId: id } });
+      await toBin(tx, { organizationId: orgId, userId: actorUserId }, 'user_group', existing, existing.name, { userGroupMember: members });
       await tx.userGroupMember.deleteMany({ where: { organizationId: orgId, groupId: id } });
       await tx.pipelineEntry.updateMany({ where: { organizationId: orgId, assignedGroupId: id }, data: { assignedGroupId: null } });
       await tx.userGroup.delete({ where: { id } });

@@ -12,6 +12,8 @@ export interface KeyResult {
   unit: string;
   /** Default increase. "decrease" for targets like "cut defects from 40 to 10". */
   direction?: 'increase' | 'decrease';
+  /** The server's figure (live data): used as is, so the screen never disagrees with the record. */
+  progress?: number;
 }
 
 export type GoalOwnerType = 'person' | 'team' | 'company';
@@ -30,10 +32,13 @@ export interface Goal {
   keyResults: KeyResult[];
   confidence?: GoalConfidence;
   lastCheckIn?: Date;
+  /** The server's worked-out progress (live data): used as is, so the screen never disagrees with the record. */
+  progress?: number;
 }
 
 /** One key result's progress 0–100, from start → target (handles "decrease" targets). */
 export function krProgress(kr: KeyResult): number {
+  if (kr.progress != null) return Math.round(kr.progress);
   const span = kr.target - kr.start;
   if (span === 0) return kr.actual === kr.target ? 100 : 0;
   const raw = ((kr.actual - kr.start) / span) * 100;
@@ -45,6 +50,7 @@ export function krProgress(kr: KeyResult): number {
  * It is never typed when key results exist. Returns null when there is nothing to measure yet.
  */
 export function goalProgress(goal: Goal, all: Goal[] = []): number | null {
+  if (goal.progress != null) return Math.round(goal.progress);
   if (goal.keyResults.length > 0) {
     return Math.round(goal.keyResults.reduce((a, kr) => a + krProgress(kr), 0) / goal.keyResults.length);
   }
@@ -227,7 +233,7 @@ export function skillGap(required: number, current: number | null): { gap: numbe
 
 /* ------------------------------------------------ PRF-17 bias check (P23 YX-AST-11) */
 
-export type BiasKind = 'Gendered or loaded word' | 'Personality, not behaviour' | 'Age reference' | 'Vague, no example' | 'Rating and text disagree';
+export type BiasKind = 'Gendered or loaded word' | 'Personality, not behaviour' | 'Age reference' | 'Vague, no example' | 'Rating and text disagree' | 'Rating spread against peers';
 
 export interface BiasFlag {
   id: string;
@@ -430,4 +436,37 @@ export function pollPercents(votes: number[]): number[] {
 /** Action plans (Q8): due 30 days after results open. */
 export function actionPlanDue(resultsOpened: Date, days = 30): Date {
   return new Date(resultsOpened.getFullYear(), resultsOpened.getMonth(), resultsOpened.getDate() + days);
+}
+
+/* ================================================================== Review stages (live) */
+
+export interface CycleStageIn {
+  key: 'self' | 'manager' | 'skip';
+  dueOn: string;
+  optional?: boolean;
+}
+
+/**
+ * YX-PERF-06 / U73: the stages a review goes through, with who has each and its deadline, from the cycle's stages and
+ * where the review is now (stage self | manager | skip | release | done; status open … closed). Release and the
+ * employee's acknowledgement always follow.
+ */
+export function reviewStages(stages: CycleStageIn[], at: { stage: string; status: string }, who: { employee: string; manager: string; skip?: string }): StageRow[] {
+  const order = [...stages.map((s) => s.key as string), 'release', 'ack'];
+  const now = at.status === 'released' ? 'ack' : at.status === 'acknowledged' || at.status === 'closed' ? 'end' : at.stage === 'done' ? 'end' : at.stage;
+  const idx = now === 'end' ? order.length : order.indexOf(now);
+  const LABEL: Record<string, string> = { self: 'Self review', manager: 'Manager review', skip: 'Skip-level review', release: 'Release', ack: 'Employee acknowledgement' };
+  const OWNER: Record<string, string> = { self: who.employee, manager: who.manager, skip: who.skip ?? 'Manager’s manager', release: 'HR', ack: who.employee };
+  return order.map((k, i) => {
+    const s = stages.find((x) => x.key === k);
+    return { id: k, label: LABEL[k], owner: OWNER[k], due: s ? new Date(`${s.dueOn}T00:00:00`) : undefined, state: i < idx ? 'done' : i === idx ? 'current' : 'todo' };
+  });
+}
+
+export interface StageRow {
+  id: string;
+  label: string;
+  owner: string;
+  due?: Date;
+  state: 'done' | 'current' | 'todo' | 'skipped';
 }

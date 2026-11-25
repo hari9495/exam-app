@@ -172,6 +172,11 @@ export class LocationDto {
   @IsString({ each: true })
   @MaxLength(43, { each: true })
   ipRanges?: string[];
+
+  /** HLP-14 answer 132: a registered factory (Time applies the factory leave minimum here). Absent keeps it. */
+  @IsOptional()
+  @IsBoolean()
+  registeredFactory?: boolean;
 }
 
 // ---- structure masters (YX-ORG-15) ----
@@ -347,8 +352,9 @@ export class SettingDto {
   @IsUUID()
   scopeId?: string;
 
+  /** A choice, or a text setting's words (each text key's own limit is checked against the registry). */
   @IsString()
-  @MaxLength(100)
+  @MaxLength(1000)
   value!: string;
 
   /** Dated keys only. */
@@ -377,4 +383,26 @@ export class ResolveSettingQueryDto {
   @IsOptional() @IsUUID() designationId?: string;
   /** Brings in the employee's assignment in force on asOf (today for plain keys), YX-ORG-18. */
   @IsOptional() @IsUUID() employeeId?: string;
+}
+
+/** Answer 1325: why a waiting payroll setting change is rejected (optional). */
+export class SettingRejectDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  note?: string;
+}
+
+/** Settings S-5 (1326, 1461): the settings whose last changes to list (comma-separated keys) and how many. */
+export class SettingsHistoryQueryDto {
+  @IsString()
+  @MaxLength(8000)
+  keys!: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(20)
+  limit?: number;
 }

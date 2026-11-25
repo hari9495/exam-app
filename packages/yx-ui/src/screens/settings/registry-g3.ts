@@ -1051,6 +1051,7 @@ const projects: SettingsPageDef = {
     {
       title: 'Projects and codes',
       settings: [
+        { key: 'prj.enabled', label: 'Projects', kind: 'toggle', value: true, starter: false, helper: 'Off by default. On, Projects shows in the menu for people with a Projects key and for project managers.', synonyms: ['turn on projects', 'project management'] },
         { key: 'prj.projects', label: 'Projects and tasks', kind: 'link', linkScreenId: 'PRJ-01', linkLabel: 'Open projects' },
         {
           key: 'prj.activity_codes',
@@ -1083,9 +1084,12 @@ const projects: SettingsPageDef = {
           starter: true,
           synonyms: ['non-project time', 'bench'],
         },
-        { key: 'prj.billable_default', label: 'New projects are billable', kind: 'toggle', value: true, starter: true },
-        { key: 'prj.booking_rule', label: 'Time on projects someone is not allocated to', kind: 'radio', value: 'Block', options: ['Block', 'Allow with project manager approval'], starter: true },
+        { key: 'prj.billable_default', label: 'Billing model for new projects', kind: 'select', value: 'time_material', options: ['time_material', 'fixed_fee', 'retainer', 'non_billable'], optionLabels: { time_material: 'Time & material', fixed_fee: 'Fixed fee', retainer: 'Retainer', non_billable: 'Non-billable' }, starter: true, helper: 'A client is needed only for a billable model. People can change it on each project.' },
+        { key: 'prj.booking_rule', label: 'Time on projects someone is not allocated to', kind: 'radio', value: 'Block', options: ['Block', 'Allow with project manager approval', 'Allow'], starter: true, helper: 'Block: people book time only to projects they are allocated to, on the days of their allocation. With approval: other hours wait for the project manager, line by line.' },
         { key: 'prj.daily_max', label: 'Refuse more hours in a day than', kind: 'number', value: 14, unit: 'hours', min: 8, max: 20, starter: true, helper: 'A warning already shows above the shift’s expected hours; this is the hard stop.' },
+        // Answers 1731 to 1736: a note per timesheet row, in the person's own words.
+        { key: 'prj.note_required', label: 'Timesheet comment: required on every day with hours', kind: 'toggle', value: true, starter: true, helper: 'On by default. A "Comment" link under each day with hours; Save draft works without it; Submit week waits until every day with hours has its comment. Pre-filled days need the person\u2019s own words too.' },
+        { key: 'prj.note_min_words', label: 'Timesheet comment: at least, per day with hours', kind: 'select', value: '20', options: ['5', '10', '15', '20', '25', '30', '50', '100'], optionLabels: { '5': '5 words', '10': '10 words', '15': '15 words', '20': '20 words', '25': '25 words', '30': '30 words', '50': '50 words', '100': '100 words' }, starter: true, helper: 'The person sees a live count ("12 of 20 words"). The row\u2019s approver and Projects finance read the comments; the client only when the project shows them.' },
       ],
     },
     {
@@ -1103,14 +1107,26 @@ const projects: SettingsPageDef = {
         },
         { key: 'prj.approval_sla', label: 'If not approved, the account manager steps in after', kind: 'number', value: 3, unit: 'working days', min: 1, max: 10, starter: true },
         { key: 'prj.client_approval', label: 'Client approval in the portal (after the project manager)', kind: 'toggle', value: false, starter: true },
+        { key: 'prj.bulk_within_allocation', label: 'Bulk approve only hours within the allocation', kind: 'toggle', value: true, starter: true, helper: 'Hours above a person’s allocation, or booked outside one, are approved one by one.' },
       ],
     },
     {
       title: 'Utilisation and budgets',
       settings: [
+        { key: 'prj.cost_min_people', label: 'Show cost to the project manager only for months with at least', kind: 'select', value: '2', options: ['1', '2', '3', '4', '5'], optionLabels: { '1': '1 person', '2': '2 people', '3': '3 people', '4': '4 people', '5': '5 people' }, starter: true, helper: 'Fewer people, and one person’s rate could be worked out. Projects finance always sees cost.' },
+        { key: 'prj.expenses_projects', label: 'Expense lines can name a project', kind: 'toggle', value: false, starter: true, helper: 'Off by default. On, people pick the project and whether it is re-billed to the client; the project’s cost includes it.' },
+        { key: 'prj.small_team', label: 'Hide per-person figures from the project manager for teams smaller than', kind: 'select', value: '5', options: ['2', '3', '4', '5', '6', '8', '10'], optionLabels: { '2': '2 people', '3': '3 people', '4': '4 people', '5': '5 people', '6': '6 people', '8': '8 people', '10': '10 people' }, starter: true, helper: 'HR (Projects manage or resource) still sees them.' },
         { key: 'prj.utilisation_target', label: 'Utilisation target for billable roles', kind: 'percent', value: 75, starter: true, synonyms: ['utilization', 'billability'] },
         { key: 'prj.burn_alert_1', label: 'First budget alert at', kind: 'percent', value: 80, starter: true, synonyms: ['burn alert', 'budget overrun'] },
         { key: 'prj.burn_alert_2', label: 'Second budget alert at', kind: 'percent', value: 100, starter: true },
+      ],
+    },
+    {
+      // Projects P-6 (answers 1415, 1416): billing approval and corrections of invoiced time.
+      title: 'Billing and corrections',
+      settings: [
+        { key: 'prj.am_approval', label: 'The account manager approves project invoices before finance issues them', kind: 'toggle', value: false, starter: true, helper: 'Off by default: Projects finance issues alone. On, each draft waits for an account manager (Staffing desk manage key) in the billing workbench.' },
+        { key: 'prj.pay_recovery', label: 'When invoiced hours are corrected down, recover pay from the employee', kind: 'select', value: 'none', options: ['none', 'next_payroll'], optionLabels: { none: 'No recovery', next_payroll: 'In the next payroll' }, starter: true, helper: 'The correction always makes a credit note for the client; this only decides the employee’s pay.' },
       ],
     },
     {
@@ -1174,6 +1190,8 @@ const visitors: SettingsPageDef = {
             ['Food safety auditor', 'Yes', 'Yes', 'Yes'],
           ],
           addLabel: 'Add visitor type',
+          // Answer 794.
+          helper: 'Removing a type no visit used deletes it. A type visits used is archived: kept on those visits, not offered for new ones. Archived: Vendor demo.',
           synonyms: ['guest', 'visitor category'],
         },
       ],
@@ -1193,8 +1211,20 @@ const visitors: SettingsPageDef = {
           helper: 'After this, reception decides.',
           synonyms: ['walk-in', 'host approval'],
         },
-        { key: 'vis.id_capture', label: 'Capture ID proof', kind: 'toggle', value: true, scope: 'Overridden for Hosur plant' },
+        {
+          key: 'vis.id_capture',
+          label: 'Capture ID proof',
+          kind: 'select',
+          value: 'ID type and last 4',
+          options: ['Off', 'ID type and last 4', 'ID type, last 4 and a photo of the ID'],
+          scope: 'Overridden for Hosur plant',
+          helper: 'Never a full ID number. No photo of an Aadhaar card, and no ID from a visitor under 18.',
+        },
         { key: 'vis.photo', label: 'Capture photo', kind: 'toggle', value: true, starter: true },
+        // Answer 601 (Visitors slice 2): visitors sign themselves in on a tablet in visitor mode, where the location allows it.
+        { key: 'vis.kiosk', label: 'Visitors can check in on a visitor kiosk', kind: 'toggle', value: false, starter: true, helper: 'Off: reception checks every visitor in. Set up the tablet on Devices and kiosks in visitor mode.', scope: 'Overridden for Hosur plant', synonyms: ['kiosk', 'self check-in', 'walk-in'] },
+        // Answer 791: visitors at any hour (a 24-hour site), or until midnight (00:00).
+        { key: 'vis.all_day', label: 'Visitors allowed all day', kind: 'toggle', value: false, starter: true, helper: 'On: visitors can come at any hour and the hours below are not used. Off: until midnight is "00:00 (midnight)".', synonyms: ['24 hours', 'round the clock', 'night'] },
         { key: 'vis.hours_from', label: 'Visitors allowed from', kind: 'time', value: '09:00' },
         { key: 'vis.hours_to', label: 'Visitors allowed until', kind: 'time', value: '18:30', after: 'vis.hours_from' },
         {
@@ -1206,15 +1236,19 @@ const visitors: SettingsPageDef = {
           synonyms: ['visitor notice', 'privacy notice'],
         },
         { key: 'vis.badge', label: 'Badge layout', kind: 'select', value: 'Photo badge with QR', options: ['Photo badge with QR', 'Name badge with QR', 'Printed pass only'] },
+        // Visitors slice 3 (answer 605): who sees the list is the watch-list key (HR admin and Facility admin roles,
+        // for the whole company), so the page links to the list and keeps only its review period.
         {
-          key: 'vis.watchlist_access',
-          label: 'Who can see the blocked-visitor list',
-          kind: 'multiselect',
-          value: ['HR admin', 'Facility admin'],
-          options: ['HR admin', 'Facility admin', 'Reception', 'Security'],
+          key: 'vis.watchlist',
+          label: 'Blocked-visitor watch-list',
+          kind: 'link',
+          linkScreenId: 'VIS-05',
+          linkLabel: 'Open the watch-list',
+          helper: 'Only HR admins and Facility admins with the watch-list key see it and the reasons; reception sees only that a visit cannot go ahead.',
           sensitive: true,
-          synonyms: ['blacklist', 'watch list'],
+          synonyms: ['blacklist', 'watch list', 'blocked visitors'],
         },
+        { key: 'vis.watchlist_review_days', label: 'Review each watch-list entry every', kind: 'number', value: 365, unit: 'days', min: 90, max: 365, starter: true, helper: 'An entry nobody reviews in time lapses and is deleted.' },
         { key: 'vis.desk', label: 'Visitor desk', kind: 'link', linkScreenId: 'VIS-01', linkLabel: 'Open visitor desk' },
       ],
     },

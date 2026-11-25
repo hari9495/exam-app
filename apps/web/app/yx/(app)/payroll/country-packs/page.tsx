@@ -27,28 +27,31 @@ export default function YxPayCountryPacksPage() {
   const search = usePeopleSearch();
   return (
     <CountryPacksScreen
-      state={payState(entities)}
-      onRetry={() => void entities.refetch()}
-      entities={entities.data ?? []}
-      entityId={entityId}
-      onEntity={setEntityId}
-      status={status.data ?? null}
-      nec={nec.data ?? null}
-      year={year}
-      onYear={setYear}
-      onSwitchOn={(settings) => write('/payroll/country-packs', { legalEntityId: entityId, settings })}
-      onEosb={(month) => write('/payroll/eosb/provision', { legalEntityId: entityId, month })}
-      onNecFile={async () => {
-        const f = await write<{ fileId: string }>('/payroll/1099-nec', { legalEntityId: entityId, year });
-        const link = await payWrite<{ path: string }>(`/files/${e(f.fileId)}/link`);
-        await download(link.path, `1099-nec-${year}.csv`);
+      live={{
+        state: payState(entities),
+        onRetry: () => void entities.refetch(),
+        entities: entities.data ?? [],
+        entityId,
+        onEntity: setEntityId,
+        status: status.data ?? null,
+        nec: nec.data ?? null,
+        year,
+        today: todayIndia(),
+        onYear: setYear,
+        onSwitchOn: (settings) => write('/payroll/country-packs', { legalEntityId: entityId, settings }),
+        onEosb: (month) => write('/payroll/eosb/provision', { legalEntityId: entityId, month }),
+        onNecFile: async () => {
+          const f = await write<{ fileId: string }>('/payroll/1099-nec', { legalEntityId: entityId, year });
+          const link = await payWrite<{ path: string }>(`/files/${e(f.fileId)}/link`);
+          await download(link.path, `1099-nec-${year}.csv`);
+        },
+        onNecCopy: (consultantId) => download(`/payroll/1099-nec/${e(consultantId)}/copy?legalEntityId=${e(entityId!)}&year=${year}`, `1099-nec-${year}.pdf`),
+        onW9: (x) => write('/payroll/w9', x),
+        onSearch: search,
+        onWpsIds: (x) => write(`/payroll/entities/${e(entityId!)}/wps-ids`, x),
+        runs: (runs.data ?? []).filter((r) => r.legalEntityId === entityId && ['approved', 'paid'].includes(r.status)).map((r) => ({ id: r.id, label: `Payroll · ${r.month}` })),
+        onWpsFile: (runId) => write(`/payroll/runs/${e(runId)}/wps-file`),
       }}
-      onNecCopy={(consultantId) => download(`/payroll/1099-nec/${e(consultantId)}/copy?legalEntityId=${e(entityId!)}&year=${year}`, `1099-nec-${year}.pdf`)}
-      onW9={(x) => write('/payroll/w9', x)}
-      onSearch={search}
-      onWpsIds={(x) => write(`/payroll/entities/${e(entityId!)}/wps-ids`, x)}
-      runs={(runs.data ?? []).filter((r) => r.legalEntityId === entityId && ['approved', 'paid'].includes(r.status)).map((r) => ({ id: r.id, label: `Payroll · ${r.month}` }))}
-      onWpsFile={(runId) => write(`/payroll/runs/${e(runId)}/wps-file`)}
     />
   );
 }

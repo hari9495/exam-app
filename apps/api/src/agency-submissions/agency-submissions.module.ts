@@ -11,5 +11,7 @@ import { AgencySubmissionsService } from './agency-submissions.service';
   imports: [StorageModule, JobsModule],
   controllers: [AgencySubmissionsController],
   providers: [AgencySubmissionsService],
+  // Staffing slice 2 (HIR-21): a vendor's submission forwarded to a client is accepted through this same review.
+  exports: [AgencySubmissionsService],
 })
 export class AgencySubmissionsModule {}

@@ -21,6 +21,12 @@ export class WhatsappService {
     private readonly cryptoService: OrgSecretsCryptoService,
   ) {}
 
+  /** Answer 421: a provider is set for the company (the same gate as send; the config is not opened here). */
+  async connected(organizationId: string): Promise<boolean> {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { whatsappEnabled: true, whatsappProvider: true, whatsappConfigEncrypted: true } });
+    return Boolean(org?.whatsappEnabled && org.whatsappConfigEncrypted && getWhatsappProvider(org.whatsappProvider ?? ''));
+  }
+
   async send(input: SendWhatsappInput): Promise<SendWhatsappResult> {
     try {
       const org = await this.prisma.organization.findUnique({

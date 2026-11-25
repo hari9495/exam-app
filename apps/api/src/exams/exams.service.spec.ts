@@ -5,6 +5,12 @@ import { TOGGLEABLE_PROCTORING_SIGNALS } from './dto/create-exam.dto';
 import { TenantPrismaService, AuditService, BlobStorageService } from '@exam-platform/shared';
 import { ExamRuntimeInternalClient } from '../exam-runtime-client/exam-runtime-internal.client';
 
+// AS-2: the company's assessment settings are read from the settings table; here they are the product defaults.
+jest.mock('../assessments/asmt-rules', () => {
+  const actual = jest.requireActual('../assessments/asmt-rules');
+  return { ...actual, companySetting: jest.fn(async (_tx: unknown, _org: string, key: string) => ({ 'asmt.proctor_mode': 'ai', 'asmt.high_stakes': '500' })[key as 'asmt.proctor_mode'] ?? '') };
+});
+
 describe('ExamsService', () => {
   let service: ExamsService;
   let tenantPrisma: { forTenant: jest.Mock };
@@ -75,6 +81,12 @@ describe('ExamsService', () => {
         availabilityWindowStart: null,
         availabilityWindowEnd: null,
         allowedIpRange: null,
+        // AS-2 (answer 2007): no switch named, so the company default mode (AI-only).
+        enableAntiCheating: true,
+        webcamProctoringEnabled: true,
+        webcamAiAnalysisEnabled: true,
+        screenCaptureEnabled: false,
+        disabledProctoringSignalsJson: null,
         createdBy: 'user-1',
       },
     });
@@ -99,6 +111,12 @@ describe('ExamsService', () => {
         availabilityWindowStart: null,
         availabilityWindowEnd: null,
         allowedIpRange: null,
+        // AS-2 (answer 2007): no switch named, so the company default mode (AI-only).
+        enableAntiCheating: true,
+        webcamProctoringEnabled: true,
+        webcamAiAnalysisEnabled: true,
+        screenCaptureEnabled: false,
+        disabledProctoringSignalsJson: null,
         createdBy: 'user-1',
       },
     });
@@ -771,7 +789,7 @@ describe('ExamsService', () => {
   it('archives an exam by setting status to archived', async () => {
     const tx = {
       exam: {
-        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1' }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'published' }),
         update: jest.fn().mockResolvedValue({ id: 'exam-1', status: 'archived' }),
       },
     };
@@ -780,7 +798,7 @@ describe('ExamsService', () => {
     const result = await service.archive(context, 'user-1', 'exam-1');
 
     expect(result.status).toBe('archived');
-    expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { status: 'archived' } });
+    expect(tx.exam.update).toHaveBeenCalledWith({ where: { id: 'exam-1' }, data: { status: 'archived', archivedFrom: 'published' } });
     expect(audit.record).toHaveBeenCalledWith(context, {
       actorUserId: 'user-1', action: 'exam.archived', entityType: 'exam', entityId: 'exam-1',
     });
@@ -2729,17 +2747,17 @@ describe('ExamsService', () => {
       );
     });
 
-    it('leaves the proctoring columns to their schema defaults when the caller omits them', async () => {
+    it('AS-2 (answer 2007): a test naming no proctoring switch starts in the company default mode (AI-only); enforcement keeps its schema default', async () => {
       const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await service.create(context, 'user-1', { title: 'Screen' });
 
       const data = tx.exam.create.mock.calls[0][0].data;
-      expect(data.webcamProctoringEnabled).toBeUndefined();
+      expect([data.enableAntiCheating, data.webcamProctoringEnabled, data.webcamAiAnalysisEnabled, data.screenCaptureEnabled]).toEqual([true, true, true, false]);
+      expect(data.disabledProctoringSignalsJson).toBeNull();
       expect(data.proctoringEnforcement).toBeUndefined();
       expect(data.proctoringStrikeLimit).toBeUndefined();
-      expect(data.disabledProctoringSignalsJson).toBeUndefined();
     });
 
     it('updates only the proctoring fields that were supplied', async () => {
@@ -3037,13 +3055,13 @@ describe('ExamsService', () => {
       );
     });
 
-    it('leaves screenCaptureEnabled to the schema default when omitted', async () => {
+    it('AS-2: with no switch named, screen capture follows the company default mode (AI-only: off)', async () => {
       const tx = { exam: { create: jest.fn().mockResolvedValue({ id: 'exam-1' }) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
       await service.create(context, 'user-1', { title: 'Screen' });
 
-      expect(tx.exam.create.mock.calls[0][0].data.screenCaptureEnabled).toBeUndefined();
+      expect(tx.exam.create.mock.calls[0][0].data.screenCaptureEnabled).toBe(false);
     });
   });
 });

@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import ExcelJS from 'exceljs';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { Tx, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
@@ -18,7 +19,22 @@ import { openBalance } from './travel';
 export const REPORTS = ['summary', 'unpaid', 'advance-ageing', 'over-limit', 'gst-input', 'approver-patterns'] as const;
 export type ReportKind = (typeof REPORTS)[number];
 type Column = { key: string; label: string };
-export type Report = { kind: ReportKind; from: string; to: string; columns: Column[]; rows: Record<string, string | number | null>[] };
+type Bar = { label: string; amount: string; count?: number };
+/** EXP-09 design: the figures behind the charts (exact decimal strings) and the department filter's choices. */
+export type Charts = { byCategory?: Bar[]; paidThrough?: Bar[]; ageing?: Bar[] };
+export type Report = { kind: ReportKind; from: string; to: string; columns: Column[]; rows: Record<string, string | number | null>[]; charts?: Charts; departments?: { id: string; name: string }[] };
+
+/** The ageing buckets of an open advance (product default, for reading only; never a policy limit). */
+export const AGE_BUCKETS = ['0–30 days', '31–60 days', '61–90 days', 'Over 90 days'] as const;
+export const bucketOf = (days: number) => AGE_BUCKETS[days <= 30 ? 0 : days <= 60 ? 1 : days <= 90 ? 2 : 3];
+
+/** Sums open balances per bucket, exactly, every bucket shown (empty ones as nil). */
+export function ageingBars(rows: { bucket: string; open: string }[]): Bar[] {
+  return AGE_BUCKETS.map((b) => {
+    const mine = rows.filter((r) => r.bucket === b);
+    return { label: b, count: mine.length, amount: mine.reduce((t, r) => t.add(r.open), new Prisma.Decimal(0)).toFixed(2) };
+  });
+}
 
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -35,6 +51,15 @@ export function toCsv(r: Pick<Report, 'columns' | 'rows'>): string {
   return [r.columns.map((c) => cell(c.label)).join(','), ...r.rows.map((row) => r.columns.map((c) => cell(row[c.key])).join(','))].join('\r\n') + '\r\n';
 }
 
+/** The same report as an Excel sheet (exceljs); every cell is written as text, so money stays exact. */
+export async function toXlsx(r: Pick<Report, 'kind' | 'columns' | 'rows'>): Promise<Buffer> {
+  const book = new ExcelJS.Workbook();
+  const sheet = book.addWorksheet(r.kind);
+  sheet.addRow(r.columns.map((c) => c.label)).font = { bold: true };
+  for (const row of r.rows) sheet.addRow(r.columns.map((c) => (row[c.key] === null || row[c.key] === undefined ? '' : String(row[c.key]))));
+  return Buffer.from(await book.xlsx.writeBuffer());
+}
+
 @Injectable()
 export class ExpenseReportsService {
   constructor(
@@ -42,7 +67,7 @@ export class ExpenseReportsService {
     private readonly tenantPrisma: TenantPrismaService,
   ) {}
 
-  async report(ctx: TenantContext, user: ScopeUser, kind: ReportKind, from?: string, to?: string, entityId?: string | null): Promise<Report> {
+  async report(ctx: TenantContext, user: ScopeUser, kind: ReportKind, from?: string, to?: string, entityId?: string | null, departmentIds?: string[] | null): Promise<Report> {
     const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['expense.report.view']);
     if (!v.grants.has('expense.report.view') || v.actingForOther) throw new ForbiddenException('You cannot see expense reports.');
     const end = to ?? todayIst();
@@ -51,18 +76,42 @@ export class ExpenseReportsService {
       const org = c.organizationId;
       const reach = tenantWide(v, 'expense.report.view') ? (await tx.legalEntity.findMany({ where: { organizationId: org }, select: { id: true } })).map((e) => e.id) : (v.scopes.get('expense.report.view') ?? []).filter((s) => s.type === 'legal_entity' && s.id).map((s) => s.id as string);
       const entities = reach.filter((id) => !entityId || id === entityId);
-      const base = { kind, from: start, to: end };
+      // The department filter: people whose job today is in that department (their claims, whenever made).
+      const departments = await tx.department.findMany({ where: { organizationId: org }, select: { id: true, name: true }, orderBy: { name: 'asc' } });
+      const inDept = departmentIds?.length
+        ? (await tx.employeeAssignment.findMany({ where: { organizationId: org, departmentId: { in: departmentIds }, supersededAt: null, validFrom: { lte: asDate(end) }, OR: [{ validTo: null }, { validTo: { gte: asDate(end) } }] }, select: { employeeId: true } })).map((a) => a.employeeId)
+        : null;
+      const all = inDept === null;
+      const emps = inDept ?? [];
+      const base = { kind, from: start, to: end, departments };
       const range = { gte: asDate(start), lt: new Date(asDate(end).getTime() + 86_400_000) };
-      const claims = { organizationId: org, legalEntityId: { in: entities } };
+      const claims = { organizationId: org, legalEntityId: { in: entities }, ...(inDept ? { employeeId: { in: inDept } } : {}) };
       if (kind === 'summary') {
         const rows = await tx.$queryRaw<{ category: string; claims: number; lines: number; claimed: string; approved: string }[]>`
           SELECT l.category_code AS category, count(DISTINCT c.id)::int AS claims, count(*)::int AS lines, sum(l.claimed)::text AS claimed, sum(COALESCE(l.approved, l.claimed))::text AS approved
           FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id
-          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND l.removed_at IS NULL AND l.pay_mode <> 'company_paid'
+          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND l.removed_at IS NULL AND l.pay_mode NOT IN ('company_paid', 'company_card')
             AND c.status IN ('approved', 'partly_approved') AND c.decided_at >= ${range.gte} AND c.decided_at < ${range.lt}
           GROUP BY l.category_code ORDER BY l.category_code`;
         const cats = new Map((await tx.expenseCategory.findMany({ where: { organizationId: org } })).map((x) => [x.code, x.name]));
-        return { ...base, columns: [{ key: 'category', label: 'Category' }, { key: 'claims', label: 'Claims' }, { key: 'lines', label: 'Bills' }, { key: 'claimed', label: 'Claimed' }, { key: 'approved', label: 'Approved' }], rows: rows.map((r) => ({ ...r, category: cats.get(r.category) ?? r.category, claimed: D(r.claimed).toFixed(2), approved: D(r.approved).toFixed(2) })) };
+        // Paid through: what approved claims pay (net of advances) by route, and the company-paid bills of those claims.
+        const routes = await tx.$queryRaw<{ route: string | null; amount: string }[]>`
+          SELECT c.route, sum(COALESCE(c.net_payable, 0))::text AS amount FROM expense_claims c
+          WHERE c.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[]))
+            AND c.status IN ('approved', 'partly_approved') AND c.decided_at >= ${range.gte} AND c.decided_at < ${range.lt}
+          GROUP BY c.route`;
+        const company = await tx.$queryRaw<{ amount: string | null }[]>`
+          SELECT sum(COALESCE(l.approved, l.claimed))::text AS amount FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id
+          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND l.removed_at IS NULL AND l.pay_mode IN ('company_paid', 'company_card')
+            AND c.status IN ('approved', 'partly_approved') AND c.decided_at >= ${range.gte} AND c.decided_at < ${range.lt}`;
+        const route = (r: string) => routes.filter((x) => (x.route ?? 'payroll') === r).reduce((t, x) => t.add(x.amount), D(0)).toFixed(2);
+        const shown = rows.map((r) => ({ ...r, category: cats.get(r.category) ?? r.category, claimed: D(r.claimed).toFixed(2), approved: D(r.approved).toFixed(2) }));
+        return {
+          ...base,
+          columns: [{ key: 'category', label: 'Category' }, { key: 'claims', label: 'Claims' }, { key: 'lines', label: 'Bills' }, { key: 'claimed', label: 'Claimed' }, { key: 'approved', label: 'Approved' }],
+          rows: shown,
+          charts: { byCategory: shown.map((r) => ({ label: r.category, amount: r.approved })), paidThrough: [{ label: 'Payroll', amount: route('payroll') }, { label: 'Direct payout', amount: route('payout') }, { label: 'Company paid', amount: D(company[0]?.amount ?? 0).toFixed(2) }] },
+        };
       }
       if (kind === 'unpaid') {
         const rows = await tx.expenseClaim.findMany({ where: { ...claims, status: { in: DONE }, paymentStatus: { in: ['approved_unpaid', 'in_payroll', 'payout_queued', 'payment_failed'] } }, orderBy: { decidedAt: 'asc' } });
@@ -78,15 +127,15 @@ export class ExpenseReportsService {
           const open = openBalance(a.amount, done.map((d) => d.amount));
           if (open.lte(0)) continue;
           const days = Math.round((asDate(end).getTime() - a.paidOn!.getTime()) / 86_400_000);
-          rows.push({ person: people.get(a.employeeId) ?? '', advance: a.purpose, currency: a.currency, open: open.toFixed(2), paidOn: iso(a.paidOn!), settleBy: a.settleBy ? iso(a.settleBy) : null, days, bucket: days <= 30 ? '0–30 days' : days <= 60 ? '31–60 days' : days <= 90 ? '61–90 days' : 'Over 90 days', overdue: a.overdueOn ? 'Yes' : 'No' });
+          rows.push({ person: people.get(a.employeeId) ?? '', advance: a.purpose, currency: a.currency, open: open.toFixed(2), paidOn: iso(a.paidOn!), settleBy: a.settleBy ? iso(a.settleBy) : null, days, bucket: bucketOf(days), overdue: a.overdueOn ? 'Yes' : 'No' });
         }
-        return { ...base, columns: [{ key: 'person', label: 'Person' }, { key: 'advance', label: 'Advance' }, { key: 'currency', label: 'Currency' }, { key: 'open', label: 'Open balance' }, { key: 'paidOn', label: 'Paid on' }, { key: 'settleBy', label: 'Settle by' }, { key: 'days', label: 'Days open' }, { key: 'bucket', label: 'Age' }, { key: 'overdue', label: 'Overdue' }], rows };
+        return { ...base, columns: [{ key: 'person', label: 'Person' }, { key: 'advance', label: 'Advance' }, { key: 'currency', label: 'Currency' }, { key: 'open', label: 'Open balance' }, { key: 'paidOn', label: 'Paid on' }, { key: 'settleBy', label: 'Settle by' }, { key: 'days', label: 'Days open' }, { key: 'bucket', label: 'Age' }, { key: 'overdue', label: 'Overdue' }], rows, charts: { ageing: ageingBars(rows) } };
       }
       if (kind === 'over-limit') {
         const rows = await tx.$queryRaw<{ employee_id: string; title: string; line_no: number; category: string; spent_on: Date; claimed: string; over_by: string; justification: string | null }[]>`
           SELECT c.employee_id::text, c.title, l.line_no, l.category_code AS category, l.spent_on, l.claimed::text, l.policy_result->>'overBy' AS over_by, l.justification
           FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id
-          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND l.removed_at IS NULL AND l.policy_result->>'outcome' = 'over_justify'
+          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND l.removed_at IS NULL AND l.policy_result->>'outcome' = 'over_justify'
             AND c.status IN ('approved', 'partly_approved') AND c.decided_at >= ${range.gte} AND c.decided_at < ${range.lt}
           ORDER BY l.spent_on`;
         const people = await this.names(tx, org, rows.map((r) => r.employee_id));
@@ -96,7 +145,7 @@ export class ExpenseReportsService {
         const lines = await tx.$queryRaw<{ entity: string; claim: string; supplier_gstin: string; merchant: string | null; invoice_no: string | null; invoice_date: Date | null; spent_on: Date; place_of_supply: string | null; taxable_value: string | null; igst: string | null; cgst: string | null; sgst: string | null; cess: string | null; claimed: string; itc_status: string | null; billed_to_gstin: string | null; einvoice_irn: string | null }[]>`
           SELECT e.name AS entity, c.title AS claim, l.supplier_gstin, l.merchant, l.invoice_no, l.invoice_date, l.spent_on, l.place_of_supply, l.taxable_value::text, l.igst::text, l.cgst::text, l.sgst::text, l.cess::text, l.claimed::text, l.itc_status, l.billed_to_gstin, l.einvoice_irn
           FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id JOIN legal_entities e ON e.organization_id = c.organization_id AND e.id = c.legal_entity_id
-          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND l.removed_at IS NULL AND l.supplier_gstin IS NOT NULL
+          WHERE l.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND l.removed_at IS NULL AND l.supplier_gstin IS NOT NULL
             AND c.status IN ('approved', 'partly_approved') AND COALESCE(l.invoice_date, l.spent_on) >= ${asDate(start)} AND COALESCE(l.invoice_date, l.spent_on) <= ${asDate(end)}
           ORDER BY e.name, l.supplier_gstin, COALESCE(l.invoice_date, l.spent_on)`;
         const n = (x: string | null) => D(x ?? 0);
@@ -157,7 +206,7 @@ export class ExpenseReportsService {
       const rows = await tx.$queryRaw<{ approver: string; employee_id: string; n: number }[]>`
         SELECT a.actor_user_id::text AS approver, c.employee_id::text, count(DISTINCT c.id)::int AS n
         FROM wf_actions a JOIN expense_claims c ON c.organization_id = a.organization_id AND c.wf_request_id = a.request_id
-        WHERE a.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND a.action = 'approve' AND a.actor_user_id IS NOT NULL
+        WHERE a.organization_id = ${org}::uuid AND c.legal_entity_id = ANY(${entities}::uuid[]) AND (${all} OR c.employee_id = ANY(${emps}::uuid[])) AND a.action = 'approve' AND a.actor_user_id IS NOT NULL
           AND a.created_at >= ${since} AND a.created_at < ${range.lt} AND c.status IN ('approved', 'partly_approved')
           AND (c.risk <> 'none' OR EXISTS (SELECT 1 FROM expense_lines l WHERE l.organization_id = c.organization_id AND l.claim_id = c.id AND l.policy_result->>'outcome' = 'over_justify'))
         GROUP BY a.actor_user_id, c.employee_id HAVING count(DISTINCT c.id) >= 3 ORDER BY n DESC`;

@@ -77,7 +77,9 @@ export class PerformancePeerService {
       const n = await tx.reviewCycle.updateMany({ where: { organizationId: c.organizationId, id: cycleId, status: 'draft' }, data: { peerFeedback: dto ? asJson({ minNominees: dto.minNominees, maxNominees: dto.maxNominees, dueOn: dto.dueOn }) : Prisma.DbNull, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Only a draft cycle changes its peer feedback.');
       await audit(tx, c, 'perf.cycle.peer_feedback', 'review_cycle', cycleId, { on: Boolean(dto) });
-      return { peerFeedback: dto };
+      // The change bumps the cycle's version: the caller needs it to launch without a false "someone else changed it".
+      const { version } = await tx.reviewCycle.findFirstOrThrow({ where: { organizationId: c.organizationId, id: cycleId }, select: { version: true } });
+      return { peerFeedback: dto, version };
     });
   }
 
@@ -86,17 +88,67 @@ export class PerformancePeerService {
   async nominations(ctx: TenantContext, user: ScopeUser, reviewId: string) {
     const v = await this.viewer(user);
     return this.run(ctx, async (tx, c) => {
-      const { r, a, peer, hr } = await this.review(tx, c, v, reviewId);
+      const { r, a, cycle, peer, hr } = await this.review(tx, c, v, reviewId);
       if (!a.own && !a.manager && !a.chain && !a.scope && !hr) throw new NotFoundException('No such review.');
       const rows = peer ? await tx.feedbackNomination.findMany({ where: { organizationId: c.organizationId, reviewId }, orderBy: { createdAt: 'asc' } }) : [];
-      const people = await this.names(tx, c.organizationId, rows.map((x) => x.reviewerEmployeeId));
+      const people = await this.names(tx, c.organizationId, [...rows.map((x) => x.reviewerEmployeeId), r.employeeId, r.managerEmployeeId]);
       const open = Boolean(peer) && r.status === 'open' && todayIst() <= peer!.dueOn;
+      const sent = r.nominationsSentAt;
+      // PRF-07: something proposed since the list was last sent is waiting to be sent.
+      const unsent = rows.some((x) => x.status === 'proposed' && x.proposedBy === 'employee' && (!sent || x.createdAt > sent));
       return {
         peer,
+        employee: people.get(r.employeeId) ?? '',
+        manager: people.get(r.managerEmployeeId) ?? '',
+        cycle: cycle.name,
+        sentAt: sent?.toISOString() ?? null,
+        viewer: a.own ? 'employee' : a.manager ? 'manager' : 'other',
         nominations: rows.map((x) => ({ id: x.id, reviewer: people.get(x.reviewerEmployeeId) ?? '', reviewerEmployeeId: x.reviewerEmployeeId, relationship: x.relationship, proposedBy: x.proposedBy, status: x.status })),
-        can: { propose: open && a.own, decide: open && a.manager, add: open && (a.manager || hr) },
+        can: { propose: open && a.own, decide: open && a.manager, add: open && (a.manager || hr), send: open && a.own && unsent },
       };
     });
+  }
+
+  /** PRF-07: the employee sends their list to the manager once it has the cycle's minimum; the manager is told then. */
+  async send(ctx: TenantContext, user: ScopeUser, reviewId: string) {
+    const v = await this.viewer(user);
+    const out = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { r, a, peer } = await this.review(tx, c, v, reviewId);
+      if (!a.own && !a.manager && !a.chain && !a.scope) throw new NotFoundException('No such review.');
+      if (!a.own) throw new ForbiddenException('The employee sends their own nominations.');
+      if (!peer) throw new ConflictException('This cycle does not ask colleagues for feedback.');
+      if (r.status !== 'open' || todayIst() > peer.dueOn) throw new ConflictException('Nominations for this review are closed.');
+      const active = await tx.feedbackNomination.count({ where: { organizationId: org, reviewId, status: { in: ['proposed', 'approved', 'submitted'] } } });
+      if (active < peer.minNominees) throw new ConflictException(`Nominate at least ${peer.minNominees} reviewers. You have ${active}.`);
+      if (!(await tx.feedbackNomination.count({ where: { organizationId: org, reviewId, status: 'proposed', proposedBy: 'employee', ...(r.nominationsSentAt ? { createdAt: { gt: r.nominationsSentAt } } : {}) } }))) throw new ConflictException('There is nothing new to send.');
+      await tx.review.update({ where: { id: reviewId }, data: { nominationsSentAt: new Date() } });
+      await audit(tx, c, 'perf.nomination.sent', 'review', reviewId, { count: active });
+      return (await tx.employee.findFirst({ where: { organizationId: org, id: r.managerEmployeeId }, select: { userId: true } }))?.userId ?? null;
+    });
+    void this.tell(ctx.organizationId!, [out], 'perf.nomination.proposed', 'Nominations for 360° feedback are waiting for you', `/yx/performance/reviews/${reviewId}/nominations`);
+    return { sent: true };
+  }
+
+  /** PRF-07: the manager approves every proposal at once and the reviewers are invited; the list must reach the minimum. */
+  async approveAll(ctx: TenantContext, user: ScopeUser, reviewId: string) {
+    const v = await this.viewer(user);
+    const invited = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { r, a, peer } = await this.review(tx, c, v, reviewId);
+      if (!a.own && !a.manager && !a.chain && !a.scope) throw new NotFoundException('No such review.');
+      if (!a.manager) throw new ForbiddenException('The employee’s manager decides nominations.');
+      if (!peer || r.status !== 'open' || todayIst() > peer.dueOn) throw new ConflictException('Nominations for this review are closed.');
+      const proposed = await tx.feedbackNomination.findMany({ where: { organizationId: org, reviewId, status: 'proposed' } });
+      const approved = await tx.feedbackNomination.count({ where: { organizationId: org, reviewId, status: { in: ['approved', 'submitted'] } } });
+      if (approved + proposed.length > peer.maxNominees) throw new ConflictException(`Up to ${peer.maxNominees} people can give feedback in this cycle. Remove ${approved + proposed.length - peer.maxNominees} first.`);
+      if (approved + proposed.length < peer.minNominees) throw new ConflictException(`Approve at least ${peer.minNominees} reviewers. The list has ${approved + proposed.length}.`);
+      await tx.feedbackNomination.updateMany({ where: { organizationId: org, id: { in: proposed.map((x) => x.id) } }, data: { status: 'approved', decidedBy: v.userId } });
+      await audit(tx, c, 'perf.nomination.approved_all', 'review', reviewId, { approved: proposed.length });
+      return (await tx.employee.findMany({ where: { organizationId: org, id: { in: proposed.map((x) => x.reviewerEmployeeId) } }, select: { userId: true } })).map((e) => e.userId);
+    });
+    void this.tell(ctx.organizationId!, invited, 'perf.feedback.task', 'You were asked for feedback on a colleague', '/yx/performance/feedback-tasks');
+    return { approved: invited.length };
   }
 
   /** People who may be nominated: searched on the server, never the employee, their manager, someone already asked, or a blocked pair. */
@@ -145,10 +197,10 @@ export class PerformancePeerService {
       const data = { relationship: dto.relationship, proposedBy: by, status, decidedBy: by === 'employee' ? null : v.userId, createdBy: v.userId };
       const x = cur ? await tx.feedbackNomination.update({ where: { id: cur.id }, data }) : await tx.feedbackNomination.create({ data: { organizationId: org, reviewId, reviewerEmployeeId: dto.reviewerEmployeeId, ...data } });
       await audit(tx, c, 'perf.nomination.added', 'feedback_nomination', x.id, { by, status });
-      const mgr = await tx.employee.findFirst({ where: { organizationId: org, id: r.managerEmployeeId }, select: { userId: true } });
-      return { id: x.id, status, notify: status === 'approved' ? who.userId : (mgr?.userId ?? null) };
+      // PRF-07: a proposal waits until the employee sends the list; the manager is told then, once.
+      return { id: x.id, status, notify: status === 'approved' ? who.userId : null };
     });
-    void this.tell(ctx.organizationId!, [out.notify], out.status === 'approved' ? 'perf.feedback.task' : 'perf.nomination.proposed', out.status === 'approved' ? 'You were asked for feedback on a colleague' : 'A nomination is waiting for you', out.status === 'approved' ? '/yx/performance/feedback-tasks' : `/yx/performance/reviews/${reviewId}`);
+    void this.tell(ctx.organizationId!, [out.notify], out.status === 'approved' ? 'perf.feedback.task' : 'perf.nomination.proposed', out.status === 'approved' ? 'You were asked for feedback on a colleague' : 'A nomination is waiting for you', out.status === 'approved' ? '/yx/performance/feedback-tasks' : `/yx/performance/reviews/${reviewId}/nominations`);
     return { id: out.id, status: out.status };
   }
 

@@ -9,6 +9,9 @@ import { QuotaService } from '../billing/quota.service';
 import { JobsService } from '../jobs/jobs.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 
+// Careers answers 356/362: the public brand read has its own tests (e2e); stub it here.
+jest.mock('./public-brand', () => ({ publicBrand: jest.fn(async () => ({ orgName: 'Acme', orgLogo: null, careersSlug: null, accent: null, whiteLabel: false })) }));
+
 jest.mock('pdf-parse', () => jest.fn());
 const mockPdfParse = pdfParse as unknown as jest.Mock;
 
@@ -137,6 +140,15 @@ describe('PublicApplicationsService', () => {
         location: 'Remote',
         employmentType: 'FULL_TIME',
         postedAt: '2026-08-01T00:00:00.000Z',
+        department: undefined,
+        salary: null,
+        askPayHistory: false,
+        internationalPhone: false,
+        applyBy: null,
+        experience: undefined,
+        whiteLabel: false,
+        careers: null,
+        accent: null,
         orgName: 'Acme',
         orgLogo: 'logos/acme.png?sig=abc',
         applyConsentText: null,
@@ -653,6 +665,7 @@ describe('PublicApplicationsService', () => {
               rejected: false,
               createdAt: new Date('2026-01-01T00:00:00Z'),
               job: { title: 'Backend' },
+              candidate: { phone: null, whatsappOptedInAt: null },
             }),
           },
         }),
@@ -666,8 +679,16 @@ describe('PublicApplicationsService', () => {
       );
       expect(result).toEqual({
         jobTitle: 'Backend',
+        location: undefined,
         appliedAt: new Date('2026-01-01T00:00:00Z'),
         statusBucket: 'Under review',
+        orgName: 'Acme',
+        orgLogo: null,
+        careersSlug: null,
+        accent: null,
+        whiteLabel: false,
+        toolNotice: null,
+        whatsapp: { optedIn: false, hasPhone: false },
       });
     });
 
@@ -714,7 +735,7 @@ describe('PublicApplicationsService', () => {
       expect(out.candidatePhone).toBe('555-1234');
       expect(out.resume).toEqual({ hasResume: true, parseStatus: 'parsed' });
       expect(out.applications).toHaveLength(1);
-      expect(out.applications[0]).toMatchObject({ jobTitle: 'Backend', stage: 'interview', statusToken: 'st1' });
+      expect(out.applications[0]).toMatchObject({ jobTitle: 'Backend', stage: 'Under review', statusToken: 'st1' });
       expect(out.applications[0].interviews[0]).toMatchObject({ token: 'it1', confirmed: false });
       expect(out.applications[0].offers[0]).toMatchObject({ token: 'ot1', status: 'sent' });
     });
@@ -939,7 +960,7 @@ describe('PublicApplicationsService', () => {
       expect(xml.startsWith('<?xml')).toBe(true);
       expect(xml).toContain('<source>');
       expect(xml).toContain('Backend Engineer');
-      expect(xml).toContain('/apply/tok-1');
+      expect(xml).toContain('/yx/apply/tok-1');
       expect(xml).toContain('Acme');
       expect(xml).toContain('FULL_TIME');
       // free-text is CDATA-wrapped so "<stuff> & things" can't break the XML
@@ -1002,7 +1023,7 @@ describe('PublicApplicationsService', () => {
 
       expect(tx.organization.findFirst).toHaveBeenCalledWith(expect.objectContaining({ where: { slug: 'acme', careersEnabled: true } }));
       expect(tx.job.findMany).toHaveBeenCalledWith(expect.objectContaining({
-        where: { organizationId: 'org-1', status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, deletedAt: null },
+        where: { organizationId: 'org-1', status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, deletedAt: null, OR: [{ applyBy: null }, { applyBy: { gte: expect.any(Date) } }] },
       }));
       expect(result).toMatchObject({ orgName: 'Acme', companyName: null, headline: 'Join us', logoUrl: 'logos/acme.png?sig=abc', bannerUrl: 'banners/acme.png?sig=abc', primaryColor: '#111111', companies: [{ slug: 'acme-labs', name: 'Acme Labs' }] });
       expect(result.jobs[0]).toMatchObject({ slug: 'backend-engineer-remote-aaaaaa', salaryMin: 100000, company: { name: 'Acme Labs', slug: 'acme-labs' }, postedAt: at.toISOString() });
@@ -1130,7 +1151,7 @@ describe('PublicApplicationsService', () => {
       expect(xml).toContain('<source>');
       expect(xml).toContain('<publisher>');
       expect(xml).toContain('Backend Engineer');
-      expect(xml).toContain('/apply/tok-1');
+      expect(xml).toContain('/yx/apply/tok-1');
       expect(xml).toContain('Acme');
     });
 
@@ -1151,6 +1172,7 @@ describe('PublicApplicationsService', () => {
             publicApplyEnabled: true,
             applyToken: { not: null },
             jobBoardPublications: { some: { jobBoardId: 'board-1' } },
+            OR: [{ applyBy: null }, { applyBy: { gte: expect.any(Date) } }],
           },
         }),
       );
@@ -1176,7 +1198,7 @@ describe('PublicApplicationsService', () => {
         expect.any(Function),
       );
       expect(prisma.organization.findUnique).toHaveBeenCalledWith({ where: { id: 'org-1' }, select: { name: true } });
-      expect(result).toEqual({ optedOut: false, orgName: 'Acme' });
+      expect(result).toEqual({ optedOut: false, orgName: 'Acme', whatsappOptedIn: false });
     });
 
     it('reports optedOut: true when emailOptedOutAt is set', async () => {
@@ -1187,7 +1209,7 @@ describe('PublicApplicationsService', () => {
 
       const result = await service.getUnsubscribe('unsub-token-1');
 
-      expect(result).toEqual({ optedOut: true, orgName: 'Acme' });
+      expect(result).toEqual({ optedOut: true, orgName: 'Acme', whatsappOptedIn: false });
     });
 
     it('throws NotFoundException for an unknown token', async () => {

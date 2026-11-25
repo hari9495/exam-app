@@ -11,6 +11,7 @@ import { FormField } from '../../components/field';
 import { Icon } from '../../components/foundations';
 import { CurrencyField, NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
@@ -77,16 +78,20 @@ export interface SettingFieldProps {
   onOpenLink?: (screenId: string) => void;
   /** "Different for: …" chip chosen: switch the page to that scope. */
   onPickOverride?: (scope: string) => void;
+  /** list kind: the row's extra button (`def.rowAction`) was pressed. */
+  onRowAction?: (rowIndex: number) => void;
+  /** list kind: Add and each row's Edit open the caller's own editor (e.g. a scorecard template) instead of the row drawer. */
+  onListEdit?: (rowIndex: number | 'new') => void;
 }
 
-export function SettingField({ def, value, onChange, error, readOnly, highlighted, onResetScope, rows, onRowsChange, onOpenLink, onPickOverride }: SettingFieldProps) {
+export function SettingField({ def, value, onChange, error, readOnly, highlighted, onResetScope, rows, onRowsChange, onOpenLink, onPickOverride, onRowAction, onListEdit }: SettingFieldProps) {
   const wrap = (children: ReactNode) => (
     <div className="yx-set-field" id={`setting-${def.key}`} data-highlight={highlighted || undefined} data-kind={def.kind}>
       {children}
     </div>
   );
 
-  if (def.kind === 'list') return wrap(<MasterList def={def} rows={rows ?? def.rows ?? []} onRowsChange={onRowsChange} readOnly={readOnly} />);
+  if (def.kind === 'list') return wrap(<MasterList def={def} rows={rows ?? def.rows ?? []} onRowsChange={onRowsChange} readOnly={readOnly} onRowAction={onRowAction} onEdit={onListEdit} />);
   if (def.kind === 'link') return wrap(<LinkedEditor def={def} onOpen={onOpenLink} />);
 
   const helper = (
@@ -101,6 +106,7 @@ export function SettingField({ def, value, onChange, error, readOnly, highlighte
           {def.overrides.map((o) => (
             <button key={o.scope} type="button" className="yx-set-overrides__item" onClick={() => onPickOverride?.(o.scope)}>
               {o.scope}: {formatValue(def, o.value)}
+              {o.note && <span className="yx-set-overrides__note"> · {o.note}</span>}
             </button>
           ))}
         </span>
@@ -206,6 +212,9 @@ export function SettingField({ def, value, onChange, error, readOnly, highlighte
     case 'radio':
       control = <RadioGroup aria-label={def.label} value={typeof value === 'string' ? value : undefined} onChange={onChange} options={opts(def.options, def.optionLabels)} orientation={radioRow(def) ? 'horizontal' : 'vertical'} disabled={off} />;
       break;
+    case 'segment':
+      control = <Segment label={def.label} value={typeof value === 'string' ? value : null} onChange={onChange} options={opts(def.options, def.optionLabels)} />;
+      break;
     case 'image':
       control = <ImageField value={typeof value === 'string' ? value : null} onChange={onChange} />;
       break;
@@ -261,13 +270,15 @@ function Cell({ col, text }: { col: string; text: string }) {
   return <>{text}</>;
 }
 
-export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, defaultEditing }: { def: SettingDef; rows: string[][]; onRowsChange?: (rows: string[][]) => void; readOnly?: boolean; defaultEditing?: number | 'new' }) {
-  const readOnly = pageReadOnly || def.readOnlyList;
+export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, defaultEditing, onRowAction, onEdit }: { def: SettingDef; rows: string[][]; onRowsChange?: (rows: string[][]) => void; readOnly?: boolean; defaultEditing?: number | 'new'; onRowAction?: (rowIndex: number) => void; onEdit?: (rowIndex: number | 'new') => void }) {
+  // With its own editor (onEdit) the list is editable whenever the caller passes it: the caller checks the key.
+  const readOnly = onEdit ? false : pageReadOnly || def.readOnlyList;
   const cols = def.columns ?? ['Name'];
   const [editing, setEditing] = useState<number | 'new' | null>(defaultEditing ?? null);
   const [form, setForm] = useState<string[]>(() => (typeof defaultEditing === 'number' ? rows[defaultEditing] : cols.map(() => '')));
   const [err, setErr] = useState<string | null>(null);
   const open = (i: number | 'new') => {
+    if (onEdit) return onEdit(i);
     setForm(i === 'new' ? cols.map(() => '') : [...rows[i]]);
     setErr(null);
     setEditing(i);
@@ -300,7 +311,7 @@ export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, de
           {def.label}
           <SettingChips def={def} current={def.value ?? null} />
         </span>
-        {!readOnly && (
+        {!readOnly && !def.fixedRows && (
           <Button size="sm" icon={Plus} onClick={() => open('new')}>
             {def.addLabel ?? 'Add'}
           </Button>
@@ -329,7 +340,7 @@ export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, de
             {rows.length === 0 && (
               <tr>
                 <td colSpan={cols.length + 1} className="yx-set-list__empty">
-                  None yet. {!readOnly && `Use ${def.addLabel ?? 'Add'} to create the first ${noun.toLowerCase()}.`}
+                  None yet. {!readOnly && !def.fixedRows && `Use ${def.addLabel ?? 'Add'} to create the first ${noun.toLowerCase()}.`}
                 </td>
               </tr>
             )}
@@ -344,7 +355,7 @@ export function MasterList({ def, rows, onRowsChange, readOnly: pageReadOnly, de
                   <td className="yx-set-list__act">
                     <span className="yx-set-list__btns">
                       {def.rowAction && (
-                        <Button size="sm" icon={MapPin}>
+                        <Button size="sm" icon={/map/i.test(def.rowAction) ? MapPin : undefined} onClick={() => onRowAction?.(i)}>
                           {def.rowAction}
                           <span className="yx-visually-hidden">: {r.slice(0, 2).join(', ')}</span>
                         </Button>
@@ -537,18 +548,23 @@ export interface HistoryEntry extends LastChange {
 }
 
 /** compact: the "Last changed by" line under the page title, with its View history button (shown once per page). */
-export function AuditLine({ change, history = [], defaultHistoryOpen = false, compact }: { change: LastChange; history?: HistoryEntry[]; defaultHistoryOpen?: boolean; compact?: boolean }) {
+export function AuditLine({ change, history = [], defaultHistoryOpen = false, compact, auditHref }: { change: LastChange; history?: HistoryEntry[]; defaultHistoryOpen?: boolean; compact?: boolean; /** Answer 1724: the company audit log, for those who may read it. */ auditHref?: string }) {
   const [open, setOpen] = useState(defaultHistoryOpen);
   const all: HistoryEntry[] = [{ ...change, id: 'latest' }, ...history];
   const items: TimelineItem[] = all.map((h) => ({
     id: h.id,
     at: parseIso(h.at),
     actor: { name: h.by },
-    action: `(${h.role}) ${h.what.charAt(0).toLowerCase()}${h.what.slice(1)}`,
+    action: `${h.role ? `(${h.role}) ` : ''}${h.what.charAt(0).toLowerCase()}${h.what.slice(1)}`,
   }));
   const drawer = (
     <Drawer open={open} onOpenChange={setOpen} title="Change history" subtitle="Every change is recorded with before and after values.">
       <Timeline items={items} today={TODAY} aria-label="Change history" />
+      {auditHref && (
+        <a className="yx-link" href={auditHref}>
+          See all in the audit log
+        </a>
+      )}
     </Drawer>
   );
   if (compact)
@@ -565,7 +581,7 @@ export function AuditLine({ change, history = [], defaultHistoryOpen = false, co
     <div className="yx-set-audit">
       <Icon icon={History} />
       <span>
-        Last changed by <strong>{change.by}</strong> ({change.role}) on {formatStamp(change.at)}. {change.what}.
+        Last changed by <strong>{change.by}</strong>{change.role ? ` (${change.role})` : ''} on {formatStamp(change.at)}. {change.what}.
       </span>
       <Button size="sm" onClick={() => setOpen(true)}>
         View history
@@ -585,7 +601,7 @@ export function Highlight({ text, query }: { text: string; query: string }) {
   );
 }
 
-export function SettingsSearchBox({ value, onChange, autoFocus }: { value: string; onChange: (v: string) => void; autoFocus?: boolean }) {
+export function SettingsSearchBox({ value, onChange, autoFocus, placeholder = 'Search settings, e.g. probation, late coming, PF ceiling' }: { value: string; onChange: (v: string) => void; autoFocus?: boolean; placeholder?: string }) {
   return (
     <div className="yx-set-search" role="search">
       <FormField label="Search settings" hideLabel>
@@ -593,7 +609,7 @@ export function SettingsSearchBox({ value, onChange, autoFocus }: { value: strin
           value={value}
           onChange={onChange}
           prefix={<Icon icon={Search} />}
-          placeholder="Search settings, e.g. probation, late coming, PF ceiling"
+          placeholder={placeholder}
           autoFocus={autoFocus}
           type="search"
         />
@@ -602,17 +618,18 @@ export function SettingsSearchBox({ value, onChange, autoFocus }: { value: strin
   );
 }
 
-export function SearchResults({ results, query, onOpen, onClear }: { results: SearchEntry[]; query: string; onOpen?: (e: SearchEntry) => void; onClear?: () => void }) {
+/** `hrefOf` (live, S-1): each result links to its page's live editor and shows no drawn example values. */
+export function SearchResults({ results, query, onOpen, onClear, hrefOf }: { results: SearchEntry[]; query: string; onOpen?: (e: SearchEntry) => void; onClear?: () => void; hrefOf?: (e: SearchEntry) => string }) {
   if (!query.trim()) return null;
   return (
-    <section className="yx-set-results" aria-label="Search results">
+    <section className={hrefOf ? 'yx-set-results yx-set-results--live' : 'yx-set-results'} aria-label="Search results">
       <p className="yx-set-results__count" aria-live="polite">
-        {results.length ? `${results.length} ${results.length === 1 ? 'result' : 'results'} for "${query}". Only settings you can manage are shown.` : ''}
+        {results.length ? `${results.length} ${results.length === 1 ? 'result' : 'results'} for "${query}". Only settings you can ${hrefOf ? 'open' : 'manage'} are shown.` : ''}
       </p>
       {results.length === 0 ? (
         <div className="yx-set-results__empty">
           <p className="yx-set-results__title">No settings match "{query}"</p>
-          <p className="yx-set-helper">Try a task word such as "probation" or "PF ceiling". Some settings may be on pages you can't manage.</p>
+          <p className="yx-set-helper">Try a task word such as "probation" or "PF ceiling". Some settings may be on pages you can't {hrefOf ? 'open' : 'manage'}.</p>
           {onClear && <Button onClick={onClear}>Clear search</Button>}
         </div>
       ) : (
@@ -620,9 +637,10 @@ export function SearchResults({ results, query, onOpen, onClear }: { results: Se
           {results.map((r) => (
             <li key={r.key}>
               <a
-                href={`#settings/${r.pageId}${r.isPage ? '' : `/${r.key}`}`}
+                href={hrefOf ? hrefOf(r) : `#settings/${r.pageId}${r.isPage ? '' : `/${r.key}`}`}
                 className="yx-set-result"
                 onClick={(e) => {
+                  if (hrefOf && (e.metaKey || e.ctrlKey || e.shiftKey)) return;
                   e.preventDefault();
                   onOpen?.(r);
                 }}
@@ -637,9 +655,7 @@ export function SearchResults({ results, query, onOpen, onClear }: { results: Se
                   {r.groupTitle} › {r.pageTitle}
                   {r.section && ` › ${r.section}`}
                 </span>
-                <span className="yx-set-result__value">
-                  {r.isPage ? r.valueText : `${r.valueText} · ${r.scope}`}
-                </span>
+                {(!hrefOf || r.isPage) && <span className="yx-set-result__value">{r.isPage ? r.valueText : `${r.valueText} · ${r.scope}`}</span>}
               </a>
             </li>
           ))}

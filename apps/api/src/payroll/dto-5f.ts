@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsDefined, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { IsBoolean, IsDefined, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { ConfirmationDto } from './dto';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -14,6 +14,16 @@ export class HubDto {
 
   @Matches(MONTH)
   month!: string;
+}
+
+/** Payroll home (PAY-01): the statutory dues falling in a month, optionally for one legal entity. */
+export class HomeDuesDto {
+  @Matches(MONTH)
+  month!: string;
+
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
 }
 
 export class EntityDto {
@@ -159,6 +169,14 @@ export class RegisterDto {
   reason?: string;
 }
 
+export class AdvisoryTaskDto {
+  @IsUUID()
+  deskId!: string;
+
+  @Matches(DATE)
+  dueOn!: string;
+}
+
 export class AdvisoryReviewDto {
   @IsUUID()
   entityId!: string;
@@ -168,4 +186,65 @@ export class AdvisoryReviewDto {
   @MinLength(5)
   @MaxLength(1000)
   note!: string;
+
+  /** CMP-08: a follow-up task on a help desk the reviewer works on, given to them with a due date. */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => AdvisoryTaskDto)
+  task?: AdvisoryTaskDto;
+
+  /** CMP-08: tell the entity's HR admins in the app. */
+  @IsOptional()
+  @IsBoolean()
+  share?: boolean;
+}
+
+/** CMP-03: one statute's register rows for an entity and month. */
+export class RegisterRowsDto {
+  @IsUUID()
+  entityId!: string;
+
+  @Matches(MONTH)
+  month!: string;
+}
+
+/** CMP-06: the year's certificates and the salary return they are linked to. */
+export class Form16StatusDto {
+  @IsUUID()
+  entityId!: string;
+
+  @Matches(TAX_YEAR)
+  taxYear!: string;
+}
+
+export class Form16LinkDto extends Form16StatusDto {
+  @IsUUID()
+  returnId!: string;
+
+  /** The link's version as last read (changing an existing link). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  version?: number;
+}
+
+/** CMP-05: a month before go-live with no salary TDS. */
+export class NilMonthDto {
+  @IsUUID()
+  entityId!: string;
+
+  @Matches(MONTH)
+  month!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  reason!: string;
+}
+
+export class NilUndoDto {
+  @IsInt()
+  @Min(1)
+  version!: number;
 }

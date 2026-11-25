@@ -1,7 +1,7 @@
 import { checkAnswers } from '../rules-engine/forms';
 import { capSegments } from '../employee-history/history-rules';
 import { todayIst } from '../org-structure/org-validation';
-import { EXIT_INTERVIEW_FORM, alumniUntil, lwdStage, noticeLabel, parseNotice, standardLwd, wagesDueBy } from './exit-rules';
+import { EXIT_INTERVIEW_FORM, alumniUntil, lwdStage, noticeLabel, parseNotice, standardLwd, vrsBenefit, ageOn, wagesDueBy, workingDaysUntil } from './exit-rules';
 
 describe('exit rules (lifecycle 6c)', () => {
   it('notice in calendar days runs from the day after the resignation', () => {
@@ -35,6 +35,12 @@ describe('exit rules (lifecycle 6c)', () => {
     expect(wagesDueBy('2026-11-03', new Set())).toBe('2026-11-05');
   });
 
+  it('working days left to the F&F deadline skip weekends and holidays; negative once overdue', () => {
+    expect(workingDaysUntil('2026-10-30', '2026-11-04', new Set(['2026-11-02']))).toBe(2);
+    expect(workingDaysUntil('2026-11-04', '2026-11-04', new Set())).toBe(0);
+    expect(workingDaysUntil('2026-11-09', '2026-11-04', new Set())).toBe(-3);
+  });
+
   it('the last day ends at the end of the IST day', () => {
     // 18:29 UTC on 30 Oct is 23:59 IST: still the last day; 18:31 UTC is 31 Oct in India.
     expect(lwdStage('2026-10-30', todayIst(new Date('2026-10-30T18:29:00Z')))).toBe('today');
@@ -46,5 +52,22 @@ describe('exit rules (lifecycle 6c)', () => {
     expect(alumniUntil('2026-10-30', 7)).toBe('2033-10-30');
     const segs = [{ from: '2026-04-01', to: '2026-09-30', changeId: 'a', values: 1 }, { from: '2026-10-01', to: null, changeId: 'b', values: 2 }, { from: '2026-12-01', to: null, changeId: 'c', values: 3 }];
     expect(capSegments(segs, '2026-10-30')).toEqual([segs[0], { ...segs[1], to: '2026-10-30' }]);
+  });
+
+  it('PPL-40 VRS benefit: 45 days a completed year, or the months left to retirement, whichever is lower', () => {
+    // 24 years at ₹36,000: 45/30 × 36,000 × 24 = 12,96,000; retiring at 60 from 57 leaves 36 months = 12,96,000 too (equal: per year).
+    expect(vrsBenefit({ monthlyWage: 36000, daysPerYear: 45, completedYears: 24, dob: '1969-11-15', today: '2026-11-02', retireAge: 60 })).toEqual({ amount: 1296000, basis: '45 days × 24 years' });
+    // Close to retirement: 10 months left is lower than 45 days × 24 years.
+    expect(vrsBenefit({ monthlyWage: 36000, daysPerYear: 45, completedYears: 24, dob: '1967-09-01', today: '2026-11-02', retireAge: 60 })).toEqual({ amount: 360000, basis: '10 months left to retirement' });
+    // Past the retirement age: nothing left; no completed year: nothing per year.
+    expect(vrsBenefit({ monthlyWage: 36000, daysPerYear: 45, completedYears: 30, dob: '1960-01-01', today: '2026-11-02', retireAge: 60 }).amount).toBe(0);
+    expect(vrsBenefit({ monthlyWage: 36000, daysPerYear: 45, completedYears: 0, dob: '1980-01-01', today: '2026-11-02', retireAge: 60 })).toEqual({ amount: 0, basis: '45 days × 0 years' });
+  });
+
+  it('PPL-40 age: the new age counts on the birthday, not a day before or after', () => {
+    expect(ageOn('1981-11-02', '2026-11-02')).toBe(45);
+    expect(ageOn('1981-11-02', '2026-11-01')).toBe(44);
+    expect(ageOn('1980-02-29', '2026-02-28')).toBe(45);
+    expect(ageOn('1980-02-29', '2026-03-01')).toBe(46);
   });
 });

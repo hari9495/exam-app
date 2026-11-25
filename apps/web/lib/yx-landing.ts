@@ -5,9 +5,9 @@ import { roleToLandingPath } from './staff-routing';
 
 // Which part of the product a person belongs in, from the permissions they hold (GET
 // /rbac/me/permissions), not their legacy role: an HR permission profile rides on role 'panel' but
-// holds no exam/ATS keys, so the old /v2 exam and ATS screens would only answer 403.
+// holds no exam/ATS keys.
 
-/** Any of these opens some of the exam / ATS (/v2) screens. */
+/** Any of these opens some of the exam / ATS screens. */
 export const EXAM_ATS_KEYS = ['exam:manage', 'results:view', 'candidate:manage', 'candidate:view', 'pipeline:manage', 'question_bank:manage', 'interview:view_assigned'] as const;
 export const YX_HOME = '/yx/home';
 

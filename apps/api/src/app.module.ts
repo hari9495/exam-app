@@ -1,11 +1,15 @@
+import { AccountModule } from './account/account.module';
+import { recordRequestChannel } from '@exam-platform/shared';
 import { ServiceDeskModule } from './service-desk/service-desk.module';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, HttpAdapterHost } from '@nestjs/core';
 import { SupportMaskInterceptor } from './hiring/support-mask.interceptor';
+import { ContainmentInterceptor } from './platform/containment';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, seconds } from '@nestjs/throttler';
 import { ThrottlerStorageRedisService } from '@nest-lab/throttler-storage-redis';
 import Redis from 'ioredis';
+import { whenReady } from './jobs/redis-connection';
 import {
   PrismaModule,
   AuditModule,
@@ -28,6 +32,11 @@ import { UsersModule } from './users/users.module';
 import { UserGroupsModule } from './user-groups/user-groups.module';
 import { QuestionsModule } from './questions/questions.module';
 import { ExamsModule } from './exams/exams.module';
+import { AsmtDeliveryModule } from './assessments/delivery/delivery.module';
+import { AsmtCampusModule } from './assessments/campus/campus.module';
+import { AsmtMarkingModule } from './assessments/marking/marking.module';
+import { BeforeTestModule } from './assessments/before-test/before-test.module';
+import { AssessmentsModule } from './assessments/assessments.module';
 import { CandidatesModule } from './candidates/candidates.module';
 import { InvitationsModule } from './invitations/invitations.module';
 import { WalkInModule } from './walk-in/walk-in.module';
@@ -62,6 +71,10 @@ import { InterviewsModule } from './interviews/interviews.module';
 import { AiModule } from './ai/ai.module';
 import { CandidateSearchModule } from './candidate-search/candidate-search.module';
 import { TalentModule } from './talent/talent.module';
+import { TalentCrmModule } from './talent-crm/talent-crm.module';
+import { StaffingModule } from './staffing/staffing.module';
+import { ProjectsModule } from './projects/projects.module';
+import { VisitorsModule } from './visitors/visitors.module';
 import { InterviewingModule } from './interviewing/interviewing.module';
 import { CandidateFitModule } from './candidate-fit/candidate-fit.module';
 import { BillingModule } from './billing/billing.module';
@@ -73,6 +86,8 @@ import { OrgStructureModule } from './org-structure/org-structure.module';
 import { EmployeeHistoryModule } from './employee-history/employee-history.module';
 import { GlobalModule } from './global/global.module';
 import { AccessModule } from './access/access.module';
+import { HelpModule } from './help/help.module';
+import { AssistantModule } from './help/assistant/assistant.module';
 import { PeopleModule } from './people/people.module';
 import { WorkspaceModule } from './workspace/workspace.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
@@ -93,6 +108,12 @@ import { PayrollModule } from './payroll/payroll.module';
 import { DocumentsModule } from './documents/documents.module';
 import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { ExpensesModule } from './expenses/expenses.module';
+import { PoliciesModule } from './policies/policies.module';
+import { SpeakupModule } from './speakup/speakup.module';
+import { AccidentsModule } from './accidents/accidents.module';
+import { ContractLabourModule } from './contract-labour/contract-labour.module';
+import { DisputesModule } from './disputes/disputes.module';
+import { CasesModule } from './cases/cases.module';
 import { PerformanceModule } from './performance/performance.module';
 import { StatutoryModule } from './statutory/statutory.module';
 import { DEFAULT_THROTTLE_LIMIT } from './rate-limit-tiers';
@@ -103,16 +124,18 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRootAsync({
-      useFactory: () => ({
-        throttlers: [{ name: 'default', ttl: seconds(60), limit: DEFAULT_THROTTLE_LIMIT }],
+      useFactory: async () => {
         // Fast-fail options: ioredis defaults (offline queue + 20 retries/request) would
         // stall every request ~10s during a Redis outage before FailOpenThrottlerGuard's
         // fail-open path engages -- reject immediately instead.
-        storage: new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+        const storage = new ThrottlerStorageRedisService(process.env.REDIS_URL ?? 'redis://localhost:6379', {
           maxRetriesPerRequest: 1,
           enableOfflineQueue: false,
-        }),
-      }),
+        });
+        // Connected before the first request, so a fresh app does not skip rate limits while it connects.
+        await whenReady(storage.redis as Redis);
+        return { throttlers: [{ name: 'default', ttl: seconds(60), limit: DEFAULT_THROTTLE_LIMIT }], storage };
+      },
     }),
     StaticUploadsModule,
     PrismaModule,
@@ -129,6 +152,11 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     UserGroupsModule,
     QuestionsModule,
     ExamsModule,
+    AsmtDeliveryModule,
+    AsmtCampusModule,
+    AsmtMarkingModule,
+    BeforeTestModule,
+    AssessmentsModule,
     CandidatesModule,
     InvitationsModule,
     WalkInModule,
@@ -161,7 +189,11 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     AiModule,
     CandidateSearchModule,
     TalentModule,
+    TalentCrmModule,
     InterviewingModule,
+    StaffingModule,
+    ProjectsModule,
+    VisitorsModule,
     CandidateFitModule,
     BillingModule,
     IntegrationsModule,
@@ -174,6 +206,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     PeopleModule,
     ServiceDeskModule,
     AccessModule,
+    HelpModule,
+    AssistantModule,
     FieldPermissionsModule,
     RecycleBinModule,
     RemindersModule,
@@ -190,8 +224,15 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     TimeModule,
     PayrollModule,
     DocumentsModule,
+    AccountModule,
     LifecycleModule,
     ExpensesModule,
+    PoliciesModule,
+    SpeakupModule,
+    AccidentsModule,
+    ContractLabourModule,
+    DisputesModule,
+    CasesModule,
     PerformanceModule,
     StatutoryModule,
     WorkspaceModule,
@@ -201,6 +242,8 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     { provide: APP_GUARD, useClass: FailOpenThrottlerGuard },
     // M10 AT1 (D14): candidate contact details masked in hiring responses during a YukthiX support session.
     { provide: APP_INTERCEPTOR, useClass: SupportMaskInterceptor },
+    // Answer 1050: a contained company's exports, bank-detail changes and payouts are refused at the server.
+    { provide: APP_INTERCEPTOR, useClass: ContainmentInterceptor },
     {
       provide: SentryReporter,
       useFactory: () => {
@@ -252,6 +295,8 @@ export class AppModule implements NestModule {
   // property of undefined and answer 500. An empty object lets validation answer 400 / the handler 401.
   configure(consumer: MiddlewareConsumer): void {
     consumer.apply(emptyBodyAsObject).forRoutes('{*splat}');
+    // Answer 1723: every audit row written for a request records where it came from (web, phone or the public API).
+    consumer.apply(recordRequestChannel).forRoutes('{*splat}');
   }
 }
 

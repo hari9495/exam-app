@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { CalendarPlus, CheckSquare, FileText, HelpCircle, Receipt, Ticket, UserRound, Users } from 'lucide-react';
+import { CalendarCheck, CalendarPlus, CheckSquare, CircleDot, FileText, HelpCircle, House, MessageSquare, Receipt, Ticket, UserRound, Users, Wand2 } from 'lucide-react';
 import { useKeySequences, type PaletteGroup, type PaletteItem } from '@yukthix/ui';
 import { SCREEN_RAIL } from '@yukthix/ui/frame';
 import { activeLink, type NavArea } from './yx-nav';
 import { useWorkspaceSearch, type SearchResult } from './yx-shell';
 import { addRecent, readRecent, recentKey, writeRecent, type RecentEntry, type RecentType } from './yx-recent';
+import { AGENT_STATUSES, TICKET_NUMBER, useDeskPaletteTicket, type AgentStatus, type DeskPaletteTicket } from './yx-desk-palette';
+import { apiFetch } from './api-client';
+import { useAuth } from './auth-context';
 
 export { clearAllRecent, MAX_RECENT, type RecentEntry } from './yx-recent';
 
@@ -29,6 +32,8 @@ export interface PaletteInput {
   self: boolean;
   /** May ask the help desk (not on a support session). */
   help: boolean;
+  /** Answer 1649: an agent's desk actions, each only with its key (the API checks again). */
+  desk?: { view: boolean; work: boolean; ticket: Pick<DeskPaletteTicket, 'number' | 'canWork' | 'canned' | 'scenarios'> | null };
 }
 
 /** What choosing an item does: open a link (remembered in Recent when `recent` is set) or open the help panel. */
@@ -36,6 +41,11 @@ export interface PaletteTarget {
   href?: string;
   recent?: RecentEntry;
   help?: true;
+  /** Answer 1649: desk actions. */
+  deskNumber?: string;
+  deskReply?: string;
+  deskScenario?: string;
+  deskStatus?: AgentStatus;
 }
 
 export function buildPalette(p: PaletteInput): { groups: PaletteGroup[]; targets: Map<string, PaletteTarget>; shortcuts: Record<string, string> } {
@@ -61,10 +71,17 @@ export function buildPalette(p: PaletteInput): { groups: PaletteGroup[]; targets
   const leave = p.self ? link('my-leave') : undefined;
   const approvals = link('approvals');
   const expenses = p.self ? link('expenses') : undefined;
+  // Keka ideas (2026-11): more actions started from search; each opens the sheet its own page already has.
+  const attendance = p.self ? link('my-attendance') : undefined;
+  const desk = p.help ? link('desk-help') : undefined;
   const actions: PaletteItem[] = [
     ...(leave ? [item({ id: 'act:leave', label: 'Apply leave', secondary: 'Opens the request sheet', icon: CalendarPlus, shortcut: 'N L', keywords: ['leave', 'time off', 'holiday'] }, { href: `${leave.href}?apply=1` })] : []),
+    ...(attendance ? [item({ id: 'act:regularise', label: 'Regularise a day', secondary: 'Fix a missed or wrong punch', icon: CalendarCheck, keywords: ['regularise', 'regularize', 'missed punch', 'attendance', 'correction'] }, { href: `${attendance.href}?request=regularise` })] : []),
+    ...(attendance ? [item({ id: 'act:wfh', label: 'Request work from home', secondary: 'Opens the request sheet', icon: House, keywords: ['wfh', 'work from home', 'remote'] }, { href: `${attendance.href}?request=wfh` })] : []),
     ...(approvals ? [item({ id: 'act:approve', label: 'Approve requests', secondary: p.waiting ? `Approvals · ${p.waiting} waiting` : 'Approvals · nothing waiting', icon: CheckSquare, keywords: ['approve', 'approvals', 'leave', 'expense'] }, { href: approvals.href })] : []),
     ...(expenses ? [item({ id: 'act:expense', label: 'New expense claim', secondary: 'Opens the request sheet', icon: Receipt, shortcut: 'N E', keywords: ['expense', 'claim', 'receipt', 'bill'] }, { href: `${expenses.href}?new=1` })] : []),
+    ...(expenses ? [item({ id: 'act:save-expense', label: 'Add an expense', secondary: 'Save it now, claim it later', icon: Receipt, keywords: ['expense', 'receipt', 'save', 'bill', 'spend'] }, { href: `${expenses.href}?save=1` })] : []),
+    ...(desk ? [item({ id: 'act:ticket', label: 'Raise a ticket', secondary: 'Ask HR, IT or finance', icon: Ticket, keywords: ['ticket', 'helpdesk', 'help desk', 'issue', 'query'] }, { href: `${desk.href}?new=1` })] : []),
   ];
   if (leave) shortcuts['N L'] = `${leave.href}?apply=1`;
   if (expenses) shortcuts['N E'] = `${expenses.href}?new=1`;
@@ -84,9 +101,22 @@ export function buildPalette(p: PaletteInput): { groups: PaletteGroup[]; targets
   const settings = term ? links.filter((x) => x.a.id === 'settings').map(pageItem) : [];
   const helpItems = p.help ? [item({ id: 'help:desk', label: 'Ask for help', secondary: 'Help centre', icon: HelpCircle, keywords: ['help', 'question', 'how', 'ask'] }, { help: true })] : [];
 
+  // Answer 1649: desk actions. Go to a ticket by its number (typed); on an open ticket, its saved replies and scenarios;
+  // my own status. Each only with its key: viewing tickets, or working them.
+  const d = p.desk;
+  const t = d?.work && d.ticket?.canWork ? d.ticket : null;
+  const number = d?.view && TICKET_NUMBER.test(term) ? term.toUpperCase() : null;
+  const deskItems: PaletteItem[] = [
+    ...(number ? [item({ id: `desk:number:${number}`, label: `Open ticket ${number}`, secondary: 'Go to the ticket', icon: Ticket, keywords: [term] }, { deskNumber: number })] : []),
+    ...(t ? t.canned.map((c) => item({ id: `desk:reply:${c.id}`, label: `Insert saved reply: ${c.title}`, secondary: `Into the reply on ${t.number}`, icon: MessageSquare, keywords: ['saved reply', 'canned', 'macro'] }, { deskReply: c.id })) : []),
+    ...(t ? t.scenarios.map((x) => item({ id: `desk:scenario:${x.id}`, label: `Run scenario: ${x.name}`, secondary: `On ${t.number}`, icon: Wand2, keywords: ['scenario', 'macro', 'run'] }, { deskScenario: x.id })) : []),
+    ...(d?.work ? AGENT_STATUSES.map((x) => item({ id: `desk:status:${x.value}`, label: `Set my status: ${x.label}`, icon: CircleDot, keywords: ['status', 'available', 'away', 'busy', 'offline'] }, { deskStatus: x.value })) : []),
+  ];
+
   const groups: PaletteGroup[] = [
     { heading: 'Recent', recent: true, items: recent },
     { heading: 'Actions', prefix: '>', items: actions },
+    { heading: 'Desk', prefix: '>', items: deskItems },
     { heading: 'People', prefix: '@', items: people },
     { heading: 'Requests and tickets', prefix: '#', items: requests },
     { heading: 'Pages', prefix: '>', items: pages },
@@ -106,6 +136,10 @@ export interface UseYxPalette {
   help: boolean;
   go: (href: string) => void;
   openHelp: () => void;
+  /** Answer 1649: the person's desk keys (viewing and working tickets). */
+  desk?: { view: boolean; work: boolean };
+  /** Says what a desk action did, or why it did not. */
+  notify?: (title: string, tone?: 'success' | 'error') => void;
 }
 
 /** The live palette's groups and handlers, and the N L / N E shortcuts (never while typing in a field). */
@@ -131,10 +165,16 @@ export function useYxPalette(o: UseYxPalette) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page?.href, key]);
 
-  const { groups, targets, shortcuts } = buildPalette({ nav: o.nav, typed, search: search.data, recent, waiting: o.waiting, self: o.self, help: o.help });
+  const ticket = useDeskPaletteTicket();
+  const { accessToken } = useAuth();
+  const { groups, targets, shortcuts } = buildPalette({ nav: o.nav, typed, search: search.data, recent, waiting: o.waiting, self: o.self, help: o.help, desk: o.desk ? { ...o.desk, ticket } : undefined });
+  const say = (title: string, tone: 'success' | 'error' = 'success') => o.notify?.(title, tone);
+  const failed = (e: unknown, fallback: string) => say(e instanceof Error && e.message ? e.message : fallback, 'error');
   useKeySequences(Object.fromEntries(Object.entries(shortcuts).map(([k, href]) => [k, () => o.go(href)])));
   return {
     groups,
+    /** Answer 951: the two-key shortcuts this person has (for the shortcut help). */
+    sequences: Object.keys(shortcuts),
     loading: search.loading,
     onQueryChange: setTyped,
     reset: () => setTyped(''),
@@ -142,6 +182,25 @@ export function useYxPalette(o: UseYxPalette) {
       const t = targets.get(it.id);
       if (!t) return;
       if (t.help) return o.openHelp();
+      if (t.deskNumber) {
+        const n = t.deskNumber;
+        void (apiFetch(`/desk/tickets/by-number/${encodeURIComponent(n)}`, {}, accessToken ?? undefined) as Promise<{ id: string }>).then(
+          (r) => o.go(`/yx/desk/tickets/${encodeURIComponent(r.id)}`),
+          () => say(`No ticket ${n} that you can open.`, 'error'),
+        );
+        return;
+      }
+      if (t.deskReply) return ticket?.insertReply(t.deskReply);
+      if (t.deskScenario) {
+        const name = ticket?.scenarios.find((x) => x.id === t.deskScenario)?.name ?? 'Scenario';
+        void ticket?.runScenario(t.deskScenario).then(() => say(`${name} ran on ${ticket.number}`), (e: unknown) => failed(e, 'We could not run the scenario.'));
+        return;
+      }
+      if (t.deskStatus) {
+        const label = AGENT_STATUSES.find((x) => x.value === t.deskStatus)?.label ?? t.deskStatus;
+        void apiFetch('/desk/me/status', { method: 'PUT', body: JSON.stringify({ status: t.deskStatus }) }, accessToken ?? undefined).then(() => say(`Your status is ${label}`), (e: unknown) => failed(e, 'We could not change your status.'));
+        return;
+      }
       if (t.recent) remember(t.recent);
       if (t.href) o.go(t.href);
     },

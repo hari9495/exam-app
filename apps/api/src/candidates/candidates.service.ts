@@ -648,6 +648,22 @@ export class CandidatesService {
         return { erasedAt: candidate.erasedAt, didErase: false, evidenceUrls: [] as string[] };
       }
       if (candidate.legalHoldAt) throw new ConflictException('This candidate is under legal hold, so nothing can be erased. Lift the hold first.');
+      // HIR-05 founder answer 276: the same rule as the nightly sweep. A requested erase waits while an offer is accepted
+      // or a hiring process is open (an application not rejected, withdrawn or closed, or an offer still in progress).
+      if (reason === 'request') {
+        const [{ accepted, open }] = await tx.$queryRaw<{ accepted: boolean; open: string | null }[]>`
+          SELECT EXISTS (SELECT 1 FROM offers o WHERE o.candidate_id = ${candidateId}::uuid AND o.status = 'accepted') AS accepted,
+            (SELECT j.title FROM pipeline_entries pe JOIN jobs j ON j.id = pe.job_id
+               LEFT JOIN pipeline_statuses ps ON ps.id = pe.status_id LEFT JOIN pipeline_stages st ON st.id = ps.stage_id
+             WHERE pe.candidate_id = ${candidateId}::uuid AND pe.archived_at IS NULL AND NOT pe.rejected AND j.status <> 'closed' AND j.deleted_at IS NULL
+               AND COALESCE(st.category, 'active') IN ('active', 'offer')
+             UNION ALL
+             SELECT j.title FROM offers o JOIN pipeline_entries pe ON pe.id = o.pipeline_entry_id JOIN jobs j ON j.id = pe.job_id
+             WHERE o.candidate_id = ${candidateId}::uuid AND o.status IN ('draft', 'pending_approval', 'sent')
+             LIMIT 1) AS open`;
+        if (accepted) throw new ConflictException('This candidate accepted an offer, so their details are kept for the joining. Ask HR to handle the request on their People record.');
+        if (open) throw new ConflictException(`This candidate is still in the hiring process for ${open}. Reject or close that application (and withdraw any offer) first, then erase.`);
+      }
 
       const invitations = await tx.invitation.findMany({ where: { candidateId }, select: { id: true } });
       const invitationIds = invitations.map((invitation) => invitation.id);
@@ -683,6 +699,8 @@ export class CandidatesService {
         if (enrolment.referenceImagePath) evidenceUrls.push(enrolment.referenceImagePath);
       }
       await tx.faceEnrolment.deleteMany({ where: { attemptId: { in: attemptIds } } });
+      // AS-6 part 2: the candidate's questions to the test assistant are their own free text.
+      await tx.asmtAssistantMessage.deleteMany({ where: { attemptId: { in: attemptIds } } });
 
       // Same rule again: read the résumé blob's path before it's out of reach, and feed it into
       // the same best-effort delete loop as the other evidence. The candidate_profiles row's FK
@@ -764,6 +782,20 @@ export class CandidatesService {
         where: { candidateId, organizationId: context.organizationId as string },
         data: { interviewToken: null, location: 'Redacted', recruiterNote: null, candidateReschedNote: null },
       });
+      // HIR-07 answer 322: scorecard comments are free text about the candidate; the append-only table allows only this.
+      const erasedInterviews = await tx.interview.findMany({ where: { candidateId, organizationId: context.organizationId as string }, select: { id: true } });
+      await tx.scorecardComment.updateMany({
+        where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) }, redactedAt: null },
+        data: { body: 'Redacted', redactedAt: now },
+      });
+      // Answer 367: the scorecards' own text about the candidate too: the summary and each rating's notes (the ratings,
+      // recommendation and score stay, so funnel and panel numbers keep). The freeze triggers allow only this, once.
+      const cards = await tx.scorecard.findMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) }, redactedAt: null }, select: { id: true, summary: true } });
+      for (const card of cards) await tx.scorecard.update({ where: { id: card.id }, data: { summary: card.summary == null ? null : 'Redacted', redactedAt: now } });
+      if (cards.length) await tx.scorecardRating.updateMany({ where: { organizationId: context.organizationId as string, scorecardId: { in: cards.map((x) => x.id) }, notes: { not: null } }, data: { notes: 'Redacted' } });
+      // HIR-25: the interview transcripts and AI draft scorecards are about the candidate: deleted outright.
+      await tx.interviewTranscript.deleteMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) } } });
+      await tx.interviewScorecardDraft.deleteMany({ where: { organizationId: context.organizationId as string, interviewId: { in: erasedInterviews.map((i) => i.id) } } });
       await tx.candidateRefreshToken.deleteMany({ where: { invitationId: { in: invitationIds } } });
       await tx.invitation.updateMany({
         where: { id: { in: invitationIds }, status: 'invited' },

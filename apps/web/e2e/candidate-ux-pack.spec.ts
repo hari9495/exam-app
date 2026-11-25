@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import { skipPreV2Console } from './fixtures/pre-v2';
+import { addSectionWithQuestion } from './fixtures/sections';
 
 skipPreV2Console('candidate-ux-pack.spec.ts');
 
@@ -43,12 +44,7 @@ test('a candidate with a +50% accommodation gets more remaining time than the ex
   await page.getByRole('option', { name: /per-section breakdown/i }).click();
   await page.getByRole('button', { name: 'Save details' }).click();
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /UX pack e2e question\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /UX pack e2e question\?/);
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
 
@@ -83,12 +79,12 @@ test('a candidate with a +50% accommodation gets more remaining time than the ex
   await expect(page).toHaveURL(/\/welcome$/);
   await page.getByRole('button', { name: /skip practice/i }).click();
   await expect(page.getByText('Section One')).toBeVisible();
-  await page.getByRole('button', { name: 'Enable camera' }).click();
+  await page.getByRole('button', { name: 'Turn on camera' }).click();
   await page.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
   // Set up the response listener before the click that triggers /exam's initial fetch -- attaching
   // it after navigating risks missing the response if it resolves before the listener is registered.
   const currentResponsePromise = page.waitForResponse((response) => response.url().includes('/attempt/current'));
-  await page.getByRole('button', { name: 'Start exam' }).click();
+  await page.getByRole('button', { name: 'Start test' }).click();
   await expect(page).toHaveURL(/\/exam$/);
 
   const currentResponse = await currentResponsePromise;

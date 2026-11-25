@@ -15,11 +15,13 @@ import { FormField } from '../../components/field';
 import { NumberField, TextArea } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
+import { useNarrow } from '../../components/stepper';
 import { Timeline, type TimelineItem } from '../../components/timeline';
 import { formatDate } from '../../lib/format';
 import { TODAY } from '../_kit/data';
 import { CoachCard, GoalTree, GrowthFrame, ProgressRing, StageTrack, type CoachNudge, type Device, type StageItem } from './growth-kit';
 import { goalProgress, krProgress, weightCheck, type Goal, type GoalConfidence } from './growth-logic';
+import { EarlierReviews, LiveCompanyGoalMap, LiveMyGoalsScreen, LivePerformanceHome, type LiveGoalMap, type LiveHome, type LiveMyGoals } from './perf-goals-live';
 import './growth.css';
 
 export type LoadState = 'ready' | 'loading' | 'error' | 'empty';
@@ -55,6 +57,8 @@ export interface PerformanceHomeProps {
   stages?: StageItem[];
   feedback?: { id: string; from: string; text: string; at: Date; kind: 'Praise' | 'Suggestion' }[];
   nextOneOnOne?: { with: string; at: Date; agenda: number };
+  /** Links to my earlier reviews under My review. */
+  earlierReviews?: { id: string; cycle: string }[];
   team?: TeamMemberPerf[];
   coach?: { nudges: CoachNudge[]; weekOf: Date; optedOut?: boolean };
   cycles?: CycleSummary[];
@@ -115,8 +119,12 @@ function FeedbackMini({ items }: { items: NonNullable<PerformanceHomeProps['feed
   );
 }
 
-/** PRF-01 Performance home (T6, role-based). Manager home carries the PRF-16 coach card. */
-export function PerformanceHomeScreen(p: PerformanceHomeProps) {
+/** PRF-01 Performance home (T6, role-based). Manager home carries the PRF-16 coach card. The live app passes `live`. */
+export function PerformanceHomeScreen(props: PerformanceHomeProps | { live: LiveHome }) {
+  return 'live' in props ? <LivePerformanceHome live={props.live} /> : <SamplePerformanceHome {...props} />;
+}
+
+function SamplePerformanceHome(p: PerformanceHomeProps) {
   const { persona, device = 'desktop', state = 'ready' } = p;
   const [checkIn, setCheckIn] = useState<Goal | null>(null);
   const title = persona === 'hr' ? 'Performance' : persona === 'mgr' ? 'Performance · my team' : 'My performance';
@@ -200,7 +208,7 @@ export function PerformanceHomeScreen(p: PerformanceHomeProps) {
   ];
   if (persona === 'emp') {
     widgets.push(
-      { id: 'review', title: 'My review · Half-yearly H1 FY 2026-27', size: 12, content: p.stages ? <StageTrack stages={p.stages} nextStep="360° feedback from your nominated reviewers" /> : null, empty: p.stages ? undefined : 'No review running for you' },
+      { id: 'review', title: 'My review · Half-yearly H1 FY 2026-27', size: 12, content: p.stages ? <><StageTrack stages={p.stages} nextStep="360° feedback from your nominated reviewers" /><EarlierReviews items={p.earlierReviews ?? []} /></> : null, empty: p.stages ? undefined : 'No review running for you' },
       { id: 'goals', title: 'My goals · Apr–Sep 2026', size: 8, content: <MyGoalsMini goals={p.goals} onCheckIn={setCheckIn} />, actions: <Link href="#goals">View all goals</Link> },
       {
         id: 'oneonone',
@@ -311,23 +319,41 @@ export interface GoalCheckInSheetProps {
   device?: Device;
   open: boolean;
   onOpenChange: (o: boolean) => void;
-  onSave?: (actuals: Record<string, number>, confidence: GoalConfidence, note: string) => void;
+  /** `progress` is sent only for a goal without key results (typed by hand, 0–100). A promise keeps the sheet open
+   *  with the button busy, closes it when done and shows the server's refusal inside it otherwise. */
+  onSave?: (actuals: Record<string, number>, confidence: GoalConfidence, note: string, progress?: number) => void | Promise<unknown>;
 }
 
-/** PRF-02 goal check-in (T4): new actual per key result, confidence, note; live effect on progress. */
+/** PRF-02 goal check-in (T4): new actual per key result (or how far, for a goal without them), confidence, note; live effect on progress. */
 export function GoalCheckInSheet({ goal, device = 'desktop', open, onOpenChange, onSave }: GoalCheckInSheetProps) {
   const [actuals, setActuals] = useState<Record<string, number | null>>(Object.fromEntries(goal.keyResults.map((k) => [k.id, k.actual])));
   const [confidence, setConfidence] = useState<GoalConfidence>(goal.confidence ?? 'On track');
   const [note, setNote] = useState('');
+  const [typed, setTyped] = useState<number | null>(goalProgress(goal));
+  const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const byHand = goal.keyResults.length === 0;
   const before = goalProgress(goal);
-  const after = goalProgress({ ...goal, keyResults: goal.keyResults.map((k) => ({ ...k, actual: actuals[k.id] ?? k.actual })) });
+  const after = byHand ? typed : goalProgress({ ...goal, progress: undefined, keyResults: goal.keyResults.map((k) => ({ ...k, progress: undefined, actual: actuals[k.id] ?? k.actual })) });
+  const tooFar = byHand && (typed == null || typed < 0 || typed > 100);
   const body = (
     <div className="yx-growth-stack">
+      {failed && (
+        <InlineAlert tone="danger" title="Check-in not saved">
+          {failed}
+        </InlineAlert>
+      )}
       {goal.keyResults.map((kr) => (
         <FormField key={kr.id} label={kr.title} helper={`Start ${kr.start} · target ${kr.target} ${kr.unit} · now ${kr.actual}`}>
           <NumberField value={actuals[kr.id] ?? null} onChange={(v) => setActuals((a) => ({ ...a, [kr.id]: v }))} suffix={kr.unit} decimals />
         </FormField>
       ))}
+      {byHand && (
+        <FormField id="ci-progress" label="How far is this goal?" required helper="This goal has no key results, so say how far it is." error={tried && tooFar ? 'Enter a number from 0 to 100.' : undefined}>
+          <NumberField value={typed} onChange={setTyped} suffix="%" min={0} max={100} decimals />
+        </FormField>
+      )}
       <FormField label="How confident are you of reaching this goal?">
         <RadioGroup
           aria-label="Confidence"
@@ -348,13 +374,13 @@ export function GoalCheckInSheet({ goal, device = 'desktop', open, onOpenChange,
         <span className="yx-growth-effect__title">What this check-in changes</span>
         <ul>
           <li>
-            Goal progress: {before ?? 0}% → <strong>{after ?? 0}%</strong> (calculated from key results)
+            Goal progress: {before ?? 0}% → <strong>{after ?? 0}%</strong> {byHand ? '(typed, as the goal has no key results)' : '(calculated from key results)'}
           </li>
           {goal.keyResults.map((kr) => {
             const a = actuals[kr.id];
             return a != null && a !== kr.actual ? (
               <li key={kr.id}>
-                {kr.title}: {krProgress(kr)}% → {krProgress({ ...kr, actual: a })}%
+                {kr.title}: {krProgress(kr)}% → {krProgress({ ...kr, progress: undefined, actual: a })}%
               </li>
             ) : null;
           })}
@@ -364,17 +390,27 @@ export function GoalCheckInSheet({ goal, device = 'desktop', open, onOpenChange,
       </div>
     </div>
   );
+  const save = async () => {
+    if (tooFar) {
+      setTried(true);
+      document.getElementById('ci-progress')?.focus();
+      return;
+    }
+    setSaving(true);
+    setFailed(null);
+    try {
+      await onSave?.(Object.fromEntries(Object.entries(actuals).map(([k, v]) => [k, v ?? 0])), confidence, note, byHand ? (typed ?? 0) : undefined);
+      onOpenChange(false);
+    } catch (e) {
+      setFailed(e instanceof Error ? e.message : 'Try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
   const footer = (
     <div className="yx-growth-foot">
       <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-      <Button
-        variant="primary"
-        icon={Check}
-        onClick={() => {
-          onSave?.(Object.fromEntries(Object.entries(actuals).map(([k, v]) => [k, v ?? 0])), confidence, note);
-          onOpenChange(false);
-        }}
-      >
+      <Button variant="primary" icon={Check} loading={saving} onClick={() => void save()}>
         Save check-in
       </Button>
     </div>
@@ -407,8 +443,12 @@ export interface MyGoalsProps {
   period?: string;
 }
 
-/** PRF-02 My goals (T6): tree and alignment views, progress rings per key result, weights check, check-in (T4). */
-export function MyGoalsScreen({ persona, device = 'desktop', state = 'ready', ownerName, goals, allGoals, checkIns = {}, openGoalId, checkInGoalId, period = 'H1 FY 2026-27 (Apr–Sep 2026)' }: MyGoalsProps) {
+/** PRF-02 My goals (T6): tree and alignment views, progress rings per key result, weights check, check-in (T4). The live app passes `live`. */
+export function MyGoalsScreen(props: MyGoalsProps | { live: LiveMyGoals; defaultDialog?: Parameters<typeof LiveMyGoalsScreen>[0]['defaultDialog'] }) {
+  return 'live' in props ? <LiveMyGoalsScreen live={props.live} defaultDialog={props.defaultDialog} /> : <SampleMyGoals {...props} />;
+}
+
+function SampleMyGoals({ persona, device = 'desktop', state = 'ready', ownerName, goals, allGoals, checkIns = {}, openGoalId, checkInGoalId, period = 'H1 FY 2026-27 (Apr–Sep 2026)' }: MyGoalsProps) {
   const [openId, setOpenId] = useState<string | null>(openGoalId ?? null);
   const [checkInId, setCheckInId] = useState<string | null>(checkInGoalId ?? null);
   const [approved, setApproved] = useState(false);
@@ -628,8 +668,12 @@ export interface CompanyGoalMapProps {
   departments: string[];
 }
 
-/** PRF-03 Company goal map (T6, HR / Exec): company → team → person with calculated progress; unaligned and off-track lists. */
-export function CompanyGoalMapScreen({ persona = 'hr', state = 'ready', goals, unaligned, departments }: CompanyGoalMapProps) {
+/** PRF-03 Company goal map (T6, HR / Exec): company → team → person with calculated progress; unaligned and off-track lists. The live app passes `live`. */
+export function CompanyGoalMapScreen(props: CompanyGoalMapProps | { live: LiveGoalMap; defaultDialog?: 'add' | 'period' }) {
+  return 'live' in props ? <LiveCompanyGoalMap live={props.live} defaultDialog={props.defaultDialog} /> : <SampleCompanyGoalMap {...props} />;
+}
+
+function SampleCompanyGoalMap({ persona = 'hr', state = 'ready', goals, unaligned, departments }: CompanyGoalMapProps) {
   const [dept, setDept] = useState<string | null>(null);
   const company = goals.filter((g) => g.owner.type === 'company');
   const offTrack = goals.filter((g) => g.confidence === 'Off track' || g.confidence === 'At risk');
@@ -711,10 +755,54 @@ export function CompanyGoalMapScreen({ persona = 'hr', state = 'ready', goals, u
 
 /* ================================================================== PRF-16 · Coach card standalone (manager home widget) */
 
+/** PRF-16 live: the manager's coach card (performance builder 3). Wording is fixed rule text; no AI model sees the team. */
+export interface LiveCoach {
+  state: 'loading' | 'error' | 'ready' | 'not-manager' | 'company-off';
+  onRetry: () => void;
+  firstName: string | null;
+  weekOf: Date;
+  optedOut: boolean;
+  nudges: CoachNudge[];
+  /** What the coach looks at, as the server checks it. */
+  looksAt: string[];
+  onAct: (n: CoachNudge) => void;
+  onDismiss: (id: string) => Promise<void>;
+  onOptOut: (optedOut: boolean) => Promise<void>;
+}
+
+const COACH_LOOKS_AT = ['No feedback given in 6 weeks', '1:1s due or overdue', 'Unused leave balance above 12 days (counts only)', 'Overtime 3 weeks running', 'Goals off track', 'New joiners’ open onboarding tasks'];
+const greeting = (d: Date) => (d.getHours() < 12 ? 'Good morning' : d.getHours() < 17 ? 'Good afternoon' : 'Good evening');
+
 /** PRF-16 coach card as it sits on the manager's home (T1 card). */
-export function ManagerCoachHome({ device = 'desktop', nudges, weekOf, optedOut, state = 'ready' }: { device?: Device; nudges: CoachNudge[]; weekOf: Date; optedOut?: boolean; state?: LoadState }) {
-  const [out, setOut] = useState(!!optedOut);
-  const card = state === 'loading' ? <Skeleton height={240} /> : <CoachCard nudges={nudges} weekOf={weekOf} optedOut={out} onOptOut={() => setOut(true)} />;
+export function ManagerCoachHome({ device: deviceProp, nudges, weekOf, optedOut, state = 'ready', companyOff, notManager, live }: { device?: Device; nudges: CoachNudge[]; weekOf: Date; optedOut?: boolean; state?: LoadState; /** The company turned nudges off. */ companyOff?: boolean; /** Someone with no team opened the page. */ notManager?: boolean; /** The live app's /yx/performance/coach. */ live?: LiveCoach }) {
+  // The live page takes the designed phone layout under 768 px, as PRF-01, 02 and 06 do.
+  const narrow = useNarrow();
+  const device: Device = deviceProp ?? (live && narrow ? 'phone' : 'desktop');
+  const [sampleOut, setOut] = useState(!!optedOut);
+  const out = live ? live.optedOut : sampleOut;
+  const loading = live ? live.state === 'loading' : state === 'loading';
+  const off = live ? live.state === 'company-off' : !!companyOff;
+  const noTeam = live ? live.state === 'not-manager' : !!notManager;
+  const shown = live ? live.nudges : nudges;
+  const card = loading ? (
+    <Skeleton height={240} />
+  ) : live?.state === 'error' ? (
+    <ErrorState title="The coach card did not load" description="Check your connection and try again." onRetry={live.onRetry} />
+  ) : noTeam ? (
+    <EmptyState title="No team yet" description="The coach is for managers. It appears when people report to you." />
+  ) : (
+    <CoachCard
+      key={`${live?.weekOf.getTime() ?? ''}:${shown.map((n) => n.id).join(',')}:${out}`}
+      nudges={shown}
+      weekOf={live ? live.weekOf : weekOf}
+      optedOut={out}
+      companyOff={off}
+      onAct={live?.onAct}
+      onDismiss={live ? (n) => void live.onDismiss(n.id).catch(() => undefined) : undefined}
+      onOptOut={() => (live ? void live.onOptOut(true).catch(() => undefined) : setOut(true))}
+      onOptIn={live ? () => void live.onOptOut(false).catch(() => undefined) : undefined}
+    />
+  );
   if (device === 'phone')
     return (
       <GrowthFrame area="performance" active="Performance home" persona="mgr" device="phone" phone={{ tab: 'home', title: 'Home' }}>
@@ -723,19 +811,21 @@ export function ManagerCoachHome({ device = 'desktop', nudges, weekOf, optedOut,
     );
   return (
     <GrowthFrame area="performance" active="Performance home" persona="mgr">
-      <Heading level={1}>Good morning, Karthik</Heading>
+      <Heading level={1}>{live ? `${greeting(new Date())}${live.firstName ? `, ${live.firstName}` : ''}` : 'Good morning, Karthik'}</Heading>
       <div className="yx-growth-cols" data-n="2">
         {card}
         <Card title="What the coach looks at">
           <ul className="yx-growth-list">
-            {['No feedback given in 6 weeks', '1:1s due or overdue', 'Unused leave balance above 12 days (counts only)', 'Overtime 3 weeks running', 'Goals off track', 'New joiners’ open onboarding tasks'].map((s) => (
+            {(live ? live.looksAt : COACH_LOOKS_AT).map((s) => (
               <li key={s} className="yx-growth-list__item">
                 {s}
               </li>
             ))}
           </ul>
           <Text size="sm" tone="secondary">
-            Never health, leave reasons, POSH or disciplinary data. Names are hidden from the AI model that writes the wording.
+            {live
+              ? 'Never health, leave reasons, POSH or disciplinary data. The wording comes from fixed rules; no AI model sees your team.'
+              : 'Never health, leave reasons, POSH or disciplinary data. Names are hidden from the AI model that writes the wording.'}
           </Text>
         </Card>
       </div>

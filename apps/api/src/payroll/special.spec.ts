@@ -36,6 +36,20 @@ describe('batch 5i calculators', () => {
     expect(r.callout.toFixed(2)).toBe('900.00');
   });
 
+  it('PAY-35 on-call: a holiday call-out uses the holiday multiplier; standby is skipped on a called-out slot when the rule says so', () => {
+    const rule = { standbyAmount: '500', calloutMinHours: '3', calloutRate: '200', multiplier: '1.5', holidayMultiplier: '2' };
+    const slots = [{ calloutHours: '4', onHoliday: true }, { calloutHours: '1' }, { calloutHours: null }];
+    const r = oncall(rule, slots);
+    expect(r.callout.toFixed(2)).toBe('2500.00'); // 4 h × 200 × 2 + 3 h × 200 × 1.5
+    expect(r.standby.toFixed(2)).toBe('1500.00');
+    expect(r).toMatchObject({ callouts: 2, holidayCallouts: 1, calloutHours: '7' });
+    expect(oncall({ ...rule, payStandbyWhenCalled: false }, slots).standby.toFixed(2)).toBe('500.00');
+    // No holiday multiplier: the normal one, even on a holiday.
+    expect(oncall({ ...rule, holidayMultiplier: null }, [{ calloutHours: '4', onHoliday: true }]).callout.toFixed(2)).toBe('1200.00');
+    // Boundary: no slots, nothing paid.
+    expect(oncall(rule, []).standby.toFixed(2)).toBe('0.00');
+  });
+
   it('IR pay: dues fixed or per cent; lay-off at the share; settlement arrears by month; the VRS lifetime limit', () => {
     expect(unionDues({ duesKind: 'fixed', duesValue: '50' }, '20000').toFixed(2)).toBe('50.00');
     expect(unionDues({ duesKind: 'percent', duesValue: '1' }, '20000').toFixed(2)).toBe('200.00');

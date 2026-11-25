@@ -21,26 +21,28 @@ export default function YxPayActuarialPage() {
   const download = usePayDownload();
   return (
     <ActuarialScreen
-      state={payState(entities)}
-      onRetry={() => void entities.refetch()}
-      entities={entities.data ?? []}
-      entityId={entityId}
-      onEntity={setEntityId}
-      data={data.data ?? null}
-      can={{ census: perms.has('payroll.special.manage'), journal: perms.has('payroll.journal.export') }}
-      onCensus={(asOf, standard) => write('/payroll/actuarial/census', { legalEntityId: entityId, asOf, standard })}
-      onDownload={async (fileId, name) => {
-        const link = await payWrite<{ path: string }>(`/files/${e(fileId)}/link`);
-        await download(link.path, name);
+      live={{
+        state: payState(entities),
+        onRetry: () => void entities.refetch(),
+        entities: entities.data ?? [],
+        entityId,
+        onEntity: setEntityId,
+        data: data.data ?? null,
+        can: { census: perms.has('payroll.special.manage'), journal: perms.has('payroll.journal.export') },
+        onCensus: (asOf, standard) => write('/payroll/actuarial/census', { legalEntityId: entityId, asOf, standard }),
+        onDownload: async (fileId, name) => {
+          const link = await payWrite<{ path: string }>(`/files/${e(fileId)}/link`);
+          await download(link.path, name);
+        },
+        onRecord: (x, report) => {
+          const form = new FormData();
+          form.append('legalEntityId', entityId!);
+          for (const [k, v] of Object.entries(x)) if (v !== undefined) form.append(k, String(v));
+          if (report) form.append('file', report);
+          return write('/payroll/actuarial/valuations', form);
+        },
+        onPost: (id) => write(`/payroll/actuarial/valuations/${e(id)}/post`),
       }}
-      onRecord={(x, report) => {
-        const form = new FormData();
-        form.append('legalEntityId', entityId!);
-        for (const [k, v] of Object.entries(x)) if (v !== undefined) form.append(k, String(v));
-        if (report) form.append('file', report);
-        return write('/payroll/actuarial/valuations', form);
-      }}
-      onPost={(id) => write(`/payroll/actuarial/valuations/${e(id)}/post`)}
     />
   );
 }

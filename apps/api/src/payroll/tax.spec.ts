@@ -1,4 +1,6 @@
+import { whatIfInputs } from './tax.service';
 import { readFileSync } from 'fs';
+import { Prisma } from '@prisma/client';
 import { join } from 'path';
 import type { RuleSet } from '../statutory/evaluator';
 import { calculatePayslip } from './calc';
@@ -65,6 +67,17 @@ describe('income tax projection (PAY-5.02 … 5.07)', () => {
     expect(verified.notes.join(' ')).toMatch(/only verified proofs count/);
   });
 
+  it('founder decision 6: an approved Form 12B adds the previous employer’s pay and counts its TDS as already deducted', () => {
+    const a = projectTax(base(), TAX, april);
+    const b = projectTax(base({ previous: { gross: '300000', exemptions: '0', tds: '60000', pt: '0' } }), TAX, april);
+    expect(a.taxable).toBe('1725000.00');
+    expect(b.income.previousEmployers).toBe('300000.00');
+    expect(b.taxable).toBe('2025000.00');
+    expect(Number(b.tax.total)).toBeGreaterThan(Number(a.tax.total));
+    // The year's tax less what the previous employer deducted, over the 12 periods left.
+    expect(b.monthTds).toBe(new Prisma.Decimal(b.tax.total).sub(60000).div(12).toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP).toFixed(2));
+  });
+
   it('M05 change 3: taxable salary paid outside payroll counts as salary for the year', () => {
     const a = projectTax(base(), TAX, april);
     const b = projectTax(base({ paidOutside: '60000' }), TAX, april);
@@ -117,5 +130,23 @@ describe('income tax projection (PAY-5.02 … 5.07)', () => {
     expect(r.lines.find((l) => l.code === 'tds')?.amount ?? '0.00').toBe(r.tax!.monthTds === '0.00' ? '0.00' : r.tax!.monthTds);
     // Without tax inputs (before 5e) there is no TDS line, so earlier payslips reproduce unchanged.
     expect(calculatePayslip(s, TAX).lines.some((l) => l.code === 'tds')).toBe(false);
+  });
+});
+
+describe('PAY-41 what-if inputs (never saved)', () => {
+  const base = { rent: null, deductions: [{ key: 'sec80c', amount: '100000.00' }, { key: 'sec24b', amount: '50000.00' }] } as unknown as TaxInputs;
+
+  it('rent for the whole tax year when none is declared; 0 takes it away; the declared months and metro are kept', () => {
+    expect(whatIfInputs(base, '2026-27', { rentMonthly: '25000' }).rent).toEqual({ monthly: '25000.00', from: '2026-04', to: '2027-03', metro: false });
+    const declared = { ...base, rent: { monthly: '20000.00', from: '2026-06', to: '2027-03', metro: true } };
+    expect(whatIfInputs(declared, '2026-27', { rentMonthly: '30000' }).rent).toEqual({ monthly: '30000.00', from: '2026-06', to: '2027-03', metro: true });
+    expect(whatIfInputs(declared, '2026-27', { rentMonthly: '0' }).rent).toBeNull();
+    expect(whatIfInputs(declared, '2026-27', { metro: false }).rent?.metro).toBe(false);
+  });
+
+  it('home loan interest replaces the declared one; 0 drops it; other deductions untouched; no input changes nothing', () => {
+    expect(whatIfInputs(base, '2026-27', { homeLoanInterest: '180000' }).deductions).toEqual([{ key: 'sec80c', amount: '100000.00' }, { key: 'sec24b', amount: '180000.00' }]);
+    expect(whatIfInputs(base, '2026-27', { homeLoanInterest: '0' }).deductions).toEqual([{ key: 'sec80c', amount: '100000.00' }]);
+    expect(whatIfInputs(base, '2026-27', {})).toBe(base);
   });
 });

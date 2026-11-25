@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { orgAiFetch } from '../net/public-fetch';
 import { PrismaService } from '../prisma/prisma.service';
 import { OrgSecretsCryptoService } from './org-secrets-crypto.service';
 import { AiProvider } from '../ai/ai-provider';
@@ -44,7 +45,8 @@ export class AiApiKeyResolverService {
       if (!org.aiApiKeyEncrypted || !org.aiBaseUrl || !org.aiModelFast || !org.aiModelStandard) {
         throw new AiNotConfiguredError('This organization is configured for an OpenAI-compatible provider but is missing its API key, base URL, or model names');
       }
-      return new OpenAiCompatibleProvider(this.cryptoService.decrypt(org.aiApiKeyEncrypted), org.aiBaseUrl, org.aiModelFast, org.aiModelStandard);
+      // Answer 1902: a company-supplied address only through the pinned public-only fetch (as the webhooks).
+      return new OpenAiCompatibleProvider(this.cryptoService.decrypt(org.aiApiKeyEncrypted), org.aiBaseUrl, org.aiModelFast, org.aiModelStandard, orgAiFetch);
     }
 
     if (org?.aiApiKeyEncrypted) {

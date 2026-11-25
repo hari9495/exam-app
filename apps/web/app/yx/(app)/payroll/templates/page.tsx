@@ -1,6 +1,6 @@
 'use client';
 
-import { TemplatesLiveScreen, type Breakup, type FormulaCheck, type PayComponent, type SalaryTemplate, type SetupEntity } from '@yukthix/ui/pay';
+import { TemplateBuilderScreen, type Breakup, type FormulaCheck, type PayComponent, type SalaryTemplate, type SetupEntity } from '@yukthix/ui/pay';
 import { payState, usePay, usePayWrite } from '../../../../../lib/yx-pay';
 import { todayIndia } from '../../../../../lib/yx-time';
 
@@ -11,22 +11,19 @@ export default function YxPayTemplatesPage() {
   const components = usePay<PayComponent[]>('/components');
   const write = usePayWrite();
   return (
-    <TemplatesLiveScreen
-      state={payState(templates, components)}
-      onRetry={() => void templates.refetch()}
-      entities={(entities.data ?? []).filter((x) => x.keys.includes('payroll.template.manage'))}
-      templates={templates.data ?? null}
-      components={components.data ?? null}
-      today={todayIndia()}
-      onCreate={(name, legalEntityId) =>
-        write('/templates', {
-          name,
-          ...(legalEntityId ? { legalEntityId } : {}),
-        })
-      }
-      onCheck={(text, codes) => write<FormulaCheck>('/formulas/check', { text, codes })}
-      onValidate={(v) => write<{ sample: Breakup; codeWageFlag: boolean }>('/templates/validate', v)}
-      onSaveVersion={(id, v) => write(`/templates/${encodeURIComponent(id)}/versions`, v)}
+    <TemplateBuilderScreen
+      live={{
+        state: payState(templates, components),
+        onRetry: () => void templates.refetch(),
+        entities: (entities.data ?? []).filter((x) => x.keys.includes('payroll.template.manage')),
+        templates: templates.data ?? null,
+        components: components.data ?? null,
+        today: todayIndia(),
+        onCreate: (name, legalEntityId) => write('/templates', { name, ...(legalEntityId ? { legalEntityId } : {}) }),
+        onCheck: (text, codes) => write<FormulaCheck>('/formulas/check', { text, codes }),
+        onValidate: (v) => write<{ sample: Breakup; codeWageFlag: boolean }>('/templates/validate', v),
+        onSaveVersion: (id, v) => write(`/templates/${encodeURIComponent(id)}/versions`, v),
+      }}
     />
   );
 }

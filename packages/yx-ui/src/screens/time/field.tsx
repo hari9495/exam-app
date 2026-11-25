@@ -3,25 +3,37 @@ import { useState } from 'react';
 import { ArrowLeft, Delete, MapPin, QrCode, RotateCw } from 'lucide-react';
 import { KioskFrame, PhoneFrame } from '../_kit/frames';
 import { Button, ButtonGroup, IconButton } from '../../components/button';
-import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
+import { Badge, DayDate, PersonLabel, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState } from '../../components/feedback';
 import { BottomSheet, ConfirmDialog } from '../../components/overlay';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Select } from '../../components/select';
 import { TextArea, TextField } from '../../components/inputs';
 import { FormField } from '../../components/field';
 import { formatDate } from '../../lib/format';
+import { useToast } from '../../components/notify';
 import { FENCES, FIELD_DAY, GENERAL_SHIFT, HOLIDAYS, HR_ADMIN, ME, NOW_MIN, SEPTEMBER, TEAM, TODAY, TODAY_PUNCHES, balancesFor, type TimeUser } from './time-data';
 import { PUBLISHED_ROSTER } from './roster';
 import { CameraFrame, GeoMap, Kpis, PunchList, TimePage, type MapPin as Pin } from './time-kit';
 import { evaluateClock, fmt12, fmtDuration, formatDistance, geofenceVerdict, toHHMM, toMin, type ClockState } from './time-logic';
+import { LiveGate, monthText, shiftMonth } from './ops';
+import type { LoadState, MyPresence, PresenceDayRow, TeamPresence } from './live/types';
+import { LoadingBlock } from './attendance';
+import { useRun } from '../org/org-kit';
+import { teamDrawing, trailDrawing, visitRow, type FieldPerson, type FieldVisit, type LiveFieldForce, type VisitStatus } from './field-force-live';
+import { LiveKioskScreen, type LiveKiosk } from './kiosk-live';
 import './time.css';
 
+/** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast. */
+function useSay() {
+  const { toast } = useToast();
+  return { toast, say: (why: string | false | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.()) };
+}
+
 const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
-const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-/** "Mon 28 Sep" (no year, no comma). */
-const dayLabel = (d: Date) => `${DOW[d.getDay()]} ${formatDate(d).slice(0, -5).replace(/^0/, '')}`;
+/** "28 Sep 2026": the weekday goes beside it with <DayDate>, never merged in. */
+const dayLabel = formatDate;
 /** Links to other screens' stories (same pattern as roster.tsx). */
 const storyHref = (id: string) => `/?path=/story/${id}`;
 const STORY = {
@@ -33,6 +45,31 @@ const STORY = {
 const StoryLink = ({ to, children, ...rest }: { to: keyof typeof STORY; children: string; variant?: 'primary' | 'secondary'; size?: 'sm' | 'md'; fullWidth?: boolean }) => (
   <Button asChild {...rest}><a href={storyHref(STORY[to])} target="_top">{children}</a></Button>
 );
+
+/**
+ * Withdraw consent (founder decision 6, 29 Oct 2026; DPDP Act 2023 s.6(4): as easy as giving). Says what happens before
+ * it happens. One dialog for presence (TIM-36) and field tracking (TIM-33); the server follows the same rule for both.
+ */
+export function WithdrawConsentDialog({ open, onOpenChange, kind, onConfirm }: { open: boolean; onOpenChange: (open: boolean) => void; kind: 'presence' | 'field'; onConfirm: () => unknown }) {
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={onOpenChange}
+      destructive
+      title="Withdraw your consent?"
+      consequence="You can give it again at any time."
+      confirmLabel="Withdraw consent"
+      cancelLabel="Keep it"
+      onConfirm={async () => { await onConfirm(); }}
+    >
+      <ul className="yx-tim-steps" aria-label="What happens">
+        <li>{kind === 'presence' ? 'Presence tracking stops now.' : 'Location tracking stops now.'}</li>
+        <li>{kind === 'presence' ? 'Your presence trail (the times you were active, idle or offline) is deleted.' : 'Your location trail is deleted.'}</li>
+        <li>{kind === 'presence' ? 'Your attendance days stay, because pay needs them.' : 'Your attendance days and visit check-ins stay, because pay needs them.'}</li>
+      </ul>
+    </ConfirmDialog>
+  );
+}
 
 /* =====================================================================
    TIM-12 · Mobile check-in sheet
@@ -61,6 +98,7 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 'var(--yx-space-2
 
 /** `saved`: the offline check-in has already been tapped and is waiting on the phone. */
 export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = false }: { scenario?: CheckInScenario; saved?: boolean }) {
+  const { say, toast } = useSay();
   const s = SCEN[scenario];
   const [open, setOpen] = useState(true);
   const [sent, setSent] = useState<null | 'hr' | 'device'>(null);
@@ -118,7 +156,7 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
             : done === 'retry' ? { tone: 'info' as const, title: 'Location updated', body: code === 'coarse' ? `Accuracy is still ±${s.pin.accuracyM} m. Move near a window and retry.` : undefined }
               : null;
   const retry = <Button variant={code === 'coarse' ? 'primary' : 'secondary'} size={code === 'coarse' ? 'lg' : 'sm'} fullWidth={code === 'coarse'} icon={RotateCw} onClick={() => setDone('retry')}>Retry location</Button>;
-  const checkOut = <Button variant="primary" size="lg" fullWidth disabled={!actions.includes('clock_out')} onClick={early ? undefined : () => setDone('out')}>Check out</Button>;
+  const checkOut = <Button variant="primary" size="lg" fullWidth onClick={() => say(!actions.includes('clock_out') && 'You are not checked in yet.', early ? undefined : () => setDone('out'))}>Check out</Button>;
   // A saved offline check-in is finished too: the badge and alert say it's waiting to sync.
   const finished = done === 'in' || done === 'wfh' || done === 'od' || done === 'out' || (offline && saved);
   return (
@@ -151,17 +189,17 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
               ) : offline ? (
                 <Button variant="primary" size="lg" fullWidth onClick={() => setSaved(true)}>Check in</Button>
               ) : (
-                <Button variant="primary" size="lg" fullWidth disabled={!actions.includes('clock_in')} onClick={() => setDone('in')}>Check in</Button>
+                <Button variant="primary" size="lg" fullWidth onClick={() => say(!actions.includes('clock_in') && 'You are already checked in.', () => setDone('in'))}>Check in</Button>
               )}
               {code === 'outside' && (
                 <>
-                  <Button fullWidth disabled={sent === 'hr'} onClick={() => setDone('wfh')}>Check in as WFH</Button>
-                  <Button fullWidth disabled={sent === 'hr'} onClick={() => setDone('od')}>Check in on duty</Button>
-                  <Button fullWidth disabled={sent === 'hr'} onClick={() => setSent('hr')}>Ask HR to fix today's attendance</Button>
+                  <Button fullWidth onClick={() => say(sent === 'hr' && 'You already asked HR to fix today.', () => setDone('wfh'))}>Check in as WFH</Button>
+                  <Button fullWidth onClick={() => say(sent === 'hr' && 'You already asked HR to fix today.', () => setDone('od'))}>Check in on duty</Button>
+                  <Button fullWidth onClick={() => say(sent === 'hr' && 'You already asked HR to fix today.', () => { setSent('hr'); toast({ tone: 'success', title: 'Sent to HR', description: `HR will review your ${nowText} attempt.` }); })}>Ask HR to fix today's attendance</Button>
                   {sent === 'hr' && <p className="yx-tim-muted">You asked HR to fix today. Wait for their decision.</p>}
                 </>
               )}
-              {code === 'device' && <Button fullWidth disabled={sent === 'device'} onClick={() => setSent('device')}>Ask HR to approve this phone</Button>}
+              {code === 'device' && <Button fullWidth onClick={() => say(sent === 'device' && 'You already asked HR to approve this phone.', () => { setSent('device'); toast({ tone: 'success', title: 'Request sent to HR', description: 'HR approves phones in Devices.' }); })}>Ask HR to approve this phone</Button>}
             </div>
           )
         }
@@ -201,8 +239,8 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
                 : 'Your check-in will be saved on this phone with the time and location, and syncs when you are back online.'}
             </InlineAlert>
           )}
-          {sent === 'hr' && <InlineAlert tone="success" title="Sent to HR">HR will review your {nowText} attempt. You'll get a notification when they decide.</InlineAlert>}
-          {sent === 'device' && <InlineAlert tone="success" title="Request sent to HR">HR approves phones in Devices. You can check in from this {THIS_PHONE} once they do.</InlineAlert>}
+          {sent === 'hr' && <InlineAlert tone="info" title="Waiting for HR">HR will review your {nowText} attempt. You'll get a notification when they decide.</InlineAlert>}
+          {sent === 'device' && <InlineAlert tone="info" title="Waiting for HR">HR approves phones in Devices. You can check in from this {THIS_PHONE} once they do.</InlineAlert>}
           {s.state === 'working' && <PunchList punches={[TODAY_IN]} />}
         </div>
       </BottomSheet>
@@ -214,7 +252,7 @@ export function MobileCheckInSheet({ scenario = 'inside', saved: savedInit = fal
    TIM-13 · Kiosk
    ===================================================================== */
 
-export type KioskView = 'code' | 'unknown_code' | 'pin' | 'menu' | 'checked_in' | 'training' | 'leave' | 'status' | 'wrong_pin' | 'qr';
+export type KioskView = 'code' | 'unknown_code' | 'pin' | 'menu' | 'menu_leave_off' | 'checked_in' | 'training' | 'training_none' | 'leave' | 'status' | 'wrong_pin' | 'qr';
 
 /** The kiosk's sample person and her data (TEAM t10, balances from time-data). */
 const KAVITHA = TEAM.find((t) => t.id === 't10')!;
@@ -255,7 +293,12 @@ const booked = (note?: string) => note === 'On leave' || note === 'Requested';
 /** My requests rows never wrap, so the badge stays on the right on every row, even on a phone. */
 const reqRow = { flexWrap: 'nowrap' } as const;
 
-export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
+export function KioskScreen({ view = 'code', live }: { view?: KioskView; /** The live kiosk page (/yx/kiosk) on a site tablet. */ live?: LiveKiosk }) {
+  return live ? <LiveKioskScreen live={live} /> : <SampleKioskScreen view={view} />;
+}
+
+function SampleKioskScreen({ view = 'code' }: { view?: KioskView }) {
+  const { say, toast } = useSay();
   const [v, setV] = useState<KioskView>(view === 'unknown_code' ? 'code' : view);
   const [code, setCode] = useState(view === 'unknown_code' ? '9999' : '');
   const [unknown, setUnknown] = useState(view === 'unknown_code');
@@ -325,7 +368,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           )}
           <div className="yx-tim-row">
             <Button icon={QrCode} onClick={() => setV('qr')}>Scan ID card</Button>
-            <Button variant="primary" disabled={code.length < 4 || unknown} onClick={() => (code === KAVITHA_DIGITS ? setV('pin') : setUnknown(true))}>Next</Button>
+            <Button variant="primary" onClick={() => say(code.length < 4 ? 'Type all 4 digits of your code.' : unknown && 'This code is not known. Check it and type it again.', () => (code === KAVITHA_DIGITS ? setV('pin') : setUnknown(true)))}>Next</Button>
           </div>
           <p className="yx-tim-muted">{now} · Tue 29 Sep 2026</p>
         </div>
@@ -353,18 +396,19 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           <p className="yx-tim-muted">{pin.length < 4 ? more(4 - pin.length) : 'PIN complete'}</p>
           <div className="yx-tim-row">
             <Button icon={ArrowLeft} onClick={() => setV('code')}>Back</Button>
-            <Button variant="primary" disabled={pin.length < 4} onClick={() => { setPin(''); setV('menu'); }}>Continue</Button>
+            <Button variant="primary" onClick={() => say(pin.length < 4 && 'Type all 4 digits of your PIN.', () => { setPin(''); setV('menu'); })}>Continue</Button>
           </div>
         </div>
       )}
-      {v === 'menu' && (
+      {(v === 'menu' || v === 'menu_leave_off') && (
         <div className="yx-tim-kiosk-card">
           <p className="yx-tim-big">Hello, {KAVITHA.name.split(' ')[0]}</p>
           <InlineAlert tone="info" title={`${SUPERVISOR} applied leave for you`}>Casual leave on {dayLabel(KIOSK_LEAVE_ON)} was approved on 25 Sep. You'll also get an SMS.</InlineAlert>
           <div className="yx-tim-kiosk-grid">
             <Button variant="primary" onClick={() => setV('checked_in')}>Check in</Button>
             <Button onClick={() => setV('training')}>Training</Button>
-            <Button onClick={() => setV('leave')}>Apply leave</Button>
+            {/* kiosk.leave off for this person's place: no Apply leave (founder, 30 Oct 2026). */}
+            {v !== 'menu_leave_off' && <Button onClick={() => setV('leave')}>Apply leave</Button>}
             <Button onClick={() => setV('status')}>My requests</Button>
           </div>
           <Kpis
@@ -399,9 +443,16 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           <p><strong>Food safety refresher</strong> · 9:00 am · Training room 1</p>
           <div className="yx-tim-row">
             <Button icon={ArrowLeft} onClick={() => setV('menu')}>Back</Button>
-            <Button variant="primary" disabled={toMin(KIOSK_IN) < toMin(TRAINING_OPENS)} onClick={() => setMarked(true)}>Mark me present</Button>
+            <Button variant="primary" onClick={() => say(toMin(KIOSK_IN) < toMin(TRAINING_OPENS) && `Training opens at ${fmt12(TRAINING_OPENS)}.`, () => setMarked(true))}>Mark me present</Button>
           </div>
           {toMin(KIOSK_IN) < toMin(TRAINING_OPENS) && <p className="yx-tim-muted">Opens at {fmt12(TRAINING_OPENS)}</p>}
+        </div>
+      )}
+      {v === 'training_none' && (
+        <div className="yx-tim-kiosk-card">
+          <p className="yx-tim-big">Mark training attendance</p>
+          <p className="yx-tim-muted">No training here today.</p>
+          <Button icon={ArrowLeft} onClick={() => setV('menu')}>Back</Button>
         </div>
       )}
       {v === 'leave' && confirm && sentLeave && (
@@ -418,7 +469,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           {/* Short labels so both options fit a phone; the waiting days and sick leave go on the line below. */}
           <ButtonGroup aria-label="Leave type">
             {(['CL', 'EL'] as const).map((t) => (
-              <Button key={t} size="lg" aria-pressed={leaveType === t} disabled={available(t) <= 0} onClick={() => setLeaveType(t)}>
+              <Button key={t} size="lg" aria-pressed={leaveType === t} onClick={() => say(available(t) <= 0 && 'No days of this leave are left.', () => setLeaveType(t))}>
                 {t === 'CL' ? 'Casual' : 'Earned'} · {available(t)} left
               </Button>
             ))}
@@ -433,9 +484,9 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
               const on = !!from && !!end && d.date >= from && d.date <= end && !d.note;
               const line2 = d.note ?? d.hint;
               return (
-                <Button key={d.date.toISOString()} size="lg" style={dayTile} variant={on ? 'primary' : 'secondary'} aria-pressed={on} disabled={!!d.note} onClick={() => pickDay(d.date)}>
+                <Button key={d.date.toISOString()} size="lg" style={dayTile} variant={on ? 'primary' : 'secondary'} aria-pressed={on} onClick={() => say(d.note ? `You cannot pick this day: ${d.note}.` : false, () => pickDay(d.date))}>
                   <span style={{ display: 'flex', flexDirection: 'column' }}>
-                    <span>{dayLabel(d.date)}</span>
+                    <DayDate date={d.date} stacked />
                     {line2 && <span className="yx-tim-note" style={{ color: 'inherit' }}>{line2}</span>}
                   </span>
                 </Button>
@@ -448,7 +499,7 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
           </p>
           <div className="yx-tim-row">
             <Button icon={ArrowLeft} onClick={() => setV('menu')}>Back</Button>
-            <Button variant="primary" disabled={picked.length === 0 || after < 0} onClick={sendLeave}>Send leave request</Button>
+            <Button variant="primary" onClick={() => say(picked.length === 0 ? 'Pick at least one day.' : after < 0 && 'Not enough leave left for these days.', sendLeave)}>Send leave request</Button>
           </div>
           {after < 0 && <p className="yx-tim-muted">Not enough {leaveName(leaveType).toLowerCase()} for these days ({available(leaveType)} left after pending requests)</p>}
         </div>
@@ -473,11 +524,8 @@ export function KioskScreen({ view = 'code' }: { view?: KioskView }) {
    TIM-32 · Field-force live map & visit log
    ===================================================================== */
 
-type VisitStatus = 'Done' | 'On site' | 'Upcoming' | 'Missed';
-/** `flagged`: a done visit with an open integrity flag (shows amber until the flag is reviewed). */
-interface FieldVisit { id: string; person: string; place: string; time: string; status: VisitStatus; planned: boolean; detail: string; flagged?: true }
-/** `audit`: on duty for a one-off audit, not a sales beat (left out of Beat coverage). `trackingOff`: no trail today (TEAM). */
-interface FieldPerson { id: string; name: string; beat: string; audit?: true; reportsTo: string; inAt?: string; km: number | null; shiftStart: string; withdrawnAt?: string; trackingOff?: string; flag?: { at: string }; x: number; y: number }
+// The row and visit shapes (FieldPerson, FieldVisit; `flagged`: a done visit with an open integrity flag) are shared with
+// the live variant in field-force-live.tsx.
 
 const VIKRAM = TEAM.find((t) => t.name === FIELD_DAY.person)!;
 /** Nisha's audit day comes from TEAM t6, including her tracking being off for the audit. */
@@ -516,20 +564,20 @@ const VISITS: FieldVisit[] = [
 ];
 
 const VISIT_TONE: Record<VisitStatus, BadgeTone> = { Done: 'success', 'On site': 'info', Upcoming: 'neutral', Missed: 'danger' };
-const visitsOf = (id: string) => VISITS.filter((x) => x.person === id);
+const visitsOf = (id: string, list: FieldVisit[] = VISITS) => list.filter((x) => x.person === id);
 /** A done visit with an open flag isn't counted as done until the flag is reviewed. */
-const doneOf = (id: string, flagOpen = true) => visitsOf(id).filter((x) => x.status === 'Done' && !(flagOpen && x.flagged)).length;
-const visitCount = (id: string, flagOpen = true) => {
-  const flagged = flagOpen ? visitsOf(id).filter((x) => x.flagged).length : 0;
-  return `${doneOf(id, flagOpen)} of ${visitsOf(id).length}${flagged ? ` (${flagged} flagged)` : ''}`;
+const doneOf = (id: string, flagOpen = true, list: FieldVisit[] = VISITS) => visitsOf(id, list).filter((x) => x.status === 'Done' && !(flagOpen && x.flagged)).length;
+const visitCount = (id: string, flagOpen = true, list: FieldVisit[] = VISITS) => {
+  const flagged = flagOpen ? visitsOf(id, list).filter((x) => x.flagged).length : 0;
+  return `${doneOf(id, flagOpen, list)} of ${visitsOf(id, list).length}${flagged ? ` (${flagged} flagged)` : ''}`;
 };
 /** Visits and distance in one line; distance left out when there is no trail, and "Tracking off" said when it's off. */
-const visitsLine = (p: FieldPerson, flagOpen = true) =>
-  [`${visitCount(p.id, flagOpen)} visits`, p.km !== null ? `${p.km} km` : p.trackingOff && 'Tracking off'].filter(Boolean).join(' · ');
-const nameOf = (id: string) => FIELD.find((f) => f.id === id)?.name ?? '';
+const visitsLine = (p: FieldPerson, flagOpen = true, list: FieldVisit[] = VISITS) =>
+  [`${visitCount(p.id, flagOpen, list)} visits`, p.km !== null ? `${p.km} km` : p.trackingOff && 'Tracking off'].filter(Boolean).join(' · ');
 
 /** `flagOpen`: a flagged visit shows an amber "Flagged" badge until its flag is reviewed. */
-function VisitList({ visits, showPerson, flagOpen = true }: { visits: FieldVisit[]; showPerson?: boolean; flagOpen?: boolean }) {
+function VisitList({ visits, showPerson, flagOpen = true, people = FIELD }: { visits: FieldVisit[]; showPerson?: boolean; flagOpen?: boolean; people?: FieldPerson[] }) {
+  const nameOf = (id: string) => people.find((f) => f.id === id)?.name ?? '';
   return (
     <ul className="yx-tim-list">
       {visits.map((x) => (
@@ -546,19 +594,61 @@ function VisitList({ visits, showPerson, flagOpen = true }: { visits: FieldVisit
   );
 }
 
-export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: { persona?: 'mgr' | 'hr'; openId?: string; state?: 'ready' | 'empty' }) {
+/** Minutes since midnight in India now (live: the "shift started" comparison). */
+const istNowMin = () => {
+  const d = new Date(Date.now() + 330 * 60_000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+};
+const FLAG_TITLE = { mock: 'Mock location detected', speed: 'Impossible speed detected' } as const;
+
+// TIM-32: the story shows the Chennai sales sample; the app passes `live` (the manager's team or HR's scope, today).
+export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready', live }: { persona?: 'mgr' | 'hr'; openId?: string; state?: 'ready' | 'empty'; live?: LiveFieldForce }) {
+  if (live && (live.state !== 'ready' || !live.data)) return <FieldForcePending live={live} />;
+  return <FieldForceView persona={persona} openId={openId} state={state} live={live} />;
+}
+
+function FieldForcePending({ live }: { live: LiveFieldForce }) {
+  return (
+    <TimePage active="Today">
+      <PageHeader title="Field force · today" description="Duty time only" />
+      {live.state === 'error' ? (
+        <ErrorState title="The field force map didn't load" description="Check your connection and try again." onRetry={live.onRetry} />
+      ) : live.state === 'no-access' ? (
+        <NoAccessState what="the field force map" grantedBy="HR" note="Managers see their own team; HR sees the people in their scope." />
+      ) : (
+        <LoadingBlock rows={6} />
+      )}
+    </TimePage>
+  );
+}
+
+function FieldForceView({ persona: personaProp, openId, state: stateProp, live }: { persona: 'mgr' | 'hr'; openId?: string; state: 'ready' | 'empty'; live?: LiveFieldForce }) {
+  const { say } = useSay();
+  const { busy, error, run } = useRun();
+  const d = live?.data ?? null;
+  const drawn = d ? teamDrawing(d) : null;
+  const persona = d ? (d.scope === 'granted' ? 'hr' : 'mgr') : personaProp;
   const user = persona === 'hr' ? HR_ADMIN : SALES_MANAGER;
-  const rows = persona === 'hr' ? FIELD : FIELD.filter((f) => f.reportsTo === user.name);
-  const [open, setOpen] = useState(openId ?? null);
+  const people = drawn ? drawn.rows : FIELD;
+  // Live: each visit's flag stays open until that person's flags are reviewed (the API sends it per person).
+  const visits = d ? d.visits.map((x) => visitRow(x, Boolean(d.people.find((p) => p.id === x.employeeId)?.flag))) : VISITS;
+  const rows = live || persona === 'hr' ? people : people.filter((f) => f.reportsTo === user.name);
+  const state = d ? (rows.length ? 'ready' : 'empty') : stateProp;
+  const [openLocal, setOpenLocal] = useState(openId ?? null);
+  const open = live ? live.openId : openLocal;
+  const setOpen = live ? live.onOpen : setOpenLocal;
   const [who, setWho] = useState<string | null>('all');
   const [flag, setFlag] = useState<'open' | 'asked' | 'reviewed'>('open');
   const [messaged, setMessaged] = useState<string[]>([]);
   const [askedHr, setAskedHr] = useState(false);
   const person = rows.find((f) => f.id === open);
-  const nowMin = NOW_MIN;
-  const tracked = rows.filter((f) => f.inAt && f.km !== null);
-  const flagOpen = flag !== 'reviewed';
-  const teamVisits = VISITS.filter((x) => rows.some((r) => r.id === x.person));
+  const nowMin = live ? istNowMin() : NOW_MIN;
+  const tracked = rows.filter((f) => f.inAt && f.km !== null && !f.offMap);
+  // Live flags are per person (open until reviewed, from the API); the sample has one flag.
+  const flagOpen = live ? true : flag !== 'reviewed';
+  const flagShown = live ? Boolean(person?.flag) : Boolean(person?.flag) && flag !== 'reviewed';
+  const flagReviewed = live ? Boolean(person && !person.flag && person.reviewedBy) : Boolean(person?.flag) && flag === 'reviewed';
+  const teamVisits = visits.filter((x) => rows.some((r) => r.id === x.person));
   const shownVisits = who && who !== 'all' ? teamVisits.filter((x) => x.person === who) : teamVisits;
   // Beat coverage counts the same people its By beat list shows (audits are not beats).
   const beatRows = rows.filter((f) => !f.audit);
@@ -566,25 +656,32 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
   const isDone = (x: FieldVisit) => x.status === 'Done' && !(flagOpen && x.flagged);
   const count = (s: VisitStatus) => beatVisits.filter((x) => x.status === s).length;
   const planned = beatVisits.filter((x) => x.planned);
+  const late = (f: FieldPerson) => Boolean(f.shiftStart) && nowMin > toMin(f.shiftStart);
   const statusBadge = (f: FieldPerson) =>
-    !f.inAt ? <Badge tone={nowMin > toMin(f.shiftStart) ? 'warning' : 'neutral'}>Not checked in</Badge>
-      : f.withdrawnAt ? <Badge tone="neutral">No trail</Badge>
-        : f.flag ? <Badge tone="warning">Flag: mock location</Badge>
-          : visitsOf(f.id).some((x) => x.status === 'On site') ? <Badge tone="info">On site</Badge>
+    !f.inAt ? <Badge tone={late(f) ? 'warning' : 'neutral'}>Not checked in</Badge>
+      : f.withdrawnAt || f.withdrawnOn || f.noConsent ? <Badge tone="neutral">No trail</Badge>
+        : f.flag ? <Badge tone="warning">{f.flag.kind === 'speed' ? 'Flag: impossible speed' : 'Flag: mock location'}</Badge>
+          : visitsOf(f.id, visits).some((x) => x.status === 'On site') ? <Badge tone="info">On site</Badge>
             : null;
   const first = person?.name.split(' ')[0];
-  const done = person ? visitsOf(person.id).filter((x) => x.status === 'Done') : [];
+  const done = person ? visitsOf(person.id, visits).filter((x) => x.status === 'Done') : [];
+  const day = live?.person.data && live.person.data.person.id === person?.id ? live.person.data : null;
+  const trail = day ? trailDrawing(day) : null;
+  const officeFences = drawn ? drawn.fences : [{ id: 'o', label: 'Chennai office', x: 70, y: 150, r: 18 }];
   return (
     <TimePage active="Today" user={user}>
-      <PageHeader title="Field force · today" description={`${persona === 'hr' ? 'All field staff' : 'Your team'}${state === 'empty' ? '' : ' · duty time only · trails kept 90 days, then only distance and visits'}`} />
+      <PageHeader title="Field force · today" description={`${persona === 'hr' ? 'All field staff' : 'Your team'}${state === 'empty' ? '' : d ? ` · duty time only · trails kept ${d.retentionDays} days` : ' · duty time only · trails kept 90 days, then only distance and visits'}`} />
       {state === 'empty' ? (
-        persona === 'hr' ? (
-          <EmptyState title="Field tracking is off for this group" description="Turn it on per group in Settings › Check-in & devices. Each person then gives consent before any location is recorded." action={<StoryLink to="checkInSettings">Open settings</StoryLink>} />
+        d && !d.trackingOff ? (
+          <EmptyState title="No field staff to show" description="No one in your reach has field tracking on or visits planned today." />
+        ) : persona === 'hr' ? (
+          <EmptyState title="Field tracking is off for this group" description="Turn it on per group in Settings › Check-in & devices. Each person then gives consent before any location is recorded." action={live ? <Button asChild><a href={live.settingsHref}>Open settings</a></Button> : <StoryLink to="checkInSettings">Open settings</StoryLink>} />
         ) : (
           <EmptyState
             title="Field tracking is off for your group"
             description={askedHr ? 'Request sent to HR. Each person gives consent before any location is recorded.' : 'Ask HR to turn on field tracking for your group. Each person then gives consent before any location is recorded.'}
-            action={<Button disabled={askedHr} onClick={() => setAskedHr(true)}>{askedHr ? 'Asked HR' : 'Ask HR'}</Button>}
+            // Asking HR from here is not built yet (live shows the advice only).
+            action={live ? undefined : <Button onClick={() => say(askedHr && 'You already asked HR.', () => setAskedHr(true))}>{askedHr ? 'Asked HR' : 'Ask HR'}</Button>}
           />
         )
       ) : (
@@ -594,7 +691,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
             <div className="yx-tim-grid">
               <div data-span="8">
                 <GeoMap
-                  fences={[{ id: 'o', label: 'Chennai office', x: 70, y: 150, r: 18 }]}
+                  fences={officeFences}
                   pins={tracked.map((f) => ({ id: f.id, label: f.name, x: f.x, y: f.y, kind: 'person' as const, tone: f.flag ? ('warn' as const) : undefined }))}
                   // Pins show an initial, so the caption names them (no hover on a phone).
                   caption={`Live positions during duty hours${tracked.length ? ` · ${tracked.map((f) => `${f.name[0]} = ${f.name.split(' ')[0]}`).join(', ')}` : ''}`}
@@ -607,7 +704,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
                     {rows.map((f) => (
                       <li key={f.id}>
                         <span className="yx-tim-list__main">
-                          <PersonLabel name={f.name} secondary={persona === 'hr' ? `${visitsLine(f, flagOpen)} · ${f.reportsTo}` : visitsLine(f, flagOpen)} />
+                          <PersonLabel name={f.name} secondary={persona === 'hr' ? `${visitsLine(f, flagOpen, visits)} · ${f.reportsTo}` : visitsLine(f, flagOpen, visits)} />
                         </span>
                         <span className="yx-tim-row">
                           {statusBadge(f)}
@@ -625,7 +722,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
               <FormField label="Person">
                 <Select value={who} onChange={setWho} options={[{ value: 'all', label: 'Everyone' }, ...rows.map((r) => ({ value: r.id, label: r.name }))]} />
               </FormField>
-              <VisitList visits={shownVisits} showPerson flagOpen={flagOpen} />
+              {shownVisits.length ? <VisitList visits={shownVisits} showPerson flagOpen={flagOpen} people={rows} /> : <EmptyState title="No visits today" description="Visits show here once they are planned or checked in." />}
             </div>
           </TabsContent>
           <TabsContent value="beats">
@@ -634,7 +731,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
               <Card title="By beat">
                 <ul className="yx-tim-list">
                   {beatRows.map((f) => {
-                    const mine = visitsOf(f.id);
+                    const mine = visitsOf(f.id, visits);
                     const plan = mine.filter((x) => x.planned);
                     const planDone = plan.filter(isDone).length;
                     const extra = mine.length - plan.length;
@@ -660,54 +757,63 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
           <div className="yx-tim-stack">
             {!person.inAt ? (
               <InlineAlert
-                tone={nowMin > toMin(person.shiftStart) ? 'warning' : 'info'}
+                tone={late(person) ? 'warning' : 'info'}
                 title="Not on duty yet"
                 actions={
-                  <Button size="sm" disabled={messaged.includes(person.id)} onClick={() => setMessaged((m) => [...m, person.id])}>
-                    {messaged.includes(person.id) ? 'Message sent' : `Message ${first}`}
-                  </Button>
+                  // Messaging from here is not built yet (live shows the state only).
+                  live ? undefined : (
+                    <Button size="sm" onClick={() => say(messaged.includes(person.id) && 'Message already sent.', () => setMessaged((m) => [...m, person.id]))}>
+                      {messaged.includes(person.id) ? 'Message sent' : `Message ${first}`}
+                    </Button>
+                  )
                 }
               >
-                Shift started {fmt12(person.shiftStart)}. Nothing is recorded until {first} checks in.
+                {person.shiftStart ? `Shift started ${fmt12(person.shiftStart)}. ` : 'No shift today. '}Nothing is recorded until {first} checks in.
               </InlineAlert>
             ) : (
               <>
                 <Kpis
                   items={[
                     ...(person.km === null ? [] : [{ label: 'Distance', value: `${person.km} km`, note: 'From duty trail' }]),
-                    { label: 'Visits', value: visitCount(person.id, flagOpen) },
+                    { label: 'Visits', value: visitCount(person.id, flagOpen, visits) },
                   ]}
                 />
-                {person.withdrawnAt ? (
-                  <InlineAlert tone="info" title={`No trail: consent withdrawn at ${fmt12(person.withdrawnAt)}`}>Visits are still logged as field check-ins.</InlineAlert>
+                {person.withdrawnAt || person.withdrawnOn ? (
+                  <InlineAlert tone="info" title={person.withdrawnAt ? `No trail: consent withdrawn at ${fmt12(person.withdrawnAt)}` : `No trail: consent withdrawn on ${person.withdrawnOn}`}>Visits are still logged as field check-ins.</InlineAlert>
                 ) : person.trackingOff ? (
                   <InlineAlert tone="info" title={`Tracking off today: ${person.trackingOff}`}>No location trail is recorded. Visits are still logged as check-ins.</InlineAlert>
+                ) : person.noConsent ? (
+                  <InlineAlert tone="info" title={`No trail: ${first} has not agreed to location tracking`}>Visits are still logged as field check-ins.</InlineAlert>
+                ) : live && !trail ? (
+                  live.person.state === 'error' ? <InlineAlert tone="danger" title="The trail didn't load">Close this panel and open it again.</InlineAlert> : <LoadingBlock rows={3} />
                 ) : (
                   <GeoMap
-                    fences={[{ id: 'o', label: 'Office', x: 60, y: 150, r: 16 }]}
-                    pins={done.map((x, i) => ({ id: x.id, label: x.place.split(',')[0], x: 120 + i * 60, y: 120 - i * 35, kind: 'visit' as const }))}
-                    trail={[[60, 150], ...done.map((_, i) => [120 + i * 60, 120 - i * 35] as [number, number])]}
+                    fences={trail ? trail.fences : [{ id: 'o', label: 'Office', x: 60, y: 150, r: 16 }]}
+                    pins={trail ? trail.pins : done.map((x, i) => ({ id: x.id, label: x.place.split(',')[0], x: 120 + i * 60, y: 120 - i * 35, kind: 'visit' as const }))}
+                    trail={trail ? trail.trail : [[60, 150], ...done.map((_, i) => [120 + i * 60, 120 - i * 35] as [number, number])]}
                     caption="Trail during duty only"
                   />
                 )}
-                {person.flag && flag !== 'reviewed' && (
+                {person.flag && flagShown && (
                   <InlineAlert
                     tone="warning"
-                    title={`Mock location detected ${fmt12(person.flag.at)}`}
+                    title={`${FLAG_TITLE[person.flag.kind ?? 'mock']} ${fmt12(person.flag.at)}`}
                     actions={
                       <>
-                        <Button size="sm" disabled={flag === 'asked'} onClick={() => setFlag('asked')}>{flag === 'asked' ? 'Note requested' : `Ask ${first} for a note`}</Button>
-                        <Button size="sm" variant="review" onClick={() => setFlag('reviewed')}>Mark reviewed</Button>
+                        {/* Asking for a note is not built yet (live: review only). */}
+                        {!live && <Button size="sm" onClick={() => say(flag === 'asked' && 'Note already requested.', () => setFlag('asked'))}>{flag === 'asked' ? 'Note requested' : `Ask ${first} for a note`}</Button>}
+                        <Button size="sm" variant="review" loading={busy === 'review'} onClick={() => (live ? void run('review', () => live.onReview(person.id)) : setFlag('reviewed'))}>Mark reviewed</Button>
                       </>
                     }
                   >
                     Flags are never penalised automatically.{flag === 'asked' ? ` ${first}'s note shows here once added.` : ''}
                   </InlineAlert>
                 )}
-                {person.flag && flag === 'reviewed' && <InlineAlert tone="success" title="Flag reviewed">Marked reviewed by {user.name}.</InlineAlert>}
+                {error && <InlineAlert tone="danger" title="Not marked reviewed">{error}</InlineAlert>}
+                {flagReviewed && <InlineAlert tone="info" title="Flag reviewed">Marked reviewed by {live ? person.reviewedBy : user.name}.</InlineAlert>}
               </>
             )}
-            <Card title="Visits today"><VisitList visits={visitsOf(person.id)} flagOpen={flagOpen} /></Card>
+            <Card title="Visits today">{visitsOf(person.id, visits).length ? <VisitList visits={visitsOf(person.id, visits)} flagOpen={flagOpen} people={rows} /> : <p className="yx-tim-muted">No visits planned today.</p>}</Card>
             <p className="yx-tim-note">No per-minute timeline outside duty hours. Nothing is recorded on leave, weekly offs or after check-out.</p>
           </div>
         )}
@@ -720,7 +826,7 @@ export function FieldForceScreen({ persona = 'mgr', openId, state = 'ready' }: {
    TIM-33 · Visit check-in, beat plan & distance conveyance (phone)
    ===================================================================== */
 
-export type FieldPhoneView = 'consent' | 'beat' | 'visit' | 'visit_outside' | 'photo' | 'conveyance' | 'withdrawn' | 'pwa';
+export type FieldPhoneView = 'consent' | 'beat' | 'visit' | 'visit_outside' | 'photo' | 'conveyance' | 'withdrawn' | 'pwa' | 'withdraw';
 
 const MY_VISITS = visitsOf('v');
 const UNPLANNED: FieldVisit = { id: 'u', person: 'v', place: 'Unplanned visit', time: '', status: 'On site', planned: false, detail: '' };
@@ -750,7 +856,10 @@ const startMin = (t: string) => {
 };
 
 export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
-  const [v, setV] = useState<FieldPhoneView>(view);
+  const { say, toast } = useSay();
+  // 'withdraw': the beat plan with the withdraw dialog open.
+  const [v, setV] = useState<FieldPhoneView>(view === 'withdraw' ? 'beat' : view);
+  const [asking, setAsking] = useState(view === 'withdraw');
   const [consent, setConsent] = useState<'on' | 'off' | 'withdrawn'>(view === 'withdrawn' ? 'withdrawn' : view === 'consent' ? 'off' : 'on');
   const [checkedIn, setCheckedIn] = useState(view === 'visit' || view === 'photo');
   /** Where the open visit is: outside its site (480 m away) or inside it. */
@@ -819,7 +928,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
         onConfirm={() => setDayEnded(true)}
       />
     ) : (
-      <Button fullWidth disabled={!!openId || dayEnded} onClick={() => setDayEnded(true)}>{dayEnded ? 'Day ended' : 'End day'}</Button>
+      <Button fullWidth onClick={() => say(openId ? 'Check out of the open visit first.' : dayEnded && 'Your day has already ended.', () => setDayEnded(true))}>{dayEnded ? 'Day ended' : 'End day'}</Button>
     )
   );
   const km = consent === 'on' ? FIELD_DAY.km : consent === 'withdrawn' ? Math.round((KM_WITHDRAWN.trail + KM_WITHDRAWN.after) * 10) / 10 : KM_ESTIMATED;
@@ -829,11 +938,20 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
   const visitLine = (x: FieldVisit) => [x.time, !x.planned && 'Unplanned', x.detail].filter(Boolean).join(' · ');
   return (
     <PhoneFrame tab="time" title={title} back={back} hideTabs={onVisit}>
+      <WithdrawConsentDialog
+        open={asking}
+        onOpenChange={setAsking}
+        kind="field"
+        onConfirm={() => {
+          setConsent('withdrawn');
+          toast({ tone: 'success', title: 'Consent withdrawn', description: 'Location tracking has stopped and your location trail is deleted.' });
+        }}
+      />
       {tracking && !onVisit && v !== 'consent' && (
         <InlineAlert
           tone="info"
           title={v === 'pwa' ? 'Tracking only while this page is open' : 'Location tracking is on'}
-          actions={v === 'pwa' ? <Button size="sm" disabled={installAsked} onClick={() => setInstallAsked(true)}>{installAsked ? 'Follow your browser’s prompt' : 'Install the app'}</Button> : undefined}
+          actions={v === 'pwa' ? <Button size="sm" onClick={() => say(installAsked && 'Follow your browser’s prompt.', () => setInstallAsked(true))}>{installAsked ? 'Follow your browser’s prompt' : 'Install the app'}</Button> : <Button size="sm" onClick={() => setAsking(true)}>Withdraw consent</Button>}
         >
           {v === 'pwa' ? 'You are using the web app: location is recorded only while this page is open. Install the app for background tracking.' : `Location is recorded ${TRACKING_RULE}.`}
         </InlineAlert>
@@ -864,7 +982,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
         </InlineAlert>
       )}
       {dayEnded && (v === 'beat' || v === 'pwa' || v === 'withdrawn') && (
-        <InlineAlert tone="success" title={`Day ended at ${VISIT_IN}`} actions={<Button size="sm" onClick={() => setV('conveyance')}>Review mileage</Button>}>
+        <InlineAlert tone="info" title={`Day ended at ${VISIT_IN}`} actions={<Button size="sm" onClick={() => setV('conveyance')}>Review mileage</Button>}>
           Tracking has stopped. Your draft mileage claim is ready to review.
         </InlineAlert>
       )}
@@ -892,7 +1010,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
             })}
             <li>
               <div className="yx-tim-stack" style={{ flex: 1 }}>
-                <Button fullWidth disabled={!!openId || dayEnded} onClick={() => startVisit('u')}>Add unplanned visit</Button>
+                <Button fullWidth onClick={() => say(openId ? 'Check out of the open visit first.' : dayEnded && 'Your day has already ended.', () => startVisit('u'))}>Add unplanned visit</Button>
                 {endDayButton}
                 {openId && <p className="yx-tim-muted">Check out of {cur.place.split(',')[0]} first.</p>}
               </div>
@@ -922,14 +1040,14 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
               <FormField label="Outcome" required><Select value={outcome} onChange={setOutcome} placeholder="Pick an outcome" options={OUTCOMES} /></FormField>
               <FormField label="Notes" optional><TextArea rows={2} value={notes} onChange={setNotes} /></FormField>
               {photoUsed ? <div className="yx-tim-row"><Badge tone="success">Photo added · {PHOTO_AT}</Badge></div> : <Button fullWidth onClick={() => { setShot(false); setV('photo'); }}>Take photo (camera only)</Button>}
-              <Button variant="primary" fullWidth disabled={!outcome} onClick={checkOut}>Check out of visit</Button>
+              <Button variant="primary" fullWidth onClick={() => say(!outcome && 'Choose how the visit went.', checkOut)}>Check out of visit</Button>
               {!outcome && <p className="yx-tim-muted">Pick an outcome to check out.</p>}
             </>
           ) : unplanned ? (
             <>
               <FormField label="Shop name" required><TextField value={shop} onChange={setShop} /></FormField>
               <FormField label="Purpose" optional><TextField value={purpose} onChange={setPurpose} /></FormField>
-              <Button variant="primary" fullWidth disabled={!shop.trim()} onClick={() => setCheckedIn(true)}>Check in here</Button>
+              <Button variant="primary" fullWidth onClick={() => say(!shop.trim() && 'Type the shop name.', () => setCheckedIn(true))}>Check in here</Button>
               {!shop.trim() && <p className="yx-tim-muted">Enter the shop name to check in.</p>}
             </>
           ) : (
@@ -962,7 +1080,7 @@ export function FieldVisitPhone({ view = 'beat' }: { view?: FieldPhoneView }) {
             height={170}
           />
           <InlineAlert tone="info" title="Draft mileage line">{km} km {dayEnded ? 'today' : 'so far'} · two-wheeler. The line updates until you end your day, then waits for you in Pay › Expenses. Nothing is paid until you confirm and it's approved.</InlineAlert>
-          <Button variant="primary" fullWidth disabled={!dayEnded || claimSaved} onClick={() => setClaimSaved(true)}>{claimSaved ? 'Sent to Pay › Expenses' : 'Send to Pay › Expenses'}</Button>
+          <Button variant="primary" fullWidth onClick={() => say(!dayEnded ? 'End your day first.' : claimSaved && 'Already sent to Pay › Expenses.', () => setClaimSaved(true))}>{claimSaved ? 'Sent to Pay › Expenses' : 'Send to Pay › Expenses'}</Button>
           {/* The blocked button's reason carries the action that unblocks it. */}
           {!dayEnded && (
             <>
@@ -1015,8 +1133,16 @@ const TEAM_PRESENCE: PresenceDay[] = ([
 ] satisfies PresenceDay[]).sort((a, b) => b.date.getTime() - a.date.getTime());
 
 /** `consent`: 'none' is the employee who never gave it; 'withdrawn' marks the story about Fathima's withdrawal (the withdrawal itself holds in every view). `openId`: a day whose drawer starts open. */
-export function PresenceDayScreen({ persona = 'emp', consent = 'given', openId: openInit }: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string }) {
+/** TIM-36 · Presence-based attendance. The app passes `live` (Time › Presence days); stories show the sample. */
+export function PresenceDayScreen(p: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string; /** 'withdraw': the employee's withdraw dialog is open. */ dialog?: 'withdraw'; live?: LivePresence }) {
+  return p.live ? <LivePresenceScreen live={p.live} /> : <SamplePresenceDay {...p} />;
+}
+
+function SamplePresenceDay({ persona = 'emp', consent = 'given', openId: openInit, dialog }: { persona?: 'emp' | 'mgr' | 'hr'; consent?: 'given' | 'none' | 'withdrawn'; openId?: string; dialog?: 'withdraw' }) {
   const isEmp = persona === 'emp';
+  const { toast } = useToast();
+  const [asking, setAsking] = useState(dialog === 'withdraw');
+  const [withdrawnNow, setWithdrawnNow] = useState(false);
   const [dept, setDept] = useState<string | null>('all');
   const [showRecord, setShowRecord] = useState(false);
   const all = isEmp ? MY_PRESENCE : persona === 'mgr' ? TEAM_PRESENCE.filter((d) => TEAM.some((t) => t.name === d.person && t.reportsTo === ME.name)) : TEAM_PRESENCE;
@@ -1038,10 +1164,23 @@ export function PresenceDayScreen({ persona = 'emp', consent = 'given', openId: 
   /** Without consent the web check-in and check-out decide the day; no check-out means no status yet. */
   const statusOf = (d: PresenceDay): DayStatus => (hasConsent(d) || d.webOut ? d.status : 'No check-out');
   const webLine = (d: PresenceDay) => (d.webIn ? `Checked in ${fmt12(d.webIn)} on the web` : 'No check-in');
-  const fmtDay = (d: Date) => formatDate(d).slice(0, -5).replace(/^0/, '');
+  const fmtDay = formatDate;
   return (
     <TimePage active={isEmp ? 'My attendance' : 'Muster'} user={persona === 'hr' ? HR_ADMIN : ME}>
-      <PageHeader title={isEmp ? 'My work-from-home days' : persona === 'mgr' ? 'Presence days · My team' : 'Presence days'} description={consent === 'none' ? 'Work-from-home days, from your web check-in and check-out' : 'Work-from-home days, from Teams status and the YukthiX desktop app'} />
+      <PageHeader
+        title={isEmp ? 'My work-from-home days' : persona === 'mgr' ? 'Presence days · My team' : 'Presence days'}
+        description={consent === 'none' || withdrawnNow ? 'Work-from-home days, from your web check-in and check-out' : 'Work-from-home days, from Teams status and the YukthiX desktop app'}
+        actions={isEmp && consent === 'given' && !withdrawnNow ? <Button size="sm" onClick={() => setAsking(true)}>Withdraw consent</Button> : undefined}
+      />
+      <WithdrawConsentDialog
+        open={asking}
+        onOpenChange={setAsking}
+        kind="presence"
+        onConfirm={() => {
+          setWithdrawnNow(true);
+          toast({ tone: 'success', title: 'Consent withdrawn', description: 'Presence tracking has stopped and your presence trail is deleted.' });
+        }}
+      />
       <div className="yx-tim-stack">
         {persona === 'hr' && (
           <FormField label="Department">
@@ -1060,7 +1199,7 @@ export function PresenceDayScreen({ persona = 'emp', consent = 'given', openId: 
               {days.map((d) => (
                 <li key={d.id}>
                   <span className="yx-tim-list__main">
-                    <strong>{isEmp ? dayLabel(d.date) : `${d.person} · ${dayLabel(d.date)}`}</strong>
+                    <strong>{isEmp ? <DayDate date={d.date} /> : <>{d.person} · <DayDate date={d.date} /></>}</strong>
                     <span className="yx-tim-muted">{hasConsent(d) ? `Active ${d.active}` : webLine(d)}</span>
                   </span>
                   <Badge tone={statusTone(statusOf(d))}>{statusOf(d)}</Badge>
@@ -1124,6 +1263,140 @@ export function PresenceDayScreen({ persona = 'emp', consent = 'given', openId: 
           </div>
         )}
       </Drawer>
+    </TimePage>
+  );
+}
+
+/* ---------- live: /time/presence (TIM-36) ---------- */
+
+/** Me: my work-from-home days and my consent; or my team / HR's people: the day's status and total active time only. */
+export interface LivePresence {
+  state: LoadState;
+  onRetry?: () => void;
+  month: string;
+  onMonth: (month: string) => void;
+  /** Employee view (my own days). */
+  mine?: MyPresence | null;
+  onConsent?: (action: 'give' | 'withdraw') => Promise<unknown>;
+  /** Manager / HR view. */
+  team?: TeamPresence | null;
+  musterHref?: string;
+}
+const PRESENCE_STATUS: Record<string, PresenceDay['status'] | 'No check-out' | 'Absent' | 'Not over yet'> = { present: 'Present', half_day: 'Half day', absent: 'Absent', missing_out: 'No check-out', not_started: 'Not over yet' };
+const hmText = (m: number | null) => (m === null ? '—' : fmtDuration(m));
+
+function LivePresenceScreen({ live }: { live: LivePresence }) {
+  const emp = live.mine !== undefined;
+  const hr = live.team?.scope === 'hr';
+  const all = emp ? (live.mine?.days ?? []) : (live.team?.days ?? []);
+  const [dept, setDept] = useState<string | null>('all');
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [showRecord, setShowRecord] = useState(false);
+  const [ask, setAsk] = useState<'give' | 'withdraw' | null>(null);
+  const days = hr && dept !== 'all' ? all.filter((d) => d.dept === dept) : all;
+  const depts = [...new Set(all.map((d) => d.dept ?? '').filter(Boolean))];
+  const day = all.find((d) => d.id === openId);
+  const consent = live.mine?.consent ?? null;
+  const statusOf = (d: PresenceDayRow) => (d.status ? (PRESENCE_STATUS[d.status] ?? d.status) : 'Not over yet');
+  const tone = (s: string): BadgeTone => (s === 'Present' ? 'success' : s === 'Not over yet' ? 'neutral' : 'warning');
+  const webLine = (d: PresenceDayRow) => (d.webIn ? `Checked in ${fmt12(d.webIn)} on the web` : 'No check-in');
+  const onDay = (iso: string) => dayLabel(new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10))));
+  const recorded = (
+    <Card title="What is recorded">
+      <ul className="yx-tim-check"><li><span>Presence states and times</span><Badge tone="success">Yes</Badge></li><li><span>Active or idle (idle after 10 minutes with no activity)</span><Badge tone="success">Yes</Badge></li><li><span>Keystrokes, screenshots, apps, windows, URLs, files, camera, microphone</span><Badge tone="neutral">Never</Badge></li></ul>
+    </Card>
+  );
+  return (
+    <TimePage active={emp ? 'My attendance' : 'Muster'} user={hr ? HR_ADMIN : ME}>
+      <PageHeader
+        title={emp ? 'My work-from-home days' : hr ? 'Presence days' : 'Presence days · My team'}
+        description={emp && !consent ? 'Work-from-home days, from your web check-in and check-out' : 'Work-from-home days, from the YukthiX desktop app (Teams presence: not connected yet)'}
+        actions={
+          <div className="yx-tim-row">
+            <Button size="sm" onClick={() => live.onMonth(shiftMonth(live.month, -1))}>Previous month</Button>
+            <Button size="sm" onClick={() => live.onMonth(shiftMonth(live.month, 1))}>Next month</Button>
+            {emp && live.mine?.enabled && (consent ? <Button size="sm" onClick={() => setAsk('withdraw')}>Withdraw consent</Button> : <Button size="sm" variant="primary" onClick={() => setAsk('give')}>Review and give consent</Button>)}
+          </div>
+        }
+      />
+      <LiveGate state={live.state} onRetry={live.onRetry} what="presence days">
+        <div className="yx-tim-stack">
+          {emp && live.mine && !live.mine.enabled && <InlineAlert tone="info" title="Presence-based attendance is off">Your company has not turned it on. Your web check-in and check-out decide your work-from-home days.</InlineAlert>}
+          {hr && depts.length > 1 && (
+            <FormField label="Department">
+              <Select value={dept} onChange={setDept} options={[{ value: 'all', label: 'All departments' }, ...depts.map((x) => ({ value: x, label: x }))]} />
+            </FormField>
+          )}
+          <Card title={`Work-from-home days · ${monthText(live.month)}`}>
+            {days.length === 0 ? (
+              emp ? <EmptyState compact title="No work-from-home days" description="Your approved work-from-home days show here." /> : <EmptyState compact title="No presence days" description="Work-from-home days show here once someone works from home." />
+            ) : (
+              <ul className="yx-tim-list">
+                {days.map((d) => (
+                  <li key={d.id}>
+                    <span className="yx-tim-list__main">
+                      <strong>{emp ? onDay(d.on) : `${d.person} · ${onDay(d.on)}`}</strong>
+                      <span className="yx-tim-muted">{d.byPresence ? `Active ${hmText(d.activeMinutes)}` : webLine(d)}</span>
+                    </span>
+                    <Badge tone={tone(statusOf(d))}>{statusOf(d)}</Badge>
+                    <Button size="sm" onClick={() => { setOpenId(d.id); setShowRecord(false); }}>Open</Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      </LiveGate>
+      <Drawer open={!!day} onOpenChange={(o) => !o && setOpenId(null)} title={day ? (emp ? onDay(day.on) : `${day.person} · ${onDay(day.on)}`) : ''} subtitle="Work from home">
+        {day && (
+          <div className="yx-tim-stack">
+            {!day.byPresence ? (
+              <>
+                <InlineAlert tone={day.withdrawnAt ? 'warning' : 'info'} title={day.withdrawnAt ? `Consent withdrawn on ${formatDate(new Date(day.withdrawnAt))}` : day.consent ? 'No presence recorded that day' : 'No consent'}>
+                  {day.consent ? 'The day used the web check-in and check-out.' : 'No presence signals are read.'} {day.webOut ? `It used ${emp ? 'your' : 'the'} web check-in and check-out.` : day.webIn ? 'It has a web check-in but no check-out.' : ''}
+                </InlineAlert>
+                <div className="yx-tim-row"><Badge tone={tone(statusOf(day))}>{statusOf(day)}</Badge><span>{webLine(day)}{day.webOut ? ` · out ${fmt12(day.webOut)}` : ''}</span></div>
+                {!emp && live.musterHref && <Button asChild><a href={live.musterHref}>Open in muster</a></Button>}
+              </>
+            ) : (
+              <>
+                <div className="yx-tim-row"><Badge tone={tone(statusOf(day))}>{statusOf(day)}</Badge>{day.consent?.givenAt && <Badge tone="neutral">Consent given {formatDate(new Date(day.consent.givenAt))}</Badge>}</div>
+                <Kpis items={emp ? [{ label: 'First active', value: day.first ? fmt12(day.first) : '—' }, { label: 'Last active', value: day.last ? fmt12(day.last) : '—' }, { label: 'Active time', value: hmText(day.activeMinutes) }] : [{ label: 'Active time', value: hmText(day.activeMinutes) }]} />
+                {emp && recorded}
+                {!emp && <p className="yx-tim-note">Managers and HR see the day status and total active hours only, never a minute-by-minute timeline.</p>}
+              </>
+            )}
+            {hr && (
+              <div className="yx-tim-row">
+                <Button aria-expanded={showRecord} onClick={() => setShowRecord((x) => !x)}>{showRecord ? 'Hide consent record' : 'View consent record'}</Button>
+              </div>
+            )}
+            {hr && showRecord && (
+              <Card title="Consent record">
+                {day.consent ? (
+                  <ul className="yx-tim-list">
+                    <li><span>Given</span><span>{day.consent.givenAt ? formatDate(new Date(day.consent.givenAt)) : '—'} · {day.consent.version}</span></li>
+                    <li><span>Withdrawn</span><span>{day.withdrawnAt ? formatDate(new Date(day.withdrawnAt)) : 'Not withdrawn'}</span></li>
+                  </ul>
+                ) : (
+                  <p className="yx-tim-muted">No consent on record{day.withdrawnAt ? `; withdrawn ${formatDate(new Date(day.withdrawnAt))}` : ''}.</p>
+                )}
+              </Card>
+            )}
+          </div>
+        )}
+      </Drawer>
+      <ConfirmDialog
+        open={ask === 'give'}
+        onOpenChange={(o) => !o && setAsk(null)}
+        title="Let presence decide your work-from-home days?"
+        consequence={`${live.mine?.notice ?? 'Presence notice'}. You can withdraw it at any time; from then on nothing more is read.`}
+        confirmLabel="Give consent"
+        onConfirm={async () => { await live.onConsent!('give'); }}
+      >
+        {recorded}
+      </ConfirmDialog>
+      <WithdrawConsentDialog open={ask === 'withdraw'} onOpenChange={(o) => !o && setAsk(null)} kind="presence" onConfirm={() => live.onConsent!('withdraw')} />
     </TimePage>
   );
 }

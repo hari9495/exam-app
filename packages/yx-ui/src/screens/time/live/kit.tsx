@@ -1,33 +1,35 @@
 import type { ReactNode } from 'react';
 import { Badge, type BadgeTone } from '../../../components/display';
 import { ErrorState, NoAccessState, Skeleton } from '../../../components/feedback';
+import { NoRecordState } from '../time-kit';
 import { PageHeader } from '../../../components/shell';
 import type { DayStatus, LeaveStatus, LoadState } from './types';
 
 // Small shared pieces of the wired time screens: the page frame with its load states, and plain-English labels.
 
-export function LivePage({ title, description, actions, state, onRetry, what, grantedBy = 'HR', children }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; state: LoadState; onRetry?: () => void; what: string; grantedBy?: string; children: ReactNode }) {
+export function LivePage({ title, description, facts, actions, state, onRetry, what, grantedBy = 'HR', children }: { title: ReactNode; description?: ReactNode; /** The header's facts line (counts), as the designed PageHeader shows it. */ facts?: ReactNode; actions?: ReactNode; state: LoadState; onRetry?: () => void; what: string; grantedBy?: string; children: ReactNode }) {
   return (
     <div className="yx-auth__page yx-tim-live">
-      <PageHeader title={title} description={description} actions={state === 'ready' ? actions : undefined} />
+      <PageHeader title={title} description={description} facts={state === 'ready' ? facts : undefined} actions={state === 'ready' ? actions : undefined} />
       {state === 'loading' && (
-        <div className="yx-tim-stack" aria-busy="true" aria-label={`Loading ${what}`}>
+        <div className="yx-tim-stack" role="status" aria-busy="true" aria-label={`Loading ${what}`}>
           <Skeleton height={96} />
           <Skeleton height={240} />
         </div>
       )}
       {state === 'error' && <ErrorState title={`We couldn't load ${what}.`} description="Nothing has changed. Try again in a moment." onRetry={onRetry} />}
       {state === 'no-access' && <NoAccessState grantedBy={grantedBy} what={what} />}
+      {state === 'no-record' && <NoRecordState />}
       {state === 'ready' && <div className="yx-tim-stack">{children}</div>}
     </div>
   );
 }
 
 const D = (iso: string) => new Date(`${iso}T00:00:00Z`);
-/** "Mon 12 Oct" */
-export const dayText = (iso: string) => D(iso).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 /** "12 Oct 2026" */
 export const dateText = (iso: string) => D(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+/** Same as dateText: a date always shows its year; show a weekday with <DayDate>, never merged in. */
+export const dayText = dateText;
 export const rangeText = (from: string, to: string) => (from === to ? dayText(from) : `${dayText(from)} to ${dayText(to)}`);
 export const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 export const addDays = (iso: string, n: number) => new Date(D(iso).getTime() + n * 86_400_000).toISOString().slice(0, 10);
@@ -49,6 +51,8 @@ export const LEAVE_STATUS: Record<LeaveStatus, { label: string; tone: BadgeTone 
   withdrawn: { label: 'Withdrawn', tone: 'neutral' },
   cancel_pending: { label: 'Cancellation waiting', tone: 'warning' },
   cancelled: { label: 'Cancelled', tone: 'neutral' },
+  sent_back: { label: 'Sent back for changes', tone: 'warning' },
+  resent: { label: 'Changed and sent again', tone: 'neutral' },
 };
 export const LeaveStatusBadge = ({ status }: { status: LeaveStatus }) => <Badge tone={LEAVE_STATUS[status].tone}>{LEAVE_STATUS[status].label}</Badge>;
 
@@ -63,6 +67,9 @@ export const DAY_STATUS: Record<DayStatus, { label: string; code: string; tone: 
   missing_out: { label: 'Missing check-out', code: 'MO', tone: 'warning' },
   no_timesheet: { label: 'No timesheet yet', code: 'NT', tone: 'warning' },
   not_started: { label: 'Day not over', code: '·', tone: 'neutral' },
+  strike: { label: 'Strike', code: 'ST', tone: 'neutral' },
+  lockout: { label: 'Lockout', code: 'LO', tone: 'neutral' },
+  layoff: { label: 'Lay-off', code: 'LF', tone: 'neutral' },
 };
 export const DayStatusBadge = ({ status, leavePart }: { status: DayStatus; leavePart?: string | null }) => (
   <Badge tone={DAY_STATUS[status].tone}>

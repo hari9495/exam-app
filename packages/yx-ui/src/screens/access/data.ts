@@ -1,5 +1,5 @@
 // Fictional Kaveri Foods sample data for the stories and tests (review rule R3).
-import type { AccessLog, AccessRole, AccessUser, EffectiveAccess, Grant, ProfileRequest, ProfileView, RoleTemplate, ScopeChoices } from './types';
+import type { AccessRole, AccessUser, EffectiveAccess, Grant, ProfileRequest, ProfileView, RoleTemplate, ScopeChoices, AccessRequestRow } from './types';
 
 export const TODAY_ISO = '2026-09-29';
 
@@ -37,6 +37,13 @@ export const USERS: AccessUser[] = [
   { id: 'u-lakshmi', name: 'Lakshmi Venkatesan', email: 'hr@demo-org.test', role: 'panel', status: 'active', employeeId: 'p-lakshmi' },
   { id: 'u-suresh', name: 'Suresh Pillai', email: 'payroll@demo-org.test', role: 'panel', status: 'active', employeeId: null },
   { id: 'u-ramesh', name: 'Ramesh Iyer', email: 'admin@demo-org.test', role: 'org_admin', status: 'active', employeeId: null },
+];
+
+// Answer 946: requests from "You don't have access" pages.
+export const ACCESS_REQUESTS: AccessRequestRow[] = [
+  { id: 'ar-1', user: { id: 'u-anitha', name: 'Anitha Rao' }, page: '/yx/payroll/runs', what: 'payroll runs', reason: 'I cover for Suresh during the October run while he is on leave.', days: 14, askedAt: '2026-09-29T09:12:00.000Z', state: 'waiting', validTo: null, decidedBy: null, decisionNote: null },
+  { id: 'ar-2', user: { id: 'u-lakshmi', name: 'Lakshmi Venkatesan' }, page: '/yx/time/registers', what: 'the attendance registers', reason: 'The labour inspector asked for Form 25 for the plant this week.', days: 7, askedAt: '2026-09-25T11:40:00.000Z', state: 'open', validTo: '2026-10-01', decidedBy: 'Ramesh Iyer', decisionNote: null },
+  { id: 'ar-3', user: { id: 'u-suresh', name: 'Suresh Pillai' }, page: '/yx/people/succession', what: 'succession plans', reason: 'I want to see who is lined up for my role.', days: 30, askedAt: '2026-09-20T06:05:00.000Z', state: 'refused', validTo: null, decidedBy: 'Ramesh Iyer', decisionNote: 'Succession plans stay with HR leadership.' },
 ];
 
 export const GRANTS: Grant[] = [
@@ -138,6 +145,9 @@ export const REQUESTS: ProfileRequest[] = [
     decidedAt: null,
     decisionNote: null,
     overrideReason: null,
+    proofDocumentId: null,
+    effectiveOn: null,
+    usableFrom: null,
   },
   {
     id: 'pr-2',
@@ -156,13 +166,8 @@ export const REQUESTS: ProfileRequest[] = [
     decidedAt: '2026-09-21T09:00:00Z',
     decisionNote: null,
     overrideReason: null,
+    proofDocumentId: null,
+    effectiveOn: null,
+    usableFrom: null,
   },
 ];
-
-export const ACCESS_LOG: AccessLog = {
-  enabled: true,
-  entries: [
-    { id: 'a-1', at: '2026-09-28T10:12:00Z', who: 'Suresh Pillai', what: 'Pay', className: 'confidential' },
-    { id: 'a-2', at: '2026-09-20T15:40:00Z', who: 'Suresh Pillai', what: 'Salary bank account', className: 'confidential' },
-  ],
-};

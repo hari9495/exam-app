@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Interview, Prisma } from '@prisma/client';
 import { TenantPrismaService, TenantContext, AuditService, BlobStorageService, BusinessHours, Holiday, renderTemplateString } from '@exam-platform/shared';
+import { publicBrand } from '../public-applications/public-brand';
 import { EmailService } from '../email/email.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { buildCandidateEmailHtml } from '../candidate-emails/candidate-email-render';
@@ -335,7 +336,7 @@ export class InterviewsService {
     // and jobTitle are attacker-controlled (candidate name comes from the public apply form) so they
     // are only ever interpolated into plain bodyText and rendered via buildCandidateEmailHtml, which
     // HTML-escapes it -- never hand-built into raw HTML.
-    const confirmLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/interview/${prep.interviewToken}`;
+    const confirmLink = `${process.env.FRONTEND_URL ?? 'http://localhost:3000'}/yx/interview/${prep.interviewToken}`;
     const interviewTimes = prep.interview.slots.map((s) => formatSlot(s.startsAt, s.endsAt, prep.interview.timeZone)).join('\n');
     const panelNames = prep.panelists.map((p) => p.name).join(', ');
     const templates = await this.emailTemplates.resolveMap(context);
@@ -545,6 +546,8 @@ export class InterviewsService {
     const base = {
       jobTitle: details.jobTitle,
       orgName: details.orgName,
+      // Careers answer 362: the company's logo, colour, careers link and white-label on the interview page.
+      brand: await publicBrand(this.tenantPrisma, this.blobStorage, interview.organizationId),
       slots: interview.slots.map((s) => ({ id: s.id, startsAt: s.startsAt, endsAt: s.endsAt })),
       location: interview.location,
       timeZone: interview.timeZone,

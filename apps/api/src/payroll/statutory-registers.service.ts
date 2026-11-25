@@ -2,13 +2,15 @@ import { BadRequestException, ConflictException, Inject, Injectable, NotFoundExc
 import { Prisma } from '@prisma/client';
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 import { randomBytes } from 'crypto';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { hashValue } from '../people/profile.service';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
-import { inForce } from '../statutory/evaluator';
+import { due, inForce } from '../statutory/evaluator';
+import { form16LinkProblem } from './form16-link';
 import { DSC_REVOCATION, DSC_ROOTS, SignatureRefused, verifySignedPdf, type RevocationChecker, type TrustedRoots } from '../documents/signed-pdf';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import type { ConfirmationDto } from './dto';
@@ -16,6 +18,10 @@ import { ExchangeFilesService } from './exchange-files.service';
 import { PayFileStore, sha256 } from './pay-file-store';
 import { PayKey, entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
 import { TaxService } from './tax.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { WorkService } from '../service-desk/work.service';
+import type { DeskActor } from '../service-desk/desk-access';
+import { todayIst } from '../org-structure/org-validation';
 
 // Registers, inspection packs, the year-end certificates in bulk and the advisory feed (M03-BUILD-DESIGN §11.5, §11.6,
 // PAY-6.05 Part A, 6.09, 6.10): the registers IN.REGISTERS asks for, from the stored payslip values, per entity, month
@@ -23,10 +29,32 @@ import { TaxService } from './tax.service';
 // the frozen one); a fix is a new version with a reason, the old one kept as superseded; an employee sees only their
 // own row (YX-SEC-16). Part A from the TRACES bulk download is matched by PAN; Form 130 / 16 go out in bulk.
 
+/** The desks a person may add a task on: an agent or lead seat today, and the task key. */
+export const deskTaskSeats = (a: DeskActor) => (a.keys.has('desk.task.work') ? [...a.roles].filter(([, r]) => r === 'agent' || r === 'lead').map(([d]) => d) : []);
+
+/** Active people holding employee.change.manage (the HR admin role) for the whole company or a grant reaching the entity. */
+export async function hrAdminsOf(tx: Tx, org: string, entityId: string): Promise<string[]> {
+  const like = '%"employee.change.manage"%';
+  const today = todayIst();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT u.id::text FROM users u JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id
+    WHERE u.organization_id = ${org}::uuid AND u.status = 'active' AND p.permissions_json LIKE ${like}
+    UNION
+    SELECT g.user_id::text FROM role_grants g
+    JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
+    JOIN users u ON u.organization_id = g.organization_id AND u.id = g.user_id AND u.status = 'active'
+    WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND p.permissions_json LIKE ${like}
+      AND g.valid_from <= ${today}::date AND (g.valid_to IS NULL OR g.valid_to >= ${today}::date)
+      AND (g.scope_type = 'tenant' OR g.legal_entity_id = ${entityId}::uuid
+        OR g.location_id IN (SELECT l.id FROM locations l WHERE l.organization_id = ${org}::uuid AND l.legal_entity_id = ${entityId}::uuid))
+    LIMIT 50`;
+  return rows.map((r) => r.id);
+}
+
 const STATUTORY_CODES = new Set(['pf_employee', 'esi_employee', 'pt', 'lwf_employee', 'tds', 'vpf']);
 type RegisterType = { key: string; title: string; columns: string[] };
 
-function renderRegister(title: string, entity: string, month: string, place: string | null, columns: string[], rows: string[][], note: string): Promise<Buffer> {
+export function renderRegister(title: string, entity: string, month: string, place: string | null, columns: string[], rows: string[][], note: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36, info: { Title: `${title} ${month}` } });
     const out: Buffer[] = [];
@@ -34,11 +62,8 @@ function renderRegister(title: string, entity: string, month: string, place: str
       .on('data', (b: Buffer) => out.push(b))
       .on('end', () => resolve(Buffer.concat(out)))
       .on('error', reject);
-    doc
-      .fontSize(14)
-      .text(title)
-      .fontSize(10)
-      .text(`${entity}${place ? ` · ${place}` : ''} · ${month}`)
+    doc.fontSize(14).text(title);
+    writeText(doc.fontSize(10), `${entity}${place ? ` · ${place}` : ''} · ${month}`)
       .fontSize(8)
       .fillColor('#555')
       .text(note)
@@ -47,12 +72,7 @@ function renderRegister(title: string, entity: string, month: string, place: str
     const width = (doc.page.width - 72) / columns.length;
     const line = (cells: string[], bold = false) => {
       const y = doc.y;
-      cells.forEach((cell, i) =>
-        doc
-          .font(bold ? 'Helvetica-Bold' : 'Helvetica')
-          .fontSize(8)
-          .text(cell, 36 + i * width, y, { width: width - 4 }),
-      );
+      cells.forEach((cell, i) => writeText(doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8), cell, 36 + i * width, y, { width: width - 4 }));
       doc.moveDown(0.6);
       if (doc.y > doc.page.height - 50) doc.addPage();
     };
@@ -75,6 +95,8 @@ export class StatutoryRegistersService {
     private readonly tax: TaxService,
     @Inject(DSC_ROOTS) private readonly roots: TrustedRoots,
     @Inject(DSC_REVOCATION) private readonly revocation: RevocationChecker,
+    private readonly notifications: NotificationsService,
+    private readonly work: WorkService,
   ) {}
 
   private async viewer(user: ScopeUser) {
@@ -165,42 +187,14 @@ export class StatutoryRegistersService {
         return slips.map((s) => ({ employeeId: s.employeeId, cells: [codes.get(s.employmentId) ?? '', people.get(s.employeeId) ?? '', String(monthDays), String(lop(s.id)), String(daysPaid(s.id))] }));
       };
       const types = rs.values.types as RegisterType[];
-      const current = await tx.statutoryRegister.findMany({ where: { organizationId: org, legalEntityId: e.id, locationId, periodStart, status: { not: 'superseded' } } });
+      // Contract labour registers (clra_*, CL-6) and client packs (clpk_*, CL-8) share the table, the freeze and the DSC signing, not this generation.
+      const current = await tx.statutoryRegister.findMany({ where: { organizationId: org, legalEntityId: e.id, locationId, periodStart, status: { not: 'superseded' }, NOT: [{ registerType: { startsWith: 'clra_' } }, { registerType: { startsWith: 'clpk_' } }] } });
       if (current.length && !reason) throw new BadRequestException('Registers for this month exist. Say why a new version is needed.');
       const made: { id: string; type: string; version: number; rows: number }[] = [];
       for (const t of types) {
         const rows = built(t);
         const old = current.find((x) => x.registerType === t.key);
-        const pdf = await renderRegister(
-          t.title,
-          e.name,
-          month,
-          place?.name ?? null,
-          t.columns,
-          rows.map((r) => r.cells),
-          `Format ${rs.version} (verify) · generated from approved payslips`,
-        );
-        const fileRef = await this.files.put(`registers/${org}/${e.id}/${randomBytes(12).toString('hex')}.pdf`, pdf);
-        if (old) await tx.statutoryRegister.update({ where: { id: old.id }, data: { status: 'superseded' } });
-        const reg = await tx.statutoryRegister.create({
-          data: {
-            organizationId: org,
-            legalEntityId: e.id,
-            locationId,
-            registerType: t.key,
-            periodStart,
-            formatVersion: rs.version,
-            version: (old?.version ?? 0) + 1,
-            supersedesId: old?.id ?? null,
-            reason: old ? reason! : null,
-            fileRef,
-            sha256: sha256(pdf),
-            unsignedSha256: sha256(pdf),
-            unsignedBytes: pdf.length,
-            rowCount: rows.length,
-            createdBy: v.userId!,
-          },
-        });
+        const reg = await this.storeIn(tx, c, { entity: e, locationId, place: place?.name ?? null, month, type: t.key, title: t.title, columns: t.columns, rows: rows.map((r) => r.cells), note: `Format ${rs.version} (verify) · generated from approved payslips`, formatVersion: rs.version, old: old ?? null, reason: reason ?? null, userId: v.userId! });
         if (rows.length)
           await tx.registerRow.createMany({
             data: rows.map((r) => ({ organizationId: org, legalEntityId: e.id, registerId: reg.id, employeeId: r.employeeId, data: { register: t.title, month, columns: t.columns, cells: r.cells } })),
@@ -210,6 +204,42 @@ export class StatutoryRegistersService {
       await audit(tx, c, 'statutory.registers.generated', 'legal_entity', e.id, { month, locationId, registers: made, reason: reason ?? null });
       return { month, registers: made };
     });
+  }
+
+  /**
+   * One register version: rendered, stored, the earlier version superseded. Payroll's registers and the contract labour
+   * registers (CL-6) both make their versions here, so freezing and the DSC signature work the same for both.
+   */
+  async storeIn(tx: Tx, c: CompanyContext, x: { entity: { id: string; name: string }; locationId: string | null; place: string | null; month: string; type: string; title: string; columns: string[]; rows: string[][]; note: string; formatVersion: string; old: { id: string; version: number } | null; reason: string | null; userId: string }) {
+    const pdf = await renderRegister(x.title, x.entity.name, x.month, x.place, x.columns, x.rows, x.note);
+    const fileRef = await this.files.put(`registers/${c.organizationId}/${x.entity.id}/${randomBytes(12).toString('hex')}.pdf`, pdf);
+    if (x.old) await tx.statutoryRegister.update({ where: { id: x.old.id }, data: { status: 'superseded' } });
+    return tx.statutoryRegister.create({
+      data: {
+        organizationId: c.organizationId,
+        legalEntityId: x.entity.id,
+        locationId: x.locationId,
+        registerType: x.type,
+        periodStart: asDate(`${x.month}-01`),
+        formatVersion: x.formatVersion,
+        version: (x.old?.version ?? 0) + 1,
+        supersedesId: x.old?.id ?? null,
+        reason: x.old ? x.reason : null,
+        fileRef,
+        sha256: sha256(pdf),
+        unsignedSha256: sha256(pdf),
+        unsignedBytes: pdf.length,
+        rowCount: x.rows.length,
+        createdBy: x.userId,
+      },
+    });
+  }
+
+  /** A register's stored file, checked against its recorded hash (CL-6 reads its own registers' files through this). */
+  async fileOf(r: { fileRef: string; sha256: string }) {
+    const file = await this.files.get(r.fileRef);
+    if (sha256(file) !== r.sha256) throw new ConflictException('This register does not match the file that was made.');
+    return file;
   }
 
   private view(r: Prisma.StatutoryRegisterGetPayload<object>) {
@@ -235,7 +265,7 @@ export class StatutoryRegistersService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, 'statutory.filing.view', entityId);
       const rows = await tx.statutoryRegister.findMany({
-        where: { organizationId: c.organizationId, legalEntityId: entityId, ...(month ? { periodStart: asDate(`${month}-01`) } : {}) },
+        where: { organizationId: c.organizationId, legalEntityId: entityId, NOT: [{ registerType: { startsWith: 'clra_' } }, { registerType: { startsWith: 'clpk_' } }], ...(month ? { periodStart: asDate(`${month}-01`) } : {}) },
         orderBy: [{ periodStart: 'desc' }, { registerType: 'asc' }, { version: 'desc' }],
         take: 300,
       });
@@ -331,7 +361,8 @@ export class StatutoryRegistersService {
       const org = c.organizationId;
       const e = await this.entity(tx, c, v, 'statutory.register.sign', entityId);
       const regs = await tx.statutoryRegister.findMany({
-        where: { organizationId: org, legalEntityId: e.id, locationId, periodStart: asDate(`${month}-01`), status: { in: ['frozen', 'signed'] } },
+        // A client's compliance pack (CL-8, clpk_*) is the client's, not part of our inspection pack.
+        where: { organizationId: org, legalEntityId: e.id, locationId, periodStart: asDate(`${month}-01`), status: { in: ['frozen', 'signed'] }, NOT: { registerType: { startsWith: 'clpk_' } } },
         orderBy: { registerType: 'asc' },
       });
       if (!regs.length) throw new ConflictException('Freeze (and sign) the month’s registers first.');
@@ -467,6 +498,55 @@ export class StatutoryRegistersService {
     return { revised: revised.length };
   }
 
+  // ------------------------------------------------------------------------------------------ CMP-06 return link and availability
+
+  private linkView(r: { id: string; formCode: string; taxYear: string; quarter: number; status: string; kind: string; tokenNo: string | null; filedAt: Date | null }) {
+    return { returnId: r.id, formCode: r.formCode, taxYear: r.taxYear, quarter: r.quarter, status: r.status, kind: r.kind, tokenNo: r.tokenNo, filedAt: r.filedAt };
+  }
+
+  /**
+   * The tax year's certificate set-up: the salary return the certificates are linked to (and what is wrong with it), the
+   * year's own Q4 return, and from when certificates can be made (the Q4 return's due date in the published calendar).
+   */
+  async form16Status(ctx: TenantContext, user: ScopeUser, entityId: string, taxYear: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await this.entity(tx, c, v, 'statutory.filing.view', entityId);
+      const link = await tx.form16ReturnLink.findFirst({ where: { organizationId: org, legalEntityId: entityId, taxYear } });
+      const linked = link ? await tx.tdsReturn.findFirstOrThrow({ where: { organizationId: org, id: link.tdsReturnId } }) : null;
+      const q4 = await tx.tdsReturn.findFirst({ where: { organizationId: org, legalEntityId: entityId, taxYear, quarter: 4, kind: 'original', formCode: { in: ['24Q', '138'] } } });
+      const march = `${Number(taxYear.slice(0, 4)) + 1}-03`;
+      const cal = inForce(await this.rules.published(), 'IN.TDS-DATES', ['IN'], `${march}-01`);
+      return {
+        taxYear,
+        link: link && linked ? { ...this.linkView(linked), version: link.version, linkedAt: link.linkedAt, problem: form16LinkProblem(linked, taxYear) } : null,
+        q4: q4 ? this.linkView(q4) : null,
+        availableAfter: cal ? (due(cal, { key: 'tds_return_q4', month: march }).due as string) : null,
+      };
+    });
+  }
+
+  /** Links the year's certificates to a salary return of the entity (a wrong one is kept, shown and blocks issuing). */
+  async linkForm16(ctx: TenantContext, user: ScopeUser, entityId: string, taxYear: string, returnId: string, version?: number) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      await this.entity(tx, c, v, 'statutory.filing.generate', entityId);
+      const r = await tx.tdsReturn.findFirst({ where: { organizationId: org, legalEntityId: entityId, id: returnId, formCode: { in: ['24Q', '138'] } } });
+      if (!r) throw new NotFoundException('Not found');
+      const old = await tx.form16ReturnLink.findFirst({ where: { organizationId: org, legalEntityId: entityId, taxYear } });
+      if (old && version !== old.version) throw new ConflictException('Someone else changed the linked return. Reload to see it.');
+      if (old?.tdsReturnId === returnId) throw new ConflictException('This return is already linked.');
+      const row = old
+        ? await tx.form16ReturnLink.update({ where: { id: old.id }, data: { tdsReturnId: returnId, linkedBy: v.userId!, linkedAt: new Date(), version: { increment: 1 } } })
+        : await tx.form16ReturnLink.create({ data: { organizationId: org, legalEntityId: entityId, taxYear, tdsReturnId: returnId, linkedBy: v.userId! } });
+      const problem = form16LinkProblem(r, taxYear);
+      await audit(tx, c, 'statutory.form16.return_linked', 'form16_return_link', row.id, { taxYear, from: old?.tdsReturnId ?? null, to: returnId, quarter: r.quarter, problem });
+      return { ...this.linkView(r), version: row.version, linkedAt: row.linkedAt, problem };
+    });
+  }
+
   // ------------------------------------------------------------------------------------------ advisories (PAY-6.10)
 
   /** Published labour-law advisories for the entity's states (and all-India), with whether they were reviewed. */
@@ -499,9 +579,23 @@ export class StatutoryRegistersService {
     });
   }
 
-  async review(ctx: TenantContext, user: ScopeUser, code: string, entityId: string, note: string) {
+  /** CMP-08: the help desks the reviewer may put a follow-up task on (they hold an agent or lead seat and may work tasks). */
+  taskDesks(ctx: TenantContext, actor: DeskActor) {
+    const ids = deskTaskSeats(actor);
+    if (!ids.length) return Promise.resolve([]);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => tx.sdDesk.findMany({ where: { organizationId: c.organizationId, id: { in: ids }, status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }));
+  }
+
+  /**
+   * Marks an advisory reviewed for the entity with a note. CMP-08: optionally a follow-up task on a help desk the reviewer
+   * works on (given to them, with a due date; the desk's own task list), and optionally a note in the app to the entity's
+   * HR admins (holders of employee.change.manage reaching the entity). The review is saved first; the task follows.
+   */
+  async review(ctx: TenantContext, user: ScopeUser, code: string, entityId: string, note: string, extra: { share?: boolean; task?: { deskId: string; dueOn: string; actor: DeskActor } } = {}) {
     const v = await this.viewer(user);
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+    if (extra.task && !deskTaskSeats(extra.task.actor).includes(extra.task.deskId)) throw new BadRequestException('Choose a help desk you work on for the task.');
+    if (extra.task && extra.task.dueOn < todayIst()) throw new BadRequestException('Choose a due date from today on.');
+    const saved = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.entity(tx, c, v, 'statutory.advisory.review', entityId);
       const r = (await this.rules.published())
         .filter((x) => x.statute === 'IN.ADVISORY' && (x.values as Record<string, string>).code === code)
@@ -510,8 +604,28 @@ export class StatutoryRegistersService {
       const exists = await tx.advisoryReview.findFirst({ where: { organizationId: c.organizationId, legalEntityId: entityId, advisoryCode: code, ruleVersion: r.version } });
       if (exists) throw new ConflictException('This advisory is already reviewed for the entity.');
       const row = await tx.advisoryReview.create({ data: { organizationId: c.organizationId, legalEntityId: entityId, advisoryCode: code, ruleVersion: r.version, note, reviewedBy: v.userId! } });
-      await audit(tx, c, 'statutory.advisory.reviewed', 'advisory_review', row.id, { code, version: r.version });
-      return { code, reviewedAt: row.reviewedAt };
+      const hr = extra.share ? (await hrAdminsOf(tx, c.organizationId, entityId)).filter((u) => u !== v.userId) : [];
+      await audit(tx, c, 'statutory.advisory.reviewed', 'advisory_review', row.id, { code, version: r.version, shareWith: hr.length, task: Boolean(extra.task) });
+      return { row, title: String((r.values as Record<string, string>).title), hr };
     });
+    const { row, title, hr } = saved;
+    if (hr.length)
+      await this.notifications
+        .notify(ctx, v.userId!, hr, 'statutory.advisory.shared', { entityType: 'advisory_review', entityId: row.id, contextText: `Law update reviewed: ${title}. ${note}`.slice(0, 300), linkPath: '/yx/payroll/advisories' })
+        .catch(() => undefined);
+    let taskId: string | null = null;
+    let taskError: string | null = null;
+    if (extra.task) {
+      try {
+        taskId = (await this.work.addStandalone(extra.task.actor, { deskId: extra.task.deskId, title: `Law update: ${title}`.slice(0, 200), note: note.slice(0, 2000), assigneeUserId: v.userId!, dueAt: `${extra.task.dueOn}T12:00:00+05:30` })).id;
+        await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+          await payScope(tx, [entityId]);
+          await audit(tx, c, 'statutory.advisory.task_created', 'advisory_review', row.id, { taskId, deskId: extra.task!.deskId, dueOn: extra.task!.dueOn });
+        });
+      } catch (e) {
+        taskError = `Reviewed, but the task was not made: ${(e as Error).message}`;
+      }
+    }
+    return { code, reviewedAt: row.reviewedAt, sharedWith: hr.length, taskId, taskError };
   }
 }

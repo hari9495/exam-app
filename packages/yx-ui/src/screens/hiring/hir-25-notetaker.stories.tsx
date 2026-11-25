@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { DraftScorecardReview, NotetakerConsentPanel, type DraftRating, type Participant } from './hiring-pipeline';
+import { DraftScorecardReview, NotetakerConsentPanel, type DraftRating, type NotetakerControls, type Participant } from './hiring-pipeline';
 
 const meta: Meta = { title: 'Screens/Hiring/HIR-25 · Interview notetaker consent', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -24,3 +24,14 @@ export const OneDeclined: S = { name: 'One declined · no recording', render: ()
 export const Waiting: S = { name: 'Waiting for the candidate', render: () => <div style={{ maxWidth: 560 }}><NotetakerConsentPanel participants={WAITING} /></div> };
 export const DraftReview: S = { name: 'Draft scorecard · 1 of 4 confirmed', render: () => <DraftScorecardReview candidate="Ananya Iyer" drafts={DRAFTS} defaultConfirmed={[0]} /> };
 export const DraftAllConfirmed: S = { name: 'Draft scorecard · all confirmed, ready to submit', render: () => <DraftScorecardReview candidate="Ananya Iyer" drafts={DRAFTS} defaultConfirmed={[0, 1, 2, 3]} /> };
+
+// Drawn 13 Nov 2026 (founder decision 2): the panel's controls. Each panellist answers for themselves; the candidate's
+// answer is recorded by the panel; with no recording provider connected a panellist adds the transcript as a text file.
+const CONTROLS: NotetakerControls = { provider: null, aiDraft: true, isPanelist: true, transcript: null, myDraft: false, submitted: false, onConsent: async () => undefined, onTranscript: async () => undefined, onDraft: async () => undefined };
+const MINE = (ps: Participant[]) => ps.map((p) => ({ ...p, key: p.role === 'Candidate' ? 'candidate' : p.name, canAnswer: p.role === 'Candidate' || p.name === 'Joseph Mathew' }));
+export const YourAnswer: S = { name: 'Your answer and the candidate’s · asked', render: () => <div style={{ maxWidth: 560 }}><NotetakerConsentPanel participants={MINE(ALL.map((p) => (p.name === 'Karthik Subramanian' ? p : { ...p, consent: 'waiting' as const })))} controls={CONTROLS} /></div> };
+export const NoProvider: S = { name: 'All consented · no provider, add the transcript', render: () => <div style={{ maxWidth: 560 }}><NotetakerConsentPanel participants={MINE(ALL)} controls={CONTROLS} /></div> };
+export const TranscriptAdded: S = { name: 'Transcript added · draft with AI', render: () => <div style={{ maxWidth: 560 }}><NotetakerConsentPanel participants={MINE(ALL)} controls={{ ...CONTROLS, transcript: { addedAt: new Date(2026, 10, 12), addedBy: 'Joseph Mathew' } }} /></div> };
+export const AiOff: S = { name: 'Transcript added · AI drafting off', render: () => <div style={{ maxWidth: 560 }}><NotetakerConsentPanel participants={MINE(ALL)} controls={{ ...CONTROLS, aiDraft: false, transcript: { addedAt: new Date(2026, 10, 12), addedBy: 'Joseph Mathew' } }} /></div> };
+// Drawn 13 Nov 2026 (HIR-23): a New York City job while the company's bias audit is overdue: no AI draft, said plainly.
+export const AiBlocked: S = { name: 'Transcript added · AI draft blocked (NYC, bias audit overdue)', render: () => <div style={{ maxWidth: 560 }}><NotetakerConsentPanel participants={MINE(ALL)} controls={{ ...CONTROLS, transcript: { addedAt: new Date(2026, 10, 12), addedBy: 'Joseph Mathew' }, aiBlocked: 'The AI draft scorecard is blocked for New York City jobs. No bias audit is recorded. HR records a new independent audit in Hiring › Bias audits; other jobs are not affected.' }} /></div> };

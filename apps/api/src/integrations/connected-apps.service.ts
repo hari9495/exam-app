@@ -66,9 +66,10 @@ export class ConnectedAppsService {
     if (dto.label !== undefined) data.label = dto.label;
     if (dto.events !== undefined) data.events = JSON.stringify(dto.events);
     if (dto.status !== undefined) data.status = dto.status;
+    // S-10: another company's id (invisible under RLS) or a removed one is a 404, never a database error.
+    const existing = await this.tenantPrisma.forTenant(context, (tx) => tx.orgIntegration.findUnique({ where: { id } }));
+    if (!existing) throw new NotFoundException('Connected app not found');
     if (dto.targetUrl !== undefined) {
-      const existing = await this.tenantPrisma.forTenant(context, (tx) => tx.orgIntegration.findUnique({ where: { id } }));
-      if (!existing) throw new NotFoundException('Connected app not found');
       assertAllowedWebhookUrlOrBadRequest(existing.type as IntegrationType, dto.targetUrl);
       data.targetUrlEncrypted = this.crypto.encrypt(dto.targetUrl);
     }
@@ -78,7 +79,8 @@ export class ConnectedAppsService {
   }
 
   async remove(context: TenantContext, actorUserId: string, id: string): Promise<{ ok: true }> {
-    await this.tenantPrisma.forTenant(context, (tx) => tx.orgIntegration.delete({ where: { id } }));
+    const { count } = await this.tenantPrisma.forTenant(context, (tx) => tx.orgIntegration.deleteMany({ where: { id } }));
+    if (!count) throw new NotFoundException('Connected app not found');
     await this.audit.record(context, { actorUserId, action: 'integration.removed', entityType: 'org_integration', entityId: id });
     return { ok: true };
   }

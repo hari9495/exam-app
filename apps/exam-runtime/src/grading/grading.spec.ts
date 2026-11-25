@@ -112,7 +112,7 @@ describe('computeResult', () => {
       50,
       oneSection(['q1', 'q2']),
     );
-    expect(summary).toEqual({ score: 5, maxScore: 10, percentage: 50, passFail: 'pass' });
+    expect(summary).toEqual({ score: 5, maxScore: 10, percentage: 50, passFail: 'pass', cutoffMissed: [] });
   });
 
   it('returns fail when below the pass criteria', () => {
@@ -122,7 +122,7 @@ describe('computeResult', () => {
       50,
       oneSection(['q1']),
     );
-    expect(summary).toEqual({ score: 2, maxScore: 10, percentage: 20, passFail: 'fail' });
+    expect(summary).toEqual({ score: 2, maxScore: 10, percentage: 20, passFail: 'fail', cutoffMissed: [] });
   });
 
   it('counts an unanswered question toward maxScore but contributes nothing to score', () => {
@@ -132,12 +132,12 @@ describe('computeResult', () => {
       40,
       oneSection(['q1', 'q2']),
     );
-    expect(summary).toEqual({ score: 3, maxScore: 10, percentage: 30, passFail: 'fail' });
+    expect(summary).toEqual({ score: 3, maxScore: 10, percentage: 30, passFail: 'fail', cutoffMissed: [] });
   });
 
   it('returns a zero percentage instead of dividing by zero when there are no questions', () => {
     const summary = computeResult([], [], 40, []);
-    expect(summary).toEqual({ score: 0, maxScore: 0, percentage: 0, passFail: 'fail' });
+    expect(summary).toEqual({ score: 0, maxScore: 0, percentage: 0, passFail: 'fail', cutoffMissed: [] });
   });
 
   it('floors a negative raw score at zero instead of returning a negative score or percentage', () => {
@@ -147,7 +147,7 @@ describe('computeResult', () => {
       50,
       oneSection(['q1', 'q2']),
     );
-    expect(summary).toEqual({ score: 0, maxScore: 6, percentage: 0, passFail: 'fail' });
+    expect(summary).toEqual({ score: 0, maxScore: 6, percentage: 0, passFail: 'fail', cutoffMissed: [] });
   });
 
   it('does not floor a positive score that is merely reduced by a deduction', () => {
@@ -157,7 +157,7 @@ describe('computeResult', () => {
       20,
       oneSection(['q1', 'q2']),
     );
-    expect(summary).toEqual({ score: 3, maxScore: 10, percentage: 30, passFail: 'pass' });
+    expect(summary).toEqual({ score: 3, maxScore: 10, percentage: 30, passFail: 'pass', cutoffMissed: [] });
   });
 
   it('weights two sections independently of their raw marks -- a heavier-weighted section with a lower score pulls the overall percentage down', () => {
@@ -253,7 +253,7 @@ describe('computeResult', () => {
       50,
       [{ sectionId: 's1', weightPercent: 100, requiredCount: null, questionIds: ['q1', 'q2'] }],
     );
-    expect(summary).toEqual({ score: 5, maxScore: 10, percentage: 50, passFail: 'pass' });
+    expect(summary).toEqual({ score: 5, maxScore: 10, percentage: 50, passFail: 'pass', cutoffMissed: [] });
   });
 });
 
@@ -299,5 +299,18 @@ describe('effectiveDurationMinutes', () => {
 
   it('rounds to the nearest whole minute', () => {
     expect(effectiveDurationMinutes(45, 33)).toBe(60);
+  });
+});
+
+describe('computeResult section cut-offs (answer 2154)', () => {
+  const qs = [{ id: 'q1', marks: 10 }, { id: 'q2', marks: 10 }];
+  const two = (cut: number | null) => [{ sectionId: 's1', weightPercent: 50, questionIds: ['q1'] }, { sectionId: 's2', weightPercent: 50, questionIds: ['q2'], cutoffPercent: cut }];
+  it('a section below its cut-off fails the attempt even when the total passes', () => {
+    const r = computeResult([{ questionId: 'q1', marksAwarded: 10 }, { questionId: 'q2', marksAwarded: 0 }], qs, 50, two(60));
+    expect(r).toMatchObject({ percentage: 50, passFail: 'fail', cutoffMissed: ['s2'] });
+  });
+  it('exactly at the cut-off passes; no cut-off never fails a section', () => {
+    expect(computeResult([{ questionId: 'q1', marksAwarded: 10 }, { questionId: 'q2', marksAwarded: 6 }], qs, 50, two(60))).toMatchObject({ passFail: 'pass', cutoffMissed: [] });
+    expect(computeResult([{ questionId: 'q1', marksAwarded: 10 }, { questionId: 'q2', marksAwarded: 0 }], qs, 50, two(null))).toMatchObject({ passFail: 'pass', cutoffMissed: [] });
   });
 });

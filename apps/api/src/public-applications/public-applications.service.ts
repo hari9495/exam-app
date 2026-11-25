@@ -1,14 +1,14 @@
 import { randomUUID } from 'crypto';
 import pdfParse from 'pdf-parse';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError, OrgSecretsCryptoService } from '@exam-platform/shared';
+import { AuditService, PrismaService, TenantPrismaService, BlobStorageService, AiApiKeyResolverService, AiNotConfiguredError, OrgSecretsCryptoService } from '@exam-platform/shared';
 import { getEasyApplyProvider } from '../easy-apply/providers';
 import { QuotaService } from '../billing/quota.service';
 import { ParseResumeDto } from './dto/parse-resume.dto';
 import { JobsService } from '../jobs/jobs.service';
 import { IntegrationEventsService } from '../integrations/integration-events.service';
 import { expandedName } from '../walk-in/walk-in.service';
-import { applicationStatusBucket } from './application-status';
+import { STAGE_FOR_BUCKET, bucketOf } from './application-status';
 import { validatePdfUpload } from './pdf-validation';
 import { ApplyDto } from './dto/apply.dto';
 import { UpdatePortalProfileDto } from './dto/update-portal-profile.dto';
@@ -18,10 +18,16 @@ import { upsertCustomFieldValues, serializeCustomFieldValues, CustomFieldDefinit
 import { resolveConsentStamp } from '../common/consent-check';
 import { EmailService } from '../email/email.service';
 import { scannerFromEnv, type Scanner } from '../common/scanner';
-import { checkConsents, ipHash, isSlug, safeColor } from '../hiring/careers-rules';
+import { careersLayout, withHero, type CareersLayout, checkConsents, ipHash, isSlug, safeColor } from '../hiring/careers-rules';
+import { payLawFor } from '../hiring/pay-law';
+import { SETTINGS } from '../org-structure/settings-registry';
+import { publicBrand } from './public-brand';
+import { nycNotice } from '../hiring/bias-audit';
+import { todayIst } from '../org-structure/org-validation';
 import { poolConsented, withdrawConsent } from '../talent/pools.service';
 import { QuickApplyDto } from './dto/quick-apply.dto';
 import { CareersAssistantDto } from './dto/careers-assistant.dto';
+import { setWhatsappOptIn } from '../candidates/whatsapp-opt-in';
 
 // Job-feed fields are wrapped in CDATA (the aggregator-standard for free-text). The only way to
 // break out of CDATA is the literal "]]>", so split it so it can never terminate the section early.
@@ -52,6 +58,10 @@ export interface CareersPageResponse {
   accentColor: string | null;
   textColor: string | null;
   companies: { slug: string; name: string }[];
+  /** Careers answer 356: no "Powered by YukthiX" (company setting brand.white_label). */
+  whiteLabel: boolean;
+  /** T9-09 page builder layout (theme, accent, sections), made from headline and intro until first saved. */
+  config: CareersLayout;
   jobs: {
     slug: string | null;
     applyToken: string;
@@ -64,6 +74,8 @@ export interface CareersPageResponse {
     salaryMin: number | null;
     salaryMax: number | null;
     salaryCurrency: string | null;
+    /** HIR-24: year, month or hour. */
+    salaryPeriod: string;
   }[];
 }
 
@@ -82,6 +94,9 @@ const CONTACT_SCHEMA = {
   },
   required: [] as string[],
 };
+
+/** Careers answer 353: a job whose Apply-by day has passed takes no applications and leaves the lists (India time). */
+const stillOpen = () => ({ OR: [{ applyBy: null }, { applyBy: { gte: new Date(`${todayIst()}T00:00:00Z`) } }] });
 
 @Injectable()
 export class PublicApplicationsService {
@@ -116,6 +131,14 @@ export class PublicApplicationsService {
     return ['application', 'talent_pool'].map((p) => rows.find((r) => r.purpose === p)).filter((r): r is NonNullable<typeof r> => Boolean(r));
   }
 
+  /** HIR-24 answer 224: ask about current or past pay only when the job asks and its location's law allows it (checked on the day). */
+  private async asksPayHistory(job: { organizationId: string; locationId: string | null; askPayHistory: boolean }) {
+    if (!job.askPayHistory) return false;
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+    const { law } = await this.tenantPrisma.forTenant({ organizationId: job.organizationId, isSuperAdmin: true }, (tx) => payLawFor(tx, job.organizationId, job.locationId, today));
+    return !law.historyBanned;
+  }
+
   private async resolveJob(applyToken: string) {
     const job = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
@@ -134,12 +157,27 @@ export class PublicApplicationsService {
             employmentType: true,
             createdAt: true,
             pipelineId: true,
+            // T9-09: the job page's facts and HIR-24's pay rules (range shown, pay-history question allowed).
+            slug: true,
+            department: true,
+            publishedAt: true,
+            locationId: true,
+            showSalary: true,
+            salaryMin: true,
+            salaryMax: true,
+            salaryCurrency: true,
+            salaryPeriod: true,
+            askPayHistory: true,
+            listOnCareers: true,
+            applyBy: true,
+            experience: true,
           },
         }),
     );
     // Generic message regardless of which condition failed -- distinguishing "no such token" from
     // "closed" from "public apply disabled" would give an outsider an oracle to probe job state.
-    if (!job || job.status !== 'open' || !job.publicApplyEnabled) {
+    // Careers answer 353: after the Apply-by day the job takes no more applications (the same answer, no oracle).
+    if (!job || job.status !== 'open' || !job.publicApplyEnabled || (job.applyBy && job.applyBy.toISOString().slice(0, 10) < todayIst())) {
       throw new NotFoundException('This role is not accepting applications');
     }
     return job;
@@ -213,8 +251,13 @@ export class PublicApplicationsService {
     const job = await this.resolveJob(applyToken);
     const org = await this.prisma.organization.findUnique({
       where: { id: job.organizationId },
-      select: { name: true, logoPath: true, applyConsentText: true, applyConsentVersion: true },
+      select: { name: true, slug: true, logoPath: true, applyConsentText: true, applyConsentVersion: true, careersEnabled: true, careersHeadline: true, careersIntro: true, careersConfig: true },
     });
+    const askPayHistory = await this.asksPayHistory(job);
+    // Careers answer 359: a job placed outside India takes an international phone number (+country code).
+    const country = job.locationId
+      ? (await this.tenantPrisma.forTenant({ organizationId: job.organizationId, isSuperAdmin: true }, (tx) => tx.location.findUnique({ where: { id: job.locationId! }, select: { country: true } })))?.country ?? 'IN'
+      : 'IN';
     // Apply-visible candidate custom fields, cross-tenant super-admin read (same LOOKUP_ORG
     // pattern as resolveJob -- there is no org context until the applyToken resolves one).
     const defs = await this.tenantPrisma.forTenant(
@@ -231,8 +274,23 @@ export class PublicApplicationsService {
       jobDescription: job.description,
       location: job.location,
       employmentType: job.employmentType,
-      postedAt: job.createdAt.toISOString(),
+      postedAt: (job.publishedAt ?? job.createdAt).toISOString(),
+      department: job.department,
+      // HIR-24: the range only when the job shows it; the pay-history question only where the job asks and the law allows.
+      salary: job.showSalary && job.salaryMin != null && job.salaryMax != null ? { min: job.salaryMin, max: job.salaryMax, currency: job.salaryCurrency ?? 'INR', period: job.salaryPeriod } : null,
+      askPayHistory,
+      internationalPhone: country !== 'IN',
+      // Answer 474: New York City jobs tell candidates about the automated tool (null elsewhere, or when the company says it uses none).
+      nycNotice: await this.tenantPrisma.forTenant({ organizationId: job.organizationId, isSuperAdmin: true }, (tx) => nycNotice(tx, { organizationId: job.organizationId, isSuperAdmin: true }, job.id)),
+      // Careers answer 353: the last day to apply and the experience asked for (shown on the job page when set).
+      applyBy: job.applyBy ? job.applyBy.toISOString().slice(0, 10) : null,
+      experience: job.experience,
+      // The careers site this job sits on (null when the company has no public careers page or the job is unlisted).
+      careers: org?.careersEnabled && org.slug ? { orgSlug: org.slug, jobSlug: job.listOnCareers ? job.slug : null } : null,
+      accent: org ? careersLayout(org.careersConfig, { name: org.name, careersHeadline: org.careersHeadline, careersIntro: org.careersIntro }).accent : null,
       orgName: org?.name ?? '',
+      // Careers answer 356: the job page hides "Powered by YukthiX" for a white-label company.
+      whiteLabel: (await this.brand(job.organizationId)).whiteLabel,
       // Container is private -- unsigned logoPath 403s in <img src>. signIfOurs mints a
       // read-only SAS for blobs we own and passes anything else through untouched.
       orgLogo: org?.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
@@ -272,7 +330,7 @@ export class PublicApplicationsService {
           `    <title>${xmlCdata(j.title)}</title>`,
           `    <date>${j.createdAt.toUTCString()}</date>`,
           `    <referencenumber>${xmlCdata(j.applyToken as string)}</referencenumber>`,
-          `    <url>${xmlCdata(`${baseUrl}/apply/${j.applyToken}`)}</url>`,
+          `    <url>${xmlCdata(`${baseUrl}/yx/apply/${j.applyToken}`)}</url>`,
           `    <company>${xmlCdata(orgName.get(j.organizationId) ?? '')}</company>`,
           `    <city>${xmlCdata(j.location ?? '')}</city>`,
           `    <jobtype>${xmlCdata(j.employmentType ?? '')}</jobtype>`,
@@ -298,7 +356,7 @@ export class PublicApplicationsService {
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
       (tx) =>
         tx.job.findMany({
-          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null } },
+          where: { status: 'open', publicApplyEnabled: true, applyToken: { not: null }, ...stillOpen() },
           select: this.JOB_FEED_SELECT,
           orderBy: { createdAt: 'desc' },
         }),
@@ -320,6 +378,7 @@ export class PublicApplicationsService {
             organizationId: board.organizationId,
             status: 'open',
             publicApplyEnabled: true,
+            ...stillOpen(),
             applyToken: { not: null },
             jobBoardPublications: { some: { jobBoardId: board.id } },
           },
@@ -359,12 +418,11 @@ export class PublicApplicationsService {
     if (!validated.ok) {
       throw new BadRequestException(validated.reason === 'too_large' ? 'Résumé exceeds 5 MB' : 'Résumé must be a PDF');
     }
-    // M10 AT3: virus scan before anything is stored. Infected is refused; no scanner or a scanner error keeps the file
-    // 'pending', and recruiters cannot open it until it is checked (fail closed, as documents do).
-    const scanner = this.scan();
-    const verdict = scanner ? await scanner.scan(buf) : null;
-    if (verdict?.verdict === 'infected') throw new BadRequestException('This file cannot be accepted. Upload a different PDF.');
-    const resumeScan = verdict?.verdict === 'clean' ? 'clean' : 'pending';
+    // Question 125: the virus scan starts after the commit (scanResume below). Until it says clean the résumé stays
+    // 'pending' and recruiters cannot open it; infected is quarantined for good (fail closed, as documents do).
+    const resumeScan = 'pending';
+    // HIR-24 answer 224: the pay answer is kept only where the job asks and the law allows today; otherwise it is dropped.
+    const currentPay = dto.currentPay !== undefined && (await this.asksPayHistory(job)) ? dto.currentPay : null;
 
     // Uploaded OUTSIDE the tenant tx (ADO #6810): blob I/O inside a tx holds the transaction open
     // for the duration of a network call to storage, which is the known mistake to avoid here.
@@ -375,7 +433,7 @@ export class PublicApplicationsService {
     );
 
     const context = { organizationId: job.organizationId, isSuperAdmin: true };
-    const { entry, candidateId, isNewCandidate, portalToken } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { entry, candidateId, isNewCandidate, portalToken, newResume } = await this.tenantPrisma.forTenant(context, async (tx) => {
       // Public, unauthenticated endpoint: an existing candidate match must NOT be overwritten
       // with request-body name/phone -- anyone who knows a candidate's email could tamper with
       // their stored details. Same rule as WalkInService.register; expandedName carries the one
@@ -424,7 +482,8 @@ export class PublicApplicationsService {
       // M10 AT3: the public page proves nothing about who is applying, so it never replaces a résumé already on file
       // (the candidate changes it from their portal link, which only reaches their own inbox).
       const profile = await tx.candidateProfile.findUnique({ where: { candidateId: candidate.id }, select: { resumePath: true } });
-      if (!profile?.resumePath) {
+      const newResume = !profile?.resumePath;
+      if (newResume) {
         await tx.candidateProfile.upsert({
           where: { candidateId: candidate.id },
           create: { organizationId: job.organizationId, candidateId: candidate.id, resumePath, resumeScan, parseStatus: 'pending' },
@@ -457,15 +516,25 @@ export class PublicApplicationsService {
           enteredVia: 'application',
           applicationToken: randomUUID(),
           statusId,
+          currentPay,
         },
         // Stamp-if-absent: a re-apply keeps the existing entry (and its token) untouched, even
         // though the profile above IS refreshed with the newly-uploaded résumé.
         update: {},
       });
+      // Answer 474: a New York City applicant who asks for another process than the automated tool (the notice was on
+      // the job page and apply form); kept on the application for the recruiter, audited. Ignored where no notice applies.
+      if (dto.alternativeProcess && !entry.alternativeRequestedAt && (await nycNotice(tx, context, job.id))) {
+        await tx.pipelineEntry.update({ where: { id: entry.id }, data: { alternativeRequestedAt: new Date() } });
+        await AuditService.recordIn(tx, context, { actorUserId: null, action: 'candidate.alternative_process.requested', entityType: 'pipeline_entry', entityId: entry.id, metadata: { jobId: job.id } });
+      }
+      // Answer 561: the applicant ticked "Message me on WhatsApp about jobs" (never assumed; an unticked re-apply withdraws nothing).
+      if (dto.whatsappOptIn && candidate.phone?.trim()) await setWhatsappOptIn(tx, context, candidate.id, true, 'apply');
       // Last write in the tx: a public application always makes the candidate at least 'engaged'.
       await recomputeGlobalStage(tx, job.organizationId, candidate.id);
-      return { entry, candidateId: candidate.id, isNewCandidate, portalToken };
+      return { entry, candidateId: candidate.id, isNewCandidate, portalToken, newResume };
     });
+    if (newResume) void this.scanResume(job.organizationId, candidateId, resumePath, buf);
 
     await this.jobsService.enqueue(context, 'resume_parse', JSON.stringify({ candidateId }), job.createdById);
 
@@ -483,6 +552,54 @@ export class PublicApplicationsService {
     return { received: true };
   }
 
+  /**
+   * Question 125: scans a public résumé after the commit that stored it. Only the same file, still pending, is marked; an
+   * error or no scanner leaves it pending (recruiters cannot open it). Never throws: the application is already in.
+   */
+  private async scanResume(organizationId: string, candidateId: string, resumePath: string, buf: Buffer) {
+    try {
+      const scanner = this.scan();
+      if (!scanner) return;
+      const v = await scanner.scan(buf);
+      if (v.verdict === 'error') throw new Error(v.detail);
+      const ctx = { organizationId, isSuperAdmin: true };
+      const tell = await this.tenantPrisma.forTenant(ctx, async (tx) => {
+        const { count } = await tx.candidateProfile.updateMany({ where: { organizationId, candidateId, resumePath, resumeScan: 'pending' }, data: { resumeScan: v.verdict } });
+        if (count) await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `candidate.resume.scan.${v.verdict}`, entityType: 'candidate', entityId: candidateId, metadata: { scanner: scanner.name } });
+        if (!count || v.verdict !== 'infected') return null;
+        // Founder answer 352: the applicant is told and can upload another file from their candidate page (company
+        // setting hiring.resume_quarantine.tell_applicant, default on).
+        const row = await tx.setting.findFirst({ where: { organizationId, key: 'hiring.resume_quarantine.tell_applicant', scopeType: 'tenant' }, select: { value: true } });
+        if ((row?.value ?? SETTINGS['hiring.resume_quarantine.tell_applicant']!.default) !== 'on') return null;
+        const c = await tx.candidate.findFirst({ where: { organizationId, id: candidateId, erasedAt: null }, select: { email: true, portalToken: true } });
+        return c?.portalToken && c.email ? c : null;
+      });
+      if (v.verdict === 'infected') this.logger.warn(`Public résumé of candidate ${candidateId} quarantined (${v.detail})`);
+      if (tell) await this.sendQuarantineNotice(organizationId, candidateId, tell.email, tell.portalToken!).catch((e) => this.logger.warn(`quarantine email: ${(e as Error).message}`));
+    } catch (e) {
+      this.logger.warn(`Scan of a public résumé failed, it stays pending: ${(e as Error).message}`);
+    }
+  }
+
+  /** Answer 352: the résumé file could not be accepted; the candidate page lets them upload another. Logged, never the file. */
+  private async sendQuarantineNotice(organizationId: string, candidateId: string, to: string, portalToken: string) {
+    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+    const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
+    const name = org?.name ?? 'the company';
+    const esc = (v: string) => v.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!);
+    const link = `${base}/yx/candidate/${encodeURIComponent(portalToken)}`;
+    const sent = await this.email.send({
+      to,
+      organizationId,
+      subject: `We could not accept your résumé file for ${name}`,
+      html: `<p>Your application to ${esc(name)} is in, but our safety check could not accept the résumé file you sent, so recruiters cannot open it.</p><p><a href="${link}">Open your candidate page</a> to upload another file (a PDF works best).</p><p>If you did not apply, you can ignore this email.</p>`,
+      text: `Your application to ${name} is in, but our safety check could not accept the résumé file you sent, so recruiters cannot open it.
+Upload another file from your candidate page: ${link}
+If you did not apply, ignore this email.`,
+    });
+    await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: true }, (tx) => AuditService.recordIn(tx, { organizationId, isSuperAdmin: true }, { actorUserId: null, action: 'candidate.resume.quarantine_told', entityType: 'candidate', entityId: candidateId, metadata: { sent: sent.success } }));
+  }
+
   private async sendApplyLinks(organizationId: string, to: string, jobTitle: string, statusToken: string, portalToken: string) {
     const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
     const base = process.env.FRONTEND_URL ?? 'http://localhost:3000';
@@ -492,8 +609,8 @@ export class PublicApplicationsService {
       to,
       organizationId,
       subject: `Your application to ${name}`,
-      html: `<p>Thank you for applying for <strong>${esc(jobTitle)}</strong> at ${esc(name)}.</p><p><a href="${base}/application/${encodeURIComponent(statusToken)}">See where your application is</a></p><p><a href="${base}/portal/${encodeURIComponent(portalToken)}">Open your candidate page</a> to update your résumé or see your other applications.</p><p>If you did not apply, you can ignore this email.</p>`,
-      text: `Thank you for applying for ${jobTitle} at ${name}.\nWhere your application is: ${base}/application/${statusToken}\nYour candidate page: ${base}/portal/${portalToken}\nIf you did not apply, ignore this email.`,
+      html: `<p>Thank you for applying for <strong>${esc(jobTitle)}</strong> at ${esc(name)}.</p><p><a href="${base}/yx/application/${encodeURIComponent(statusToken)}">See where your application is</a></p><p><a href="${base}/yx/candidate/${encodeURIComponent(portalToken)}">Open your candidate page</a> to update your résumé or see your other applications.</p><p>If you did not apply, you can ignore this email.</p>`,
+      text: `Thank you for applying for ${jobTitle} at ${name}.\nWhere your application is: ${base}/yx/application/${statusToken}\nYour candidate page: ${base}/yx/candidate/${portalToken}\nIf you did not apply, ignore this email.`,
     });
   }
 
@@ -527,6 +644,14 @@ export class PublicApplicationsService {
   }
 
   /** M10 AT4: the candidate withdraws their talent-pool consent; they leave every pool at once. */
+  /** Answer 691: "Message me on WhatsApp about jobs" on the candidate page (tick or untick). Audited. */
+  async setPortalWhatsapp(portalToken: string, optIn: boolean) {
+    const { id, organizationId } = await this.resolvePortalCandidate(portalToken);
+    const c = { organizationId, isSuperAdmin: true };
+    await this.tenantPrisma.forTenant(c, (tx) => setWhatsappOptIn(tx, c, id, optIn, 'candidate_page'));
+    return { whatsappOptedIn: optIn };
+  }
+
   async withdrawTalentPool(portalToken: string) {
     const { id, organizationId } = await this.resolvePortalCandidate(portalToken);
     await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: true }, (tx) => withdrawConsent(tx, organizationId, id, 'talent_pool'));
@@ -538,24 +663,24 @@ export class PublicApplicationsService {
   // in one place. Read-only aggregation; actions happen on the existing per-artifact token pages.
   async getPortal(portalToken: string) {
     const { id: candidateId, organizationId } = await this.resolvePortalCandidate(portalToken);
-    const org = await this.prisma.organization.findUnique({ where: { id: organizationId }, select: { name: true } });
+    const brand = await this.brand(organizationId);
     // Now that the token has resolved a real org, look up the display fields + résumé state
     // through normal org-scoped RLS (candidateId) rather than another LOOKUP_ORG bypass.
     const { candidate, entries, profile, inPools } = await this.tenantPrisma.forTenant(
       { organizationId, isSuperAdmin: true },
       async (tx) => {
-        const candidate = await tx.candidate.findUnique({ where: { id: candidateId }, select: { name: true, email: true, phone: true } });
+        const candidate = await tx.candidate.findUnique({ where: { id: candidateId }, select: { name: true, email: true, phone: true, whatsappOptedInAt: true } });
         const entries = await tx.pipelineEntry.findMany({
           where: { candidateId },
           orderBy: { createdAt: 'desc' },
           select: {
             applicationToken: true,
-            status: { select: { stage: { select: { name: true } } } },
+            status: STAGE_FOR_BUCKET,
             rejected: true,
             createdAt: true,
             job: { select: { title: true } },
             interviews: {
-              select: { interviewToken: true, status: true, location: true, timeZone: true, confirmedSlotId: true, slots: { select: { startsAt: true, endsAt: true } } },
+              select: { interviewToken: true, status: true, location: true, timeZone: true, confirmedSlotId: true, slots: { select: { id: true, startsAt: true, endsAt: true } } },
             },
             offers: { select: { offerToken: true, status: true, compensation: true, startDate: true, expiresAt: true } },
           },
@@ -569,13 +694,16 @@ export class PublicApplicationsService {
       candidateName: candidate?.name ?? '',
       candidateEmail: candidate?.email ?? '',
       candidatePhone: candidate?.phone ?? null,
+      // Answer 691: the WhatsApp tick on the candidate page.
+      whatsappOptedIn: Boolean(candidate?.whatsappOptedInAt),
       resume: { hasResume: Boolean(profile?.resumePath), parseStatus: profile?.parseStatus ?? null },
       /** M10 AT4: whether they agreed to be kept for other roles (they can withdraw it here). */
       talentPool: inPools,
-      orgName: org?.name ?? '',
+      ...brand,
       applications: entries.map((e) => ({
         jobTitle: e.job.title,
-        stage: e.status?.stage.name ?? '',
+        // Candidate words only (the internal stage name is never shown outside the app).
+        stage: bucketOf(e.status, e.rejected),
         rejected: e.rejected,
         appliedAt: e.createdAt.toISOString(),
         statusToken: e.applicationToken,
@@ -585,6 +713,7 @@ export class PublicApplicationsService {
           location: i.location,
           timeZone: i.timeZone,
           confirmed: Boolean(i.confirmedSlotId),
+          confirmedAt: i.slots.find((s) => s.id === i.confirmedSlotId)?.startsAt.toISOString() ?? null,
           slots: i.slots.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() })),
         })),
         offers: e.offers
@@ -666,6 +795,7 @@ export class PublicApplicationsService {
           status: 'open',
           publicApplyEnabled: true,
           applyToken: { not: null },
+          ...stillOpen(),
           id: { notIn: appliedJobIds.length ? appliedJobIds : ['00000000-0000-0000-0000-000000000000'] },
         },
         select: { applyToken: true, title: true, location: true, employmentType: true },
@@ -815,20 +945,28 @@ export class PublicApplicationsService {
   // Cross-tenant candidate-by-unsubscribeToken resolution, same LOOKUP_ORG/isSuperAdmin bypass
   // as resolvePortalCandidate -- there is no org context until the token resolves one, and the
   // token itself IS the authorization for an unauthenticated visitor.
-  private async resolveByUnsubscribeToken(token: string): Promise<{ id: string; organizationId: string; emailOptedOutAt: Date | null }> {
+  private async resolveByUnsubscribeToken(token: string): Promise<{ id: string; organizationId: string; emailOptedOutAt: Date | null; whatsappOptedInAt: Date | null }> {
     const candidate = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
-      (tx) => tx.candidate.findUnique({ where: { unsubscribeToken: token }, select: { id: true, organizationId: true, emailOptedOutAt: true } }),
+      (tx) => tx.candidate.findUnique({ where: { unsubscribeToken: token }, select: { id: true, organizationId: true, emailOptedOutAt: true, whatsappOptedInAt: true } }),
     );
     if (!candidate) throw new NotFoundException('Unsubscribe link not found');
     return candidate;
   }
 
   // Minimal data only: opted-out state + org name for display, no other candidate PII.
-  async getUnsubscribe(token: string): Promise<{ optedOut: boolean; orgName: string }> {
+  async getUnsubscribe(token: string): Promise<{ optedOut: boolean; orgName: string; whatsappOptedIn: boolean }> {
     const candidate = await this.resolveByUnsubscribeToken(token);
     const org = await this.prisma.organization.findUnique({ where: { id: candidate.organizationId }, select: { name: true } });
-    return { optedOut: Boolean(candidate.emailOptedOutAt), orgName: org?.name ?? '' };
+    return { optedOut: Boolean(candidate.emailOptedOutAt), orgName: org?.name ?? '', whatsappOptedIn: Boolean(candidate.whatsappOptedInAt) };
+  }
+
+  /** Answer 561: the unsubscribe link also withdraws the WhatsApp opt-in (opting in is on the apply form and status page). */
+  async withdrawWhatsapp(token: string): Promise<{ whatsappOptedIn: false }> {
+    const candidate = await this.resolveByUnsubscribeToken(token);
+    const c = { organizationId: candidate.organizationId, isSuperAdmin: true };
+    await this.tenantPrisma.forTenant(c, (tx) => setWhatsappOptIn(tx, c, candidate.id, false, 'unsubscribe'));
+    return { whatsappOptedIn: false };
   }
 
   // Idempotent, reversible: re-posting the same optedOut value is a no-op write.
@@ -847,14 +985,16 @@ export class PublicApplicationsService {
   // M10 AT3: the careers site. The 4-condition filter is load-bearing: listOnCareers alone must never surface a job
   // that isn't also open + publicApplyEnabled + has a live apply link. Colours are #rrggbb or nothing (they go into
   // CSS); images are only our own signed URLs; job text is returned as text (the page renders it as text).
-  private readonly LISTED = { status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, deletedAt: null } as const;
+  private get LISTED() {
+    return { status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, deletedAt: null, ...stillOpen() } as const;
+  }
 
   private async careersOrg(orgSlug: string) {
     if (!/^[a-z0-9][a-z0-9-]{0,98}$/.test(orgSlug)) return null;
     return this.tenantPrisma.forTenant({ organizationId: this.LOOKUP_ORG, isSuperAdmin: true }, (tx) =>
       tx.organization.findFirst({
         where: { slug: orgSlug, careersEnabled: true },
-        select: { id: true, name: true, careersHeadline: true, careersIntro: true, careersAssistantEnabled: true, careersBannerPath: true, logoPath: true, primaryColor: true, accentColor: true, textColor: true },
+        select: { id: true, name: true, careersHeadline: true, careersIntro: true, careersAssistantEnabled: true, careersBannerPath: true, logoPath: true, primaryColor: true, accentColor: true, textColor: true, careersConfig: true },
       }),
     );
   }
@@ -863,7 +1003,7 @@ export class PublicApplicationsService {
     return this.tenantPrisma.forTenant({ organizationId: orgId, isSuperAdmin: true }, async (tx) => {
       const jobs = await tx.job.findMany({
         where: { organizationId: orgId, ...this.LISTED, ...where },
-        select: { id: true, slug: true, applyToken: true, title: true, description: true, location: true, employmentType: true, department: true, salaryMin: true, salaryMax: true, salaryCurrency: true, showSalary: true, createdAt: true, publishedAt: true, closedAt: true, legalEntityId: true },
+        select: { id: true, slug: true, applyToken: true, title: true, description: true, location: true, employmentType: true, department: true, salaryMin: true, salaryMax: true, salaryCurrency: true, salaryPeriod: true, showSalary: true, createdAt: true, publishedAt: true, closedAt: true, legalEntityId: true },
         orderBy: { createdAt: 'desc' },
       });
       const pages = await tx.careersEntityPage.findMany({ where: { organizationId: orgId } });
@@ -872,7 +1012,7 @@ export class PublicApplicationsService {
     });
   }
 
-  private publicJob(j: { slug: string | null; applyToken: string | null; title: string; location: string | null; employmentType: string | null; department: string | null; salaryMin: number | null; salaryMax: number | null; salaryCurrency: string | null; showSalary: boolean; createdAt: Date; publishedAt: Date | null; legalEntityId: string | null }, company: (id: string | null) => { name: string; slug: string | null } | null) {
+  private publicJob(j: { slug: string | null; applyToken: string | null; title: string; location: string | null; employmentType: string | null; department: string | null; salaryMin: number | null; salaryMax: number | null; salaryCurrency: string | null; salaryPeriod: string; showSalary: boolean; createdAt: Date; publishedAt: Date | null; legalEntityId: string | null }, company: (id: string | null) => { name: string; slug: string | null } | null) {
     return {
       slug: j.slug,
       applyToken: j.applyToken as string,
@@ -885,6 +1025,7 @@ export class PublicApplicationsService {
       salaryMin: j.showSalary ? j.salaryMin : null,
       salaryMax: j.showSalary ? j.salaryMax : null,
       salaryCurrency: j.showSalary ? j.salaryCurrency : null,
+      salaryPeriod: j.salaryPeriod,
     };
   }
 
@@ -906,12 +1047,15 @@ export class PublicApplicationsService {
       headline: page?.headline ?? org.careersHeadline ?? null,
       intro: page?.intro ?? org.careersIntro ?? null,
       assistantEnabled: org.careersAssistantEnabled,
+      whiteLabel: (await this.brand(org.id)).whiteLabel,
       logoUrl: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
       bannerUrl: org.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
       primaryColor: safeColor(page?.primaryColor ?? org.primaryColor),
       accentColor: safeColor(org.accentColor),
       textColor: safeColor(org.textColor),
       companies: pages.map((p) => ({ slug: p.slug, name: entities.find((e) => e.id === p.legalEntityId)?.name ?? p.slug })),
+      // A company page (?company=) keeps the layout but leads with its own headline and intro.
+      config: withHero(careersLayout(org.careersConfig, org), page ? { title: page.headline, text: page.intro } : null),
       jobs: shown.map((j) => this.publicJob(j, company)),
     };
   }
@@ -934,6 +1078,7 @@ export class PublicApplicationsService {
       orgName: org.name,
       logoUrl: org.logoPath ? ((await this.blobStorage.signIfOurs(org.logoPath)) as string | null) : null,
       primaryColor: safeColor(org.primaryColor),
+      accent: careersLayout(org.careersConfig, org).accent,
     };
   }
 
@@ -963,7 +1108,7 @@ export class PublicApplicationsService {
         if (!org || !org.careersEnabled) return null;
         if (!org.careersAssistantEnabled) return { org, jobs: null };
         const jobs = await tx.job.findMany({
-          where: { organizationId: org.id, status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null } },
+          where: { organizationId: org.id, status: 'open', publicApplyEnabled: true, listOnCareers: true, applyToken: { not: null }, ...stillOpen() },
           select: { title: true, description: true, department: true, location: true, employmentType: true, salaryMin: true, salaryMax: true, salaryCurrency: true },
           orderBy: { createdAt: 'desc' },
         });
@@ -1034,6 +1179,11 @@ export class PublicApplicationsService {
     ].join('\n');
   }
 
+  /** The company's public face for the candidate pages (answers 356, 357, 362: shared with the offer and interview pages). */
+  private brand(organizationId: string) {
+    return publicBrand(this.tenantPrisma, this.blobStorage, organizationId);
+  }
+
   async getApplicationStatus(statusToken: string) {
     const row = await this.tenantPrisma.forTenant(
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
@@ -1041,18 +1191,60 @@ export class PublicApplicationsService {
         tx.pipelineEntry.findUnique({
           where: { applicationToken: statusToken },
           select: {
-            status: { select: { stage: { select: { name: true } } } },
+            organizationId: true,
+            status: STAGE_FOR_BUCKET,
             rejected: true,
             createdAt: true,
-            job: { select: { title: true } },
+            jobId: true,
+            alternativeRequestedAt: true,
+            job: { select: { title: true, location: true } },
+            candidate: { select: { phone: true, whatsappOptedInAt: true } },
           },
         }),
     );
     if (!row) throw new NotFoundException('Application not found');
+    // T9-09 status page: only this application, in candidate words; never the stage, owner, notes or other applicants.
     return {
       jobTitle: row.job.title,
+      location: row.job.location,
       appliedAt: row.createdAt,
-      statusBucket: applicationStatusBucket(row.status?.stage.name ?? '', row.rejected),
+      statusBucket: bucketOf(row.status, row.rejected),
+      ...(await this.brand(row.organizationId)),
+      // Answer 502: the New York City automated-tool notice and whether this candidate asked for another process.
+      toolNotice: await this.toolNoticeFor(row.organizationId, row.jobId, row.alternativeRequestedAt),
+      // Answer 561: the WhatsApp tick (whether they have a number, never the number).
+      whatsapp: { optedIn: Boolean(row.candidate.whatsappOptedInAt), hasPhone: Boolean(row.candidate.phone?.trim()) },
     };
+  }
+
+  /** Answer 561: the candidate ticks or unticks "Message me on WhatsApp about jobs" on their status page. Audited. */
+  async setStatusWhatsapp(statusToken: string, optIn: boolean) {
+    const row = await this.tenantPrisma.forTenant({ organizationId: this.LOOKUP_ORG, isSuperAdmin: true }, (tx) => tx.pipelineEntry.findUnique({ where: { applicationToken: statusToken }, select: { organizationId: true, candidateId: true } }));
+    if (!row) throw new NotFoundException('Application not found');
+    const c = { organizationId: row.organizationId, isSuperAdmin: true };
+    await this.tenantPrisma.forTenant(c, (tx) => setWhatsappOptIn(tx, c, row.candidateId, optIn, 'status_page'));
+    return this.getApplicationStatus(statusToken);
+  }
+
+  private async toolNoticeFor(organizationId: string, jobId: string, requestedAt: Date | null) {
+    const c = { organizationId, isSuperAdmin: true };
+    const notice = await this.tenantPrisma.forTenant(c, (tx) => nycNotice(tx, c, jobId));
+    return notice ? { ...notice, requestedAt: requestedAt ? requestedAt.toISOString() : null } : null;
+  }
+
+  /**
+   * Answer 502: the candidate asks for another process than the automated tool from their status page (the link in the
+   * notice email). Only where the notice applies (409 otherwise); a second ask changes nothing. Audited.
+   */
+  async askAlternative(statusToken: string) {
+    const row = await this.tenantPrisma.forTenant({ organizationId: this.LOOKUP_ORG, isSuperAdmin: true }, (tx) => tx.pipelineEntry.findUnique({ where: { applicationToken: statusToken }, select: { id: true, organizationId: true, jobId: true, alternativeRequestedAt: true } }));
+    if (!row) throw new NotFoundException('Application not found');
+    const c = { organizationId: row.organizationId, isSuperAdmin: true };
+    await this.tenantPrisma.forTenant(c, async (tx) => {
+      if (!(await nycNotice(tx, c, row.jobId))) throw new ConflictException('No automated tool is used for this job, so there is nothing to ask for.');
+      const { count } = await tx.pipelineEntry.updateMany({ where: { id: row.id, alternativeRequestedAt: null }, data: { alternativeRequestedAt: new Date() } });
+      if (count) await AuditService.recordIn(tx, c, { actorUserId: null, action: 'candidate.alternative_process.requested', entityType: 'pipeline_entry', entityId: row.id, metadata: { jobId: row.jobId, from: 'status_page' } });
+    });
+    return this.getApplicationStatus(statusToken);
   }
 }

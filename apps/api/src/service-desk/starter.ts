@@ -2,7 +2,7 @@
 // editable afterwards and runs on the same tables. Plain simple English, our own words.
 
 export interface Starter {
-  types: { kind: 'incident' | 'request' | 'question'; name: string }[];
+  types: { kind: 'incident' | 'request' | 'question' | 'change' | 'problem'; name: string }[];
   statuses: { label: string; systemState: string }[];
   categories: { name: string; sensitive?: boolean }[];
 }
@@ -54,7 +54,9 @@ export function starterFor(kind: string): Starter {
       categories: CATEGORIES.customer_support,
     };
   }
-  return { types: EMPLOYEE_TYPES, statuses: EMPLOYEE_STATUSES, categories: CATEGORIES[kind] ?? CATEGORIES.custom };
+  // Answer 1931: an IT desk also has changes and problems (raised from IT › Changes and Problems, never the portal).
+  const types: Starter['types'] = kind === 'it' ? [...EMPLOYEE_TYPES, { kind: 'change', name: 'Change' }, { kind: 'problem', name: 'Problem' }] : EMPLOYEE_TYPES;
+  return { types, statuses: EMPLOYEE_STATUSES, categories: CATEGORIES[kind] ?? CATEGORIES.custom };
 }
 
 /** YX-SD-03 starter matrix: 1 is the highest; impact and urgency 1 (high) to 4 (low). */
@@ -78,6 +80,9 @@ export interface PackItem {
   managerApproves?: boolean;
   /** Only started by joiner / leaver journeys, never listed in the catalogue. */
   journeyOnly?: boolean;
+  /** Answer 1891: the item's own questions (else none) and approval steps (else the manager, when managerApproves). */
+  form?: { sections: { id: string; columns: 1 | 2; fields: { key: string; type: string; label: string; required?: boolean; help?: string }[] }[]; rules: [] };
+  approval?: { name: string; approvers: { kind: string; field?: string; level?: number }[]; mode: 'any' | 'all' }[];
 }
 export interface StarterPack {
   restricted?: boolean;
@@ -98,6 +103,29 @@ export const STARTER_PACKS: Record<string, StarterPack> = {
       { name: 'Change my bank account for pay', shortText: 'Tell HR your new salary account. Payroll checks it before the next pay day.', category: 'Payslip and pay', deliveryDays: 3, tasks: [{ title: 'Check the new account and update payroll', olaHours: 24 }] },
       { name: 'Joining paperwork', shortText: 'Forms and documents for a new joiner.', category: 'Joining and leaving', deliveryDays: 1, journeyOnly: true, tasks: [{ title: 'Collect joining forms and documents', olaHours: 8 }] },
       { name: 'Exit settlement', shortText: 'Full and final settlement and the relieving letter for a leaver.', category: 'Joining and leaving', deliveryDays: 5, journeyOnly: true, tasks: [{ title: 'Prepare the full and final settlement', olaHours: 40 }, { title: 'Issue the relieving and experience letters', olaHours: 40 }] },
+    ],
+  },
+  // Helpdesk item 1 (founder, 12 Nov 2026): the IT starter catalogue. Delivery days are Indian working days (the
+  // desk's calendar: Monday to Friday, its holidays); task times are working hours.
+  it: {
+    firstResponse: [30, 2 * H, 4 * H, 8 * H],
+    resolution: [4 * H, 8 * H, 24 * H, 40 * H],
+    items: [
+      { name: 'New laptop', shortText: 'A new or replacement work laptop, set up with your accounts and the usual software.', category: 'Laptop and devices', deliveryDays: 5, managerApproves: true, tasks: [{ title: 'Take a laptop from stock or order one', olaHours: 16 }, { title: 'Set up the laptop and hand it over', olaHours: 8 }] },
+      { name: 'Software install', shortText: 'Install software you need for work. Say which and why.', category: 'Software', deliveryDays: 2, managerApproves: true, tasks: [{ title: 'Check the licence and install the software', olaHours: 8 }] },
+      { name: 'VPN access', shortText: 'Work from outside the office on the company network.', category: 'Access and accounts', deliveryDays: 1, managerApproves: true, tasks: [{ title: 'Give VPN access and send the set-up steps', olaHours: 4 }] },
+      { name: 'Password reset', shortText: 'You cannot sign in to a work system and need a new password.', category: 'Access and accounts', deliveryDays: 1, tasks: [{ title: 'Check who is asking and reset the password', olaHours: 2 }] },
+      // Answer 1891: access to one of the company's business applications; its owner approves (a desk admin if there is none).
+      {
+        name: 'Application access',
+        shortText: 'Access to a company application. Its owner approves, then IT gives you access.',
+        category: 'Access and accounts',
+        deliveryDays: 2,
+        form: { sections: [{ id: 'access', columns: 1, fields: [{ key: 'app', type: 'app', label: 'Which application?', required: true }, { key: 'why', type: 'textarea', label: 'Why do you need it?', required: true, help: 'What you will do with it. The owner reads this.' }] }], rules: [] },
+        approval: [{ name: 'Application owner', approvers: [{ kind: 'app_owner', field: 'app' }], mode: 'any' }],
+        tasks: [{ title: 'Give access', olaHours: 8 }],
+      },
+      { name: 'New-joiner IT kit', shortText: 'For a new joiner: laptop, email, sign-in and the usual software, ready on the first day.', category: 'Laptop and devices', deliveryDays: 3, journeyOnly: true, tasks: [{ title: 'Make the email and sign-in accounts', olaHours: 8 }, { title: 'Ready the laptop and software', olaHours: 16 }] },
     ],
   },
   admin: {

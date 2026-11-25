@@ -20,6 +20,33 @@ import { ROLE_TEMPLATES } from './role-templates';
 
 type GrantRow = Prisma.RoleGrantGetPayload<object>;
 
+async function grantOr404(tx: Tx, c: CompanyContext, id: string) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`role-grant:${c.organizationId}:${id}`}))`;
+  const row = await tx.roleGrant.findFirst({ where: { id, organizationId: c.organizationId } });
+  if (!row) throw new NotFoundException('Grant not found');
+  return row;
+}
+
+/**
+ * Ends a grant now (Roles & access › Revoke, and People › Team pay access › End access). A team pay access request the
+ * grant came from, still open, ends with it: who, when and why, and its last day becomes today.
+ */
+export async function revokeGrant(tx: Tx, c: CompanyContext, id: string, actorUserId: string, reason: string) {
+  const why = reason.trim();
+  const row = await grantOr404(tx, c, id);
+  if (row.status !== 'active' && row.status !== 'pending') throw new ConflictException(`This grant is ${row.status}.`);
+  const now = new Date();
+  const updated = await tx.roleGrant.update({ where: { id }, data: { status: 'revoked', revokedBy: actorUserId, revokedAt: now, decisionNote: why } });
+  await audit(tx, c, 'access.grant.revoked', 'role_grant', id, { userId: row.userId, reason: why });
+  const today = todayIst();
+  const pay = await tx.payAccessRequest.findFirst({ where: { organizationId: c.organizationId, grantId: id, endedAt: null, validTo: { gte: asDate(today) } }, select: { id: true, validTo: true } });
+  if (pay) {
+    await tx.payAccessRequest.update({ where: { id: pay.id }, data: { endedBy: actorUserId, endedAt: now, endNote: why, validTo: asDate(today) } });
+    await audit(tx, c, 'employee.pay_access.ended', 'pay_access_request', pay.id, { grantId: id, lastDayWas: isoDate(pay.validTo!), reason: why });
+  }
+  return updated;
+}
+
 /** Keys the effective-access preview counts people for ("can approve job changes for 4 people", P02 §7). */
 const PREVIEW_KEYS: readonly { key: string; label: string }[] = [
   { key: 'employee.profile.view', label: 'See job records' },
@@ -27,7 +54,7 @@ const PREVIEW_KEYS: readonly { key: string; label: string }[] = [
   { key: 'employee.personal.view', label: 'See personal details' },
   { key: 'employee.identity.view', label: 'See identity and bank details' },
   { key: 'employee.identity.approve', label: 'Approve bank and identity changes' },
-  { key: 'employee.aadhaar.view', label: 'See Aadhaar in full' },
+  { key: 'employee.aadhaar.view', label: 'See Special data' },
   { key: 'employee.salary.view', label: 'See salary' },
 ];
 
@@ -38,10 +65,13 @@ export const CONFIDENTIAL_LABEL: Record<string, string> = {
   'employee.identity.view': 'see identity and bank details',
   'employee.identity.manage': 'change identity and bank details',
   'employee.identity.approve': 'approve bank and identity changes',
-  'employee.aadhaar.view': 'see Aadhaar in full',
+  'employee.aadhaar.view': 'see Special data',
   'pay.range.view': 'see pay ranges',
   'pay.range.manage': 'change pay ranges',
   'org.entity.statutory.manage': 'change company tax identifiers',
+  'succession.manage': 'see and edit succession plans',
+  'employee.disability.view': 'see disability declarations',
+  'compliance.declaration.manage': 'see declared holdings and approve trades',
 };
 
 const SCOPE_TARGET: Record<string, 'legalEntityId' | 'locationId' | 'departmentId' | null> = {
@@ -51,6 +81,7 @@ const SCOPE_TARGET: Record<string, 'legalEntityId' | 'locationId' | 'departmentI
   department_subtree: 'departmentId',
   all_reports: null,
   direct_reports: null,
+  one_report: null,
 };
 
 @Injectable()
@@ -79,10 +110,31 @@ export class AccessService {
     return role;
   }
 
+  /**
+   * Answer 795: a role nobody holds (no active or waiting grant, nobody assigned it) can be deleted, with a reason;
+   * audited. A role with past grants is archived instead: its grants keep their history, it leaves every list and
+   * its name is freed. Refused while anyone holds it.
+   */
+  async deleteRole(ctx: TenantContext, actorUserId: string, id: string, reason: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const role = await tx.permissionProfile.findFirst({ where: { id, organizationId: c.organizationId, archivedAt: null } });
+      if (!role) throw new NotFoundException('Role not found.');
+      const held = (await tx.roleGrant.count({ where: { organizationId: c.organizationId, permissionProfileId: id, status: { in: ['active', 'pending'] } } })) + (await tx.user.count({ where: { organizationId: c.organizationId, permissionProfileId: id } }));
+      if (held) throw new ConflictException(`${held} ${held === 1 ? 'person holds' : 'people hold'} this role. Revoke or change their access first.`);
+      const history = await tx.roleGrant.count({ where: { organizationId: c.organizationId, permissionProfileId: id } });
+      if (history) {
+        const day = new Date().toISOString().slice(0, 10);
+        await tx.permissionProfile.update({ where: { id }, data: { archivedAt: new Date(), name: `${role.name} · deleted ${day} · ${id.slice(0, 8)}`.slice(0, 200), templateKey: null } });
+      } else await tx.permissionProfile.delete({ where: { id } });
+      await audit(tx, { ...c, userId: actorUserId }, 'access.role.deleted', 'permission_profile', id, { name: role.name, reason: reason.trim(), keptForHistory: Boolean(history) });
+      return { id, archived: Boolean(history) };
+    });
+  }
+
   /** The company's roles with how many people hold each (base assignment or grant). */
   roles(ctx: TenantContext) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const rows = await tx.permissionProfile.findMany({ where: { organizationId: c.organizationId }, orderBy: { name: 'asc' } });
+      const rows = await tx.permissionProfile.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, orderBy: { name: 'asc' } });
       const grants = await tx.roleGrant.groupBy({ by: ['permissionProfileId'], where: { organizationId: c.organizationId, status: { in: ['active', 'pending'] } }, _count: true });
       const users = await tx.user.groupBy({ by: ['permissionProfileId'], where: { organizationId: c.organizationId, permissionProfileId: { not: null } }, _count: true });
       return rows.map((p) => {
@@ -123,15 +175,20 @@ export class AccessService {
   private async views(tx: Tx, c: CompanyContext, rows: GrantRow[]) {
     const org = { organizationId: c.organizationId };
     const ids = (f: (r: GrantRow) => (string | null)[]) => [...new Set(rows.flatMap(f).filter((x): x is string => Boolean(x)))];
-    const [users, profiles, entities, locations, departments] = await Promise.all([
+    const [users, profiles, entities, locations, departments, people] = await Promise.all([
       tx.user.findMany({ where: { ...org, id: { in: ids((r) => [r.userId, r.grantedBy, r.decidedBy, r.revokedBy]) } }, select: { id: true, name: true, email: true } }),
       tx.permissionProfile.findMany({ where: { ...org, id: { in: ids((r) => [r.permissionProfileId]) } }, select: { id: true, name: true, permissionsJson: true } }),
       tx.legalEntity.findMany({ where: { ...org, id: { in: ids((r) => [r.legalEntityId]) } }, select: { id: true, name: true } }),
       tx.location.findMany({ where: { ...org, id: { in: ids((r) => [r.locationId]) } }, select: { id: true, name: true } }),
       tx.department.findMany({ where: { ...org, id: { in: ids((r) => [r.departmentId]) } }, select: { id: true, name: true } }),
+      tx.employee.findMany({ where: { ...org, id: { in: ids((r) => [r.employeeId]) } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }),
     ]);
     const who = (id: string | null) => (id ? (users.find((u) => u.id === id)?.name || users.find((u) => u.id === id)?.email || null) : null);
-    const target = (r: GrantRow) => entities.find((x) => x.id === r.legalEntityId) ?? locations.find((x) => x.id === r.locationId) ?? departments.find((x) => x.id === r.departmentId) ?? null;
+    const person = (r: GrantRow) => {
+      const p = people.find((x) => x.id === r.employeeId);
+      return p ? { id: p.id, name: p.preferredName?.trim() || [p.givenName, p.familyName].filter(Boolean).join(' ') } : null;
+    };
+    const target = (r: GrantRow) => entities.find((x) => x.id === r.legalEntityId) ?? locations.find((x) => x.id === r.locationId) ?? departments.find((x) => x.id === r.departmentId) ?? person(r);
     return rows.map((r) => {
       const profile = profiles.find((p) => p.id === r.permissionProfileId);
       const t = target(r);
@@ -180,55 +237,63 @@ export class AccessService {
   }
 
   async create(ctx: TenantContext, actorUserId: string, dto: GrantDto) {
-    const result = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const user = await tx.user.findFirst({ where: { id: dto.userId, organizationId: c.organizationId } });
-      if (!user || user.role === 'super_admin') throw new BadRequestException('Choose a user of this company.');
-      if (user.status !== 'active') throw new BadRequestException('That user is not active.');
-      const profile = await tx.permissionProfile.findFirst({ where: { id: dto.permissionProfileId, organizationId: c.organizationId } });
-      if (!profile) throw new BadRequestException('Choose a role of this company.');
-      const keys = JSON.parse(profile.permissionsJson) as string[];
-      const column = SCOPE_TARGET[dto.scopeType];
-      if (column ? !dto.scopeId : dto.scopeId) throw new BadRequestException(column ? 'Say which record the scope is for.' : 'This scope takes no record.');
-      if (dto.scopeType === 'legal_entity' && !(await tx.legalEntity.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such legal entity in this company.');
-      if (dto.scopeType === 'location' && !(await tx.location.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such location in this company.');
-      if (dto.scopeType === 'department_subtree' && !(await tx.department.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such department in this company.');
-      const granteeEmployee = await this.employeeOf(tx, c, user.id);
-      if ((dto.scopeType === 'all_reports' || dto.scopeType === 'direct_reports') && !granteeEmployee) throw new BadRequestException('A "reports" scope needs the user to have an employee record.');
-      // P02 §4.3: a key whose module has no record scope works company-wide only; say so instead of granting nothing.
-      const unscoped = keys.filter((k) => !grantScopesFor(k).includes(dto.scopeType));
-      if (unscoped.length) throw new BadRequestException({ statusCode: 400, code: 'KEYS_COMPANY_WIDE_ONLY', message: `These permissions work only for the whole company: ${unscoped.join(', ')}. Grant the role company-wide, or use a role without them.`, keys: unscoped });
-      const today = todayIst();
-      const validFrom = dto.validFrom ?? today;
-      if (validFrom < today) throw new BadRequestException('A grant starts today or later.');
-      if (dto.validTo && dto.validTo < validFrom) throw new BadRequestException('The end date is before the start date.');
-      // YX-SEC-18 (a): Confidential / Special access over many people warns first.
-      const confidential = holdsConfidential(keys);
-      const people = await this.peopleIn(tx, c, { type: dto.scopeType, id: dto.scopeId ?? null }, granteeEmployee);
-      const threshold = Number(await settingFor(tx, c, 'access.risk.confidential_threshold', { legalEntityId: '' }));
-      const warnings = confidential && people > threshold ? [`Lets them ${keys.filter((k) => CONFIDENTIAL_KEYS.includes(k)).map((k) => CONFIDENTIAL_LABEL[k] ?? 'open Confidential data').join(', ')} for ${people} people, more than the company's limit of ${threshold}.`] : [];
-      if (warnings.length && !dto.confirmRisk) {
-        throw new ConflictException({ statusCode: 409, code: 'RISK_CONFIRMATION_REQUIRED', message: warnings[0], warnings, people });
-      }
-      const selfGrant = user.id === actorUserId;
-      const row = await tx.roleGrant.create({
-        data: {
-          organizationId: c.organizationId,
-          userId: user.id,
-          permissionProfileId: profile.id,
-          scopeType: dto.scopeType,
-          ...(column ? { [column]: dto.scopeId } : {}),
-          validFrom: asDate(validFrom),
-          validTo: dto.validTo ? asDate(dto.validTo) : null,
-          // §4.6: Confidential access waits for a second admin; everything else counts at once.
-          status: confidential ? 'pending' : 'active',
-          reason: dto.reason.trim(),
-          grantedBy: actorUserId,
-        },
-      });
-      await audit(tx, c, 'access.grant.created', 'role_grant', row.id, { userId: user.id, role: profile.name, scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, validFrom, validTo: dto.validTo ?? null, status: row.status, confidential, people, riskConfirmed: warnings.length > 0, selfGrant });
-      return { view: (await this.views(tx, c, [row]))[0], selfGrant, pending: confidential, notify: await this.otherAdmins(tx, c, [actorUserId, user.id]), organizationId: c.organizationId };
+    const result = await inCompany(this.tenantPrisma, ctx, (tx, c) => this.grantIn(tx, c, actorUserId, dto));
+    await this.tellAdmins(ctx, actorUserId, result);
+    return result.view;
+  }
+
+  /** Saves a grant with every rule of Give access, inside the caller's transaction (also used by access requests, answer 946). */
+  async grantIn(tx: Tx, c: CompanyContext, actorUserId: string, dto: GrantDto) {
+    const user = await tx.user.findFirst({ where: { id: dto.userId, organizationId: c.organizationId } });
+    if (!user || user.role === 'super_admin') throw new BadRequestException('Choose a user of this company.');
+    if (user.status !== 'active') throw new BadRequestException('That user is not active.');
+    const profile = await tx.permissionProfile.findFirst({ where: { id: dto.permissionProfileId, organizationId: c.organizationId, archivedAt: null } });
+    if (!profile) throw new BadRequestException('Choose a role of this company.');
+    const keys = JSON.parse(profile.permissionsJson) as string[];
+    const column = SCOPE_TARGET[dto.scopeType];
+    if (column ? !dto.scopeId : dto.scopeId) throw new BadRequestException(column ? 'Say which record the scope is for.' : 'This scope takes no record.');
+    if (dto.scopeType === 'legal_entity' && !(await tx.legalEntity.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such legal entity in this company.');
+    if (dto.scopeType === 'location' && !(await tx.location.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such location in this company.');
+    if (dto.scopeType === 'department_subtree' && !(await tx.department.findFirst({ where: { id: dto.scopeId, organizationId: c.organizationId } }))) throw new BadRequestException('No such department in this company.');
+    const granteeEmployee = await this.employeeOf(tx, c, user.id);
+    if ((dto.scopeType === 'all_reports' || dto.scopeType === 'direct_reports') && !granteeEmployee) throw new BadRequestException('A "reports" scope needs the user to have an employee record.');
+    // P02 §4.3: a key whose module has no record scope works company-wide only; say so instead of granting nothing.
+    const unscoped = keys.filter((k) => !grantScopesFor(k).includes(dto.scopeType));
+    if (unscoped.length) throw new BadRequestException({ statusCode: 400, code: 'KEYS_COMPANY_WIDE_ONLY', message: `These permissions work only for the whole company: ${unscoped.join(', ')}. Grant the role company-wide, or use a role without them.`, keys: unscoped });
+    const today = todayIst();
+    const validFrom = dto.validFrom ?? today;
+    if (validFrom < today) throw new BadRequestException('A grant starts today or later.');
+    if (dto.validTo && dto.validTo < validFrom) throw new BadRequestException('The end date is before the start date.');
+    // YX-SEC-18 (a): Confidential / Special access over many people warns first.
+    const confidential = holdsConfidential(keys);
+    const people = await this.peopleIn(tx, c, { type: dto.scopeType, id: dto.scopeId ?? null }, granteeEmployee);
+    const threshold = Number(await settingFor(tx, c, 'access.risk.confidential_threshold', { legalEntityId: '' }));
+    const warnings = confidential && people > threshold ? [`Lets them ${keys.filter((k) => CONFIDENTIAL_KEYS.includes(k)).map((k) => CONFIDENTIAL_LABEL[k] ?? 'open Confidential data').join(', ')} for ${people} people, more than the company's limit of ${threshold}.`] : [];
+    if (warnings.length && !dto.confirmRisk) {
+      throw new ConflictException({ statusCode: 409, code: 'RISK_CONFIRMATION_REQUIRED', message: warnings[0], warnings, people });
+    }
+    const selfGrant = user.id === actorUserId;
+    const row = await tx.roleGrant.create({
+      data: {
+        organizationId: c.organizationId,
+        userId: user.id,
+        permissionProfileId: profile.id,
+        scopeType: dto.scopeType,
+        ...(column ? { [column]: dto.scopeId } : {}),
+        validFrom: asDate(validFrom),
+        validTo: dto.validTo ? asDate(dto.validTo) : null,
+        // §4.6: Confidential access waits for a second admin; everything else counts at once.
+        status: confidential ? 'pending' : 'active',
+        reason: dto.reason.trim(),
+        grantedBy: actorUserId,
+      },
     });
-    // Q1: self-grants and grants waiting for approval are told to the other admins (bell + email, best effort).
+    await audit(tx, c, 'access.grant.created', 'role_grant', row.id, { userId: user.id, role: profile.name, scopeType: dto.scopeType, scopeId: dto.scopeId ?? null, validFrom, validTo: dto.validTo ?? null, status: row.status, confidential, people, riskConfirmed: warnings.length > 0, selfGrant });
+    return { view: (await this.views(tx, c, [row]))[0], selfGrant, pending: confidential, notify: await this.otherAdmins(tx, c, [actorUserId, user.id]), organizationId: c.organizationId };
+  }
+
+  /** Q1: self-grants and grants waiting for approval are told to the other admins (bell + email, best effort). */
+  async tellAdmins(ctx: TenantContext, actorUserId: string, result: Awaited<ReturnType<AccessService['grantIn']>>) {
     if (result.selfGrant || result.pending) {
       await this.notifications
         .notify(ctx, actorUserId, result.notify, 'access.grant', {
@@ -239,20 +304,12 @@ export class AccessService {
         })
         .catch((e) => this.logger.error(e));
     }
-    return result.view;
-  }
-
-  private async grantOr404(tx: Tx, c: CompanyContext, id: string) {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`role-grant:${c.organizationId}:${id}`}))`;
-    const row = await tx.roleGrant.findFirst({ where: { id, organizationId: c.organizationId } });
-    if (!row) throw new NotFoundException('Grant not found');
-    return row;
   }
 
   /** YX-SEC-11: approved by an admin who neither asked for it nor receives it. */
   decide(ctx: TenantContext, actorUserId: string, id: string, outcome: 'active' | 'rejected', note: string | undefined) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const row = await this.grantOr404(tx, c, id);
+      const row = await grantOr404(tx, c, id);
       if (row.status !== 'pending') throw new ConflictException(`This grant is ${row.status}.`);
       if (row.userId === actorUserId) throw new ForbiddenException('A grant to yourself is decided by another admin (YX-SEC-11).');
       if (row.grantedBy === actorUserId) throw new ForbiddenException('You asked for this grant, so another admin decides it (YX-SEC-11).');
@@ -264,11 +321,7 @@ export class AccessService {
 
   revoke(ctx: TenantContext, actorUserId: string, id: string, reason: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-      const row = await this.grantOr404(tx, c, id);
-      if (row.status !== 'active' && row.status !== 'pending') throw new ConflictException(`This grant is ${row.status}.`);
-      const updated = await tx.roleGrant.update({ where: { id }, data: { status: 'revoked', revokedBy: actorUserId, revokedAt: new Date(), decisionNote: reason.trim() } });
-      await audit(tx, c, 'access.grant.revoked', 'role_grant', id, { userId: row.userId, reason: reason.trim() });
-      return (await this.views(tx, c, [updated]))[0];
+      return (await this.views(tx, c, [await revokeGrant(tx, c, id, actorUserId, reason)]))[0];
     });
   }
 

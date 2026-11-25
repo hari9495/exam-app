@@ -1,6 +1,7 @@
 import { formatDate, formatINR, type ActionItem } from '@yukthix/ui';
+import type { ApprovalTask } from '@yukthix/ui/desk';
 import type { LiveHome } from '@yukthix/ui/frame';
-import type { MyAttendance, MyLeave, Muster, TeamCalendar } from '@yukthix/ui/time';
+import type { MyAttendance, MyLeave, Muster, TeamCalendar, TeamLeaveHome } from '@yukthix/ui/time';
 
 // GET /workspace/home (design audit step 2, home parity 19 Oct 2026): the Home widgets, each present only when the
 // person may see it.
@@ -29,6 +30,8 @@ export interface HomeWidgets {
 export interface FinanceHome {
   runs?: { id: string; month: string; entity: string; status: string; people: number | null; net: string | null; payOn: string; preparedBy: string; preparedByMe: boolean; requestId: string | null; approveNow: boolean; preparedRole?: string | null; submittedOn?: string | null; variance?: { flagged: number; threshold: string } }[];
   claims?: { count: number; amount: string; previous?: number; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
+  /** The last six months' cost to company against the payroll budget (rupees as decimal strings). */
+  cost?: { canSetBudget: boolean; months: { month: string; cost: string | null; budget: string | null }[] };
   dues?: { entity: string; entityId: string; month: string; today: string; cards: { statute: string; state: string | null; label: string; amount: string; dueOn: string | null; status: string; late: boolean }[]; tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean } }[];
 }
 
@@ -162,7 +165,6 @@ export function employeeStats(input: { leave?: MyLeave; now?: MyAttendance; befo
   return out;
 }
 
-const NOT_IN = new Set(['missing_in', 'absent']);
 
 /** Monday of the week that holds `iso`, and the seven days. */
 export function weekOf(iso: string): string[] {
@@ -175,8 +177,31 @@ export function weekOf(iso: string): string[] {
  * The manager Home (PLT-02 manager): team today and late check-ins from the muster (this week against last week, both on
  * record), who's off this week from the team calendar, reviews to write, probation reviews due and the next 1:1s.
  */
+/** GET /time/team-today: my direct reports today (Keka ideas, 2026-11). */
+export interface TeamTodayResponse {
+  date: string;
+  people: { id: string; name: string; state: 'leave' | 'off' | 'on_duty' | 'wfh' | 'late' | 'in' | 'not_in'; lateMinutes: number | null; reminded: boolean }[];
+}
+
+/** "My team today": on leave, not in yet, late, and working from home or on duty, each with who. */
+export function teamTodayCard(t: TeamTodayResponse): NonNullable<LiveHome['team']> {
+  const of = (...states: TeamTodayResponse['people'][number]['state'][]) => t.people.filter((p) => states.includes(p.state));
+  return {
+    total: t.people.length,
+    href: '/yx/time/team',
+    groups: [
+      { key: 'leave', label: 'On leave', people: of('leave').map((p) => ({ id: p.id, name: p.name, secondary: 'On leave today' })) },
+      { key: 'not_in', label: 'Not in yet', people: of('not_in').map((p) => ({ id: p.id, name: p.name, secondary: 'Not checked in', nudge: true, reminded: p.reminded })) },
+      { key: 'late', label: 'Late', people: of('late').map((p) => ({ id: p.id, name: p.name, secondary: `${p.lateMinutes ?? 0} minutes late` })) },
+      { key: 'away', label: 'Working from home or on duty', people: of('wfh', 'on_duty').map((p) => ({ id: p.id, name: p.name, secondary: p.state === 'wfh' ? 'Working from home' : 'On duty' })) },
+    ],
+  };
+}
+
 export function managerHome(input: {
   today: string;
+  /** Keka ideas: my direct reports today (the "My team today" card). */
+  teamToday?: TeamTodayResponse;
   muster?: Muster;
   /** The previous month's muster, when this week starts in it. */
   musterBefore?: Muster;
@@ -189,21 +214,9 @@ export function managerHome(input: {
   const out: Pick<LiveHome, 'team' | 'off' | 'offHref' | 'goals' | 'stats'> = {};
   const stats: NonNullable<LiveHome['stats']> = [];
   const people = (input.muster?.people ?? []).filter((p) => !p.me);
+  // Keka ideas: direct reports only (the muster may hold a wider scope for HR), from the day engine and approved requests.
+  if (input.teamToday?.people.length) out.team = teamTodayCard(input.teamToday);
   if (input.muster && people.length) {
-    const todayOf = (p: (typeof people)[number]) => p.days.find((d) => d.on === today);
-    const onLeave = people.filter((p) => todayOf(p)?.status === 'leave');
-    // While the day is still on, the day engine says "not started" for everyone: checked in or not is the first punch.
-    const open = (p: (typeof people)[number], checkedIn: boolean) => todayOf(p)?.status === 'not_started' && Boolean(todayOf(p)?.firstIn) === checkedIn;
-    const notIn = people.filter((p) => NOT_IN.has(todayOf(p)?.status ?? '') || open(p, false));
-    const late = people.filter((p) => (todayOf(p)?.lateMinutes ?? 0) > 0);
-    const inToday = people.filter((p) => ['present', 'half_day', 'missing_out'].includes(todayOf(p)?.status ?? '') || open(p, true));
-    out.team = {
-      summary: `${inToday.length} in · ${onLeave.length} on leave · ${notIn.length} not checked in · ${late.length} late`,
-      total: people.length,
-      href: '/yx/time/muster',
-      // Nudge (PLT-02): someone not checked in yet can be reminded; the API checks scope and the day again.
-      rows: [...notIn.map((p) => ({ id: p.id, name: p.name, secondary: 'Not checked in', nudge: true, reminded: Boolean(p.remindedOn?.includes(today)) })), ...onLeave.map((p) => ({ id: p.id, name: p.name, secondary: 'On leave today' }))].slice(0, 4),
-    };
     const week = weekOf(today);
     const lastWeek = week.map((d) => new Date(new Date(`${d}T00:00:00Z`).getTime() - 7 * 86_400_000).toISOString().slice(0, 10));
     const all = [...people, ...(input.musterBefore?.people ?? []).filter((p) => !p.me)];
@@ -225,7 +238,7 @@ export function managerHome(input: {
   }
   if (input.reviews) {
     const toWrite = input.reviews.filter((r) => r.next.stage === 'manager');
-    stats.push({ id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: toWrite.length, drill: { label: 'Open reviews', href: '/yx/performance/reviews' } });
+    stats.push({ id: 'reviews', title: 'Reviews', label: 'Reviews to write', value: toWrite.length, drill: { label: 'Open reviews', href: '/yx/performance' } });
   }
   const month = today.slice(0, 7);
   const dueProbations = (input.probations ?? []).filter((r) => !r.confirmedFrom && !r.pendingConfirmationId && r.reviewDueOn);
@@ -242,7 +255,8 @@ export function managerHome(input: {
 }
 
 const enc = encodeURIComponent;
-const application = (jobId: string, entryId: string) => `/yx/hiring/jobs/${enc(jobId)}?entry=${enc(entryId)}`;
+// One application opens on the job's pipeline (HIR-03: the job workspace itself has no board).
+const application = (jobId: string, entryId: string) => `/yx/hiring/jobs/${enc(jobId)}/pipeline?entry=${enc(entryId)}`;
 
 /** The recruiter Home: its action rows (each opening the hiring page that handles it) and its widgets. */
 export function hiringHome(h: HiringHome | undefined, now: Date): { actions: ActionItem[]; view?: NonNullable<LiveHome['hiring']> } {
@@ -321,7 +335,7 @@ const sumOf = <T>(xs: T[], f: (x: T) => number) => xs.reduce((t, x) => t + f(x),
  * run the person approves now, a claims payout file someone else made). Nothing is made up: a part the API left out stays
  * out, and a month with nothing yet is said in words.
  */
-export function financeHome(f: FinanceHome | undefined, month: string, today: string): Pick<LiveHome, 'stats' | 'moneyOut' | 'approval'> & { actions: ActionItem[]; replaces: string[] } {
+export function financeHome(f: FinanceHome | undefined, month: string, today: string): Pick<LiveHome, 'stats' | 'moneyOut' | 'approval' | 'trend'> & { actions: ActionItem[]; replaces: string[] } {
   if (!f) return { actions: [], replaces: [] };
   const prev = prevMonthOf(month);
   const name = monthName(month);
@@ -416,5 +430,37 @@ export function financeHome(f: FinanceHome | undefined, month: string, today: st
       }
     : undefined;
   // The approvals inbox lists the same run; the finance row (with its headcount and net) takes its place.
-  return { stats, moneyOut, ...(approval ? { approval } : {}), actions, replaces: approve.flatMap((r) => (r.requestId ? [r.requestId] : [])) };
+  // "Payroll cost": cost to company against the budget, the six months up to the chosen one.
+  const trend: LiveHome['trend'] = f.cost
+    ? {
+        months: f.cost.months.map((m) => ({ label: dm(`${m.month}-01`).split(' ')[1], name: monthName(m.month), cost: m.cost === null ? null : rupees(m.cost), budget: m.budget === null ? null : rupees(m.budget) })),
+        ...(f.cost.canSetBudget ? { budgetHref: '/yx/payroll/budget' } : {}),
+      }
+    : undefined;
+  return { stats, moneyOut, ...(approval ? { approval } : {}), ...(trend ? { trend } : {}), actions, replaces: approve.flatMap((r) => (r.requestId ? [r.requestId] : [])) };
+}
+
+/**
+ * "Needs your action" rows from the approvals inbox (PLT-02, 5 Nov 2026). Approve shows only on types the API marks
+ * quickApprove (never one decided on its own page). The person is on the line below, so their name leaves the title.
+ * The note is the type's own (the API's), or for the approver's own team's leave, how many others are off then (from
+ * GET /time/team/leave-home, one call; it holds only the viewer's own team, so a delegate or HR approver gets no note).
+ */
+export function inboxActions(tasks: ApprovalTask[], teamLeave?: TeamLeaveHome): ActionItem[] {
+  const others = new Map((teamLeave?.waiting ?? []).map((w) => [w.taskId, w.others.length]));
+  return tasks.map((t) => {
+    const who = t.person || t.onBehalfOf || t.requester;
+    const rest = who && t.title.startsWith(`${who}: `) ? t.title.slice(who.length + 2) : t.title;
+    const off = others.get(t.taskId);
+    const note = t.note || (off ? `${off} ${off === 1 ? 'other' : 'others'} off these days` : undefined);
+    return {
+      id: t.taskId,
+      type: t.type,
+      title: rest.charAt(0).toUpperCase() + rest.slice(1),
+      who,
+      ...(t.dueAt ? { due: new Date(t.dueAt) } : {}),
+      kind: t.quickApprove && !t.decideAt ? 'approve' : 'review',
+      ...(note ? { note } : {}),
+    };
+  });
 }

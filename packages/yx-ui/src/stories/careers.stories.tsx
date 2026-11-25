@@ -10,11 +10,12 @@ import {
   type CareersJob,
   type CareersPageStatus,
 } from '../components/careers';
+import { CareersCompanyPages, CareersNotices, type CareersEntity, type ConsentNotice } from '../components/careers-admin';
 import { Logo, Monogram, PoweredBy } from '../components/brand';
 import type { UploadHandlers } from '../components/upload';
 import { Section, Stack, Row } from './story-kit';
 
-const meta: Meta = { title: 'Surfaces/Careers', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Surfaces/Careers', parameters: { layout: 'fullscreen' }, excludeStories: ['entities', 'notices'] };
 export default meta;
 type S = StoryObj;
 
@@ -199,6 +200,78 @@ export const PageBuilderLightAccent: S = {
   },
 };
 
+export const PageBuilderSiteSettings: S = {
+  name: 'Page builder — site settings (photo, assistant, offline)',
+  render: function Render() {
+    const [config, setConfig] = useState<CareersConfig>(CONFIG);
+    const [assistant, setAssistant] = useState(true);
+    return (
+      <PageBuilder
+        value={config}
+        onChange={setConfig}
+        jobs={JOBS}
+        status="published"
+        defaultSelectedId="hero-1"
+        site={{ publicUrl: 'https://hr.nilgirifoods.in/yx/careers/nilgiri-foods', bannerUrl: null, onUploadBanner: () => Promise.resolve(), assistantEnabled: assistant, onAssistantChange: setAssistant, onUnpublish: () => undefined }}
+      />
+    );
+  },
+};
+
+/* ---------------- Company pages and privacy notices (staff side, next to the builder) ---------------- */
+
+export const entities: CareersEntity[] = [
+  { id: 'e1', name: 'Nilgiri Foods Pvt Ltd', page: { slug: 'nilgiri-foods', headline: 'Bake with us', intro: null, primaryColor: '#1F6F4A' } },
+  { id: 'e2', name: 'Nilgiri Retail LLP', page: null },
+];
+export const notices: ConsentNotice[] = [
+  { id: 'n2', purpose: 'application', version: 2, text: 'We use your details to consider you for this job and keep them for 12 months.', publishedAt: '2026-10-10T09:00:00.000Z' },
+  { id: 'n1', purpose: 'application', version: 1, text: 'We use your details to consider you for this job.', publishedAt: '2026-09-01T09:00:00.000Z' },
+];
+const ok = () => Promise.resolve();
+
+export const CompanyPages: S = {
+  name: 'Company pages (one per company in the group)',
+  render: () => (
+    <Stack width={880}>
+      <CareersCompanyPages entities={entities} onSaveEntity={ok} onRemoveEntity={ok} />
+    </Stack>
+  ),
+};
+export const PrivacyNotices: S = {
+  name: 'Privacy notices (versioned)',
+  render: () => (
+    <Stack width={880}>
+      <CareersNotices notices={notices} onPublishNotice={ok} />
+    </Stack>
+  ),
+};
+export const PrivacyNoticesNone: S = {
+  name: 'Privacy notices · none yet',
+  render: () => (
+    <Stack width={880}>
+      <CareersNotices notices={[]} onPublishNotice={ok} />
+    </Stack>
+  ),
+};
+
+/* ---------------- Careers page: group companies and the assistant ---------------- */
+
+export const CompaniesAndAssistant: S = {
+  name: 'Company switch and careers assistant',
+  render: () => (
+    <CareersPage
+      config={{ ...CONFIG, theme: 'compact' }}
+      jobs={JOBS}
+      companies={[
+        { name: 'All of Nilgiri Foods', href: '#all', current: true },
+        { name: 'Nilgiri Retail LLP', href: '#retail' },
+      ]}
+      assistant={{ onAsk: () => new Promise((r) => setTimeout(() => r('Yes. The Production supervisor job is at the Coimbatore plant and works rotating shifts.'), 500)) }}
+    />
+  ),
+};
+
 /* ---------------- Apply form ---------------- */
 
 // Deterministic fake upload: 3 progress steps, then scan, then done.
@@ -225,6 +298,40 @@ const ApplyDemo = ({ sent }: { sent?: boolean }) => (
 export const ApplyForm: S = { render: () => <ApplyDemo /> };
 export const ApplyFormMobile: S = { render: () => <ApplyDemo />, globals: { viewport: { value: 'mobile2', isRotated: false } } };
 export const ApplyFormSent: S = { render: () => <ApplyDemo sent /> };
+export const ApplyFormFull: S = {
+  name: 'Apply form · notices, pay question and company questions',
+  render: () => (
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <JobApplyForm
+        job={JOBS[2]}
+        companyName="Nilgiri Foods"
+        upload={fakeUpload}
+        onSubmit={() => new Promise((r) => setTimeout(r, 600))}
+        resumeAccept={['.pdf']}
+        askPay
+        questions={[
+          { id: 'q1', label: 'Notice period (days)', type: 'number', required: true },
+          { id: 'q2', label: 'Willing to work shifts?', type: 'select', options: ['Yes', 'No'], required: false },
+        ]}
+        notices={[
+          { purpose: 'application', text: 'Nilgiri Foods uses your details only to consider you for this job and keeps them for 12 months.', required: true },
+          { purpose: 'talent_pool', text: 'We may also keep your details for other suitable jobs for 12 months.', required: false },
+        ]}
+        honeypot
+      />
+    </div>
+  ),
+};
+
+// Answer 561 (10 Nov 2026): the optional WhatsApp tick, off until the applicant ticks it.
+export const ApplyFormWhatsapp: S = {
+  name: 'Apply form · Message me on WhatsApp about jobs',
+  render: () => (
+    <div style={{ display: 'flex', justifyContent: 'center' }}>
+      <JobApplyForm job={JOBS[2]} companyName="Nilgiri Foods" upload={fakeUpload} onSubmit={() => new Promise((r) => setTimeout(r, 600))} whatsappTick />
+    </div>
+  ),
+};
 
 /* ---------------- Brand placeholders ---------------- */
 

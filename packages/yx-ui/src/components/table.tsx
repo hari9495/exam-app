@@ -64,12 +64,16 @@ export interface TableColumn<R> {
   groupable?: boolean;
   /** Inline edit (§14, §20). The table calls onCellEdit; the app saves and updates rows. */
   editable?: 'text' | 'number' | 'money';
+  /** The editor's name for one row, e.g. "Fixed CTC for Aditi Rao" (default: the header). */
+  editLabel?: (row: R) => string;
 }
 
 export interface ColumnState {
   order: string[];
   hidden: string[];
   widths: Record<string, number>;
+  /** Columns the person ticked to show: never hidden to fit (the table scrolls instead). */
+  pinned?: string[];
 }
 
 export interface DataTableProps<R> {
@@ -127,12 +131,16 @@ export interface DataTableProps<R> {
   height?: number;
 
   onCellEdit?: (row: R, key: string, value: unknown) => void;
+  /** Opens one editable cell (the cursor goes into it); a new `at` opens it again. For "fix this row" checks. */
+  openEdit?: { id: string; key: string; at: number } | null;
   /** Left side of the toolbar: usually <FilterBar>. */
   toolbar?: ReactNode;
   /** Right side, before the table controls: usually <SavedViewMenu>. */
   views?: ReactNode;
   /** Export respecting P02 field classes is done by the server; the table passes the visible columns. */
   onExport?: (format: 'csv' | 'xlsx', visibleKeys: string[]) => void;
+  /** The formats the Export menu offers (default both). A screen that only writes CSV passes ['csv']. */
+  exportFormats?: readonly ('csv' | 'xlsx')[];
   /**
    * Phone cards: two lines per row, the primary cell (with the "…" menu beside it) and then the other short cells on one
    * line joined by " · " ("Thu 15 Jan 2026 · Holiday · Past"), instead of one label / value line each.
@@ -222,7 +230,7 @@ function EditCell<R>({ c, row, onCommit, onCancel }: { c: TableColumn<R>; row: R
     if (e.key === 'Escape') onCancel();
     if (e.key === 'Enter') onCommit(c.editable === 'text' ? text : num);
   };
-  const common = { size: 'sm' as const, autoFocus: true, onKeyDown: keys, 'aria-label': c.header };
+  const common = { size: 'sm' as const, autoFocus: true, onKeyDown: keys, 'aria-label': c.editLabel ? c.editLabel(row) : c.header };
   if (c.editable === 'money') return <CurrencyField {...common} value={num} onChange={setNum} onBlur={() => onCommit(num)} />;
   if (c.editable === 'number') return <NumberField {...common} value={num} onChange={setNum} onBlur={() => onCommit(num)} />;
   return <TextField {...common} value={text} onChange={setText} onBlur={() => onCommit(text)} />;
@@ -292,9 +300,11 @@ export function DataTable<R>(props: DataTableProps<R>) {
     height,
     treeParent,
     onCellEdit,
+    openEdit,
     toolbar,
     views,
     onExport,
+    exportFormats = ['csv', 'xlsx'],
     cardSummary,
   } = props;
 
@@ -317,12 +327,14 @@ export function DataTable<R>(props: DataTableProps<R>) {
     hidden: defaultColumnState?.hidden ?? [],
     widths: defaultColumnState?.widths ?? Object.fromEntries(columns.filter((c) => c.width).map((c) => [c.key, c.width!])),
   }));
-  const updateCols = (fn: (s: ColumnState) => ColumnState) =>
-    setColState((s) => {
-      const n = fn(s);
-      onColumnStateChange?.(n);
-      return n;
-    });
+  const updateCols = (fn: (s: ColumnState) => ColumnState) => setColState(fn);
+  // Tell the page after the change, not inside the state update (a parent update while rendering is a React error).
+  const told = useRef(colState);
+  useEffect(() => {
+    if (told.current === colState) return;
+    told.current = colState;
+    onColumnStateChange?.(colState);
+  }, [colState]); // eslint-disable-line react-hooks/exhaustive-deps
   const byKey = useMemo(() => new Map(columns.map((c) => [c.key, c])), [columns]);
   const ordered = useMemo(() => {
     const keys = [...colState.order.filter((k) => byKey.has(k)), ...columns.map((c) => c.key).filter((k) => !colState.order.includes(k))];
@@ -453,6 +465,9 @@ export function DataTable<R>(props: DataTableProps<R>) {
 
   // ---- editing ----
   const [editing, setEditing] = useState<{ id: string; key: string } | null>(null);
+  useEffect(() => {
+    if (openEdit) setEditing({ id: openEdit.id, key: openEdit.key });
+  }, [openEdit?.at]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- virtual scroll ----
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -530,7 +545,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
   // Column and density settings only when there is something to thin: a table (not cards) with rows and columns that can hide.
   // A small fixed table, the empty state and phone cards get no settings, and then no toolbar band at all.
   // A short table (under 8 rows) with nothing hidden and no toolbar of its own gets none either, and none while loading or failed.
-  const someHidden = colState.hidden.length > 0 || autoHidden.length > 0;
+  // Once the person has changed columns (Reset included), the Columns button stays, so they can hide one again (founder, 21 Oct 2026).
+  const someHidden = colState.hidden.length > 0 || autoHidden.length > 0 || (colState.pinned?.length ?? 0) > 0;
   const colTools =
     !cards && state === 'ready' && rows.length > 0 && (someHidden || (columns.some((c) => c.optional) && (rows.length >= 8 || hasContent(toolbar))));
   // Phone cards have no header row, so "Select all" moves into the toolbar.
@@ -587,8 +603,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
             </Button>
           </MenuTrigger>
           <MenuContent align="end">
-            <MenuItem onSelect={() => onExport('csv', visible.map((c) => c.key))}>CSV (visible columns)</MenuItem>
-            <MenuItem onSelect={() => onExport('xlsx', visible.map((c) => c.key))}>Excel (visible columns)</MenuItem>
+            {exportFormats.includes('csv') && <MenuItem onSelect={() => onExport('csv', visible.map((c) => c.key))}>CSV (visible columns)</MenuItem>}
+            {exportFormats.includes('xlsx') && <MenuItem onSelect={() => onExport('xlsx', visible.map((c) => c.key))}>Excel (visible columns)</MenuItem>}
           </MenuContent>
         </Menu>
       )}
@@ -627,6 +643,8 @@ export function DataTable<R>(props: DataTableProps<R>) {
         data-clickable={onRowClick ? true : undefined}
         onFocus={() => setFocusIdx(rowIndex)}
         onClick={(e) => {
+          // A click in a portal (a row menu's item) bubbles here through React, not the page: never open the row then.
+          if (!e.currentTarget.contains(e.target as Node)) return;
           if ((e.target as HTMLElement).closest('button, a, input, [role="checkbox"], [data-no-row-click]')) return;
           onRowClick?.(row);
         }}
@@ -640,7 +658,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
           const isEditing = editing?.id === id && editing.key === c.key;
           const primary = c.key === firstKey;
           return (
-            <td key={c.key} data-label={c.header} data-type={c.type} data-align={alignOf(c)} data-frozen={primary || undefined} style={stickyStyle(c)}>
+            <td key={c.key} data-col={c.key} data-label={c.header} data-type={c.type} data-align={alignOf(c)} data-frozen={primary || undefined} style={stickyStyle(c)}>
               {cards && primary && selectable && !blocked && <span className="yx-table__card-select" data-no-row-click>{select}</span>}
               {isEditing ? (
                 <EditCell
@@ -834,19 +852,45 @@ export function DataTable<R>(props: DataTableProps<R>) {
   const actionsCapped = !!(actionsW && actionsCap && actionsW > actionsCap);
   const actW = actionsCapped ? actionsCap : actionsW;
   const fixedW = (selectable ? SELECT_W : 0) + (hasActions ? (rowButtons ? actW ?? 0 : ACTIONS_W) : 0);
-  // Amounts are never cut off: a money or totalled column is at least as wide as its widest figure (the footer total
-  // included) and its header (Pay review, Oct 2026). ponytail: estimated from character count, measure if fonts change.
+  // Amounts and counts are never cut off: a money, number or totalled column is at least as wide as its widest figure
+  // (the footer total included) and its header (Pay review, Oct 2026; a count's header was clipped to "Incide…" on
+  // Changes, Nov 2026). ponytail: estimated from character count, measure if fonts change.
   const figureW = useMemo(() => {
     const out: Record<string, number> = {};
     for (const c of columns) {
-      if (c.type !== 'money' && !c.total) continue;
+      if (c.type !== 'money' && c.type !== 'number' && !c.total) continue;
       let chars = c.total ? formatTotal(c.total, c.type, computeTotal(rows, c.value, c.total)).length : 0;
       for (const r of rows) chars = Math.max(chars, cellText(c, r).length);
       out[c.key] = Math.max(chars * 9 + 32, c.header.length * 8 + 56);
     }
     return out;
   }, [columns, rows]);
-  const minW = (c: TableColumn<R>) => Math.max(c.type === 'person' ? PERSON_MIN_W : FLEX_MIN_W, figureW[c.key] ?? 0);
+  // Badges and dates never break onto a second line either: a column keeps at least its widest badge or date, measured
+  // as drawn (spacing audit 27 Oct 2026). Only while the table fits without shrinking: their room would otherwise come
+  // out of a text column and break its words (28 Oct). A width the person dragged still wins.
+  const [keepW, setKeepW] = useState<Record<string, number>>({});
+  const baseMin = (c: TableColumn<R>) => Math.max(c.type === 'person' ? PERSON_MIN_W : FLEX_MIN_W, figureW[c.key] ?? 0);
+  const keepOn =
+    !boxW || fixedW + visible.reduce((t, c) => t + Math.max(Number(colState.widths[c.key]) || baseMin(c), keepW[c.key] ?? 0), 0) <= boxW;
+  useLayoutEffect(() => {
+    // Not measured while wrapping: a wrapped badge would measure narrow and the table would flip back and forth.
+    if (!tableRef.current || cards || resized || !keepOn) return;
+    const out: Record<string, number> = {};
+    const text = document.createRange();
+    tableRef.current.querySelectorAll<HTMLElement>('tbody td[data-col]').forEach((td) => {
+      const pad = parseFloat(getComputedStyle(td).paddingLeft) * 2;
+      // The text's own width, not the cell's: the cell's would hold the column at whatever width it has now.
+      // Test DOMs (jsdom) cannot measure text; there the column simply keeps its set width.
+      const date = td.dataset.type === 'date' && typeof text.getBoundingClientRect === 'function';
+      if (date) text.selectNodeContents(td);
+      let w = date ? text.getBoundingClientRect().width + pad : 0;
+      td.querySelectorAll<HTMLElement>('.yx-badge').forEach((b) => (w = Math.max(w, b.getBoundingClientRect().width + pad)));
+      if (w) out[td.dataset.col!] = Math.max(out[td.dataset.col!] ?? 0, Math.ceil(w));
+    });
+    if (JSON.stringify(out) !== JSON.stringify(keepW)) setKeepW(out);
+  });
+  const floorW = (c: TableColumn<R>) => Math.max(figureW[c.key] ?? 0, keepOn ? keepW[c.key] ?? 0 : 0);
+  const minW = (c: TableColumn<R>) => Math.max(baseMin(c), floorW(c));
   // Still too wide after shrinking? Hide optional columns from the right until it fits; a table scrolls only when nothing optional is left.
   useLayoutEffect(() => {
     const want: string[] = [];
@@ -854,7 +898,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
     if (cards) for (const c of shownByUser) if (c.optional && c.key !== firstKey) want.push(c.key);
     if (!resized && boxW && !cards) {
       // The narrowest a column can go: a fifth off its width, but never below its widest figure.
-      const least = (c: TableColumn<R>) => Math.max((Number(colState.widths[c.key]) || minW(c)) * MIN_FIT, figureW[c.key] ?? 0);
+      const least = (c: TableColumn<R>) => Math.max((Number(colState.widths[c.key]) || minW(c)) * MIN_FIT, floorW(c));
       let total = shownByUser.reduce((t, c) => t + least(c), 0);
       // First columns marked optional, then any plain text column from the right. Never the first column, a status, a number,
       // an amount, a total or an editable one: those carry the facts people decide on (Time review, Oct 2026).
@@ -863,7 +907,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
       for (const pick of [(c: TableColumn<R>) => !!c.optional, plain]) {
         for (const c of [...shownByUser].reverse()) {
           if (total <= boxW - fixedW) break;
-          if (c.key === firstKey || want.includes(c.key) || !pick(c)) continue;
+          if (c.key === firstKey || want.includes(c.key) || colState.pinned?.includes(c.key) || !pick(c)) continue;
           want.push(c.key);
           total -= least(c);
         }
@@ -876,11 +920,11 @@ export function DataTable<R>(props: DataTableProps<R>) {
   // Shrink to fit; columns that would drop below their widest figure stay at it and the others share what is left.
   let fit = resized || !boxW || cards ? 1 : Math.min(1, Math.max(MIN_FIT, (boxW - fixedW) / dataW));
   if (fit < 1 && !resized) {
-    const locked = visible.filter((c) => widthOf(c) * fit < (figureW[c.key] ?? 0));
+    const locked = visible.filter((c) => widthOf(c) * fit < floorW(c));
     const rest = dataW - locked.reduce((t, c) => t + widthOf(c), 0);
-    if (locked.length && rest > 0) fit = Math.min(1, Math.max(MIN_FIT, (boxW - fixedW - locked.reduce((t, c) => t + figureW[c.key], 0)) / rest));
+    if (locked.length && rest > 0) fit = Math.min(1, Math.max(MIN_FIT, (boxW - fixedW - locked.reduce((t, c) => t + floorW(c), 0)) / rest));
   }
-  const fitW = (c: TableColumn<R>) => Math.max(Math.floor(widthOf(c) * fit), resized ? 0 : figureW[c.key] ?? 0);
+  const fitW = (c: TableColumn<R>) => Math.max(Math.floor(widthOf(c) * fit), resized ? 0 : floorW(c));
   const colW = (key: string) => (colState.widths[key] ? fitW(byKey.get(key)!) : undefined);
 
   return (
@@ -890,6 +934,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
       data-layout={cards ? 'cards' : undefined}
       data-card-summary={(cards && cardSummary) || undefined}
       data-actions-wrap={actionsCapped || undefined}
+      data-wrap={resized || !keepOn || undefined}
       ref={tableRef}
       style={btnW ? ({ '--yx-row-btn-w': `${btnW}px` } as CSSProperties) : undefined}
     >
@@ -1057,7 +1102,7 @@ export function DataTable<R>(props: DataTableProps<R>) {
               <tr>
                 {selectable && <td className="yx-table__select" />}
                 {visible.map((c, i) => (
-                  <td key={c.key} data-label={i === 0 ? undefined : c.header} data-align={alignOf(c)} data-frozen={i === 0 || undefined} style={i === 0 ? stickyStyle(c) : undefined}>
+                  <td key={c.key} data-label={i === 0 ? undefined : c.header} data-align={alignOf(c)} data-frozen={i === 0 || undefined} style={i === 0 ? { ...stickyStyle(c), whiteSpace: 'nowrap' } : undefined}>
                     {i === 0 ? `Total · ${groupIndian(rows.length)} ${rows.length === 1 ? rowNoun[0] : rowNoun[1]}` : c.total ? formatTotal(c.total, c.type, computeTotal(rows, c.value, c.total)) : null}
                   </td>
                 ))}
@@ -1104,6 +1149,7 @@ export function ColumnManager<R>({
     onChange({ ...state, order: n });
   };
   const hiddenCount = new Set([...state.hidden.filter((k) => k !== firstKey), ...autoHidden]).size;
+  const fitted = (key: string) => autoHidden.includes(key) && !state.hidden.includes(key);
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -1120,10 +1166,17 @@ export function ColumnManager<R>({
               <li key={c.key} className="yx-colmgr__item">
                 <Checkbox
                   label={c.header}
-                  description={autoHidden.includes(c.key) && !state.hidden.includes(c.key) ? 'Hidden to fit; widen the window to see it' : undefined}
-                  checked={!state.hidden.includes(c.key) || c.key === firstKey}
+                  description={fitted(c.key) ? 'Hidden to fit. Tick to show it; the table then scrolls sideways.' : undefined}
+                  // Ticked means on screen: a column hidden to fit shows unticked (founder, 21 Oct 2026).
+                  checked={c.key === firstKey || (!state.hidden.includes(c.key) && !fitted(c.key))}
                   disabled={locked}
-                  onChange={(on) => onChange({ ...state, hidden: on ? state.hidden.filter((k) => k !== c.key) : [...state.hidden, c.key] })}
+                  onChange={(on) =>
+                    onChange({
+                      ...state,
+                      hidden: on ? state.hidden.filter((k) => k !== c.key) : [...state.hidden, c.key],
+                      pinned: on ? [...(state.pinned ?? []).filter((k) => k !== c.key), c.key] : (state.pinned ?? []).filter((k) => k !== c.key),
+                    })
+                  }
                 />
                 <span className="yx-colmgr__move">
                   <IconButton icon={ArrowUp} label={`Move ${c.header} up`} size="sm" disabled={i <= 1} onClick={() => move(c.key, -1)} />
@@ -1134,7 +1187,8 @@ export function ColumnManager<R>({
           })}
         </ul>
         <div className="yx-filter-editor__foot">
-          <Button size="sm" onClick={() => onChange({ order: defaultOrder, hidden: [], widths: {} })}>
+          {/* Reset shows every column again, the ones hidden to fit too. */}
+          <Button size="sm" onClick={() => onChange({ order: defaultOrder, hidden: [], widths: {}, pinned: defaultOrder })}>
             Reset columns
           </Button>
         </div>

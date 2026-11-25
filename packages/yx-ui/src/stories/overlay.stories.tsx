@@ -7,7 +7,7 @@ import { Button } from '../components/button';
 import { FormField } from '../components/field';
 import { Select } from '../components/select';
 import { Text } from '../components/foundations';
-import { BottomSheet, ConfirmDialog, Dialog, ShortcutHelp, TypeToConfirmDialog, useShortcutHelp } from '../components/overlay';
+import { BottomSheet, ConfirmDialog, Dialog, ShortcutHelp, shortcutGroups, TypeToConfirmDialog, useShortcutHelp } from '../components/overlay';
 import { Row, Section } from './story-kit';
 
 const meta: Meta = { title: 'Overlays/Dialogs and sheets', parameters: { layout: 'fullscreen' } };
@@ -272,6 +272,12 @@ export const MobileBottomSheetMenu: Story = {
 export const Shortcuts: Story = {
   name: 'Shortcut help · open',
   render: () => <ShortcutHelp defaultOpen />,
+};
+
+// Answer 951: someone who cannot apply for leave or claim expenses does not see N L or N E.
+export const ShortcutsNoRequests: Story = {
+  name: 'Shortcut help · without leave or expenses',
+  render: () => <ShortcutHelp defaultOpen groups={shortcutGroups([])} />,
 };
 
 export const ShortcutsHook: Story = {

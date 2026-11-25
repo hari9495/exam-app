@@ -126,7 +126,7 @@ describe('Service Desk core (M14 §5–§7, §12.1, §14, §15)', () => {
       expect(desk).toMatchObject({ key: 'IT', kind: 'it', audience: 'employee', billingClass: 'service_desk', numberPrefix: 'IT-' });
       ids.desk = desk.id;
       const full = (await api('adminA', 'get', `/desk/desks/${desk.id}`).expect(200)).body;
-      expect(full.types.map((t: { kind: string }) => t.kind).sort()).toEqual(['incident', 'question', 'request']);
+      expect(full.types.map((t: { kind: string }) => t.kind).sort()).toEqual(['change', 'incident', 'problem', 'question', 'request']); // ITSM answer 1931: an IT desk also has changes and problems.
       expect(full.statuses.map((s: { systemState: string }) => s.systemState)).toEqual(['new', 'open', 'pending', 'on_hold', 'solved', 'closed']);
       expect(full.matrix).toHaveLength(16);
       for (const s of full.statuses) ids[`status:${s.label}`] = s.id;

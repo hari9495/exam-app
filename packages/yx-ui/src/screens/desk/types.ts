@@ -1,3 +1,5 @@
+import type { TicketPlace } from './facilities';
+import type { DeskField, TicketFieldView } from './ticket-fields';
 // Service Desk (M14 phase 3b-1): the shapes the /api/v1/desk routes return and accept. Dates arrive as ISO strings.
 export type { LoadState } from '../org/types';
 
@@ -25,6 +27,12 @@ export interface DeskSummary {
   autoCloseDays?: number | null;
   /** Minutes a new ticket waits for its best-matched agent before routing falls back (default 2). */
   routingWaitMinutes?: number;
+  /** HLP-05b: a clock is at risk once this share (%) of its target is used (50, 60, 70, 80 or 90; default 80). */
+  atRiskPercent?: number;
+  /** Answer 1643: the preset reasons a requester may pick after the stars (empty: none asked). */
+  ratingReasons?: string[];
+  /** Answer 1646: what the help centre and portal say while the desk is closed ({opens}: the next opening time). */
+  closedMessage?: string;
   status: 'active' | 'archived';
   version: number;
   myRole?: DeskRole | null;
@@ -36,7 +44,8 @@ export interface DeskSummary {
 
 export interface DeskType {
   id: string;
-  kind: 'incident' | 'request' | 'question';
+  /** Change and problem: IT desks only (ITSM answer 1931). */
+  kind: 'incident' | 'request' | 'question' | 'change' | 'problem';
   name: string;
   active: boolean;
   sortOrder: number;
@@ -98,6 +107,8 @@ export interface DeskDetail {
   myRole: DeskRole | null;
   canSetUp: boolean;
   canManageMembers: boolean;
+  /** Answers 1641, 1650: the desk's own ticket fields (set-up sees all; a seat those its role may see). */
+  fields?: DeskField[];
 }
 
 export interface CannedResponse {
@@ -158,6 +169,10 @@ export interface TicketRow {
   version: number;
   tier?: string;
   sla?: { dueAt: string | null; breached: boolean; paused: boolean } | null;
+  /** HLP-02: the live first response and resolution clocks (business minutes used of the target). */
+  firstResponse?: { usedMinutes: number; targetMinutes: number; paused: boolean; atRiskPercent?: number } | null;
+  resolution?: { usedMinutes: number; targetMinutes: number; paused: boolean; atRiskPercent?: number } | null;
+  firstResponseAt?: string | null;
   createdAt: string;
   updatedAt: string;
   canBulk: boolean;
@@ -186,6 +201,12 @@ export interface TicketFilters {
   search?: string;
   snoozed?: 'show' | 'only';
   breaching?: boolean;
+  /** HLP-02 "Raised": days (yyyy-mm-dd), both included. */
+  createdFrom?: string;
+  createdTo?: string;
+  /** Answers 1641, 1650: one desk field and the values it may have. */
+  fieldKey?: string;
+  fieldValues?: string[];
 }
 
 export interface SavedTicketView {
@@ -230,6 +251,8 @@ export interface TicketDetail {
   urgency: number | null;
   assigneeUserId: string | null;
   channel: string;
+  /** Answer 1646: raised while the desk was closed. */
+  raisedOutsideHours?: boolean;
   sensitive: boolean;
   private: boolean;
   vip: boolean;
@@ -249,6 +272,23 @@ export interface TicketDetail {
   canWork: boolean;
   canNote: boolean;
   canAssignOthers: boolean;
+  /** HLP-03: a solved ticket closes by itself on this day (the desk's setting); the requester's rating once given. */
+  closesOn?: string | null;
+  rating?: number | null;
+  /** Answer 1643: the reason the requester picked with the rating. */
+  ratingReason?: string | null;
+  /** Answers 1661, 1662: the device it is about, and whether this person may set it (an IT desk's agent). */
+  device?: { id: string; label: string; detail: string | null } | null;
+  canSetDevice?: boolean;
+  /** ITSM answer 2057: the business application an IT ticket is about; the choices when this person may set it. */
+  app?: { id: string; name: string } | null;
+  appOptions?: { id: string; name: string }[] | null;
+  /** Helpdesk plan item 4: the building, area and equipment a facilities ticket names, and whether this person sets them. */
+  place?: TicketPlace;
+  canSetPlace?: boolean;
+  /** Answers 1641, 1650: the desk's own fields this person may see, and whether they may change them. */
+  deskFields?: TicketFieldView[];
+  canSetFields?: boolean;
   desk: { id: string; key: string; name: string; audience: 'employee' | 'customer' };
   type: { id: string; name: string } | null;
   status: { id: string; label: string } | null;
@@ -288,7 +328,8 @@ export interface RequesterContext {
   vip: boolean;
   employee: { code: string | null; designation: string | null; department: string | null; location: string | null } | null;
   otherTickets: { id: string; number: string; subject: string; systemState: SystemState; createdAt: string }[];
-  assets: unknown[];
+  /** Helpdesk item 2: the requester's devices now, from the People asset register. */
+  assets: { id: string; name: string; tag: string; category: string }[];
 }
 
 export interface Presence {
@@ -317,7 +358,23 @@ export interface TicketChange {
 
 // ---- the requester's side ----
 
+/** Answer 1646: the desk's calendar is closed now; it opens again at `opensAt`. */
+export interface DeskClosed {
+  message: string;
+  opensAt: string | null;
+}
+
 export interface RaiseDesk {
+  /** Answer 1646: set while the desk is closed. */
+  closed?: DeskClosed | null;
+  /** Answer 1662: an IT desk asks "Which device?" when the person has one assigned. */
+  askDevice?: boolean;
+  /** Answer 1842: the desk's fields everyone sees, filled on the raise form. */
+  fields?: TicketFieldView[];
+  /** Answer 1911: a facilities desk asks which building and area. */
+  askPlace?: boolean;
+  /** ITSM answer 2057: an IT desk offers "Which application?" from the company's list. */
+  apps?: { id: string; name: string }[];
   id: string;
   name: string;
   key: string;
@@ -338,6 +395,19 @@ export interface MyTicketRow {
   role: 'requester' | 'requested_for' | 'watcher';
   createdAt: string;
   updatedAt: string;
+  /** HLP-01: the resolution promise of an open ticket (business minutes used of the target). */
+  clock?: { usedMinutes: number; targetMinutes: number; paused: boolean; atRiskPercent?: number } | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  /** A solved ticket closes on this day without a reply (the desk's setting). */
+  closesOn?: string | null;
+  /** Until then a reply reopens a solved ticket (the desk's setting); after it a reply starts a new ticket. */
+  reopenUntil?: string | null;
+  rating?: number | null;
+  /** The person who raised it can still rate it. */
+  canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
 }
 
 export interface MyTicket {
@@ -366,6 +436,10 @@ export interface MyTicket {
   /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
   rating?: number | null;
   canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
+  /** Answers 1641, 1650: the filled desk fields the requester may see. */
+  deskFields?: { label: string; value: string | null }[];
 }
 
 export interface RaiseInput {
@@ -377,6 +451,20 @@ export interface RaiseInput {
   impact?: number;
   urgency?: number;
   private?: boolean;
+  /** Answer 1647: raised from this help article, or after this knowledge search. */
+  originArticleId?: string;
+  originQuery?: string;
+  /** Answer 1662: one of the person's own devices (IT desks). */
+  assetId?: string;
+  /** ITSM answer 2057: the application it is about (IT desks). */
+  appId?: string;
+  /** Answer 1801: raised for this colleague (the on-behalf right is checked by the server). */
+  requestedForPersonId?: string;
+  /** Answer 1842: the desk's fields everyone sees, by key (only the filled ones). */
+  fields?: Record<string, string | number>;
+  /** Answer 1911: the building and an area of it (facilities desks). */
+  locationId?: string;
+  areaId?: string;
 }
 
 // ---- batch 2 (SD-1.09 to SD-1.17) ----
@@ -403,6 +491,8 @@ export interface SlaTimerView {
   metAt: string | null;
   targetSeconds: number;
   usedSeconds: number;
+  /** HLP-05b: the desk's at-risk point (%). */
+  atRiskPercent?: number;
   percent: number;
   pauseReason: string | null;
   breachReason: string | null;
@@ -429,6 +519,17 @@ export interface TaskView {
   ticket?: { id: string; number: string; subject: string | null } | null;
 }
 
+/** Answer 1648: the ticket's timing in business time (the SLA engine's clock). */
+export interface TicketTiming {
+  /** Average wait from the opening or a requester message to the next agent reply; null before any agent reply. */
+  averageReplySeconds: number | null;
+  agentReplies: number;
+  onHoldSeconds: number;
+  /** Queue changes and hand-overs. */
+  moves: number;
+  agents: string[];
+}
+
 export interface TicketWork {
   parent: TicketBrief | null;
   children: TicketBrief[];
@@ -438,6 +539,8 @@ export interface TicketWork {
   sideConversations: { id: string; channel: 'note_thread' | 'child_ticket'; subject: string; withWhom: string | null; state: 'open' | 'closed'; createdBy: string; createdAt: string; childTicket: TicketBrief | null; messages: { id: string; author: string; bodyHtml: string; createdAt: string }[] }[];
   tasks: TaskView[];
   sla: SlaTimerView[];
+  /** Answer 1648: fuller timing for agents (null for observers and collaborators; absent from an older API). */
+  timing?: TicketTiming | null;
   reminders: { id: string; kind: 'remind' | 'snooze'; remindAt: string; note: string | null }[];
   maskedValues: { id: string; kind: string; masked: string; messageId: string | null }[];
   canUnmask: boolean;
@@ -447,7 +550,7 @@ export interface TicketWork {
 }
 
 export interface DeskTemplates {
-  templates: { id: string; name: string; ticketTypeId: string | null; defaults: { categoryId?: string; groupId?: string; priority?: number; tags?: string[] }; checklist: string[]; active: boolean }[];
+  templates: { id: string; name: string; ticketTypeId: string | null; defaults: { categoryId?: string; groupId?: string; priority?: number; tags?: string[] }; checklist: string[]; active: boolean; /** ITSM answer 1935: a standard change. */ preApproved?: boolean }[];
   resolutionCodes: { id: string; code: string; label: string; active: boolean }[];
 }
 
@@ -742,7 +845,7 @@ export interface Product {
 export interface PortalHome {
   company: string;
   portal: { name: string; accentColour: string | null; loginTitle: string | null; loginText: string | null; readingAids: boolean; openRequests: boolean; signUp: PortalSignUp };
-  desks: { id: string; name: string; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[] }[];
+  desks: { id: string; name: string; closed?: DeskClosed | null; categories: { id: string; name: string; parentId: string | null }[]; products: { id: string; name: string }[]; fields?: TicketFieldView[] }[];
   banners: PublicBanner[];
 }
 
@@ -769,6 +872,10 @@ export interface PortalTicket {
   /** SD-1.26: the person's rating (1–5), and whether they may rate it now. */
   rating?: number | null;
   canRate?: boolean;
+  /** Answer 1643: the desk's preset reasons, offered after the stars. */
+  ratingReasons?: string[];
+  /** Answers 1641, 1650: the filled desk fields the requester may see. */
+  deskFields?: { label: string; value: string | null }[];
   id: string;
   number: string;
   subject: string;
@@ -785,9 +892,14 @@ export interface PortalTicket {
 }
 
 export interface PortalRaiseInput {
+  /** Answer 1842: the desk's fields everyone sees, by key (only the filled ones). */
+  fields?: Record<string, string | number>;
   deskId: string;
   categoryId?: string;
   productId?: string;
   subject: string;
   description: string;
+  /** Answer 1647: raised from this help article, or after this search. */
+  originArticleId?: string;
+  originQuery?: string;
 }

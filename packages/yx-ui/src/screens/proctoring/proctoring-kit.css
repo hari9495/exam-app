@@ -7,6 +7,7 @@
   background: var(--yx-color-bg-inverse); border-radius: var(--yx-radius-control);
   border: var(--yx-border-width) solid var(--yx-color-border);
 }
+.yx-cam__img { object-fit: cover; }
 .yx-cam__shape { fill: var(--yx-color-text-muted); stroke: var(--yx-color-text-muted); stroke-width: 2; }
 .yx-cam__shape path { fill: var(--yx-color-text-muted); }
 .yx-cam__object { fill: var(--yx-color-warning-border); stroke: var(--yx-color-warning-border); }
@@ -110,6 +111,7 @@
 /* Calculator */
 .yx-calc { display: flex; flex-direction: column; gap: var(--yx-space-2); padding: var(--yx-space-3); background: var(--yx-color-bg-surface); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); width: calc(var(--yx-space-16) * 4); box-shadow: var(--yx-shadow-popover); }
 .yx-calc__head { display: flex; align-items: center; justify-content: space-between; }
+.yx-calc__tools { display: flex; align-items: center; gap: var(--yx-space-1); }
 .yx-calc__display { display: block; text-align: right; font-family: var(--yx-font-mono); font-size: var(--yx-text-xl); padding: var(--yx-space-2) var(--yx-space-3); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); overflow: hidden; text-overflow: ellipsis; }
 .yx-calc__keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--yx-space-1); }
 .yx-calc__key { min-height: var(--yx-target-min); border: var(--yx-border-width) solid var(--yx-button-secondary-border); background: var(--yx-button-secondary-bg); color: var(--yx-color-text); border-radius: var(--yx-radius-control); font: inherit; font-size: var(--yx-text-md); cursor: pointer; }
@@ -132,6 +134,14 @@
 .yx-code__results li[data-status="pass"] { color: var(--yx-color-success-text); }
 .yx-code__results li[data-status="fail"] { color: var(--yx-color-danger-text); }
 .yx-code__detail { color: var(--yx-color-text-secondary); }
+/* Answer 2234: Run output (stdout, errors) in the results panel. */
+.yx-code__results .yx-code__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2); }
+.yx-code__head > span:first-child { display: inline-flex; align-items: center; gap: var(--yx-space-2); }
+.yx-code__head[data-status="pass"] > span:first-child { color: var(--yx-color-success-text); }
+.yx-code__head[data-status="fail"] > span:first-child { color: var(--yx-color-danger-text); }
+.yx-code__out { margin: 0; padding: var(--yx-space-2) var(--yx-space-3); max-height: 12rem; overflow: auto; font-family: var(--yx-font-mono); font-size: var(--yx-text-sm); white-space: pre-wrap; word-break: break-word; color: var(--yx-color-text); background: var(--yx-color-bg-subtle); border-radius: var(--yx-radius-control); }
+.yx-code__out[data-tone="danger"] { color: var(--yx-color-danger-text); }
+.yx-code__detail[data-tone="warning"] { color: var(--yx-color-warning-text); }
 
 /* QR */
 .yx-qr { margin: 0; display: inline-flex; flex-direction: column; align-items: center; gap: var(--yx-space-2); font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
@@ -144,3 +154,12 @@
 .yx-idcap[data-state="blurry"] .yx-idcap__meta { color: var(--yx-color-warning-text); }
 
 .yx-ftl__item:hover { background: var(--yx-color-bg-subtle); }
+
+/* Question media (answer 2161): the question's picture, its code snippet, option pictures. */
+.yx-prc-qimg { display: block; max-width: 100%; max-height: calc(var(--yx-space-16) * 5); border-radius: var(--yx-radius-card); border: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-prc-snippet { align-self: stretch; margin: 0; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); overflow: hidden; }
+.yx-prc-snippet figcaption { padding: var(--yx-space-1) var(--yx-space-3); font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-prc-snippet pre { margin: 0; padding: var(--yx-space-3); overflow-x: auto; font-family: var(--yx-font-mono); font-size: var(--yx-text-md); line-height: var(--yx-leading-md); }
+.yx-prc-snippet pre:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: calc(var(--yx-focus-width) * -1); }
+.yx-prc-option { display: inline-flex; align-items: center; gap: var(--yx-space-3); }
+.yx-prc-optimg { width: calc(var(--yx-space-16) * 1.5); height: calc(var(--yx-space-16) * 1.5); object-fit: contain; border-radius: var(--yx-radius-control); border: var(--yx-border-width) solid var(--yx-color-border); background: var(--yx-color-bg-surface); }

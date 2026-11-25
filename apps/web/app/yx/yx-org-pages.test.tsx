@@ -12,8 +12,10 @@ import YxLocationsPage from './(app)/settings/locations/page';
 import YxStructurePage from './(app)/settings/structure/page';
 import YxCompanyRulesPage from './(app)/settings/company-rules/page';
 import YxAccessSettingsPage from './(app)/settings/access-settings/page';
+import YxCustomFieldsPage from './(app)/settings/custom-fields/page';
+import YxPayrollRulesPage from './(app)/settings/payroll-rules/page';
 
-jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn() }));
+jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), redirect: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 jest.mock('../../lib/hooks/useCurrentUser', () => ({ useCurrentUser: () => ({ data: { name: 'Arjun Kulkarni', email: 'arjun.k@kaverifoods.in' } }) }));
@@ -146,42 +148,36 @@ describe('/yx/settings/structure', () => {
   });
 });
 
-describe('/yx/settings/company-rules and /yx/settings/access-settings (P01 §4.6, P02 §4.2)', () => {
-  const REGISTRY = {
-    'probation.default_months': { label: 'Probation lasts (months)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['3', '6'], default: '6' },
-    'privacy.who_accessed': { label: 'Show "Who accessed my data" to employees', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on', guard: 'access.role.manage' },
-  };
-  const lists = { 'GET /org/legal-entities': [ENTITY], 'GET /org/locations': [LOCATION], 'GET /org/masters/departments': [], 'GET /org/masters/employment-types': [], 'GET /org/masters/grades': [GRADE] };
+// Settings S-7 (answer 1321): the three retired pages send their old addresses to the pages that hold their settings now.
+describe('retired settings pages redirect (S-7)', () => {
+  it('Company rules opens Settings; Access and privacy opens 2.2; Payroll rules opens 4.6', () => {
+    const go = jest.requireMock('next/navigation').redirect as jest.Mock;
+    YxCompanyRulesPage();
+    YxAccessSettingsPage();
+    YxPayrollRulesPage();
+    expect(go.mock.calls.map((c) => c[0])).toEqual(['/yx/settings', '/yx/settings/people/directory-and-privacy', '/yx/settings/payroll/loans-and-advances']);
+  });
+});
 
-  it('shows each value with its source and entity overrides by name; Remove sends DELETE after confirming', async () => {
-    const del = jest.fn().mockResolvedValue(undefined);
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [{ id: 's-1', key: 'probation.default_months', scopeType: 'legal_entity', scopeId: 'le-1', value: '3', validFrom: null }] }, 'DELETE /org/settings/s-1': del, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
-    wrap(<YxCompanyRulesPage />);
-    expect((await screen.findAllByText('Starter value')).length).toBeGreaterThan(0);
-    const table = screen.getByRole('table', { name: /Probation lasts/ });
-    expect(within(table).getByText('Kaveri Foods Pvt Ltd')).toBeInTheDocument();
-    await userEvent.click(within(table).getAllByRole('button').at(-1)!);
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(del).toHaveBeenCalled());
+describe('/yx/settings/custom-fields (PPL-03 Additional details)', () => {
+  const FIELD = { id: 'cf-1', label: 'Blood group', fieldType: 'select', options: ['A positive', 'B positive'], dataClass: 'personal' };
+  it('lists the employee fields with their sensitivity; adding one posts an employee field with its class', async () => {
+    const create = jest.fn().mockResolvedValue({ ...FIELD, id: 'cf-2' });
+    route({ 'GET /people/custom-fields': [FIELD], 'POST /people/custom-fields': (_p: string, init: RequestInit) => create(JSON.parse(String(init.body))), [`GET ${PERMS_PATH}`]: ['org.settings.manage'] });
+    wrap(<YxCustomFieldsPage />);
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('Blood group')).toBeInTheDocument();
+    expect(within(table).getByText('Personal')).toBeInTheDocument();
+    await userEvent.click(await screen.findByRole('button', { name: 'Add custom field' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /Name/ }), 'Forklift licence number');
+    await userEvent.click(screen.getByRole('button', { name: 'Add field' }));
+    await waitFor(() => expect(create).toHaveBeenCalledWith({ entityType: 'employee', label: 'Forklift licence number', fieldType: 'text', dataClass: 'internal' }));
   });
 
-  it('YX-SEC-02: guarded settings stay disabled without access.role.manage; view-only readers get no buttons', async () => {
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view', 'org.settings.manage'] });
-    const { unmount } = wrap(<YxAccessSettingsPage />);
-    expect(await screen.findByText(/Only an admin who manages roles and access changes this/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Change' })).toBeDisabled();
-    unmount();
-    route({ ...lists, 'GET /org/settings': { registry: REGISTRY, overrides: [] }, [`GET ${PERMS_PATH}`]: ['org.structure.view'] });
-    wrap(<YxCompanyRulesPage />);
-    await screen.findAllByText('Starter value');
-    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
-  });
-
-  it('a 403 on the settings shows no access', async () => {
-    route({ ...lists, 'GET /org/settings': forbidden(), [`GET ${PERMS_PATH}`]: [] });
-    wrap(<YxCompanyRulesPage />);
-    expect(await screen.findByText("You don't have access to the company rules")).toBeInTheDocument();
+  it('a 403 shows no access', async () => {
+    route({ 'GET /people/custom-fields': forbidden(), [`GET ${PERMS_PATH}`]: [] });
+    wrap(<YxCustomFieldsPage />);
+    expect(await screen.findByText(/have access to custom fields/)).toBeInTheDocument();
   });
 });
 
@@ -196,7 +192,7 @@ describe('/yx layout: support access (P02 Q8, step 3)', () => {
     wrap(<YxAppLayout><p>page</p></YxAppLayout>);
     expect(await screen.findByText(/Support session in Kaveri Foods until/)).toBeInTheDocument();
     const rail = await screen.findByRole('navigation', { name: 'Areas' });
-    expect(within(rail).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/yx/settings/legal-entities');
+    expect(within(rail).getByRole('link', { name: 'Settings' })).toHaveAttribute('href', '/yx/settings'); // S-1: Settings opens the home
     // No pay, hiring or desk in a support session, and no Help (P02 Q8, D14).
     expect(within(rail).queryByRole('link', { name: 'Pay' })).toBeNull();
     expect(within(rail).queryByRole('link', { name: 'Helpdesk' })).toBeNull();

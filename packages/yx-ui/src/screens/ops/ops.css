@@ -62,6 +62,9 @@
 .yx-ops-receipt__line { fill: var(--yx-color-border-strong); }
 .yx-ops-receipt__cap { display: flex; flex-direction: column; align-items: center; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); text-align: center; }
 .yx-ops-receipt[data-large] .yx-ops-receipt__svg { width: calc(var(--yx-space-16) * 4); }
+.yx-ops-receipt__img { display: block; width: calc(var(--yx-space-16) * 2); max-height: calc(var(--yx-space-16) * 3); object-fit: contain; border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); }
+.yx-ops-receipt[data-large] .yx-ops-receipt__img { width: calc(var(--yx-space-16) * 4); max-height: calc(var(--yx-space-16) * 5); }
+.yx-ops-receipt__pdf { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--yx-space-1); width: calc(var(--yx-space-16) * 2); aspect-ratio: 3 / 4; border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-surface); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); font-weight: 600; }
 
 /* Camera */
 .yx-ops-camera { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--yx-space-3); min-height: calc(var(--yx-space-16) * 4); padding: var(--yx-space-4); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-inverse); color: var(--yx-color-text-inverse); text-align: center; }
@@ -182,10 +185,18 @@
 .yx-ops-kiosk__choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-4); }
 .yx-ops-kiosk__notice { max-height: calc(var(--yx-space-16) * 4); overflow: auto; padding: var(--yx-space-4); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); font-size: var(--yx-text-md); line-height: var(--yx-leading-body); }
 .yx-ops-kiosk input { min-height: var(--yx-space-12); font-size: var(--yx-text-lg); }
+/* Answer 799: the walk-in details step in two columns on a wide screen (the field row is one column below 640 px). */
+.yx-ops-kiosk--wide { max-width: calc(var(--yx-space-16) * 16); gap: var(--yx-space-4); }
 
 /* Editor side-by-side */
 .yx-ops-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--yx-space-6); align-items: start; }
-@media (max-width: 1100px) { .yx-ops-split { grid-template-columns: minmax(0, 1fr); } }
+/* Three settings cards side by side, the first (a text box) wider (the knowledge base Settings tab fits 1278 x 635 without a page scroll, answer 1991). */
+.yx-ops-split[data-cols="3"] { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr); }
+@media (max-width: 1100px) { .yx-ops-split, .yx-ops-split[data-cols="3"] { grid-template-columns: minmax(0, 1fr); } }
+/* CL-5 gate pass card (answer 735) and the one-time kiosk PIN (answer 625). */
+.yx-ops-gatepass { display: flex; flex-wrap: wrap; gap: var(--yx-space-4); align-items: flex-start; padding: var(--yx-space-4); border: 1px solid var(--yx-color-border); border-radius: var(--yx-radius-card); }
+.yx-ops-gatepass__photo { width: 96px; height: 120px; object-fit: cover; border-radius: var(--yx-radius-control); border: 1px solid var(--yx-color-border); }
+.yx-ops-pin { font-family: var(--yx-font-mono); font-size: var(--yx-text-2xl); letter-spacing: 0.3em; margin: 0; text-align: center; }
 
 .yx-ops-clause { display: flex; flex-direction: column; gap: var(--yx-space-2); padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
 .yx-ops-clause[data-finding] { border-color: var(--yx-color-danger-border); }

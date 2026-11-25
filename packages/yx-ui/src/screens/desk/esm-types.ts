@@ -60,7 +60,10 @@ export interface PickOption {
   label: string;
   detail: string | null;
 }
-export type PickKind = 'people' | 'locations' | 'cost-centres';
+/** 'assets': the requester's own devices (People asset register); an IT agent searches all (Helpdesk item 2). */
+/** 'apps': the company's business applications that can be asked for (plan item 3); 'buildings' | 'areas' | 'equipment': the facilities register (plan item 4). */
+/** 'on-behalf': only the people this person may raise for (answer 1846). */
+export type PickKind = 'people' | 'on-behalf' | 'locations' | 'cost-centres' | 'assets' | 'apps' | 'buildings' | 'areas' | 'equipment';
 
 export type ItemStage = 'submitted' | 'approval' | 'fulfilment' | 'delivered' | 'cancelled' | 'rejected';
 export interface ApprovalRoute {
@@ -112,6 +115,12 @@ export interface ApprovalTask {
   submittedAt: string;
   /** Irreversible requests (e.g. reopening a locked pay month) are decided on their own page, with a fresh second step. */
   decideAt?: string | null;
+  /** The approver may send it back for changes (the type has it and the company allows it). */
+  canSendBack?: boolean;
+  /** One-click Approve on Home: the type is simple to judge and needs nothing from the approver. */
+  quickApprove?: boolean;
+  /** Short context from the request's type ("Over the policy limit, so it needs a full review"). */
+  note?: string | null;
 }
 export interface ApprovalHistory {
   decided: { requestId: string; title: string; type: string; decision: string; at: string; requestStatus: string }[];
@@ -137,7 +146,7 @@ export interface FulfilmentTaskDef {
   olaHours?: number;
   note?: string;
 }
-export type ApproverDef = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string };
+export type ApproverDef = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'app_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string };
 export interface ApprovalStepDef {
   name: string;
   approvers: ApproverDef[];

@@ -1,20 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
   abscondingState,
   addWorkingDays,
   applyIncrement,
   canSeePay,
-  extensionAllowed,
   fieldVisibility,
   fnfTotals,
   gratuity,
   isIban,
+  ifscBank,
   isIfsc,
   isPan,
   matchPersons,
-  noticeOutcome,
   preclearanceState,
   probationState,
   reanchor,
@@ -27,11 +26,12 @@ import {
   withinWindow,
   workingDaysUntil,
 } from './people-logic';
+import { ToastProvider } from '../../components/notify';
 import { d, HOLIDAYS, MATCHES, MEERA_FNF, ONBOARDING_TASKS, SPLITS, TODAY, WORKFORCE } from './people-data';
 import { BulkChangesWizard, ChangeActionSheet, EmployeeImportWizard, RestructureWizard, incrementPreview, SAMPLE_IMPORT, ScheduledChangesScreen } from './changes';
 import { DirectoryScreen } from './directory';
 import { PersonWorkspace, InternationalBankTab } from './record';
-import { BOARD, BuddyPanel, JourneyRecord, OnboardingBoard, PreboardingBatches, ProbationQueue, ProbationReviewForm, ReadyToOnboardQueue } from './onboarding';
+import { BOARD, BuddyPanel, JourneyRecord, OnboardingBoard, PreboardingBatches, ProbationQueue, ReadyToOnboardQueue } from './onboarding';
 import { BATCHES, BUDDIES, KAVYA_JOIN, PROBATIONS, READY_TO_ONBOARD, SCHEDULED } from './people-data';
 
 describe('P02 field visibility', () => {
@@ -62,13 +62,6 @@ describe('dates and deadlines', () => {
     expect(addWorkingDays(d(2026, 10, 3), 2, HOLIDAYS)).toEqual(d(2026, 10, 6));
     expect(workingDaysUntil(d(2026, 10, 21), d(2026, 10, 22), HOLIDAYS)).toBe(1);
     expect(workingDaysUntil(d(2026, 10, 26), d(2026, 10, 22), HOLIDAYS)).toBe(-3);
-  });
-  it('computes notice shortfall from the policy on the submission date', () => {
-    const n = noticeOutcome(TODAY, 60, d(2026, 11, 6), 30000);
-    expect(n.standardLwd).toEqual(d(2026, 11, 28));
-    expect(n.shortfallDays).toBe(22);
-    expect(n.shortfallAmount).toBe(22000);
-    expect(noticeOutcome(TODAY, 60, null, 30000).shortfallDays).toBe(0);
   });
 });
 
@@ -106,8 +99,6 @@ describe('lifecycle rules', () => {
     expect(probationState(d(2026, 9, 29), TODAY)).toBe('overdue');
     expect(probationState(d(2026, 9, 15), TODAY)).toBe('escalated');
     expect(probationState(d(2026, 12, 1), TODAY)).toBe('running');
-    expect(extensionAllowed(6, 0, 6, 12)).toBe(true);
-    expect(extensionAllowed(6, 3, 6, 12)).toBe(false);
   });
   it('re-anchors open tasks only', () => {
     const m = reanchor(ONBOARDING_TASKS, d(2026, 10, 5), d(2026, 10, 19));
@@ -131,6 +122,13 @@ describe('identity and bank checks', () => {
     expect(isIban('AE07 0331 2345 6789 0123 456')).toBe(true);
     expect(isIban('AE07 0331 2345 6789 0123 457')).toBe(false);
     expect(isIban('GB82 WEST 1234 5698 7654 32')).toBe(true);
+  });
+  it('names the bank from the IFSC, offline; nothing for a bad IFSC or a bank not on the list', () => {
+    expect(ifscBank('SBIN0012765')).toBe('State Bank of India');
+    expect(ifscBank(' hdfc0001234 ')).toBe('HDFC Bank');
+    expect(ifscBank('SBIN1012765')).toBeNull(); // the fifth character is not zero
+    expect(ifscBank('SBIN')).toBeNull();
+    expect(ifscBank('ZZZZ0001234')).toBeNull();
   });
   it('splits net pay: fixed, then percent, remainder; max 3 accounts', () => {
     const r = splitNetPay(49812, SPLITS);
@@ -204,11 +202,10 @@ describe('screens', () => {
     await u.click(screen.getByRole('button', { name: /Show PAN/ }));
     expect(screen.getByText('AKDPK4821M')).toBeTruthy();
     expect(screen.getByText(/You viewed PAN/)).toBeTruthy();
-  });
-
-  it('probation: extending past the maximum shows an error', () => {
-    render(<ProbationReviewForm outcome="extend" months={9} />);
-    expect(screen.getByText(/12 months at most/)).toBeTruthy();
+    // Hide again, like a password field.
+    await u.click(screen.getByRole('button', { name: 'Hide PAN' }));
+    expect(screen.getByText('XXXXXX821M')).toBeTruthy();
+    expect(screen.queryByText('AKDPK4821M')).toBeNull();
   });
 
   it('scheduled changes: cancel needs a reason', async () => {
@@ -216,26 +213,32 @@ describe('screens', () => {
     render(<ScheduledChangesScreen rows={SCHEDULED} today={TODAY} defaultCancelId="s2" />);
     const dialog = screen.getByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Cancel change' });
-    expect(confirm.hasAttribute('disabled')).toBe(true);
+    await u.click(confirm);
+    expect(within(dialog).getByText('Enter a reason of at least 5 characters.')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
     await u.type(within(dialog).getByRole('textbox'), 'Transfer postponed by the client');
-    expect(confirm.hasAttribute('disabled')).toBe(false);
+    expect(within(dialog).queryByText('Enter a reason of at least 5 characters.')).toBeNull();
   });
 
-  it('international bank: invalid IBAN blocks sending', () => {
+  it('international bank: invalid IBAN blocks sending and says why', async () => {
     render(<InternationalBankTab persona="hr" splits={SPLITS} net={49812} defaultIban="AE07 0331 2345 6789 0123 457" />);
     expect(screen.getByText(/Enter a 23-character UAE IBAN/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Send for approval' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByRole('columnheader', { name: 'This month' })).toHaveAttribute('data-num');
+    expect(screen.getByRole('columnheader', { name: 'Account' })).not.toHaveAttribute('data-num');
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect((await screen.findAllByText('Fix the IBAN first.')).length).toBeGreaterThan(0); // a toast
   });
 });
 
-// Smoke test: every People story renders without throwing (the lead checks visuals in Storybook).
+// Smoke test: every People story renders without throwing (the lead checks visuals in Storybook, which mounts the
+// ToastProvider for every story, as the app does).
 const STORY_MODULES = import.meta.glob('./*.stories.tsx', { eager: true }) as Record<string, Record<string, { render?: () => JSX.Element; name?: string }>>;
 describe('all People stories render', () => {
   for (const [file, mod] of Object.entries(STORY_MODULES)) {
     for (const [key, story] of Object.entries(mod)) {
       if (key === 'default' || !story?.render) continue;
       it(`${file} · ${story.name ?? key}`, () => {
-        const { unmount } = render(story.render!());
+        const { unmount } = render(<ToastProvider>{story.render!()}</ToastProvider>);
         unmount();
       });
     }
@@ -260,8 +263,9 @@ describe('ready to onboard', () => {
     render(<ReadyToOnboardQueue rows={READY_TO_ONBOARD} />);
     expect(screen.queryByText('Kavya Reddy')).toBeNull();
     const names = screen.getAllByRole('row').slice(1).map((r) => r.textContent ?? '');
-    expect(names[0]).toMatch(/Selvi Perumal/);
-    expect(screen.getAllByText('in 7 days').length).toBeGreaterThan(0);
+    // Answer 775: no contract-worker row here (conversions start from the worker, CLB-05).
+    expect(names[0]).toMatch(/Suresh Nair/);
+    expect(screen.queryByText(/Selvi Perumal/)).toBeNull();
     await u.click(screen.getAllByRole('button', { name: 'Create employee' })[0]);
     expect(screen.getByText('Reuses KF-0077')).toBeTruthy();
     expect(screen.getByText('Everything follows company policy.')).toBeTruthy();
@@ -281,22 +285,73 @@ describe('journey record', () => {
 });
 
 describe('pre-boarding batches', () => {
-  it('lists soonest batch first and counts offers still on letter of intent', () => {
+  it('lists soonest batch first with the legal entity and offers issued; no line when nobody is on a letter of intent', () => {
     render(<PreboardingBatches rows={BATCHES} />);
     const rows = screen.getAllByRole('row');
     expect(within(rows[1]).getByText('Campus 2026 · Sales trainees')).toBeTruthy();
+    expect(within(rows[1]).getByText('Kaveri Foods Pvt Ltd')).toBeTruthy();
+    expect(within(rows[1]).getByText('12 of 12')).toBeTruthy();
+    expect(within(rows[1]).queryByText(/still on letter of intent/)).toBeNull();
+    expect(screen.getByText('12 of 18')).toBeTruthy();
     expect(screen.getByText('6 still on letter of intent')).toBeTruthy();
   });
-  it('opens the date change on the current date and says which way tasks move', async () => {
+  it('the empty list keeps the designed columns', () => {
+    render(<PreboardingBatches rows={[]} />);
+    expect(screen.getByRole('columnheader', { name: /Offers issued/ })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: /^Members/ })).toBeNull();
+  });
+  it('Move on the same day stays enabled and asks for another day', async () => {
     const u = userEvent.setup();
     render(<PreboardingBatches rows={BATCHES} />);
     await u.click(screen.getAllByRole('button', { name: 'Change date' })[0]);
-    expect(screen.getByRole('button', { name: 'Move 12 members' })).toBeDisabled();
+    const move = screen.getByRole('button', { name: 'Move 12 members' });
+    expect(move).toBeEnabled();
+    await u.click(move);
+    expect(screen.getByText('Choose a day other than the current joining date.')).toBeTruthy();
+    expect(screen.getByRole('dialog')).toBeTruthy();
   });
-  it('re-anchors forward with a notify option', () => {
+  it('re-anchors forward: open tasks, the email option, and a reason before it moves', async () => {
+    const u = userEvent.setup();
     render(<PreboardingBatches rows={BATCHES} defaultChangeId="b3" defaultDate={new Date(2026, 10, 2)} />);
-    expect(screen.getByText(/per member move 14 days later/)).toBeTruthy();
+    expect(screen.getByText('96 open tasks move 14 days later')).toBeTruthy();
+    expect(screen.queryByText(/compensation|probation/)).toBeNull();
     expect(screen.getByRole('checkbox', { name: 'Email the 12 members their new date' })).toBeChecked();
+    await u.click(screen.getByRole('button', { name: 'Move 12 members' }));
+    expect(screen.getByText('Say why the batch joining day moves.')).toBeTruthy();
+    await u.type(screen.getByRole('textbox', { name: /^Why the day moves/ }), 'Exams postponed');
+    await u.click(screen.getByRole('button', { name: 'Move 12 members' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+  it('live: sends the reason and the email choice, and moves only members waiting to join', async () => {
+    const u = userEvent.setup();
+    const calls: unknown[][] = [];
+    const members = { b3: [{ id: 'm1', name: 'Asha', status: 'invited', joiningOn: d(2026, 10, 19) }, { id: 'm2', name: 'Bhanu', status: 'joined', joiningOn: d(2026, 10, 19) }] };
+    render(<PreboardingBatches rows={[BATCHES[2]]} defaultChangeId="b3" defaultDate={new Date(2026, 10, 2)} live={{ state: 'ready', onRetry: () => undefined, today: d(2026, 9, 28), members, manageable: ['b3'], onChangeDate: async (...a) => void calls.push(a) }} />);
+    await u.click(screen.getByRole('checkbox', { name: 'Email the 1 member their new date' }));
+    await u.type(screen.getByRole('textbox', { name: /^Why the day moves/ }), 'Exams postponed');
+    await u.click(screen.getByRole('button', { name: 'Move 1 member' }));
+    expect(calls).toEqual([['b3', new Date(2026, 10, 2), 'Exams postponed', false]]);
+  });
+});
+
+describe('pre-boarding batches, read-only (N6: a plant HR sees her joiners\' batch, never changes it)', () => {
+  const live = (manageable: string[], onNew?: () => void) => ({ state: 'ready' as const, onRetry: () => undefined, today: d(2026, 9, 28), members: {}, manageable, onNew, onEdit: () => undefined, onAddMembers: () => undefined, onLetters: () => undefined, onChangeDate: async () => undefined });
+  it('a batch she may not manage has no Change date and only Open batch in its menu; no New batch', async () => {
+    const u = userEvent.setup();
+    render(<PreboardingBatches rows={[BATCHES[2]]} live={live([])} />);
+    expect(screen.queryByRole('button', { name: 'Change date' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New batch' })).toBeNull();
+    await u.click(screen.getByRole('button', { name: /^More actions/ }));
+    expect(screen.getByRole('menuitem', { name: 'Open batch' })).toBeTruthy();
+    for (const name of ['Rename or add touchpoints', 'Add joiners', 'Send letters of intent']) expect(screen.queryByRole('menuitem', { name })).toBeNull();
+  });
+  it('a batch she manages keeps every action, and New batch shows when she may create one', async () => {
+    const u = userEvent.setup();
+    render(<PreboardingBatches rows={[BATCHES[2]]} live={live(['b3'], () => undefined)} />);
+    expect(screen.getByRole('button', { name: 'Change date' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New batch' })).toBeTruthy();
+    await u.click(screen.getByRole('button', { name: /^More actions/ }));
+    for (const name of ['Rename or add touchpoints', 'Add joiners', 'Send letters of intent']) expect(screen.getByRole('menuitem', { name })).toBeTruthy();
   });
 });
 
@@ -314,6 +369,16 @@ describe('probation reviews', () => {
     await u.click(screen.getAllByRole('button', { name: 'Decide' })[0]);
     expect(screen.getByRole('dialog', { name: /Probation review: Vikram Singh/ })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Confirm Vikram' })).toBeTruthy();
+  });
+  it('answer 392: an open "before confirmation" background check is shown in the review, with why approving is refused', () => {
+    render(<ProbationQueue rows={PROBATIONS.map((p) => (p.id === 'p3' ? { ...p, bgvOpen: 2 } : p))} today={TODAY} defaultOpenId="p3" />);
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByText('2 background checks must be clear before confirmation')).toBeTruthy();
+    expect(within(d).getByText(/approving a confirmation will be refused until they are clear/)).toBeTruthy();
+  });
+  it('answer 392: no open check, no notice', () => {
+    render(<ProbationQueue rows={PROBATIONS.map((p) => (p.id === 'p3' ? { ...p, bgvOpen: 0 } : p))} today={TODAY} defaultOpenId="p3" />);
+    expect(within(screen.getByRole('dialog')).queryByText(/must be clear before confirmation/)).toBeNull();
   });
   it('manager sees only their reports, without a Manager column', () => {
     render(<ProbationQueue rows={PROBATIONS.filter((p) => p.manager === 'Divya Raghunathan')} today={TODAY} persona="mgr" />);
@@ -337,38 +402,68 @@ describe('buddies', () => {
   });
 });
 
-describe('probation review form', () => {
-  it('reviews the manager’s own report, with a deadline and no pre-filled rating', () => {
-    render(<ProbationReviewForm />);
-    expect(screen.getByText('Probation review: Rohit Menon')).toBeTruthy();
-    expect(screen.getByText(/Decide by 12 Oct 2026 \(in 13 days\)/)).toBeTruthy();
-    expect(screen.getByText('Choose a rating')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Confirm Rohit' }).dataset.variant).toBe('approve');
+describe('probation review (the queue drawer, sample data)', () => {
+  const review = () => {
+    render(<ProbationQueue rows={PROBATIONS} today={TODAY} persona="mgr" defaultOpenId="p6" />);
+    return within(screen.getByRole('dialog'));
+  };
+  it('reviews the manager’s own report with no pre-filled rating; comments are asked for on Confirm', async () => {
+    const u = userEvent.setup();
+    const dlg = review();
+    expect(dlg.getByText('Probation review: Rohit Menon')).toBeTruthy();
+    expect(dlg.getByText('Choose a rating')).toBeTruthy();
+    await u.click(dlg.getByRole('button', { name: 'Confirm Rohit' }));
+    expect(dlg.getByText('Enter your comments.')).toBeTruthy();
   });
-  it('extending shows the new end date', () => {
-    render(<ProbationReviewForm outcome="extend" months={3} />);
-    expect(screen.getByText('New end date: 12 Jan 2027')).toBeTruthy();
+  it('extending shows the new end date, and past the maximum an error', async () => {
+    const u = userEvent.setup();
+    const dlg = review();
+    await u.click(dlg.getByRole('radio', { name: /Extend/ }));
+    await u.type(dlg.getByRole('textbox', { name: /Extend by/ }), '3');
+    expect(dlg.getByText('New end date: 12 Jan 2027')).toBeTruthy();
+    await u.type(dlg.getByRole('textbox', { name: /Extend by/ }), '0');
+    await u.click(dlg.getByRole('button', { name: 'Extend probation' }));
+    expect(dlg.getByText(/Extend by 1 to 6 months/)).toBeTruthy();
   });
   it('a recommendation to end employment asks whether concerns were raised', async () => {
     const u = userEvent.setup();
-    render(<ProbationReviewForm outcome="terminate" />);
-    await u.click(screen.getByRole('radio', { name: 'No' }));
-    expect(screen.getByText(/Talk to Rohit first/)).toBeTruthy();
+    const dlg = review();
+    await u.click(dlg.getByRole('radio', { name: /Recommend ending employment/ }));
+    await u.click(dlg.getByRole('radio', { name: 'No' }));
+    expect(dlg.getByText(/Talk to Rohit first/)).toBeTruthy();
   });
 });
 
 describe('change action', () => {
-  it('HR sees the raise size and only what changes, with the rest folded', () => {
+  // The story is the live drawer: what changes is worked out a moment after the form is complete; the route has
+  // one approval step (any one of the approvers decides).
+  it('HR sees the raise size and only what changes, with the rest folded', async () => {
     render(<ChangeActionSheet persona="hr" kind="Promotion" effective={d(2026, 10, 1)} today={TODAY} />);
-    expect(screen.getByText(/\+13% on the current/)).toBeTruthy();
+    expect(await screen.findByText(/\+13% on the current/, undefined, { timeout: 2000 })).toBeTruthy();
     expect(screen.getByText('What changes (5)')).toBeTruthy();
     expect(screen.getByText('Stays the same (1)')).toBeTruthy();
-    expect(screen.getByText('Goes to Karthik Subramanian, then Lakshmi Venkatesan.')).toBeTruthy();
+    expect(screen.getByText('Goes to Karthik Subramanian or Lakshmi Venkatesan.')).toBeTruthy();
   });
   it('a manager sees no pay band', () => {
     render(<ChangeActionSheet persona="mgr" kind="Promotion" effective={d(2026, 10, 1)} today={TODAY} />);
     expect(screen.queryByText(/₹6,80,000/)).toBeNull();
     expect(screen.getByText('Pay is proposed by HR')).toBeTruthy();
+  });
+  it('live, a manager gets the team picker and their own waiting change, no Open (approving is HR’s)', () => {
+    const noop = () => undefined;
+    render(
+      <ChangeActionSheet
+        persona="mgr"
+        kind="Promotion"
+        effective={TODAY}
+        today={TODAY}
+        live={{ state: 'ready', onRetry: noop, onStart: noop, onOpenWaiting: noop, people: [{ id: 'ak', name: 'Arjun Kulkarni', role: 'Quality Analyst', department: 'Quality' }], waiting: [{ id: 'c-1', name: 'Arjun Kulkarni', kind: 'Promotion', effective: TODAY, note: 'waiting for Karthik Subramanian', canOpen: false }] }}
+      />,
+    );
+    expect(screen.getByText('Raise a promotion, transfer or manager change for someone in your team.')).toBeTruthy();
+    expect(screen.getByText('Arjun Kulkarni · Promotion')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(screen.queryByText("We couldn't load the changes")).toBeNull();
   });
   it('a transfer gets its own reason', () => {
     render(<ChangeActionSheet persona="hr" kind="Transfer" effective={d(2026, 10, 5)} today={TODAY} />);
@@ -414,7 +509,9 @@ describe('bulk changes', () => {
   it('the rule step shows people and added cost per rating', () => {
     render(<BulkChangesWizard current="rule" />);
     expect(screen.getByLabelText('Increase for Exceeds')).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'Added cost a year' })).toBeTruthy();
+    expect(screen.getByRole('columnheader', { name: 'Added cost a year' })).toHaveAttribute('data-num');
+    expect(screen.getByRole('columnheader', { name: 'People' })).toHaveAttribute('data-num');
+    expect(screen.getByRole('columnheader', { name: 'Rating' })).not.toHaveAttribute('data-num');
   });
 });
 

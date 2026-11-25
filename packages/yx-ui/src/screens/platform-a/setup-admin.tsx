@@ -1,26 +1,26 @@
 // Set-up hub, tenant wizard, roles & access, approval policy editor, notification settings (PLT-08, 09, 11, 12, 13).
-import { useState } from 'react';
-import { ArrowDown, ArrowUp, Copy, Plus, Send, ShieldCheck, Trash2, UserCog, Workflow } from 'lucide-react';
+import { LiveTenantWizardScreen, type LiveTenantWizard } from './tenant-wizard-live';
+import { useState, type ReactNode } from 'react';
+import { ArrowDown, ArrowUp, Copy, Plus, ShieldCheck, Trash2, UserCog, Workflow } from 'lucide-react';
 import { PageHeader, ObjectHeader, Card, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
-import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
+import { ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { Stepper, SetupChecklist, type ChecklistSection } from '../../components/stepper';
 import { FormField, FieldRow, FormSection } from '../../components/field';
 import { TextField, CurrencyField } from '../../components/inputs';
 import { Select } from '../../components/select';
-import { Checkbox, RadioGroup, Switch } from '../../components/choice';
+import { Checkbox, RadioGroup } from '../../components/choice';
 import { ConditionBuilder } from '../../components/condition';
-import { RichTextEditor } from '../../components/editor';
 import { DataTable, type TableColumn } from '../../components/table';
-import { BarChart } from '../../components/charts';
 import { Timeline } from '../../components/timeline';
 import { MenuItem } from '../../components/menu';
 import { emptyGroup, type Rule, type RuleSchema } from '../../lib/rules';
 import { formatDate, formatINR } from '../../lib/format';
 import { DesktopFrame } from '../_kit/frames';
 import { ENTITIES, LOCATIONS, TODAY } from '../_kit/data';
-import { ListPage, Tile, Workspace, readiness, settingsPanel, simulatePolicy, sodConflicts, toneFor, type PolicyDef, type ReadinessCheck } from './platform-kit';
+import { ListPage, Tile, Workspace, readiness, settingsPanel, simulatePolicy, sodConflicts, type PolicyDef, type ReadinessCheck } from './platform-kit';
+import { LivePolicyEditorScreen, type LivePolicyEditor } from './policy-editor-live';
 import { PEOPLE, at, d } from './platform-data';
 
 /* ================================================================ PLT-08 Set-up hub */
@@ -33,27 +33,57 @@ export interface ModuleCard {
   signedOff?: string;
 }
 
+/**
+ * Answer 952: the live hub. Each area's checks come from what the area already knows; nothing new is asked, so there
+ * is no sign-off or go-live here (the design's buttons stay in the stories only). Start on a check opens its set-up page.
+ */
+export interface LiveSetupHub {
+  state: 'loading' | 'error' | 'no-access' | 'ready';
+  onRetry: () => void;
+  onStart: (moduleId: string, checkId: string) => void;
+}
+
 export interface SetupHubProps {
   modules: ModuleCard[];
   openModule?: string;
+  live?: LiveSetupHub;
 }
 
-// PLT-08 · Set-up hub / go-live readiness (completeness card per module).
-export function SetupHubScreen({ modules, openModule }: SetupHubProps) {
+// PLT-08 · Set-up hub / go-live readiness (completeness card per module). data-tour marks what the HR / System Admin
+// first-run tour (6.1 TourAdmin) points at: the hub, the area cards and the starter defaults.
+export function SetupHubScreen({ modules, openModule, live }: SetupHubProps) {
+  const [picked, setPicked] = useState<string | undefined>(openModule);
   const all = modules.flatMap((m) => m.checks);
   const overall = readiness(all);
-  const open = modules.find((m) => m.id === openModule);
+  const open = modules.find((m) => m.id === picked);
   const sections: ChecklistSection[] = open
-    ? [{ id: open.id, title: open.name, tasks: open.checks.map((c) => ({ id: c.id, title: c.label, status: c.done ? 'done' : c.blocking ? 'todo' : 'in-progress', optional: !c.blocking, description: c.starter ? 'YukthiX starter — review before go-live' : undefined })) }]
+    ? [{ id: open.id, title: open.name, tasks: open.checks.map((c) => ({ id: c.id, title: c.label, status: c.done ? 'done' : c.blocking ? 'todo' : 'in-progress', optional: !c.blocking, description: c.starter ? (live ? 'YukthiX starter — review it for your company' : 'YukthiX starter — review before go-live') : undefined })) }]
     : [];
-  return (
+  const frame = (body: ReactNode) => (
     <DesktopFrame area="settings" panelTitle="Settings" panel={settingsPanel('1.6 Set-up hub')}>
-      <PageHeader
-        title="Set-up hub"
-        description="Every module's set-up in one place. Go live when all blocking checks are done and each owner has signed off."
-        status={<Badge tone={overall.ready ? 'success' : 'warning'}>{overall.ready ? 'Ready for go-live' : `${overall.blockingOpen} blocking checks open`}</Badge>}
-        actions={<Button variant="primary" disabled={!overall.ready}>Go live on 1 Oct 2026</Button>}
-      />
+      {body}
+    </DesktopFrame>
+  );
+  const header = (
+    <PageHeader
+      title="Set-up hub"
+      description={live ? 'How much of each area is set up. Open an area to see what is left.' : "Every module's set-up in one place. Go live when all blocking checks are done and each owner has signed off."}
+      status={live?.state === 'ready' || !live ? <Badge tone={overall.ready ? 'success' : 'warning'}>{overall.ready ? (live ? 'Set-up complete' : 'Ready for go-live') : `${overall.blockingOpen} blocking checks open`}</Badge> : undefined}
+      actions={live ? undefined : <Button variant="primary" disabled={!overall.ready}>Go live on 1 Oct 2026</Button>}
+    />
+  );
+  if (live && live.state !== 'ready')
+    return frame(
+      <>
+        {header}
+        {live.state === 'loading' && <Skeleton height={240} />}
+        {live.state === 'error' && <ErrorState title="We couldn't load the set-up hub." description="Check your connection and try again." onRetry={live.onRetry} />}
+        {live.state === 'no-access' && <NoAccessState what="the set-up hub" grantedBy="your System Admin" />}
+      </>,
+    );
+  return frame(
+    <div className="yx-plt-stack" data-tour="setup-hub">
+      {header}
       <div className="yx-plt-grid" data-cols="3">
         <Tile title="Readiness score">
           <span className="yx-plt-score">{overall.score}%</span>
@@ -61,14 +91,16 @@ export function SetupHubScreen({ modules, openModule }: SetupHubProps) {
         </Tile>
         <Tile title="Blocking checks">
           <span className="yx-plt-score">{overall.blockingOpen}</span>
-          <p className="yx-plt-muted">Must be done before go-live. Advisory checks can wait.</p>
+          <p className="yx-plt-muted">{live ? 'Must be done first; the rest can wait.' : 'Must be done before go-live. Advisory checks can wait.'}</p>
         </Tile>
-        <Tile title="Starter templates to review">
-          <span className="yx-plt-score">{all.filter((c) => c.starter && !c.done).length}</span>
-          <p className="yx-plt-muted">Labelled “YukthiX starter — edit for your company”.</p>
-        </Tile>
+        <div data-tour="setup-starter">
+          <Tile title="Starter templates to review">
+            <span className="yx-plt-score">{all.filter((c) => c.starter && !c.done).length}</span>
+            <p className="yx-plt-muted">{live ? 'Still the YukthiX starter.' : 'Labelled “YukthiX starter — edit for your company”.'}</p>
+          </Tile>
+        </div>
       </div>
-      <div className="yx-plt-grid" data-cols="3">
+      <div className="yx-plt-grid" data-cols="3" data-tour="setup-modules">
         {modules.map((m) => {
           const r = readiness(m.checks);
           return (
@@ -76,23 +108,37 @@ export function SetupHubScreen({ modules, openModule }: SetupHubProps) {
               key={m.id}
               title={m.name}
               tone={r.blockingOpen ? 'warning' : 'success'}
-              selected={m.id === openModule}
-              badge={<Badge tone={m.signedOff ? 'success' : r.ready ? 'info' : 'warning'}>{m.signedOff ? 'Signed off' : r.ready ? 'Ready to sign off' : `${r.blockingOpen} blocking`}</Badge>}
+              selected={m.id === picked}
+              badge={<Badge tone={m.signedOff || (live && r.score === 100) ? 'success' : r.ready ? 'info' : 'warning'}>{m.signedOff ? 'Signed off' : r.ready ? (live ? (r.score === 100 ? 'Done' : `Nothing blocking · ${r.score}%`) : 'Ready to sign off') : `${r.blockingOpen} blocking`}</Badge>}
               actions={
-                <>
-                  <Button size="sm">Open</Button>
-                  {r.ready && !m.signedOff && <Button size="sm">Sign off</Button>}
-                </>
+                live ? undefined : (
+                  <>
+                    <Button size="sm" aria-pressed={m.id === picked} onClick={() => setPicked(m.id === picked ? undefined : m.id)}>
+                      Open
+                    </Button>
+                    {r.ready && !m.signedOff && <Button size="sm">Sign off</Button>}
+                  </>
+                )
               }
             >
               <Meter value={r.score} max={100} label={`${m.name} complete`} warnAt={101} dangerAt={101} />
-              <p className="yx-plt-muted">Owner: {m.owner}{m.signedOff ? ` · signed off ${m.signedOff}` : ''}</p>
+              {live ? (
+                // 1033: owner and Open share one line, so both rows of cards fit 1278 x 635 without a page scroll.
+                <div className="yx-plt-row" data-justify="between">
+                  <p className="yx-plt-muted">Owner: {m.owner}</p>
+                  <Button size="sm" aria-pressed={m.id === picked} onClick={() => setPicked(m.id === picked ? undefined : m.id)}>
+                    {`Open ${m.name}`}
+                  </Button>
+                </div>
+              ) : (
+                <p className="yx-plt-muted">Owner: {m.owner}{m.signedOff ? ` · signed off ${m.signedOff}` : ''}</p>
+              )}
             </Tile>
           );
         })}
       </div>
-      {open && <SetupChecklist title={`${open.name}: checks`} sections={sections} onStart={() => {}} onSkip={() => {}} defaultShowDone />}
-    </DesktopFrame>
+      {open && <SetupChecklist title={`${open.name}: checks`} sections={sections} onStart={(id) => live?.onStart(open.id, id)} onSkip={live ? undefined : () => {}} defaultShowDone />}
+    </div>,
   );
 }
 
@@ -107,7 +153,8 @@ export interface ImportPreviewRow {
   message?: string;
 }
 
-export function TenantWizardScreen({ current = 'company', errorStep, preview = [] }: { current?: string; errorStep?: string; preview?: ImportPreviewRow[] }) {
+export function TenantWizardScreen({ current = 'company', errorStep, preview = [], live }: { current?: string; errorStep?: string; preview?: ImportPreviewRow[]; /** The YukthiX console's New company (C-5, answer 1053). */ live?: LiveTenantWizard }) {
+  if (live) return <LiveTenantWizardScreen live={live} />;
   const [company, setCompany] = useState('Kaveri Foods Pvt Ltd');
   const [pan, setPan] = useState(errorStep === 'entities' ? 'AAECK1234' : 'AAECK1234F');
   const [deptMode, setDeptMode] = useState('template');
@@ -287,7 +334,7 @@ type Access = (typeof ACCESS)[number];
 
 export const PERMISSION_GROUPS: { module: string; perms: { key: string; label: string }[] }[] = [
   { module: 'People', perms: [{ key: 'employee.view', label: 'View employee records' }, { key: 'employee.edit', label: 'Edit employee records' }, { key: 'employee.bank.edit', label: 'Change bank details' }] },
-  { module: 'Time', perms: [{ key: 'leave.approve', label: 'Approve leave' }, { key: 'attendance.lock', label: 'Lock attendance periods' }] },
+  { module: 'Time', perms: [{ key: 'leave.approve', label: 'Approve leave' }, { key: 'attendance.lock', label: 'Lock attendance periods' }, { key: 'attendance.lock.approve', label: 'Approve attendance lock' }, { key: 'leave.liability.view', label: 'View leave liability' }] },
   { module: 'Pay', perms: [{ key: 'payroll.run.prepare', label: 'Prepare payroll run' }, { key: 'payroll.run.approve', label: 'Approve payroll run' }, { key: 'bank.file.create', label: 'Create bank file' }, { key: 'bank.file.release', label: 'Release bank file' }] },
   { module: 'Administration', perms: [{ key: 'role.manage', label: 'Manage roles' }, { key: 'request.raise_on_behalf', label: 'Raise requests on behalf of others' }] },
 ];
@@ -516,7 +563,8 @@ const POLICY_RULE: Rule = {
   actions: [],
 };
 
-export function PolicyEditorScreen({ simulated: simProp = false, saveTried = false }: { simulated?: boolean; saveTried?: boolean }) {
+export function PolicyEditorScreen({ simulated: simProp = false, saveTried = false, live }: { simulated?: boolean; saveTried?: boolean; /** Settings S-6 (answer 1330): the company's approval steps per request type. */ live?: LivePolicyEditor }) {
+  if (live) return <LivePolicyEditorScreen live={live} />;
   const [policies, setPolicies] = useState(EXPENSE_POLICIES);
   const [amount, setAmount] = useState<number | null>(12400);
   const [cat, setCat] = useState<string | null>('Travel');
@@ -611,133 +659,6 @@ export function PolicyEditorScreen({ simulated: simProp = false, saveTried = fal
           </Card>
         ))}
       </Workspace>
-    </DesktopFrame>
-  );
-}
-
-/* ================================================================ PLT-13 Notification settings */
-
-export interface DeliveryRow {
-  id: string;
-  at: Date;
-  template: string;
-  channel: 'Email' | 'SMS' | 'WhatsApp' | 'Push' | 'In-app';
-  to: string;
-  status: 'Delivered' | 'Failed' | 'Retrying';
-  detail: string;
-}
-
-export function NotificationSettingsScreen({ tab = 'templates', deliveries, testSent }: { tab?: 'channels' | 'templates' | 'log' | 'usage'; deliveries: DeliveryRow[]; testSent?: boolean }) {
-  const [body, setBody] = useState('<p>Hi {{employee.name}},</p><p>Your leave from {{leave.from}} to {{leave.to}} was approved by {{approver.name}}.</p>');
-  const [sent, setSent] = useState(Boolean(testSent));
-  const preview = body.replace('{{employee.name}}', 'Arjun Mehta').replace('{{leave.from}}', '01 Oct 2026').replace('{{leave.to}}', '02 Oct 2026').replace('{{approver.name}}', 'Karthik Subramanian');
-  return (
-    <DesktopFrame area="settings" panelTitle="Settings" panel={settingsPanel('5.2 Notifications')}>
-      <PageHeader title="Notifications" description="Channels, sender, templates, delivery log and usage for Kaveri Foods." />
-      <Tabs defaultValue={tab}>
-        <TabsList aria-label="Notification settings">
-          <TabsTrigger value="channels">Channels & sender</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="log" count={deliveries.filter((x) => x.status !== 'Delivered').length || undefined}>Delivery log</TabsTrigger>
-          <TabsTrigger value="usage">Usage</TabsTrigger>
-        </TabsList>
-        <TabsContent value="channels">
-          <div className="yx-plt-grid" data-cols="2">
-            <Card title="Channels">
-              <div className="yx-plt-stack">
-                <Switch label="Email" description="From people@kaverifoods.in (verified)" defaultChecked />
-                <Switch label="SMS" description="DLT sender KAVERI · for staff without the app" defaultChecked />
-                <Switch label="WhatsApp" description="Approved templates only; sensitive data never sent" defaultChecked />
-                <Switch label="Push and in-app" description="Always on" checked disabled />
-              </div>
-            </Card>
-            <Card title="Company defaults">
-              <FormField label="Quiet hours" helper="Employees can change their own.">
-                <TextField value="9:00 pm to 7:00 am" readOnly />
-              </FormField>
-              <FormField label="Digest">
-                <Select options={[{ value: 'daily', label: 'Daily at 9:00 am' }, { value: 'off', label: 'Off' }]} value="daily" onChange={() => {}} />
-              </FormField>
-            </Card>
-          </div>
-        </TabsContent>
-        <TabsContent value="templates">
-          <Workspace
-            asideLabel="Preview"
-            aside={
-              <>
-                <h2 className="yx-plt-h">Preview as Arjun Mehta</h2>
-                <Card>
-                  <RichTextEditor key={preview} value={preview} readOnly aria-label="Message preview" mergeFields={[]} />
-                </Card>
-                <FormField label="Send a test to">
-                  <TextField value="lakshmi.v@kaverifoods.in" readOnly />
-                </FormField>
-                <Button icon={Send} onClick={() => setSent(true)}>
-                  Send test
-                </Button>
-                <span aria-live="polite">{sent && <Badge tone="success">Test sent to lakshmi.v@kaverifoods.in at 9:42 am</Badge>}</span>
-              </>
-            }
-          >
-            <FieldRow>
-              <FormField label="Template">
-                <Select options={[{ value: 'leave.approved', label: 'Leave approved' }, { value: 'payslip.ready', label: 'Payslip ready' }]} value="leave.approved" onChange={() => {}} />
-              </FormField>
-              <FormField label="Channel">
-                <Select options={[{ value: 'email', label: 'Email' }, { value: 'inapp', label: 'In-app' }]} value="email" onChange={() => {}} />
-              </FormField>
-              <FormField label="Language">
-                <Select options={[{ value: 'en', label: 'English' }, { value: 'ta', label: 'Tamil' }]} value="en" onChange={() => {}} />
-              </FormField>
-            </FieldRow>
-            <Badge tone="info">YukthiX starter — edit for your company</Badge>
-            <FormField label="Subject">
-              <TextField defaultValue="Your leave is approved" />
-            </FormField>
-            <FormField label="Message" helper="Use Insert field for names and dates. External channels only allow safe fields.">
-              <RichTextEditor
-                value={body}
-                onChange={setBody}
-                mergeFields={[
-                  { value: 'employee.name', label: 'Employee name' },
-                  { value: 'leave.from', label: 'Leave from' },
-                  { value: 'leave.to', label: 'Leave to' },
-                  { value: 'approver.name', label: 'Approver name' },
-                ]}
-              />
-            </FormField>
-          </Workspace>
-        </TabsContent>
-        <TabsContent value="log">
-          <DataTable
-            label="Delivery log"
-            columns={[
-              { key: 'at', header: 'Time', type: 'date', value: (r: DeliveryRow) => r.at, render: (r) => `${formatDate(r.at)}, ${r.at.getHours() % 12 || 12}:${String(r.at.getMinutes()).padStart(2, '0')} ${r.at.getHours() < 12 ? 'am' : 'pm'}` },
-              { key: 'template', header: 'Template', value: (r) => r.template },
-              { key: 'channel', header: 'Channel', value: (r) => r.channel },
-              { key: 'to', header: 'To', value: (r) => r.to },
-              { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => toneFor(v) },
-              { key: 'detail', header: 'Detail', value: (r) => r.detail, width: 300 },
-            ]}
-            rows={deliveries}
-            getRowId={(r) => r.id}
-            empty={<EmptyState title="No messages sent yet." />}
-            rowButtons={(r) => (r.status === 'Failed' ? <Button size="sm">Retry</Button> : null)}
-          />
-        </TabsContent>
-        <TabsContent value="usage">
-          <div className="yx-plt-stack">
-            <BarChart
-              title="Messages sent in September"
-              categories={['Email', 'SMS', 'WhatsApp', 'Push']}
-              series={[{ name: 'Messages', values: [4820, 1260, 2310, 9120] }]}
-              xLabel="Channel"
-            />
-            <DescriptionList columns={2} items={[{ label: 'SMS cost this month', value: formatINR(315) }, { label: 'WhatsApp cost this month', value: formatINR(1848) }, { label: 'Email', value: 'Included' }, { label: 'Push and in-app', value: 'Included' }]} />
-          </div>
-        </TabsContent>
-      </Tabs>
     </DesktopFrame>
   );
 }

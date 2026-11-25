@@ -9,6 +9,8 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import type { ScopeUser } from '../access/scope';
 import {
   AsOnDto,
+  BudgetDto,
+  BudgetQueryDto,
   CompensationChangeDto,
   CompensationInputDto,
   ComponentDto,
@@ -103,6 +105,26 @@ export class Payroll5bController {
   @RequirePermissions('payroll.setup.manage')
   coverage(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.setup.coverage(ctx, this.user(req));
+  }
+
+  // ------------------------------------------------------------------------------------------ payroll budget
+
+  @Get('budgets/entities')
+  @RequireAnyPermission('payroll.setup.manage', 'payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve')
+  budgetEntities(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.setup.budgetEntities(ctx, this.user(req));
+  }
+
+  @Get('budgets')
+  @RequireAnyPermission('payroll.setup.manage', 'payroll.run.view', 'payroll.run.prepare', 'payroll.run.approve')
+  budget(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() dto: BudgetQueryDto) {
+    return this.setup.budget(ctx, this.user(req), dto.entityId, dto.taxYear);
+  }
+
+  @Put('budgets')
+  @RequirePermissions('payroll.setup.manage')
+  saveBudget(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: BudgetDto) {
+    return this.setup.saveBudget(ctx, this.user(req), dto);
   }
 
   // ------------------------------------------------------------------------------------------ pay groups
@@ -206,8 +228,9 @@ export class Payroll5bController {
     return this.structures.checkFormula(ctx, this.user(req), dto);
   }
 
+  /** Read by payroll set-up and by HR, who sets a person's salary on a template (founder 21 Oct 2026, option A). */
   @Get('templates')
-  @RequirePermissions('payroll.template.manage')
+  @RequireAnyPermission('payroll.template.manage', 'employee.salary.manage')
   templates(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.structures.templates(ctx, this.user(req));
   }
@@ -240,8 +263,9 @@ export class Payroll5bController {
     return this.structures.preview(ctx, this.user(req), dto);
   }
 
+  /** Founder 21 Oct 2026: only HR changes pay (the salary grant and the job-change right); payroll is refused. */
   @Post('employees/:id/compensation-changes')
-  @RequirePermissions('employee.salary.manage')
+  @RequirePermissions('employee.salary.manage', 'employee.change.manage')
   change(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CompensationChangeDto) {
     return this.structures.change(ctx, this.user(req), { ...dto, employeeId: id });
   }
@@ -257,6 +281,12 @@ export class Payroll5bController {
   @Get('employees/:id/compensation')
   compensation(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: AsOnDto) {
     return this.structures.compensation(ctx, this.user(req), id, q.asOn);
+  }
+
+  /** PAY-12 history: self (implicit) or employee.salary.view over the person: checked in the service. */
+  @Get('employees/:id/compensation-history')
+  compensationHistory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: AsOnDto) {
+    return this.structures.compensationHistory(ctx, this.user(req), id, q.asOn);
   }
 
   @Get('employees/:id/statutory-profile')

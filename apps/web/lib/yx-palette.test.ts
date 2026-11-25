@@ -1,12 +1,12 @@
 import { buildPalette, type PaletteInput } from './yx-palette';
 import { MAX_RECENT, addRecent, clearAllRecent, readRecent, recentKey } from './yx-recent';
 import { approvableTask, toBellItem } from './yx-bell';
-import { buildNav, type NavInput } from './yx-nav';
+import { buildNav, withAccount, type NavInput } from './yx-nav';
 import type { NotificationView } from './types';
 
 // Ctrl K and the bell as designed (PLT-20, PLT-01; founder review 19 Oct 2026).
 const base: NavInput = { has: () => false, role: 'panel', support: false, employee: false, manager: false, history: false, clearance: false, tasks: false, firstDays: false };
-const employeeNav = buildNav({ ...base, employee: true });
+const employeeNav = withAccount(buildNav({ ...base, employee: true }), { support: false, employee: true });
 const input = (over: Partial<PaletteInput> = {}): PaletteInput => ({ nav: employeeNav, typed: '', recent: [], self: true, help: true, ...over });
 const headings = (p: ReturnType<typeof buildPalette>) => p.groups.map((g) => g.heading);
 const labels = (p: ReturnType<typeof buildPalette>, heading: string) => p.groups.find((g) => g.heading === heading)?.items.map((i) => i.label) ?? [];
@@ -15,7 +15,7 @@ describe('buildPalette', () => {
   it('opened empty: Recent and Actions only, never a list of every menu page', () => {
     const p = buildPalette(input({ recent: [{ label: 'My leave', type: 'page', href: '/yx/time/leave' }, { label: 'Arjun Mehta', type: 'person', href: '/yx/people/directory?q=Arjun' }], waiting: 2 }));
     expect(headings(p)).toEqual(['Recent', 'Actions']);
-    expect(labels(p, 'Actions')).toEqual(['Apply leave', 'Approve requests', 'New expense claim']);
+    expect(labels(p, 'Actions')).toEqual(['Apply leave', 'Regularise a day', 'Request work from home', 'Approve requests', 'New expense claim', 'Add an expense', 'Raise a ticket']);
     const recent = p.groups[0].items;
     expect(recent.map((i) => [i.label, i.secondary])).toEqual([['My leave', 'Time › My time'], ['Arjun Mehta', 'Person']]);
     expect(recent.every((i) => i.icon)).toBe(true);
@@ -24,11 +24,15 @@ describe('buildPalette', () => {
 
   it('actions follow what the person may do; shortcuts only for the actions they have', () => {
     const noRecord = buildPalette(input({ nav: buildNav(base), self: false }));
-    expect(labels(noRecord, 'Actions')).toEqual(['Approve requests']);
+    expect(labels(noRecord, 'Actions')).toEqual(['Approve requests', 'Raise a ticket']);
+    // Keka ideas: no own record, no leave, attendance or expense actions; no help desk (support session), no ticket.
+    expect(labels(buildPalette(input({ nav: buildNav(base), self: false, help: false })), 'Actions')).toEqual(['Approve requests']);
     expect(noRecord.shortcuts).toEqual({});
     const emp = buildPalette(input());
     expect(emp.shortcuts).toEqual({ 'N L': '/yx/time/leave?apply=1', 'N E': '/yx/expenses?new=1' });
     expect(emp.targets.get('act:leave')?.href).toBe('/yx/time/leave?apply=1');
+    expect(emp.targets.get('act:regularise')?.href).toBe('/yx/time/attendance?request=regularise');
+    expect(emp.targets.get('act:ticket')?.href).toBe('/yx/desk/help?new=1');
   });
 
   it('pages appear only when typed, with the right area; settings under ? help and settings', () => {
@@ -36,11 +40,12 @@ describe('buildPalette', () => {
     const pages = p.groups.find((g) => g.heading === 'Pages')!;
     expect(pages.prefix).toBe('>');
     expect(pages.items.find((i) => i.label === 'My leave')?.secondary).toBe('Time › My time');
-    expect(pages.items.find((i) => i.label === 'My security')?.secondary).toBe('Me');
+    expect(pages.items.find((i) => i.label === 'My security')?.secondary).toBe('Account');
     const admin = buildPalette(input({ nav: buildNav({ ...base, role: 'org_admin', has: (k) => k === 'org.settings.manage' }), typed: '?company' }));
     const help = admin.groups.find((g) => g.heading === 'Help and settings')!;
     expect(help.prefix).toBe('?');
-    expect(help.items.map((i) => i.label)).toContain('Company rules');
+    expect(help.items.map((i) => i.label)).toContain('Onboarding & probation');
+    expect(help.items.map((i) => i.label)).not.toContain('Company rules'); // retired in S-7
   });
 
   it('server results: people (and candidates) under @, requests and tickets under #, opened ones remembered without details', () => {
@@ -100,5 +105,32 @@ describe('bell', () => {
     expect(approvableTask(n({ entityId: 'r3' }), tasks)).toBeNull();
     expect(approvableTask(n({ type: 'workflow.approval.decided' }), tasks)).toBeNull();
     expect(approvableTask(n(), undefined)).toBeNull();
+  });
+});
+
+describe('buildPalette: desk actions (answer 1649)', () => {
+  const ticket = { number: 'IT-1038', canWork: true, canned: [{ id: 'c1', title: 'Password reset steps' }], scenarios: [{ id: 's1', name: 'Escalate to network team' }] };
+  const desk = (o: Partial<NonNullable<PaletteInput['desk']>> = {}) => ({ view: true, work: true, ticket, ...o });
+
+  it('an agent on a ticket: saved replies, scenarios and their own status; a typed number opens that ticket', () => {
+    const p = buildPalette(input({ desk: desk() }));
+    expect(labels(p, 'Desk')).toEqual(['Insert saved reply: Password reset steps', 'Run scenario: Escalate to network team', 'Set my status: Available', 'Set my status: Busy', 'Set my status: Away', 'Set my status: Offline']);
+    expect(p.targets.get('desk:reply:c1')).toEqual({ deskReply: 'c1' });
+    expect(p.targets.get('desk:scenario:s1')).toEqual({ deskScenario: 's1' });
+    expect(p.targets.get('desk:status:away')).toEqual({ deskStatus: 'away' });
+    const typed = buildPalette(input({ typed: 'it-1042', desk: desk({ ticket: null }) }));
+    expect(labels(typed, 'Desk')[0]).toBe('Open ticket IT-1042');
+    expect(typed.targets.get('desk:number:IT-1042')).toEqual({ deskNumber: 'IT-1042' });
+  });
+
+  it('hidden without the keys: no work key, no replies, scenarios or status; no view key, no ticket jump', () => {
+    const viewer = buildPalette(input({ typed: 'IT-1042', desk: desk({ work: false }) }));
+    expect(labels(viewer, 'Desk')).toEqual(['Open ticket IT-1042']);
+    expect(headings(buildPalette(input({ typed: 'IT-1042', desk: desk({ view: false, work: false }) })))).not.toContain('Desk');
+    expect(headings(buildPalette(input({ typed: 'IT-1042' })))).not.toContain('Desk');
+    // On a ticket the agent cannot work (a collaborator or observer): only their own status.
+    expect(labels(buildPalette(input({ desk: desk({ ticket: { ...ticket, canWork: false } }) })), 'Desk').every((l) => l.startsWith('Set my status'))).toBe(true);
+    // Words that are not a ticket number never offer a jump.
+    expect(labels(buildPalette(input({ typed: 'leave', desk: desk({ ticket: null, work: false }) })), 'Desk')).toEqual([]);
   });
 });

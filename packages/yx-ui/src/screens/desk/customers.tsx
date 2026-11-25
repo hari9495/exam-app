@@ -4,7 +4,7 @@ import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { NumberField, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
@@ -114,6 +114,7 @@ function AccountDrawer({ account, accounts, onClose, onSave, onSearchUsers }: { 
   const [users, setUsers] = useState<{ id: string; name: string | null; email: string }[]>(account?.owner ? [{ id: account.owner.id, name: account.owner.name, email: '' }] : []);
   const [status, setStatus] = useState<'active' | 'inactive'>(account?.status ?? 'active');
   const { busy, error, run } = useRun();
+  const early = useTooEarly(name.trim() ? [] : [{ fieldId: 'cu-name', message: 'Enter the company name.' }]);
   useEffect(() => {
     if (!onSearchUsers || !find.trim()) return;
     const h = setTimeout(() => void onSearchUsers(find.trim()).then(setUsers).catch(() => setUsers([])), 250);
@@ -127,7 +128,7 @@ function AccountDrawer({ account, accounts, onClose, onSave, onSearchUsers }: { 
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!name.trim()} loading={busy === 'save'} onClick={() => void run('save', () => onSave({ name: name.trim(), emailDomains: list(domains), parentId, ...(account ? { ownerUserId: owner } : {}), status }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave({ name: name.trim(), emailDomains: list(domains), parentId, ...(account ? { ownerUserId: owner } : {}), status }))}>
             {account ? 'Save company' : 'Add company'}
           </Button>
         </>
@@ -135,7 +136,7 @@ function AccountDrawer({ account, accounts, onClose, onSave, onSearchUsers }: { 
     >
       <div className="yx-ops-stack">
         {error && <InlineAlert tone="danger" title="The company was not saved">{error}</InlineAlert>}
-        <FormField label="Company name" required>
+        <FormField id="cu-name" label="Company name" required error={early.errorOf('cu-name')}>
           <TextField value={name} onChange={setName} maxLength={200} />
         </FormField>
         <FormField label="Email domains" optional helper="Email from these domains is matched to this company. Separated by commas, like acme.com">
@@ -197,6 +198,7 @@ function ContactsCard(props: CustomersScreenProps & { account: CustomerAccount }
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<ContactRole>('member');
   const [sees, setSees] = useState(false);
+  const early = useTooEarly([...(name.trim() ? [] : [{ fieldId: 'cu-cname', message: 'Enter their name.' }]), ...(email.includes('@') ? [] : [{ fieldId: 'cu-cemail', message: 'Enter their email address.' }])]);
   return (
     <Card title="People">
       <div className="yx-ops-stack">
@@ -235,10 +237,10 @@ function ContactsCard(props: CustomersScreenProps & { account: CustomerAccount }
         {can && (
           <>
             <h3 className="yx-ops-card__title">Add a person</h3>
-            <FormField label="Name" required>
+            <FormField id="cu-cname" label="Name" required error={early.errorOf('cu-cname')}>
               <TextField value={name} onChange={setName} maxLength={100} />
             </FormField>
-            <FormField label="Email" required>
+            <FormField id="cu-cemail" label="Email" required error={early.errorOf('cu-cemail')}>
               <TextField type="email" value={email} onChange={setEmail} maxLength={254} />
             </FormField>
             <FormField label="Role">
@@ -246,7 +248,7 @@ function ContactsCard(props: CustomersScreenProps & { account: CustomerAccount }
             </FormField>
             <Checkbox checked={sees} onChange={setSees} label="Can see all the company's tickets" description="Otherwise they see only the tickets they raised." />
             <div className="yx-ops-row">
-              <Button disabled={!name.trim() || !email.includes('@')} loading={busy === 'contact'} onClick={() => void run('contact', async () => { await props.onAddContact({ name: name.trim(), email: email.trim().toLowerCase(), role, seesAccountTickets: sees }); setName(''); setEmail(''); setSees(false); })}>
+              <Button loading={busy === 'contact'} onClick={() => !early.stop() && void run('contact', async () => { await props.onAddContact({ name: name.trim(), email: email.trim().toLowerCase(), role, seesAccountTickets: sees }); setName(''); setEmail(''); setSees(false); })}>
                 Add person
               </Button>
             </div>
@@ -270,6 +272,12 @@ function PlansCard(props: CustomersScreenProps & { account: CustomerAccount } & 
   const [from, setFrom] = useState(today());
   const [to, setTo] = useState('');
   const tierOk = /^[a-z][a-z0-9_-]{0,39}$/.test(tier);
+  const early = useTooEarly([
+    ...(plan.trim() ? [] : [{ fieldId: 'cu-plan', message: 'Name the plan.' }]),
+    ...(tierOk ? [] : [{ fieldId: 'cu-tier', message: 'Use one short word in small letters' }]),
+    ...(from ? [] : [{ fieldId: 'cu-from', message: 'Choose when it starts.' }]),
+    ...(to && from && to < from ? [{ fieldId: 'cu-to', message: 'End it on or after the start.' }] : []),
+  ]);
   return (
     <Card title="Plans">
       <div className="yx-ops-stack">
@@ -298,10 +306,10 @@ function PlansCard(props: CustomersScreenProps & { account: CustomerAccount } & 
         {can && (
           <>
             <h3 className="yx-ops-card__title">Add a plan</h3>
-            <FormField label="Plan name" required>
+            <FormField id="cu-plan" label="Plan name" required error={early.errorOf('cu-plan')}>
               <TextField value={plan} onChange={setPlan} maxLength={60} placeholder="Gold support" />
             </FormField>
-            <FormField label="Tier" required helper="One short word in small letters, like gold. Response targets can use it." error={tier && !tierOk ? 'Use one short word in small letters' : null}>
+            <FormField id="cu-tier" label="Tier" required helper="One short word in small letters, like gold. Response targets can use it." error={tier && !tierOk ? 'Use one short word in small letters' : early.errorOf('cu-tier')}>
               <TextField value={tier} onChange={(v) => setTier(v.toLowerCase())} maxLength={40} />
             </FormField>
             <span className="yx-ops-row">
@@ -316,18 +324,18 @@ function PlansCard(props: CustomersScreenProps & { account: CustomerAccount } & 
               <Segment label="When it is used up" options={[{ value: 'flag', label: 'Flag new tickets' }, { value: 'hold', label: 'Hold new tickets' }]} value={usedUp} onChange={setUsedUp} />
             </FormField>
             <span className="yx-ops-row">
-              <FormField label="From" required>
+              <FormField id="cu-from" label="From" required error={early.errorOf('cu-from')}>
                 <TextField type="date" value={from} onChange={setFrom} />
               </FormField>
-              <FormField label="Until" optional>
+              <FormField id="cu-to" label="Until" optional error={early.errorOf('cu-to')}>
                 <TextField type="date" value={to} onChange={setTo} />
               </FormField>
             </span>
             <div className="yx-ops-row">
               <Button
-                disabled={!plan.trim() || !tierOk || !from || Boolean(to && to < from)}
                 loading={busy === 'plan'}
                 onClick={() =>
+                  !early.stop() &&
                   void run('plan', async () => {
                     await props.onAddPlan({ plan: plan.trim(), tier, ...(tickets !== null ? { ticketsAllowed: tickets } : {}), ...(hours !== null ? { hoursAllowed: hours } : {}), whenUsedUp: usedUp, validFrom: from, ...(to ? { validTo: to } : {}) });
                     setPlan('');
@@ -349,6 +357,7 @@ function ProductsCard(props: CustomersScreenProps) {
   const [name, setName] = useState('');
   const [deskId, setDeskId] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(name.trim() ? [] : [{ fieldId: 'cu-product', message: 'Name the product.' }]);
   const desks = props.desks.filter((d) => d.audience === 'customer');
   return (
     <Card title="Products">
@@ -379,9 +388,12 @@ function ProductsCard(props: CustomersScreenProps) {
         )}
         {props.canManage && (
           <span className="yx-ops-row">
-            <TextField size="sm" aria-label="New product name" placeholder="New product name" value={name} onChange={setName} maxLength={100} />
+            <FormField id="cu-product" label="New product name" hideLabel error={early.errorOf('cu-product')}>
+              <TextField size="sm" aria-label="New product name" placeholder="New product name" value={name} onChange={setName} maxLength={100} />
+            </FormField>
             <Select size="sm" aria-label="Desk for the product" value={deskId} onChange={setDeskId} clearable options={desks.map((d) => ({ value: d.id, label: d.name }))} placeholder="Every desk" />
-            <Button size="sm" disabled={!name.trim()} loading={busy === 'add'} onClick={() => void run('add', async () => { await props.onSaveProduct(null, { name: name.trim(), deskId, active: true }); setName(''); })}>
+            <Button size="sm" loading={busy === 'add'} onClick={() => !early.stop() && void run('add',
+ async () => { await props.onSaveProduct(null, { name: name.trim(), deskId, active: true }); setName(''); })}>
               Add product
             </Button>
           </span>

@@ -10,7 +10,7 @@ describe('Role home loading (founder review 30 Sep 2026)', () => {
     const home = screen.getByRole('region', { name: 'Your home' });
     expect(home).toHaveAttribute('aria-busy', 'true');
     expect(within(home).getAllByRole('status').filter((s) => s.textContent === 'Loading your home')).toHaveLength(1);
-    expect(screen.getByRole('region', { name: 'Team today' })).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('region', { name: 'My team today' })).toHaveAttribute('aria-busy', 'true');
   });
 
   it('shows slow and failed widgets with Retry while the rest of the page works', () => {
@@ -124,8 +124,8 @@ describe('Live home parity (19 Oct 2026)', () => {
   });
 
   it('Nudge on Team today: only for someone not checked in; sends once, says so in a toast; a refusal says why', async () => {
-    const onNudge = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('Kavya Reddy was already reminded today. You can remind them again tomorrow.'));
-    const team = { summary: '11 in · 1 on leave · 2 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }, { id: 't4', name: 'Ravi Kumar', secondary: 'Not checked in', nudge: true, reminded: true }] };
+    const onNudge = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(Object.assign(new Error('Kavya Reddy was already reminded today. You can remind them again tomorrow.'), { status: 409 }));
+    const team = { total: 14, href: '/yx/time/team', groups: [{ key: 'not_in' as const, label: 'Not in yet', people: [{ id: 't1', name: 'Sanjay Gupta', secondary: 'Not checked in', nudge: true }, { id: 't2', name: 'Kavya Reddy', secondary: 'Not checked in', nudge: true }, { id: 't4', name: 'Ravi Kumar', secondary: 'Not checked in', nudge: true, reminded: true }] }, { key: 'leave' as const, label: 'On leave', people: [{ id: 't3', name: 'Meera Krishnan', secondary: 'On leave today' }] }] };
     render(
       <ToastProvider>
         <RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team, onNudge }} />
@@ -140,14 +140,26 @@ describe('Live home parity (19 Oct 2026)', () => {
     expect(screen.getByRole('button', { name: 'Reminded Ravi Kumar' })).toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Nudge Kavya Reddy' }));
     expect(await screen.findByText('Kavya Reddy was already reminded today. You can remind them again tomorrow.')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Nudge Kavya Reddy' })).toBeEnabled();
+    // Already reminded (409) is a warning, and the button then says Reminded.
+    expect(screen.getByRole('button', { name: 'Reminded Kavya Reddy' })).toBeDisabled();
   });
 
   it("gives the manager team today and who's off this week", () => {
-    render(<RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team: { summary: '11 in · 2 on leave · 1 not checked in · 0 late', total: 14, href: '/yx/time/muster', rows: [{ id: 't', name: 'Sanjay Gupta', secondary: 'Not checked in' }] }, off: [], offHref: '/yx/time/team' }} />);
-    expect(screen.getByText('11 in · 2 on leave · 1 not checked in · 0 late')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'View all 14' })).toHaveAttribute('href', '/yx/time/muster');
+    render(<RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team: { total: 14, href: '/yx/time/team', groups: [{ key: 'leave', label: 'On leave', people: [] }, { key: 'not_in', label: 'Not in yet', people: [{ id: 't', name: 'Sanjay Gupta', secondary: 'Not checked in' }] }] }, off: [], offHref: '/yx/time/team' }} />);
+    expect(screen.getByRole('link', { name: 'View all 14' })).toHaveAttribute('href', '/yx/time/team');
     expect(screen.getByText('No one in your team is off this week.')).toBeInTheDocument();
+  });
+
+  // Keka ideas (2026-11): "My team today", a count per group and who is in it.
+  it('My team today: each group with its count; picking one shows who; an empty group says so', () => {
+    render(<RoleHomeScreen persona="manager" data={{ actions: [] }} live={{ ...base, team: { total: 3, href: '/yx/time/team', groups: [{ key: 'leave', label: 'On leave', people: [{ id: 'a', name: 'Meera Krishnan', secondary: 'Sick leave today' }] }, { key: 'not_in', label: 'Not in yet', people: [] }, { key: 'late', label: 'Late', people: [{ id: 'b', name: 'Kavya Reddy', secondary: '22 minutes late' }] }, { key: 'away', label: 'Working from home or on duty', people: [] }] } }} />);
+    const who = screen.getByRole('radiogroup', { name: 'Who' });
+    expect(within(who).getByRole('radio', { name: 'On leave · 1' })).toBeChecked();
+    expect(screen.getByText('Meera Krishnan')).toBeInTheDocument();
+    fireEvent.click(within(who).getByRole('radio', { name: 'Late · 1' }));
+    expect(screen.getByText('Kavya Reddy')).toBeInTheDocument();
+    fireEvent.click(within(who).getByRole('radio', { name: 'Not in yet · 0' }));
+    expect(screen.getByText('Everyone is in.')).toBeInTheDocument();
   });
 });
 
@@ -197,6 +209,23 @@ describe('Finance home, live (20 Oct 2026)', () => {
     unmount();
     render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, approval, amounts: { hidden: true, onToggle: () => {} } }} />);
     expect(screen.getByRole('link', { name: 'Variance vs August · 3 employees above 20% change' })).toBeInTheDocument();
+  });
+
+  it('draws payroll cost against the budget, hides it with the amounts, and says when no budget is set', () => {
+    const months = [
+      { label: 'Aug', name: 'August', cost: 21280000, budget: 21400000 },
+      { label: 'Sep', name: 'September', cost: 21560000, budget: 21400000 },
+    ];
+    const { unmount } = render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, trend: { months } }} />);
+    expect(screen.getByText('Payroll cost vs budget')).toBeInTheDocument();
+    expect(screen.getByText('Monthly cost to company, August to September')).toBeInTheDocument();
+    unmount();
+    const r = render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, trend: { months }, amounts: { hidden: true, onToggle: () => {} } }} />);
+    expect(screen.getByText('Amounts are hidden. Select Show amounts to see the chart.')).toBeInTheDocument();
+    r.unmount();
+    render(<RoleHomeScreen persona="finance" data={{ actions: [] }} live={{ ...base, trend: { months: months.map((m) => ({ ...m, budget: null })), budgetHref: '/yx/payroll/budget' } }} />);
+    expect(screen.getByText('No payroll budget set yet, so there is nothing to compare the cost with.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Set the budget' })).toHaveAttribute('href', '/yx/payroll/budget');
   });
 
   it('says so when nothing goes out, and has no Hide amounts button without pay rights', () => {
@@ -260,5 +289,54 @@ describe('Access states (founder review 30 Sep 2026)', () => {
     render(<AccessStateBody kind="not-enabled" />);
     expect(screen.queryByRole('button', { name: /Enable/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Go to Home' })).toBeInTheDocument();
+  });
+});
+
+describe('Needs your action on Home: one-click Approve and richer rows (PLT-02, 5 Nov 2026)', () => {
+  const today = new Date(2026, 8, 29, 9, 42);
+  const base = { firstName: 'Lakshmi', company: 'Kaveri Foods', today, approvalsHref: '/yx/approvals' };
+  const leave = { id: 'l1', type: 'Leave', title: 'Earned leave, 1–2 Oct (2 days)', who: 'Rahul Sharma', due: new Date(2026, 8, 30), kind: 'approve' as const, note: '2 others off these days' };
+  const claim = { id: 'c1', type: 'Expense claim', title: 'Hotel stay, Hosur', who: 'Vikram Rao', due: new Date(2026, 8, 27), kind: 'review' as const, note: 'Over the policy limit, so it needs a full review' };
+  const home = (onApprove: (i: { id: string }) => Promise<unknown>) =>
+    render(
+      <ToastProvider>
+        <RoleHomeScreen persona="manager" data={{ actions: [leave, claim], actionsTotal: 2 }} live={{ ...base, onApprove, onReview: vi.fn() }} />
+      </ToastProvider>,
+    );
+
+  it('shows Approve only on simple rows; the due date, the overdue badge and the note', () => {
+    home(vi.fn(async () => undefined));
+    expect(screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Approve expense claim/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Review expense claim for Vikram Rao' })).toBeInTheDocument();
+    expect(screen.getByText('Due 30 Sep 2026')).toBeInTheDocument();
+    expect(screen.getByText('Overdue since 27 Sep 2026')).toBeInTheDocument();
+    expect(screen.getByText('2 others off these days')).toBeInTheDocument();
+    expect(screen.getByText('Over the policy limit, so it needs a full review')).toBeInTheDocument();
+    // The name is on the person line once, not repeated in the title.
+    expect(screen.getAllByText(/Rahul Sharma/)).toHaveLength(1);
+  });
+
+  it('approved: the row leaves and a toast names it; a double click approves once', async () => {
+    let finish: () => void = () => undefined;
+    const onApprove = vi.fn(() => new Promise<void>((r) => (finish = r)));
+    home(onApprove);
+    const button = screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(onApprove).toHaveBeenCalledTimes(1);
+    finish();
+    expect(await screen.findByText('Approved: Leave for Rahul Sharma')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Approve leave for Rahul Sharma' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'View all 1' })).toBeInTheDocument();
+  });
+
+  it('refused: the row stays and shows the server reason', async () => {
+    home(vi.fn(async () => Promise.reject(new Error('This approval is already closed.'))));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' }));
+    expect(await screen.findByText('This approval is already closed.')).toBeInTheDocument();
+    expect(screen.getByText('Not approved')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Approve leave for Rahul Sharma' })).toBeInTheDocument();
+    expect(screen.queryByText(/^Approved:/)).toBeNull();
   });
 });

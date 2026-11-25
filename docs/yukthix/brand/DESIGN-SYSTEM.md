@@ -157,7 +157,7 @@ Two icon families, each with its own job.
 
 ### ✅ §12 Navigation — two-tier sidebar (decided 28 Sep 2026)
 - **Tier 1 rail (56 px):** icons with labels on hover for Home, People, Time, Pay, Hire, Assess, Performance, Learning, Helpdesk, Analytics, Settings — only what the role can see; product switch is implicit (YukthiX HR / Hire / Assess areas).
-- **Tier 2 panel (240 px):** pages of the selected area with section headings, counters (e.g. Approvals 12), pinned favourites at the top; collapsible to rail-only; state remembered per user.
+- **Tier 2 panel (240 px):** pages of the selected area with section headings, counters (e.g. Approvals 12), pinned favourites at the top; collapsible to rail-only; state remembered per user. Section headings are item size and bold, and each section opens and closes from its heading (remembered in the browser); the section holding the current page always stays open (founder, 21 Oct 2026).
 - **Top bar:** global search and command palette (Ctrl / Cmd + K, P17), company / entity switcher, notifications, help, profile menu.
 - **Breadcrumbs** only on deep pages (object → sub-object). **Tabs** inside object pages. **Mobile:** bottom tabs Home · Time · Requests · Pay · Me (M04), with the rail's areas under "Me › More".
 
@@ -214,7 +214,7 @@ Top-down tree with person cards (photo, name, role, team size) · expand / colla
 - **Badge:** 20 px high, 4 px radius, tinted background with darker text from §3, always text (never a dot alone). One status vocabulary per object: Draft, Pending, Approved, Rejected, Paid, Locked and so on, defined in the object catalogue.
 - **Tag:** neutral grey, user-defined labels, removable with ×.
 - **Avatar:** photo or initials on a muted tint derived from the name; sizes 20 / 24 / 32 / 40 / 64; groups show 3 avatars and "+N".
-- **Toast:** top centre, just under the top bar (founder, 21 Oct 2026: so nobody misses it), 5 s, with Undo wherever the action allows; at most 3 stacked; errors never auto-dismiss.
+- **Toast:** top centre, just under the top bar (founder, 21 Oct 2026: so nobody misses it); one colour per meaning (founder, 22 Oct 2026): green done, orange warning, red error, blue information; 5 s, with Undo wherever the action allows; at most 3 stacked; errors never auto-dismiss.
 - **Inline alert:** inside a form or section for errors and warnings tied to that content.
 - **Page banner:** system-wide states only, such as trial, maintenance, read-only or impersonation.
 
@@ -385,7 +385,7 @@ Every component below lives in `packages/ui`, uses only §41 tokens, has a Story
 | MaskedField (PAN, IFSC, UAN, Aadhaar-masked, phone) | Build | Live format check |
 | PersonPicker, OrgUnitPicker, EntityPicker, LocationPicker | Build | Photo, name, role, department |
 | FileUpload, Dropzone | Build | Type, size, progress, scan status (§31) |
-| RichTextEditor | Build | Letters and policies; limited toolbar |
+| RichTextEditor | Build | Letters, policies and messages. Toolbar: B I U S, headings, lists, highlight, text colour, font size (preset lists only), quote, link, code, undo, redo; buttons that do not fit move into "More formatting" (…). `hide` drops buttons a place cannot keep (letters hide Code; the service desk hides highlight, colour and size) |
 | FormField, FormSection, ErrorSummary, StickySaveBar | Build | §16 layout |
 | ConditionBuilder | Build | When / If / Then rows (§46, P19) |
 

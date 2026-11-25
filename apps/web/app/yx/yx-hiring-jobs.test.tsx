@@ -1,54 +1,185 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { ToastProvider } from '@yukthix/ui';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxHiringJobsPage from './(app)/hiring/jobs/page';
+import YxHiringJobPage from './(app)/hiring/jobs/[id]/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Hiring › Jobs on the existing hiring API (M10 batch AT1, AT-1.03 / 1.05).
-const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+// Hiring › Jobs and one job (HIR-03, HIR-24): the designed screens with live data on the jobs API.
+const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const api = apiFetch as jest.Mock;
 const push = jest.fn();
+const replace = jest.fn();
+
+const COUNTS = { byStageId: { s1: 2 }, byCategory: { active: 2, offer: 1, hired: 0, rejected: 3, archived: 0 } };
+const JOB = {
+  id: 'j1', title: 'Senior accountant', status: 'open', createdAt: '2026-10-01T09:00:00Z', createdById: 'u9', recruiterUserId: 'u1', jobNumber: 1, closedAt: null, publishedAt: '2026-10-02T09:00:00Z', slug: 'senior-accountant-chennai',
+  department: 'Finance', location: 'Chennai', employmentType: 'FULL_TIME', hiringManagerId: null, headcount: 1, publicApplyEnabled: true, listOnCareers: true, applyToken: 't', salaryMin: null, salaryMax: null,
+  salaryCurrency: 'INR', salaryPeriod: 'year', showSalary: false, askPayHistory: false, pipelineId: 'p1', approval: null, stageCounts: COUNTS, jobBoardIds: ['b1'],
+};
+const job = (law: Record<string, unknown>) => ({ ...JOB, payLaw: { rangeRequired: false, historyBanned: false, name: null, place: 'Chennai', showByDefault: false, ...law }, postings: [{ boardId: 'b1', board: 'Naukri', status: 'live', error: null, postedAt: null }, { boardId: 'b2', board: 'Indeed', status: 'not posted', error: null, postedAt: null }] });
 
 beforeEach(() => {
   api.mockReset();
   push.mockReset();
-  (useRouter as jest.Mock).mockReturnValue({ push, replace: jest.fn() });
+  replace.mockReset();
+  (useRouter as jest.Mock).mockReturnValue({ push, replace });
   (usePathname as jest.Mock).mockReturnValue('/yx/hiring/jobs');
   (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams(''));
-  (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'recruiter', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
+  (useParams as jest.Mock).mockReturnValue({ id: 'j1' });
+  (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'recruiter', organizationSlug: 'kaveri', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
 });
 
-describe('Hiring › Jobs (M10 AT1)', () => {
-  it('lists jobs with their pipeline, opens the existing workspace and creates a job linked to a department', async () => {
+const routes = (extra: (key: string, init?: RequestInit) => unknown, perms = ['pipeline:manage', 'results:view', 'org.structure.view']) =>
+  api.mockImplementation(async (path: string, init?: RequestInit) => {
+    const key = `${init?.method ?? 'GET'} ${path.split('?')[0]}`;
+    const hit = extra(key, init);
+    if (hit !== undefined) return hit;
+    if (key === 'GET /rbac/me/permissions') return perms;
+    if (key === 'GET /jobs') return [JOB];
+    if (key === 'GET /jobs/pay-settings') return { showRange: false, askHistory: false };
+    if (key === 'GET /pipelines') return [{ id: 'p1', name: 'Standard', isDefault: true, stages: [{ id: 's1', name: 'Interview' }] }];
+    if (key === 'GET /users/teammates') return [{ id: 'u1', name: 'Neha Joshi', email: 'neha@x.test' }, { id: 'u9', name: 'Imran Qureshi', email: 'imran@x.test' }];
+    if (key.startsWith('GET /org/masters') || key === 'GET /org/locations' || key === 'GET /hiring/plan-lines' || key === 'GET /hiring/scorecard-templates') return key === 'GET /org/masters/departments' ? [{ id: 'd1', name: 'Finance', archivedAt: null }] : [];
+    // The job form reads the fields with the hiring key; never the settings list (always refused for recruiters).
+    if (key === 'GET /custom-fields/in-use') return [{ id: 'cf1', label: 'Cost centre', fieldType: 'text', options: null, required: true, archivedAt: null }];
+    if (key === 'GET /hiring/jobs/j1/interview-settings') return { scorecardTemplateId: null, exams: [] };
+    throw new Error(`unexpected ${key}`);
+  });
+
+describe('Hiring › Jobs (HIR-03 list, live)', () => {
+  it('lists jobs with counts and recruiter, opens the workspace and creates a job linked to a department', async () => {
     const posted: unknown[] = [];
-    api.mockImplementation(async (path: string, init?: RequestInit) => {
-      const key = `${init?.method ?? 'GET'} ${path.split('?')[0]}`;
-      if (key === 'GET /rbac/me/permissions') return ['pipeline:manage', 'results:view', 'org.structure.view'];
-      if (key === 'GET /jobs') return [{ id: 'j1', title: 'Senior accountant', status: 'open', createdAt: '2026-10-01T09:00:00Z', pipelineId: 'p1', stageCounts: { byStageId: { s1: 2 }, byCategory: { active: 2, offer: 0, hired: 0, rejected: 0, archived: 0 } }, approval: null }];
-      if (key === 'GET /pipelines') return [{ id: 'p1', name: 'Standard', isDefault: true, stages: [{ id: 's1', name: 'Interview' }] }];
-      if (key === 'GET /users/directory' || key.startsWith('GET /users')) return [];
-      if (key === 'GET /custom-fields') return [];
-      if (key === 'GET /org/masters/departments') return [{ id: 'd1', name: 'Finance', archivedAt: null }];
-      if (key === 'GET /org/locations' || key === 'GET /org/masters/designations') return [];
-      if (key === 'POST /jobs') return (posted.push(JSON.parse(String(init!.body))), { id: 'j2' });
-      throw new Error(`unexpected ${key}`);
-    });
+    routes((key, init) => (key === 'POST /jobs' ? (posted.push(JSON.parse(String(init!.body))), { id: 'j2', status: 'open' }) : undefined));
     wrap(<YxHiringJobsPage />);
-    expect(await screen.findByText('2 Interview')).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+    expect(await screen.findByText('Senior accountant')).toBeInTheDocument();
+    expect(await screen.findByText('Neha Joshi')).toBeInTheDocument();
+    expect(screen.getByText('Full time')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Senior accountant'));
     expect(push).toHaveBeenCalledWith('/yx/hiring/jobs/j1');
-    await userEvent.click(screen.getByRole('button', { name: 'New job' }));
-    const d = screen.getByRole('dialog');
+    await userEvent.click(screen.getByRole('button', { name: 'Create job' }));
+    const d = await screen.findByRole('dialog');
+    await userEvent.click(within(d).getByRole('button', { name: 'Create job' }));
+    expect(within(d).getByText('Enter the job title.')).toBeInTheDocument();
+    expect(within(d).getByText('Enter the Cost centre.')).toBeInTheDocument();
+    await userEvent.type(within(d).getByRole('textbox', { name: /Cost centre/ }), 'CC-1');
     await userEvent.type(within(d).getByRole('textbox', { name: /Job title/ }), 'Accountant');
     await userEvent.click(within(d).getByRole('combobox', { name: 'Department' }));
     await userEvent.click(await screen.findByRole('option', { name: 'Finance' }));
-    await userEvent.click(within(d).getByRole('button', { name: 'Create' }));
-    await waitFor(() => expect(posted).toEqual([expect.objectContaining({ title: 'Accountant', departmentId: 'd1', pipelineId: 'p1' })]));
+    await userEvent.click(within(d).getByRole('button', { name: 'Create job' }));
+    await waitFor(() => expect(posted).toEqual([expect.objectContaining({ title: 'Accountant', departmentId: 'd1', pipelineId: 'p1', customFields: { cf1: 'CC-1' } })]));
+    expect(api.mock.calls.map((c) => String(c[0])).filter((x) => x.startsWith('/custom-fields?'))).toEqual([]);
+    expect((await screen.findAllByText('Job Accountant created')).length).toBeGreaterThan(0);
+  });
+
+  it('shows the job number; puts a job on hold with a toast (answers 223, 225)', async () => {
+    const patches: unknown[] = [];
+    routes((key, init) => (key === 'PATCH /jobs/j1' ? (patches.push(JSON.parse(String(init!.body))), {}) : undefined));
+    wrap(<YxHiringJobsPage />);
+    expect(await screen.findByText('JOB-0001')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /More actions/ }));
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'Put on hold' }));
+    await waitFor(() => expect(patches).toEqual([{ status: 'on_hold' }]));
+    expect((await screen.findAllByText(/Senior accountant is on hold/)).length).toBeGreaterThan(0);
+  });
+
+  it('read-only (results:view only): no Create job', async () => {
+    routes(() => undefined, ['results:view']);
+    wrap(<YxHiringJobsPage />);
+    expect(await screen.findByText('Senior accountant')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create job' })).not.toBeInTheDocument();
+    // No create form, so no field read at all.
+    expect(api.mock.calls.map((c) => String(c[0])).filter((x) => x.startsWith('/custom-fields'))).toEqual([]);
+  });
+});
+
+describe('Hiring › one job (HIR-03 workspace, HIR-24 pay range, live)', () => {
+  it('shows the overview and stages, posts to a board and opens the pipeline', async () => {
+    const patches: unknown[] = [];
+    routes((key, init) => (key === 'GET /jobs/j1' ? job({}) : key === 'PATCH /jobs/j1' ? (patches.push(JSON.parse(String(init!.body))), {}) : undefined));
+    wrap(<YxHiringJobPage />);
+    expect(await screen.findByText('2 Interview')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View careers page' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('tab', { name: /Job-board postings/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Post' }));
+    await waitFor(() => expect(patches).toEqual([{ jobBoardIds: ['b1', 'b2'] }]));
+    expect((await screen.findAllByText('Posted to Indeed')).length).toBeGreaterThan(0);
+    await userEvent.click(screen.getByRole('button', { name: 'Open pipeline' }));
+    expect(push).toHaveBeenCalledWith('/yx/hiring/jobs/j1/pipeline');
+    // Answer 222: the recruiter shows and can be changed.
+    await userEvent.click(screen.getByRole('tab', { name: 'Overview' }));
+    expect(await screen.findByText('Neha Joshi')).toBeInTheDocument();
+  });
+
+  it('where the law requires the range: saving without it is stopped; a server refusal shows on the panel', async () => {
+    let patched = 0;
+    routes((key) => {
+      if (key === 'GET /jobs/j1') return job({ rangeRequired: true, historyBanned: true, name: 'New York pay transparency law', place: 'New York office' });
+      if (key === 'PATCH /jobs/j1') {
+        patched++;
+        throw new Error('The New York pay transparency law requires a pay range before the job is published. Add a minimum and a maximum.');
+      }
+      return undefined;
+    });
+    wrap(<YxHiringJobPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Pay range' }));
+    expect(screen.getByRole('switch', { name: /Ask applicants/ })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Save pay range' }));
+    expect(screen.getByText(/The law for this location requires a pay range/)).toBeInTheDocument();
+    expect(patched).toBe(0);
+  });
+
+  it('Settings tab (answer 261): the scorecard is set per job; stage targets are read-only and open Settings › Hiring (answer 302)', async () => {
+    const calls: [string, unknown][] = [];
+    const BOARD = { pipeline: { id: 'p1', name: 'Standard', stages: [{ id: 's1', name: 'Applied', category: 'active', position: 0, statuses: [], daysTarget: 3, stageLimit: null }, { id: 's2', name: 'Rejected', category: 'rejected', position: 1, statuses: [], daysTarget: null, stageLimit: null }] }, columns: {} };
+    routes(
+      (key, init) => {
+        if (init?.method && init.method !== 'GET') calls.push([key, init.body ? JSON.parse(String(init.body)) : undefined]);
+        if (key === 'GET /jobs/j1') return job({});
+        if (key === 'GET /hiring/jobs/j1/board') return BOARD;
+        if (key === 'GET /hiring/scorecard-templates') return [{ id: 'tp1', name: 'Engineer round 1' }];
+        if (key.startsWith('GET /exams') || key.startsWith('GET /organizations/job-boards') || key.startsWith('GET /job-boards')) return key.startsWith('GET /exams') ? { data: [], total: 0 } : [];
+        if (key === 'PUT /hiring/jobs/j1/scorecard') return {};
+        return undefined;
+      },
+      ['pipeline:manage', 'pipelines:configure', 'results:view', 'org.structure.view'],
+    );
+    wrap(<YxHiringJobPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Scorecard for new interviews' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Engineer round 1' }));
+    await waitFor(() => expect(calls).toContainEqual(['PUT /hiring/jobs/j1/scorecard', { templateId: 'tp1' }]));
+    expect(screen.getByText('3 days target')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save stage targets' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Change in Settings' }));
+    expect(push).toHaveBeenCalledWith('/yx/settings/hiring');
+    expect(calls.filter(([k]) => k.startsWith('PATCH /pipelines'))).toEqual([]);
+  });
+
+  it('Settings tab without the job-manage key shows the values as text', async () => {
+    const BOARD = { pipeline: { id: 'p1', name: 'Standard', stages: [{ id: 's1', name: 'Applied', category: 'active', position: 0, statuses: [], daysTarget: 3, stageLimit: 6 }] }, columns: {} };
+    routes((key) => (key === 'GET /jobs/j1' ? job({}) : key === 'GET /hiring/jobs/j1/board' ? BOARD : key.startsWith('GET /exams') ? { data: [], total: 0 } : key.includes('job-boards') ? [] : undefined), ['results:view']);
+    wrap(<YxHiringJobPage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Settings' }));
+    expect(await screen.findByText('3 days target · limit 6')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save stage targets' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('combobox', { name: 'Scorecard for new interviews' })).not.toBeInTheDocument();
+    // Hiring walk (answer 476): nothing the API refuses this person is asked for (no 403s in the console).
+    const asked = api.mock.calls.map(([path]) => String(path));
+    expect(asked.filter((x) => x.includes('/organizations/job-boards') || x === '/pipelines')).toEqual([]);
+  });
+
+  it('an older application link goes to the pipeline page', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('entry=e1'));
+    routes((key) => (key === 'GET /jobs/j1' ? job({}) : undefined));
+    wrap(<YxHiringJobPage />);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/yx/hiring/jobs/j1/pipeline?entry=e1'));
   });
 });

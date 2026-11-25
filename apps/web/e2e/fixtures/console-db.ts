@@ -25,9 +25,19 @@ function asPlatform<T>(fn: (tx: Parameters<Parameters<PrismaClient['$transaction
   });
 }
 
+/**
+ * A member of staff with the roles the console journey needs (founder answers 1058/1086: no staff holds a key by
+ * default): Customer success creates companies, Support agent asks for support access, Security lead reads the audit.
+ */
 export async function createStaff(email: string, password: string): Promise<string> {
   const passwordHash = await argon2.hash(password);
-  return (await asPlatform((tx) => tx.user.create({ data: { email, name: 'E2E Staff', passwordHash, role: 'super_admin', organizationId: null } }))).id;
+  return asPlatform(async (tx) => {
+    const { id } = await tx.user.create({ data: { email, name: 'E2E Staff', passwordHash, role: 'super_admin', organizationId: null } });
+    // Roles change only through platform_set_staff_roles, by an active Security lead (the seeded one).
+    const lead = await tx.user.findFirstOrThrow({ where: { email: 'super@platform.test', organizationId: null }, select: { id: true } });
+    await tx.$queryRaw`SELECT platform_set_staff_roles(${id}::uuid, ARRAY['customer_success', 'support_agent', 'security_lead']::text[], ${lead.id}::uuid)`;
+    return id;
+  });
 }
 
 export async function setCompanyAdminPassword(email: string, password: string): Promise<void> {
@@ -47,6 +57,8 @@ export async function cleanUp(staffId: string | null, companySlug: string): Prom
     if (staffId) {
       await tx.refreshToken.deleteMany({ where: { userId: staffId } });
       await tx.session.deleteMany({ where: { userId: staffId } });
+      const lead = await tx.user.findFirst({ where: { email: 'super@platform.test', organizationId: null }, select: { id: true } });
+      if (lead) await tx.$queryRaw`SELECT platform_set_staff_roles(${staffId}::uuid, ARRAY[]::text[], ${lead.id}::uuid)`;
       await tx.user.delete({ where: { id: staffId } }).catch(() => undefined);
     }
   }).catch(() => undefined);

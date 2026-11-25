@@ -46,9 +46,16 @@ describe('SignInScreen (work email first, no company code)', () => {
     expect(screen.queryByLabelText(/company/i)).toBeNull();
     expect(screen.queryByLabelText(/password/i)).toBeNull();
     const go = screen.getByRole('button', { name: 'Continue' });
-    expect(go).toBeDisabled();
+    // Never greyed out: pressed too early it says what is missing and puts the cursor in the box.
+    expect(go).toBeEnabled();
+    await userEvent.click(go);
+    expect(onIdentify).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter your work email.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Work email/)).toHaveFocus();
     await userEvent.type(screen.getByLabelText(/Work email/), '+919845012345');
-    expect(go).toBeDisabled();
+    await userEvent.click(go);
+    expect(onIdentify).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter your full email, like name@company.com')).toBeInTheDocument();
     await userEvent.clear(screen.getByLabelText(/Work email/));
     await userEvent.type(screen.getByLabelText(/Work email/), DIVYA.identifier);
     await userEvent.click(go);
@@ -84,7 +91,8 @@ describe('SignInScreen (work email first, no company code)', () => {
     unmount();
     render(<SignIn options={{ google: false, microsoft: false, sms: false, whatsapp: false, emailCode: true }} onMobile={vi.fn()} onSocial={vi.fn()} />);
     expect(screen.queryByRole('separator')).toBeNull();
-    expect(screen.getAllByRole('button')).toHaveLength(1);
+    // The frame's Accessibility button (answer 2331) is not a way to sign in.
+    expect(screen.getAllByRole('button').filter((b) => b.getAttribute('aria-label') !== 'Accessibility')).toHaveLength(1);
   });
 
   it("a company's own Google provider replaces YukthiX's Google button", async () => {
@@ -102,7 +110,10 @@ describe('SignInScreen (work email first, no company code)', () => {
     const onSendCode = vi.fn();
     render(<SignIn step="mobile" options={ALL_WAYS} onSendCode={onSendCode} />);
     const text = screen.getByRole('button', { name: 'Text me a code' });
-    expect(text).toBeDisabled();
+    await userEvent.click(text);
+    expect(onSendCode).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter your mobile number.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Mobile number/)).toHaveFocus();
     await userEvent.type(screen.getByLabelText(/Mobile number/), '98450 12345');
     await userEvent.click(text);
     expect(onSendCode).toHaveBeenLastCalledWith('sms');
@@ -112,18 +123,31 @@ describe('SignInScreen (work email first, no company code)', () => {
     expect(screen.getByLabelText(/Work email/)).toBeInTheDocument();
   });
 
-  it('mobile: the buttons wait for a full number; a short one is named on leaving the box, not while typing', async () => {
-    render(<SignIn step="mobile" options={ALL_WAYS} onSendCode={vi.fn()} />);
+  it('mobile: nothing is sent for a short number; it is named on leaving the box or pressing, not while typing', async () => {
+    const onSendCode = vi.fn();
+    render(<SignIn step="mobile" options={ALL_WAYS} onSendCode={onSendCode} />);
     const box = screen.getByLabelText(/Mobile number/);
     await userEvent.type(box, '98450 123');
-    expect(screen.getByRole('button', { name: 'Text me a code' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Send a code on WhatsApp' })).toBeDisabled();
     expect(screen.queryByText(/Enter your full mobile number/)).toBeNull();
     await userEvent.tab();
     expect(screen.getByText('Enter your full mobile number, like 98450 12345')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Send a code on WhatsApp' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Text me a code' }));
+    expect(onSendCode).not.toHaveBeenCalled();
+    expect(box).toHaveFocus();
     await userEvent.type(box, '45');
     expect(screen.queryByText(/Enter your full mobile number/)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Text me a code' })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Text me a code' }));
+    expect(onSendCode).toHaveBeenCalledWith('sms');
+  });
+
+  it('while a request runs, the other ways in send nothing more', async () => {
+    const onSocial = vi.fn();
+    const onMobile = vi.fn();
+    render(<SignIn options={ALL_WAYS} onMobile={onMobile} onSocial={onSocial} busy />);
+    for (const b of within(screen.getByRole('group', { name: 'Other ways to sign in' })).getAllByRole('button')) await userEvent.click(b);
+    expect(onSocial).not.toHaveBeenCalled();
+    expect(onMobile).not.toHaveBeenCalled();
   });
 
   it('the code box keeps digits only, at most 6 (letters are dropped as they are typed)', async () => {
@@ -301,7 +325,11 @@ describe('StaffSignInScreen', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'YukthiX staff sign-in' })).toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent('Wrong email or password');
     const go = screen.getByRole('button', { name: 'Continue' });
-    expect(go).toBeDisabled();
+    await userEvent.click(go);
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter your staff email.')).toBeInTheDocument();
+    expect(screen.getByText('Enter your password.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Staff email/)).toHaveFocus();
     await userEvent.type(screen.getByLabelText(/Staff email/), 'ops@yukthix.test');
     await userEvent.type(screen.getByLabelText(/^Password/), 'Staff-Passw0rd-26');
     await userEvent.click(go);
@@ -339,6 +367,11 @@ describe('second step', () => {
     const submit = vi.fn().mockRejectedValue(new Error('That code is not right.'));
     render(<MfaChallengeScreen factors={['passkey', 'totp']} getPasskey={vi.fn()} submit={submit} onStartAgain={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Authenticator app' }));
+    // Confirm pressed with no code: nothing is sent; the box says why and takes the focus.
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect(submit).not.toHaveBeenCalled();
+    expect(screen.getByText('Enter the 6-digit code.')).toBeInTheDocument();
+    expect(screen.getByLabelText(/6-digit code/)).toHaveFocus();
     await userEvent.type(screen.getByLabelText(/6-digit code/), '123456');
     await userEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     expect(submit).toHaveBeenCalledWith({ factor: 'totp', code: '123456' });
@@ -385,7 +418,10 @@ describe('MfaEnrolScreen', () => {
     const list = await screen.findByRole('list', { name: 'Recovery codes' });
     expect(within(list).getAllByRole('listitem')).toHaveLength(10);
     const go = screen.getByRole('button', { name: 'Continue' });
-    expect(go).toBeDisabled();
+    await userEvent.click(go);
+    expect(onContinue).not.toHaveBeenCalled();
+    expect(screen.getByText('Save the codes, then tick this box.')).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: 'I have saved my recovery codes' })).toHaveFocus();
     await userEvent.click(screen.getByRole('checkbox', { name: 'I have saved my recovery codes' }));
     await userEvent.click(go);
     expect(onContinue).toHaveBeenCalledOnce();
@@ -440,6 +476,18 @@ function Me(over: Partial<MeSecurityScreenProps>) {
 }
 
 describe('MeSecurityScreen', () => {
+  it('YukthiX staff see their own console roles (answer 1166); with none it says so; company people see no such card', () => {
+    const { unmount } = render(<Me staffRoles={[{ label: 'Rules editor', does: ['Draft, review and publish rule sets'] }]} />);
+    expect(screen.getByText('Your console roles')).toBeInTheDocument();
+    expect(screen.getByText('Draft, review and publish rule sets')).toBeInTheDocument();
+    unmount();
+    const none = render(<Me staffRoles={[]} />);
+    expect(screen.getByText(/No role yet/)).toBeInTheDocument();
+    none.unmount();
+    render(<Me />);
+    expect(screen.queryByText('Your console roles')).toBeNull();
+  });
+
   it('lists sign-in methods, sessions and history', () => {
     render(<Me />);
     expect(within(screen.getByRole('list', { name: 'Your sign-in methods' })).getAllByRole('listitem')).toHaveLength(2);
@@ -455,9 +503,14 @@ describe('MeSecurityScreen', () => {
     expect(onRemoveFactor).toHaveBeenCalledWith(MFA_ENROLLED.factors[0]);
   });
 
-  it("won't remove the only factor when the role needs one", () => {
-    render(<Me mfa={{ ...MFA_ENROLLED, factors: MFA_ENROLLED.factors.slice(0, 1) }} />);
-    expect(screen.getByRole('button', { name: 'Remove Passkey · Office laptop' })).toBeDisabled();
+  it("won't remove the only factor when the role needs one, and says why when pressed", async () => {
+    const onRemoveFactor = vi.fn();
+    render(<Me mfa={{ ...MFA_ENROLLED, factors: MFA_ENROLLED.factors.slice(0, 1) }} onRemoveFactor={onRemoveFactor} />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove Passkey · Office laptop' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByRole('alert')).toHaveTextContent("You can't remove your only sign-in method");
+    expect(onRemoveFactor).not.toHaveBeenCalled();
   });
 
   it('warns when the role needs a sign-in method and none is set up', () => {
@@ -608,9 +661,11 @@ describe('LoginActivityScreen', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Unlock ramesh.g@kaverifoods.in' }));
     const dialog = screen.getByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Unlock account' });
-    expect(confirm).toBeDisabled();
+    await userEvent.click(confirm);
+    expect(within(dialog).getByText('Enter a reason of at least 10 characters.')).toBeInTheDocument();
     await userEvent.type(within(dialog).getByLabelText(/Reason/), 'too short');
-    expect(confirm).toBeDisabled();
+    await userEvent.click(confirm);
+    expect(onUnlock).not.toHaveBeenCalled();
     await userEvent.type(within(dialog).getByLabelText(/Reason/), ' - called him back on his desk phone');
     await userEvent.click(confirm);
     expect(onUnlock).toHaveBeenCalledWith(ORG_EVENTS.data[1], 'too short - called him back on his desk phone');
@@ -712,12 +767,15 @@ describe('SecuritySettingsScreen', () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<Settings onSave={onSave} />);
     const save = screen.getByRole('button', { name: 'Save changes' });
-    expect(save).toBeDisabled();
+    // Nothing changed yet: pressing Save sends nothing, and the page says so beside the button.
+    expect(screen.getByText('No changes yet')).toBeInTheDocument();
+    await userEvent.click(save);
+    expect(onSave).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole('radio', { name: 'Everyone' }));
     await userEvent.type(screen.getByLabelText(/Sign out on the web after no activity/), '15');
     await userEvent.click(save);
     expect(onSave).toHaveBeenCalledWith({ mfaScope: 'all', sessionIdleMinutes: 15 });
-    expect(await screen.findByText(/Saved\./)).toBeInTheDocument();
+    expect((await screen.findAllByText('Security settings saved'))[0]).toBeInTheDocument();
   });
 
   it('blocks a laxer or inconsistent policy and lists why', async () => {
@@ -794,7 +852,9 @@ describe('ResetPasswordScreen', () => {
     expect(screen.queryByText('The two passwords are not the same')).toBeNull();
     await userEvent.tab();
     expect(screen.getByText('The two passwords are not the same')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save new password' })).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: 'Save new password' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Type it again/)).toHaveFocus();
     await userEvent.type(screen.getByLabelText(/Type it again/), '6');
     await userEvent.click(screen.getByRole('button', { name: 'Save new password' }));
     expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -857,7 +917,6 @@ describe('passkey as a sign-in method', () => {
     render(<SignIn />);
     const box = screen.getByLabelText(/Work email/);
     await userEvent.type(box, 'hr@demo');
-    expect(screen.getByRole('button', { name: 'Continue' })).toBeDisabled();
     expect(screen.queryByText(/Enter your full email/)).toBeNull();
     await userEvent.tab();
     expect(screen.getByText('Enter your full email, like name@company.com')).toBeInTheDocument();
@@ -932,7 +991,9 @@ describe('passkey as a sign-in method', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Rename Office laptop' }));
     const dialog = screen.getByRole('dialog', { name: 'Rename passkey' });
     const field = within(dialog).getByRole('textbox', { name: /Name/ });
-    expect(within(dialog).getByRole('button', { name: 'Save name' })).toBeDisabled(); // unchanged
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Save name' })); // unchanged
+    expect(within(dialog).getByText('Enter a different name to save it.')).toBeInTheDocument();
+    expect(onRenamePasskey).not.toHaveBeenCalled();
     await userEvent.clear(field);
     await userEvent.type(field, 'Work laptop');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Save name' }));
@@ -987,7 +1048,7 @@ describe('SEC-01 sign-in frame (design audit SI-01)', () => {
 });
 
 describe('sign-in frame', () => {
-  it('has no language picker until YukthiX is translated, no stripe without a brand colour, and a plain note', () => {
+  it('has no language picker without the sign-in language provider (in-app screens), no stripe without a brand colour, and a plain note', () => {
     const { container } = render(<SignIn />);
     expect(screen.queryByRole('combobox', { name: 'Language' })).toBeNull();
     expect(container.querySelector('.yx-tportal')).toHaveAttribute('data-accent', 'default');

@@ -17,6 +17,7 @@ describe('ConnectedAppsService', () => {
         create: jest.fn(),
         update: jest.fn(),
         delete: jest.fn(),
+        deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
       integrationDelivery: { findMany: jest.fn() },
     };
@@ -146,7 +147,7 @@ describe('ConnectedAppsService', () => {
   describe('remove', () => {
     it('deletes and audits', async () => {
       const result = await service().remove(ctx, 'user-1', 'i1');
-      expect(tx.orgIntegration.delete).toHaveBeenCalledWith({ where: { id: 'i1' } });
+      expect(tx.orgIntegration.deleteMany).toHaveBeenCalledWith({ where: { id: 'i1' } });
       expect(audit.record).toHaveBeenCalledWith(ctx, expect.objectContaining({ action: 'integration.removed', entityId: 'i1' }));
       expect(result).toEqual({ ok: true });
     });

@@ -143,17 +143,50 @@ export interface AccrualDue {
  * cumulative entitlement, and the last month of the year trues up to the exact entitlement (L4). A joiner gets the
  * employed share of the joining month (pro-rata); nothing before joining or after leaving.
  */
-export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string }): AccrualDue[] {
+/** Answer 2342 (Oracle O11): credits dated before the person is N months in are dropped (forfeited, not paid later). */
+export function afterWait<T extends { on: string }>(dues: T[], joinedOn: string, waitMonths: number): T[] {
+  if (!waitMonths) return dues;
+  const from = day(joinedOn).plus({ months: waitMonths }).toISODate()!;
+  return dues.filter((d) => d.on >= from);
+}
+
+/**
+ * Answer 2342 (Oracle O10): the lapse lines that keep a balance at its ceiling as new credits come in, in date order. A
+ * credit lapses only its own days over the ceiling (a balance already above it, e.g. carried in, is never cut here).
+ */
+export function ceilingLapses(dues: readonly AccrualDue[], balance: number, max: number | null | undefined): AccrualDue[] {
+  if (max === null || max === undefined) return [];
+  const out: AccrualDue[] = [];
+  let run = balance;
+  for (const d of [...dues].sort((a, b) => (a.on < b.on ? -1 : a.on > b.on ? 1 : 0))) {
+    run = Math.round((run + d.days) * 100) / 100;
+    const over = Math.min(d.days, Math.round((run - max) * 100) / 100);
+    if (over > 0) {
+      out.push({ periodKey: `ceiling:${d.periodKey}`, on: d.on, days: -over });
+      run = Math.round((run - over) * 100) / 100;
+    }
+  }
+  return out;
+}
+
+export function accrualsDue(line: AccrualLine, o: { yearStart: string; joinedOn: string; exitedOn?: string | null; upTo: string; /** TIM-25: long absences that earn no leave (monthly credits only). */ notEarning?: readonly { from: string; to: string }[]; /** TIM-29: a short year ends early (a leave-year change); its yearly credit is for its months only. */ yearEnd?: string }): AccrualDue[] {
   if (line.annualDays <= 0) return [];
   const start = day(o.yearStart);
-  const yearEnd = start.plus({ years: 1 }).minus({ days: 1 }).toISODate()!;
+  const yearEnd = o.yearEnd ?? start.plus({ years: 1 }).minus({ days: 1 }).toISODate()!;
+  if (o.yearEnd) {
+    const months = (day(yearEnd).year - start.year) * 12 + day(yearEnd).month - start.month + 1;
+    if (months < 12) line = { ...line, annualDays: line.frequency === 'yearly' ? (line.annualDays * months) / 12 : line.annualDays };
+  }
   const last = o.exitedOn && o.exitedOn < yearEnd ? o.exitedOn : yearEnd;
   if (o.joinedOn > last) return [];
   const share = (from: string, to: string) => {
     const a = from < o.joinedOn ? o.joinedOn : from;
     const b = to > last ? last : to;
     if (b < a) return 0;
-    return line.proRata ? (daysBetween(a, b) + 1) / (daysBetween(from, to) + 1) : 1;
+    // Days of a long absence that earns no leave come off the month's share.
+    const away = (o.notEarning ?? []).reduce((n, x) => { const p = x.from < a ? a : x.from; const q = x.to > b ? b : x.to; return q < p ? n : n + daysBetween(p, q) + 1; }, 0);
+    const kept = daysBetween(a, b) + 1 - away;
+    return line.proRata || away ? kept / (daysBetween(from, to) + 1) : 1;
   };
   if (line.frequency === 'yearly') {
     const on = o.yearStart < o.joinedOn ? o.joinedOn : o.yearStart;
@@ -240,10 +273,40 @@ export function ipInRanges(ip: string | null | undefined, ranges: readonly strin
 export interface Fence {
   locationId: string;
   name: string;
+  /** TIM-31 Multi: the point's own name when the location has more than one point. */
+  point?: string;
   lat: number | null;
   lng: number | null;
   radiusM: number | null;
   ipRanges: readonly string[];
+  /** Answer 2477: the office Wi-Fi names (SSIDs) of the location. */
+  wifiNames?: readonly string[];
+}
+
+export interface GeoPoint {
+  name: string;
+  lat: number;
+  lng: number;
+  radiusM: number;
+}
+
+/**
+ * TIM-31 Multi: a location's check-in points. `geo_points` when set; else the single point in geo_lat / geo_lng /
+ * geo_radius_m (locations saved before the points, or written straight to those columns).
+ */
+export function geoPointsOf(l: { name: string; geoPoints?: unknown; geoLat: unknown; geoLng: unknown; geoRadiusM: number | null }): GeoPoint[] {
+  const list = Array.isArray(l.geoPoints) ? (l.geoPoints as Partial<GeoPoint>[]) : [];
+  const points = list.filter((p) => typeof p?.lat === 'number' && typeof p.lng === 'number' && typeof p.radiusM === 'number' && p.radiusM > 0).map((p) => ({ name: String(p.name ?? l.name), lat: p.lat!, lng: p.lng!, radiusM: p.radiusM! }));
+  if (points.length) return points;
+  return l.geoLat !== null && l.geoLng !== null && l.geoRadiusM ? [{ name: l.name, lat: Number(l.geoLat), lng: Number(l.geoLng), radiusM: l.geoRadiusM }] : [];
+}
+
+/** One fence per point (a punch inside any of them is inside); a location with no point still carries its networks. */
+export function fencesOf(l: { id: string; name: string; geoPoints?: unknown; geoLat: unknown; geoLng: unknown; geoRadiusM: number | null; ipRanges: string[]; wifiNames?: string[] }): Fence[] {
+  const points = geoPointsOf(l);
+  const wifi = l.wifiNames?.length ? { wifiNames: l.wifiNames } : {};
+  if (!points.length) return [{ locationId: l.id, name: l.name, lat: null, lng: null, radiusM: null, ipRanges: l.ipRanges, ...wifi }];
+  return points.map((p) => ({ locationId: l.id, name: l.name, ...(points.length > 1 ? { point: p.name } : {}), lat: p.lat, lng: p.lng, radiusM: p.radiusM, ipRanges: l.ipRanges, ...wifi }));
 }
 
 export interface CheckInVerdict {
@@ -259,16 +322,20 @@ export interface CheckInVerdict {
  * Q6 / YX-AT-01 / 23: restricted locations accept a punch inside any allowed geofence or from an allowed network;
  * field locations record where it was and accept it. A location with neither a fence nor a network accepts it.
  */
-export function checkInVerdict(i: { fences: readonly Fence[]; pin: { lat: number; lng: number; accuracyM: number } | null; ip: string | null; mode: 'restricted' | 'field'; maxAccuracyM?: number }): CheckInVerdict {
+export function checkInVerdict(i: { fences: readonly Fence[]; pin: { lat: number; lng: number; accuracyM: number } | null; ip: string | null; mode: 'restricted' | 'field'; maxAccuracyM?: number; /** Answer 2477: the Wi-Fi name the phone app is on. */ wifi?: string | null }): CheckInVerdict {
   const maxAcc = i.maxAccuracyM ?? 150;
-  const net = i.fences.find((f) => ipInRanges(i.ip, f.ipRanges));
+  // shortcut: a Wi-Fi name is as easy to copy as an office network address; it is office evidence like the IP check, never stronger.
+  const ssid = i.wifi?.trim().toLowerCase() ?? '';
+  const net = i.fences.find((f) => ipInRanges(i.ip, f.ipRanges)) ?? (ssid ? i.fences.find((f) => (f.wifiNames ?? []).some((w) => w.toLowerCase() === ssid)) : undefined);
   const geo = i.fences.filter((f) => f.lat !== null && f.lng !== null && f.radiusM);
-  const nearest = i.pin
-    ? geo.map((f) => ({ f, d: distanceM(i.pin!, { lat: f.lat!, lng: f.lng! }) })).sort((a, b) => a.d - b.d)[0]
-    : undefined;
-  if (nearest && nearest.d <= nearest.f.radiusM! && i.pin!.accuracyM <= maxAcc) return { accepted: true, verdict: 'inside', distanceM: nearest.d, locationId: nearest.f.locationId, message: `Inside ${nearest.f.name}` };
+  // TIM-31 Multi: inside any point counts (the closest one that contains the pin); otherwise the point whose edge is nearest.
+  const measured = i.pin ? geo.map((f) => ({ f, d: distanceM(i.pin!, { lat: f.lat!, lng: f.lng! }) })) : [];
+  const inside = measured.filter((x) => x.d <= x.f.radiusM!).sort((a, b) => a.d - b.d)[0];
+  const nearest = inside ?? [...measured].sort((a, b) => a.d - a.f.radiusM! - (b.d - b.f.radiusM!))[0];
+  const place = (f: Fence) => (f.point ? `${f.name} · ${f.point}` : f.name);
+  if (inside && i.pin!.accuracyM <= maxAcc) return { accepted: true, verdict: 'inside', distanceM: inside.d, locationId: inside.f.locationId, message: `Inside ${place(inside.f)}` };
   if (net) return { accepted: true, verdict: 'network', distanceM: nearest?.d ?? null, locationId: net.locationId, message: `On the ${net.name} network` };
-  if (!geo.length && !i.fences.some((f) => f.ipRanges.length)) return { accepted: true, verdict: 'no_fence', distanceM: null, locationId: null, message: 'Checked in' };
+  if (!geo.length && !i.fences.some((f) => f.ipRanges.length || f.wifiNames?.length)) return { accepted: true, verdict: 'no_fence', distanceM: null, locationId: null, message: 'Checked in' };
   if (i.mode === 'field') return { accepted: true, verdict: 'field', distanceM: nearest?.d ?? null, locationId: nearest?.f.locationId ?? null, message: 'Checked in, location recorded' };
   if (!i.pin) return { accepted: false, verdict: 'no_location', distanceM: null, locationId: null, message: 'Turn on location for this site, or connect to the office network.' };
   if (i.pin.accuracyM > maxAcc) return { accepted: false, verdict: 'coarse', distanceM: nearest?.d ?? null, locationId: nearest?.f.locationId ?? null, message: `Location accuracy ${Math.round(i.pin.accuracyM)} m. Move outdoors or near a window and try again` };
@@ -281,6 +348,8 @@ export const formatDistance = (m: number) => (m < 1000 ? `${m} m` : `${(m / 1000
 // ------------------------------------------------------------------------------------------ the day engine
 
 export interface DayRule {
+  /** Answer 2477: clocking in again after clocking out is allowed; worked time is the sum of the in→out sessions. */
+  reclockIn?: boolean;
   shiftStart: number;
   shiftEnd: number;
   graceMinutes: number;
@@ -288,6 +357,43 @@ export interface DayRule {
   fullDayMinutes: number;
   breakMinutes: number;
   breakAboveMinutes: number;
+  /** TIM-06 (founder 2 Nov 2026): fixed when absent. */
+  kind?: 'fixed' | 'flexi' | 'split';
+  /** Flexi: core hours, wall-clock minutes inside the shift. */
+  coreStart?: number | null;
+  coreEnd?: number | null;
+  /** Split: the first part ends and the second starts (wall clock); the gap between is unpaid and not worked. */
+  firstEnd?: number | null;
+  secondStart?: number | null;
+  /** Flexi: overtime after this many minutes worked (null: the full day). */
+  otAfterMinutes?: number | null;
+}
+
+/** A wall-clock minute as minutes of the shift's start day, at or after the start (the next morning is past 1440). */
+export const fromStart = (r: Pick<DayRule, 'shiftStart'>, m: number) => r.shiftStart + ((((m - r.shiftStart) % 1440) + 1440) % 1440);
+
+/** The worked parts of a shift as [from, to) minutes of its start day: the whole shift, or a split's two parts. */
+export function partsOf(r: Pick<DayRule, 'shiftStart' | 'shiftEnd' | 'kind' | 'firstEnd' | 'secondStart'>): [number, number][] {
+  const end = r.shiftStart + (r.shiftEnd > r.shiftStart ? r.shiftEnd - r.shiftStart : r.shiftEnd + 1440 - r.shiftStart);
+  if (r.kind === 'split' && r.firstEnd != null && r.secondStart != null) return [[r.shiftStart, fromStart(r, r.firstEnd)], [fromStart(r, r.secondStart), end]];
+  return [[r.shiftStart, end]];
+}
+
+/** Flexi company settings: late from core start or never; short below the shift's hours, or only when core hours are missed. */
+export interface FlexiRules {
+  late: 'core_start' | 'never';
+  short: 'shift_hours' | 'core_hours';
+}
+
+/**
+ * The minute lateness counts from for a check-in at `inMinute` of the day (null: never late). Fixed: the start. Flexi:
+ * the start of core hours, or never (company setting attendance.flexi.late_from). Split: the start of the part the
+ * check-in is closer to.
+ */
+export function lateFrom(r: DayRule, inMinute: number, flexiLate: FlexiRules['late'] = 'core_start'): number | null {
+  if (r.kind === 'flexi' && r.coreStart != null) return flexiLate === 'never' ? null : fromStart(r, r.coreStart);
+  const p = partsOf(r);
+  return p.length === 2 && inMinute >= (p[0][1] + p[1][0]) / 2 ? p[1][0] : r.shiftStart;
 }
 
 /** Wall-clock minutes of `at` on the local day `on` in `zone` (past 1440 for the next morning). Durations stay real. */
@@ -315,7 +421,7 @@ export function workOnFor(at: Date, zone: string, rule: Pick<DayRule, 'shiftStar
   return on;
 }
 
-export type DayStatus = 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'weekly_off' | 'missing_in' | 'missing_out' | 'no_timesheet' | 'not_started';
+export type DayStatus = 'present' | 'half_day' | 'absent' | 'leave' | 'holiday' | 'weekly_off' | 'missing_in' | 'missing_out' | 'no_timesheet' | 'not_started' | 'strike' | 'lockout' | 'layoff';
 
 export interface DayInput {
   on: string;
@@ -334,6 +440,19 @@ export interface DayInput {
   timesheetMinutes?: number | null;
   /** An approved work-from-home day (TIM-07): present, with or without punches. */
   wfh?: boolean;
+  /** HR's latest resolution of the day (TIM-04): present (times optional) or absent. It outranks the employee's fix. */
+  resolution?: { how: 'present' | 'absent'; inMinute: number | null; outMinute: number | null } | null;
+  /** An industrial-action event covering the person on the day (TIM-37); ignored when they checked in (they worked). */
+  action?: 'strike' | 'lockout' | 'layoff' | null;
+  /** Presence on a work-from-home day with consent in force (TIM-36): it decides the day when there are no punches. */
+  presence?: { first: Date; last: Date; activeMinutes: number } | null;
+  /**
+   * An approved on-duty request (TIM-03 / TIM-07 OnDuty): from and to, in minutes of the day. The time counts as worked,
+   * joined with any punches, so a whole day is present and a part of one adds to the office hours (half day by the shift).
+   */
+  onDuty?: { inMinute: number; outMinute: number } | null;
+  /** A flexi shift's company settings (defaults: late from core start, short below the shift's hours). */
+  flexi?: FlexiRules;
 }
 
 export type PunchKind = 'in' | 'out' | 'break_start' | 'break_end';
@@ -365,9 +484,24 @@ export function breakMinutes(punches: readonly { at: Date; kind: PunchKind }[], 
  * off is the larger of the breaks punched and the shift's break rule (Q3: `breakMinutes` above `breakAboveMinutes`), so
  * a short punched break never lowers the rule's break, and a long one is never counted twice.
  */
-export function netWorked(punches: readonly { at: Date; kind: PunchKind }[], firstIn: Date, lastOut: Date, r: Pick<DayRule, 'breakMinutes' | 'breakAboveMinutes'>): number {
-  const gross = Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
+export function netWorked(punches: readonly { at: Date; kind: PunchKind }[], firstIn: Date, lastOut: Date, r: Pick<DayRule, 'breakMinutes' | 'breakAboveMinutes' | 'reclockIn'>): number {
+  // Answer 2477: with clocking in again on, the time between an out and the next in is not worked.
+  const gross = r.reclockIn ? Math.floor(sessionMs(punches.filter((p) => p.at >= firstIn && p.at <= lastOut)) / 60_000) : Math.floor((lastOut.getTime() - firstIn.getTime()) / 60_000);
   return Math.max(0, gross - Math.max(breakMinutes(punches, firstIn, lastOut), gross > r.breakAboveMinutes ? r.breakMinutes : 0));
+}
+
+/** Milliseconds inside the day's in→out sessions (an in while already in, or an out with none open, is ignored). */
+export function sessionMs(punches: readonly { at: Date; kind: PunchKind }[]): number {
+  let total = 0;
+  let open: number | null = null;
+  for (const p of [...punches].filter((x) => x.kind === 'in' || x.kind === 'out').sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    if (p.kind === 'in' && open === null) open = p.at.getTime();
+    else if (p.kind === 'out' && open !== null) {
+      total += p.at.getTime() - open;
+      open = null;
+    }
+  }
+  return total;
 }
 
 export interface DayResult {
@@ -400,7 +534,13 @@ export function evaluateDay(i: DayInput): DayResult {
   const workStart = offHalf === 'first' ? mid : r.shiftStart;
   const workEnd = offHalf === 'second' ? mid : end;
   const halfFactor = offHalf ? 0.5 : 1;
-  const fix = i.fix;
+  // TIM-37: weekly offs, holidays and approved leave inside an event stay as they are; a worker who checked in worked.
+  if (i.action && !i.punches.some((p) => p.kind === 'in')) return { ...none, status: i.action, leavePart };
+  const res = i.resolution ?? null;
+  if (res?.how === 'absent') return { ...none, status: 'absent', leavePart, regularised: true };
+  if (res?.how === 'present' && (res.inMinute === null || res.outMinute === null)) return { ...none, status: 'present', leavePart, regularised: true };
+  // HR's resolution with times reads like a "wrong time" fix.
+  const fix = res ? { kind: 'wrong_time' as const, inMinute: res.inMinute, outMinute: res.outMinute } : i.fix;
   if (fix?.kind === 'full_day') return { ...none, status: 'present', leavePart, regularised: true };
 
   const ins = i.punches.filter((p) => p.kind === 'in').map((p) => p.at.getTime());
@@ -411,11 +551,18 @@ export function evaluateDay(i: DayInput): DayResult {
   if (fix && fix.outMinute !== null && (fix.kind === 'missed_out' || fix.kind === 'wrong_time')) lastOut = instantAt(i.on, i.zone, fix.outMinute < r.shiftStart && r.shiftEnd < r.shiftStart ? fix.outMinute + 1440 : fix.outMinute);
   if (firstIn && lastOut && lastOut <= firstIn) lastOut = null;
   const regularised = Boolean(fix);
+  const fixedTimes = Boolean(fix && (fix.inMinute !== null || fix.outMinute !== null));
+  // On duty: its from and to stretch the day's first in and last out (worked time between them counts).
+  const od = i.onDuty && i.mode === 'punch' ? ([instantAt(i.on, i.zone, i.onDuty.inMinute), instantAt(i.on, i.zone, i.onDuty.outMinute)] as [Date, Date]) : null;
+  if (od) {
+    if (!firstIn || od[0] < firstIn) firstIn = od[0];
+    if (!lastOut || od[1] > lastOut) lastOut = od[1];
+  }
   // Punches are still recorded in the other modes (D1) and shown on the day, but they never set its status.
   if (i.mode !== 'punch') {
     const both = firstIn && lastOut;
     const shown = { firstIn, lastOut, workedMinutes: both ? netWorked(i.punches, firstIn!, lastOut!, r) : null };
-    if (i.mode === 'assumed_present') return { ...none, ...shown, status: 'present', leavePart };
+    if (i.mode === 'assumed_present' || res) return { ...none, ...shown, status: 'present', leavePart, regularised: Boolean(res) };
     // Timesheet mode: the approved hours set the day against the shift's thresholds (§B3, YX-AT-09).
     const t = i.timesheetMinutes;
     if (t === null || t === undefined) return { ...none, ...shown, status: 'no_timesheet', leavePart };
@@ -425,13 +572,79 @@ export function evaluateDay(i: DayInput): DayResult {
   const nowMin = minutesInto(i.on, i.zone, i.now);
   const dayOver = nowMin >= workEnd + 240;
 
-  const late = firstIn ? Math.max(0, minutesInto(i.on, i.zone, firstIn) - workStart - r.graceMinutes) : null;
+  // Flexi: late from core start (or never), and not on a day whose first half is off; fixed and split: the working start.
+  const lateOf = (at: Date) => {
+    const m = minutesInto(i.on, i.zone, at);
+    const ref = r.kind === 'flexi' ? (offHalf === 'first' ? null : lateFrom(r, m, i.flexi?.late)) : workStart;
+    return ref === null ? 0 : Math.max(0, m - ref - r.graceMinutes);
+  };
+  const late = firstIn ? lateOf(firstIn) : null;
   // Work from home (19 Oct 2026): approved, the day counts as present; punches still give the hours and lateness.
+  // Presence (TIM-36): with consent and no punches, the active time decides the day against the shift's thresholds.
+  if (i.wfh && i.presence && !firstIn && !lastOut) {
+    const p = i.presence;
+    const status: DayStatus = p.activeMinutes >= r.fullDayMinutes * halfFactor ? 'present' : p.activeMinutes >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+    return { status, leavePart, firstIn: p.first, lastOut: p.last, workedMinutes: p.activeMinutes, lateMinutes: lateOf(p.first), regularised };
+  }
   if (i.wfh) return { status: 'present', leavePart, firstIn, lastOut, workedMinutes: firstIn && lastOut ? netWorked(i.punches, firstIn, lastOut, r) : null, lateMinutes: late, regularised };
+  if (r.kind === 'split' && partsOf(r).length === 2) {
+    const spans = fixedTimes ? (firstIn && lastOut ? [[firstIn, lastOut] as [Date, Date]] : []) : pairsOf(i.punches);
+    return splitDay(i, r, { offHalf, halfFactor, firstIn, lastOut, spans: od ? [...spans, od] : spans, open: !fixedTimes && openIn(i.punches), leavePart, regularised });
+  }
   if (!firstIn && !lastOut) return { ...none, status: dayOver ? 'absent' : 'not_started', leavePart, regularised };
   if (!firstIn) return { ...none, status: 'missing_in', leavePart, lastOut, regularised };
   if (!lastOut) return { ...none, status: dayOver ? 'missing_out' : 'not_started', leavePart, firstIn, lateMinutes: late, regularised };
-  const worked = netWorked(i.punches, firstIn, lastOut, r);
-  const status: DayStatus = worked >= r.fullDayMinutes * halfFactor ? 'present' : worked >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+  const worked = netWorked(i.punches, firstIn, lastOut, fixedTimes || od ? { ...r, reclockIn: false } : r);
+  let status: DayStatus = worked >= r.fullDayMinutes * halfFactor ? 'present' : worked >= r.halfDayMinutes * halfFactor && !offHalf ? 'half_day' : 'absent';
+  // Flexi, company setting "short only when core hours are missed": in by core start (with grace) and out after core end is present.
+  if (r.kind === 'flexi' && i.flexi?.short === 'core_hours' && !offHalf && r.coreStart != null && r.coreEnd != null && minutesInto(i.on, i.zone, firstIn) <= fromStart(r, r.coreStart) + r.graceMinutes && minutesInto(i.on, i.zone, lastOut) >= fromStart(r, r.coreEnd)) status = 'present';
   return { status, leavePart, firstIn, lastOut, workedMinutes: worked, lateMinutes: late, regularised };
+}
+
+/** Check-in to check-out pairs in time order (break punches are not pairs; a check-out with no check-in is skipped). */
+function pairsOf(punches: DayInput['punches']): [Date, Date][] {
+  const out: [Date, Date][] = [];
+  let open: Date | null = null;
+  for (const p of [...punches].sort((a, b) => a.at.getTime() - b.at.getTime())) {
+    if (p.kind === 'in') open ??= p.at;
+    else if (p.kind === 'out' && open) {
+      out.push([open, p.at]);
+      open = null;
+    }
+  }
+  return out;
+}
+/** A check-in still open after the day's last punch. */
+const openIn = (punches: DayInput['punches']) => [...punches].sort((a, b) => a.at.getTime() - b.at.getTime()).filter((p) => p.kind === 'in' || p.kind === 'out').at(-1)?.kind === 'in';
+const overlapMs = (a: Date, b: Date, x: Date, y: Date) => Math.max(0, Math.min(b.getTime(), y.getTime()) - Math.max(a.getTime(), x.getTime()));
+
+/**
+ * A split shift's day (founder 2 Nov 2026): each part is judged on its own (late from that part's start), time in the gap
+ * is never worked time, and missing one part is a half day. Both parts attended: the shift's thresholds decide. On a
+ * half-day leave only the other part is expected. A check-in left open once the day is over is a missing check-out.
+ */
+function splitDay(i: DayInput, r: DayRule, o: { offHalf: 'first' | 'second' | null; halfFactor: number; firstIn: Date | null; lastOut: Date | null; spans: [Date, Date][]; open: boolean; leavePart: Half | null; regularised: boolean }): DayResult {
+  const [p1, p2] = partsOf(r).map(([a, b]) => [instantAt(i.on, i.zone, a), instantAt(i.on, i.zone, b)] as [Date, Date]);
+  const expected = o.offHalf === 'first' ? [p2] : o.offHalf === 'second' ? [p1] : [p1, p2];
+  const dayOver = i.now.getTime() >= expected[expected.length - 1][1].getTime() + 240 * 60_000;
+  const base = { leavePart: o.leavePart, firstIn: o.firstIn, lastOut: o.lastOut, workedMinutes: null, lateMinutes: null, regularised: o.regularised };
+  if (!o.firstIn && !o.lastOut) return { ...base, status: dayOver ? 'absent' : 'not_started' };
+  if (!o.firstIn) return { ...base, status: 'missing_in' };
+  // Overlapping spans (on duty over punches) are merged so no minute counts twice.
+  const spans: [Date, Date][] = [];
+  for (const [x, y] of [...o.spans].sort((a, b) => a[0].getTime() - b[0].getTime())) {
+    const last = spans[spans.length - 1];
+    if (last && x <= last[1]) last[1] = y > last[1] ? y : last[1];
+    else spans.push([x, y]);
+  }
+  const touching = (a: Date, b: Date) => spans.filter(([x, y]) => overlapMs(a, b, x, y) > 0);
+  const attended = expected.filter(([a, b]) => touching(a, b).length > 0);
+  const late = attended.reduce((n, [a, b]) => n + Math.max(0, Math.floor((touching(a, b)[0][0].getTime() - a.getTime()) / 60_000) - r.graceMinutes), 0);
+  if (o.open || !spans.length) return { ...base, status: dayOver ? 'missing_out' : 'not_started', lateMinutes: late };
+  // ponytail: a break punched inside the gap is taken off too; split shifts have no break rule (the gap is the break).
+  const gapMs = spans.reduce((n, [x, y]) => n + overlapMs(p1[1], p2[0], x, y), 0);
+  const worked = Math.max(0, Math.floor((spans.reduce((n, [x, y]) => n + y.getTime() - x.getTime(), 0) - gapMs) / 60_000) - breakMinutes(i.punches, o.firstIn, spans[spans.length - 1][1]));
+  const byHours: DayStatus = worked >= r.fullDayMinutes * o.halfFactor ? 'present' : worked >= r.halfDayMinutes * o.halfFactor && !o.offHalf ? 'half_day' : 'absent';
+  const status: DayStatus = attended.length === expected.length ? byHours : !dayOver ? 'not_started' : attended.length ? 'half_day' : 'absent';
+  return { ...base, status, workedMinutes: worked, lateMinutes: late };
 }

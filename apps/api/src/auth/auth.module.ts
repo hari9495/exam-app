@@ -10,7 +10,7 @@ import { SamlCacheProvider } from './saml-cache.provider';
 import { Resolver } from 'node:dns/promises';
 import { AuditModule, CryptoModule, StorageModule } from '@exam-platform/shared';
 import { EmailModule } from '../email/email.module';
-import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connection';
+import { REDIS_CONNECTION, createRedisConnection, whenReady } from '../jobs/redis-connection';
 import Redis from 'ioredis';
 import { SessionsService } from './sessions.service';
 import { SessionsController } from './sessions.controller';
@@ -36,9 +36,11 @@ import { IdentityProvidersController } from './identity-providers.controller';
 
 // Its own connection, fast-failing: the shared BullMQ-style connection (maxRetriesPerRequest:
 // null) would park sign-in requests forever during a Redis outage instead of failing closed.
-function createLoginProtectionRedis(): Redis {
+async function createLoginProtectionRedis(): Promise<Redis> {
   const client = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', { maxRetriesPerRequest: 1, commandTimeout: 2000 });
   client.on('error', () => {}); // failures surface per command (LoginProtectionService fails closed)
+  // Connected before the first sign-in (a command sent while connecting timed out and sign-in answered 503).
+  await whenReady(client);
   return Object.assign(client, { onApplicationShutdown: () => client.disconnect() });
 }
 

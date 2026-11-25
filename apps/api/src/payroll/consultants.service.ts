@@ -3,8 +3,10 @@ import { Prisma } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
+import { heldConsultants, recoverDirectPayments } from '../contract-labour/clra-holds';
 import { entityTimeZone, localDate, todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { OtpService } from '../auth/otp.service';
@@ -438,7 +440,8 @@ export class ConsultantsService implements OnModuleInit {
     const country = (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: inv.legalEntityId }, select: { country: true } })).country;
     if (country !== 'IN') {
       const gross0 = inv.taxableValue.add(inv.cgst).add(inv.sgst).add(inv.igst);
-      await tx.consultantInvoice.update({ where: { id: inv.id }, data: { status: 'approved', tdsAmount: ZERO, tdsBase: ZERO, tdsRate: '0', tdsReason: 'not_withheld', tdsOn: asDate(todayIst()), netPayable: gross0, version: { increment: 1 } } });
+      const rec0 = await recoverDirectPayments(tx, c, k.id, inv.id, gross0);
+      await tx.consultantInvoice.update({ where: { id: inv.id }, data: { status: 'approved', tdsAmount: ZERO, tdsBase: ZERO, tdsRate: '0', tdsReason: 'not_withheld', tdsOn: asDate(todayIst()), netPayable: gross0.sub(rec0), clraRecovery: rec0, version: { increment: 1 } } });
       await audit(tx, c, 'consultant.invoice.approved', 'consultant_invoice', inv.id, { tds: '0', country });
       return;
     }
@@ -459,6 +462,8 @@ export class ConsultantsService implements OnModuleInit {
     });
     const gross = inv.taxableValue.add(inv.cgst).add(inv.sgst).add(inv.igst);
     const used = D(t.certificateUsed.toString());
+    // Contract labour answer 626: wages the company paid this contractor's workers itself come off the bill.
+    const recovery = await recoverDirectPayments(tx, c, k.id, inv.id, gross.sub(t.tds.toString()));
     await tx.consultantInvoice.update({
       where: { id: inv.id },
       data: {
@@ -471,7 +476,8 @@ export class ConsultantsService implements OnModuleInit {
         tdsOn: asDate(todayIst()),
         certificateId: used.gt(0) ? cert!.id : null,
         certificateUsed: used,
-        netPayable: gross.sub(t.tds.toString()),
+        netPayable: gross.sub(t.tds.toString()).sub(recovery),
+        clraRecovery: recovery,
         version: { increment: 1 },
       },
     });
@@ -495,6 +501,9 @@ export class ConsultantsService implements OnModuleInit {
       if (invs.some((i) => i.legalEntityId !== entity)) throw new BadRequestException('One bank file pays one legal entity’s invoices.');
       const notReady = invs.filter((i) => !['approved', 'failed'].includes(i.status));
       if (notReady.length) throw new ConflictException(`Only approved invoices are paid (${notReady.map((i) => i.invoiceNo).join(', ')}).`);
+      // Contract labour answer 634: a contractor's bills are held while its monthly proofs are overdue or disputed.
+      const held = await heldConsultants(tx, c, [...new Set(invs.map((i) => i.consultantId))], todayIst());
+      if (held.size) throw new ConflictException({ statusCode: 409, message: 'Some bills are on hold.', problems: [...held.values()] });
       const payDate = todayIst();
       const fmt = inForce(await this.rules.published(), 'IN.BANKFMT', ['GENERIC'], payDate);
       if (!fmt) throw new ConflictException(`No published bank format "GENERIC" is in force on ${payDate}.`);
@@ -634,13 +643,15 @@ export class ConsultantsService implements OnModuleInit {
     const parts: Buffer[] = [];
     doc.on('data', (b: Buffer) => parts.push(b));
     const done = new Promise<Buffer>((res) => doc.on('end', () => res(Buffer.concat(parts))));
-    doc.fontSize(16).text('Payment advice').moveDown(0.5).fontSize(10).text(e.name).moveDown();
-    const line = (label: string, value: string) => doc.text(`${label}: ${value}`);
+    writeText(doc.fontSize(16).text('Payment advice').moveDown(0.5).fontSize(10), e.name).moveDown();
+    const line = (label: string, value: string) => writeText(doc, `${label}: ${value}`);
     line('Paid to', k.name);
     line('Invoice', `${inv.invoiceNo} of ${dateOf(inv.invoiceDate)}`);
     line('Value before GST', money(inv.taxableValue.toFixed(2)));
     line('GST', money(gst.toFixed(2)));
     line(`TDS (section ${SECTION_LABEL[inv.section] ?? inv.section})`, money((inv.tdsAmount ?? ZERO).toFixed(2)));
+    // Answer 745: wages we paid the contractor's workers ourselves, taken back from this bill.
+    if (inv.clraRecovery.gt(0)) line('Recovered wages (paid to your workers by us)', `- ${money(inv.clraRecovery.toFixed(2))}`);
     line('Paid', money(inv.netPayable!.toFixed(2)));
     line('Paid on', dateOf(inv.paidOn!));
     line('Bank reference', inv.paymentRef ?? '—');
@@ -678,6 +689,45 @@ export class ConsultantsService implements OnModuleInit {
     const k = await tx.consultant.findFirst({ where: { organizationId: org, email, status: 'active' }, orderBy: { createdAt: 'asc' } });
     await payScope(tx, []);
     return k;
+  }
+
+  /**
+   * Staffing answer 496: a vendor's confirmed invoice enters PAY 8 as a staff upload of its consultant record, so it is
+   * approved, taxed (TDS under the consultant's section), paid in a payout and certified there; nothing is duplicated.
+   * The staffing desk's finance user is the uploader (never an approver of their own upload).
+   */
+  async staffingSubmit(ctx: TenantContext, consultantId: string, dto: InvoiceDto, by: string) {
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const all = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } });
+      await payScope(tx, all.map((e) => e.id));
+      const k = await tx.consultant.findFirst({ where: { organizationId: c.organizationId, id: consultantId } });
+      if (!k) throw new NotFoundException('The linked consultant record is gone. Link the vendor again.');
+      await payScope(tx, [k.legalEntityId]);
+      return this.submitIn(tx, c, k, dto, 'staff', by, null);
+    });
+    await this.engine.send(ctx, out.notices);
+    return { id: out.invoice.id };
+  }
+
+  /** Staffing answer 496: the consultant records a vendor can be linked to (names only, every entity). */
+  async staffingOptions(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const all = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true, name: true } });
+      await payScope(tx, all.map((e) => e.id));
+      const ks = await tx.consultant.findMany({ where: { organizationId: c.organizationId, status: 'active' }, orderBy: { name: 'asc' }, select: { id: true, name: true, panLast4: true, defaultSection: true, legalEntityId: true }, take: 1000 });
+      return ks.map((k) => ({ value: k.id, label: `${k.name}${k.panLast4 ? ` · PAN …${k.panLast4}` : ''} · ${k.defaultSection} · ${all.find((e) => e.id === k.legalEntityId)?.name ?? ''}` }));
+    });
+  }
+
+  /** Staffing answer 496: a linked vendor invoice's payroll state (approved, paid). */
+  async staffingStates(ctx: TenantContext, ids: string[]) {
+    if (!ids.length) return new Map<string, { status: string; paidOn: string | null; tdsAmount: string | null }>();
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const all = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } });
+      await payScope(tx, all.map((e) => e.id));
+      const rows = await tx.consultantInvoice.findMany({ where: { organizationId: c.organizationId, id: { in: ids } }, select: { id: true, status: true, paidOn: true, tdsAmount: true } });
+      return new Map(rows.map((r) => [r.id, { status: r.status, paidOn: r.paidOn ? r.paidOn.toISOString().slice(0, 10) : null, tdsAmount: r.tdsAmount?.toFixed(2) ?? null }]));
+    });
   }
 
   /** Step 1: a code by email; the same answer whether or not the email is on the register. */

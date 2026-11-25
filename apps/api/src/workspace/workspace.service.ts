@@ -1,4 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
+import { samePersonPairs } from '../people/same-person.service';
+import { cycleOf } from '../people/bfsi.service';
 import { ModuleRef } from '@nestjs/core';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGrants } from '@exam-platform/shared';
@@ -16,6 +18,8 @@ import { JoinersService } from '../lifecycle/joiners.service';
 import { ExitsService } from '../lifecycle/exits.service';
 import { ExitExtrasService } from '../lifecycle/exit-extras.service';
 import { HiringHomeService, type HiringHome } from '../interviewing/hiring-home.service';
+import { CasesService } from '../cases/cases.service';
+import { ChangesService } from '../service-desk/changes.service';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import { DeskAccessService, visibleTickets } from '../service-desk/desk-access';
 import { StatutoryFilingsService } from '../payroll/statutory-filings.service';
@@ -59,7 +63,7 @@ const like = (t: string) => `%${t.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
 const enc = encodeURIComponent;
 
 /** The keys the counts and search sections need; each section shows only what its key reaches. */
-const KEYS = ['candidate:view', 'candidate:manage', 'document.manage', 'lifecycle.exit.manage', 'lifecycle.exit.view', 'payroll.query.handle', 'desk.ticket.work', 'lifecycle.onboarding.view', 'lifecycle.onboarding.manage'] as const;
+const KEYS = ['candidate:view', 'candidate:manage', 'document.manage', 'lifecycle.exit.manage', 'lifecycle.exit.view', 'payroll.query.handle', 'desk.ticket.work', 'lifecycle.onboarding.view', 'lifecycle.onboarding.manage', 'case.disciplinary.raise'] as const;
 
 /** Home (PLT-02) widgets for the HR, payroll and manager homes. A widget is absent when the person may not see it. */
 export interface HomeWidgets {
@@ -96,6 +100,8 @@ export interface FinanceHome {
   /** expense.payout.manage: claims approved and not paid (not the person's own), bank files not released. */
   /** previous: claims to pay at the end of last month (rupees), only when on record and covering all the person sees now. */
   claims?: { count: number; amount: string; previous?: number; batches: { id: string; rows: number; total: string; payOn: string; madeBy: string; madeByMe: boolean }[] };
+  /** payroll.run.view, prepare or approve: the last six months' cost to company against the payroll budget. */
+  cost?: { canSetBudget: boolean; months: { month: string; cost: string | null; budget: string | null }[] };
   /** statutory.filing.view: the statutory hub per legal entity and wage month (approved payslips only). */
   dues?: { entity: string; entityId: string; month: string; today: string; cards: { statute: string; state: string | null; label: string; amount: string; dueOn: string | null; status: string; late: boolean }[]; tds: { amount: string; dueOn: string | null; challanStatus: string; late: boolean } }[];
 }
@@ -216,6 +222,12 @@ export class WorkspaceService {
     const out: FinanceHome = {};
     const runs = await this.service(PayRunsService).homeRuns(ctx, user, months, entityId);
     if (runs) out.runs = runs;
+    const six = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 6 + i, 1));
+      return d.toISOString().slice(0, 7);
+    });
+    const cost = await this.service(PayRunsService).homeCost(ctx, user, six, entityId);
+    if (cost) out.cost = cost;
     const claims = await this.service(ExpensePaymentsService).homeSummary(ctx, user, entityId);
     if (claims) {
       const { whole, ...rest } = claims;
@@ -358,7 +370,8 @@ export class WorkspaceService {
       const page = await this.people.directory(ctx, v, { q, limit: LIMIT });
       return page.people.map((p) => {
         const hr = 'employeeCode' in p;
-        const parts = [hr ? (p as { employeeCode?: string | null }).employeeCode : null, p.designation?.name, p.department?.name].filter(Boolean);
+        // Founder 28 Oct 2026: the legal entity's name next to the code (whose prefix is per entity), and the place.
+        const parts = [hr ? (p as { employeeCode?: string | null }).employeeCode : null, p.legalEntity?.name, p.designation?.name, p.department?.name, p.location?.name].filter(Boolean);
         return { id: p.id, label: p.name, secondary: parts.join(' · '), href: hr ? `/yx/people/profile?person=${enc(p.id)}` : `/yx/people/directory?q=${enc(p.name)}` };
       });
     } catch (e) {
@@ -410,10 +423,12 @@ export class WorkspaceService {
   }
 
   /** Counts for the side menu, each only for someone who may open the page it sits on. */
-  async counts(ctx: TenantContext, user: RequestUser): Promise<Record<string, number>> {
+  async counts(ctx: TenantContext, user: RequestUser, entityId: string | null = null): Promise<Record<string, number>> {
     if (!ctx.organizationId || !user.userId) return {};
     const keys = await this.granted(user);
     const support = Boolean(user.actingSuperAdmin);
+    // Possible same person is company-wide HR work (the page checks the same): a plant HR's scoped key does not count.
+    const linksPeople = !support && keys.has('employee.change.manage') && tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['employee.change.manage']), 'employee.change.manage');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const me = user.userId!;
       const org = c.organizationId;
@@ -421,8 +436,74 @@ export class WorkspaceService {
       const out: Record<string, number> = {};
       out.approvals = await one(Prisma.sql`SELECT count(*) AS n FROM wf_tasks t JOIN wf_requests r ON r.id = t.request_id
         WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.status = 'open' AND r.status = 'pending' AND r.current_step = t.step`);
+      // Plus what waits in the modules' own approval flows (job changes), as the Approvals page lists them.
+      if (!support) out.approvals += (await this.service(ApprovalsEngine).sourceItems(tx, c, me)).length;
       out.notifications = await tx.userNotification.count({ where: { organizationId: org, recipientUserId: me, readAt: null } });
+      // PPL-43: a designated person's annual declaration still to submit (absent for everyone else).
+      const own = await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
+      if (!support && own && (await tx.bfsiDesignation.count({ where: { organizationId: org, employeeId: own.id } }))) {
+        out.declarationsDue = (await tx.bfsiDeclaration.count({ where: { organizationId: org, employeeId: own.id, cycle: cycleOf(todayIst()), status: 'submitted' } })) ? 0 : 1;
+      }
+      // HLP-07/08/09 (founder answer 36): Cases shows only to someone on a speak-up list or a member of any case, and the
+      // Ethics desk only to the ethics or escalation list. Absent for everyone else. The case pages check membership again.
+      if (!support) {
+        const lists = new Set((await tx.speakupTeamMember.findMany({ where: { organizationId: org, userId: me, removedAt: null }, select: { team: true } })).map((t) => t.team));
+        const open = (kind: string | null) => one(Prisma.sql`SELECT count(*) AS n FROM speakup_case_members m JOIN speakup_cases k ON k.id = m.case_id
+          WHERE m.organization_id = ${org}::uuid AND m.user_id = ${me}::uuid AND k.status <> 'closed' AND (${kind}::text IS NULL OR k.kind = ${kind}::text)
+          AND NOT EXISTS (SELECT 1 FROM speakup_case_steps s WHERE s.case_id = k.id AND s.kind = 'recused' AND s.actor_user_id = ${me}::uuid)`);
+        // HR who may open disciplinary cases sees Cases too (the Open a case button lives there).
+        const member = lists.size > 0 || keys.has('case.disciplinary.raise') || (await one(Prisma.sql`SELECT count(*) AS n FROM speakup_case_members m WHERE m.organization_id = ${org}::uuid AND m.user_id = ${me}::uuid
+          AND NOT EXISTS (SELECT 1 FROM speakup_case_steps s WHERE s.case_id = m.case_id AND s.kind = 'recused' AND s.actor_user_id = ${me}::uuid)`)) > 0;
+        if (member) out.casesOpen = await open(null);
+        // HLP-13: the industrial relations team also counts the disputes still open (not closed, copy not filed).
+        if (lists.has('ir'))
+          out.casesOpen = (out.casesOpen ?? 0) + (await one(Prisma.sql`SELECT count(*) AS n FROM ir_disputes d WHERE d.organization_id = ${org}::uuid
+            AND NOT EXISTS (SELECT 1 FROM ir_dispute_steps s WHERE s.dispute_id = d.id AND s.kind IN ('closed', 'filed'))`));
+        // Founder answer 73: managers' misconduct reports waiting for this HR person (in scope) count on Cases too.
+        if (keys.has('case.disciplinary.raise')) out.casesOpen = (out.casesOpen ?? 0) + (await this.service(CasesService).reportsWaiting(tx, c, user));
+        if (lists.has('ethics') || lists.has('escalation')) out.ethicsReports = await open('whistleblower');
+      }
+      // ITSM answer 1953: Changes shows to the change board, application owners and approvers of a change (the count is
+      // the changes still open that they are asked about; absent for everyone else). The page checks again.
+      if (!support) {
+        const asked = await this.service(ChangesService).askedIds(tx, org, me);
+        if (asked) out.changesAsked = await tx.sdChange.count({ where: { organizationId: org, id: { in: asked }, stage: { in: ['approval', 'scheduled', 'in_progress', 'review'] } } });
+      }
       if (keys.has('document.manage')) out.documentsToVerify = await tx.document.count({ where: { organizationId: org, status: 'uploaded' } });
+      // People menu (PPL designs): accepted offers not yet onboarded; probations whose review is due or overdue (a manager's
+      // count leaves out reviews that went to HR, which only HR decides) (company-wide
+      // for HR whose profile grant is, else the person's own direct reports); my open clearance sign-offs; logins that may
+      // be someone already on record. Each is gated by the same key as its page.
+      if (keys.has('lifecycle.onboarding.manage')) {
+        out.readyToOnboard = await one(Prisma.sql`SELECT count(*) AS n FROM offers o WHERE o.organization_id = ${org}::uuid AND o.status = 'accepted'
+          AND NOT EXISTS (SELECT 1 FROM preboardings p WHERE p.organization_id = o.organization_id AND p.offer_id = o.id AND p.status <> 'cancelled')`);
+      }
+      const today = todayIst();
+      // shortcut: the company-wide review lead (probation.review_lead_days); an entity's own lead is not applied here.
+      const lead = Number((await tx.setting.findFirst({ where: { organizationId: org, key: 'probation.review_lead_days', scopeType: 'tenant' }, select: { value: true } }))?.value ?? 15);
+      const hrWide = keys.has('employee.profile.view') && tenantWide(await buildViewer(this.prisma, this.tenantPrisma, user, ['employee.profile.view']), 'employee.profile.view');
+      const mine = hrWide ? null : await tx.employee.findFirst({ where: { organizationId: org, userId: me }, select: { id: true } });
+      if (hrWide || mine) {
+        out.probationsDue = await one(Prisma.sql`SELECT count(*) AS n FROM probations pr
+          JOIN employments m ON m.organization_id = pr.organization_id AND m.id = pr.employment_id AND m.exited_on IS NULL
+            ${entityId ? Prisma.sql`AND m.legal_entity_id = ${entityId}::uuid` : Prisma.empty}
+          JOIN employment_status_periods s ON s.organization_id = pr.organization_id AND s.employment_id = pr.employment_id AND s.superseded_at IS NULL
+            AND s.valid_from <= ${today}::date AND (s.valid_to IS NULL OR s.valid_to >= ${today}::date) AND s.status = 'probation'
+          WHERE pr.organization_id = ${org}::uuid AND pr.planned_end_on - ${lead}::int <= ${today}::date
+            AND NOT EXISTS (SELECT 1 FROM employee_changes ch WHERE ch.organization_id = pr.organization_id AND ch.employment_id = pr.employment_id AND ch.change_type = 'confirmation' AND ch.status = 'pending')
+            ${mine ? Prisma.sql`AND pr.escalated_on IS NULL AND EXISTS (SELECT 1 FROM employee_assignments a WHERE a.organization_id = pr.organization_id AND a.employment_id = pr.employment_id AND a.superseded_at IS NULL
+              AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date) AND a.manager_employee_id = ${mine.id}::uuid)` : Prisma.empty}`);
+      }
+      out.clearanceToDo = await one(Prisma.sql`SELECT count(*) AS n FROM clearance_items i JOIN exit_cases k ON k.organization_id = i.organization_id AND k.id = i.exit_case_id
+        WHERE i.organization_id = ${org}::uuid AND i.status = 'open' AND k.status IN ('accepted', 'cleared', 'exited')
+          AND (i.owner_user_id = ${me}::uuid OR i.owner_group_id IN (SELECT g.group_id FROM user_group_members g WHERE g.organization_id = i.organization_id AND g.user_id = ${me}::uuid))`);
+      if (linksPeople) {
+        // PPL-36: the designed list's own pairs (People › More › Possible same person). The menu item shows while a pair
+        // waits, and for 90 days after any merge so Merged › Unmerge stays easy to find (founder, 30 Oct 2026).
+        const waiting = await one(Prisma.sql`SELECT count(*) AS n FROM (${samePersonPairs(org)}) pairs`);
+        const show = waiting > 0 || (await tx.personLinkLog.count({ where: { organizationId: org, action: 'merge', createdAt: { gte: new Date(Date.now() - 90 * 86_400_000) } } })) > 0;
+        if (show) out.possibleSamePerson = waiting;
+      }
       if (keys.has('lifecycle.exit.manage') || keys.has('lifecycle.exit.view')) out.exitCases = await tx.exitCase.count({ where: { organizationId: org, status: { in: ['submitted', 'accepted', 'cleared'] } } });
       if (!support && keys.has('payroll.query.handle')) out.payslipQueries = await tx.payslipQuery.count({ where: { organizationId: org, status: 'open' } });
       if (!support && keys.has('desk.ticket.work')) out.myTickets = await one(Prisma.sql`SELECT count(*) AS n FROM sd_tickets t WHERE t.organization_id = ${org}::uuid AND t.assignee_user_id = ${me}::uuid AND t.system_state NOT IN ('solved', 'closed')`);

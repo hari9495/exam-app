@@ -15,7 +15,7 @@ export interface RuleSet {
   version: string;
   validFrom: Date;
   validTo: Date | null;
-  status: 'draft' | 'in review' | 'published' | 'withdrawn';
+  status: 'draft' | 'in review' | 'changes requested' | 'published' | 'withdrawn';
   lawVersion: string;
   transitional: boolean;
   draftedBy: string;

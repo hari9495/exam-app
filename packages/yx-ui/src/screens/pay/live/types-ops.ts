@@ -19,6 +19,8 @@ export interface PaymentResultRow {
   status: 'paid' | 'failed' | 'returned';
   bankReference?: string;
   reason?: string;
+  /** PAY-10: why the bank refused it; "ifsc" waits for the employee's corrected account. */
+  cause?: 'ifsc' | 'account' | 'other';
 }
 
 export interface DisbursementInput {
@@ -46,20 +48,49 @@ export interface LoanView {
   employeeId: string;
   loanType: 'advance' | 'loan' | 'expense';
   principal: string;
+  /** The company's yearly rate, kept on the loan when it was asked for (founder answer 1). */
+  interestRate?: string;
   emi: string;
   outstanding: string;
   firstMonth: string;
   status: string;
   pausedUntil: string | null;
   mine: boolean;
+  /** PAY-18: the person's own request's approval steps (only on their own loans). */
+  approval?: LoanApproval;
+  /** D14: the loan type the SBI rate is read for, and the company's exempt mark (medical treatment) with its reason. */
+  perquisite?: LoanPerquisite;
 }
 
+/** D14 (founder answers 2404, 2405): GET payroll/loans' `perquisite`, and the body of PUT payroll/loans/:id/perquisite. */
+export interface LoanPerquisite {
+  purpose: 'housing' | 'vehicle' | 'education' | 'personal' | 'other';
+  exempt: boolean;
+  reason: string | null;
+}
+
+/** The approvals engine's route of one's own loan request: each step's state, who decided it and when, or who it waits for. */
+export interface LoanApproval {
+  submittedAt: string;
+  status: string;
+  steps: { name: string; state: 'waiting' | 'open' | 'approved' | 'rejected' | 'skipped' | 'sent_back'; by: string | null; at: string | null; waitingFor: string[] }[];
+}
+
+/** GET payroll/loans/:id/repayments (founder answer 5): month by month, and what a pre-closure today comes to. */
+export interface LoanRepayments {
+  loanId: string;
+  interestRate: string;
+  recovered: string;
+  rows: { no: number; month: string; emi: string; interest: string; principal: string; balance: string; status: 'recovered' | 'paused' | 'scheduled' }[];
+  closing: { on: string; interestFrom: string; days: number; principal: string; interest: string; total: string } | null;
+}
+
+/** The interest rate is the company's per loan type (founder answer 1); a request never carries one. */
 export interface LoanRequestInput {
   employeeId?: string;
   loanType: 'advance' | 'loan';
   principal: string;
   instalments: number;
-  interestRate?: string;
   firstMonth: string;
   reason: string;
 }
@@ -86,6 +117,8 @@ export interface PayslipQueryView {
   mine: boolean;
 }
 
+export type LandlordRelationship = 'not_related' | 'parent' | 'spouse' | 'child' | 'sibling' | 'other_relative';
+
 /** A declaration line (GET tax/me/declarations and the proof queue). */
 export interface DeclarationLine {
   id: string;
@@ -93,6 +126,8 @@ export interface DeclarationLine {
   amount: string;
   landlordName: string | null;
   landlordPan: string | null;
+  /** H15: Form No. 124 asks how the employee is related to the landlord. */
+  landlordRelationship?: LandlordRelationship | null;
   rentFrom: string | null;
   rentTo: string | null;
   metro: boolean | null;
@@ -119,6 +154,7 @@ export interface DeclarationInput {
   amount: string;
   landlordName?: string;
   landlordPan?: string;
+  landlordRelationship?: LandlordRelationship;
   rentFrom?: string;
   rentTo?: string;
   metro?: boolean;
@@ -191,4 +227,54 @@ export interface AdvisoryView {
   effectiveFrom: string;
   verify: boolean;
   reviewed: { at: string; note: string } | null;
+}
+
+/** GET statutory/registers/:kind/rows (CMP-03). */
+export type RegisterKindKey = 'epf' | 'esic' | 'pt' | 'lwf';
+export interface RegisterPersonRow {
+  employeeId: string;
+  name: string;
+  code: string;
+  location: string | null;
+  state: string | null;
+  uanLast4: string | null;
+  ipLast4: string | null;
+  gross: string;
+  pfWage: string | null;
+  employee: string;
+  employer: string;
+  eps: string | null;
+  epfEmployer: string | null;
+  coverage: 'covered' | 'not_covered' | 'not_due';
+  reason: string | null;
+}
+export interface RegisterRowsView {
+  kind: RegisterKindKey;
+  month: string;
+  rows: RegisterPersonRow[];
+  trend: { month: string; employee: string; employer: string }[];
+}
+
+/** GET statutory/form16-status (CMP-06). */
+export interface Form16Linked {
+  returnId: string;
+  formCode: string;
+  taxYear: string;
+  quarter: number;
+  status: string;
+  kind: string;
+  tokenNo: string | null;
+}
+export interface Form16Status {
+  taxYear: string;
+  link: (Form16Linked & { version: number; problem: string | null }) | null;
+  q4: Form16Linked | null;
+  /** The Q4 return's due date; certificates can be made after it is filed. */
+  availableAfter: string | null;
+}
+
+/** GET statutory/advisories/task-desks (CMP-08). */
+export interface TaskDesk {
+  id: string;
+  name: string;
 }

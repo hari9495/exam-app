@@ -36,12 +36,20 @@ test('comp review: start a cycle, open it, and a change outside the matrix needs
 
   await page.getByRole('button', { name: 'Open for proposals' }).click();
   await expect(page.getByRole('button', { name: 'Open for proposals' })).toBeHidden({ timeout: 30_000 });
-  await page.getByRole('button', { name: 'Change', exact: true }).first().click();
-  const sheet = page.getByRole('dialog');
-  const merit = sheet.getByRole('textbox', { name: /Merit increase/ });
-  await merit.fill('40');
-  await expect(sheet.getByRole('button', { name: 'Save' })).toBeDisabled();
-  await sheet.getByRole('textbox', { name: /^Why/ }).fill('Market correction for a scarce skill');
-  await sheet.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('Outside the matrix').first()).toBeVisible({ timeout: 30_000 });
+  // Proposals are edited in the sheet (PRF-10): 40% is outside the matrix, so the proposal drawer asks for a reason.
+  const sheetRows = page.getByRole('table', { name: 'Comp proposals' });
+  const edit = sheetRows.getByRole('button', { name: /^Edit Proposed %/ }).first();
+  await edit.click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('40');
+  await page.keyboard.press('Enter');
+  const sheet = page.getByRole('dialog', { name: /^Proposal for / });
+  await expect(sheet.getByRole('textbox', { name: /Merit increase/ })).toHaveValue('40');
+  await sheet.getByRole('button', { name: 'Save justification' }).click();
+  await expect(sheet.getByText('Write at least 20 characters: why this person needs a different increase.')).toBeVisible();
+  await sheet.getByRole('textbox', { name: /Justification/ }).fill('Market correction for a scarce skill');
+  await sheet.getByRole('button', { name: 'Save justification' }).click();
+  await expect(sheet).toHaveCount(0, { timeout: 30_000 });
+  await expect(page.getByText(/: proposal saved$/).first()).toBeVisible({ timeout: 30_000 });
+  await expect(sheetRows.getByRole('button', { name: 'Edit Proposed %: 40' })).toBeVisible();
 });

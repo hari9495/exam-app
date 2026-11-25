@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {
@@ -31,7 +31,7 @@ import {
 import { applyMappingRules, benchStatus, bulkEligible, burnState, correctionEffect, costVisible, matchResource, milestoneSummary, suppressGroup, tmBilling, utilisation } from './projects-logic';
 import { PLAN_LINES, PANEL, POOL_MEMBERS, OFFER_CONDITIONS, ID_POINTS, D } from './hiring-data';
 import { LAST_WEEK_ITEMS, MAPPING_RULES, RATE_CARD_PRJ, RESOURCE_PEOPLE, WIP_LINES } from './projects-data';
-import { JobPayRangePanel } from './hiring-plan';
+import { JobPayRangePanel, RequisitionSheet } from './hiring-plan';
 import { ScorecardScreen } from './hiring-pipeline';
 import { TODAY } from '../_kit/data';
 
@@ -67,6 +67,8 @@ describe('hiring rules', () => {
   it('YX-ATS-06: CTC ₹14 L on ₹8–12 L range needs extra approval; breakup sums to fixed CTC', () => {
     expect(bandCheck(14_00_000, { min: 8_00_000, max: 12_00_000 }).extraApproval).toBe(true);
     expect(bandCheck(10_00_000, { min: 8_00_000, max: 12_00_000 }).extraApproval).toBe(false);
+    // Founder decision 4: below the range is shown, never an extra step.
+    expect(bandCheck(7_00_000, { min: 8_00_000, max: 12_00_000 })).toMatchObject({ position: 'below', extraApproval: false });
     expect(totalCtc(ctcBreakup(16_00_000))).toBe(16_00_000);
     expect(totalCtc(ctcBreakup(16_00_000, { variable: 1_00_000, joiningBonus: 50_000 }))).toBe(17_00_000);
     expect(revisionNeedsApproval({ ctc: 1, grade: 'G6' }, { ctc: 1, grade: 'G6' })).toBe(false);
@@ -225,14 +227,35 @@ describe('screens', () => {
     expect(screen.getByText(/Publishing is blocked/)).toBeInTheDocument();
   });
 
-  it('HIR-07: scorecard submit enables after all ratings and a recommendation', async () => {
+  it('HIR-07: submit is never greyed; pressed too early it names the gap; complete, it asks to confirm', async () => {
     const u = userEvent.setup();
     render(<ScorecardScreen candidate="A" round="Panel 1" skills={[{ skill: 'Test design', weight: 100, passBar: 3, hint: 'h' }]} />);
     const submit = screen.getByRole('button', { name: 'Submit scorecard' });
-    expect(submit).toBeDisabled();
+    expect(submit).toBeEnabled();
+    await u.click(submit);
+    expect(screen.getByText('Rate Test design.')).toBeInTheDocument();
     await u.click(screen.getByRole('radio', { name: '2' }));
     expect(screen.getByText(/Below the pass bar on Test design/)).toBeInTheDocument();
     await u.click(screen.getByRole('radio', { name: 'Yes' }));
-    expect(submit).toBeEnabled();
+    await u.click(submit);
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  });
+});
+
+describe('Request a hire (PPL-08, the HIR-02 sheet live)', () => {
+  it('a replacement names the leaver and the position; Send for approval sends the request', async () => {
+    const onSend = vi.fn(async () => undefined);
+    render(<RequisitionSheet open onOpenChange={() => {}} planLines={PLAN_LINES} defaultLine={null} defaultMax={null} live={{ subtitle: 'Hiring manager request', team: [{ value: 'e1', label: 'Arjun Kulkarni' }], onSend }} />);
+    const send = screen.getByRole('button', { name: /Send for approval/ });
+    // Never greyed out: pressed too early it shows the missing fields (see hir-02-26-live.test.tsx).
+    expect(send).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
+    await userEvent.click(screen.getByRole('switch', { name: /Replacement for a leaver/ }));
+    await userEvent.click(screen.getByRole('combobox', { name: /Who is leaving/ }));
+    await userEvent.click(screen.getByRole('option', { name: 'Arjun Kulkarni' }));
+    await userEvent.type(screen.getByRole('textbox', { name: /^Position(?!s)/ }), 'Quality Analyst');
+    await userEvent.type(screen.getByRole('textbox', { name: /Pay up to/ }), '600000');
+    await userEvent.click(send);
+    expect(onSend).toHaveBeenCalledWith(expect.objectContaining({ title: 'Quality Analyst', requisitionReason: 'replacement', replacementOfEmployeeId: 'e1', headcount: 1, budgetAmount: 600000, headcountPlanLineId: null }));
   });
 });

@@ -3,7 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { Button, IconButton } from '../../components/button';
 import { Badge } from '../../components/display';
 import { InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { TextArea } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Dialog } from '../../components/overlay';
@@ -41,6 +41,7 @@ export function RequestPanel({ view, canAsk, onAsk, onFindPeople }: { view: Tick
   const [mode, setMode] = useState<'any' | 'all'>('any');
   const [question, setQuestion] = useState('');
   const { busy, error, run } = useRun();
+  const askEarly = useTooEarly([...(!question.trim() ? [{ fieldId: 'ask-question', message: 'Write the question.' }] : []), ...(!people.length ? [{ fieldId: 'ask-who', message: 'Choose at least one colleague.' }] : [])]);
   const found = useRef(new Map<string, string>()).current;
   const pick = async (_k: PickKind, q: string) => {
     const r = await onFindPeople(q);
@@ -101,8 +102,9 @@ export function RequestPanel({ view, canAsk, onAsk, onFindPeople }: { view: Tick
             <Button onClick={() => setAsking(false)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!people.length || !question.trim() || busy === 'ask'}
+              loading={busy === 'ask'}
               onClick={() =>
+                !askEarly.stop() &&
                 void run('ask', async () => {
                   await onAsk({ userIds: people.map((p) => p.id), mode, question: question.trim() });
                   setAsking(false);
@@ -122,7 +124,7 @@ export function RequestPanel({ view, canAsk, onAsk, onFindPeople }: { view: Tick
               {error}
             </InlineAlert>
           )}
-          <FormField label="Question" required>
+          <FormField id="ask-question" label="Question" required error={askEarly.errorOf('ask-question')}>
             <TextArea value={question} onChange={setQuestion} rows={3} maxLength={500} />
           </FormField>
           {people.map((p) => (
@@ -131,7 +133,7 @@ export function RequestPanel({ view, canAsk, onAsk, onFindPeople }: { view: Tick
               <IconButton icon={Trash2} label={`Remove ${p.name}`} onClick={() => setPeople(people.filter((x) => x.id !== p.id))} />
             </div>
           ))}
-          <FormField label="Who approves">
+          <FormField id="ask-who" label="Who approves" required error={askEarly.errorOf('ask-who')}>
             <LivePicker kind="people" value={null} label="Colleague" onPick={pick} onChange={(id) => id && !people.some((p) => p.id === id) && people.length < 5 && setPeople([...people, { id, name: found.get(id) ?? 'Colleague' }])} />
           </FormField>
           {people.length > 1 && <Segment label="How many must approve" options={[{ value: 'any', label: 'Any one' }, { value: 'all', label: 'All of them' }]} value={mode} onChange={setMode} />}

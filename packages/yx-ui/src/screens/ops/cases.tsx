@@ -21,10 +21,12 @@ import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
-import { AccessCodeCard, Actions, ClockPanel, Confidential, MembersList, OpsDesk, StatusTrail, Workspace, type CaseMember } from './ops-kit';
+import { AccessCodeCard, Actions, ClockPanel, Confidential, MembersList, OpsDesk, StatusTrail, Workspace, useSay, type CaseMember } from './ops-kit';
 import { addDays, formatAccessCode, showCauseDue, type ClockItem } from './ops-rules';
 import type { AnonMessage, CaseRow, CaseType } from './helpdesk-data';
 import type { Device, ListState } from './helpdesk';
+import { LiveCheckReport, LiveSpeakUp, type LiveCheckReport as LiveCheckReportProps, type LiveSpeakUp as LiveSpeakUpProps } from './helpdesk-speakup-live';
+import { LiveCaseList, LiveCaseWorkspace, LiveEthicsDesk, LiveMyCases, type LiveCaseList as LiveCaseListProps, type LiveCaseWorkspace as LiveCaseWorkspaceProps, type LiveEthicsDesk as LiveEthicsDeskProps, type LiveMyCases as LiveMyCasesProps } from './cases-live';
 
 const LOCATIONS = [
   { value: 'blr', label: 'Bengaluru head office' },
@@ -144,7 +146,10 @@ export function SpeakUpForm({ defaultKind = 'grievance', defaultIdentity = 'name
   );
 }
 
-export function SpeakUpScreen({ device = 'desk', defaultKind = 'grievance', defaultIdentity = 'named', anonymousAllowed = true, submitted = null, today, codeSeed = 20260929 }: SpeakUpScreenProps) {
+export function SpeakUpScreen(props: SpeakUpScreenProps | { live: LiveSpeakUpProps }) {
+  return 'live' in props ? <LiveSpeakUp live={props.live} /> : <SampleSpeakUp {...props} />;
+}
+function SampleSpeakUp({ device = 'desk', defaultKind = 'grievance', defaultIdentity = 'named', anonymousAllowed = true, submitted = null, today, codeSeed = 20260929 }: SpeakUpScreenProps) {
   const title = defaultKind === 'whistleblower' ? 'Fraud or ethics report' : 'Speak up';
   const done =
     submitted === 'anonymous' ? (
@@ -213,8 +218,12 @@ export function SpeakUpScreen({ device = 'desk', defaultKind = 'grievance', defa
 }
 
 /** YX-CASE-11 no-login page for anonymous reporters. */
-export function CheckReportScreen({ state = 'enter', messages = [] }: { state?: 'enter' | 'open' | 'wrong-code' | 'locked'; messages?: AnonMessage[] }) {
+export function CheckReportScreen(props: { state?: 'enter' | 'open' | 'wrong-code' | 'locked'; messages?: AnonMessage[] } | { live: LiveCheckReportProps }) {
+  return 'live' in props ? <LiveCheckReport live={props.live} /> : <SampleCheckReport {...props} />;
+}
+function SampleCheckReport({ state = 'enter', messages = [] }: { state?: 'enter' | 'open' | 'wrong-code' | 'locked'; messages?: AnonMessage[] }) {
   const [code, setCode] = useState(state === 'wrong-code' ? 'KF7Q-2MXA-99TR-HPL3' : '');
+  const { say } = useSay();
   return (
     <PortalFrame tenant="Kaveri Foods Pvt Ltd" portal="Check my report">
       {state === 'open' ? (
@@ -244,7 +253,7 @@ export function CheckReportScreen({ state = 'enter', messages = [] }: { state?: 
               <TextField value={code} onChange={setCode} autoComplete="off" disabled={state === 'locked'} />
             </FormField>
             <Actions>
-              <Button variant="primary" disabled={state === 'locked'}>
+              <Button variant="primary" onClick={() => say(state === 'locked' && 'Too many tries. Try again after 10:45 am.')}>
                 Open my report
               </Button>
               <Button>File a follow-up report</Button>
@@ -328,7 +337,7 @@ export function ShowCauseReply({ notice, today, replied, extensionRequested }: {
         </Actions>
       </Card>
       {replied ? (
-        <InlineAlert tone="success" title="Reply sent">
+        <InlineAlert tone="info" title="Reply sent">
           HR received your reply on {formatDate(today)}. You'll be told the next step here; nothing about this case is sent outside the app.
         </InlineAlert>
       ) : (
@@ -345,7 +354,11 @@ export function ShowCauseReply({ notice, today, replied, extensionRequested }: {
     </div>
   );
 }
-export function MyCasesScreen({ device = 'desk', cases, showCause, today, state = 'ready', replyOpen, replied, extensionRequested }: MyCasesScreenProps) {
+/** The designed screen; with `live` it renders the real records (cases-live.tsx). */
+export function MyCasesScreen(props: MyCasesScreenProps | { live: LiveMyCasesProps }) {
+  return 'live' in props ? <LiveMyCases live={props.live} /> : <SampleMyCases {...props} />;
+}
+function SampleMyCases({ device = 'desk', cases, showCause, today, state = 'ready', replyOpen, replied, extensionRequested }: MyCasesScreenProps) {
   const [open, setOpen] = useState(!!replyOpen || !!replied);
   const columns: TableColumn<MyCase>[] = [
     { key: 'id', header: 'Case', type: 'id', value: (c) => c.id },
@@ -407,7 +420,7 @@ export function MyCasesScreen({ device = 'desk', cases, showCause, today, state 
     );
   return (
     <OpsDesk area="helpdesk" active="Speak-up" member={false}>
-      <PageHeader title="My cases" description="Cases where you are the complainant, the respondent or a witness. Only people on each case can see it." />
+      <PageHeader title="My cases" description="Cases where you raised something or are asked to reply. Only people on each case can see it." />
       {cases.some((c) => c.status === 'Action needed') && (
         <PageBanner tone="warning" action={<Button size="sm" onClick={() => setOpen(true)}>Reply to notice</Button>}>
           You have a show-cause notice. Reply by {formatDate(showCauseDue(showCause.issuedOn))}.
@@ -447,7 +460,10 @@ export interface CaseListScreenProps {
   member?: boolean;
   defaultFilters?: FilterValue[];
 }
-export function CaseListScreen({ cases, today, state = 'ready', member = true, defaultFilters = [] }: CaseListScreenProps) {
+export function CaseListScreen(props: CaseListScreenProps | { live: LiveCaseListProps }) {
+  return 'live' in props ? <LiveCaseList live={props.live} /> : <SampleCaseList {...props} />;
+}
+function SampleCaseList({ cases, today, state = 'ready', member = true, defaultFilters = [] }: CaseListScreenProps) {
   const [filters, setFilters] = useState<FilterValue[]>(defaultFilters);
   if (!member) return <RestrictedNotFound />;
   let rows = cases;
@@ -519,11 +535,15 @@ export interface CaseWorkspaceScreenProps {
 }
 const CASE_ICON: Record<CaseType, typeof Lock> = { Grievance: Megaphone, Disciplinary: FileText, Whistleblower: ShieldAlert, 'Workplace accident': ShieldAlert, 'Collective dispute': Briefcase, POSH: Lock };
 
-export function CaseWorkspaceScreen({ variant, caseRow, members, timeline, documents, messages = [], today, member = true, tab, addMemberConflict, decisionOpen, replyReceived }: CaseWorkspaceScreenProps) {
+export function CaseWorkspaceScreen(props: CaseWorkspaceScreenProps | { live: LiveCaseWorkspaceProps }) {
+  return 'live' in props ? <LiveCaseWorkspace live={props.live} /> : <SampleCaseWorkspace {...props} />;
+}
+function SampleCaseWorkspace({ variant, caseRow, members, timeline, documents, messages = [], today, member = true, tab, addMemberConflict, decisionOpen, replyReceived }: CaseWorkspaceScreenProps) {
   const [current, setCurrent] = useState(tab ?? (variant === 'anonymous' ? 'messages' : 'timeline'));
   const [addOpen, setAddOpen] = useState(!!addMemberConflict);
   const [decision, setDecision] = useState(!!decisionOpen);
   const [penalty, setPenalty] = useState<string>('warning');
+  const { say } = useSay();
   if (!member) return <RestrictedNotFound />;
 
   const clocks: ClockItem[] =
@@ -691,7 +711,7 @@ export function CaseWorkspaceScreen({ variant, caseRow, members, timeline, docum
         footer={
           <>
             <Button onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={addMemberConflict}>
+            <Button variant="primary" onClick={() => say(addMemberConflict && 'Ravi Shankar is in the respondent’s manager chain. Add him with a documented override, or choose someone else.')}>
               Add member
             </Button>
           </>
@@ -719,7 +739,7 @@ export function CaseWorkspaceScreen({ variant, caseRow, members, timeline, docum
         footer={
           <>
             <Button onClick={() => setDecision(false)}>Cancel</Button>
-            <Button variant="primary" disabled={!replyReceived}>
+            <Button variant="primary" onClick={() => say(!replyReceived && 'No penalty can be decided yet. Wait for the employee’s reply or for the reply date to pass.')}>
               Record decision and draft letter
             </Button>
           </>
@@ -772,7 +792,10 @@ export interface EthicsDeskScreenProps {
   member?: boolean;
   routeId?: string | null;
 }
-export function EthicsDeskScreen({ rows, today, state = 'ready', member = true, routeId = null }: EthicsDeskScreenProps) {
+export function EthicsDeskScreen(props: EthicsDeskScreenProps | { live: LiveEthicsDeskProps }) {
+  return 'live' in props ? <LiveEthicsDesk live={props.live} /> : <SampleEthicsDesk {...props} />;
+}
+function SampleEthicsDesk({ rows, today, state = 'ready', member = true, routeId = null }: EthicsDeskScreenProps) {
   const [route, setRoute] = useState<string | null>(routeId);
   if (!member) return <RestrictedNotFound />;
   const columns: TableColumn<WbRow>[] = [

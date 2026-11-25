@@ -35,9 +35,19 @@ test('candidates on YukthiX Hiring: list, add, profile, duplicates, merge, reten
   await expect(row).toBeVisible({ timeout: 30_000 });
   await expect(row).toContainText('Same phone');
   await row.getByRole('button', { name: 'Compare and merge' }).click();
-  const m = page.getByRole('dialog');
-  await m.getByRole('radio', { name: `kavya-${tag}@example.test` }).click();
-  await m.getByRole('button', { name: 'Merge' }).click();
+  const m = page.getByRole('dialog', { name: 'Merge candidates' });
+  await m.getByRole('radiogroup', { name: 'Record to keep' }).getByRole('radio', { name: `kavya-${tag}@example.test` }).click();
+  // Each field that differs needs a choice: merging before choosing is refused in place.
+  await m.getByRole('button', { name: 'Merge records' }).click();
+  await expect(m.getByText('Choose which name to keep.')).toBeVisible();
+  await m.getByRole('radiogroup', { name: 'Name' }).getByRole('radio', { name: `Kavya ${tag}` }).click();
+  await m.getByRole('radiogroup', { name: 'Mobile' }).getByRole('radio').first().click();
+  await m.getByRole('radiogroup', { name: 'Résumé' }).getByRole('radio').first().click();
+  await m.getByRole('button', { name: 'Merge records' }).click();
+  // The merge cannot be undone, so it says what happens and asks once more.
+  const sure = page.getByRole('dialog', { name: `Merge Kavya N ${tag} into Kavya ${tag}?` });
+  await expect(sure).toContainText('cannot be undone');
+  await sure.getByRole('button', { name: 'Merge records' }).click();
   await expect(m).toHaveCount(0, { timeout: 30_000 });
   await expect(page.getByRole('row').filter({ hasText: `kavya-${tag}@example.test` })).toHaveCount(0, { timeout: 30_000 });
 
@@ -46,8 +56,11 @@ test('candidates on YukthiX Hiring: list, add, profile, duplicates, merge, reten
   const kept = page.getByRole('row').filter({ hasText: `kavya-${tag}@example.test` });
   await kept.getByRole('button', { name: 'Open' }).click();
   await page.waitForURL(/\/yx\/hiring\/candidates\/[0-9a-f-]{36}$/);
-  await expect(page.getByText(/Another candidate was merged into this one/)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/Kept until/)).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Activity' })).toContainText('merged a duplicate into this candidate', { timeout: 30_000 });
+  await page.getByRole('tab', { name: 'Consent & retention' }).click();
+  const consent = page.getByRole('tabpanel', { name: 'Consent & retention' });
+  await expect(consent.getByText(/^Until .+ then anonymised$/)).toBeVisible(); // how long the record is kept
+  await expect(consent.getByText(/^A duplicate was merged in on /)).toBeVisible();
 
   await page.goto('/yx/hiring/retention');
   await page.getByRole('button', { name: 'Preview (changes nothing)' }).click();

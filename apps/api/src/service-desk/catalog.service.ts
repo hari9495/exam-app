@@ -2,11 +2,14 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
+import { assetOption, assetsOf } from './asset-pick';
 import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '../rules-engine/conditions';
 import { Answers, EMPTY_FORM, FormDef, FormField, FormRule, REQUESTER_FIELDS, checkAnswers, expandQuestionnaires, formSchema, parseForm, pickedIds, summarise } from '../rules-engine/forms';
 import { ApprovalsEngine, Notice, Outcome, StepSpec, parseSteps } from '../workflow/approvals-engine.service';
-import { DESK_KEYS, DeskActor, audit, emit, has, requireDesk, requireSetUp, requireWork } from './desk-access';
-import { AdhocApprovalDto, CatalogItemDto, CatalogSettingsDto, CheckoutDto, ItemDraftDto, OrderGuideDto, QuestionnaireDto, UpdateCatalogItemDto } from './dto-esm';
+import { DESK_KEYS, DeskActor, audit, deskSystem, emit, has, requireDesk, requireSetUp, requireWork } from './desk-access';
+import { NotificationsService } from '../notifications/notifications.service';
+import { todayIst } from '../org-structure/org-validation';
+import { AdhocApprovalDto, BusinessAppDto, CatalogItemDto, CatalogSettingsDto, CheckoutDto, ItemDraftDto, OrderGuideDto, QuestionnaireDto, UpdateCatalogItemDto } from './dto-esm';
 import { Requester, RequesterService } from './requester.service';
 import { profileOf } from './people-facts';
 import { cleanHtml, htmlToText } from './rich-text';
@@ -55,6 +58,7 @@ const HIGH_VALUE_DEFAULT = 50_000;
 const rupees = (n: number) => `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const like = (q: string) => `%${q.replace(/[\\%_]/g, (c) => '\\' + c)}%`;
 
+
 /** A rule or form problem the admin must fix: 400 with the plain message (sync or async). */
 function plain<T>(fn: () => T): T {
   const map = (e: unknown) => {
@@ -83,6 +87,7 @@ export class CatalogService implements OnModuleInit {
     private readonly tickets: TicketsService,
     private readonly requesters: RequesterService,
     private readonly approvals: ApprovalsEngine,
+    private readonly notifications: NotificationsService,
   ) {}
 
   onModuleInit() {
@@ -178,6 +183,7 @@ export class CatalogService implements OnModuleInit {
     for (const s of steps) {
       for (const a of s.approvers) {
         if (a.kind === 'cost_centre_owner' && pickers.get(a.field) !== 'cost_centre') throw new RuleError(`"${s.name}": the cost-centre owner comes from a cost centre question on the form.`);
+        if (a.kind === 'app_owner' && pickers.get(a.field) !== 'app') throw new RuleError(`"${s.name}": the application owner comes from an application question on the form.`);
         if (a.kind === 'users' && (await tx.user.count({ where: { organizationId: org, id: { in: a.userIds }, status: 'active' } })) !== a.userIds.length) throw new RuleError(`"${s.name}": choose active colleagues.`);
         if (a.kind === 'user_group' && !(await tx.userGroup.findFirst({ where: { organizationId: org, id: a.groupId }, select: { id: true } }))) throw new RuleError(`"${s.name}": choose a group of this company.`);
       }
@@ -525,10 +531,25 @@ export class CatalogService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ live-data pickers (SD-2.02)
 
-  async pick(r: Requester, kind: 'people' | 'locations' | 'cost-centres', q = '') {
+  async pick(r: Requester, kind: 'people' | 'on-behalf' | 'locations' | 'areas' | 'cost-centres' | 'assets' | 'apps', q = '', forPersonId?: string, locationId?: string) {
     const org = r.ctx.organizationId;
     const l = like(q.trim());
     return this.tx(r, async (tx) => {
+      // Answer 1846: "for someone else" lists only the people this person may raise for.
+      if (kind === 'on-behalf') return this.requesters.onBehalfPeople(tx, r, l);
+      if (kind === 'apps') {
+        // Helpdesk plan item 3: the company's applications that can be asked for (never retired ones).
+        const rows = await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active', ...(q.trim() ? { name: { contains: q.trim(), mode: 'insensitive' as const } } : {}) }, select: { id: true, name: true, description: true }, orderBy: { name: 'asc' }, take: 20 });
+        return rows.map((x) => ({ id: x.id, label: x.name, detail: x.description }));
+      }
+      if (kind === 'assets') {
+        // Helpdesk item 2: only the devices assigned to the person now (People asset register), never anyone else's.
+        // Answer 1685: or those of the person it is for, when this person may raise for them.
+        const me = await this.requesters.personOf(tx, r, Boolean(forPersonId));
+        if (forPersonId && forPersonId !== me) await this.requesters.checkOnBehalf(tx, r, forPersonId, me!);
+        const whose = forPersonId ?? me;
+        return whose ? (await assetsOf(tx, org, whose, q)).map(assetOption) : [];
+      }
       if (kind === 'people') {
         // Colleagues only (an employee or a login), never applicants or outside contacts; names and department only.
         const rows = await tx.$queryRaw<{ id: string; name: string; department: string | null }[]>`
@@ -542,12 +563,36 @@ export class CatalogService implements OnModuleInit {
           ORDER BY p.given_name, p.family_name LIMIT 20`;
         return rows.map((x) => ({ id: x.id, label: x.name, detail: x.department }));
       }
+      // Answer 1911: the areas of one building (in use only), for a facilities ticket; no building, no areas.
+      if (kind === 'areas') {
+        if (!locationId) return [];
+        const rows = await tx.sdFacilityArea.findMany({ where: { organizationId: org, locationId, status: 'active', ...(q.trim() ? { name: { contains: q.trim(), mode: 'insensitive' as const } } : {}) }, select: { id: true, name: true }, orderBy: { name: 'asc' }, take: 20 });
+        return rows.map((x) => ({ id: x.id, label: x.name, detail: null }));
+      }
       if (kind === 'locations') {
         const rows = await tx.location.findMany({ where: { organizationId: org, archivedAt: null, OR: [{ name: { contains: q, mode: 'insensitive' } }, { code: { contains: q, mode: 'insensitive' } }] }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' }, take: 20 });
         return rows.map((x) => ({ id: x.id, label: x.name, detail: x.code }));
       }
       const rows = await tx.costCentre.findMany({ where: { organizationId: org, archivedAt: null, OR: [{ name: { contains: q, mode: 'insensitive' } }, { code: { contains: q, mode: 'insensitive' } }] }, select: { id: true, name: true, code: true }, orderBy: { name: 'asc' }, take: 20 });
       return rows.map((x) => ({ id: x.id, label: x.name, detail: x.code }));
+    });
+  }
+
+  /** Helpdesk item 2: an agent of an IT desk searches the company's devices (any holder) by tag or name. */
+  async searchAssets(a: DeskActor, deskId: string, q: string) {
+    requireWork(a, deskId);
+    return this.tx(a, async (tx) => {
+      const desk = await tx.sdDesk.findFirst({ where: { organizationId: a.ctx.organizationId, id: deskId }, select: { kind: true } });
+      if (!desk) throw new NotFoundException('No such desk.');
+      if (desk.kind !== 'it') throw new ForbiddenException("Only the IT desk's agents search the company's devices.");
+      const term = q.trim();
+      const rows = await tx.asset.findMany({
+        where: { organizationId: a.ctx.organizationId, status: { notIn: ['retired', 'lost'] }, ...(term ? { OR: [{ tag: { contains: term, mode: 'insensitive' } }, { name: { contains: term, mode: 'insensitive' } }, { serial: { contains: term, mode: 'insensitive' } }] } : {}) },
+        select: { id: true, name: true, tag: true, category: true },
+        orderBy: [{ tag: 'asc' }],
+        take: 20,
+      });
+      return rows.map(assetOption);
     });
   }
 
@@ -564,6 +609,14 @@ export class CatalogService implements OnModuleInit {
     const ccs = ids.cost_centre.length ? await tx.costCentre.findMany({ where: { organizationId: org, id: { in: ids.cost_centre }, archivedAt: null }, select: { id: true, name: true } }) : [];
     if (ccs.length !== new Set(ids.cost_centre).size) throw new BadRequestException('Choose a cost centre from the list.');
     for (const x of [...locs, ...ccs]) names.set(x.id, x.name);
+    // Helpdesk item 2: a picked device must be this company's (shown on the ticket as its name and tag).
+    const assets = ids.asset.length ? await tx.asset.findMany({ where: { organizationId: org, id: { in: ids.asset } }, select: { id: true, name: true, tag: true } }) : [];
+    if (assets.length !== new Set(ids.asset).size) throw new BadRequestException('Choose a device from the list.');
+    for (const x of assets) names.set(x.id, `${x.name} (${x.tag})`);
+    // Helpdesk plan item 3: a picked application must be one of this company's, and not retired.
+    const apps = ids.app.length ? await tx.sdBusinessApp.findMany({ where: { organizationId: org, id: { in: ids.app }, status: 'active' }, select: { id: true, name: true } }) : [];
+    if (apps.length !== new Set(ids.app).size) throw new BadRequestException('That application is retired or not on the list. Choose one from the list.');
+    for (const x of apps) names.set(x.id, x.name);
     return names;
   }
 
@@ -595,7 +648,12 @@ export class CatalogService implements OnModuleInit {
         const form = v.form as unknown as FormDef;
         const { values, errors: e } = checkAnswers(form, line.answers ?? {}, profile);
         if (Object.keys(e).length) errors[i] = e;
-        else lines.push({ item, v, form, values, quantity: line.quantity ?? 1, names: await this.checkPicks(tx, org, form, values) });
+        else {
+          // Helpdesk item 2: a device picked on the form is one assigned now to the person the request is for.
+          const mine = new Set((await assetsOf(tx, org, forPerson, '')).map((x) => x.id));
+          if (pickedIds(form, values).asset.some((id) => !mine.has(id))) errors[i] = Object.fromEntries(form.sections.flatMap((s) => s.fields).filter((f) => f.type === 'asset' && typeof values[f.key] === 'string' && !mine.has(values[f.key] as string)).map((f) => [f.key, 'Choose one of your own devices from the list.']));
+          else lines.push({ item, v, form, values, quantity: line.quantity ?? 1, names: await this.checkPicks(tx, org, form, values) });
+        }
       }
       if (Object.keys(errors).length) throw new BadRequestException({ statusCode: 400, code: 'FORM_ERRORS', message: 'Check the answers in your cart.', errors });
       const byDesk = new Map<string, typeof lines>();
@@ -623,7 +681,9 @@ export class CatalogService implements OnModuleInit {
         });
         for (const l of group) {
           const ri = await tx.sdRequestItem.create({ data: { organizationId: org, deskId, ticketId: t.id, itemId: l.item.id, itemVersion: l.v.version, quantity: l.quantity, answers: l.values as unknown as Prisma.InputJsonValue, forPersonId: forPerson } });
-          const steps = l.v.approval as unknown as StepSpec[];
+          // Helpdesk plan item 3: an application owner's step may also be decided by the desk's admins.
+          const deskAdmins = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: 'admin', validTo: null }, select: { userId: true } })).map((m) => m.userId);
+          const steps = (l.v.approval as unknown as StepSpec[]).map((s) => (deskAdmins.length && s.approvers.some((x) => x.kind === 'app_owner') ? { ...s, approvers: [...s.approvers, { kind: 'users' as const, userIds: deskAdmins }] } : s));
           if (!steps.length) {
             await this.startFulfilment(tx, r, t, ri, l.v);
             continue;
@@ -644,6 +704,7 @@ export class CatalogService implements OnModuleInit {
             payload: { ...(l.values as RecordValues), quantity: l.quantity, total_cost: cost },
             payloadFields: [...formSchema(l.form), ...EXTRA_FIELDS],
             fallbackUserIds: leads,
+            fallbackWording: { who: "the desk's team leads", check: 'Check the manager or cost-centre owner' },
             ...(highRisk ? { risk: 'high' as const } : {}),
           });
           notices.push(...sub.notices);
@@ -889,6 +950,85 @@ export class CatalogService implements OnModuleInit {
     const last = await tx.wfAction.findFirst({ where: { organizationId: req.organizationId, requestId: req.id, action: { in: ['approved', 'rejected', 'self_approved'] } }, orderBy: { createdAt: 'desc' } });
     await this.tickets.event(tx, t, 'approval_decided', null, outcome === 'approved' ? 'Approved' : 'Not approved', { by: last?.actorUserId ?? null, reason: last?.reason ?? null });
   }
+  // ------------------------------------------------------------------------------------------ business applications (plan item 3)
+
+  /** The company's applications with their owners: for the desks' staff and the company's Service Desk owner. */
+  async apps(a: DeskActor) {
+    if (!has(a, 'desk.desk.create') && !a.roles.size) throw new ForbiddenException('Only the desks\' staff see the applications list.');
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const rows = await tx.sdBusinessApp.findMany({ where: { organizationId: org }, orderBy: [{ status: 'asc' }, { name: 'asc' }] });
+      const users = await this.tickets.userNames(tx, org, rows.map((r) => r.ownerUserId));
+      // Answer 1894: an owner who has left or was deactivated is shown, so a new owner is chosen.
+      const gone = new Set((await ownersGone(tx, org, rows.map((r) => r.ownerUserId), todayIst())));
+      return rows.map((r) => ({ id: r.id, name: r.name, description: r.description, ownerUserId: r.ownerUserId, owner: users.get(r.ownerUserId) ?? 'Someone', ownerLeft: gone.has(r.ownerUserId), status: r.status, version: r.version, canEdit: has(a, 'desk.desk.create') }));
+    });
+  }
+
+  /**
+   * Answer 1894: tells each company's Service Desk owners (desk.desk.create company-wide, or a company admin) once when
+   * an active application's owner has left (their exit date has passed) or their login is no longer active; a new
+   * owner who later leaves is told again. Until a new owner is chosen, approvals fall back to the desk's admins.
+   */
+  async appOwnerSweep(today = todayIst()): Promise<number> {
+    const apps = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.sdBusinessApp.findMany({ where: { status: 'active' }, select: { id: true, organizationId: true, name: true, ownerUserId: true, ownerWarnedFor: true }, take: 2000 }),
+    );
+    let n = 0;
+    for (const org of new Set(apps.map((x) => x.organizationId))) {
+      const ctx = { organizationId: org, isSuperAdmin: false };
+      const found = await deskSystem(this.tenantPrisma, ctx, async (tx) => {
+        const mine = apps.filter((x) => x.organizationId === org && x.ownerWarnedFor !== x.ownerUserId);
+        const gone = new Set(await ownersGone(tx, org, mine.map((x) => x.ownerUserId), today));
+        const left = mine.filter((x) => gone.has(x.ownerUserId));
+        if (!left.length) return null;
+        return { left, owners: await this.tickets.userNames(tx, org, left.map((x) => x.ownerUserId)), to: await serviceDeskOwners(tx, org) };
+      });
+      if (!found) continue;
+      for (const app of found.left) {
+        const who = found.owners.get(app.ownerUserId) ?? 'Its owner';
+        const to = found.to.filter((u) => u !== app.ownerUserId);
+        if (to.length)
+          await this.notifications
+            .notifySystem(ctx, to, 'helpdesk.app.owner_left', { entityType: 'sd_business_app', entityId: app.id, contextText: `${app.name}: ${who} has left. Choose a new owner.`, linkPath: '/yx/desk/apps' }, { subject: `Choose a new owner for ${app.name}`, html: `<p>${escape(who)}, the owner of ${escape(app.name)}, has left or can no longer sign in. Until you choose a new owner, the IT desk's admins decide access requests for it.</p>` })
+            .catch((e) => this.logger.warn(`App owner warning not sent: ${(e as Error).message}`));
+        await deskSystem(this.tenantPrisma, ctx, async (tx) => {
+          await tx.sdBusinessApp.updateMany({ where: { organizationId: org, id: app.id, ownerUserId: app.ownerUserId }, data: { ownerWarnedFor: app.ownerUserId } });
+          await audit(tx, { ctx, userId: null as unknown as string }, 'desk.app.owner_left', 'sd_business_app', app.id, { ownerUserId: app.ownerUserId, told: to.length });
+        });
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /** The company's Service Desk owner adds or changes an application (its owner, or retires it). Audited. */
+  async saveApp(a: DeskActor, id: string | null, dto: BusinessAppDto) {
+    if (!has(a, 'desk.desk.create')) throw new ForbiddenException("Only the company's Service Desk owner changes the applications list.");
+    const org = a.ctx.organizationId;
+    try {
+      return await this.tx(a, async (tx) => {
+        if (!(await tx.user.findFirst({ where: { organizationId: org, id: dto.ownerUserId, status: 'active' }, select: { id: true } }))) throw new BadRequestException('Choose an active colleague as the owner.');
+        const data = { name: dto.name.trim(), description: dto.description?.trim() || null, ownerUserId: dto.ownerUserId, status: dto.status ?? 'active' };
+        let appId = id;
+        if (id) {
+          const cur = await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id } });
+          if (!cur) throw new NotFoundException('No such application.');
+          if (dto.version !== undefined && dto.version !== cur.version) throw new ConflictException('Someone changed this application. Reload to see the latest.');
+          await tx.sdBusinessApp.update({ where: { id }, data: { ...data, version: { increment: 1 }, updatedAt: new Date() } });
+          await audit(tx, a, 'desk.app.updated', 'sd_business_app', id, { from: { name: cur.name, ownerUserId: cur.ownerUserId, status: cur.status }, to: data });
+        } else {
+          appId = (await tx.sdBusinessApp.create({ data: { organizationId: org, ...data, createdBy: a.userId } })).id;
+          await audit(tx, a, 'desk.app.created', 'sd_business_app', appId, data);
+        }
+        return { id: appId };
+      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('An application with that name is already on the list.');
+      throw e;
+    }
+  }
+
 }
 
 function escape(s: string) {
@@ -901,5 +1041,37 @@ function list(rows: { label: string; value: string }[]) {
 /** Used by WorkService after a task changes: a delivered item may resolve its request (US-B-126). */
 export async function afterTaskChange(tx: Tx, catalog: CatalogService, a: { ctx: DeskActor['ctx'] }, requestItemId: string | null) {
   if (requestItemId) await catalog.itemSettled(tx, a, requestItemId);
+
 }
 
+/** Answer 1894: which of these users have left (an exit date passed, no later employment) or can no longer sign in. */
+async function ownersGone(tx: Tx, org: string, userIds: string[], today: string): Promise<string[]> {
+  if (!userIds.length) return [];
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT u.id::text FROM users u
+    WHERE u.organization_id = ${org}::uuid AND u.id = ANY(${[...new Set(userIds)]}::uuid[])
+      AND (u.status <> 'active' OR EXISTS (
+        SELECT 1 FROM employees e WHERE e.organization_id = u.organization_id AND e.user_id = u.id
+          AND EXISTS (SELECT 1 FROM employments m WHERE m.organization_id = e.organization_id AND m.employee_id = e.id AND m.exited_on <= ${today}::date)
+          AND NOT EXISTS (SELECT 1 FROM employments m WHERE m.organization_id = e.organization_id AND m.employee_id = e.id AND (m.exited_on IS NULL OR m.exited_on > ${today}::date))))`;
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Answer 1894: the company's Service Desk owners: active users holding desk.desk.create company-wide (their role, or a
+ * company-wide grant today) and the company admins. shortcut: reads the role JSON with LIKE, as holdersOf does.
+ */
+async function serviceDeskOwners(tx: Tx, org: string): Promise<string[]> {
+  const key = '%"desk.desk.create"%';
+  const today = todayIst();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT u.id::text FROM users u LEFT JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id
+    WHERE u.organization_id = ${org}::uuid AND u.status = 'active' AND (u.role = 'org_admin' OR p.permissions_json LIKE ${key})
+    UNION
+    SELECT g.user_id::text FROM role_grants g JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
+    JOIN users u ON u.organization_id = g.organization_id AND u.id = g.user_id AND u.status = 'active'
+    WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND g.scope_type = 'tenant' AND p.permissions_json LIKE ${key}
+      AND g.valid_from <= ${today}::date AND (g.valid_to IS NULL OR g.valid_to >= ${today}::date)
+    LIMIT 25`;
+  return rows.map((r) => r.id);
+}

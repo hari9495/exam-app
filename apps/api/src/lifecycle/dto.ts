@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
 import { LIFE_EVENT_KINDS, type JourneyKind } from './starters';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -160,6 +160,22 @@ export class JoinerDto {
   batchId?: string | null;
 }
 
+/** PPL-12: a joiner from an accepted offer; a rehire may carry the choices HR changed in the impact preview. */
+export class OfferJoinerDto extends JoinerDto {
+  @IsOptional()
+  @IsObject()
+  rehire?: Record<string, { value: string; reason?: string | null }>;
+}
+
+/** PPL-12: the rehire impact preview for a legal entity and joining day picked in the Create drawer. */
+export class RehirePreviewQuery {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Matches(ISO)
+  joiningOn!: string;
+}
+
 export class JoinerImportDto {
   @IsString()
   @MaxLength(262_144)
@@ -177,10 +193,12 @@ export class PostponeDto {
   @Matches(ISO)
   joiningOn!: string;
 
+  // PPL-15: the new date is enough; the audit log keeps the old and new dates.
+  @IsOptional()
   @trim()
   @IsString()
   @Length(3, 300)
-  reason!: string;
+  reason?: string;
 
   @IsInt()
   version!: number;
@@ -271,10 +289,12 @@ export class CancelJoinerDto {
   @IsIn(['did_not_join', 'reneged', 'withdrawn'])
   outcome!: 'did_not_join' | 'reneged' | 'withdrawn';
 
+  // PPL-15: only a company withdrawal must say why; did not join and reneged may.
+  @ValidateIf((o: CancelJoinerDto) => o.outcome === 'withdrawn' || o.reason !== undefined)
   @trim()
   @IsString()
   @Length(3, 500)
-  reason!: string;
+  reason?: string;
 
   @IsInt()
   version!: number;
@@ -302,7 +322,39 @@ export class BgvUpdateDto {
   @IsIn(['none', 'before_joining', 'before_confirmation'])
   gate?: string;
 
+  /** HIR-10: the day the check was done (IST, not in the future); defaults to today. */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Give the day the check was done as YYYY-MM-DD.' })
+  checkedOn?: string;
+
   @Transform(({ value }) => (typeof value === 'string' ? Number(value) : value))
   @IsInt()
   version!: number;
+}
+
+/** HIR-10: a person decides a discrepancy (founder decision 3: never automatic). */
+export class BgvDecisionDto {
+  @IsIn(['proceed', 'stop'])
+  decision!: 'proceed' | 'stop';
+
+  @trim()
+  @IsString()
+  @Length(3, 1000, { message: 'Give the reason for the decision (3 to 1000 characters).' })
+  note!: string;
+
+  @IsInt()
+  version!: number;
+}
+
+/** CL-7 (CLB-05, answer 637): a contract worker joins from their deployment; the person's details come from their record. */
+export class ContractConversionDto {
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Give the joining day as a date.' }) joiningOn!: string;
+  @IsUUID() legalEntityId!: string;
+  @IsUUID() locationId!: string;
+  @IsOptional() @IsUUID() departmentId?: string | null;
+  @IsOptional() @IsUUID() designationId?: string | null;
+  @IsOptional() @IsUUID() employmentTypeId?: string | null;
+  @IsOptional() @IsUUID() managerEmployeeId?: string | null;
+  @IsOptional() @IsUUID() templateId?: string | null;
+  @IsInt() @Min(1) version!: number;
 }

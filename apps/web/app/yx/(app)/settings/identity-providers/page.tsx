@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@yukthix/ui';
 import { IdentityProvidersScreen, type IdentityProviderDetail, type IdentityProviderInput } from '@yukthix/ui/auth';
 import { useAuth } from '../../../../../lib/auth-context';
 import { API_BASE, apiFetch } from '../../../../../lib/api-client';
@@ -12,6 +13,7 @@ export default function YxIdentityProvidersPage() {
   const { accessToken } = useAuth();
   const token = accessToken ?? undefined;
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const providers = useQuery({
     queryKey: ['yx', 'settings', 'providers'],
     queryFn: (): Promise<IdentityProviderDetail[]> => apiFetch('/security/identity-providers', {}, token),
@@ -26,6 +28,8 @@ export default function YxIdentityProvidersPage() {
     await refresh();
   };
 
+  const name = (id: string) => providers.data?.find((p) => p.id === id)?.name ?? 'The provider';
+
   // A plain 403 is a missing permission; MFA_REQUIRED is the MFA floor (the layout says what to do).
   const err = providers.error as { status?: number; code?: string } | null;
   const noAccess = err?.status === 403 && err.code !== 'MFA_REQUIRED';
@@ -36,11 +40,19 @@ export default function YxIdentityProvidersPage() {
       providers={providers.data ?? []}
       samlMetadataUrl={slug ? `${API_BASE}/auth/saml/${encodeURIComponent(slug)}/metadata` : null}
       oidcRedirectUri={`${API_BASE}/auth/oidc/callback`}
-      onSave={(id, input: IdentityProviderInput) =>
-        id ? send(`/security/identity-providers/${encodeURIComponent(id)}`, 'PATCH', input) : send('/security/identity-providers', 'POST', input)
-      }
-      onSetStatus={(id, status) => send(`/security/identity-providers/${encodeURIComponent(id)}`, 'PATCH', { status })}
-      onRemove={(id) => send(`/security/identity-providers/${encodeURIComponent(id)}`, 'DELETE')}
+      onSave={async (id, input: IdentityProviderInput) => {
+        await (id ? send(`/security/identity-providers/${encodeURIComponent(id)}`, 'PATCH', input) : send('/security/identity-providers', 'POST', input));
+        toast({ tone: 'success', title: id ? `${input.name ?? name(id)} saved` : `${input.name ?? 'The provider'} added`, ...(id ? {} : { description: 'It is off. Turn it on when people should use it.' }) });
+      }}
+      onSetStatus={async (id, status) => {
+        await send(`/security/identity-providers/${encodeURIComponent(id)}`, 'PATCH', { status });
+        toast({ tone: 'success', title: `${name(id)} is ${status === 'active' ? 'on' : 'off'}` });
+      }}
+      onRemove={async (id) => {
+        const was = name(id);
+        await send(`/security/identity-providers/${encodeURIComponent(id)}`, 'DELETE');
+        toast({ tone: 'success', title: `${was} removed` });
+      }}
     />
   );
 }

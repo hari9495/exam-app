@@ -121,6 +121,7 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
     setDirty(true);
   };
   const save = async () => {
+    if (status.kind === 'saving') return;
     if (!input) return saveErrors.reveal();
     setStatus({ kind: 'saving' });
     try {
@@ -144,7 +145,7 @@ function IdentityProviderEditor({ provider, onClose, onSave }: EditorProps) {
       subtitle={provider ? IDP_TYPE_LABEL[provider.type] : 'New providers start switched off. Turn one on once its settings are in.'}
       footer={
         <>
-          <Button onClick={onClose} disabled={status.kind === 'saving'}>Cancel</Button>
+          <Button onClick={() => status.kind !== 'saving' && onClose()}>Cancel</Button>
           <Button variant="primary" loading={status.kind === 'saving'} onClick={() => void save()}>{provider ? 'Save changes' : 'Add provider'}</Button>
         </>
       }
@@ -318,7 +319,7 @@ function Providers({ providers, samlMetadataUrl, oidcRedirectUri, onSave, onSetS
                     </div>
                     <div className="yx-auth__row">
                       <Button size="sm" onClick={() => setEditing({ provider: p, key: Date.now() })} aria-label={`Edit ${p.name}`}>Edit</Button>
-                      <Button size="sm" loading={toggling === p.id} disabled={toggling !== null && toggling !== p.id} onClick={() => void toggle(p)} aria-label={`${on ? 'Turn off' : 'Turn on'} ${p.name}`}>
+                      <Button size="sm" loading={toggling === p.id} onClick={() => toggling === null && void toggle(p)} aria-label={`${on ? 'Turn off' : 'Turn on'} ${p.name}`}>
                         {on ? 'Turn off' : 'Turn on'}
                       </Button>
                       <ConfirmDialog

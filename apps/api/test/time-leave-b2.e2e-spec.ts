@@ -233,6 +233,9 @@ describe('Time and leave batch 2', () => {
       const row = plan.people.find((p: { id: string }) => p.id === ids.empEmp);
       const cell3 = row.cells.find((x: { on: string }) => x.on === d(3));
       expect(cell3.conflicts.map((c: { kind: string }) => c.kind)).toContain('rest');
+      // Feature sheet rule 1 (29 Oct 2026): publishing never adds a rest break; the planner fixes the day first.
+      expect((await api('mgr', 'post', '/time/roster/publish').send({ week: d(2) }).expect(409)).body.code).toBe('REST_GUARD');
+      await api('mgr', 'put', '/time/roster/cells').send({ cells: [{ employeeId: ids.empEmp, on: d(3), value: 'off' }] }).expect(200);
       await api('mgr', 'post', '/time/roster/publish').send({ week: d(2) }).expect(200);
       expect((await api('emp', 'get', `/time/me/shifts?week=${d(2)}`).expect(200)).body.days.find((x: { on: string }) => x.on === d(2)).shift.name).toBe('Night');
       // Withdrawing consent applies from its date: the next change is refused again (no other effect).
@@ -324,12 +327,18 @@ describe('Time and leave batch 2', () => {
 
   describe('timesheets (§B7)', () => {
     it('a week goes to the project manager through P03; approved hours are fixed', async () => {
-      ids.project = (await api('hrAdmin', 'post', '/time/projects').send({ code: 'AUDIT', name: 'Audit readiness', managerUserId: users.boss, billable: false, activities: ['Docs', 'Checks'] }).expect(201)).body.id;
+      // Projects P-1 (answer 1402): projects are set up in Projects now; this company has Projects off, so anyone books.
+      await api('hrAdmin', 'post', '/time/projects').send({ code: 'GONE', name: 'Old editor' }).expect(404);
+      ids.project = (await inA((tx) => tx.timesheetProject.create({ data: { organizationId: org.A.id, code: 'AUDIT', name: 'Audit readiness', managerUserId: users.boss, billable: false, activities: ['Docs', 'Checks'] } }))).id;
       const week = mondayOf(today);
       const line = { projectId: ids.project, activity: 'Docs', billable: false, minutes: [480, 480, 0, 0, 0, 0, 0] };
       await api('emp', 'put', '/time/me/timesheet').send({ week: addDays(week, 1), lines: [line] }).expect(400);
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [{ ...line, activity: 'Golf' }] }).expect(400);
+      // Answer 1787: a comment on every day with hours (required, 20 words, by default); Save draft never asks.
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [line] }).expect(200);
+      expect((await api('emp', 'post', '/time/me/timesheet/submit').send({ week }).expect(400)).body.code).toBe('NOTE_TOO_SHORT');
+      const twenty = Array.from({ length: 20 }, (_, i) => `docs${i}`).join(' ');
+      await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [{ ...line, comments: [twenty, twenty, '', '', '', '', ''] }] }).expect(200);
       const sheet = (await api('emp', 'post', '/time/me/timesheet/submit').send({ week }).expect(200)).body;
       expect(sheet.status).toBe('pending');
       await api('emp', 'put', '/time/me/timesheet').send({ week, lines: [line] }).expect(409);
@@ -374,7 +383,7 @@ describe('Time and leave batch 2', () => {
       const locked = (await api('hrAdmin', 'post', '/time/periods/lock').send({ legalEntityId: ids.entityA, month: lockMonth }).expect(200)).body;
       expect(locked.frozen).toBeGreaterThan(0);
       // Regularisation, leave and OT on a locked day are refused in plain words.
-      expect((await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Late fix' }).expect(409)).body.message).toMatch(/locked for attendance and leave/);
+      expect((await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Late fix for the locked day' }).expect(409)).body.message).toMatch(/locked for attendance and leave/);
       await api('emp', 'post', '/time/me/overtime').send({ on: inLocked, reason: 'x' }).expect(409);
       // The database refuses it too (the app role, RLS on).
       await expect(inA((tx) => tx.punch.create({ data: { organizationId: org.A.id, employeeId: ids.empEmp, punchedAt: new Date(`${inLocked}T05:00:00Z`), workOn: new Date(`${inLocked}T00:00:00Z`), kind: 'in', accepted: true, verdict: 'no_fence' } }))).rejects.toThrow(/YX_PERIOD_LOCKED/);
@@ -425,7 +434,7 @@ describe('Time and leave batch 2', () => {
         await api(who, 'post', `/payroll/reopen-requests/${asked.id}/decide`).send({ decision: 'approve', confirmation: { phrase, impact: [{ label: 'Month', value: lockMonth }] } }).expect(200);
       }
       expect(await inA((tx) => tx.payrollFeedRow.count({ where: { organizationId: org.A.id, supersededAt: null } }))).toBe(0);
-      const fix = (await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Now open' }).expect(201)).body;
+      const fix = (await api('emp', 'post', '/time/me/regularise').send({ on: inLocked, kind: 'full_day', reason: 'Now open, fixing the day' }).expect(201)).body;
       await api('emp', 'post', `/time/me/regularise/${fix.id}/withdraw`).expect(200);
       const actions = await inA((tx) => tx.auditLog.findMany({ where: { organizationId: org.A.id, action: { in: ['time.period.locked', 'payroll.period.reopened'] } }, select: { action: true } }));
       expect(actions.map((a) => a.action).sort()).toEqual(['payroll.period.reopened', 'time.period.locked']);

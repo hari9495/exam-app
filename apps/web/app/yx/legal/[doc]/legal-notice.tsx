@@ -5,7 +5,9 @@ import components from '../../../../lib/open-source-notices.json';
 
 // The privacy / grievance contact is YukthiX's to publish (APX-G G-23); until it is set the page says so.
 const CONTACT = process.env.NEXT_PUBLIC_YX_PRIVACY_EMAIL || null;
+// Answer 2352: the accessibility statement's contact is accessibility@ the same YukthiX domain.
+const ACCESSIBILITY = CONTACT?.includes('@') ? `accessibility@${CONTACT.split('@')[1]}` : null;
 
 export function LegalNotice({ doc }: { doc: LegalDoc }) {
-  return <LegalNoticeScreen doc={doc} contactEmail={CONTACT} components={doc === 'openSource' ? components : undefined} />;
+  return <LegalNoticeScreen doc={doc} contactEmail={doc === 'accessibility' ? ACCESSIBILITY : CONTACT} components={doc === 'openSource' ? components : undefined} />;
 }

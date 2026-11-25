@@ -46,6 +46,18 @@ export function inForce(sets: readonly RuleSet[], statute: string, jurisdictions
   return null;
 }
 
+/** The state's PT rule in force says it charges no PT (an explicit "none" set, like Delhi): no registration is asked for. */
+export function noPt(sets: readonly RuleSet[], state: string, on: string): boolean {
+  const rs = inForce(sets, 'IN.PT', [state], on);
+  return !!rs && rs.values.kind === 'pt' && !((rs.values.slabs as unknown[] | undefined) ?? []).length;
+}
+
+/** The state's PT rule in force charges PT (it has slabs): an entity with people there must be registered (A2). */
+export function ptCharged(sets: readonly RuleSet[], state: string, on: string): boolean {
+  const rs = inForce(sets, 'IN.PT', [state], on);
+  return !!rs && rs.values.kind === 'pt' && !!((rs.values.slabs as unknown[] | undefined) ?? []).length;
+}
+
 type V = Record<string, unknown>;
 const need = (rs: RuleSet, kind: string) => {
   if (rs.values.kind !== kind) throw new StatutoryError(`${rs.statute} ${rs.jurisdiction} ${rs.version} is not a ${kind} rule set`);
@@ -88,7 +100,11 @@ interface Slab {
   gender?: string;
   months?: Record<string, string>;
 }
-/** PT for a month (monthly basis) or a deduction month of a half-year (half-yearly basis), by state slabs. */
+/**
+ * PT for a month (monthly basis), a deduction month of a half-year (half-yearly basis, on the half-year's income), or a
+ * month's instalment of a yearly amount (annual basis, on the year's salary): the whole rupees of a twelfth each month and
+ * the rest in the rule's last month (Madhya Pradesh: 2,500 = 208 x 11 + 212 in March).
+ */
 export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number; gender?: string | null }) {
   const v = need(rs, 'pt');
   const months = v.deductMonths as number[] | undefined;
@@ -97,14 +113,24 @@ export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number
   const slabs = (v.slabs as Slab[]).filter((s) => !s.gender || !i.gender || s.gender === i.gender).filter((s) => !s.gender || i.gender || s.gender === 'male');
   const s = slabs.find((x) => wage.gte(D(x.from)) && (x.to === null || wage.lte(D(x.to))));
   const amount = s ? D(s.months?.[String(i.month)] ?? s.amount) : ZERO;
+  if (v.basis === 'annual') {
+    const part = amount.div(12).floor();
+    return { amount: i.month === Number(v.lastMonth) ? amount.sub(part.mul(11)) : part, citation: cite(rs) };
+  }
   return { amount, citation: cite(rs) };
 }
 
-/** LWF in its deduction months. */
-export function lwf(rs: RuleSet, i: { month: number }) {
+/**
+ * LWF in its deduction months: fixed amounts, or (H10, Haryana) a rate of the month's wage up to a cap, rounded as the
+ * rule says (to the rupee by default), with the employer paying a multiple of the employee share.
+ */
+export function lwf(rs: RuleSet, i: { month: number; wage?: Prisma.Decimal.Value }) {
   const v = need(rs, 'lwf');
   const due = (v.months as number[]).includes(i.month);
-  return { employee: due ? D(v.employee as string) : ZERO, employer: due ? D(v.employer as string) : ZERO, citation: cite(rs) };
+  if (!due) return { employee: ZERO, employer: ZERO, citation: cite(rs) };
+  if (v.rate === undefined) return { employee: D(v.employee as string), employer: D(v.employer as string), citation: cite(rs) };
+  const employee = Prisma.Decimal.min(round(D(i.wage ?? 0).mul(D(v.rate as string)), String(v.rounding ?? 'nearest')), D(v.cap as string));
+  return { employee, employer: employee.mul(D(v.employerMultiple as string)), citation: cite(rs) };
 }
 
 /** One row of a state minimum-wage table (amounts per month, as the notification prints them). */
@@ -216,12 +242,12 @@ export function gratuity(rs: RuleSet, i: { gratuityWage: Prisma.Decimal.Value })
 }
 
 /** Years of service as the gratuity and retrenchment laws count them: whole years, and a part year over six months counts. */
-export function serviceYears(from: string, to: string): { completed: number; counted: number } {
+export function serviceYears(from: string, to: string): { completed: number; counted: number; months: number } {
   const [y1, m1, d1] = from.split('-').map(Number);
   const [y2, m2, d2] = to.split('-').map(Number);
   const months = (y2 - y1) * 12 + (m2 - m1) - (d2 + 1 < d1 ? 1 : 0);
   const completed = Math.floor(months / 12);
-  return { completed, counted: completed + (months % 12 >= 6 ? 1 : 0) };
+  return { completed, counted: completed + (months % 12 >= 6 ? 1 : 0), months };
 }
 
 /**
@@ -234,7 +260,7 @@ export function gratuityDue(rs: RuleSet, i: { lastWage: Prisma.Decimal.Value; jo
   const min = i.fixedTerm && v.fixedTermMinYears !== null && v.fixedTermMinYears !== undefined ? Number(v.fixedTermMinYears) : Number(v.minYears);
   const eligible = !!i.death || y.completed >= min;
   const amount = eligible ? Prisma.Decimal.min(D(v.cap as string), money(D(i.lastWage).mul(Number(v.daysPerYear)).div(Number(v.monthDays)).mul(y.counted))) : ZERO;
-  return { eligible, years: y.counted, amount: money(amount), citation: cite(rs) };
+  return { eligible, years: y.counted, minYears: min, amount: money(amount), citation: cite(rs) };
 }
 
 /** Founder decision 5g-D3: the part of an exit payment exempt from tax (up to the rule's limit); 0 for other components. */
@@ -399,12 +425,15 @@ export function penalty(rs: RuleSet, i: { item: string; amount: Prisma.Decimal.V
 /** When a monthly return or deposit is due (YYYY-MM-DD) for a wage month. */
 export function due(rs: RuleSet, i: { key: string; month: string }) {
   const v = need(rs, 'calendar');
-  const item = (v.items as { key: string; dueDay: number; monthOffset: number; march?: { dueDay: number; monthOffset: number } }[]).find((x) => x.key === i.key);
+  type Due = { dueDay: number; monthOffset: number };
+  const item = (v.items as (Due & { key: string; march?: Due; byMonth?: Record<string, Due> })[]).find((x) => x.key === i.key);
   if (!item) throw new StatutoryError(`No due date for ${i.key}`);
-  const rule = item.march && i.month.endsWith('-03') ? item.march : item;
+  // byMonth (H9): a wage month's own date, for amounts paid once a half-year (Punjab LWF: April-September by 15 October).
+  const rule = item.byMonth?.[String(Number(i.month.slice(5)))] ?? (item.march && i.month.endsWith('-03') ? item.march : item);
   const d = new Date(`${i.month}-01T00:00:00Z`);
   d.setUTCMonth(d.getUTCMonth() + rule.monthOffset);
-  d.setUTCDate(rule.dueDay);
+  // A due day past the month's end (31 for "the last day") is that month's last day.
+  d.setUTCDate(Math.min(rule.dueDay, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()));
   return { due: d.toISOString().slice(0, 10), citation: cite(rs) };
 }
 
@@ -455,6 +484,12 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
       if (list.length && list[list.length - 1].to !== null) problems.push('The last slab must be open-ended');
     }
     if (limits.ptAnnualMax && D(v.annualCap as string).gt(D(limits.ptAnnualMax))) problems.push(`Professional tax can never be more than ₹${limits.ptAnnualMax} a year`);
+  }
+  if (rs.values.kind === 'pt' && v.basis === 'annual' && !(Number(v.lastMonth) >= 1 && Number(v.lastMonth) <= 12)) problems.push('A yearly PT names the month that takes the rest (lastMonth)');
+  if (rs.values.kind === 'lwf' && v.rate !== undefined) {
+    rate(v.rate, 'rate');
+    if (typeof v.cap !== 'string' || !/^\d+(\.\d{1,2})?$/.test(v.cap)) problems.push('A rate-based LWF has a cap in rupees');
+    if (typeof v.employerMultiple !== 'string' || !/^\d+(\.\d+)?$/.test(v.employerMultiple)) problems.push('A rate-based LWF says the employer multiple');
   }
   if (rs.values.kind === 'pf') ['employeeRate', 'employerRate', 'epsRate', 'edliRate', 'adminRate'].forEach((k) => rate(v[k], k));
   if (rs.values.kind === 'esi') ['employeeRate', 'employerRate'].forEach((k) => rate(v[k], k));
@@ -519,6 +554,12 @@ export function checkShape(rs: RuleSet, limits: { ptAnnualMax?: string } = {}): 
       if (!amount(sec.single) || !amount(sec.aggregate)) problems.push(`Section ${k}: thresholds are whole rupees or null`);
     }
   }
+  if (rs.values.kind === 'loan_perquisite') {
+    const rates = (v.rates ?? {}) as Record<string, unknown>;
+    for (const k of Object.keys(rates)) if (!(PERQ_PURPOSES as readonly string[]).includes(k)) problems.push(`Loan type ${k} is not one of ${PERQ_PURPOSES.join(', ')}`);
+    for (const k of PERQ_PURPOSES) if (rates[k] !== null && !(typeof rates[k] === 'string' && /^\d{1,2}(\.\d{1,2})?$/.test(rates[k] as string))) problems.push(`The SBI rate for ${k} is a percent a year (like 9.15) or null until loaded`);
+    if (typeof v.exemptAggregate !== 'string' || !/^\d{1,10}$/.test(v.exemptAggregate)) problems.push('exemptAggregate is whole rupees');
+  }
   if (rs.validTo && rs.validTo < rs.validFrom) problems.push('The rule set ends before it starts');
   return problems;
 }
@@ -529,7 +570,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, eosg, f1099_due: f1099Due, pack_manifest: (rs: RuleSet) => ({ requires: (rs.values.requires as string[]).join(' ') }), wps_sif: (rs: RuleSet) => ({ currency: String(rs.values.currency) }), exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, eosg, f1099_due: f1099Due, pack_manifest: (rs: RuleSet) => ({ requires: (rs.values.requires as string[]).join(' ') }), wps_sif: (rs: RuleSet) => ({ currency: String(rs.values.currency) }), exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit, loan_perquisite: loanPerquisite };
 
 // Batch 5h (PAY-8.03, YX-TAX-16): TDS on consultant invoices from the reviewed rule set IN.TDS-NONSAL (kind tds_nonsalary).
 interface NonSalarySection {
@@ -586,15 +627,69 @@ export function tdsNonSalary(
   return { tds: round(tax, 'nearest'), base: money(base), rate: rate.toString(), reason, certificateUsed: money(certificateUsed), returnCode: sec.returnCode, citation: cite(rs) };
 }
 
+// D14 (founder answers 2404, 2405): the perquisite on a concessional loan, Income-tax Rules, Rule 3(7)(i), from the rule set
+// IN.PERQ-LOAN (kind loan_perquisite). Rates are the SBI rates per loan type on the first day of the tax year, entered by a
+// CA; a null rate means "not loaded" and nothing is worked out for that loan (never a guessed rate).
+export const PERQ_PURPOSES = ['housing', 'vehicle', 'education', 'personal', 'other'] as const;
+export interface PerqLoanIn {
+  id?: string;
+  purpose: string;
+  /** The loan's own yearly rate, percent. */
+  ratePct: Prisma.Decimal.Value;
+  /** The most owed on the loan in the month (before the month's instalment). */
+  maxOutstanding: Prisma.Decimal.Value;
+  /** The company marked it exempt (medical treatment, Rule 3A). */
+  exempt: boolean;
+}
+
+/**
+ * One month for one person: no perquisite when the loans add up to the exempt limit or less; else, per loan not marked
+ * exempt, maxOutstanding × (SBI rate − loan rate) / 12 / 100, never below zero, rounded half up to the paisa.
+ */
+export function loanPerquisite(rs: RuleSet, i: { loans: PerqLoanIn[] }) {
+  const v = need(rs, 'loan_perquisite');
+  const rates = (v.rates ?? {}) as Record<string, string | null>;
+  const aggregate = i.loans.reduce((t, l) => t.add(D(l.maxOutstanding)), ZERO);
+  const smallTotal = i.loans.length > 0 && aggregate.lte(D(v.exemptAggregate as string));
+  let ratesMissing = false;
+  const lines = i.loans.map((l) => {
+    const base = { id: l.id ?? null, purpose: l.purpose, maxOutstanding: money(D(l.maxOutstanding)), refRate: null as string | null, value: ZERO };
+    if (smallTotal) return { ...base, reason: 'small_total' as const };
+    if (l.exempt && v.medicalExempt !== false) return { ...base, reason: 'exempt' as const };
+    const ref = rates[l.purpose] ?? null;
+    if (ref === null) {
+      ratesMissing = true;
+      return { ...base, reason: 'rate_not_loaded' as const };
+    }
+    const gap = Prisma.Decimal.max(ZERO, D(ref).sub(D(l.ratePct)));
+    return { ...base, refRate: ref, value: money(D(l.maxOutstanding).mul(gap).div(1200)), reason: gap.isZero() ? ('not_below' as const) : ('charged' as const) };
+  });
+  const total = lines.reduce((t, l) => t.add(l.value), ZERO);
+  return { total, ratesMissing, smallTotal, aggregate: money(aggregate), lines, citation: cite(rs) };
+}
+
 /** Runs one golden case; returns the fields that differ (empty when it passes). */
 export function runGolden(rs: RuleSet, g: GoldenCase): string[] {
+  return goldenResult(rs, g).problems;
+}
+
+/** Console answer 1043: one golden case with what the rule set gives for each expected field, and what differs. */
+export function goldenResult(rs: RuleSet, g: GoldenCase): { actual: Record<string, unknown>; problems: string[] } {
   const calc = CALCULATORS[g.fn];
-  if (!calc) return [`unknown calculator ${g.fn}`];
-  const got = calc(rs, g.input as never);
-  return Object.entries(g.expected).flatMap(([k, want]) => {
+  if (!calc) return { actual: {}, problems: [`unknown calculator ${g.fn}`] };
+  let got: Record<string, unknown>;
+  try {
+    got = calc(rs, g.input as never);
+  } catch (e) {
+    return { actual: {}, problems: [`${g.name}: the calculation failed (${e instanceof Error ? e.message : String(e)})`] };
+  }
+  const actual: Record<string, unknown> = {};
+  const problems = Object.entries(g.expected).flatMap(([k, want]) => {
     const v = got[k];
     const have = v instanceof Prisma.Decimal ? out(v) : v;
+    actual[k] = have ?? null;
     const ok = v instanceof Prisma.Decimal ? D(String(want)).eq(v) : have === want;
     return ok ? [] : [`${g.name}: ${k} is ${String(have)}, expected ${String(want)}`];
   });
+  return { actual, problems };
 }

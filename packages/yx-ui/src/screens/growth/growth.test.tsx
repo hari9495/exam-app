@@ -255,10 +255,13 @@ describe('screen flows', () => {
     expect(screen.getByText('75%', { selector: 'strong' })).toBeInTheDocument();
   });
 
-  it('360° nominations below the minimum block sending', () => {
+  it('360° nominations below the minimum say why and do not send (the button stays pressable)', () => {
     render(<NominationsScreen persona="emp" employee="Divya Raghunathan" people={PEOPLE} nominations={NOMINATIONS.slice(0, 2)} />);
     expect(screen.getByText('Nominate at least 3 reviewers. You have 2.')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Send to manager for approval' })[0]).toBeDisabled();
+    const send = screen.getAllByRole('button', { name: 'Send to manager for approval' })[0]!;
+    expect(send).toBeEnabled();
+    fireEvent.click(send);
+    expect(screen.queryByText(/^Sent to/)).toBeNull();
   });
 
   it('quick feedback validates the recipient before sending', () => {

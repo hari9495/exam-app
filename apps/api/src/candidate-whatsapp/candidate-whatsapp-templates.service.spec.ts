@@ -7,6 +7,7 @@ describe('CandidateWhatsappTemplatesService', () => {
   let audit: { record: jest.Mock };
   let tx: {
     candidateWhatsappTemplate: Record<string, jest.Mock>;
+    recycleBinItem: Record<string, jest.Mock>;
     pipeline: Record<string, jest.Mock>;
     pipelineStage: Record<string, jest.Mock>;
   };
@@ -14,6 +15,7 @@ describe('CandidateWhatsappTemplatesService', () => {
 
   beforeEach(() => {
     tx = {
+      recycleBinItem: { create: jest.fn() },
       candidateWhatsappTemplate: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -259,6 +261,8 @@ describe('CandidateWhatsappTemplatesService', () => {
       const out = await service.remove(context, 'user-1', 's1');
 
       expect(tx.candidateWhatsappTemplate.delete).toHaveBeenCalledWith({ where: { id: 's1' } });
+      // Batch B item 3: kept in the recycle bin first.
+      expect(tx.recycleBinItem.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ kind: expect.stringMatching(/template$/), entityId: 's1' }) }));
       expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'candidate_whatsapp_template.removed', entityId: 's1' }));
       expect(out).toEqual({ success: true });
     });

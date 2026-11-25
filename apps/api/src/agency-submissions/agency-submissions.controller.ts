@@ -26,7 +26,8 @@ export class AgencySubmissionsController {
 
   @Post(':id/accept')
   @RequirePermissions('pipeline:manage')
-  accept(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+  async accept(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Param('id') id: string) {
+    await this.agencySubmissions.assertNotClientJob(tenant, id);
     return this.agencySubmissions.accept(tenant, id, userId);
   }
 

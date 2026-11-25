@@ -10,7 +10,7 @@ describe('landingFor (where a YukthiX sign-in lands)', () => {
 
   it("a new hire in their first 30 days lands on that page; platform staff keep their console", () => {
     expect(landingFor('panel', true)).toBe('/yx/me/first-30-days');
-    expect(landingFor('super_admin')).toBe('/v2/organizations');
-    expect(landingFor('super_admin', true)).toBe('/v2/organizations');
+    expect(landingFor('super_admin')).toBe('/staff/companies');
+    expect(landingFor('super_admin', true)).toBe('/staff/companies');
   });
 });

@@ -1,9 +1,10 @@
-import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { formatDate, formatTime } from '../lib/format';
 import { WEEKDAYS_SHORT, addDays, dayKey, daysBetween, daysFrom, isWeekend, startOfWeek } from '../lib/dates';
 import { Button } from './button';
 import { Badge } from './display';
+import { Checkbox } from './choice';
 import { InlineAlert } from './feedback';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from './menu';
 
@@ -180,6 +181,13 @@ export interface RosterGridProps {
   defaultMenuOpen?: boolean;
   /** Marks this day's column ("Today" under the date), as the other roster screens do. */
   today?: Date;
+  /**
+   * Row checkboxes and a bulk bar (batch A B6): the ticked people (controlled). With `onSelectedPeopleChange` each row and
+   * the header get a checkbox; `bulkActions` are the bar's buttons for the ticked people.
+   */
+  selectedPeople?: string[];
+  onSelectedPeopleChange?: (ids: string[]) => void;
+  bulkActions?: (ids: string[]) => ReactNode;
 }
 
 type Cell = [number, number]; // [row, col]
@@ -208,7 +216,13 @@ export function RosterGrid({
   defaultSelection = [],
   defaultMenuOpen = false,
   today,
+  selectedPeople = [],
+  onSelectedPeopleChange,
+  bulkActions,
 }: RosterGridProps) {
+  const picking = !readOnly && !!onSelectedPeopleChange;
+  const ticked = new Set(selectedPeople.filter((id) => people.some((p) => p.id === id)));
+  const tick = (id: string, on: boolean) => onSelectedPeopleChange?.(on ? [...ticked, id] : [...ticked].filter((x) => x !== id));
   const [valueState, setValueState] = useState(defaultValue);
   const value = valueProp ?? valueState;
   const [baseline, setBaseline] = useState(value);
@@ -376,7 +390,8 @@ export function RosterGrid({
                 Fix {blocking.length} {blocking.length === 1 ? 'conflict' : 'conflicts'} to publish
               </span>
             )}
-            <Button variant="primary" disabled={blocking.length > 0} aria-describedby={blocking.length ? blockedId : undefined} onClick={() => setConfirming(true)}>
+            {/* Never disabled (founder rule): with a conflict left, pressing goes to it; the line beside says why. */}
+            <Button variant="primary" aria-describedby={blocking.length ? blockedId : undefined} onClick={() => (blocking.length ? goTo(blocking[0]!) : setConfirming(true))}>
               Publish roster
             </Button>
           </div>
@@ -460,6 +475,18 @@ export function RosterGrid({
         </div>
       )}
 
+      {picking && ticked.size > 0 && (
+        <div className="yx-roster__bulk" role="region" aria-label="Bulk changes">
+          <span className="yx-roster__bulk-count" aria-live="polite">
+            {ticked.size} {ticked.size === 1 ? 'person' : 'people'} ticked
+          </span>
+          {bulkActions?.([...ticked])}
+          <Button size="sm" onClick={() => onSelectedPeopleChange!([])}>
+            Clear
+          </Button>
+        </div>
+      )}
+
       <p className="yx-roster__sr" aria-live="polite">
         {announce}
       </p>
@@ -476,7 +503,14 @@ export function RosterGrid({
           onKeyDown={onKeyDown}
         >
           <div role="row" className="yx-roster__row yx-roster__row--head">
-            <span role="columnheader" className="yx-roster__person">
+            <span role="columnheader" className="yx-roster__person" data-pick={picking || undefined}>
+              {picking && (
+                <Checkbox
+                  aria-label="Tick everyone"
+                  checked={ticked.size === 0 ? false : ticked.size === people.length ? true : 'indeterminate'}
+                  onChange={(on) => onSelectedPeopleChange!(on ? people.map((p) => p.id) : [])}
+                />
+              )}
               Person
             </span>
             {dates.map((d) => (
@@ -498,9 +532,12 @@ export function RosterGrid({
             const personConflicts = conflicts.filter((x) => x.personId === p.id);
             return (
               <div key={p.id} role="row" className="yx-roster__row">
-                <span role="rowheader" className="yx-roster__person">
-                  <span className="yx-roster__name">{p.name}</span>
-                  {p.role && <span className="yx-roster__role">{p.role}</span>}
+                <span role="rowheader" className="yx-roster__person" data-pick={picking || undefined}>
+                  {picking && <Checkbox aria-label={`Tick ${p.name}`} checked={ticked.has(p.id)} onChange={(on) => tick(p.id, on)} />}
+                  <span className="yx-roster__who">
+                    <span className="yx-roster__name">{p.name}</span>
+                    {p.role && <span className="yx-roster__role">{p.role}</span>}
+                  </span>
                 </span>
                 {dates.map((d, c) => {
                   const code = value[p.id]?.[c] ?? null;

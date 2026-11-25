@@ -6,6 +6,7 @@ export type Draft = Record<string, SettingValue>;
 
 /** Parses the registry's ISO "yyyy-mm-ddTHH:mm" without time-zone surprises. */
 export function parseIso(iso: string): Date {
+  if (/(Z|[+-]\d\d:?\d\d)$/.test(iso)) return new Date(iso);
   const [d, t = '00:00'] = iso.split('T');
   const [y, m, day] = d.split('-').map(Number);
   const [h, min] = t.split(':').map(Number);
@@ -111,6 +112,12 @@ export function refExample(pattern: string, type = 'APT', year = 2026, next = 14
 
 export function validateSetting(def: SettingDef, v: SettingValue): string | null {
   if (def.refPattern && typeof v === 'string' && !/\{seq(:\d)?\}/.test(v)) return 'Add {seq} (the running number) so every letter gets its own reference.';
+  // S-2 (answer 1324): a live select of numbers ('48') is checked against the legal limit too.
+  if (def.legal && typeof v === 'string' && /^\d+(\.\d+)?$/.test(v)) {
+    const { value: lim, kind = 'min', statute } = def.legal;
+    if (kind === 'min' && Number(v) < lim) return `Choose ${lim} or more. The law sets this minimum (${statute}).`;
+    if (kind === 'max' && Number(v) > lim) return `Choose ${lim} or less. The law sets this maximum (${statute}).`;
+  }
   if (typeof v === 'number') {
     if (def.legal) {
       const { value: lim, kind = 'min', statute } = def.legal;

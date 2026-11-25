@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatBytes, formatDate, formatINR, formatPhone, formatTime, groupIndian, initials, parseDate, parseTime } from './format';
+import { countText, formatBytes, formatDate, formatINR, formatPhone, formatTime, groupIndian, initials, parseDate, parseTime } from './format';
 import { ID_SPECS, maskAadhaar, verhoeffValid } from './validators';
 
 describe('format', () => {
@@ -86,5 +86,16 @@ describe('validators', () => {
     expect(ID_SPECS.aadhaar.validate(wrong)).toMatch(/not valid/);
     expect(ID_SPECS.aadhaar.validate('123456789012')).toMatch(/not valid/); // cannot start with 0 or 1
     expect(maskAadhaar(valid)).toBe(`XXXX XXXX ${valid.slice(-4)}`);
+  });
+});
+
+describe('countText', () => {
+  it('one is singular, every other count plural, with Indian grouping and irregular nouns', () => {
+    expect(countText(1, 'cycle')).toBe('1 cycle');
+    expect(countText(0, 'cycle')).toBe('0 cycles');
+    expect(countText(3, 'cycle')).toBe('3 cycles');
+    expect(countText(120000, 'goal')).toBe('1,20,000 goals');
+    expect(countText(1, 'person', 'people')).toBe('1 person');
+    expect(countText(2, 'person', 'people')).toBe('2 people');
   });
 });

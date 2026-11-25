@@ -4,11 +4,14 @@ import { Button } from '../../components/button';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
+import { Select } from '../../components/select';
 import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { MessageBody, when } from './desk-kit';
+import type { DeskClosed } from './types';
 
 // The requester's side of the knowledge base (SD-1.24 / SD-1.25, US-B-105, YX-HD-04): articles suggested while they
 // type, the help articles of their company, "Was this helpful?", "This solved it" (counted as self-service, no ticket
@@ -21,6 +24,9 @@ export interface KbSuggestion {
   slug?: string;
   title: string;
   summary: string | null;
+  /** YX-11 (C-8): an article YukthiX wrote for every company, read on the public help centre at this address. */
+  source?: 'yukthix';
+  href?: string;
 }
 
 export interface KbArticleView {
@@ -116,24 +122,33 @@ export function ArticleBody({ article, onLanguage, onFeedback, onSolved, onStill
   const { busy, error, run } = useRun();
   const [voted, setVoted] = useState<boolean | null>(null);
   const [solved, setSolved] = useState(false);
+  const { toast } = useToast();
+  /** One vote per article: a second press says so. */
+  const vote = (yes: boolean) => (voted !== null ? toast({ title: 'You have already told us. Thank you.' }) : void run(yes ? 'yes' : 'no', async () => { await onFeedback!(yes); setVoted(yes); }));
   const langs = article.languages.length > 1 && article.languages.length <= 4 ? article.languages : null;
   return (
+    // 1603 (founder, 12 Nov 2026): drawn in the HLP-04 article look: the number and date first (as the editor's header),
+    // the answer in a card, then the feedback.
     <article className="yx-ops-stack yx-desk-kb-article" aria-label={article.title}>
+      <p className="yx-ops-muted">
+        <BookOpen size={14} aria-hidden="true" /> <span className="yx-ops-mono">KB-{article.number}</span> · updated {when(article.updatedAt, timeZone)}
+      </p>
       {langs && onLanguage && <Segment label="Language" options={langs.map((l) => ({ value: l, label: LANGUAGE_LABEL[l] ?? l }))} value={article.language} onChange={onLanguage} />}
       {article.fallback && <InlineAlert tone="info">This article is not in your language yet, so it is shown in English.</InlineAlert>}
-      {article.summary && <p className="yx-ops-muted">{article.summary}</p>}
-      <MessageBody html={article.bodyHtml} />
-      <p className="yx-ops-muted">
-        Article KB-{article.number} · updated {when(article.updatedAt, timeZone)}
-      </p>
+      <Card>
+        <div className="yx-ops-stack">
+          {article.summary && <p className="yx-ops-muted">{article.summary}</p>}
+          <MessageBody html={article.bodyHtml} />
+        </div>
+      </Card>
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
       {onFeedback && (
         <div className="yx-ops-row" role="group" aria-label="Was this helpful?">
           <span>Was this helpful?</span>
-          <Button size="sm" icon={ThumbsUp} disabled={voted !== null} loading={busy === 'yes'} onClick={() => void run('yes', async () => { await onFeedback(true); setVoted(true); })}>
+          <Button size="sm" icon={ThumbsUp} loading={busy === 'yes'} onClick={() => vote(true)}>
             Yes
           </Button>
-          <Button size="sm" icon={ThumbsDown} disabled={voted !== null} loading={busy === 'no'} onClick={() => void run('no', async () => { await onFeedback(false); setVoted(false); })}>
+          <Button size="sm" icon={ThumbsDown} loading={busy === 'no'} onClick={() => vote(false)}>
             No
           </Button>
           {voted !== null && <span className="yx-ops-muted">Thank you for telling us.</span>}
@@ -143,11 +158,10 @@ export function ArticleBody({ article, onLanguage, onFeedback, onSolved, onStill
         <div className="yx-ops-row">
           {onSolved &&
             (solved ? (
-              <InlineAlert tone="success" title="Glad it helped">
-                No ticket was needed.
-              </InlineAlert>
+              <span className="yx-ops-muted">No ticket was needed.</span>
             ) : (
-              <Button variant="primary" icon={CheckCircle2} loading={busy === 'solved'} onClick={() => void run('solved', async () => { await onSolved(); setSolved(true); })}>
+              <Button variant="primary" icon={CheckCircle2} loading={busy === 'solved'} onClick={() => void run('solved', async () => { await onSolved(); setSolved(true); toast({ tone: 'success', title: 'Glad it helped', description: 'No ticket was needed.' }); })}>
+
                 This solved it
               </Button>
             ))}
@@ -227,12 +241,23 @@ export function KnowledgeCard({ home, onSearch, onOpen, defaultQuery = '' }: Kno
   );
 }
 
+/** Answer 1646: the desk is closed now; its own words, with {opens} as its next opening time. */
+export function DeskClosedNotice({ closed }: { closed: DeskClosed }) {
+  const opens = closed.opensAt ? when(closed.opensAt) : 'soon';
+  return (
+    <InlineAlert tone="info" title="Closed now">
+      {closed.message.includes('{opens}') ? closed.message.split('{opens}').join(opens) : `${closed.message} We open again ${opens}.`}
+    </InlineAlert>
+  );
+}
+
 const STARS = [1, 2, 3, 4, 5] as const;
 const STAR_WORDS = ['', 'Very poor', 'Poor', 'OK', 'Good', 'Very good'];
 
 /** Rate a solved ticket (US-B-108). One answer per ticket. */
-export function RateTicketCard({ rating, onRate }: { rating: number | null; onRate: (score: number, comment?: string) => Promise<unknown> }) {
+export function RateTicketCard({ rating, reasons = [], onRate }: { rating: number | null; reasons?: string[]; onRate: (score: number, comment?: string, reason?: string) => Promise<unknown> }) {
   const [score, setScore] = useState<number>(5);
+  const [reason, setReason] = useState<string | null>(null);
   const [comment, setComment] = useState('');
   const [done, setDone] = useState<number | null>(rating);
   const { busy, error, run } = useRun();
@@ -249,11 +274,16 @@ export function RateTicketCard({ rating, onRate }: { rating: number | null; onRa
           <p className="yx-ops-muted">
             {score} = {STAR_WORDS[score].toLowerCase()}
           </p>
+          {reasons.length > 0 && (
+            <FormField label="The main reason" optional>
+              <Select value={reason} onChange={setReason} clearable placeholder="Choose a reason" options={reasons.map((r) => ({ value: r, label: r }))} />
+            </FormField>
+          )}
           <FormField label="Anything to add?" optional>
             <TextArea value={comment} onChange={setComment} rows={3} maxLength={1000} />
           </FormField>
           <div className="yx-ops-row">
-            <Button variant="primary" loading={busy === 'rate'} onClick={() => void run('rate', async () => { await onRate(score, comment.trim() || undefined); setDone(score); })}>
+            <Button variant="primary" loading={busy === 'rate'} onClick={() => void run('rate', async () => { await onRate(score, comment.trim() || undefined, reason ?? undefined); setDone(score); })}>
               Send rating
             </Button>
           </div>

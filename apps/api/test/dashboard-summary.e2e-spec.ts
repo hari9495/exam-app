@@ -6,6 +6,7 @@ import { randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Dashboard summary', () => {
   let app: INestApplication;
@@ -77,7 +78,7 @@ describe('Dashboard summary', () => {
       .send({ title: 'Section 1' })
       .expect(201);
 
-    const questionResponse = await request(app.getHttpServer())
+    const questionResponse = await asApproved(await request(app.getHttpServer())
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterToken}`)
       .send({
@@ -87,7 +88,7 @@ describe('Dashboard summary', () => {
         marks: 1,
         options: [{ text: 'A', isCorrect: true }, { text: 'B', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
 
     await request(app.getHttpServer())
       .put(`/api/v1/exams/${examId}/sections/${sectionResponse.body.id}/questions`)

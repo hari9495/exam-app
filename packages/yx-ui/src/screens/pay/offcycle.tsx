@@ -1,26 +1,34 @@
 // Off-cycle and annual processes: PAY-11 off-cycle run (F&F, bonus, arrears only, correction), PAY-24 bonus computation,
 // PAY-28 arrears worksheet base confirmation, PAY-37 wage-settlement arrears, PAY-38 actuarial census and valuation.
 import { useState } from 'react';
-import { BellRing, Download, Eye, FileText, Send } from 'lucide-react';
+import { BellRing, Download, Eye, FileText, Plus, Send } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
-import { InlineAlert } from '../../components/feedback';
-import { FieldRow, FormField } from '../../components/field';
-import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
+import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
+import { Drawer } from '../../components/drawer';
+import { FieldRow, FormField, useTooEarly } from '../../components/field';
+import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { RadioGroup } from '../../components/choice';
 import { FileUpload } from '../../components/upload';
-import { DescriptionList, PageHeader } from '../../components/shell';
+import { DescriptionList, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { Stepper, useNarrow, type StepperStep } from '../../components/stepper';
 import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
-import { FactRow, PayFrame, SectionTitle } from './pay-kit';
+import { FactRow, PayFrame, SectionTitle, StateBlock, type ViewState } from './pay-kit';
+import { LiveActuarialScreen, LiveArrearsScreen, type LiveActuarial, type LiveArrears } from './offcycle-live';
 import { EMPLOYEES, TODAY } from '../_kit/data';
 import { d, FIN_APPROVER, PAYROLL_ADMIN, RUN_PICKS, RUN_ROWS } from './pay-data';
 import { EXIT_CASES, SCHEDULED } from '../people/people-data';
 
 const storyHref = (id: string) => `/?path=/story/${id}`;
 import { arrearsTotal, gratuity, retrenchmentCompensation, statutoryBonus, type ArrearMonth } from './pay-logic';
+import { LiveSettlementArrears, NewSettlementDrawer, type NewSettlementInput } from './settlement-live';
+import { LiveOffCycleRunScreen, type LiveOffCycleRun } from './offcycle-run-live';
+import { LiveBonusScreen, type BonusComputation, type BonusRow, type BonusRules, type LiveBonus } from './bonus-live';
+import type { LoadState } from './live/types';
+import type { LiveSpecialPay } from './special-pay-live';
 
 /* ================================================================== PAY-11 Off-cycle run */
 
@@ -60,8 +68,12 @@ const FNF_BASE = fnfLines(FNF_LEAVER);
 /** F&F net payable (earnings − deductions) for FNF_LEAVER: PAY-10's bank-file row reads it. */
 export const FNF_NET = FNF_BASE.reduce((a, l) => a + (l.kind === 'Earning' ? l.amount : l.kind === 'Deduction' ? -l.amount : 0), 0);
 
-/** PAY-11 · Off-cycle run wizard. F&F runs are created automatically on the approved last working day. */
-export function OffCycleRunScreen({ kind = 'fnf', step = 'lines', permission = false }: { kind?: OffCycleKind; step?: string; permission?: boolean }) {
+/** PAY-11 · Off-cycle run wizard. F&F runs are created automatically on the approved last working day. The app passes `live` (new off-cycle run, or an off-cycle run's page); stories show the sample. */
+export function OffCycleRunScreen(p: { kind?: OffCycleKind; step?: string; permission?: boolean; live?: LiveOffCycleRun }) {
+  return p.live ? <LiveOffCycleRunScreen live={p.live} /> : <SampleOffCycleRun {...p} />;
+}
+
+function SampleOffCycleRun({ kind = 'fnf', step = 'lines', permission = false }: { kind?: OffCycleKind; step?: string; permission?: boolean }) {
   const [type, setType] = useState<OffCycleKind>(kind);
   const fnf = type === 'fnf' || type === 'retrenchment' || type === 'death';
   const person = type === 'death' ? DECEASED : type === 'retrenchment' ? RETRENCHED : FNF_LEAVER;
@@ -102,98 +114,46 @@ export function OffCycleRunScreen({ kind = 'fnf', step = 'lines', permission = f
           { label: 'Last working day', value: formatDate(d(29)) },
         ]}
       />
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-      <table className="yx-pay-table">
-        <thead>
-          <tr>
-            <th scope="col">Line</th>
-            <th scope="col">Type</th>
-            <th scope="col" data-num>
-              Amount
-            </th>
-            <th scope="col">Why</th>
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l) => (
-            <tr key={l.label}>
-              <th scope="row">{l.label}</th>
-              <td>{l.kind === 'Employer' ? 'Company cost' : l.kind}</td>
-              <td data-num>{l.kind === 'Deduction' ? `−${formatINR(l.amount)}` : formatINR(l.amount)}</td>
-              <td>{l.note}</td>
-            </tr>
-          ))}
-        </tbody>
-        <tfoot>
-          <tr>
-            <th scope="row" colSpan={2}>
-              Net payable
-            </th>
-            <td data-num>{formatINR(earnings - deds)}</td>
-            <td />
-          </tr>
-        </tfoot>
-      </table>
-      </div>
+      <PlainTable
+        label="Settlement lines"
+        rows={lines}
+        getRowId={(l) => l.label}
+        columns={[
+          { key: 'line', header: 'Line', rowHeader: true, cell: (l) => l.label },
+          { key: 'type', header: 'Type', cell: (l) => (l.kind === 'Employer' ? 'Company cost' : l.kind) },
+          { key: 'amount', header: 'Amount', num: true, cell: (l) => (l.kind === 'Deduction' ? `−${formatINR(l.amount)}` : formatINR(l.amount)) },
+          { key: 'why', header: 'Why', cell: (l) => l.note },
+        ]}
+        footer={[{ id: 'net', label: 'Net payable', cells: { amount: formatINR(earnings - deds) } }]}
+      />
       {type === 'retrenchment' && (
         <FormField label="Government permission reference" required={!permission} helper="Required for establishments with 300 or more workers.">
-          <TextField defaultValue={permission ? 'LD/KA/RET/2026/0418 dated 18 Sep 2026' : ''} />
+          {/* Founder 2 Nov 2026: "authority, order no., granted on date", as recorded in People › Exits. */}
+          <TextField defaultValue={permission ? 'Labour Commissioner, Karnataka, order no. LD/KA/RET/2026/0418, granted on 18 Sep 2026' : ''} />
         </FormField>
       )}
       {type === 'death' && (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Paid to nominees by share (verified bank accounts), scrolls sideways on small screens">
-        <table className="yx-pay-table">
-          <caption>Paid to nominees by share (verified bank accounts)</caption>
-          <thead>
-            <tr>
-              <th scope="col">Nominee</th>
-              <th scope="col">Relationship</th>
-              <th scope="col" data-num>
-                Share
-              </th>
-              <th scope="col" data-num>
-                Amount
-              </th>
-              <th scope="col">Bank</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <th scope="row">Saroja {surname}</th>
-              <td>Spouse</td>
-              <td data-num>60%</td>
-              <td data-num>{formatINR(Math.round((earnings - deds) * 0.6))}</td>
-              <td>
-                <Badge tone="success">Verified</Badge>
-              </td>
-            </tr>
-            <tr>
-              <th scope="row">Nithya {surname}</th>
-              <td>Daughter</td>
-              <td data-num>40%</td>
-              <td data-num>{formatINR(Math.round((earnings - deds) * 0.4))}</td>
-              <td>
-                <Badge tone="warning">Penny-drop pending</Badge>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        </div>
+        <PlainTable
+          label="Paid to nominees by share"
+          caption="Paid to nominees by share (verified bank accounts)"
+          rows={[
+            { name: `Saroja ${surname}`, relation: 'Spouse', share: 0.6, bank: <Badge tone="success">Verified</Badge> },
+            { name: `Nithya ${surname}`, relation: 'Daughter', share: 0.4, bank: <Badge tone="warning">Penny-drop pending</Badge> },
+          ]}
+          getRowId={(p) => p.name}
+          columns={[
+            { key: 'nominee', header: 'Nominee', rowHeader: true, cell: (p) => p.name },
+            { key: 'relation', header: 'Relationship', cell: (p) => p.relation },
+            { key: 'share', header: 'Share', num: true, cell: (p) => `${p.share * 100}%` },
+            { key: 'amount', header: 'Amount', num: true, cell: (p) => formatINR(Math.round((earnings - deds) * p.share)) },
+            { key: 'bank', header: 'Bank', cell: (p) => p.bank },
+          ]}
+        />
       )}
       {type === 'death' && <p className="yx-pay-note">Gratuity 5-year condition waived on death. TDS on payments to nominees follows the P07 rule for heirs.</p>}
     </div>
   );
-  const bonusLines = (
-    <DataTable
-      label="Bonus lines"
-      columns={[
-        { key: 'n', header: 'Employee', type: 'person', value: (r: (typeof EMPLOYEES)[number]) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-        { key: 'a', header: 'Amount', type: 'money', value: (r) => Math.round(r.ctc * 0.25), total: 'sum', width: 120 },
-      ]}
-      rows={EMPLOYEES.slice(0, 8)}
-      getRowId={(r) => r.id}
-    />
-  );
+  const bonusLines = <OffCycleLinesTable rows={EMPLOYEES.slice(0, 8).map((r) => ({ id: r.id, name: r.name, code: r.code, amount: Math.round(r.ctc * 0.25) }))} />;
   const steps: StepperStep[] = [
     {
       id: 'type',
@@ -229,9 +189,25 @@ export function OffCycleRunScreen({ kind = 'fnf', step = 'lines', permission = f
   );
 }
 
+/** PAY-11 "Bonus run": the run's lines per person with the total (design table, also rendered live on an off-cycle run). */
+export function OffCycleLinesTable({ rows, label = 'Bonus lines' }: { rows: { id: string; name: string; code?: string | null; amount: number; note?: string | null }[]; label?: string }) {
+  return (
+    <DataTable
+      label={label}
+      columns={[
+        { key: 'n', header: 'Employee', type: 'person', value: (r: (typeof rows)[number]) => r.name, person: (r) => ({ name: r.name, secondary: r.code ?? undefined }), width: 220 },
+        { key: 'a', header: 'Amount', type: 'money', value: (r) => r.amount, total: 'sum', width: 120 },
+        ...(rows.some((r) => r.note) ? [{ key: 'w', header: 'Why', value: (r: (typeof rows)[number]) => r.note ?? '', width: 280 }] : []),
+      ]}
+      rows={rows}
+      getRowId={(r) => r.id}
+    />
+  );
+}
+
 /* ================================================================== PAY-24 Bonus computation */
 
-export interface BonusRow {
+interface SampleBonusRow {
   id: string;
   name: string;
   code: string;
@@ -239,80 +215,89 @@ export interface BonusRow {
   months: number;
   minimumWage: number;
 }
-export const BONUS_ROWS: BonusRow[] = EMPLOYEES.filter((e) => e.department === 'Operations')
+export const BONUS_ROWS: SampleBonusRow[] = EMPLOYEES.filter((e) => e.department === 'Operations')
   .slice(0, 14)
   .map((e, i) => ({ id: e.id, name: e.name, code: e.code, wage: [14_800, 16_200, 18_900, 21_000, 22_400, 15_600, 17_300, 19_800, 14_520, 20_600, 23_900, 16_800, 18_100, 15_200][i], months: i === 5 ? 7 : 12, minimumWage: 14_520 }));
 
+/** PAY-24 sub-pages in the stories: which state of the computation the sample shows. */
+export type BonusStoryView = 'empty' | 'draft' | 'submitted' | 'approved' | 'sent';
+
 /** PAY-24 · Statutory bonus computation (annual, Payment of Bonus Act rules in P07). */
-export function BonusComputationScreen({ step = 'compute', pct = 8.33 }: { step?: string; pct?: number }) {
-  const [rate, setRate] = useState<number | null>(pct);
-  const rows = BONUS_ROWS.map((r) => ({ ...r, ...statutoryBonus(r.wage, r.months, rate ?? 8.33, r.minimumWage) }));
-  const total = rows.reduce((a, r) => a + r.amount, 0);
-  const cols: TableColumn<(typeof rows)[number]>[] = [
-    { key: 'n', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 220 },
-    { key: 'w', header: 'Monthly wage', type: 'money', value: (r) => r.wage, width: 120 },
-    { key: 'e', header: 'Eligible', value: (r) => (r.eligible ? 'Yes' : 'No: wage above ₹21,000'), width: 180 },
-    { key: 'b', header: 'Bonus base', type: 'money', value: (r) => r.base, width: 110 },
-    { key: 'm', header: 'Months', type: 'number', value: (r) => r.months, width: 80 },
-    { key: 'a', header: 'Bonus', type: 'money', value: (r) => r.amount, total: 'sum', width: 110 },
-  ];
-  return (
+export function BonusComputationScreen({ live, ...story }: { step?: string; pct?: number; view?: BonusStoryView; state?: LoadState; tooEarly?: boolean; refused?: boolean; rateOn?: BonusRules['eligibilityRateOn']; formCOpen?: boolean; /** The live app's /yx/payroll/bonus. */ live?: LiveBonus }) {
+  return live ? (
+    <LiveBonusScreen live={live} />
+  ) : (
     <PayFrame page="runs">
-      <PageHeader title="Statutory bonus · 2025-26" description="Kaveri Foods Pvt Ltd · payment method: annual, after year close (with monthly provision)" status={<Badge tone="warning">Due by 30 Nov 2026</Badge>} />
-      <Stepper
-        title="Bonus computation"
-        defaultCurrent={step}
-        finishLabel="Send for approval"
-        steps={[
-          {
-            id: 'surplus',
-            title: 'Allocable surplus',
-            description: 'Set-on and set-off',
-            content: (
-              <div className="yx-pay-stack">
-                <DescriptionList
-                  columns={2}
-                  items={[
-                    { label: 'Available surplus 2025-26', value: formatINR(48_20_000) },
-                    { label: 'Allocable surplus (60%)', value: formatINR(28_92_000) },
-                    { label: 'Set-on carried from 2024-25', value: formatINR(2_10_000) },
-                    { label: 'Set-off carried', value: '—' },
-                  ]}
-                />
-              </div>
-            ),
-          },
-          {
-            id: 'compute',
-            title: 'Compute',
-            description: `Rate ${rate}%`,
-            content: (
-              <div className="yx-pay-stack">
-                <FieldRow>
-                  <FormField label="Bonus rate" required helper="Between 8.33% and 20%.">
-                    <NumberField value={rate} onChange={setRate} min={8.33} max={20} decimals suffix="%" />
-                  </FormField>
-                  <FormField label="Calculation ceiling">
-                    <TextField value="Higher of ₹7,000 and the minimum wage (₹14,520)" readOnly />
-                  </FormField>
-                </FieldRow>
-                <FactRow
-                  items={[
-                    { label: 'Eligible', value: `${rows.filter((r) => r.eligible).length} of ${rows.length}` },
-                    { label: 'Total bonus', value: formatINR(total) },
-                    { label: 'Provision booked', value: formatINR(total - 3_400) },
-                  ]}
-                />
-                <DataTable label="Bonus by employee" columns={cols} rows={rows} getRowId={(r) => r.id} onExport={() => {}} />
-                <p className="yx-pay-note">Eligibility: wage up to ₹21,000 a month and at least 30 working days in the year. Employees who worked part of the year get bonus for the months worked.</p>
-              </div>
-            ),
-          },
-          { id: 'approve', title: 'Approve and pay', description: 'Off-cycle bonus run', content: <p className="yx-pay-muted">Creates an off-cycle bonus run with its own bank file and the bonus register (Form C equivalent from P07).</p> },
-        ]}
-      />
+      <LiveBonusScreen key={JSON.stringify(story)} live={sampleBonus(story)} />
     </PayFrame>
   );
+}
+
+const BONUS_YEAR = { start: '2025-04-01', end: '2026-03-31', label: '2025-26', dueOn: '2026-11-30' };
+const ACT: BonusRules = { yearStartMonth: 4, eligibilityWage: '21000', calculationCeiling: '7000', minRate: '8.33', maxRate: '20', minWorkingDays: 30, minAmount: '100', allocablePercent: '60', carryYears: 4, dueMonths: 8, eligibilityRateOn: 'last_day' };
+
+/** The design's sample: Kaveri Foods operations staff for 2025-26, in the shape the API returns. */
+function sampleBonus({ step = 'compute', pct = 8.33, view = 'draft', state = 'ready', tooEarly = false, refused = false, rateOn = 'last_day', formCOpen = false }: { step?: string; pct?: number; view?: BonusStoryView; state?: LoadState; tooEarly?: boolean; refused?: boolean; rateOn?: BonusRules['eligibilityRateOn']; formCOpen?: boolean }): LiveBonus {
+  const rules: BonusRules = { ...ACT, eligibilityRateOn: rateOn };
+  const rows: BonusRow[] = BONUS_ROWS.map((r) => {
+    const b = statutoryBonus(r.wage, r.months, pct, r.minimumWage);
+    const f = (n: number) => n.toFixed(2);
+    return { employmentId: r.id, employeeId: r.id, employeeCode: r.code, name: r.name, wageTotal: f(r.wage * r.months), workingDays: String(r.months === 12 ? 296 : 172), minimumWage: f(r.minimumWage), ceiling: f(Math.max(7_000, r.minimumWage)), eligibleMonths: b.eligible ? r.months : 0, eligible: b.eligible, reason: b.eligible ? null : 'Wage above ₹21,000 a month all year.', bonusSalary: f(b.base * r.months), bonus: f(b.amount), pujaPaid: '0.00', misconductLoss: '0.00', disqualified: false, adjustReason: null, deductions: '0.00', payable: f(b.amount) };
+  });
+  const total = rows.reduce((a, r) => a + Number(r.bonus), 0).toFixed(2);
+  const status = view === 'empty' ? 'draft' : view;
+  const surplus = tooEarly ? null : pct >= 20 ? '4820000.00' : '200000.00';
+  const at = '2026-10-20T10:30:00Z';
+  const computation: BonusComputation = {
+    id: 'bonus-2025',
+    year: BONUS_YEAR,
+    status,
+    version: 3,
+    overdue: false,
+    rules,
+    availableSurplus: surplus,
+    allocableSurplus: surplus && (Number(surplus) * 0.6).toFixed(2),
+    openingSetOn: '0.00',
+    openingSetOff: '0.00',
+    firstYear: false,
+    setOnIn: '210000.00',
+    setOffIn: '0.00',
+    setOnUsed: '0.00',
+    setOffSettled: '0.00',
+    setOnMade: pct >= 20 ? '96000.00' : '0.00',
+    setOffMade: '0.00',
+    supportedRate: String(pct),
+    chosenRate: null,
+    rate: String(pct),
+    totals: { people: rows.length, eligible: rows.filter((r) => r.eligible).length, salary: rows.reduce((a, r) => a + Number(r.bonusSalary), 0).toFixed(2), bonus: total, deductions: '0.00', payable: total },
+    createdBy: { id: 'u-pa', name: PAYROLL_ADMIN.name },
+    submitted: status === 'draft' ? null : { by: PAYROLL_ADMIN.name, at },
+    approved: status === 'approved' || status === 'sent' ? { by: FIN_APPROVER.name, at: '2026-10-22T09:00:00Z' } : null,
+    sent: status === 'sent' ? { by: PAYROLL_ADMIN.name, at: '2026-10-23T09:00:00Z', runId: 'run-bonus', runStatus: 'draft', runMonth: '2026-10' } : null,
+    returnedReason: null,
+    madeByMe: view !== 'submitted' || refused,
+    rows,
+  };
+  const can = view === 'submitted' && !refused ? { manage: false, approve: true } : { manage: true, approve: refused };
+  const done = async () => undefined;
+  return {
+    state,
+    entities: [{ id: 'kfpl', name: 'Kaveri Foods Pvt Ltd', shortName: 'KFPL', keys: [] }],
+    entityId: 'kfpl',
+    onEntity: () => {},
+    onYear: () => {},
+    data: { years: [2025, 2024, 2023, 2022, 2021].map((y) => ({ start: `${y}-04-01`, end: `${y + 1}-03-31`, label: `${y}-${String(y + 1).slice(2)}`, dueOn: `${y + 1}-11-30`, ended: true })), year: { ...BONUS_YEAR, ended: true }, rules, can, computation: view === 'empty' ? null : computation },
+    onCompute: done,
+    onChange: done,
+    onRow: done,
+    onSubmit: done,
+    onApprove: done,
+    onReturn: done,
+    onSend: done,
+    onFormC: done,
+    runHref: (id) => `#${id}`,
+    story: { step: view === 'submitted' || view === 'approved' || view === 'sent' ? 'approve' : step, tooEarly, formCOpen, ...(refused ? { refused: 'You worked on this bonus, so someone else approves it.' } : {}) },
+  };
 }
 
 /* ================================================================== PAY-28 Arrears worksheet: base confirmation */
@@ -345,13 +330,87 @@ const sourceBadge = (m: ArrearMonth) =>
     <Badge tone="warning">Missing: confirm base</Badge>
   );
 
+/** Worksheets on the PAY-28 list (sample): the settlement's category A workers, one still missing a month's base. */
+const SAMPLE_SHEETS = EMPLOYEES.filter((e) => e.location === 'Hosur plant' && e.department === 'Operations' && !e.role.startsWith('Head'))
+  .slice(0, 4)
+  .map((e, i) => ({ id: `ws-${i}`, person: `${e.name} · ${e.code}`, months: SETTLEMENT.span, owed: 7_500 + i * 300, status: i === 0 ? 'Base needed' : i === 3 ? 'Approved' : 'Ready to approve' }));
+const SHEET_TONE: Record<string, 'warning' | 'info' | 'success' | 'neutral'> = { 'Base needed': 'warning', 'Ready to approve': 'info', Approved: 'success', Cancelled: 'neutral' };
+type SampleSheet = (typeof SAMPLE_SHEETS)[number];
+
+/**
+ * PAY-28 · Arrears and recoveries (/yx/payroll/arrears). `view="list"`: the worksheets, each opening its base
+ * confirmation in a drawer; the Recoveries tab holds PAY-19 (court orders, carry-forwards, overpayments).
+ * `live`: the page's real worksheets and overpayments (offcycle-live.tsx).
+ */
+export function ArrearsBaseScreen({ live, view, state = 'ready', openId, ...story }: { confirmed?: boolean; embedded?: boolean; computed?: boolean; /** The worksheet list (the page) instead of one worksheet's base step. */ view?: 'list'; state?: ViewState | 'no-access'; /** A worksheet open in its drawer (list view). */ openId?: string; /** The live app's /yx/payroll/arrears. */ live?: LiveArrears }) {
+  if (live) return <LiveArrearsScreen live={live} />;
+  if (view === 'list') return <SampleArrearsList state={state} openId={openId} />;
+  return <SampleArrearsBase {...story} />;
+}
+
+function SampleArrearsList({ state, openId }: { state: ViewState | 'no-access'; openId?: string }) {
+  const [open, setOpen] = useState<SampleSheet | null>(SAMPLE_SHEETS.find((w) => w.id === openId) ?? null);
+  const cols: TableColumn<SampleSheet>[] = [
+    { key: 'person', header: 'Person', value: (w) => w.person },
+    { key: 'months', header: 'Months', value: (w) => w.months },
+    { key: 'owed', header: 'Owed to the employee', type: 'money', value: (w) => w.owed },
+    { key: 'status', header: 'Status', type: 'status', value: (w) => w.status, statusTone: (v) => SHEET_TONE[String(v)] ?? 'neutral' },
+  ];
+  return (
+    <PayFrame page="loans">
+      <PageHeader title="Arrears and recoveries" description="Arrears worksheets (corrected minus as paid, per month and component), court orders and overpayments." />
+      {state === 'no-access' ? (
+        <NoAccessState grantedBy="your payroll admin" what="arrears" />
+      ) : (
+        <StateBlock state={state} rows={6} empty={<EmptyState title="No arrears worksheets" description="A past-dated pay change or a wage settlement makes one." />}>
+          <Tabs defaultValue="arrears">
+            <TabsList aria-label="Arrears and recoveries">
+              <TabsTrigger value="arrears" count={SAMPLE_SHEETS.length}>
+                Arrears worksheets
+              </TabsTrigger>
+              <TabsTrigger value="recoveries">Recoveries</TabsTrigger>
+            </TabsList>
+            <TabsContent value="arrears">
+              <DataTable
+                label="Arrears worksheets"
+                columns={cols}
+                rows={SAMPLE_SHEETS}
+                getRowId={(w) => w.id}
+                onRowClick={setOpen}
+                activeRowId={open?.id}
+                rowButtons={(w) => (
+                  <Button size="sm" onClick={() => setOpen(w)}>
+                    Open
+                  </Button>
+                )}
+              />
+            </TabsContent>
+            <TabsContent value="recoveries">
+              <InlineAlert tone="info" title="Court orders, carry-forwards and overpayments">
+                These are the PAY-19 tabs. An overpayment is recovered only by a plan the employee acknowledges; a write-off needs approval with a reason.
+              </InlineAlert>
+            </TabsContent>
+          </Tabs>
+        </StateBlock>
+      )}
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpen(null)} title={`${open?.person ?? ''} · arrears`} subtitle={`Union settlement · ${SETTLEMENT.span}`} size="lg" footer={<Button onClick={() => setOpen(null)}>Close</Button>}>
+        {open && <SampleArrearsBase embedded confirmed={open.status !== 'Base needed'} computed={open.status !== 'Base needed'} />}
+      </Drawer>
+    </PayFrame>
+  );
+}
+
 /** PAY-28 · Arrears worksheet base-confirmation step (months before go-live use imported as-paid lines). */
-export function ArrearsBaseScreen({ confirmed = false, embedded = false, computed: computedAtStart = false }: { confirmed?: boolean; embedded?: boolean; /** Start with the arrears computed (stories). */ computed?: boolean }) {
+function SampleArrearsBase({ confirmed = false, embedded = false, computed: computedAtStart = false }: { confirmed?: boolean; embedded?: boolean; /** Start with the arrears computed (stories). */ computed?: boolean }) {
   const narrow = useNarrow();
   const [base, setBase] = useState<number | null>(confirmed ? 25_000 : null);
   const [reason, setReason] = useState(confirmed ? 'Old payroll register for August 2026, page 14' : '');
   const [computed, setComputed] = useState(computedAtStart);
   const [sent, setSent] = useState(false);
+  const baseEarly = useTooEarly([
+    ...(base == null ? [{ fieldId: 'ar-base', message: `Enter the basic as paid in ${ARREAR_MONTHS.find((m) => m.source === 'missing')!.month}.` }] : []),
+    ...(reason.trim().length < REASON_MIN ? [{ fieldId: 'ar-source', message: `Name the document or register (at least ${REASON_MIN} characters).` }] : []),
+  ]);
   const months: ArrearMonth[] = ARREAR_MONTHS.map((m) => (m.source === 'missing' && base != null && reason.trim().length >= REASON_MIN ? { ...m, asPaid: base, source: 'confirmed' } : m));
   const r = arrearsTotal(months);
   const missingMonth = ARREAR_MONTHS.find((m) => m.source === 'missing')!.month;
@@ -363,7 +422,7 @@ export function ArrearsBaseScreen({ confirmed = false, embedded = false, compute
   const pf = Math.round(r.total * 0.12);
   const content = (
     <div className="yx-pay-stack">
-      <InlineAlert tone={r.canApprove ? 'success' : 'warning'} title={r.canApprove ? 'Base confirmed for every month' : `Confirm the as-paid base for ${r.missing.join(', ')}`}>
+      <InlineAlert tone={r.canApprove ? 'info' : 'warning'} title={r.canApprove ? 'Base confirmed for every month' : `Confirm the as-paid base for ${r.missing.join(', ')}`}>
         {r.canApprove ? 'You can compute the arrears and send them for approval.' : 'No imported lines exist for this month. Arrears can’t be computed until you confirm what was paid, with a reason.'}
       </InlineAlert>
       {narrow ? (
@@ -390,44 +449,20 @@ export function ArrearsBaseScreen({ confirmed = false, embedded = false, compute
           </div>
         </>
       ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-          <table className="yx-pay-table">
-            <thead>
-              <tr>
-                <th scope="col">Month</th>
-                <th scope="col" data-num>
-                  Revised basic
-                </th>
-                <th scope="col" data-num>
-                  As paid
-                </th>
-                <th scope="col">Base source</th>
-                <th scope="col" data-num>
-                  Arrear
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {months.map((m) => (
-                <tr key={m.month} data-state={m.source === 'missing' ? 'flag' : undefined}>
-                  <th scope="row">{m.month}</th>
-                  <td data-num>{formatINR(m.corrected)}</td>
-                  <td data-num>{m.asPaid == null ? '—' : formatINR(m.asPaid)}</td>
-                  <td>{sourceBadge(m)}</td>
-                  <td data-num>{arrear(m)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th scope="row" colSpan={4}>
-                  {totalLabel}
-                </th>
-                <td data-num>{formatINR(r.total)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+        <PlainTable
+          label="Arrears by month"
+          rows={months}
+          getRowId={(m) => m.month}
+          rowTone={(m) => (m.source === 'missing' ? { tone: 'warning', label: 'Base missing' } : undefined)}
+          columns={[
+            { key: 'month', header: 'Month', rowHeader: true, cell: (m) => m.month },
+            { key: 'corrected', header: 'Revised basic', num: true, cell: (m) => formatINR(m.corrected) },
+            { key: 'asPaid', header: 'As paid', num: true, cell: (m) => (m.asPaid == null ? '—' : formatINR(m.asPaid)) },
+            { key: 'source', header: 'Base source', cell: (m) => sourceBadge(m) },
+            { key: 'arrear', header: 'Arrear', num: true, cell: (m) => arrear(m) },
+          ]}
+          footer={[{ id: 'total', label: totalLabel, cells: { arrear: formatINR(r.total) } }]}
+        />
       )}
       {confirmedMonth && (
         <p className="yx-pay-note">
@@ -438,10 +473,10 @@ export function ArrearsBaseScreen({ confirmed = false, embedded = false, compute
         <section className="yx-pay-panel" aria-label={`Confirm ${missingMonth} base`}>
           <SectionTitle>Confirm the as-paid base for {missingMonth}</SectionTitle>
           <FieldRow>
-            <FormField label={`Basic as paid in ${missingMonth}`} required>
+            <FormField id="ar-base" error={baseEarly.errorOf('ar-base')} label={`Basic as paid in ${missingMonth}`} required>
               <CurrencyField value={base} onChange={setBase} />
             </FormField>
-            <FormField label="Where this figure comes from" required helper={`Name the document or register (at least ${REASON_MIN} characters). Stored with the audit event.`}>
+            <FormField id="ar-source" error={baseEarly.errorOf('ar-source')} label="Where this figure comes from" required helper={`Name the document or register (at least ${REASON_MIN} characters). Stored with the audit event.`}>
               <TextArea value={reason} onChange={setReason} rows={2} />
             </FormField>
           </FieldRow>
@@ -483,7 +518,7 @@ export function ArrearsBaseScreen({ confirmed = false, embedded = false, compute
         </section>
       ) : (
         <div className="yx-pay-row">
-          <Button variant="primary" disabled={!r.canApprove} onClick={() => setComputed(true)}>
+          <Button variant="primary" onClick={() => (r.canApprove ? setComputed(true) : baseEarly.stop())}>
             Compute arrears
           </Button>
           {!r.canApprove && (
@@ -511,7 +546,53 @@ export function ArrearsBaseScreen({ confirmed = false, embedded = false, compute
 /* ================================================================== PAY-37 Wage-settlement arrears */
 
 /** PAY-37 · Wage-settlement arrears: settlement → categories → affected employees → arrears worksheet. */
-export function SettlementArrearsScreen({ step = 'categories' }: { step?: string }) {
+/** PAY-37 "New settlement" drawer states in the stories. */
+export type NewSettlementStory = 'empty' | 'filled' | 'too-early' | 'refused';
+
+export function SettlementArrearsScreen({ live, ...story }: { step?: string; /** No settlement yet. */ empty?: boolean; newSettlement?: NewSettlementStory; /** The live app's /yx/payroll/special-pay Settlements tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveSettlementArrears live={live} /> : <SampleSettlementArrears {...story} />;
+}
+
+const SAMPLE_SETTLEMENT: NewSettlementInput = {
+  title: 'Long-term settlement 2026',
+  unionId: 'u-kaveri',
+  signedOn: '2026-09-18',
+  effectiveFrom: '2026-04-01',
+  rates: [
+    { category: 'skilled', monthlyIncrease: '1500' },
+    { category: 'semi_skilled', monthlyIncrease: '1350' },
+    { category: 'unskilled', monthlyIncrease: '1200' },
+  ],
+};
+
+function SampleSettlementArrears({ step = 'categories', empty = false, newSettlement }: { step?: string; empty?: boolean; newSettlement?: NewSettlementStory }) {
+  const [adding, setAdding] = useState(!!newSettlement);
+  const today = `${TODAY.getFullYear()}-${String(TODAY.getMonth() + 1).padStart(2, '0')}-${String(TODAY.getDate()).padStart(2, '0')}`;
+  const newButton = (
+    <Button icon={Plus} onClick={() => setAdding(true)}>
+      New settlement
+    </Button>
+  );
+  const drawer = adding && (
+    <NewSettlementDrawer
+      open
+      onOpenChange={setAdding}
+      unions={[{ id: 'u-kaveri', name: 'Kaveri Foods Workers Union' }]}
+      today={today}
+      initial={newSettlement === 'filled' || newSettlement === 'refused' ? SAMPLE_SETTLEMENT : newSettlement === 'too-early' ? { title: 'LTS', rates: [{ category: 'skilled', monthlyIncrease: '1500' }, { category: 'skilled', monthlyIncrease: '' }] } : undefined}
+      revealErrors={newSettlement === 'too-early'}
+      serverError={newSettlement === 'refused' ? 'Each worker category once.' : null}
+      onSave={async () => undefined}
+    />
+  );
+  if (empty)
+    return (
+      <PayFrame page="runs">
+        <PageHeader title="Wage settlements" description="Long-term settlements with a union, and the arrears they bring." actions={newButton} />
+        <EmptyState title="No wage settlements yet" description="A long-term settlement with a union sets a monthly increase per worker category from an effective date; its arrears are worked out here." action={newButton} />
+        {drawer}
+      </PayFrame>
+    );
   const cats = [
     { cat: 'Category A · machine operators', increase: 1_500, count: 42 },
     { cat: 'Category B · helpers and loaders', increase: 1_200, count: 58 },
@@ -520,7 +601,17 @@ export function SettlementArrearsScreen({ step = 'categories' }: { step?: string
   const months = SETTLEMENT.months.length;
   return (
     <PayFrame page="runs">
-      <PageHeader title="Long-term settlement 2026" description={`Kaveri Foods Workers Union · settlement signed ${formatDate(SETTLEMENT.signed)} · effective ${formatDate(SETTLEMENT.effective)}`} actions={<Link href="#case">Open collective dispute case</Link>} />
+      <PageHeader
+        title="Long-term settlement 2026"
+        description={`Kaveri Foods Workers Union · settlement signed ${formatDate(SETTLEMENT.signed)} · effective ${formatDate(SETTLEMENT.effective)}`}
+        actions={
+          <>
+            <Link href="#case">Open collective dispute case</Link>
+            {newButton}
+          </>
+        }
+      />
+      {drawer}
       <Stepper
         title="Settlement arrears"
         defaultCurrent={step}
@@ -532,42 +623,18 @@ export function SettlementArrearsScreen({ step = 'categories' }: { step?: string
             title: 'Categories',
             description: 'Increase per worker category',
             content: (
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Category</th>
-                    <th scope="col" data-num>
-                      Increase a month
-                    </th>
-                    <th scope="col" data-num>
-                      Workers
-                    </th>
-                    <th scope="col" data-num>
-                      Arrears {SETTLEMENT.span}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cats.map((c) => (
-                    <tr key={c.cat}>
-                      <th scope="row">{c.cat}</th>
-                      <td data-num>{formatINR(c.increase)}</td>
-                      <td data-num>{c.count}</td>
-                      <td data-num>{formatINR(c.increase * c.count * months)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <th scope="row">Total</th>
-                    <td />
-                    <td data-num>{cats.reduce((a, c) => a + c.count, 0)}</td>
-                    <td data-num>{formatINR(cats.reduce((a, c) => a + c.increase * c.count * months, 0))}</td>
-                  </tr>
-                </tfoot>
-              </table>
-              </div>
+              <PlainTable
+                label="Increase per worker category"
+                rows={cats}
+                getRowId={(c) => c.cat}
+                columns={[
+                  { key: 'cat', header: 'Category', rowHeader: true, cell: (c) => c.cat },
+                  { key: 'increase', header: 'Increase a month', num: true, cell: (c) => formatINR(c.increase) },
+                  { key: 'count', header: 'Workers', num: true, cell: (c) => c.count },
+                  { key: 'arrears', header: `Arrears ${SETTLEMENT.span}`, num: true, cell: (c) => formatINR(c.increase * c.count * months) },
+                ]}
+                footer={[{ id: 'total', label: 'Total', cells: { count: cats.reduce((a, c) => a + c.count, 0), arrears: formatINR(cats.reduce((a, c) => a + c.increase * c.count * months, 0)) } }]}
+              />
             ),
           },
           { id: 'employees', title: 'Affected employees', description: '109 workers', content: <p className="yx-pay-muted">109 workers matched by category on the effective date; 4 leavers since April get arrears in an off-cycle run.</p> },
@@ -603,7 +670,12 @@ const dayNo = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate()) 
 type Figure = { g: number | null; l: number | null };
 
 /** PAY-38 · Actuarial census export and valuation upload (census versions, valuation results, provision posting). */
-export function ActuarialScreen({ step = 'census', uploaded = false, journalOpen = false, posted: postedAtStart = false }: { step?: string; uploaded?: boolean; journalOpen?: boolean; /** Start with the journal posted (stories). */ posted?: boolean }) {
+/** PAY-38 · Actuarial census and valuation. `live`: the page's real censuses and valuations (offcycle-live.tsx). */
+export function ActuarialScreen({ live, ...story }: { step?: string; uploaded?: boolean; journalOpen?: boolean; posted?: boolean; state?: Exclude<ViewState, 'empty'> | 'no-access'; /** The live app's /yx/payroll/actuarial. */ live?: LiveActuarial }) {
+  return live ? <LiveActuarialScreen live={live} /> : <SampleActuarial {...story} />;
+}
+
+function SampleActuarial({ step = 'census', uploaded = false, journalOpen = false, posted: postedAtStart = false, state = 'ready' }: { step?: string; uploaded?: boolean; journalOpen?: boolean; /** Start with the journal posted (stories). */ posted?: boolean; state?: Exclude<ViewState, 'empty'> | 'no-access' }) {
   const narrow = useNarrow();
   const g = gratuity(48_000, 80);
   const [cur, setCur] = useState(step);
@@ -647,6 +719,13 @@ export function ActuarialScreen({ step = 'census', uploaded = false, journalOpen
       </Badge>
     );
   const asAt = formatDate(new Date(2026, 2, 31));
+  if (state !== 'ready')
+    return (
+      <PayFrame page="reports" persona="fin">
+        <PageHeader title="Actuarial valuation" description="Gratuity and leave liability for Kaveri Foods Pvt Ltd" />
+        {state === 'no-access' ? <NoAccessState grantedBy="your payroll admin" what="actuarial valuations" /> : <StateBlock state={state} rows={6}>{null}</StateBlock>}
+      </PayFrame>
+    );
   return (
     <PayFrame page="reports" persona="fin">
       <PageHeader
@@ -697,38 +776,19 @@ export function ActuarialScreen({ step = 'census', uploaded = false, journalOpen
                     ))}
                   </ul>
                 ) : (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                    <table className="yx-pay-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Version</th>
-                          <th scope="col">As at</th>
-                          <th scope="col" data-num>
-                            Employees
-                          </th>
-                          <th scope="col">Layout</th>
-                          <th scope="col">Status</th>
-                          <th scope="col">
-                            <span className="yx-visually-hidden">Download</span>
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {CENSUS.map((c) => (
-                          <tr key={c.v}>
-                            <th scope="row" style={{ whiteSpace: 'nowrap' }}>
-                              {c.v}
-                            </th>
-                            <td style={{ whiteSpace: 'nowrap' }}>{asAt}</td>
-                            <td data-num>{c.count}</td>
-                            <td>{c.layout}</td>
-                            <td style={{ whiteSpace: 'nowrap' }}>{censusStatus(c)}</td>
-                            <td>{xlsx(c.v)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Census versions"
+                    rows={CENSUS}
+                    getRowId={(c) => c.v}
+                    columns={[
+                      { key: 'version', header: 'Version', rowHeader: true, cell: (c) => <span style={{ whiteSpace: 'nowrap' }}>{c.v}</span> },
+                      { key: 'asAt', header: 'As at', date: true, cell: () => asAt },
+                      { key: 'count', header: 'Employees', num: true, cell: (c) => c.count },
+                      { key: 'layout', header: 'Layout', cell: (c) => c.layout },
+                      { key: 'status', header: 'Status', cell: (c) => <span style={{ whiteSpace: 'nowrap' }}>{censusStatus(c)}</span> },
+                      { key: 'download', header: <span className="yx-visually-hidden">Download</span>, cell: (c) => xlsx(c.v) },
+                    ]}
+                  />
                 )}
                 {!report && (
                   <div className="yx-pay-row">
@@ -809,40 +869,17 @@ export function ActuarialScreen({ step = 'census', uploaded = false, journalOpen
                     </li>
                   </ul>
                 ) : (
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                  <table className="yx-pay-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Figure</th>
-                        <th scope="col" data-num>
-                          Gratuity
-                        </th>
-                        <th scope="col" data-num>
-                          Leave
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {VAL_ROWS.map((r) => (
-                        <tr key={r.k}>
-                          <th scope="row">{r.label}</th>
-                          {(['g', 'l'] as const).map((key) => (
-                            <td key={key} data-num>
-                              {figureCell(r, key)}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <th scope="row">Closing obligation</th>
-                        <td data-num>{filled ? formatINR(closing('g')) : '—'}</td>
-                        <td data-num>{filled ? formatINR(closing('l')) : '—'}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                <PlainTable
+                  label="Valuation figures"
+                  rows={VAL_ROWS}
+                  getRowId={(r) => r.k}
+                  columns={[
+                    { key: 'figure', header: 'Figure', rowHeader: true, cell: (r) => r.label },
+                    { key: 'g', header: 'Gratuity', num: true, cell: (r) => figureCell(r, 'g') },
+                    { key: 'l', header: 'Leave', num: true, cell: (r) => figureCell(r, 'l') },
+                  ]}
+                  footer={[{ id: 'closing', label: 'Closing obligation', cells: { g: filled ? formatINR(closing('g')) : '—', l: filled ? formatINR(closing('l')) : '—' } }]}
+                />
                 )}
                 <p className="yx-pay-note">Closing obligation is calculated from the rows above. Figures in brackets reduce it.</p>
               </div>
@@ -867,40 +904,20 @@ export function ActuarialScreen({ step = 'census', uploaded = false, journalOpen
                     {formatINR(jG + jL)} provision journal sent to accounting by {FIN_APPROVER.name} on {formatDate(TODAY)}.
                   </InlineAlert>
                 )}
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision against the valuation">
-                  <table className="yx-pay-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Figure</th>
-                        <th scope="col" data-num>
-                          Gratuity
-                        </th>
-                        <th scope="col" data-num>
-                          Leave
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <th scope="row">Provision in books</th>
-                        <td data-num>{formatINR(BOOKS.g)}</td>
-                        <td data-num>{formatINR(BOOKS.l)}</td>
-                      </tr>
-                      <tr>
-                        <th scope="row">Closing obligation</th>
-                        <td data-num>{formatINR(closing('g'))}</td>
-                        <td data-num>{formatINR(closing('l'))}</td>
-                      </tr>
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <th scope="row">Journal: debit expense</th>
-                        <td data-num>{formatINR(jG)}</td>
-                        <td data-num>{formatINR(jL)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
+                <PlainTable
+                  label="Provision against the valuation"
+                  rows={[
+                    { id: 'books', label: 'Provision in books', g: BOOKS.g, l: BOOKS.l },
+                    { id: 'closing', label: 'Closing obligation', g: closing('g'), l: closing('l') },
+                  ]}
+                  getRowId={(r) => r.id}
+                  columns={[
+                    { key: 'figure', header: 'Figure', rowHeader: true, cell: (r) => r.label },
+                    { key: 'g', header: 'Gratuity', num: true, cell: (r) => formatINR(r.g) },
+                    { key: 'l', header: 'Leave', num: true, cell: (r) => formatINR(r.l) },
+                  ]}
+                  footer={[{ id: 'journal', label: 'Journal: debit expense', cells: { g: formatINR(jG), l: formatINR(jL) } }]}
+                />
                 <p className="yx-pay-note">
                   Check: 6 years 8 months of service on ₹48,000 rounds to {g.years} years, so gratuity due is {formatINR(g.amount)} (15/26 × wage × years).
                 </p>
@@ -910,38 +927,22 @@ export function ActuarialScreen({ step = 'census', uploaded = false, journalOpen
                   </Button>
                 </div>
                 {journal && (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Provision journal preview">
-                    <table className="yx-pay-table">
-                      <thead>
-                        <tr>
-                          <th scope="col">Account</th>
-                          <th scope="col" data-num>Debit</th>
-                          <th scope="col" data-num>Credit</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          ['Gratuity expense', jG, 0],
-                          ['Provision for gratuity', 0, jG],
-                          ['Leave encashment expense', jL, 0],
-                          ['Provision for leave encashment', 0, jL],
-                        ].map(([a, dr, cr]) => (
-                          <tr key={String(a)}>
-                            <th scope="row">{a}</th>
-                            <td data-num>{dr ? formatINR(Number(dr)) : ''}</td>
-                            <td data-num>{cr ? formatINR(Number(cr)) : ''}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Total</th>
-                          <td data-num>{formatINR(jG + jL)}</td>
-                          <td data-num>{formatINR(jG + jL)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Provision journal preview"
+                    rows={[
+                      { account: 'Gratuity expense', dr: jG, cr: 0 },
+                      { account: 'Provision for gratuity', dr: 0, cr: jG },
+                      { account: 'Leave encashment expense', dr: jL, cr: 0 },
+                      { account: 'Provision for leave encashment', dr: 0, cr: jL },
+                    ]}
+                    getRowId={(j) => j.account}
+                    columns={[
+                      { key: 'account', header: 'Account', rowHeader: true, cell: (j) => j.account },
+                      { key: 'debit', header: 'Debit', num: true, cell: (j) => (j.dr ? formatINR(j.dr) : '') },
+                      { key: 'credit', header: 'Credit', num: true, cell: (j) => (j.cr ? formatINR(j.cr) : '') },
+                    ]}
+                    footer={[{ id: 'total', label: 'Total', cells: { debit: formatINR(jG + jL), credit: formatINR(jG + jL) } }]}
+                  />
                 )}
               </div>
             ),

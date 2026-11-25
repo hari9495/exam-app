@@ -12,13 +12,14 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Hiring › Candidates, a candidate, and retention on the API (M10 batch AT4).
+// Hiring › Candidates, a candidate, and retention: the designed HIR-05 screens with `live`, on the API.
 const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
 const api = apiFetch as jest.Mock;
 const router = { push: jest.fn(), replace: jest.fn() };
-const PERMS = { 'candidate:manage': true, 'candidate:view': true, 'candidate:data_rights': true, 'org.settings.manage': true };
+let PERMS: Record<string, boolean> = { 'candidate:manage': true, 'candidate:view': true, 'candidate:data_rights': true, 'org.settings.manage': true };
 
 beforeEach(() => {
+  PERMS = { 'candidate:manage': true, 'candidate:view': true, 'candidate:data_rights': true, 'org.settings.manage': true, 'results:view': true };
   api.mockReset();
   router.push.mockReset();
   router.replace.mockReset();
@@ -84,5 +85,117 @@ describe('Hiring › Candidates (M10 AT4)', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Preview (changes nothing)' }));
     expect(await screen.findByText(/1 renewal emails, 0 anonymised/)).toBeInTheDocument();
     expect(posted).toEqual([{ dryRun: true }]);
+  });
+});
+
+const PROFILE = {
+  candidate: { id: 'c1', name: 'Priya Raman', email: 'priya@example.com', phone: '98450 12345', phoneE164: null, status: 'active', globalStage: 'engaged', createdAt: '2026-09-01T00:00:00.000Z', erasedAt: null, emailOptedOut: false },
+  legalHold: null,
+  retention: { months: 12, lastActivityAt: '2026-10-01T00:00:00.000Z', until: '2027-10-01T00:00:00.000Z', noticeAt: null },
+  exEmployee: null,
+  resume: null,
+  applications: [{ id: 'a1', jobId: 'j1', jobTitle: 'Senior Accountant', jobStatus: 'open', stage: 'Interview', status: null, appliedAt: '2026-09-01T00:00:00.000Z', closed: false, closedReason: null, source: 'careers' }],
+  assessments: [],
+  interviews: [],
+  messages: { emails: [], sms: 0, whatsapp: 0 },
+  consents: [],
+  lists: [],
+  merges: [],
+};
+
+describe('Hiring › HIR-05 designed screens (live)', () => {
+  it('the record: recruiter sees contact details; Open in pipeline opens the job board', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path === '/hiring/candidates/c1') return PROFILE;
+      if (path.startsWith('/candidates?')) return { data: [], total: 0 };
+      const c = common(path);
+      return c === undefined ? [] : c;
+    });
+    wrap(<YxHiringCandidatePage />);
+    expect(await screen.findByText('priya@example.com')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Open in pipeline' }));
+    expect(router.push).toHaveBeenCalledWith('/yx/hiring/jobs/j1/pipeline');
+  });
+
+  it('the record: a 404 (or erased) shows the designed not-found state', async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path === '/hiring/candidates/c1') throw Object.assign(new Error('Not found'), { status: 404 });
+      if (path.startsWith('/candidates?')) return { data: [], total: 0 };
+      const c = common(path);
+      return c === undefined ? [] : c;
+    });
+    wrap(<YxHiringCandidatePage />);
+    expect(await screen.findByText(/anonymised after the retention period/)).toBeInTheDocument();
+  });
+
+  it('the list opens on the duplicates tab from ?view=duplicates; without the data-rights key there is no merge', async () => {
+    PERMS = { 'candidate:manage': true, 'candidate:view': true };
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('view=duplicates'));
+    api.mockImplementation(async (path: string) => {
+      if (path.startsWith('/candidates?')) return { data: [], total: 0 };
+      if (path === '/hiring/duplicates') return [{ a: { id: 'c1', name: 'Priya Raman', email: 'priya@example.com', phone: null }, b: { id: 'c2', name: 'Priya R', email: 'priya.r@example.com', phone: null }, reasons: ['phone'], score: null }];
+      const c = common(path);
+      return c === undefined ? [] : c;
+    });
+    wrap(<YxHiringCandidatesPage />);
+    expect(await screen.findByText(/Priya R · priya.r@example.com/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Compare and merge' })).not.toBeInTheDocument();
+  });
+
+  it('retention: a data request sends the email in the POST body, never the URL', async () => {
+    const posted: { path: string; body: unknown }[] = [];
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === '/hiring/retention/runs') return { months: 12, runs: [] };
+      if (path === '/hiring/data-requests/lookup') return (posted.push({ path, body: JSON.parse(String(init!.body)) }), { match: null });
+      const c = common(path);
+      return c === undefined ? [] : c;
+    });
+    wrap(<YxHiringRetentionPage />);
+    await userEvent.type(await screen.findByLabelText(/^Email the person applied with/), 'someone@example.com');
+    await userEvent.click(screen.getByRole('button', { name: 'Find' }));
+    expect(await screen.findByText('Nobody with this email is in your candidates.')).toBeInTheDocument();
+    expect(posted).toEqual([{ path: '/hiring/data-requests/lookup', body: { email: 'someone@example.com' } }]);
+    expect(api.mock.calls.some(([p]) => String(p).includes('someone@'))).toBe(false);
+  });
+
+  it('?entry= opens that application on the record (answer 261): interviews, messages, notes, offers', async () => {
+    (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('entry=a1'));
+    const row = { entryId: 'a1', candidateId: 'c1', candidateName: 'Priya Raman', candidateEmail: 'priya@example.com', statusId: 'st1', stageId: 's1', category: 'active', enteredVia: 'careers', rejectedReason: null, examResults: [], avgRating: null, feedbackCount: 0, fitScore: null, fitStatus: null, fitStale: false, assignedUserId: null, assigneeName: null, referredByName: null, assignedGroupId: null, assignedGroupName: null, customFields: [], blueprintChecklist: {}, stageEnteredAt: '2026-11-01T00:00:00.000Z', scorecards: null, nextInterviewAt: null, rejectionPendingUntil: null };
+    api.mockImplementation(async (path: string) => {
+      if (path === '/hiring/candidates/c1') return PROFILE;
+      if (path === '/hiring/jobs/j1/board') return { pipeline: { id: 'p', name: 'Standard', stages: [{ id: 's1', name: 'Interview', category: 'active', position: 0, statuses: [{ id: 'st1', name: 'Interview', position: 0 }], rules: [] }] }, columns: { s1: [row] } };
+      if (path === '/hiring/jobs/j1/interview-settings') return { scorecardTemplateId: null, exams: [] };
+      if (path.startsWith('/candidates?')) return { data: [], total: 0 };
+      if (path === '/approvals/gate-status') return { requisition: false, offer: false };
+      if (path.startsWith('/pipeline/entries/a1/fit-assessment')) return null;
+      const c = common(path);
+      return c === undefined ? [] : c;
+    });
+    wrap(<YxHiringCandidatePage />);
+    const d = await screen.findByRole('dialog', { name: 'Priya Raman' });
+    for (const t of [/Messages/, /Notes/, /Offers/]) expect(within(d).getByRole('tab', { name: t })).toBeInTheDocument();
+    // Answer 301: interviews left the application for the record's Schedule interview and the HIR-06 / 07 pages.
+    expect(within(d).queryByRole('tab', { name: /Interviews/ })).not.toBeInTheDocument();
+    await userEvent.click(within(d).getByRole('button', { name: /Close/ }));
+    expect(router.replace).toHaveBeenCalledWith('/yx/hiring/candidates/c1');
+  });
+
+  it('answer 274: with the pipeline key the record offers Schedule interview and Move to next stage, and moves by the API', async () => {
+    PERMS = { ...PERMS, 'pipeline:manage': true };
+    const row = { entryId: 'a1', candidateId: 'c1', candidateName: 'Priya Raman', candidateEmail: 'priya@example.com', statusId: 'st1', stageId: 's1', category: 'active', examResults: [], customFields: [], blueprintChecklist: {}, scorecards: null, rejectionPendingUntil: null };
+    const posted: { path: string; body: unknown }[] = [];
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return (posted.push({ path, body: JSON.parse(String(init.body)) }), {});
+      if (path === '/hiring/candidates/c1') return PROFILE;
+      if (path === '/hiring/jobs/j1/board') return { pipeline: { id: 'p', name: 'Standard', stages: [{ id: 's1', name: 'Applied', category: 'active', position: 0, statuses: [{ id: 'st1', name: 'Applied', position: 0 }] }, { id: 's2', name: 'Interview', category: 'active', position: 1, statuses: [{ id: 'st2', name: 'Interview', position: 0 }] }] }, columns: { s1: [row] } };
+      if (path === '/hiring/jobs/j1/interview-settings') return { scorecardTemplateId: null, exams: [] };
+      if (path.startsWith('/candidates?')) return { data: [], total: 0 };
+      const c = common(path);
+      return c === undefined ? [] : c;
+    });
+    wrap(<YxHiringCandidatePage />);
+    expect(await screen.findByRole('button', { name: 'Schedule interview' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Move to next stage' }));
+    await waitFor(() => expect(posted).toEqual([{ path: '/hiring/entries/a1/move', body: { statusId: 'st2', fromStatusId: 'st1' } }]));
   });
 });

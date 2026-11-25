@@ -6,7 +6,8 @@ import { ConditionBuilder, emptyRule } from '../../components/condition';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { NumberField, TextField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
 import { Card } from '../../components/shell';
@@ -88,12 +89,12 @@ export function RulesAdmin(props: RulesAdminProps) {
                     Edit
                   </Button>
                   {r.status !== 'active' && (
-                    <Button size="sm" variant="primary" disabled={busy === r.id} onClick={() => void run(r.id, () => props.onStatus(r, 'active'))}>
+                    <Button size="sm" variant="primary" loading={busy === r.id} onClick={() => void run(r.id, () => props.onStatus(r, 'active'))}>
                       Switch on
                     </Button>
                   )}
                   {r.status === 'active' && (
-                    <Button size="sm" disabled={busy === r.id} onClick={() => void run(r.id, () => props.onStatus(r, 'paused'))}>
+                    <Button size="sm" loading={busy === r.id} onClick={() => void run(r.id, () => props.onStatus(r, 'paused'))}>
                       Pause
                     </Button>
                   )}
@@ -103,7 +104,7 @@ export function RulesAdmin(props: RulesAdminProps) {
                   <Button size="sm" onClick={() => void run(`dry-${r.id}`, async () => setDry({ rule: r, result: await props.onDryRun(r) }))}>
                     Try it on recent tickets
                   </Button>
-                  <Button size="sm" variant="danger" disabled={busy === r.id} onClick={() => void run(r.id, () => props.onStatus(r, 'retired'))}>
+                  <Button size="sm" variant="danger" loading={busy === r.id} onClick={() => void run(r.id, () => props.onStatus(r, 'retired'))}>
                     Retire
                   </Button>
                 </div>
@@ -120,7 +121,7 @@ export function RulesAdmin(props: RulesAdminProps) {
                 <span className="yx-esm-cart__name">
                   <strong>{rc.name}</strong> <span className="yx-ops-muted">{rc.description}</span>
                 </span>
-                <Button size="sm" disabled={busy === rc.key} onClick={() => void run(rc.key, () => props.onInstall(rc.key))}>
+                <Button size="sm" loading={busy === rc.key} onClick={() => void run(rc.key, () => props.onInstall(rc.key))}>
                   Add as a draft
                 </Button>
               </li>
@@ -206,6 +207,8 @@ function RuleEditor({ rule, schema, onClose, onSave }: { rule: DeskRule | null; 
   const [limit, setLimit] = useState<number | null>(rule?.maxRunsPerHour ?? 200);
   const [stopAfter, setStopAfter] = useState(rule?.stopAfter ?? false);
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const early = useTooEarly(name.trim() ? [] : [{ fieldId: 'rl-name', message: 'Name the rule.' }]);
   const t = schema.triggers.find((x) => x.key === trigger.type);
   const setAt = (i: number, patch: Partial<DeskRuleAction>) => setActions(actions.map((a, j) => (j === i ? { ...a, ...patch } : a)));
   const groupOpts = schema.groups.map((g) => ({ value: g.id, label: g.name }));
@@ -219,7 +222,7 @@ function RuleEditor({ rule, schema, onClose, onSave }: { rule: DeskRule | null; 
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" disabled={!name.trim() || busy === 'save'} onClick={() => void run('save', () => onSave(rule, { name: name.trim(), trigger, condition: toServerGroup(cond.conditions), actions, maxRunsPerHour: limit ?? 200, stopAfter }))}>
+          <Button variant="primary" loading={busy === 'save'} onClick={() => !early.stop() && void run('save', () => onSave(rule, { name: name.trim(), trigger, condition: toServerGroup(cond.conditions), actions, maxRunsPerHour: limit ?? 200, stopAfter }))}>
             Save
           </Button>
         </>
@@ -231,7 +234,7 @@ function RuleEditor({ rule, schema, onClose, onSave }: { rule: DeskRule | null; 
             {error}
           </InlineAlert>
         )}
-        <FormField label="Name" required>
+        <FormField id="rl-name" label="Name" required error={early.errorOf('rl-name')}>
           <TextField value={name} onChange={setName} maxLength={100} />
         </FormField>
         <FormField label="When">
@@ -285,10 +288,10 @@ function RuleEditor({ rule, schema, onClose, onSave }: { rule: DeskRule | null; 
                 </>
               )}
               {a.type === 'webhook' && <Select aria-label={`Action ${i + 1} webhook`} options={schema.webhooks.map((w) => ({ value: w.id, label: w.name }))} value={a.webhookId ?? null} onChange={(webhookId) => setAt(i, { webhookId: webhookId ?? undefined })} />}
-              <IconButton icon={Trash2} label={`Remove action ${i + 1}`} disabled={actions.length <= 1} onClick={() => setActions(actions.filter((_, j) => j !== i))} />
+              <IconButton icon={Trash2} label={`Remove action ${i + 1}`} onClick={() => (actions.length <= 1 ? toast({ title: 'A rule needs at least one action.' }) : setActions(actions.filter((_, j) => j !== i)))} />
             </div>
           ))}
-          <Button size="sm" icon={Plus} disabled={actions.length >= 10} onClick={() => setActions([...actions, { type: 'add_tag', tag: '' }])}>
+          <Button size="sm" icon={Plus} onClick={() => (actions.length >= 10 ? toast({ title: 'A rule can have up to 10 actions.' }) : setActions([...actions, { type: 'add_tag', tag: '' }]))}>
             Add an action
           </Button>
         </Card>
@@ -308,6 +311,7 @@ function WebhooksCard({ hooks, onAdd, onActive }: { hooks: RuleWebhook[]; onAdd:
   const [url, setUrl] = useState('');
   const [secret, setSecret] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly([...(name.trim() ? [] : [{ fieldId: 'wh-name', message: 'Name the webhook.' }]), ...(url.trim() ? [] : [{ fieldId: 'wh-url', message: 'Give the https address.' }])]);
   return (
     <Card title="Webhooks rules may call">
       <p className="yx-ops-muted">Only https addresses on the public internet. Each call is signed with a secret you see once; it carries ticket ids and fields, never message text.</p>
@@ -317,7 +321,7 @@ function WebhooksCard({ hooks, onAdd, onActive }: { hooks: RuleWebhook[]; onAdd:
         </InlineAlert>
       )}
       {secret && (
-        <InlineAlert tone="success" title="Copy the signing secret now">
+        <InlineAlert tone="info" title="Copy the signing secret now">
           <code>{secret}</code>. It will not be shown again.
         </InlineAlert>
       )}
@@ -328,18 +332,23 @@ function WebhooksCard({ hooks, onAdd, onActive }: { hooks: RuleWebhook[]; onAdd:
               {h.name} <span className="yx-ops-muted">{h.url}</span>
             </span>
             <Badge tone={h.active ? 'success' : 'neutral'}>{h.active ? 'On' : 'Off'}</Badge>
-            <Button size="sm" disabled={busy === h.id} onClick={() => void run(h.id, () => onActive(h, !h.active))}>
+            <Button size="sm" loading={busy === h.id} onClick={() => void run(h.id, () => onActive(h, !h.active))}>
               {h.active ? 'Switch off' : 'Switch on'}
             </Button>
           </li>
         ))}
       </ul>
       <div className="yx-ops-row">
-        <TextField aria-label="Webhook name" placeholder="Name" value={name} onChange={setName} maxLength={100} />
-        <TextField aria-label="Webhook address" placeholder="https://" value={url} onChange={setUrl} maxLength={500} />
+        <FormField id="wh-name" label="Webhook name" hideLabel error={early.errorOf('wh-name')}>
+          <TextField placeholder="Name" value={name} onChange={setName} maxLength={100} />
+        </FormField>
+        <FormField id="wh-url" label="Webhook address" hideLabel error={early.errorOf('wh-url')}>
+          <TextField placeholder="https://" value={url} onChange={setUrl} maxLength={500} />
+        </FormField>
         <Button
-          disabled={!name.trim() || !url.trim() || busy === 'add'}
+          loading={busy === 'add'}
           onClick={() =>
+            !early.stop() &&
             void run('add', async () => {
               setSecret((await onAdd({ name: name.trim(), url: url.trim() })).secret);
               setName('');

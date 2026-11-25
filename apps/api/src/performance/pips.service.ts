@@ -10,8 +10,8 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { holdersOf } from '../time/time-core';
 import { LettersService } from '../documents/letters/letters.service';
 import { ExitsService } from '../lifecycle/exits.service';
-import { checkinDates, extensionProblem, isMissed, onLeave, pausedEnd, planProblem, type Span } from './pip-rules';
-import type { PipCheckinDto, PipExitDto, PipOutcomeDto, PipProposeDto } from './review-dto';
+import { checkinDates, extendAgainEnd, extendAgainProblem, extensionProblem, isMissed, onLeave, pausedEnd, planProblem, type Span } from './pip-rules';
+import type { PipCheckinDto, PipDecideDto, PipExitDto, PipExtendAgainDto, PipOutcomeDto, PipProposeDto } from './review-dto';
 
 // Performance batch PM8 (M06-BUILD-DESIGN §13; PM-8.01 … 8.03): performance improvement plans.
 //   propose     the manager (or the chain above) proposes for a report: reason, expectations with measures, support,
@@ -20,6 +20,8 @@ import type { PipCheckinDto, PipExitDto, PipOutcomeDto, PipProposeDto } from './
 //               when the employee or the manager is in an active reviewer block (§15.3) — the warning says nothing more
 //   plan        the employee reads and acknowledges it, with a comment (acknowledging is not agreeing); HR issues the
 //               P05 'pip' letter; check-ins on a fixed schedule, the manager records each, the employee may add a note
+//   again       founder answer (a): after "not met" HR may extend the plan once more (perf.pip.after_not_met_days, a
+//               reason); after that only met / not met and the exit case are left
 //   pause       protected leave inside the plan moves its end by the same days (computed, never stored over)
 //   outcome     HR: met, extended once (new end and a reason) or not met; "not met" never opens an exit by itself — HR's
 //               "Start an exit case" opens a company-initiated M01 exit linked to the plan (§4.1 change 4)
@@ -152,12 +154,19 @@ export class PerformancePipsService implements OnModuleInit {
       employeeComment: p.employeeComment,
       extendedFrom: p.extendedFrom ? iso(p.extendedFrom) : null,
       extendReason: p.extendReason,
+      reextendedFrom: p.reextendedFrom ? iso(p.reextendedFrom) : null,
+      reextendReason: p.reextendReason,
       outcomeNote: p.outcomeNote,
       outcomeAt: p.outcomeAt?.toISOString() ?? null,
       letterId: p.letterId,
       exitCaseId: a.hr ? p.exitCaseId : null,
       goals: goals.map((g) => ({ id: g.id, text: g.text, measure: g.measure, status: g.status })),
-      checkins: checkins.map((x) => ({ id: x.id, dueOn: iso(x.dueOn), heldOn: x.heldOn ? iso(x.heldOn) : null, managerNote: x.managerNote, employeeNote: x.employeeNote, status: x.status })),
+      checkins: checkins.map((x) => ({ id: x.id, dueOn: iso(x.dueOn), heldOn: x.heldOn ? iso(x.heldOn) : null, managerNote: x.managerNote, employeeNote: x.employeeNote, rating: x.rating, status: x.status })),
+      // PRF-12: the approval route (proposed, HR, the employee's acknowledgement) and whether I decide the HR step.
+      approval: await this.approval(tx, org, v, p, people),
+      proposedOn: iso(p.createdAt),
+      extendDays: Number(await settingFor(tx, c, 'perf.pip.extend_days', { legalEntityId: '' })),
+      extendAgainDays: Number(await settingFor(tx, c, 'perf.pip.after_not_met_days', { legalEntityId: '' })),
       // §15.3: HR only, and only that there is something to check with the case owner.
       warning: a.hr && (live || p.status === 'proposed') ? await this.blocked(tx, org, [p.employeeId, p.managerEmployeeId], today) : false,
       role: a.own ? 'employee' : lead ? 'manager' : 'hr',
@@ -166,12 +175,48 @@ export class PerformancePipsService implements OnModuleInit {
         checkin: lead && live,
         employeeNote: a.own && live,
         outcome: a.hr && live,
-        extend: a.hr && live && !p.extendedFrom,
+        extend: a.hr && live && !p.extendedFrom && !p.reextendedFrom,
+        extendAgain: a.hr && !extendAgainProblem({ status: p.status, exitCaseId: p.exitCaseId, reextended: Boolean(p.reextendedFrom) }),
         letter: a.hr && live && !p.letterId,
         startExit: a.hr && p.status === 'not_met' && !p.exitCaseId && v.grants.has('lifecycle.exit.manage'),
       },
       version: p.version,
     };
+  }
+
+  /** PRF-12: who proposed it, HR's decision (from the approval request) and the employee's acknowledgement. */
+  private async approval(tx: Tx, org: string, v: Viewer, p: Pip, people: Map<string, string>) {
+    const req = p.wfRequestId ? await tx.wfRequest.findFirst({ where: { organizationId: org, id: p.wfRequestId } }) : null;
+    const tasks = req ? await tx.wfTask.findMany({ where: { organizationId: org, requestId: req.id }, orderBy: { createdAt: 'asc' } }) : [];
+    const decision = req ? await tx.wfAction.findFirst({ where: { organizationId: org, requestId: req.id, action: { in: ['approved', 'self_approved', 'rejected', 'auto_approved', 'auto_rejected'] } }, orderBy: { createdAt: 'desc' } }) : null;
+    const users = await tx.user.findMany({ where: { organizationId: org, id: { in: [...tasks.map((t) => t.assigneeUserId), decision?.actorUserId].filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+    const name = (id: string | null | undefined) => users.find((u) => u.id === id)?.name ?? undefined;
+    const mine = !v.actingForOther && tasks.some((t) => t.status === 'open' && (t.assigneeUserId === v.userId || t.onBehalfOfUserId === v.userId));
+    const live = (LIVE as readonly string[]).includes(p.status) || ['met', 'not_met'].includes(p.status);
+    const hr = p.status === 'proposed' ? { status: 'current', approver: tasks.map((t) => name(t.assigneeUserId)).filter(Boolean).slice(0, 3).join(', ') || undefined } : p.status === 'declined' ? { status: 'rejected', approver: name(decision?.actorUserId), at: decision?.createdAt.toISOString(), comment: decision?.reason ?? undefined } : { status: 'done', approver: name(decision?.actorUserId), at: (decision?.createdAt ?? req?.decidedAt)?.toISOString(), comment: decision?.reason ?? undefined };
+    return {
+      steps: [
+        { id: 'proposed', label: 'Proposed', status: 'done', approver: people.get(p.managerEmployeeId) ?? undefined, at: p.createdAt.toISOString() },
+        { id: 'hr', label: 'HR approval', ...hr },
+        { id: 'ack', label: 'Employee acknowledgement', status: p.acknowledgedAt ? 'done' : live && p.status !== 'met' && p.status !== 'not_met' ? 'current' : 'pending', approver: people.get(p.employeeId) ?? undefined, at: p.acknowledgedAt?.toISOString() },
+      ],
+      canDecide: p.status === 'proposed' && mine,
+    };
+  }
+
+  /** PRF-12: HR approves (the plan starts) or sends it back (declined, with a reason) from the plan itself. */
+  async decide(ctx: TenantContext, user: ScopeUser, id: string, dto: PipDecideDto) {
+    const v = await this.viewer(user);
+    const taskId = await this.run(ctx, async (tx, c) => {
+      const { p } = await this.pipOr404(tx, c, v, id);
+      if (p.status !== 'proposed' || !p.wfRequestId) throw new ConflictException('This plan is not waiting for approval.');
+      const t = await tx.wfTask.findFirst({ where: { organizationId: c.organizationId, requestId: p.wfRequestId, status: 'open', OR: [{ assigneeUserId: v.userId! }, { onBehalfOfUserId: v.userId! }] } });
+      if (!t || v.actingForOther) throw new ForbiddenException('Only HR who were asked to approve this plan decide it.');
+      if (dto.decision === 'send_back' && !dto.reason?.trim()) throw new BadRequestException('Say why you are sending it back.');
+      return t.id;
+    });
+    await this.engine.decide({ ...ctx, organizationId: ctx.organizationId! }, v.userId!, taskId, dto.decision === 'approve' ? 'approve' : 'reject', dto.reason?.trim() || null);
+    return this.get(ctx, user, id);
   }
 
   // ------------------------------------------------------------------------------------------ list and read
@@ -324,7 +369,7 @@ export class PerformancePipsService implements OnModuleInit {
       if (a.manager || a.chain) {
         if (x.status === 'held') throw new ConflictException('This check-in is already recorded.');
         if (iso(x.dueOn) > addDays(today, 7)) throw new ConflictException('Record a check-in when it is near: at most a week before it is due.');
-        await tx.pipCheckin.update({ where: { id: x.id }, data: { status: 'held', heldOn: asDate(today), managerNote: dto.note } });
+        await tx.pipCheckin.update({ where: { id: x.id }, data: { status: 'held', heldOn: asDate(today), managerNote: dto.note, rating: dto.rating ?? null } });
       } else if (a.own) {
         if (x.status !== 'held') throw new ConflictException('Add your note after the check-in is held.');
         await tx.pipCheckin.update({ where: { id: x.id }, data: { employeeNote: dto.note } });
@@ -365,7 +410,7 @@ export class PerformancePipsService implements OnModuleInit {
       this.versioned(p, dto.version);
       let next: Pip;
       if (dto.outcome === 'extended') {
-        const problem = extensionProblem(iso(p.endsOn), dto.extendTo, Boolean(p.extendedFrom));
+        const problem = extensionProblem(iso(p.endsOn), dto.extendTo, Boolean(p.extendedFrom || p.reextendedFrom));
         if (problem) throw new BadRequestException(problem);
         const dates = checkinDates(iso(p.startsOn), dto.extendTo!, p.checkinEveryDays, iso(p.endsOn));
         await tx.pipCheckin.createMany({ data: dates.map((d) => ({ organizationId: org, pipId: id, dueOn: asDate(d) })), skipDuplicates: true });
@@ -380,6 +425,35 @@ export class PerformancePipsService implements OnModuleInit {
       await audit(tx, c, 'perf.pip.outcome', 'pip', id, { outcome: dto.outcome });
       return this.view(tx, c, v, next, a);
     });
+  }
+
+  /** Founder answer (a): HR extends a plan that was not met, once, by the company's days, with a reason. */
+  async extendAgain(ctx: TenantContext, user: ScopeUser, id: string, dto: PipExtendAgainDto) {
+    const v = await this.viewer(user);
+    const out = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { p, a } = await this.pipOr404(tx, c, v, id);
+      if (!a.hr) throw new ForbiddenException('HR extends a plan.');
+      const problem = extendAgainProblem({ status: p.status, exitCaseId: p.exitCaseId, reextended: Boolean(p.reextendedFrom) });
+      if (problem) throw new ConflictException(problem);
+      this.versioned(p, dto.version);
+      const today = todayIst();
+      const days = Number(await settingFor(tx, c, 'perf.pip.after_not_met_days', { legalEntityId: '' }));
+      const endsOn = extendAgainEnd(iso(p.endsOn), today, days);
+      const dates = checkinDates(today, endsOn, p.checkinEveryDays);
+      await tx.pipCheckin.createMany({ data: dates.map((d) => ({ organizationId: org, pipId: id, dueOn: asDate(d) })), skipDuplicates: true });
+      const n = await tx.pip.updateMany({
+        where: { organizationId: org, id, status: 'not_met', version: dto.version },
+        data: { status: 'extended', endsOn: asDate(endsOn), reextendedFrom: p.endsOn, reextendReason: dto.reason, reextendedBy: v.userId, reextendedAt: new Date(), outcomeNote: null, outcomeBy: null, outcomeAt: null, version: { increment: 1 } },
+      });
+      if (!n.count) throw new ConflictException('Someone else changed this plan. Reload it.');
+      await audit(tx, c, 'perf.pip.extended_again', 'pip', id, { from: iso(p.endsOn), to: endsOn, days, reason: dto.reason, notMetNote: p.outcomeNote });
+      const next = await tx.pip.findFirstOrThrow({ where: { id } });
+      return { view: await this.view(tx, c, v, next, a), tell: [p.employeeId, p.managerEmployeeId], endsOn };
+    });
+    const users = await this.run(ctx, async (tx, c) => (await tx.employee.findMany({ where: { organizationId: c.organizationId, id: { in: out.tell } }, select: { userId: true } })).map((e) => e.userId));
+    await this.tell(ctx.organizationId!, users, 'perf.pip.extended', `An improvement plan was extended to ${out.endsOn}`, `/yx/performance/pips/${id}`);
+    return out.view;
   }
 
   /** §4.1 change 4: HR opens a company-initiated M01 exit (M01's own checks and approval) linked back to the plan. */

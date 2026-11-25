@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { TenantLogo } from '../components/brand';
 import { Bell, Briefcase, CalendarDays, FileText, Users, Wallet } from 'lucide-react';
 import { Figure, Heading, Icon, Kbd, Spinner, Text } from '../components/foundations';
 import { Row, Section, Stack } from './story-kit';
@@ -108,6 +109,18 @@ export const Colour: StoryObj = {
           ))}
         </Row>
       </Section>
+    </Stack>
+  ),
+};
+
+/** Careers answer 357: the company's own logo on candidate pages (size-capped; the name when there is no logo). */
+export const TenantLogos: StoryObj = {
+  name: 'Tenant logo',
+  render: () => (
+    <Stack>
+      <TenantLogo name="Kaveri Foods" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='60'><rect width='300' height='60' rx='8' fill='%23155e75'/><text x='20' y='40' font-size='28' fill='white' font-family='sans-serif'>Kaveri Foods</text></svg>" />
+      <TenantLogo name="Kaveri Foods" size="md" src="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='300' height='60'><rect width='300' height='60' rx='8' fill='%23155e75'/><text x='20' y='40' font-size='28' fill='white' font-family='sans-serif'>Kaveri Foods</text></svg>" />
+      <TenantLogo name="Kaveri Foods" />
     </Stack>
   ),
 };

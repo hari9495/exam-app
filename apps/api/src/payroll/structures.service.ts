@@ -15,7 +15,7 @@ import { PayDocumentsService } from './documents.service';
 import { CompensationChangeDto, CompensationInputDto, ComponentDto, FormulaCheckDto, LetterDto, StatutoryProfileDto, TemplateDto, TemplateVersionDto } from './dto-5b';
 import { entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
 import { FNF_COMPONENTS, MODULE_COMPONENTS, STARTER_COMPONENTS, STARTER_TEMPLATE } from './starter';
-import { breakup, breakupJson, type ComponentDef, type Facts, type Line } from './structure';
+import { breakup, breakupJson, inCtcOf, lineBasis, type ComponentDef, type Facts, type Line } from './structure';
 
 // Batch 5b structures (PAY-2.06 formulas, 2.07 components, 2.08 templates, 2.09 compensation, 2.10 statutory profile).
 // Components and templates are company data (keys checked; an entity template needs the key on that entity, a
@@ -31,7 +31,7 @@ const YEARS = (dob: Date, on: string) => {
 };
 
 type ComponentRow = Prisma.PayComponentGetPayload<object>;
-const def = (c: ComponentRow): ComponentDef => ({ id: c.id, code: c.code, name: c.name, kind: c.kind as ComponentDef['kind'], pfWage: c.pfWage, esiWage: c.esiWage, ptWage: c.ptWage, gratuityWage: c.gratuityWage, bonusWage: c.bonusWage, codeWagePart: c.codeWagePart, codeExclusion: c.codeExclusion, inCtc: c.inCtc, rounding: c.rounding as ComponentDef['rounding'], statutory: c.statutory });
+const def = (c: ComponentRow): ComponentDef => ({ id: c.id, code: c.code, name: c.name, kind: c.kind as ComponentDef['kind'], pfWage: c.pfWage, pfBelowCeiling: c.pfBelowCeiling, esiWage: c.esiWage, ptWage: c.ptWage, gratuityWage: c.gratuityWage, bonusWage: c.bonusWage, codeWagePart: c.codeWagePart, codeExclusion: c.codeExclusion, inCtc: c.inCtc, rounding: c.rounding as ComponentDef['rounding'], statutory: c.statutory });
 
 /** The minimum-wage notes shown with a breakup (YX-PAY-22, 5b-D1). */
 const mwWarnings = (b: ReturnType<typeof breakup>) => [
@@ -89,8 +89,9 @@ export class PayStructuresService {
 
   private flags(dto: ComponentDto) {
     if (dto.codeWagePart && dto.codeExclusion) throw new BadRequestException('A component is either part of the Code wage or an exclusion, not both.');
+    if (dto.pfBelowCeiling && !dto.pfWage) throw new BadRequestException('"Only below the PF ceiling" is a kind of PF wage: set the component as PF wage too.');
     const proration = dto.prorationText ? plain(() => checkFormula(dto.prorationText!, new Set(PAY_VARIABLES))) : null;
-    return { name: dto.name, kind: dto.kind, taxable: dto.taxable ?? true, pfWage: !!dto.pfWage, esiWage: !!dto.esiWage, ptWage: !!dto.ptWage, gratuityWage: !!dto.gratuityWage, bonusWage: !!dto.bonusWage, codeWagePart: !!dto.codeWagePart, codeExclusion: !!dto.codeExclusion, prorated: dto.prorated ?? true, onPayslip: dto.onPayslip ?? true, inCtc: dto.inCtc ?? true, prorationText: dto.prorationText ?? null, prorationAst: proration ? (proration.ast as unknown as Prisma.InputJsonValue) : Prisma.DbNull, rounding: dto.rounding ?? 'rupee', ledger: dto.ledger ?? null };
+    return { name: dto.name, kind: dto.kind, taxable: dto.taxable ?? true, pfWage: !!dto.pfWage, pfBelowCeiling: !!dto.pfBelowCeiling, esiWage: !!dto.esiWage, ptWage: !!dto.ptWage, gratuityWage: !!dto.gratuityWage, bonusWage: !!dto.bonusWage, codeWagePart: !!dto.codeWagePart, codeExclusion: !!dto.codeExclusion, prorated: dto.prorated ?? true, onPayslip: dto.onPayslip ?? true, inCtc: dto.inCtc ?? true, prorationText: dto.prorationText ?? null, prorationAst: proration ? (proration.ast as unknown as Prisma.InputJsonValue) : Prisma.DbNull, rounding: dto.rounding ?? 'rupee', ledger: dto.ledger ?? null };
   }
 
   createComponent(ctx: TenantContext, user: ScopeUser, dto: ComponentDto) {
@@ -160,8 +161,10 @@ export class PayStructuresService {
 
   templates(ctx: TenantContext, user: ScopeUser) {
     return this.run(ctx, user, async (tx, c, v) => {
-      this.need(v, 'payroll.template.manage');
-      const ids = await entitiesFor(tx, c, v, 'payroll.template.manage');
+      // Payroll set-up, or HR choosing the template when it sets someone's salary (founder 21 Oct 2026, option A).
+      const key = has(v, 'payroll.template.manage') ? 'payroll.template.manage' : 'employee.salary.manage';
+      if (!has(v, key)) throw new ForbiddenException('This needs payroll.template.manage.');
+      const ids = await entitiesFor(tx, c, v, key);
       const rows = await tx.salaryTemplate.findMany({ where: { organizationId: c.organizationId, OR: [{ legalEntityId: null }, { legalEntityId: { in: ids } }] }, orderBy: { name: 'asc' } });
       const versions = await tx.salaryTemplateVersion.findMany({ where: { organizationId: c.organizationId, templateId: { in: rows.map((r) => r.id) } }, orderBy: { version: 'desc' } });
       return rows.map((t) => ({ id: t.id, name: t.name, legalEntityId: t.legalEntityId, status: t.status, versions: versions.filter((x) => x.templateId === t.id).map((x) => ({ id: x.id, version: x.version, validFrom: iso(x.validFrom), codeWageFlag: x.codeWageFlag, validatedAt: x.validatedAt })) }));
@@ -311,6 +314,8 @@ export class PayStructuresService {
         const e = await this.employmentOn(tx, c.organizationId, dto.employeeId, dto.effectiveDate);
         if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate))) throw new NotFoundException('Not found');
         const templates = await tx.salaryTemplate.findMany({ where: { organizationId: c.organizationId, status: 'active', OR: [{ legalEntityId: null }, { legalEntityId: e.legalEntityId }] } });
+        // PAY-42: when the options were worked out; POST compensations/suggest/check says if a law changed since.
+        const madeAt = new Date().toISOString();
         const out = [];
         for (const t of templates) {
           const ver = await tx.salaryTemplateVersion.findFirst({ where: { organizationId: c.organizationId, templateId: t.id, validFrom: { lte: new Date(`${dto.effectiveDate}T00:00:00Z`) } }, orderBy: { validFrom: 'desc' } });
@@ -318,14 +323,52 @@ export class PayStructuresService {
           try {
             const { b, components } = await this.work(tx, c.organizationId, e, { employeeId: dto.employeeId, effectiveDate: dto.effectiveDate, templateVersionId: ver.id, entryMode: 'ctc', annualCtc: dto.annualCtc } as CompensationInputDto);
             const deductions = b.lines.filter((l) => components.find((x) => x.code === l.code)?.kind === 'deduction').reduce((sum, l) => sum.add(l.monthly), new Prisma.Decimal(0));
-            out.push({ templateVersionId: ver.id, template: t.name, monthlyGross: b.monthlyGross.toFixed(2), takeHomeBeforeTax: b.monthlyGross.sub(deductions).toFixed(2), codeWageAddBack: b.codeWageAddBack.toFixed(2), belowMinimumWage: !!b.minWage?.below, warnings: mwWarnings(b), lines: breakupJson(b).lines });
+            out.push({ templateVersionId: ver.id, template: t.name, madeAt, monthlyGross: b.monthlyGross.toFixed(2), takeHomeBeforeTax: b.monthlyGross.sub(deductions).toFixed(2), codeWageAddBack: b.codeWageAddBack.toFixed(2), belowMinimumWage: !!b.minWage?.below, warnings: mwWarnings(b), lines: breakupJson(b).lines });
           } catch (err) {
-            out.push({ templateVersionId: ver.id, template: t.name, problem: (err as Error).message });
+            out.push({ templateVersionId: ver.id, template: t.name, madeAt, problem: (err as Error).message });
           }
         }
         return out;
       }),
     );
+  }
+
+  /**
+   * PAY-42 "stale after a law change": statutory rules (all-India, or the state of the person's place of work) that were
+   * published after the options were made and are in force on the effective date. Nothing is kept; a change sent later
+   * is worked out again on today's rules anyway, so this only tells HR to refresh before choosing.
+   */
+  suggestCheck(ctx: TenantContext, user: ScopeUser, dto: { employeeId: string; effectiveDate: string; madeAt: string }) {
+    const since = new Date(dto.madeAt);
+    if (Number.isNaN(since.getTime()) || since.getTime() > Date.now() + 60_000) throw new BadRequestException('madeAt is the time the options were made.');
+    return this.history.viewer(user).then((v) =>
+      this.history.run(ctx, async (tx, c) => {
+        requireSelf(v);
+        const e = await this.employmentOn(tx, c.organizationId, dto.employeeId, dto.effectiveDate);
+        if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate))) throw new NotFoundException('Not found');
+        const a = await tx.employeeAssignment.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: asDate(dto.effectiveDate) }, OR: [{ validTo: null }, { validTo: { gte: asDate(dto.effectiveDate) } }] }, select: { locationId: true } });
+        const state = a ? (await tx.location.findFirst({ where: { organizationId: c.organizationId, id: a.locationId }, select: { state: true } }))?.state ?? null : null;
+        const applies = (j: string) => j === 'IN' || (!!state && (j === state || j.endsWith(`-${state}`)));
+        const changes = (await this.rules.publishedSince(since)).filter((r) => applies(r.jurisdiction) && r.validFrom <= dto.effectiveDate && (!r.validTo || r.validTo >= dto.effectiveDate));
+        return { stale: changes.length > 0, changes: changes.map((r) => ({ statute: r.statute, jurisdiction: r.jurisdiction, version: r.version, validFrom: r.validFrom, publishedAt: r.publishedAt.toISOString() })) };
+      }),
+    );
+  }
+
+  /**
+   * HIR-09: a salary template worked out for a candidate, who has no employment yet: the work location's state and wage
+   * zone, a PF member, ESI by the wage, age 30 (no date of birth before joining). The same maths as an employee's breakup.
+   */
+  async offerBreakupIn(tx: Tx, org: string, a: { templateVersionId: string; legalEntityId: string | null; locationId: string; on: string; annualCtc: string }) {
+    const v = await this.loadVersion(tx, org, a.templateVersionId);
+    const t = await tx.salaryTemplate.findFirstOrThrow({ where: { organizationId: org, id: v.ver.templateId }, select: { legalEntityId: true, status: true } });
+    if (t.status !== 'active' || (t.legalEntityId && t.legalEntityId !== a.legalEntityId)) throw new BadRequestException('That salary structure is not for this job’s legal entity.');
+    const loc = await tx.location.findFirst({ where: { organizationId: org, id: a.locationId }, select: { state: true, minWageZone: true } });
+    if (!loc) throw new BadRequestException('Choose a work location of this company.');
+    const facts: Facts = { on: a.on, month: Number(a.on.slice(5, 7)), state: loc.state, age: 30, pf: true, pfOnActualWage: false, esi: 'by_wage', pwd: false, zone: loc.minWageZone };
+    const rules = await this.rules.published();
+    const b = plain(() => breakup({ lines: v.lines, components: v.components, options: v.options, facts, rules, ctc: a.annualCtc }));
+    return { b, components: v.components, options: v.options, warnings: mwWarnings(b) };
   }
 
   /** CTC breakup with the minimum-wage check and the Code wage add-back; nothing is kept. */
@@ -336,9 +379,31 @@ export class PayStructuresService {
         const e = await this.employmentOn(tx, c.organizationId, dto.employeeId, dto.effectiveDate);
         if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.manage', e, dto.effectiveDate))) throw new NotFoundException('Not found');
         const { b } = await this.work(tx, c.organizationId, e, dto);
-        return { ...breakupJson(b), warnings: mwWarnings(b) };
+        return { ...breakupJson(b), warnings: mwWarnings(b), arrears: await this.arrearsPreview(tx, c.organizationId, e, dto.effectiveDate, b.monthlyGross) };
       }),
     );
+  }
+
+  /**
+   * PAY-12 "Back-dated revision · arrears preview": for each month from the effective date already paid in an approved
+   * regular payslip, the monthly gross difference (the first month prorated by calendar days). An estimate for the sheet;
+   * the arrears worksheet works the exact lines (PF, ESI) out with the payroll calculator once the change is approved.
+   */
+  private async arrearsPreview(tx: Tx, org: string, e: { id: string; legalEntityId: string }, effectiveDate: string, monthlyGross: Prisma.Decimal) {
+    await payScope(tx, [e.legalEntityId]);
+    const paid = await tx.payslip.findMany({ where: { organizationId: org, employmentId: e.id, status: 'approved', runType: 'regular', periodStart: { gte: asDate(`${effectiveDate.slice(0, 7)}-01`) } }, distinct: ['periodStart'], orderBy: { periodStart: 'asc' }, select: { periodStart: true } });
+    if (!paid.length) return [];
+    const out: { month: string; days: number; of: number; amount: string }[] = [];
+    for (const p of paid) {
+      const month = dateOf(p.periodStart).slice(0, 7);
+      const comp = await tx.compensation.findFirst({ where: { organizationId: org, employmentId: e.id, supersededAt: null, validFrom: { lte: p.periodStart }, OR: [{ validTo: null }, { validTo: { gte: p.periodStart } }] } });
+      const pkg = comp ? await tx.compensationPackage.findFirst({ where: { organizationId: org, changeId: comp.changeId }, select: { monthlyGross: true } }) : null;
+      const of = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+      const days = effectiveDate.slice(0, 7) === month ? of - Number(effectiveDate.slice(8)) + 1 : of;
+      const diff = monthlyGross.sub(pkg?.monthlyGross ?? monthlyGross).mul(days).div(of);
+      out.push({ month, days, of, amount: diff.toDecimalPlaces(2).toFixed(2) });
+    }
+    return out;
   }
 
   /** A new or revised compensation: a P06 change (approved by someone else) with its breakup kept by change id. */
@@ -380,16 +445,81 @@ export class PayStructuresService {
         const pkg = await tx.compensationPackage.findFirst({ where: { organizationId: c.organizationId, changeId: comp.changeId } });
         const lines = pkg ? await tx.compensationLine.findMany({ where: { organizationId: c.organizationId, packageId: pkg.id } }) : [];
         const comps = await tx.payComponent.findMany({ where: { organizationId: c.organizationId, id: { in: lines.map((l) => l.componentId) } } });
+        // PPL-03: which lines the CTC counts (the template's options, as the breakup did), so the table totals the CTC.
+        const ver = pkg?.templateVersionId ? await this.loadVersion(tx, c.organizationId, pkg.templateVersionId).catch(() => null) : null;
+        const rules = ver ? await this.rules.published() : [];
         if (own !== employeeId) await audit(tx, c, 'payroll.compensation.viewed', 'employee', employeeId, { asOn });
+        // PPL-03 Pay tab: the last approved payslip's net pay and the tax regime of the current tax year (same grant, R1).
+        await payScope(tx, [e.legalEntityId]);
+        const slip = await tx.payslip.findFirst({ where: { organizationId: c.organizationId, employeeId, status: 'approved', runType: 'regular' }, orderBy: [{ periodStart: 'desc' }, { version: 'desc' }] });
+        const [y, m] = asOn.split('-').map(Number);
+        const taxYear = m >= 4 ? `${y}-${String((y + 1) % 100).padStart(2, '0')}` : `${y - 1}-${String(y % 100).padStart(2, '0')}`;
+        const tax = await tx.taxWorkspace.findFirst({ where: { organizationId: c.organizationId, employmentId: e.id, taxYear }, select: { id: true, regime: true, taxYear: true } });
+        const paidOn = slip ? await tx.paymentRecord.findFirst({ where: { organizationId: c.organizationId, payslipId: slip.id, status: { in: ['paid', 'cash'] } }, orderBy: { recordedAt: 'desc' }, select: { recordedAt: true } }) : null;
+        const proofsPending = tax ? await tx.taxDeclarationLine.count({ where: { organizationId: c.organizationId, workspaceId: tax.id, proofStatus: 'pending' } }) : 0;
+        // The next pay change already approved for a later date (a scheduled revision or promotion with pay).
+        const next = (await tx.employeeChange.findMany({ where: { organizationId: c.organizationId, employeeId, status: 'scheduled', effectiveDate: { gt: asDate(asOn) } }, orderBy: { effectiveDate: 'asc' }, select: { effectiveDate: true, payload: true } })).find((x) => (x.payload as { compensation?: { annualCtc?: string } } | null)?.compensation?.annualCtc);
         return {
+          lastNetPay: slip ? { month: slip.periodStart.toISOString().slice(0, 7), net: slip.net.toFixed(2), paid: slip.paymentStatus === 'paid', paidOn: paidOn ? iso(paidOn.recordedAt) : null } : null,
+          taxRegime: tax ? { regime: tax.regime, taxYear: tax.taxYear, proofsPending } : null,
+          next: next ? { annualCtc: String((next.payload as { compensation: { annualCtc: string } }).compensation.annualCtc), from: iso(next.effectiveDate) } : null,
           validFrom: iso(comp.validFrom),
           validTo: iso(comp.validTo),
           currency: comp.currency,
           annualCtc: comp.annualCtc.toFixed(2),
           changeId: comp.changeId,
           package: pkg ? { entryMode: pkg.entryMode, payBasis: pkg.payBasis, rate: pkg.rate?.toFixed(2) ?? null, monthlyGross: pkg.monthlyGross.toFixed(2), codeWageAddBack: pkg.codeWageAddBack.toFixed(2), minWageCheck: pkg.minWageCheck, letterDocumentId: pkg.letterDocumentId } : null,
-          lines: lines.map((l) => { const k = comps.find((x) => x.id === l.componentId); return { code: k?.code, name: k?.name, kind: k?.kind, monthly: l.monthly.toFixed(2), annual: l.annual.toFixed(2), citation: l.citation }; }),
+          lines: lines.map((l) => {
+            const k = comps.find((x) => x.id === l.componentId);
+            const def = ver?.components.find((x) => x.id === l.componentId);
+            return { code: k?.code, name: k?.name, kind: k?.kind, monthly: l.monthly.toFixed(2), annual: l.annual.toFixed(2), citation: l.citation, inCtc: def && ver ? inCtcOf(def, ver.options) : k?.kind !== 'deduction', basis: def && ver ? lineBasis(def, ver.components, rules, iso(comp.validFrom)!) : null };
+          }),
         };
+      }),
+    );
+  }
+
+  /**
+   * PAY-12 history: every salary of the person's employment (newest first, corrected ones left out) with who asked for
+   * it, who approved it and why, plus pay changes still waiting or turned down. Same access as the salary in force:
+   * the person themselves, or employee.salary.view over them; a view by someone else is audited (no amounts logged).
+   */
+  compensationHistory(ctx: TenantContext, user: ScopeUser, employeeId: string, asOn = todayIst()) {
+    return this.history.viewer(user).then((v) =>
+      this.history.run(ctx, async (tx, c) => {
+        requireSelf(v);
+        const org = c.organizationId;
+        const own = await this.history.ownEmployeeId(tx, c, v);
+        const e = await this.employmentOn(tx, org, employeeId, asOn);
+        if (own !== employeeId) {
+          if (!(await this.history.reachesFrom(tx, c, v, 'employee.salary.view', e, asOn))) throw new NotFoundException('Not found');
+          await payScope(tx, [e.legalEntityId]);
+        }
+        const comps = await tx.compensation.findMany({ where: { organizationId: org, employmentId: e.id, supersededAt: null }, orderBy: { validFrom: 'desc' }, take: 100 });
+        const changes = await tx.employeeChange.findMany({ where: { organizationId: org, employmentId: e.id, OR: [{ id: { in: comps.map((x) => x.changeId) } }, { status: { in: ['pending', 'rejected'] }, changeType: 'salary_revision' }] }, orderBy: { requestedAt: 'desc' }, take: 200 });
+        const pkgs = await tx.compensationPackage.findMany({ where: { organizationId: org, changeId: { in: changes.map((x) => x.id) } }, select: { changeId: true, templateVersionId: true, payBasis: true } });
+        const vers = await tx.salaryTemplateVersion.findMany({ where: { organizationId: org, id: { in: pkgs.map((x) => x.templateVersionId).filter((x): x is string => !!x) } }, select: { id: true, templateId: true, version: true } });
+        const tpls = await tx.salaryTemplate.findMany({ where: { organizationId: org, id: { in: vers.map((x) => x.templateId) } }, select: { id: true, name: true } });
+        const userIds = [...new Set(changes.flatMap((x) => [x.requestedBy, x.decidedBy]).filter((x): x is string => !!x))];
+        const users = await tx.user.findMany({ where: { id: { in: userIds } }, select: { id: true, name: true } });
+        const who = (id: string | null) => (id ? { userId: id, name: users.find((u) => u.id === id)?.name ?? null } : null);
+        const template = (changeId: string) => {
+          const ver = vers.find((x) => x.id === pkgs.find((k) => k.changeId === changeId)?.templateVersionId);
+          return ver ? { name: tpls.find((t) => t.id === ver.templateId)?.name ?? null, version: ver.version } : null;
+        };
+        const ctcOf = (x: { payload: Prisma.JsonValue }) => (x.payload as { compensation?: { annualCtc?: string } } | null)?.compensation?.annualCtc ?? null;
+        const items = [
+          ...comps.map((x, i) => {
+            const ch = changes.find((k) => k.id === x.changeId);
+            const before = comps[i + 1];
+            return { kind: 'salary' as const, changeId: x.changeId, status: 'approved', validFrom: iso(x.validFrom), validTo: iso(x.validTo), annualCtc: x.annualCtc.toFixed(2), previousCtc: before ? before.annualCtc.toFixed(2) : null, changeType: ch?.changeType ?? null, reason: ch?.reason ?? null, requestedBy: who(ch?.requestedBy ?? null), requestedAt: ch?.requestedAt ?? null, decidedBy: who(ch?.decidedBy ?? null), decidedAt: ch?.decidedAt ?? null, template: template(x.changeId) };
+          }),
+          ...changes
+            .filter((k) => !comps.some((x) => x.changeId === k.id) && ['pending', 'rejected'].includes(k.status))
+            .map((k) => ({ kind: 'request' as const, changeId: k.id, status: k.status, validFrom: iso(k.effectiveDate), validTo: null, annualCtc: ctcOf(k), previousCtc: null, changeType: k.changeType, reason: k.reason, requestedBy: who(k.requestedBy), requestedAt: k.requestedAt, decidedBy: who(k.decidedBy), decidedAt: k.decidedAt, template: template(k.id), decisionNote: k.decisionNote })),
+        ].sort((x, y) => (y.validFrom ?? '').localeCompare(x.validFrom ?? ''));
+        if (own !== employeeId) await audit(tx, c, 'payroll.compensation.history_viewed', 'employee', employeeId, { asOn, items: items.length });
+        return items;
       }),
     );
   }

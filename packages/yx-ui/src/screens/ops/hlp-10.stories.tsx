@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PolicyLibraryScreen } from './helpdesk';
 import { POLICIES } from './helpdesk-data';
 import { TODAY } from '../_kit/data';
+import type { LivePolicyLibrary } from './helpdesk-policy-live';
+import { liveLibrary, myPolicy } from './helpdesk-policy-live-samples';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-10 · Policy library + acknowledgement', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -19,3 +21,9 @@ export const Loading: S = { render: () => <PolicyLibraryScreen policies={POLICIE
 export const Error: S = { render: () => <PolicyLibraryScreen policies={POLICIES} today={TODAY} state="error" /> };
 export const Phone: S = { name: 'Policies · phone', globals: PHONE, render: () => <PolicyLibraryScreen device="phone" policies={POLICIES} today={TODAY} /> };
 export const PhoneOtp: S = { name: 'One-time code · phone', globals: PHONE, render: () => <PolicyLibraryScreen device="phone" policies={POLICIES} today={TODAY} openId="POL-01" otpSent /> };
+
+// States only the real records have (Helpdesk design wiring, HLP-10 live), drawn in the same layout as the stories above.
+const live = (over: Partial<LivePolicyLibrary> = {}) => <PolicyLibraryScreen live={liveLibrary(over)} />;
+export const TypedName: S = { name: 'Acknowledge · type your name (company setting)', render: () => live({ openId: 'p4', policy: myPolicy('p4', { typedName: true }) }) };
+export const NewerVersion: S = { name: 'A newer version was published meanwhile', render: () => live({ openId: 'p4', policy: myPolicy('p4'), start: { newer: 'A newer version (v6) was published. Read it, then acknowledge.' } }) };
+export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => live({ state: 'no-access' }) };

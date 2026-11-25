@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, SignOffDto } from './exit-dto';
+import { AssetDto, CompanyExitDto, ManualStepDto, SettledOutsideDto, HrFactsDto, InterviewDto, InterviewNotesDto, IssueAssetDto, NoticeChangeDto, ProbationReviewDto, ReasonDto, ResignDto, ReturnAssetDto, BlockItemDto, SignOffDto } from './exit-dto';
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
@@ -14,7 +14,7 @@ import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // Lifecycle batch 6c (design §13). Keys (P02 YX-SEC-01), checked again per person, case, item and asset:
 //   lifecycle.exit.view                 exit cases of the people in scope (the manager sees their team's without a key)
-//   lifecycle.exit.manage               company exits, notice changes, the HR step of a resignation, any clearance item
+//   lifecycle.exit.manage               company exits (and withdrawing them), notice changes, the HR step of a resignation, any clearance item
 //   lifecycle.exit.confidential.view    HR-only facts and the exit interview answers (with manage to change the facts)
 //   asset.view / asset.manage           the asset list per legal entity or location
 //   no key (self)                       my resignation and withdrawal, my exit interview, my assets, my clearance items,
@@ -103,6 +103,13 @@ export class ExitsController {
     return this.exits.requestNoticeChange(ctx, this.user(req), id, dto);
   }
 
+  @Post('exits/:id/withdraw')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.exit.manage')
+  withdrawExit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
+    return this.exits.withdrawCompanyExit(ctx, this.user(req), id, dto.reason);
+  }
+
   @Put('exits/:id/hr')
   @RequirePermissions('lifecycle.exit.manage', 'lifecycle.exit.confidential.view')
   hr(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HrFactsDto) {
@@ -163,6 +170,20 @@ export class ExitsController {
     return this.offboarding.myClearance(ctx, this.user(req));
   }
 
+  /** PPL-20 HR view: every department's items, leaver by leaver, for leavers in the caller's scope. */
+  @Get('clearance')
+  @RequirePermissions('lifecycle.exit.manage')
+  hrClearance(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.offboarding.hrClearance(ctx, this.user(req));
+  }
+
+  /** PPL-20: the owner (or HR over the leaver) marks an open item blocked, with the reason. */
+  @Post('clearance/:id/block')
+  @HttpCode(200)
+  block(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BlockItemDto) {
+    return this.offboarding.block(ctx, this.user(req), id, dto);
+  }
+
   @Post('clearance/:id/sign-off')
   @HttpCode(200)
   signOff(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SignOffDto) {
@@ -171,10 +192,23 @@ export class ExitsController {
 
   // ------------------------------------------------------------------------------------------ assets
 
+  /** PPL-03: what one person holds (themselves, asset.view, or their managers); decided by the service. */
+  @Get('people/:employeeId/assets')
+  personAssets(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.offboarding.personAssets(ctx, this.user(req), employeeId);
+  }
+
   @Get('assets')
   @RequirePermissions('asset.view')
   assets(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.offboarding.assets(ctx, this.user(req));
+  }
+
+  /** Who an asset can be issued to: current employees, name only. IT holds asset.manage without any employee grant. */
+  @Get('assets/people')
+  @RequirePermissions('asset.manage')
+  assetPeople(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.offboarding.assetPeople(ctx, this.user(req));
   }
 
   @Post('assets')

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -6,14 +6,15 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AbscondingDto, BatchDto, BatchMembersDto, BuddyDto, ClosureDto, ContractDto, DispatchDto, IrDecisionDto, IrPermissionDto, PayeesDto, RehireDto, StopDto, VersionDto, VrsApplyDto, VrsSchemeDto } from './exit-dto';
+import { AbscondingDto, BatchDto, BatchMembersDto, BuddyDto, ClosureDto, ContractDto, DispatchDto, FamilyContactDto, IrDecisionDto, IrPermissionDto, PayeesDto, RehireDto, StopDto, VersionDto, VrsApplyDto, VrsSchemeDto } from './exit-dto';
 import { ExitExtrasService } from './exit-extras.service';
 import { ExitsService } from './exits.service';
 import { OnboardingExtrasService } from './onboarding-extras.service';
+import { RehirePreviewQuery } from './dto';
 
 // Lifecycle batch 6e (design §16.5). Keys, checked again per joiner, case, employee and legal entity:
 //   lifecycle.onboarding.manage    rehire options, the buddy, campus batches (+ letter.issue for a batch's letters)
-//   lifecycle.exit.manage          payees of a death in service, absconding timelines, government permissions, closures,
+//   lifecycle.exit.manage          payees of a death in service (their logins, the family contact), absconding timelines, government permissions, closures,
 //                                  VRS schemes
 //   lifecycle.exit.view / manage   upcoming retirements and contract ends
 //   employee.change.manage         a fixed-term contract's end, extension and conversion
@@ -32,6 +33,13 @@ export class SpecialCasesController {
   }
 
   // ------------------------------------------------------------------------------------------ rehire, buddy, batches
+
+  /** PPL-12: the rehire impact preview in Ready to onboard's Create drawer, before the joiner exists. */
+  @Get('ready-to-onboard/:offerId/rehire')
+  @RequirePermissions('lifecycle.onboarding.manage')
+  rehirePreview(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('offerId', ParseUUIDPipe) offerId: string, @Query() q: RehirePreviewQuery) {
+    return this.onboarding.rehirePreview(ctx, this.user(req), offerId, q.legalEntityId, q.joiningOn);
+  }
 
   @Get('joiners/:id/rehire')
   @RequirePermissions('lifecycle.onboarding.manage')
@@ -95,6 +103,26 @@ export class SpecialCasesController {
   @RequirePermissions('lifecycle.exit.manage')
   setPayees(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PayeesDto) {
     return this.extras.setPayees(ctx, this.user(req), id, dto.payees);
+  }
+
+  // PPL-23: the death-in-service flow's facts, the family's compassionate contact, the payees' logins.
+  @Get('exits/:id/death')
+  @RequirePermissions('lifecycle.exit.manage')
+  death(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.extras.death(ctx, this.user(req), id);
+  }
+
+  @Put('exits/:id/death/contact')
+  @RequirePermissions('lifecycle.exit.manage')
+  familyContact(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FamilyContactDto) {
+    return this.extras.setFamilyContact(ctx, this.user(req), id, dto.userId);
+  }
+
+  @Post('exits/:id/payees/access')
+  @HttpCode(200)
+  @RequirePermissions('lifecycle.exit.manage')
+  payeeAccess(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.extras.sendPayeeAccess(ctx, this.user(req), id);
   }
 
   @Get('absconding')
@@ -177,7 +205,7 @@ export class SpecialCasesController {
 
   @Get('me/vrs')
   myVrs(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
-    return this.exits.myVrs(ctx, this.user(req));
+    return this.exits.myVrs(ctx, this.user(req), { estimate: true });
   }
 
   @Post('me/vrs')

@@ -14,13 +14,15 @@ export interface SegmentProps<V extends string | number> {
   value: V | null;
   onChange: (value: V) => void;
   className?: string;
+  /** Read-only: shown, not changed (a statutory setting). */
+  disabled?: boolean;
 }
 
 /**
  * Joined pick-one control (R11): one choice of 2–4 short options. Independent on/off filters use toggle chips instead.
  * A radio group: arrow keys move and select, one tab stop.
  */
-export function Segment<V extends string | number>({ label, options, value, onChange, className }: SegmentProps<V>) {
+export function Segment<V extends string | number>({ label, options, value, onChange, className, disabled }: SegmentProps<V>) {
   const move = (e: KeyboardEvent<HTMLButtonElement>, i: number) => {
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
     if (!step) return;
@@ -41,6 +43,7 @@ export function Segment<V extends string | number>({ label, options, value, onCh
           tabIndex={o.value === value || (!chosen && i === 0) ? 0 : -1}
           onClick={() => onChange(o.value)}
           onKeyDown={(e) => move(e, i)}
+          disabled={disabled}
         >
           {o.label}
         </button>

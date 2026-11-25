@@ -53,6 +53,8 @@ export interface ResultSummary {
   maxScore: number;
   percentage: number;
   passFail: 'pass' | 'fail';
+  /** Answer 2154: sections whose own percentage is below their cut-off (any of them fails the attempt). */
+  cutoffMissed: string[];
 }
 
 export interface GradableSection {
@@ -61,6 +63,8 @@ export interface GradableSection {
   /** null/undefined = every question counts. Otherwise only the best N are scored, out of N. */
   requiredCount?: number | null;
   questionIds: string[];
+  /** Answer 2154: the least percentage of this section's own marks to pass; null = none. */
+  cutoffPercent?: number | null;
 }
 
 export function computeResult(
@@ -80,6 +84,7 @@ export function computeResult(
   let percentage = 0;
   let score = 0;
   let maxScore = 0;
+  const cutoffMissed: string[] = [];
   for (const section of sections) {
     const counted = selectCountedAnswers(
       section.questionIds.map((questionId) => ({
@@ -94,10 +99,12 @@ export function computeResult(
     if (counted.maxScore > 0) {
       percentage += (counted.score / counted.maxScore) * section.weightPercent;
     }
+    // Answer 2154: a section with a cut-off fails the attempt when its own share is below it.
+    if (section.cutoffPercent != null && counted.maxScore > 0 && (counted.score / counted.maxScore) * 100 < section.cutoffPercent) cutoffMissed.push(section.sectionId);
   }
 
-  const passFail: 'pass' | 'fail' = percentage >= passCriteriaPercent ? 'pass' : 'fail';
-  return { score, maxScore, percentage, passFail };
+  const passFail: 'pass' | 'fail' = percentage >= passCriteriaPercent && cutoffMissed.length === 0 ? 'pass' : 'fail';
+  return { score, maxScore, percentage, passFail, cutoffMissed };
 }
 
 export function effectiveDurationMinutes(durationMinutes: number, extraTimePercent: number): number {

@@ -43,3 +43,40 @@ export function checkConsents(
   if (notices.some((n) => n.purpose === 'application') && !record.some((r) => r.purpose === 'application')) return { problem: 'Please accept the privacy notice to apply.', stale: false, record: [] };
   return { problem: null, stale: false, record };
 }
+
+/** The page builder's saved layout (T9-09 / Surfaces Careers). */
+export interface CareersLayout {
+  theme: 'classic' | 'compact' | 'split';
+  accent: string | null;
+  sections: { id: string; type: string; title: string; hidden?: boolean; text?: string; photoAlt?: string; items?: Record<string, string>[] }[];
+}
+
+/** Section types that may appear once only. */
+export const SINGLE_SECTIONS = ['hero', 'jobs', 'footer'];
+
+/** A repeated one-only section ("hero"), or null when the layout is fine. */
+export function layoutProblem(sections: { type: string }[]): string | null {
+  const twice = SINGLE_SECTIONS.find((t) => sections.filter((s) => s.type === t).length > 1);
+  return twice ? `A page can have only one ${twice} section. Remove the extra one.` : null;
+}
+
+/** The saved layout, or (before anyone used the builder) one made from the headline and intro. */
+export function careersLayout(saved: unknown, org: { name: string; careersHeadline: string | null; careersIntro: string | null }): CareersLayout {
+  const s = saved as Partial<CareersLayout> | null;
+  if (s && Array.isArray(s.sections) && typeof s.theme === 'string') return { theme: s.theme, accent: safeColor(s.accent ?? null), sections: s.sections };
+  return {
+    theme: 'classic',
+    accent: null,
+    sections: [
+      { id: 'hero', type: 'hero', title: org.careersHeadline ?? `Work at ${org.name}`, text: org.careersIntro ?? '' },
+      { id: 'jobs', type: 'jobs', title: 'Open jobs' },
+      { id: 'footer', type: 'footer', title: 'Contact', text: '' },
+    ],
+  };
+}
+
+/** A company page's own headline and intro replace the hero's words (when set). */
+export function withHero(layout: CareersLayout, own: { title: string | null; text: string | null } | null): CareersLayout {
+  if (!own || (!own.title && !own.text)) return layout;
+  return { ...layout, sections: layout.sections.map((s) => (s.type === 'hero' ? { ...s, title: own.title ?? s.title, text: own.text ?? s.text } : s)) };
+}

@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import * as L from './portals-logic';
@@ -52,6 +52,31 @@ describe('OTP rules', () => {
     fireEvent.paste(screen.getAllByRole('textbox')[0], { clipboardData: { getData: () => '222222' } });
     await u.click(screen.getByRole('button', { name: 'Verify and continue' }));
     expect(screen.getByText('Sign-in is paused for 15 minutes')).toBeInTheDocument();
+  });
+});
+
+describe('OtpSignIn live (the portals)', () => {
+  it('never disabled: an empty email and a short code show the field error and take focus; the API wait shows', async () => {
+    const u = userEvent.setup();
+    const onSendCode = vi.fn(async () => ({}));
+    const onVerify = vi.fn(async () => ({}));
+    render(<OtpSignIn title="Sign in" intro="x" live={{ validMinutes: 5, onSendCode, onVerify }} />);
+    await u.click(screen.getByRole('button', { name: 'Send code' }));
+    expect(screen.getByText(/Enter your email address/)).toBeInTheDocument();
+    await waitFor(() => expect(document.activeElement?.id).toBe('otp-dest'));
+    expect(onSendCode).not.toHaveBeenCalled();
+    await u.type(screen.getByRole('textbox'), 'ravi@example.in');
+    await u.click(screen.getByRole('button', { name: 'Send code' }));
+    expect(onSendCode).toHaveBeenCalledWith('ravi@example.in');
+    await u.click(await screen.findByRole('button', { name: 'Verify and continue' }));
+    expect(screen.getByText('Enter the 6-digit code.')).toBeInTheDocument();
+    expect(onVerify).not.toHaveBeenCalled();
+    onSendCode.mockRejectedValueOnce(new Error('Too many tries. Try again in 42 seconds.'));
+    await u.click(screen.getByRole('button', { name: 'Resend code' }));
+    expect(await screen.findByText('Too many tries. Try again in 42 seconds.')).toBeInTheDocument();
+    fireEvent.paste(screen.getAllByRole('textbox')[0]!, { clipboardData: { getData: () => '123456' } });
+    await u.click(screen.getByRole('button', { name: 'Verify and continue' }));
+    expect(onVerify).toHaveBeenCalledWith('ravi@example.in', '123456');
   });
 });
 
@@ -183,5 +208,20 @@ describe('console and partner rules', () => {
     expect(L.linkActivationBlock({ verification: 'verified', agreementCurrent: false })).toMatch(/G-34/);
     expect(L.linkActivationBlock({ verification: 'verified', agreementCurrent: true })).toBeNull();
     expect(L.healthBand(44)).toBe('at-risk');
+  });
+});
+
+describe('TenantPortal language and notices (kit)', () => {
+  it('offers only the languages a page is written in, and names the notices in its language', async () => {
+    const { TenantPortal } = await import('./portals-kit');
+    render(
+      <TenantPortal tenant="Kaveri" portal="HR" access={{ kind: 'note', text: 'Note' }} footer={{ privacy: 'गोपनीयता सूचना', labels: { terms: 'उपयोग की शर्तें' }, hrefs: { terms: '/t' } }} language="hi" onLanguageChange={vi.fn()} languages={[{ value: 'en', label: 'English' }, { value: 'hi', label: 'हिन्दी (Hindi)' }]}>
+        <p>Body</p>
+      </TenantPortal>,
+    );
+    expect(screen.getByRole('link', { name: 'उपयोग की शर्तें' })).toHaveAttribute('href', '/t');
+    expect(screen.getByRole('link', { name: 'Accessibility statement' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('combobox', { name: 'Language' }));
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['English', 'हिन्दी (Hindi)']);
   });
 });

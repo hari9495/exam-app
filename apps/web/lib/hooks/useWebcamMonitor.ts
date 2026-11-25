@@ -132,7 +132,9 @@ export function useWebcamMonitor(
         // Strike-worthy violations and the report-only looking_down signal are voted on
         // independently from the same frame -- one confirming does not suppress the other.
         const confirmedViolation = violationVoter.push(detectViolationReason(result));
-        if (confirmedViolation) {
+        // Answer 2202: a head turn is a gaze signal; a "no gaze" profile or the test may not watch it.
+        const headTurnOff = confirmedViolation === 'head_turned' && (configRef.current?.disabledSignals ?? []).includes('webcam_head_turned');
+        if (confirmedViolation && !headTurnOff) {
           reportViolationRef.current({
             reason: confirmedViolation as ViolationReason,
             snapshot: captureSnapshot(video),

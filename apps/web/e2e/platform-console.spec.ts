@@ -47,13 +47,28 @@ test('staff create a company, the company approves support access, staff look re
 
   // 2. A new company starts a 30-day trial.
   await staff.getByRole('button', { name: 'New company' }).first().click();
-  const drawer = staff.getByRole('dialog');
+  // C-5 (64b9b89c2): a new company is a set-up wizard, not a drawer.
+  await expect(staff.getByRole('heading', { name: 'New company', level: 1 })).toBeVisible();
+  const drawer = staff.locator('main').last();
   await drawer.getByRole('textbox', { name: /Company name/ }).fill(COMPANY.name);
   await drawer.getByRole('textbox', { name: /Company code/ }).fill(COMPANY.slug);
-  await drawer.getByRole('checkbox', { name: /YukthiX HR/ }).click();
+  await drawer.getByRole('button', { name: 'Continue' }).click();
+  await expect(drawer.getByRole('textbox', { name: /Registered name/ })).toHaveValue(COMPANY.name);
+  await drawer.getByRole('button', { name: 'Continue' }).click();
   await drawer.getByRole('textbox', { name: /^Name/ }).fill('Rekha Joshi');
   await drawer.getByRole('textbox', { name: /Work email/ }).fill(COMPANY.admin);
+  await drawer.getByRole('button', { name: 'Continue' }).click();
+  await drawer.getByRole('checkbox', { name: 'YukthiX HR' }).click();
+  await drawer.getByRole('button', { name: 'Continue' }).click();
+  const review = drawer.getByRole('region', { name: 'Review' });
+  await expect(review.getByRole('region', { name: 'First System Admin' })).toContainText(`Rekha Joshi · ${COMPANY.admin}`);
+  await expect(review.getByRole('region', { name: 'Plan and products' })).toContainText('30-day trial');
   await drawer.getByRole('button', { name: 'Create company' }).click();
+  // Creating it asks for the security key again.
+  const again = staff.getByRole('dialog', { name: "Confirm it's you" });
+  if (await again.waitFor({ timeout: 5_000 }).then(() => true, () => false)) await again.getByRole('button', { name: /Passkey|Security key/ }).click();
+  await expect(staff.getByRole('status').filter({ hasText: `${COMPANY.name} is ready` })).toContainText(`${COMPANY.admin} gets one email`, { timeout: 30_000 });
+  await staff.getByRole('button', { name: 'Open the company' }).click();
   await expect(staff).toHaveURL(/\/staff\/companies\/[0-9a-f-]{36}$/);
   await expect(staff.getByRole('heading', { name: COMPANY.name })).toBeVisible();
   await expect(staff.getByText('Trial', { exact: true }).first()).toBeVisible();

@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { projectTax, type TaxInputs, type TaxProjection } from './tax';
-import { Citation, RuleSet, cite, StatutoryError, bonus, codeWage, deductionCap, esi, exitExempt, gratuity, inForce, injury, lwf, maternity, minWage, minWageTableFor, pf, pt, subsistence } from '../statutory/evaluator';
+import { Citation, RuleSet, cite, StatutoryError, bonus, codeWage, deductionCap, esi, exitExempt, gratuity, inForce, injury, loanPerquisite, lwf, maternity, minWage, minWageTableFor, pf, pt, subsistence, type PerqLoanIn } from '../statutory/evaluator';
 
 // The payroll calculation (M03-BUILD-DESIGN §9.4, PAY-3.04 … 3.16): a pure function of one person's month snapshot and the
 // rule sets. It reads no database and no clock, so a payslip can be reproduced from its snapshot with the rule versions it
@@ -20,6 +20,8 @@ export interface CalcComponent {
   name: string;
   kind: 'earning' | 'deduction' | 'employer' | 'reimbursement' | 'info';
   pfWage: boolean;
+  /** B2: with pfWage, part of the PF wage only while the rest of the month's PF wage is below the ceiling. */
+  pfBelowCeiling?: boolean;
   esiWage: boolean;
   ptWage: boolean;
   gratuityWage: boolean;
@@ -67,7 +69,8 @@ export interface Snapshot {
   ytd: { pt: string };
   /** `label`: the payslip text of an arrears or F&F item (batch 5g). */
   oneTime: { id: string; code: string; amount: string; days: number | null; label?: string }[];
-  special: { kind: 'suspension' | 'maternity' | 'injury'; days: string; daysBefore: number }[];
+  /** inFeedDays: the part of `days` the Time feed already counts as unpaid (HLP-12 answer 65), not taken off again. */
+  special: { kind: 'suspension' | 'maternity' | 'injury'; days: string; daysBefore: number; inFeedDays?: string }[];
   averageDailyWage: string | null;
   recoveries: {
     courtOrders: { id: string; ref: string; amount: string | null; percent: string | null; priorityDate: string; remaining: string | null }[];
@@ -80,6 +83,8 @@ export interface Snapshot {
   held: boolean;
   /** Batch 5e: the tax inputs (absent before 5e; then no TDS line). */
   tax?: TaxInputs | null;
+  /** D14: the person's open loans and advances for the loan perquisite (absent before D14; then none). */
+  perqLoans?: PerqLoanIn[];
   /**
    * Batch 5g: an off-cycle run (absent = the regular payslip). `fnf` is the leaver's last pay: salary to the last day plus
    * the settlement items. The others pay only their items: no salary, no monthly PT, LWF or provisions, and TDS is the
@@ -112,6 +117,8 @@ export interface CalcResult {
   ruleVersions: Record<string, string>;
   recoveries: { courtOrders: { id: string; amount: string }[]; loans: { id: string; amount: string }[]; carryForwards: { id: string; amount: string }[]; overpayments: { id: string; amount: string }[] };
   deferred: { kind: string; ref: string; amount: string }[];
+  /** PAY-19 "Deduction cap check": the wages, the legal cap, the protected net and the statutory deductions it worked from. */
+  cap?: { wages: string; limit: string; protectedNet: string; statutory: string };
   carryForward: string;
   minWage: { monthly: string; below: boolean; floorApplied: boolean; skillFallback: boolean } | null;
   /** Batch 5e: the projection behind the TDS line (the tax sheet shows this, YX-TAX-06). */
@@ -152,7 +159,9 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
 
   // 1–2. Days: LOP from the feed or the manual entry, plus days paid as a benefit instead of salary; split by segment.
   const special = (k: string) => s.special.filter((x) => x.kind === k).reduce((t, x) => t.add(x.days), ZERO);
-  const unpaid = D(s.attendance.lopDays).add(special('suspension')).add(special('maternity')).add(special('injury'));
+  // Injury days already counted as unpaid by the Time feed (an unpaid injury leave type) are not taken off twice.
+  const inFeed = s.attendance.source === 'feed' ? s.special.filter((x) => x.kind === 'injury').reduce((t, x) => t.add(x.inFeedDays ?? 0), ZERO) : ZERO;
+  const unpaid = D(s.attendance.lopDays).add(special('suspension')).add(special('maternity')).add(Prisma.Decimal.max(ZERO, special('injury').sub(inFeed)));
   if (unpaid.gt(monthDays)) throw new StatutoryError(`Unpaid days (${unpaid.toFixed(2)}) are more than the days in the month.`);
   const segDays = s.segments.reduce((t, g) => t + g.days, 0);
   const lopOf = (g: Segment) => (segDays ? unpaid.mul(g.days).div(segDays) : ZERO);
@@ -199,6 +208,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   }
 
   // 3. Wage bases from flags; the Code wage add-back (YX-PAY-47).
+  const pfEarned = (seg: number, below: boolean) => lines.filter((l) => l.kind === 'earning' && l.segmentNo === seg && comps.get(l.code)?.pfWage === true && !!comps.get(l.code)?.pfBelowCeiling === below).reduce((t, l) => t.add(l.amount), ZERO);
   const earned = (flag: keyof CalcComponent, seg?: number) => lines.filter((l) => l.kind === 'earning' && (seg === undefined || l.segmentNo === seg) && comps.get(l.code)?.[flag] === true).reduce((t, l) => t.add(l.amount), ZERO);
   // shortcut: the Code wage add-back tests a whole month's pay, so the regular run does it; item-only off-cycles skip it.
   const codeRs = itemsOnly ? null : rule('IN.WAGES-CODE');
@@ -235,7 +245,10 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       const f = D(g.days).div(monthDays);
       const v = pfRs.values as Record<string, string>;
       const scaled: RuleSet = { ...pfRs, values: { ...pfRs.values, wageCeiling: D(v.wageCeiling).mul(f).toFixed(2), epsCeiling: D(v.epsCeiling).mul(f).toFixed(2), edliCeiling: D(v.edliCeiling).mul(f).toFixed(2) } };
-      const wage = earned('pfWage', i).add(addBack.mul(g.days).div(segDays || 1));
+      // B2 (answer 2403): a "below the ceiling" component counts only while the rest of the PF wage (earned, after loss of
+      // pay) is under this part's ceiling.
+      const always = pfEarned(i, false).add(addBack.mul(g.days).div(segDays || 1));
+      const wage = always.lt(D(scaled.values.wageCeiling as string)) ? always.add(pfEarned(i, true)) : always;
       const r = pf(scaled, { pfWage: wage, onActualWage: s.profile.pfOnActualWage, age: s.profile.age });
       emp = emp.add(r.employee);
       edli = edli.add(r.edli);
@@ -265,9 +278,10 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   const mtd = s.sub?.mtd;
   const ptRs = itemsOnly || partial ? null : rule('IN.PT', [s.profile.ptState]);
   if (ptRs) {
-    const halfYear = (ptRs.values as { basis?: string }).basis === 'half_yearly';
+    const basis = (ptRs.values as { basis?: string }).basis;
     const ptWage = earned('ptWage').add(mtd?.ptWage ?? 0);
-    const r = pt(ptRs, { ptWage: halfYear ? ptWage.mul(6) : ptWage, month, gender: s.profile.gender });
+    // Half-yearly slabs are on the half-year's income, yearly ones (2385) on this month's PT wage x 12.
+    const r = pt(ptRs, { ptWage: basis === 'half_yearly' ? ptWage.mul(6) : basis === 'annual' ? ptWage.mul(12) : ptWage, month, gender: s.profile.gender });
     const capRs = rule('IN.PT');
     const room = capRs && capRs.values.kind === 'pt_limit' ? Prisma.Decimal.max(ZERO, D(String(capRs.values.annualMax)).sub(s.ytd.pt)) : r.amount;
     const amount = Prisma.Decimal.min(r.amount, room);
@@ -275,7 +289,8 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   }
   const lwfRs = !itemsOnly && !partial && s.profile.lwfState ? rule('IN.LWF', [s.profile.lwfState]) : null;
   if (lwfRs) {
-    const r = lwf(lwfRs, { month });
+    // 2384: a rate-based LWF (Haryana) is on the month's gross earnings.
+    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO) });
     add({ code: statCode('lwf_employee'), name: nameOf(statCode('lwf_employee'), 'Labour welfare fund'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: `${s.profile.lwfState} labour welfare fund for this month.`, rule: r.citation });
     add({ code: statCode('lwf_employer'), name: nameOf(statCode('lwf_employer'), 'Labour welfare fund (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer labour welfare fund for this month.', rule: r.citation });
   }
@@ -316,6 +331,17 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
         taxable = D(taxable).sub(r.exempt).toFixed(2);
         add({ code: `${code}_exempt`, name: `${nameOf(code, code)} exempt from tax`, kind: 'info', segmentNo: 0, amount: r.exempt, explanation: `${rupees(r.exempt)} is exempt from income tax (${r.section}).`, rule: r.citation });
       }
+    // D14 (answers 2404, 2405): the loan perquisite on the month's maximum outstanding is an information line and taxable:
+    // it joins the year's perquisites (Form 12BA / Form No. 123), not salary. No SBI rate loaded: nothing (the run's checks say so).
+    const perqRs = !itemsOnly && s.perqLoans?.length ? rule('IN.PERQ-LOAN') : null;
+    let perqMonth = ZERO;
+    if (perqRs && s.perqLoans) {
+      const r = loanPerquisite(perqRs, { loans: s.perqLoans });
+      perqMonth = r.total;
+      for (const l of r.lines.filter((x) => x.value.gt(0))) {
+        add({ code: 'loan_perquisite', name: 'Loan perquisite (taxable, not paid)', kind: 'info', segmentNo: 0, amount: l.value, explanation: `Interest benefit on a loan: ${rupees(l.maxOutstanding)}, the most owed this month, × (SBI rate ${l.refRate}% − loan rate ${D(s.perqLoans.find((x) => x.id === l.id)?.ratePct ?? 0).toString()}%) ÷ 12. Counted for income tax; not paid to you.`, rule: r.citation, sourceRef: l.id ?? undefined });
+      }
+    }
     if (itemsOnly) {
       // The extra tax for the year that these items cause (the year's pay with and without them), deducted in full now.
       const t = s.tax;
@@ -327,7 +353,8 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: extra, explanation: `The year's tax with this payment ${rupees(withItems.tax.total)} less without it ${rupees(without.tax.total)} (${withItems.regime} regime), deducted in full now.`, rule: tdsRs ? cite(tdsRs) : undefined });
     } else {
       const plus = (x: string, y?: string) => D(x).add(y ?? 0).toFixed(2);
-      tax = projectTax(s.tax, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
+      // Answer 2451: this month's loan perquisite also counts for each month left in the year (spread evenly).
+      tax = projectTax(perqMonth.gt(0) ? { ...s.tax, perquisites: plus(s.tax.perquisites, perqMonth.mul(1 + s.tax.futureMonths).toFixed(2)) } : s.tax, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: D(tax.monthTds), explanation: `Tax for the year ${rupees(tax.tax.total)} (${tax.regime} regime) less ${rupees(tax.alreadyDeducted)} already deducted, over ${tax.remainingPeriods} pay ${tax.remainingPeriods === 1 ? 'period' : 'periods'}.`, rule: tdsRs ? cite(tdsRs) : undefined });
     }
   }
@@ -391,6 +418,6 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   if (s.held) add({ code: 'held', name: 'Net pay held', kind: 'info', segmentNo: 0, amount: net, explanation: 'Net pay is held; statutory deductions are made as usual and the pay is released later.' });
   const minW = mw ? { monthly: mw.monthly.toFixed(2), below: gross0.lt(mw.monthly) && unpaid.isZero(), floorApplied: mw.floorApplied, skillFallback: !!mw.state?.skillFallback } : null;
   const ruleVersions = Object.fromEntries([...used.entries()].map(([k, v]) => [k, v.version]));
-  const result = { lines, gross: gross.toFixed(2), deductions: deductions.toFixed(2), net: net.toFixed(2), employerCost: employerCost.toFixed(2), verify: lines.some((l) => l.verify), ruleVersions, recoveries: out, deferred, carryForward: carryForward.toFixed(2), minWage: minW, tax };
+  const result = { lines, gross: gross.toFixed(2), deductions: deductions.toFixed(2), net: net.toFixed(2), employerCost: employerCost.toFixed(2), verify: lines.some((l) => l.verify), ruleVersions, recoveries: out, deferred, cap: { wages: gross.toFixed(2), limit: r2(cap).toFixed(2), protectedNet: r2(protectedNet).toFixed(2), statutory: statutoryDed.toFixed(2) }, carryForward: carryForward.toFixed(2), minWage: minW, tax };
   return { ...result, resultHash: hashOf({ lines, gross: result.gross, deductions: result.deductions, net: result.net, employerCost: result.employerCost }) };
 }

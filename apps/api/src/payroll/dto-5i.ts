@@ -19,6 +19,17 @@ export class EntityMonthQuery {
   month?: string;
 }
 
+/** PAY-27 reconciliation: one legal entity (the first in scope when left out) and a month. */
+export class EwaReconQuery {
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string;
+
+  @IsOptional()
+  @Matches(MONTH)
+  month?: string;
+}
+
 export class PostMonthDto {
   @IsUUID()
   legalEntityId!: string;
@@ -142,6 +153,50 @@ export class IncentivePlanDto {
   @Min(0)
   @Max(730)
   clawbackDays!: number;
+
+  /** PAY-32: the plan's terms. Left out: from today, open-ended, monthly, entered by hand, for everyone in the entity. */
+  @IsOptional()
+  @Matches(DAY)
+  effectiveFrom?: string;
+
+  @IsOptional()
+  @Matches(DAY)
+  effectiveTo?: string;
+
+  @IsOptional()
+  @IsIn(['monthly', 'quarterly'])
+  payoutFrequency?: 'monthly' | 'quarterly';
+
+  @IsOptional()
+  @IsIn(['manual', 'import', 'api', 'projects'])
+  metricSource?: 'manual' | 'import' | 'api' | 'projects';
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  /** PAY-32: save it as a draft (published later); otherwise it is published now. */
+  @IsOptional()
+  @IsBoolean()
+  draft?: boolean;
+}
+
+/** PAY-32: a draft's changes (optimistic: the version it was read at). */
+export class IncentivePlanUpdateDto extends IncentivePlanDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  version!: number;
+}
+
+/** PAY-32: a new version of a published plan, from a later date. */
+export class IncentivePlanVersionDto {
+  @Matches(DAY)
+  effectiveFrom!: string;
 }
 
 export class ResultRowDto {
@@ -153,6 +208,24 @@ export class ResultRowDto {
 
   @Matches(MONEY)
   actual!: string;
+
+  /** PAY-33: the part of this incentive held until the customer pays (needs the reason). */
+  @IsOptional()
+  @Matches(MONEY)
+  held?: string;
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(3)
+  @MaxLength(200)
+  heldReason?: string;
+}
+
+/** PAY-33: release the held part of a result in a payroll month. */
+export class ReleaseHeldDto {
+  @Matches(MONTH)
+  month!: string;
 }
 
 export class IncentiveResultsDto {
@@ -239,6 +312,21 @@ export class OncallRuleDto {
 
   @Matches(/^\d(\.\d{1,2})?$/)
   multiplier!: string;
+
+  /** PAY-35: the public-holiday multiplier (at least the normal one; left out = the normal one). */
+  @IsOptional()
+  @Matches(/^\d(\.\d{1,2})?$/)
+  holidayMultiplier?: string;
+
+  /** PAY-35: pay standby even when the person is called out (default yes). */
+  @IsOptional()
+  @IsBoolean()
+  payStandbyWhenCalled?: boolean;
+
+  /** PAY-35: call-out hours count towards the weekly hours limit (default no). */
+  @IsOptional()
+  @IsBoolean()
+  countTowardsWeekly?: boolean;
 }
 
 export class OncallSlotDto {
@@ -254,6 +342,11 @@ export class OncallSlotDto {
   @IsOptional()
   @Matches(/^\d{1,2}(\.\d{1,2})?$/)
   calloutHours?: string;
+
+  /** PAY-35: the slot fell on a public holiday (its call-out is paid at the holiday multiplier). */
+  @IsOptional()
+  @IsBoolean()
+  onHoliday?: boolean;
 }
 
 // ------------------------------------------------------------------------------------------ industrial relations
@@ -560,6 +653,27 @@ export class ValuationResultDto extends CensusDto {
 
   @Matches(/^\d{1,13}(\.\d{1,2})?$/)
   closing!: string;
+
+  /** PAY-38: the movement from the actuary's report (all five or none; they must add up to the closing obligation). */
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  serviceCost?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  interestCost?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  benefitsPaid?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  actuarialLoss?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,13}(\.\d{1,2})?$/)
+  actuarialGain?: string;
 }
 
 export class PackSwitchDto {
@@ -635,4 +749,20 @@ export class TaxYearDto {
   @Min(2020)
   @Max(2100)
   year!: number;
+}
+
+/** PAY-36: the union was paid the month's check-off (the amount comes from the approved check-off). */
+export class RemittedDto {
+  @Matches(MONTH)
+  month!: string;
+
+  @Matches(DAY)
+  paidOn!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(60)
+  @Matches(/^[\w\-/. ]+$/, { message: 'The bank or cheque reference uses letters, digits, spaces and - / . only.' })
+  reference!: string;
 }

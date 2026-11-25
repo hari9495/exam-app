@@ -9,6 +9,7 @@ import { StatutoryRulesService } from '../statutory/statutory.service';
 import { StatutoryError, inForce, type RuleSet } from '../statutory/evaluator';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { calculatePayslip } from './calc';
+import { monthRun } from './month-run';
 import { nextMonth, taxYearOf } from './tax';
 import { PayRunsService } from './runs.service';
 import { FNF_COMPONENTS } from './starter';
@@ -54,13 +55,15 @@ const months = (from: string, to: string) => {
 };
 
 /** Approved payslips whose rule versions are no longer the ones in force for their month, by statute and new version. */
-export function staleRuleUses(slips: { employeeId: string; month: string; ruleVersions: Record<string, string> }[], rules: readonly RuleSet[]) {
+export function staleRuleUses(slips: { employeeId: string; month: string; ruleVersions: Record<string, string>; on?: string }[], rules: readonly RuleSet[]) {
   const found = new Map<string, { statute: string; jur: string; version: string; periods: Set<string>; employees: Set<string> }>();
   for (const s of slips)
     for (const [k, used] of Object.entries(s.ruleVersions ?? {})) {
       const [statute, jur] = k.split('|');
       if (NOT_PAY.includes(statute)) continue;
-      const now = inForce(rules, statute, [jur], monthRange(s.month).to);
+      // The rule in force on the payslip's own last day (a weekly part of a month ends before the month does): a rule from
+      // 17 Sep never touches a part that ended on 14 Sep.
+      const now = inForce(rules, statute, [jur], s.on ?? monthRange(s.month).to);
       if (!now || now.version === used) continue;
       const key = `${statute}|${jur}|${now.version}`;
       const x = found.get(key) ?? { statute, jur, version: now.version, periods: new Set<string>(), employees: new Set<string>() };
@@ -132,6 +135,60 @@ export class ArrearsService {
       });
       await audit(tx, c, 'payroll.offcycle.item_added', 'payroll_run', run.id, { itemId: row.id, employeeId: em.employeeId, componentCode: comp.code, amount: dto.amount, reason: dto.reason });
       return { id: row.id };
+    });
+  }
+
+  /** PAY-11 Bonus (and every non-F&F off-cycle run): the run's own lines, per person, as the design's table shows them. */
+  async items(ctx: TenantContext, user: ScopeUser, runId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await this.scoped(tx, c, v, ['payroll.offcycle.prepare', 'payroll.run.view', 'payroll.run.approve']);
+      const run = await tx.payrollRun.findFirst({ where: { organizationId: c.organizationId, id: runId } });
+      if (!run || !ids.includes(run.legalEntityId) || run.runType !== 'offcycle') throw new NotFoundException('Not found');
+      const rows = await tx.oneTimePay.findMany({ where: { organizationId: c.organizationId, runId: run.id, status: 'approved' }, orderBy: { createdAt: 'asc' }, take: 5000 });
+      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, componentCode: r.componentCode, label: r.label, amount: r.amount.toFixed(2), reason: r.reason, held: r.holdReason }));
+    });
+  }
+
+  /**
+   * PAY-05 "Add one-time pay · effect summary": the month worked out by the payroll calculator with and without the item,
+   * so gross, PF, ESI, TDS and net pay change by exactly what the run would do (today's records and rules; nothing saved).
+   */
+  async oneTimeEffect(ctx: TenantContext, user: ScopeUser, dto: { employeeId: string; componentCode: string; amount: string; month: string }) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await this.scoped(tx, c, v, ['payroll.input.manage']);
+      const em = await this.employment(tx, org, dto.employeeId, ids);
+      const comp = await tx.payComponent.findFirst({ where: { organizationId: org, code: dto.componentCode, status: 'active' } });
+      if (!comp || comp.statutory || !['earning', 'deduction', 'reimbursement'].includes(comp.kind)) throw new BadRequestException('Choose an earning, deduction or reimbursement component (not a statutory one).');
+      const rules = await this.rules.published();
+      const run = await monthRun(tx, org, em, dto.month, v.userId!);
+      let before: ReturnType<typeof calculatePayslip>, after: ReturnType<typeof calculatePayslip>;
+      try {
+        const snap = await this.runs.snapshot(tx, c, run, em.id, rules);
+        before = calculatePayslip(snap, rules);
+        after = calculatePayslip({ ...snap, oneTime: [...snap.oneTime, { id: NIL, code: comp.code, amount: dto.amount, days: null }] }, rules);
+      } catch (e) {
+        if (e instanceof StatutoryError || (e as { field?: string }).field) throw new BadRequestException(`${dto.month}: ${(e as Error).message}`);
+        throw e;
+      }
+      const statutes = new Map((await tx.payComponent.findMany({ where: { organizationId: org, statutory: { not: null } }, select: { code: true, statutory: true } })).map((x) => [x.code, x.statutory!]));
+      type Result = ReturnType<typeof calculatePayslip>;
+      const total = (r: Result, st: string[]) => r.lines.filter((l) => st.includes(statutes.get(l.code) ?? '')).reduce((t, l) => t.add(l.amount), D(0));
+      const diff = (...st: string[]) => total(after, st).sub(total(before, st)).toFixed(2);
+      return {
+        month: dto.month,
+        component: { code: comp.code, name: comp.name, kind: comp.kind },
+        gross: D(after.gross).sub(before.gross).toFixed(2),
+        pfEmployee: diff('pf_employee'),
+        pfEmployer: diff('pf_employer'),
+        esiEmployee: diff('esi_employee'),
+        esiEmployer: diff('esi_employer'),
+        esiCovered: total(after, ['esi_employee']).gt(0),
+        tds: diff('tds'),
+        net: D(after.net).sub(before.net).toFixed(2),
+      };
     });
   }
 
@@ -223,37 +280,7 @@ export class ArrearsService {
     for (const m of list) {
       const { from: ms, to: me } = monthRange(m);
       if (dateOf(em.joinedOn) > me || (em.exitedOn && dateOf(em.exitedOn) < ms)) continue;
-      const member = await tx.payGroupMember.findFirst({
-        where: { organizationId: org, employmentId: em.id, validFrom: { lte: asDate(me) }, OR: [{ validTo: null }, { validTo: { gte: asDate(ms) } }] },
-        orderBy: { validFrom: 'desc' },
-      });
-      const group = member ? { id: member.payGroupId } : await tx.payGroup.findFirst({ where: { organizationId: org, legalEntityId: em.legalEntityId }, orderBy: { createdAt: 'asc' } });
-      if (!group) throw new BadRequestException('The person is in no pay group.');
-      // The month as the regular run would pay it today (today's records, the rules in force for that month).
-      const run = {
-        id: NIL,
-        organizationId: org,
-        legalEntityId: em.legalEntityId,
-        payGroupId: group.id,
-        periodStart: asDate(ms),
-        periodEnd: asDate(me),
-        runType: 'regular',
-        offcycleKind: null,
-        status: 'draft',
-        calcVersion: 0,
-        wfRequestId: null,
-        preparedBy: by,
-        approvedBy: null,
-        approvedAt: null,
-        publishedAt: null,
-        postedAt: null,
-        totals: null,
-        voidReason: null,
-        subPeriod: 0,
-        rangeStart: null,
-        version: 1,
-        createdAt: new Date(),
-      };
+      const run = await monthRun(tx, org, em, m, by);
       let corrected: Map<string, Prisma.Decimal>;
       try {
         const r = calculatePayslip(await this.runs.snapshot(tx, c, run, em.id, rules), rules);
@@ -484,10 +511,11 @@ export class ArrearsService {
     for (const entity of entityIds) {
       const slips = await tx.payslip.findMany({
         where: { organizationId: org, legalEntityId: entity, status: 'approved', runType: 'regular', periodStart: { gte: since } },
-        select: { employeeId: true, periodStart: true, ruleVersions: true },
+        select: { employeeId: true, periodStart: true, ruleVersions: true, runId: true },
       });
+      const ends = new Map((await tx.payrollRun.findMany({ where: { organizationId: org, id: { in: [...new Set(slips.map((s) => s.runId).filter((x): x is string => !!x))] } }, select: { id: true, periodEnd: true } })).map((r) => [r.id, dateOf(r.periodEnd)]));
       for (const x of staleRuleUses(
-        slips.map((s) => ({ employeeId: s.employeeId, month: dateOf(s.periodStart).slice(0, 7), ruleVersions: (s.ruleVersions as Record<string, string>) ?? {} })),
+        slips.map((s) => ({ employeeId: s.employeeId, month: dateOf(s.periodStart).slice(0, 7), ruleVersions: (s.ruleVersions as Record<string, string>) ?? {}, on: s.runId ? ends.get(s.runId) : undefined })),
         rules,
       )) {
         const data = { periods: x.periods, employees: x.employees, employeeCount: x.employees.length };
@@ -692,3 +720,4 @@ export class ArrearsService {
     });
   }
 }
+

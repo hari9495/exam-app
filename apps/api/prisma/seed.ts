@@ -3,7 +3,7 @@ import { join } from 'path';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { seedOrgStructure } from './seed-org-structure';
-import { seedEmployees, seedFinanceEmployees } from './seed-employees';
+import { seedEmployeeCustomFields, seedEmployees, seedFinanceEmployees } from './seed-employees';
 import { seedGlobal } from './seed-global';
 import { seedAccess } from './seed-access';
 import { CONSULTANT, seedSignInDemo } from './seed-sign-in';
@@ -68,7 +68,7 @@ export const PERMISSIONS = [
   { key: 'employee.identity.view', description: 'View identity and bank details (masked; full value with an audited reveal)' },
   { key: 'employee.identity.manage', description: 'Raise identity, bank and legal-name changes for someone else' },
   { key: 'employee.identity.approve', description: 'Approve identity, bank and legal-name changes raised by someone else' },
-  { key: 'employee.aadhaar.view', description: 'View Aadhaar in full (Special, every view recorded)' },
+  { key: 'employee.aadhaar.view', description: 'See Special data: Aadhaar in full and the identity panel (every view recorded)' },
   // Step 3, the YukthiX platform console (P14 §7) and support sessions (P02 Q8). Platform keys are staff only.
   { key: 'platform.companies.view', description: 'See companies, their lifecycle and products (YukthiX staff)' },
   { key: 'platform.companies.manage', description: 'Create companies and change their lifecycle (YukthiX staff)' },
@@ -77,6 +77,33 @@ export const PERMISSIONS = [
   { key: 'platform.support.request', description: 'Ask a company for a support session and use it (YukthiX staff)' },
   { key: 'platform.audit.view', description: 'See the platform audit log (YukthiX staff)' },
   { key: 'platform.support_desk.work', description: 'Work the YukthiX Support desk in the console (YukthiX staff)' },
+  // Console C-2 (answer 1058): customer success (also in the console_customers migration).
+  // Console C-5 (answers 948, 1053): planned maintenance (also in the console_maintenance migration).
+  // Console C-8 (YX-11): the help-centre editor (also in the console_helpcentre migration).
+  // Console C-8 (YX-10): incidents and status updates (also in the console_incidents migration).
+  // Console C-8 (YX-12): nudges per feature switch (also in the console_nudges migration; role Customer success).
+  // Console C-8 (YX-13): the sales-assist queue (also in the console_sales_assist migration; role Customer success).
+  // Console C-8 (YX-09): product analytics (also in the console_analytics migration; role Customer success).
+  { key: 'platform.analytics.view', description: 'See product analytics: which features companies use, counts only (YukthiX staff)' },
+  { key: 'platform.sales.work', description: 'Work the sales-assist queue: take a request and record its outcome (YukthiX staff)' },
+  { key: 'platform.nudges.write', description: 'Write and approve the in-app nudges for each feature switch (YukthiX staff)' },
+  { key: 'platform.incidents.manage', description: 'Open incidents, post and approve status updates, and link a security breach to a containment (YukthiX staff)' },
+  { key: 'platform.helpcentre.write', description: 'Write and publish the help articles every company sees in Help (YukthiX staff)' },
+  // Answer 2113: feature requests from Ask YukthiX have a key of their own (Support agent and Customer success).
+  { key: 'platform.feature_requests.manage', description: 'Decide the feature requests sent from Ask YukthiX and read its review (YukthiX staff)' },
+  { key: 'platform.maintenance.manage', description: 'Schedule, approve and cancel planned maintenance windows (YukthiX staff)' },
+  // Staff roles: Customer success sees the windows.
+  // Projects P-1 (answer 1412): also in the projects_p1 migration.
+  { key: 'projects.view', description: 'See projects, their team, tasks and milestones (no fee, cost or margin)' },
+  { key: 'projects.manage', description: 'Create and change projects, budgets, team, tasks and milestones' },
+  { key: 'projects.finance', description: 'Projects finance: see and set fees, cost and margin' },
+  { key: 'projects.resource', description: 'Resource manager: allocate people across projects' },
+  { key: 'platform.maintenance.view', description: 'See the planned maintenance windows (YukthiX staff)' },
+  { key: 'platform.customers.success', description: 'Customer success: tenant health, churn alerts and messages to company System Admins (YukthiX staff)' },
+  // Help H-4 (answer 943): What's new entries (also in the help_whats_new migration).
+  { key: 'platform.news.manage', description: "Write the What's new entries people see in Help (YukthiX staff)" },
+  // Console staff roles (answers 1058, 1086): the Security lead gives and takes staff roles.
+  { key: 'platform.staff.manage', description: 'Security lead: give and take the YukthiX staff roles (YukthiX staff)' },
   { key: 'org.yukthix_support.raise', description: 'Contact YukthiX support for the company and follow its tickets' },
   { key: 'org.support_access.approve', description: 'Approve, decline and end YukthiX support sessions' },
   // P04 Q5: a company's branding and wording of the account emails.
@@ -89,30 +116,26 @@ export const PERMISSIONS = [
   ...PAY_PERMISSIONS,
   // M01 lifecycle batch 6a (also in the lifecycle_6a migration).
   ...LIFE_PERMISSIONS,
+  // HLP-10 / HLP-11 company policies (also in the policy_library migration).
+  { key: 'policy.manage', description: 'Write company policies and their versions, choose who they apply to, see who acknowledged, send reminders and export the evidence' },
+  { key: 'policy.publish', description: 'Publish or send back a policy version written by someone else' },
+  // HLP-06 speak-up (also in the speakup_filing migration).
+  { key: 'speakup.setup.manage', description: 'Choose the speak-up case officers: the grievance team, the ethics team, the Internal Committee and the escalation list' },
+  // HLP-08 disciplinary show-cause cases (also in the disciplinary_cases migration).
+  { key: 'case.disciplinary.raise', description: 'Open a disciplinary show-cause case about an employee (HR); the case is seen only by its HR members and the employee' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
-  // P14 Console 1 (founder, 8 Oct 2026): one all-keys staff role until staff are hired, then Support / Billing /
-  // Security (P14 §4 platform_staff_roles, P12 Q7). Each route checks its own key.
-  super_admin: [
-    'platform:manage_organizations',
-    'org:manage_users',
-    'org:manage_settings',
-    'org:view',
-    'audit:view',
-    'platform.companies.view',
-    'platform.companies.manage',
-    'platform.plans.manage',
-    'platform.channels.manage',
-    'platform.support.request',
-    'platform.audit.view',
-    'platform.statutory.manage',
-    // M14 SD-1.31: the YukthiX Support desk in the console.
-    'platform.support_desk.work',
-  ],
+  // Console staff roles (answers 1058, 1086): the staff role no longer holds the platform.* console keys; staff hold
+  // the keys of their staff roles (platform_staff_roles, given by a Security lead).
+  super_admin: ['platform:manage_organizations', 'org:manage_users', 'org:manage_settings', 'org:view', 'audit:view'],
   // org_admin is a full org-scoped superuser: their own admin features PLUS the complete
   // recruiter/panel capability set (exams, question bank, candidates, results).
   org_admin: [
+    'projects.view',
+    'projects.manage',
+    'projects.finance',
+    'projects.resource',
     'org:manage_users',
     'org:manage_settings',
     'org:view',
@@ -133,9 +156,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'org.structure.view',
     'org.settings.manage',
     // P06: the System Admin runs job history (Internal facts) and is the YX-HIS-12 override; no pay (Q1).
+    // Founder 28 Oct 2026: job changes are approved by HR only, so not by the System Admin.
     'employee.profile.view',
     'employee.change.manage',
-    'employee.change.approve',
     'employee.change.retro',
     'employee.change.retro_override',
     // P02 §4.2 System Admin: hands out roles; Personal data (not Confidential) like the rest of the record.
@@ -175,6 +198,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'audit.export',
     'audit.hold.manage',
     'payroll.period.reopen.approve',
+    // PAY-58: every base role an employee signs in with sees their own equity (migration 20261370000000).
+    'payroll.equity.own',
     // M01 lifecycle 6a: checklists and joiners like adding employees; documents only by data class (none Confidential).
     'lifecycle.onboarding.view',
     'lifecycle.onboarding.manage',
@@ -190,6 +215,15 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'asset.manage',
     // M05 expenses E1: categories, limits, rates and GST registrations.
     'expense.policy.manage',
+    // Founder 3 Nov 2026: the expense policy, read only (HR).
+    'expense.policy.view',
+    // HLP-10 / HLP-11: company policies, and publishing a version someone else wrote.
+    'policy.manage',
+    'policy.publish',
+    // HLP-06: who the speak-up case officers are (the System Admin, not HR).
+    'speakup.setup.manage',
+    // HLP-08: HR opens disciplinary show-cause cases (never a manager by default).
+    'case.disciplinary.raise',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',
@@ -217,12 +251,13 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // PM8: improvement plans.
     'perf.pip.manage',
   ],
-  recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned'],
-  panel: ['org:view', 'results:view', 'interview:view_assigned'],
+  recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned', 'payroll.equity.own'],
+  // Founder answer 511: a plain employee holds no interviewer key; being on an interview panel opens interviews.
+  panel: ['org:view', 'payroll.equity.own'],
   // hiring_manager: a job owner who reviews their reqs' candidates + results and joins interviews,
   // but has no settings/users/billing access. Pair with Record-level visibility to scope them to
   // their own jobs. This is the seeded DEFAULT — an org admin can retune it in Roles & Permissions.
-  hiring_manager: ['org:view', 'results:view', 'interview:view_assigned', 'pipeline:manage', 'candidate:manage'],
+  hiring_manager: ['org:view', 'results:view', 'interview:view_assigned', 'pipeline:manage', 'candidate:manage', 'payroll.equity.own'],
   // auditor: compliance read-only. Sees candidates, jobs/pipelines, exams, results/reports, the
   // question bank, and the audit log — but holds ZERO write keys, so every mutation route (all gated
   // on a :manage key) denies it. Deliberately NOT in EDITABLE_ROLES: its grants stay fixed read-only,
@@ -352,6 +387,7 @@ async function main() {
         payroll: await userId('payroll@demo-org.test'),
         panel: await userId('panel@demo-org.test'),
       });
+      await seedEmployeeCustomFields(tx, demoOrg.id);
       await seedAccess(tx, demoOrg.id, { admin: await userId('admin@demo-org.test'), panel: await userId('panel@demo-org.test'), passwordHash: panelHash });
 
       // Local testing of every way in on the sign-in screen (README "Sign-in on your laptop"): codes by
@@ -378,6 +414,10 @@ async function main() {
         (await tx.user.findFirst({ where: { email: 'rules@platform.test', organizationId: null } })) ??
         (await tx.user.create({ data: { email: 'rules@platform.test', name: 'Kavitha Menon', passwordHash: superAdminHash, role: 'super_admin', organizationId: null } }));
       const anand = await tx.user.findFirstOrThrow({ where: { email: 'super@platform.test', organizationId: null } });
+      // Console staff roles: Anand is the first Security lead (only while there is none), then each gives the other theirs.
+      await tx.$queryRaw`SELECT platform_bootstrap_security_lead(${anand.id}::uuid)`;
+      await tx.$queryRaw`SELECT platform_set_staff_roles(${reviewer.id}::uuid, ARRAY['security_lead', 'rules_editor', 'finance']::text[], ${anand.id}::uuid)`;
+      await tx.$queryRaw`SELECT platform_set_staff_roles(${anand.id}::uuid, ARRAY['security_lead', 'rules_editor', 'support_agent', 'customer_success']::text[], ${reviewer.id}::uuid)`;
       const minWages = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-min-wages.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, minWages, anand.id, reviewer.id);
       // 5b-D3: the India CCA roots (cca.gov.in) for USB-token signatures, by the same two-person flow.
@@ -395,6 +435,11 @@ async function main() {
       // Batch 5f: damages on late PF / ESI and the register formats (verify), by the same flow.
       const filingRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-filing.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, filingRules, anand.id, reviewer.id);
+      // Founder 30 Oct 2026 (item 12): state due dates for PT and LWF (verify), by the same flow.
+      const dueRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-dues.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
+      await loadRuleSets(tx, dueRules, anand.id, reviewer.id);
+      // CMP-06: when year-end salary certificates become available (the Q4 return's due date, verify), by the same flow.
+      await loadRuleSets(tx, (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-tds-dates.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets, anand.id, reviewer.id);
       // Batch 5g: retrenchment under the IR Code (verify), by the same flow.
       const exitRules = (JSON.parse(readFileSync(join(__dirname, '..', 'src', 'statutory', 'packs', 'in-exit.json'), 'utf8')) as { ruleSets: RuleFileSet[] }).ruleSets;
       await loadRuleSets(tx, exitRules, anand.id, reviewer.id);

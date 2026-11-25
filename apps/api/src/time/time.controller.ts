@@ -1,6 +1,8 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Request } from 'express';
+import { Request, Response } from 'express';
+import { resolveClientMeta } from '../auth/sessions.service';
+import { sha256 } from './device-rules';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -9,8 +11,9 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { AttendanceService } from './attendance.service';
-import { AdjustDto, ApplyLeaveDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, EntityFilterDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, PolicyDto, PolicyVersionDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearEndDto } from './dto';
+import { AdjustDto, ApplyLeaveDto, CancelDaysDto, CorrectBalanceDto, ExtendLeaveDto, LeaveHistoryQueryDto, WorkingDayDto, AssignPolicyDto, AttendanceRuleDto, CalendarDto, CalendarTemplateDto, EntityFilterDto, GeoPointsDto, HolidayDateDto, HolidayDto, LeavePlanDto, LeaveTypeDto, MonthEntityQueryDto, MonthQueryDto, NetworksDto, OnDutyDto, PermissionDto, PolicyDto, PolicyOrderDto, PolicyVersionDto, PublishDraftDto, PunchDto, RangeEntityQueryDto, RangeQueryDto, ReasonDto, RegulariseDto, WfhDto, YearChangeDto, YearEndDto, YearEndRunDto } from './dto';
 import { LeaveService } from './leave.service';
+import { LeaveV2Service } from './leave-v2.service';
 import { TimeSetupService } from './setup.service';
 import { TimeJobs } from './time-jobs';
 
@@ -31,6 +34,7 @@ export class TimeController {
     private readonly attendance: AttendanceService,
     private readonly setup: TimeSetupService,
     private readonly jobs: TimeJobs,
+    private readonly v2: LeaveV2Service,
   ) {}
 
   private user(req: Request) {
@@ -42,6 +46,12 @@ export class TimeController {
   @Get('me/leave')
   myLeave(@CurrentTenant() ctx: TenantContext) {
     return this.leave.me(ctx);
+  }
+
+  // Batch A item 2 (C2): every request, filtered, a page at a time (the Home shows the last 13 months).
+  @Get('me/leave/history')
+  myLeaveHistory(@CurrentTenant() ctx: TenantContext, @Query() q: LeaveHistoryQueryDto) {
+    return this.leave.history(ctx, q);
   }
 
   @Post('me/leave/preview')
@@ -56,6 +66,13 @@ export class TimeController {
     return this.leave.apply(ctx, this.user(req), dto);
   }
 
+  /** A request sent back for changes, changed and sent again (all the rules again; a new request to the approvers). */
+  @Post('me/leave/:id/resend')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  resend(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApplyLeaveDto) {
+    return this.leave.resend(ctx, this.user(req), id, dto);
+  }
+
   @Post('me/leave/:id/withdraw')
   @HttpCode(200)
   withdraw(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
@@ -66,6 +83,20 @@ export class TimeController {
   @HttpCode(200)
   cancel(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReasonDto) {
     return this.leave.cancel(ctx, this.user(req), id, dto.reason);
+  }
+
+  /** Batch A D12: ask to cancel some days of approved leave not yet taken (to the approver). */
+  @Post('me/leave/:id/cancel-days')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  cancelDays(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelDaysDto) {
+    return this.leave.cancelDays(ctx, this.user(req), id, dto);
+  }
+
+  /** Batch A D12: extend leave: a new request from the day after its last day, linked to it. */
+  @Post('me/leave/:id/extend')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  extend(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ExtendLeaveDto) {
+    return this.leave.extend(ctx, this.user(req), id, dto);
   }
 
   @Post('me/holidays/:id/choose')
@@ -82,16 +113,26 @@ export class TimeController {
 
   // ------------------------------------------------------------------------------------------ me › attendance
 
+  // DeviceNotApproved: this computer is the sign-in device cookie (yx_device, set at sign-in; minted here if missing);
+  // only its SHA-256 reaches the service.
   @Get('me/attendance')
-  myAttendance(@CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
-    return this.attendance.me(ctx, q.month);
+  myAttendance(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Query() q: MonthQueryDto) {
+    return this.attendance.me(ctx, q.month, req.ip ?? null, sha256(resolveClientMeta(req, res).deviceId));
   }
 
   @Post('me/punch')
   @HttpCode(200)
   @Throttle(MODERATE_UPLOAD_THROTTLE)
-  punch(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PunchDto) {
-    return this.attendance.punch(ctx, this.user(req), dto, req.ip ?? null, (req.headers['user-agent'] as string | undefined) ?? null);
+  punch(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Body() dto: PunchDto) {
+    return this.attendance.punch(ctx, this.user(req), dto, req.ip ?? null, (req.headers['user-agent'] as string | undefined) ?? null, sha256(resolveClientMeta(req, res).deviceId));
+  }
+
+  /** DeviceNotApproved · "Ask HR to approve" this computer for web clock-in (self; HR decides on TIM-14). */
+  @Post('me/web-device')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  askWebDevice(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext) {
+    return this.attendance.requestWebDevice(ctx, this.user(req), sha256(resolveClientMeta(req, res).deviceId), (req.headers['user-agent'] as string | undefined) ?? null);
   }
 
   @Post('me/regularise')
@@ -107,6 +148,20 @@ export class TimeController {
     return this.attendance.requestWfh(ctx, this.user(req), dto);
   }
 
+  /** On duty (TIM-07 OnDuty): a day or part of one away from the office, to the manager; or sent again after changes. */
+  @Post('me/on-duty')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  onDuty(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OnDutyDto) {
+    return this.attendance.requestOnDuty(ctx, this.user(req), dto);
+  }
+
+  /** Hourly permission (batch A item 7, B4): a from and to time on a working day, to the manager; never uses leave. */
+  @Post('me/permission')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  permission(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PermissionDto) {
+    return this.attendance.requestPermission(ctx, this.user(req), dto);
+  }
+
   /** Withdraws the person's own fix or work-from-home request while it waits for approval. */
   @Post('me/regularise/:id/withdraw')
   @HttpCode(200)
@@ -119,6 +174,12 @@ export class TimeController {
   @Get('team/calendar')
   calendar(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: RangeEntityQueryDto) {
     return this.leave.teamCalendar(ctx, this.user(req), q.from, q.to, q.legalEntityId);
+  }
+
+  /** TIM-17 Manager: my own team's leave waiting for my decision, who else is off, and who is away this week. */
+  @Get('team/leave-home')
+  teamLeaveHome(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.leave.teamHome(ctx, this.user(req));
   }
 
   @Get('requests/:id')
@@ -141,6 +202,12 @@ export class TimeController {
     return this.attendance.nudge(ctx, this.user(req), employeeId);
   }
 
+  // Keka ideas (2026-11): my direct reports today (Home's "My team today").
+  @Get('team-today')
+  teamToday(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.attendance.teamToday(ctx, this.user(req));
+  }
+
   @Get('muster')
   muster(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: MonthEntityQueryDto) {
     return this.attendance.muster(ctx, this.user(req), q.month, q.legalEntityId);
@@ -149,6 +216,18 @@ export class TimeController {
   @Get('people/:employeeId/days/:on')
   dayCard(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Param('on') on: string) {
     return this.attendance.dayCard(ctx, this.user(req), employeeId, /^\d{4}-\d{2}-\d{2}$/.test(on) ? on : '0000-00-00');
+  }
+
+  /** PPL-03: a person's month of attendance on their record (the muster's scope); decided by the service. */
+  @Get('people/:employeeId/attendance')
+  personAttendance(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Query() q: MonthQueryDto) {
+    return this.attendance.personMonth(ctx, this.user(req), employeeId, q.month);
+  }
+
+  /** PPL-03: a person's balances on their record (self, HR in scope, or their managers); decided by the service. */
+  @Get('people/:employeeId/balances')
+  personBalances(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.leave.personBalances(ctx, this.user(req), employeeId);
   }
 
   @Get('hr/balances')
@@ -168,6 +247,14 @@ export class TimeController {
     return this.leave.adjust(ctx, this.user(req), employeeId, dto);
   }
 
+  /** Batch A D10 (answer 2314): the balance grid's correction of one cell: a reason, audited, a ledger adjustment. */
+  @Post('hr/balances/correct')
+  @RequirePermissions('leave.balance.adjust')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  correct(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: CorrectBalanceDto) {
+    return this.leave.correctBalance(ctx, this.user(req), dto);
+  }
+
   // ------------------------------------------------------------------------------------------ set-up (company-wide)
 
   @Get('setup')
@@ -180,6 +267,13 @@ export class TimeController {
   @RequirePermissions('leave.settings.manage')
   createType(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LeaveTypeDto) {
     return this.setup.createType(ctx, this.user(req), dto);
+  }
+
+  /** HLP-12 answer 62: creates the injury leave type on HR's press (never automatically). */
+  @Post('setup/types/injury-leave')
+  @RequirePermissions('leave.settings.manage')
+  addInjuryLeave(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.setup.addInjuryLeave(ctx, this.user(req));
   }
 
   @Put('setup/types/:id')
@@ -231,17 +325,108 @@ export class TimeController {
     return this.setup.addHoliday(ctx, this.user(req), id, dto);
   }
 
+  @Post('setup/holidays/:id/date')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  async changeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HolidayDateDto) {
+    const told: { userId: string; on: string; requestId: string }[] = [];
+    const back: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.changeHolidayIn(tx, c, id, dto.on, told, back));
+    await this.v2.tellHolidayAdded(ctx, told);
+    await this.v2.tellHolidayRemoved(ctx, back);
+    return out;
+  }
+
+  // Batch A item 9 (D11): a holiday or weekly off marked as a working day; leave booked that day counts again.
+  @Post('setup/calendars/:id/working-days')
+  @RequirePermissions('leave.settings.manage')
+  async markWorkingDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: WorkingDayDto) {
+    const back: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.markWorkingIn(tx, c, id, dto.on, dto.reason, back));
+    await this.v2.tellWorkingDay(ctx, back);
+    return out;
+  }
+
+  @Post('setup/working-days/:id/remove')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  unmarkWorkingDay(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.unmarkWorkingIn(tx, c, id));
+  }
+
+  @Post('setup/holiday-drafts/:id/remove')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  removeDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.removeDraftIn(tx, c, id));
+  }
+
+  // TIM-26 drafts: a state template or a clone to next year waits as a draft until HR publishes it.
+  @Post('setup/calendars/template')
+  @RequirePermissions('leave.settings.manage')
+  calendarTemplate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: CalendarTemplateDto) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.templateIn(tx, c, dto.locationId));
+  }
+
+  @Post('setup/calendars/:id/clone')
+  @RequirePermissions('leave.settings.manage')
+  cloneCalendar(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.cloneIn(tx, c, id));
+  }
+
+  @Post('setup/holiday-drafts/:id/confirm')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  confirmDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HolidayDateDto) {
+    return this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.confirmDraftIn(tx, c, id, dto.on));
+  }
+
+  @Post('setup/calendars/:id/publish')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  async publishDraft(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PublishDraftDto) {
+    const told: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.publishDraftIn(tx, c, id, dto.year, told));
+    await this.v2.tellHolidayAdded(ctx, told);
+    return out;
+  }
+
+  @Post('setup/policy-order')
+  @RequirePermissions('leave.settings.manage')
+  policyOrder(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PolicyOrderDto) {
+    return this.setup.saveOrder(ctx, this.user(req), dto);
+  }
+
   @Post('setup/holidays/:id/remove')
   @HttpCode(200)
   @RequirePermissions('leave.settings.manage')
-  removeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.setup.removeHoliday(ctx, this.user(req), id);
+  async removeHoliday(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    const back: { userId: string; on: string; requestId: string }[] = [];
+    const out = await this.setup.run(ctx, this.user(req), true, (tx, c) => this.v2.removeHolidayIn(tx, c, id, back));
+    await this.v2.tellHolidayRemoved(ctx, back);
+    return out;
   }
 
   @Post('setup/locations/:id/rule')
   @RequirePermissions('leave.settings.manage')
   setRule(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AttendanceRuleDto) {
     return this.setup.setRule(ctx, this.user(req), id, dto);
+  }
+
+  /** TIM-31 IpError: the location's office networks (web check-in), each range checked; a bad one is refused by line. */
+  @Post('setup/locations/:id/networks')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  setNetworks(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NetworksDto) {
+    return this.setup.setNetworks(ctx, this.user(req), id, dto.ipRanges, dto.wifiNames);
+  }
+
+  /** TIM-31 Multi: the location's check-in points (inside any one is inside); a stale updatedAt answers 409. */
+  @Post('setup/locations/:id/points')
+  @HttpCode(200)
+  @RequirePermissions('leave.settings.manage')
+  setPoints(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GeoPointsDto) {
+    return this.setup.setPoints(ctx, this.user(req), id, dto.points, dto.updatedAt);
   }
 
   @Get('setup/year-end')
@@ -253,9 +438,23 @@ export class TimeController {
   @Post('setup/year-end')
   @HttpCode(202)
   @RequirePermissions('leave.settings.manage')
-  async runYearEnd(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: YearEndDto) {
-    const ok = await this.setup.yearEndCheck(ctx, this.user(req), dto.yearEnd);
+  async runYearEnd(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: YearEndRunDto) {
+    const ok = await this.setup.yearEndCheck(ctx, this.user(req), dto.yearEnd, dto.acknowledgePending === true);
     await this.jobs.queueYearEnd(ok.organizationId, dto.yearEnd, ok.userId);
     return { queued: true };
+  }
+
+  /** TIM-29 Transition: preview a change of one legal entity's leave year (a short year, then full years). */
+  @Get('setup/year-change')
+  @RequirePermissions('leave.settings.manage')
+  yearChange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: YearChangeDto) {
+    return this.setup.yearChangePreview(ctx, this.user(req), q.legalEntityId, q.newStartMonth);
+  }
+
+  /** TIM-29 Transition: schedule it (audited; once per entity and date). */
+  @Post('setup/year-change')
+  @RequirePermissions('leave.settings.manage')
+  scheduleYearChange(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: YearChangeDto) {
+    return this.setup.scheduleYearChange(ctx, this.user(req), dto.legalEntityId, dto.newStartMonth);
   }
 }

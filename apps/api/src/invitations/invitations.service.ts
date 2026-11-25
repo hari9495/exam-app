@@ -170,7 +170,8 @@ export class InvitationsService {
       }
 
       const liveInvitations = await tx.invitation.findMany({
-        where: { examId, candidateId: { in: uniqueCandidateIds }, status: 'invited', expiresAt: { gt: new Date() } },
+        // AS-3 (PRC-32): a live invitation already taken does not block a new one (another job, the earlier result reused).
+        where: { examId, candidateId: { in: uniqueCandidateIds }, status: 'invited', expiresAt: { gt: new Date() }, attempt: { is: null } },
         select: { candidateId: true },
       });
       const alreadyInvitedIds = new Set(liveInvitations.map((i) => i.candidateId));
@@ -321,7 +322,7 @@ export class InvitationsService {
   async list(
     context: TenantContext,
     examId: string,
-  ): Promise<(Omit<Invitation, 'token'> & { candidate: Candidate; attempt: { id: string; status: string } | null })[]> {
+  ): Promise<(Omit<Invitation, 'token' | 'organizationId'> & { candidate: Candidate; attempt: { id: string; status: string } | null })[]> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const exam = await tx.exam.findFirst({ where: { id: examId, organizationId: context.organizationId as string } });
       if (!exam) {
@@ -339,11 +340,19 @@ export class InvitationsService {
           advancedFromExamId: true,
           resendCount: true,
           extraTimePercent: true,
+          extraBreaks: true,
+          breakMinutes: true,
+          proctoringProfile: true,
           invitedAt: true,
           expiresAt: true,
           revokedAt: true,
           activeSessionFamilyId: true,
           driveSessionId: true,
+          // AS-3: an earlier result used instead (PRC-32), and a missed invitation re-invited once (PRC-07).
+          reusedAttemptId: true,
+          reusedAt: true,
+          reinvitedAt: true,
+          reinviteReason: true,
           candidate: true,
           attempt: { select: { id: true, status: true } },
         },

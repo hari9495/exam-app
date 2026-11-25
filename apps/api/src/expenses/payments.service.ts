@@ -13,7 +13,10 @@ import { inForce } from '../statutory/evaluator';
 import { writeBankFile, type BankLayout, type BankRow } from '../statutory/bank-format';
 import { PayrollIntakeService } from '../payroll/intake.service';
 import { withPayScope } from '../payroll/pay-access';
+import { refreezeExitOf } from '../lifecycle/settlement';
+import { payMonthFor } from './home-rules';
 import { buildExpenseJournal, journalCsv, type ExpenseMapping, type JournalInput } from './journal';
+import { COMPANY_PAID } from './checks';
 
 // Expenses batch E3 (M05-BUILD-DESIGN §10 – §12; XP-3.03 … XP-3.07): paying approved claims.
 //   route        at approval: a bank transfer above expense.route.payout_above, else expense.route.default; a legal entity
@@ -141,7 +144,7 @@ export class ExpensePaymentsService implements OnModuleInit {
     if (!month) return false;
     const employed = await tx.employment.findFirst({ where: { organizationId: org, employeeId: claim.employeeId, joinedOn: { lte: asDate(`${month}-28`) }, OR: [{ exitedOn: null }, { exitedOn: { gte: asDate(`${month}-01`) } }] }, select: { id: true } });
     if (!employed) return false;
-    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, payMode: { not: 'company_paid' } }, select: { taxableAmount: true } });
+    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, payMode: { notIn: COMPANY_PAID } }, select: { taxableAmount: true } });
     const exemptTotal = D(claim.approvedTotal ?? 0).sub(lines.reduce((t, l) => t.add(l.taxableAmount), D(0)));
     const exempt = Prisma.Decimal.max(D(0), Prisma.Decimal.min(net, exemptTotal.sub(claim.advanceAdjusted)));
     const taxable = net.sub(exempt);
@@ -155,6 +158,8 @@ export class ExpensePaymentsService implements OnModuleInit {
     await tx.expensePayment.create({ data: { organizationId: org, claimId: claim.id, legalEntityId: claim.legalEntityId, employeeId: claim.employeeId, route: 'payroll', payMonth: asDate(`${month}-01`), oneTimePayIds: ids, amount: net, taxableAmount: taxable, status: 'queued', createdBy: by } });
     await tx.expenseClaim.update({ where: { id: claim.id }, data: { route: 'payroll', paymentStatus: 'in_payroll', version: { increment: 1 } } });
     await audit(tx, c, 'expense.claim.to_payroll', 'expense_claim', claim.id, { month, exempt: exempt.toFixed(2), taxable: taxable.toFixed(2) });
+    // A leaver's claim is paid with the F&F settlement: a new hand-off revision makes payroll pick it up.
+    await refreezeExitOf(tx, c, claim.employmentId);
     return true;
   }
 
@@ -196,7 +201,10 @@ export class ExpensePaymentsService implements OnModuleInit {
       const name = new Map(people.map((p) => [p.id, [p.givenName, p.familyName].filter(Boolean).join(' ')]));
       const entities = await tx.legalEntity.findMany({ where: { organizationId: org, id: { in: ids } }, select: { id: true, name: true } });
       const batches = await tx.expensePayoutBatch.findMany({ where: { organizationId: org, legalEntityId: { in: ids } }, orderBy: { createdAt: 'desc' }, take: 50 });
+      // EXP-06 design: the payroll cut-off line (company setting, for the one entity shown, else the company default).
+      const cutoffDay = Number(await settingFor(tx, c, 'expense.payroll_cutoff_day', { legalEntityId: ids.length === 1 ? ids[0] : '' }));
       return {
+        payroll: { cutoffDay, month: payMonthFor(todayIst(), cutoffDay) },
         entities,
         claims: claims.map((x) => {
           const p = payments.find((y) => y.claimId === x.id);
@@ -318,7 +326,7 @@ export class ExpensePaymentsService implements OnModuleInit {
 
   /** The taxable part of what is paid: the lines' taxable amounts, less what an advance covered beyond the exempt part. */
   private async taxablePart(tx: Tx, org: string, claim: Claim) {
-    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, payMode: { not: 'company_paid' } }, select: { taxableAmount: true } });
+    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, payMode: { notIn: COMPANY_PAID } }, select: { taxableAmount: true } });
     const taxable = lines.reduce((t, l) => t.add(l.taxableAmount), D(0));
     const net = D(claim.netPayable ?? 0);
     const exempt = Prisma.Decimal.max(D(0), D(claim.approvedTotal ?? 0).sub(taxable).sub(claim.advanceAdjusted));
@@ -550,7 +558,7 @@ export class ExpensePaymentsService implements OnModuleInit {
         advanceAdjusted: x.advanceAdjusted.toFixed(2),
         lines: lines
           .filter((l) => l.claimId === x.id)
-          .map((l) => ({ category: l.categoryCode, amount: (l.approved ?? l.claimed).toFixed(2), companyPaid: l.payMode === 'company_paid', gst: l.itcStatus === 'eligible' ? { cgst: l.cgst?.toFixed(2), sgst: l.sgst?.toFixed(2), igst: l.igst?.toFixed(2) } : null })),
+          .map((l) => ({ category: l.categoryCode, amount: (l.approved ?? l.claimed).toFixed(2), companyPaid: COMPANY_PAID.includes(l.payMode), gst: l.itcStatus === 'eligible' ? { cgst: l.cgst?.toFixed(2), sgst: l.sgst?.toFixed(2), igst: l.igst?.toFixed(2) } : null })),
       })),
       payouts: payouts.map((p) => p.amount.toFixed(2)),
       advancesPaid: advances.map((a) => (a.amount ?? D(0)).mul(a.fxRate ?? 1).toFixed(2)),

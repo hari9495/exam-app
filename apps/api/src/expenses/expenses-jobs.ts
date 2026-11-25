@@ -4,10 +4,11 @@ import Redis from 'ioredis';
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connection';
 import { ExpenseTripsService } from './trips.service';
 import { ExpensePaymentsService } from './payments.service';
+import { ExpenseCardsService } from './cards.service';
 
 const QUEUE = 'expenses-jobs';
 
-/** M05 jobs on BullMQ (§17.3): daily advance settlement reminders and overdue flags (SCH-43); hourly, claims whose failed salary payment payroll paid again (E3). */
+/** M05 jobs on BullMQ (§17.3): daily advance settlement reminders and overdue flags (SCH-43) and card-line reminders (EXP-08); hourly, claims whose failed salary payment payroll paid again (E3). */
 @Injectable()
 export class ExpensesJobs implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ExpensesJobs.name);
@@ -18,6 +19,7 @@ export class ExpensesJobs implements OnModuleInit, OnModuleDestroy {
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly trips: ExpenseTripsService,
     private readonly payments: ExpensePaymentsService,
+    private readonly cards: ExpenseCardsService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -36,6 +38,7 @@ export class ExpensesJobs implements OnModuleInit, OnModuleDestroy {
   async handle(name: string): Promise<void> {
     try {
       if (name === 'daily') await this.trips.sweep();
+      if (name === 'daily') await this.cards.remindAll();
       if (name === 'hourly') await this.payments.reconcileAll();
     } catch (e) {
       this.logger.warn(`${name}: ${(e as Error).message}`);

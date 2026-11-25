@@ -3,7 +3,7 @@ import { BookOpen, CheckCircle2, FilePlus2, Flag, Search } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Dialog } from '../../components/overlay';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Card } from '../../components/shell';
@@ -90,6 +90,8 @@ export function TicketKbCard(p: TicketKbCardProps) {
   const [reason, setReason] = useState('');
   const [space, setSpace] = useState<string | null>(p.spaces.length === 1 ? p.spaces[0].id : null);
   const [made, setMade] = useState<string | null>(null);
+  const makeEarly = useTooEarly(!space ? [{ fieldId: 'kb-space', message: 'Choose where the article goes.' }] : []);
+  const flagEarly = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'kb-flag-why', message: 'Say what is wrong (at least 3 letters).' }] : []);
   const linked = [...new Map(p.links.map((l) => [l.id, l])).values()];
   const solvedBy = p.links.find((l) => l.kind === 'solved');
   return (
@@ -127,7 +129,8 @@ export function TicketKbCard(p: TicketKbCardProps) {
         {p.canWork && p.solved && p.spaces.length > 0 && (
           <div className="yx-ops-stack" data-gap="sm">
             {made ? (
-              <InlineAlert tone="success" title="Draft article made">
+              // Stays: it carries the link to the new draft.
+              <InlineAlert tone="info" title="Draft article made">
                 It goes through review before anyone reads it.{' '}
                 <button type="button" className="yx-desk-link" onClick={() => p.onOpenArticle(made)}>
                   Open the draft
@@ -135,11 +138,11 @@ export function TicketKbCard(p: TicketKbCardProps) {
               </InlineAlert>
             ) : (
               <>
-                <FormField label="Make an article from this ticket" helper="We take the question and your answer, without the requester's name or personal data.">
+                <FormField id="kb-space" label="Make an article from this ticket" helper="We take the question and your answer, without the requester's name or personal data." error={makeEarly.errorOf('kb-space')}>
                   <Select value={space} onChange={setSpace} options={p.spaces.map((s) => ({ value: s.id, label: s.name }))} placeholder="Choose where it goes" />
                 </FormField>
                 <div className="yx-ops-row">
-                  <Button icon={FilePlus2} disabled={!space} loading={busy === 'make'} onClick={() => void run('make', async () => setMade((await p.onMakeArticle(space!)).id))}>
+                  <Button icon={FilePlus2} loading={busy === 'make'} onClick={() => !makeEarly.stop() && void run('make', async () => setMade((await p.onMakeArticle(space!)).id))}>
                     Make draft article
                   </Button>
                 </div>
@@ -158,9 +161,9 @@ export function TicketKbCard(p: TicketKbCardProps) {
             <Button onClick={() => setFlagging(null)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={reason.trim().length < 3}
               loading={busy === 'flag'}
               onClick={() =>
+                !flagEarly.stop() &&
                 void run('flag', async () => {
                   await p.onFlag(flagging!.id, reason.trim());
                   setFlagging(null);
@@ -173,7 +176,7 @@ export function TicketKbCard(p: TicketKbCardProps) {
           </>
         }
       >
-        <FormField label="What is wrong?">
+        <FormField id="kb-flag-why" label="What is wrong?" required error={flagEarly.errorOf('kb-flag-why')}>
           <TextField value={reason} onChange={setReason} maxLength={300} />
         </FormField>
       </Dialog>

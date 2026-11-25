@@ -147,6 +147,17 @@ export class ProbationReviewDto {
   rating?: number | null;
 }
 
+/** PPL-20: an owner marks an open clearance item blocked, with the reason. */
+export class BlockItemDto {
+  @trim()
+  @IsString()
+  @Length(3, 300)
+  reason!: string;
+
+  @IsInt()
+  version!: number;
+}
+
 export class SignOffDto {
   @IsIn(['clear', 'waive'])
   action!: 'clear' | 'waive';
@@ -250,6 +261,11 @@ export class ReturnAssetDto {
 
   @IsIn(['in_stock', 'in_repair', 'lost'])
   status!: 'in_stock' | 'in_repair' | 'lost';
+
+  /** Damage or loss charged to a leaver: a recovery line on their F&F (signs off the clearance item with it). */
+  @IsOptional()
+  @Matches(MONEY)
+  recoveryAmount?: string | null;
 }
 
 export class ManualStepDto {
@@ -277,6 +293,11 @@ export class RehireDto {
 
   @IsInt()
   version!: number;
+}
+
+export class FamilyContactDto {
+  @IsUUID()
+  userId!: string;
 }
 
 export class BuddyDto {
@@ -321,6 +342,11 @@ export class BatchDto {
   @IsString()
   @MaxLength(300)
   reason?: string;
+
+  /** PPL-14: email each member waiting to join their new day (when the day moves). */
+  @IsOptional()
+  @IsBoolean()
+  notify?: boolean;
 
   @IsOptional()
   @IsInt()
@@ -455,6 +481,14 @@ export class IrDecisionDto {
   @IsOptional()
   @IsUUID()
   orderDocumentId?: string | null;
+
+  /** The government order number of a grant, e.g. "L-42011/12/2026-IR(M)" (founder 2 Nov 2026). Optional. */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(1, 60, { message: 'The order number is 1 to 60 characters.' })
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9 ./()&,:_-]*$/, { message: 'The order number has letters, digits, spaces and . / ( ) - & , : _ only.' })
+  orderNumber?: string;
 
   @IsInt()
   version!: number;

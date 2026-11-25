@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api-client';
 import { useAuth } from '../auth-context';
-import { CareersSettingsResponse } from '../types';
+import { CareersLayout, CareersSettingsResponse } from '../types';
 
 // Web data layer for the Task 3 org careers config + banner-upload endpoints (Zoho #14).
 // Mirrors useApplyConsent (GET/PUT) + useBranding's logo-upload mutation (multipart POST).
@@ -19,6 +19,8 @@ interface UpdateCareersSettingsInput {
   headline?: string | null;
   intro?: string | null;
   assistantEnabled?: boolean;
+  /** T9-09 page builder layout. */
+  config?: CareersLayout;
 }
 
 export function useUpdateCareersSettings() {

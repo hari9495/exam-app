@@ -9,3 +9,11 @@ export const Schedules: S = {};
 export const NewSchedule: S = { name: 'New schedule (secure link for Confidential)', args: { dialog: true } };
 export const ExportLog: S = { name: 'Export log', args: { tab: 'exports' } };
 export const Auditor: S = { name: 'Auditor: export log only', args: { persona: 'Auditor' } };
+
+// Answer 2428: live, the weekly hiring digest (Hire › Schedules).
+const people = [{ id: 'u1', name: 'Meera Iyer' }, { id: 'u2', name: 'Suresh Pillai' }, { id: 'u3', name: 'Divya Rao' }];
+const liveSched = (over: Partial<import('../analytics-live').LiveSchedules> = {}) => ({ state: 'ready' as const, onRetry: () => undefined, digest: { enabled: true, recipientIds: ['u1', 'u2'], lastSentAt: '2026-11-16T03:30:00.000Z' }, people, onSave: () => Promise.resolve(), ...over });
+export const LiveDigestOn: S = { name: 'Live · weekly hiring digest on', args: { live: liveSched() } };
+export const LiveDigestOff: S = { name: 'Live · weekly hiring digest off, never sent', args: { live: liveSched({ digest: { enabled: false, recipientIds: [], lastSentAt: null } }) } };
+export const LiveDigestLoading: S = { name: 'Live · loading', args: { live: liveSched({ state: 'loading' }) } };
+export const LiveDigestError: S = { name: 'Live · could not load', args: { live: liveSched({ state: 'error' }) } };

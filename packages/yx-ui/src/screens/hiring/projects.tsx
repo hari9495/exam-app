@@ -1,10 +1,10 @@
 // Projects › Projects list + workspace, timesheet approvals, capacity & utilisation, costing & margin.
 // PRJ-01, PRJ-02, PRJ-03, PRJ-04 (M12 §7, YX-PRJ-01…14).
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { CheckCheck, FolderKanban, Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
-import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, NoAccessState, Skeleton } from '../../components/feedback';
 import { Select } from '../../components/select';
 import { ConfirmDialog } from '../../components/overlay';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -15,6 +15,9 @@ import { Timeline, type TimelineItem } from '../../components/timeline';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Text } from '../../components/foundations';
 import { formatDate, formatINR } from '../../lib/format';
+import { useToast } from '../../components/notify';
+import { AllocationDrawer, MilestoneDrawer, ProjectDrawer, TaskDrawer } from './projects-drawers';
+import { toAllocation, toMilestone, toProject, toTask, type AllocationInput, type LiveLoad, type LiveProjectDetail, type LiveProjectRow, type MilestoneInput, type ProjectChoices, type ProjectInput, type ProjectStatus, type TaskInput } from './projects-live';
 import { PhoneFrame } from '../_kit/frames';
 import { bulkEligible, burnState, costVisible, marginPct, milestoneSummary, suppressGroup, tmBilling, utilisation, type Milestone, type RateCardEntry, type WipLine } from './projects-logic';
 import { BudgetBars, ProjectsFrame, RecordLayout, SummaryTiles, useListControls } from './hiring-kit';
@@ -25,11 +28,36 @@ type ListState = 'ready' | 'loading' | 'error';
 export type PrjPersona = 'pm' | 'finance' | 'hr';
 const STATUS_TONE: Record<Project['status'], BadgeTone> = { Draft: 'neutral', Active: 'success', 'On hold': 'warning', Closed: 'neutral' };
 
+/** Projects switched off for the company, shown only to people who would otherwise open the page (answer 1401). */
+export function ProjectsOffState() {
+  return <EmptyState title="Projects is switched off" description="Your company has not switched Projects on yet. A System Admin switches it on in Settings › Projects & timesheets." />;
+}
+
 /* ================================================================== PRJ-01 · Projects list */
 
+/** Projects P-1 (answers 1401 to 1404, 1412, 1420): the live projects API behind PRJ-01's list. */
+export interface LiveProjectsList {
+  state: LiveLoad;
+  onRetry?: () => void;
+  rows: LiveProjectRow[];
+  /** projects.manage creates; Projects finance sees and sets fee and cost (1412). */
+  can: { create: boolean; finance: boolean };
+  choices: ProjectChoices | null;
+  onOpen: (id: string) => void;
+  onCreate: (input: ProjectInput) => Promise<string>;
+  /** Story: the new-project drawer open. */
+  defaultNew?: boolean;
+}
+
 // PRJ-01
-export function ProjectsListScreen({ rows, persona, me = 'Karthik Subramanian', state = 'ready' }: { rows: Project[]; persona: PrjPersona; me?: string; state?: ListState }) {
-  const base = persona === 'pm' ? rows.filter((r) => r.pm === me) : rows;
+export function ProjectsListScreen({ rows: drawnRows = [], persona: drawnPersona = 'pm', me = 'Karthik Subramanian', state = 'ready', live }: { rows?: Project[]; persona?: PrjPersona; me?: string; state?: ListState; live?: LiveProjectsList }) {
+  const [creating, setCreating] = useState(!!live?.defaultNew);
+  const { toast } = useToast();
+  // Live: everyone sees all projects (a manager without a key gets only theirs from the API); fee only for finance.
+  const persona: PrjPersona = live ? (live.can.finance ? 'finance' : 'hr') : drawnPersona;
+  const rows = live ? live.rows.map(toProject) : drawnRows;
+  const marginOf = (id: string) => live?.rows.find((x) => x.id === id)?.margin ?? null;
+  const base = !live && persona === 'pm' ? rows.filter((r) => r.pm === me) : rows;
   const list = useListControls({
     rows: base,
     fields: [
@@ -45,19 +73,37 @@ export function ProjectsListScreen({ rows, persona, me = 'Karthik Subramanian', 
     searchPlaceholder: 'Search projects or clients',
   });
   const cols: TableColumn<Project>[] = [
-    { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 100 },
-    { key: 'name', header: 'Project', value: (r) => r.name, render: (r) => <PersonLabel name={r.name} secondary={r.client ?? 'Internal'} /> },
-    { key: 'model', header: 'Billing', value: (r) => r.model, groupable: true },
-    { key: 'pm', header: 'Project manager', type: 'person', value: (r) => r.pm, person: (r) => ({ name: r.pm }) },
-    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => STATUS_TONE[v as Project['status']] },
+    { key: 'code', header: 'Code', type: 'id', value: (r) => r.code, width: 150, render: (r) => <span className="yx-hire-clip" title={r.code}>{r.code}</span> },
+    {
+      key: 'name',
+      header: 'Project',
+      value: (r) => r.name,
+      width: 340,
+      render: (r) =>
+        live ? (
+          <span className="yx-hire-clip2">
+            <span title={r.name}>{r.name}</span>
+            <span title={r.client ?? 'Internal'}>
+              <Text as="span" size="sm" tone="secondary">
+                {r.client ?? 'Internal'}
+              </Text>
+            </span>
+          </span>
+        ) : (
+          <PersonLabel name={r.name} secondary={r.client ?? 'Internal'} />
+        ),
+    },
+    { key: 'model', header: 'Billing', value: (r) => r.model, groupable: true, optional: Boolean(live) },
+    { key: 'pm', header: 'Project manager', type: 'person', value: (r) => r.pm, person: (r) => ({ name: r.pm }), optional: Boolean(live) },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => STATUS_TONE[v as Project['status']], width: live ? 120 : undefined },
     {
       key: 'burn',
       header: 'Hours burn',
       value: (r) => burnState(r.usedHours, r.budgetHours).pct,
       width: 180,
-      render: (r) => <Meter value={r.usedHours} max={r.budgetHours} label={`${r.code} hours used`} valueText={`${burnState(r.usedHours, r.budgetHours).pct}%`} />,
+      render: (r) => (r.budgetHours ? <Meter value={r.usedHours} max={r.budgetHours} label={`${r.code} hours used`} valueText={`${burnState(r.usedHours, r.budgetHours).pct}%`} /> : <Text tone="muted">No budget</Text>),
     },
-    ...(persona !== 'hr'
+    ...(persona !== 'hr' && !live
       ? [
           {
             key: 'fee',
@@ -68,39 +114,65 @@ export function ProjectsListScreen({ rows, persona, me = 'Karthik Subramanian', 
           } as TableColumn<Project>,
         ]
       : []),
-    { key: 'util', header: 'Utilisation', type: 'number', value: (r) => r.utilisation, render: (r) => (r.utilisation ? `${r.utilisation}%` : '—') },
-    ...(persona === 'finance' ? [{ key: 'margin', header: 'Margin', type: 'number', value: (r: Project) => marginPct(r.billed + r.wip, r.cost), render: (r: Project) => (r.fee ? `${marginPct(r.billed + r.wip, r.cost)}%` : '—') } as TableColumn<Project>] : []),
+    ...(live && persona === 'finance' ? [{ key: 'feeLive', header: 'Fee', type: 'money', value: (r: Project) => r.fee } as TableColumn<Project>] : []),
+    // P-6 (FinanceList): fee billed and margin from the stored project totals, Projects finance only.
+    ...(live && persona === 'finance'
+      ? [
+          { key: 'fee', header: 'Fee billed', value: (r: Project) => (r.fee ? burnState(r.billed, r.fee).pct : 0), width: 160, optional: true, render: (r: Project) => (r.fee ? <Meter value={r.billed} max={r.fee} label={`${r.code} fee billed`} warnAt={101} dangerAt={200} valueText={formatINR(r.billed)} /> : r.billed ? formatINR(r.billed) : <Text tone="muted">—</Text>) } as TableColumn<Project>,
+          { key: 'margin', header: 'Margin', type: 'number', value: (r: Project) => marginOf(r.id), render: (r: Project) => (marginOf(r.id) == null ? '—' : `${marginOf(r.id)}%`) } as TableColumn<Project>,
+        ]
+      : []),
+    ...(live ? [{ key: 'people', header: 'People', type: 'number', value: (r: Project) => r.people, width: 104 } as TableColumn<Project>] : [{ key: 'util', header: 'Utilisation', type: 'number', value: (r: Project) => r.utilisation, render: (r: Project) => (r.utilisation ? `${r.utilisation}%` : '—') } as TableColumn<Project>]),
+    ...(persona === 'finance' && !live ? [{ key: 'margin', header: 'Margin', type: 'number', value: (r: Project) => marginPct(r.billed + r.wip, r.cost), render: (r: Project) => (r.fee ? `${marginPct(r.billed + r.wip, r.cost)}%` : '—') } as TableColumn<Project>] : []),
   ];
+  const canCreate = live ? live.can.create : persona !== 'hr';
+  const newButton = canCreate ? <Button variant="primary" icon={Plus} onClick={() => setCreating(true)}>New project</Button> : undefined;
+  // Walk 12 Nov (answers 946, 972): the kit's no-access page (Request access), never naming a key.
+  if (live?.state === 'no-access' || live?.state === 'off')
+    return <ProjectsFrame active="Projects">{live.state === 'off' ? <ProjectsOffState /> : <NoAccessState what="Projects" grantedBy="your System Admin" />}</ProjectsFrame>;
   return (
     <ProjectsFrame active="Projects">
-      <PageHeader
-        title="Projects"
-        description="Client and internal projects with budgets in hours, cost and fee. Burn alerts at 80% and 100%."
-        actions={persona === 'hr' ? undefined : <Button variant="primary" icon={Plus}>New project</Button>}
-      />
+      <PageHeader title="Projects" description="Client and internal projects with budgets in hours, cost and fee. Burn alerts at 80% and 100%." actions={newButton} />
       <DataTable
         label="Projects"
         columns={cols}
         rows={list.rows}
         getRowId={(r) => r.id}
-        state={state}
-        onRetry={() => {}}
+        state={live ? (live.state === 'error' ? 'error' : live.state === 'loading' ? 'loading' : 'ready') : state}
+        onRetry={live?.onRetry ?? (() => {})}
         errorReference="PRJ-1102"
         toolbar={list.toolbar}
         views={list.views}
         filtered={list.filtered}
         onClearFilters={list.clear}
-        onRowClick={() => {}}
-        rowActions={() => (
-          <>
-            <MenuItem>Open workspace</MenuItem>
-            <MenuItem>Put on hold</MenuItem>
-            <MenuItem destructive>Close project</MenuItem>
-          </>
-        )}
-        empty={<EmptyState title="No projects yet." description="Create a project with its client, billing model, budgets and team." action={persona === 'hr' ? undefined : <Button variant="primary" icon={Plus}>New project</Button>} />}
-        onExport={() => {}}
+        onRowClick={(r) => live?.onOpen(r.id)}
+        rowActions={(r) =>
+          live ? (
+            <MenuItem onSelect={() => live.onOpen(r.id)}>Open workspace</MenuItem>
+          ) : (
+            <>
+              <MenuItem>Open workspace</MenuItem>
+              <MenuItem>Put on hold</MenuItem>
+              <MenuItem destructive>Close project</MenuItem>
+            </>
+          )
+        }
+        empty={<EmptyState title="No projects yet." description="Create a project with its client, billing model, budgets and team." action={newButton} />}
+        onExport={live ? undefined : () => {}}
       />
+      {creating && live && (
+        <ProjectDrawer
+          project={null}
+          choices={live.choices ?? { clients: [], managers: [], people: [] }}
+          finance={live.can.finance}
+          onClose={() => setCreating(false)}
+          onSave={async (input) => {
+            const id = await live.onCreate(input);
+            toast({ tone: 'success', title: `${input.code} created as a draft` });
+            live.onOpen(id);
+          }}
+        />
+      )}
     </ProjectsFrame>
   );
 }
@@ -117,28 +189,129 @@ export interface ProjectExpense {
   status: 'Approved' | 'Pending';
 }
 
-export interface ProjectWorkspaceProps {
-  project: Project;
-  persona: PrjPersona;
-  allocations: Allocation[];
-  tasks: Task[];
-  milestones?: Milestone[];
-  wip: WipLine[];
-  rateCard: RateCardEntry[];
-  expenses: ProjectExpense[];
-  activity: TimelineItem[];
-  today: Date;
-  defaultTab?: 'overview' | 'team' | 'tasks' | 'timesheets' | 'billing' | 'expenses';
+/** Projects P-1: the live project behind PRJ-01's workspace (overview, team, tasks and milestones). */
+export interface LiveProjectWorkspace {
+  state: LiveLoad;
+  onRetry?: () => void;
+  detail: LiveProjectDetail | null;
+  choices: ProjectChoices | null;
+  /** The company's burn alert levels (answer 1405). */
+  burn: { warn: number; over: number };
+  onUpdate: (input: ProjectInput & { version: number }) => Promise<void>;
+  onStatus: (status: ProjectStatus, version: number) => Promise<void>;
+  onAllocate: (input: AllocationInput) => Promise<void>;
+  onChangeAllocation: (id: string, input: AllocationInput & { version: number }) => Promise<void>;
+  onEndAllocation: (id: string, version: number) => Promise<void>;
+  onAddTask: (input: TaskInput) => Promise<void>;
+  onChangeTask: (id: string, input: TaskInput) => Promise<void>;
+  onAddMilestone: (input: MilestoneInput) => Promise<void>;
+  onCompleteMilestone: (id: string, version: number) => Promise<void>;
+  /** Answer 1412: GET /projects/:id/cost (absent: no cost shown; finance or the manager with enough people only). */
+  cost?: { finance: boolean; hiddenMonths: number; provisional: boolean; total: string; months: { month: string; cost: string; expenses: string; basis: 'provisional' | 'final'; restatedFrom: string | null }[] } | null;
+  /** Answer 1419: GET /projects/:id/expenses (absent: no Expenses tab). */
+  expenses?: { id: string; person: string; what: string; spentOn: string; amount: string; rebill: boolean; status: 'Approved' | 'Pending' }[] | null;
+  /** P-6: GET /projects/billing/project/:id, the Billing tab for Projects finance and account managers (absent: no tab). */
+  billing?: LiveProjectBilling | null;
+  /** Opens an invoice in Staffing desk › Invoices (the one invoice list). */
+  onOpenInvoice?: (id: string) => void;
+  /** Answer 1541: the Timesheets tab, a week at a time (absent: no tab). */
+  timesheets?: { week: string; rows: LiveTimesheetRow[] } | null;
+  onTimesheetWeek?: (week: string) => void;
+  /** Stories: a drawer open. */
+  defaultDrawer?: 'edit' | 'allocate' | 'task' | 'milestone';
 }
 
+/** GET /projects/billing/project/:id (P-6): one project's unbilled work, waiting hours, billed to date and invoices. */
+export interface LiveProjectBilling {
+  model: 'time_material' | 'fixed_fee' | 'retainer' | 'non_billable';
+  fee: string | null;
+  ready: string;
+  readyHours: number;
+  waitingHours: number;
+  billed: string;
+  unbilled: { id: string; source: string; detail: string; hours: number | null; amount: string; held: string | null }[];
+  invoices: { id: string; number: string | null; kind: 'Invoice' | 'Credit note'; status: 'draft' | 'issued'; date: string | null; amount: string }[];
+}
+
+/** GET /projects/:id/timesheets row (answer 1541). */
+export interface LiveTimesheetRow {
+  employeeId: string;
+  person: string;
+  bookedHours: number;
+  approvedHours: number;
+  allocatedHours: number;
+  status: 'missing' | 'draft' | 'pending' | 'approved' | 'rejected' | 'reduced';
+  /** The person's whole week against attendance (an hour or more apart). */
+  mismatch: string | null;
+}
+const TS_STATUS: Record<LiveTimesheetRow['status'], string> = { missing: 'Not started', draft: 'Draft', pending: 'Waiting', approved: 'Approved', reduced: 'Reduced', rejected: 'Rejected' };
+const plusDays = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+export interface ProjectWorkspaceProps {
+  project?: Project;
+  persona?: PrjPersona;
+  allocations?: Allocation[];
+  tasks?: Task[];
+  milestones?: Milestone[];
+  wip?: WipLine[];
+  rateCard?: RateCardEntry[];
+  expenses?: ProjectExpense[];
+  activity?: TimelineItem[];
+  today?: Date;
+  defaultTab?: 'overview' | 'team' | 'tasks' | 'timesheets' | 'billing' | 'expenses';
+  live?: LiveProjectWorkspace;
+}
+
+const STATUS_MOVES: Record<ProjectStatus, { to: ProjectStatus; label: string; destructive?: boolean }[]> = {
+  draft: [{ to: 'active', label: 'Start project' }, { to: 'closed', label: 'Close project', destructive: true }],
+  active: [{ to: 'on_hold', label: 'Put on hold' }, { to: 'closed', label: 'Close project', destructive: true }],
+  on_hold: [{ to: 'active', label: 'Resume project' }, { to: 'closed', label: 'Close project', destructive: true }],
+  closed: [{ to: 'active', label: 'Reopen project' }],
+};
+
 // PRJ-01 (workspace)
-export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks, milestones = [], wip, rateCard, expenses, activity, today, defaultTab = 'overview' }: ProjectWorkspaceProps) {
-  const hours = burnState(p.usedHours, p.budgetHours);
-  const cost = burnState(p.cost, p.budgetCost);
+export function ProjectWorkspaceScreen({ project: drawnProject, persona: drawnPersona = 'pm', allocations: drawnAllocations = [], tasks: drawnTasks = [], milestones: drawnMilestones = [], wip = [], rateCard = [], expenses = [], activity = [], today = new Date(), defaultTab = 'overview', live }: ProjectWorkspaceProps) {
+  const [drawer, setDrawer] = useState<{ kind: 'edit' | 'allocate' | 'task' | 'milestone'; id?: string } | null>(live?.defaultDrawer ? { kind: live.defaultDrawer } : null);
+  const [confirm, setConfirm] = useState<{ title: string; consequence: string; label: string; destructive?: boolean; action: () => Promise<void> } | null>(null);
+  const { toast } = useToast();
+  const d = live?.detail ?? null;
+  if (live && !d)
+    return (
+      <ProjectsFrame active="Projects">
+        {live.state === 'error' ? <ErrorState title="We couldn't load the project." onRetry={live.onRetry} /> : live.state === 'off' ? <ProjectsOffState /> : live.state === 'no-access' ? <NoAccessState what="this project" grantedBy="your System Admin" /> : <Skeleton height={320} />}
+      </ProjectsFrame>
+    );
+  const p = d ? toProject(d.project) : drawnProject!;
+  const persona: PrjPersona = d ? (d.can.finance ? 'finance' : d.can.run ? 'pm' : 'hr') : drawnPersona;
+  const allocations = d ? d.allocations.map(toAllocation) : drawnAllocations;
+  const tasks = d ? d.tasks.map(toTask) : drawnTasks;
+  const milestones = d ? d.milestones.map((m) => toMilestone(m, d.project.clientAcceptsMilestones)) : drawnMilestones;
+  const thresholds: [number, number] = live ? [live.burn.warn, live.burn.over] : [80, 100];
+  const hours = burnState(p.usedHours, p.budgetHours, thresholds);
+  const cost = burnState(p.cost, p.budgetCost, thresholds);
   const billing = tmBilling(wip, rateCard);
   const ms = milestoneSummary(milestones, p.fee);
   const closed = p.status === 'Closed';
-  const alerts = [hours.state !== 'ok' && `hours at ${hours.pct}%`, cost.state !== 'ok' && `cost at ${cost.pct}%`].filter(Boolean);
+  const alerts = [hours.state !== 'ok' && `hours at ${hours.pct}%`, !live && cost.state !== 'ok' && `cost at ${cost.pct}%`].filter(Boolean);
+  const run = (fn: () => Promise<void>, done: string) => async () => {
+    await fn();
+    toast({ tone: 'success', title: done });
+  };
+  const ask = (move: { to: ProjectStatus; label: string; destructive?: boolean }) =>
+    setConfirm({
+      title: `${move.label}?`,
+      consequence:
+        move.to === 'closed'
+          ? 'No new time can be booked. Hours already booked stay. You can reopen it later.'
+          : move.to === 'on_hold'
+            ? 'No new time can be booked until it is resumed.'
+            : 'People allocated to it can book time from now on.',
+      label: move.label,
+      destructive: move.destructive,
+      action: run(() => live!.onStatus(move.to, d!.project.version), `${p.code}: ${move.label.toLowerCase()} done`),
+    });
+  const allocationOf = (id?: string) => (d && id ? (d.allocations.find((a) => a.id === id) ?? null) : null);
+  const taskOf = (id?: string) => (d && id ? (d.tasks.find((t) => t.id === id) ?? null) : null);
   return (
     <ProjectsFrame active="Projects">
       <RecordLayout
@@ -147,7 +320,7 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
             <InlineAlert tone="info" title="Closed project">No new time or costs can be booked. Late entries go through an adjustment in an open week.</InlineAlert>
           ) : alerts.length ? (
             <InlineAlert tone={hours.state === 'over' || cost.state === 'over' ? 'danger' : 'warning'} title="Budget burn alert">
-              {p.code}: {alerts.join(', ')} of budget. Sent to {p.pm} and the account manager.
+              {p.code}: {alerts.join(', ')} of budget. Sent to {p.pm}{live ? ' and Projects finance' : ' and the account manager'}.
             </InlineAlert>
           ) : undefined
         }
@@ -158,13 +331,20 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
             secondary={`${p.code} · ${p.client ?? 'Internal'} · ${p.model} · PM ${p.pm}`}
             status={<Badge tone={STATUS_TONE[p.status]}>{p.status}</Badge>}
             facts={[
-              { label: 'Dates', value: `${formatDate(p.start)} – ${formatDate(p.end)}` },
+              { label: 'Dates', value: Number.isNaN(p.start.getTime()) ? 'Not set' : `${formatDate(p.start)} – ${Number.isNaN(p.end.getTime()) ? 'open' : formatDate(p.end)}` },
               { label: 'People', value: p.people },
-              { label: 'Utilisation', value: p.utilisation ? `${p.utilisation}%` : '—' },
-              ...(persona !== 'hr' ? [{ label: 'Unbilled (WIP)', value: formatINR(p.wip) }] : []),
+              ...(live ? [{ label: 'Hours booked', value: `${p.usedHours.toLocaleString('en-IN')} h` }] : [{ label: 'Utilisation', value: p.utilisation ? `${p.utilisation}%` : '—' }]),
+              ...(persona !== 'hr' && !live ? [{ label: 'Unbilled (WIP)', value: formatINR(p.wip) }] : []),
+              ...(live && persona === 'finance' && p.fee ? [{ label: 'Fee', value: formatINR(p.fee) }] : []),
             ]}
             actions={
-              closed ? undefined : persona === 'finance' ? (
+              live ? (
+                d!.can.team && !closed ? (
+                  <Button variant="primary" icon={Plus} onClick={() => setDrawer({ kind: 'allocate' })}>
+                    Add allocation
+                  </Button>
+                ) : undefined
+              ) : closed ? undefined : persona === 'finance' ? (
                 <Button variant="primary">Open billing workbench</Button>
               ) : persona === 'pm' ? (
                 <>
@@ -176,7 +356,18 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
               ) : undefined
             }
             menu={
-              persona === 'hr' ? undefined : (
+              live ? (
+                d!.can.edit ? (
+                  <>
+                    <MenuItem onSelect={() => setDrawer({ kind: 'edit' })}>Edit details and budgets</MenuItem>
+                    {STATUS_MOVES[d!.project.status].map((m) => (
+                      <MenuItem key={m.to} destructive={m.destructive} onSelect={() => ask(m)}>
+                        {m.label}
+                      </MenuItem>
+                    ))}
+                  </>
+                ) : undefined
+              ) : persona === 'hr' ? undefined : (
                 <>
                   <MenuItem>Edit budgets</MenuItem>
                   <MenuItem>Rate card</MenuItem>
@@ -187,10 +378,12 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
           />
         }
         aside={
-          <>
-            <Text weight="semibold">Activity</Text>
-            <Timeline items={activity} today={today} />
-          </>
+          live ? undefined : (
+            <>
+              <Text weight="semibold">Activity</Text>
+              <Timeline items={activity} today={today} />
+            </>
+          )
         }
       >
         <Tabs defaultValue={defaultTab}>
@@ -200,22 +393,30 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
               Team & allocations
             </TabsTrigger>
             <TabsTrigger value="tasks">Tasks & milestones</TabsTrigger>
-            <TabsTrigger value="timesheets">Timesheets</TabsTrigger>
-            {persona !== 'hr' && <TabsTrigger value="billing">Billing</TabsTrigger>}
-            <TabsTrigger value="expenses" count={expenses.length}>
-              Expenses
-            </TabsTrigger>
+            {(!live || live.timesheets !== undefined) && <TabsTrigger value="timesheets">Timesheets</TabsTrigger>}
+            {((!live && persona !== 'hr') || (live && live.billing !== undefined)) && <TabsTrigger value="billing">Billing</TabsTrigger>}
+            {(!live || live.expenses !== undefined) && (
+              <TabsTrigger value="expenses" count={live ? (live.expenses?.length ?? 0) : expenses.length}>
+                Expenses
+              </TabsTrigger>
+            )}
           </TabsList>
           <TabsContent value="overview">
             <div className="yx-hire-stack">
-              <BudgetBars
-                rows={[
-                  { label: 'Hours', used: p.usedHours, budget: p.budgetHours },
-                  { label: `Cost${p.costProvisional ? ' (provisional until September payroll is paid)' : ''}`, used: p.cost, budget: p.budgetCost, money: true, hidden: persona === 'hr' },
-                  ...(p.fee ? [{ label: 'Fee billed', used: p.billed, budget: p.fee, money: true, hidden: persona === 'hr' }] : []),
-                ]}
-              />
-              {persona === 'finance' && p.fee > 0 && (
+              {live && !p.budgetHours ? (
+                <InlineAlert tone="info" title="No hours budget yet">
+                  Burn alerts need an hours budget. {d!.can.edit ? 'Add it in Edit details and budgets.' : 'Ask someone who manages projects to add it.'}
+                </InlineAlert>
+              ) : (
+                <BudgetBars
+                  rows={[
+                    { label: 'Hours', used: p.usedHours, budget: p.budgetHours },
+                    ...(live ? [] : [{ label: `Cost${p.costProvisional ? ' (provisional until September payroll is paid)' : ''}`, used: p.cost, budget: p.budgetCost, money: true, hidden: persona === 'hr' }]),
+                    ...(p.fee && !live ? [{ label: 'Fee billed', used: p.billed, budget: p.fee, money: true, hidden: persona === 'hr' }] : []),
+                  ]}
+                />
+              )}
+              {persona === 'finance' && p.fee > 0 && !live && (
                 <SummaryTiles
                   label="Margin"
                   tiles={[
@@ -225,7 +426,18 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
                   ]}
                 />
               )}
-              {persona === 'pm' && <Text size="sm" tone="secondary">You see project cost as totals. Individual cost rates are visible to payroll and finance only.</Text>}
+              {/* Projects P-5 (1412, 1413): cost to date, totals only, from the nightly job. */}
+              {live?.cost && (
+                <>
+                  {live.cost.finance && p.budgetCost > 0 ? (
+                    <BudgetBars rows={[{ label: `Cost${live.cost.provisional ? ' (provisional until payroll is final)' : ''}`, used: Number(live.cost.total), budget: p.budgetCost, money: true }]} />
+                  ) : (
+                    <SummaryTiles label="Cost" tiles={[{ label: 'Cost to date', value: formatINR(Number(live.cost.total)), sub: live.cost.provisional ? 'provisional' : 'final' }, ...(live.cost.finance && p.fee ? [{ label: 'Fee', value: formatINR(p.fee) }] : [])]} />
+                  )}
+                  {live.cost.hiddenMonths > 0 && <Text size="sm" tone="secondary">{live.cost.hiddenMonths} {live.cost.hiddenMonths === 1 ? 'month is' : 'months are'} left out: too few people on the project, so a person's rate could be worked out.</Text>}
+                </>
+              )}
+              {(persona === 'pm' || (live?.cost && !live.cost.finance)) && <Text size="sm" tone="secondary">You see project cost as totals. Individual cost rates are visible to payroll and finance only.</Text>}
             </div>
           </TabsContent>
           <TabsContent value="team">
@@ -237,15 +449,49 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
                 { key: 'person', header: 'Person', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.role }) },
                 { key: 'pct', header: 'Allocation', type: 'number', value: (r) => r.percent, render: (r) => `${r.percent}% · ${Math.round((r.percent / 100) * 40)} h a week` },
                 { key: 'from', header: 'From', type: 'date', value: (r) => r.from },
-                { key: 'to', header: 'To', type: 'date', value: (r) => r.to },
+                ...(live ? [{ key: 'toLive', header: 'To', value: (r: Allocation) => (Number.isNaN(r.to.getTime()) ? 'Open' : formatDate(r.to)) } as TableColumn<Allocation>] : [{ key: 'to', header: 'To', type: 'date', value: (r: Allocation) => r.to } as TableColumn<Allocation>]),
+                ...(live ? [{ key: 'booked', header: 'Hours booked', type: 'number', value: (r: Allocation) => r.bookedThisWeek, total: 'sum' } as TableColumn<Allocation>] : []),
                 { key: 'tentative', header: 'Status', type: 'status', value: (r) => (r.tentative ? 'Tentative' : 'Confirmed'), statusTone: (v) => (v === 'Tentative' ? 'warning' : 'success') },
               ]}
-              rowActions={persona === 'pm' ? () => (<><MenuItem>Change allocation</MenuItem><MenuItem destructive>End allocation</MenuItem></>) : undefined}
+              rowActions={
+                live
+                  ? d!.can.team && !closed
+                    ? (r) => (
+                        <>
+                          <MenuItem onSelect={() => setDrawer({ kind: 'allocate', id: r.id })}>Change allocation</MenuItem>
+                          <MenuItem
+                            destructive
+                            onSelect={() => {
+                              const a = allocationOf(r.id)!;
+                              setConfirm({ title: `End ${a.person}'s allocation?`, consequence: 'It ends today. Their hours stay; from tomorrow they can no longer book time to the project.', label: 'End allocation', destructive: true, action: run(() => live.onEndAllocation(a.id, a.version), 'Allocation ended') });
+                            }}
+                          >
+                            End allocation
+                          </MenuItem>
+                        </>
+                      )
+                    : undefined
+                  : persona === 'pm'
+                    ? () => (
+                        <>
+                          <MenuItem>Change allocation</MenuItem>
+                          <MenuItem destructive>End allocation</MenuItem>
+                        </>
+                      )
+                    : undefined
+              }
               empty={<EmptyState title="No one is allocated yet." description="Only allocated people can book time to this project." />}
             />
           </TabsContent>
           <TabsContent value="tasks">
             <div className="yx-hire-stack">
+              {live && d!.can.run && !closed && (
+                <div>
+                  <Button icon={Plus} onClick={() => setDrawer({ kind: 'task' })}>
+                    Add task
+                  </Button>
+                </div>
+              )}
               <DataTable
                 label="Tasks"
                 rows={tasks}
@@ -255,18 +501,35 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
                   { key: 'billable', header: 'Billable', type: 'status', value: (r) => (r.billable ? 'Billable' : 'Non-billable'), statusTone: (v) => (v === 'Billable' ? 'info' : 'neutral') },
                   { key: 'budget', header: 'Budget hours', type: 'number', value: (r) => r.budgetHours, total: 'sum' },
                   { key: 'used', header: 'Used hours', type: 'number', value: (r) => r.usedHours, total: 'sum' },
-                  { key: 'burn', header: 'Burn', value: (r) => r.usedHours / r.budgetHours, width: 160, render: (r) => <Meter value={r.usedHours} max={r.budgetHours} label={`${r.name} burn`} /> },
+                  { key: 'burn', header: 'Burn', value: (r) => (r.budgetHours ? r.usedHours / r.budgetHours : 0), width: 160, render: (r) => (r.budgetHours ? <Meter value={r.usedHours} max={r.budgetHours} label={`${r.name} burn`} /> : <Text tone="muted">No budget</Text>) },
+                  ...(live ? [{ key: 'active', header: 'In use', type: 'status', value: (r: Task) => (taskOf(r.id)?.active === false ? 'Not in use' : 'In use'), statusTone: (v: unknown) => (v === 'In use' ? 'success' : 'neutral') } as TableColumn<Task>] : []),
                 ]}
+                rowActions={live && d!.can.run && !closed ? (r) => <MenuItem onSelect={() => setDrawer({ kind: 'task', id: r.id })}>Change task</MenuItem> : undefined}
+                empty={live ? <EmptyState title="No tasks yet." description="People book their hours to a task (an activity on their timesheet)." /> : undefined}
               />
-              {milestones.length > 0 && (
-                <Card title="Milestones" actions={<Text size="sm" tone="secondary">Contract value {formatINR(p.fee)}</Text>}>
+              {(milestones.length > 0 || (live && p.model === 'Fixed fee')) && (
+                <Card
+                  title="Milestones"
+                  actions={
+                    live ? (
+                      d!.can.run && !closed ? (
+                        <Button size="sm" icon={Plus} onClick={() => setDrawer({ kind: 'milestone' })}>
+                          Add milestone
+                        </Button>
+                      ) : undefined
+                    ) : (
+                      <Text size="sm" tone="secondary">Contract value {formatINR(p.fee)}</Text>
+                    )
+                  }
+                >
                   {ms.warning && <InlineAlert tone="warning">{ms.warning}</InlineAlert>}
+                  {milestones.length === 0 && <EmptyState compact title="No milestones yet." description="Split the fixed fee into milestones that add up to 100%." />}
                   <ul className="yx-hire-list">
                     {milestones.map((m) => (
                       <li key={m.id} className="yx-hire-list__item">
                         <div className="yx-hire-list__main">
                           <Text weight="medium">
-                            {m.name} · {m.pct}% · {formatINR(Math.round((p.fee * m.pct) / 100))}
+                            {m.name} · {m.pct}%{persona === 'finance' && p.fee ? ` · ${formatINR(Math.round((p.fee * m.pct) / 100))}` : ''}
                           </Text>
                           <Text size="sm" tone="secondary">
                             Due {formatDate(m.due)}
@@ -276,7 +539,18 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
                         <Badge tone={m.status === 'invoiced' ? 'success' : m.status === 'completed' ? 'warning' : m.status === 'accepted' ? 'info' : 'neutral'}>
                           {m.status === 'completed' && m.needsClientAcceptance ? 'Completed · waiting for client' : m.status[0].toUpperCase() + m.status.slice(1)}
                         </Badge>
-                        {m.status === 'planned' && persona === 'pm' && <Button size="sm">Mark complete</Button>}
+                        {m.status === 'planned' && (live ? d!.can.run && !closed : persona === 'pm') && (
+                          <Button
+                            size="sm"
+                            onClick={() => {
+                              if (!live) return;
+                              const lm = d!.milestones.find((x) => x.id === m.id)!;
+                              setConfirm({ title: `Mark ${m.name} complete?`, consequence: d!.project.clientAcceptsMilestones ? 'It then waits for the client to accept it in the client portal.' : 'It is then ready to bill.', label: 'Mark complete', action: run(() => live.onCompleteMilestone(lm.id, lm.version), 'Milestone complete') });
+                            }}
+                          >
+                            Mark complete
+                          </Button>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -284,27 +558,118 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
               )}
             </div>
           </TabsContent>
-          <TabsContent value="timesheets">
-            <DataTable
-              label="Timesheets this week"
-              rows={allocations.filter((a) => !a.tentative)}
-              getRowId={(r) => r.id}
-              columns={[
-                { key: 'person', header: 'Person', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.role }) },
-                { key: 'booked', header: 'Booked (week of 21 Sep)', type: 'number', value: (r) => r.bookedThisWeek, total: 'sum' },
-                { key: 'expected', header: 'Allocated', type: 'number', value: (r) => r.expectedThisWeek, total: 'sum' },
-                {
-                  key: 'status',
-                  header: 'Status',
-                  type: 'status',
-                  value: (r) => (r.bookedThisWeek > r.expectedThisWeek ? 'Over allocation' : r.bookedThisWeek < r.expectedThisWeek ? 'Under allocation' : 'Approved'),
-                  statusTone: (v) => (v === 'Approved' ? 'success' : 'warning'),
-                },
-                { key: 'flag', header: 'Attendance check', value: (r) => (r.person === 'Rohit Bhat' ? '42 h booked vs 40 h worked: flagged, not changed' : '—') },
-              ]}
-            />
-          </TabsContent>
-          {persona !== 'hr' && (
+          {live && live.timesheets !== undefined && (
+            <TabsContent value="timesheets">
+              <div className="yx-hire-stack">
+                <div className="yx-hire-row">
+                  <Text weight="semibold">Week of {live.timesheets ? formatDate(new Date(`${live.timesheets.week}T00:00:00`)) : ''}</Text>
+                  {live.timesheets && live.onTimesheetWeek && (
+                    <div className="yx-hire-actions">
+                      <Button size="sm" onClick={() => live.onTimesheetWeek!(plusDays(live.timesheets!.week, -7))}>Previous week</Button>
+                      <Button size="sm" onClick={() => live.onTimesheetWeek!(plusDays(live.timesheets!.week, 7))}>Next week</Button>
+                    </div>
+                  )}
+                </div>
+                {!live.timesheets ? (
+                  <Skeleton height={200} />
+                ) : (
+                  <DataTable
+                    label="Timesheets this week"
+                    rows={live.timesheets.rows}
+                    getRowId={(r) => r.employeeId}
+                    columns={[
+                      { key: 'person', header: 'Person', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }) },
+                      { key: 'booked', header: 'Booked', type: 'number', value: (r) => r.bookedHours, total: 'sum' },
+                      { key: 'approved', header: 'Approved', type: 'number', value: (r) => r.approvedHours, total: 'sum' },
+                      { key: 'allocated', header: 'Allocated', type: 'number', value: (r) => r.allocatedHours, total: 'sum' },
+                      { key: 'status', header: 'Status', type: 'status', value: (r) => TS_STATUS[r.status], statusTone: (v) => (v === 'Approved' ? 'success' : v === 'Rejected' ? 'danger' : v === 'Not started' ? 'neutral' : 'warning') },
+                      { key: 'flag', header: 'Attendance check', value: (r) => r.mismatch ?? '—', render: (r) => (r.mismatch ? <Text size="sm">{r.mismatch}: flagged, not changed</Text> : '—') },
+                    ]}
+                    empty={<EmptyState compact title="No one is allocated this week." />}
+                  />
+                )}
+              </div>
+            </TabsContent>
+          )}
+          {!live && (
+            <TabsContent value="timesheets">
+              <DataTable
+                label="Timesheets this week"
+                rows={allocations.filter((a) => !a.tentative)}
+                getRowId={(r) => r.id}
+                columns={[
+                  { key: 'person', header: 'Person', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person, secondary: r.role }) },
+                  { key: 'booked', header: 'Booked (week of 21 Sep)', type: 'number', value: (r) => r.bookedThisWeek, total: 'sum' },
+                  { key: 'expected', header: 'Allocated', type: 'number', value: (r) => r.expectedThisWeek, total: 'sum' },
+                  {
+                    key: 'status',
+                    header: 'Status',
+                    type: 'status',
+                    value: (r) => (r.bookedThisWeek > r.expectedThisWeek ? 'Over allocation' : r.bookedThisWeek < r.expectedThisWeek ? 'Under allocation' : 'Approved'),
+                    statusTone: (v) => (v === 'Approved' ? 'success' : 'warning'),
+                  },
+                  { key: 'flag', header: 'Attendance check', value: (r) => (r.person === 'Rohit Bhat' ? '42 h booked vs 40 h worked: flagged, not changed' : '—') },
+                ]}
+              />
+            </TabsContent>
+          )}
+          {live && live.billing !== undefined && (
+            <TabsContent value="billing">
+              {!live.billing ? (
+                <Skeleton height={200} />
+              ) : (
+                <div className="yx-hire-stack">
+                  <SummaryTiles
+                    label="Billing"
+                    tiles={
+                      live.billing.model === 'time_material'
+                        ? [
+                            { label: 'Ready to bill', value: formatINR(Number(live.billing.ready)), sub: `${live.billing.readyHours} approved billable hours` },
+                            { label: 'Waiting for client approval', value: `${live.billing.waitingHours} h`, sub: 'stays in WIP until the client approves', tone: live.billing.waitingHours ? 'warning' : 'default' },
+                            { label: 'Billed to date', value: formatINR(Number(live.billing.billed)) },
+                          ]
+                        : [
+                            { label: live.billing.model === 'retainer' ? 'Retainers to bill' : 'Billable milestones', value: formatINR(Number(live.billing.ready)) },
+                            { label: 'Billed to date', value: formatINR(Number(live.billing.billed)) },
+                            { label: live.billing.model === 'retainer' ? 'Monthly retainer' : 'Contract value', value: live.billing.fee ? formatINR(Number(live.billing.fee)) : '—' },
+                          ]
+                    }
+                  />
+                  <DataTable
+                    label="Unbilled work"
+                    rows={live.billing.unbilled}
+                    getRowId={(r) => r.id}
+                    columns={[
+                      { key: 'source', header: 'Source', value: (r) => r.source },
+                      { key: 'detail', header: 'Detail', value: (r) => r.detail },
+                      { key: 'hours', header: 'Hours', type: 'number', value: (r) => r.hours, total: 'sum' },
+                      { key: 'amount', header: 'Amount', type: 'money', value: (r) => Number(r.amount), total: 'sum' },
+                      { key: 'held', header: 'Status', type: 'status', value: (r) => (r.held ? `Held: ${r.held}` : 'Ready'), statusTone: (v) => (v === 'Ready' ? 'success' : 'warning') },
+                    ]}
+                    empty={<EmptyState title="Nothing to bill." description="Approved billable hours, accepted milestones, retainers and re-billed expenses appear here." />}
+                  />
+                  <DataTable
+                    label="Invoices"
+                    rows={live.billing.invoices}
+                    getRowId={(r) => r.id}
+                    onRowClick={live.onOpenInvoice ? (r) => live.onOpenInvoice!(r.id) : undefined}
+                    columns={[
+                      { key: 'number', header: 'Number', type: 'id', value: (r) => r.number ?? 'Draft' },
+                      { key: 'kind', header: 'Kind', value: (r) => r.kind },
+                      { key: 'date', header: 'Date', value: (r) => r.date, render: (r) => (r.date ? formatDate(new Date(`${r.date}T00:00:00`)) : '—') },
+                      { key: 'amount', header: 'This project', type: 'money', value: (r) => Number(r.amount) },
+                      { key: 'status', header: 'Status', type: 'status', value: (r) => (r.status === 'issued' ? 'Issued' : 'Draft'), statusTone: (v) => (v === 'Issued' ? 'success' : 'neutral') },
+                    ]}
+                    empty={<EmptyState title="No invoices yet." description="Invoices made in the billing workbench appear here; each opens in Staffing desk › Invoices." />}
+                  />
+                  <Text size="sm" tone="secondary">
+                    Unapproved, non-billable and already-invoiced hours are never billed. Invoices open in Staffing desk › Invoices.
+                  </Text>
+                </div>
+              )}
+            </TabsContent>
+          )}
+          {!live && persona !== 'hr' && (
             <TabsContent value="billing">
               <div className="yx-hire-stack">
                 {p.model === 'Time & material' ? (
@@ -332,35 +697,124 @@ export function ProjectWorkspaceScreen({ project: p, persona, allocations, tasks
               </div>
             </TabsContent>
           )}
-          <TabsContent value="expenses">
-            <DataTable
-              label="Project expenses"
-              rows={expenses}
-              getRowId={(r) => r.id}
-              columns={[
-                { key: 'person', header: 'Claimed by', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }) },
-                { key: 'what', header: 'Expense', value: (r) => r.what },
-                { key: 'date', header: 'Date', type: 'date', value: (r) => r.date },
-                { key: 'amount', header: 'Amount', type: 'money', value: (r) => r.amount, total: 'sum' },
-                { key: 'rebill', header: 'Rebill to client', type: 'status', value: (r) => (r.rebill ? 'Rebill' : 'Cost only'), statusTone: (v) => (v === 'Rebill' ? 'info' : 'neutral') },
-                { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Approved' ? 'success' : 'warning') },
-              ]}
-              empty={<EmptyState title="No expenses tagged to this project." description="Expense lines tagged to the project appear here once approved." />}
-            />
-          </TabsContent>
+          {live && live.expenses !== undefined && (
+            <TabsContent value="expenses">
+              {!live.expenses ? (
+                <Skeleton height={200} />
+              ) : (
+                <DataTable
+                  label="Project expenses"
+                  rows={live.expenses}
+                  getRowId={(r) => r.id}
+                  columns={[
+                    { key: 'person', header: 'Claimed by', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }) },
+                    { key: 'what', header: 'Expense', value: (r) => r.what },
+                    { key: 'date', header: 'Date', value: (r) => r.spentOn, render: (r) => formatDate(new Date(`${r.spentOn}T00:00:00`)) },
+                    { key: 'amount', header: 'Amount', type: 'money', value: (r) => Number(r.amount), total: 'sum' },
+                    { key: 'rebill', header: 'Rebill to client', type: 'status', value: (r) => (r.rebill ? 'Rebill' : 'Cost only'), statusTone: (v) => (v === 'Rebill' ? 'info' : 'neutral') },
+                    { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Approved' ? 'success' : 'warning') },
+                  ]}
+                  empty={<EmptyState title="No expenses tagged to this project." description="Expense lines that name the project appear here once submitted." />}
+                />
+              )}
+            </TabsContent>
+          )}
+          {!live && (
+            <TabsContent value="expenses">
+              <DataTable
+                label="Project expenses"
+                rows={expenses}
+                getRowId={(r) => r.id}
+                columns={[
+                  { key: 'person', header: 'Claimed by', type: 'person', value: (r) => r.person, person: (r) => ({ name: r.person }) },
+                  { key: 'what', header: 'Expense', value: (r) => r.what },
+                  { key: 'date', header: 'Date', type: 'date', value: (r) => r.date },
+                  { key: 'amount', header: 'Amount', type: 'money', value: (r) => r.amount, total: 'sum' },
+                  { key: 'rebill', header: 'Rebill to client', type: 'status', value: (r) => (r.rebill ? 'Rebill' : 'Cost only'), statusTone: (v) => (v === 'Rebill' ? 'info' : 'neutral') },
+                  { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => (v === 'Approved' ? 'success' : 'warning') },
+                ]}
+                empty={<EmptyState title="No expenses tagged to this project." description="Expense lines tagged to the project appear here once approved." />}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </RecordLayout>
+      {live && d && drawer?.kind === 'edit' && (
+        <ProjectDrawer project={d.project} choices={live.choices ?? { clients: [], managers: [], people: [] }} finance={d.can.finance} onClose={() => setDrawer(null)} onSave={async (input) => { await live.onUpdate({ ...input, version: d.project.version }); toast({ tone: 'success', title: 'Project saved' }); }} />
+      )}
+      {live && d && drawer?.kind === 'allocate' && (
+        <AllocationDrawer
+          allocation={allocationOf(drawer.id)}
+          people={live.choices?.people ?? []}
+          onClose={() => setDrawer(null)}
+          onSave={async (input) => {
+            const a = allocationOf(drawer.id);
+            if (a) await live.onChangeAllocation(a.id, { ...input, version: a.version });
+            else await live.onAllocate(input);
+            toast({ tone: 'success', title: a ? 'Allocation saved' : 'Added to the team' });
+          }}
+        />
+      )}
+      {live && d && drawer?.kind === 'task' && (
+        <TaskDrawer
+          task={taskOf(drawer.id)}
+          onClose={() => setDrawer(null)}
+          onSave={async (input) => {
+            const t = taskOf(drawer.id);
+            if (t) await live.onChangeTask(t.id, input);
+            else await live.onAddTask(input);
+            toast({ tone: 'success', title: t ? 'Task saved' : 'Task added' });
+          }}
+        />
+      )}
+      {live && d && drawer?.kind === 'milestone' && (
+        <MilestoneDrawer
+          onClose={() => setDrawer(null)}
+          onSave={async (input) => {
+            await live.onAddMilestone(input);
+            toast({ tone: 'success', title: 'Milestone added' });
+          }}
+        />
+      )}
+      {confirm && (
+        <ConfirmDialog open onOpenChange={(o) => !o && setConfirm(null)} title={confirm.title} consequence={confirm.consequence} confirmLabel={confirm.label} destructive={confirm.destructive} onConfirm={async () => { await confirm.action(); setConfirm(null); }} />
+      )}
     </ProjectsFrame>
   );
 }
 
 /* ================================================================== PRJ-02 · Timesheet approvals */
 
+/** Projects P-2 (answers 1406, 1407, 1442): GET /time/line-approvals, the lines waiting for me. */
+export interface LiveApprovalsData {
+  withinAllocation: boolean;
+  groups: {
+    projectId: string;
+    project: string;
+    projectName: string;
+    week: string;
+    /** 1408: the client who approves this project's hours after the PM (null: none). */
+    clientApproval: string | null;
+    items: { id: string; timesheetId: string; employee: string; allocationPercent: number | null; allocatedHours: number; unallocated: boolean; bulk: boolean; /** 1541: the week against attendance. */ mismatch?: string | null; lines: { id: string; task: string | null; hours: number; billable: boolean; /** Answer 1787: a comment per day. */ comments?: string[]; version: number }[] }[];
+  }[];
+}
+export type LiveLineDecision = { lineId: string; status: 'approved' | 'reduced' | 'rejected'; hours?: number; reason?: string; version: number };
+export interface LiveTimesheetApprovals {
+  state: 'ready' | 'loading' | 'error' | 'no-access';
+  onRetry?: () => void;
+  data: LiveApprovalsData | null;
+  onDecide: (decisions: LiveLineDecision[]) => Promise<void>;
+  onBulk: (items: { lineId: string; version: number }[]) => Promise<void>;
+  /** Story: the bulk confirmation open for the first group. */
+  defaultBulk?: boolean;
+}
+
 export interface TimesheetApprovalsProps {
-  groups: ApprovalGroup[];
+  groups?: ApprovalGroup[];
   clientApproval?: boolean;
   state?: ListState;
   bulkConfirm?: boolean;
+  live?: LiveTimesheetApprovals;
 }
 
 function ApprovalGroups({ groups, onBulk, done }: { groups: ApprovalGroup[]; onBulk: (ids: string[]) => void; done: string[] }) {
@@ -405,8 +859,128 @@ function ApprovalGroups({ groups, onBulk, done }: { groups: ApprovalGroup[]; onB
   );
 }
 
+const weekOf = (iso: string) => `Week of ${formatDate(new Date(`${iso}T00:00:00`))}`;
+
+/** PRJ-02 live: my lines by project and week; each card decides one person's lines; bulk only within the allocation. */
+function LiveTimesheetApprovalsView({ live }: { live: LiveTimesheetApprovals }) {
+  const d = live.data;
+  const { toast } = useToast();
+  const [project, setProject] = useState<string>('all');
+  const [week, setWeek] = useState<string>('all');
+  const [bulk, setBulk] = useState<{ key: string; items: { lineId: string; version: number }[] } | null>(() => {
+    const g = live.defaultBulk ? d?.groups[0] : undefined;
+    return g ? { key: `${g.projectId}:${g.week}`, items: g.items.filter((i) => i.bulk).flatMap((i) => i.lines.map((l) => ({ lineId: l.id, version: l.version }))) } : null;
+  });
+  const [failed, setFailed] = useState<string | null>(null);
+  const act = async (fn: () => Promise<void>, done: string) => {
+    setFailed(null);
+    try {
+      await fn();
+      toast({ tone: 'success', title: done });
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not save. Nothing was changed.');
+    }
+  };
+  const groups = (d?.groups ?? []).filter((g) => (project === 'all' || g.projectId === project) && (week === 'all' || g.week === week));
+  const projects = [...new Map((d?.groups ?? []).map((g) => [g.projectId, g.project])).entries()];
+  const weeks = [...new Set((d?.groups ?? []).map((g) => g.week))].sort().reverse();
+  const clients = [...new Set(groups.filter((g) => g.clientApproval).map((g) => `${g.project} (${g.clientApproval})`))];
+  return (
+    <ProjectsFrame active="Timesheet approvals">
+      <PageHeader
+        title="Timesheet approvals"
+        description="Grouped by project and week. Approve, reduce or reject lines with a reason the employee sees. Weeks within the allocation can be approved in bulk."
+        facts={
+          d && d.groups.length > 0 ? (
+            <div className="yx-hire-actions">
+              <Select aria-label="Project" value={project} onChange={(v) => setProject(v ?? 'all')} options={[{ value: 'all', label: 'All my projects' }, ...projects.map(([id, code]) => ({ value: id, label: code }))]} />
+              <Select aria-label="Week" value={week} onChange={(v) => setWeek(v ?? 'all')} options={[{ value: 'all', label: 'All weeks' }, ...weeks.map((w) => ({ value: w, label: weekOf(w) }))]} />
+            </div>
+          ) : undefined
+        }
+      />
+      {clients.length > 0 && <InlineAlert tone="info">{clients.join(', ')}: approved lines then go to the client in the client portal before they can be billed.</InlineAlert>}
+      {failed && <InlineAlert tone="danger" title="Not saved">{failed}</InlineAlert>}
+      {live.state === 'loading' || (!d && live.state === 'ready') ? (
+        <div className="yx-hire-approvals">
+          {[0, 1].map((i) => (
+            <Skeleton key={i} height={260} />
+          ))}
+        </div>
+      ) : live.state === 'error' ? (
+        <ErrorState title="Couldn't load timesheets" description="Check your connection and try again. Nothing was approved." onRetry={live.onRetry ?? (() => {})} />
+      ) : live.state === 'no-access' ? (
+        <NoAccessState what="timesheet approvals" grantedBy="your System Admin" />
+      ) : groups.length === 0 ? (
+        <EmptyState title="You're all caught up." description="No timesheet lines are waiting for your approval." />
+      ) : (
+        groups.map((g) => {
+          const eligible = g.items.filter((i) => i.bulk);
+          const key = `${g.projectId}:${g.week}`;
+          return (
+            <section key={key} className="yx-hire-stack" aria-label={`${g.project}, ${weekOf(g.week)}`}>
+              <div className="yx-hire-row">
+                <div>
+                  <Text weight="semibold">
+                    {g.project} · {g.projectName}
+                  </Text>
+                  <Text as="div" size="sm" tone="secondary">
+                    {weekOf(g.week)} · {g.items.length} waiting
+                  </Text>
+                </div>
+                {eligible.length > 0 && (
+                  <Button icon={CheckCheck} onClick={() => setBulk({ key, items: eligible.flatMap((i) => i.lines.map((l) => ({ lineId: l.id, version: l.version }))) })}>
+                    Approve {eligible.length} within allocation
+                  </Button>
+                )}
+              </div>
+              <div className="yx-hire-approvals">
+                {g.items.map((i) => (
+                  <div key={i.id} className="yx-hire-stack">
+                    {i.mismatch && <InlineAlert tone="warning">{i.mismatch}. Pay is unchanged; check before approving.</InlineAlert>}
+                    {i.unallocated && <InlineAlert tone="warning">Booked outside {i.employee}'s allocation. Approve it on its own; it is never approved in bulk.</InlineAlert>}
+                    <TimesheetApprovalCard
+                      employee={{ name: i.employee, secondary: i.allocationPercent != null ? `allocated ${i.allocatedHours} h a week` : 'not allocated to this project' }}
+                      weekLabel={weekOf(g.week)}
+                      lines={i.lines.map((l) => ({ id: l.id, project: g.project, task: l.task ?? undefined, hours: l.hours, billable: l.billable, comments: l.comments }))}
+                      onApprove={(decisions) =>
+                        void act(
+                          () => live.onDecide(i.lines.map((l) => { const x = decisions[l.id]!; return { lineId: l.id, version: l.version, status: x.status, ...(x.status === 'reduced' ? { hours: x.hours, reason: x.reason } : x.status === 'rejected' ? { reason: x.reason } : {}) }; })),
+                          `${i.employee}: decided`,
+                        )
+                      }
+                      onSendBack={(reason) => void act(() => live.onDecide(i.lines.map((l) => ({ lineId: l.id, version: l.version, status: 'rejected', reason }))), `${i.employee}: sent back`)}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })
+      )}
+      <ConfirmDialog
+        open={bulk != null}
+        onOpenChange={(o) => !o && setBulk(null)}
+        title={`Approve ${bulk?.items.length ?? 0} lines?`}
+        consequence={d?.withinAllocation === false ? 'Each line is approved as booked. Approved lines are locked; later fixes are adjustment lines.' : "Every line is within the person's allocation. Approved lines are locked; later fixes are adjustment lines."}
+        confirmLabel={`Approve ${bulk?.items.length ?? 0} lines`}
+        onConfirm={async () => {
+          const items = bulk!.items;
+          setBulk(null);
+          await act(() => live.onBulk(items), `${items.length} lines approved`);
+        }}
+      />
+    </ProjectsFrame>
+  );
+}
+
 // PRJ-02
-export function TimesheetApprovalsScreen({ groups, clientApproval = false, state = 'ready', bulkConfirm = false }: TimesheetApprovalsProps) {
+export function TimesheetApprovalsScreen({ groups = [], clientApproval = false, state = 'ready', bulkConfirm = false, live }: TimesheetApprovalsProps) {
+  if (live) return <LiveTimesheetApprovalsView live={live} />;
+  return <DrawnTimesheetApprovals groups={groups} clientApproval={clientApproval} state={state} bulkConfirm={bulkConfirm} />;
+}
+
+function DrawnTimesheetApprovals({ groups, clientApproval, state, bulkConfirm }: { groups: ApprovalGroup[]; clientApproval: boolean; state: ListState; bulkConfirm: boolean }) {
   const [done, setDone] = useState<string[]>([]);
   const [pending, setPending] = useState<string[] | null>(bulkConfirm ? groups[0].items.filter((i) => bulkEligible({ id: i.id, hours: i.lines.reduce((s, l) => s + l.hours, 0), allocatedHours: i.allocatedHours })).map((i) => i.id) : null);
   const total = groups.reduce((s, g) => s + g.items.length, 0) - done.length;
@@ -487,18 +1061,96 @@ export function TimesheetApprovalsPhone({ groups }: { groups: ApprovalGroup[] })
 
 /* ================================================================== PRJ-03 · Capacity & utilisation */
 
-export interface CapacityProps {
+/** Projects P-4 (answer 1411): GET /projects/capacity. */
+export interface LiveCapacityData {
+  from: string;
   weeks: string[];
-  people: CapacityPerson[];
-  utilisationRows: { person: string; billable: number; available: number }[];
   target: number;
-  persona: 'pm' | 'hr';
+  limit: number;
+  teamSize: number;
+  /** Projects manage or resource (HR's view): per-person figures always shown. */
+  privileged: boolean;
+  suppressed: boolean;
+  month?: string;
+  people: { employeeId: string; name: string; weeks: { allocated: number; available: number }[]; billableHours: number; availableHours: number; utilisation: number }[];
+  team: { billableHours: number; availableHours: number; utilisation: number } | null;
+}
+export interface LiveCapacity {
+  state: 'ready' | 'loading' | 'error' | 'no-access' | 'off';
+  onRetry?: () => void;
+  data: LiveCapacityData | null;
+}
+
+export interface CapacityProps {
+  weeks?: string[];
+  people?: CapacityPerson[];
+  utilisationRows?: { person: string; billable: number; available: number }[];
+  target?: number;
+  persona?: 'pm' | 'hr';
   teamSize?: number;
   loading?: boolean;
+  live?: LiveCapacity;
+}
+
+const monthName = (ym: string) => new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+/** PRJ-03 live: allocated against available hours for six weeks, and last month's billable utilisation (1411). */
+function LiveCapacityView({ live }: { live: LiveCapacity }) {
+  const d = live.data;
+  const page = (body: ReactNode) => (
+    <ProjectsFrame active="Capacity & utilisation">
+      <PageHeader title="Capacity and utilisation" description="Allocated against available hours (weekdays less leave and holidays), and billable utilisation against the company's target." />
+      {body}
+    </ProjectsFrame>
+  );
+  if (!d)
+    return page(live.state === 'error' ? <ErrorState title="We couldn't load capacity." onRetry={live.onRetry ?? (() => {})} /> : live.state === 'off' ? <ProjectsOffState /> : live.state === 'no-access' ? <NoAccessState what="capacity" grantedBy="your System Admin" /> : <Skeleton height={320} />);
+  if (d.suppressed)
+    return page(
+      <InlineAlert tone="info" title="Hidden for small teams">
+        This team has {d.teamSize} {d.teamSize === 1 ? 'person' : 'people'}, fewer than {d.limit}, so per-person capacity and utilisation are hidden for your role. HR can see them.
+      </InlineAlert>,
+    );
+  if (!d.people.length) return page(<EmptyState title="No one is allocated in these weeks." description="Capacity shows people with a confirmed allocation." />);
+  const over = d.people.filter((p) => p.weeks.some((w) => w.allocated > w.available)).length;
+  const free = Math.round(d.people.reduce((s, p) => s + p.weeks.slice(0, 2).reduce((a, w) => a + Math.max(0, w.available - w.allocated), 0), 0));
+  const team = d.team!;
+  return page(
+    <>
+      <SummaryTiles
+        label="Next two weeks"
+        tiles={[
+          { label: 'Free hours, next 2 weeks', value: `${free} h` },
+          { label: 'Over-allocated people', value: over, tone: over ? 'warning' : 'default', sub: over ? 'shown in the warning colour below' : undefined },
+          { label: `Team utilisation (${d.month ? monthName(d.month) : 'last month'})`, value: `${team.utilisation}%`, sub: `target ${d.target}%`, tone: team.utilisation < d.target ? 'warning' : 'success' },
+        ]}
+      />
+      <CapacityHeatmap title="People × weeks" description="Allocated of available hours" weeks={d.weeks.map((w) => formatDate(new Date(`${w}T00:00:00`)).replace(/ \d{4}$/, ''))} people={d.people.map((p) => ({ name: p.name, weeks: p.weeks }))} xLabel="Person" />
+      <div className="yx-hire-cols">
+        <BarChart
+          title={`Utilisation by person, ${d.month ? monthName(d.month) : 'last month'}`}
+          description={`Approved billable ÷ available hours. Target ${d.target}%.`}
+          categories={d.people.map((p) => p.name)}
+          series={[{ name: 'Utilisation %', values: d.people.map((p) => p.utilisation) }]}
+          orientation="horizontal"
+          xLabel="Person"
+        />
+        <Card title="Team against target">
+          <Gauge label="Allocated people" value={team.utilisation} target={d.target} />
+          <DescriptionList items={[{ label: 'Billable hours', value: team.billableHours.toLocaleString('en-IN') }, { label: 'Available hours', value: team.availableHours.toLocaleString('en-IN') }]} />
+        </Card>
+      </div>
+    </>,
+  );
 }
 
 // PRJ-03
-export function CapacityBoardScreen({ weeks, people, utilisationRows, target, persona, teamSize = people.length, loading }: CapacityProps) {
+export function CapacityBoardScreen({ weeks = [], people = [], utilisationRows = [], target = 75, persona = 'hr', teamSize, loading, live }: CapacityProps) {
+  if (live) return <LiveCapacityView live={live} />;
+  return <DrawnCapacityBoard weeks={weeks} people={people} utilisationRows={utilisationRows} target={target} persona={persona} teamSize={teamSize ?? people.length} loading={loading} />;
+}
+
+function DrawnCapacityBoard({ weeks, people, utilisationRows, target, persona, teamSize, loading }: { weeks: string[]; people: CapacityPerson[]; utilisationRows: { person: string; billable: number; available: number }[]; target: number; persona: 'pm' | 'hr'; teamSize: number; loading?: boolean }) {
   const [skill, setSkill] = useState<string | null>(null);
   const suppressed = suppressGroup(teamSize, persona);
   const teamBillable = utilisationRows.reduce((s, r) => s + r.billable, 0);
@@ -569,8 +1221,113 @@ export interface CostRow {
   restated?: number;
 }
 
+/** Projects P-5 (answers 1412, 1413): GET /projects/costs, totals only. */
+export interface LiveCostsData {
+  month: string;
+  finance: boolean;
+  minPeople: number;
+  rows: { projectId: string; code: string; name: string; client: string | null; manager: string | null; hours: number; people: number; hidden: boolean; cost: string | null; expenses: string | null; rebill: string | null; revenue: string | null; margin: number | null; basis: 'provisional' | 'final'; restatedFrom: string | null }[];
+}
+export interface LiveCosts {
+  state: 'ready' | 'loading' | 'error' | 'no-access' | 'off';
+  onRetry?: () => void;
+  data: LiveCostsData | null;
+  /** The periods to choose from: months (YYYY-MM) and P-6 quarters (YYYY-Qn), newest first. */
+  months: string[];
+  onMonth: (month: string) => void;
+  onOpen: (projectId: string) => void;
+  /** P-6 (1622): download the month's project cost journal (Projects finance). */
+  onExport?: (month: string) => Promise<void>;
+}
+
+const QUARTER = ['Jan–Mar', 'Apr–Jun', 'Jul–Sep', 'Oct–Dec'];
+const monthLabel = (ym: string) => (/^\d{4}-Q[1-4]$/.test(ym) ? `${QUARTER[Number(ym.slice(6)) - 1]} ${ym.slice(0, 4)}` : new Date(`${ym}-01T00:00:00`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }));
+
+/** PRJ-04 live: totals only. Finance sees revenue, margin and restatements; a PM sees totals, hidden under the people limit. */
+function LiveCostsView({ live }: { live: LiveCosts }) {
+  const d = live.data;
+  const { toast } = useToast();
+  const [exporting, setExporting] = useState(false);
+  const exportJournal = async () => {
+    const period = d?.month ?? live.months[0]!;
+    if (period.includes('Q')) return toast({ tone: 'error', title: 'The journal is by month. Choose a month to export it.' });
+    setExporting(true);
+    try {
+      await live.onExport!(period);
+      toast({ tone: 'success', title: `Project cost journal for ${monthLabel(period)} downloaded` });
+    } catch (e) {
+      toast({ tone: 'error', title: e instanceof Error && e.message ? e.message : 'We could not export the journal.' });
+    } finally {
+      setExporting(false);
+    }
+  };
+  type Row = LiveCostsData['rows'][number];
+  const money = (x: string | null) => (x == null ? null : Number(x));
+  const cols: TableColumn<Row>[] = [
+    { key: 'code', header: 'Project', type: 'id', value: (r) => r.code, width: 130 },
+    { key: 'name', header: 'Name', value: (r) => r.name, render: (r) => <span className="yx-hire-clip" title={r.name}>{r.name}</span> },
+    { key: 'client', header: 'Client', value: (r) => r.client ?? 'Internal', groupable: true, optional: true },
+    { key: 'hours', header: 'Hours', type: 'number', value: (r) => r.hours, total: 'sum', width: 100 },
+    { key: 'cost', header: 'People cost', type: 'money', value: (r) => money(r.cost), render: (r) => (r.hidden ? <Text tone="muted">Hidden</Text> : formatINR(Number(r.cost))), total: 'sum' },
+    { key: 'expenses', header: 'Expenses', type: 'money', value: (r) => money(r.expenses), render: (r) => (r.hidden ? <Text tone="muted">Hidden</Text> : formatINR(Number(r.expenses))), total: 'sum' },
+    ...(d?.finance
+      ? [
+          { key: 'revenue', header: 'Revenue', type: 'money', value: (r: Row) => money(r.revenue), render: (r: Row) => (r.revenue ? formatINR(Number(r.revenue)) : <Text tone="muted">—</Text>), total: 'sum' } as TableColumn<Row>,
+          { key: 'margin', header: 'Margin', type: 'number', value: (r: Row) => r.margin, render: (r: Row) => (r.margin == null ? '—' : `${r.margin}%`) } as TableColumn<Row>,
+        ]
+      : []),
+    { key: 'basis', header: 'Cost basis', type: 'status', value: (r) => (r.restatedFrom ? 'Restated' : r.basis === 'provisional' ? 'Provisional' : 'Final'), statusTone: (v) => (v === 'Final' ? 'success' : v === 'Restated' ? 'info' : 'warning') },
+  ];
+  const head = (
+    <PageHeader
+      title="Costing and margin"
+      description="Cost = approved hours × each person's cost rate for the month (provisional until the month's payroll is final) + approved project expenses. Worked out nightly; only totals are kept."
+      facts={
+        live.months.length ? (
+          <div className="yx-hire-actions">
+            <Select aria-label="Period" value={d?.month ?? live.months[0]!} onChange={(m) => m && live.onMonth(m)} options={live.months.map((m) => ({ value: m, label: monthLabel(m) }))} />
+          </div>
+        ) : undefined
+      }
+      actions={
+        d?.finance && live.onExport ? (
+          <Button loading={exporting} onClick={() => void exportJournal()}>
+            Export project cost journal
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+  if (!d)
+    return (
+      <ProjectsFrame active="Costing & margin">
+        {head}
+        {live.state === 'error' ? <ErrorState title="We couldn't load project cost." onRetry={live.onRetry ?? (() => {})} /> : live.state === 'off' ? <ProjectsOffState /> : live.state === 'no-access' ? <NoAccessState what="project cost" grantedBy="your System Admin" /> : <Skeleton height={320} />}
+      </ProjectsFrame>
+    );
+  const restated = d.rows.filter((r) => r.restatedFrom);
+  return (
+    <ProjectsFrame active="Costing & margin">
+      {head}
+      {!d.finance && <InlineAlert tone="info">You see totals for your projects. A month with fewer than {d.minPeople} people on a project shows no cost, so nobody's rate can be worked out.</InlineAlert>}
+      {d.rows.some((r) => r.basis === 'provisional') && <InlineAlert tone="warning">{monthLabel(d.month)} costs are provisional. They are restated from final cost rates once the month's payroll is final.</InlineAlert>}
+      {restated.length > 0 && (
+        <InlineAlert tone="info" title="Restated">
+          {restated.map((r) => `${r.code}: provisional ${formatINR(Number(r.restatedFrom))}, final ${formatINR(Number(r.cost))}`).join('; ')}.
+        </InlineAlert>
+      )}
+      <DataTable label="Project cost" columns={cols} rows={d.rows} getRowId={(r) => r.projectId} onRowClick={(r) => live.onOpen(r.projectId)} empty={<EmptyState title="No project costs for this month." description="Costs post nightly from approved timesheets and approved project expenses." />} />
+    </ProjectsFrame>
+  );
+}
+
 // PRJ-04
-export function CostingMarginScreen({ rows, persona, period = 'Sep 2026', loading }: { rows: CostRow[]; persona: 'finance' | 'pm'; period?: string; loading?: boolean }) {
+export function CostingMarginScreen(props: { rows?: CostRow[]; persona?: 'finance' | 'pm'; period?: string; loading?: boolean; live?: LiveCosts }) {
+  if (props.live) return <LiveCostsView live={props.live} />;
+  return <DrawnCostingMargin rows={props.rows ?? []} persona={props.persona ?? 'finance'} period={props.period} loading={props.loading} />;
+}
+
+function DrawnCostingMargin({ rows, persona, period = 'Sep 2026', loading }: { rows: CostRow[]; persona: 'finance' | 'pm'; period?: string; loading?: boolean }) {
   const [groupBy, setGroupBy] = useState<string | null>('project');
   const visible = (r: CostRow) => costVisible(r.peopleInMonth, persona);
   const cols: TableColumn<CostRow>[] = [

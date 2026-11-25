@@ -11,7 +11,7 @@ import { MaskedField, NumberField, TextArea, TextField } from '../../components/
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
 import { FileUpload } from '../../components/upload';
-import { CareersPage, JobApplyForm, type CareersConfig, type CareersJob } from '../../components/careers';
+import { CareersPage, JobApplyForm, type CareersConfig, type CareersJob, type CareersPageProps, type JobApplyFormProps, AutomatedToolNotice } from '../../components/careers';
 import { ApprovalTimeline } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import { timeOf } from '../../lib/dates';
@@ -26,60 +26,107 @@ const CAND_FOOTER = { privacy: 'Candidate privacy notice (G-07)', terms: 'Candid
 /* ================================================================== */
 
 // T9-09
+/** The live careers site (/yx/careers/[org]): Apply opens the job page; the group's company pages; the assistant when on. */
+export interface LiveCareersSite {
+  onApply: (job: CareersJob) => void;
+  companies?: CareersPageProps['companies'];
+  assistant?: CareersPageProps['assistant'];
+}
+
 /** Careers home: the tenant-branded CareersPage (the one T9 page search engines may index). */
-export function CareersSiteScreen({ config, jobs }: { config: CareersConfig; jobs: CareersJob[] }) {
-  return <CareersPage config={config} jobs={jobs} />;
+export function CareersSiteScreen({ config, jobs, live }: { config: CareersConfig; jobs: CareersJob[]; live?: LiveCareersSite }) {
+  return <CareersPage config={config} jobs={jobs} onApply={live?.onApply} companies={live?.companies} assistant={live?.assistant} />;
 }
 
 export interface CareersJobDetail {
   job: CareersJob;
   slug: string;
-  pay: { min: number; max: number; period: string };
-  experience: string;
+  /** Shown only where the job shows its range (HIR-24); null hides it. */
+  pay: { min: number; max: number; period: string; currency?: string } | null;
+  experience?: string | null;
   about: string;
-  requirements: string[];
-  closesOn: Date;
+  requirements?: string[];
+  closesOn?: Date | null;
 }
 
+/** The live job page (/yx/careers/[org]/jobs/[slug] and /yx/apply/[token]): the real apply form and links. */
+export interface LiveCareersJob {
+  /** The careers home ("All jobs" and "See open jobs"); null when the company has no public careers page. */
+  allJobsHref: string | null;
+  /** The real apply form: notices, the pay question, company questions and the submit. */
+  apply: Omit<JobApplyFormProps, 'job' | 'companyName' | 'defaultSent'>;
+}
+
+const payText = (p: NonNullable<CareersJobDetail['pay']>) =>
+  !p.currency || p.currency === 'INR' ? `${formatINR(p.min)} – ${formatINR(p.max)}` : `${p.currency} ${p.min.toLocaleString('en-IN')} – ${p.max.toLocaleString('en-IN')}`;
+
 /** Job page at an ASCII slug: pay range, requirements, apply form or WhatsApp apply; closed jobs expire within a day (YX-ATS-02 / 34 / 45). */
-export function CareersJobScreen({ tenant, accent, detail, today, state = 'open' }: { tenant: string; accent?: string; detail: CareersJobDetail; today: Date; state?: 'open' | 'closed' | 'sent' }) {
+export function CareersJobScreen({ tenant, accent, detail, today, state = 'open', live }: { tenant: string; accent?: string; detail: CareersJobDetail; today: Date; state?: 'open' | 'closed' | 'sent'; live?: LiveCareersJob }) {
   const { job } = detail;
+  const askPay = live?.apply.askPay ?? false;
+  const posted = -daysUntil(job.postedOn, today);
+  const allJobs = live ? live.allJobsHref : '#';
   return (
-    <TenantPortal tenant={tenant} portal="Careers" accent={accent} access={{ kind: 'public' }} footer={CAND_FOOTER} nav={[{ label: 'All jobs' }, { label: job.title, active: true }]}>
-      <p className="yx-ps-muted yx-ps-mono">{`${tenant.toLowerCase().replace(/\s+/g, '')}.yukthix.in/${detail.slug}`}</p>
+    <TenantPortal tenant={tenant} portal="Careers" accent={accent} access={{ kind: 'public' }} footer={CAND_FOOTER} noLanguage={Boolean(live)} nav={[...(allJobs ? [{ label: 'All jobs', href: allJobs }] : []), { label: job.title, active: true }]}>
+      <p className="yx-ps-muted yx-ps-mono">{live ? detail.slug : `${tenant.toLowerCase().replace(/\s+/g, '')}.yukthix.in/${detail.slug}`}</p>
       {state === 'closed' ? (
-        <EmptyState title="This job has closed." description={`${job.title} stopped taking applications on ${formatDate(detail.closesOn)}.`} action={<Button variant="primary">See open jobs</Button>} />
+        <EmptyState
+          title={live ? 'This role is not accepting applications.' : 'This job has closed.'}
+          description={detail.closesOn ? `${job.title} stopped taking applications on ${formatDate(detail.closesOn)}.` : `${job.title} is not taking applications now.`}
+          action={
+            allJobs ? (
+              <Button variant="primary" asChild>
+                <a href={allJobs}>See open jobs</a>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="yx-split">
           <div className="yx-split__main">
             <section className="yx-ps-hero">
               <h1>{job.title}</h1>
-              <p>
-                {job.department} · {job.location} · {job.type} · {detail.experience}
-              </p>
+              <p>{[job.department, job.location, job.type, detail.experience].filter(Boolean).join(' · ')}</p>
             </section>
-            <FactRow label="Job facts">
-              <Fact label={`Pay range (${detail.pay.period})`} value={`${formatINR(detail.pay.min)} – ${formatINR(detail.pay.max)}`} />
-              <Fact label="Apply by" value={formatDate(detail.closesOn)} />
-            </FactRow>
-            <Card title="The job">
-              <p className="yx-ps-p">{detail.about}</p>
-            </Card>
-            <Card title="You'll need">
-              <ul className="yx-ps-list">
-                {detail.requirements.map((r) => (
-                  <li key={r}>{r}</li>
-                ))}
-              </ul>
-            </Card>
-            <p className="yx-ps-muted">We never ask about your current or past salary. Applicants under 18 need a parent's consent; we check date of birth before any test.</p>
+            {(detail.pay || detail.closesOn) && (
+              <FactRow label="Job facts">
+                {detail.pay && <Fact label={`Pay range (${detail.pay.period})`} value={payText(detail.pay)} />}
+                {detail.closesOn && <Fact label="Apply by" value={formatDate(detail.closesOn)} />}
+              </FactRow>
+            )}
+            {detail.about && (
+              <Card title="The job">
+                <p className="yx-ps-p">{detail.about}</p>
+              </Card>
+            )}
+            {detail.requirements && detail.requirements.length > 0 && (
+              <Card title="You'll need">
+                <ul className="yx-ps-list">
+                  {detail.requirements.map((r) => (
+                    <li key={r}>{r}</li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+            {live?.apply.toolNotice && <AutomatedToolNotice notice={live.apply.toolNotice} companyName={tenant} />}
+            {live ? (
+              !askPay && <p className="yx-ps-muted">We never ask about your current or past salary for this job.</p>
+            ) : (
+              <p className="yx-ps-muted">We never ask about your current or past salary. Applicants under 18 need a parent's consent; we check date of birth before any test.</p>
+            )}
           </div>
           <div className="yx-split__aside">
-            <JobApplyForm job={job} companyName={tenant} upload={fakeUpload} onSubmit={() => undefined} defaultSent={state === 'sent'} />
-            <Button icon={MessageCircle} fullWidth>
-              Apply on WhatsApp
-            </Button>
-            <p className="yx-ps-muted">Posted {daysUntil(job.postedOn, today) === 0 ? 'today' : `${-daysUntil(job.postedOn, today)} days ago`}.</p>
+            {live ? (
+              <JobApplyForm job={job} companyName={tenant} {...live.apply} defaultSent={state === 'sent'} />
+            ) : (
+              <>
+                <JobApplyForm job={job} companyName={tenant} upload={fakeUpload} onSubmit={() => undefined} defaultSent={state === 'sent'} />
+                <Button icon={MessageCircle} fullWidth>
+                  Apply on WhatsApp
+                </Button>
+              </>
+            )}
+            <p className="yx-ps-muted">Posted {posted <= 0 ? 'today' : posted === 1 ? 'yesterday' : `${posted} days ago`}.</p>
           </div>
         </div>
       )}

@@ -8,5 +8,8 @@ type S = StoryObj;
 
 export const NewManager: S = { name: 'New manager · handed over to you', render: () => <HandoverListScreen persona="mgr" rows={HANDOVER.filter((r) => r.to === 'Karthik Subramanian')} leaver="Priya Nair" /> };
 export const HrDecisions: S = { name: 'HR · needs decision', render: () => <HandoverListScreen persona="hr" rows={HANDOVER} leaver="Priya Nair" /> };
+export const ReparentGoal: S = { name: 'Re-parent a moved goal', render: () => <HandoverListScreen persona="mgr" rows={HANDOVER.filter((r) => r.to === 'Karthik Subramanian')} leaver="Priya Nair" decideId={HANDOVER.find((r) => r.to === 'Karthik Subramanian' && r.artefact === 'Goal parent')?.id} /> };
+export const HrReassign: S = { name: 'HR · reassign to HR (bulk)', render: () => <HandoverListScreen persona="hr" rows={HANDOVER} leaver="Priya Nair" reassignIds={['h4', 'h6', 'h1']} /> };
+export const AuditEntry: S = { name: 'HR · audit entry', render: () => <HandoverListScreen persona="hr" rows={HANDOVER} leaver="Priya Nair" auditId="h4" /> };
 export const Empty: S = { render: () => <HandoverListScreen persona="hr" rows={[]} leaver="Priya Nair" /> };
 export const Loading: S = { render: () => <HandoverListScreen persona="hr" rows={[]} state="loading" leaver="Priya Nair" /> };

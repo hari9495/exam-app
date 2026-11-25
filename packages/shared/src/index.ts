@@ -4,6 +4,7 @@ export * from './prisma/tenant-prisma.service';
 export * from './prisma/tenant-context';
 export * from './audit/audit.module';
 export * from './audit/audit.service';
+export * from './audit/request-channel';
 export * from './crypto/crypto.module';
 export * from './crypto/org-secrets-crypto.service';
 export * from './crypto/ai-api-key-resolver.service';
@@ -17,6 +18,7 @@ export * from './network/auth-cookie';
 export * from './ai/ai-provider';
 export * from './ai/anthropic-provider';
 export * from './ai/openai-compatible-provider';
+export * from './net/public-fetch';
 export * from './ai/embedding-provider';
 // cosineSimilarity is intentionally NOT re-exported here (face/ already exports that name); the app
 // only needs topKSimilar, and the internal cosine is covered by vector-math's own spec.
@@ -55,3 +57,4 @@ export * from './soft-delete/soft-delete.extension';
 export * from './templates/render-template-string';
 export * from './rbac/permission-grants';
 export * from './rbac/ats-keys';
+export * from './assessments/accommodation';

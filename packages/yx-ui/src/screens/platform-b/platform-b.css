@@ -83,7 +83,8 @@
 .yxp-chat { max-width: calc(var(--yx-space-16) * 7); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-page); }
 .yxp-chat__head { display: flex; justify-content: space-between; padding: var(--yx-space-2) var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
 .yxp-chat__body { display: flex; flex-direction: column; gap: var(--yx-space-3); padding: var(--yx-space-3); }
-.yxp-chat__msg { align-self: flex-end; max-width: 85%; padding: var(--yx-space-2) var(--yx-space-3); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-selected); }
+/* margin 0: the <p>'s browser margin added 14px on top of the chat's own gap */
+.yxp-chat__msg { margin: 0; align-self: flex-end; max-width: 85%; padding: var(--yx-space-2) var(--yx-space-3); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-selected); }
 
 /* studio: gallery, feed, votes */
 .yxp-feed { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -100,7 +101,7 @@
 .yxp-trace { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-2); }
 .yxp-trace > li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--yx-space-1) var(--yx-space-3); padding: var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
 .yxp-trace__io { grid-column: 2; display: grid; gap: var(--yx-space-2); grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--yx-space-16) * 3)), 1fr)); }
-.yxp-trace__io pre { margin: 0; padding: var(--yx-space-2); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-subtle); font-family: var(--yx-font-mono); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.yxp-trace__io pre { margin: var(--yx-space-1) 0 0; padding: var(--yx-space-2); border-radius: var(--yx-radius-control); background: var(--yx-color-bg-subtle); font-family: var(--yx-font-mono); font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* region */
 .yxp-region-map { width: 100%; max-width: calc(var(--yx-space-16) * 8); height: auto; }

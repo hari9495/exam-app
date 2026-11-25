@@ -112,3 +112,8 @@
 .yx-progress > span { display: block; height: 100%; background: var(--yx-color-action-primary); transition: width var(--yx-duration-menu) linear; }
 .yx-upload__zone[data-disabled] .yx-link { color: inherit; cursor: not-allowed; text-decoration: none; }
 .yx-upload__zone[data-disabled] { color: var(--yx-color-text-muted); }
+
+.yx-daydate { display: inline-flex; align-items: baseline; gap: var(--yx-space-2); white-space: nowrap; }
+.yx-daydate__wd { min-width: 2.25em; font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-muted); font-weight: var(--yx-weight-regular); }
+.yx-daydate--stacked { flex-direction: column; align-items: flex-start; gap: 0; }
+button .yx-daydate__wd { color: inherit; }

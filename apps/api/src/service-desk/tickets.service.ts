@@ -9,6 +9,9 @@ import { Route, isAvailable, needWords, onLeaveNow, routeAgent } from './assignm
 import { cleanHtml, htmlToText } from './rich-text';
 import { PiiFound, maskPii, maskPiiHtml, unmaskHealth } from './pii';
 import { SlaService } from './sla.service';
+import { assetOption, liveAsset } from './asset-pick';
+import { checkPlace } from './facilities.service';
+import { Viewer, applyFieldChange, fieldsFor, sees, shownFields } from './ticket-fields';
 import { MailOutService } from './mail-out.service';
 import { contactAccount, planFor, planUsedUp } from './customers.service';
 import { Transition, checkMove } from './lifecycle';
@@ -27,7 +30,7 @@ import {
   requireWork,
   ticketAccess,
 } from './desk-access';
-import { AgentCreateTicketDto, AssignDto, BulkActionDto, CollaboratorDto, ConvertDto, EditNoteDto, MessageDto, TimeEntryDto, UpdateTicketDto, WatcherDto } from './dto';
+import { AgentCreateTicketDto, AssignDto, ITSM_KINDS, BulkActionDto, CollaboratorDto, ConvertDto, EditNoteDto, MessageDto, TimeEntryDto, UpdateTicketDto, WatcherDto } from './dto';
 
 // SD-1.03 ticket core, SD-1.04 requesters, SD-1.06 assignment and SD-1.08 the ticket workspace (M14 §7, §12.1).
 // Every write: server-side key + seat check, one transaction with its timeline event, outbox event and audit row.
@@ -62,6 +65,8 @@ export interface Changes {
 export interface CreateInput {
   deskId: string;
   typeId?: string;
+  /** ITSM-1: only the change and problem screens create tickets of those kinds (answer 1931). */
+  itsm?: boolean;
   categoryId?: string;
   subject: string;
   bodyHtml: string;
@@ -97,6 +102,19 @@ export interface CreateInput {
   inboundEmailId?: string | null;
   /** The plan check, worked out beforehand by a caller that cannot count the account's tickets itself (the portal). */
   usedUp?: boolean;
+  /** Answer 1647: raised from a help article (its id) or a knowledge search (the words). */
+  originArticleId?: string;
+  originQuery?: string;
+  /** Answer 1662: the device it is about (checked by the caller). */
+  assetId?: string;
+  /** ITSM answer 2057: the business application an IT ticket is about (an IT desk only). */
+  appId?: string;
+  /** Helpdesk plan item 4: the building, area and equipment it is about (checked by the caller). */
+  locationId?: string | null;
+  areaId?: string | null;
+  equipmentId?: string | null;
+  /** Answer 1842: the desk's own field values given when it is raised; a requester may fill only the fields everyone sees. */
+  fields?: Record<string, unknown>;
 }
 
 interface Notice {
@@ -144,9 +162,14 @@ export class TicketsService {
     if (!desk) throw new NotFoundException('No such desk.');
     const type = input.typeId
       ? await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, id: input.typeId, active: true } })
-      : await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
+      : await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: desk.id, active: true, kind: { notIn: [...ITSM_KINDS] } }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }] });
     if (!type) throw new BadRequestException('Choose a ticket type of this desk.');
+    if (ITSM_KINDS.includes(type.kind) !== Boolean(input.itsm)) throw new BadRequestException(input.itsm ? 'Choose a change or problem type.' : 'Changes and problems are raised from IT › Changes and Problems, not as tickets.');
     const cat = input.categoryId ? await this.category(tx, org, desk.id, input.categoryId, true) : null;
+    // ITSM answer 2057: only an IT ticket names an application, and one in use.
+    if (input.appId && (desk.kind !== 'it' || !(await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: input.appId, status: 'active' }, select: { id: true } })))) throw new BadRequestException('Choose an application of this company that is in use (IT tickets only).');
+    const fieldValues = input.fields && Object.keys(input.fields).length ? await this.raisedFields(tx, org, desk.id, type.id, input.fields, input.side === 'requester' ? 'requester' : 'agent') : null;
+    if (input.originArticleId && !(await tx.sdKbArticle.findFirst({ where: { organizationId: org, id: input.originArticleId, deletedAt: null }, select: { id: true } }))) throw new BadRequestException('No such help article.');
     // SD-2.11: a type with a lifecycle starts in its start status and the ticket keeps that version.
     const pin = await lifecyclePin(tx, org, desk.id, type.id);
     const status = pin ? await tx.sdStatus.findFirstOrThrow({ where: { organizationId: org, id: pin.startStatusId } }) : await this.firstStatus(tx, org, desk.id, type.id, 'new');
@@ -205,6 +228,16 @@ export class TicketsService {
         assigneeUserId,
         groupId,
         channel: input.channel,
+        // Answer 1683: only tickets the person raised themselves (portal, email, chat, messaging), never ones an agent logs.
+        raisedOutsideHours: input.side === 'requester' && Boolean(await this.sla.closedNow(tx, org, desk)),
+        originArticleId: input.originArticleId ?? null,
+        assetId: input.assetId ?? null,
+        appId: input.appId ?? null,
+        locationId: input.locationId ?? null,
+        areaId: input.areaId ?? null,
+        equipmentId: input.equipmentId ?? null,
+        ...(fieldValues ? { fieldValues: fieldValues as Prisma.InputJsonValue } : {}),
+        originQuery: input.originQuery?.trim() || null,
         sensitive: Boolean(cat?.sensitive),
         // SD-2.09 (M08): some categories make every ticket in them private.
         private: Boolean(input.private) || Boolean(cat?.privateByDefault),
@@ -488,6 +521,18 @@ export class TicketsService {
    * YX-SD-17 / US-G-030 read log: who opened which ticket, when and from where, one row per viewer and ticket per 30
    * minutes. Opening a sensitive or private ticket also writes its audit row (batch 1), now on the same 30-minute rule.
    */
+  /** Answer 1649: the palette's "go to ticket": a ticket number the agent may open (any other answer is "no such ticket"). */
+  async byNumber(a: DeskActor, number: string) {
+    return this.tx(a, async (tx) => {
+      const hits = await tx.sdTicket.findMany({ where: { organizationId: a.ctx.organizationId, number: { equals: number.trim(), mode: 'insensitive' } }, select: { id: true }, take: 5 });
+      for (const h of hits) {
+        const t = await tx.sdTicket.findFirst({ where: { id: h.id } });
+        if (t && (await ticketAccess(tx, a, t))) return { id: t.id, number: t.number };
+      }
+      throw new NotFoundException('No such ticket.');
+    });
+  }
+
   async logRead(tx: Tx, a: DeskActor, t: Ticket, access: TicketAccess | 'export', ip?: string | null) {
     const recent = await tx.sdTicketRead.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, userId: a.userId, readAt: { gt: new Date(Date.now() - 30 * 60_000) } }, select: { id: true } });
     if (recent) return;
@@ -521,8 +566,33 @@ export class TicketsService {
         t.customerAccountId ? tx.sdCustomerAccount.findFirst({ where: { organizationId: org, id: t.customerAccountId }, select: { id: true, name: true } }) : null,
         t.productId ? tx.sdProduct.findFirst({ where: { organizationId: org, id: t.productId }, select: { id: true, name: true } }) : null,
       ]);
+      // HLP-03 resolved state: when a solved ticket closes by itself (the desk's setting) and the requester's rating.
+      const rating = ['solved', 'closed'].includes(t.systemState) ? await tx.sdRating.findFirst({ where: { organizationId: org, ticketId: t.id }, select: { score: true, reason: true } }) : null;
+      // Answers 1661, 1662: the device it is about; only an IT desk's agents set or change it.
+      const app = t.appId ? await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: t.appId }, select: { id: true, name: true } }) : null;
+      const device = t.assetId ? await tx.asset.findFirst({ where: { organizationId: org, id: t.assetId }, select: { id: true, name: true, tag: true, category: true } }) : null;
+      // Answers 1641, 1650: the desk's own fields this person may see (team-lead-only ones to the desk's leads only).
+      const fieldViewer = this.fieldViewer(a, t.deskId, access);
+      // Helpdesk plan item 4: the building, area and equipment a facilities ticket names.
+      const [placeLoc, placeArea, placeEq] = await Promise.all([
+        t.locationId ? tx.location.findFirst({ where: { organizationId: org, id: t.locationId }, select: { id: true, name: true } }) : null,
+        t.areaId ? tx.sdFacilityArea.findFirst({ where: { organizationId: org, id: t.areaId }, select: { id: true, name: true } }) : null,
+        t.equipmentId ? tx.sdEquipment.findFirst({ where: { organizationId: org, id: t.equipmentId }, select: { id: true, name: true, tag: true } }) : null,
+      ]);
       return {
+        place: { building: placeLoc, area: placeArea, equipment: placeEq ? { id: placeEq.id, name: `${placeEq.name} (${placeEq.tag})` } : null },
+        canSetPlace: desk.kind === 'facilities' && access === 'agent' && canWork(a, t.deskId),
+        deskFields: shownFields(await fieldsFor(tx, org, t.deskId, t.typeId), t.fieldValues, fieldViewer),
+        canSetFields: access === 'agent' && canWork(a, t.deskId),
+        device: device ? assetOption(device) : null,
+        canSetDevice: desk.kind === 'it' && access === 'agent' && canWork(a, t.deskId),
+        // ITSM answer 2057: the application an IT ticket is about (the agents choose from the company's list).
+        app: app ? { id: app.id, name: app.name } : null,
+        appOptions: desk.kind === 'it' && access === 'agent' && canWork(a, t.deskId) ? await tx.sdBusinessApp.findMany({ where: { organizationId: org, status: 'active' }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : null,
         ...this.summary(t),
+        closesOn: t.systemState === 'solved' && t.resolvedAt && desk.autoCloseDays ? new Date(t.resolvedAt.getTime() + desk.autoCloseDays * 86_400_000) : null,
+        rating: rating?.score ?? null,
+        ratingReason: rating?.reason ?? null,
         subject: health.get('subject') ? unmaskHealth(t.subject, health.get('subject')!) : t.subject,
         customer: account ? { account, plan: t.planTier } : null,
         product,
@@ -605,6 +675,7 @@ export class TicketsService {
       urgency: t.urgency,
       assigneeUserId: t.assigneeUserId,
       channel: t.channel,
+      raisedOutsideHours: t.raisedOutsideHours,
       sensitive: t.sensitive,
       private: t.private,
       vip: t.vip,
@@ -689,8 +760,15 @@ export class TicketsService {
         // Public directory fields only (P02 Q4): code, designation, department, location.
         employee: employee ?? null,
         otherTickets: others,
-        // Assets and CIs join in phase 3b-3 (US-G-003).
-        assets: [],
+        // Helpdesk item 2: the requester's devices now (People asset register), for whoever may see this ticket.
+        assets: (
+          await tx.asset.findMany({
+            where: { organizationId: org, id: { in: (await tx.assetAssignment.findMany({ where: { organizationId: org, personId: t.requesterPersonId, returnedOn: null }, select: { assetId: true } })).map((x) => x.assetId) } },
+            select: { id: true, name: true, tag: true, category: true },
+            orderBy: { name: 'asc' },
+            take: 20,
+          })
+        ).map((x) => ({ id: x.id, name: x.name, tag: x.tag, category: x.category })),
       };
     });
   }
@@ -706,6 +784,8 @@ export class TicketsService {
     if (c.typeId && c.typeId !== t.typeId) {
       const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId: t.deskId, id: c.typeId, active: true } });
       if (!type) throw new BadRequestException('Choose a ticket type of this desk.');
+      // ITSM-1: a ticket never becomes, or stops being, a change or a problem by changing its type.
+      if (ITSM_KINDS.includes(type.kind) || ITSM_KINDS.includes(t.kind)) throw new BadRequestException('A change or problem keeps its type. Raise a new change or problem and link it instead.');
       data.typeId = type.id;
       log.push(['type_changed', t.typeId, type.id, false]);
       // SD-2.11: the new type's lifecycle (if any) applies from now; the ticket moves to its start when its status is
@@ -829,6 +909,10 @@ export class TicketsService {
     const note = c.resolutionNote !== undefined ? c.resolutionNote : t.resolutionNote;
     if (code && !(await tx.sdResolutionCode.findFirst({ where: { organizationId: org, deskId: t.deskId, code, active: true }, select: { id: true } }))) throw new BadRequestException('Choose a resolution code of this desk.');
     if (desk.resolutionRequired && (!code || !note?.trim())) throw new BadRequestException({ statusCode: 400, code: 'RESOLUTION_REQUIRED', message: 'This desk needs a resolution code and a note to resolve a ticket.' });
+    // Answer 1843: the desk's fields required before solving must have a value.
+    const values = (t.fieldValues && typeof t.fieldValues === 'object' && !Array.isArray(t.fieldValues) ? t.fieldValues : {}) as Record<string, unknown>;
+    const missing = (await fieldsFor(tx, org, t.deskId, t.typeId)).filter((f) => f.requiredToSolve && (values[f.key] === undefined || values[f.key] === null || values[f.key] === ''));
+    if (missing.length) throw new BadRequestException({ statusCode: 400, code: 'FIELDS_REQUIRED', message: `Fill ${missing.map((f) => f.label).join(', ')} before solving.`, fields: missing.map((f) => f.key) });
   }
 
   /**
@@ -901,6 +985,118 @@ export class TicketsService {
     const last = await tx.sdTicketEvent.findFirst({ where: { organizationId: a.ctx.organizationId, ticketId: t.id, byUserId: { not: null } }, orderBy: { at: 'desc' }, select: { byUserId: true } });
     const by = last?.byUserId ? (await this.userNames(tx, a.ctx.organizationId, [last.byUserId])).get(last.byUserId) : null;
     throw new ConflictException({ statusCode: 409, code: 'TICKET_CHANGED', message: `${by ?? 'Someone'} changed this ticket. Reload to see the latest.` });
+  }
+
+  /** Answer 1842: field values given at raise time, checked by the forms engine; a requester may fill only the fields everyone sees. */
+  async raisedFields(tx: Tx, org: string, deskId: string, typeId: string, given: Record<string, unknown>, who: Viewer) {
+    if (Object.keys(given).length > 60) throw new BadRequestException('Fill 60 fields at most.');
+    const fields = await fieldsFor(tx, org, deskId, typeId);
+    const res = applyFieldChange(fields, {}, given, who);
+    if (res.unknown.length || res.forbidden.length) throw new BadRequestException('That field is not on tickets like this one.');
+    if (Object.keys(res.errors).length) throw new BadRequestException({ statusCode: 400, code: 'FIELD_ERRORS', message: 'Check the fields.', errors: res.errors });
+    return Object.keys(res.values).length ? res.values : null;
+  }
+
+  /** Answer 1842: checks a requester's field values before a raise is stored for later (the open portal's emailed link). */
+  async checkRaiseFields(tx: Tx, org: string, deskId: string, given: Record<string, unknown>) {
+    const type = await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, active: true }, orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }], select: { id: true } });
+    if (type) await this.raisedFields(tx, org, deskId, type.id, given, 'requester');
+  }
+
+  /** Answers 1641, 1650: a lead on the desk sees team-lead-only fields; anyone else working it sees the staff fields. */
+  private fieldViewer(a: DeskActor, deskId: string, access: string): Viewer {
+    return access === 'agent' && a.roles.get(deskId) === 'lead' ? 'lead' : 'agent';
+  }
+
+  /**
+   * Answers 1641, 1650: an agent changes the ticket's own field values. Only fields their role may see; the forms
+   * engine checks the result (a dependent drop-down takes only a value under its parent). Team-lead-only changes keep
+   * their values out of the ticket's timeline.
+   */
+  async setFields(a: DeskActor, id: string, change: Record<string, unknown>) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      if (!Object.keys(change).length || Object.keys(change).length > 60) throw new BadRequestException('Change 1 to 60 fields at a time.');
+      const fields = await fieldsFor(tx, org, t.deskId, t.typeId);
+      const who = this.fieldViewer(a, t.deskId, access);
+      const res = applyFieldChange(fields, t.fieldValues, change, who);
+      if (res.unknown.length) throw new BadRequestException('That field is not on tickets like this one.');
+      if (res.forbidden.length) throw new ForbiddenException("Only the desk's team leads set that field.");
+      if (Object.keys(res.errors).length) throw new BadRequestException({ statusCode: 400, code: 'FIELD_ERRORS', message: 'Check the fields.', errors: Object.fromEntries(Object.entries(res.errors).filter(([k]) => fields.some((f) => f.key === k && sees(f, who)))) });
+      const before = (t.fieldValues ?? {}) as Record<string, unknown>;
+      const changed = fields.filter((f) => JSON.stringify(before[f.key] ?? null) !== JSON.stringify(res.values[f.key] ?? null));
+      if (!changed.length) return { deskFields: shownFields(fields, t.fieldValues, who) };
+      const upd = await tx.sdTicket.updateMany({ where: { organizationId: org, id: t.id, version: t.version }, data: { fieldValues: res.values as Prisma.InputJsonValue, version: { increment: 1 }, updatedAt: new Date() } });
+      if (!upd.count) throw new ConflictException('Someone else changed this ticket. Reload to see the latest.');
+      for (const f of changed) {
+        const lead = f.visibility === 'leads';
+        await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, sensitive: t.sensitive, private: t.private, kind: lead ? 'lead_field_changed' : 'field_changed', fromValue: lead ? null : `${f.label}: ${before[f.key] ?? '—'}`.slice(0, 300), toValue: lead ? f.label.slice(0, 300) : `${f.label}: ${res.values[f.key] ?? '—'}`.slice(0, 300), byUserId: a.userId } });
+      }
+      await audit(tx, a, 'desk.ticket.fields_set', 'sd_ticket', t.id, { keys: changed.map((f) => f.key) });
+      return { deskFields: shownFields(fields, res.values as Prisma.JsonValue, who) };
+    });
+  }
+
+  /**
+   * Helpdesk plan item 4: a facilities desk's agent sets the building, area and equipment a ticket is about. Equipment
+   * brings its own building and area; retired areas and equipment are refused. Audited, a timeline event.
+   */
+  async setPlace(a: DeskActor, id: string, dto: { locationId?: string | null; areaId?: string | null; equipmentId?: string | null }) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { kind: true } });
+      if (desk.kind !== 'facilities') throw new ForbiddenException("Only a facilities desk's agents name a building or equipment.");
+      const place = await checkPlace(tx, org, { locationId: dto.locationId ?? null, areaId: dto.areaId ?? null, equipmentId: dto.equipmentId ?? null });
+      const upd = await tx.sdTicket.updateMany({ where: { organizationId: org, id: t.id, version: t.version }, data: { ...place, version: { increment: 1 }, updatedAt: new Date() } });
+      if (!upd.count) throw new ConflictException('Someone else changed this ticket. Reload to see the latest.');
+      await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, sensitive: t.sensitive, private: t.private, kind: 'place_changed', fromValue: t.equipmentId ?? t.areaId ?? t.locationId, toValue: place.equipmentId ?? place.areaId ?? place.locationId, byUserId: a.userId } });
+      await audit(tx, a, 'desk.ticket.place_set', 'sd_ticket', t.id, { from: { locationId: t.locationId, areaId: t.areaId, equipmentId: t.equipmentId }, to: place });
+      return place;
+    });
+  }
+
+  /** Answer 1661: an IT desk's agent sets or clears the device a ticket is about (any live company device). */
+  async setDevice(a: DeskActor, id: string, assetId: string | null) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { kind: true } });
+      if (desk.kind !== 'it') throw new ForbiddenException("Only the IT desk's agents set a ticket's device.");
+      const asset = assetId ? await liveAsset(tx, org, assetId) : null;
+      if (assetId && !asset) throw new BadRequestException('Choose a device from the list.');
+      if ((t.assetId ?? null) === (assetId ?? null)) return { device: asset ? assetOption(asset) : null };
+      await tx.sdTicket.update({ where: { id: t.id }, data: { assetId: assetId ?? null, version: { increment: 1 } } });
+      await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'device_changed', fromValue: t.assetId, toValue: assetId ?? null, byUserId: a.userId } });
+      await audit(tx, a, 'desk.ticket.device_set', 'sd_ticket', t.id, { from: t.assetId, to: assetId ?? null });
+      return { device: asset ? assetOption(asset) : null };
+    });
+  }
+
+  /** ITSM answer 2057: an IT desk's agent sets or clears the application a ticket is about. */
+  async setApp(a: DeskActor, id: string, appId: string | null) {
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      const { t, access } = await this.load(tx, a, id);
+      if (access !== 'agent') throw new ForbiddenException(SEAT_REQUIRED);
+      requireWork(a, t.deskId);
+      const desk = await tx.sdDesk.findFirstOrThrow({ where: { organizationId: org, id: t.deskId }, select: { kind: true } });
+      if (desk.kind !== 'it') throw new ForbiddenException("Only the IT desk's agents set a ticket's application.");
+      const app = appId ? await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: appId, status: 'active' }, select: { id: true, name: true } }) : null;
+      if (appId && !app) throw new BadRequestException('Choose an application of this company that is in use.');
+      if ((t.appId ?? null) === (appId ?? null)) return { app };
+      await tx.sdTicket.update({ where: { id: t.id }, data: { appId: appId ?? null, version: { increment: 1 } } });
+      await tx.sdTicketEvent.create({ data: { organizationId: org, deskId: t.deskId, ticketId: t.id, kind: 'app_changed', fromValue: t.appId, toValue: appId ?? null, byUserId: a.userId } });
+      await audit(tx, a, 'desk.ticket.app_set', 'sd_ticket', t.id, { from: t.appId, to: appId ?? null });
+      return { app };
+    });
   }
 
   async convert(a: DeskActor, id: string, dto: ConvertDto) {

@@ -26,10 +26,11 @@ export function PriorityBadge({ priority }: { priority: number }) {
 }
 
 /** Private, sensitive and VIP marks, each in words (never colour alone). */
-export function TicketFlags({ sensitive, private: isPrivate, vip, unverified }: { sensitive?: boolean; private?: boolean; vip?: boolean; unverified?: boolean }) {
+export function TicketFlags({ sensitive, private: isPrivate, vip, unverified, outsideHours }: { sensitive?: boolean; private?: boolean; vip?: boolean; unverified?: boolean; outsideHours?: boolean }) {
   return (
     <>
       {unverified && <Badge tone="warning">Not verified</Badge>}
+      {outsideHours && <Badge tone="neutral">Raised outside hours</Badge>}
       {(sensitive || isPrivate) && (
         <Badge tone="neutral">
           <Lock aria-hidden size={12} /> {sensitive ? 'Sensitive' : 'Private'}

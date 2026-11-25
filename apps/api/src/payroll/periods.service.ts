@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { PAID_SOURCES, correctionPaid, knownLeave, lastDayIn, monthOf, paidIn } from './late-corrections';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -8,7 +9,7 @@ import { has, type ScopeUser, type Viewer } from '../access/scope';
 import { ApprovalsEngine, Notice, StepSpec } from '../workflow/approvals-engine.service';
 import { asDate, dateOf, factsOn, hrApprovers, monthRange, myEmployeeId } from '../time/time-core';
 import { addDays, daysBetween } from '../time/time-maths';
-import { ConfirmationDto, DeviceBatchDto, HrCorrectionDto, LateCorrectionDto } from './dto';
+import { ConfirmationDto, DeviceBatchDto, HrCorrectionDto, LateCorrectionDto, LopReversalDto } from './dto';
 import { PayKey, entitiesFor, payHolders, payViewer, requireEntity, requireSelf, systemAdmins, withPayScope } from './pay-access';
 
 // PAY-1.02 pay periods and the lock service, PAY-1.03 corrections into processed payroll, PAY-1.04 late device batches
@@ -358,6 +359,76 @@ export class PayPeriodsService implements OnModuleInit {
     return out;
   }
 
+  /**
+   * PAY-04 "Period frozen · late request only": the stage of a month per legal entity the person enters pay inputs for,
+   * so the LOP input shows a frozen or locked month before anyone types.
+   */
+  /**
+   * Answer 2283 (PAY-01): approved late corrections of people who have left, paid by their full and final settlement,
+   * until it is settled. Payroll in scope of the entity (payroll.run.view).
+   */
+  async waitingForFnf(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids = await entitiesFor(tx, c, v, 'payroll.run.view');
+      const rows = await withPayScope(tx, ids, () => tx.payCorrection.findMany({ where: { organizationId: org, legalEntityId: { in: ids }, status: 'approved', source: { in: PAID_SOURCES } }, orderBy: { workOn: 'asc' }, take: 500 }));
+      const out: { id: string; employeeId: string; name: string; on: string; month: string; fnfId: string | null; state: 'waiting' | 'settled' }[] = [];
+      for (const x of rows) {
+        const last = await lastDayIn(tx, org, x.employeeId, x.legalEntityId);
+        if (!last || !x.targetPeriod || monthOf(x.targetPeriod) !== last.slice(0, 7)) continue;
+        const f = await withPayScope(tx, [x.legalEntityId], () => tx.fnfSettlement.findFirst({ where: { organizationId: org, employeeId: x.employeeId, legalEntityId: x.legalEntityId }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true } }));
+        if (f?.status === 'cancelled') continue;
+        // Answer 2300: settled before it was paid: payroll pays it in an off-cycle correction run (once).
+        if (f?.status === 'settled' && ((await correctionPaid(tx, org, x.id)) || (await withPayScope(tx, [x.legalEntityId], () => tx.oneTimePay.findFirst({ where: { organizationId: org, source: 'arrears', sourceRef: x.id, status: 'approved' }, select: { id: true } }))))) continue;
+        const e = await tx.employee.findFirst({ where: { organizationId: org, id: x.employeeId }, select: { givenName: true, familyName: true, preferredName: true } });
+        out.push({ id: x.id, employeeId: x.employeeId, name: e ? (e.preferredName ?? [e.givenName, e.familyName].filter(Boolean).join(' ')) : 'Former employee', on: dateOf(x.workOn), month: last.slice(0, 7), fnfId: f?.id ?? null, state: f?.status === 'settled' ? 'settled' : 'waiting' });
+      }
+      return out;
+    });
+  }
+
+  /** Answer 2282: active leave types, names and codes only. */
+  leaveTypes(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, (tx, c) => tx.leaveType.findMany({ where: { organizationId: c.organizationId, active: true }, select: { code: true, name: true }, orderBy: { name: 'asc' } }));
+  }
+
+  async inputStages(ctx: TenantContext, user: ScopeUser, month: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const ids = await entitiesFor(tx, c, v, 'payroll.input.manage');
+      const rows = await tx.payPeriod.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, payGroupId: null, periodStart: asDate(monthRange(month).from) }, select: { legalEntityId: true, stage: true } });
+      return ids.map((id) => ({ legalEntityId: id, month, stage: rows.find((r) => r.legalEntityId === id)?.stage ?? 'open' }));
+    });
+  }
+
+  /**
+   * PAY-04 late request: payroll (payroll.input.manage) asks for a day of an assumed-present person in a frozen or locked
+   * month to change (an unpaid day, or an unpaid day reversed). Someone else with payroll.correction.approve approves it
+   * in Approvals; the difference is paid in the next open payroll, the locked month never changes (YX-LOCK-03).
+   */
+  async inputCorrection(ctx: TenantContext, user: ScopeUser, dto: HrCorrectionDto) {
+    const v = await this.viewer(user);
+    requireSelf(v);
+    const notices: Notice[] = [];
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (dto.on > todayIst()) throw new BadRequestException('A late request is for a day that has passed.');
+      const f = await factsOn(tx, org, dto.employeeId, dto.on);
+      if (!f) throw new NotFoundException('Not found');
+      await requireEntity(tx, c, v, 'payroll.input.manage', f.legalEntityId);
+      if (f.userId === v.userId) throw new ForbiddenException('Someone else asks for a change to your own pay.');
+      const p = await this.periodOn(tx, org, f.legalEntityId, dto.on);
+      if (!p || p.stage === 'open') throw new BadRequestException('That month is still open. Change the LOP days in the input instead.');
+      const payroll = (await payHolders(tx, org, 'payroll.correction.approve', f.legalEntityId, todayIst())).filter((u) => u !== v.userId && u !== f.userId);
+      if (!payroll.length) throw new BadRequestException('No one else can approve it. Give a second person "payroll.correction.approve" for this legal entity.');
+      const steps: StepSpec[] = [{ name: 'Payroll', approvers: [{ kind: 'users', userIds: payroll }], mode: 'any', remindAfterHours: 24 }];
+      return this.createCorrection(tx, c, { employeeId: f.employeeId, name: f.name, personId: f.personId, entityId: f.legalEntityId, period: p, dto, source: 'late_request', steps, fallback: [] }, notices);
+    });
+    await this.engine.send(ctx, notices);
+    return out;
+  }
+
   /** HR records a correction for someone in a frozen / locked month (needs attendance.lock on the entity); payroll approves. */
   async hrCorrection(ctx: TenantContext, user: ScopeUser, dto: HrCorrectionDto) {
     const v = await this.viewer(user);
@@ -381,6 +452,43 @@ export class PayPeriodsService implements OnModuleInit {
     return out;
   }
 
+  /**
+   * Batch A item 8 (attendance-leave D15, answer 2315): HR's "Reverse loss of pay" from the payroll inputs page. One HR
+   * correction per day (the same rules as POST corrections: attendance.lock for the person's legal entity, never your own,
+   * someone with payroll.correction.approve decides, paid in the next regular run), all in one transaction: a bad day
+   * saves none. Only for a frozen or locked month; an open month is fixed by regularisation (409 MONTH_OPEN).
+   */
+  async reverseLop(ctx: TenantContext, user: ScopeUser, dto: LopReversalDto) {
+    const v = await this.viewer(user);
+    requireSelf(v);
+    const days = dto.days.map((d) => d.on);
+    if (new Set(days).size !== days.length) throw new BadRequestException('Each day can be listed once.');
+    if (new Set(days.map((d) => d.slice(0, 7))).size > 1) throw new BadRequestException('Pick days of one month at a time.');
+    const notices: Notice[] = [];
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const ids: string[] = [];
+      for (const d of [...dto.days].sort((a, b) => a.on.localeCompare(b.on))) {
+        const f = await factsOn(tx, org, dto.employeeId, d.on);
+        if (!f) throw new NotFoundException('Not found');
+        await requireEntity(tx, c, v, 'attendance.lock', f.legalEntityId);
+        if (f.userId === v.userId) throw new ForbiddenException('Ask another HR admin to reverse loss of pay for yourself.');
+        const p = await this.periodOn(tx, org, f.legalEntityId, d.on);
+        if (!p || p.stage === 'open') throw new ConflictException({ statusCode: 409, code: 'MONTH_OPEN', message: `${monthText(d.on.slice(0, 7))} is still open. Fix the days in regularisation instead.` });
+        const today = todayIst();
+        const payroll = (await payHolders(tx, org, 'payroll.correction.approve', f.legalEntityId, today)).filter((u) => u !== v.userId);
+        if (!payroll.length) throw new BadRequestException('No one can approve it for payroll. Give someone "payroll.correction.approve" for this legal entity.');
+        const steps: StepSpec[] = [{ name: 'Payroll', approvers: [{ kind: 'users', userIds: payroll }], mode: 'any', remindAfterHours: 24 }];
+        const one = await this.createCorrection(tx, c, { employeeId: f.employeeId, name: f.name, personId: f.personId, entityId: f.legalEntityId, period: p, dto: { on: d.on, kind: 'attendance', shouldBe: d.shouldBe, reason: dto.reason }, source: 'hr', steps, fallback: [] }, notices);
+        ids.push(one.id);
+      }
+      await audit(tx, c, 'payroll.lop_reversal.submitted', 'employee', dto.employeeId, { days: dto.days, corrections: ids });
+      return { ids, count: ids.length, status: 'pending' };
+    });
+    await this.engine.send(ctx, notices);
+    return out;
+  }
+
   private async createCorrection(
     tx: Tx,
     c: CompanyContext,
@@ -388,6 +496,7 @@ export class PayPeriodsService implements OnModuleInit {
     notices: Notice[],
   ) {
     const org = c.organizationId;
+    if (!(await knownLeave(tx, org, a.dto.shouldBe))) throw new BadRequestException('That leave type is not one of your company’s. Choose one from the list.');
     if (await tx.payCorrection.findFirst({ where: { organizationId: org, employeeId: a.employeeId, workOn: asDate(a.dto.on), status: 'pending' } })) throw new ConflictException('A correction for that day is already waiting for approval.');
     const row = await tx.payCorrection.create({
       data: { organizationId: org, legalEntityId: a.entityId, employeeId: a.employeeId, payPeriodId: a.period.id, workOn: asDate(a.dto.on), kind: a.dto.kind, source: a.source, change: { shouldBe: a.dto.shouldBe }, reason: a.dto.reason, createdBy: c.userId ?? null },
@@ -422,9 +531,11 @@ export class PayPeriodsService implements OnModuleInit {
     const x = await tx.payCorrection.findFirst({ where: { organizationId: org, id: wf.subjectId } });
     if (!x || x.status !== 'pending') return;
     // YX-LOCK-03: the locked month never changes; the correction waits for the next open payroll month (arrears, 5g).
-    const target = outcome === 'approved' ? await this.nextOpenMonth(tx, org, x.legalEntityId, dateOf(x.workOn).slice(0, 7)) : null;
+    // Answer 2283: for someone who has left (or leaves first), their full and final settlement pays it.
+    const paid = outcome === 'approved' ? await paidIn(tx, org, x.employeeId, x.legalEntityId, await this.nextOpenMonth(tx, org, x.legalEntityId, dateOf(x.workOn).slice(0, 7))) : null;
+    const target = paid?.month ?? null;
     await tx.payCorrection.update({ where: { id: x.id }, data: { status: outcome, decidedAt: new Date(), targetPeriod: target ? asDate(`${target}-01`) : null } });
-    await audit(tx, { organizationId: org, isSuperAdmin: false }, `payroll.correction.${outcome}`, 'pay_correction', x.id, { employeeId: x.employeeId, legalEntityId: x.legalEntityId, paidIn: target });
+    await audit(tx, { organizationId: org, isSuperAdmin: false }, `payroll.correction.${outcome}`, 'pay_correction', x.id, { employeeId: x.employeeId, legalEntityId: x.legalEntityId, paidIn: target, fnf: paid?.fnf ?? false });
   }
 
   // ------------------------------------------------------------------------------------------ device batches (PAY-1.04)
@@ -454,11 +565,8 @@ export class PayPeriodsService implements OnModuleInit {
           notHeld.push({ employeeCode: p.employeeCode, at: p.at, why: 'No one with this code in the legal entity' });
           continue;
         }
-        const period = await this.periodOn(tx, org, dto.legalEntityId, on);
-        if (!period || period.stage === 'open') {
-          notHeld.push({ employeeCode: p.employeeCode, at: p.at, why: 'The day is open: send it through the device feed' });
-          continue;
-        }
+        // TIM-10 (29 Oct 2026): punches for open days are held too and applied from Time › Device punches; there is no
+        // live device feed yet.
         const r = await tx.heldPunch.createMany({ data: [{ organizationId: org, legalEntityId: dto.legalEntityId, employeeId, punchedAt: at, workOn: asDate(on), kind: p.kind, deviceRef: dto.deviceRef, receivedBy: v.userId }], skipDuplicates: true });
         held += r.count;
       }
@@ -473,9 +581,9 @@ export class PayPeriodsService implements OnModuleInit {
     requireSelf(v);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await requireEntity(tx, c, v, 'attendance.lock', entityId);
-      const rows = await tx.heldPunch.groupBy({ by: ['deviceRef'], where: { organizationId: c.organizationId, legalEntityId: entityId, status: 'held' }, _count: { _all: true }, _min: { workOn: true }, _max: { workOn: true } });
+      const rows = await tx.heldPunch.groupBy({ by: ['deviceRef'], where: { organizationId: c.organizationId, legalEntityId: entityId, status: 'held' }, _count: { _all: true }, _min: { workOn: true }, _max: { workOn: true, receivedAt: true } });
       const people = await tx.heldPunch.groupBy({ by: ['deviceRef', 'employeeId'], where: { organizationId: c.organizationId, legalEntityId: entityId, status: 'held' } });
-      return rows.map((r) => ({ deviceRef: r.deviceRef, punches: r._count._all, people: people.filter((p) => p.deviceRef === r.deviceRef).length, from: r._min.workOn ? dateOf(r._min.workOn) : null, to: r._max.workOn ? dateOf(r._max.workOn) : null }));
+      return rows.map((r) => ({ deviceRef: r.deviceRef, punches: r._count._all, people: people.filter((p) => p.deviceRef === r.deviceRef).length, from: r._min.workOn ? dateOf(r._min.workOn) : null, to: r._max.workOn ? dateOf(r._max.workOn) : null, receivedAt: r._max.receivedAt ?? null }));
     });
   }
 
@@ -483,7 +591,16 @@ export class PayPeriodsService implements OnModuleInit {
    * HR's device backfill (YX-LOCK-09): one audited action for the whole held batch of a device, with a reason and what
    * was confirmed. Each person-day becomes an approved correction paid in the next payroll; the locked month is untouched.
    */
-  async backfill(ctx: TenantContext, user: ScopeUser, entityId: string, deviceRef: string, reason: string, confirmation: ConfirmationDto) {
+  async backfill(
+    ctx: TenantContext,
+    user: ScopeUser,
+    entityId: string,
+    deviceRef: string,
+    reason: string,
+    confirmation: ConfirmationDto,
+    /** TIM-10: applies the punches of a day whose month is still open (Time module: punches and the day engine). */
+    applyOpen?: (tx: Tx, c: CompanyContext, employeeId: string, on: string, punches: { at: Date; kind: string }[]) => Promise<void>,
+  ) {
     const v = await this.viewer(user);
     requireSelf(v);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
@@ -498,17 +615,24 @@ export class PayPeriodsService implements OnModuleInit {
       for (const h of held) days.set(`${h.employeeId}|${dateOf(h.workOn)}`, [...(days.get(`${h.employeeId}|${dateOf(h.workOn)}`) ?? []), h]);
       const workOns = held.map((h) => dateOf(h.workOn)).sort();
       const b = await tx.deviceBackfill.create({ data: { organizationId: org, legalEntityId: entityId, deviceRef, fromOn: asDate(workOns[0]), toOn: asDate(workOns[workOns.length - 1]), punches: held.length, people: new Set(held.map((h) => h.employeeId)).size, reason, createdBy: v.userId! } });
+      let opened = 0;
       for (const [key, rows] of days) {
         const [employeeId, on] = key.split('|');
-        const period = (await this.periodOn(tx, org, entityId, on))!;
-        const target = await this.nextOpenMonth(tx, org, entityId, on.slice(0, 7));
+        const period = await this.periodOn(tx, org, entityId, on);
+        if (!period || period.stage === 'open') {
+          if (!applyOpen) throw new ConflictException('Some punches are for days of an open month. Apply them from Time › Device punches.');
+          await applyOpen(tx, c, employeeId, on, rows.map((r) => ({ at: r.punchedAt, kind: r.kind })));
+          opened++;
+          continue;
+        }
+        const target = (await paidIn(tx, org, employeeId, entityId, await this.nextOpenMonth(tx, org, entityId, on.slice(0, 7)))).month;
         await tx.payCorrection.create({
           data: { organizationId: org, legalEntityId: entityId, employeeId, payPeriodId: period.id, workOn: asDate(on), kind: 'punches', source: 'device_backfill', change: { punches: rows.map((r) => ({ at: r.punchedAt.toISOString(), kind: r.kind })) }, reason, status: 'approved', backfillId: b.id, targetPeriod: asDate(`${target}-01`), createdBy: v.userId, decidedAt: new Date() },
         });
       }
       await tx.heldPunch.updateMany({ where: { organizationId: org, id: { in: held.map((h) => h.id) } }, data: { status: 'backfilled', backfillId: b.id } });
-      await audit(tx, c, 'payroll.device_backfill.applied', 'device_backfill', b.id, { legalEntityId: entityId, deviceRef, punches: held.length, personDays: days.size, reason, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact } });
-      return { id: b.id, punches: held.length, personDays: days.size };
+      await audit(tx, c, 'payroll.device_backfill.applied', 'device_backfill', b.id, { legalEntityId: entityId, deviceRef, punches: held.length, personDays: days.size, openDays: opened, reason, confirmed: { phrase: confirmation.phrase, impact: confirmation.impact } });
+      return { id: b.id, punches: held.length, personDays: days.size, people: b.people, openDays: opened, corrections: days.size - opened };
     });
   }
 }

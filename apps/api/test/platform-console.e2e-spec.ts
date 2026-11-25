@@ -7,6 +7,7 @@ import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Step 3, the YukthiX platform console, end to end against the real database (forced RLS, app role): staff-only
 // access (P14 YX-CONSOLE-01, P12 Q7), company lifecycle and prices with reasons and audit (YX-CONSOLE-02, YX-TEN-08,
@@ -51,6 +52,8 @@ describe('YukthiX platform console (step 3)', () => {
     for (const who of ['staff', 'staff2', 'staffNoKey'] as const) {
       const email = `${who.toLowerCase()}-${runId}@platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): these suites test the console routes, so their staff hold every role.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
     }
     // A security key proven on the session (AAL2) for the two working staff members.
@@ -134,6 +137,33 @@ describe('YukthiX platform console (step 3)', () => {
       await api('staff', 'get', '/platform/companies?lifecycle=gone').expect(400);
       await api('staff', 'get', `/platform/companies/${randomUUID()}`).expect(404);
       await api('staff', 'get', '/platform/companies/not-a-uuid').expect(400);
+    });
+
+    it('answer 442: Company settings — white-label only by staff, only when the plan includes it, with a reason, audited for the company', async () => {
+      const path = `/platform/companies/${org.A}/settings`;
+      const view = (await api('staff', 'get', path).expect(200)).body;
+      expect(view).toMatchObject({ id: org.A, features: ['white_label'], settings: [{ key: 'brand.white_label', value: 'off', included: true }] });
+      // Bad input, a key that is not a staff setting, no reason, another company's admin, no security key: refused.
+      await api('staff', 'patch', path).send({ key: 'brand.white_label', value: 'maybe', reason: 'Customer asked' }).expect(400);
+      await api('staff', 'patch', path).send({ key: 'hiring.pay_range.show', value: 'on', reason: 'Customer asked' }).expect(400);
+      await api('staff', 'patch', path).send({ key: 'brand.white_label', value: 'on' }).expect(400);
+      await api('adminA', 'patch', path).send({ key: 'brand.white_label', value: 'on', reason: 'Customer asked' }).expect(403);
+      await api('staffNoKey', 'patch', path).send({ key: 'brand.white_label', value: 'on', reason: 'Customer asked' }).expect(403);
+      await api('staff', 'patch', `/platform/companies/${randomUUID()}/settings`).send({ key: 'brand.white_label', value: 'on', reason: 'Customer asked' }).expect(404);
+      // On, by staff, with a reason; the company's admins see it in the history; the public pages follow it.
+      const on = (await api('staff', 'patch', path).send({ key: 'brand.white_label', value: 'on', reason: 'In the plan; customer asked' }).expect(200)).body;
+      expect(on.settings[0]).toMatchObject({ value: 'on' });
+      const rows = await audit(org.A, { action: 'platform.company.setting_changed' });
+      expect(rows).toHaveLength(1);
+      expect(JSON.parse(rows[0]!.metadataJson!)).toEqual({ key: 'brand.white_label', from: 'off', to: 'on', reason: 'In the plan; customer asked' });
+      expect(rows[0]).toMatchObject({ actorUserId: users.staff, actorRole: 'super_admin' });
+      // The company itself cannot change or remove it (it comes with the plan).
+      await api('adminA', 'put', '/org/settings').send({ key: 'brand.white_label', scopeType: 'tenant', value: 'off' }).expect(403);
+      // A company whose plan lacks it is refused (turning off is always allowed).
+      expect((await api('staff', 'get', `/platform/companies/${org.C}/settings`).expect(200)).body).toMatchObject({ features: [], settings: [{ included: false }] });
+      await api('staff', 'patch', `/platform/companies/${org.C}/settings`).send({ key: 'brand.white_label', value: 'on', reason: 'Customer asked' }).expect(409);
+      await api('staff', 'patch', `/platform/companies/${org.C}/settings`).send({ key: 'brand.white_label', value: 'off', reason: 'Tidy up' }).expect(200);
+      await api('staff', 'patch', path).send({ key: 'brand.white_label', value: 'off', reason: 'Back to the default' }).expect(200);
     });
 
     it('extends a trial once, by at most 14 days, with a reason', async () => {

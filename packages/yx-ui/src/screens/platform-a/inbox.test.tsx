@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ApprovalsInboxScreen, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen } from './inbox';
-import { APPROVALS, MY_REQUESTS, NOTIFICATIONS, SENT_BY_ME } from './platform-data';
+import { ApprovalsInboxScreen, MyRequestsScreen, NotificationsInboxScreen, RequestSheetScreen, type LiveApprovals } from './inbox';
+import { APPROVALS, MY_REQUESTS, NOTIFICATIONS, SENT_BY_ME, type ApprovalRow } from './platform-data';
 
 const HISTORY = APPROVALS.slice(0, 2).map((a, i) => ({ ...a, id: `h${i}`, status: 'Approved' as const }));
 
@@ -53,6 +53,25 @@ describe('Approvals inbox (founder review 30 Sep 2026)', () => {
     expect(screen.getByRole('dialog')).toHaveTextContent(/of 6/);
   });
 
+  // Keka ideas (2026-11): one pick-one control of kinds with counts filters the list.
+  it('kinds with counts filter the list; All shows everything again', async () => {
+    const u = userEvent.setup();
+    screenWith();
+    const kinds = screen.getByRole('radiogroup', { name: 'Kind of request' });
+    expect(within(kinds).getByRole('radio', { name: 'All · 7' })).toBeChecked();
+    expect(within(kinds).getByRole('radio', { name: 'Leave · 2' })).toBeInTheDocument();
+    await u.click(within(kinds).getByRole('radio', { name: 'Expense · 2' }));
+    expect(screen.getByText('Hotel stay · Hosur')).toBeInTheDocument();
+    expect(screen.queryByText('Casual leave · 2 days')).toBeNull();
+    await u.click(within(kinds).getByRole('radio', { name: 'All · 7' }));
+    expect(screen.getByText('Casual leave · 2 days')).toBeInTheDocument();
+  });
+
+  it('negative: one kind only shows no picker', () => {
+    render(<ApprovalsInboxScreen waiting={APPROVALS.filter((a) => a.type === 'Leave')} sent={[]} history={[]} />);
+    expect(screen.queryByRole('radiogroup', { name: 'Kind of request' })).toBeNull();
+  });
+
   it('shows who else is off for a leave request', () => {
     screenWith('a1');
     expect(screen.getByText('Team on these days')).toBeInTheDocument();
@@ -95,5 +114,100 @@ describe('My requests (founder review 30 Sep 2026)', () => {
     expect(screen.getByRole('button', { name: 'Cancel leave' })).toBeInTheDocument();
     await u.click(screen.getByRole('tab', { name: /Completed/ }));
     expect(container.querySelector('th.yx-table__actions')).toBeNull();
+  });
+});
+
+describe('PLT-04 live (the approvals engine)', () => {
+  const today = new Date(2026, 10, 3);
+  const row = (id: string, over: Partial<ApprovalRow> = {}): ApprovalRow => ({ id, ref: id.toUpperCase(), type: 'Service request', requester: 'Arjun Kulkarni', requesterRole: '', summary: `Laptop ${id}`, detail: 'Step 1 of 2: Manager', submitted: today, due: null, step: 'Manager', lowRisk: true, policy: { ok: true }, status: 'Waiting', context: ['Item: New laptop'], ...over });
+  const delegation = { meId: 'me', meName: 'Divya', today, people: [], onFindPeople: () => undefined, current: null, waiting: 2, onSave: vi.fn(), onEnd: vi.fn(), delegatedToYou: [], approvalsHref: '/yx/approvals' };
+  const live = (over: Partial<LiveApprovals> = {}): LiveApprovals => ({ today, onDecide: vi.fn(async () => undefined), onBulkApprove: vi.fn(async () => []), delegation, onDone: vi.fn(), ...over });
+
+  it('approves one in a click; not approving needs a reason (field error, nothing sent); no policy column', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live();
+    render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} live={l} />);
+    expect(screen.queryByRole('columnheader', { name: 'Policy' })).not.toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Approve' }));
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'approve', '');
+    expect(l.onDone).toHaveBeenCalledWith(expect.stringMatching(/^Approved: Laptop a/));
+  });
+
+  it('the side panel: Do not approve pressed with no reason says why and sends nothing; with one it is sent', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live();
+    render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={l} />);
+    const panel = await screen.findByRole('dialog');
+    await u.click(within(panel).getByRole('button', { name: 'Do not approve' }));
+    await u.click(within(panel).getByRole('button', { name: 'Do not approve' }));
+    expect(within(panel).getByText('Say why, so the person who asked knows.')).toBeInTheDocument();
+    expect(l.onDecide).not.toHaveBeenCalled();
+    await u.type(within(panel).getByRole('textbox'), 'Not this quarter');
+    await u.click(within(panel).getByRole('button', { name: 'Do not approve' }));
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'reject', 'Not this quarter');
+  });
+
+  it('Send back for changes (leave): offered only where the server allows it; what to change is required, then it is sent', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live();
+    const { unmount } = render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={l} />);
+    // Negative: a type without send back (or the company turned it off) shows no Send back.
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Send back' })).toBeNull();
+    unmount();
+    render(<ApprovalsInboxScreen waiting={[row('b', { type: 'Leave', canSendBack: true })]} sent={[]} history={[]} openId="b" live={l} />);
+    const panel = await screen.findByRole('dialog');
+    await u.click(within(panel).getByRole('button', { name: 'Send back' }));
+    expect(within(panel).getByText('They change the request and send it again.')).toBeInTheDocument();
+    await u.click(within(panel).getByRole('button', { name: 'Send back' }));
+    expect(within(panel).getByText('Say what to change, so the person who asked knows.')).toBeInTheDocument();
+    expect(l.onDecide).not.toHaveBeenCalled();
+    await u.type(within(panel).getByRole('textbox'), 'Move it by a week');
+    await u.click(within(panel).getByRole('button', { name: 'Send back' }));
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'b' }), 'send_back', 'Move it by a week');
+    await waitFor(() => expect(l.onDone).toHaveBeenCalledWith(expect.stringMatching(/^Sent back for changes/)));
+  });
+
+  it('bulk approve: the refused ones stay listed with why; the rest say done', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live({ onBulkApprove: vi.fn(async () => [{ id: 'b', message: 'This approval is already closed.' }]) });
+    render(<ApprovalsInboxScreen waiting={[row('a'), row('b', { requester: 'Meera Iyer' })]} sent={[]} history={[]} live={l} />);
+    await u.click(screen.getByRole('checkbox', { name: /Arjun/ }));
+    await u.click(screen.getByRole('checkbox', { name: /Meera/ }));
+    await u.click(screen.getByRole('button', { name: 'Approve 2' }));
+    await u.click((await screen.findAllByRole('button', { name: 'Approve 2' })).at(-1)!);
+    expect(await screen.findByText('1 request was not approved')).toBeInTheDocument();
+    expect(screen.getByText(/Laptop b: This approval is already closed\./)).toBeInTheDocument();
+    expect(l.onDone).toHaveBeenCalledWith('Approved 1 request. The people who asked are told.');
+  });
+
+  it('a request decided on its own page links there; Set up delegation opens When I am away', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<ApprovalsInboxScreen waiting={[row('p', { lowRisk: false, decideAt: '/yx/payroll/reopen-requests' })]} sent={[]} history={[]} openId="p" live={live()} />);
+    expect(within(await screen.findByRole('dialog')).getByRole('link', { name: 'Open to decide' })).toHaveAttribute('href', '/yx/payroll/reopen-requests');
+    await u.keyboard('{Escape}');
+    await u.click(screen.getByRole('button', { name: 'Set up delegation' }));
+    expect(await screen.findByText('When I am away')).toBeInTheDocument();
+  });
+});
+
+describe('PLT-03 notifications inbox, live on a phone', () => {
+  it('under 768 px the live page takes the designed phone layout, with the preferences link and the same actions', async () => {
+    const real = window.matchMedia;
+    window.matchMedia = ((q: string) => ({ matches: true, media: q, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
+    try {
+      const onMarkAllRead = vi.fn();
+      render(<NotificationsInboxScreen items={NOTIFICATIONS} live={{ onOpen: vi.fn(), onMarkRead: vi.fn(), onMarkAllRead, preferencesHref: '/yx/me/notifications' }} />);
+      expect(document.querySelector('.yx-phone')).toBeTruthy();
+      expect(screen.getByRole('link', { name: 'Notification preferences' }).getAttribute('href')).toBe('/yx/me/notifications');
+      await userEvent.click(screen.getByRole('button', { name: 'Mark all read' }));
+      expect(onMarkAllRead).toHaveBeenCalledOnce();
+    } finally {
+      window.matchMedia = real;
+    }
+  });
+
+  it('the desktop page stays the desktop layout on a wide screen', () => {
+    render(<NotificationsInboxScreen items={NOTIFICATIONS} live={{ onOpen: vi.fn(), onMarkRead: vi.fn(), onMarkAllRead: vi.fn(), preferencesHref: '/yx/me/notifications' }} />);
+    expect(document.querySelector('.yx-phone')).toBeNull();
   });
 });

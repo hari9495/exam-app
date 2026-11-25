@@ -6,7 +6,6 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { TenantContext } from '@exam-platform/shared';
 import { InterviewAiService } from './interview-ai.service';
 import { GenerateInterviewQuestionsDto } from './dto/generate-interview-questions.dto';
-import { GenerateScorecardDto } from './dto/generate-scorecard.dto';
 
 @Controller()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
@@ -23,15 +22,6 @@ export class InterviewAiController {
   ) {
     return this.interviewAi.generateQuestions(tenant, id, { count: dto.count, focus: dto.focus ?? null });
   }
-
-  // The assigned interviewer turning their raw notes into a structured scorecard.
-  @Post('interviews/:id/scorecard')
-  @RequirePermissions('interview:view_assigned')
-  generateScorecard(
-    @CurrentTenant() tenant: TenantContext,
-    @Param('id') id: string,
-    @Body() dto: GenerateScorecardDto,
-  ) {
-    return this.interviewAi.generateScorecard(tenant, id, dto.notes);
-  }
+  // HIR-25: the older notes-to-scorecard route (POST interviews/:id/scorecard) is removed; the notetaker draft
+  // (hiring/interviews/:id/notetaker/draft) replaces it, from a consented transcript.
 }

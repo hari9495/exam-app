@@ -2,11 +2,14 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ActionItem } from '@yukthix/ui';
 import type { ApprovalTask } from '@yukthix/ui/desk';
 import { RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '@yukthix/ui/frame';
-import { HomeClockCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar } from '@yukthix/ui/time';
+import { NudgeCard } from '@yukthix/ui/console';
+import { TalkToUsLiveDialog } from '@yukthix/ui/desk';
+import { Button } from '@yukthix/ui';
+import { HomeClockCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar, type TeamLeaveHome } from '@yukthix/ui/time';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
@@ -16,7 +19,7 @@ import { useYxPermissions } from '../../../../lib/yx-org';
 import { usePeople } from '../../../../lib/yx-people';
 import { usePerf } from '../../../../lib/yx-performance';
 import { useScope } from '../../../../lib/yx-shell';
-import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets } from '../../../../lib/yx-home';
+import { comingUp, employeeStats, financeHome, hiringHome, homePay, homeWidgets, inboxActions, managerHome, myTasks, weekOf, type HomePayResponse, type HomeWidgets, type TeamTodayResponse } from '../../../../lib/yx-home';
 import { usePay } from '../../../../lib/yx-pay';
 import { useLife } from '../../../../lib/yx-lifecycle';
 import { browserLocation, todayIndia, useTime, useTimeWrite } from '../../../../lib/yx-time';
@@ -42,8 +45,12 @@ const monthBefore = (m: string) => new Date(Date.UTC(Number(m.slice(0, 4)), Numb
 // - Finance (payroll, statutory): money to pay, net payroll, PF and ESI, TDS, money going out in the next 30 days.
 // Everyone with an attendance record gets the designed "Attendance today" card. Hiring (founder decision 19 Oct 2026):
 // someone whose only keys are hiring keys gets the recruiter Home; others get the recruiter widgets when they hire.
+// Needs your action (founder, 5 Nov 2026): one-click Approve only where the server marks the type quickApprove (leave,
+// WFH, regularisation, timesheets, shift swap, OT pre-approval); expense claims stay Review only even within limit (161);
+// the note uses policy limits, no per-approver money limit until customers ask (162).
 export default function YxHomePage() {
   const router = useRouter();
+  const qc = useQueryClient();
   const { accessToken, actingSuperAdmin } = useAuth();
   const me = useCurrentUser();
   const branding = useOrgBranding();
@@ -51,6 +58,11 @@ export default function YxHomePage() {
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   const employee = Boolean(team.data?.managerId) && !actingSuperAdmin;
   const isManager = Boolean(team.data?.members.length) && !actingSuperAdmin;
+  // C-8 (YX-12): the one nudge for this person, if any (the API applies the switches, who can act and the weekly limit).
+  const nudge = useQuery<{ nudge: { id: string; featureLabel: string; heading: string; body: string; switchHref: string | null } | null }>({ queryKey: ['yx', 'nudge'], queryFn: () => apiFetch('/help/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false, staleTime: Infinity });
+  const n = nudge.data?.nudge;
+  // Answer 1210: Talk to us on the card asks YukthiX to call (the sales-assist queue).
+  const [talking, setTalking] = useState(false);
   const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
   // The India date as state: at midnight the page re-renders and the attendance card moves to the new day (founder, 21 Oct).
   const [today, setToday] = useState(todayIndia);
@@ -99,13 +111,14 @@ export default function YxHomePage() {
   const asManager = persona === 'manager';
   const week = weekOf(today);
   const muster = useTime<Muster>(asManager ? `/muster?month=${month}` : null);
+  const teamToday = useTime<TeamTodayResponse>(asManager ? '/team-today' : null);
   const lastWeekStart = new Date(new Date(`${week[0]}T00:00:00Z`).getTime() - 7 * 86_400_000).toISOString().slice(0, 7);
   const musterBefore = useTime<Muster>(asManager && lastWeekStart < month ? `/muster?month=${lastWeekStart}` : null);
   const calendar = useTime<TeamCalendar>(asManager ? `/team/calendar?from=${week[0]}&to=${week[6]}` : null);
   const reviews = usePerf<Reviews>('/reviews?view=team', asManager);
   const meetings = usePerf<Meetings>('/one-on-ones', asManager);
   const probations = usePeople<Probations>(asManager ? '/probations' : null);
-  const manager = asManager ? managerHome({ today, muster: muster.data, musterBefore: musterBefore.data, calendar: calendar.data, reviews: reviews.data, probations: probations.data?.rows, meetings: meetings.data?.meetings }) : {};
+  const manager = asManager ? managerHome({ today, teamToday: teamToday.data, muster: muster.data, musterBefore: musterBefore.data, calendar: calendar.data, reviews: reviews.data, probations: probations.data?.rows, meetings: meetings.data?.meetings }) : {};
 
   // Finance: the money cards, money going out and the payroll and payout rows, each from the page that owns it.
   const fin = persona === 'finance' ? financeHome(widgets.data?.finance, scope.period ?? month, today) : null;
@@ -113,7 +126,9 @@ export default function YxHomePage() {
   const [hideChoice, setHideChoice] = useState<Record<string, boolean>>({});
   const hidden = hideKey ? (hideChoice[hideKey] ?? readHidden(hideKey)) : false;
 
-  const approvals: ActionItem[] = (inbox.data ?? []).filter((t) => !fin?.replaces.includes(t.requestId)).map((t) => ({ id: t.taskId, type: t.type, title: t.title, who: t.person || t.onBehalfOf || t.requester, ...(t.dueAt ? { due: new Date(t.dueAt) } : {}), kind: 'review' }));
+  // "N others off these days" for leave in the approver's own team: one extra call, only when leave waits for them.
+  const teamLeave = useTime<TeamLeaveHome>(inbox.data?.some((t) => t.type === 'Leave') ? '/team/leave-home' : null);
+  const approvals: ActionItem[] = inboxActions((inbox.data ?? []).filter((t) => !fin?.replaces.includes(t.requestId)), teamLeave.data);
   // People who are not recruiters get the recruiter widgets only when they hire (jobs, interviews or rows waiting).
   const hiringView = persona === 'recruiter' || hiring.actions.length || hiring.view?.jobs?.length || hiring.view?.interviewsToday.length ? hiring.view : undefined;
   const actions = [...(fin?.actions ?? []), ...approvals, ...(hiringView ? hiring.actions : [])];
@@ -123,20 +138,42 @@ export default function YxHomePage() {
     company: branding.data?.name || 'your company',
     today: new Date(),
     approvalsHref: approvals.length || !hiringView ? '/yx/approvals' : '/yx/hiring/jobs',
+    // The Approvals page's own decide call, with all its checks; refused, the row stays and shows why.
+    onApprove: async (item) => {
+      await apiFetch(`/workflow/approvals/tasks/${encodeURIComponent(item.id)}/decide`, { method: 'POST', body: JSON.stringify({ decision: 'approve' }) }, accessToken ?? undefined);
+      void qc.invalidateQueries({ queryKey: ['workflow'] });
+      void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
+    },
     onReview: () => router.push('/yx/approvals'),
+    nudge: n ? (
+      <NudgeCard
+        heading={n.heading}
+        body={n.body}
+        switchHref={n.switchHref}
+        extra={
+          <Button size="sm" onClick={() => setTalking(true)}>
+            Talk to us
+          </Button>
+        }
+        onDismiss={() => {
+          qc.setQueryData(['yx', 'nudge'], { nudge: null });
+          void apiFetch(`/help/nudge/${encodeURIComponent(n.id)}/dismiss`, { method: 'POST' }, accessToken ?? undefined).catch(() => undefined);
+        }}
+      />
+    ) : undefined,
     clock: attendance.data ? (
       <HomeClockCard
         data={attendance.data}
         now={new Date()}
         getLocation={browserLocation}
-        onPunch={(kind, pin) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}) })}
-        attendanceHref="/yx/time/attendance"
-        onRegularise={() => router.push('/yx/time/attendance')}
+        onPunch={(kind, pin, opts) => write<PunchResult>('/me/punch', 'POST', { kind, ...(pin ?? {}), ...(opts?.wfh ? { wfh: true } : {}) })}
+        attendanceHref="/yx/time/attendance?view=today"
+        onRegularise={() => router.push('/yx/time/attendance?view=today&request=regularise')}
       />
     ) : undefined,
     stats,
     ...(persona === 'hr' ? { due: extra.due, moves: extra.moves, movesHref: extra.movesHref } : {}),
-    ...(fin ? { moneyOut: fin.moneyOut, approval: fin.approval } : {}),
+    ...(fin ? { moneyOut: fin.moneyOut, approval: fin.approval, trend: fin.trend } : {}),
     ...(hideKey
       ? {
           amounts: {
@@ -165,5 +202,16 @@ export default function YxHomePage() {
         ]
       : [],
   };
-  return <RoleHomeScreen persona={persona} data={{ actions: actions.slice(0, 5), actionsTotal: actions.length }} loading={inbox.isLoading || widgets.isLoading} live={live} />;
+  return (
+    <>
+      <RoleHomeScreen persona={persona} data={{ actions: actions.slice(0, 5), actionsTotal: actions.length }} loading={inbox.isLoading || widgets.isLoading} live={live} />
+      {talking && n && (
+        <TalkToUsLiveDialog
+          about={n.featureLabel}
+          onClose={() => setTalking(false)}
+          onSend={(input) => apiFetch('/help/talk-to-us', { method: 'POST', body: JSON.stringify({ nudgeId: n.id, ...input }) }, accessToken ?? undefined) as Promise<{ dueAt: string }>}
+        />
+      )}
+    </>
+  );
 }

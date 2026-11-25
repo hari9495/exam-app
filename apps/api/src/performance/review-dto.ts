@@ -6,6 +6,24 @@ import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
+/** PRF-04: a calibration session planned in the cycle wizard; it is made when the cycle launches. */
+export class PlannedSessionDto {
+  @trim()
+  @IsString()
+  @Length(2, 100)
+  name!: string;
+
+  @IsUUID()
+  facilitatorUserId!: string;
+
+  /** Departments whose finished reviews go into the session; empty = every finished review of the cycle. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  departmentIds?: string[];
+}
+
 export class StageDto {
   @IsIn(['self', 'manager', 'skip'])
   key!: 'self' | 'manager' | 'skip';
@@ -62,6 +80,14 @@ export class CycleDto {
   @ValidateNested()
   @Type(() => EligibilityRulesDto)
   eligibilityRules!: EligibilityRulesDto;
+
+  /** PRF-04: calibration sessions set up in the wizard (left out keeps them; an empty list removes them). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => PlannedSessionDto)
+  calibration?: PlannedSessionDto[];
 
   @IsOptional()
   @IsInt()
@@ -123,6 +149,13 @@ export class EntryDto {
   @IsString()
   @MaxLength(5000)
   comment?: string | null;
+
+  /** PRF-05: the manager's proposed 9-box potential (1 low, 2 medium, 3 high); null clears it. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  potential?: number | null;
 }
 
 export class CommentDto {
@@ -140,10 +173,14 @@ export class ReasonDto {
   reason!: string;
 }
 
+/** Founder 3 Nov 2026: a disagreement says what and why, in at least 20 characters, on every route. */
+export const DISAGREEMENT_MIN = 20;
+const DISAGREEMENT_MESSAGE = `Say which part you disagree with and why, in at least ${DISAGREEMENT_MIN} characters.`;
+
 export class DisagreeDto {
   @trim()
   @IsString()
-  @Length(3, 2000)
+  @Length(DISAGREEMENT_MIN, 2000, { message: DISAGREEMENT_MESSAGE })
   text!: string;
 }
 
@@ -269,6 +306,22 @@ export class CalibrationChangeDto {
   @IsString()
   @Length(1, 60)
   toBand?: string | null;
+
+  @trim()
+  @IsString()
+  @Length(3, 500)
+  reason!: string;
+}
+
+/** PRF-09 9-box: the facilitator sets a review's potential (1 low, 2 medium, 3 high) with a reason. */
+export class PotentialDto {
+  @IsUUID()
+  reviewId!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(3)
+  potential!: number;
 
   @trim()
   @IsString()
@@ -519,6 +572,63 @@ export class PipCheckinDto {
   @IsString()
   @Length(3, 2000)
   note!: string;
+
+  /** PRF-12: the manager's rating of progress (the employee's note has none). */
+  @IsOptional()
+  @IsIn(['on_track', 'some_progress', 'no_progress'])
+  rating?: 'on_track' | 'some_progress' | 'no_progress' | null;
+}
+
+/** PRF-10 market data: a salary-survey CSV for one legal entity (columns grade, min, median, max, currency). */
+export class MarketUploadDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @trim()
+  @IsString()
+  @Length(2, 200)
+  source!: string;
+
+  @Matches(ISO)
+  asOf!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  fileName?: string | null;
+
+  @IsString()
+  @Length(1, 1_000_000)
+  csv!: string;
+}
+
+export class MarketQueryDto {
+  @IsUUID()
+  legalEntityId!: string;
+}
+
+/** PRF-10: an approver approves the sheet's proposals waiting for them, or sends them back with what to change. */
+export class CompDecideDto {
+  @IsIn(['approve', 'send_back'])
+  decision!: 'approve' | 'send_back';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string | null;
+}
+
+/** PRF-12: HR approves a proposed plan or sends it back with a reason. */
+export class PipDecideDto {
+  @IsIn(['approve', 'send_back'])
+  decision!: 'approve' | 'send_back';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string | null;
 }
 
 export class PipOutcomeDto {
@@ -533,6 +643,17 @@ export class PipOutcomeDto {
   @IsOptional()
   @Matches(ISO)
   extendTo?: string | null;
+
+  @IsInt()
+  version!: number;
+}
+
+/** Founder answer (a): extend a plan once more after "not met"; the days are the company's setting. */
+export class PipExtendAgainDto {
+  @trim()
+  @IsString()
+  @Length(10, 1000, { message: 'Give the reason for one more extension, in at least 10 characters.' })
+  reason!: string;
 
   @IsInt()
   version!: number;
@@ -557,4 +678,44 @@ export class PipListQueryDto {
   @IsOptional()
   @IsUUID()
   legalEntityId?: string;
+}
+
+// ------------------------------------------------------------------------------------------ PRF-04 / PRF-06 (design wiring)
+
+export class AcknowledgeDto extends CommentDto {
+  /** PRF-06: "I disagree with this rating", sent with the acknowledgement (both or neither). */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(DISAGREEMENT_MIN, 2000, { message: DISAGREEMENT_MESSAGE })
+  disagreement?: string | null;
+}
+
+export class StageQueryDto {
+  @IsIn(['self', 'manager', 'skip', 'release', 'done'])
+  stage!: 'self' | 'manager' | 'skip' | 'release' | 'done';
+}
+
+export class RemindDto {
+  @IsOptional()
+  @IsBoolean()
+  overdueOnly?: boolean;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(500)
+  @IsUUID('all', { each: true })
+  ownerEmployeeIds?: string[];
+}
+
+export class ExtendDto {
+  @IsIn(['self', 'manager', 'skip'])
+  stage!: 'self' | 'manager' | 'skip';
+
+  @Matches(ISO, { message: 'Give the day as YYYY-MM-DD.' })
+  dueOn!: string;
+
+  @IsInt()
+  @Min(1)
+  version!: number;
 }

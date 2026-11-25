@@ -12,6 +12,16 @@ export class ConfirmDto {
   confirmation!: ConfirmationDto;
 }
 
+export class PublishDto extends ConfirmDto {
+  /** PAY-09: only when no one else may publish this run's payslips; stored in the audit event, the System Admins are told. */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(500)
+  selfApprovalReason?: string;
+}
+
 export class GenerateBankFileDto {
   /** The company's account the bank debits (digits only; only its last four are kept outside the file). */
   @Matches(/^\d{6,20}$/, { message: 'The debit account is 6 to 20 digits.' })
@@ -56,6 +66,11 @@ export class PaymentResultRowDto {
   @MinLength(3)
   @MaxLength(300)
   reason?: string;
+
+  /** PAY-10: why the bank refused it; "ifsc" = the IFSC on file is not valid (the payslip waits for a corrected account). */
+  @IsOptional()
+  @IsIn(['ifsc', 'account', 'other'])
+  cause?: 'ifsc' | 'account' | 'other';
 }
 
 export class PaymentResultsDto {
@@ -153,3 +168,20 @@ export class QueryListDto {
   status?: 'open' | 'answered' | 'closed';
 }
 
+
+/** Pay a failed or returned payment again (PAY-10 "Returned payment · re-pay route"). */
+export class RepayDto {
+  @IsIn(['next_bank_file', 'offcycle', 'reimbursement_account'], { message: 'Choose how to pay: next bank file, off-cycle payment now, or the reimbursement account.' })
+  route!: 'next_bank_file' | 'offcycle' | 'reimbursement_account';
+
+  @trim()
+  @IsString()
+  @MinLength(5, { message: 'Say why, in a few words (at least 5 characters).' })
+  @MaxLength(300)
+  reason!: string;
+
+  /** The company's account the bank debits; needed for a file made now (off-cycle or reimbursement account). */
+  @IsOptional()
+  @Matches(/^\d{6,20}$/, { message: 'The debit account is 6 to 20 digits.' })
+  debitAccount?: string;
+}

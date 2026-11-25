@@ -66,6 +66,8 @@ export interface Competency {
   starter: boolean;
   levels: { level: number; label: string; behaviours: string | null }[];
   roles: { designationId: string; designation: string; level: number; validFrom: string }[];
+  /** PRF-14: the question-bank tag used as the skills test, with its active questions. */
+  skillsTest?: { tagId: string; name: string; questions: number } | null;
   version: number;
 }
 
@@ -179,8 +181,10 @@ export interface FeedbackItem {
   kind: 'praise' | 'suggestion';
   /** Null when HR sealed it: the people see that HR removed it. */
   text: string | null;
-  visibility: 'private' | 'recipient_only';
+  visibility: 'private' | 'recipient_only' | 'with_hr';
   goalId: string | null;
+  /** The linked goal's title (PRF-08). */
+  goal?: string | null;
   fromRequest: boolean;
   at: string;
   sealed: boolean;
@@ -194,14 +198,16 @@ export interface FeedbackRequest {
   requestedBy: string;
   question: string;
   dueOn: string | null;
+  askedAt?: string;
 }
 
 export interface FeedbackInput {
   toEmployeeId: string;
   kind: 'praise' | 'suggestion';
   text: string;
-  visibility: 'private' | 'recipient_only';
+  visibility: 'private' | 'recipient_only' | 'with_hr';
   requestId?: string;
+  goalId?: string | null;
 }
 
 export interface OneOnOneSummary {
@@ -210,6 +216,21 @@ export interface OneOnOneSummary {
   on: string;
   status: 'planned' | 'held' | 'cancelled';
   role: 'manager' | 'employee';
+}
+
+/** PRF-11: one row per pair of people: the 1:1 to open, when it was last held, its rhythm and counts. */
+export interface OneOnOnePair {
+  id: string;
+  role: 'manager' | 'employee';
+  employee: string;
+  manager: string;
+  partnerRole: string;
+  on: string;
+  status: 'planned' | 'held' | 'cancelled';
+  lastHeldOn: string | null;
+  cadenceDays: 7 | 14 | 30 | null;
+  agendaItems: number;
+  openActions: number;
 }
 
 export interface OneOnOne {
@@ -226,6 +247,10 @@ export interface OneOnOne {
   actions: { id: string; text: string; owner: string; ownerEmployeeId: string; dueOn: string | null; goalId: string | null; done: boolean }[];
   /** Only the viewer's own note; the other person never sees it. */
   privateNote: string;
+  cadenceDays?: 7 | 14 | 30 | null;
+  lastHeldOn?: string | null;
+  /** The employee's active goals an action may link to. */
+  goals?: Choice[];
   version: number;
 }
 
@@ -252,6 +277,8 @@ export interface ReviewCycle {
   eligibilityRules: { cutoffMonths: number; rateLeavers: boolean };
   /** PM5: feedback from colleagues; null = off. */
   peerFeedback?: PeerConfig | null;
+  /** PRF-04: calibration sessions planned in the wizard (made at launch). */
+  calibration?: { name: string; facilitatorUserId: string; departmentIds: string[] }[];
   status: 'draft' | 'launched' | 'calibrating' | 'released' | 'closed';
   launchedAt: string | null;
   version: number;
@@ -266,6 +293,8 @@ export interface CycleInput {
   population: unknown;
   stages: CycleStage[];
   eligibilityRules: { cutoffMonths: number; rateLeavers: boolean };
+  /** PRF-04: calibration sessions planned in the wizard. */
+  calibration?: { name: string; facilitatorUserId: string; departmentIds: string[] }[];
   version?: number;
 }
 
@@ -343,6 +372,10 @@ export interface ReviewDetail {
   finalScore: number | null;
   band: string | null;
   excludedSections: string[];
+  /** PRF-06: each rated section's score, once the manager's review is visible. */
+  sectionScores?: { title: string; score: number }[];
+  /** PRF-05: the manager's proposed 9-box potential (1–3); never sent to the employee. */
+  proposedPotential?: number | null;
   trail: { stage: string; event: string; reason: string | null; at: string }[];
   /** The skip-level's comment when they agreed (not shown to the employee before release). */
   skipComment?: string | null;
@@ -361,6 +394,8 @@ export interface EntryInput {
   answers: { questionId: string; rating?: number | null; text?: string | null }[];
   overallRating?: number | null;
   comment?: string | null;
+  /** The manager's proposed potential (manager stage only). */
+  potential?: 1 | 2 | 3 | null;
 }
 
 export interface Disagreement {
@@ -405,7 +440,13 @@ export interface Nomination {
 export interface Nominations {
   peer: PeerConfig | null;
   nominations: Nomination[];
-  can: { propose: boolean; decide: boolean; add: boolean };
+  can: { propose: boolean; decide: boolean; add: boolean; send?: boolean };
+  /** PRF-07: whose review, the cycle, when the list was last sent, and who is looking. */
+  employee?: string;
+  manager?: string;
+  cycle?: string;
+  sentAt?: string | null;
+  viewer?: 'employee' | 'manager' | 'other';
 }
 
 export interface PeerGroups {
@@ -470,6 +511,8 @@ export interface CalibrationRow {
   selfIndication: number | null;
   skipAgreed: boolean;
   protectedLeave: boolean;
+  /** PRF-09 9-box: 1 low, 2 medium, 3 high. */
+  potential?: 1 | 2 | 3 | null;
 }
 
 export interface CalibrationBoard {
@@ -481,8 +524,10 @@ export interface CalibrationBoard {
   scale: { min: number; max: number; bands: { fromScore: number; toScore: number; label: string }[] };
   rows: CalibrationRow[];
   distribution: { bands: { label: string; count: number; share: number; target: number | null; outside: boolean }[] | null; counted: number; notes: string[] };
-  changes: { reviewId: string; employee: string; from: number | null; to: number; fromBand: string | null; toBand: string | null; reason: string; at: string }[];
-  can: { change: boolean; signOff: boolean };
+  changes: { reviewId: string; employee: string; from: number | null; to: number; fromBand: string | null; toBand: string | null; reason: string; at: string; by?: string }[];
+  can: { change: boolean; signOff: boolean; potential?: boolean };
+  facilitator?: string;
+  openedOn?: string;
 }
 
 export interface PerfReport {
@@ -542,6 +587,13 @@ export interface CompProposal {
   justification: string | null;
   status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'applied';
   version: number;
+  /** PRF-10: the grade, department and review score beside the pay; below the grade-and-role median (HR and finance only). */
+  grade?: string | null;
+  department?: string;
+  score?: number | null;
+  belowPeers?: boolean;
+  /** PRF-10: the grade's range in the entity's latest salary survey (yearly). */
+  market?: { min: number; median: number; max: number } | null;
 }
 
 export interface CompSheet {
@@ -550,7 +602,9 @@ export interface CompSheet {
   proposals: CompProposal[];
   budgets: { departmentId: string; department: string; kind: 'merit' | 'bonus'; amount: number; used: number; remaining: number; over: boolean }[];
   overrun: string;
-  can: { edit: boolean; submit: boolean; apply: boolean };
+  can: { edit: boolean; submit: boolean; apply: boolean; decide?: boolean };
+  /** PRF-10: the salary survey the ranges come from; null when none is uploaded. */
+  benchmark?: { source: string; asOf: string; version: number; currency: string; stale: boolean } | null;
 }
 
 export interface MyPayBand {
@@ -605,14 +659,22 @@ export interface Pip {
   employeeComment: string | null;
   extendedFrom: string | null;
   extendReason: string | null;
+  /** Founder answer (a): extended once more after "not met" (the old end and the reason). */
+  reextendedFrom?: string | null;
+  reextendReason?: string | null;
   outcomeNote: string | null;
   outcomeAt: string | null;
   letterId: string | null;
   exitCaseId: string | null;
   goals: { id: string; text: string; measure: string; status: string }[];
-  checkins: { id: string; dueOn: string; heldOn: string | null; managerNote: string | null; employeeNote: string | null; status: 'due' | 'held' | 'missed' | 'cancelled' }[];
+  checkins: { id: string; dueOn: string; heldOn: string | null; managerNote: string | null; employeeNote: string | null; rating?: 'on_track' | 'some_progress' | 'no_progress' | null; status: 'due' | 'held' | 'missed' | 'cancelled' }[];
+  /** PRF-12: proposed, HR's decision, the acknowledgement; whether the viewer decides the HR step. */
+  approval?: { steps: { id: string; label: string; status: 'done' | 'current' | 'pending' | 'rejected'; approver?: string; at?: string; comment?: string }[]; canDecide: boolean };
+  /** perf.pip.extend_days */
+  extendDays?: number;
+  extendAgainDays?: number;
   warning: boolean;
   role: 'employee' | 'manager' | 'hr';
-  can: { acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; extend: boolean; letter: boolean; startExit: boolean };
+  can: { acknowledge: boolean; checkin: boolean; employeeNote: boolean; outcome: boolean; extend: boolean; letter: boolean; startExit: boolean; extendAgain?: boolean };
   version: number;
 }

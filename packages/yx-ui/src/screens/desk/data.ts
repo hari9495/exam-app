@@ -120,7 +120,7 @@ export const CONTEXT: RequesterContext = {
   vip: false,
   employee: { code: 'KF-0001', designation: 'Quality Manager', department: 'Quality', location: 'Bengaluru HQ' },
   otherTickets: [{ id: 't2', number: 'IT-1002', subject: 'New laptop for Arjun', systemState: 'new', createdAt: '2026-10-08T02:00:00Z' }],
-  assets: [],
+  assets: [{ id: 'as1', name: 'Dell Latitude 5440', tag: 'KF-LT-0142', category: 'Laptop' }],
 };
 
 export const CANNED: CannedResponse[] = [{ id: 'cr1', title: 'Password reset steps', bodyHtml: '<p>Hi {{requester.first_name}}, open My security and choose Change password.</p>', personal: false, active: true }];
@@ -178,6 +178,8 @@ export const WORK: TicketWork = {
       ],
     },
   ],
+  // Answer 1648: fuller timing (business time on the desk calendar).
+  timing: { averageReplySeconds: 5400, agentReplies: 2, onHoldSeconds: 7200, moves: 2, agents: ['Imran Sheikh', 'Suresh Pillai'] },
   reminders: [{ id: 'r1', kind: 'remind', remindAt: '2026-10-09T04:30:00Z', note: 'Chase the vendor' }],
   maskedValues: [{ id: 'v1', kind: 'pan', masked: '[PAN ••234F]', messageId: 'm1' }],
   canUnmask: true,

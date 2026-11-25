@@ -12,6 +12,7 @@ export type SettingKind =
   | 'toggle' // on / off (rendered as a checkbox; the page has a Save button, so no Switch)
   | 'select' // one of many (> 5 options)
   | 'radio' // one of 2–5 visible options
+  | 'segment' // one of 2–4 short options, the joined Segment control (R11)
   | 'multiselect' // several of many
   | 'time' // 12-hour time, value 'HH:mm'
   | 'date' // value ISO 'yyyy-mm-dd'
@@ -79,6 +80,8 @@ export interface SettingDef {
   readOnlyList?: boolean;
   /** list kind: an extra button per row, e.g. "View on map". */
   rowAction?: string;
+  /** list kind: the rows are fixed (each can be edited, none added), e.g. one company-wide referral rule. */
+  fixedRows?: boolean;
   /** Verification state (domain, email sender), with an optional action. */
   status?: { tone: 'success' | 'warning'; text: string; action?: string };
   /** Action shown next to a locked value, e.g. Request a region move. */
@@ -94,7 +97,10 @@ export interface SettingDef {
   /** list kind: columns shown but not editable in the row editor. */
   lockedColumns?: string[];
   /** Values that differ for a location, department or type. Shown once, under the company value, as "Different for: …". */
-  overrides?: { scope: string; value: SettingValue; validFrom?: string }[];
+  /** Answer 1821: `note` says why that place's own value is no longer needed. */
+  overrides?: { scope: string; value: SettingValue; validFrom?: string; note?: string }[];
+  /** Settings S-7 (answer 1484, live): the scopes (labels) where this setting may take a value of its own. */
+  scopeable?: string[];
   /** A YukthiX product rule (not a law): read-only, labelled "Built-in rule". Set from "YukthiX rule: …" text. */
   builtIn?: boolean;
   /** text kind: a numbering pattern like KFL/{type}/{yyyy}/{seq:4}; shows the next number and needs {seq}. */

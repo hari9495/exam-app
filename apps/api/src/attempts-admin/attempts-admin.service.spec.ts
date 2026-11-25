@@ -203,21 +203,22 @@ describe('AttemptsAdminService', () => {
       const tx = { attempt: { findFirst: jest.fn().mockResolvedValue(null) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
 
-      await expect(service.forceSubmit(context, 'attempt-1', 'user-1')).rejects.toThrow(NotFoundException);
+      await expect(service.forceSubmit(context, 'attempt-1', 'user-1', 'Left the room')).rejects.toThrow(NotFoundException);
       expect(examRuntime.forceSubmit).not.toHaveBeenCalled();
     });
 
-    it('delegates to the internal client and records an audit entry', async () => {
-      const tx = { attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) } };
+    it('delegates to the internal client, keeps the reason on the candidate record and in the audit (AS-0)', async () => {
+      const tx = { attempt: { findFirst: jest.fn().mockResolvedValue({ id: 'attempt-1' }) }, proctoringEvent: { create: jest.fn().mockResolvedValue({}) } };
       tenantPrisma.forTenant.mockImplementation((_ctx, fn) => fn(tx));
       examRuntime.forceSubmit.mockResolvedValue({ status: 'force_submitted' });
 
-      const result = await service.forceSubmit(context, 'attempt-1', 'user-1');
+      const result = await service.forceSubmit(context, 'attempt-1', 'user-1', 'Left the room');
 
       expect(examRuntime.forceSubmit).toHaveBeenCalledWith('attempt-1');
       expect(audit.record).toHaveBeenCalledWith(context, {
-        actorUserId: 'user-1', action: 'attempt.force_submit', entityType: 'attempt', entityId: 'attempt-1',
+        actorUserId: 'user-1', action: 'attempt.force_submit', entityType: 'attempt', entityId: 'attempt-1', metadata: { reason: 'Left the room' },
       });
+      expect(tx.proctoringEvent.create).toHaveBeenCalledWith({ data: { attemptId: 'attempt-1', eventType: 'ended_by_staff', severity: 'info', metadataJson: JSON.stringify({ reason: 'Left the room', byUserId: 'user-1' }) } });
       expect(result).toEqual({ status: 'force_submitted' });
     });
   });

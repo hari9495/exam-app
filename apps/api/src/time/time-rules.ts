@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { DayRule, addDays, daysBetween, minutesInto } from './time-maths';
+import { DayRule, addDays, daysBetween, minutesInto, partsOf } from './time-maths';
 
 // M02 batch 2 maths, pure and unit-tested: shift patterns (weekly and N-day cycles) and what a date resolves to
 // (roster > pattern > location, Q1), the working day of a punch around a night shift, roster conflicts (overlap,
@@ -18,8 +18,13 @@ export interface ShiftTimes extends DayRule {
 export const shiftLength = (s: Pick<DayRule, 'shiftStart' | 'shiftEnd'>) => (s.shiftEnd > s.shiftStart ? s.shiftEnd - s.shiftStart : s.shiftEnd + 1440 - s.shiftStart);
 export const crossesMidnight = (s: Pick<DayRule, 'shiftStart' | 'shiftEnd'>) => s.shiftEnd < s.shiftStart;
 
-/** The minutes a day on this shift is expected to work: its length less the fixed break when the break rule applies (Q3). */
+/**
+ * The minutes a day on this shift is expected to work: its length less the fixed break when the break rule applies (Q3).
+ * Flexi: its hours (overtime after, else the full day); split: both parts, the gap is not work (founder 2 Nov 2026).
+ */
 export function scheduledMinutes(s: DayRule): number {
+  if (s.kind === 'flexi') return s.otAfterMinutes ?? s.fullDayMinutes;
+  if (s.kind === 'split') return partsOf(s).reduce((n, [a, b]) => n + b - a, 0);
   const len = shiftLength(s);
   return len > s.breakAboveMinutes ? len - s.breakMinutes : len;
 }
@@ -117,12 +122,11 @@ export function restConflicts(days: { on: string; shift: Pick<DayRule, 'shiftSta
   return out;
 }
 
-/** Does a shift overlap the legal night window (P07 IN.OSH, e.g. 19:00 to 06:00)? */
-export function overlapsNight(s: Pick<DayRule, 'shiftStart' | 'shiftEnd'>, window: { start: number; end: number }): boolean {
-  const [a, b] = [s.shiftStart, s.shiftStart + shiftLength(s)];
+/** Does a shift overlap the legal night window (P07 IN.OSH, e.g. 19:00 to 06:00)? A split shift's gap is not work. */
+export function overlapsNight(s: Pick<DayRule, 'shiftStart' | 'shiftEnd' | 'kind' | 'firstEnd' | 'secondStart'>, window: { start: number; end: number }): boolean {
   // The window as ranges over two days: [start, end + 1440) when it wraps midnight, shifted back a day too.
   const wins: [number, number][] = window.end <= window.start ? [[window.start - 1440, window.end], [window.start, window.end + 1440], [window.start + 1440, window.end + 2880]] : [[window.start, window.end], [window.start + 1440, window.end + 1440]];
-  return wins.some(([x, y]) => a < y && x < b);
+  return partsOf(s).some(([a, b]) => wins.some(([x, y]) => a < y && x < b));
 }
 
 // ------------------------------------------------------------------------------------------ overtime (Q7)
@@ -249,3 +253,71 @@ export function payOfDay(d: { status: string; leavePart: 'full' | 'first' | 'sec
 
 /** The Monday of a date's week. */
 export const mondayOf = (on: string) => addDays(on, 1 - DateTime.fromISO(on, { zone: 'utc' }).weekday);
+
+// ------------------------------------------------------------------------------------------ time ops (29 Oct 2026)
+
+/**
+ * Late marks over the company's free number cost unpaid days (settings attendance.late_marks_free and
+ * attendance.late_mark_penalty, default 3 free and 0 days: no deduction unless the company turns it on).
+ */
+export const lateMarkDays = (marks: number, free: number, perMark: number) => Math.max(0, marks - free) * perMark;
+
+export type IndustrialKind = 'strike' | 'lockout' | 'layoff';
+export type Legality = 'legal' | 'illegal' | 'undetermined';
+
+/**
+ * How a day of industrial action is paid (TIM-37; Industrial Disputes Act 1947 and Payment of Wages Act 1936, P07 verify
+ * list). A strike is unpaid whether legal or not (no work, no pay; a tribunal may later award wages, which is a
+ * correction). A legal lockout is unpaid; an illegal one pays full wages. A legal lay-off is unpaid in attendance and paid
+ * as lay-off compensation (s.25C: 50 % of basic pay and dearness allowance) by payroll; an illegal one pays full wages.
+ * Undetermined: neither paid nor unpaid yet, the day is held until HR sets the legality.
+ */
+export function industrialPay(kind: IndustrialKind, legality: Legality): { paid: number; lop: number; layoff: number; held: number } {
+  if (legality === 'undetermined') return { paid: 0, lop: 0, layoff: 0, held: 1 };
+  if (kind === 'strike') return { paid: 0, lop: 1, layoff: 0, held: 0 };
+  if (legality === 'illegal') return { paid: 1, lop: 0, layoff: 0, held: 0 };
+  return kind === 'layoff' ? { paid: 0, lop: 1, layoff: 1, held: 0 } : { paid: 0, lop: 1, layoff: 0, held: 0 };
+}
+
+/**
+ * A day of presence signals (TIM-36): the first and last time the person was active, and the active minutes (from each
+ * "active" signal to the next signal of any state). Null when there was no activity.
+ */
+export function presenceDay(signals: readonly { at: Date; state: 'active' | 'idle' | 'offline' }[]): { first: Date; last: Date; activeMinutes: number } | null {
+  const s = [...signals].sort((a, b) => a.at.getTime() - b.at.getTime());
+  let first: Date | null = null;
+  let last: Date | null = null;
+  let active = 0;
+  for (let i = 0; i < s.length; i++) {
+    if (s[i].state !== 'active') continue;
+    first ??= s[i].at;
+    const end = s[i + 1]?.at ?? s[i].at;
+    last = end;
+    active += end.getTime() - s[i].at.getTime();
+  }
+  return first && last ? { first, last, activeMinutes: Math.floor(active / 60_000) } : null;
+}
+
+/**
+ * Batch A A9 (answer 2312): where a punch was made, worked out once at punch time from the existing checks. On an office
+ * network or inside an office geofence, or at a kiosk or biometric device: office. Location recorded outside every office
+ * (a work-from-home day, or field staff): remote. Nothing restricts the place, or the punch was refused: unknown.
+ */
+export type WorkPlace = 'office' | 'remote' | 'unknown';
+export type DayPlaceRule = 'office_wins' | 'remote_wins' | 'first_punch';
+
+export function placeOf(p: { source: string; verdict: string; accepted: boolean }): WorkPlace {
+  if (!p.accepted) return 'unknown';
+  if (p.verdict === 'inside' || p.verdict === 'network' || p.source === 'biometric' || p.source === 'kiosk') return 'office';
+  if (p.verdict === 'field') return 'remote';
+  return 'unknown';
+}
+
+/** A day's place from its accepted punches in time order, by the company's rule (attendance.day_place_rule). */
+export function dayPlace(places: readonly WorkPlace[], rule: DayPlaceRule): WorkPlace {
+  const known = places.filter((x) => x !== 'unknown');
+  if (!known.length) return 'unknown';
+  if (rule === 'first_punch') return known[0]!;
+  const wins = rule === 'office_wins' ? 'office' : 'remote';
+  return known.includes(wins) ? wins : known[0]!;
+}

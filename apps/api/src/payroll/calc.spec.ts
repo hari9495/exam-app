@@ -16,13 +16,14 @@ const amount = (r: ReturnType<typeof calculatePayslip>, code: string) => r.lines
 describe('calculatePayslip', () => {
   it('a full month in Karnataka: earnings as agreed, PF on the ceiling, no ESI above its limit, PT 200, cited and explained', () => {
     const r = calculatePayslip(snapshot(), RULES);
-    expect([r.gross, r.deductions, r.net]).toEqual(['58900.00', '2000.00', '56900.00']);
-    expect(amount(r, 'pf_employee')).toBe('1800.00');
+    // October 2026: the PF ceiling is 25,000 from 17 Sep 2026 (S.O. 5109(E)), so PF is 12% of the whole basic 24,200.
+    expect([r.gross, r.deductions, r.net]).toEqual(['58900.00', '3104.00', '55796.00']);
+    expect(amount(r, 'pf_employee')).toBe('2904.00');
     expect(amount(r, 'pt')).toBe('200.00');
     expect(amount(r, 'esi_employee')).toBe('0.00');
     expect(r.lines.find((l) => l.code === 'pf_employee')).toMatchObject({ rule: { statute: 'IN.PF' }, verify: true });
     expect(r.lines.every((l) => l.explanation.length > 10)).toBe(true);
-    expect(r.ruleVersions['IN.PF|IN']).toBe('2025-v1');
+    expect(r.ruleVersions['IN.PF|IN']).toBe('2026-v2');
     expect(r.minWage).toMatchObject({ below: false });
   });
 
@@ -45,7 +46,7 @@ describe('calculatePayslip', () => {
     expect([r.gross, r.deductions]).toEqual([plain.gross, plain.deductions]);
     expect(amount(r, 'pf_employee')).toBe(amount(plain, 'pf_employee'));
     // Net pay rounds to the rupee (company rule), the reimbursement included.
-    expect(r.net).toBe('58135.00');
+    expect(r.net).toBe('57031.00');
     const t = calculatePayslip(snapshot({ components: [...COMPONENTS, ...modules], oneTime: [{ id: 'o2', code: 'exp_taxable', amount: '2000', days: null }, { id: 'o3', code: 'perf_bonus', amount: '10000', days: null }] }), RULES);
     expect(t.gross).toBe('70900.00');
     expect(amount(t, 'pf_employee')).toBe(amount(plain, 'pf_employee'));
@@ -69,8 +70,8 @@ describe('calculatePayslip', () => {
     const raised = PACKAGE.map((l) => ({ ...l, monthly: String(Number(l.monthly) * 1.1) }));
     const r = calculatePayslip(snapshot({ segments: [{ ...snapshot().segments[0], to: '2026-10-15', days: 15 }, { ...snapshot().segments[0], from: '2026-10-16', days: 16, lines: raised, changeId: 'c2' }] }), RULES);
     expect(r.lines.filter((l) => l.code === 'basic').map((l) => [l.segmentNo, l.amount])).toEqual([[0, '11710.00'], [1, '13739.00']]);
-    // PF: 15,000 × 15/31 and 15,000 × 16/31 ceilings, 12% each.
-    expect(amount(r, 'pf_employee')).toBe('1800.00');
+    // PF: 25,000 × 15/31 and 25,000 × 16/31 ceilings (from 17 Sep 2026); the first part's basic is below its share.
+    expect(amount(r, 'pf_employee')).toBe('2953.00');
   });
 
   it('recoveries in legal order inside the deduction cap and protected net; what does not fit is deferred', () => {
@@ -83,8 +84,8 @@ describe('calculatePayslip', () => {
     );
     // Gross 58,900; statutory 2,000; protected net 60% = 35,340 → room 21,560: the court order first, then 11,560 of the EMI.
     expect(amount(r, 'court_attachment')).toBe('10000.00');
-    expect(amount(r, 'loan_emi')).toBe('11560.00');
-    expect(r.deferred).toEqual([{ kind: 'loan', ref: 'l1', amount: '8440.00' }]);
+    expect(amount(r, 'loan_emi')).toBe('10456.00');
+    expect(r.deferred).toEqual([{ kind: 'loan', ref: 'l1', amount: '9544.00' }]);
     expect(r.net).toBe('35340.00');
   });
 
@@ -95,6 +96,18 @@ describe('calculatePayslip', () => {
     expect(amount(r, 'subsistence')).toBe('39425.00');
     const neg = calculatePayslip(snapshot({ attendance: { lopDays: '31', source: 'manual', otMinutes: { normal: 0, weeklyOff: 0, holiday: 0 }, timesheetMinutes: 0 }, oneTime: [{ id: 'o1', code: 'advance_recovery', amount: '5000', days: null }] }), RULES);
     expect([neg.net, neg.carryForward]).toEqual(['0.00', '5000.00']);
+  });
+
+  it('HLP-12 answer 65: injury days already unpaid in the Time feed are not taken off twice; manual LOP still adds them', () => {
+    const feed = (lop: string) => ({ lopDays: lop, source: 'feed' as const, otMinutes: { normal: 0, weeklyOff: 0, holiday: 0 }, timesheetMinutes: 0 });
+    const onlyLop = calculatePayslip(snapshot({ attendance: feed('5') }), RULES);
+    const filled = calculatePayslip(snapshot({ attendance: feed('5'), special: [{ kind: 'injury', days: '5', daysBefore: 0, inFeedDays: '5' }] }), RULES);
+    expect(amount(filled, 'basic')).toBe(amount(onlyLop, 'basic'));
+    expect(amount(filled, 'injury_pay')).not.toBe('0.00');
+    const typed = calculatePayslip(snapshot({ attendance: feed('0'), special: [{ kind: 'injury', days: '5', daysBefore: 0 }] }), RULES);
+    expect(amount(typed, 'basic')).toBe(amount(onlyLop, 'basic'));
+    const manual = calculatePayslip(snapshot({ attendance: { ...feed('0'), source: 'manual' }, special: [{ kind: 'injury', days: '5', daysBefore: 0, inFeedDays: '5' }] }), RULES);
+    expect(amount(manual, 'basic')).toBe(amount(onlyLop, 'basic'));
   });
 
   it('hourly pay from timesheet hours; overtime at the agreed multiplier', () => {

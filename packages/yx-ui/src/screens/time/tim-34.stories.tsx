@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { AutoRosterScreen } from './roster';
 
-const meta: Meta<typeof AutoRosterScreen> = { title: 'Screens/Time/TIM-34 · Auto-roster', component: AutoRosterScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof AutoRosterScreen> = { title: 'Screens/Time/TIM-34 · Auto-roster', component: AutoRosterScreen, render: (a) => <AutoRosterScreen {...a} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof AutoRosterScreen>;
 

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { EwaRequestScreen } from './employee-pay';
 
-const meta: Meta<typeof EwaRequestScreen> = { title: 'Screens/Pay/PAY-26 · Earned wage access request', component: EwaRequestScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof EwaRequestScreen> = { title: 'Screens/Pay/PAY-26 · Earned wage access request', component: EwaRequestScreen, render: (args) => <EwaRequestScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof EwaRequestScreen>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };

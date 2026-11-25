@@ -24,7 +24,9 @@ import { PhoneFrame } from '../_kit/frames';
 import { CandidateFrame, PrcFrame, type ViewState } from './proctoring-shared';
 import { CameraFrame, IdCapture, QrPlaceholder } from './proctoring-kit';
 import { planWaves, slotState, timeCredit } from './proctoring-logic';
+import { LiveCampusKitScreen, LiveCoordinatorPortalScreen, LiveInvitationsScreen, type LiveCampusKit, type LiveCoordinator, type LiveInvitations } from './delivery-live';
 import { DRIVES, NAMES, WEEK_DAYS, d, type AccommodationRow, type DriveRow, type InvitationRow, type SlotData } from './proctoring-data';
+import { LiveAccommodationQueueScreen, LiveConnectivityPanelScreen, type LiveAccommodationQueue, type LiveConnectivity } from './before-test-live';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const fmtSlot = (x: Date | null) => (x ? `${formatDate(x)}, ${x.getHours() > 12 ? x.getHours() - 12 : x.getHours()}:00 ${x.getHours() >= 12 ? 'pm' : 'am'} IST` : 'Not booked');
@@ -53,7 +55,7 @@ const INV_COLS: TableColumn<InvitationRow>[] = [
   { key: 'id', header: 'Invitation', type: 'id', value: (r) => r.id, width: 110 },
   { key: 'test', header: 'Test', value: (r) => r.test, width: 220 },
   { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => INV_TONE[v as InvitationRow['status']], groupable: true, width: 130 },
-  { key: 'slot', header: 'Slot (candidate time)', value: (r) => r.slot, render: (r) => fmtSlot(r.slot), width: 220 },
+  { key: 'slot', header: 'Slot (candidate time)', type: 'date', value: (r) => r.slot, render: (r) => fmtSlot(r.slot), width: 220 },
   { key: 'acc', header: 'Accommodation', value: (r) => r.accommodation ?? '', width: 170 },
   { key: 'reminders', header: 'Reminders sent', type: 'number', value: (r) => r.reminders, width: 120 },
 ];
@@ -69,7 +71,14 @@ const DRIVE_COLS: TableColumn<DriveRow>[] = [
   { key: 'plan', header: 'Capacity plan', value: (r) => (r.expected > 1000 ? 'Needed' : 'Not needed'), render: (r) => (r.expected > 1000 ? <Badge tone="warning">Needed, draft</Badge> : <Badge>Not needed</Badge>), width: 140 },
 ];
 
-export function InvitationsScreen({ invitations, drives, state = 'ready', tab = 'invitations', inviteOpen = false, defaultOpenId = null }: { invitations: InvitationRow[]; drives: DriveRow[]; state?: ViewState; tab?: 'drives' | 'invitations'; inviteOpen?: boolean; defaultOpenId?: string | null }) {
+type InvitationsProps = { invitations: InvitationRow[]; drives: DriveRow[]; state?: ViewState; tab?: 'drives' | 'invitations'; inviteOpen?: boolean; defaultOpenId?: string | null };
+
+/** PRC-07; with `live` (AS-3) the company's invitations and walk-in drives. */
+export function InvitationsScreen(props: InvitationsProps | { live: LiveInvitations }) {
+  return 'live' in props ? <LiveInvitationsScreen live={props.live} /> : <SampleInvitations {...props} />;
+}
+
+function SampleInvitations({ invitations, drives, state = 'ready', tab = 'invitations', inviteOpen = false, defaultOpenId = null }: InvitationsProps) {
   // PRC-07
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
@@ -360,7 +369,12 @@ export function CapacityPlannerScreen({ expected = 3600, perWave = 1200, approve
 /* PRC-10 · Connectivity panel per attempt                             */
 /* ================================================================== */
 
-export function ConnectivityPanelScreen({ lostSeconds = 820, approved = false, confirmOpen = false }: { lostSeconds?: number; approved?: boolean; confirmOpen?: boolean }) {
+/** PRC-10; with `live` (AS-4b, answer 2011) the company's time lost above the cap, waiting for a person. */
+export function ConnectivityPanelScreen(props: { lostSeconds?: number; approved?: boolean; confirmOpen?: boolean } | { live: LiveConnectivity }) {
+  return 'live' in props ? <LiveConnectivityPanelScreen live={props.live} /> : <SampleConnectivityPanel {...props} />;
+}
+
+function SampleConnectivityPanel({ lostSeconds = 820, approved = false, confirmOpen = false }: { lostSeconds?: number; approved?: boolean; confirmOpen?: boolean }) {
   // PRC-10
   const c = timeCredit(lostSeconds);
   const [reason, setReason] = useState('');
@@ -411,6 +425,7 @@ export function ConnectivityPanelScreen({ lostSeconds = 820, approved = false, c
         </Card>
       )}
       {approved && <InlineAlert tone="success">Approved {formatClock(c.needsApproval)} extra by Neha Joshi on 28 Sep, 11:06 am. Reason: "Area-wide outage confirmed by the college."</InlineAlert>}
+      {/* confirmDisabled kept: the reason field is on the page behind the dialog, not in it; the dialog says what to fix. */}
       <ConfirmDialog open={open} onOpenChange={setOpen} title={`Approve ${formatClock(c.needsApproval)} extra time for Ananya Rao?`} consequence="The timer adds this time when she resumes after the face re-check. This is audited." confirmLabel="Approve extra time" onConfirm={() => setOpen(false)} confirmDisabled={reason.trim().length < 10}>
         {reason.trim().length < 10 && <p className="yx-prc-small yx-prc-danger">Enter a reason of at least 10 characters first.</p>}
       </ConfirmDialog>
@@ -422,7 +437,12 @@ export function ConnectivityPanelScreen({ lostSeconds = 820, approved = false, c
 /* PRC-11 · Accommodation review queue                                 */
 /* ================================================================== */
 
-export function AccommodationQueueScreen({ rows, state = 'ready', defaultOpenId = 'ACC-202', persona = 'Reviewer' }: { rows: AccommodationRow[]; state?: ViewState; defaultOpenId?: string | null; persona?: 'Reviewer' | 'HR / L&D' }) {
+/** PRC-11; with `live` (AS-4b, answer 2011) the company's requests, decided item by item. */
+export function AccommodationQueueScreen(props: { rows: AccommodationRow[]; state?: ViewState; defaultOpenId?: string | null; persona?: 'Reviewer' | 'HR / L&D' } | { live: LiveAccommodationQueue }) {
+  return 'live' in props ? <LiveAccommodationQueueScreen live={props.live} /> : <SampleAccommodationQueue {...props} />;
+}
+
+function SampleAccommodationQueue({ rows, state = 'ready', defaultOpenId = 'ACC-202', persona = 'Reviewer' }: { rows: AccommodationRow[]; state?: ViewState; defaultOpenId?: string | null; persona?: 'Reviewer' | 'HR / L&D' }) {
   // PRC-11
   const [openId, setOpenId] = useState(defaultOpenId);
   const open = rows.find((r) => r.id === openId);
@@ -509,7 +529,14 @@ const REGISTRANTS = NAMES.slice(0, 10).map((n, i) => ({
 }));
 type Registrant = (typeof REGISTRANTS)[number];
 
-export function CampusKitScreen({ tab = 'registrants' }: { tab?: 'form' | 'registrants' | 'institutions' | 'admit' | 'report' }) {
+type CampusKitProps = { tab?: 'form' | 'registrants' | 'institutions' | 'admit' | 'report' };
+
+/** PRC-29; with `live` (AS-3 part 2) a real drive's form, registrants, colleges and report (no admit cards, answer 2014). */
+export function CampusKitScreen(props: CampusKitProps | { live: LiveCampusKit; tab?: 'form' | 'registrants' | 'institutions' | 'report' }) {
+  return 'live' in props ? <LiveCampusKitScreen live={props.live} tab={props.tab} /> : <SampleCampusKit {...props} />;
+}
+
+function SampleCampusKit({ tab = 'registrants' }: CampusKitProps) {
   // PRC-29
   return (
     <PrcFrame page="Campus kit & institutions">
@@ -640,7 +667,11 @@ export function CampusKitScreen({ tab = 'registrants' }: { tab?: 'form' | 'regis
 }
 
 /** College coordinator's limited portal (B7, YX-DLV-15): own college only, results at the level the company set. */
-export function CoordinatorPortalScreen({ visibility = 'Aggregate' }: { visibility?: 'None' | 'Aggregate' | 'Per candidate' }) {
+export function CoordinatorPortalScreen(props: { visibility?: 'None' | 'Aggregate' | 'Per candidate' } | { live: LiveCoordinator }) {
+  return 'live' in props ? <LiveCoordinatorPortalScreen live={props.live} /> : <SampleCoordinatorPortal {...props} />;
+}
+
+function SampleCoordinatorPortal({ visibility = 'Aggregate' }: { visibility?: 'None' | 'Aggregate' | 'Per candidate' }) {
   return (
     <CandidateFrame user="Dr. Latha Ramesh · coordinator">
       <Heading level={1}>

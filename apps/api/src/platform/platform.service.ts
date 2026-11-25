@@ -3,7 +3,8 @@ import { Prisma } from '@prisma/client';
 import { AuditEntry, AuditService, TenantContext, TenantPrismaService, revokeStaffSessions } from '@exam-platform/shared';
 import { OrganizationsService } from '../organizations/organizations.service';
 import { addDays, asDate, todayIst } from '../org-structure/org-validation';
-import { CompaniesQueryDto, CreateCompanyDto, ExtendTrialDto, LifecycleAction, LifecycleDto, PlatformAuditQueryDto, PriceDto } from './dto';
+import { SETTINGS } from '../org-structure/settings-registry';
+import { CompaniesQueryDto, CompanySettingDto, CreateCompanyDto, ExtendTrialDto, LifecycleAction, LifecycleDto, PlatformAuditQueryDto, PriceDto } from './dto';
 
 type Tx = Prisma.TransactionClient;
 export type Actor = NonNullable<AuditEntry['actor']>;
@@ -38,6 +39,8 @@ const MOVES: Record<LifecycleAction, { from: readonly string[]; to: string | nul
   close: { from: ['trial', 'active', 'suspended'], to: 'closed' },
 };
 const TRIAL_DAYS = 30; // P14 YX-TEN-08
+/** Careers answer 442: the company settings only YukthiX staff change. */
+const PLATFORM_KEYS = Object.keys(SETTINGS).filter((k) => SETTINGS[k]!.platform);
 const PRICE_NOTICE_DAYS = 90; // P14 YX-BILL-13
 
 const money = (d: Prisma.Decimal) => Number(d.toString());
@@ -101,9 +104,17 @@ export class PlatformService {
     return platformRead(this.tenantPrisma, actorUserId, 'companies.detail', async (tx) => {
       const o = await tx.organization.findUnique({
         where: { id },
-        select: { id: true, name: true, slug: true, lifecycle: true, status: true, trialEndsAt: true, trialExtendedAt: true, lifecycleChangedAt: true, createdAt: true },
+        select: { id: true, name: true, slug: true, lifecycle: true, status: true, trialEndsAt: true, trialExtendedAt: true, lifecycleChangedAt: true, recordsKeptUntil: true, createdAt: true },
       });
       if (!o) throw new NotFoundException('Company not found');
+      // Answer 1882: an open request to delete the company's data (a second staff member confirms it).
+      const deletion = await tx.companyDeletion.findFirst({ where: { organizationId: id, status: 'requested' }, select: { id: true, requestedBy: true, requestedAt: true, reason: true } });
+      // Answers 1973, 1975: once deleted, when, until when the statutory records are kept, and the certificate's SHA-256.
+      const deleted = await tx.companyDeletion.findFirst({ where: { organizationId: id, status: 'done' }, orderBy: { deletedAt: 'desc' }, select: { deletedAt: true, certificateSha256: true } });
+      const removals = deleted ? await tx.companyRecordGroup.findMany({ where: { organizationId: id, releasedAt: { not: null } }, orderBy: { releasedAt: 'asc' }, select: { recordGroup: true, releasedAt: true, certificateSha256: true } }) : [];
+      const holds = deleted ? await tx.auditLegalHold.findMany({ where: { organizationId: id, releasedAt: null, toAt: { gt: new Date() } }, orderBy: { toAt: 'asc' }, select: { id: true, caseRef: true, reason: true, toAt: true } }) : [];
+      // S-9 (answer 1332): the company's own request to close its account, for the staff who close it.
+      const closure = await tx.accountClosureRequest.findFirst({ where: { organizationId: id, status: { in: ['requested', 'closed'] } }, orderBy: { createdAt: 'desc' }, select: { status: true, reason: true, createdAt: true, keepUntil: true } });
       const [products, employees, admins, history] = await Promise.all([
         tx.organizationProduct.findMany({ where: { organizationId: id }, select: { productCode: true, addedAt: true }, orderBy: { addedAt: 'asc' } }),
         tx.employee.count({ where: { organizationId: id } }),
@@ -126,6 +137,18 @@ export class PlatformService {
         lifecycleChangedAt: o.lifecycleChangedAt,
         createdAt: o.createdAt,
         products: products.map((p) => p.productCode),
+        deletion: deletion ? { id: deletion.id, mine: deletion.requestedBy === actorUserId, askedAt: deletion.requestedAt, reason: deletion.reason } : null,
+        deleted: deleted?.deletedAt
+          ? {
+              at: deleted.deletedAt,
+              recordsKeptUntil: o.recordsKeptUntil?.toISOString().slice(0, 10) ?? null,
+              certificateSha256: deleted.certificateSha256,
+              // Answer 2081: each kept group removed after its day; answer 2083: the holds in force.
+              removals: removals.map((r) => ({ group: r.recordGroup, removedAt: r.releasedAt!, sha256: r.certificateSha256! })),
+              holds: holds.map((h) => ({ id: h.id, caseRef: h.caseRef, reason: h.reason, until: new Date(h.toAt.getTime() + 330 * 60_000).toISOString().slice(0, 10) })),
+            }
+          : null,
+        closureRequest: closure ? { status: closure.status, reason: closure.reason, askedAt: closure.createdAt, keepUntil: closure.keepUntil?.toISOString().slice(0, 10) ?? null } : null,
         employees,
         admins,
         history: history.map((h) => ({ id: h.id, action: h.action, by: h.actorName || h.actorEmail || 'YukthiX', at: h.createdAt, details: h.metadataJson ? (JSON.parse(h.metadataJson) as Record<string, unknown>) : null })),
@@ -138,13 +161,18 @@ export class PlatformService {
     const known = await this.tenantPrisma.forTenant(PLATFORM, (tx) => tx.product.findMany({ where: { code: { in: dto.products } }, select: { code: true } }));
     const unknown = dto.products.filter((c) => !known.some((k) => k.code === c));
     if (unknown.length) throw new BadRequestException(`Unknown product: ${unknown.join(', ')}`);
+    // A GSTIN carries the entity's PAN (characters 3 to 12).
+    const le = dto.legalEntity;
+    if (le?.pan && le.gstin && le.gstin.slice(2, 12) !== le.pan) throw new BadRequestException('The GSTIN does not contain this PAN. Check both.');
     const actor = await staffActor(this.tenantPrisma, actorUserId);
     const org = await this.organizations.create(ctx, actorUserId, { name: dto.name, slug: dto.slug, adminEmail: dto.adminEmail, adminName: dto.adminName });
     const trialEndsAt = asDate(addDays(todayIst(), TRIAL_DAYS));
     await this.changeCompany(org.id, actorUserId, actor, async (tx) => {
       await tx.organization.update({ where: { id: org.id }, data: { lifecycle: 'trial', trialEndsAt } });
       await tx.organizationProduct.createMany({ data: dto.products.map((productCode) => ({ organizationId: org.id, productCode, addedBy: actorUserId })) });
-      return { result: null, audit: { action: 'platform.company.created', entityType: 'organization', entityId: org.id, metadata: { products: dto.products, trialEndsAt: trialEndsAt.toISOString().slice(0, 10) } } };
+      // PLT-09: the default legal entity's basics from the wizard.
+      if (le) await tx.legalEntity.updateMany({ where: { organizationId: org.id, isDefault: true }, data: { name: le.name.slice(0, 200), pan: le.pan ?? null, gstin: le.gstin ?? null } });
+      return { result: null, audit: { action: 'platform.company.created', entityType: 'organization', entityId: org.id, metadata: { products: dto.products, trialEndsAt: trialEndsAt.toISOString().slice(0, 10), ...(le ? { legalEntity: le.name, pan: Boolean(le.pan), gstin: Boolean(le.gstin) } : {}) } } };
     });
     return { id: org.id };
   }
@@ -163,11 +191,21 @@ export class PlatformService {
       // session (nobody there could end it any more).
       const stopping = to === 'suspended' || to === 'closed';
       const signedOut = stopping ? await revokeStaffSessions(tx, { organizationId: id }, `company_${to}`) : 0;
+      // S-9 (answer 1332): closing answers the company's own request; its data is kept for the platform's days.
+      let keepUntil: string | null = null;
+      if (to === 'closed') {
+        const v = Number((await tx.platformSetting.findUnique({ where: { key: 'account.closure.keep_days' } }))?.value);
+        keepUntil = addDays(todayIst(), Number.isInteger(v) && v > 0 ? v : 30);
+        // Only YukthiX staff answer a closure request (the table's RLS): this staff-only path says so for this one write.
+        await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
+        await tx.accountClosureRequest.updateMany({ where: { organizationId: id, status: 'requested' }, data: { status: 'closed', decidedBy: actorUserId, decidedAt: new Date(), keepUntil: asDate(keepUntil) } });
+        await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'off', true)`;
+      }
       if (stopping) {
         await tx.supportSession.updateMany({ where: { organizationId: id, status: 'approved' }, data: { status: 'ended', endedBy: actorUserId, endedByName: actor.label.slice(0, 200), endedAt: new Date() } });
         await tx.supportSession.updateMany({ where: { organizationId: id, status: 'requested' }, data: { status: 'cancelled' } });
       }
-      return { result: null, audit: { action: 'platform.company.lifecycle', entityType: 'organization', entityId: id, metadata: { from: o.lifecycle, to, reason: dto.reason.trim(), signedOut } } };
+      return { result: null, audit: { action: 'platform.company.lifecycle', entityType: 'organization', entityId: id, metadata: { from: o.lifecycle, to, reason: dto.reason.trim(), signedOut, ...(keepUntil ? { keepUntil } : {}) } } };
     });
     return this.company(actorUserId, id);
   }
@@ -192,6 +230,55 @@ export class PlatformService {
       return { result: null, audit: { action: 'platform.company.trial_extended', entityType: 'organization', entityId: id, metadata: { days: dto.days, trialEndsAt: trialEndsAt.toISOString().slice(0, 10), reason: dto.reason.trim() } } };
     });
     return this.company(actorUserId, id);
+  }
+
+  // ---- company settings only YukthiX changes (careers answer 442) ----
+
+  /** The platform-only settings of one company, each with whether its plan (the products' `features`, D15) includes it. */
+  async companySettings(actorUserId: string, id: string) {
+    return platformRead(this.tenantPrisma, actorUserId, 'companies.settings', async (tx) => {
+      const o = await tx.organization.findUnique({ where: { id }, select: { id: true, name: true } });
+      if (!o) throw new NotFoundException('Company not found');
+      const features = await this.planFeatures(tx, id);
+      const rows = await tx.setting.findMany({ where: { organizationId: id, scopeType: 'tenant', key: { in: PLATFORM_KEYS } }, select: { key: true, value: true } });
+      return {
+        id: o.id,
+        name: o.name,
+        features,
+        settings: PLATFORM_KEYS.map((key) => {
+          const def = SETTINGS[key]!;
+          return { key, label: def.label, value: String(rows.find((r) => r.key === key)?.value ?? def.default), default: def.default, values: def.values, feature: def.platform!.feature, included: features.includes(def.platform!.feature) };
+        }),
+      };
+    });
+  }
+
+  /** Changes one platform-only setting, with a reason; switching it on needs the plan to include it. Audited for the company. */
+  async changeCompanySetting(actorUserId: string, id: string, dto: CompanySettingDto) {
+    const def = SETTINGS[dto.key];
+    if (!def?.platform) throw new BadRequestException('YukthiX does not set that for a company here.');
+    if (!def.values.includes(dto.value)) throw new BadRequestException(`${def.label} is one of: ${def.values.join(', ')}`);
+    const actor = await staffActor(this.tenantPrisma, actorUserId);
+    const features = await this.tenantPrisma.forTenant(PLATFORM, async (tx) => {
+      if (!(await tx.organization.findUnique({ where: { id }, select: { id: true } }))) throw new NotFoundException('Company not found');
+      return this.planFeatures(tx, id);
+    });
+    if (dto.value !== def.default && !features.includes(def.platform.feature)) throw new ConflictException('This company’s plan does not include it. Add a product whose plan includes it first.');
+    await this.changeCompany(id, actorUserId, actor, async (tx) => {
+      const where = { organizationId: id, key: dto.key, scopeType: 'tenant', scopeId: id, validFrom: null };
+      const existing = await tx.setting.findFirst({ where });
+      const from = String(existing?.value ?? def.default);
+      if (existing) await tx.setting.update({ where: { id: existing.id }, data: { value: dto.value } });
+      else await tx.setting.create({ data: { ...where, value: dto.value } });
+      return { result: null, audit: { action: 'platform.company.setting_changed', entityType: 'organization', entityId: id, metadata: { key: dto.key, from, to: dto.value, reason: dto.reason.trim() } } };
+    });
+    return this.companySettings(actorUserId, id);
+  }
+
+  private async planFeatures(tx: Tx, organizationId: string): Promise<string[]> {
+    const codes = (await tx.organizationProduct.findMany({ where: { organizationId }, select: { productCode: true } })).map((p) => p.productCode);
+    const products = await tx.product.findMany({ where: { code: { in: codes } }, select: { features: true } });
+    return [...new Set(products.flatMap((p) => p.features))].sort();
   }
 
   // ---- plans and prices (P14 §4, YX-BILL-01/13/14) ----

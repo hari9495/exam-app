@@ -1,8 +1,9 @@
-import { Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, Headers, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { Tx } from '../org-structure/org-structure.service';
-import { TenantContext } from '@exam-platform/shared';
+import { TenantContext, TenantPrismaService } from '@exam-platform/shared';
+import { lookUpAcrossCompanies, NOT_FOUND_CODE } from '../help/not-found-ref';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -12,7 +13,7 @@ import { RequirePermissions } from '../rbac/permissions.decorator';
 import { PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession, companyOf } from './desk-access';
 import { DirectoryService } from './directory.service';
-import { KbArticleQueryDto, KbClickDto, KbFeedbackDto, KbSearchDto } from './dto-kb';
+import { KbArticleQueryDto, KbClickDto, KbFeedbackDto, KbPageQueryDto, KbSearchDto } from './dto-kb';
 import { ConsoleLinkDto, ConsoleMessageDto, ConsoleQueueDto, ConsoleResolveDto, LinkAnswerDto, LinkCommentDto, PrivacyRequestDto, RatingDto, SignUpDto, SupportAccessDto, SupportRaiseDto, SupportReplyDto } from './dto-ops';
 import { KbService } from './kb.service';
 import { PortalService } from './portal.service';
@@ -58,6 +59,13 @@ export class MyHelpController {
     return this.kb.employeeSuggest(this.requesters.who(req, t), q.q, from === 'drawer' ? 'drawer' : 'help');
   }
 
+  /** Help H-1 (answer 942): the Help drawer's "This page": articles tagged with the page the person is on. */
+  @Get('kb/page')
+  @Throttle(PUBLIC_API_THROTTLE)
+  kbPage(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: KbPageQueryDto) {
+    return this.kb.employeePage(this.requesters.who(req, t), q.route, q.lang);
+  }
+
   @Get('kb/articles/:number')
   kbArticle(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('number', ParseIntPipe) n: number, @Query() q: KbArticleQueryDto) {
     return this.kb.employeeArticle(this.requesters.who(req, t), n, q.lang);
@@ -80,7 +88,7 @@ export class MyHelpController {
   @Post('tickets/:id/rating')
   @HttpCode(200)
   rate(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RatingDto) {
-    return this.surveys.rateMine(this.requesters.who(req, t), id, dto.score, dto.comment);
+    return this.surveys.rateMine(this.requesters.who(req, t), id, dto.score, dto.comment, dto.reason);
   }
 
   @Get('privacy-requests')
@@ -145,7 +153,7 @@ export class PortalHelpController {
   @Throttle(PUBLIC_API_THROTTLE)
   async rate(@Param('org') org: string, @Param('portal') portal: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RatingDto, @Headers('x-portal-session') token?: string) {
     const s = await this.portals.session(slug(org), slug(portal), token);
-    return this.surveys.ratePortal(s, id, dto.score, dto.comment, (fn) => this.portals.asPortal(s, fn));
+    return this.surveys.ratePortal(s, id, dto.score, dto.comment, (fn) => this.portals.asPortal(s, fn), dto.reason);
   }
 
   @Get(':org/:portal/privacy-requests')
@@ -220,7 +228,7 @@ export class RateLinkController {
   @HttpCode(200)
   @Throttle(PUBLIC_API_THROTTLE)
   answer(@Param('org', ParseUUIDPipe) org: string, @Param('token') token: string, @Body() dto: LinkAnswerDto) {
-    return this.surveys.answerLink(org, token, dto.score);
+    return this.surveys.answerLink(org, token, dto.score, undefined, dto.reason);
   }
 
   @Post(':org/:token/comment')
@@ -385,7 +393,19 @@ export class YukthixSupportController {
 @Controller('platform/support-desk')
 @UseGuards(JwtAuthGuard, PlatformStaffGuard, PermissionsGuard)
 export class ConsoleDeskController {
-  constructor(private readonly bridge: SupportBridgeService) {}
+  constructor(
+    private readonly bridge: SupportBridgeService,
+    private readonly tenantPrisma: TenantPrismaService,
+  ) {}
+
+  /** Answer 1051: a Not found reference in every company that has it (company, when, page). */
+  @Get('references/:code')
+  @RequirePermissions('platform.support_desk.work')
+  reference(@CurrentUserId() staff: string, @Param('code') raw: string) {
+    const code = raw.trim().toUpperCase();
+    if (!NOT_FOUND_CODE.test(code)) throw new BadRequestException('Type the reference as shown, like NF-7KQ2MP.');
+    return lookUpAcrossCompanies(this.tenantPrisma, staff, code);
+  }
 
   @Get('tickets')
   @RequirePermissions('platform.support_desk.work')

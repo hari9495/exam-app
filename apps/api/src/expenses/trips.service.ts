@@ -10,12 +10,14 @@ import { FilesService } from '../documents/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { holdersOf, hrApprovers } from '../time/time-core';
 import { refreezeExitOf } from '../lifecycle/settlement';
-import { tierFor } from './checks';
+import { COMPANY_PAID, tierFor } from './checks';
 import { TRAVEL_BOOKING, openBalance, settleClaim, tripBudget, type TravelBookingAdapter } from './travel';
 import { exchangeDifference, toPay } from './fx';
 import { fxRateFor } from './setup.service';
 import { PayrollIntakeService } from '../payroll/intake.service';
 import { withPayScope } from '../payroll/pay-access';
+import { loanEmi } from '../payroll/inputs.service';
+import { loanSchedule } from '../payroll/loan-rules';
 import type { AdvanceAmountDto, AdvanceDto, BookingDto, CloseTripDto, PayAdvanceDto, ReturnDto, TripDto } from './trips-dto';
 
 // Expenses batch E4 (M05-BUILD-DESIGN §5.5, §9.4, §10, §11.3; XP-4.01 … XP-4.06): trips with legs and bookings, and
@@ -60,7 +62,7 @@ export async function settleAdvanceByClaim(tx: Tx, org: string, claim: { id: str
   let pay: string;
   if (adv.fxRate) {
     // YX-EXP-15: a forex advance is settled only by the bills in its own currency, at its own rate.
-    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, receiptCurrency: adv.currency, payMode: { not: 'company_paid' } } });
+    const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null, receiptCurrency: adv.currency, payMode: { notIn: COMPANY_PAID } } });
     const spentFc = lines.reduce((t, l) => t.add(l.receiptAmount!.mul((l.approved ?? l.claimed).div(l.claimed.gt(0) ? l.claimed : 1))), D(0)).toDecimalPlaces(2);
     s = settleClaim(open, spentFc);
     pay = Prisma.Decimal.min(D(toPay(s.adjusted, adv.fxRate)), approved).toFixed(2);
@@ -687,6 +689,9 @@ export class ExpenseTripsService implements OnModuleInit {
         ...s,
         person,
         payCurrency: (await tx.legalEntity.findFirstOrThrow({ where: { organizationId: org, id: adv.legalEntityId }, select: { currency: true } })).currency,
+        // EXP-05 design: the company's settings behind the settle-by date and the salary recovery of an overdue balance.
+        policy: { settleDays: Number(await settingFor(tx, c, 'expense.advance.settle_days', { legalEntityId: adv.legalEntityId })), recoveryInstalments: Number(await settingFor(tx, c, 'expense.advance.recovery_instalments', { legalEntityId: adv.legalEntityId })) },
+        recovery: a.own || a.payout ? await this.recoveryOf(tx, c, adv, s.overdue) : null,
         ledger: [
           ...(adv.paidOn ? [{ id: `${adv.id}-paid`, on: iso(adv.paidOn), kind: 'paid', text: adv.fxRate ? `Advance paid at ${adv.fxRate.toFixed(4)}` : 'Advance paid', amount: adv.amount!.toFixed(2), amountPay: adv.fxRate ? toPay(adv.amount!, adv.fxRate) : adv.amount!.toFixed(2), claimId: null }] : []),
           ...ledger.map((l) => ({
@@ -707,6 +712,42 @@ export class ExpenseTripsService implements OnModuleInit {
           claim: a.own && adv.kind === 'imprest' && adv.status === 'paid',
         },
       };
+    });
+  }
+
+  /**
+   * EXP-05 round 2: the salary instalments that recover an overdue advance, in the pay currency (month and amount). Once
+   * the daily job has made the recovery loan, the loan engine's own schedule (recovered and still to come); before that,
+   * what it will make: the open balance in the company's number of instalments from next month. Null when nothing is
+   * or will be recovered from salary.
+   */
+  private async recoveryOf(tx: Tx, c: CompanyContext, adv: Advance, overdue: boolean) {
+    const org = c.organizationId;
+    return withPayScope(tx, [adv.legalEntityId], async () => {
+      const loan = await tx.loan.findFirst({ where: { organizationId: org, sourceRef: adv.id, loanType: 'expense' } });
+      if (loan) {
+        const paid = await tx.loanRepayment.findMany({ where: { organizationId: org, loanId: loan.id }, orderBy: { createdAt: 'asc' }, select: { payslipId: true, amount: true } });
+        const slips = await tx.payslip.findMany({ where: { organizationId: org, id: { in: paid.map((p) => p.payslipId) } }, select: { id: true, periodStart: true } });
+        const rows = loanSchedule({
+          principal: loan.principal,
+          ratePct: loan.interestRate,
+          emi: loan.emi,
+          outstanding: loan.outstanding,
+          firstMonth: iso(loan.firstMonth).slice(0, 7),
+          pausedUntil: loan.pausedUntil ? iso(loan.pausedUntil).slice(0, 7) : null,
+          open: ['active', 'paused'].includes(loan.status),
+          repayments: paid.map((p) => ({ month: iso(slips.find((x) => x.id === p.payslipId)?.periodStart ?? loan.firstMonth).slice(0, 7), amount: p.amount })),
+        });
+        return { scheduled: true, total: loan.principal.toFixed(2), instalments: rows.map((r) => ({ month: r.month, amount: r.emi, status: r.status })) };
+      }
+      if (!overdue) return null;
+      const n = Number(await settingFor(tx, c, 'expense.advance.recovery_instalments', { legalEntityId: adv.legalEntityId }));
+      const open = await balanceOf(tx, org, adv);
+      // The same sum the daily job hands the loan engine (sweepOrg), so the preview and the loan agree.
+      const owed = adv.fxRate ? open.mul(adv.fxRate).toDecimalPlaces(2) : open;
+      const first = addDays(`${todayIst().slice(0, 7)}-01`, 32).slice(0, 7);
+      const rows = loanSchedule({ principal: owed, ratePct: D(0), emi: loanEmi(owed, D(0), n), outstanding: owed, firstMonth: first, pausedUntil: null, open: true, repayments: [] });
+      return { scheduled: false, total: owed.toFixed(2), instalments: rows.map((r) => ({ month: r.month, amount: r.emi, status: r.status })) };
     });
   }
 

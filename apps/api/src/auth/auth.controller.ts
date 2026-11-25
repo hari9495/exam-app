@@ -22,6 +22,7 @@ import { SessionsService, resolveClientMeta } from './sessions.service';
 import { SensitiveRoleAction } from './step-up.decorator';
 import { assertHuman } from './bot-challenge';
 import { CredentialThrottle } from './credential-throttler.guard';
+import { inactiveAccountError } from './paused-access';
 
 const REFRESH_COOKIE = 'refresh_token';
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -199,7 +200,7 @@ export class AuthController {
       });
     if (user.status !== 'active') {
       await failed('account_inactive');
-      throw new UnauthorizedException('This account has been deactivated');
+      throw await inactiveAccountError(this.tenantPrisma, user);
     }
 
     if (user.organizationId) {

@@ -449,9 +449,9 @@
       "held": false
     },
     "expected": {
-      "net": "56900.00",
+      "net": "55796.00",
       "gross": "58900.00",
-      "resultHash": "edcc14ee15ee234388a899f1454d8f546d3b3bb302425ba1670bbe8f29a7c4d4"
+      "resultHash": "3aab29c21f071a2406d6021ddbbca4dc27ae9eb948216576134d8d061e52249b"
     }
   },
   {
@@ -904,9 +904,9 @@
       "held": false
     },
     "expected": {
-      "net": "51200.00",
+      "net": "50377.00",
       "gross": "53200.00",
-      "resultHash": "de2ff401adcf727cf8629f14ed3b124f956fedb49796d43465d80a7914e2d377"
+      "resultHash": "0bee1790ac08ccf986c46e8bec4c6ef22138eb60d39b8b1046bdeafba83601ff"
     }
   },
   {
@@ -1359,9 +1359,9 @@
       "held": false
     },
     "expected": {
-      "net": "57100.00",
+      "net": "55996.00",
       "gross": "58900.00",
-      "resultHash": "5f609fd54c5a37cd609dce60098e59479460fca5661d6c119ac8d056199c6c2e"
+      "resultHash": "ddd5268ca2f054154fa243df3894bde66d5cbd87c0a96ac8e8c1e35f825cec25"
     }
   },
   {
@@ -1812,7 +1812,7 @@
     "expected": {
       "net": "15767.00",
       "gross": "17000.00",
-      "resultHash": "05c79052f409cb44635c29a763d9e28ef5d24c751840430d640f6a70b08ae643"
+      "resultHash": "f1b938dc0c1123cc0360fa173d98849b7973221eeed5133c3217ec7d956f993b"
     }
   },
   {
@@ -2265,9 +2265,9 @@
       "held": false
     },
     "expected": {
-      "net": "52369.00",
+      "net": "51488.00",
       "gross": "54369.00",
-      "resultHash": "938d90dd9a51e33c8ab6a48ade0f212fb9a3fec41690de1cc34d7adaf458bca3"
+      "resultHash": "e99c820e847378b915799b64fd307fa4293635062d6a24cdf20bec00e042c8e6"
     }
   }
 ]

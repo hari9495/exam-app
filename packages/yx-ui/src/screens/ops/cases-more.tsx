@@ -1,5 +1,5 @@
 // More case screens (M08, P23): HLP-12 accident case workspace with statutory panel, HLP-13 collective dispute / settlement,
-// HLP-14 Settings › Policies › Write with AI.
+// HLP-14 Helpdesk › Write policies with AI.
 import { useState } from 'react';
 import { ArrowLeft, Camera, FileText, Handshake, ShieldAlert } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
@@ -19,10 +19,13 @@ import { Dialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { Stepper } from '../../components/stepper';
 import { formatDate, formatINR } from '../../lib/format';
-import { Actions, CheckList, ClockPanel, Confidential, Facts, MembersList, OpsDesk, PhotoPlaceholder, SourceTag, StatusTrail, Workspace, type CaseMember, type CheckRow } from './ops-kit';
+import { Actions, CheckList, ClockPanel, Confidential, Facts, MembersList, OpsDesk, PhotoPlaceholder, SourceTag, StatusTrail, Workspace, useSay, type CaseMember, type CheckRow } from './ops-kit';
 import { addDays, ecCompensation, tdsLateInterest, type EcKind } from './ops-rules';
 import { RestrictedNotFound } from './cases';
+import { LivePolicyWriter, type LivePolicyWriter as LivePolicyWriterProps } from './policy-writer-live';
 import type { Device } from './helpdesk';
+import { LiveDisputeCase, type LiveDispute } from './dispute-live';
+import { LiveAccidentCase, LiveReportAccident, type LiveAccidentWorkspace as LiveAccidentWorkspaceProps, type LiveReportAccident as LiveReportAccidentProps } from './accident-live';
 
 
 /* =========================================================================================
@@ -57,7 +60,10 @@ export interface AccidentWorkspaceProps {
   /** Contract worker: contractor is the immediate employer; principal alerted if not filed. */
   contractorNotFiled?: boolean;
 }
-export function AccidentWorkspaceScreen({ record, members, today, view = 'safety', ec, reportable, esicSubmitted, contractorNotFiled }: AccidentWorkspaceProps) {
+export function AccidentWorkspaceScreen(props: AccidentWorkspaceProps | { live: LiveAccidentWorkspaceProps }) {
+  return 'live' in props ? <LiveAccidentCase live={props.live} /> : <SampleAccidentWorkspace {...props} />;
+}
+function SampleAccidentWorkspace({ record, members, today, view = 'safety', ec, reportable, esicSubmitted, contractorNotFiled }: AccidentWorkspaceProps) {
   const [tab, setTab] = useState('incident');
   if (view === 'non-member') return <RestrictedNotFound />;
   const r = record;
@@ -253,7 +259,10 @@ export function AccidentWorkspaceScreen({ record, members, today, view = 'safety
 }
 
 /** Report an accident (web / phone / on behalf). Near-misses are not recorded here. */
-export function ReportAccidentScreen({ device = 'phone', today }: { device?: Device; today: Date }) {
+export function ReportAccidentScreen(props: { device?: Device; today: Date } | { device?: Device; live: LiveReportAccidentProps }) {
+  return 'live' in props ? <LiveReportAccident live={props.live} device={props.device} /> : <SampleReportAccident device={props.device} today={props.today} />;
+}
+function SampleReportAccident({ device = 'phone', today }: { device?: Device; today: Date }) {
   const [when, setWhen] = useState<Date | null>(today);
   const [person, setPerson] = useState<string>('employee');
   const [loc, setLoc] = useState<string | null>('hsr');
@@ -339,7 +348,10 @@ export interface DisputeScreenProps {
   stage?: 'conciliation' | 'signed';
   member?: boolean;
 }
-export function CollectiveDisputeScreen({ demands, stages, members, today, stage = 'conciliation', member = true }: DisputeScreenProps) {
+export function CollectiveDisputeScreen(props: DisputeScreenProps | { live: LiveDispute }) {
+  return 'live' in props ? <LiveDisputeCase live={props.live} /> : <SampleCollectiveDispute {...props} />;
+}
+function SampleCollectiveDispute({ demands, stages, members, today, stage = 'conciliation', member = true }: DisputeScreenProps) {
   const [tab, setTab] = useState(stage === 'signed' ? 'settlement' : 'demands');
   if (!member) return <RestrictedNotFound />;
   const signed = stage === 'signed';
@@ -454,7 +466,7 @@ export function CollectiveDisputeScreen({ demands, stages, members, today, stage
 }
 
 /* =========================================================================================
- * HLP-14 · Settings › Policies › Write with AI (T3, HR, SA)
+ * HLP-14 · Helpdesk › Write policies with AI (T3, HR, SA)
  * ======================================================================================= */
 
 export interface Clause {
@@ -476,13 +488,19 @@ export interface PolicyWriterScreenProps {
   clauses: Clause[];
   findings: Finding[];
   approveOpen?: boolean;
+  /** The company's AI for policies: off (or not set up) offers the YukthiX starters instead. */
+  ai?: 'on' | 'off';
 }
-export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial, approveOpen }: PolicyWriterScreenProps) {
+export function PolicyWriterScreen(props: PolicyWriterScreenProps | { live: LivePolicyWriterProps }) {
+  return 'live' in props ? <LivePolicyWriter live={props.live} /> : <SamplePolicyWriter {...props} />;
+}
+function SamplePolicyWriter({ step = 'draft', clauses, findings: initial, approveOpen, ai = 'on' }: PolicyWriterScreenProps) {
   const [findings, setFindings] = useState(initial);
   const [open, setOpen] = useState(!!approveOpen);
   const [states, setStates] = useState<string[]>(['KA', 'TN']);
   const [headcount, setHeadcount] = useState<number | null>(248);
   const openFindings = findings.filter((f) => f.status === 'open');
+  const { say } = useSay();
   const checks: CheckRow[] = findings.map((f) => ({
     id: f.id,
     status: f.status === 'open' ? 'fail' : f.status === 'acknowledged' ? 'warn' : 'pass',
@@ -505,13 +523,13 @@ export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial,
     <OpsDesk area="helpdesk" active="Policies">
       <PageHeader
         title="Write policies with AI"
-        description="Settings › Policies. Answer a few questions; we draft the policies and check them against the law for each state. Nothing is published until you approve."
+        description="Helpdesk › Write policies with AI. Answer a few questions; we draft the policies and check them against the law for each state. Nothing is published until you approve."
         status={<AiBadge />}
         actions={
           step === 'draft' ? (
             <>
               <Button>Save draft</Button>
-              <Button variant="primary" disabled={openFindings.length > 0} onClick={() => setOpen(true)}>
+              <Button variant="primary" onClick={() => say(openFindings.length > 0 && `Resolve or acknowledge the ${openFindings.length === 1 ? 'open law-check finding' : `${openFindings.length} open law-check findings`} first.`, () => setOpen(true))}>
                 Approve & load
               </Button>
             </>
@@ -519,10 +537,15 @@ export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial,
         }
       />
       <PageBanner tone="info">Not legal advice; review by counsel recommended.</PageBanner>
+      {step === 'questionnaire' && ai === 'off' && (
+        <InlineAlert tone="warning" title="AI is switched off for policies">
+          Your company switched AI off in Settings › Company policies. You can still answer the questions and start from a YukthiX starter: the same law check and approval apply.
+        </InlineAlert>
+      )}
       {step === 'questionnaire' ? (
         <Stepper
           title="Policy questionnaire"
-          finishLabel="Draft policies"
+          finishLabel={ai === 'off' ? 'Use a starter' : 'Draft policies'}
           review={{ title: 'Check your answers' }}
           steps={[
             {
@@ -609,7 +632,7 @@ export function PolicyWriterScreen({ step = 'draft', clauses, findings: initial,
               <p className="yx-ops-muted">Checked against P07 rules valid today for each chosen state.</p>
               <CheckList label="Law-floor findings" items={checks} />
             </Card>
-            {openFindings.length > 0 && <InlineAlert tone="warning">Approve & load stays off until every finding is resolved or acknowledged.</InlineAlert>}
+            {openFindings.length > 0 && <InlineAlert tone="warning">Approve & load works once every finding is resolved or acknowledged.</InlineAlert>}
           </div>
         </div>
       )}

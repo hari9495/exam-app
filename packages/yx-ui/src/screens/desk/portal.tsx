@@ -1,8 +1,9 @@
-import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
+import { type CSSProperties, type ReactNode, createContext, useContext, useEffect, useState } from 'react';
 import { LogOut, Send } from 'lucide-react';
 import { Button } from '../../components/button';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { CodeField, TextArea, TextField } from '../../components/inputs';
 import { Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -11,7 +12,9 @@ import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, StatusBadge, browserTimeZone, when } from './desk-kit';
 import { BannerList } from './help';
 import { ReadingAidsCard, ReadingAidsFrame, useReadingAids } from './reading-aids';
-import { ArticleDrawer, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
+import { ArticleDrawer, DeskClosedNotice, RateTicketCard, SuggestList, useSuggestions, type KbArticleView, type KbSuggestion } from './help-kb';
+import { RaiseFields, RequesterFields, fieldErrorsOf, raiseFieldValues } from './ticket-fields';
+import type { Answers } from '../../lib/forms';
 import type { LoadState, PortalHome, PortalMe, PortalRaiseInput, PortalTicket, PortalTicketRow } from './types';
 
 // The outside help page (§9.3, US-G-021): a company's customers sign in with a 6-digit email code (no password, no
@@ -42,7 +45,7 @@ export interface PortalScreenProps {
   /** Batch 4: help articles (public ones before sign-in; the desk's own after), suggestions while typing. */
   kb?: PortalKbProps;
   /** SD-1.26: rate a solved ticket. */
-  onRate?: (score: number, comment?: string) => Promise<unknown>;
+  onRate?: (score: number, comment?: string, reason?: string) => Promise<unknown>;
   /** SD-1.30: ask for a copy of one's data, or its erasure. */
   privacy?: { requests: { id: string; kind: string; status: string; createdAt: string; decisionNote: string | null }[]; onAsk: (kind: 'access' | 'erasure', note?: string) => Promise<unknown>; onDownload: (id: string) => Promise<void> };
 }
@@ -57,12 +60,16 @@ export interface PortalKbProps {
 }
 
 const ACCENT = /^#[0-9a-fA-F]{6}$/;
+type Origin = Pick<PortalRaiseInput, 'originArticleId' | 'originQuery'>;
+/** Answer 1647: what the person read or searched in "Find an answer" before raising, for the raise forms. */
+const OriginCtx = createContext<Origin>({});
 
 export function PortalScreen(props: PortalScreenProps) {
   const [aids, setAids] = useReadingAids();
   const h = props.home;
   const style = h?.portal.accentColour && ACCENT.test(h.portal.accentColour) ? ({ '--yx-portal-accent': h.portal.accentColour } as CSSProperties) : undefined;
   const { busy, run } = useRun();
+  const [origin, setOrigin] = useState<Origin>({});
   let body: ReactNode;
   if (props.state === 'not-found') body = <EmptyState title="No such help page" description="Check the web address, or ask the company for the right link." />;
   else if (props.state !== 'ready' || !h) body = <DeskPage state={props.state} onRetry={props.onRetry} what="this help page">{null}</DeskPage>;
@@ -84,8 +91,8 @@ export function PortalScreen(props: PortalScreenProps) {
           )}
         </header>
         <main className="yx-desk-portal__main">
-          {props.kb && props.state === 'ready' && h && !props.ticket && !props.ticketState && <PortalKbCard kb={props.kb} />}
-          {body}
+          {props.kb && props.state === 'ready' && h && !props.ticket && !props.ticketState && <PortalKbCard kb={props.kb} onOrigin={setOrigin} />}
+          <OriginCtx.Provider value={origin}>{body}</OriginCtx.Provider>
           {h?.portal.readingAids && <ReadingAidsCard value={aids} onChange={setAids} />}
         </main>
       </div>
@@ -94,8 +101,10 @@ export function PortalScreen(props: PortalScreenProps) {
 }
 
 /** "Find an answer": search the help articles; an article opens in a side panel with "This solved it". */
-function PortalKbCard({ kb }: { kb: PortalKbProps }) {
+function PortalKbCard({ kb, onOrigin }: { kb: PortalKbProps; onOrigin: (o: Origin) => void }) {
   const [q, setQ] = useState('');
+  const query = (): Origin => (q.trim() ? { originQuery: q.trim().slice(0, 200) } : {});
+  useEffect(() => onOrigin(query()), [q]); // eslint-disable-line react-hooks/exhaustive-deps
   const found = useSuggestions(q, kb.onSearch);
   const [article, setArticle] = useState<KbArticleView | null>(null);
   const open = (n: number, lang?: string) => void kb.onArticle(n, lang).then(setArticle, () => setArticle(null));
@@ -121,7 +130,10 @@ function PortalKbCard({ kb }: { kb: PortalKbProps }) {
           onLanguage={(l) => open(article.number, l)}
           onFeedback={(h) => kb.onFeedback(article.id, h)}
           onSolved={() => kb.onSolved(article.id)}
-          onStillNeedHelp={() => setArticle(null)}
+          onStillNeedHelp={() => {
+            onOrigin({ ...query(), originArticleId: article.id });
+            setArticle(null);
+          }}
         />
       )}
     </Card>
@@ -129,37 +141,60 @@ function PortalKbCard({ kb }: { kb: PortalKbProps }) {
 }
 
 /** Team, topic, product, subject and details: shared by "Ask without an account" and the signed-in raise form. */
-function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest?: (q: string) => Promise<KbSuggestion[]>) {
+function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest: ((q: string) => Promise<KbSuggestion[]>) | undefined, idp: string, before: { fieldId: string; message: string }[] = []) {
   const [deskId, setDeskId] = useState<string | null>(desks.length === 1 ? desks[0].id : null);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [productId, setProductId] = useState<string | null>(null);
   const [subject, setSubject] = useState('');
   const [details, setDetails] = useState('');
+  // Answer 1842: the team's fields everyone sees.
+  const [fieldValues, setFieldValues] = useState<Answers>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const desk = desks.find((d) => d.id === deskId);
+  const origin = useContext(OriginCtx);
   const suggestions = useSuggestions(`${subject} ${details.slice(0, 200)}`, onSuggest);
+  const early = useTooEarly([
+    ...before,
+    ...(deskId ? [] : [{ fieldId: `${idp}-team`, message: 'Choose a team.' }]),
+    ...(subject.trim() ? [] : [{ fieldId: `${idp}-subject`, message: 'Write a subject.' }]),
+    ...(details.trim() ? [] : [{ fieldId: `${idp}-details`, message: 'Say what you need help with.' }]),
+  ]);
   return {
-    ready: Boolean(deskId && subject.trim() && details.trim()),
-    input: (): PortalRaiseInput => ({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), ...(productId ? { productId } : {}), subject: subject.trim(), description: details.trim() }),
+    /** True when something is missing (now shown, focus on the first); the caller stops there. */
+    stop: early.stop,
+    errorOf: early.errorOf,
+    input: (): PortalRaiseInput => {
+      const fields = raiseFieldValues(desk?.fields, fieldValues);
+      return { deskId: deskId!, ...(categoryId ? { categoryId } : {}), ...(productId ? { productId } : {}), subject: subject.trim(), description: details.trim(), ...origin, ...(fields ? { fields } : {}) };
+    },
+    /** Shows the server's per-field messages of a refused raise (400 FIELD_ERRORS). */
+    refused: (e: unknown) => setFieldErrors(fieldErrorsOf(e) ?? {}),
     clear: () => {
       setSubject('');
       setDetails('');
+      setFieldValues({});
+      setFieldErrors({});
+      early.reset();
     },
     fields: (
       <>
         {desks.length > 1 && (
-          <FormField label="Team" required>
+          <FormField id={`${idp}-team`} label="Team" required error={early.errorOf(`${idp}-team`)}>
             <Select
               value={deskId}
               onChange={(v) => {
                 setDeskId(v);
                 setCategoryId(null);
                 setProductId(null);
+                setFieldValues({});
+                setFieldErrors({});
               }}
               options={desks.map((d) => ({ value: d.id, label: d.name }))}
               placeholder="Choose a team"
             />
           </FormField>
         )}
+        {desk?.closed && <DeskClosedNotice closed={desk.closed} />}
         {desk && desk.categories.length > 0 && (
           <FormField label="What is it about?" optional>
             <Select value={categoryId} onChange={setCategoryId} clearable options={desk.categories.map((c) => ({ value: c.id, label: c.parentId ? `· ${c.name}` : c.name }))} placeholder="Choose a topic" />
@@ -170,11 +205,12 @@ function usePortalRaiseForm(desks: PortalHome['desks'], onSuggest?: (q: string) 
             <Select value={productId} onChange={setProductId} clearable options={desk.products.map((p) => ({ value: p.id, label: p.name }))} placeholder="Choose a product" />
           </FormField>
         )}
-        <FormField label="Subject" required>
+        <FormField id={`${idp}-subject`} label="Subject" required error={early.errorOf(`${idp}-subject`)}>
           <TextField value={subject} onChange={setSubject} maxLength={200} />
         </FormField>
         <SuggestList items={suggestions} />
-        <FormField label="Details" required helper="Dates, error messages and steps help us answer faster.">
+        <RaiseFields key={deskId ?? ''} fields={desk?.fields} values={fieldValues} onChange={setFieldValues} errors={fieldErrors} />
+        <FormField id={`${idp}-details`} label="Details" required error={early.errorOf(`${idp}-details`)} helper="Dates, error messages and steps help us answer faster.">
           <TextArea value={details} onChange={setDetails} rows={5} maxLength={20000} />
         </FormField>
       </>
@@ -191,7 +227,12 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
   const [askName, setAskName] = useState('');
   const [askEmail, setAskEmail] = useState('');
   const [asked, setAsked] = useState(false);
-  const form = usePortalRaiseForm(h.desks, props.kb?.onSearch);
+  const form = usePortalRaiseForm(h.desks, props.kb?.onSearch, 'ask', [
+    ...(askName.trim() ? [] : [{ fieldId: 'ask-name', message: 'Write your name.' }]),
+    ...(askEmail.includes('@') ? [] : [{ fieldId: 'ask-email', message: 'Enter your email, like name@company.com.' }]),
+  ]);
+  const emailEarly = useTooEarly(email.includes('@') ? [] : [{ fieldId: 'portal-email', message: 'Enter your email, like name@company.com.' }]);
+  const codeEarly = useTooEarly(code.length === 6 ? [] : [{ fieldId: 'portal-code', message: 'Enter the 6-digit code from the email.' }]);
   const { busy, error, run } = useRun();
   return (
     <>
@@ -201,11 +242,11 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
           {step === 'email' ? (
             <>
-              <FormField label="Your email" required helper="We send a 6-digit code. No password needed.">
+              <FormField id="portal-email" label="Your email" required error={emailEarly.errorOf('portal-email')} helper="We send a 6-digit code. No password needed.">
                 <TextField type="email" autoComplete="email" value={email} onChange={setEmail} maxLength={254} />
               </FormField>
               <div className="yx-ops-row">
-                <Button variant="primary" disabled={!email.includes('@')} loading={busy === 'send'} onClick={() => void run('send', async () => { await props.onSendCode(email.trim().toLowerCase()); setStep('code'); })}>
+                <Button variant="primary" loading={busy === 'send'} onClick={() => !emailEarly.stop() && void run('send', async () => { await props.onSendCode(email.trim().toLowerCase()); setStep('code'); })}>
                   Send me a code
                 </Button>
               </div>
@@ -213,11 +254,11 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
           ) : (
             <>
               <InlineAlert tone="info">If this email can use the help page, a 6-digit code is on its way.</InlineAlert>
-              <FormField label="6-digit code" required helper={`Sent to ${email}.`}>
+              <FormField id="portal-code" label="6-digit code" required error={codeEarly.errorOf('portal-code')} helper={`Sent to ${email}.`}>
                 <CodeField value={code} onChange={setCode} />
               </FormField>
               <div className="yx-ops-row">
-                <Button variant="primary" disabled={code.length !== 6} loading={busy === 'verify'} onClick={() => void run('verify', () => props.onVerify(email.trim().toLowerCase(), code))}>
+                <Button variant="primary" loading={busy === 'verify'} onClick={() => !codeEarly.stop() && void run('verify', () => props.onVerify(email.trim().toLowerCase(), code))}>
                   Sign in
                 </Button>
                 <Button onClick={() => { setStep('email'); setCode(''); }}>Use another email</Button>
@@ -232,7 +273,7 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
       {h.portal.openRequests && (
         <Card title="Ask without an account">
           {asked ? (
-            <InlineAlert tone="success" title="Check your email">
+            <InlineAlert tone="info" title="Check your email">
               Check your email and open the link to send your request.
             </InlineAlert>
           ) : !asking ? (
@@ -244,10 +285,10 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
             </div>
           ) : (
             <div className="yx-ops-stack">
-              <FormField label="Your name" required>
+              <FormField id="ask-name" label="Your name" required error={form.errorOf('ask-name')}>
                 <TextField value={askName} onChange={setAskName} maxLength={100} autoComplete="name" />
               </FormField>
-              <FormField label="Your email" required>
+              <FormField id="ask-email" label="Your email" required error={form.errorOf('ask-email')}>
                 <TextField type="email" value={askEmail} onChange={setAskEmail} maxLength={254} autoComplete="email" />
               </FormField>
               {form.fields}
@@ -255,11 +296,14 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
                 <Button
                   variant="primary"
                   icon={Send}
-                  disabled={!form.ready || !askName.trim() || !askEmail.includes('@')}
                   loading={busy === 'ask'}
                   onClick={() =>
+                    !form.stop() &&
                     void run('ask', async () => {
-                      await props.onAsk({ ...form.input(), name: askName.trim(), email: askEmail.trim().toLowerCase() });
+                      await props.onAsk({ ...form.input(), name: askName.trim(), email: askEmail.trim().toLowerCase() }).catch((e: unknown) => {
+                        form.refused(e);
+                        throw e;
+                      });
                       setAsked(true);
                     })
                   }
@@ -278,19 +322,18 @@ export function PortalSignIn(props: PortalScreenProps & { home: PortalHome }) {
 export function PortalHomeView(props: PortalScreenProps & { home: PortalHome; me: PortalMe }) {
   const [show, setShow] = useState<'open' | 'all'>('open');
   const [raising, setRaising] = useState(false);
-  const [raised, setRaised] = useState<string | null>(null);
-  const form = usePortalRaiseForm(props.home.desks, props.kb?.onSearch);
+  const { toast } = useToast();
+  const form = usePortalRaiseForm(props.home.desks, props.kb?.onSearch, 'raise');
   const { busy, error, run } = useRun();
   const tz = props.timeZone || browserTimeZone();
   const rows = props.tickets.filter((t) => show === 'all' || !['solved', 'closed'].includes(t.systemState));
-  const notice = raised ? `Ticket ${raised} is open.` : props.notice;
   return (
     <>
       <p className="yx-ops-muted">
         Signed in as {props.me.name || props.me.email}
         {props.me.account ? ` · ${props.me.account}` : ''}
       </p>
-      {notice && <InlineAlert tone="success">{notice}</InlineAlert>}
+      {props.notice && <InlineAlert tone="info">{props.notice}</InlineAlert>}
       <BannerList banners={props.home.banners} onMeToo={props.onMeToo} />
       <Card title="My tickets" actions={<Segment label="Which tickets" options={[{ value: 'open', label: 'Open' }, { value: 'all', label: 'All' }]} value={show} onChange={setShow} />}>
         {rows.length === 0 ? (
@@ -331,12 +374,15 @@ export function PortalHomeView(props: PortalScreenProps & { home: PortalHome; me
               <Button
                 variant="primary"
                 icon={Send}
-                disabled={!form.ready}
                 loading={busy === 'raise'}
                 onClick={() =>
+                  !form.stop() &&
                   void run('raise', async () => {
-                    const r = await props.onRaise(form.input());
-                    setRaised(r.number);
+                    const r = await props.onRaise(form.input()).catch((e: unknown) => {
+                      form.refused(e);
+                      throw e;
+                    });
+                    toast({ tone: 'success', title: `Ticket ${r.number} is open`, description: 'The team will reply here.' });
                     form.clear();
                     setRaising(false);
                   })
@@ -399,6 +445,7 @@ export function PortalTicketView(props: PortalScreenProps) {
   const t = props.ticket;
   const [text, setText] = useState('');
   const { busy, error, run } = useRun();
+  const replyEarly = useTooEarly(text.trim() ? [] : [{ fieldId: 'portal-reply', message: 'Write your reply.' }]);
   const tz = props.timeZone || browserTimeZone();
   return (
     <>
@@ -438,16 +485,21 @@ export function PortalTicketView(props: PortalScreenProps) {
             </ol>
             {t.files.length > 0 && <p className="yx-ops-muted">Files on this ticket: {t.files.map((f) => f.fileName).join(', ')}</p>}
           </Card>
-          {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} onRate={props.onRate} />}
+          {(t.deskFields ?? []).length > 0 && (
+            <Card title="Details">
+              <RequesterFields fields={t.deskFields} />
+            </Card>
+          )}
+          {props.onRate && (t.canRate || t.rating) && <RateTicketCard rating={t.rating ?? null} reasons={t.ratingReasons} onRate={props.onRate} />}
           {t.canReply ? (
             <Card title="Reply">
               <div className="yx-ops-stack">
                 {error && <InlineAlert tone="danger" title="Your reply was not sent">{error}</InlineAlert>}
-                <FormField label="Your reply" hideLabel>
+                <FormField id="portal-reply" label="Your reply" hideLabel error={replyEarly.errorOf('portal-reply')}>
                   <TextArea value={text} onChange={setText} rows={4} maxLength={20000} placeholder="Write to the support team" />
                 </FormField>
                 <div className="yx-ops-row">
-                  <Button variant="primary" icon={Send} disabled={!text.trim()} loading={busy === 'reply'} onClick={() => void run('reply', async () => { await props.onReply(text.trim()); setText(''); })}>
+                  <Button variant="primary" icon={Send} loading={busy === 'reply'} onClick={() => !replyEarly.stop() && void run('reply', async () => { await props.onReply(text.trim()); setText(''); replyEarly.reset(); })}>
                     Send reply
                   </Button>
                 </div>

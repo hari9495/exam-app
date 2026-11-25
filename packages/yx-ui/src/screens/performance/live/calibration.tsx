@@ -1,19 +1,19 @@
-import { useState, type DragEvent } from 'react';
+import { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { Button } from '../../../components/button';
 import { Badge } from '../../../components/display';
-import { EmptyState, InlineAlert } from '../../../components/feedback';
+import { EmptyState } from '../../../components/feedback';
 import { FormField } from '../../../components/field';
 import { Text } from '../../../components/foundations';
-import { NumberField, TextArea, TextField } from '../../../components/inputs';
+import { NumberField, TextField } from '../../../components/inputs';
 import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { MultiSelect, Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
 import { DataTable } from '../../../components/table';
 import { useRun } from '../../org/org-kit';
-import { LivePage, dateText } from '../../time/live/kit';
-import type { CalibrationBoard, CalibrationRow, CalibrationSession, Choice, LoadState, PerfReport } from './types';
+import { LivePage } from '../../time/live/kit';
+import type { CalibrationSession, Choice, LoadState, PerfReport } from './types';
 
 // Performance batch PM6, wired (M06-BUILD-DESIGN §11, §13; PRF-09 calibration, reports). The guide is a guide only:
 // it never blocks sign-off and never moves anyone. Every change needs a reason. No pay is shown here.
@@ -30,8 +30,9 @@ export function CalibrationSessions({ sessions, departments, facilitators, bands
   const [tolerance, setTolerance] = useState<number | null>(10);
   const total = bands.reduce((t, b) => t + (shares[b] ?? 0), 0);
   const ok = name.trim().length >= 2 && fac && (withGuide === 'no' || (Math.round(total * 10) === 1000 && tolerance !== null));
+  const [tried, setTried] = useState(false);
   return (
-    <Card title="Calibration" actions={onCreate && <Button icon={Plus} onClick={() => setAdding(true)}>Open a session</Button>}>
+    <Card title="Calibration" actions={onCreate && <Button icon={Plus} onClick={() => (setTried(false), setAdding(true))}>Open a session</Button>}>
       {sessions.length === 0 ? (
         <EmptyState compact title="No calibration sessions." description="Open one when managers have finished their reviews." />
       ) : (
@@ -47,14 +48,16 @@ export function CalibrationSessions({ sessions, departments, facilitators, bands
         </ul>
       )}
       {adding && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setAdding(false)} size="md" title="Open a calibration session" confirmLabel="Open" confirmDisabled={!ok} onConfirm={async () => {
+        <ConfirmDialog open onOpenChange={(o) => !o && setAdding(false)} size="md" title="Open a calibration session" confirmLabel="Open" onConfirm={async () => {
+          setTried(true);
+          if (!ok) return false;
           await onCreate!({ name: name.trim(), facilitatorUserId: fac!, departmentIds: depts, guide: withGuide === 'yes' ? { bands: bands.map((b) => ({ label: b, share: shares[b] ?? 0 })), tolerance: tolerance! } : null });
           setAdding(false);
         }}>
-          <FormField id="cs-name" label="Name" required>
+          <FormField id="cs-name" label="Name" required error={tried && name.trim().length < 2 ? 'Enter a name of at least 2 characters.' : null}>
             <TextField value={name} onChange={setName} maxLength={100} />
           </FormField>
-          <FormField id="cs-fac" label="Facilitator" required>
+          <FormField id="cs-fac" label="Facilitator" required error={tried && !fac ? 'Choose the facilitator.' : null}>
             <Select aria-label="Facilitator" value={fac} onChange={setFac} options={facilitators} searchable />
           </FormField>
           <FormField id="cs-dept" label="Departments" optional helper="Leave empty for every finished review of the cycle.">
@@ -70,8 +73,8 @@ export function CalibrationSessions({ sessions, departments, facilitators, bands
                   <NumberField value={shares[b] ?? null} onChange={(x) => setShares((s) => ({ ...s, [b]: x }))} min={0} max={100} decimals />
                 </FormField>
               ))}
-              <Text as="p" tone={Math.round(total * 10) === 1000 ? 'secondary' : 'danger'} size="sm">{`Shares add up to ${total} of 100. A guide only: it never blocks sign-off.`}</Text>
-              <FormField id="cs-tol" label="Tolerance (points)">
+              <Text as="p" tone={Math.round(total * 10) === 1000 ? 'secondary' : 'danger'} size="sm">{tried && Math.round(total * 10) !== 1000 ? `Make the shares add up to 100 (now ${total}).` : `Shares add up to ${total} of 100. A guide only: it never blocks sign-off.`}</Text>
+              <FormField id="cs-tol" label="Tolerance (points)" error={tried && tolerance === null ? 'Enter the tolerance.' : null}>
                 <NumberField value={tolerance} onChange={setTolerance} min={0} max={50} />
               </FormField>
             </>
@@ -92,155 +95,6 @@ export function CalibrationListScreen({ state, onRetry, sessions, onOpen }: { st
 }
 
 // ------------------------------------------------------------------------------------------ the board (PRF-09)
-
-export interface CalibrationBoardScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  board: CalibrationBoard | null;
-  onBack: () => void;
-  onChange: (input: { reviewId: string; toBand?: string; toScore?: number; reason: string }) => Promise<unknown>;
-  onSignOff: () => Promise<unknown>;
-}
-
-export function CalibrationBoardScreen(p: CalibrationBoardScreenProps) {
-  const b = p.board;
-  const { error, run } = useRun();
-  const [moving, setMoving] = useState<{ row: CalibrationRow; band: string | null } | null>(null);
-  const [signing, setSigning] = useState(false);
-  const can = b?.can.change ?? false;
-  const drop = (band: string) => (e: DragEvent) => {
-    e.preventDefault();
-    const id = e.dataTransfer.getData('text/plain');
-    const row = b?.rows.find((r) => r.reviewId === id);
-    if (row && row.band !== band) setMoving({ row, band });
-  };
-  return (
-    <LivePage
-      title={b ? b.name : 'Calibration'}
-      description={b ? `${b.cycle} · ${b.status === 'open' ? 'Open' : 'Signed off'}` : undefined}
-      state={p.state}
-      onRetry={p.onRetry}
-      what="this session"
-      actions={
-        <>
-          <Button onClick={p.onBack}>Back</Button>
-          {b?.can.signOff && (
-            <Button variant="primary" onClick={() => setSigning(true)}>
-              Sign off
-            </Button>
-          )}
-        </>
-      }
-    >
-      {b && (
-        <>
-          {error && (
-            <InlineAlert tone="danger" title="That didn't work">
-              {error}
-            </InlineAlert>
-          )}
-          <Card title="Distribution">
-            {b.distribution.bands === null ? (
-              <Text as="p" tone="secondary">{`${b.distribution.counted} people: too few to show a distribution without pointing at someone.`}</Text>
-            ) : (
-              <ul className="yx-lif-list">
-                {b.distribution.bands.map((d) => (
-                  <li key={d.label}>
-                    <Text>{`${d.label}: ${d.count} (${d.share}%)${d.target !== null ? ` · guide ${d.target}%` : ''}`}</Text> {d.outside && <Badge tone="warning">Outside the guide</Badge>}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {b.distribution.notes.length > 0 && <InlineAlert tone="info" title="A guide only">{`${b.distribution.notes.join(' ')} It does not block sign-off.`}</InlineAlert>}
-            <Text as="p" tone="secondary" size="sm">People on protected leave are not counted.</Text>
-          </Card>
-          <div className="yx-lif-grid">
-            {b.scale.bands.map((band) => (
-              <div key={band.label} data-band={band.label} onDragOver={(e) => can && e.preventDefault()} onDrop={drop(band.label)}>
-              <Card title={`${band.label} (${band.fromScore}–${band.toScore})`}>
-                {b.rows.filter((r) => r.band === band.label).length === 0 && <Text as="p" tone="secondary" size="sm">No one</Text>}
-                {b.rows.filter((r) => r.band === band.label).map((r) => (
-                  <div key={r.reviewId} className="yx-tim-stack" draggable={can} onDragStart={(e) => e.dataTransfer.setData('text/plain', r.reviewId)} data-review={r.reviewId}>
-                    <Text>{r.employee}</Text>
-                    <Text tone="secondary" size="sm">{`${r.manager} · manager ${r.managerScore ?? '—'}${r.moved ? ` → ${r.score}` : ''}${r.selfIndication !== null ? ` · self ${r.selfIndication}` : ''}${r.skipAgreed ? ' · skip-level agreed' : ''}`}</Text>
-                    {r.protectedLeave && <Badge tone="info">Protected leave</Badge>}
-                    {can && (
-                      <Button size="sm" onClick={() => setMoving({ row: r, band: null })}>
-                        Move
-                      </Button>
-                    )}
-                  </div>
-                ))}
-              </Card>
-              </div>
-            ))}
-          </div>
-          <Card title="Changes">
-            {b.changes.length === 0 ? (
-              <Text as="p" tone="secondary">No changes yet.</Text>
-            ) : (
-              <DataTable
-                label="Changes"
-                columns={[
-                  { key: 'e', header: 'Employee', value: (c: CalibrationBoard['changes'][number]) => c.employee, width: 200, hideable: false },
-                  { key: 'f', header: 'From', value: (c) => `${c.from ?? '—'} ${c.fromBand ?? ''}`, width: 180 },
-                  { key: 't', header: 'To', value: (c) => `${c.to} ${c.toBand ?? ''}`, width: 180 },
-                  { key: 'r', header: 'Reason', value: (c) => c.reason, width: 320 },
-                  { key: 'a', header: 'When', value: (c) => c.at, render: (c) => <Text>{dateText(c.at.slice(0, 10))}</Text>, width: 130 },
-                ]}
-                rows={b.changes}
-                getRowId={(c) => `${c.reviewId}-${c.at}`}
-                rowNoun={['change', 'changes']}
-              />
-            )}
-          </Card>
-        </>
-      )}
-      {moving && b && <MoveDialog row={moving.row} band={moving.band} bands={b.scale.bands.map((x) => x.label)} min={b.scale.min} max={b.scale.max} onClose={() => setMoving(null)} onSave={(input) => p.onChange({ reviewId: moving.row.reviewId, ...input })} />}
-      {signing && (
-        <ConfirmDialog open onOpenChange={(o) => !o && setSigning(false)} title="Sign off this session?" confirmLabel="Sign off" onConfirm={async () => {
-          await run('sign', p.onSignOff);
-          setSigning(false);
-        }}>
-          <Text as="p">The reviews are then ready to release with the scores on the board. The guide does not block this.</Text>
-        </ConfirmDialog>
-      )}
-    </LivePage>
-  );
-}
-
-function MoveDialog({ row, band: initial, bands, min, max, onClose, onSave }: { row: CalibrationRow; band: string | null; bands: string[]; min: number; max: number; onClose: () => void; onSave: (input: { toBand?: string; toScore?: number; reason: string }) => Promise<unknown> }) {
-  const [how, setHow] = useState<'band' | 'score'>('band');
-  const [band, setBand] = useState<string | null>(initial ?? null);
-  const [score, setScore] = useState<number | null>(row.score);
-  const [reason, setReason] = useState('');
-  const ok = reason.trim().length >= 3 && (how === 'band' ? Boolean(band) && band !== row.band : score !== null && score >= min && score <= max);
-  return (
-    <ConfirmDialog open onOpenChange={(o) => !o && onClose()} size="md" title={`Move ${row.employee}`} confirmLabel="Move" confirmDisabled={!ok} onConfirm={async () => {
-      await onSave({ ...(how === 'band' ? { toBand: band! } : { toScore: score! }), reason: reason.trim() });
-      onClose();
-    }}>
-      <Text as="p">{`Now ${row.score ?? '—'} (${row.band ?? 'no band'}); the manager gave ${row.managerScore ?? '—'}.`}</Text>
-      <FormField id="mv-how" label="Move to">
-        <Segment label="Move to" value={how} onChange={setHow} options={[{ value: 'band', label: 'A band' }, { value: 'score', label: 'A score' }]} />
-      </FormField>
-      {how === 'band' ? (
-        <FormField id="mv-band" label="Band" required>
-          <Select aria-label="Band" value={band} onChange={setBand} options={bands.map((x) => ({ value: x, label: x }))} />
-        </FormField>
-      ) : (
-        <FormField id="mv-score" label="Score" required>
-          <NumberField value={score} onChange={setScore} min={min} max={max} decimals />
-        </FormField>
-      )}
-      <FormField id="mv-reason" label="Reason" required helper="Recorded with your name; HR and the reports see it.">
-        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
-      </FormField>
-    </ConfirmDialog>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ reports (§13)
 
 export type ReportKind = 'completion' | 'distribution' | 'calibration-changes' | 'goal-alignment' | 'pip-status';
 const REPORTS: { value: ReportKind; label: string }[] = [

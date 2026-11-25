@@ -157,6 +157,11 @@ export const PasswordLocked: S = {
   name: 'Sign in · password, locked after too many tries',
   render: () => <SignIn step="password" company={KAVERI} start={{ ...DIVYA, password: 'not the password' }} error="Too many tries. Try again in 4 min 59 sec." />,
 };
+/* TIM-39 Suspend (30 Oct 2026): the account is paused for block leave; shown only after the password or code is right. */
+export const PausedForBlockLeave: S = {
+  name: 'Sign in · access paused for block leave',
+  render: () => <SignIn step="password" company={KAVERI} start={{ ...DIVYA, password: 'the right password' }} error="Your access is paused for block leave until 7 Nov 2026. Ask HR if you need access sooner." />,
+};
 export const Hindi: S = {
   name: 'Sign in · language picked (हिन्दी)',
   render: () => (

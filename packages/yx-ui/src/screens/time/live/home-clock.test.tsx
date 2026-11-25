@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { HomeClockCard } from './my-attendance';
+import { HomeClockCard } from '../attendance';
 import type { MyAttendance, PunchKind } from './types';
 
 const NOW = new Date('2026-10-19T04:12:15Z');
@@ -53,7 +53,10 @@ describe('Attendance today on the live Home (PLT-02)', () => {
     const p = props({ data: { ...DAY, next: 'out', onBreak: true, punches: [punch('in', '2026-10-19T03:58:00Z'), punch('break_start', '2026-10-19T04:05:00Z')] } });
     render(<HomeClockCard {...p} />);
     expect(screen.getByText('On break since 9:35 am')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Clock out' })).toBeDisabled();
+    expect(screen.getByText('End your break to clock out')).toBeInTheDocument();
+    // Never a disabled button: pressed, Clock out says why and sends nothing.
+    await userEvent.click(screen.getByRole('button', { name: 'Clock out' }));
+    expect(p.onPunch).not.toHaveBeenCalled();
     expect(screen.getByText('End your break to clock out')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'End break' }));
     await waitFor(() => expect(p.onPunch).toHaveBeenCalledWith('break_end', { lat: 12.9, lng: 77.6, accuracyM: 20 }));

@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDefined, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDefined, IsIn, IsInt, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { ConfirmationDto } from './dto';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
@@ -133,12 +133,49 @@ export class OneTimeDto {
   @IsString()
   @Length(3, 300)
   reason!: string;
+
+  /** PAY-05: keep it as a draft (sent for approval later, alone or in bulk). */
+  @IsOptional()
+  @IsBoolean()
+  draft?: boolean;
+}
+
+/** PAY-05 bulk actions on one-time pay drafts. */
+export class OneTimeBulkDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  ids!: string[];
+
+  @IsIn(['submit', 'delete'])
+  action!: 'submit' | 'delete';
+}
+
+/** PAY-05 effect summary: what the item does to the month's pay (worked out by the payroll calculator). */
+export class OneTimeEffectDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @Matches(/^[a-z][a-z0-9_]{0,29}$/)
+  componentCode!: string;
+
+  @Matches(MONEY)
+  amount!: string;
+
+  @Matches(MONTH)
+  month!: string;
 }
 
 export class OneTimeListDto {
   @IsOptional()
   @Matches(MONTH)
   month?: string;
+}
+
+export class SpecialDaysListDto {
+  @Matches(MONTH)
+  month!: string;
 }
 
 export class SpecialDaysDto {
@@ -240,6 +277,32 @@ export class LoanChangeDto {
   reason!: string;
 }
 
+/** D14 (answers 2404, 2405): the loan type the SBI rate is read for, and the company's exempt mark with its reason. */
+export class LoanPerquisiteDto {
+  @IsIn(['housing', 'vehicle', 'education', 'personal', 'other'])
+  purpose!: 'housing' | 'vehicle' | 'education' | 'personal' | 'other';
+
+  /** Exempt: medical treatment of a disease named in Rule 3A (the only exemption a company marks). */
+  @IsBoolean()
+  exempt!: boolean;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @Length(5, 300)
+  reason?: string;
+}
+
+/** PAY-19: a month's court-order deduction paid to the court. */
+export class RemittanceDto {
+  @Matches(MONTH)
+  month!: string;
+
+  @trim()
+  @Matches(/^[A-Za-z0-9/ -]{3,60}$/, { message: 'The payment reference is 3 to 60 letters, digits, spaces, / or -.' })
+  reference!: string;
+}
+
 export class CourtOrderDto {
   @IsUUID()
   employeeId!: string;
@@ -284,4 +347,16 @@ export class CostRateListDto {
   @IsDefined()
   @Matches(MONTH)
   month!: string;
+}
+
+/** PAY-06 release (founder 29 Oct 2026): a reason (kept in the audit trail) and where the held pay goes. */
+export class HoldReleaseDto {
+  @trim()
+  @IsString()
+  @Length(5, 300)
+  reason!: string;
+
+  /** next_bank_file: the next bank file made for the held run pays it; offcycle: paid now, an off-cycle bank file from that run. */
+  @IsIn(['next_bank_file', 'offcycle'])
+  route!: 'next_bank_file' | 'offcycle';
 }

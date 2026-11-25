@@ -2,6 +2,9 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { HelpCentreScreen } from './helpdesk';
 import { ARTICLES, ASSISTANT_THREAD, MY_TICKETS } from './helpdesk-data';
 import { TODAY } from '../_kit/data';
+import { HELP_BANNERS, HELP_CHANNELS, HELP_CHAT, liveHelp } from './helpdesk-live-samples';
+import { RAISE_DESKS } from '../desk/data';
+import { RAISE_FIELDS } from '../desk/ticket-fields-sample';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-01 · Help centre', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -18,3 +21,22 @@ export const Loading: S = { render: () => <HelpCentreScreen articles={ARTICLES} 
 export const Error: S = { render: () => <HelpCentreScreen articles={ARTICLES} tickets={MY_TICKETS} today={TODAY} state="error" /> };
 export const Phone: S = { name: 'Help centre · phone', globals: PHONE, render: () => <HelpCentreScreen device="phone" articles={ARTICLES} tickets={MY_TICKETS} today={TODAY} /> };
 export const PhoneRaise: S = { name: 'Raise ticket · phone', globals: PHONE, render: () => <HelpCentreScreen device="phone" articles={ARTICLES} tickets={MY_TICKETS} today={TODAY} raiseOpen raiseSubject="Form 16 not visible" /> };
+
+// States only the real record has (Helpdesk design wiring, round 1): drawn in the same layout as the stories above.
+export const KnownIssue: S = { name: 'Known issue · Me too, reading aids and my data', render: () => <HelpCentreScreen live={liveHelp({ banners: HELP_BANNERS })} /> };
+export const ArticleOpen: S = { name: 'Article open · was it helpful, this solved it', render: () => <HelpCentreScreen live={liveHelp({ kb: { ...liveHelp().kb, openNumber: 12 } })} /> };
+export const ChatAndPhone: S = { name: 'Chat offer and help on WhatsApp or SMS', render: () => <HelpCentreScreen live={liveHelp({ chatPrompt: HELP_CHAT, channels: HELP_CHANNELS })} /> };
+// Answer 1643: after the stars, an optional reason from the desk's own list.
+export const RateWithReason: S = { name: 'Resolved ticket · rate with a reason', render: () => <HelpCentreScreen live={liveHelp()} /> };
+// Answer 1646: outside the desk's calendar the raise form says so, with the next opening time (the desk's own words).
+export const ClosedNow: S = { name: 'Raise ticket · the team is closed now', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: RAISE_DESKS.map((d) => ({ ...d, closed: { message: "We're closed now. We open again {opens}. You can still raise a ticket; we answer it when we open.", opensAt: '2026-10-13T03:30:00Z' } })) })} /> };
+// Answer 1662: a plain IT ticket asks "Which device?" when the person has devices assigned (the catalogue's picker).
+export const RaiseWhichDevice: S = { name: 'Raise ticket · which device? (IT desk)', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], askDevice: true }], onPickDevice: async () => [{ id: 'as1', label: 'Dell Latitude 5440 (KF-LT-0142)', detail: 'Laptop' }, { id: 'as2', label: 'Logitech headset (KF-HS-0077)', detail: 'Accessory' }] })} /> };
+// Answer 1801: people who may raise for others pick a colleague; "Which device?" follows that colleague.
+export const RaiseWhichApplication: S = { name: 'Raise ticket · which application? (IT desk, answer 2057)', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], apps: [{ id: 'a1', name: 'Tally Prime' }, { id: 'a2', name: 'Attendance devices' }] }] })} /> };
+export const RaiseOnBehalf: S = { name: 'Raise ticket · on behalf of a colleague', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [] }], onPickDevice: async () => [{ id: 'as9', label: 'HP EliteBook (KF-LT-0009)', detail: 'Laptop' }], onBehalf: { onPickPeople: async () => [{ id: 'p-ravi', label: 'Ravi Kumar', detail: 'Sales' }], onDesksFor: async () => [{ ...RAISE_DESKS[0], categories: [], askDevice: true }] } })} /> };
+// Answer 1842: the desk's own fields everyone sees (Office narrows Floor), filled when raising.
+export const RaiseDeskFields: S = { name: 'Raise ticket · the desk fields everyone fills', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], categories: [], fields: RAISE_FIELDS }] })} /> };
+// Answer 1911: a facilities desk asks where it is (the building, then a floor or area of it).
+export const RaiseWhereIsIt: S = { name: 'Raise ticket · where is it? (facilities desk)', render: () => <HelpCentreScreen live={liveHelp({ startRaise: true, desks: [{ ...RAISE_DESKS[0], id: 'd-fac', name: 'Facilities', categories: [], askPlace: true }], onPickPlace: async (kind) => (kind === 'locations' ? [{ id: 'l-blr', label: 'Bengaluru office', detail: 'BLR' }, { id: 'l-che', label: 'Chennai plant', detail: 'CHE' }] : [{ id: 'a-g', label: 'Ground floor', detail: null }, { id: 'a-2', label: '2nd floor', detail: null }]) })} /> };
+export const NoAccess: S = { name: 'No access (acting for someone else)', render: () => <HelpCentreScreen live={liveHelp({ state: 'no-access' })} /> };

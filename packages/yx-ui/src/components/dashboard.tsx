@@ -6,7 +6,8 @@ import { Heading, Icon, VisuallyHidden } from './foundations';
 import { Button, IconButton, Link } from './button';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from './menu';
 import { Badge, PersonLabel } from './display';
-import { EmptyState, Skeleton } from './feedback';
+import { EmptyState, InlineAlert, Skeleton } from './feedback';
+import { useToastIfAny } from './notify';
 
 /* ------------------------------------------------------------------ */
 /* Widget                                                               */
@@ -452,7 +453,11 @@ export interface NeedsActionListProps {
   /** Total waiting (may exceed items shown). */
   total?: number;
   viewAllHref: string;
-  onApprove?: (item: ActionItem) => void;
+  /**
+   * Inline Approve. When it returns a promise the list waits for it: done, the row leaves with a toast naming it;
+   * refused, the row stays and shows the server's reason. A second press while it runs does nothing.
+   */
+  onApprove?: (item: ActionItem) => void | Promise<unknown>;
   onReview?: (item: ActionItem) => void;
   /** Reference date for "Overdue" / "Due today"; defaults to now. */
   today?: Date;
@@ -476,8 +481,32 @@ function DueText({ due, today }: { due: Date; today: Date }) {
 }
 
 /** "Needs your action": first on every home (§22). Inline Approve / Review, then "View all". */
-export function NeedsActionList({ items, total = items.length, viewAllHref, onApprove, onReview, today = new Date(), loading, title = 'Needs your action' }: NeedsActionListProps) {
+export function NeedsActionList({ items: all, total: allTotal = all.length, viewAllHref, onApprove, onReview, today = new Date(), loading, title = 'Needs your action' }: NeedsActionListProps) {
   const id = useId();
+  const toaster = useToastIfAny();
+  const running = useRef(new Set<string>());
+  const [busy, setBusy] = useState<string[]>([]);
+  const [done, setDone] = useState<string[]>([]);
+  const [failed, setFailed] = useState<Record<string, string>>({});
+  const items = all.filter((it) => !done.includes(it.id));
+  const total = Math.max(0, allTotal - (all.length - items.length));
+  const approve = async (it: ActionItem) => {
+    // A ref, not state: two quick clicks land before a re-render, and only the first may send.
+    if (!onApprove || running.current.has(it.id)) return;
+    running.current.add(it.id);
+    setBusy((b) => [...b, it.id]);
+    setFailed((f) => Object.fromEntries(Object.entries(f).filter(([k]) => k !== it.id)));
+    try {
+      await onApprove(it);
+      setDone((d) => [...d, it.id]);
+      toaster?.toast({ tone: 'success', title: `Approved: ${it.type}${it.who.trim() ? ` for ${it.who}` : ''}`, description: it.title });
+    } catch (e) {
+      setFailed((f) => ({ ...f, [it.id]: e instanceof Error && e.message ? e.message : 'Not approved. Try again in a moment.' }));
+    } finally {
+      running.current.delete(it.id);
+      setBusy((b) => b.filter((x) => x !== it.id));
+    }
+  };
   return (
     <section className="yx-actions" aria-labelledby={id} aria-busy={loading || undefined}>
       <div className="yx-actions__header">
@@ -530,10 +559,15 @@ export function NeedsActionList({ items, total = items.length, viewAllHref, onAp
                   {it.due && <DueText due={it.due} today={today} />}
                   {it.note && <span className="yx-actions__note">{it.note}</span>}
                 </div>
+                {failed[it.id] && (
+                  <InlineAlert tone="danger" title="Not approved">
+                    {failed[it.id]}
+                  </InlineAlert>
+                )}
               </div>
               <div className="yx-actions__buttons">
                 {(it.kind ?? 'approve') === 'approve' && (
-                  <Button variant="approve" size="sm" icon={Check} onClick={() => onApprove?.(it)} aria-label={`Approve ${it.type.toLowerCase()} for ${it.who}`}>
+                  <Button variant="approve" size="sm" icon={Check} loading={busy.includes(it.id)} onClick={() => void approve(it)} aria-label={`Approve ${it.type.toLowerCase()} for ${it.who}`}>
                     Approve
                   </Button>
                 )}

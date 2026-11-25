@@ -3,11 +3,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantPrismaService, isOrganizationActive } from '@exam-platform/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Tx } from '../org-structure/org-structure.service';
-import { addDays, todayIst } from '../org-structure/org-validation';
+import { todayIst } from '../org-structure/org-validation';
 import { DeskActor, activeOn, audit, deskSystem, emit, has, isAgentOn, requireWork } from './desk-access';
 import { ArticleDto, ArticleMetaDto, BlockDto, CategoryDto, DraftDto, KbFeedbackDto, KbListQueryDto, KbSpaceDto, ReviewDto, TemplateDto } from './dto-kb';
 import { maskPii } from './pii';
-import { KbSource, countKb, forAcknowledgement, portalFor, prefixQuery, readerUrl, searchIn } from './kb-search';
+import { KbSource, STARTER_SYNONYMS, SYNONYMS_KEY, countKb, forAcknowledgement, parseSynonyms, portalFor, prefixQuery, readerUrl, searchIn, synonymsOf } from './kb-search';
 
 export { prefixQuery, type KbSource };
 import { PortalSession } from './portal.service';
@@ -23,7 +23,29 @@ import { Ticket, TicketsService } from './tickets.service';
 // them to published requester / public articles. Searches and views are counted without any user id (YX-GRO-07).
 
 export const KB_LANGUAGES = ['en', 'hi', 'ta', 'te'] as const;
-const REVIEW_MONTHS = 12; // YX-GRO-07: an article not reviewed for 12 months is flagged.
+/** "vpn,  VPN , remote" → "vpn, remote": trimmed, one space, no repeats (case-insensitive), in the order given. */
+export function keywordList(raw: string): string {
+  const seen = new Set<string>();
+  return raw
+    .split(',')
+    .map((w) => w.trim().replace(/\s+/g, ' '))
+    .filter((w) => w && !seen.has(w.toLowerCase()) && seen.add(w.toLowerCase()))
+    .join(', ');
+}
+
+// YX-GRO-07: a published article is checked again after the company's interval (registry desk.kb.review_months).
+export const REVIEW_KEY = 'desk.kb.review_months';
+export const PAGE_HELP_KEY = 'help.page_help';
+const REVIEW_CHOICES = [3, 6, 12, 24];
+const REVIEW_DEFAULT = 12;
+/** The stored value (text from the registry screen, or a number) as months; anything else is the default. */
+export const reviewMonthsOf = (v: unknown): number => (REVIEW_CHOICES.includes(Number(v)) ? Number(v) : REVIEW_DEFAULT);
+/** "2026-11-03" + n calendar months; the 31st becomes the month's last day (31 Jan + 1 → 28 or 29 Feb). */
+export function addMonthsIso(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m - 1 + n + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(y, m - 1 + n, Math.min(d, last))).toISOString().slice(0, 10);
+}
 const webOrigin = () => (process.env.WEB_ORIGIN ?? 'http://localhost:3000').replace(/\/$/, '');
 type Space = Prisma.SdKbSpaceGetPayload<object>;
 type Article = Prisma.SdKbArticleGetPayload<object>;
@@ -61,6 +83,12 @@ interface ReaderScope {
   source: KbSource;
   personId: string | null;
 }
+
+/** YX-11 (C-8): the platform company's knowledge-base space whose published articles every company sees in Help. */
+export const PLATFORM_HELP_SPACE = 'yukthix-help';
+
+/** Answer 1803: a search shows in "Searches that led to tickets" only once this many different people used it (a privacy floor, not a setting). */
+const MIN_SEARCH_PEOPLE = 2;
 
 @Injectable()
 export class KbService {
@@ -364,6 +392,9 @@ export class KbService {
       featured: r.featured,
       outdated: r.outdated,
       outdatedReason: r.outdatedReason,
+      keywords: r.keywords,
+      assistantUse: r.assistantUse,
+      pages: r.pages,
       version: r.version,
       updatedAt: r.updatedAt,
     };
@@ -388,6 +419,11 @@ export class KbService {
   /** A new article (draft, version 1), from a template if chosen, or a translation of an English article. */
   async create(a: DeskActor, dto: ArticleDto) {
     return this.tx(a, (tx) => this.createIn(tx, a, dto, null));
+  }
+
+  /** ITSM-3 (answer 1940): a known error's workaround as a draft article, in the caller's transaction. */
+  draftIn(tx: Tx, a: DeskActor, dto: ArticleDto, sourceTicketId: string) {
+    return this.createIn(tx, a, dto, sourceTicketId);
   }
 
   private async createIn(tx: Tx, a: DeskActor, dto: ArticleDto, sourceTicketId: string | null) {
@@ -428,7 +464,7 @@ export class KbService {
           ownerUserId: a.userId,
           title: dto.title,
           summary: dto.summary ?? null,
-          reviewDueOn: new Date(`${addDays(todayIst(), REVIEW_MONTHS * 30)}T00:00:00Z`),
+          reviewDueOn: new Date(`${addMonthsIso(todayIst(), await this.reviewMonths(tx, org))}T00:00:00Z`),
           sourceTicketId,
           createdBy: a.userId,
         },
@@ -480,6 +516,9 @@ export class KbService {
         ...(dto.expiresAt !== undefined ? { expiresAt: dto.expiresAt ? new Date(dto.expiresAt) : null } : {}),
         ...(dto.expiryAction ? { expiryAction: dto.expiryAction } : {}),
         ...(dto.ownerUserId ? { ownerUserId: dto.ownerUserId } : {}),
+        ...(dto.keywords !== undefined ? { keywords: keywordList(dto.keywords) || null } : {}),
+        ...(dto.assistantUse !== undefined ? { assistantUse: dto.assistantUse } : {}),
+        ...(dto.pages !== undefined ? { pages: dto.pages } : {}),
         version: { increment: 1 },
       };
       if (dto.slug && dto.slug !== art.slug) {
@@ -498,6 +537,78 @@ export class KbService {
       await tx.sdKbArticle.update({ where: { id: art.id }, data });
       await audit(tx, a, 'desk.kb.article_details_changed', 'sd_kb_article', art.id, { ...dto, version: undefined });
       return { ok: true };
+    });
+  }
+
+  private async reviewMonths(tx: Tx, org: string): Promise<number> {
+    const row = await tx.setting.findFirst({ where: { organizationId: org, key: REVIEW_KEY, scopeType: 'tenant', scopeId: org }, select: { value: true } });
+    return reviewMonthsOf(row?.value);
+  }
+
+  /** Help H-1 (answer 942): "Show page help" (company setting, on by default). */
+  private async pageHelpOn(tx: Tx, org: string): Promise<boolean> {
+    const row = await tx.setting.findFirst({ where: { organizationId: org, key: PAGE_HELP_KEY, scopeType: 'tenant', scopeId: org }, select: { value: true } });
+    return (row?.value ?? 'on') === 'on';
+  }
+
+  /** HLP-04: the company's review interval. Anyone who reads knowledge may see it; desk.desk.create changes it. */
+  async kbSettings(a: DeskActor) {
+    return this.tx(a, async (tx) => this.settingsView(tx, a.ctx.organizationId));
+  }
+
+  /** The KB settings as the Settings tab shows them; answer 1642: the search word list (the company's, or the starter list). */
+  private async settingsView(tx: Tx, org: string) {
+    return { reviewMonths: await this.reviewMonths(tx, org), choices: REVIEW_CHOICES, defaultMonths: REVIEW_DEFAULT, pageHelp: await this.pageHelpOn(tx, org), synonyms: (await synonymsOf(tx, org)).map((g) => g.join(', ')).join('\n'), synonymsDefault: STARTER_SYNONYMS };
+  }
+
+  async setKbSettings(a: DeskActor, dto: { reviewMonths?: number; pageHelp?: boolean; synonyms?: string }) {
+    if (dto.reviewMonths === undefined && dto.pageHelp === undefined && dto.synonyms === undefined) throw new BadRequestException('Nothing to change.');
+    let groups: string[][] | null = null;
+    if (dto.synonyms !== undefined) {
+      try {
+        groups = parseSynonyms(dto.synonyms);
+      } catch (e) {
+        throw new BadRequestException((e as Error).message);
+      }
+    }
+    return this.tx(a, async (tx) => {
+      const org = a.ctx.organizationId;
+      // Stored as the registry stores it (text), so Settings › registry shows the same value.
+      const put = async (key: string, value: string) => {
+        const where = { organizationId: org, key, scopeType: 'tenant', scopeId: org, validFrom: null };
+        const row = await tx.setting.findFirst({ where, select: { id: true } });
+        if (row) await tx.setting.update({ where: { id: row.id }, data: { value, updatedBy: a.userId } });
+        else await tx.setting.create({ data: { ...where, value, updatedBy: a.userId } });
+      };
+      if (dto.reviewMonths !== undefined) {
+        const from = await this.reviewMonths(tx, org);
+        await put(REVIEW_KEY, String(dto.reviewMonths));
+        await audit(tx, a, 'desk.kb.settings_changed', 'setting', REVIEW_KEY, { reviewMonths: { from, to: dto.reviewMonths } });
+      }
+      if (dto.pageHelp !== undefined) {
+        const from = await this.pageHelpOn(tx, org);
+        await put(PAGE_HELP_KEY, dto.pageHelp ? 'on' : 'off');
+        await audit(tx, a, 'desk.kb.settings_changed', 'setting', PAGE_HELP_KEY, { pageHelp: { from, to: dto.pageHelp } });
+      }
+      if (groups) {
+        const from = (await synonymsOf(tx, org)).length;
+        await put(SYNONYMS_KEY, groups.map((g) => g.join(', ')).join('\n'));
+        await audit(tx, a, 'desk.kb.settings_changed', 'setting', SYNONYMS_KEY, { synonymGroups: { from, to: groups.length } });
+      }
+      return this.settingsView(tx, org);
+    });
+  }
+
+  /** HLP-04 "Mark reviewed": the owner checked a published article still holds; the next check is due after the company's interval. */
+  async markReviewed(a: DeskActor, id: string, version: number) {
+    return this.tx(a, async (tx) => {
+      const { art } = await this.article(tx, a, id, 'author');
+      if (version !== art.version) throw new ConflictException({ statusCode: 409, code: 'KB_ARTICLE_CHANGED', message: 'Someone changed this article. Reload to see the latest.' });
+      if (art.state !== 'published') throw new BadRequestException('Only a published article is marked reviewed. Send this one for review instead.');
+      const reviewDueOn = addMonthsIso(todayIst(), await this.reviewMonths(tx, a.ctx.organizationId));
+      await tx.sdKbArticle.update({ where: { id: art.id }, data: { reviewDueOn: new Date(`${reviewDueOn}T00:00:00Z`), version: { increment: 1 } } });
+      await audit(tx, a, 'desk.kb.article_reviewed', 'sd_kb_article', art.id, { before: art.reviewDueOn?.toISOString().slice(0, 10) ?? null, after: reviewDueOn });
+      return { reviewDueOn };
     });
   }
 
@@ -834,6 +945,83 @@ export class KbService {
     return this.asReader(r.ctx.organizationId, 'requester', async (tx) => this.suggestFor(tx, { org: r.ctx.organizationId, spaceIds: await this.employeeScope(tx, r.ctx.organizationId), source, personId: null }, q, true));
   }
 
+  /**
+   * Help H-1 (answer 942): the Help drawer's "This page": published articles the person may read whose pages include the
+   * route (a page and every page under it), the closest page first, then featured, then by number; at most 6. Nothing
+   * when the company turned page help off (on: false hides the tab).
+   */
+  async employeePage(r: Requester, route: string, language?: string) {
+    return this.asReader(r.ctx.organizationId, 'requester', async (tx) => {
+      const org = r.ctx.organizationId;
+      if (!(await this.pageHelpOn(tx, org))) return { on: false, articles: [] };
+      const prefixes = route.split('/').slice(2).map((_, i, parts) => `/yx/${parts.slice(0, i + 1).join('/')}`);
+      const rows = await tx.sdKbArticle.findMany({
+        where: { organizationId: org, spaceId: { in: await this.employeeScope(tx, org) }, state: 'published', deletedAt: null, translationOfId: null, pages: { hasSome: prefixes } },
+        select: { id: true, number: true, slug: true, title: true, summary: true, featured: true, pages: true },
+        take: 50,
+      });
+      const depth = (p: string[]) => Math.max(...p.filter((x) => prefixes.includes(x)).map((x) => x.length));
+      rows.sort((a, b) => depth(b.pages) - depth(a.pages) || Number(b.featured) - Number(a.featured) || a.number - b.number);
+      const top = rows.slice(0, 6);
+      // Answer 964: each article in the person's language when a published translation exists, else the original.
+      const tr = language && language !== 'en' && top.length ? await tx.sdKbArticle.findMany({ where: { organizationId: org, translationOfId: { in: top.map((x) => x.id) }, language, state: 'published', deletedAt: null }, select: { id: true, number: true, slug: true, title: true, summary: true, translationOfId: true } }) : [];
+      const own = top.map((o) => tr.find((t) => t.translationOfId === o.id) ?? o).map(({ id, number, slug, title, summary }) => ({ id, number, slug, title, summary }));
+      // Console C-8 (YX-11, answer 1057): YukthiX's own articles for the page, after the company's; a page the company
+      // explains itself shows only the company's (its article wins).
+      const covered = new Set(rows.flatMap((r) => r.pages.filter((x) => prefixes.includes(x))));
+      const yukthix = own.length >= 6 ? [] : (await this.platformPageArticles(prefixes)).filter((x) => !x.pages.some((p) => covered.has(p)));
+      return { on: true, articles: [...own, ...yukthix.slice(0, 6 - own.length).map(({ pages: _pages, ...x }) => x)] };
+    });
+  }
+
+  private platformOrgId: string | null | undefined;
+  /** The YukthiX (platform) company, or null when it is not set up here. */
+  async platformOrg(): Promise<string | null> {
+    if (this.platformOrgId !== undefined) return this.platformOrgId;
+    const o = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) => tx.organization.findFirst({ where: { isPlatform: true }, select: { id: true, slug: true } }));
+    this.platformOrgId = o?.id ?? null;
+    return this.platformOrgId;
+  }
+
+  /**
+   * YX-11: YukthiX's published help articles for these pages (the platform company's "YukthiX help" space, public): read
+   * in the platform company's own context, never the reader's. Each links to the public help centre.
+   */
+  private async platformPageArticles(prefixes: string[]) {
+    const org = await this.platformOrg();
+    if (!org || !prefixes.length) return [];
+    return this.tenantPrisma.forTenant({ organizationId: org, isSuperAdmin: false }, async (tx) => {
+      const space = await tx.sdKbSpace.findFirst({ where: { organizationId: org, slug: PLATFORM_HELP_SPACE, audience: 'public', status: 'active' } });
+      const o = await tx.organization.findUnique({ where: { id: org }, select: { slug: true } });
+      if (!space || !o) return [];
+      const rows = await tx.sdKbArticle.findMany({ where: { organizationId: org, spaceId: space.id, state: 'published', deletedAt: null, translationOfId: null, pages: { hasSome: prefixes } }, select: { id: true, number: true, slug: true, title: true, summary: true, pages: true, featured: true }, take: 50 });
+      const depth = (p: string[]) => Math.max(...p.filter((x) => prefixes.includes(x)).map((x) => x.length));
+      rows.sort((a, b) => depth(b.pages) - depth(a.pages) || Number(b.featured) - Number(a.featured) || a.number - b.number);
+      return rows.map((r) => ({ id: r.id, number: r.number, slug: r.slug, title: r.title, summary: r.summary, pages: r.pages, source: 'yukthix' as const, href: `/yx/help/${o.slug}/${space.slug}/${r.slug}` }));
+    });
+  }
+
+  /**
+   * Ask YukthiX (answer 2103): the approved YukthiX help articles for a question, with their text: published, in the
+   * platform company's public "YukthiX help" space, marked "Use in assistant answers". Read in the platform company's
+   * own public-reader context, never the asker's. Each links to the public help centre.
+   */
+  async assistantSources(q: string, take = 6): Promise<{ id: string; number: number; title: string; href: string; text: string }[]> {
+    const org = await this.platformOrg();
+    if (!org || !q.trim()) return [];
+    return this.asReader(org, 'public', async (tx) => {
+      const space = await tx.sdKbSpace.findFirst({ where: { organizationId: org, slug: PLATFORM_HELP_SPACE, audience: 'public', status: 'active' } });
+      const o = await tx.organization.findUnique({ where: { id: org }, select: { slug: true } });
+      if (!space || !o) return [];
+      const found = await searchIn(tx, org, [space.id], q, take);
+      if (!found.length) return [];
+      const rows = await tx.sdKbArticle.findMany({ where: { organizationId: org, id: { in: found.map((f) => f.id) }, state: 'published', deletedAt: null, assistantUse: true }, select: { id: true, number: true, slug: true, title: true, summary: true, bodyText: true } });
+      const order = new Map(found.map((f, i) => [f.id, i]));
+      rows.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+      return rows.map((r) => ({ id: r.id, number: r.number, title: r.title, href: `/yx/help/${o.slug}/${space.slug}/${r.slug}`, text: [r.summary, r.bodyText].filter(Boolean).join('\n\n').slice(0, 8000) }));
+    });
+  }
+
   async employeeHome(r: Requester) {
     return this.asReader(r.ctx.organizationId, 'requester', async (tx) => {
       const org = r.ctx.organizationId;
@@ -967,7 +1155,7 @@ export class KbService {
 
   // ------------------------------------------------------------------------------------------ reports (US-G-024, US-G-223)
 
-  /** Searches with no result, searches nobody clicked, and solved tickets with no article, by topic. */
+  /** Searches with no result, searches nobody clicked, solved tickets with no article (by topic), and articles that led to tickets. */
   async contentGaps(a: DeskActor, from: string, to: string) {
     if (!has(a, 'desk.report.view') && !has(a, 'desk.kb.publish')) throw new ForbiddenException('You cannot see knowledge reports.');
     return this.tx(a, async (tx) => {
@@ -992,7 +1180,20 @@ export class KbService {
           AND NOT t.sensitive AND NOT t.private
           AND NOT EXISTS (SELECT 1 FROM sd_kb_links l WHERE l.organization_id = t.organization_id AND l.ticket_id = t.id)
         GROUP BY d.name, c.name ORDER BY tickets DESC LIMIT 50`;
-      return { noResult, noClick, noArticle };
+      // Answer 1647: articles people were reading when they still raised a ticket (counts only, never the tickets).
+      const ledToTickets = await tx.$queryRaw<{ articleId: string; number: number; title: string; tickets: number }[]>`
+        SELECT a.id AS "articleId", a.number, a.title, count(*)::int AS tickets FROM sd_tickets t
+        JOIN sd_kb_articles a ON a.organization_id = t.organization_id AND a.id = t.origin_article_id
+        WHERE t.organization_id = ${org}::uuid AND t.created_at >= ${from}::date AND t.created_at < ${to}::date + 1 AND a.deleted_at IS NULL
+        GROUP BY a.id, a.number, a.title ORDER BY tickets DESC, a.number LIMIT 50`;
+      // Answer 1684: the words people searched before they still raised a ticket (counts only, same words counted together).
+      // Answer 1803: only words at least 2 different people used, so one person's own words never show.
+      const searchesToTickets = await tx.$queryRaw<{ query: string; tickets: number }[]>`
+        SELECT lower(btrim(t.origin_query)) AS query, count(*)::int AS tickets FROM sd_tickets t
+        WHERE t.organization_id = ${org}::uuid AND t.created_at >= ${from}::date AND t.created_at < ${to}::date + 1 AND t.origin_query IS NOT NULL
+        GROUP BY lower(btrim(t.origin_query)) HAVING count(DISTINCT t.requester_person_id) >= ${MIN_SEARCH_PEOPLE}
+        ORDER BY tickets DESC, query LIMIT 50`;
+      return { noResult, noClick, noArticle, ledToTickets, searchesToTickets };
     });
   }
 

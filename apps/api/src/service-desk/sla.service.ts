@@ -8,7 +8,8 @@ import { REDIS_CONNECTION, logBullErrors, bullOpts } from '../jobs/redis-connect
 import { Tx } from '../org-structure/org-structure.service';
 import { addDays, todayIst } from '../org-structure/org-validation';
 import { approvedLeaveOfUsers } from '../time/time-core';
-import { CalendarSpec, businessSecondsBetween } from './business-time';
+import { CalendarSpec, businessSecondsBetween, nextOpening } from './business-time';
+import { moveCount, onHoldSeconds, replyGaps } from './ticket-timing';
 import { DeskActor, activeOn, audit, deskSystem, emit, has, isLead, requireSetUp, requireWork } from './desk-access';
 import { ComplianceTargetsDto, SlaPolicyDto, SlaVersionDto, UpdateSlaPolicyDto } from './dto';
 import {
@@ -38,6 +39,23 @@ export const SLA_QUEUE = 'sd-sla';
 type Timer = Prisma.SdSlaTimerGetPayload<object>;
 type Version = Prisma.SdSlaPolicyVersionGetPayload<object>;
 type TicketRow = Prisma.SdTicketGetPayload<object>;
+export interface ClockView {
+  usedMinutes: number;
+  targetMinutes: number;
+  paused: boolean;
+  /** The desk's at-risk point: a clock is at risk once this share of its target is used (Desk set-up, default 80). */
+  atRiskPercent: number;
+}
+
+/** A desk's at-risk point unless it chose another (Desk set-up; the choices are AT_RISK_CHOICES in dto.ts). */
+export const AT_RISK_DEFAULT = 80;
+
+/** The one rule for a live clock: paused while waiting, missed at 100 %, at risk from the desk's at-risk point. */
+export function clockState(c: Pick<ClockView, 'usedMinutes' | 'targetMinutes' | 'paused'> & { atRiskPercent?: number }): 'on-track' | 'at-risk' | 'breached' | 'paused' {
+  if (c.paused) return 'paused';
+  if (c.usedMinutes >= c.targetMinutes) return 'breached';
+  return c.usedMinutes * 100 >= c.targetMinutes * (c.atRiskPercent ?? AT_RISK_DEFAULT) ? 'at-risk' : 'on-track';
+}
 const H24: CalendarSpec = { zone: 'UTC', hours: [1, 2, 3, 4, 5, 6, 7].map((weekday) => ({ weekday, startMinute: 0, endMinute: 1440, validFrom: '2000-01-01', validTo: null })), holidays: [] };
 const LIVE = ['running', 'paused'];
 const DONE = ['solved', 'closed'];
@@ -82,6 +100,13 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ------------------------------------------------------------------------------------------ calendars
+
+  /** Answer 1646: while the desk's calendar is closed, its message and next opening; null while open (or no calendar). */
+  async closedNow(tx: Tx, org: string, desk: { calendarId: string | null; closedMessage: string }, now = new Date(), cache?: Map<string, CalendarSpec>) {
+    if (!desk.calendarId) return null;
+    const opens = nextOpening(await this.calendarSpec(tx, org, desk.calendarId, cache), now);
+    return opens ? { message: desk.closedMessage, opensAt: opens } : null;
+  }
 
   async calendarSpec(tx: Tx, org: string, calendarId: string | null, cache = new Map<string, CalendarSpec>()): Promise<CalendarSpec> {
     if (!calendarId) return H24;
@@ -594,6 +619,7 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
     const events = await tx.sdSlaTimerEvent.findMany({ where: { organizationId: org, ticketId: t.id }, orderBy: { at: 'asc' } });
     const groups = new Map((await tx.sdGroup.findMany({ where: { organizationId: org, deskId: t.deskId }, select: { id: true, name: true } })).map((g) => [g.id, g.name]));
     const cache = new Map<string, CalendarSpec>();
+    const point = (await tx.sdDesk.findFirst({ where: { organizationId: org, id: t.deskId }, select: { atRiskPercent: true } }))?.atRiskPercent ?? AT_RISK_DEFAULT;
     const out = [];
     for (const x of timers) {
       const mine = events.filter((e) => e.timerId === x.id);
@@ -612,6 +638,7 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
         metAt: x.metAt,
         targetSeconds: x.targetSeconds,
         usedSeconds: used,
+        atRiskPercent: point,
         percent: Math.round((used * 100) / x.targetSeconds),
         pauseReason: x.pauseReason,
         breachReason: x.breachReason,
@@ -623,6 +650,41 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
       });
     }
     return out;
+  }
+
+  /**
+   * Answer 1648: fuller timing for one ticket (agents only): the average wait for an agent reply, time on hold, how many
+   * times it moved (queue or owner) and the agents involved. Business time on the calendar of the ticket's resolution
+   * target (the same clock as the SLA), else round the clock.
+   */
+  async ticketTiming(tx: Tx, a: DeskActor, t: TicketRow, now = new Date()) {
+    const org = a.ctx.organizationId;
+    const [timer, messages, events, statuses, time] = await Promise.all([
+      tx.sdSlaTimer.findFirst({ where: { organizationId: org, ticketId: t.id, metric: 'resolution' }, orderBy: { createdAt: 'desc' }, select: { calendarId: true } }),
+      tx.sdTicketMessage.findMany({ where: { organizationId: org, ticketId: t.id, kind: { in: ['reply', 'note'] }, sideConversationId: null }, select: { kind: true, side: true, authorUserId: true, createdAt: true } }),
+      tx.sdTicketEvent.findMany({ where: { organizationId: org, ticketId: t.id, kind: { in: ['assigned', 'group_changed', 'status_changed'] } }, orderBy: { at: 'asc' }, select: { kind: true, fromValue: true, toValue: true, at: true } }),
+      tx.sdStatus.findMany({ where: { organizationId: org, deskId: t.deskId }, select: { id: true, systemState: true } }),
+      tx.sdTimeEntry.findMany({ where: { organizationId: org, ticketId: t.id }, select: { userId: true } }),
+    ]);
+    const cal = await this.calendarSpec(tx, org, timer?.calendarId ?? null);
+    const state = new Map(statuses.map((x) => [x.id, x.systemState]));
+    const changes = events.filter((e) => e.kind === 'status_changed');
+    const first = changes[0]?.fromValue ?? t.statusId;
+    const spans = [{ at: t.createdAt, onHold: state.get(first) === 'on_hold' }, ...changes.map((e) => ({ at: e.at, onHold: state.get(e.toValue ?? '') === 'on_hold' }))];
+    const replies = replyGaps(cal, t.createdAt, messages.filter((m) => m.kind === 'reply').map((m) => ({ side: m.side, at: m.createdAt })));
+    const agentIds = [
+      ...messages.filter((m) => m.side === 'agent').map((m) => m.authorUserId),
+      ...events.filter((e) => e.kind === 'assigned').flatMap((e) => [e.fromValue, e.toValue]),
+      ...time.map((x) => x.userId),
+    ].filter((x): x is string => Boolean(x));
+    const names = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: [...new Set(agentIds)] } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name || u.email]));
+    return {
+      averageReplySeconds: replies.average,
+      agentReplies: replies.count,
+      onHoldSeconds: onHoldSeconds(cal, spans, now),
+      moves: moveCount(events),
+      agents: [...new Set(agentIds)].map((id) => names.get(id)).filter((x): x is string => Boolean(x)).sort((x, y) => x.localeCompare(y)),
+    };
   }
 
   /** US-G-015: the agent says why a target was missed. */
@@ -654,6 +716,29 @@ export class SlaService implements OnModuleInit, OnModuleDestroy {
   async requesterDue(tx: Tx, org: string, ticketId: string): Promise<{ resolveBy: Date | null; paused: boolean } | null> {
     const x = await tx.sdSlaTimer.findFirst({ where: { organizationId: org, ticketId, kind: 'sla', metric: 'resolution', state: { in: LIVE } } });
     return x ? { resolveBy: x.state === 'running' ? x.dueAt : null, paused: x.state === 'paused' } : null;
+  }
+
+  /**
+   * HLP-01 "My tickets": the same resolution promise for many tickets at once, as minutes used of the target (business
+   * time on the desk's calendar, so it matches the agent's clock). Only the resolution timer, never internal ones.
+   */
+  async requesterClocks(tx: Tx, org: string, ticketIds: string[], now = new Date()): Promise<Map<string, ClockView>> {
+    return new Map([...(await this.clocks(tx, org, ticketIds, ['resolution'], now))].map(([id, c]) => [id, c.resolution!]));
+  }
+
+  /** HLP-02 agent desk: the live response and resolution timers of many tickets (business minutes used of the target). */
+  async clocks(tx: Tx, org: string, ticketIds: string[], metrics: ('first_response' | 'resolution')[], now = new Date()): Promise<Map<string, Partial<Record<'first_response' | 'resolution', ClockView>>>> {
+    const out = new Map<string, Partial<Record<'first_response' | 'resolution', ClockView>>>();
+    if (!ticketIds.length) return out;
+    const cache = new Map<string, CalendarSpec>();
+    const timers = await tx.sdSlaTimer.findMany({ where: { organizationId: org, ticketId: { in: ticketIds }, kind: 'sla', metric: { in: metrics }, state: { in: LIVE } } });
+    const desks = await tx.sdDesk.findMany({ where: { organizationId: org, id: { in: [...new Set(timers.map((x) => x.deskId))] } }, select: { id: true, atRiskPercent: true } });
+    const point = new Map(desks.map((d) => [d.id, d.atRiskPercent]));
+    for (const x of timers) {
+      const used = elapsed(await this.specFor(tx, x, cache), this.clock(x), now);
+      out.set(x.ticketId, { ...out.get(x.ticketId), [x.metric]: { usedMinutes: Math.floor(used / 60), targetMinutes: Math.round(x.targetSeconds / 60), paused: x.state === 'paused', atRiskPercent: point.get(x.deskId) ?? AT_RISK_DEFAULT } });
+    }
+    return out;
   }
 
   // ------------------------------------------------------------------------------------------ compliance (US-G-015)

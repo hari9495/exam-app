@@ -1,6 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { DirectoryPhone, DirectoryScreen, type LiveDirectory } from './directory';
 import { ME, WORKFORCE } from './people-data';
+import { HireDrawer } from '../history';
+import { OPTIONS } from '../history/data';
+import { date, pick, play, press, tick, type } from './popup-play';
 
 const meta: Meta = { title: 'Screens/People/PPL-01 · Directory', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -43,3 +46,29 @@ export const LiveHrTrend: S = {
 };
 export const LiveEmployee: S = { name: 'Live · employee (quick chips from the person)', render: () => <DirectoryScreen persona="emp" rows={LIVE_ROWS} live={live({ cards: { Employee: { count: count('Employee'), delta: null } } })} /> };
 export const LivePhone: S = { name: 'Live · phone', ...phone, render: () => <DirectoryPhone rows={LIVE_ROWS} live={{ me: ME, persona: 'emp' }} /> };
+
+// Add person (People › Directory): the live drawer with the job-change options.
+const ENTITIES = [{ value: 'le-kfpl', label: 'Kaveri Foods Pvt Ltd' }, { value: 'le-tn', label: 'Kaveri Foods Pvt Ltd (Tamil Nadu)' }];
+const hire = (onSubmit: Parameters<typeof HireDrawer>[0]['onSubmit'] = async () => ({ id: 'p-new' })) => <HireDrawer options={OPTIONS} legalEntities={ENTITIES} onSubmit={onSubmit} onClose={() => undefined} />;
+const fillHire = [
+  type(/^First name/, 'Kavya'),
+  type(/^Last name/, 'Reddy'),
+  type(/^Work email/, 'kavya.reddy@kaverifoods.test'),
+  pick('Legal entity', 'Kaveri Foods Pvt Ltd'),
+  date('Joins on', '01 Feb 2027'),
+  pick('Location', 'Bengaluru head office'),
+  pick('Department', 'Quality'),
+  pick('Designation', 'Quality Analyst'),
+  pick('Employment type', 'Permanent'),
+  pick('Cost centre', /CC-BLR-ENG/),
+  type(/^Reason(?! for)/, 'Offer KF/OFR/2026/0311 accepted'),
+];
+const sameEmail = async () => {
+  throw Object.assign(new Error('This email already belongs to someone here.'), { code: 'POSSIBLE_SAME_PERSON', body: { personIds: ['p-kavya-2023'] } });
+};
+export const Hire: S = { name: 'Add person · open', render: () => hire() };
+export const HireFilled: S = { name: 'Add person · filled', render: () => hire(), play: play(...fillHire) };
+export const HireMissing: S = { name: 'Add person · Add pressed with nothing filled', render: () => hire(), play: play(press('Add person')) };
+export const HireSamePerson: S = { name: 'Add person · email already on record, Link pressed without the check', render: () => hire(sameEmail), play: play(...fillHire, press('Add person'), press('Link and add')) };
+export const HireSamePersonChecked: S = { name: 'Add person · same person checked, ready to link', render: () => hire(sameEmail), play: play(...fillHire, press('Add person'), tick(/same person/)) };
+export const HireFailed: S = { name: 'Add person · the server refuses', render: () => hire(async () => { throw new Error('Employee code KF-0611 is already used.'); }), play: play(...fillHire, press('Add person')) };

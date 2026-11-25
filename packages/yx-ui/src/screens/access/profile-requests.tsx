@@ -26,6 +26,8 @@ export interface ProfileRequestsScreenProps {
   onApprove: (id: string, overrideReason?: string) => Promise<void>;
   onReject: (id: string, reason: string) => Promise<void>;
   onOpenProfile: (employeeId: string) => void;
+  /** PPL-32: downloads the proof the person attached. */
+  onProof: (documentId: string) => Promise<void>;
 }
 
 type Show = 'waiting' | 'done';
@@ -33,7 +35,7 @@ type Ask = { kind: 'approve' | 'reject'; row: ProfileRequest };
 const STATUS_TONE = { approved: 'success', rejected: 'neutral', cancelled: 'neutral', pending: 'warning' } as const;
 const STATUS_LABEL = { approved: 'Approved', rejected: 'Rejected', cancelled: 'Withdrawn', pending: 'Waiting' } as const;
 
-function DecideDialog({ ask, onApprove, onReject, onClose }: { ask: Ask; onApprove: ProfileRequestsScreenProps['onApprove']; onReject: ProfileRequestsScreenProps['onReject']; onClose: () => void }) {
+function DecideDialog({ ask, onApprove, onReject, onProof, onClose }: { ask: Ask; onApprove: ProfileRequestsScreenProps['onApprove']; onReject: ProfileRequestsScreenProps['onReject']; onProof: ProfileRequestsScreenProps['onProof']; onClose: () => void }) {
   const [reason, setReason] = useState('');
   const [duplicate, setDuplicate] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +77,17 @@ function DecideDialog({ ask, onApprove, onReject, onClose }: { ask: Ask; onAppro
       }
     >
       <Text as="p">{`${shown(r.current)} → ${shown(r.proposed)}`}</Text>
-      <Text as="p" tone="secondary" size="sm">{`Reason given: ${r.reason}`}</Text>
+      {r.reason && <Text as="p" tone="secondary" size="sm">{`Reason given: ${r.reason}`}</Text>}
+      {r.effectiveOn && <Text as="p" tone="secondary" size="sm">{`Effective from ${dateLabel(r.effectiveOn)}`}</Text>}
+      {r.proofDocumentId ? (
+        <div>
+          <Button size="sm" onClick={() => void onProof(r.proofDocumentId!).catch((e) => setError(errorText(e)))}>
+            Open the proof
+          </Button>
+        </div>
+      ) : (
+        <Text as="p" tone="secondary" size="sm">No proof attached.</Text>
+      )}
       {duplicate && <InlineAlert tone="warning" title="This value is already on another record">{duplicate}</InlineAlert>}
       {needsReason && (
         <FormField id="pr-reason" label={approving ? 'Why approve it anyway' : 'Reason'} required>
@@ -87,7 +99,7 @@ function DecideDialog({ ask, onApprove, onReject, onClose }: { ask: Ask; onAppro
   );
 }
 
-export function ProfileRequestsScreen({ state, onRetry, rows, canDecide, onApprove, onReject, onOpenProfile }: ProfileRequestsScreenProps) {
+export function ProfileRequestsScreen({ state, onRetry, rows, canDecide, onApprove, onReject, onOpenProfile, onProof }: ProfileRequestsScreenProps) {
   const [show, setShow] = useState<Show>('waiting');
   const [ask, setAsk] = useState<Ask | null>(null);
   const shownRows = rows.filter((r) => (show === 'waiting' ? r.status === 'pending' : r.status !== 'pending'));
@@ -112,7 +124,7 @@ export function ProfileRequestsScreen({ state, onRetry, rows, canDecide, onAppro
       render: (r) => (
         <span className="yx-auth__item-main">
           <Text>{`${r.requestedBy ?? '—'} · ${dateLabel(r.requestedAt.slice(0, 10))}`}</Text>
-          <Text tone="secondary" size="sm">{r.reason}</Text>
+          {r.reason && <Text tone="secondary" size="sm">{r.reason}</Text>}
         </span>
       ),
       width: 260,
@@ -156,7 +168,7 @@ export function ProfileRequestsScreen({ state, onRetry, rows, canDecide, onAppro
           />
         </>
       )}
-      {ask && <DecideDialog key={ask.row.id} ask={ask} onApprove={onApprove} onReject={onReject} onClose={() => setAsk(null)} />}
+      {ask && <DecideDialog key={ask.row.id} ask={ask} onApprove={onApprove} onReject={onReject} onProof={onProof} onClose={() => setAsk(null)} />}
     </div>
   );
 }

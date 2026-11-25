@@ -6,11 +6,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
-import { RequirePermissions } from '../rbac/permissions.decorator';
+import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { MODERATE_UPLOAD_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
-import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, ProjectDto, RegisterQueryDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
+import { ActiveDto, ConsentDto, EligibilityOverrideDto, MonthQueryDto, NightConfirmDto, NightOptInDto, OtClaimDto, OtPlanDto, OtRuleDto, OverrideDto, PatternAssignDto, PatternDto, PeriodDto, RegisterQueryDto, RosterBulkDto, RosterCellsDto, RosterCopyDto, SafeguardDto, ShiftDetailsDto, ShiftDto, ShiftTimesDto, SwapDto, TimesheetDto, UnlockDto, WeekQueryDto, WithdrawConsentDto, YearQueryDto, MonthEntityQueryDto, YearEntityQueryDto } from './dto';
 import { LeaveService } from './leave.service';
+import { RosterPublishDto } from './roster-ops.dto';
 import { NightWorkService } from './night-work.service';
 import { OvertimeService } from './overtime.service';
 import { PeriodsService } from './periods.service';
@@ -22,7 +23,7 @@ import { TimesheetService } from './timesheet.service';
 //                                  and consents (opt-in, confirm with a one-time code, withdraw)
 //   implicit (YX-SEC-04)           a manager plans and publishes their team's roster and sees its overtime
 //   roster.manage                  HR plans and publishes rosters of the people in scope
-//   leave.settings.manage          company-wide set-up: shifts, patterns, OT rules, projects, night-work records
+//   leave.settings.manage          company-wide set-up: shifts, patterns, OT rules, night-work records (projects: Projects P-1)
 //   leave.approve                  HR overrides an OT limit with a reason (never one's own)
 //   leave.eligibility.override     HR lets a person through a leave eligibility check with a reason
 //   attendance.view                HR: overtime review, the payroll feed preview and the registers of people in scope
@@ -109,17 +110,7 @@ export class TimeOpsController {
     return this.overtime.removeRule(ctx, this.user(req), id);
   }
 
-  @Post('projects')
-  @RequirePermissions('leave.settings.manage')
-  createProject(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ProjectDto) {
-    return this.timesheets.createProject(ctx, this.user(req), dto);
-  }
-
-  @Put('projects/:id')
-  @RequirePermissions('leave.settings.manage')
-  updateProject(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ProjectDto) {
-    return this.timesheets.updateProject(ctx, this.user(req), id, dto);
-  }
+  // Projects P-1 (answer 1402): Time's project editor moved to Projects (POST|PUT /projects).
 
   @Post('night/consents')
   @RequirePermissions('leave.settings.manage')
@@ -153,6 +144,14 @@ export class TimeOpsController {
     return this.roster.setCells(ctx, this.user(req), dto.cells);
   }
 
+  /** Batch A B6 (answer 2316): change shift, weekly off or penalty policy for the ticked people from a date. */
+  @Post('roster/bulk')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  rosterBulk(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RosterBulkDto) {
+    return this.roster.bulk(ctx, this.user(req), dto);
+  }
+
   @Post('roster/copy')
   @HttpCode(200)
   rosterCopy(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RosterCopyDto) {
@@ -161,8 +160,14 @@ export class TimeOpsController {
 
   @Post('roster/publish')
   @HttpCode(200)
-  rosterPublish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: WeekQueryDto) {
-    return this.roster.publish(ctx, this.user(req), dto.week);
+  rosterPublish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RosterPublishDto) {
+    return this.roster.publish(ctx, this.user(req), dto.week, 14, dto.reason);
+  }
+
+  // TIM-05 Staff: my week, and my team's published roster when the company allows it (roster.staff_see_team).
+  @Get('roster/team')
+  rosterTeam(@CurrentTenant() ctx: TenantContext, @Query() q: WeekQueryDto) {
+    return this.roster.team(ctx, q.week);
   }
 
   // ------------------------------------------------------------------------------------------ me
@@ -227,6 +232,26 @@ export class TimeOpsController {
     return this.overtime.claim(ctx, this.user(req), dto);
   }
 
+  /** TIM-07 Ot: ask ahead for overtime; the manager approves through P03. */
+  @Post('me/overtime/plans')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  planOvertime(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OtPlanDto) {
+    return this.overtime.plan(ctx, this.user(req), dto);
+  }
+
+  @Post('me/overtime/plans/:id/withdraw')
+  @HttpCode(200)
+  withdrawPlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.overtime.withdrawPlan(ctx, this.user(req), id);
+  }
+
+  /** TIM-07 Ot: a manager (or leave.approve over the person) pre-approves overtime for someone; approved at once. */
+  @Post('team/overtime/plans/:employeeId')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  planOvertimeFor(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Body() dto: OtPlanDto) {
+    return this.overtime.planFor(ctx, this.user(req), employeeId, dto);
+  }
+
   @Post('me/overtime/:id/withdraw')
   @HttpCode(200)
   withdrawClaim(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
@@ -236,6 +261,12 @@ export class TimeOpsController {
   @Get('me/timesheet')
   myWeek(@CurrentTenant() ctx: TenantContext, @Query() q: WeekQueryDto) {
     return this.timesheets.week(ctx, q.week);
+  }
+
+  // Keka ideas (2026-11): my weeks of a year (hours and status), for the Time summary.
+  @Get('me/timesheet/summary')
+  myYear(@CurrentTenant() ctx: TenantContext, @Query() q: YearQueryDto) {
+    return this.timesheets.summary(ctx, Number(q.year));
   }
 
   @Put('me/timesheet')
@@ -277,13 +308,13 @@ export class TimeOpsController {
   }
 
   @Get('periods')
-  @RequirePermissions('attendance.lock')
+  @RequireAnyPermission('attendance.lock', 'attendance.lock.approve')
   periodsOf(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: YearEntityQueryDto) {
     return this.periods.periods(ctx, this.user(req), q.year, q.legalEntityId);
   }
 
   @Get('periods/preflight')
-  @RequirePermissions('attendance.lock')
+  @RequireAnyPermission('attendance.lock', 'attendance.lock.approve')
   preflight(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PeriodDto) {
     return this.periods.preflight(ctx, this.user(req), q.legalEntityId, q.month);
   }

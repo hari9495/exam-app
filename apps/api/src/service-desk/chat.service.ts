@@ -7,6 +7,7 @@ import { RuleError } from '../rules-engine/conditions';
 import { EMPTY_FORM, FormDef, checkAnswers, parseForm, summarise } from '../rules-engine/forms';
 import { AttachmentsService } from './attachments.service';
 import { DeskActor, SEAT_REQUIRED, audit, deskSystem, emit, has, isAgentOn, isLead, requireDesk, requireSetUp } from './desk-access';
+import { deskReason } from './surveys.service';
 import { maskPii } from './pii';
 import { profileOf } from './people-facts';
 import { Requester, RequesterService } from './requester.service';
@@ -199,7 +200,7 @@ export class ChatService {
   }
 
   private sessionView(s: Session) {
-    return { id: s.id, deskId: s.deskId, queueId: s.queueId, state: s.state, subject: s.subject, agentUserId: s.agentUserId, ticketId: s.ticketId, rating: s.rating, endReason: s.endReason, requesterSeenAt: s.requesterSeenAt, agentSeenAt: s.agentSeenAt, startedAt: s.startedAt, acceptedAt: s.acceptedAt, endedAt: s.endedAt };
+    return { id: s.id, deskId: s.deskId, queueId: s.queueId, state: s.state, subject: s.subject, agentUserId: s.agentUserId, ticketId: s.ticketId, rating: s.rating, ratingReason: s.ratingReason, endReason: s.endReason, requesterSeenAt: s.requesterSeenAt, agentSeenAt: s.agentSeenAt, startedAt: s.startedAt, acceptedAt: s.acceptedAt, endedAt: s.endedAt };
   }
 
   private async messages(tx: Tx, org: string, s: Session) {
@@ -231,7 +232,9 @@ export class ChatService {
       const s = await this.ownSession(tx, r, id);
       const agent = s.agentUserId ? (await this.tickets.userNames(tx, r.ctx.organizationId, [s.agentUserId])).get(s.agentUserId) : null;
       const ticket = s.ticketId ? await tx.sdTicket.findFirst({ where: { organizationId: r.ctx.organizationId, id: s.ticketId }, select: { id: true, number: true } }) : null;
-      return { ...this.sessionView(s), agent: agent ?? null, ticket, messages: (await this.messages(tx, r.ctx.organizationId, s)).map((m) => ({ ...m, name: m.author === 'requester' ? 'You' : m.name })) };
+      // Answer 1682: the desk's preset reasons, offered with the rating once the chat has ended.
+      const ratingReasons = s.state === 'ended' && s.rating === null ? (await tx.sdDesk.findFirstOrThrow({ where: { organizationId: r.ctx.organizationId, id: s.deskId }, select: { ratingReasons: true } })).ratingReasons : [];
+      return { ...this.sessionView(s), ratingReasons, agent: agent ?? null, ticket, messages: (await this.messages(tx, r.ctx.organizationId, s)).map((m) => ({ ...m, name: m.author === 'requester' ? 'You' : m.name })) };
     });
   }
 
@@ -244,13 +247,14 @@ export class ChatService {
     return this.finish({ ctx: r.ctx, userId: r.userId }, s.id, 'requester', 'resolved_unknown');
   }
 
-  async rate(r: Requester, id: string, dto: { score: number; comment?: string }) {
+  async rate(r: Requester, id: string, dto: { score: number; comment?: string; reason?: string }) {
     return this.tx(r, async (tx) => {
       const s = await this.ownSession(tx, r, id);
       if (s.state !== 'ended') throw new ConflictException('Rate the chat once it has ended.');
-      const res = await tx.sdChatSession.updateMany({ where: { id: s.id, rating: null }, data: { rating: dto.score, ratingComment: dto.comment ? maskPii(dto.comment.trim().slice(0, 500)).text : null, updatedAt: new Date() } });
+      const ratingReason = await deskReason(tx, r.ctx.organizationId, s.deskId, dto.reason);
+      const res = await tx.sdChatSession.updateMany({ where: { id: s.id, rating: null }, data: { rating: dto.score, ratingComment: dto.comment ? maskPii(dto.comment.trim().slice(0, 500)).text : null, ratingReason, updatedAt: new Date() } });
       if (!res.count) throw new ConflictException('You already rated this chat.');
-      await audit(tx, { ctx: r.ctx, userId: r.userId }, 'desk.chat.rated', 'sd_chat_session', s.id, { score: dto.score });
+      await audit(tx, { ctx: r.ctx, userId: r.userId }, 'desk.chat.rated', 'sd_chat_session', s.id, { score: dto.score, reason: ratingReason });
       return { rated: true };
     });
   }

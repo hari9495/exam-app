@@ -234,4 +234,14 @@ describe('Expenses batch E4', () => {
     await api('adminB', 'get', `/advances/${ids.imprest}`).expect(404);
     expect((await api('adminB', 'get', '/advances?view=payout').expect(200)).body.advances).toEqual([]);
   });
+
+  it('EXP-05: an advance carries the company settings behind its dates (settle-by days, recovery instalments)', async () => {
+    type Policy = { policy: { settleDays: number; recoveryInstalments: number } };
+    expect(((await api('ravi', 'get', `/advances/${ids.imprest}`).expect(200)).body as Policy).policy).toEqual({ settleDays: 15, recoveryInstalments: 3 });
+    await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'legal_entity', scopeId: ids.entity, key: 'expense.advance.recovery_instalments', value: '6' } }));
+    expect(((await api('fin', 'get', `/advances/${ids.imprest}`).expect(200)).body as Policy).policy).toEqual({ settleDays: 15, recoveryInstalments: 6 });
+    // Someone with no reason to see the advance still gets nothing.
+    await api('sita', 'get', `/advances/${ids.imprest}`).expect(404);
+    await api('ravi', 'get', '/advances/not-a-uuid').expect(400);
+  });
 });

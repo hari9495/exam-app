@@ -19,9 +19,10 @@ export async function passkeyAssertion(getOptions: () => Promise<PublicKeyCreden
  * prompt -- or, with `autofill`, the work-email field's suggestions (conditional mediation; it waits
  * until the person picks one, and is cancelled when another ceremony starts).
  */
-export async function passkeySignInAssertion(autofill = false) {
+export async function passkeySignInAssertion(autofill = false, onPrompt?: () => void) {
   const optionsJSON: PublicKeyCredentialRequestOptionsJSON = await post('/auth/passkey/options');
   if (optionsJSON.rpId) lastRpId = optionsJSON.rpId;
+  onPrompt?.(); // the browser is asked now (the options request above is not prompt time)
   return startAuthentication({ optionsJSON, useBrowserAutofill: autofill });
 }
 

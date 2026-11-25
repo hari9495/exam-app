@@ -195,8 +195,11 @@ export class PerformanceGoalsService implements OnModuleInit {
       }
       const people = await this.names(tx, org, goals.map((g) => g.ownerEmployeeId));
       const depts = new Map((await tx.department.findMany({ where: { organizationId: org, id: { in: goals.map((g) => g.ownerDepartmentId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
-      const out = goals.map((g) => this.summary(g, g.ownerType === 'person' ? (people.get(g.ownerEmployeeId!) ?? '') : g.ownerType === 'team' ? (depts.get(g.ownerDepartmentId!) ?? '') : 'Company'));
-      return { goals: out, totalWeight: view === 'mine' ? Math.round(out.reduce((t, g) => t + g.weight, 0) * 100) / 100 : null };
+      const extra = await this.details(tx, org, goals.map((g) => g.id));
+      const out = goals.map((g) => ({ ...this.summary(g, g.ownerType === 'person' ? (people.get(g.ownerEmployeeId!) ?? '') : g.ownerType === 'team' ? (depts.get(g.ownerDepartmentId!) ?? '') : 'Company'), ...extra(g.id) }));
+      // PRF-02: the manager approves or sends back a person's goals on their goals page when the approval task is theirs.
+      const canDecide = view === 'employee' ? Boolean(await this.openTask(tx, org, v, goals)) : false;
+      return { goals: out, totalWeight: view === 'mine' || view === 'employee' ? Math.round(out.reduce((t, g) => t + g.weight, 0) * 100) / 100 : null, canDecide };
     });
   }
 
@@ -234,7 +237,23 @@ export class PerformanceGoalsService implements OnModuleInit {
       }
       const people = await this.names(tx, org, visible.map((g) => g.ownerEmployeeId));
       const depts = new Map((await tx.department.findMany({ where: { organizationId: org }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
-      const nodes = visible.map((g) => ({ ...this.summary(g, g.ownerType === 'person' ? (people.get(g.ownerEmployeeId!) ?? '') : g.ownerType === 'team' ? (depts.get(g.ownerDepartmentId!) ?? '') : 'Company') }));
+      const extra = await this.details(tx, org, visible.map((g) => g.id));
+      // The department a goal belongs to, for the map's filter: a team goal's own, a person's current one.
+      const owners = visible.map((g) => g.ownerEmployeeId).filter((x): x is string => Boolean(x));
+      const homes = new Map(
+        (owners.length
+          ? await tx.$queryRaw<{ id: string; dept: string }[]>`
+              SELECT a.employee_id::text AS id, a.department_id::text AS dept FROM employee_assignments a
+              WHERE a.organization_id = ${org}::uuid AND a.employee_id = ANY(${owners}::uuid[])
+                AND a.superseded_at IS NULL AND a.valid_from <= ${today}::date AND (a.valid_to IS NULL OR a.valid_to >= ${today}::date)`
+          : []
+        ).map((r) => [r.id, r.dept]),
+      );
+      const nodes = visible.map((g) => ({
+        ...this.summary(g, g.ownerType === 'person' ? (people.get(g.ownerEmployeeId!) ?? '') : g.ownerType === 'team' ? (depts.get(g.ownerDepartmentId!) ?? '') : 'Company'),
+        ...extra(g.id),
+        departmentId: g.ownerType === 'team' ? g.ownerDepartmentId : g.ownerType === 'person' ? (homes.get(g.ownerEmployeeId!) ?? null) : null,
+      }));
       const ids = new Set(nodes.map((n) => n.id));
       return { goals: nodes, unaligned: nodes.filter((n) => n.ownerType === 'person' && (!n.parentGoalId || !ids.has(n.parentGoalId))).map((n) => n.id), offTrack: await this.offTrack(tx, org, nodes.map((n) => n.id)) };
     });
@@ -247,6 +266,70 @@ export class PerformanceGoalsService implements OnModuleInit {
       SELECT DISTINCT ON (goal_id) goal_id::text, confidence FROM goal_checkins
       WHERE organization_id = ${org}::uuid AND goal_id = ANY(${ids}::uuid[]) ORDER BY goal_id, created_at DESC`;
     return (rows as unknown as { goal_id: string; confidence: string }[]).filter((r) => r.confidence === 'off_track').map((r) => r.goal_id);
+  }
+
+  /** Key results and the latest check-in (confidence, day), for the lists that draw goal trees (PRF-01 … 03). */
+  private async details(tx: Tx, org: string, ids: string[]) {
+    const krs = ids.length ? await tx.keyResult.findMany({ where: { organizationId: org, goalId: { in: ids } }, orderBy: [{ goalId: 'asc' }, { seq: 'asc' }] }) : [];
+    const last = ids.length
+      ? await tx.$queryRaw<{ goal_id: string; confidence: string; on: Date }[]>`
+          SELECT DISTINCT ON (goal_id) goal_id::text, confidence, "on" FROM goal_checkins
+          WHERE organization_id = ${org}::uuid AND goal_id = ANY(${ids}::uuid[]) ORDER BY goal_id, created_at DESC`
+      : [];
+    return (id: string) => {
+      const k = last.find((x) => x.goal_id === id);
+      return {
+        keyResults: krs
+          .filter((x) => x.goalId === id)
+          .map((x) => ({ id: x.id, title: x.title, unit: x.unit, direction: x.direction, start: num(x.startValue), target: num(x.targetValue), current: num(x.currentValue), weight: num(x.weight), progress: krProgress({ direction: x.direction as 'up', start: num(x.startValue), target: num(x.targetValue), current: num(x.currentValue) }) })),
+        confidence: (k?.confidence ?? null) as 'on_track' | 'at_risk' | 'off_track' | null,
+        lastCheckIn: k ? iso(k.on) : null,
+      };
+    };
+  }
+
+  /** The viewer's open approval task on these goals (a sent set, or an asked change), if any. */
+  private async openTask(tx: Tx, org: string, v: Viewer, goals: Goal[]) {
+    const reqs = [...new Set(goals.filter((g) => g.wfRequestId && (g.status === 'submitted' || g.pendingChange)).map((g) => g.wfRequestId!))];
+    if (!reqs.length || !v.userId || v.actingForOther) return null;
+    return tx.wfTask.findFirst({ where: { organizationId: org, requestId: { in: reqs }, assigneeUserId: v.userId, status: 'open' }, select: { id: true } });
+  }
+
+  /** PRF-02: the manager approves a person's sent goals, or sends them back with what to change (the task's holder only). */
+  async decide(ctx: TenantContext, user: ScopeUser, dto: { employeeId: string; periodId: string; decision: 'approve' | 'send_back'; reason?: string }) {
+    const v = await this.viewer(user);
+    const reason = dto.reason?.trim() ?? '';
+    if (dto.decision === 'send_back' && reason.length < 3) throw new BadRequestException('Say what to change, in at least 3 characters.');
+    const taskId = await this.run(ctx, async (tx, c) => {
+      const goals = await tx.goal.findMany({ where: { organizationId: c.organizationId, periodId: dto.periodId, ownerType: 'person', ownerEmployeeId: dto.employeeId, status: { not: 'dropped' } } });
+      const task = await this.openTask(tx, c.organizationId, v, goals);
+      if (!task) throw new ForbiddenException('These goals are not waiting for you.');
+      return task.id;
+    });
+    await this.engine.decide({ ...ctx, organizationId: ctx.organizationId! }, v.userId!, taskId, dto.decision === 'approve' ? 'approve' : 'reject', reason || null);
+    return this.list(ctx, user, dto.periodId, 'employee', dto.employeeId);
+  }
+
+  /** PRF-03: HR suggests a parent for a person's goal; the owner is told and changes the goal if they agree. */
+  async suggestParent(ctx: TenantContext, user: ScopeUser, id: string, parentGoalId: string) {
+    const v = await this.viewer(user);
+    if (!v.grants.has('perf.goal.manage')) throw new ForbiddenException('Only those who manage goals suggest a parent.');
+    const out = await this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const { g } = await this.goalOr404(tx, c, v, id);
+      if (g.ownerType !== 'person' || !['draft', 'submitted', 'active'].includes(g.status)) throw new ConflictException('A parent is suggested only for a person’s live goal.');
+      if (parentGoalId === id) throw new BadRequestException('A goal cannot align to itself.');
+      const parent = await this.checkParent(tx, org, id, parentGoalId, g.periodId);
+      const p = await tx.goal.findFirstOrThrow({ where: { id: parent! }, select: { title: true } });
+      await audit(tx, c, 'perf.goal.parent_suggested', 'goal', id, { parentGoalId, before: g.parentGoalId });
+      const owner = await tx.employee.findFirst({ where: { organizationId: org, id: g.ownerEmployeeId! }, select: { userId: true } });
+      return { userId: owner?.userId ?? null, text: `HR suggests aligning “${g.title}” to “${p.title}”` };
+    });
+    if (out.userId)
+      await this.notifications
+        .notifySystem({ organizationId: ctx.organizationId!, isSuperAdmin: false }, [out.userId], 'perf.goal.parent_suggested', { entityType: 'goal', entityId: id, contextText: out.text, linkPath: `/yx/performance/goals/${id}` }, { subject: 'A suggestion for one of your goals', html: '<p>HR suggests a goal to align one of your goals to. Open YukthiX to change the goal if you agree.</p>' })
+        .catch(() => undefined);
+    return { id, suggested: parentGoalId };
   }
 
   // ------------------------------------------------------------------------------------------ writing (PM-2.01, 2.02)

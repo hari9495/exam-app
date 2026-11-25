@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PayrollReportsScreen, ReportsNoAccess } from './admin-tax-loans';
 
-const meta: Meta<typeof PayrollReportsScreen> = { title: 'Screens/Pay/PAY-25 · Payroll reports', component: PayrollReportsScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof PayrollReportsScreen> = { title: 'Screens/Pay/PAY-25 · Payroll reports', component: PayrollReportsScreen, render: (args) => <PayrollReportsScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof PayrollReportsScreen>;
 
@@ -17,4 +17,5 @@ export const Gratuity: S = { name: 'Gratuity provision', args: { report: 'gratui
 export const LoanLedger: S = { name: 'Loan ledger', args: { report: 'loans' } };
 export const Empty: S = { name: 'Empty · no data for filters', args: { report: 'holds', group: 'tn' } };
 export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
+export const ErrorState: S = { name: 'Error · the report did not load', args: { state: 'error' } };
 export const NoAccess: S = { name: 'No access (HR without payroll scope)', render: () => <ReportsNoAccess /> };

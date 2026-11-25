@@ -1,0 +1,502 @@
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
+import { AttendanceCalendarScreen, MusterScreen, MyAttendanceTodayScreen, type LiveMusterData, type LiveMyAttendance, type LivePersonAttendance } from './attendance';
+import type { DayCard, MyAttendance, Muster, PersonAttendance } from './live/types';
+
+// The designed attendance screens with `live` (Me › Attendance, its clock page, and Time › Muster), as the app renders
+// them: real data in, calls out. Ported from the old live copies' tests, plus the sub-pages' field errors and limits.
+
+const ue = userEvent.setup({ pointerEventsCheck: 0 });
+
+const ATT: MyAttendance = {
+  employee: { id: 'e1', name: 'Arjun Kulkarni' },
+  today: '2026-10-09',
+  zone: 'Asia/Kolkata',
+  mode: 'punch',
+  shift: { name: 'General', start: 570, end: 1110, grace: 10, checkIn: 'restricted' },
+  fences: [{ name: 'Bengaluru head office', lat: 12.97, lng: 77.59, radiusM: 150 }],
+  punches: [],
+  next: 'in',
+  days: [
+    { on: '2026-10-06', status: 'missing_out', leavePart: null, firstIn: '2026-10-06T04:01:00Z', lastOut: null, workedMinutes: null, lateMinutes: null, regularised: false },
+    { on: '2026-10-07', status: 'present', leavePart: null, firstIn: '2026-10-07T04:01:00Z', lastOut: '2026-10-07T12:40:00Z', workedMinutes: 489, lateMinutes: 0, regularised: false },
+  ],
+  requests: [],
+  regularise: { limit: 4, used: 1 },
+  wfh: { limit: 4, used: 0 },
+};
+const DAY_6: DayCard = {
+  person: { name: 'Arjun Kulkarni', code: 'KF-0142' },
+  on: '2026-10-06',
+  zone: 'Asia/Kolkata',
+  shift: { name: 'General', start: 570, end: 1110, grace: 10 },
+  day: { status: 'missing_out', leavePart: null, workedMinutes: null, lateMinutes: null, regularised: false },
+  punches: [
+    { id: 'p1', kind: 'in', at: '2026-10-06T04:01:00Z', source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office', minute: 571 },
+    { id: 'p0', kind: 'in', at: '2026-10-06T03:50:00Z', source: 'mobile', accepted: false, refusal: 'Outside Bengaluru head office, 850 m away', verdict: 'outside', distanceM: 850, accuracyM: 20, where: null, minute: 560 },
+  ],
+};
+const live = (over: Partial<LiveMyAttendance> = {}): LiveMyAttendance => ({
+  state: 'ready',
+  data: ATT,
+  month: '2026-10',
+  onMonth: vi.fn(),
+  getLocation: vi.fn(async () => ({ pin: null })),
+  onPunch: vi.fn(async (kind) => ({ accepted: true, duplicate: false, kind, message: 'Recorded', verdict: 'network', distanceM: null })),
+  onFix: vi.fn(async () => ({})),
+  onWithdrawFix: vi.fn(async () => ({})),
+  onOpenDay: vi.fn(async () => DAY_6),
+  now: new Date('2026-10-09T05:00:00Z'), // 10:30 am in India
+  ...over,
+});
+
+describe('Me › Attendance today (live clock page)', () => {
+  it('a refused check-in says why and offers to retry the location (YX-AT-23)', async () => {
+    const onPunch = vi.fn(async () => ({ accepted: false, duplicate: false, kind: 'in' as const, message: 'Outside Bengaluru head office, 850 m away', verdict: 'outside', distanceM: 850 }));
+    const getLocation = vi.fn(async () => ({ pin: { lat: 12.9, lng: 77.6, accuracyM: 20 } }));
+    render(<MyAttendanceTodayScreen live={live({ onPunch, getLocation })} />);
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(await screen.findByText('Outside Bengaluru head office, 850 m away')).toBeInTheDocument();
+    expect(onPunch).toHaveBeenCalledWith('in', { lat: 12.9, lng: 77.6, accuracyM: 20 });
+    await ue.click(screen.getByRole('button', { name: 'Retry location' }));
+    await waitFor(() => expect(getLocation).toHaveBeenCalledTimes(2));
+  });
+
+  it('DeviceNotApproved: an unapproved computer is blocked before the punch; Ask HR to approve sends the request once', async () => {
+    const onAskDevice = vi.fn(async () => ({}));
+    const onPunch = vi.fn();
+    render(<MyAttendanceTodayScreen live={live({ onPunch, onAskDevice, data: { ...ATT, device: { required: true, approved: false, requested: false } } })} />);
+    expect(screen.getByText("This computer isn't approved for clock-in")).toBeInTheDocument();
+    expect(screen.getByText('Use your approved device, or ask HR to approve this one.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(onPunch).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Ask HR to approve' }));
+    expect(await screen.findByText('Request sent to HR · this computer')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Requested' }));
+    expect(onAskDevice).toHaveBeenCalledTimes(1);
+  });
+
+  it('DeviceNotApproved: already asked shows Requested; a request that fails puts the button back; approved never blocks', async () => {
+    const { unmount } = render(<MyAttendanceTodayScreen live={live({ onAskDevice: vi.fn(), data: { ...ATT, device: { required: true, approved: false, requested: true } } })} />);
+    expect(screen.getByRole('button', { name: 'Requested' })).toBeInTheDocument();
+    unmount();
+    const failing = vi.fn(async () => { throw new Error('You already asked HR to approve another computer.'); });
+    const second = render(<MyAttendanceTodayScreen live={live({ onAskDevice: failing, data: { ...ATT, device: { required: true, approved: false, requested: false } } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Ask HR to approve' }));
+    expect(await screen.findByRole('button', { name: 'Ask HR to approve' })).toBeInTheDocument();
+    second.unmount();
+    render(<MyAttendanceTodayScreen live={live({ onAskDevice: vi.fn(), data: { ...ATT, device: { required: true, approved: true, requested: false } } })} />);
+    expect(screen.queryByText("This computer isn't approved for clock-in")).not.toBeInTheDocument();
+  });
+
+  it("breaks: End break while on one; today's punches name them", async () => {
+    const at = (id: string, kind: 'in' | 'break_start', iso: string) => ({ id, kind, at: iso, source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office' });
+    const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'break_end' as const, message: 'Break ended', verdict: 'network', distanceM: null }));
+    render(<MyAttendanceTodayScreen live={live({ onPunch, data: { ...ATT, next: 'out', onBreak: true, punches: [at('p1', 'in', '2026-10-09T03:58:00Z'), at('p2', 'break_start', '2026-10-09T04:50:00Z')] } })} />);
+    expect(within(screen.getByRole('list', { name: 'Punches' })).getByText('Break start')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'End break' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledWith('break_end', null));
+  });
+
+  it('WithNote: Add note, Save, and the note goes with the next punch; an empty note is never saved; a refused punch keeps it', async () => {
+    const at = { id: 'p1', kind: 'in' as const, at: '2026-10-09T03:58:00Z', source: 'web', accepted: true, refusal: null, verdict: 'network', distanceM: null, accuracyM: null, where: 'Bengaluru head office' };
+    const onPunch = vi.fn()
+      .mockResolvedValueOnce({ accepted: false, duplicate: false, kind: 'out' as const, message: 'Not on Bengaluru head office Wi-Fi', verdict: 'outside', distanceM: null })
+      .mockResolvedValueOnce({ accepted: true, duplicate: false, kind: 'out' as const, message: 'Checked out', verdict: 'network', distanceM: null });
+    render(<MyAttendanceTodayScreen live={live({ onPunch, data: { ...ATT, next: 'out', punches: [at] } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Add note' }));
+    // Negative: Save with nothing typed keeps the box open and says why.
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('Type a note')).toBeInTheDocument();
+    await ue.type(screen.getByLabelText(/Note for your next punch/), '  Client call ran late  ');
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getByText('Note saved for your clock-out')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock out' }));
+    await waitFor(() => expect(onPunch).toHaveBeenLastCalledWith('out', null, { note: 'Client call ran late' }));
+    // Refused: the note stays for the retry.
+    expect(await screen.findByText('Not on Bengaluru head office Wi-Fi')).toBeInTheDocument();
+    expect(screen.getByText('Note saved for your clock-out')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock out' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledTimes(2));
+    expect(onPunch).toHaveBeenLastCalledWith('out', null, { note: 'Client call ran late' });
+    await waitFor(() => expect(screen.queryByText('Note saved for your clock-out')).not.toBeInTheDocument());
+  });
+
+  it('OutsideNetwork: off the office network the card says so before any punch; Check again asks the server again', async () => {
+    const onRetry = vi.fn();
+    const onPunch = vi.fn();
+    render(<MyAttendanceTodayScreen live={live({ onRetry, onPunch, data: { ...ATT, network: 'outside', wfhSameDay: false } })} />);
+    expect(screen.getByText('Not on Bengaluru head office Wi-Fi')).toBeInTheDocument();
+    expect(screen.getByText('Connect to the office network, then check again.')).toBeInTheDocument();
+    // Negative: no work-from-home or on-duty way round when the company does not allow it.
+    expect(screen.queryByRole('button', { name: 'Clock in as WFH' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Clock in on duty' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(onPunch).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+
+  it('ChoseWfh: outside, Clock in as WFH shows who approves and this month; Clock in sends it as work from home', async () => {
+    const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'in' as const, message: 'Checked in. Working from home today, location recorded', verdict: 'field', distanceM: null }));
+    render(<MyAttendanceTodayScreen live={live({ onPunch, data: { ...ATT, network: 'outside', wfhSameDay: true, manager: 'Kavya Rao', wfh: { limit: 4, used: 1 } } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Clock in as WFH' }));
+    expect(screen.getByText("WFH · needs Kavya Rao's approval · 1 of 4 used this month")).toBeInTheDocument();
+    expect(screen.queryByText('Not on Bengaluru head office Wi-Fi')).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledWith('in', null, { wfh: true }));
+  });
+
+  it('ShiftNotStarted: before check-in opens the card says when; inside the window it lets you clock in', async () => {
+    const onPunch = vi.fn(async () => ({ accepted: true, duplicate: false, kind: 'in' as const, message: 'Checked in', verdict: 'network', distanceM: null }));
+    const early = new Date('2026-10-09T02:20:00Z'); // 7:50 am in India; the shift starts 9:30, check-in opens 8:30
+    const { unmount } = render(<MyAttendanceTodayScreen live={live({ onPunch, now: early, data: { ...ATT, shift: { ...ATT.shift, opensBefore: 60 } } })} />);
+    expect(screen.getByText('Your shift has not started yet')).toBeInTheDocument();
+    expect(screen.getByText('General shift starts at 9:30 am. Clock-in opens at 8:30 am.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    expect(onPunch).not.toHaveBeenCalled();
+    unmount();
+    render(<MyAttendanceTodayScreen live={live({ onPunch, now: new Date('2026-10-09T03:05:00Z'), data: { ...ATT, shift: { ...ATT.shift, opensBefore: 60 } } })} />);
+    expect(screen.queryByText('Your shift has not started yet')).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Clock in' }));
+    await waitFor(() => expect(onPunch).toHaveBeenCalledWith('in', null));
+  });
+
+  it('the rules come from the server; a day to fix is offered', async () => {
+    render(<MyAttendanceTodayScreen live={live()} />);
+    expect(screen.getByText('1 of 4 used this month')).toBeInTheDocument();
+    expect(screen.getByText(/Bengaluru head office \(within 150 m\)/)).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Fix 6 Oct 2026' }));
+    expect(screen.getByRole('dialog', { name: 'New attendance request' })).toBeInTheDocument();
+  });
+});
+
+describe('Me › Attendance (live calendar)', () => {
+  it('shows my month in the design codes; the next month at the limit says why instead of moving', async () => {
+    const onMonth = vi.fn();
+    render(<AttendanceCalendarScreen live={live({ onMonth })} />);
+    expect(screen.getByRole('button', { name: /6 Oct 2026: Missing check-out/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /7 Oct 2026: Present/ })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Next month' }));
+    expect((await screen.findAllByText('November 2026 has not started yet.')).length).toBeGreaterThan(0);
+    expect(onMonth).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(onMonth).toHaveBeenCalledWith('2026-09');
+  });
+
+  it('a day opens its day card with every punch, a refused one with its reason; Fix this day opens the request', async () => {
+    const l = live();
+    render(<AttendanceCalendarScreen live={l} />);
+    await ue.click(screen.getByRole('button', { name: /6 Oct 2026: Missing check-out/ }));
+    expect(l.onOpenDay).toHaveBeenCalledWith('2026-10-06');
+    expect(await screen.findByText('Not recorded: Outside Bengaluru head office, 850 m away')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Fix this day' }));
+    expect(await screen.findByRole('dialog', { name: 'New attendance request' })).toBeInTheDocument();
+  });
+
+  it('WithNote: the note kept with a punch shows under that punch on the day card; a punch without one shows none', async () => {
+    const withNote = { ...DAY_6, punches: DAY_6.punches.map((x, i) => (i === 0 ? { ...x, note: 'Client call ran late' } : x)) };
+    const l = live({ onOpenDay: vi.fn(async () => withNote) });
+    render(<AttendanceCalendarScreen live={l} />);
+    await ue.click(screen.getByRole('button', { name: /6 Oct 2026: Missing check-out/ }));
+    const list = await screen.findByRole('list', { name: 'Punches' });
+    const rows = within(list).getAllByRole('listitem');
+    expect(within(rows[0]).getByText('Note: Client call ran late')).toBeInTheDocument();
+    expect(rows.slice(1).every((r) => !/Note:/.test(r.textContent ?? ''))).toBe(true);
+  });
+
+  it('a day card that cannot load says why and retries', async () => {
+    const onOpenDay = vi.fn().mockRejectedValueOnce(new Error('You moved teams on 5 Oct.')).mockResolvedValue(DAY_6);
+    render(<AttendanceCalendarScreen live={live({ onOpenDay })} />);
+    await ue.click(screen.getByRole('button', { name: /7 Oct 2026: Present/ }));
+    expect(await screen.findByText('You moved teams on 5 Oct.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    await waitFor(() => expect(onOpenDay).toHaveBeenCalledTimes(2));
+  });
+
+  it('work from home: Send pressed early shows the missing reason (never a disabled button), shows the effect, sends, then a toast', async () => {
+    const onWfh = vi.fn(async () => undefined);
+    render(<AttendanceCalendarScreen live={live({ onWfh })} />);
+    // "New request" (founder 2 Nov 2026) opens the sheet; WFH is one of the choices.
+    expect(screen.queryByRole('button', { name: 'Request work from home' })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'New request' }));
+    const sheet = screen.getByRole('dialog', { name: 'New attendance request' });
+    await ue.click(within(sheet).getByRole('radio', { name: 'WFH' }));
+    expect(within(sheet).getByText('Goes to your manager')).toBeInTheDocument();
+    expect(within(sheet).getByText('Work from home · counts as present')).toBeInTheDocument();
+    expect(within(sheet).getByText('This will be work-from-home day 1 of 4 in October.')).toBeInTheDocument();
+    const send = within(sheet).getByRole('button', { name: 'Send request' });
+    expect(send).not.toBeDisabled();
+    await ue.click(send);
+    expect(onWfh).not.toHaveBeenCalled();
+    expect(within(sheet).getAllByText('Enter a reason').length).toBeGreaterThan(1);
+    // Answer 2477: a reason of at least 10 characters, so the manager can check it.
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Plumber');
+    await ue.click(send);
+    expect(onWfh).not.toHaveBeenCalled();
+    expect(within(sheet).getAllByText('Please say why, in at least 10 characters, so your manager can check it.').length).toBeGreaterThan(0);
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), ' visit');
+    await ue.click(send);
+    await waitFor(() => expect(onWfh).toHaveBeenCalledWith({ on: '2026-10-09', reason: 'Plumber visit' }));
+    expect(await screen.findByText('Sent to your manager')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New attendance request' })).toBeNull());
+  });
+
+  it('work from home over the monthly limit goes to HR too; a refusal from the server says why', async () => {
+    const onWfh = vi.fn(async () => {
+      throw new Error('Wed 14 Oct is a holiday (Founders Day).');
+    });
+    render(<AttendanceCalendarScreen live={live({ data: { ...ATT, wfh: { limit: 4, used: 4 } }, onWfh, defaultRequest: 'wfh' })} />);
+    const sheet = screen.getByRole('dialog', { name: 'Request work from home' });
+    expect(within(sheet).getByText('Goes to your manager, then HR')).toBeInTheDocument();
+    expect(within(sheet).getByText('Approval: Your manager → HR')).toBeInTheDocument();
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Family function');
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    expect(await within(sheet).findByText('Wed 14 Oct is a holiday (Founders Day).')).toBeInTheDocument();
+  });
+
+  it('the drawer title follows the chosen request type (WFH, then On duty)', async () => {
+    render(<AttendanceCalendarScreen live={live({ onWfh: vi.fn(async () => ({})), onOnDuty: vi.fn(async () => ({})), defaultRequest: 'wfh' })} />);
+    const sheet = screen.getByRole('dialog', { name: 'Request work from home' });
+    await ue.click(within(sheet).getByRole('radio', { name: 'On duty' }));
+    expect(screen.getByRole('dialog', { name: 'On duty request' })).toBeInTheDocument();
+  });
+
+  it('fixing a missing check-out needs the time and a reason, then goes for approval', async () => {
+    const onFix = vi.fn(async () => ({}));
+    render(<AttendanceCalendarScreen live={live({ onFix })} />);
+    await ue.click(screen.getByRole('button', { name: 'Fix 6 Oct 2026' }));
+    const sheet = screen.getByRole('dialog', { name: 'New attendance request' });
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    expect(within(sheet).getAllByText('Enter the check-out time').length).toBeGreaterThan(0);
+    expect(onFix).not.toHaveBeenCalled();
+    await ue.type(within(sheet).getByLabelText(/Check-out/), '18:10');
+    fireEvent.blur(within(sheet).getByLabelText(/Check-out/));
+    await ue.type(within(sheet).getByRole('textbox', { name: /Reason/ }), 'Forgot to check out');
+    await ue.click(within(sheet).getByRole('button', { name: 'Send request' }));
+    await waitFor(() => expect(onFix).toHaveBeenCalledWith({ on: '2026-10-06', kind: 'missed_out', outMinute: 1090, reason: 'Forgot to check out' }));
+  });
+
+  it('a day that has nothing to fix says so on the date', async () => {
+    render(<AttendanceCalendarScreen live={live({ data: { ...ATT, days: [...ATT.days, { on: '2026-10-04', status: 'weekly_off', leavePart: null, workedMinutes: null, lateMinutes: null, regularised: false }] } })} />);
+    await ue.click(screen.getByRole('button', { name: 'Regularise a day' }));
+    const sheet = screen.getByRole('dialog', { name: 'New attendance request' });
+    const date = within(sheet).getByRole('textbox', { name: 'Date' });
+    await ue.clear(date);
+    await ue.type(date, '4 Oct 2026');
+    fireEvent.blur(date);
+    expect(await within(sheet).findAllByText('4 Oct 2026 is a weekly off: nothing to fix')).not.toHaveLength(0);
+  });
+
+  it('a waiting request can be withdrawn after a confirm', async () => {
+    const onWithdrawFix = vi.fn(async () => ({}));
+    render(<AttendanceCalendarScreen live={live({ onWithdrawFix, data: { ...ATT, requests: [{ id: 'r1', on: '2026-10-06', kind: 'missed_out', inMinute: null, outMinute: 1090, reason: 'Forgot', status: 'pending' }] } })} />);
+    const card = screen.getByRole('list', { name: 'Waiting for approval' });
+    expect(within(card).getByText('6 Oct 2026 · Regularisation')).toBeInTheDocument();
+    await ue.click(within(card).getByRole('button', { name: 'Withdraw' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Withdraw request' }));
+    await waitFor(() => expect(onWithdrawFix).toHaveBeenCalledWith('r1'));
+  });
+
+  it('load states: loading, could not load with retry, no access', async () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(<AttendanceCalendarScreen live={live({ state: 'loading', data: null })} />);
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeInTheDocument();
+    rerender(<AttendanceCalendarScreen live={live({ state: 'error', data: null, onRetry })} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(onRetry).toHaveBeenCalled();
+    rerender(<AttendanceCalendarScreen live={live({ state: 'no-access', data: null })} />);
+    expect(screen.queryByRole('button', { name: 'Regularise a day' })).toBeNull();
+  });
+
+  it('night work: opt in, confirm a consent with a one-time code (pressed early it asks for the code), withdraw it', async () => {
+    const night = { byRecord: false, optedIn: false, optedInSince: null, consents: [{ id: 'c1', location: 'Hosur plant', givenOn: '2026-10-01', withdrawnOn: null, reference: 'Form 14', confirmedAt: null }] };
+    const onNightOptIn = vi.fn(async () => ({}));
+    const onNightCode = vi.fn(async () => ({ sentTo: 'your work email', expiresInSeconds: 300, resendAfterSeconds: 60 }));
+    const onNightConfirm = vi.fn(async () => ({}));
+    const onNightWithdraw = vi.fn(async () => ({}));
+    render(<AttendanceCalendarScreen live={live({ night, onNightOptIn, onNightCode, onNightConfirm, onNightWithdraw })} />);
+    await ue.click(screen.getByRole('switch', { name: 'Night-work protection' }));
+    expect(onNightOptIn).toHaveBeenCalledWith(true);
+    await ue.click(screen.getByRole('button', { name: 'Confirm with a code' }));
+    expect(onNightCode).toHaveBeenCalledWith('c1');
+    const confirm = await screen.findByRole('button', { name: 'Confirm my consent' });
+    await ue.click(confirm);
+    expect(onNightConfirm).not.toHaveBeenCalled();
+    expect(screen.getAllByText('Enter the 6-digit code').length).toBeGreaterThan(0);
+    await ue.type(screen.getByLabelText(/The 6-digit code sent to your work email/), '12a3456');
+    await ue.click(confirm);
+    await waitFor(() => expect(onNightConfirm).toHaveBeenCalledWith('c1', '123456'));
+    await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
+    await ue.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Withdraw' }));
+    await waitFor(() => expect(onNightWithdraw).toHaveBeenCalledWith('c1'));
+  });
+
+  it('night work: covered by the record, so no switch to turn it off', () => {
+    render(<AttendanceCalendarScreen live={live({ night: { byRecord: true, optedIn: false, optedInSince: null, consents: [] }, onNightOptIn: vi.fn() })} />);
+    expect(screen.getByText(/The night-work protection applies to you/)).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+});
+
+describe('Time › Muster (live)', () => {
+  const data: Muster = {
+    month: '2026-10',
+    from: '2026-10-01',
+    to: '2026-10-31',
+    scope: 'granted',
+    people: [
+      { id: 'k', name: 'Kavya Reddy', code: 'KFT-0031', location: 'Hosur plant', me: false, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [{ on: '2026-10-01', status: 'present', leavePart: null, workedMinutes: 490, lateMinutes: null, regularised: false }, { on: '2026-10-02', status: 'missing_in', leavePart: null, workedMinutes: null, lateMinutes: null, regularised: false }] },
+    ],
+  };
+  const card: DayCard = { person: { name: 'Kavya Reddy', code: null }, on: '2026-10-01', zone: 'Asia/Kolkata', shift: { name: 'Day', start: 540, end: 1080, grace: 10 }, day: { status: 'present', leavePart: null, workedMinutes: 490, lateMinutes: null, regularised: false }, punches: [{ id: 'p', kind: 'in', at: '2026-10-01T02:31:00Z', source: 'web', accepted: true, refusal: null, verdict: 'inside', distanceM: 40, accuracyM: 18, where: 'Hosur plant', minute: 481 }] };
+  const muster = (over: Partial<LiveMusterData> = {}): LiveMusterData => ({ state: 'ready', data, month: '2026-10', onMonth: vi.fn(), onOpenDay: vi.fn(async () => card), today: '2026-10-03', ...over });
+
+  it('shows the month with totals and the days to fix; a cell opens the day card with each punch (YX-AT-15)', async () => {
+    const l = muster();
+    render(<MusterScreen live={l} />);
+    expect(screen.getByText('Muster · October 2026')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(l.onMonth).toHaveBeenCalledWith('2026-09');
+    expect(screen.getByText('1 day to fix')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 1 Oct 2026: Present/ }));
+    expect(l.onOpenDay).toHaveBeenCalledWith('k', '2026-10-01');
+    expect(await screen.findByText(/40 m from centre/)).toBeInTheDocument();
+    // Read only: no fix, resolve or nudge buttons that would do nothing.
+    expect(screen.queryByRole('button', { name: /Resolve with reason|Nudge to fix/ })).toBeNull();
+  });
+
+  it('WithNote: a manager or HR opening the day sees the note under the punch; none when there is none', async () => {
+    const noted: DayCard = { ...card, punches: [{ ...card.punches[0], note: 'Bus broke down on OMR' }] };
+    const { unmount } = render(<MusterScreen live={muster({ onOpenDay: vi.fn(async () => noted) })} />);
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 1 Oct 2026: Present/ }));
+    expect(await screen.findByText('Note: Bus broke down on OMR')).toBeInTheDocument();
+    unmount();
+    render(<MusterScreen live={muster()} />);
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 1 Oct 2026: Present/ }));
+    expect(await screen.findByText(/40 m from centre/)).toBeInTheDocument();
+    expect(screen.queryByText(/^Note:/)).toBeNull();
+  });
+
+  it("Manager · one person: the day card links to the person's month", async () => {
+    render(<MusterScreen live={muster({ data: { ...data, scope: 'team' }, personHref: (eid, m) => `/yx/time/muster/${eid}?month=${m}` })} />);
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 1 Oct 2026: Present/ }));
+    expect(await screen.findByRole('link', { name: "Open Kavya's month" })).toHaveAttribute('href', '/yx/time/muster/k?month=2026-10');
+  });
+
+  it('a day that cannot be opened says why', async () => {
+    render(<MusterScreen live={muster({ onOpenDay: vi.fn(async () => { throw new Error('This person moved out of your team on 20 Oct.'); }) })} />);
+    await ue.click(screen.getByRole('button', { name: /Kavya Reddy, 2 Oct 2026: Missing check-in/ }));
+    expect(await screen.findByText('This person moved out of your team on 20 Oct.')).toBeInTheDocument();
+  });
+
+  it('no one to show, and could not load', async () => {
+    const onRetry = vi.fn();
+    const { rerender } = render(<MusterScreen live={muster({ data: { ...data, people: [] } })} />);
+    expect(screen.getByText('No one on the muster')).toBeInTheDocument();
+    rerender(<MusterScreen live={muster({ state: 'error', data: null, onRetry })} />);
+    await ue.click(screen.getByRole('button', { name: /Try again|Retry/ }));
+    expect(onRetry).toHaveBeenCalled();
+  });
+});
+
+describe('Muster › one person (Extra · Attendance calendar, Manager · one person, live)', () => {
+  const pa: PersonAttendance = {
+    month: '2026-10',
+    employee: { id: 'k', name: 'Kavya Reddy', code: 'KFT-0031', role: 'Line supervisor', location: 'Hosur plant' },
+    today: '2026-10-09',
+    zone: 'Asia/Kolkata',
+    days: [
+      { on: '2026-10-01', status: 'present', leavePart: null, firstIn: '2026-10-01T04:00:00Z', lastOut: '2026-10-01T12:40:00Z', workedMinutes: 490, lateMinutes: 12, regularised: false },
+      { on: '2026-10-02', status: 'missing_out', leavePart: null, workedMinutes: null, lateMinutes: null, regularised: false },
+    ],
+    requests: [],
+    locked: [],
+    shift: { pattern: null, weekOf: '2026-10-05', name: 'Day', start: 540, end: 1080 },
+  };
+  const card: DayCard = { person: { name: 'Kavya Reddy', code: null }, on: '2026-10-02', zone: 'Asia/Kolkata', shift: { name: 'Day', start: 540, end: 1080, grace: 10 }, day: { status: 'missing_out', leavePart: null, workedMinutes: null, lateMinutes: null, regularised: false }, punches: [] };
+  const person = (over: Partial<LivePersonAttendance> = {}): LivePersonAttendance => ({ state: 'ready', data: pa, month: '2026-10', onMonth: vi.fn(), people: [{ id: 'k', name: 'Kavya Reddy' }, { id: 'r', name: 'Ravi Kumar' }], onPick: vi.fn(), onOpenDay: vi.fn(async () => card), musterHref: '/yx/time/muster', exceptionsHref: '/yx/time/exceptions?search=Kavya', ...over });
+
+  it("shows the person's month, totals and open exceptions; a day opens their day card; the picker moves to another of the team", async () => {
+    const l = person();
+    render(<AttendanceCalendarScreen personLive={l} />);
+    expect(screen.getByRole('heading', { name: 'Attendance · Kavya Reddy' })).toBeInTheDocument();
+    expect(screen.getByText('Line supervisor · Hosur plant')).toBeInTheDocument();
+    expect(within(screen.getByRole('list', { name: 'Open exceptions' })).getByText(/2 Oct 2026 · Missing check-out/)).toBeInTheDocument();
+    // Read only: a manager does not regularise for someone here.
+    expect(screen.queryByRole('button', { name: /Regularise/ })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Next month' }));
+    expect(l.onMonth).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Previous month' }));
+    expect(l.onMonth).toHaveBeenCalledWith('2026-09');
+    await ue.click(within(screen.getByRole('list', { name: 'Open exceptions' })).getByRole('button', { name: 'View' }));
+    expect(l.onOpenDay).toHaveBeenCalledWith('2026-10-02');
+  });
+
+  it('someone outside the team (the server answers 404): no access, no data shown', () => {
+    render(<AttendanceCalendarScreen personLive={person({ state: 'no-access', data: null })} />);
+    expect(screen.queryByText('Kavya Reddy')).toBeNull();
+    expect(screen.getByText(/this person's attendance/i)).toBeInTheDocument();
+  });
+});
+
+describe('batch A items 5 and 18: the month as a list or table, and my requests (A1, A2, A3)', () => {
+  it('List: a row per day so far with the worked bar and late by; a row opens the day panel', async () => {
+    const onOpenDay = vi.fn().mockResolvedValue(DAY_6);
+    const data = { ...ATT, days: [...ATT.days, { on: '2026-10-08', status: 'present' as const, leavePart: null, firstIn: '2026-10-08T04:20:00Z', lastOut: '2026-10-08T12:30:00Z', workedMinutes: 490, lateMinutes: 20, regularised: false }] };
+    render(<AttendanceCalendarScreen live={live({ data, onOpenDay })} />);
+    await ue.click(screen.getByRole('radio', { name: 'List' }));
+    const list = screen.getByRole('list', { name: 'Days this month' });
+    expect(within(list).getByText('Late by 20 min')).toBeInTheDocument();
+    expect(within(list).getByRole('meter', { name: /Worked on 7 Oct 2026/ })).toBeInTheDocument();
+    expect(within(list).queryByText(/10 Oct 2026/)).toBeNull();
+    await ue.click(within(list).getByRole('button', { name: /6 Oct 2026/ }));
+    await waitFor(() => expect(onOpenDay).toHaveBeenCalledWith('2026-10-06'));
+  });
+
+  it('Table: first in, last out, worked and late by in the person’s zone; a row opens the day', async () => {
+    const onOpenDay = vi.fn().mockResolvedValue(DAY_6);
+    render(<AttendanceCalendarScreen live={live({ onOpenDay })} />);
+    await ue.click(screen.getByRole('radio', { name: 'Table' }));
+    const table = screen.getByRole('table', { name: 'Days this month' });
+    expect(within(table).getAllByText('9:31 am')).toHaveLength(2);
+    expect(within(table).getByText('6:10 pm')).toBeInTheDocument();
+    await ue.click(within(table).getAllByText('9:31 am')[0]!);
+    await waitFor(() => expect(onOpenDay).toHaveBeenCalled());
+  });
+
+  it('Requests tab: this month’s requests by status; Withdraw on a waiting one; New request lists every kind', async () => {
+    const onWithdrawFix = vi.fn().mockResolvedValue(undefined);
+    const requests = [
+      { id: 'r1', on: '2026-10-06', kind: 'missed_out' as const, inMinute: null, outMinute: 1090, reason: 'Forgot', status: 'pending' as const },
+      { id: 'r2', on: '2026-10-02', kind: 'wfh' as const, inMinute: null, outMinute: null, reason: 'Plumber visit', status: 'approved' as const },
+      { id: 'r3', on: '2026-10-01', kind: 'on_duty' as const, inMinute: 600, outMinute: 900, reason: 'Client site', status: 'rejected' as const, place: 'Whitefield' },
+    ];
+    render(<AttendanceCalendarScreen live={live({ onWithdrawFix, onWfh: vi.fn(), onOnDuty: vi.fn(), data: { ...ATT, requests } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Requests (3)' }));
+    const list = screen.getByRole('list', { name: 'My requests this month' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(3);
+    await ue.click(screen.getByRole('radio', { name: 'Approved' }));
+    expect(within(screen.getByRole('list', { name: 'My requests this month' })).getByText('Plumber visit')).toBeInTheDocument();
+    expect(screen.queryByText('Forgot')).toBeNull();
+    await ue.click(screen.getByRole('radio', { name: 'Waiting' }));
+    await ue.click(screen.getByRole('button', { name: 'Withdraw' }));
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: /^Withdraw/ }));
+    await waitFor(() => expect(onWithdrawFix).toHaveBeenCalledWith('r1'));
+    await ue.click(screen.getByRole('button', { name: 'Choose a request' }));
+    expect(await screen.findByRole('menuitem', { name: 'Work from home' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'On duty' })).toBeInTheDocument();
+  });
+
+  it('negative: no requests this month says so; a filter with none says how to see all', async () => {
+    const { unmount } = render(<AttendanceCalendarScreen live={live()} />);
+    await ue.click(screen.getByRole('tab', { name: 'Requests (0)' }));
+    expect(screen.getByText('No requests in October 2026.')).toBeInTheDocument();
+    unmount();
+    render(<AttendanceCalendarScreen live={live({ data: { ...ATT, requests: [{ id: 'r1', on: '2026-10-06', kind: 'missed_out', inMinute: null, outMinute: 1090, reason: 'Forgot', status: 'pending' }] } })} />);
+    await ue.click(screen.getByRole('tab', { name: 'Requests (1)' }));
+    await ue.click(screen.getByRole('radio', { name: 'Approved' }));
+    expect(screen.getByText('No requests match this filter.')).toBeInTheDocument();
+  });
+});

@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { ShiftSwapSheet } from './requests';
 
-const meta: Meta<typeof ShiftSwapSheet> = { title: 'Screens/Time/TIM-08 · Shift change or swap', component: ShiftSwapSheet, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof ShiftSwapSheet> = { title: 'Screens/Time/TIM-08 · Shift change or swap', component: ShiftSwapSheet, render: (args) => <ShiftSwapSheet {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof ShiftSwapSheet>;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };

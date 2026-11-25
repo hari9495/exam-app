@@ -12,6 +12,7 @@ import { PaySetupService } from '../src/payroll/setup.service';
 import { addDays } from '../src/time/time-maths';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
+import { giveStaffRoles } from './fixtures/staff-roles';
 
 // Payroll batch 5b end to end against the real database (forced RLS, the app role): the P07 rule store (the app reads
 // published rules only and never writes; publish runs the checks and is never the drafter's), entity statutory set-up
@@ -70,6 +71,8 @@ describe('Payroll batch 5b', () => {
     for (const who of ['staff', 'staff2'] as const) {
       const email = `${who}-${run}@pay5b-platform.test`;
       users[who] = (await tenantPrisma.forTenant(SUPER, (tx) => tx.user.create({ data: { email, name: `Staff ${who}`, passwordHash, role: 'super_admin', organizationId: null } }))).id;
+      // Staff roles (answer 1058): these suites test the console routes, so their staff hold every role.
+      await giveStaffRoles(users[who]!);
       token[who] = (await request(server()).post('/api/v1/auth/platform/login').send({ email, password: PASSWORD }).expect(200)).body.accessToken;
       await stepUp(who);
     }
@@ -78,7 +81,11 @@ describe('Payroll batch 5b', () => {
       const created = await prisma.organization.create({ data: { name: `Pay5B Org ${k}`, slug: `pay5b-${k.toLowerCase()}-${run}`, planId } });
       org[k] = { id: created.id, slug: created.slug };
     }
-    const template = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)!.permissions;
+    // Founder 21 Oct 2026 (option A): only HR changes pay. These pay tests' payroll fixture also plays the HR person who
+    // sets the pay (the job-change key); payroll itself is refused a pay change (people-increment.e2e-spec.ts).
+    // Founder 28 Oct 2026: only HR approves job changes; the approver fixture also plays the HR approver who sees pay
+    // (payroll itself is refused: employee-history.e2e-spec.ts).
+    const template = (key: string) => [...ROLE_TEMPLATES.find((t) => t.key === key)!.permissions, ...(key === 'payroll_admin' ? ['employee.change.manage'] : key === 'payroll_approver' ? ['employee.change.approve'] : [])];
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
       ['adminB', 'B', 'org_admin', null],
@@ -166,6 +173,9 @@ describe('Payroll batch 5b', () => {
     expect(await inA((tx) => tx.statutoryRuleSet.findFirst({ where: { id } }))).toBeNull();
 
     await api('staff', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(403);
+    // Console answer 1042: only a version in review is published.
+    await api('staff2', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(409);
+    await api('staff', 'post', `/platform/statutory/rule-sets/${id}/send-for-review`).expect(200);
     await api('staff2', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(200);
     const after = await inA((tx) => tx.statutoryRuleSet.findFirst({ where: { id } }));
     expect(after).toMatchObject({ status: 'published', draftedBy: users.staff, reviewedBy: users.staff2 });
@@ -268,8 +278,14 @@ describe('Payroll batch 5b', () => {
     const p = (await api('payAdmin', 'post', '/payroll/compensations/preview').send(body).expect(200)).body;
     // 5c-D2: no skill class on the job yet, so the state table's lowest class is used, with a warning.
     expect(p).toMatchObject({ monthlyCtc: '60500.00', warnings: [expect.stringMatching(/No skill class/)] });
-    expect(p.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ monthly: '1800.00', citation: { statute: 'IN.PF' } });
+    // From 17 Sep 2026 the PF ceiling is 25,000 (S.O. 5109(E)): 12% of the whole basic 24,200.
+    expect(p.lines.find((l: { code: string }) => l.code === 'pf_employee')).toMatchObject({ monthly: '2904.00', citation: { statute: 'IN.PF' } });
 
+    // PAY-12: nothing paid yet, so no arrears; an hourly or daily basis needs its rate (then it is worked out).
+    expect(p.arrears).toEqual([]);
+    expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, payBasis: 'hourly' }).expect(400)).body.message).toMatch(/needs its rate/);
+    await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, payBasis: 'weekly', rate: '450' }).expect(400);
+    expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, payBasis: 'hourly', rate: '450' }).expect(200)).body.lines.length).toBeGreaterThan(0);
     // Another entity's template is refused.
     expect((await api('payAdmin', 'post', '/payroll/compensations/preview').send({ ...body, templateVersionId: ids.versionA2 }).expect(400)).body.message).toMatch(/legal entity/);
     // YX-PAY-22: below the floor wage is a plain warning on the breakup.
@@ -296,7 +312,16 @@ describe('Payroll batch 5b', () => {
     const mine = (await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
     expect(mine).toMatchObject({ annualCtc: '726000.00', package: { entryMode: 'ctc' } });
     expect(mine.lines.length).toBeGreaterThan(5);
-    expect((await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body.changeId).toBe(ch.changeId);
+    // PPL-03 Pay tab (founder 22 Oct 2026): the lines the CTC counts total the header CTC; employer lines carry their basis.
+    const counted = (mine.lines as { annual: string; inCtc: boolean }[]).filter((l) => l.inCtc).reduce((s, l) => s + Number(l.annual), 0);
+    expect(Math.abs(counted - Number(mine.annualCtc))).toBeLessThan(0.5);
+    expect(mine.lines.find((l: { code: string }) => l.code === 'pf_employer')).toMatchObject({ inCtc: true, basis: '12% of ₹25,000' }); // the PF ceiling from 17 Sep 2026 (S.O. 5109(E))
+    expect(mine.lines.find((l: { code: string }) => l.code === 'gratuity_provision')).toMatchObject({ inCtc: false });
+    const seen = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(200)).body;
+    expect(seen.changeId).toBe(ch.changeId);
+    // PPL-03 Pay tab: the last approved payslip and the tax regime come with the same grant (none yet here).
+    expect(seen).toMatchObject({ lastNetPay: null });
+    expect(seen).toHaveProperty('taxRegime');
     await api('hrAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(404);
     await api('payAdminB', 'get', `/payroll/employees/${ids.empEmp}/compensation`).expect(404);
     await api('emp', 'get', `/payroll/employees/${ids.payAdminEmp}/compensation`).expect(404);
@@ -308,6 +333,45 @@ describe('Payroll batch 5b', () => {
     const letter = (await api('payAdmin', 'post', `/payroll/compensation-changes/${ch.changeId}/letter`).send({ signatory: 'Asha Rao', confirmation: { phrase: 'ISSUE RL', impact: [] } }).expect(201)).body;
     expect(letter.referenceNo).toMatch(/RL/);
     await api('payAdmin', 'post', `/payroll/compensation-changes/${ch.changeId}/letter`).send({ signatory: 'Asha Rao', confirmation: { phrase: 'ISSUE RL', impact: [] } }).expect(409);
+  });
+
+  it('compensation history (PAY-12): the approved salary with who asked and approved; self and payroll read it, others cannot; audited', async () => {
+    const h = (await api('payAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body;
+    expect(h[0]).toMatchObject({ kind: 'salary', status: 'approved', annualCtc: '726000.00', reason: 'Annual review', requestedBy: { userId: users.payAdmin }, decidedBy: { userId: users.payApprover } });
+    expect((await api('emp', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(200)).body).toHaveLength(h.length);
+    await api('hrAdmin', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(404);
+    await api('payAdminB', 'get', `/payroll/employees/${ids.empEmp}/compensation-history`).expect(404);
+    await api('emp', 'get', `/payroll/employees/${ids.payAdminEmp}/compensation-history`).expect(404);
+    await api('payAdmin', 'get', '/payroll/employees/not-a-uuid/compensation-history').expect(400);
+    // Viewed by someone else: audited, with no amounts.
+    const logged = await inA((tx) => tx.auditLog.findMany({ where: { action: 'payroll.compensation.history_viewed', entityId: ids.empEmp } }));
+    expect(logged.length).toBe(1);
+    expect(JSON.stringify(logged[0], (_k, v) => (typeof v === 'bigint' ? String(v) : v))).not.toMatch(/726000/);
+  });
+
+  it('suggest split stale flag (PAY-42): fresh until a rule for the place of work is published after the options were made', async () => {
+    const on = '2099-04-02';
+    const opts = (await api('payAdmin', 'post', '/payroll/compensations/suggest').send({ employeeId: ids.empEmp, effectiveDate: today, annualCtc: '726000' }).expect(200)).body as { madeAt: string }[];
+    expect(opts.length).toBeGreaterThan(0);
+    const madeAt = opts[0].madeAt;
+    expect(new Date(madeAt).getTime()).toBeLessThanOrEqual(Date.now());
+    const check = (who: Who, body: Record<string, string>) => api(who, 'post', '/payroll/compensations/suggest/check').send(body);
+    expect((await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(200)).body).toEqual({ stale: false, changes: [] });
+    // A Karnataka rule (the place of work) in force on the date, published after madeAt: stale, naming the rule.
+    const rule = { ...ptRule(goodSlabs), jurisdiction: 'IN-KA', version: `s${run}`, validFrom: '2099-04-01' };
+    const { id } = (await api('staff', 'post', '/platform/statutory/rule-sets').send(rule).expect(201)).body;
+    await api('staff', 'post', `/platform/statutory/rule-sets/${id}/send-for-review`).expect(200);
+    await api('staff2', 'post', `/platform/statutory/rule-sets/${id}/publish`).expect(200);
+    const stale = (await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(200)).body;
+    expect(stale).toMatchObject({ stale: true, changes: [{ statute: 'IN.PT', jurisdiction: 'IN-KA', version: `s${run}`, validFrom: '2099-04-01' }] });
+    // Options made after the publish are fresh; a date before the rule starts is not affected.
+    expect((await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt: new Date().toISOString() }).expect(200)).body.stale).toBe(false);
+    expect((await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: today, madeAt }).expect(200)).body.stale).toBe(false);
+    // Negative: no salary-manage key, another company, bad input.
+    await check('hrAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(403);
+    await check('payAdminB', { employeeId: ids.empEmp, effectiveDate: on, madeAt }).expect(404);
+    await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt: 'yesterday' }).expect(400);
+    await check('payAdmin', { employeeId: ids.empEmp, effectiveDate: on, madeAt: '2999-01-01T00:00:00Z' }).expect(400);
   });
 
   // ------------------------------------------------------------------------------------------ statutory profile (PAY-2.10)
@@ -377,6 +441,18 @@ describe('Payroll batch 5b', () => {
     const rows = (await api('payAdmin', 'get', '/payroll/coverage').expect(200)).body as { legalEntityId: string; statute: string; status: string; headcount: number }[];
     expect(rows.filter((r) => r.legalEntityId === ids.entityA).map((r) => [r.statute, r.status, r.headcount])).toEqual([['IN.ESI', 'not_covered', 2], ['IN.PF', 'not_covered', 2]]);
     expect((await api('payAdminB', 'get', '/payroll/coverage').expect(200)).body.some((r: { legalEntityId: string }) => r.legalEntityId === ids.entityA)).toBe(false);
+    // PAY-30 Crossed: covered by law (ESI) with no registration is "crossed, set-up needed"; PF is covered and switched on.
+    await inA((tx) => tx.establishmentCoverage.updateMany({ where: { legalEntityId: ids.entityA }, data: { status: 'covered', crossedOn: new Date(`${today}T00:00:00Z`) } }));
+    const crossed = (await api('payAdmin', 'get', '/payroll/coverage').expect(200)).body as { legalEntityId: string; statute: string; status: string; registration: string | null }[];
+    expect(crossed.filter((r) => r.legalEntityId === ids.entityA).map((r) => [r.statute, r.status, r.registration])).toEqual([['IN.ESI', 'crossed', null], ['IN.PF', 'covered', 'on']]);
+    // Record applied (the statutory set-up key and a second step): no longer crossed.
+    await api('hrAdmin', 'put', `/payroll/entities/${ids.entityA}/statutory-registrations`).send({ registrations: [{ statute: 'IN.ESI', status: 'applied_awaited', appliedOn: today }] }).expect(403);
+    await stepUp('payAdmin');
+    await api('payAdmin', 'put', `/payroll/entities/${ids.entityA}/statutory-registrations`).send({ registrations: [{ statute: 'IN.ESI', status: 'applied_awaited' }] }).expect(400);
+    await api('payAdmin', 'put', `/payroll/entities/${ids.entityA}/statutory-registrations`).send({ registrations: [{ statute: 'IN.ESI', status: 'applied_awaited', appliedOn: today }] }).expect(200);
+    const after = (await api('payAdmin', 'get', '/payroll/coverage').expect(200)).body as { legalEntityId: string; statute: string; status: string; registration: string | null }[];
+    expect(after.find((r) => r.legalEntityId === ids.entityA && r.statute === 'IN.ESI')).toMatchObject({ status: 'covered', registration: 'applied_awaited' });
+    await inA((tx) => tx.establishmentCoverage.updateMany({ where: { legalEntityId: ids.entityA }, data: { status: 'not_covered', crossedOn: null } }));
     const state = (await api('payAdmin', 'get', `/payroll/entities/${ids.entityA}/setup`).expect(200)).body;
     expect(state.steps.map((s: { key: string; done: boolean }) => [s.key, s.done])).toEqual([['registrations', false], ['pay_groups', true], ['components', true], ['templates', true], ['payslip_layout', true]]);
   });

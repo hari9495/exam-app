@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { Calculator, CameraFrame, CodeAnswer, ConnectionStatus, EvidenceFrame, FlagTimeline, IdCapture, IntegrityScoreCard, ProctorTile, QrPlaceholder, ScreenThumb, SystemCheckList } from '../proctoring-kit';
+import { Calculator, CameraFrame, CodeAnswer, CodeRunOutput, ConnectionStatus, EvidenceFrame, FlagTimeline, IdCapture, IntegrityScoreCard, ProctorTile, QrPlaceholder, ScreenThumb, SystemCheckList } from '../proctoring-kit';
 import { EVENTS_SNEHA, LIVE_TILES, READINESS_CHECKS, SIGNALS_SNEHA } from '../proctoring-data';
 import '../screens.css';
 
@@ -85,6 +85,22 @@ function CodeDemo() {
   );
 }
 export const Code: S = { name: 'Code answer', render: () => <CodeDemo /> };
+
+// Answer 2234: what one press of Run printed, under the live editor on /exam.
+const RUN = { stdout: '[apple, mango]\n', stderr: '', exitCode: 0, compileError: null, timedOut: false, runsRemaining: 9 };
+export const CodeRun: S = {
+  name: 'Code answer: run output',
+  render: () => (
+    <div className="yx-prc-stack">
+      <CodeRunOutput result={null} error={null} />
+      <CodeRunOutput result={RUN} error={null} />
+      <CodeRunOutput result={{ ...RUN, stdout: '', stderr: 'Exception in thread "main" java.lang.NullPointerException\n  at Main.topK(Main.java:4)', exitCode: 1, runsRemaining: 8 }} error={null} />
+      <CodeRunOutput result={{ ...RUN, stdout: '', compileError: 'Main.java:3: error: cannot find symbol\n    .collect(groupingBy(w -> w, counting()))', exitCode: 1, runsRemaining: 7 }} error={null} />
+      <CodeRunOutput result={{ ...RUN, stdout: '', exitCode: 137, timedOut: true, runsRemaining: 6 }} error={null} />
+      <CodeRunOutput result={null} error="You have used all 10 runs for this question." />
+    </div>
+  ),
+};
 
 export const QrAndId: S = {
   name: 'QR and ID capture',

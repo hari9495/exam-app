@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { TenantPrismaService, BlobStorageService } from '@exam-platform/shared';
 import { validatePdfUpload } from '../public-applications/pdf-validation';
 import { CreateSubmissionDto } from './dto/create-submission.dto';
+import { toPaise, toRupees } from '../staffing/staffing-rules';
 
 @Injectable()
 export class AgencyPortalService {
@@ -30,10 +31,14 @@ export class AgencyPortalService {
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
       async (tx) => {
         const agency = await this.resolveAgency(tx, token);
+        // HIR-21: an expired share is gone; the rate cap shows; a hidden client never does (vendors never see bill rates).
+        const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
         const agencyJobs = await tx.agencyJob.findMany({
-          where: { agencyId: agency.id, job: { status: 'open' } },
-          select: { job: { select: { id: true, title: true, location: true, department: true } } },
+          where: { agencyId: agency.id, job: { status: 'open' }, OR: [{ expiresOn: null }, { expiresOn: { gte: new Date(`${today}T00:00:00Z`) } }] },
+          select: { rateCapPaise: true, maxSubmissions: true, expiresOn: true, maskClient: true, job: { select: { id: true, title: true, location: true, department: true, staffingClientId: true } } },
         });
+        const clientIds = agencyJobs.map((aj: any) => aj.job.staffingClientId).filter(Boolean);
+        const clients = new Map<string, string>((await tx.staffingClient.findMany({ where: { id: { in: clientIds } }, select: { id: true, name: true } })).map((c: any) => [c.id, c.name]));
         const submissionRows = await tx.agencySubmission.findMany({
           where: { agencyId: agency.id },
           orderBy: { createdAt: 'desc' },
@@ -43,12 +48,23 @@ export class AgencyPortalService {
             status: true,
             candidateName: true,
             createdAt: true,
+            duplicateOfAgencyId: true,
+            ownerUntil: true,
             job: { select: { title: true } },
           },
         });
         return {
           agencyName: agency.name,
-          jobs: agencyJobs.map((aj: any) => aj.job),
+          jobs: agencyJobs.map((aj: any) => ({
+            id: aj.job.id,
+            title: aj.job.title,
+            location: aj.job.location,
+            department: aj.job.department,
+            client: aj.job.staffingClientId ? (aj.maskClient ? null : (clients.get(aj.job.staffingClientId) ?? null)) : null,
+            rateCap: aj.rateCapPaise != null ? toRupees(aj.rateCapPaise) : null,
+            maxSubmissions: aj.maxSubmissions,
+            expiresOn: aj.expiresOn ? aj.expiresOn.toISOString().slice(0, 10) : null,
+          })),
           // Flatten job.title -- the public page reads s.jobTitle (matches the authed
           // /agency-submissions endpoint's flat shape), not a nested job object.
           submissions: submissionRows.map((s: any) => ({
@@ -56,7 +72,8 @@ export class AgencyPortalService {
             jobId: s.jobId,
             jobTitle: s.job.title,
             candidateName: s.candidateName,
-            status: s.status,
+            // A duplicate reads as not accepted; who holds the candidate is never shown to a vendor.
+            status: s.duplicateOfAgencyId || s.ownerUntil ? 'duplicate' : s.status,
             createdAt: s.createdAt,
           })),
         };
@@ -84,7 +101,18 @@ export class AgencyPortalService {
       { organizationId: this.LOOKUP_ORG, isSuperAdmin: true },
       (tx) => tx.agencyJob.findFirst({ where: { agencyId: agency.id, jobId: dto.jobId, job: { status: 'open' } } }),
     );
-    if (!allowed) throw new BadRequestException('This role is not accepting agency submissions');
+    const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+    if (!allowed || (allowed.expiresOn && allowed.expiresOn.toISOString().slice(0, 10) < today)) throw new BadRequestException('This role is not accepting agency submissions');
+    // HIR-21: a capped share needs a quote, right to represent and consent; the vendor's limit per job holds.
+    const quoted = dto.quotedRate ? toPaise(dto.quotedRate) : null;
+    if (allowed.rateCapPaise != null) {
+      if (quoted == null || quoted <= 0n) throw new BadRequestException('Enter your rate for this candidate.');
+      if (!dto.rightToRepresent || !dto.consent) throw new BadRequestException('Confirm you have the right to represent this candidate and their consent.');
+    }
+    if (allowed.maxSubmissions != null) {
+      const used = await this.tenantPrisma.forTenant({ organizationId: this.LOOKUP_ORG, isSuperAdmin: true }, (tx) => tx.agencySubmission.count({ where: { agencyId: agency.id, jobId: dto.jobId } }));
+      if (used >= allowed.maxSubmissions) throw new BadRequestException(`You have sent the most submissions allowed for this role (${allowed.maxSubmissions}).`);
+    }
 
     // Uploaded OUTSIDE the tenant tx (ADO #6810): blob I/O inside a tx holds the transaction open
     // for the duration of a network call to storage.
@@ -102,6 +130,18 @@ export class AgencyPortalService {
             where: { organizationId_email: { organizationId: agency.organizationId, email: dto.email } },
           }),
         );
+        // HIR-21 ownership: the first submitter holds the candidate for this job for the company's window (setting
+        // staffing.vendor.ownership_days); a later vendor's submission, or one for someone already in the job's own
+        // pipeline, is a duplicate (the holder is never told to the vendor).
+        const windowRow = await tx.setting.findFirst({ where: { organizationId: agency.organizationId, key: 'staffing.vendor.ownership_days', scopeType: 'tenant' }, select: { value: true } });
+        const windowDays = Number(windowRow?.value ?? 90);
+        const since = new Date(Date.now() - windowDays * 86_400_000);
+        const prior = await tx.agencySubmission.findFirst({ where: { organizationId: agency.organizationId, jobId: dto.jobId, candidateEmail: { equals: dto.email, mode: 'insensitive' }, createdAt: { gte: since } }, orderBy: { createdAt: 'asc' } });
+        if (prior && prior.agencyId === agency.id) throw new BadRequestException('You have already submitted this candidate for this role.');
+        const inPipeline = !prior && (await tx.pipelineEntry.findFirst({ where: { organizationId: agency.organizationId, jobId: dto.jobId, createdAt: { gte: since }, candidate: { email: { equals: dto.email, mode: 'insensitive' } } }, select: { createdAt: true } }));
+        const ownedFrom = prior?.createdAt ?? (inPipeline ? inPipeline.createdAt : null);
+        // The last day held, as an India date (the first submission's IST day plus the window).
+        const ownerUntil = ownedFrom ? new Date(new Date(ownedFrom.getTime() + 330 * 60_000 + windowDays * 86_400_000).toISOString().slice(0, 10) + 'T00:00:00Z') : null;
         // No candidate/pipeline row is written here -- a submission is only turned into a
         // candidate/pipeline entry later, when a recruiter reviews and accepts it.
         const submission = await tx.agencySubmission.create({
@@ -114,6 +154,11 @@ export class AgencyPortalService {
             candidatePhone: dto.phone ?? null,
             resumePath,
             isDuplicate,
+            quotedRatePaise: quoted,
+            rightToRepresent: dto.rightToRepresent ?? false,
+            consent: dto.consent ?? false,
+            duplicateOfAgencyId: prior ? prior.agencyId : null,
+            ownerUntil,
           },
         });
         return { id: submission.id, isDuplicate };

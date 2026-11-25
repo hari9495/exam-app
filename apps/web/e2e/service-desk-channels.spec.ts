@@ -59,6 +59,9 @@ async function openTicket(agent: Page, text: string) {
   await agent.getByRole('menuitemradio', { name: 'All open' }).or(agent.getByRole('menuitem', { name: 'All open' })).click();
   await agent.getByRole('textbox', { name: /Search/ }).fill(text);
   await agent.getByText(text).first().click();
+  // HLP-02: a row opens the quick view; "Open ticket" goes to the ticket.
+  await agent.getByRole('dialog').getByRole('button', { name: 'Open ticket' }).click();
+  await agent.waitForURL(/\/yx\/desk\/tickets\/[0-9a-f-]{36}/, { timeout: 30_000 });
 }
 
 test('outside customer: portal sign-in → raise → agent replies → customer sees the reply', async ({ browser }) => {
@@ -78,7 +81,7 @@ test('outside customer: portal sign-in → raise → agent replies → customer 
   await customer.getByRole('textbox', { name: /Subject/ }).fill(subject);
   await customer.getByRole('textbox', { name: /Details/ }).fill('Three packets of rava idli mix came torn. Order 6630.');
   await customer.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(customer.getByText(/Ticket CARE-\d+ is open/)).toBeVisible();
+  await expect(customer.getByText(/^Ticket CARE-\d+ is open$/)).toBeVisible(); // the toast's title
   await expect(customer.getByRole('button', { name: subject })).toBeVisible();
 
   const agent = await (await browser.newContext()).newPage();

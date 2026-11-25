@@ -1,11 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
+import { pressFirst, play, press, tab } from '../_kit/story-play';
 import { PeopleListScreen, type DeskPerson, type DirectorySource } from './people-list';
 import { PrivacyScreen, type PrivacyRequestRow, type PrivacyStatus } from './privacy';
 import { DeskSignUpScreen, KnownIssuesScreen, SetupStart, type SetupChecklist } from './setup-start';
 import { BANNERS, DESK } from './data';
 
-const meta: Meta = { title: 'Screens/Service desk/Batch 4 standalone and privacy', parameters: { layout: 'fullscreen' } };
+const meta: Meta = { title: 'Screens/Helpdesk/People list, privacy and sign-up', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
 
@@ -76,3 +77,11 @@ export const KnownIssues: S = {
 export const SignUp: S = {
   render: () => <DeskSignUpScreen signInHref="#" onSubmit={() => wait()} />,
 };
+
+// Founder rules (28 Oct 2026): buttons are never greyed out; done is a toast.
+export const PersonTooEarly: S = { name: 'People list · Add person pressed with nothing filled', render: PeopleList.render, play: play(press('Add a person'), press('Add person')) };
+export const SourceTooEarly: S = { name: 'People list · Connect LDAP pressed with nothing filled', render: PeopleList.render, play: play(tab('Directory sync'), press(/Connect LDAP/), press('Connect')) };
+export const RefuseTooEarly: S = { name: 'Privacy · Refuse pressed with no note', render: Privacy.render, play: play(pressFirst(/^Refuse the request from/), press('Refuse request')) };
+export const PrivacySaved: S = { name: 'Privacy · what we keep saved (toast)', render: Privacy.render, play: play(press('Save')) };
+export const GetStartedTooEarly: S = { name: 'Get started · Create desk pressed with nothing filled', render: GetStarted.render, play: play(press('Set up a desk in 3 steps'), press('Create desk')) };
+export const SignUpTooEarly: S = { name: 'Sign up · Start free trial pressed with nothing filled', render: SignUp.render, play: play(press('Start free trial')) };

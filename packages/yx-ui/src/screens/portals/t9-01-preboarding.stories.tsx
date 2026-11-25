@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { BankDetailsStep, BgvConsentStep, NomineeForm, OfferLettersPanel, PreboardingDocuments, PreboardingPortalScreen, TaxRegimeStep } from './t9-workforce';
+import { BankDetailsStep, BgvConsentStep, DeclineOffer, EmergencyContactStep, IdentityStep, NomineeForm, OfferLettersPanel, PersonalDetailsStep, PreboardingDocuments, PreboardingPortalScreen, TaxRegimeStep } from './t9-workforce';
 import { PortalSignInScreen } from './portals-kit';
-import { JOINER, KAVERI_ACCENT, NOMINEES, PRE_ITEMS, TENANT, TODAY } from './t9-data';
+import { BGV_NOTICE_ITEMS, EMERGENCY, JOINER, KAVERI_ACCENT, NOMINEES, PERSONAL, PRE_CLOSED_LETTERS, PRE_ITEMS, PRE_LETTERS, TENANT, TODAY } from './t9-data';
 
 const meta: Meta = { title: 'Screens/Portals/T9-01 · Pre-boarding portal', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -57,18 +57,8 @@ export const SignInLocked: S = {
     />
   ),
 };
-export const InviteExpired: S = {
-  name: 'Invitation link expired',
-  render: () => (
-    <PortalSignInScreen
-      tenant={TENANT}
-      portal="Your joining checklist"
-      accent={KAVERI_ACCENT}
-      footer={{ privacy: 'Privacy notice for pre-joiners (G-09)' }}
-      signIn={{ title: 'Welcome to Kaveri Foods', intro: 'Your invitation opens your joining checklist.', defaultStage: 'link-expired' }}
-    />
-  ),
-};
+// No InviteExpired story: joiners sign in with their email and an emailed code; there is no invitation link to expire
+// (founder default, 2 Nov 2026). A wrong or expired code is SignInWrongCode.
 
 export const Checklist: S = { render: () => <PreboardingPortalScreen {...base} /> };
 export const ChecklistPhone: S = { name: 'Checklist · phone', globals: phone, render: () => <PreboardingPortalScreen {...base} /> };
@@ -156,6 +146,143 @@ export const BgvConsent: S = {
     </PreboardingPortalScreen>
   ),
 };
-export const Postponed: S = { render: () => <PreboardingPortalScreen {...base} outcome="postponed" newJoiningDate={new Date(2026, 10, 2)} /> };
+export const Postponed: S = { render: () => <PreboardingPortalScreen {...base} outcome="postponed" newJoiningDate={new Date(2026, 10, 2)} movedFrom={JOINER.joiningDate} /> };
 export const Withdrawn: S = { name: 'Offer withdrawn · access ended', render: () => <PreboardingPortalScreen {...base} outcome="withdrawn" /> };
 export const Joined: S = { name: 'Joined · page closed', render: () => <PreboardingPortalScreen {...base} outcome="joined" /> };
+
+/* ------------------------------------------------------------------ States the first design lacked (drawn before wiring, 2 Nov 2026) */
+
+const signOut = () => undefined;
+export const Loading: S = { name: 'Loading', render: () => <PreboardingPortalScreen {...base} state="loading" onSignOut={signOut} /> };
+export const LoadError: S = { name: 'Could not load · try again', render: () => <PreboardingPortalScreen {...base} state="error" onSignOut={signOut} /> };
+export const AfterYouJoin: S = {
+  name: 'Checklist · your tasks after joining',
+  render: () => (
+    <PreboardingPortalScreen
+      {...base}
+      onSignOut={signOut}
+      items={[
+        ...PRE_ITEMS.filter((i) => i.section !== 'Statutory (HR completes)'),
+        { id: 'task:welcome', section: 'After you join', title: 'How things work here', hint: 'In the employee app after you join', status: 'todo', due: new Date(2026, 9, 13), later: true },
+      ]}
+    />
+  ),
+};
+export const PersonalForm: S = {
+  name: 'Personal details · pressed too early',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <PersonalDetailsStep defaultValue={{ ...PERSONAL, dateOfBirth: '', postalCode: '6351' }} tried />
+    </PreboardingPortalScreen>
+  ),
+};
+export const PersonalFilled: S = {
+  name: 'Personal details · form',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <PersonalDetailsStep defaultValue={PERSONAL} />
+    </PreboardingPortalScreen>
+  ),
+};
+export const IdentityStepUp: S = {
+  name: 'PAN and ID · step-up code',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <IdentityStep stage="step-up" defaultName={JOINER.name} />
+    </PreboardingPortalScreen>
+  ),
+};
+export const IdentityForm: S = {
+  name: 'PAN and ID · form',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <IdentityStep stage="form" defaultName={JOINER.name} onFile={{ pan: '••••••234F', aadhaar: null }} />
+    </PreboardingPortalScreen>
+  ),
+};
+export const EmergencyForm: S = {
+  name: 'Emergency contact · form',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <EmergencyContactStep defaultValue={EMERGENCY} />
+    </PreboardingPortalScreen>
+  ),
+};
+export const NomineesAdd: S = {
+  name: 'Family and nominees · add a nominee',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <NomineeForm defaultNominees={NOMINEES} defaultAdding />
+    </PreboardingPortalScreen>
+  ),
+};
+export const TaxRegimeEarly: S = {
+  name: 'Tax regime · pressed too early',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <TaxRegimeStep defaultPrevious={{ grossSalary: 18_600, tds: 42_000 }} tried />
+    </PreboardingPortalScreen>
+  ),
+};
+export const BgvNotice: S = {
+  name: 'Background check consent · the notice',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <BgvConsentStep items={BGV_NOTICE_ITEMS} notice="BGV v1" company={TENANT} />
+    </PreboardingPortalScreen>
+  ),
+};
+export const BgvWithdraw: S = {
+  name: 'Background check consent · withdraw',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <BgvConsentStep items={BGV_NOTICE_ITEMS} notice="BGV v1" company={TENANT} consentedOn={new Date(2026, 8, 26)} defaultWithdrawOpen />
+    </PreboardingPortalScreen>
+  ),
+};
+export const OfferLetters: S = {
+  name: 'Offer · letters to download and accept',
+  render: () => (
+    <PreboardingPortalScreen {...base} tab="offer">
+      <OfferLettersPanel state="to-sign" joiner={JOINER} ctc={0} letters={PRE_LETTERS} />
+    </PreboardingPortalScreen>
+  ),
+};
+export const AcceptCode: S = {
+  name: 'Offer · accept with an emailed code',
+  render: () => (
+    <PreboardingPortalScreen {...base} tab="offer">
+      <OfferLettersPanel state="to-sign" joiner={JOINER} ctc={0} letters={PRE_LETTERS} defaultAccepting="l-apt" />
+    </PreboardingPortalScreen>
+  ),
+};
+export const DeclineReason: S = {
+  name: 'Decline offer · reason',
+  render: () => (
+    <PreboardingPortalScreen {...base}>
+      <DeclineOffer company={TENANT} defaultOpen />
+    </PreboardingPortalScreen>
+  ),
+};
+export const Declined: S = { name: 'Declined · page closed', render: () => <PreboardingPortalScreen {...base} outcome="reneged" onSignOut={signOut} /> };
+export const Cancelled: S = { name: 'Cancelled · access ended', render: () => <PreboardingPortalScreen {...base} outcome="cancelled" onSignOut={signOut} /> };
+
+/* ------------------------------------------------------------------ Founder answers 2 Nov 2026 (drawn before wiring) */
+
+/** (2) A closed joining keeps its letters: download only, nothing to accept; every change is refused. */
+export const WithdrawnLetters: S = {
+  name: 'Offer withdrawn · letters to download (read-only)',
+  render: () => (
+    <PreboardingPortalScreen {...base} outcome="withdrawn" onSignOut={signOut}>
+      <OfferLettersPanel state="signed" joiner={JOINER} ctc={0} letters={PRE_CLOSED_LETTERS} readOnly />
+    </PreboardingPortalScreen>
+  ),
+};
+export const JoinedLetters: S = {
+  name: 'Joined · letters to download (read-only)',
+  render: () => (
+    <PreboardingPortalScreen {...base} outcome="joined" onSignOut={signOut}>
+      <OfferLettersPanel state="signed" joiner={JOINER} ctc={0} letters={PRE_LETTERS.map((l) => ({ ...l, signature: { status: 'signed' as const, signedAt: '2026-09-25T10:00:00Z' } }))} readOnly />
+    </PreboardingPortalScreen>
+  ),
+};

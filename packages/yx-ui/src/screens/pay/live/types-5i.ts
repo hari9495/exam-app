@@ -32,6 +32,22 @@ export interface RateCard {
   validTo: string | null;
 }
 
+/** GET payroll/special/plans/:id/results?month (PAY-32 results sheet, PAY-33 held part). */
+export interface IncentiveResultRow {
+  id: string;
+  employeeId: string;
+  quota: string;
+  actual: string;
+  amount: string;
+  /** The part held until the customer pays, its reason, and whether it has been released to payroll. */
+  held: string;
+  heldReason: string | null;
+  released: boolean;
+  workings: { attainment?: string } | null;
+  /** The month's results were sent to payroll. */
+  posted: boolean;
+}
+
 export interface IncentivePlanView {
   id: string;
   name: string;
@@ -42,6 +58,16 @@ export interface IncentivePlanView {
   capPercent: string | null;
   clawbackDays: number;
   status: string;
+  /** PAY-32: the plan's dates, payout frequency, metric source, who is on it, and its version. */
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+  payoutFrequency?: 'monthly' | 'quarterly';
+  metricSource?: 'manual' | 'import' | 'api' | 'projects';
+  departmentId?: string | null;
+  locationId?: string | null;
+  planVersion?: number;
+  previousId?: string | null;
+  version?: number;
 }
 
 export interface UnionsView {
@@ -57,11 +83,35 @@ export interface OncallRuleView {
   calloutMinHours: string;
   calloutRate: string;
   multiplier: string;
+  /** PAY-35: the public-holiday multiplier (null = the normal one); company choices on standby and weekly hours. */
+  holidayMultiplier?: string | null;
+  payStandbyWhenCalled?: boolean;
+  countTowardsWeekly?: boolean;
 }
 
 /** GET payroll/special/me/incentives. */
 export interface MyIncentives {
-  results: { id: string; plan: string | null; month: string; quota: string; actual: string; amount: string; sentToPayroll: boolean; workings: { attainment?: string } | null }[];
+  results: {
+    id: string;
+    plan: string | null;
+    month: string;
+    quota: string;
+    actual: string;
+    amount: string;
+    sentToPayroll: boolean;
+    workings: { attainment?: string } | null;
+    /** PAY-33: the financial-year quarter ("Q2") and its tax year ("2026-27"). */
+    quarter?: string;
+    taxYear?: string;
+    payoutFrequency?: 'monthly' | 'quarterly';
+    clawbackDays?: number;
+    /** The tier the attainment reached (% of quota; to null: and above). */
+    tier?: { from: number; to: number | null } | null;
+    /** The part held until the customer pays, its reason, and whether payroll has released it. */
+    held?: string;
+    heldReason?: string | null;
+    heldReleased?: boolean;
+  }[];
   clawbacks: { id: string; month: string; amount: string; reason: string }[];
 }
 
@@ -92,6 +142,29 @@ export interface EwaDrawView {
   paidRef: string | null;
   failureReason: string | null;
   createdAt: string;
+}
+
+/** GET payroll/ewa/recoveries (PAY-27): one row a month, draws counted in the month they were drawn. */
+export interface EwaRecoveryMonth {
+  month: string;
+  draws: number;
+  toRecover: string;
+  recovered: string;
+  /** Carried to next month: the payslip's net could not take it. */
+  deferred: string;
+  /** Leavers' draws taken (or to be taken) by the final settlement. */
+  fnf: { people: number; amount: string };
+  /** The month's payroll is not approved yet. */
+  waiting: string;
+}
+
+/** GET payroll/ewa/reconciliation (PAY-27): the month's draws matched to their payslip deductions. */
+export interface EwaRecon {
+  entities: { id: string; name: string }[];
+  legalEntityId: string | null;
+  month: string;
+  totals: { draws: number; paidOut: string; fees: string; toRecover: string; recovered: string; deferred: string; fnf: string; waiting: string; difference: string } | null;
+  draws: { drawId: string; employeeId: string; employeeName: string; month: string; paidOn: string | null; paidRef: string | null; amount: string; fee: string; toRecover: string; recovered: string; deferred: string; fnf: string; payslipId: string | null; state: 'recovered' | 'deferred' | 'fnf' | 'waiting' }[];
 }
 
 /** GET payroll/me/ewa. */
@@ -135,7 +208,7 @@ export interface EquityOverview {
 
 export interface ActuarialView {
   censuses: { id: string; asOf: string; standard: string; rows: number; fileId: string; createdAt: string }[];
-  valuations: { id: string; valuedOn: string; standard: string; kind: 'gratuity' | 'leave'; opening: string; closing: string; delta: string; journal: { account: string; debit?: string; credit?: string }[]; status: 'recorded' | 'posted'; madeByMe: boolean }[];
+  valuations: { id: string; valuedOn: string; standard: string; kind: 'gratuity' | 'leave'; opening: string; closing: string; delta: string; journal: { account: string; debit?: string; credit?: string }[]; status: 'recorded' | 'posted'; madeByMe: boolean; /** PAY-38: the actuary's movement, when it was entered. */ movement?: { serviceCost: string; interestCost: string; benefitsPaid: string; actuarialLoss: string; actuarialGain: string } | null }[];
 }
 
 /** GET payroll/country-packs. */

@@ -1,9 +1,9 @@
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { HelpCentreScreen, HelpDrawer, MyTicketScreen } from './help';
-import { TicketScreen, eventText, type TicketScreenProps } from './ticket';
-import { BUILT_IN_VIEWS, DeskTicketsScreen } from './tickets';
+import { ToastProvider } from '../../components/notify';
+import { HelpDrawer, MyTicketScreen } from './help';
+import { eventText } from './ticket';
 import { fillCanned, minutesText } from './desk-kit';
 import { CAL_ITEMS, CANNED, COMPLIANCE, CONTEXT, DESK, DETAIL, MY_ROWS, MY_TICKET, RAISE_DESKS, ROWS, SLA_SETUP, TEMPLATES, TICKET, TIMELINE, WORK } from './data';
 import { ResolveDialog, TicketWorkRail, type TicketWorkProps } from './work';
@@ -13,6 +13,7 @@ import { DeskSetupScreen } from './setup';
 import { BannersTab, EmailTab, PortalTab, type EmailSetupProps } from './setup-channels';
 import { CustomersScreen } from './customers';
 import { PortalScreen, type PortalScreenProps } from './portal';
+import { RAISE_FIELDS } from './ticket-fields-sample';
 import { ACCOUNT, ACCOUNT_ROWS, BANNERS, BOUNCES, CS_DESK, INBOUND, MAILBOXES, MY_BANNERS, PORTALS, PORTAL_HOME, PORTAL_ROWS, PORTAL_TICKET, PRODUCTS, SENDING_DOMAINS } from './data';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
@@ -28,97 +29,11 @@ describe('Service Desk helpers', () => {
   });
 });
 
-describe('HLP-01 help centre', () => {
-  it('raises a ticket with the chosen team and shows the number', async () => {
-    const onRaise = vi.fn().mockResolvedValue({ id: 'n', number: 'IT-1009' });
-    render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={onRaise} onOpen={() => {}} />);
-    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
-    await ue.click(screen.getByRole('combobox', { name: /Which team/ }));
-    await ue.click(await screen.findByRole('option', { name: /IT help desk/ }));
-    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Wi-Fi drops');
-    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Every hour on floor 2');
-    await ue.click(screen.getByRole('radio', { name: 'Today' }));
-    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
-    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ deskId: 'd-it', subject: 'Wi-Fi drops', description: 'Every hour on floor 2', urgency: 2 })));
-    expect(await screen.findByText(/IT-1009/)).toBeInTheDocument();
-  });
-
-  it('lists my open tickets with private ones marked; the requester view has no notes', () => {
-    render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={vi.fn()} onOpen={() => {}} />);
-    expect(screen.getByRole('button', { name: 'LOP on my September payslip' })).toBeInTheDocument();
-    expect(screen.getByText('Private')).toBeInTheDocument();
+describe('HLP-01 my ticket', () => {
+  it('the requester view has no notes and lists the files', () => {
     render(<MyTicketScreen state="ready" ticket={MY_TICKET} onBack={() => {}} onReply={ok()} onUpload={vi.fn()} onOpenFile={ok()} onAddWatcher={ok()} />);
     expect(screen.queryByText(/Same router model/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /vpn-log.txt/ })).toBeInTheDocument();
-  });
-});
-
-describe('HLP-02 agent desk', () => {
-  it('lead bulk actions run on the selected tickets', async () => {
-    const onBulk = vi.fn().mockResolvedValue({ done: ['t1'], failed: [] });
-    render(
-      <DeskTicketsScreen state="ready" desks={[DESK]} details={[DETAIL]} views={[]} page={{ items: ROWS, total: 3, nextCursor: null }} pageState="ready" query={{ viewId: 'open', filters: BUILT_IN_VIEWS[2].filters, layout: 'list' }} onQueryChange={() => {}} onOpen={() => {}} onMove={ok()} onBulk={onBulk} onSaveView={ok()} onExport={ok()} onSearchPeople={async () => []} onCreate={vi.fn()} />,
-    );
-    await ue.click(screen.getAllByRole('checkbox', { name: /Select/ })[1]);
-    await ue.click(screen.getByRole('button', { name: 'Assign to me' }));
-    await waitFor(() => expect(onBulk).toHaveBeenCalledWith(expect.any(Array), { assignee: 'me' }));
-    expect(await screen.findByText('1 changed.')).toBeInTheDocument();
-  });
-});
-
-describe('HLP-03 ticket workspace', () => {
-  const props = (over: Partial<TicketScreenProps> = {}): TicketScreenProps => ({
-    state: 'ready',
-    ticket: TICKET,
-    detail: DETAIL,
-    canned: CANNED,
-    timeline: TIMELINE,
-    context: CONTEXT,
-    others: [],
-    meName: 'Suresh Pillai',
-    meId: 'u-suresh',
-    onBack: () => {},
-    onUpdate: ok(),
-    onAssign: ok(),
-    onPost: ok(),
-    onUpload: vi.fn(),
-    onOpenFile: ok(),
-    onAddTime: ok(),
-    onRunScenario: ok(),
-    onConvert: ok(),
-    onAddCollaborator: ok(),
-    onRemoveCollaborator: ok(),
-    onAddWatcher: ok(),
-    onRemoveWatcher: ok(),
-    onSearchPeople: async () => [],
-    onTyping: () => {},
-    onOpenTicket: () => {},
-    ...over,
-  });
-
-  it('an agent sees reply and note; notes are marked internal; a colleague on the ticket is shown', () => {
-    render(<TicketScreen {...props({ others: [{ userId: 'u-farah', name: 'Farah Khan', typing: true }] })} />);
-    expect(screen.getByRole('tab', { name: 'Reply to Divya' })).toBeInTheDocument();
-    expect(screen.getByText(/Internal note: Divya never sees it/)).toBeInTheDocument();
-    expect(screen.getByText('Farah Khan is writing on this ticket')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Resolve' })).toBeInTheDocument();
-  });
-
-  it('a collaborator gets notes only and no work controls', () => {
-    render(<TicketScreen {...props({ ticket: { ...TICKET, access: 'collaborator', canWork: false } })} />);
-    expect(screen.queryByRole('tab', { name: /Reply to/ })).not.toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Internal note' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Resolve' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Log time' })).not.toBeInTheDocument();
-  });
-
-  it('changing priority asks for a reason first', async () => {
-    const onUpdate = ok();
-    render(<TicketScreen {...props({ onUpdate })} />);
-    await ue.click(screen.getByRole('radio', { name: 'P1' }));
-    await ue.type(screen.getByRole('textbox', { name: /Reason/ }), 'CEO cannot work');
-    await ue.click(screen.getByRole('button', { name: 'Change priority' }));
-    await waitFor(() => expect(onUpdate).toHaveBeenCalledWith({ priority: 1, priorityReason: 'CEO cannot work' }));
   });
 });
 
@@ -183,7 +98,10 @@ describe('batch 2 panels (SD-1.09 … SD-1.17)', () => {
   it('resolve needs a code and note when the desk asks', async () => {
     const onResolve = ok();
     render(<ResolveDialog open onOpenChange={() => {}} ticket={TICKET} codes={TEMPLATES.resolutionCodes} required linked={0} onResolve={onResolve} />);
-    expect(screen.getByRole('button', { name: 'Resolve' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Resolve' }));
+    expect(onResolve).not.toHaveBeenCalled();
+    expect(screen.getByText('Choose the resolution code.')).toBeInTheDocument();
+    expect(screen.getByText('Say what fixed it.')).toBeInTheDocument();
     await ue.click(screen.getByRole('combobox', { name: /Resolution code/ }));
     await ue.click(await screen.findByRole('option', { name: 'Fixed' }));
     await ue.type(screen.getByRole('textbox', { name: /What fixed it/ }), 'Updated the client');
@@ -199,6 +117,16 @@ describe('batch 2 panels (SD-1.09 … SD-1.17)', () => {
     expect(await screen.findByDisplayValue(/secret\.ics/)).toBeInTheDocument();
   });
 
+  it('the SLA tab: Save targets with a bad percent says why', async () => {
+    const onSaveTargets = ok();
+    render(<SlaTab detail={{ ...DETAIL, canSetUp: true }} calendars={[]} setup={SLA_SETUP} compliance={COMPLIANCE} month="2026-10" onMonth={() => {}} onCreatePolicy={ok()} onAddVersion={ok()} onUpdatePolicy={ok()} onSaveTargets={onSaveTargets} />);
+    await ue.click(screen.getByRole('button', { name: 'Add a target' }));
+    await ue.clear(screen.getAllByLabelText('Target percent').at(-1)!);
+    await ue.click(screen.getByRole('button', { name: 'Save targets' }));
+    expect((await screen.findAllByText('Give each target a percent from 1 to 100.'))[0]).toBeInTheDocument();
+    expect(onSaveTargets).not.toHaveBeenCalled();
+  });
+
   it('the SLA tab shows targets by priority and the month at risk', () => {
     render(<SlaTab detail={DETAIL} calendars={[]} setup={SLA_SETUP} compliance={COMPLIANCE} month="2026-10" onMonth={() => {}} onCreatePolicy={ok()} onAddVersion={ok()} onUpdatePolicy={ok()} onSaveTargets={ok()} />);
     expect(screen.getByText(/Resolution: P1 4 h · P2 8 h/)).toBeInTheDocument();
@@ -207,11 +135,6 @@ describe('batch 2 panels (SD-1.09 … SD-1.17)', () => {
 });
 
 describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
-  const ticketProps = (over: Partial<TicketScreenProps> = {}): TicketScreenProps => ({
-    state: 'ready', ticket: TICKET, detail: DETAIL, canned: CANNED, timeline: TIMELINE, context: CONTEXT, others: [], meName: 'Suresh Pillai', meId: 'u-suresh',
-    onBack: () => {}, onUpdate: ok(), onAssign: ok(), onPost: ok(), onUpload: vi.fn(), onOpenFile: ok(), onAddTime: ok(), onRunScenario: ok(), onConvert: ok(), onAddCollaborator: ok(), onRemoveCollaborator: ok(), onAddWatcher: ok(), onRemoveWatcher: ok(), onSearchPeople: async () => [], onTyping: () => {}, onOpenTicket: () => {},
-    ...over,
-  });
   const email = (over: Partial<EmailSetupProps> = {}): EmailSetupProps => ({
     state: 'ready',
     mailboxes: MAILBOXES,
@@ -272,8 +195,10 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await ue.click(screen.getByRole('combobox', { name: /How mail reaches us/ }));
     await ue.click(await screen.findByRole('option', { name: 'Your mail server (IMAP)' }));
     await ue.type(screen.getByRole('textbox', { name: /Email address/ }), 'help@kaveri.test');
-    expect(screen.getByRole('button', { name: 'Add mailbox' })).toBeDisabled();
     expect(screen.getByRole('textbox', { name: /Server name/ })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Add mailbox' }));
+    expect(await screen.findByText('Give the server name.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Server name/ })).toHaveFocus();
   });
 
   it('banners: severity and audience are single choices; me-too count and linked ticket are shown', async () => {
@@ -296,6 +221,68 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(within(g).getByRole('radio', { name: 'People from these email domains' })).toBeChecked();
   });
 
+  it('settings (1643): the reasons to pick after a rating, one a line, are saved with the desk settings (blank lines dropped)', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="requesters" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, ratingReasons: ['Slow'] } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const box = screen.getByLabelText(/Reasons to pick after a rating/);
+    expect(box).toHaveValue('Slow');
+    await ue.type(box, '{Enter}{Enter}  Great help  ');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledWith(expect.objectContaining({ ratingReasons: ['Slow', 'Great help'] })));
+  });
+
+  it('settings (1646): the message while closed is saved only when changed; unchanged it is not sent', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="requesters" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true, desk: { ...DETAIL.desk, closedMessage: 'Closed. Back {opens}.' } }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const box = screen.getByRole('textbox', { name: /Message while closed/ });
+    expect(box).toHaveValue('Closed. Back {opens}.');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(1));
+    expect(onUpdateDesk.mock.calls[0][0]).not.toHaveProperty('closedMessage');
+    await ue.clear(box);
+    await ue.type(box, 'Shut till {{opens}');
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenLastCalledWith(expect.objectContaining({ closedMessage: 'Shut till {opens}' })));
+  });
+
+  it('1804: desk settings are two tabs; Tickets saves only ticket settings, Requesters only requester settings', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    expect(screen.getByRole('tab', { name: 'Tickets' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByLabelText(/Days a requester may reopen/)).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(1));
+    expect(Object.keys(onUpdateDesk.mock.calls[0][0])).toEqual(expect.arrayContaining(['name', 'atRiskPercent', 'calendarId']));
+    expect(onUpdateDesk.mock.calls[0][0]).not.toHaveProperty('ratingReasons');
+    await ue.click(screen.getByRole('tab', { name: 'Requesters' }));
+    expect(screen.queryByLabelText(/Desk name/)).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledTimes(2));
+    expect(Object.keys(onUpdateDesk.mock.calls[1][0]).sort()).toEqual(['autoCloseDays', 'ratingReasons', 'reopenWindowDays', 'requesterCanReopen']);
+  });
+
+  it('settings: the at-risk point of a desk is a Segment of 50 to 90 %, saved with the other settings and a toast', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, canSetUp: true }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const g = screen.getByRole('radiogroup', { name: 'At risk from' });
+    expect(within(g).getAllByRole('radio').map((r) => r.textContent)).toEqual(['50 %', '60 %', '70 %', '80 %', '90 %']);
+    expect(within(g).getByRole('radio', { name: '80 %' })).toBeChecked();
+    await ue.click(within(g).getByRole('radio', { name: '50 %' }));
+    await ue.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onUpdateDesk).toHaveBeenCalledWith(expect.objectContaining({ atRiskPercent: 50 })));
+    expect((await screen.findAllByText('Desk settings saved.')).length).toBeGreaterThan(0);
+  });
+
+  it('settings: without set-up rights the at-risk point shows but does not change', async () => {
+    const onUpdateDesk = ok();
+    render(<ToastProvider><DeskSetupScreen state="ready" initialTab="settings" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={{ ...DETAIL, desk: { ...DETAIL.desk, atRiskPercent: 60 }, canSetUp: false }} canned={[]} calendars={[]} canCalendars={false} onCreateDesk={ok()} onUpdateDesk={onUpdateDesk} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={ok()} onSetHours={ok()} /></ToastProvider>);
+    const g = screen.getByRole('radiogroup', { name: 'At risk from' });
+    await ue.click(within(g).getByRole('radio', { name: '90 %' }));
+    expect(within(g).getByRole('radio', { name: '60 %' })).toBeChecked();
+    expect(screen.queryByRole('button', { name: 'Save settings' })).not.toBeInTheDocument();
+    expect(onUpdateDesk).not.toHaveBeenCalled();
+  });
+
   it('calendar: the half-day choice is “Working half”, Morning or Afternoon', async () => {
     const onSetHalfDay = ok();
     const cal = { id: 'cal-1', name: 'Office hours', timeZone: 'Asia/Kolkata', version: 1, hours: [], holidays: [] };
@@ -305,35 +292,38 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     expect(onSetHalfDay).toHaveBeenCalledWith(cal, 'second');
   });
 
-  it('ticket: an unproven sender gets a clear warning; customer, plan, product and source are shown', () => {
-    render(<TicketScreen {...ticketProps({ ticket: { ...TICKET, senderVerified: false, customer: { account: { id: 'ac1', name: 'Sunrise Retail' }, plan: 'gold' }, product: { id: 'pr1', name: 'Kaveri billing app' }, screen: '/yx/people/directory', fields: { screen: '/yx/people/directory', order_number: '4471' } } })} />);
-    expect(screen.getByText('We could not prove who sent this email. Do not share private details until you are sure.')).toBeInTheDocument();
-    expect(screen.getByText('Sunrise Retail')).toBeInTheDocument();
-    expect(screen.getByText('Kaveri billing app')).toBeInTheDocument();
-    expect(screen.getByText('Raised from')).toBeInTheDocument();
-    expect(screen.getByText('Order number (from the email)')).toBeInTheDocument();
+  it('calendar: Add holiday pressed too early asks for the date and the name', async () => {
+    const onAddHoliday = ok();
+    const cal = { id: 'cal-1', name: 'Office hours', timeZone: 'Asia/Kolkata', version: 1, hours: [], holidays: [] };
+    render(<DeskSetupScreen state="ready" desks={[DESK]} canCreate={false} selectedId="d-it" onSelect={() => {}} detail={DETAIL} canned={[]} calendars={[cal]} canCalendars onCreateDesk={ok()} onUpdateDesk={ok()} onSearchUsers={async () => []} onSeatCost={vi.fn()} onAddMember={ok()} onEndMember={ok()} onSaveGroup={ok()} onSaveCategory={ok()} onSaveType={ok()} onSaveStatus={ok()} onSaveMatrix={ok()} onSaveCanned={ok()} onSaveScenario={ok()} onAddHoliday={onAddHoliday} onSetHours={ok()} />);
+    await ue.click(screen.getByRole('tab', { name: 'Calendars' }));
+    await ue.click(screen.getByRole('button', { name: 'Add holiday' }));
+    expect(screen.getByText('Choose the date.')).toBeInTheDocument();
+    expect(screen.getByText('Name the holiday.')).toBeInTheDocument();
+    expect(onAddHoliday).not.toHaveBeenCalled();
   });
 
-  it('ticket list: an unproven email sender shows “Not verified”', () => {
-    render(
-      <DeskTicketsScreen state="ready" desks={[DESK]} details={[DETAIL]} views={[]} page={{ items: [{ ...ROWS[0], senderVerified: false }], total: 1, nextCursor: null }} pageState="ready" query={{ viewId: 'open', filters: BUILT_IN_VIEWS[2].filters, layout: 'list' }} onQueryChange={() => {}} onOpen={() => {}} onMove={ok()} onBulk={vi.fn()} onSaveView={ok()} onExport={ok()} onSearchPeople={async () => []} onCreate={vi.fn()} />,
-    );
-    expect(screen.getByText('Not verified')).toBeInTheDocument();
+  it('help drawer: Raise ticket pressed too early says what is missing', async () => {
+    const onRaise = vi.fn();
+    render(<HelpDrawer open onOpenChange={() => {}} desks={[RAISE_DESKS[0]]} tickets={MY_ROWS} banners={[]} onMeToo={ok()} onRaise={onRaise} ticketHref={(id) => `/yx/desk/help/${id}`} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    expect(onRaise).not.toHaveBeenCalled();
+    expect(await screen.findByText('Write a subject.')).toBeInTheDocument();
+    expect(screen.getByText('Add the details.')).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Subject/ })).toHaveFocus();
   });
 
-  it('help centre: “Me too” joins the known issue once; times name the time zone', async () => {
-    const onMeToo = vi.fn().mockResolvedValue({ linked: true, already: false });
-    render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={vi.fn()} onOpen={() => {}} banners={MY_BANNERS} onMeToo={onMeToo} timeZone="Asia/Kolkata" />);
-    await ue.click(screen.getByRole('button', { name: 'Me too' }));
-    expect(onMeToo).toHaveBeenCalledWith('bn1');
-    expect(await screen.findByRole('button', { name: 'You are on it' })).toBeDisabled();
-    expect(screen.getByText(/We added you to this issue/)).toBeInTheDocument();
-    expect(screen.getByText('Times are in your time zone: Asia/Kolkata.')).toBeInTheDocument();
-    await ue.click(screen.getByRole('switch', { name: /Larger text/ }));
-    expect(document.querySelector('.yx-reading')).toHaveAttribute('data-large', 'true');
+  it('customers: Add company pressed with no name says so', async () => {
+    const onCreateAccount = ok();
+    render(<CustomersScreen state="ready" canManage accounts={ACCOUNT_ROWS} search="" onSearch={() => {}} selectedId={null} onSelect={() => {}} account={null} products={PRODUCTS} desks={[CS_DESK]} onCreateAccount={onCreateAccount} onUpdateAccount={ok()} onAddContact={ok()} onUpdateContact={ok()} onAddPlan={ok()} onEndPlan={ok()} onSaveProduct={ok()} onSearchUsers={async () => []} onLoadAgentAccounts={async () => []} onSetAgentAccounts={ok()} />);
+    await ue.click(screen.getByRole('button', { name: /New company/ }));
+    await ue.click(await screen.findByRole('button', { name: 'Add company' }));
+    expect(onCreateAccount).not.toHaveBeenCalled();
+    expect(await screen.findByText('Enter the company name.')).toBeInTheDocument();
   });
 
   it('help drawer: raises from any page and links my open tickets', async () => {
+
     const onRaise = vi.fn().mockResolvedValue({ id: 'n', number: 'IT-1010' });
     render(<HelpDrawer open onOpenChange={() => {}} desks={[RAISE_DESKS[0]]} tickets={MY_ROWS} banners={[]} onMeToo={ok()} onRaise={onRaise} ticketHref={(id) => `/yx/desk/help/${id}`} />);
     expect(screen.getByRole('link', { name: 'VPN keeps disconnecting from home' })).toHaveAttribute('href', '/yx/desk/help/t1');
@@ -341,7 +331,37 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Since this morning');
     await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
     await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ deskId: 'd-it', subject: 'Payslip page is blank' })));
-    expect(await screen.findByText(/IT-1010/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/Your ticket number is IT-1010/))[0]).toBeInTheDocument();
+  });
+
+  it('1842: help drawer: the desk fields everyone sees are asked and sent; another kind of ticket hides them', async () => {
+    const onRaise = vi.fn().mockResolvedValue({ id: 'n', number: 'IT-1011' });
+    const desk = { ...RAISE_DESKS[0], fields: RAISE_FIELDS, types: [{ id: 'ty1', name: 'Incident' }, { id: 'ty2', name: 'Request' }] };
+    render(<HelpDrawer open onOpenChange={() => {}} desks={[desk]} tickets={MY_ROWS} banners={[]} onMeToo={ok()} onRaise={onRaise} ticketHref={(id) => `/yx/desk/help/${id}`} />);
+    await ue.click(screen.getByRole('combobox', { name: /Office/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Bengaluru' }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Printer jam');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Floor 2');
+    await ue.click(screen.getByRole('button', { name: 'Raise ticket' }));
+    await waitFor(() => expect(onRaise).toHaveBeenCalledWith(expect.objectContaining({ fields: { office: 'blr' } })));
+    await ue.click(screen.getByRole('combobox', { name: /Kind of ticket/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Request' }));
+    expect(screen.queryByRole('combobox', { name: /Office/ })).toBeNull();
+  });
+
+  it('1842: portal: the team fields are asked on the signed-in raise form; a refused field shows by the field', async () => {
+    const onRaise = vi.fn().mockRejectedValueOnce(Object.assign(new Error('Check the fields.'), { errors: { office: 'Choose one of the options offered.' } })).mockResolvedValue({ id: 'pt9', number: 'CS-1009' });
+    const home = { ...PORTAL_HOME, desks: [{ ...PORTAL_HOME.desks[0], fields: RAISE_FIELDS }] };
+    render(<PortalScreen {...portal({ home, me: { name: 'Kiran Shetty', email: 'kiran@sunrise.example', account: null, seesAccountTickets: false }, onRaise })} />);
+    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
+    await ue.click(await screen.findByRole('combobox', { name: /Office/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Chennai' }));
+    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'Late order');
+    await ue.type(screen.getByRole('textbox', { name: /Details/ }), 'Order 88');
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    expect((await screen.findAllByText('Choose one of the options offered.')).length).toBeGreaterThan(0);
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(onRaise).toHaveBeenLastCalledWith(expect.objectContaining({ deskId: 'd-cs', fields: { office: 'che' } })));
   });
 
   it('customers: people, plans and the company’s ticket sharing', async () => {
@@ -419,6 +439,21 @@ describe('batch 3 (SD-1.18 … SD-1.23, SD-1.28)', () => {
     await ue.type(screen.getByRole('textbox', { name: 'Your reply' }), 'Thanks');
     await ue.click(screen.getByRole('button', { name: 'Send reply' }));
     expect(onReply).toHaveBeenCalledWith('Thanks');
+  });
+
+  it('portal: buttons are never greyed out; pressed too early they say what is missing and send nothing', async () => {
+    const onSendCode = ok();
+    const onAsk = ok();
+    render(<PortalScreen {...portal({ onSendCode, onAsk })} />);
+    await ue.click(screen.getByRole('button', { name: 'Send me a code' }));
+    expect(screen.getByText('Enter your email, like name@company.com.')).toBeInTheDocument();
+    expect(screen.getAllByRole('textbox', { name: /Your email/ })[0]).toHaveFocus();
+    expect(onSendCode).not.toHaveBeenCalled();
+    await ue.click(screen.getByRole('button', { name: 'Ask without an account' }));
+    await ue.type(screen.getByRole('textbox', { name: /Your name/ }), 'Ravi');
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(screen.getByText('Write a subject.')).toBeInTheDocument();
+    expect(onAsk).not.toHaveBeenCalled();
   });
 
   it('portal: an unknown address says so', () => {

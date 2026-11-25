@@ -1,4 +1,6 @@
 const mockTransporterVerify = jest.fn();
+// S-10: the public-address check resolves DNS; the e2e covers it, here it passes.
+jest.mock('../common/ssrf', () => ({ ...jest.requireActual('../common/ssrf'), assertPublicHttpsHost: jest.fn(async () => undefined) }));
 jest.mock('nodemailer', () => ({
   createTransport: () => ({ verify: mockTransporterVerify }),
 }));
@@ -889,7 +891,7 @@ describe('OrganizationsService', () => {
 
       const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null, assistantEnabled: false });
+      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null, assistantEnabled: false, config: { theme: 'classic', accent: null, sections: expect.any(Array) } });
     });
 
     it('defaults to disabled/null when no org row is found', async () => {
@@ -897,7 +899,7 @@ describe('OrganizationsService', () => {
 
       const result = await service.getCareers({ organizationId: 'org-1', isSuperAdmin: false });
 
-      expect(result).toEqual({ enabled: false, headline: null, intro: null, bannerUrl: null, assistantEnabled: false });
+      expect(result).toEqual({ enabled: false, headline: null, intro: null, bannerUrl: null, assistantEnabled: false, config: { theme: 'classic', accent: null, sections: expect.any(Array) } });
     });
 
     it('signs a stored bannerPath through signIfOurs', async () => {
@@ -944,7 +946,7 @@ describe('OrganizationsService', () => {
         where: { id: 'org-1' },
         data: { careersEnabled: true, careersHeadline: 'Join us', careersIntro: 'We build things.' },
       });
-      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null, assistantEnabled: false });
+      expect(result).toEqual({ enabled: true, headline: 'Join us', intro: 'We build things.', bannerUrl: null, assistantEnabled: false, config: { theme: 'classic', accent: null, sections: expect.any(Array) } });
     });
 
     it('normalizes an empty/whitespace headline and intro to null', async () => {
@@ -974,7 +976,7 @@ describe('OrganizationsService', () => {
 
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
-        { actorUserId: 'user-1', action: 'organization.careers_updated', entityType: 'organization', entityId: 'org-1' },
+        { actorUserId: 'user-1', action: 'organization.careers_updated', entityType: 'organization', entityId: 'org-1', metadata: { enabled: true } },
       );
     });
 
@@ -1136,7 +1138,7 @@ describe('OrganizationsService', () => {
         embeddingConfigured: false, embeddingBaseUrl: null, embeddingModel: null,
         smtpHost: 'smtp.customer.test', smtpPort: 465, emailFromAddress: 'no-reply@customer.test',
         apiKeyConfigured: true, apiKeyPrefix: 'pk_live_abcd', apiKeyCreatedAt,
-        webhookConfigured: true, webhookUrl: 'https://customer.test/webhook',
+        webhookConfigured: true, webhookUrl: 'https://customer.test/…hook',
         hrisExportConfigured: false, hrisExportEnabled: false, hrisProvider: 'generic', hrisTargetUrl: null,
       });
       expect(result).not.toHaveProperty('smtpPasswordEncrypted');
@@ -1652,7 +1654,7 @@ describe('OrganizationsService', () => {
         { url: 'https://example.com/hook' },
       );
 
-      expect(result).toEqual({ webhookUrl: 'https://example.com/hook' });
+      expect(result).toEqual({ webhookUrl: 'https://example.com/…hook' });
       expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { webhookUrl: 'https://example.com/hook' } });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
@@ -1742,8 +1744,9 @@ describe('OrganizationsService', () => {
     const context = { organizationId: 'org-1', isSuperAdmin: false };
 
     it('getScheduledReportSettings parses the recipient JSON', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ scheduledReportEnabled: true, scheduledReportRecipientsJson: JSON.stringify(['u1', 'u2']) });
-      expect(await service.getScheduledReportSettings(context)).toEqual({ enabled: true, recipientUserIds: ['u1', 'u2'] });
+      const at = new Date('2026-11-16T03:30:00Z');
+      prisma.organization.findUnique.mockResolvedValue({ scheduledReportEnabled: true, scheduledReportRecipientsJson: JSON.stringify(['u1', 'u2']), scheduledReportLastSentAt: at });
+      expect(await service.getScheduledReportSettings(context)).toEqual({ enabled: true, recipientUserIds: ['u1', 'u2'], lastSentAt: at });
     });
 
     it('updateScheduledReportSettings validates recipients belong to the org and persists', async () => {

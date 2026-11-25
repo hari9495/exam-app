@@ -3,13 +3,15 @@ import { Prisma } from '@prisma/client';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { ScopeContext, SETTINGS, SettingDef, resolveSetting } from '../org-structure/settings-registry';
 import { Viewer, has, implicitSql, inScopeSql, tenantWide } from '../access/scope';
-import { DayRule, Floor, HolidayOn, WeeklyOffRule, eachDay, localDate } from './time-maths';
+import { DayRule, Floor, HolidayOn, WeeklyOffRule, addDays, eachDay, isWeeklyOff, localDate } from './time-maths';
+import { substituteDays } from './holiday-rules';
+import { LeaveYearChange, StatutoryMinimum, leaveYearWith, pickPolicy } from './leave-rules';
 import type { MaternityValues } from './time-rules';
 
 // Shared loaders for leave and attendance: the employee's dated facts, the location's calendar and rules, the
 // policy in force (scoped and dated, YX-ORG-18), statutory floors (P07) and who may see whom (P02).
 
-export const TIME_KEYS = ['leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override'] as const;
+export const TIME_KEYS = ['leave.settings.manage', 'leave.view', 'leave.balance.adjust', 'leave.approve', 'leave.medical.view', 'attendance.view', 'roster.manage', 'attendance.lock', 'leave.eligibility.override', 'leave.liability.view'] as const;
 export type TimeKey = (typeof TIME_KEYS)[number];
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -32,13 +34,18 @@ export interface LeaveRules {
   halfDays: boolean;
   minDays: number | null;
   maxDays: number | null;
-  noticeDays: number;
+  /** Apply at least this many days ahead; null: the company default (leave.notice_days.default; sick leave 0). */
+  noticeDays: number | null;
+  /** Leave v2: shorter notice is refused (block) or allowed with a note to the approver (warn). */
+  noticeMode: 'block' | 'warn';
   /** A certificate is needed when a request is longer than this many days (null: never). */
   certificateAfterDays: number | null;
   /** The reason and certificate are Special data (YX-LV-09). */
   medical: boolean;
   /** L6: how far below zero the balance may go. */
   negativeLimit: number;
+  /** Answer 2342 (Oracle O11): no credit in the first N months after joining (0: from the start). */
+  accrualWaitMonths: number;
   /** L5 encashment flag (payroll later). */
   encashable: boolean;
   /** HR approves after the manager when a request is longer than this many days (0: always; null: never). */
@@ -49,6 +56,26 @@ export interface LeaveRules {
   paySteps: PayStep[] | null;
   /** Which earlier days count toward the steps. */
   payWindow: 'leave_year' | 'rolling_12_months';
+  /** TIM-27 Rules: the most days of this type in one calendar month, pending and approved together (null: no limit). */
+  maxDaysPerMonth: number | null;
+  /** TIM-27 Year end: the most days cashed in a leave year (null: the company's leave.encashment.max_days). */
+  encashMaxDays: number | null;
+  /** Days that must stay after cashing in (null: the company's leave.encashment.min_left). */
+  encashMinLeft: number | null;
+  /** The payout per day is monthly pay divided by this (null: the company's leave.encashment.divisor). */
+  encashDivisor: 26 | 30 | null;
+  /** The balance is paid in the final settlement at exit (only an encashable type). */
+  encashAtExit: boolean;
+  /** TIM-27 Absence & notice: crediting during a sabbatical or long unpaid leave (null: leave.long_absence.accrues). */
+  longAbsence: 'pause' | 'continue' | null;
+  /** Taking this type during the notice period (null: the company's leave.notice_period.leave). Answer 2477: or unpaid. */
+  noticePeriod: 'allowed' | 'extends' | 'blocked' | 'unpaid' | null;
+  /** Answer 2477: only these employment types may take it (null: every type). */
+  eligibleEmploymentTypes: string[] | null;
+  /** Answer 2477: months worked since joining before it can be taken (null: from the start). */
+  minMonthsWorked: number | null;
+  /** Answer 2477: during probation (null: the company's leave.probation.leave). */
+  probation: 'allowed' | 'blocked' | null;
 }
 
 export interface PayStep {
@@ -58,7 +85,9 @@ export interface PayStep {
   percent: number;
 }
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: 0, certificateAfterDays: null, medical: false, negativeLimit: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year' };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null, eligibleEmploymentTypes: null, minMonthsWorked: null, probation: null };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -72,13 +101,23 @@ export function parseRules(input: unknown): LeaveRules {
   const r = { ...DEFAULT_RULES, ...input } as LeaveRules;
   if (!['none', 'sandwich', 'always'].includes(r.sandwich)) throw new BadRequestException('Choose how weekends and holidays between leave days count.');
   if (!['weekly_offs', 'holidays', 'both'].includes(r.sandwichOn)) throw new BadRequestException('Choose whether the sandwich rule covers weekly offs, holidays or both.');
-  for (const k of ['sandwichHalfDays', 'halfDays', 'medical', 'encashable'] as const) if (typeof r[k] !== 'boolean') throw new BadRequestException('Use yes or no for the switches.');
-  for (const k of ['minDays', 'maxDays', 'certificateAfterDays', 'hrApprovalAboveDays'] as const) {
+  for (const k of ['sandwichHalfDays', 'halfDays', 'medical', 'encashable', 'encashAtExit'] as const) if (typeof r[k] !== 'boolean') throw new BadRequestException('Use yes or no for the switches.');
+  for (const k of ['minDays', 'maxDays', 'certificateAfterDays', 'hrApprovalAboveDays', 'encashMaxDays', 'encashMinLeft'] as const) {
     if (r[k] !== null && !halfStep(r[k], 0, 366)) throw new BadRequestException('Days are 0 to 366, in half days.');
   }
-  if (!Number.isInteger(r.noticeDays) || r.noticeDays < 0 || r.noticeDays > 90) throw new BadRequestException('Notice is 0 to 90 days.');
+  if (r.noticeDays !== null && (!Number.isInteger(r.noticeDays) || r.noticeDays < 0 || r.noticeDays > 90)) throw new BadRequestException('Notice is 0 to 90 days.');
+  if (r.noticeMode !== 'block' && r.noticeMode !== 'warn') throw new BadRequestException('Choose whether short notice is refused or only flagged.');
   if (!halfStep(r.negativeLimit, 0, 30)) throw new BadRequestException('The balance may go below zero by 0 to 30 days.');
+  if (!Number.isInteger(r.accrualWaitMonths) || r.accrualWaitMonths < 0 || r.accrualWaitMonths > 24) throw new BadRequestException('No credit for the first 0 to 24 months, in whole months.');
   if (r.minDays !== null && r.maxDays !== null && r.minDays > r.maxDays) throw new BadRequestException('The least days per request is more than the most.');
+  if (r.maxDaysPerMonth !== null && !halfStep(r.maxDaysPerMonth, 0.5, 31)) throw new BadRequestException('Most days in a month is 0.5 to 31, in half days.');
+  if (r.maxDaysPerMonth !== null && r.maxDays !== null && r.maxDays > r.maxDaysPerMonth) throw new BadRequestException(`Most days in one request is more than the monthly limit of ${r.maxDaysPerMonth}. A request that big could never be approved.`);
+  if (r.encashDivisor !== null && r.encashDivisor !== 26 && r.encashDivisor !== 30) throw new BadRequestException('The daily rate for cashing in is monthly pay divided by 26 or 30.');
+  if (r.longAbsence !== null && r.longAbsence !== 'pause' && r.longAbsence !== 'continue') throw new BadRequestException('Choose whether crediting stops or continues during a long absence.');
+  if (r.noticePeriod !== null && !['allowed', 'extends', 'blocked', 'unpaid'].includes(r.noticePeriod)) throw new BadRequestException('Choose what happens to this leave during the notice period.');
+  if (r.eligibleEmploymentTypes !== null && (!Array.isArray(r.eligibleEmploymentTypes) || !r.eligibleEmploymentTypes.length || r.eligibleEmploymentTypes.length > 50 || r.eligibleEmploymentTypes.some((x) => typeof x !== 'string' || !UUID_RE.test(x)))) throw new BadRequestException('Choose the employment types that may take this leave, or leave it open to every type.');
+  if (r.minMonthsWorked !== null && (!Number.isInteger(r.minMonthsWorked) || r.minMonthsWorked < 1 || r.minMonthsWorked > 120)) throw new BadRequestException('Months worked before it can be taken is 1 to 120.');
+  if (r.probation !== null && r.probation !== 'allowed' && r.probation !== 'blocked') throw new BadRequestException('Choose whether this leave can be taken during probation.');
   if (r.eligibleGenders !== null && (!Array.isArray(r.eligibleGenders) || !r.eligibleGenders.length || r.eligibleGenders.some((g) => !GENDER_VALUES.includes(g)))) throw new BadRequestException('Choose who the leave is for, or leave it open to everyone.');
   if (r.eligibleGenders) r.eligibleGenders = [...new Set(r.eligibleGenders)];
   if (!['leave_year', 'rolling_12_months'].includes(r.payWindow)) throw new BadRequestException('Count earlier days in the leave year or the last 12 months.');
@@ -125,6 +164,8 @@ export interface PolicyLine {
   rounding: number;
   /** Days carried into the next leave year (null: all); the rest lapses (YX-LV-07). */
   carryForwardMax: number | null;
+  /** Answer 2342 (Oracle O10): the most days held at any time (null: no ceiling); a credit over it lapses at once. */
+  maxBalance?: number | null;
 }
 
 export function parseLines(input: unknown, typeIds: ReadonlySet<string>): PolicyLine[] {
@@ -132,7 +173,7 @@ export function parseLines(input: unknown, typeIds: ReadonlySet<string>): Policy
   const seen = new Set<string>();
   return input.map((x, i) => {
     if (!isObj(x)) throw new BadRequestException(`Line ${i + 1} is not in the expected shape.`);
-    for (const k of Object.keys(x)) if (!['leaveTypeId', 'annualDays', 'frequency', 'proRata', 'rounding', 'carryForwardMax'].includes(k)) throw new BadRequestException(`Line ${i + 1} has an unknown part "${k.slice(0, 20)}".`);
+    for (const k of Object.keys(x)) if (!['leaveTypeId', 'annualDays', 'frequency', 'proRata', 'rounding', 'carryForwardMax', 'maxBalance'].includes(k)) throw new BadRequestException(`Line ${i + 1} has an unknown part "${k.slice(0, 20)}".`);
     const id = String(x.leaveTypeId);
     if (!typeIds.has(id)) throw new BadRequestException(`Line ${i + 1}: choose a leave type of this company.`);
     if (seen.has(id)) throw new BadRequestException('Each leave type appears once in a policy.');
@@ -143,7 +184,10 @@ export function parseLines(input: unknown, typeIds: ReadonlySet<string>): Policy
     if (![0, 0.25, 0.5, 1].includes(x.rounding as number)) throw new BadRequestException(`Line ${i + 1}: round to none, 0.25, 0.5 or 1 day.`);
     const cf = x.carryForwardMax ?? null;
     if (cf !== null && !halfStep(cf, 0, 366)) throw new BadRequestException(`Line ${i + 1}: carry forward is 0 to 366 days.`);
-    return { leaveTypeId: id, annualDays: x.annualDays as number, frequency: x.frequency, proRata: x.proRata, rounding: x.rounding as number, carryForwardMax: cf as number | null };
+    const mx = x.maxBalance ?? null;
+    if (mx !== null && !halfStep(mx, 0.5, 400)) throw new BadRequestException(`Line ${i + 1}: the most days held is 0.5 to 400, in half days.`);
+    if (mx !== null && cf !== null && (cf as number) > (mx as number)) throw new BadRequestException(`Line ${i + 1}: carry forward is more than the most days held.`);
+    return { leaveTypeId: id, annualDays: x.annualDays as number, frequency: x.frequency, proRata: x.proRata, rounding: x.rounding as number, carryForwardMax: cf as number | null, ...(mx !== null ? { maxBalance: mx as number } : {}) };
   });
 }
 
@@ -166,6 +210,8 @@ export interface Facts {
   managerEmployeeId: string | null;
   zone: string;
   state: string;
+  /** HLP-14 answer 131: the location is a registered factory (Time adds the factory leave minimum). */
+  factory: boolean;
 }
 
 /** The employee's assignment and location on `on` (P06: as of that date). Null when not employed on it. */
@@ -176,7 +222,7 @@ export async function factsOn(tx: Tx, org: string, employeeId: string, on: strin
            m.joined_on AS "joinedOn", m.exited_on AS "exitedOn", a.legal_entity_id::text AS "legalEntityId",
            a.location_id::text AS "locationId", a.department_id::text AS "departmentId", a.designation_id::text AS "designationId",
            a.grade_id::text AS "gradeId", a.employment_type_id::text AS "employmentTypeId", a.manager_employee_id::text AS "managerEmployeeId",
-           l.timezone AS zone, l.state
+           l.timezone AS zone, l.state, l.registered_factory AS factory
     FROM employees e
     JOIN employee_assignments a ON a.organization_id = e.organization_id AND a.employee_id = e.id AND a.superseded_at IS NULL
       AND ${on}::date <@ daterange(a.valid_from, a.valid_to, '[]')
@@ -192,7 +238,8 @@ export async function factsOn(tx: Tx, org: string, employeeId: string, on: strin
 /** The signed-in person's employee record, or 404 in plain words. */
 export async function myEmployeeId(tx: Tx, org: string, userId: string | null | undefined): Promise<string> {
   const e = userId ? await tx.employee.findFirst({ where: { organizationId: org, userId }, select: { id: true } }) : null;
-  if (!e) throw new NotFoundException('You have no employee record in this company. Ask HR to link your login.');
+  // NO_EMPLOYEE_RECORD: the web shows "no employee record" (retrying never helps) instead of "could not load".
+  if (!e) throw new NotFoundException({ statusCode: 404, code: 'NO_EMPLOYEE_RECORD', message: 'You have no employee record in this company. Ask HR to link your login.' });
   return e.id;
 }
 
@@ -218,17 +265,59 @@ export async function settingOn(tx: Tx, c: CompanyContext, key: string, f: Facts
   return String(resolveSetting(def, rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? iso(r.validFrom) : null })), scopeContext(c, f), on).value);
 }
 
+/**
+ * Founder answer 141 (4 Nov 2026): who the Factories Act covers (overtime at the legal rate, the 240-day earned leave
+ * rule). The location's Registered factory flag is the single source: a flagged location is covered unless
+ * attendance.factories_act says "not covered" for the person's department or employment type (office staff on a
+ * factory site). At a location that is not flagged the setting decides as before, so no value set before the flag
+ * existed changes anyone's result. `source` says where the answer came from (the Time set-up page shows it).
+ */
+export interface FactoriesActCover {
+  covered: boolean;
+  source: 'registered_factory' | 'excluded' | 'setting' | 'default';
+  /** The scope of the setting value that decided (or excluded); null for the flag or the default. */
+  scopeType: string | null;
+}
+export function factoriesActFrom(registeredFactory: boolean, r: { value: unknown; source: { scopeType: string } }): FactoriesActCover {
+  const scope = r.source.scopeType === 'default' ? null : r.source.scopeType;
+  if (registeredFactory) {
+    if (r.value === 'not_covered' && (scope === 'department' || scope === 'employment_type')) return { covered: false, source: 'excluded', scopeType: scope };
+    return { covered: true, source: 'registered_factory', scopeType: null };
+  }
+  return { covered: r.value === 'covered', source: scope ? 'setting' : 'default', scopeType: scope };
+}
+export async function factoriesActOn(tx: Tx, c: CompanyContext, f: Facts, on: string): Promise<FactoriesActCover> {
+  const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'attendance.factories_act' } });
+  const r = resolveSetting(SETTINGS['attendance.factories_act'], rows.map((x) => ({ id: x.id, scopeType: x.scopeType, scopeId: x.scopeId, value: x.value, validFrom: x.validFrom ? iso(x.validFrom) : null })), scopeContext(c, f), on);
+  return factoriesActFrom(f.factory, r);
+}
+
+/** A company-wide setting (the company's own value, else the default), for set-up choices that belong to no one person. */
+export async function companySetting(tx: Tx, c: CompanyContext, key: string): Promise<string> {
+  const rows = await tx.setting.findMany({ where: { organizationId: c.organizationId, key, scopeType: 'tenant' } });
+  return String(resolveSetting(SETTINGS[key], rows.map((r) => ({ id: r.id, scopeType: r.scopeType, scopeId: r.scopeId, value: r.value, validFrom: r.validFrom ? iso(r.validFrom) : null })), { tenant: c.organizationId }, todayIn('Asia/Kolkata')).value);
+}
+
 // DECISION NEEDED: the brief lists policy precedence as grade > employment type > entity > location > company; the
 // shared P01 order (YX-ORG-18, settings-registry SCOPE_ORDER) puts a location above its legal entity (a location
 // belongs to one entity, so it is the more specific scope). Leave policies follow the shared order until decided.
 const POLICY_DEF: SettingDef = { label: 'Leave policy', scopes: ['employee', 'designation', 'grade', 'employment_type', 'department', 'location', 'legal_entity', 'tenant'], dated: true, values: [], default: '' };
 
+/** The policy id for one person's scopes on a date: the saved order (TIM-28) or the most specific scope. */
+export function policyFor(assignments: readonly { id: string; scopeType: string; scopeId: string; policyId: string; validFrom: Date }[], order: readonly string[] | null, ctx: ScopeContext, on: string): string | null {
+  const rows = assignments.map((a) => ({ id: a.id, scopeType: a.scopeType, scopeId: a.scopeId, value: a.policyId, validFrom: iso(a.validFrom) }));
+  const r = resolveSetting(POLICY_DEF, rows, ctx, on);
+  return pickPolicy(rows, ctx as Record<string, string | undefined>, on, { value: String(r.value), scopeType: r.source.scopeType }, order);
+}
+
 /** The policy version in force for the employee on `on`, with its lines; null when no policy applies. */
 export async function policyOn(tx: Tx, c: CompanyContext, f: Facts, on: string): Promise<{ policyId: string; name: string; lines: PolicyLine[] } | null> {
-  const rows = await tx.leavePolicyAssignment.findMany({ where: { organizationId: c.organizationId } });
-  const r = resolveSetting(POLICY_DEF, rows.map((a) => ({ id: a.id, scopeType: a.scopeType, scopeId: a.scopeId, value: a.policyId, validFrom: iso(a.validFrom) })), scopeContext(c, f), on);
-  if (!r.value) return null;
-  const policyId = String(r.value);
+  const [rows, order] = await Promise.all([
+    tx.leavePolicyAssignment.findMany({ where: { organizationId: c.organizationId } }),
+    tx.leavePolicyOrder.findFirst({ where: { organizationId: c.organizationId, validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } }),
+  ]);
+  const policyId = policyFor(rows, order?.policyIds ?? null, scopeContext(c, f), on);
+  if (!policyId) return null;
   const [policy, version] = await Promise.all([
     tx.leavePolicy.findFirst({ where: { organizationId: c.organizationId, id: policyId } }),
     tx.leavePolicyVersion.findFirst({ where: { organizationId: c.organizationId, policyId, validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } }),
@@ -237,17 +326,66 @@ export async function policyOn(tx: Tx, c: CompanyContext, f: Facts, on: string):
   return { policyId, name: policy.name, lines: version.lines as unknown as PolicyLine[] };
 }
 
-/** P07 Shops and Establishments floors for a state on a date (YX-STAT-05: the rule set valid on that date). */
-export async function statutoryOn(tx: Tx, state: string, on: string): Promise<{ floors: Floor[]; carry: Record<string, number>; source: string | null; verify: boolean }> {
-  const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.SE', jurisdiction: state, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] }, orderBy: { validFrom: 'desc' } });
+/**
+ * P07 Shops and Establishments floors for a state on a date (YX-STAT-05: the rule set valid on that date). At a
+ * registered factory (HLP-14 answer 131) the factory leave table valid on that date (IN.FACTORIES.LEAVE) is added the
+ * same way: its floors join the state's and the higher carry-forward minimum per kind wins. `rules` names each rule set
+ * used ("IN.SE IN-KA 1961-v1"), so a minimum always says where it came from.
+ */
+export async function statutoryOn(tx: Tx, state: string, on: string, factory = false): Promise<{ floors: Floor[]; carry: Record<string, number>; source: string | null; verify: boolean; rules: string[] }> {
+  const valid = { validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }], status: 'published' };
+  const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.SE', jurisdiction: state, ...valid }, orderBy: { validFrom: 'desc' } });
   const v = (rs?.values ?? {}) as { floors?: Floor[]; carry?: Record<string, number> };
-  return { floors: v.floors ?? [], carry: v.carry ?? {}, source: rs?.source ?? null, verify: rs?.verify ?? false };
+  const out = { floors: v.floors ?? [], carry: { ...(v.carry ?? {}) }, source: rs?.source ?? null, verify: rs?.verify ?? false, rules: rs ? [`IN.SE ${state} ${rs.version}`] : [] };
+  if (!factory) return out;
+  const fx = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.FACTORIES.LEAVE', jurisdiction: 'IN', ...valid }, orderBy: { validFrom: 'desc' } });
+  if (!fx) return out;
+  const fv = (fx.values ?? {}) as { floors?: Floor[]; carry?: Record<string, number> };
+  for (const [k, n] of Object.entries(fv.carry ?? {})) out.carry[k] = Math.max(out.carry[k] ?? 0, n);
+  return { ...out, floors: [...out.floors, ...(fv.floors ?? [])], verify: out.verify || fx.verify, rules: [...out.rules, `IN.FACTORIES.LEAVE IN ${fx.version}`] };
 }
 
 /** IN.LEAVE maternity values (P07, YX-LV-10): weeks per case, weeks before delivery, days worked for eligibility. */
 export async function maternityValues(tx: Tx, on: string): Promise<MaternityValues> {
   const rs = await tx.statutoryRuleSet.findFirst({ where: { statute: 'IN.LEAVE', jurisdiction: 'IN', validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' } });
   return { maternityWeeks: 26, maternityWeeksThirdChild: 12, beforeDeliveryWeeks: 8, eligibilityDaysWorked: 80, ...((rs?.values ?? {}) as Partial<MaternityValues>) };
+}
+
+/**
+ * TIM-29 Transition: the leave-year change for the person's legal entity (or the whole company) that applies on `on`:
+ * the latest one in force, else the first one still to come (dates before it keep its old start month).
+ */
+export async function yearChangeFor(tx: Tx, org: string, legalEntityId: string | null, on: string): Promise<LeaveYearChange | null> {
+  const rows = await tx.leaveYearChange.findMany({ where: { organizationId: org, OR: [{ legalEntityId: null }, ...(legalEntityId ? [{ legalEntityId }] : [])] }, orderBy: { fromOn: 'asc' } });
+  // An entity's own change wins over a company-wide one.
+  const own = rows.filter((r) => r.legalEntityId !== null);
+  const list = own.length ? own : rows;
+  if (!list.length) return null;
+  const inForce = [...list].reverse().find((r) => iso(r.fromOn) <= on) ?? list[0];
+  return { fromOn: iso(inForce.fromOn), oldStartMonth: inForce.oldStartMonth, newStartMonth: inForce.newStartMonth };
+}
+
+/** The person's leave year on `on`: the company setting (leave.year_start_month) and any leave-year change. */
+export async function leaveYearFor(tx: Tx, c: CompanyContext, f: Facts, on: string): Promise<{ start: string; end: string; short: boolean }> {
+  const startMonth = Number(await settingOn(tx, c, 'leave.year_start_month', f, on));
+  return leaveYearWith(on, startMonth, await yearChangeFor(tx, c.organizationId, f.legalEntityId, on));
+}
+
+/**
+ * TIM-27 Statutory: what the law fixes for a type's kind. Maternity (Maternity Benefit Act 1961, P07 IN.LEAVE): the
+ * longest case, paid in full. Paternity only where a P07 IN.LEAVE rule set of a state the company works in gives it
+ * (`paternityDays`); none is seeded, so paternity stays a company choice until one is.
+ */
+export async function statutoryMinimum(tx: Tx, org: string, kind: string, on: string): Promise<StatutoryMinimum | null> {
+  if (kind === 'maternity') {
+    const v = await maternityValues(tx, on);
+    return { law: 'Maternity Benefit Act 1961', days: v.maternityWeeks * 7, paidInFull: true };
+  }
+  if (kind !== 'paternity') return null;
+  const states = (await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, select: { state: true } })).map((l) => l.state);
+  const sets = await tx.statutoryRuleSet.findMany({ where: { statute: 'IN.LEAVE', jurisdiction: { in: states }, validFrom: { lte: asDate(on) }, OR: [{ validTo: null }, { validTo: { gte: asDate(on) } }] } });
+  const days = Math.max(0, ...sets.map((s) => Number((s.values as { paternityDays?: number } | null)?.paternityDays ?? 0)));
+  return days > 0 ? { law: 'state leave rules', days, paidInFull: true } : null;
 }
 
 // ------------------------------------------------------------------------------------------ calendars and shifts
@@ -258,10 +396,21 @@ export async function holidaysFor(tx: Tx, org: string, locationId: string, from:
   const map = new Map<string, HolidayOn>();
   if (!cal) return { map, calendarId: null };
   const rows = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(from), lte: asDate(to) } } });
+  // Batch A item 9 (D11): a day HR marked as working is not a holiday (nor a substitute day off).
+  const working = new Set((await tx.exceptionalWorkingDay.findMany({ where: { organizationId: org, calendarId: cal.id, workOn: { gte: asDate(addDays(from, -14)), lte: asDate(addDays(to, 14)) } }, select: { workOn: true } })).map((w) => iso(w.workOn)));
   const chosen = employeeId ? new Set((await tx.optionalHolidayChoice.findMany({ where: { organizationId: org, employeeId, holidayId: { in: rows.map((r) => r.id) } } })).map((x) => x.holidayId)) : new Set<string>();
   for (const h of rows) {
+    if (working.has(iso(h.holidayOn))) continue;
     if ((h.kind === 'optional' || h.kind === 'restricted') && !chosen.has(h.id)) continue;
     map.set(iso(h.holidayOn), { name: h.name, halfDay: h.halfDay, openHalf: cal.halfDayOpenHalf as 'first' | 'second' });
+  }
+  // TIM-26 calendar rule: a holiday on the location's weekly off gives the next working day off (two weeks back
+  // covers a substitute that lands in the range).
+  if (cal.onWeeklyOff === 'substitute') {
+    const back = await tx.holiday.findMany({ where: { organizationId: org, calendarId: cal.id, holidayOn: { gte: asDate(addDays(from, -14)), lte: asDate(addDays(to, 14)) } } });
+    const ruleOn = await rulesFor(tx, org, locationId, addDays(to, 14));
+    const subs = substituteDays(back.map((h) => ({ on: iso(h.holidayOn), name: h.name, kind: h.kind, halfDay: h.halfDay })), (d) => isWeeklyOff(d, ruleOn(d).weeklyOffs));
+    for (const s of subs) if (s.on >= from && s.on <= to && !map.has(s.on) && !working.has(s.on)) map.set(s.on, { name: s.name, halfDay: false, openHalf: cal.halfDayOpenHalf as 'first' | 'second' });
   }
   return { map, calendarId: cal.id };
 }
@@ -271,14 +420,23 @@ export interface LocationRule extends DayRule {
   weeklyOffs: WeeklyOffRule[];
   checkIn: 'restricted' | 'field';
   alsoAllowed: string[];
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  reclockIn: boolean;
 }
 
-export const DEFAULT_RULE: LocationRule = { shiftName: 'General', shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted', alsoAllowed: [] };
+export const DEFAULT_RULE: LocationRule = { shiftName: 'General', shiftStart: 570, shiftEnd: 1110, graceMinutes: 10, halfDayMinutes: 240, fullDayMinutes: 480, breakMinutes: 30, breakAboveMinutes: 300, weeklyOffs: [{ weekday: 7 }], checkIn: 'restricted', alsoAllowed: [], reclockIn: false };
+
+/** Batch A item 9 (D11): the dates marked as working on the location's holiday calendar (its own, else the company's). */
+export async function workingDaysFor(tx: Tx, org: string, locationId: string): Promise<Set<string>> {
+  const cal = (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId }, select: { id: true } })) ?? (await tx.holidayCalendar.findFirst({ where: { organizationId: org, locationId: null }, select: { id: true } }));
+  if (!cal) return new Set();
+  return new Set((await tx.exceptionalWorkingDay.findMany({ where: { organizationId: org, calendarId: cal.id }, select: { workOn: true } })).map((w) => iso(w.workOn)));
+}
 
 /** The location's dated rules in force on each date of a range (the latest valid_from on or before the date). */
 export async function rulesFor(tx: Tx, org: string, locationId: string, to: string): Promise<(on: string) => LocationRule> {
   const rows = await tx.locationAttendanceRule.findMany({ where: { organizationId: org, locationId, validFrom: { lte: asDate(to) } }, orderBy: { validFrom: 'desc' } });
-  const list = rows.map((r) => ({ from: iso(r.validFrom), rule: { shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs as unknown as WeeklyOffRule[], checkIn: r.checkIn as LocationRule['checkIn'], alsoAllowed: r.alsoAllowed } }));
+  const list = rows.map((r) => ({ from: iso(r.validFrom), rule: { shiftName: r.shiftName, shiftStart: r.shiftStart, shiftEnd: r.shiftEnd, graceMinutes: r.graceMinutes, halfDayMinutes: r.halfDayMinutes, fullDayMinutes: r.fullDayMinutes, breakMinutes: r.breakMinutes, breakAboveMinutes: r.breakAboveMinutes, weeklyOffs: r.weeklyOffs as unknown as WeeklyOffRule[], checkIn: r.checkIn as LocationRule['checkIn'], alsoAllowed: r.alsoAllowed, reclockIn: r.reclockIn } }));
   return (on: string) => list.find((r) => r.from <= on)?.rule ?? DEFAULT_RULE;
 }
 
@@ -308,6 +466,19 @@ export async function visibleSql(tx: Tx, c: CompanyContext, v: Viewer, own: stri
   const implicit = team ? await implicitSql(tx, c, own, emp, Prisma.sql`${date}::date`) : Prisma.sql`FALSE`;
   const granted = v.actingForOther && !tenantWide(v, key) ? Prisma.sql`FALSE` : inScopeSql(c, v, key, emp, Prisma.sql`${date}::date`, own);
   return Prisma.sql`(${self} OR ${implicit} OR ${granted})`;
+}
+
+/**
+ * Of `ids`, the people `own` manages on `date` in the reporting line: direct or indirect reports, whatever the company's
+ * manager view setting. Never dotted lines, department heads or HR grants (founder 2 Nov 2026, overtime pre-approval).
+ */
+export async function inReportingLine(tx: Tx, c: CompanyContext, own: string | null, ids: readonly string[], date: string): Promise<Set<string>> {
+  const others = ids.filter((id) => id !== own);
+  if (!own || !others.length) return new Set();
+  const rows = await tx.$queryRaw<{ id: string }[]>`
+    SELECT x.id::text FROM unnest(${others}::uuid[]) AS x(id)
+    WHERE yx_scope_periods(${c.organizationId}::uuid, x.id, 'all_reports', NULL::uuid, ${own}::uuid) @> ${date}::date`;
+  return new Set(rows.map((r) => r.id));
 }
 
 /** One employee: visible as self, team or through `key`? (404 otherwise: the same answer as an unknown person.) */
@@ -348,7 +519,7 @@ export async function holdersOf(tx: Tx, org: string, key: TimeKey | string, empl
     LEFT JOIN employees own ON own.organization_id = g.organization_id AND own.user_id = g.user_id
     WHERE g.organization_id = ${org}::uuid AND g.status = 'active' AND p.permissions_json LIKE ${like}
       AND g.valid_from <= ${today}::date AND (g.valid_to IS NULL OR g.valid_to >= ${today}::date)
-      AND yx_scope_periods(${org}::uuid, ${employeeId}::uuid, g.scope_type, COALESCE(g.legal_entity_id, g.location_id, g.department_id), own.id) @> ${today}::date
+      AND yx_scope_periods(${org}::uuid, ${employeeId}::uuid, g.scope_type, COALESCE(g.legal_entity_id, g.location_id, g.department_id, g.employee_id), own.id) @> ${today}::date
     LIMIT 25`;
   return rows.map((r) => r.id);
 }
@@ -393,4 +564,25 @@ export async function approvedLeaveOfUsers(tx: Tx, org: string, userIds: readonl
       AND d.leave_on BETWEEN ${from}::date AND ${to}::date
     GROUP BY 1, 2`;
   return rows.map((r) => ({ userId: r.userId, on: r.on, part: r.parts.length > 1 || r.parts[0] === 'full' ? 'full' : (r.parts[0] as 'first' | 'second') }));
+}
+
+// ------------------------------------------------------------------------------------------ leave type versions (answer 2477)
+
+/** The leave type with the rules and pay of the version in force on `on` (the type's own copy when it has no version). */
+export async function typeOn<T extends { id: string; rules: Prisma.JsonValue; paid: boolean }>(tx: Tx, org: string, t: T, on: string): Promise<T> {
+  const v = await tx.leaveTypeVersion.findFirst({ where: { organizationId: org, leaveTypeId: t.id, validFrom: { lte: asDate(on) } }, orderBy: { validFrom: 'desc' }, select: { rules: true, paid: true } });
+  return v ? { ...t, rules: v.rules, paid: v.paid } : t;
+}
+
+/**
+ * leave_types.rules and .paid are the copy in force today, for the readers that act now (balances, accrual, cash-in).
+ * A version dated ahead reaches the copy when it starts: the accrual run refreshes it.
+ * shortcut: up to the 6-hour accrual interval late on the morning a future version starts; read typeOn where a date matters.
+ */
+export async function refreshTypeCopies(tx: Tx, org: string, today: string): Promise<number> {
+  return tx.$executeRaw`
+    UPDATE leave_types t SET rules = v.rules, paid = v.paid, updated_at = now()
+    FROM (SELECT DISTINCT ON (leave_type_id) leave_type_id, rules, paid FROM leave_type_versions
+          WHERE organization_id = ${org}::uuid AND valid_from <= ${today}::date ORDER BY leave_type_id, valid_from DESC) v
+    WHERE t.organization_id = ${org}::uuid AND t.id = v.leave_type_id AND (t.rules IS DISTINCT FROM v.rules OR t.paid IS DISTINCT FROM v.paid)`;
 }

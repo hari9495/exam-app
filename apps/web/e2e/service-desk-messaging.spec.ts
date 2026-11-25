@@ -41,6 +41,9 @@ async function openTicket(agent: Page, text: string) {
   await agent.getByRole('menuitemradio', { name: 'All open' }).or(agent.getByRole('menuitem', { name: 'All open' })).click();
   await agent.getByRole('textbox', { name: /Search/ }).fill(text);
   await agent.getByText(text).first().click();
+  // HLP-02: a row opens the quick view; "Open ticket" goes to the ticket.
+  await agent.getByRole('dialog').getByRole('button', { name: 'Open ticket' }).click();
+  await agent.waitForURL(/\/yx\/desk\/tickets\/[0-9a-f-]{36}/, { timeout: 30_000 });
 }
 
 test('an employee writes on WhatsApp → a request → the agent replies → the reply reaches the phone; signing asks for a code', async ({ browser }) => {
@@ -92,7 +95,9 @@ test('an employee writes on WhatsApp → a request → the agent replies → the
   await expect(arjun.getByRole('button', { name: 'Sign', exact: true })).toHaveCount(0);
   await arjun.getByRole('button', { name: 'Send me a code' }).click();
   await expect(arjun.getByText(/We sent a 6-digit code to/)).toBeVisible();
-  await expect(arjun.getByRole('button', { name: 'Sign', exact: true })).toBeDisabled();
+  // Signing without the code is refused in place (buttons are never greyed out).
+  await arjun.getByRole('button', { name: 'Sign', exact: true }).click();
+  await expect(arjun.getByText('Type the 6-digit code from the email.')).toBeVisible();
   const code = /: (\d{6}) /.exec(script('desk-sign-code.ts', ['arjun@demo-org.test']))![1];
   await arjun.getByRole('textbox', { name: /6-digit code/ }).fill(code);
   await arjun.getByRole('button', { name: 'Sign', exact: true }).click();

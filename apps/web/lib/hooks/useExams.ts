@@ -19,12 +19,13 @@ function buildExamsQuery(status: string | undefined, params: UseExamsParams): st
   return queryString ? `?${queryString}` : '';
 }
 
-export function useExams(status?: string, params: UseExamsParams = {}) {
+/** `enabled` false skips the call (AS-0: people without a test or results key, e.g. the Interview coordinator). */
+export function useExams(status?: string, params: UseExamsParams = {}, enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<PaginatedResponse<ExamListItem>>({
     queryKey: ['exams', status ?? 'default', params],
     queryFn: () => apiFetch(`/exams${buildExamsQuery(status, params)}`, {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
     // Keep previous results during search/page refetches so the loading early-return
     // doesn't unmount the search input and drop focus (see useCandidates).
     placeholderData: (prev) => prev,

@@ -251,4 +251,40 @@ describe('Expenses batch E5', () => {
     expect((await api('adminB', 'get', '/fx-rates').expect(200)).body).toEqual([]);
     expect(app.get(ExpenseTripsService)).toBeTruthy();
   });
+
+  it('EXP-09 charts: the figures are exact and match the claims; department and Excel; bad input and the wrong person refused', async () => {
+    type Bar = { label: string; amount: string; count?: number };
+    type R = { rows: { approved: string }[]; charts: { byCategory: Bar[]; paidThrough: Bar[]; ageing?: Bar[] }; departments: { id: string; name: string }[] };
+    const from = d(-30);
+    const sum = (await api('fin', 'get', `/reports/summary?from=${from}&to=${today}`).expect(200)).body as R;
+    // Spend by category is the table's approved column, exactly.
+    expect(sum.charts.byCategory.map((b) => b.amount)).toEqual(sum.rows.map((r) => r.approved));
+    // Paid through: payroll + direct payout = the approved claims' net payable; company paid = their company-paid bills.
+    const db = await inA((tx) => tx.$queryRaw<{ net: string; company: string }[]>`
+      SELECT (SELECT COALESCE(sum(COALESCE(net_payable, 0)), 0) FROM expense_claims WHERE organization_id = ${org.A.id}::uuid AND status IN ('approved', 'partly_approved') AND decided_at >= ${new Date(`${from}T00:00:00Z`)})::numeric(14,2)::text AS net,
+             (SELECT COALESCE(sum(COALESCE(l.approved, l.claimed)), 0) FROM expense_lines l JOIN expense_claims c ON c.organization_id = l.organization_id AND c.id = l.claim_id
+               WHERE c.organization_id = ${org.A.id}::uuid AND l.removed_at IS NULL AND l.pay_mode = 'company_paid' AND c.status IN ('approved', 'partly_approved') AND c.decided_at >= ${new Date(`${from}T00:00:00Z`)})::numeric(14,2)::text AS company`);
+    const pt = Object.fromEntries(sum.charts.paidThrough.map((b) => [b.label, b.amount]));
+    expect(((Number(pt.Payroll) * 100 + Number(pt['Direct payout']) * 100) / 100).toFixed(2)).toBe(db[0].net);
+    expect(pt['Company paid']).toBe(db[0].company);
+    expect(sum.departments.map((x) => x.name)).toContain('Sales');
+    // A department nobody is in shows nothing; the employees' own department shows the same as all.
+    const otherId = randomUUID();
+    const other = await inA((tx) => tx.department.create({ data: { organizationId: org.A.id, id: otherId, name: 'Empty', code: `E${run.slice(0, 3)}`, path: `/${otherId}/` } }));
+    expect(((await api('fin', 'get', `/reports/summary?from=${from}&to=${today}&departmentId=${other.id}`).expect(200)).body as R).rows).toEqual([]);
+    expect(((await api('fin', 'get', `/reports/summary?from=${from}&to=${today}&departmentId=${ids.dept},${other.id}`).expect(200)).body as R).rows).toEqual(sum.rows);
+    // Ageing always shows the four buckets.
+    expect(((await api('fin', 'get', '/reports/advance-ageing').expect(200)).body as R).charts.ageing!.map((b) => b.label)).toEqual(['0–30 days', '31–60 days', '61–90 days', 'Over 90 days']);
+    const xlsx = await api('fin', 'get', `/reports/summary?from=${from}&to=${today}&format=xlsx`).buffer(true).parse((res, cb) => {
+      const parts: Buffer[] = [];
+      res.on('data', (c: Buffer) => parts.push(c));
+      res.on('end', () => cb(null, Buffer.concat(parts)));
+    }).expect(200);
+    expect(xlsx.headers['content-type']).toMatch(/spreadsheetml/);
+    expect((xlsx.body as Buffer).subarray(0, 2).toString()).toBe('PK');
+    await api('fin', 'get', '/reports/summary?departmentId=not-a-department').expect(400);
+    await api('fin', 'get', '/reports/summary?format=pdf').expect(400);
+    await api('mgr', 'get', '/reports/summary').expect(403);
+    expect(((await api('adminB', 'get', `/reports/summary?departmentId=${ids.dept}`).expect(200)).body as R).rows).toEqual([]);
+  });
 });

@@ -472,6 +472,7 @@ export function AnnouncementScreen({ view, rows = [], sensitive, state = 'ready'
         title={`Publish to ${reach} people?`}
         consequence={`Sent by ${channels.length} channels. ${ack ? `Everyone is asked to acknowledge by ${formatDate(due)}.` : ''} You can’t unsend; you can edit or expire it later.`}
         confirmLabel="Publish announcement"
+        // Kept: the fix (title or channels) is in the form behind the dialog, which already shows the danger alert.
         confirmDisabled={sensitive && external}
         onConfirm={() => setConfirm(false)}
       />

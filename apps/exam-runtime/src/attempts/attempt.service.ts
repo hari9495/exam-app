@@ -1,5 +1,7 @@
+import { readEvidence } from './accommodation.service';
+import { integrityState, type CandidateIntegrity } from './integrity-hold';
 import { randomUUID } from 'crypto';
-import { BadRequestException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Attempt, Prisma } from '@prisma/client';
 import {
   TenantPrismaService,
@@ -26,13 +28,14 @@ import { AttemptSettlementService, PauseReason, SettlementExam } from '../gradin
 import { MonitoringGateway } from '../monitoring/monitoring.gateway';
 import { LeaderboardService, AUTO_GRADABLE_QUESTION_TYPES, CandidateLeaderboardResponse } from '../leaderboard/leaderboard.service';
 import { CandidateSession } from '../candidate-auth/current-candidate.decorator';
-import { AnswerDto } from './dto/answer.dto';
+import { AnswerDto, SurveyDto } from './dto/answer.dto';
+import { runnerSetting } from './runner-settings';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { getProctoringEventSeverity, isStrikeWorthy } from './proctoring-severity';
 import { resolveProctoringConfig, isSignalEnabled, isProctoringBypassActive, ExamProctoringConfig } from './proctoring-config';
+import { invitationExam } from './invitation-exam';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { shuffle } from './shuffle';
-import { effectiveDurationMinutes } from '../grading/grading';
 import { PistonClient, PistonExecuteResult } from '../code-execution/piston-client';
 import { PistonRuntimesService } from '../code-execution/piston-runtimes.service';
 import { RunLimiter } from '../code-execution/run-limiter';
@@ -49,6 +52,8 @@ interface AttemptQuestionOption {
   id: string;
   text: string;
   imageUrl: string | null;
+  /** Answer 2161: the writer's alt text for the option's picture (2126). */
+  imageAlt: string | null;
 }
 
 interface AttemptQuestion {
@@ -63,6 +68,7 @@ interface AttemptQuestion {
   snippetCode: string | null;
   snippetLanguage: string | null;
   imageUrl: string | null;
+  imageAlt: string | null;
   options: AttemptQuestionOption[];
 }
 
@@ -85,6 +91,8 @@ interface SectionSnapshotEntry {
   // not retroactively rescore a candidate who already sat the exam. null = every question required.
   requiredCount: number | null;
   questionIds: string[];
+  /** Answer 2154: frozen with the weight; null = no cut-off. */
+  cutoffPercent: number | null;
 }
 
 interface AttemptAnswerFileSummary {
@@ -126,12 +134,16 @@ interface AttemptPreviewResponse {
     availabilityWindowStart: Date | null;
     availabilityWindowEnd: Date | null;
     proctoring: ExamProctoringConfig;
+    /** AS-2 (answer 2008): how long the company keeps recordings, clips and face data, told before consent. */
+    evidenceRetentionDays: number;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+  /** AS-6 (answer 2237): the company's privacy notice for applicants (its latest version), linked on candidate pages. */
+  privacyNotice: string | null;
 }
 
 interface AttemptSectionFeedback {
@@ -143,7 +155,10 @@ interface AttemptSectionFeedback {
 interface AttemptFeedback {
   // 'awaiting_release': settled, but the exam is in manual-release mode and this attempt hasn't been
   // released yet -- the candidate sees "results not yet released", no score/passFail.
-  status: 'pending_review' | 'awaiting_release' | 'settled';
+  // 'held' (AS-4a, PRC-27): the result is held for review (Result.releaseOverride 'held'); the candidate sees that it is
+  // under review, never why or the score.
+  // 'invalidated' (AS-5): an integrity verdict invalidated the attempt (not overturned on appeal): no score shown.
+  status: 'pending_review' | 'awaiting_release' | 'held' | 'invalidated' | 'settled';
   visibility: string;
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
@@ -152,6 +167,8 @@ interface AttemptFeedback {
   // downloadable via GET /attempt/certificate. Independent of feedbackVisibility (a certificate is an
   // explicit opt-in reward for passing).
   certificateAvailable: boolean;
+  /** AS-5 (answer 2012): an integrity verdict other than "cleared", with its appeal window and the appeal. */
+  integrity?: CandidateIntegrity | null;
 }
 
 interface AttemptStateResponse {
@@ -164,6 +181,10 @@ interface AttemptStateResponse {
   // attempt was already paused before this column shipped (no backfill; see resumeFromPause).
   // The client uses this instead of guessing from the violation counters.
   pausedReason: PauseReason | null;
+  /** AS-5: what the proctor told the candidate when pausing (pausedReason 'proctor'). */
+  pauseMessage?: string | null;
+  /** Answer 2270: face checks left before a proctor takes over (pausedReason 'face_recheck'). */
+  faceRecheckTriesLeft?: number | null;
   // Stage-3 face enforcement 'warn': an unacknowledged non-freezing heads-up (ISO timestamp), or
   // null. Distinct from pausedReason -- warn never pauses, so it can't ride the pause channel.
   faceWarningAt: string | null;
@@ -179,12 +200,44 @@ interface AttemptStateResponse {
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
+  /** AS-4a (PRC-26): what the designed runner offers this attempt. */
+  runner: RunnerInfo;
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+  /** AS-6 (answer 2237): the company's privacy notice for applicants (its latest version), linked on candidate pages. */
+  privacyNotice: string | null;
+}
+
+/** AS-4a (PRC-26): the calculator, breaks, offline answering and time credit for one attempt. */
+export interface RunnerInfo {
+  calculator: 'none' | 'basic' | 'scientific';
+  breaksAllowed: number;
+  breaksUsed: number;
+  breakMinutes: number;
+  /** While on a break: when it ends on its own (ISO). */
+  breakEndsAt: string | null;
+  /** asmt.offline_minutes: how long answers are kept on the device without a connection. */
+  offlineMinutes: number;
+  /** asmt.time_credit_cap and what was already given back. */
+  timeCreditCapMinutes: number;
+  offlineCreditSeconds: number;
+  surveyDone: boolean;
+  /** AS-6 part 2 (answer 2272): the approved assistant is allowed in this test. */
+  aiAllowed: boolean;
 }
 
 export type AttemptCurrentResponse = AttemptPreviewResponse | AttemptStateResponse;
+
+/**
+ * AS-2 (answer 2008): the company's Settings 6.5 retention (asmt.retention), 30 to 365 days, 30 when not set. The API's
+ * sweeps use the same bounds (apps/api/src/assessments/asmt-rules.ts retentionDays).
+ */
+async function evidenceRetentionDays(tx: Prisma.TransactionClient, organizationId: string): Promise<number> {
+  const row = await tx.setting.findFirst({ where: { organizationId, key: 'asmt.retention', scopeType: 'tenant' }, select: { value: true } });
+  const n = Number(row?.value);
+  return Number.isInteger(n) ? Math.min(365, Math.max(30, n)) : 30;
+}
 
 // What the controller extracts from the incoming request for SEB verification: the ConfigKey
 // hash header SEB attaches, and the absolute URL of this request exactly as the client
@@ -376,6 +429,7 @@ export class AttemptService {
     } = await this.getOrganizationBranding(organizationId);
 
     return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const privacyNotice = (await tx.consentNotice.findFirst({ where: { organizationId, purpose: 'application' }, orderBy: { version: 'desc' }, select: { text: true } }))?.text ?? null;
       const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
       if (!attempt) {
         const sections = await tx.examSection.findMany({
@@ -393,6 +447,7 @@ export class AttemptService {
             availabilityWindowStart: exam.availabilityWindowStart,
             availabilityWindowEnd: exam.availabilityWindowEnd,
             proctoring: resolveProctoringConfig(exam),
+            evidenceRetentionDays: await evidenceRetentionDays(tx, organizationId),
           },
           schedulingWindowState: this.getSchedulingWindowState(exam),
           sections: sections.map((section) => ({
@@ -402,6 +457,7 @@ export class AttemptService {
           organizationName,
           organizationLogoUrl,
           organizationPrimaryColor,
+          privacyNotice,
         };
       }
 
@@ -409,11 +465,11 @@ export class AttemptService {
       const sections = await this.loadSections(tx, settled.sectionSnapshotJson, settled.optionOrderJson);
       const answers = await tx.answer.findMany({ where: { attemptId: settled.id } });
 
-      const unreadMessages = await tx.candidateMessage.findMany({ where: { attemptId: settled.id, readAt: null } });
-      if (unreadMessages.length > 0) {
-        await tx.candidateMessage.updateMany({ where: { attemptId: settled.id, readAt: null }, data: { readAt: new Date() } });
-      }
+      // Answer 2269: the proctor's messages stay unread until the candidate says "Got it" or replies (a GET changes
+      // nothing), so a message is never lost between two polls.
+      const unreadMessages = await tx.candidateMessage.findMany({ where: { attemptId: settled.id, readAt: null, fromCandidate: false }, orderBy: { sentAt: 'asc' } });
       const feedback = await this.buildFeedback(tx, exam, settled);
+      const runner = await this.runnerInfo(tx, organizationId, exam, settled);
 
       return {
         candidateName: invitation.candidate.name,
@@ -422,6 +478,8 @@ export class AttemptService {
         webcamViolationCount: settled.webcamViolationCount,
         browserActivityViolationCount: settled.browserActivityViolationCount,
         pausedReason: settled.pausedReason as PauseReason | null,
+        pauseMessage: settled.status === 'paused' && settled.pausedReason === 'proctor' ? await proctorPauseMessage(tx, settled.id) : null,
+        faceRecheckTriesLeft: settled.status === 'paused' && settled.pausedReason === 'face_recheck' ? Math.max(0, FACE_RECHECK_TRIES - (await faceRecheckFailures(tx, settled))) : null,
         faceWarningAt: settled.faceWarningAt ? settled.faceWarningAt.toISOString() : null,
         exam: { title: exam.title, proctoring: resolveProctoringConfig(exam, settled) },
         screenShareRequired: exam.enableAntiCheating && exam.screenCaptureEnabled && !isProctoringBypassActive(settled),
@@ -448,10 +506,131 @@ export class AttemptService {
         ),
         messages: unreadMessages.map((message) => ({ id: message.id, body: message.body, sentAt: message.sentAt })),
         feedback,
+        runner,
         organizationName,
         organizationLogoUrl,
         organizationPrimaryColor,
+        privacyNotice,
       };
+    });
+  }
+
+  private async runnerInfo(tx: Prisma.TransactionClient, organizationId: string, exam: { calculator: string; breaksAllowed: number; breakMinutes: number; aiAllowed?: boolean }, attempt: Attempt): Promise<RunnerInfo> {
+    const onBreak = attempt.status === 'paused' && attempt.pausedReason === 'break' && attempt.pausedAt;
+    return {
+      calculator: (['basic', 'scientific'].includes(exam.calculator) ? exam.calculator : 'none') as RunnerInfo['calculator'],
+      breaksAllowed: exam.breaksAllowed,
+      breaksUsed: attempt.breaksUsed,
+      breakMinutes: exam.breakMinutes,
+      breakEndsAt: onBreak ? new Date(attempt.pausedAt!.getTime() + exam.breakMinutes * 60_000).toISOString() : null,
+      offlineMinutes: await runnerSetting(tx, organizationId, 'asmt.offline_minutes'),
+      timeCreditCapMinutes: await runnerSetting(tx, organizationId, 'asmt.time_credit_cap'),
+      offlineCreditSeconds: Math.round(attempt.offlineCreditMs / 1000),
+      surveyDone: Boolean(await tx.attemptSurvey.findUnique({ where: { attemptId: attempt.id }, select: { id: true } })),
+      aiAllowed: Boolean(exam.aiAllowed),
+    };
+  }
+
+  /**
+   * AS-4a (PRC-26): a break. The timer stops for at most the test's break length (exams.break_minutes), as many times as
+   * the test allows (exams.breaks_allowed); proctoring pauses with it. Only from a running attempt.
+   */
+  async startBreak(session: CandidateSession): Promise<{ status: string; breakEndsAt: string; breaksLeft: number }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+      if (settled.status !== 'in_progress') throw new BadRequestException(`A break can start only while the test is running (it is "${settled.status}").`);
+      if (settled.breaksUsed >= exam.breaksAllowed) throw new BadRequestException(exam.breaksAllowed ? 'You have taken all the breaks this test allows.' : 'This test has no breaks.');
+      const now = new Date();
+      // Guarded on the attempt still running with the same break count: two presses at once start one break.
+      const res = await tx.attempt.updateMany({
+        where: { id: settled.id, status: 'in_progress', breaksUsed: settled.breaksUsed },
+        data: { status: 'paused', pausedAt: now, pausedReason: 'break', breaksUsed: settled.breaksUsed + 1 },
+      });
+      if (!res.count) throw new ConflictException('The test changed just now. Try again.');
+      return { status: 'paused', breakEndsAt: new Date(now.getTime() + exam.breakMinutes * 60_000).toISOString(), breaksLeft: exam.breaksAllowed - settled.breaksUsed - 1 };
+    });
+  }
+
+  /** AS-4a: the candidate ends their break; the time given back is at most the break's length. */
+  async endBreak(session: CandidateSession): Promise<{ status: string; remainingSeconds: number }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      if (attempt.status !== 'paused' || attempt.pausedReason !== 'break') throw new BadRequestException('You are not on a break.');
+      const resumed = await this.attemptSettlement.settleIfExpired(tx, exam, await this.attemptSettlement.endBreak(tx, exam, attempt));
+      return { status: resumed.status, remainingSeconds: this.attemptSettlement.remainingSeconds(exam, resumed) };
+    });
+  }
+
+  /**
+   * AS-4a: back after a lost connection. The time lost is given back by the server before any request is handled
+   * (LastSeenInterceptor), measured from when the attempt was last seen; this reports it, with the time left, so the
+   * runner can say so. Answers the device kept follow through POST /attempt/answer with their device time.
+   */
+  async reconnected(session: CandidateSession): Promise<{ offlineCreditSeconds: number; timeCreditCapMinutes: number; remainingSeconds: number; status: string }> {
+    const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const settled = await this.attemptSettlement.settleIfExpired(tx, exam, attempt);
+      return {
+        offlineCreditSeconds: Math.round(settled.offlineCreditMs / 1000),
+        timeCreditCapMinutes: await runnerSetting(tx, organizationId, 'asmt.time_credit_cap'),
+        remainingSeconds: this.attemptSettlement.remainingSeconds(exam, settled),
+        status: settled.status,
+      };
+    });
+  }
+
+  /** AS-4a: the optional after-test survey, once per attempt, only after it ended. Never affects the score. */
+  async submitSurvey(session: CandidateSession, dto: SurveyDto): Promise<{ ok: true }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true, status: true } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      if (['in_progress', 'paused', 'blocked'].includes(attempt.status)) throw new BadRequestException('The survey opens after you finish the test.');
+      if (await tx.attemptSurvey.findUnique({ where: { attemptId: attempt.id }, select: { id: true } })) throw new ConflictException('You have already answered the survey. Thank you.');
+      await tx.attemptSurvey.create({ data: { attemptId: attempt.id, rating: dto.rating, clearInstructions: dto.clearInstructions ?? null, comment: dto.comment?.trim() || null } });
+      // AS-6 (answer 2019): kept apart from the survey and the person, read only as counts per group.
+      if (dto.gender) await tx.attemptSelfDescription.create({ data: { attemptId: attempt.id, gender: dto.gender } });
+      return { ok: true as const };
+    });
+  }
+
+  /**
+   * AS-5 (answer 2012): the candidate appeals an integrity verdict other than "cleared", once, before the company's
+   * window closes. The result is held while it is open (integrityState); someone who did not give the verdict decides.
+   */
+  async appeal(session: CandidateSession, text: string, file: { fileName: string; dataUri: string } | null = null): Promise<{ ok: true }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    // Answer 2264: the file is checked before anything is stored, and uploaded outside the transaction.
+    const evidence = readEvidence(file);
+    const path = evidence ? await this.blobStorage.upload(`appeal-evidence/${organizationId}/${invitation.id}/${randomUUID()}-${evidence.name}`, evidence.buf, evidence.type) : null;
+    try {
+      return await this.appealIn(organizationId, invitation.id, text, path ? { path, name: evidence!.name, type: evidence!.type } : null);
+    } catch (error) {
+      if (path) await this.blobStorage.deleteByUrl(path).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private async appealIn(organizationId: string, invitationId: string, text: string, file: { path: string; name: string; type: string } | null): Promise<{ ok: true }> {
+    const invitation = { id: invitationId };
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id }, select: { id: true } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const state = await integrityState(tx, attempt.id);
+      if (text.trim().length < 10) throw new BadRequestException('Tell us in at least 10 characters why we should look again.');
+      if (!state.integrity) throw new BadRequestException('There is no decision on your test to appeal.');
+      if (state.integrity.appeal) throw new ConflictException('You have already appealed this decision.');
+      if (!state.integrity.canAppeal) throw new BadRequestException('The time to appeal this decision has ended.');
+      const incident = await tx.integrityIncident.findUniqueOrThrow({ where: { attemptId: attempt.id }, select: { id: true } });
+      await tx.integrityAppeal.create({ data: { incidentId: incident.id, attemptId: attempt.id, text: text.trim(), evidencePath: file?.path ?? null, evidenceName: file?.name ?? null, evidenceType: file?.type ?? null } });
+      return { ok: true as const };
     });
   }
 
@@ -499,6 +678,10 @@ export class AttemptService {
       if (dto.consent !== true) {
         throw new BadRequestException('You must consent to exam monitoring before starting.');
       }
+      // AS-3 (answer 2013): this invitation uses an earlier result; taking the test again means withdrawing that first.
+      if (invitation.status === 'reused') {
+        throw new BadRequestException('You chose to use your earlier result. To take the test again, withdraw that choice first.');
+      }
 
       const windowState = this.getSchedulingWindowState(exam);
       if (windowState === 'not_open') {
@@ -542,6 +725,7 @@ export class AttemptService {
           weightPercent: section.weightPercent,
           requiredCount: section.requiredCount,
           questionIds,
+          cutoffPercent: section.cutoffPercent ?? null,
         });
       }
 
@@ -581,7 +765,7 @@ export class AttemptService {
   async answer(
     session: CandidateSession,
     dto: AnswerDto,
-  ): Promise<{ questionId: string; selectedOptionIds: string[]; answerText: string | null; isMarkedForReview: boolean }> {
+  ): Promise<{ questionId: string; selectedOptionIds: string[]; answerText: string | null; isMarkedForReview: boolean; stale?: boolean }> {
     const { organizationId, exam, invitation } = await this.resolveContext(session.invitationId);
 
     const { response, isAutoGradable } = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
@@ -600,6 +784,17 @@ export class AttemptService {
       }
       const question = await tx.question.findFirstOrThrow({ where: { id: dto.questionId }, include: { options: true } });
       const isMarkedForReview = dto.markedForReview ?? false;
+      // AS-4a: answers kept on the device while offline arrive later with the time the device saved them; an older copy
+      // never overwrites a newer one. A device time in the future counts as now. Answer 2122: the version answered.
+      const savedAt = dto.clientSavedAt ? new Date(Math.min(new Date(dto.clientSavedAt).getTime(), Date.now())) : new Date();
+      const existing = await tx.answer.findUnique({ where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } } });
+      if (dto.clientSavedAt && existing?.clientSavedAt && existing.clientSavedAt > savedAt) {
+        return {
+          response: { questionId: dto.questionId, selectedOptionIds: JSON.parse(existing.selectedOptionIdsJson) as string[], answerText: existing.answerText, isMarkedForReview: existing.isMarkedForReview, stale: true },
+          isAutoGradable: false,
+        };
+      }
+      const stamp = { questionVersion: question.version, clientSavedAt: savedAt };
 
       if (question.type === 'code') {
         if (dto.codeLanguage) {
@@ -611,6 +806,7 @@ export class AttemptService {
           create: {
             attemptId: settled.id,
             questionId: dto.questionId,
+            ...stamp,
             selectedOptionIdsJson: JSON.stringify([]),
             answerText: dto.answerText ?? null,
             codeLanguage: dto.codeLanguage ?? null,
@@ -622,6 +818,7 @@ export class AttemptService {
             codeLanguage: dto.codeLanguage ?? null,
             isMarkedForReview,
             answeredAt: new Date(),
+            ...stamp,
             ...telemetryPatch,
           },
         });
@@ -639,6 +836,7 @@ export class AttemptService {
           create: {
             attemptId: settled.id,
             questionId: dto.questionId,
+            ...stamp,
             selectedOptionIdsJson: JSON.stringify([]),
             answerText: dto.answerText ?? null,
             isMarkedForReview,
@@ -647,6 +845,7 @@ export class AttemptService {
             answerText: dto.answerText ?? null,
             isMarkedForReview,
             answeredAt: new Date(),
+            ...stamp,
           },
         });
         return {
@@ -661,8 +860,8 @@ export class AttemptService {
         // markedForReview toggle, never touching answerFilesJson. Manually graded; never auto-gradable.
         await tx.answer.upsert({
           where: { attemptId_questionId: { attemptId: settled.id, questionId: dto.questionId } },
-          create: { attemptId: settled.id, questionId: dto.questionId, selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview },
-          update: { isMarkedForReview, answeredAt: new Date() },
+          create: { attemptId: settled.id, questionId: dto.questionId, selectedOptionIdsJson: JSON.stringify([]), isMarkedForReview, ...stamp },
+          update: { isMarkedForReview, answeredAt: new Date(), ...stamp },
         });
         return {
           response: { questionId: dto.questionId, selectedOptionIds: [], answerText: null, isMarkedForReview },
@@ -682,11 +881,13 @@ export class AttemptService {
           questionId: dto.questionId,
           selectedOptionIdsJson: JSON.stringify(dto.selectedOptionIds),
           isMarkedForReview,
+          ...stamp,
         },
         update: {
           selectedOptionIdsJson: JSON.stringify(dto.selectedOptionIds),
           isMarkedForReview,
           answeredAt: new Date(),
+          ...stamp,
         },
       });
 
@@ -1062,7 +1263,8 @@ export class AttemptService {
       // able to record events, strikes, or a pause/block. Ignore rather than reject, for
       // the same reason as the disabled-signal guard above.
       const proctoring = resolveProctoringConfig(exam, attempt);
-      if (!proctoring.webcamEnabled) {
+      // Answer 2202: a head turn is a gaze signal; the "no gaze" profile (or the test) does not watch it.
+      if (!proctoring.webcamEnabled || (dto.reason === 'head_turned' && !isSignalEnabled(proctoring, 'webcam_head_turned'))) {
         return { skip: true as const, strike: attempt.webcamViolationCount, status: attempt.status };
       }
       const screenDecision = this.decideScreenCapture(attempt, dto.screenshot, proctoring.screenCaptureEnabled);
@@ -1638,6 +1840,10 @@ export class AttemptService {
     if (!isLive && (!canSeeOwnScore || !released)) {
       return { you: null, top: [] };
     }
+    if (!isLive && attempt) {
+      const integrity = await this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, (tx) => integrityState(tx, attempt.id));
+      if (integrity.held || integrity.invalidated) return { you: null, top: [] };
+    }
     return this.leaderboardService.computeCandidateView({ organizationId, isSuperAdmin: false }, exam.id, invitation.id);
   }
 
@@ -1659,8 +1865,75 @@ export class AttemptService {
       if (attempt.pausedReason === 'screen_share') {
         throw new BadRequestException('Cannot resume — this attempt is paused pending screen sharing, not a strike');
       }
+      // AS-5: a proctor's pause is lifted by the proctor; a break ends on its own route; a face re-check by checking.
+      if (attempt.pausedReason === 'proctor' || attempt.pausedReason === 'break' || attempt.pausedReason === 'face_recheck') {
+        throw new BadRequestException('This pause is not cleared from here.');
+      }
       const updated = await this.attemptSettlement.resumeFromPause(tx, attempt);
       return { status: updated.status };
+    });
+  }
+
+  /**
+   * Answer 2205: after time above the cap was approved, the candidate's face is checked once against the enrolment photo
+   * before the test resumes. A match resumes; a clear mismatch stays paused (recorded) so they can try again or a proctor
+   * decides; when the check cannot run (no model, no enrolment) it resumes, as every other face check degrades.
+   */
+  async faceRecheck(session: CandidateSession, snapshot: string): Promise<{ status: string; matched: boolean | null; triesLeft?: number }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    const ctx = { organizationId, isSuperAdmin: false };
+    const attempt = await this.tenantPrisma.forTenant(ctx, (tx) => tx.attempt.findUnique({ where: { invitationId: invitation.id } }));
+    if (!attempt) throw new NotFoundException('No attempt has been started');
+    if (attempt.status !== 'paused' || attempt.pausedReason !== 'face_recheck') throw new BadRequestException('No face check is waiting.');
+    // Answer 2270: three tries, then a proctor checks (no more camera checks from the candidate).
+    if ((await this.tenantPrisma.forTenant(ctx, (tx) => faceRecheckFailures(tx, attempt))) >= FACE_RECHECK_TRIES) {
+      throw new BadRequestException('A proctor will check your face. Please wait.');
+    }
+    const parsed = extractBase64FromDataUri(snapshot);
+    const image = parsed ? Buffer.from(parsed.base64, 'base64') : null;
+    if (!image?.length) throw new BadRequestException('The photo was empty. Try again.');
+    const outcome = await this.faceVerification.checkOnce(attempt.id, organizationId, image);
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const current = await tx.attempt.findUniqueOrThrow({ where: { id: attempt.id } });
+      if (current.status !== 'paused' || current.pausedReason !== 'face_recheck') return { status: current.status, matched: null };
+      if (outcome === 'mismatch') {
+        await tx.proctoringEvent.create({ data: { attemptId: attempt.id, eventType: 'face_recheck_failed', severity: getProctoringEventSeverity('face_mismatch'), metadataJson: '{}' } });
+        const triesLeft = Math.max(0, FACE_RECHECK_TRIES - (await faceRecheckFailures(tx, current)));
+        if (triesLeft === 0) {
+          // The hand-off: a high flag on the live console; the proctor checks and resumes or ends.
+          const flag = await tx.proctoringEvent.create({ data: { attemptId: attempt.id, eventType: 'face_recheck_handoff', severity: 'high', metadataJson: JSON.stringify({ tries: FACE_RECHECK_TRIES }) } });
+          this.monitoringGateway.emitProctoringFlag(current.examId, { attemptId: current.id, candidateId: current.candidateId, eventType: flag.eventType, severity: flag.severity, occurredAt: flag.occurredAt });
+        }
+        return { status: 'paused', matched: false, triesLeft };
+      }
+      const updated = await this.attemptSettlement.resumeFromPause(tx, current);
+      return { status: updated.status, matched: outcome === 'match' ? true : null };
+    });
+  }
+
+  /** Answer 2269: the candidate has read the proctor's messages ("Got it"). */
+  async readMessages(session: CandidateSession): Promise<{ read: number }> {
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      const r = await tx.candidateMessage.updateMany({ where: { attemptId: attempt.id, fromCandidate: false, readAt: null }, data: { readAt: new Date() } });
+      return { read: r.count };
+    });
+  }
+
+  /** Answer 2269: the candidate's reply to their proctor, only while the test runs (or is paused or blocked). */
+  async replyToProctor(session: CandidateSession, text: string): Promise<{ id: string; sentAt: Date }> {
+    const body = text.trim();
+    if (!body) throw new BadRequestException('Write your message first.');
+    const { organizationId, invitation } = await this.resolveContext(session.invitationId);
+    return this.tenantPrisma.forTenant({ organizationId, isSuperAdmin: false }, async (tx) => {
+      const attempt = await tx.attempt.findUnique({ where: { invitationId: invitation.id } });
+      if (!attempt) throw new NotFoundException('No attempt has been started');
+      if (!['in_progress', 'paused', 'blocked'].includes(attempt.status)) throw new BadRequestException('Your test has ended, so messages are closed.');
+      await tx.candidateMessage.updateMany({ where: { attemptId: attempt.id, fromCandidate: false, readAt: null }, data: { readAt: new Date() } });
+      const m = await tx.candidateMessage.create({ data: { attemptId: attempt.id, fromCandidate: true, body } });
+      return { id: m.id, sentAt: m.sentAt };
     });
   }
 
@@ -1852,6 +2125,9 @@ export class AttemptService {
     const released =
       result.releaseOverride === 'released' ? true : result.releaseOverride === 'held' ? false : exam.resultsReleaseMode !== 'manual';
     if (!released) throw new ForbiddenException('Results have not been released yet');
+    // AS-5: no certificate while the result is held for an integrity review or appeal, or for an invalidated attempt.
+    const integrity = await this.tenantPrisma.forTenant(context, (tx) => integrityState(tx, loaded.attempt!.id));
+    if (integrity.held || integrity.invalidated) throw new ForbiddenException('Your result is under review');
 
     const CERT_SIGN_TTL_MS = 60 * 60 * 1000;
     if (result.certificatePath) {
@@ -1883,10 +2159,7 @@ export class AttemptService {
     if (!invitation || !invitation.exam) {
       throw new UnauthorizedException('Invalid candidate session');
     }
-    const exam = {
-      ...invitation.exam,
-      durationMinutes: effectiveDurationMinutes(invitation.exam.durationMinutes, invitation.extraTimePercent),
-    };
+    const exam = invitationExam(invitation.exam, invitation);
     return { organizationId: exam.organizationId, exam, invitation };
   }
 
@@ -1995,6 +2268,11 @@ export class AttemptService {
             .filter((question): question is NonNullable<typeof question> => question !== undefined)
             .map(async (question) => {
               const order = optionOrder?.[question.id];
+              // Alt texts are stored in the options' written order (order_index), not the shuffled order shown.
+              const alts = Array.isArray(question.optionAlts) ? (question.optionAlts as unknown[]) : [];
+              const altOf = new Map(
+                [...question.options].sort((a, b) => a.orderIndex - b.orderIndex).map((option, i) => [option.id, typeof alts[i] === 'string' && (alts[i] as string).trim() ? (alts[i] as string) : null]),
+              );
               const orderedOptions = order
                 ? order
                     .map((optionId) => question.options.find((option) => option.id === optionId))
@@ -2012,11 +2290,13 @@ export class AttemptService {
                 snippetCode: question.snippetCode,
                 snippetLanguage: question.snippetLanguage,
                 imageUrl: (await this.blobStorage.signIfOurs(question.imageUrl)) as string | null,
+                imageAlt: question.imageAlt ?? null,
                 options: await Promise.all(
                   orderedOptions.map(async (option) => ({
                     id: option.id,
                     text: option.text,
                     imageUrl: (await this.blobStorage.signIfOurs(option.imageUrl)) as string | null,
+                    imageAlt: altOf.get(option.id) ?? null,
                   })),
                 ),
               };
@@ -2026,7 +2306,24 @@ export class AttemptService {
     );
   }
 
+  /**
+   * AS-5 (answers 2008, 2012): the release gate below, then the integrity decision on top: held while the incident is
+   * undecided or an appeal is open, the decision instead of a score when the attempt is invalidated.
+   */
   private async buildFeedback(
+    tx: Prisma.TransactionClient,
+    exam: { feedbackVisibility: string; resultsReleaseMode: string; certificatesEnabled: boolean },
+    attempt: { id: string; status: string; sectionSnapshotJson: string },
+  ): Promise<AttemptFeedback | null> {
+    const feedback = await this.releaseFeedback(tx, exam, attempt);
+    if (!feedback || feedback.status === 'pending_review') return feedback;
+    const s = await integrityState(tx, attempt.id);
+    if (s.held || s.invalidated)
+      return { status: s.held ? 'held' : 'invalidated', visibility: feedback.visibility, passFail: null, percentage: null, sections: null, certificateAvailable: false, integrity: s.integrity };
+    return s.integrity ? { ...feedback, integrity: s.integrity } : feedback;
+  }
+
+  private async releaseFeedback(
     tx: Prisma.TransactionClient,
     exam: { feedbackVisibility: string; resultsReleaseMode: string; certificatesEnabled: boolean },
     attempt: { id: string; status: string; sectionSnapshotJson: string },
@@ -2047,6 +2344,9 @@ export class AttemptService {
         : result?.releaseOverride === 'held'
           ? false
           : exam.resultsReleaseMode !== 'manual';
+    if (!released && result?.releaseOverride === 'held') {
+      return { status: 'held', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null, certificateAvailable: false };
+    }
     if (!released) {
       return { status: 'awaiting_release', visibility: exam.feedbackVisibility, passFail: null, percentage: null, sections: null, certificateAvailable: false };
     }
@@ -2093,5 +2393,24 @@ export class AttemptService {
   private async broadcastLeaderboard(organizationId: string, examId: string): Promise<void> {
     const rows = await this.leaderboardService.computeRecruiterView({ organizationId, isSuperAdmin: false }, examId);
     this.monitoringGateway.emitLeaderboardUpdate(examId, rows);
+  }
+}
+
+/** Answer 2270: the candidate's face checks per face-check pause. */
+export const FACE_RECHECK_TRIES = 3;
+
+/** Answer 2270: failed face checks since this pause began. */
+async function faceRecheckFailures(tx: Prisma.TransactionClient, attempt: { id: string; pausedAt: Date | null }): Promise<number> {
+  return tx.proctoringEvent.count({ where: { attemptId: attempt.id, eventType: 'face_recheck_failed', ...(attempt.pausedAt ? { occurredAt: { gte: attempt.pausedAt } } : {}) } });
+}
+
+/** AS-5: the message of the proctor's latest pause (kept on the attempt's record as a proctoring event). */
+async function proctorPauseMessage(tx: Prisma.TransactionClient, attemptId: string): Promise<string | null> {
+  const e = await tx.proctoringEvent.findFirst({ where: { attemptId, eventType: 'proctor_paused' }, orderBy: { occurredAt: 'desc' }, select: { metadataJson: true } });
+  try {
+    const m = JSON.parse(e?.metadataJson ?? '{}') as { message?: unknown };
+    return typeof m.message === 'string' && m.message.trim() ? m.message : null;
+  } catch {
+    return null;
   }
 }

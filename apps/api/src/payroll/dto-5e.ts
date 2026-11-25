@@ -42,6 +42,8 @@ export class WorkspacePatchDto {
   otherIncome?: OtherIncomeDto[];
 }
 
+export const LANDLORD_RELATIONSHIPS = ['not_related', 'parent', 'spouse', 'child', 'sibling', 'other_relative'] as const;
+
 export class DeclarationLineDto {
   @Matches(/^[a-z0-9_]{2,30}$/)
   subjectKey!: string;
@@ -61,6 +63,11 @@ export class DeclarationLineDto {
   @Matches(/^[A-Z0-9]{10}$/)
   landlordPan?: string;
 
+  /** H15: how the employee is related to the landlord (Form No. 124). */
+  @IsOptional()
+  @IsIn(LANDLORD_RELATIONSHIPS)
+  landlordRelationship?: (typeof LANDLORD_RELATIONSHIPS)[number];
+
   @IsOptional()
   @Matches(MONTH)
   rentFrom?: string;
@@ -68,6 +75,23 @@ export class DeclarationLineDto {
   @IsOptional()
   @Matches(MONTH)
   rentTo?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  metro?: boolean;
+}
+
+/** PAY-41 what-if on the regime comparison: worked out by the tax engine, never saved as declarations. */
+export class RegimeWhatIfDto {
+  /** Monthly rent for the whole tax year (0: no rent). */
+  @IsOptional()
+  @Matches(MONEY)
+  rentMonthly?: string;
+
+  /** Home loan interest for the year (0: none). */
+  @IsOptional()
+  @Matches(MONEY)
+  homeLoanInterest?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -103,6 +127,91 @@ export class ProofQueueDto {
   @IsOptional()
   @IsIn(['pending', 'approved', 'partly', 'rejected'])
   status?: string;
+}
+
+/** Form 12B fields sent with the file (multipart, so all text); the service checks them with plain messages. */
+export class Form12bDto {
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(200)
+  employerName?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  employerTan?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  gross?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  exemptions?: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(20)
+  tds?: string;
+}
+
+export class Form12bQueueDto {
+  @IsOptional()
+  @IsIn(['pending', 'approved', 'rejected'])
+  status?: 'pending' | 'approved' | 'rejected';
+}
+
+export class Form12bDecisionDto {
+  @IsIn(['approve', 'reject'])
+  decision!: 'approve' | 'reject';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  comment?: string;
+}
+
+/** Founder answer 2: a residential-status change, sent with the TRC (multipart, field `file`) for payroll to approve. */
+export class ResidencyRequestDto {
+  @IsIn(['resident', 'non_resident'])
+  residentialStatus!: 'resident' | 'non_resident';
+
+  /** The TRC's last day (non-resident). */
+  @IsOptional()
+  @Matches(DATE)
+  trcValidTo?: string;
+
+  /** The treaty country, if relief is claimed (ISO 3166 alpha-2). */
+  @IsOptional()
+  @trim()
+  @Matches(/^[A-Z]{2}$/)
+  dtaaCountry?: string;
+
+  /** "true" once Form 10F is filed on the income-tax portal (multipart sends text). */
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  form10fFiled?: 'true' | 'false';
+}
+
+/** Founder answer 3: after the cut-off, ask HR to change the regime, with a reason. */
+export class RegimeRequestDto {
+  @IsIn(['new', 'old'])
+  regime!: 'new' | 'old';
+
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
 }
 
 export class RegimeOverrideDto {
@@ -175,3 +284,22 @@ export class IssueCertificateDto {
   @Type(() => ConfirmationDto)
   confirmation!: ConfirmationDto;
 }
+
+/** E1 (batch H part 2): HR opens or locks a window early, or goes back to the company dates; a reason each time. */
+export class TaxWindowActionDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @IsIn(['declarations', 'proofs'])
+  window!: 'declarations' | 'proofs';
+
+  @IsIn(['open', 'lock', 'dates'])
+  action!: 'open' | 'lock' | 'dates';
+
+  @trim()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(300)
+  reason!: string;
+}
+

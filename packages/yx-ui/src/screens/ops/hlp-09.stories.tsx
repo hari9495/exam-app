@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { EthicsDeskScreen } from './cases';
 import { WB_QUEUE } from './cases-data';
 import { TODAY } from '../_kit/data';
+import { liveEthics } from './cases-live-samples';
 
 const meta: Meta = { title: 'Screens/Helpdesk/HLP-09 · Ethics desk', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -13,3 +14,7 @@ export const Empty: S = { render: () => <EthicsDeskScreen rows={[]} today={TODAY
 export const Loading: S = { render: () => <EthicsDeskScreen rows={WB_QUEUE} today={TODAY} state="loading" /> };
 export const Error: S = { render: () => <EthicsDeskScreen rows={WB_QUEUE} today={TODAY} state="error" /> };
 export const NotEthicsOfficer: S = { name: 'Not the ethics officer (shows Not found)', render: () => <EthicsDeskScreen rows={WB_QUEUE} today={TODAY} member={false} /> };
+
+// States only the real records have (Helpdesk design wiring, HLP-09 live), drawn in the same layout as above.
+export const AboutOfficer: S = { name: 'Report about a case officer · with the chair, not the officer', render: () => <EthicsDeskScreen live={liveEthics()} /> };
+export const NoAccess: S = { name: 'No access (not an ethics officer)', render: () => <EthicsDeskScreen live={liveEthics({ state: 'no-access' })} /> };

@@ -13,7 +13,10 @@ describe('3b-2 batch 2 screens', () => {
     render(<ActionLinkScreen view={{ state: 'open', title: 'Mouse for Arjun', summary: [{ label: 'Item', value: 'Mouse' }], expiresAt: new Date(Date.now() + 3_600_000).toISOString() }} error={null} done={null} onDecide={onDecide} onSignIn={vi.fn()} />);
     expect(onDecide).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Not approve' }));
-    expect(screen.getByRole('button', { name: 'Send: not approved' })).toBeDisabled();
+    // Never disabled: pressed with no reason, it says what is missing and sends nothing.
+    await ue.click(screen.getByRole('button', { name: 'Send: not approved' }));
+    expect(screen.getByText('Say why, so the person who asked knows.')).toBeInTheDocument();
+    expect(onDecide).not.toHaveBeenCalled();
     await ue.click(screen.getByRole('button', { name: 'Back' }));
     await ue.click(screen.getByRole('button', { name: 'Approve' }));
     expect(onDecide).toHaveBeenCalledWith('approve', '');
@@ -41,17 +44,33 @@ describe('3b-2 batch 2 screens', () => {
     expect(onSend).toHaveBeenCalledWith('Yes');
   });
 
+  it('Send pressed with nothing written says so; an agent cannot press the reply buttons', async () => {
+    const onSend = vi.fn(async () => undefined);
+    const s: ChatSession = { id: 's', deskId: 'd', queueId: 'q', state: 'active', subject: 'Slow', agentUserId: 'a', ticketId: null, rating: null, endReason: null, requesterSeenAt: null, agentSeenAt: null, startedAt: '2026-10-09T10:00:00Z', acceptedAt: null, endedAt: null, messages: [{ id: 'm', author: 'agent', name: 'Farah', body: '', card: { title: 'Did that help?', buttons: [{ label: 'Yes', reply: 'Yes' }] }, file: null, at: '2026-10-09T10:01:00Z' }] };
+    render(<ChatWindow session={s} me="agent" live={{ connected: true, typing: false }} canWrite onSend={onSend} />);
+    await ue.click(screen.getByRole('button', { name: 'Send' }));
+    expect(await screen.findByText('Write a message.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Yes' }));
+    expect((await screen.findAllByText(/Only the person asking can answer/))[0]).toBeInTheDocument();
+    expect(onSend).not.toHaveBeenCalled();
+  });
+
   it('signing needs the name, the confirmation and the one-time code (founder decision 9 Oct 2026)', async () => {
     const onSign = vi.fn(async () => undefined);
     const onSendCode = vi.fn(async () => ({ to: 'ar****@kaveri.test', minutes: 5 }));
     render(<MyDocumentsCard documents={[{ id: 'd', title: 'Hand-over', status: 'pending', sha256: 'x', signedAt: null, createdAt: '', needsMe: true, text: 'I received it.' }]} onSendCode={onSendCode} onSign={onSign} onDecline={vi.fn()} />);
     await ue.click(screen.getByRole('button', { name: 'Read and sign' }));
-    expect(screen.getByRole('button', { name: 'Send me a code' })).toBeDisabled();
+    // Never disabled: pressed too early, it says what is missing and sends no code.
+    await ue.click(screen.getByRole('button', { name: 'Send me a code' }));
+    expect(screen.getByText('Type your full name.')).toBeInTheDocument();
+    expect(onSendCode).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /Type your full name/ }), 'Arjun Kulkarni');
     await ue.click(screen.getByRole('checkbox', { name: /I have read this document/ }));
     await ue.click(screen.getByRole('button', { name: 'Send me a code' }));
     expect(screen.getByText(/We sent a 6-digit code to ar\*\*\*\*@kaveri.test/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'Sign' }));
+    expect(screen.getByText('Type the 6-digit code from the email.')).toBeInTheDocument();
+    expect(onSign).not.toHaveBeenCalled();
     await ue.type(screen.getByRole('textbox', { name: /6-digit code/ }), '12a3456');
     await ue.click(screen.getByRole('button', { name: 'Sign' }));
     expect(onSign).toHaveBeenCalledWith(expect.objectContaining({ id: 'd' }), 'Arjun Kulkarni', '123456');
@@ -73,4 +92,17 @@ describe('3b-2 batch 2 screens', () => {
     await ue.click(screen.getByRole('button', { name: 'Save draft' }));
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ id: 'l' }), expect.objectContaining({ transitions: [expect.objectContaining({ from: 'n', to: 'p' })] }));
   });
+
+  it('a lifecycle that checks out says so with a toast', async () => {
+    const setup: LifecycleSetup = {
+      types: [{ id: 't', name: 'Incident', kind: 'incident' }],
+      statuses: [{ id: 'n', label: 'New', systemState: 'new', ticketTypeId: null }],
+      requirable: [],
+      lifecycles: [{ id: 'l', ticketTypeId: 't', name: 'Flow', state: 'draft', currentVersion: null, draft: { startStatusId: 'n', statusIds: ['n'], transitions: [] }, version: 1, versions: [] }],
+    };
+    render(<LifecycleAdmin setup={setup} onCreate={vi.fn()} onSave={vi.fn()} onCheck={vi.fn(async () => ({ ok: true, problem: null }))} onPublish={vi.fn()} onRetire={vi.fn()} />);
+    await ue.click(screen.getByRole('button', { name: /^Check/ }));
+    expect((await screen.findAllByText('This lifecycle is ready to use.'))[0]).toBeInTheDocument();
+  });
 });
+

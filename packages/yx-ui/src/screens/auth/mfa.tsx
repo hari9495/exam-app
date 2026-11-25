@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Button, Link } from '../../components/button';
 import { InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { CodeField } from '../../components/inputs';
 import { Dialog } from '../../components/overlay';
@@ -9,6 +9,7 @@ import { MethodCards } from '../../components/choice';
 import { Check, Copy } from 'lucide-react';
 import { Spinner } from '../../components/foundations';
 import { AuthFrame, RecoveryCodes, SecondFactorPanel, day, setupMethodOptions, useStep, type SecondFactorPanelProps, type SetupMethod } from './kit';
+import { useAuthWords } from './words';
 
 /* ---------- sign-in challenge ---------- */
 
@@ -18,8 +19,9 @@ export interface MfaChallengeScreenProps extends SecondFactorPanelProps {
 
 /** "Confirm it's you" after the password (YX-IAM-01/03); nothing is issued until this succeeds. */
 export function MfaChallengeScreen({ onStartAgain, ...panel }: MfaChallengeScreenProps) {
+  const w = useAuthWords();
   return (
-    <AuthFrame title="Confirm it's you" subtitle="One more step to sign in." footer={<Button size="sm" onClick={onStartAgain}>Start again</Button>}>
+    <AuthFrame title={w.confirmTitle} subtitle={w.oneMoreStep} footer={<Button size="sm" onClick={onStartAgain}>{w.startAgain}</Button>}>
       <SecondFactorPanel {...panel} />
     </AuthFrame>
   );
@@ -97,6 +99,7 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
   const [code, setCode] = useState('');
   const [codes, setCodes] = useState<string[] | null>(null);
   const { busy, error, setError, run } = useStep();
+  const w = useAuthWords();
   const overdue = new Date(dueAt) <= now;
 
   const finish = (r: { recoveryCodes?: string[] }) => (r.recoveryCodes?.length ? setCodes(r.recoveryCodes) : onContinue());
@@ -111,17 +114,17 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
 
   if (codes) {
     return (
-      <AuthFrame title="Your account is secure" subtitle="Last step: keep a way back in.">
-        <RecoveryCodes codes={codes} onDone={onContinue} doneLabel="Continue" />
+      <AuthFrame title={w.accountSecure} subtitle={w.lastStep}>
+        <RecoveryCodes codes={codes} onDone={onContinue} doneLabel={w.continue} />
       </AuthFrame>
     );
   }
 
   return (
     <AuthFrame
-      title="Secure your account"
-      subtitle={overdue ? 'Your role needs it before you can continue.' : `Your role needs it. Set it up by ${day(dueAt)}.`}
-      footer={overdue ? undefined : <Button size="sm" onClick={onContinue}>Remind me later</Button>}
+      title={w.secureAccount}
+      subtitle={overdue ? w.roleNeedsNow : w.roleNeedsBy(day(dueAt))}
+      footer={overdue ? undefined : <Button size="sm" onClick={onContinue}>{w.remindLater}</Button>}
     >
       {totp ? (
         <TotpConfirm
@@ -131,7 +134,7 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
           onSubmit={confirm}
           busy={busy}
           error={error}
-          cancelLabel="Choose another way"
+          cancelLabel={w.chooseAnotherWay}
           onCancel={() => {
             setTotp(null);
             setCode('');
@@ -140,8 +143,8 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
         />
       ) : (
         <div className="yx-auth__form">
-          <MethodCards aria-label="Ways to sign in" options={setupMethodOptions(allowedFactors)} onSelect={(m) => pick(m as SetupMethod)} busy={pending} />
-          {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+          <MethodCards aria-label={w.waysToSignIn} options={setupMethodOptions(allowedFactors, w)} onSelect={(m) => pick(m as SetupMethod)} busy={pending} />
+          {error && <InlineAlert tone="danger">{w.err(error)}</InlineAlert>}
         </div>
       )}
     </AuthFrame>
@@ -151,17 +154,18 @@ export function MfaEnrolScreen({ allowedFactors, dueAt, onAddPasskey, onStartTot
 /** The manual authenticator key, in groups of four, with a copy button. */
 function SecretKey({ secret }: { secret: string }) {
   const [copied, setCopied] = useState(false);
+  const w = useAuthWords();
   const copy = () => void navigator.clipboard?.writeText(secret).then(() => setCopied(true));
   return (
     <div className="yx-auth__keyrow">
       <span className="yx-mono yx-auth__key">{secret.match(/.{1,4}/g)?.join(' ')}</span>
-      <Button size="sm" icon={copied ? Check : Copy} onClick={copy}>{copied ? 'Copied' : 'Copy key'}</Button>
+      <Button size="sm" icon={copied ? Check : Copy} onClick={copy}>{copied ? w.copied : w.copyKey}</Button>
     </div>
   );
 }
 
 /** QR code, the manual key and the first code. Shared by enrolment and My security. */
-export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCancel, cancelLabel = 'Cancel' }: {
+export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCancel, cancelLabel }: {
   setup: TotpSetup;
   code: string;
   onCode: (v: string) => void;
@@ -171,19 +175,21 @@ export function TotpConfirm({ setup, code, onCode, onSubmit, busy, error, onCanc
   onCancel?: () => void;
   cancelLabel?: string;
 }) {
+  const w = useAuthWords();
+  const early = useTooEarly(code.trim().length < 6 ? [{ fieldId: 'yx-totp-code', message: w.enterAppCode }] : []);
   return (
-    <form className="yx-auth__form" onSubmit={onSubmit} noValidate>
-      <Text as="p">Scan this with your authenticator app, then enter the 6-digit code it shows.</Text>
-      <img className="yx-auth__qr" src={setup.qrDataUrl} alt="QR code for your authenticator app" />
-      <Text as="p" tone="secondary" size="sm">Can't scan it? Enter this key in the app instead:</Text>
+    <form className="yx-auth__form" onSubmit={(e) => (busy || early.stop() ? e.preventDefault() : onSubmit(e))} noValidate>
+      <Text as="p">{w.scanThis}</Text>
+      <img className="yx-auth__qr" src={setup.qrDataUrl} alt={w.qrAlt} />
+      <Text as="p" tone="secondary" size="sm">{w.cantScan}</Text>
       <SecretKey secret={setup.secret} />
-      <FormField label="6-digit code" required>
+      <FormField id="yx-totp-code" label={w.sixDigitCode} required error={early.errorOf('yx-totp-code')}>
         <CodeField value={code} onChange={onCode} />
       </FormField>
-      {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+      {error && <InlineAlert tone="danger">{w.err(error)}</InlineAlert>}
       <div className="yx-auth__row">
-        <Button type="submit" variant="primary" loading={busy} disabled={code.trim().length < 6}>Turn on</Button>
-        {onCancel && <Button disabled={busy} onClick={onCancel}>{cancelLabel}</Button>}
+        <Button type="submit" variant="primary" loading={busy}>{w.turnOn}</Button>
+        {onCancel && <Button onClick={() => !busy && onCancel()}>{cancelLabel ?? w.cancel}</Button>}
       </div>
     </form>
   );

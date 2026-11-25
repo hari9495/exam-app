@@ -28,7 +28,7 @@ describe('Expenses batch E1', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'fin' | 'senior' | 'junior';
+  type Who = 'adminA' | 'adminB' | 'fin' | 'senior' | 'junior' | 'hr' | 'hrExec' | 'hrB';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const emp = {} as Record<string, string>;
@@ -78,6 +78,10 @@ describe('Expenses batch E1', () => {
       ['fin', 'A', 'panel', tpl('expense_setup')],
       ['senior', 'A', 'panel', []],
       ['junior', 'A', 'panel', []],
+      // Founder 3 Nov 2026: HR Admin sees the expense policy read only (expense.policy.view); HR Executive does not.
+      ['hr', 'A', 'panel', tpl('hr_admin')],
+      ['hrExec', 'A', 'panel', tpl('hr_executive')],
+      ['hrB', 'B', 'panel', tpl('hr_admin')],
     ];
     for (const [who, k, role, keys] of roster) {
       const o = org[k].id;
@@ -203,5 +207,34 @@ describe('Expenses batch E1', () => {
     await add('27AAPFU0939F1ZV').expect(409);
     await api('fin', 'post', `/gst-registrations/${ok.id}/end`).send({ validTo: shift(today, -400) }).expect(400);
     expect((await api('fin', 'get', '/setup-check').expect(200)).body.problems.map((p: { key: string }) => p.key)).not.toContain('no_gst_registration');
+  });
+
+  it('HR Admin sees the expense policy read only; every change still needs expense set-up; others and another company are refused', async () => {
+    expect(ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions).toContain('expense.policy.view');
+    expect(ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!.permissions).not.toContain('expense.policy.manage');
+    for (const path of ['/setup-check', '/policies', '/rates', '/fx-rates', '/gst-registrations', '/categories', '/tiers']) await api('hr', 'get', path).expect(200);
+    const pol = (await api('hr', 'get', '/policies').expect(200)).body as { policies: { id: string; version: number }[] };
+    expect(pol.policies.length).toBeGreaterThan(0);
+    // Every write is refused for the view key (and nothing changes).
+    const before = await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: { startsWith: 'expense.' } } }));
+    await api('hr', 'post', '/policies').send({ name: 'Mine', appliesIf: null, priority: 5, validFrom: today, validTo: null, status: 'active', rules: [] }).expect(403);
+    await api('hr', 'put', `/policies/${pol.policies[0].id}`).send({ name: 'x', appliesIf: null, priority: 5, validFrom: today, validTo: null, status: 'active', rules: [], version: pol.policies[0].version }).expect(403);
+    await api('hr', 'post', '/categories').send({ code: 'snacks', name: 'Snacks', kind: 'spend', receiptAbove: '500', gstEligible: false, itcBlockedReason: null, taxable: 'never', ledgerCode: null, active: true }).expect(403);
+    await api('hr', 'post', '/tiers').send({ name: 'Tier 9', rank: 9, country: 'IN', cities: ['Ooty'], active: true }).expect(403);
+    await api('hr', 'post', '/mileage-rates').send({ vehicle: 'car', ratePerKm: '20.00', monthlyKmCap: null, validFrom: today }).expect(403);
+    await api('hr', 'post', '/gst-registrations').send({ legalEntityId: ids.entity, gstin: '27AAPFU0939F1ZV', validFrom: today }).expect(403);
+    await api('hr', 'post', '/fx-rates').send({ rows: [{ base: 'AED', quote: 'INR', rateDate: today, rate: '22.75' }] }).expect(403);
+    await api('hr', 'post', '/setup/from-starter').expect(403);
+    expect(await inA((tx) => tx.auditLog.count({ where: { organizationId: org.A.id, action: { startsWith: 'expense.' } } }))).toBe(before);
+    // Without the key: HR Executive, an employee (a manager is an employee with reports) are refused the set-up.
+    for (const who of ['hrExec', 'junior', 'senior'] as const) {
+      await api(who, 'get', '/policies').expect(403);
+      await api(who, 'get', '/setup-check').expect(403);
+    }
+    // Another company's HR Admin sees only their own company's (empty) policy.
+    expect(((await api('hrB', 'get', '/policies').expect(200)).body as { policies: unknown[] }).policies).toEqual([]);
+    await api('hrB', 'put', `/policies/${pol.policies[0].id}`).send({ name: 'x', appliesIf: null, priority: 5, validFrom: today, validTo: null, status: 'active', rules: [], version: 1 }).expect(403);
+    // Bad input from the view key is refused before it is read (the permission comes first).
+    await api('hr', 'put', '/policies/not-a-uuid').send({ name: '' }).expect(403);
   });
 });

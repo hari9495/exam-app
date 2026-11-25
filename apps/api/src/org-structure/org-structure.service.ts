@@ -1,3 +1,5 @@
+import { locationValuesInForce } from './settings-registry';
+import { toBin, type BinKind } from '../recycle-bin/bin';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -17,6 +19,7 @@ import {
   PayRangeAmountsDto,
   PayRangeDto,
 } from './dto';
+import { geoPointsOf } from '../time/time-maths';
 import { addDays, addressProblem, asDate, codeFromName, gstinMatchesPan, isCidr, isCurrency, isoDate, isTimeZone, regionProblem, todayIst } from './org-validation';
 
 // P01 organisation structure (§4.1–4.3): legal entities, locations, structure masters and grade pay ranges.
@@ -104,7 +107,7 @@ export function legalEntityView(r: EntityRow) {
 
 type LocationRow = Prisma.LocationGetPayload<object>;
 export function locationView(r: LocationRow) {
-  const { organizationId: _o, geoLat, geoLng, geoRadiusM, createdBy: _c, ...rest } = r;
+  const { organizationId: _o, geoLat, geoLng, geoRadiusM, geoPoints: _p, createdBy: _c, ...rest } = r;
   return { ...rest, geofence: geoLat !== null && geoLng !== null && geoRadiusM !== null ? { lat: Number(geoLat), lng: Number(geoLng), radiusM: geoRadiusM } : null };
 }
 
@@ -359,6 +362,7 @@ export class OrgStructureService {
       country: dto.address.country,
       state: dto.address.state,
       timezone: dto.timezone,
+      registeredFactory: dto.registeredFactory,
       minWageZone: dto.minWageZone === undefined ? undefined : dto.minWageZone === null ? null : clean(dto.minWageZone) || null,
       geoLat: dto.geofence === undefined ? undefined : (dto.geofence?.lat ?? null),
       geoLng: dto.geofence === undefined ? undefined : (dto.geofence?.lng ?? null),
@@ -374,14 +378,18 @@ export class OrgStructureService {
   }
 
   listLocations(ctx: TenantContext, legalEntityId: string | undefined, includeArchived: boolean) {
-    return this.run(ctx, async (tx, c) =>
-      (
-        await tx.location.findMany({
-          where: { organizationId: c.organizationId, ...(legalEntityId ? { legalEntityId } : {}), ...(includeArchived ? {} : { archivedAt: null }) },
-          orderBy: { name: 'asc' },
-        })
-      ).map(locationView),
-    );
+    return this.run(ctx, async (tx, c) => {
+      const rows = await tx.location.findMany({
+        where: { organizationId: c.organizationId, ...(legalEntityId ? { legalEntityId } : {}), ...(includeArchived ? {} : { archivedAt: null }) },
+        orderBy: { name: 'asc' },
+      });
+      // Answer 151: the location's own Factories Act setting in force today (the form says what to do with it).
+      const fa = locationValuesInForce(
+        (await tx.setting.findMany({ where: { organizationId: c.organizationId, key: 'attendance.factories_act', scopeType: 'location' } })).map((s) => ({ scopeType: s.scopeType, scopeId: s.scopeId, value: s.value, validFrom: s.validFrom ? isoDate(s.validFrom) : null })),
+        todayIst(),
+      );
+      return rows.map((r) => ({ ...locationView(r), factoriesActSetting: fa.get(r.id) ?? null }));
+    });
   }
 
   createLocation(ctx: TenantContext, dto: LocationDto) {
@@ -390,8 +398,9 @@ export class OrgStructureService {
       // YX-ORG-02: one active legal entity of this company.
       await this.activeEntity(tx, c, dto.legalEntityId);
       const code = dto.code ?? codeFromName(data.name, await this.takenCodes(tx, c, 'location', data.name));
-      const row = await tx.location.create({ data: { ...data, organizationId: c.organizationId, legalEntityId: dto.legalEntityId, code, createdBy: c.userId } });
-      await audit(tx, c, 'org.location.created', 'location', row.id, { name: row.name, code: row.code, legalEntityId: row.legalEntityId, state: row.state });
+      const geoPoints = (dto.geofence ? [{ name: data.name, ...dto.geofence }] : []) as unknown as Prisma.InputJsonValue;
+      const row = await tx.location.create({ data: { ...data, geoPoints, organizationId: c.organizationId, legalEntityId: dto.legalEntityId, code, createdBy: c.userId } });
+      await audit(tx, c, 'org.location.created', 'location', row.id, { name: row.name, code: row.code, legalEntityId: row.legalEntityId, state: row.state, registeredFactory: row.registeredFactory });
       return locationView(row);
     });
   }
@@ -402,10 +411,14 @@ export class OrgStructureService {
       const row = await this.locationOr404(tx, c, id);
       // People's employments hang off the site's entity (YX-ORG-08): a site never changes entity.
       if (dto.legalEntityId !== row.legalEntityId) throw new BadRequestException('A location stays with its legal entity. Add a new location under the other entity instead.');
-      const next = { ...data, code: dto.code ?? row.code };
+      // TIM-31 Multi: this form edits the first check-in point; the other points (Time › Locations) stay.
+      const points = dto.geofence === undefined ? undefined : dto.geofence === null ? [] : [{ name: geoPointsOf(row)[0]?.name ?? data.name, ...dto.geofence }, ...geoPointsOf(row).slice(1)];
+      const next = { ...data, code: dto.code ?? row.code, ...(points ? { geoPoints: points as unknown as Prisma.InputJsonValue } : {}) };
       const updated = await tx.location.update({ where: { id }, data: next });
       const fields = changed(locationView(row) as unknown as Record<string, unknown>, locationView(updated) as unknown as Record<string, unknown>).filter((f) => f !== 'updatedAt');
       if (fields.length) await audit(tx, c, 'org.location.updated', 'location', id, { fields });
+      // HLP-14 answer 132: the factory flag changes leave minimums, so its own audit row says from and to.
+      if (row.registeredFactory !== updated.registeredFactory) await audit(tx, c, 'org.location.factory_changed', 'location', id, { from: row.registeredFactory, to: updated.registeredFactory, name: updated.name });
       return locationView(updated);
     });
   }
@@ -425,6 +438,7 @@ export class OrgStructureService {
     return this.run(ctx, async (tx, c) => {
       const row = await this.locationOr404(tx, c, id);
       await this.assertNoSettings(tx, c, id);
+      await toBin(tx, c, 'location', row as unknown as { id: string }, row.name);
       await tx.location.delete({ where: { id } });
       await audit(tx, c, 'org.location.deleted', 'location', id, { name: row.name });
     });
@@ -676,6 +690,7 @@ export class OrgStructureService {
     return this.run(ctx, async (tx, c) => {
       const row = await this.masterOr404(tx, c, kind, id);
       await this.assertNoSettings(tx, c, id);
+      await toBin(tx, c, MASTER_ENTITY[kind] as BinKind, row as unknown as { id: string }, row.name);
       await delegate(tx, kind).delete({ where: { id } });
       await audit(tx, c, `org.${MASTER_ENTITY[kind]}.deleted`, MASTER_ENTITY[kind], id, { name: row.name });
     });

@@ -31,6 +31,8 @@
 .yx-esm-summary > div { display: contents; }
 .yx-esm-summary dt { color: var(--yx-color-text-muted); }
 .yx-esm-summary dd { margin: 0; overflow-wrap: anywhere; }
+/* An approval card: room between the facts and the buttons (founder 26 Oct 2026). */
+.yx-esm-approvals .yx-esm-summary { margin-block: var(--yx-space-2) var(--yx-space-4); }
 .yx-esm-route, .yx-esm-trace { margin: 0; padding-inline-start: var(--yx-space-5); font-size: var(--yx-text-sm); }
 .yx-esm-trace > li[data-pass="true"] { color: var(--yx-color-success-text); }
 .yx-esm-trace > li[data-pass="false"] { color: var(--yx-color-text-secondary); }

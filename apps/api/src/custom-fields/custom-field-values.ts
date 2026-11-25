@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
-export type CustomFieldEntity = 'candidate' | 'job';
+export type CustomFieldEntity = 'candidate' | 'job' | 'employee';
 
 export interface CustomFieldDefinitionLite {
   id: string;

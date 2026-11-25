@@ -7,6 +7,14 @@ import { useAuth } from './auth-context';
 
 /** Keys the YukthiX navigation and screens care about; the API checks each call anyway. */
 export const YX_KEYS = [
+  // S-9: the billing pages of Settings › Billing & Account (8.1 to 8.3, 8.5).
+  'org:manage_billing',
+  // Answer 1884: finance people read the plan, usage and invoices.
+  'billing.view',
+  // S-10: Integrations, AI and Developers (the older System Admin key, checked in the S-10 security check).
+  'org:manage_settings',
+  // Answer 1901: IT staff run integrations without being System Admins.
+  'integration.manage',
   'org.structure.view',
   'org.settings.manage',
   'org.entity.statutory.manage',
@@ -16,11 +24,18 @@ export const YX_KEYS = [
   'employee.change.manage',
   'employee.change.approve',
   'employee.salary.manage',
+  'employee.salary.view',
   'request.raise_on_behalf',
   // P02 §4.2–4.5 (step 2d).
   'access.role.manage',
   'employee.identity.manage',
   'employee.identity.approve',
+  // PPL-34: the Identity panel is Special class.
+  'employee.aadhaar.view',
+  // PPL-38: disability declarations (Special), the HR diversity role.
+  'employee.disability.view',
+  // PPL-43 / PPL-44: the compliance officer.
+  'compliance.declaration.manage',
   // P02 Q8 (step 3): the System Admin decides on YukthiX support sessions.
   'org.support_access.approve',
   // P04 Q5: Settings › Notifications › Email.
@@ -66,10 +81,14 @@ export const YX_KEYS = [
   'leave.settings.manage',
   'leave.view',
   'leave.balance.adjust',
+  // Founder answer A (29 Oct 2026): Payroll reads the leave liability report only.
+  'leave.liability.view',
   'attendance.view',
   // Step 4 batch 2: rosters in scope and locking attendance months.
   'roster.manage',
   'attendance.lock',
+  // Founder decision 5 (29 Oct 2026): payroll approves the lock HR sent (two-step flow).
+  'attendance.lock.approve',
   // M03 payroll batch 5a: pay periods and reopen, pay documents, payroll files, the audit log.
   'payroll.period.view',
   'payroll.period.reopen',
@@ -92,10 +111,21 @@ export const YX_KEYS = [
   'lifecycle.exit.view',
   'lifecycle.exit.manage',
   'lifecycle.exit.confidential.view',
+  'succession.manage',
   'asset.view',
   'asset.manage',
   // M05 expenses E1.
   'expense.policy.manage',
+  // B8/E5: Settings 4.11 Benefits & FBP.
+  'benefits.settings.manage',
+  'expense.policy.view',
+  // HLP-10 / HLP-11 company policies.
+  'policy.manage',
+  'policy.publish',
+  // HLP-06 speak-up set-up.
+  'speakup.setup.manage',
+  // HLP-08 disciplinary show-cause cases.
+  'case.disciplinary.raise',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',
@@ -125,6 +155,11 @@ export const YX_KEYS = [
   'statutory.filing.mark_filed',
   'statutory.challan.manage',
   'payroll.notice.waive',
+  // PAY-24 statutory bonus.
+  'payroll.bonus.manage',
+  'payroll.bonus.approve',
+  // PAY-25 payroll reports.
+  'payroll.reports.view',
   // Payroll operations screens (PAY-10.09 … 10.16).
   'payroll.payment.record',
   'payroll.loan.manage',
@@ -137,9 +172,13 @@ export const YX_KEYS = [
   'payroll.query.handle',
   'payroll.document.issue',
   'tax.proof.verify',
+  // Batch H part 2 E2: Declare for an employee.
+  'tax.regime.override',
   'statutory.filing.download',
   'statutory.register.sign',
   'statutory.advisory.review',
+  // Assessments AS-2: Settings 6.5 (the company's assessment defaults).
+  'assessments.settings.manage',
   // M06 performance PM1.
   'perf.setup.manage',
   'perf.goal.view',
@@ -153,11 +192,57 @@ export const YX_KEYS = [
   'perf.comp.manage',
   'perf.comp.approve',
   'perf.pip.manage',
+  'perf.dispute.manage',
   // M10 AT1: hiring (the older keys answer for the new ones too, founder D2).
   'pipeline:manage',
   'results:view',
   // AT2: headcount plans and the hiring approval routes.
   'ats.headcount.manage',
+  'ats.requisition.raise',
+  // HIR-11 / HIR-12: recruiting costs and All referrals in the Hiring menu.
+  'ats.costs.manage',
+  // HIR-28: bulk offers (and offer pay) need the offer-pay key.
+  'ats.offer.compensation.view',
+  'ats.referral.manage',
+  // Settings 6.1 Hiring.
+  'ats.settings.manage',
+  // Staffing desk (HIR-14, HIR-15, Settings 6.2).
+  'ats.staffing.manage',
+  'ats.staffing.view',
+  // Projects P-1: Settings › Projects & timesheets.
+  'projects.manage',
+  // Projects P-5: Costing & margin.
+  'projects.finance',
+  // HIR-21 vendors (the recruitment agencies).
+  'ats.agency.manage',
+  // Staffing slice 3: staffing finance (invoices, receipts, vendor invoices).
+  'ats.staffing.billing',
+  // Contract labour CL-1: contractors and their licences, Settings 4.9.
+  'clra.contractor.manage',
+  'clra.contractor.view',
+  'clra.settings.manage',
+  // Visitors slice 1: the desk, the log and the visitor settings.
+  'visitors.desk.manage',
+  'visitors.log.view',
+  'visitors.settings.manage',
+  // Visitors slice 3: the watch-list (HR and Facility admin).
+  'visitors.watchlist.manage',
+  // Visitors slice 4: the emergency roll-call (reception, security, HR).
+  'visitors.rollcall.view',
+  // Menu items that checked keys nobody asked for (yx-nav-keys.test.ts): team pay access, the older assessment screens.
+  'employee.pay_access.approve',
+  'exam:manage',
+  'question_bank:manage',
+  // Bank follow-ups (answer 2001): Hire › Assessments for holders of the YukthiX bank key (or its older alias).
+  'asmt.bank.manage',
+  // AS-3 (answer 2159): Tests for test writers; Invitations & drives for inviters (the YukthiX keys; older aliases above).
+  'asmt.test.manage',
+  'ats.candidate.manage',
+  // AS-5: Integrity review and Appeals.
+  'asmt.proctor',
+  'asmt.evaluate',
+  // AS-6: Fairness for results readers.
+  'asmt.results.view',
   'approvals:configure',
   // AT3: the careers site, consent notices and job boards (company settings).
   'org:manage_settings',

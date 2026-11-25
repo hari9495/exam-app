@@ -9,6 +9,7 @@ import {
   IsEmail,
   IsIn,
   IsInt,
+  IsObject,
   IsOptional,
   IsString,
   IsUUID,
@@ -36,7 +37,9 @@ const Text = (min: number, max: number) => (target: object, key: string) => {
 export const DESK_KINDS = ['hr', 'it', 'admin', 'facilities', 'finance', 'legal', 'security', 'customer_support', 'custom'] as const;
 export const DESK_ROLES = ['agent', 'lead', 'admin', 'collaborator'] as const;
 export const SYSTEM_STATES = ['new', 'open', 'pending', 'on_hold', 'solved', 'closed'] as const;
-export const TYPE_KINDS = ['incident', 'request', 'question'] as const;
+export const TYPE_KINDS = ['incident', 'request', 'question', 'change', 'problem'] as const;
+/** Answer 1931: change and problem tickets live on IT desks only and are raised through Changes and Problems, never the portal. */
+export const ITSM_KINDS: readonly string[] = ['change', 'problem'];
 export const METHODS = ['manual', 'round_robin', 'load'] as const;
 export const TIERS = ['L1', 'L2', 'L3'] as const;
 const TAG = /^[\p{L}\p{N}][\p{L}\p{N} _-]{0,39}$/u;
@@ -55,6 +58,9 @@ export class CreateDeskDto {
   @IsIn(DESK_KINDS)
   kind!: (typeof DESK_KINDS)[number];
 }
+
+/** The at-risk points a desk may choose (founder 3 Nov 2026): a clock is at risk once this share of its target is used. */
+export const AT_RISK_CHOICES = [50, 60, 70, 80, 90];
 
 export class UpdateDeskDto {
   @IsInt()
@@ -140,6 +146,26 @@ export class UpdateDeskDto {
   @Min(0)
   @Max(60)
   routingWaitMinutes?: number;
+
+  /** HLP-05b: a clock is at risk once this share (%) of its target is used. */
+  @ValidateIf((_, v) => v !== undefined) // null is refused, not skipped
+  @IsIn(AT_RISK_CHOICES, { message: 'The at-risk point is 50, 60, 70, 80 or 90 %.' })
+  atRiskPercent?: number;
+
+  /** Answer 1643: the preset reasons a requester may pick after the stars; empty asks for none. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(12, { message: 'Keep to 12 reasons.' })
+  @ArrayUnique((x: string) => x.trim().toLowerCase(), { message: 'Each reason only once.' })
+  @IsString({ each: true })
+  @MinLength(2, { each: true, message: 'A reason needs at least 2 letters.' })
+  @MaxLength(40, { each: true, message: 'Keep a reason to 40 letters.' })
+  ratingReasons?: string[];
+
+  /** Answer 1646: what the help centre and portal say while the desk is closed; {opens} becomes the next opening time. */
+  @IsOptional()
+  @Text(2, 300)
+  closedMessage?: string;
 }
 
 export class AddMemberDto {
@@ -590,10 +616,44 @@ export class RaiseTicketDto {
   @Matches(/^[\w\-./ ]{1,100}$/, { message: 'Screen name is not valid' })
   screen?: string;
 
+  /** Answer 1647: the help article the person was reading when they raised it. */
+  @IsOptional()
+  @IsUUID()
+  originArticleId?: string;
+
+  /** Answer 1647: the knowledge search they made before raising it. */
+  @IsOptional()
+  @Text(1, 200)
+  originQuery?: string;
+
+  /** Answer 1662: "Which device?" on an IT desk: one of the devices assigned to the person (checked in the service). */
+  @IsOptional()
+  @IsUUID()
+  assetId?: string;
+
+  /** ITSM answer 2057: on an IT desk, the application it is about (optional). */
+  @IsOptional()
+  @IsUUID()
+  appId?: string;
+
   /** SD-2.25: the language the person writes in (ISO 639, e.g. hi, ta); routing prefers agents who speak it. */
   @IsOptional()
   @Matches(/^[a-z]{2,3}$/, { message: 'Use a language code such as en, hi or ta.' })
   language?: string;
+
+  /** Answer 1842: the desk's fields everyone sees, by key (checked by the forms engine). */
+  @IsOptional()
+  @IsObject()
+  fields?: Record<string, unknown>;
+
+  /** Answer 1911: the building (a company location) and an area of it, on a facilities ticket. */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  areaId?: string;
 }
 
 export class AgentCreateTicketDto {
@@ -914,6 +974,28 @@ export class TicketFiltersDto {
   @IsString()
   @MaxLength(100)
   search?: string;
+
+  /** HLP-02 "Raised" filter: from and to are days (yyyy-mm-dd, India time), both included. */
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  createdFrom?: string;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  createdTo?: string;
+
+  /** Answers 1641, 1650: one of the desks' own fields (by key) and the values it may have (any of them). */
+  @IsOptional()
+  @Matches(/^[a-z][a-z0-9_]{0,39}$/)
+  fieldKey?: string;
+
+  @IsOptional()
+  @csv()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MaxLength(100, { each: true })
+  fieldValues?: string[];
 }
 
 export class TicketListQueryDto extends TicketFiltersDto {
@@ -1022,7 +1104,7 @@ export class BulkDto {
 
 // ------------------------------------------------------------------------------------------ batch 2 (SD-1.09 to SD-1.17)
 
-export const LINK_KINDS = ['related', 'blocks', 'caused_by', 'tracked_by'] as const;
+export const LINK_KINDS = ['related', 'blocks', 'caused_by', 'tracked_by', 'fixes'] as const;
 export const TASK_STATES = ['open', 'in_progress', 'done', 'cancelled'] as const;
 
 export class LinkDto {
@@ -1195,6 +1277,11 @@ export class TemplateDto {
   @MinLength(1, { each: true })
   @MaxLength(200, { each: true })
   checklist!: string[];
+
+  /** Answer 1935: a standard change from this template skips approval (its type must be a change type). */
+  @IsOptional()
+  @IsBoolean()
+  preApproved?: boolean;
 
   @IsOptional()
   @IsBoolean()
@@ -1457,4 +1544,82 @@ export class ComplianceTargetsDto {
   @ValidateNested({ each: true })
   @Type(() => ComplianceTargetDto)
   targets!: ComplianceTargetDto[];
+}
+
+/** ITSM answer 2057: the business application an IT ticket is about; null clears it. */
+export class TicketAppDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  appId!: string | null;
+}
+
+/** Answer 1661: the device an IT ticket is about; null clears it. */
+export class TicketDeviceDto {
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  assetId!: string | null;
+}
+
+/** Answers 1641, 1650: one of a desk's own ticket fields (the set is checked by the forms engine in the service). */
+export class TicketFieldDto {
+  /** Set once, when the field is made. */
+  @IsOptional()
+  @Matches(/^[a-z][a-z0-9_]{0,39}$/, { message: 'A field key is lower-case letters, digits and _ (up to 40), starting with a letter.' })
+  key?: string;
+
+  @Text(1, 100)
+  label!: string;
+
+  @IsIn(['text', 'number', 'date', 'choice'], { message: 'A field is text, a number, a date or a drop-down.' })
+  fieldType!: 'text' | 'number' | 'date' | 'choice';
+
+  /** null: every ticket of the desk; else one ticket type of it. */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsUUID()
+  ticketTypeId?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(100)
+  options?: { value: string; label: string }[];
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Matches(/^[a-z][a-z0-9_]{0,39}$/)
+  dependsOn?: string | null;
+
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @IsObject()
+  optionsBy?: Record<string, string[]> | null;
+
+  @IsOptional()
+  @IsIn(['all', 'agents', 'leads'], { message: 'A field shows to everyone, to the desk staff only, or to team leads only.' })
+  visibility?: 'all' | 'agents' | 'leads';
+
+  /** Answer 1843: the ticket cannot be solved until this field has a value. */
+  @IsOptional()
+  @IsBoolean()
+  requiredToSolve?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(999)
+  sortOrder?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+/** Answers 1641, 1650: changed field values of one ticket, by key; null clears one. */
+export class TicketFieldValuesDto {
+  @IsObject()
+  values!: Record<string, string | number | null>;
 }

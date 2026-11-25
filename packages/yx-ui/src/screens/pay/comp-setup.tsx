@@ -5,8 +5,9 @@ import { AlertCircle, ArrowDown, ArrowUp, GripVertical, Lock, Plus } from 'lucid
 import { Button, IconButton, type ButtonProps } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { InlineAlert } from '../../components/feedback';
-import { ErrorSummary, FieldRow, FormField, FormSection } from '../../components/field';
+import { InlineAlert, NoAccessState } from '../../components/feedback';
+import { ErrorSummary, FieldRow, FormField, FormSection, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -18,12 +19,17 @@ import { PayslipDocument, type PayslipData } from '../../components/print';
 import { DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { DataTable, tableToCsv, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { Timeline } from '../../components/timeline';
 import { formatDate, formatINR } from '../../lib/format';
 import { FactRow, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type ViewState } from './pay-kit';
 import { COMPONENTS, FIN_APPROVER, HR_ADMIN, LETTERHEAD, MY_PAYSLIP, PAYROLL_ADMIN, RUN_ROWS, d, type ComponentRow } from './pay-data';
 import { EMPLOYEES } from '../_kit/data';
 import { checkSplit, codeWageAddBack, compareRegimes, esiContribution, NO_DEDUCTIONS, pfContribution, type SplitOption } from './pay-logic';
+import { GoLivePart, GroupsPart, ImportsPart, LegalOptionsPart, LivePayrollSetupScreen, SAMPLE_CALLS, type GoLiveReadiness, type LivePayrollSetup, type ParallelRunView } from './setup-live';
+import type { ImportBatch, LegalOption, PayGroup } from './live/types-5b';
+import type { PayRun } from './live/types-5j';
+import { LiveCompensationScreen, LiveComponentLibraryScreen, LivePayslipLayoutScreen, LiveTemplateBuilderScreen, type LiveCompensation, type LiveComponentLibrary, type LivePayslipLayout, type LiveTemplates } from './comp-setup-live';
 
 /* ================================================================== shared */
 
@@ -91,6 +97,7 @@ export function SuggestSplitDrawer({
   onUse?: (o: SplitOption) => void;
 }) {
   const [chosen, setChosen] = useState<string | null>(initialChosen ?? null);
+  const { toast } = useToast();
   const checked = SPLITS.map((o) => ({ o, c: checkSplit(o, KA_MIN_WAGE) }));
   const offered = checked.filter((x) => x.c.ok);
   const hidden = checked.filter((x) => !x.c.ok);
@@ -107,9 +114,10 @@ export function SuggestSplitDrawer({
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button
             variant="primary"
-            disabled={!pick || stale}
             onClick={() => {
-              if (pick) onUse?.(pick);
+              if (stale) return void toast({ title: 'These options are out of date. Refresh to get options that meet the new rules.' });
+              if (!pick) return void toast({ title: 'Choose an option first.' });
+              onUse?.(pick);
               onOpenChange(false);
             }}
           >
@@ -127,20 +135,11 @@ export function SuggestSplitDrawer({
         <p className="yx-pay-muted">
           Every option passes company CTC rules, the Code wage 50% rule, state minimum wage and PF / ESI limits. {hidden.length} option{hidden.length === 1 ? '' : 's'} failed a check and {hidden.length === 1 ? 'is' : 'are'} not offered. Rule-based calculator; no data leaves YukthiX. Your choice and the options shown are recorded.
         </p>
-        <div className="yx-pay-scroll">
-          <table className="yx-pay-table">
-            <thead>
-              <tr>
-                <th scope="col">Monthly</th>
-                {offered.map(({ o }) => (
-                  <th key={o.id} scope="col" data-num>
-                    {o.name} {stale && <Badge tone="warning">Stale</Badge>}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(
+        <PlainTable
+          label="Splits suggested"
+          rows={
+            [
+              ...(
                 [
                   ['Basic', (o: SplitOption) => o.basic],
                   ['House rent allowance', (o: SplitOption) => o.hra],
@@ -149,59 +148,42 @@ export function SuggestSplitDrawer({
                   ['Employer NPS', (o: SplitOption) => o.employerNps],
                   ['Employer PF', (o: SplitOption) => pfContribution(o.basic, { restrictToCeiling: true }).employee],
                 ] as const
-              ).map(([label, f]) => (
-                <tr key={label}>
-                  <th scope="row">{label}</th>
-                  {offered.map(({ o }) => (
-                    <td key={o.id} data-num>
-                      {formatINR(f(o))}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-              <tr>
-                <th scope="row">Take-home, new regime</th>
-                {offered.map(({ o, c }) => {
+              ).map(([label, f]) => ({ label, cell: ({ o }: (typeof offered)[number]) => formatINR(f(o)) })),
+              {
+                label: 'Take-home, new regime',
+                cell: ({ o, c }: (typeof offered)[number]) => {
                   const pf = pfContribution(o.basic, { restrictToCeiling: true }).employee;
                   const tax = compareRegimes(c.gross * 12, { ...NO_DEDUCTIONS, employerNps: o.employerNps * 12 }).new.total;
-                  return (
-                    <td key={o.id} data-num>
-                      {formatINR(Math.round(c.gross - pf - 200 - tax / 12))}
-                    </td>
-                  );
-                })}
-              </tr>
-              <tr>
-                <th scope="row">Take-home, old regime</th>
-                {offered.map(({ o, c }) => {
+                  return formatINR(Math.round(c.gross - pf - 200 - tax / 12));
+                },
+              },
+              {
+                label: 'Take-home, old regime',
+                cell: ({ o, c }: (typeof offered)[number]) => {
                   const pf = pfContribution(o.basic, { restrictToCeiling: true }).employee;
                   const tax = compareRegimes(c.gross * 12, { ...NO_DEDUCTIONS, sec80c: pf * 12, employerNps: o.employerNps * 12, hraExemption: Math.round(o.hra * 0.6) * 12 }).old.total;
-                  return (
-                    <td key={o.id} data-num>
-                      {formatINR(Math.round(c.gross - pf - 200 - tax / 12))}
-                    </td>
-                  );
-                })}
-              </tr>
-              <tr>
-                <th scope="row">Employer cost</th>
-                {offered.map(({ o, c }) => (
-                  <td key={o.id} data-num>
-                    {formatINR(c.gross + o.employerNps + pfContribution(o.basic, { restrictToCeiling: true }).employee)}
-                  </td>
-                ))}
-              </tr>
-              <tr>
-                <th scope="row">Law checks</th>
-                {offered.map(({ o }) => (
-                  <td key={o.id}>
-                    <Badge tone="success">Passes all</Badge>
-                  </td>
-                ))}
-              </tr>
-            </tbody>
-          </table>
-        </div>
+                  return formatINR(Math.round(c.gross - pf - 200 - tax / 12));
+                },
+              },
+              { label: 'Employer cost', cell: ({ o, c }: (typeof offered)[number]) => formatINR(c.gross + o.employerNps + pfContribution(o.basic, { restrictToCeiling: true }).employee) },
+              { label: 'Law checks', cell: () => <Badge tone="success">Passes all</Badge> },
+            ] as { label: string; cell: (x: (typeof offered)[number]) => ReactNode }[]
+          }
+          getRowId={(r) => r.label}
+          columns={[
+            { key: 'label', header: 'Monthly', rowHeader: true, cell: (r) => r.label },
+            ...offered.map((x) => ({
+              key: x.o.id,
+              header: (
+                <>
+                  {x.o.name} {stale && <Badge tone="warning">Stale</Badge>}
+                </>
+              ),
+              num: true,
+              cell: (r: { cell: (x: (typeof offered)[number]) => ReactNode }) => r.cell(x),
+            })),
+          ]}
+        />
         <RadioGroup
           aria-label="Choose an option"
           orientation="horizontal"
@@ -254,8 +236,30 @@ function annualBreakup(ctc: number): [string, number][] {
   return [rows[0], rows[1], ['Special allowance', special], ...rows.slice(2)];
 }
 
+/** PAY-12 "Back-dated revision · arrears preview": the arrears month by month with the total (design; also rendered live). */
+export function ArrearsPreviewTable({ rows, run }: { rows: { id: string; month: string; amount: number }[]; run: string }) {
+  return (
+    <PlainTable
+      label={`Arrears preview (paid in ${run})`}
+      hideHeader
+      caption={`Arrears preview (paid in ${run})`}
+      rows={rows}
+      getRowId={(m) => m.id}
+      columns={[
+        { key: 'month', header: 'Month', rowHeader: true, cell: (m) => m.month },
+        { key: 'amount', header: 'Arrears', num: true, cell: (m) => formatINR(m.amount) },
+      ]}
+      footer={[{ id: 'total', label: 'Total arrears', cells: { amount: formatINR(rows.reduce((t, m) => t + m.amount, 0)) } }]}
+    />
+  );
+}
+
 /** PAY-12 · Compensation tab (timeline, pay basis, breakup) and revision sheet with arrears preview. */
-export function CompensationScreen({
+export function CompensationScreen({ live, ...story }: Parameters<typeof SampleCompensationScreen>[0] & { /** The live app's /yx/payroll/compensation. */ live?: LiveCompensation }) {
+  return live ? <LiveCompensationScreen live={live} /> : <SampleCompensationScreen {...story} />;
+}
+
+function SampleCompensationScreen({
   variant = 'default',
   persona = 'pa',
   state = 'ready',
@@ -293,23 +297,25 @@ export function CompensationScreen({
   const ctcDiff = (ctc ?? 0) - CURRENT_CTC;
   const pct = Math.round((ctcDiff / CURRENT_CTC) * 1000) / 10;
   const belowMin = !rateBased && !!ctc && newB.basic < KA_MIN_WAGE;
-  const blocked = !effective
-    ? 'Enter the effective date'
-    : !reason
-      ? 'Choose a reason'
-      : rateBased
-        ? !rate
-          ? `Enter the new ${basis === 'hourly' ? 'hourly' : 'daily'} rate`
-          : hourly && basis === 'hourly' && rate === CURRENT_RATE
-            ? 'Same as current rate'
-            : undefined
-        : !ctc
-          ? 'Enter the new annual CTC'
-          : !hourly && ctc === CURRENT_CTC
-            ? 'Same as current CTC'
-            : belowMin
-              ? 'Basic is below the minimum wage'
-              : undefined;
+  const amountError = rateBased
+    ? !rate
+      ? `Enter the new ${basis === 'hourly' ? 'hourly' : 'daily'} rate.`
+      : hourly && basis === 'hourly' && rate === CURRENT_RATE
+        ? 'This is the same as the current rate.'
+        : undefined
+    : !ctc
+      ? 'Enter the new annual CTC.'
+      : !hourly && ctc === CURRENT_CTC
+        ? 'This is the same as the current CTC.'
+        : belowMin
+          ? 'Basic is below the minimum wage. Raise the CTC or choose another split.'
+          : undefined;
+  const reviseEarly = useTooEarly([
+    ...(!effective ? [{ fieldId: 'rc-from', message: 'Enter the effective date.' }] : []),
+    ...(!reason ? [{ fieldId: 'rc-reason', message: 'Choose a reason.' }] : []),
+    ...(amountError ? [{ fieldId: 'rc-amount', message: amountError }] : []),
+  ]);
+  const { toast } = useToast();
   const reasonLabel = REASONS.find((r) => r.value === reason)?.label.toLowerCase();
   const history = hourly
     ? [
@@ -352,19 +358,12 @@ export function CompensationScreen({
                 {view === 'loading' ? 'Loading pay details' : "Pay details didn't load"}
               </span>
             )}
-            <Button variant="primary" onClick={() => setRevise(true)} disabled={sent || view !== 'ready'}>
+            <Button variant="primary" onClick={() => (view !== 'ready' ? toast({ title: 'Wait for the pay details to load.' }) : sent ? toast({ title: 'A revision is already waiting for approval.' }) : setRevise(true))}>
               Revise compensation
             </Button>
           </>
         }
       />
-      {sent && effective && (
-        <InlineAlert tone="success" title="Revision sent for approval">
-          {rateBased
-            ? `New rate ${formatINR(rate ?? 0)} ${rateUnit} from ${formatDate(effective)} (${reasonLabel}) is with ${approver.name} for approval. The current rate stays until it is approved.`
-            : `New annual CTC ${formatINR(ctc ?? 0)} on ${TEMPLATES[template].label} from ${formatDate(effective)} (${reasonLabel}) is with ${approver.name} for approval.${arrearsMonths.length ? ` Arrears of ${formatINR(grossDiff * arrearsMonths.length)} are paid in the October run once approved.` : ''} The current CTC stays until it is approved.`}
-        </InlineAlert>
-      )}
       <Tabs defaultValue="comp">
         <TabsList aria-label="Employee record">
           <TabsTrigger value="profile">Profile</TabsTrigger>
@@ -401,38 +400,18 @@ export function CompensationScreen({
                     <p className="yx-pay-note">Each payslip line carries the placement ID for margin reporting.</p>
                   </section>
                 ) : (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Current breakup (CTC-first), scrolls sideways on small screens">
-                    <table className="yx-pay-table">
-                      <caption>Current breakup (India standard CTC v3)</caption>
-                      <thead>
-                        <tr>
-                          <th scope="col">Component</th>
-                          <th scope="col" data-num>
-                            Annual
-                          </th>
-                          <th scope="col" data-num>
-                            Monthly
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {annualBreakup(CURRENT_CTC).map(([l, a]) => (
-                          <tr key={l}>
-                            <th scope="row">{l}</th>
-                            <td data-num>{formatINR(a)}</td>
-                            <td data-num>{formatINR(Math.round(a / 12))}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Cost to company</th>
-                          <td data-num>{formatINR(CURRENT_CTC)}</td>
-                          <td data-num>{formatINR(Math.round(CURRENT_CTC / 12))}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                  <PlainTable
+                    label="Current breakup (CTC-first)"
+                    caption="Current breakup (India standard CTC v3)"
+                    rows={annualBreakup(CURRENT_CTC)}
+                    getRowId={([l]) => l}
+                    columns={[
+                      { key: 'l', header: 'Component', rowHeader: true, cell: ([l]) => l },
+                      { key: 'a', header: 'Annual', num: true, cell: ([, a]) => formatINR(a) },
+                      { key: 'm', header: 'Monthly', num: true, cell: ([, a]) => formatINR(Math.round(a / 12)) },
+                    ]}
+                    footer={[{ id: 'ctc', label: 'Cost to company', cells: { a: formatINR(CURRENT_CTC), m: formatINR(Math.round(CURRENT_CTC / 12)) } }]}
+                  />
                 )}
               </div>
               <section className="yx-pay-panel" aria-label="Compensation history">
@@ -453,17 +432,19 @@ export function CompensationScreen({
           <>
             <Button onClick={() => setRevise(false)}>Cancel</Button>
             {!rateBased && <Button onClick={() => setSplit(true)}>Suggest split</Button>}
-            {blocked && (
-              <span className="yx-pay-note" role="status">
-                {blocked}
-              </span>
-            )}
             <Button
               variant="primary"
-              disabled={!!blocked}
               onClick={() => {
+                if (reviseEarly.stop() || !effective) return;
                 setSent(true);
                 setRevise(false);
+                toast({
+                  tone: 'success',
+                  title: 'Revision sent for approval',
+                  description: rateBased
+                    ? `New rate ${formatINR(rate ?? 0)} ${rateUnit} from ${formatDate(effective)} (${reasonLabel}) is with ${approver.name} for approval. The current rate stays until it is approved.`
+                    : `New annual CTC ${formatINR(ctc ?? 0)} on ${TEMPLATES[template].label} from ${formatDate(effective)} (${reasonLabel}) is with ${approver.name} for approval.${arrearsMonths.length ? ` Arrears of ${formatINR(grossDiff * arrearsMonths.length)} are paid in the October run once approved.` : ''} The current CTC stays until it is approved.`,
+                });
               }}
             >
               Send for approval
@@ -474,10 +455,10 @@ export function CompensationScreen({
         <div className="yx-pay-split">
           <div className="yx-pay-stack">
             <FieldRow>
-              <FormField label="Effective from" required helper={backdated ? 'Back-dated: arrears are paid in the next run; past payslips are never changed.' : undefined}>
+              <FormField id="rc-from" error={reviseEarly.errorOf('rc-from')} label="Effective from" required helper={backdated ? 'Back-dated: arrears are paid in the next run; past payslips are never changed.' : undefined}>
                 <DatePicker value={effective} onChange={setEffective} min={CURRENT_FROM} required />
               </FormField>
-              <FormField label="Reason" required>
+              <FormField id="rc-reason" error={reviseEarly.errorOf('rc-reason')} label="Reason" required>
                 <Select value={reason} onChange={setReason} options={REASONS} />
               </FormField>
             </FieldRow>
@@ -495,12 +476,12 @@ export function CompensationScreen({
               />
             </FormField>
             {rateBased ? (
-              <FormField label={basis === 'hourly' ? 'New hourly rate' : 'New daily rate'} required helper={hourly ? `Current rate ${formatINR(CURRENT_RATE)} an hour (placement PL-0342)` : 'Pay follows approved timesheet hours.'}>
+              <FormField id="rc-amount" error={reviseEarly.errorOf('rc-amount')} label={basis === 'hourly' ? 'New hourly rate' : 'New daily rate'} required helper={hourly ? `Current rate ${formatINR(CURRENT_RATE)} an hour (placement PL-0342)` : 'Pay follows approved timesheet hours.'}>
                 <CurrencyField value={rate} onChange={setRate} />
               </FormField>
             ) : (
               <>
-                <FormField label="New annual CTC" required helper={hourly ? undefined : `Current ${formatINR(CURRENT_CTC)}`}>
+                <FormField id="rc-amount" error={reviseEarly.errorOf('rc-amount')} label="New annual CTC" required helper={hourly ? undefined : `Current ${formatINR(CURRENT_CTC)}`}>
                   <CurrencyField value={ctc} onChange={setCtc} />
                 </FormField>
                 <FormField label="Salary template">
@@ -538,7 +519,7 @@ export function CompensationScreen({
                       Minimum wage check passes. Code wage: {formatINR(newB.addBack)} a month is added back to PF and ESI wage.
                     </InlineAlert>
                   ) : (
-                    <InlineAlert tone="success">Minimum wage and Code wage checks pass.</InlineAlert>
+                    <InlineAlert tone="info">Minimum wage and Code wage checks pass.</InlineAlert>
                   )
                 ) : null}
                 {chosen && (
@@ -550,27 +531,7 @@ export function CompensationScreen({
                     ]}
                   />
                 )}
-                {arrearsMonths.length > 0 && (
-                  <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Arrears preview (paid in October run), scrolls sideways on small screens">
-                    <table className="yx-pay-table">
-                      <caption>Arrears preview (paid in October run)</caption>
-                      <tbody>
-                        {arrearsMonths.map((m) => (
-                          <tr key={m}>
-                            <th scope="row">{MONTHS[m]} 2026</th>
-                            <td data-num>{formatINR(grossDiff)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr>
-                          <th scope="row">Total arrears</th>
-                          <td data-num>{formatINR(grossDiff * arrearsMonths.length)}</td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                )}
+                {arrearsMonths.length > 0 && <ArrearsPreviewTable run="October run" rows={arrearsMonths.map((m) => ({ id: String(m), month: `${MONTHS[m]} 2026`, amount: grossDiff }))} />}
                 {arrearsMonths.length > 0 && <p className="yx-pay-note">PF on arrears is attributed to the months they relate to; supplementary ECRs are raised for months already filed.</p>}
               </>
             )}
@@ -620,7 +581,11 @@ type TestId = keyof typeof TEST_EMPLOYEES;
 const COMPONENT_ID: Record<string, string> = Object.fromEntries(COMPONENTS.map((c) => [c.code, c.id]));
 
 /** PAY-13 · Template builder / CTC designer: ordered lines, formula editor with autocomplete, live test employee. */
-export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'default' | 'autocomplete' | 'cycle' | 'add-back' | 'saved' }) {
+export function TemplateBuilderScreen({ live, ...story }: { variant?: 'default' | 'autocomplete' | 'cycle' | 'add-back' | 'saved'; /** The live app's /yx/payroll/templates. */ live?: LiveTemplates }) {
+  return live ? <LiveTemplateBuilderScreen live={live} /> : <SampleTemplateBuilderScreen {...story} />;
+}
+
+function SampleTemplateBuilderScreen({ variant = 'default' }: { variant?: 'default' | 'autocomplete' | 'cycle' | 'add-back' | 'saved' }) {
   const [lines, setLines] = useState(() =>
     TEMPLATE_LINES.map((l) =>
       variant === 'cycle' && l.code === 'BASIC'
@@ -637,7 +602,7 @@ export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'defa
   const [live, setLive] = useState(variant === 'saved' ? 4 : 3);
   const [base, setBase] = useState(TEMPLATE_LINES);
   const [dirty, setDirty] = useState(variant !== 'saved');
-  const [justPublished, setJustPublished] = useState(variant === 'saved');
+  const { toast } = useToast();
   const [confirm, setConfirm] = useState(false);
   const [compare, setCompare] = useState(false);
   const [active, setActive] = useState(0);
@@ -654,7 +619,6 @@ export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'defa
   const edit = (fn: (ls: TemplateLine[]) => TemplateLine[]) => {
     setLines(fn);
     setDirty(true);
-    setJustPublished(false);
   };
   const setFormula = (id: string, v: string) => {
     edit((ls) => ls.map((l) => (l.id === id ? { ...l, formula: v, error: undefined } : l)));
@@ -701,7 +665,7 @@ export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'defa
               {compare ? 'Hide comparison' : `Compare with version ${live}`}
             </Button>
             {dirty && (
-              <Button variant="primary" disabled={blocked} onClick={() => setConfirm(true)}>
+              <Button variant="primary" onClick={() => (blocked ? toast({ title: 'Fix the formula errors listed above before publishing.' }) : setConfirm(true))}>
                 Validate and publish
               </Button>
             )}
@@ -722,11 +686,6 @@ export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'defa
           )}
         </InlineAlert>
       )}
-      {justPublished && (
-        <InlineAlert tone="success" title={`Version ${live} published`}>
-          Dependency order checked, no cycles. Test run on {emp.name} passed{b.addBack > 0 ? `; Code wage add-back ${formatINR(b.addBack)} a month applies` : ''}. Used from the October run.
-        </InlineAlert>
-      )}
       <ConfirmDialog
         open={confirm}
         onOpenChange={setConfirm}
@@ -737,8 +696,8 @@ export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'defa
           setBase(lines);
           setLive((v) => v + 1);
           setDirty(false);
-          setJustPublished(true);
           setCompare(false);
+          toast({ tone: 'success', title: `Version ${live + 1} published`, description: `Dependency order checked, no cycles. Test run on ${emp.name} passed${b.addBack > 0 ? `; Code wage add-back ${formatINR(b.addBack)} a month applies` : ''}. Used from the October run.` });
         }}
       />
       <div className="yx-pay-grid">
@@ -755,8 +714,8 @@ export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'defa
                       {l.error ? <Badge tone="danger">Error</Badge> : l.code === 'BASIC' && warn ? <Badge tone="warning">Check</Badge> : null}
                     </span>
                   </button>
-                  <IconButton icon={ArrowUp} label={`Move ${l.component} up`} size="sm" disabled={i === 0} onClick={() => move(l.id, -1)} />
-                  <IconButton icon={ArrowDown} label={`Move ${l.component} down`} size="sm" disabled={i === lines.length - 1} onClick={() => move(l.id, 1)} />
+                  <IconButton icon={ArrowUp} label={`Move ${l.component} up`} size="sm" onClick={() => (i === 0 ? toast({ title: `${l.component} is already first.` }) : move(l.id, -1))} />
+                  <IconButton icon={ArrowDown} label={`Move ${l.component} down`} size="sm" onClick={() => (i === lines.length - 1 ? toast({ title: `${l.component} is already last.` }) : move(l.id, 1))} />
                 </div>
               </li>
             ))}
@@ -807,33 +766,26 @@ export function TemplateBuilderScreen({ variant = 'default' }: { variant?: 'defa
           <FormField label="Test employee">
             <Select<TestId> value={testId} onChange={(v) => v && setTestId(v)} options={(Object.keys(TEST_EMPLOYEES) as TestId[]).map((k) => ({ value: k, label: TEST_EMPLOYEES[k].label }))} />
           </FormField>
-          <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <tbody>
-                {(
-                  [
-                    ['Basic', b.basic],
-                    ['House rent allowance', b.hra],
-                    ['Leave travel allowance', b.lta],
-                    ['Employer PF', b.pf],
-                    ['Gratuity provision', b.grat],
-                    ['Special allowance', b.spl],
-                  ] as const
-                ).map(([l, v]) => (
-                  <tr key={l}>
-                    <th scope="row">{l}</th>
-                    <td data-num>{blocked && l !== 'Leave travel allowance' ? '—' : formatINR(v)}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Monthly CTC</th>
-                  <td data-num>{formatINR(Math.round(emp.ctc / 12))}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+          <PlainTable
+            label="Live test breakup"
+            hideHeader
+            rows={
+              [
+                ['Basic', b.basic],
+                ['House rent allowance', b.hra],
+                ['Leave travel allowance', b.lta],
+                ['Employer PF', b.pf],
+                ['Gratuity provision', b.grat],
+                ['Special allowance', b.spl],
+              ] as const
+            }
+            getRowId={([l]) => l}
+            columns={[
+              { key: 'l', header: 'Component', rowHeader: true, cell: ([l]) => l },
+              { key: 'v', header: 'Monthly', num: true, cell: ([l, v]) => (blocked && l !== 'Leave travel allowance' ? '—' : formatINR(v)) },
+            ]}
+            footer={[{ id: 'ctc', label: 'Monthly CTC', cells: { v: formatINR(Math.round(emp.ctc / 12)) } }]}
+          />
           {blocked ? (
             <InlineAlert tone="danger">Can't calculate until the circular formula is fixed.</InlineAlert>
           ) : warn ? (
@@ -870,14 +822,19 @@ const FLAGS: [FlagKey, string, string, string, number][] = [
 ];
 
 /** PAY-14 · Component library (T2) with flag columns and an edit drawer; statutory components are locked. */
-export function ComponentLibraryScreen({ state = 'ready', editId }: { state?: ViewState; editId?: string }) {
+export function ComponentLibraryScreen({ live, ...story }: { state?: ViewState; editId?: string; /** The live app's /yx/payroll/components. */ live?: LiveComponentLibrary }) {
+  return live ? <LiveComponentLibraryScreen live={live} /> : <SampleComponentLibraryScreen {...story} />;
+}
+
+function SampleComponentLibraryScreen({ state = 'ready', editId }: { state?: ViewState; editId?: string }) {
   const compact = useNarrow(1399);
   const [rows, setRows] = useState(COMPONENTS);
   const initial = COMPONENTS.find((c) => c.id === editId) ?? null;
   const [edit, setEdit] = useState<ComponentRow | null>(initial);
   const [draft, setDraft] = useState<ComponentRow | null>(initial);
   const [confirm, setConfirm] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
+  const { toast } = useToast();
+  const setDone = (title: string) => toast({ tone: 'success', title });
   const open = (r: ComponentRow | null) => {
     setEdit(r);
     setDraft(r);
@@ -886,15 +843,10 @@ export function ComponentLibraryScreen({ state = 'ready', editId }: { state?: Vi
   const flagsChanged = !!edit && !!draft && FLAGS.some(([k]) => edit[k] !== draft[k]);
   const nameChanged = !!edit && !!draft && edit.name !== draft.name.trim();
   const code = draft?.code.trim().toUpperCase() ?? '';
-  const saveBlocked = !draft
-    ? undefined
-    : !draft.name.trim() || !code
-      ? 'Enter a name and a code'
-      : isNew && rows.some((r) => r.code === code)
-        ? `Code ${code} is already used`
-        : !isNew && !flagsChanged && !nameChanged
-          ? 'No changes to save'
-          : undefined;
+  const saveEarly = useTooEarly([
+    ...(draft && !draft.name.trim() ? [{ fieldId: 'cl-name', message: 'Enter a name.' }] : []),
+    ...(draft && !code ? [{ fieldId: 'cl-code', message: 'Enter a code.' }] : draft && isNew && rows.some((r) => r.code === code) ? [{ fieldId: 'cl-code', message: `Code ${code} is already used.` }] : []),
+  ]);
   const save = () => {
     if (!draft) return;
     const row: ComponentRow = { ...draft, name: draft.name.trim(), code, id: isNew ? `c${rows.length + 1}` : draft.id };
@@ -938,7 +890,6 @@ export function ComponentLibraryScreen({ state = 'ready', editId }: { state?: Vi
   return (
     <PaySettingsFrame page="4.2">
       <PageHeader title="Component library" description="Every earning, deduction, employer contribution, reimbursement and informational line. Flags decide the wage definitions." actions={<Button variant="primary" icon={Plus} onClick={() => open(NEW_COMPONENT)}>Add component</Button>} />
-      {done && <InlineAlert tone="success" title={done} />}
       <DataTable
         label="Pay components"
         columns={cols}
@@ -968,12 +919,7 @@ export function ComponentLibraryScreen({ state = 'ready', editId }: { state?: Vi
         footer={
           <>
             <Button onClick={() => open(null)}>Cancel</Button>
-            {saveBlocked && (
-              <span className="yx-pay-note" role="status">
-                {saveBlocked}
-              </span>
-            )}
-            <Button variant="primary" disabled={!!saveBlocked} onClick={() => (flagsChanged && edit && edit.usedIn > 0 ? setConfirm(true) : save())}>
+            <Button variant="primary" onClick={() => (saveEarly.stop() ? undefined : !isNew && !flagsChanged && !nameChanged ? toast({ title: 'No changes to save.' }) : flagsChanged && edit && edit.usedIn > 0 ? setConfirm(true) : save())}>
               Save component
             </Button>
           </>
@@ -987,10 +933,10 @@ export function ComponentLibraryScreen({ state = 'ready', editId }: { state?: Vi
               </InlineAlert>
             )}
             <FieldRow>
-              <FormField label="Name" required>
+              <FormField id="cl-name" error={saveEarly.errorOf('cl-name')} label="Name" required>
                 <TextField value={draft.name} onChange={(v) => setDraft({ ...draft, name: v })} />
               </FormField>
-              <FormField label="Code" required helper={isNew ? undefined : "Codes can't change once used."}>
+              <FormField id="cl-code" error={saveEarly.errorOf('cl-code')} label="Code" required helper={isNew ? undefined : "Codes can't change once used."}>
                 <TextField value={draft.code} onChange={(v) => setDraft({ ...draft, code: v.toUpperCase() })} disabled={!isNew} />
               </FormField>
             </FieldRow>
@@ -1110,7 +1056,11 @@ function FitPreview({ children }: { children: ReactNode }) {
 const A4_PX = 794;
 
 /** PAY-15 · Payslip layout editor per entity with sample-employee preview; statutory wage-slip fields locked. */
-export function PayslipLayoutScreen({ variant = 'default' }: { variant?: 'default' | 'bilingual' | 'published' }) {
+export function PayslipLayoutScreen({ live, ...story }: { variant?: 'default' | 'bilingual' | 'published'; /** The live app's /yx/payroll/payslip-layout. */ live?: LivePayslipLayout }) {
+  return live ? <LivePayslipLayoutScreen live={live} sample={LAYOUT_SAMPLE} /> : <SamplePayslipLayoutScreen {...story} />;
+}
+
+function SamplePayslipLayoutScreen({ variant = 'default' }: { variant?: 'default' | 'bilingual' | 'published' }) {
   // The draft adds the tax summary (and Kannada in the bilingual story).
   const start: Layout = { ...VERSION_4, tax: true, lang: variant === 'bilingual' ? 'Kannada' : null };
   const [live, setLive] = useState(variant === 'published' ? 5 : 4);
@@ -1118,6 +1068,7 @@ export function PayslipLayoutScreen({ variant = 'default' }: { variant?: 'defaul
   const [s, setS] = useState<Layout>(start);
   const [status, setStatus] = useState<'draft' | 'published' | 'discarded'>(variant === 'published' ? 'published' : 'draft');
   const [ask, setAsk] = useState<'publish' | 'discard' | null>(null);
+  const { toast } = useToast();
   // Any change starts a draft of the next version.
   const set =
     <K extends keyof Layout>(k: K) =>
@@ -1148,11 +1099,6 @@ export function PayslipLayoutScreen({ variant = 'default' }: { variant?: 'defaul
           )
         }
       />
-      {status === 'published' && (
-        <InlineAlert tone="success" title={`Version ${live} published`}>
-          Payslips from the October run use this layout. Payslips already published keep version {live - 1}.
-        </InlineAlert>
-      )}
       {status === 'discarded' && (
         <InlineAlert tone="info" title="Draft discarded" actions={<Button size="sm" onClick={() => setStatus('draft')}>Start a new draft</Button>}>
           The settings below are back to version {live}, the layout in use.
@@ -1168,6 +1114,7 @@ export function PayslipLayoutScreen({ variant = 'default' }: { variant?: 'defaul
           setBase(s);
           setLive((v) => v + 1);
           setStatus('published');
+          toast({ tone: 'success', title: `Version ${live + 1} published`, description: `Payslips from the October run use this layout. Payslips already published keep version ${live}.` });
         }}
       />
       <ConfirmDialog
@@ -1251,8 +1198,95 @@ const MAPPING: [string, string][] = [
 ];
 const PAN_RE = /^[A-Z]{5}\d{4}[A-Z]$/;
 
-/** PAY-16 · Payroll set-up wizard (per entity): registrations, pay group, template, bank, accounting, opening balances. */
-export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: importedInitially = false }: { step?: string; incomplete?: boolean; /** Opening balances already uploaded. */ imported?: boolean }) {
+/* Sample data for the PAY-16 parts the live wizard shares (pay groups, legal options, imports, go-live). */
+const SETUP_ENTITY = 'le-kfpl';
+const SAMPLE_GROUPS: PayGroup[] = [
+  { id: 'pg-m', legalEntityId: SETUP_ENTITY, name: 'Monthly · Kaveri Foods Pvt Ltd', frequency: 'monthly', currency: 'INR', dayBasis: 'calendar', cutOffDay: 25, payDay: 0, bankFormat: null, status: 'active', version: 3 },
+  { id: 'pg-w', legalEntityId: SETUP_ENTITY, name: 'Weekly · Hosur plant', frequency: 'weekly', anchorDate: '2026-04-06', currency: 'INR', dayBasis: '26', cutOffDay: 25, payDay: 0, bankFormat: null, status: 'active', version: 1 },
+];
+const SAMPLE_MEMBERS = EMPLOYEES.slice(1, 6).map((e, i) => ({ employeeId: e.id, employmentId: `em-${e.id}`, employeeCode: e.code, name: e.name, validFrom: i < 3 ? '2026-04-01' : '2026-08-01', validTo: null }));
+const SAMPLE_CALENDAR = Array.from({ length: 12 }, (_, i) => {
+  const m = `2026-${String(i + 1).padStart(2, '0')}`;
+  const last = new Date(Date.UTC(2026, i + 1, 0)).getUTCDate();
+  return { month: m, periodStart: `${m}-01`, periodEnd: `${m}-${last}`, cutOff: `${m}-25`, payDate: `${m}-${last}` };
+});
+const SAMPLE_OPTIONS: LegalOption[] = [
+  { id: 'lo1', optionKey: 'pf.on_actual_wage', value: 'no', validFrom: '2026-04-01', validTo: null },
+  { id: 'lo2', optionKey: 'bonus.payment', value: 'annual', validFrom: '2026-04-01', validTo: null },
+  { id: 'lo3', optionKey: 'gratuity.provisioning', value: 'actuarial', validFrom: '2025-04-01', validTo: null },
+];
+const SAMPLE_BATCH: ImportBatch = { id: 'ib1', kind: 'as_paid_lines', rows: 1488, valid: 1488, errors: [], status: 'staged' };
+const SAMPLE_BATCH_ERRORS: ImportBatch = {
+  ...SAMPLE_BATCH,
+  valid: 1485,
+  errors: [
+    { row: 214, message: `No employee with the code ${EMPLOYEES[40].code.replace('KF', 'KH')} in this legal entity.` },
+    { row: 902, message: 'Month 2026-13 is not a month.' },
+    { row: 1311, message: 'No component with the code spl_allow; the library has special.' },
+  ],
+};
+const SAMPLE_RUN: PayRun = { id: 'run-sep', legalEntityId: SETUP_ENTITY, payGroupId: 'pg-m', month: '2026-09', runType: 'regular', offcycleKind: null, status: 'calculated', calcVersion: 2, totals: null, approvedAt: null, publishedAt: null, voidReason: null, createdAt: '2026-09-26T05:30:00Z' };
+const readiness = (ready: boolean): GoLiveReadiness => ({
+  entityId: SETUP_ENTITY,
+  people: 248,
+  ready,
+  items: [
+    { key: 'registrations', label: 'Statutory registrations recorded', ok: true, detail: 'PF, ESI, PT Karnataka, LWF Karnataka, TDS' },
+    { key: 'banks', label: 'Everyone has a salary bank account', ok: true, detail: '248 of 248' },
+    { key: 'uan', label: 'UAN on file', ok: ready, detail: ready ? '248 of 248' : '241 of 248 (the PF file lists people by UAN)' },
+    { key: 'parallel', label: 'A parallel run signed off', ok: ready, detail: ready ? 'September 2026, signed off by Ramesh Krishnan' : 'Pay one month in the old payroll too, upload its register on the run and have someone else sign it off.' },
+    { key: 'rules', label: 'Statutory rules marked verify', ok: true, info: true, detail: '31 published rule sets are marked verify.' },
+  ],
+});
+const comparison = (status: ParallelRunView['status']): ParallelRunView => ({
+  id: 'pr1',
+  runId: SAMPLE_RUN.id,
+  status,
+  people: 248,
+  matched: 246,
+  differences: 2,
+  rows: [
+    { employeeCode: EMPLOYEES[12].code, name: EMPLOYEES[12].name, field: 'deductions', ours: '2000.00', theirs: '2200.00', difference: '-200.00' },
+    { employeeCode: EMPLOYEES[57].code, name: EMPLOYEES[57].name, field: 'net', ours: '31850.00', theirs: '31650.00', difference: '200.00' },
+  ],
+  reason: status === 'signed_off' ? 'The old payroll rounded professional tax wrongly for two people.' : status === 'waived' ? 'The old payroll vendor closed in August; no register for September.' : null,
+  createdBy: 'u-pa',
+  createdAt: '2026-10-02T06:00:00Z',
+});
+export type GoLiveSample = 'ready' | 'compare' | 'signed-off' | 'waived' | 'empty';
+const GOLIVE: Record<GoLiveSample, { r: GoLiveReadiness; p: ParallelRunView[] }> = {
+  compare: { r: readiness(false), p: [comparison('compared')] },
+  'signed-off': { r: readiness(true), p: [comparison('signed_off')] },
+  waived: { r: { ...readiness(true), items: readiness(true).items.map((i) => (i.key === 'parallel' ? { ...i, detail: 'Waived by Ramesh Krishnan' } : i)) }, p: [comparison('waived')] },
+  ready: { r: readiness(true), p: [comparison('signed_off')] },
+  empty: { r: readiness(false), p: [] },
+};
+
+export interface PayrollSetupStoryProps {
+  step?: string;
+  incomplete?: boolean;
+  /** Opening balances already uploaded. */
+  imported?: boolean;
+  /** Registrations step: the dated legal options under the statutes. */
+  options?: boolean;
+  /** Pay group step: the list of groups, one group's members and calendar, or the editor for a new group. */
+  groups?: 'list' | 'members' | 'add';
+  /** Opening balances step: a CSV checked, all rows ready or some with a problem. */
+  opening?: 'checked' | 'row-errors';
+  /** Go-live step (founder decision 3): readiness and the parallel run. */
+  golive?: GoLiveSample;
+  /** Go-live: the sign-off or waive dialog open. */
+  decide?: 'signed_off' | 'waived';
+  /** The page's load state. */
+  state?: ViewState | 'no-access';
+}
+
+/** PAY-16 · Payroll set-up wizard (per entity): registrations, pay group, template, bank, accounting, opening balances, go-live. */
+export function PayrollSetupScreen({ live, ...story }: PayrollSetupStoryProps & { /** The live app's /yx/payroll/setup, /pay-groups, /imports and /go-live. */ live?: LivePayrollSetup }) {
+  return live ? <LivePayrollSetupScreen live={live} /> : <SamplePayrollSetupScreen {...story} />;
+}
+
+function SamplePayrollSetupScreen({ step = 'reg', incomplete = true, imported: importedInitially = false, options = false, groups, opening: openingView, golive = 'compare', decide, state = 'ready' }: PayrollSetupStoryProps) {
   const phone = useNarrow(599);
   const [lwf, setLwf] = useState(incomplete ? '' : 'LWF/KA/BNG/20417');
   const [tdsPan, setTdsPan] = useState(incomplete ? '' : 'AKMPN7135L');
@@ -1281,7 +1315,8 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
   const freqLabel = freq === 'f' ? 'Fortnightly' : freq === 'w' ? 'Weekly' : 'Monthly';
   const payDayLabel = payDay === '1' ? '1st of next month' : 'last working day';
   const fixLabel = fixing === 'lwf' ? 'LWF Karnataka registration number' : 'TDS responsible person PAN';
-  const fixBlocked = !fixValue.trim() ? `Enter the ${fixing === 'lwf' ? 'registration number' : 'PAN'}` : fixing === 'pan' && !PAN_RE.test(fixValue.trim()) ? 'Enter a 10-character PAN, like ABCDE1234F' : undefined;
+  const fixBlocked = !fixValue.trim() ? `Enter the ${fixing === 'lwf' ? 'registration number' : 'PAN'}.` : fixing === 'pan' && !PAN_RE.test(fixValue.trim()) ? 'Enter a 10-character PAN, like ABCDE1234F.' : undefined;
+  const fixEarly = useTooEarly(fixBlocked ? [{ fieldId: 'ps-fix', message: fixBlocked }] : []);
 
   const checkCell = (r: (typeof regs)[number]) =>
     r.missing ? (
@@ -1303,7 +1338,7 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
   const reg = (
     <div className="yx-pay-stack">
       <p className="yx-pay-muted">Each statute runs a completeness check before payroll can use it.</p>
-      {missing.length === 0 && <InlineAlert tone="success">All {regs.length} statutes pass the completeness check.</InlineAlert>}
+      {missing.length === 0 && <InlineAlert tone="info">All {regs.length} statutes pass the completeness check.</InlineAlert>}
       {phone ? (
         <ol className="yx-pay-cards" aria-label="Statutes">
           {regs.map((r) => (
@@ -1316,32 +1351,25 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
           ))}
         </ol>
       ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Statutes, scrolls sideways on small screens">
-          <table className="yx-pay-table">
-            <thead>
-              <tr>
-                <th scope="col">Statute</th>
-                <th scope="col">Registration</th>
-                <th scope="col">Filing</th>
-                {missing.length > 0 && <th scope="col">Check</th>}
-              </tr>
-            </thead>
-            <tbody>
-              {regs.map((r) => (
-                <tr key={r.s} data-state={r.missing ? 'error' : undefined}>
-                  <th scope="row">{r.s}</th>
-                  <td className="yx-pay-mono">{r.n || '—'}</td>
-                  <td>{r.f}</td>
-                  {missing.length > 0 && <td>{checkCell(r)}</td>}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlainTable
+          label="Statutes"
+          rows={regs}
+          getRowId={(r) => r.s}
+          rowTone={(r) => (r.missing ? { tone: 'danger', label: 'Missing' } : undefined)}
+          columns={[
+            { key: 's', header: 'Statute', rowHeader: true, cell: (r) => r.s },
+            { key: 'n', header: 'Registration', cell: (r) => <span className="yx-pay-mono">{r.n || '—'}</span> },
+            { key: 'f', header: 'Filing', cell: (r) => r.f },
+            ...(missing.length > 0 ? [{ key: 'check', header: 'Check', cell: (r: (typeof regs)[number]) => checkCell(r) }] : []),
+          ]}
+        />
       )}
+      {options && <LegalOptionsPart options={SAMPLE_OPTIONS} onSet={async () => undefined} />}
     </div>
   );
-  const group = (
+  const group = groups ? (
+    <GroupsPart entityId={SETUP_ENTITY} groups={SAMPLE_GROUPS} today="2026-10-29" onSave={SAMPLE_CALLS.onSave} onMembers={async () => SAMPLE_MEMBERS} onAddMembers={SAMPLE_CALLS.onAddMembers} onSearch={async () => EMPLOYEES.slice(6, 9).map((e) => ({ id: e.id, name: e.name, employeeCode: e.code }))} onCalendar={async () => SAMPLE_CALENDAR} openId={groups === 'members' ? 'pg-m' : undefined} adding={groups === 'add'} />
+  ) : (
     <div className="yx-pay-stack">
       <FieldRow>
         <FormField label="Pay group name" required>
@@ -1393,28 +1421,19 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
     </FieldRow>
   );
   const acct = (
-    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Ledger mapping, scrolls sideways on small screens">
-      <table className="yx-pay-table">
-        <thead>
-          <tr>
-            <th scope="col">Payroll item</th>
-            <th scope="col">Ledger</th>
-          </tr>
-        </thead>
-        <tbody>
-          {MAPPING.map(([l], i) => (
-            <tr key={l}>
-              <th scope="row">{l}</th>
-              <td>
-                <Select size="sm" aria-label={`Ledger for ${l}`} value={ledgers[i]} onChange={(v) => v && setLedgers((ls) => ls.map((x, j) => (j === i ? v : x)))} options={LEDGERS} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <PlainTable
+      label="Ledger mapping"
+      rows={MAPPING.map(([l], i) => ({ l, i }))}
+      getRowId={(r) => r.l}
+      columns={[
+        { key: 'l', header: 'Payroll item', rowHeader: true, cell: (r) => r.l },
+        { key: 'ledger', header: 'Ledger', cell: ({ l, i }) => <Select size="sm" aria-label={`Ledger for ${l}`} value={ledgers[i]} onChange={(v) => v && setLedgers((ls) => ls.map((x, j) => (j === i ? v : x)))} options={LEDGERS} /> },
+      ]}
+    />
   );
-  const opening = (
+  const opening = openingView ? (
+    <ImportsPart entityId={SETUP_ENTITY} today="2026-10-29" onStage={async () => SAMPLE_BATCH} onCommit={SAMPLE_CALLS.onCommit} onGoLiveCheck={async () => ({ fyStart: '2026-04-01', goLiveMonth: '2026-10', ready: true, missing: [] })} batch={openingView === 'checked' ? SAMPLE_BATCH : SAMPLE_BATCH_ERRORS} />
+  ) : (
     <div className="yx-pay-stack">
       <p className="yx-pay-muted">Import month-wise as-paid lines per component for April–September 2026 for employees paid before go-live. They become the base for YTD tax and for arrears across go-live.</p>
       <FileUpload
@@ -1434,7 +1453,13 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
   return (
     <PayFrame page="home">
       <PageHeader title="Set up payroll" description="Kaveri Foods Pvt Ltd (Karnataka). You can save and come back." />
-      {phase === 'live' ? (
+      {state === 'no-access' ? (
+        <NoAccessState grantedBy="your payroll admin" what="payroll set-up" />
+      ) : state !== 'ready' ? (
+        <StateBlock state={state} errorTitle="We couldn't load payroll set-up." rows={6}>
+          {null}
+        </StateBlock>
+      ) : phase === 'live' ? (
         <InlineAlert tone="success" title="Payroll is on for Kaveri Foods Pvt Ltd (Karnataka)" actions={<StoryButton size="sm" to={PAY_HOME}>Open runs</StoryButton>}>
           The October 2026 run is open: cut-off {cutoff ?? 25} Oct, pay day on the {payDayLabel}.
         </InlineAlert>
@@ -1471,6 +1496,15 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
             { id: 'bank', title: 'Bank format', content: bank, summary: <p>Cauvery Co-operative Bank bulk salary</p> },
             { id: 'acct', title: 'Accounting mapping', content: acct, summary: <p>{MAPPING.length} ledgers mapped</p> },
             { id: 'opening', title: 'Opening balances', description: 'YTD and as-paid lines', status: imported ? undefined : 'error', statusNote: imported ? undefined : 'Not imported yet', content: opening, summary: <p>{imported ? 'Imported April–September · August missing for 3 employees' : 'Not imported yet'}</p> },
+            {
+              id: 'golive',
+              title: 'Go-live',
+              description: 'Readiness and parallel run',
+              status: GOLIVE[golive].r.ready ? undefined : 'open',
+              statusNote: GOLIVE[golive].r.ready ? undefined : '2 to do',
+              content: <GoLivePart entityId={SETUP_ENTITY} readiness={GOLIVE[golive].r} runs={[SAMPLE_RUN]} parallel={GOLIVE[golive].p} me="u-fin" can={{ upload: true, decide: true }} onUpload={SAMPLE_CALLS.onUpload} onDecide={SAMPLE_CALLS.onDecide} deciding={decide} />,
+              summary: <p>{GOLIVE[golive].r.ready ? 'Ready for the first live month' : '2 to do: UAN on file, a parallel run signed off'}</p>,
+            },
           ]}
         />
       )}
@@ -1490,15 +1524,10 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
         footer={
           <>
             <Button onClick={() => setFixing(null)}>Cancel</Button>
-            {fixBlocked && (
-              <span className="yx-pay-note" role="status">
-                {fixBlocked}
-              </span>
-            )}
             <Button
               variant="primary"
-              disabled={!!fixBlocked}
               onClick={() => {
+                if (fixEarly.stop()) return;
                 if (fixing === 'lwf') setLwf(fixValue.trim());
                 else setTdsPan(fixValue.trim().toUpperCase());
                 setFixing(null);
@@ -1509,7 +1538,7 @@ export function PayrollSetupScreen({ step = 'reg', incomplete = true, imported: 
           </>
         }
       >
-        <FormField label={fixLabel} required helper={fixing === 'pan' ? 'PAN of the person who signs TDS returns for this TAN.' : 'As printed on the Karnataka LWF registration certificate.'}>
+        <FormField id="ps-fix" error={fixEarly.errorOf('ps-fix')} label={fixLabel} required helper={fixing === 'pan' ? 'PAN of the person who signs TDS returns for this TAN.' : 'As printed on the Karnataka LWF registration certificate.'}>
           <TextField value={fixValue} onChange={(v) => setFixValue(fixing === 'pan' ? v.toUpperCase() : v)} />
         </FormField>
       </Drawer>

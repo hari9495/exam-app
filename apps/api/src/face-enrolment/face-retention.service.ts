@@ -1,12 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BlobStorageService, TenantPrismaService } from '@exam-platform/shared';
+import { notOnHold, RETENTION_MIN_DAYS, pastRetention, retentionByCompany, retentionCutoff } from '../assessments/asmt-rules';
 
-// Fixed by the design spec (2026-08-10). Biometric data must not outlive its purpose, and the
-// review window is the purpose -- see docs/superpowers/specs/2026-08-10-face-identification-design.md.
-const RETENTION_DAYS = 90;
+// Biometric data must not outlive its purpose, and the review window is the purpose -- see
+// docs/superpowers/specs/2026-08-10-face-identification-design.md. AS-2 (answer 2008): the window is each
+// company's Settings 6.5 retention (asmt.retention, 30 to 365 days, default 30; it was a fixed 90), and the
+// face data of an attempt whose result is held (an open incident or appeal) is kept until it is released.
 
-// Deletes face reference images (and clears the row) 90 days after the owning attempt finalised.
-// Scheduled as a nightly BullMQ job scheduler by ScheduledSweepsModule.
+// Deletes face reference images (and clears the row) once past the company's retention after the owning
+// attempt finalised. Scheduled as a nightly BullMQ job scheduler by ScheduledSweepsModule.
 @Injectable()
 export class FaceRetentionService {
   private readonly logger = new Logger(FaceRetentionService.name);
@@ -17,18 +19,18 @@ export class FaceRetentionService {
   ) {}
 
   async prune(now: Date = new Date()): Promise<number> {
-    const cutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const cutoff = retentionCutoff(now, RETENTION_MIN_DAYS);
     const superAdmin = { organizationId: null, isSuperAdmin: true };
 
     try {
-      const expired = await this.tenantPrisma.forTenant(superAdmin, (tx) =>
-        tx.faceEnrolment.findMany({
+      const [days, candidates] = await this.tenantPrisma.forTenant(superAdmin, async (tx) => [
+        await retentionByCompany(tx),
+        await tx.faceEnrolment.findMany({
           where: {
             // A declined-consent update (recordFaceEnrolment) nulls referenceImagePath but keeps
             // a previously-stored embedding, so filtering on referenceImagePath alone stopped
             // matching that row -- an encrypted biometric template with no expiry, past the
-            // 90-day purpose limitation. Either column being non-null is enough to be a prune
-            // candidate.
+            // purpose limitation. Either column being non-null is enough to be a prune candidate.
             OR: [{ referenceImagePath: { not: null } }, { embedding: { not: null } }],
             attempt: {
               OR: [
@@ -40,10 +42,16 @@ export class FaceRetentionService {
                 { submittedAt: null, startedAt: { lt: cutoff } },
               ],
             },
+            AND: [notOnHold(now)],
           },
-          select: { id: true, referenceImagePath: true },
+          select: { id: true, referenceImagePath: true, organizationId: true, attempt: { select: { submittedAt: true, startedAt: true } } },
         }),
-      );
+      ] as const);
+      // Each row against its own company's days (the query used the shortest).
+      const expired = candidates.filter((r) => {
+        const at = r.attempt.submittedAt ?? r.attempt.startedAt;
+        return at !== null && pastRetention(at, r.organizationId, days, now);
+      });
       if (expired.length === 0) return 0;
 
       // One failed blob delete must not strand the remaining rows: the DB reference is cleared
@@ -65,7 +73,7 @@ export class FaceRetentionService {
           data: { referenceImagePath: null, embedding: null },
         }),
       );
-      this.logger.log(`Purged ${expired.length} face reference images older than ${RETENTION_DAYS} days`);
+      this.logger.log(`Purged ${expired.length} face reference images past their company's retention`);
       return expired.length;
     } catch (error) {
       // Retention is housekeeping -- never let it crash the app or spam on a DB blip.

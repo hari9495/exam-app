@@ -17,6 +17,8 @@ import {
 } from '@exam-platform/shared';
 import { PERMISSIONS_KEY, PERMISSIONS_ANY_KEY } from './permissions.decorator';
 import { SENSITIVE_ROLE_ACTION, STEP_UP_REQUIRED } from '../auth/step-up.decorator';
+import { ANSWER_KEY_WRITERS, SHOWS_ANSWER_KEYS } from './answer-keys';
+import { RESULTS_ALL_KEYS, RESULTS_KEY, SCOPES_RESULTS, scopeFrom } from './results-scope';
 
 // Endpoints gated by these permissions are the "admin console" for the company's admin IP
 // allow-list (YX-IAM-09): every sensitive-role permission (users, settings / security, billing,
@@ -43,10 +45,17 @@ export class MfaRequiredException extends ForbiddenException {
 }
 
 export class StepUpRequiredException extends ForbiddenException {
-  constructor() {
-    super({ statusCode: 403, code: STEP_UP_REQUIRED_CODE, message: 'Confirm it is you with your second factor to continue.' });
+  constructor(message = 'Confirm it is you with your second factor to continue.') {
+    super({ statusCode: 403, code: STEP_UP_REQUIRED_CODE, message });
   }
 }
+
+// Batch B item 1 (pay B12 / admin B4, answers 2360-2363): routes that run on these keys show or change other people's
+// pay, so they need a recent "Confirm it's you" when the company keeps the salary re-check on (the default). Own-pay keys
+// (*.own) and payroll queries are not salary pages; employees' own pay pages are not gated (answer 2361).
+export const isSalaryKey = (key: string) =>
+  !key.endsWith('.own') && key !== 'payroll.query.handle' && (key.startsWith('employee.salary.') || key.startsWith('pay.range.') || key.startsWith('payroll.'));
+export const SALARY_RECHECK_MESSAGE = 'Confirm it is you to open salary details.';
 
 // For handlers whose step-up need depends on the request body (e.g. a user edit that changes a
 // role): the same check PermissionsGuard applies to @RequireStepUp handlers.
@@ -94,10 +103,31 @@ export class PermissionsGuard implements CanActivate {
     }
 
     const allKeys = [...(requiredAll ?? []), ...(requiredAny ?? [])];
+    // The keys this request runs on: every "all" key plus the "any" keys the person holds. The admin-network and MFA
+    // floors follow those, not an "any" key the person lacks (a manager on a route HR shares was refused for HR's MFA).
+    let usedKeys = allKeys;
     if (allKeys.length > 0 && !user.actingSuperAdmin) {
-      await this.checkPermissions(user, request.ip, requiredAll, requiredAny, allKeys);
+      usedKeys = await this.checkPermissions(user, request.ip, requiredAll, requiredAny, allKeys);
     }
-    await this.checkMfa(user, allKeys, sensitiveAction);
+    const showsKeys = this.reflector.get<boolean>(SHOWS_ANSWER_KEYS, handler) === true;
+    const scopesResults = (this.reflector.get<boolean>(SCOPES_RESULTS, handler) ?? this.reflector.get<boolean>(SCOPES_RESULTS, cls)) === true;
+    const granted =
+      (showsKeys || scopesResults) && !user.actingSuperAdmin
+        ? await resolvePermissionGrants(this.prisma, this.tenantPrisma, { role: user.role, organizationId: user.organizationId ?? null, permissionProfileId: user.permissionProfileId, userId: user.userId ?? null }, [...ANSWER_KEY_WRITERS, ...RESULTS_ALL_KEYS, RESULTS_KEY])
+        : new Set<string>();
+    // AS-0 (answer 2004): whose test results this person reads on this route (YukthiX staff acting in a company read
+    // like a recruiter; they change nothing, OwnSessionChangesGuard).
+    if (scopesResults) request.resultsScope = user.actingSuperAdmin ? { mode: 'all' } : scopeFrom(granted, user.userId);
+    await this.checkMfa(user, usedKeys, sensitiveAction);
+    await this.checkSalaryRecheck(user, usedKeys);
+    // Security fix (answer keys): a route that returns questions learns whether this person writes tests or questions.
+    // Never while acting for someone else (YukthiX staff or impersonation read without the keys).
+    if (this.reflector.get<boolean>(SHOWS_ANSWER_KEYS, handler) === true) {
+      request.seesAnswerKeys =
+        !user.actingSuperAdmin &&
+        !user.impersonatorUserId &&
+        ANSWER_KEY_WRITERS.some((k) => granted.has(k));
+    }
     if (stepUp) {
       assertStepUp(user);
       await this.audit.record(
@@ -123,14 +153,7 @@ export class PermissionsGuard implements CanActivate {
     requiredAll: string[] | undefined,
     requiredAny: string[] | undefined,
     allKeys: string[],
-  ): Promise<void> {
-    // Tenant staff only: platform super admins are bound by staff controls (Q7), not tenant lists.
-    if (user.organizationId && user.role !== 'super_admin' && allKeys.some(isAdminConsolePermission)) {
-      const policy = await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId);
-      if (!ipAllowedForSurface(policy, 'admin', ip)) {
-        throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
-      }
-    }
+  ): Promise<string[]> {
     // Profile > per-org role override > global role default; see resolvePermissionGrants.
     const grantedKeys = await resolvePermissionGrants(this.prisma, this.tenantPrisma, {
       role: user.role,
@@ -145,11 +168,30 @@ export class PermissionsGuard implements CanActivate {
     if (requiredAny?.length && !requiredAny.some((key) => grantedKeys.has(key))) {
       throw new ForbiddenException(`Missing any of required permission(s): ${requiredAny.join(', ')}`);
     }
+    const usedKeys = [...(requiredAll ?? []), ...(requiredAny ?? []).filter((key) => grantedKeys.has(key))];
+    // Tenant staff only: platform super admins are bound by staff controls (Q7), not tenant lists.
+    if (user.organizationId && user.role !== 'super_admin' && usedKeys.some(isAdminConsolePermission)) {
+      const policy = await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId);
+      if (!ipAllowedForSurface(policy, 'admin', ip)) {
+        throw new ForbiddenException(NETWORK_NOT_ALLOWED_MESSAGE);
+      }
+    }
+    return usedKeys;
   }
 
   // YX-IAM-01: a sensitive-role permission (or a company requiring MFA for everyone) needs an AAL2
   // session once the enrolment grace has passed. YukthiX staff are a sensitive role whatever the
   // handler. No session state (never issued by JwtStrategy) fails closed.
+  // Batch B item 1: salary pages need a recent "Confirm it's you" while the company keeps the re-check on.
+  // Its own method so the e2e fixtures can leave it to the suite that tests it (test/fixtures/salary-recheck.ts).
+  async checkSalaryRecheck(user: RequestUser, usedKeys: string[]): Promise<void> {
+    if (!user.organizationId || !usedKeys.some(isSalaryKey)) return;
+    const policy = await loadTenantSecurityPolicy(this.tenantPrisma, user.organizationId);
+    if (policy.salaryRecheck && !(user.session && stepUpSatisfied(user.session, Date.now(), policy.salaryRecheckMinutes * 60))) {
+      throw new StepUpRequiredException(SALARY_RECHECK_MESSAGE);
+    }
+  }
+
   private async checkMfa(user: RequestUser, keys: string[], sensitiveAction: boolean): Promise<void> {
     if (user.session && mfaSatisfied(user.session)) {
       return;

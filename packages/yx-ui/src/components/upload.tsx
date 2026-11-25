@@ -36,12 +36,14 @@ export interface FileUploadProps {
   id?: string;
   /** Files already in the list, e.g. documents attached earlier. */
   defaultItems?: UploadItem[];
+  /** On a phone, open the camera instead of the file list ("environment": the back camera, for a document). */
+  capture?: 'environment' | 'user';
 }
 
 let seq = 0;
 
 /** Drag-and-drop or browse; type and size shown up front; per-file progress, scan status, retry (§31). */
-export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multiple = true, onItemsChange, disabled, id, defaultItems = [] }: FileUploadProps) {
+export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multiple = true, onItemsChange, disabled, id, defaultItems = [], capture }: FileUploadProps) {
   const { ctx, controlProps } = useFieldControl({ id, disabled });
   const inputRef = useRef<HTMLInputElement>(null);
   const hintId = useId();
@@ -135,6 +137,7 @@ export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multipl
           aria-label={ctx || id ? undefined : 'Choose files to upload'}
           multiple={multiple}
           accept={accept?.join(',')}
+          capture={capture}
           disabled={disabled}
           onChange={(e) => {
             if (e.target.files) addFiles(e.target.files);
@@ -158,7 +161,7 @@ export function FileUpload({ upload, accept, maxSize = 10 * 1024 * 1024, multipl
                   )}
                   {it.status === 'done' && (
                     <>
-                      <Icon icon={CheckCircle2} /> Uploaded · {formatBytes(it.file.size)}
+                      <Icon icon={CheckCircle2} /> Uploaded{it.file.size > 0 && ` · ${formatBytes(it.file.size)}`}
                     </>
                   )}
                   {it.status === 'error' && (

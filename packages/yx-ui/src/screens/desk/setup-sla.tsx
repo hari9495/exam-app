@@ -3,7 +3,8 @@ import { Plus } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
@@ -73,7 +74,11 @@ function PolicyForm({ kind, detail, calendars, initial, onSave, saveLabel }: { k
   const [from, setFrom] = useState('');
   const set = (i: number, t: SlaTarget) => setRows(rows.map((r, j) => (j === i ? t : r)));
   const free = METRICS[kind].filter((m) => !rows.some((r) => r.metric === m.value));
-  const ok = rows.length > 0 && rows.every((r) => r.minutes.some((m) => m !== null)) && (source === 'desk' || calendarId);
+  const { toast } = useToast();
+  const early = useTooEarly(source === 'calendar' && !calendarId ? [{ fieldId: 'sla-cal', message: 'Choose the calendar.' }] : []);
+  const emptyRow = rows.find((r) => r.minutes.every((m) => m === null));
+  const tooEarly = () =>
+    !rows.length ? (toast({ title: 'Add at least one target first.' }), true) : emptyRow ? (toast({ title: `Give ${metricLabel(emptyRow.metric).toLowerCase()} a time for at least one priority.` }), true) : early.stop();
   return (
     <div className="yx-ops-stack">
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
@@ -124,7 +129,7 @@ function PolicyForm({ kind, detail, calendars, initial, onSave, saveLabel }: { k
         <Segment label="Business hours" options={[{ value: 'desk', label: 'The desk’s calendar' }, { value: 'calendar', label: 'Another calendar' }]} value={source} onChange={setSource} />
       </FormField>
       {source === 'calendar' && (
-        <FormField label="Calendar" required>
+        <FormField id="sla-cal" label="Calendar" required error={early.errorOf('sla-cal')}>
           <Select value={calendarId} onChange={setCalendarId} options={calendars.map((c) => ({ value: c.id, label: `${c.name} · ${c.timeZone}` }))} />
         </FormField>
       )}
@@ -148,9 +153,9 @@ function PolicyForm({ kind, detail, calendars, initial, onSave, saveLabel }: { k
       <div className="yx-ops-row">
         <Button
           variant="primary"
-          disabled={!ok}
           loading={busy === 'save'}
           onClick={() =>
+            !tooEarly() &&
             void run('save', () =>
               onSave({
                 scope: { match: 'all', rules: [...(priorities.length ? [{ field: 'priority', op: 'in' as const, values: priorities }] : []), ...(categories.length ? [{ field: 'category', op: 'in' as const, values: categories }] : [])] },
@@ -242,6 +247,7 @@ export function SlaTab(p: SlaTabProps) {
 /** US-G-015: monthly targets, the month so far and an at-risk warning. */
 function ComplianceCard(p: SlaTabProps) {
   const { busy, error, run } = useRun();
+  const { toast } = useToast();
   const [rows, setRows] = useState(p.setup?.complianceTargets ?? []);
   const can = p.detail.canSetUp;
   return (
@@ -298,7 +304,7 @@ function ComplianceCard(p: SlaTabProps) {
               <Button size="sm" icon={Plus} onClick={() => setRows([...rows, { metric: 'resolution', priority: null, targetPercent: 95 }])}>
                 Add a target
               </Button>
-              <Button size="sm" variant="primary" loading={busy === 'targets'} disabled={rows.some((r) => !r.targetPercent || r.targetPercent > 100)} onClick={() => void run('targets', () => p.onSaveTargets(rows))}>
+              <Button size="sm" variant="primary" loading={busy === 'targets'} onClick={() => (rows.some((r) => !r.targetPercent || r.targetPercent > 100) ? toast({ title: 'Give each target a percent from 1 to 100.' }) : void run('targets', () => p.onSaveTargets(rows)))}>
                 Save targets
               </Button>
             </span>
@@ -325,6 +331,8 @@ export function WorkSetupTab(p: WorkSetupProps) {
   const [lines, setLines] = useState('');
   const can = p.detail.canSetUp;
   const code = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40);
+  const codeEarly = useTooEarly(code ? [] : [{ fieldId: 'ws-code', message: 'Name the code, with at least one letter or digit.' }]);
+  const tplEarly = useTooEarly(name.trim() ? [] : [{ fieldId: 'ws-tpl', message: 'Name the template.' }]);
   return (
     <div className="yx-ops-stack">
       {error && <InlineAlert tone="danger">{error}</InlineAlert>}
@@ -338,8 +346,10 @@ export function WorkSetupTab(p: WorkSetupProps) {
           ))}
           {can && (
             <span className="yx-ops-row">
-              <TextField size="sm" aria-label="New resolution code" placeholder="e.g. Fixed" value={label} onChange={setLabel} maxLength={100} />
-              <Button size="sm" disabled={!code} loading={busy === 'code'} onClick={() => void run('code', async () => { await p.onSaveCode(null, { code, label: label.trim() }); setLabel(''); })}>
+              <FormField id="ws-code" label="New resolution code" hideLabel error={codeEarly.errorOf('ws-code')}>
+                <TextField size="sm" placeholder="e.g. Fixed" value={label} onChange={setLabel} maxLength={100} />
+              </FormField>
+              <Button size="sm" loading={busy === 'code'} onClick={() => !codeEarly.stop() && void run('code', async () => { await p.onSaveCode(null, { code, label: label.trim() }); setLabel(''); })}>
                 Add code
               </Button>
             </span>
@@ -356,7 +366,7 @@ export function WorkSetupTab(p: WorkSetupProps) {
           ))}
           {can && (
             <>
-              <FormField label="Template name">
+              <FormField id="ws-tpl" label="Template name" error={tplEarly.errorOf('ws-tpl')}>
                 <TextField size="sm" value={name} onChange={setName} maxLength={100} />
               </FormField>
               <FormField label="Category" optional>
@@ -366,7 +376,7 @@ export function WorkSetupTab(p: WorkSetupProps) {
                 <TextArea value={lines} onChange={setLines} rows={4} />
               </FormField>
               <div className="yx-ops-row">
-                <Button size="sm" disabled={!name.trim()} loading={busy === 'tpl'} onClick={() => void run('tpl', async () => { await p.onSaveTemplate(null, { name: name.trim(), defaults: category ? { categoryId: category } : {}, checklist: lines.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 30) }); setName(''); setLines(''); })}>
+                <Button size="sm" loading={busy === 'tpl'} onClick={() => !tplEarly.stop() && void run('tpl', async () => { await p.onSaveTemplate(null, { name: name.trim(), defaults: category ? { categoryId: category } : {}, checklist: lines.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 30) }); setName(''); setLines(''); })}>
                   Add template
                 </Button>
               </div>

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
+import { AuditService, TenantPrismaService, TenantContext } from '@exam-platform/shared';
+import { BIN_KINDS, CHILDREN_KEY, childModels, isBinKind, keepDays, revive } from './bin';
 
 // Single source for the four recycle-bin-eligible entities (T1's soft-delete columns / T2's
 // SOFT_DELETE_MODELS list) -- entityType is the stable, url-safe string used on the wire;
@@ -19,6 +20,8 @@ export function isEntityType(value: string): value is EntityType {
   return Object.prototype.hasOwnProperty.call(ENTITY_TYPES, value);
 }
 
+const HIRING_WHAT: Record<EntityType, string> = { candidate: 'Candidate', job: 'Job', pipeline: 'Hiring pipeline', 'walk-in-group': 'Walk-in group' };
+
 export interface RecycleBinEntry {
   entityType: EntityType;
   id: string;
@@ -30,6 +33,67 @@ export interface RecycleBinEntry {
 @Injectable()
 export class RecycleBinService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
+
+  // ---- Batch B item 3 (admin B2): the YukthiX-wide recycle bin (recycle_bin_items) plus hiring's soft-deleted rows ----
+
+  /** Everything in the company's bin, newest first, with when it goes for good (deleted day + the company's keep days). */
+  async items(context: TenantContext) {
+    const org = context.organizationId as string;
+    const { days, bin, people } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const days = await keepDays(tx, org);
+      const bin = await tx.recycleBinItem.findMany({ where: { organizationId: org }, orderBy: { deletedAt: 'desc' }, take: 500, select: { id: true, kind: true, label: true, deletedAt: true, deletedBy: true } });
+      const ids = [...new Set(bin.map((b) => b.deletedBy).filter((x): x is string => Boolean(x)))];
+      const people = ids.length ? await tx.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } }) : [];
+      return { days, bin, people };
+    });
+    const hiring = await this.list(context);
+    const nameOf = new Map(people.map((p) => [p.id, p.name || p.email]));
+    const until = (d: Date) => new Date(d.getTime() + days * 86_400_000);
+    const rows = [
+      ...bin.map((b) => ({ id: b.id, source: 'bin' as const, kind: b.kind, what: isBinKind(b.kind) ? BIN_KINDS[b.kind].what : b.kind, area: isBinKind(b.kind) ? BIN_KINDS[b.kind].area : 'Other', label: b.label, deletedAt: b.deletedAt, deletedBy: b.deletedBy ? (nameOf.get(b.deletedBy) ?? null) : null, purgeOn: until(b.deletedAt) })),
+      // Hiring keeps its own soft delete (30 days, its nightly job); shown here so HR has one place to look.
+      ...hiring.map((h) => ({ id: h.id, source: 'hiring' as const, kind: h.entityType, what: HIRING_WHAT[h.entityType], area: 'Hiring', label: h.label, deletedAt: h.deletedAt, deletedBy: null, purgeOn: new Date(h.deletedAt.getTime() + 30 * 86_400_000) })),
+    ];
+    return { keepDays: days, items: rows.sort((a, b) => b.deletedAt.getTime() - a.deletedAt.getTime()) };
+  }
+
+  /** Puts a deleted record back with its own id; 409 when something now holds its name or a record it needs is gone. */
+  async restoreItem(context: TenantContext, actorUserId: string, id: string) {
+    try {
+      return await this.tenantPrisma.forTenant(context, async (tx) => {
+        const item = await tx.recycleBinItem.findFirst({ where: { id, organizationId: context.organizationId as string } });
+        if (!item || !isBinKind(item.kind)) throw new NotFoundException('That item is not in the recycle bin.');
+        const { [CHILDREN_KEY]: kids, ...row } = item.data as Record<string, unknown>;
+        await (tx as any)[BIN_KINDS[item.kind].model].create({ data: revive(BIN_KINDS[item.kind].model, row) });
+        // Answer 2439: the child rows come back too, in the order the kind lists them (only models the kind allows).
+        const stored = (kids ?? {}) as Record<string, Record<string, unknown>[]>;
+        for (const m of childModels(item.kind)) if (stored[m]?.length) await (tx as any)[m].createMany({ data: stored[m].map((r) => revive(m, r)) });
+        await tx.recycleBinItem.delete({ where: { id } });
+        await AuditService.recordIn(tx, context, { actorUserId, action: `${item.kind}.restored`, entityType: item.kind, entityId: item.entityId, metadata: { name: item.label, from: 'recycle_bin' } });
+        return { id, kind: item.kind, entityId: item.entityId, label: item.label };
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2002', 'P2003', 'P2025'].includes(error.code)) {
+        throw new ConflictException(
+          error.code === 'P2002'
+            ? 'It cannot come back: a record with the same name or code exists now. Rename or delete that one first.'
+            : 'It cannot come back: a record it belongs to is gone. Restore that one first.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** Deletes a bin item for good (a step-up action; audited). */
+  async purgeItem(context: TenantContext, actorUserId: string, id: string) {
+    await this.tenantPrisma.forTenant(context, async (tx) => {
+      const item = await tx.recycleBinItem.findFirst({ where: { id, organizationId: context.organizationId as string }, select: { kind: true, entityId: true, label: true } });
+      if (!item) throw new NotFoundException('That item is not in the recycle bin.');
+      await tx.recycleBinItem.delete({ where: { id } });
+      await AuditService.recordIn(tx, context, { actorUserId, action: 'recycle_bin.purged', entityType: item.kind, entityId: item.entityId, metadata: { name: item.label } });
+    });
+    return { success: true };
+  }
 
   async list(context: TenantContext): Promise<RecycleBinEntry[]> {
     const entries = await this.tenantPrisma.forTenantIncludingDeleted(context, async (tx) => {

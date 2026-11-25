@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { ToastProvider } from '@yukthix/ui';
 import { apiFetch } from '../../lib/api-client';
 import { useAuth } from '../../lib/auth-context';
 import YxReviewCyclePage from './(app)/performance/cycles/[id]/page';
@@ -11,8 +12,8 @@ jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn() }));
 jest.mock('../../lib/auth-context', () => ({ useAuth: jest.fn() }));
 
-// Review cycles and reviews wired to /performance (M06 batch PM4, PM-4.08).
-const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{ui}</QueryClientProvider>);
+// PRF-04 control room, PRF-05 review workspace and PRF-06 acknowledgement wired to /performance (performance builder 1).
+const wrap = (ui: React.ReactElement) => render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><ToastProvider>{ui}</ToastProvider></QueryClientProvider>);
 const api = apiFetch as jest.Mock;
 function route(table: Record<string, unknown>) {
   api.mockImplementation(async (path: string, init?: RequestInit) => {
@@ -31,61 +32,70 @@ beforeEach(() => {
   (useAuth as jest.Mock).mockReturnValue({ accessToken: 'tok', role: 'org_admin', actingSuperAdmin: false, isLoading: false, logout: jest.fn() });
 });
 
-const CYCLE = { id: 'c1', name: 'FY annual', kind: 'annual', periodFrom: '2025-04-01', periodTo: '2026-03-31', templateId: 't1', scaleId: 's1', population: null, stages: [{ key: 'manager', dueOn: '2026-10-31' }], eligibilityRules: { cutoffMonths: 3, rateLeavers: false }, status: 'draft', launchedAt: null, version: 2 };
+const CYCLE = { id: 'c1', name: 'FY annual', kind: 'annual', periodFrom: '2025-04-01', periodTo: '2026-03-31', templateId: 't1', scaleId: 's1', population: null, stages: [{ key: 'self', dueOn: '2026-11-10' }, { key: 'manager', dueOn: '2026-11-20' }], eligibilityRules: { cutoffMonths: 3, rateLeavers: false }, status: 'launched', launchedAt: '2026-11-01T09:00:00.000Z', version: 2 };
+const REVIEW = { id: 'r1', cycle: { id: 'c1', name: 'FY annual', periodFrom: '2025-04-01', periodTo: '2026-03-31', stages: [{ key: 'self', dueOn: '2026-11-10' }, { key: 'manager', dueOn: '2026-11-20' }] }, employee: 'Arjun', employeeId: 'e1', manager: 'Priya', role: 'employee', status: 'open', next: { stage: 'self', label: 'Self review', owner: 'Arjun', dueOn: '2026-11-10' }, template: { name: 'Annual', scoring: 'weighted', levels: [{ value: 3, label: 'Meets' }, { value: 4, label: 'Exceeds' }], sections: [{ id: 'g', kind: 'goals', title: 'Goals', weight: 100, rated: true, whoAnswers: ['self', 'manager'], questions: [{ id: 'g', text: 'Goals', answer: 'both', required: false, maxChars: 2000, wholeSection: true }] }] }, goals: [], self: null, selfSubmitted: false, managerEntry: null, finalScore: null, band: null, excludedSections: [], trail: [], can: { self: true, manager: false }, version: 1 };
 
-describe('Review cycles and reviews (M06 batch PM4)', () => {
-  it('the check runs, then the cycle starts with its version', async () => {
+describe('PRF-04 … 06 live (performance builder 1)', () => {
+  it('the control room shows the names behind a stage and reminds overdue owners', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'c1' });
-    const launched: unknown[] = [];
+    const posted: unknown[] = [];
     route({
-      'GET /rbac/me/permissions': [],
+      'GET /rbac/me/permissions': ['perf.cycle.manage'],
       'GET /performance/cycles/c1': CYCLE,
-      'GET /performance/cycle-templates': [],
+      'GET /performance/cycles/c1/funnel': [{ stage: 'self', label: 'Self review', count: 2 }, { stage: 'manager', label: 'Manager review', count: 1 }],
+      'GET /performance/cycles/c1/overdue': [{ ownerEmployeeId: 'e1', owner: 'Arjun Rao', stage: 'Self review', count: 1 }],
+      'GET /performance/cycles/c1/eligibility': [],
+      'GET /performance/cycles/c1/disagreements': [],
+      'GET /performance/cycles/c1/calibrations': { bands: [], sessions: [] },
+      'GET /performance/calibration-facilitators': [],
       'GET /org/masters/departments': [],
-      'POST /performance/cycles/c1/preflight': { problems: [], reviewed: 3, excluded: 1, protectedLeave: 1, leavers: 0 },
-      'POST /performance/cycles/c1/launch': (_p: string, init: RequestInit) => (launched.push(JSON.parse(String(init.body))), { reviews: 3 }),
+      'GET /performance/cycles/c1/funnel/people': [{ reviewId: 'r1', employee: 'Arjun Rao', owner: 'Arjun Rao', dueOn: '2026-11-10', overdue: true }],
+      'POST /performance/cycles/c1/remind': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), { reminded: 1 }),
     });
     wrap(<YxReviewCyclePage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Run the check' }));
-    expect(await screen.findByText(/3 people reviewed/)).toBeInTheDocument();
-    await userEvent.click(screen.getByRole('button', { name: 'Start the cycle' }));
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Start' }));
-    await waitFor(() => expect(launched).toEqual([{ version: 2 }]));
+    await userEvent.click(await screen.findByRole('link', { name: 'Self review' }));
+    expect(await within(await screen.findByRole('dialog')).findByText('Arjun Rao')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: 'Remind all overdue owners' }));
+    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Send reminders' }));
+    await waitFor(() => expect(posted).toEqual([{ overdueOnly: true }]));
   });
 
   it('a self review saves its draft to the self entry', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'r1' });
     const put: unknown[] = [];
-    const review = { id: 'r1', cycle: { id: 'c1', name: 'FY annual', periodFrom: '2025-04-01', periodTo: '2026-03-31', stages: [] }, employee: 'Arjun', employeeId: 'e1', manager: 'Priya', role: 'employee', status: 'open', next: { stage: 'self', label: 'Self review', owner: 'Arjun', dueOn: null }, template: { name: 'Annual', scoring: 'weighted', levels: [{ value: 3, label: 'Meets' }], sections: [{ id: 'g', kind: 'goals', title: 'Goals', weight: 100, rated: true, whoAnswers: ['self'], questions: [{ id: 'g', text: 'Goals', answer: 'both', required: false, maxChars: 2000, wholeSection: true }] }] }, goals: [], self: null, selfSubmitted: false, managerEntry: null, finalScore: null, band: null, excludedSections: [], trail: [], can: { self: true, manager: false }, version: 1 };
     route({
       'GET /rbac/me/permissions': [],
-      'GET /performance/reviews/r1': review,
-      'PUT /performance/reviews/r1/entries/self': (_p: string, init: RequestInit) => (put.push(JSON.parse(String(init.body))), review),
+      'GET /performance/reviews/r1': REVIEW,
+      'GET /performance/reviews/r1/nominations': { peer: null, nominations: [], can: { propose: false, decide: false, add: false } },
+      'PUT /performance/reviews/r1/entries/self': (_p: string, init: RequestInit) => (put.push(JSON.parse(String(init.body))), REVIEW),
     });
     wrap(<YxReviewPage />);
-    await userEvent.click(await screen.findByRole('radio', { name: '3 · Meets' }));
+    await userEvent.click(await screen.findByRole('radio', { name: '4 · Exceeds' }));
     await userEvent.click(screen.getByRole('button', { name: 'Save draft' }));
-    await waitFor(() => expect(put).toEqual([{ answers: [{ questionId: 'g', rating: 3, text: null }], overallRating: null }]));
+    await waitFor(() => expect(put).toEqual([{ answers: [{ questionId: 'g', rating: 4, text: null }], overallRating: null, comment: null }]));
   });
 
-  it('after release the employee acknowledges and disagrees through their own routes', async () => {
+  it('after release the employee acknowledges with a disagreement in one step; a short reason is refused', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'r1' });
-    const posted: [string, unknown][] = [];
-    const review = { id: 'r1', cycle: { id: 'c1', name: 'FY annual', periodFrom: '2025-04-01', periodTo: '2026-03-31', stages: [] }, employee: 'Arjun', employeeId: 'e1', manager: 'Priya', role: 'employee', status: 'released', next: { stage: 'done', label: 'Released', owner: 'Arjun', dueOn: null }, template: { name: 'Annual', scoring: 'weighted', levels: [], sections: [] }, goals: [], self: null, selfSubmitted: true, managerEntry: null, finalScore: 4, band: 'Exceeds', excludedSections: [], trail: [], released: { at: '2026-11-20T09:00:00.000Z', acknowledgedAt: null, acknowledgeComment: null, disagreeBy: '2026-12-05' }, disagreements: [], can: { self: false, manager: false, acknowledge: true, disagree: true }, version: 3 };
-    const post = (path: string) => (_p: string, init: RequestInit) => (posted.push([path, JSON.parse(String(init.body))]), review);
+    const posted: unknown[] = [];
+    const released = { ...REVIEW, status: 'released', next: { stage: 'done', label: 'Released', owner: 'Arjun', dueOn: null }, finalScore: 4, band: 'Exceeds', sectionScores: [{ title: 'Goals', score: 4 }], managerEntry: { status: 'submitted', answers: {}, overallRating: null, comment: 'Strong year.', submittedAt: null, version: 1 }, released: { at: '2026-11-20T09:00:00.000Z', acknowledgedAt: null, acknowledgeComment: null, disagreeBy: '2026-12-05' }, disagreements: [], can: { self: false, manager: false, acknowledge: true, disagree: true }, version: 3 };
     route({
       'GET /rbac/me/permissions': [],
-      'GET /performance/reviews/r1': review,
-      'POST /performance/reviews/r1/acknowledge': post('ack'),
-      'POST /performance/reviews/r1/disagree': post('disagree'),
+      'GET /performance/reviews/r1': released,
+      'GET /performance/reviews/r1/nominations': { peer: null, nominations: [], can: { propose: false, decide: false, add: false } },
+      'POST /performance/reviews/r1/acknowledge': (_p: string, init: RequestInit) => (posted.push(JSON.parse(String(init.body))), released),
     });
     wrap(<YxReviewPage />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Acknowledge' }));
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Acknowledge' }));
-    await waitFor(() => expect(posted).toEqual([['ack', { comment: null }]]));
-    await userEvent.click(screen.getByRole('button', { name: /^Disagree/ }));
-    await userEvent.type(within(screen.getByRole('dialog')).getByRole('textbox', { name: /What you disagree with/ }), 'Mine.');
-    await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Send to HR' }));
-    await waitFor(() => expect(posted[1]).toEqual(['disagree', { text: 'Mine.' }]));
+    expect(await screen.findByText('Strong year.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: /I disagree with this rating/ }));
+    await userEvent.type(screen.getByRole('textbox', { name: /What do you disagree with/ }), 'Too short');
+    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and send disagreement' }));
+    expect(screen.getByText(/at least 20 characters/)).toBeInTheDocument();
+    expect(posted).toEqual([]);
+    await userEvent.type(screen.getByRole('textbox', { name: /What do you disagree with/ }), ' and it misses the vendor delay.');
+    await userEvent.click(screen.getByRole('button', { name: 'Acknowledge and send disagreement' }));
+    await waitFor(() => expect(posted).toEqual([{ comment: null, disagreement: 'Too short and it misses the vendor delay.' }]));
+    expect(await screen.findByText('Review acknowledged')).toBeInTheDocument();
   });
 });

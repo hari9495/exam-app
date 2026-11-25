@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { AuditService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { button, details, noticeEmail } from '../email/account-emails';
@@ -7,6 +7,7 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { FieldDef, Group, RecordValues, RuleError, evaluate, parseGroup } from '../rules-engine/conditions';
 import { ApprovalCards } from './approval-channels';
+import { ApprovalPolicies } from './approval-policies';
 
 // P03 approvals engine (shared platform engine, built first for the Service Desk catalogue, SD-2.05; leave, expenses
 // and the rest plug in later by registering a request type). A request freezes its route at submit (YX-WF-02): every
@@ -20,7 +21,7 @@ import { ApprovalCards } from './approval-channels';
 //   - approvers see only the summary the module chose for them (never the record itself, never sensitive answers);
 //   - auto-approve / auto-reject after a timeout only for request types that allow it and are not high risk (P03 Q2).
 
-export type ApproverSpec = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string };
+export type ApproverSpec = { kind: 'manager'; level?: number } | { kind: 'cost_centre_owner'; field: string } | { kind: 'app_owner'; field: string } | { kind: 'users'; userIds: string[] } | { kind: 'user_group'; groupId: string } | { kind: 'hr' };
 export interface StepSpec {
   name: string;
   approvers: ApproverSpec[];
@@ -40,7 +41,7 @@ export interface StepSpec {
 export interface FrozenStep extends StepSpec {
   approverIds: string[];
   need: number;
-  state: 'waiting' | 'open' | 'approved' | 'rejected' | 'skipped';
+  state: 'waiting' | 'open' | 'approved' | 'rejected' | 'skipped' | 'sent_back';
 }
 
 export type Outcome = 'approved' | 'rejected';
@@ -50,8 +51,9 @@ export interface RequestType {
   risk: 'low' | 'normal' | 'high';
   /** The company may turn on auto-approve / auto-reject after a timeout (never for high risk). */
   autoActions: boolean;
-  /** Effects, run in the decision's own transaction (exactly once). */
-  onDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: Outcome): Promise<void>;
+  /** Effects, run in the decision's own transaction (exactly once). Work outside the database (an email) goes to
+   *  afterCommit: it runs only once the decision is saved, never when the transaction fails. */
+  onDecided(tx: Tx, req: Prisma.WfRequestGetPayload<object>, outcome: Outcome, afterCommit?: (fn: () => Promise<void>) => void): Promise<void>;
   /** Where the requester follows the request. */
   requesterLink(req: Prisma.WfRequestGetPayload<object>): string;
   /**
@@ -66,6 +68,21 @@ export interface RequestType {
   decideOnlyVia?: string;
   /** Maker ≠ checker across steps: whoever approved one step never approves a later one of the same request. */
   distinctSteps?: boolean;
+  /**
+   * Home's one-click Approve (PLT-02): the approver needs to give nothing and the request is simple to judge from its row
+   * (leave, work from home, a timesheet). It only shows the button; the decision goes through decide() with every check.
+   */
+  quickApprove?: boolean;
+  /** A short note per inbox row ("Over the policy limit…"), for this approver's open requests of the type, in one query. */
+  inboxNotes?(tx: Tx, reqs: Prisma.WfRequestGetPayload<object>[]): Promise<Map<string, string>>;
+  /**
+   * "Send back for changes": only types that have it. `allowed` (a company setting) says whether this request may be sent
+   * back now; `apply` runs in the decision's transaction and returns the request to the person who asked.
+   */
+  sendBack?: {
+    allowed(tx: Tx, req: Prisma.WfRequestGetPayload<object>): Promise<boolean>;
+    apply(tx: Tx, req: Prisma.WfRequestGetPayload<object>, reason: string): Promise<void>;
+  };
 }
 
 /** decide() options: the module screen that may decide a decideOnlyVia request. */
@@ -91,6 +108,11 @@ export interface SubmitInput {
   payloadFields: FieldDef[];
   /** Who approves a step nobody else can (e.g. the desk's leads). The company's HR Admins are told when it happens. */
   fallbackUserIds: string[];
+  /**
+   * How the HR Admins' notice names those people and what to check, per module. Default (HR fallbacks: leave, time,
+   * performance, exits): "HR" and the person's manager.
+   */
+  fallbackWording?: { who: string; check: string };
   /** 'high' for this request only (e.g. a costly order): it then never auto-approves or auto-rejects on timeout. */
   risk?: 'high';
 }
@@ -100,12 +122,15 @@ export interface SubmitInput {
  * step's internal name ("Leave: Manager: …"). `who` is the person the request is from; a title that already starts with
  * their name ("Arjun Kulkarni: Casual leave, 21 Oct (1 day)") is not repeated.
  */
-export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text'>, who: string | null, toRequester: boolean): string {
+export function approvalSubject(n: Pick<Notice, 'type' | 'title' | 'text' | 'reason'>, who: string | null, toRequester: boolean): string {
   const what = who && n.title.startsWith(`${who}: `) ? n.title.slice(who.length + 2) : n.title;
-  const asks = who ? `${who} asks for ${what}` : `A request waits for you: ${what}`;
+  // A request about the asker themself ("Resignation of Arjun Kulkarni") reads "Resignation from Arjun Kulkarni".
+  const about = who && what.endsWith(` of ${who}`) ? `${what.slice(0, -(who.length + 4))} from ${who}` : null;
+  const asks = about ?? (who ? `${who} asks for ${what}` : `A request waits for you: ${what}`);
   if (n.type === 'workflow.approval.reminder') return `Still waiting for your approval: ${asks}`;
   if (n.type === 'workflow.approval.needed') return n.text.startsWith('Escalated to you') ? `Escalated to you: ${asks}` : asks;
-  if (n.type === 'workflow.approval.decided' && toRequester) return `${n.text === 'Approved' ? 'Approved' : 'Not approved'}: your request for ${what}`;
+  // To the person who asked: what was decided (and for whom, as the title says), then why it was turned down.
+  if (n.type === 'workflow.approval.decided' && toRequester) return n.text === 'Approved' ? `${what} approved` : n.text === SENT_BACK ? `${what} sent back for changes${n.reason ? `: ${n.reason}` : ''}` : `${what} not approved${n.reason ? `: ${n.reason}` : ''}`;
   return `${n.text}: ${n.title}`;
 }
 
@@ -120,9 +145,17 @@ export interface Notice {
   actor?: string | null;
   /** The notice goes to the person who asked (their request was decided): named in the subject, no avatar of themselves. */
   toRequester?: string;
+  /** Why it was not approved (the approver's reason, or the timeout), told to the person who asked. */
+  reason?: string | null;
+  /** Not a message: the request type's own after-commit work (RequestType.onDecided's afterCommit). */
+  run?: () => Promise<void>;
 }
 
 const MAX = { steps: 6, approvers: 5, users: 25 };
+/** The requester's notice text when an approver sends the request back. */
+export const SENT_BACK = 'Sent back for changes';
+/** The no-approver notice for modules whose fallback approvers are HR. */
+export const DEFAULT_FALLBACK = { who: 'HR', check: "Check the person's manager on their record" };
 const hours = (h: number) => h * 3_600_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -147,6 +180,11 @@ export function parseSteps(input: unknown, payloadFields: FieldDef[]): StepSpec[
       if (a.kind === 'cost_centre_owner') {
         if (typeof a.field !== 'string' || !payloadFields.some((f) => f.key === a.field)) throw new RuleError(`"${name}": choose the form field that holds the cost centre.`);
         return { kind: 'cost_centre_owner', field: a.field };
+      }
+      // Helpdesk plan item 3: the owner of the business application picked in the form.
+      if (a.kind === 'app_owner') {
+        if (typeof a.field !== 'string' || !payloadFields.some((f) => f.key === a.field)) throw new RuleError(`"${name}": choose the form field that holds the application.`);
+        return { kind: 'app_owner', field: a.field };
       }
       if (a.kind === 'users') {
         if (!Array.isArray(a.userIds) || !a.userIds.length || a.userIds.length > MAX.users || a.userIds.some((u) => typeof u !== 'string' || !UUID.test(u))) throw new RuleError(`"${name}": choose 1 to ${MAX.users} people.`);
@@ -208,15 +246,47 @@ export function verdict(s: Pick<FrozenStep, 'need' | 'rejectOn'>, n: number, app
   return 'open';
 }
 
+/** One row of "what waits for me" (GET /workflow/approvals/inbox). */
+export interface InboxItem {
+  taskId: string;
+  requestId: string;
+  type: string;
+  title: string;
+  /** Label / value pairs, as a request stores them. */
+  summary: Prisma.JsonValue;
+  requester: string;
+  raisedBy: string | null;
+  onBehalfOf: string | null;
+  person: string;
+  step: { index: number; of: number; name: string; need: number; approvers: number };
+  dueAt: Date | null;
+  submittedAt: Date;
+  decideAt: string | null;
+  /** The approver may send it back for changes (the type has it and the company allows it). */
+  canSendBack?: boolean;
+  /** One-click Approve on Home (the type is simple and is not decided on its own page). */
+  quickApprove?: boolean;
+  /** Short context for the row, from the type (inboxNotes). */
+  note?: string | null;
+}
+
+/**
+ * Approvals a module decides in its own flow rather than as a workflow request (e.g. job changes, P06), that still wait
+ * for this person. Their rows join the inbox and its counts, and always link to the module's page to decide (decideAt).
+ */
+export type InboxSource = (tx: Tx, ctx: CompanyContext, userId: string) => Promise<InboxItem[]>;
+
 @Injectable()
 export class ApprovalsEngine {
   private readonly logger = new Logger(ApprovalsEngine.name);
   private readonly types = new Map<string, RequestType>();
+  private readonly sources: InboxSource[] = [];
 
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
     private readonly cards: ApprovalCards,
+    private readonly policies?: ApprovalPolicies,
   ) {}
 
   /** SD-2.06: whether a request's words may leave the app (fails closed). */
@@ -228,6 +298,16 @@ export class ApprovalsEngine {
   /** A module registers its request types once, at start-up (P03 §4.1). */
   register(t: RequestType) {
     this.types.set(t.key, t);
+  }
+
+  /** A module adds what waits in its own approval flow to everyone's inbox (once, at start-up). */
+  registerInboxSource(source: InboxSource) {
+    this.sources.push(source);
+  }
+
+  /** The rows the registered sources hold for this person (the inbox and the side-menu count both use it). */
+  async sourceItems(tx: Tx, ctx: CompanyContext, userId: string): Promise<InboxItem[]> {
+    return (await Promise.all(this.sources.map((s) => s(tx, ctx, userId)))).flat();
   }
 
   /** The person-facing name of a request type ("Leave", "Expense claim"), for search results. */
@@ -269,7 +349,15 @@ export class ApprovalsEngine {
       const row = await tx.costCentre.findFirst({ where: { organizationId: org, id: cc, archivedAt: null }, select: { ownerUserId: true } });
       return row?.ownerUserId ? [row.ownerUserId] : [];
     }
+    if (a.kind === 'app_owner') {
+      const app = input.payload[a.field];
+      if (typeof app !== 'string' || !UUID.test(app)) return [];
+      const row = await tx.sdBusinessApp.findFirst({ where: { organizationId: org, id: app, status: 'active' }, select: { ownerUserId: true } });
+      return row ? [row.ownerUserId] : [];
+    }
     if (a.kind === 'users') return a.userIds;
+    // S-6 (answer 1330): the company's HR Admins.
+    if (a.kind === 'hr') return this.hrAdmins(tx, org);
     return (await tx.userGroupMember.findMany({ where: { organizationId: org, groupId: a.groupId }, select: { userId: true }, take: MAX.users })).map((m) => m.userId);
   }
 
@@ -315,7 +403,12 @@ export class ApprovalsEngine {
     const fallback = await this.active(tx, org, input.fallbackUserIds);
     const steps: FrozenStep[] = [];
     const noApprover: string[] = [];
-    for (const s of input.steps) {
+    // Settings S-6 (answer 1330): the company's own steps for this request type, when it set them (a request the module
+    // decides at once, with no steps, stays that way).
+    const own = input.steps.length && this.policies ? await this.policies.stepsFor(tx, ctx, input.type) : null;
+    // Answer 1765: built-in steps of a people request take the company's reminder and escalation hours too.
+    const builtIn = own || !this.policies ? input.steps : await this.policies.builtIn(tx, ctx, input.type, input.steps);
+    for (const s of own ?? builtIn) {
       const skip = s.skipIf ? evaluate(s.skipIf, input.payload, input.payloadFields).pass : false;
       let ids = await this.active(tx, org, (await Promise.all(s.approvers.map((a) => this.resolve(tx, org, a, input)))).flat());
       const self = s.selfApproval === 'allowed';
@@ -349,7 +442,7 @@ export class ApprovalsEngine {
     await AuditService.recordIn(tx, ctx, { actorUserId: input.raisedByUserId ?? input.requesterUserId, action: 'workflow.request.submitted', entityType: 'wf_request', entityId: req.id, metadata: { type: type.key, subjectType: input.subjectType, subjectId: input.subjectId, steps: steps.map((s) => ({ name: s.name, approvers: s.approverIds, state: s.state })) } });
     const notices: Notice[] = [];
     // Founder decision 9 Oct 2026: the leads approve it, and HR Admins hear about it so they can fix the data behind it.
-    if (noApprover.length) notices.push({ to: await this.hrAdmins(tx, org), requestId: req.id, type: 'workflow.approval.no_approver', title: req.title, link: '/yx/people/directory', text: `No approver found for "${noApprover.join('", "')}", so the desk's team leads got it. Check the manager or cost-centre owner` });
+    if (noApprover.length) notices.push({ to: await this.hrAdmins(tx, org), requestId: req.id, type: 'workflow.approval.no_approver', title: req.title, link: '/yx/people/directory', text: `No approver found for "${noApprover.join('", "')}", so ${(input.fallbackWording ?? DEFAULT_FALLBACK).who} got it. ${(input.fallbackWording ?? DEFAULT_FALLBACK).check}` });
     const after = await this.advance(tx, ctx, req.id, notices);
     return { id: req.id, status: after.status, notices };
   }
@@ -400,8 +493,9 @@ export class ApprovalsEngine {
     if (!done.count) throw new ConflictException('This request was already decided.');
     const after = await tx.wfRequest.findFirstOrThrow({ where: { id: req.id } });
     await AuditService.recordIn(tx, ctx, { actorUserId: null, action: `workflow.request.${outcome}`, entityType: 'wf_request', entityId: req.id, metadata: { type: req.requestType, subjectId: req.subjectId } });
-    await this.type(req.requestType).onDecided(tx, after, outcome);
-    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId });
+    await this.type(req.requestType).onDecided(tx, after, outcome, (run) => notices.push({ to: [], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: '', text: '', run }));
+    const why = outcome === 'rejected' ? await tx.wfAction.findFirst({ where: { organizationId: req.organizationId, requestId: req.id, action: { in: ['rejected', 'auto_rejected'] } }, orderBy: { createdAt: 'desc' }, select: { reason: true } }) : null;
+    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: this.type(req.requestType).requesterLink(after), text: outcome === 'approved' ? 'Approved' : 'Not approved', toRequester: req.requesterUserId, reason: why?.reason ?? null });
     return after;
   }
 
@@ -435,7 +529,7 @@ export class ApprovalsEngine {
    * An approver's decision. Only the task's holder decides; a reject needs a reason (YX-WF-08). channel is the SD-2.06
    * seam (Teams / Slack / push arrive later with their own signed links).
    */
-  async decide(ctx: CompanyContext, userId: string, taskId: string, decision: 'approve' | 'reject', reason: string | null, channel: 'web' | 'mobile' | 'teams' | 'slack' | 'push' = 'web', opts: DecideOptions = {}) {
+  async decide(ctx: CompanyContext, userId: string, taskId: string, decision: 'approve' | 'reject' | 'send_back', reason: string | null, channel: 'web' | 'mobile' | 'teams' | 'slack' | 'push' = 'web', opts: DecideOptions = {}) {
     const notices: Notice[] = [];
     const res = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId;
@@ -447,12 +541,21 @@ export class ApprovalsEngine {
       const fresh = await tx.wfTask.findFirstOrThrow({ where: { id: task.id } });
       if (fresh.status !== 'open' || req.status !== 'pending' || fresh.step !== req.currentStep) throw new ConflictException('This approval is already closed.');
       if (decision === 'reject' && !reason?.trim()) throw new BadRequestException('Say why you are not approving it.');
+      // An expense claim's reason is read by the employee: at least 3 letters here too, as on the claim page (founder, 2 Nov 2026).
+      if (decision !== 'approve' && req.subjectType === 'expense_claim' && (reason?.trim().length ?? 0) < 3)
+        throw new BadRequestException(decision === 'send_back' ? 'Say what the employee should change.' : 'Say why you are not approving it.');
+      if (decision === 'send_back' && !reason?.trim()) throw new BadRequestException('Say what to change, so the person who asked knows.');
       const steps = req.steps as unknown as FrozenStep[];
       const s = steps[fresh.step];
       const own = userId === req.requesterUserId;
       if ((own && s.selfApproval !== 'allowed') || (userId === req.raisedByUserId && !own)) throw new ForbiddenException('You cannot approve a request you raised.');
       const type = this.type(req.requestType);
       if (type.decideOnlyVia && opts.via !== type.key) throw new ConflictException({ statusCode: 409, code: 'DECIDE_ON_ITS_PAGE', message: `Decide this on its own page: ${type.label}.`, link: type.decideOnlyVia });
+      if (decision === 'send_back') {
+        if (!type.sendBack || !(await type.sendBack.allowed(tx, req))) throw new BadRequestException(`${type.label} requests cannot be sent back for changes here. Approve it, or do not approve it with a reason.`);
+        await this.sendBackIn(tx, ctx, req, fresh, userId, reason!.trim(), channel, notices);
+        return tx.wfRequest.findFirstOrThrow({ where: { id: req.id }, select: { id: true, status: true, currentStep: true } });
+      }
       if (type.distinctSteps && decision === 'approve' && fresh.step > 0) {
         const before = await tx.wfAction.count({ where: { organizationId: org, requestId: req.id, actorUserId: userId, action: { in: ['approved', 'self_approved'] }, step: { lt: fresh.step } } });
         if (before) throw new ForbiddenException('You approved an earlier step of this request, so someone else must approve this one.');
@@ -469,6 +572,46 @@ export class ApprovalsEngine {
     });
     await this.send(ctx, notices);
     return res;
+  }
+
+  /**
+   * "Send back for changes": the request ends as sent_back (its other open tasks close), the module returns it to the
+   * person who asked (who changes it and sends it again as a new request), and they are told what to change.
+   */
+  private async sendBackIn(tx: Tx, ctx: CompanyContext, req: Prisma.WfRequestGetPayload<object>, task: Prisma.WfTaskGetPayload<object>, userId: string, reason: string, channel: string, notices: Notice[]) {
+    const org = ctx.organizationId;
+    const now = new Date();
+    await tx.wfTask.update({ where: { id: task.id }, data: { status: 'sent_back', decidedAt: now, version: { increment: 1 }, updatedAt: now } });
+    await this.log(tx, org, req.id, task.id, task.step, userId, task.onBehalfOfUserId, 'sent_back', reason, channel);
+    await AuditService.recordIn(tx, ctx, { actorUserId: userId, action: 'workflow.request.sent_back', entityType: 'wf_request', entityId: req.id, metadata: { step: task.step, onBehalfOf: task.onBehalfOfUserId, channel, reason } });
+    const steps = req.steps as unknown as FrozenStep[];
+    steps[task.step].state = 'sent_back';
+    const done = await tx.wfRequest.updateMany({ where: { id: req.id, status: 'pending' }, data: { status: 'sent_back', steps: steps as unknown as Prisma.InputJsonValue, decidedAt: now, version: { increment: 1 }, updatedAt: now } });
+    if (!done.count) throw new ConflictException('This request was already decided.');
+    await this.closeOthers(tx, org, req, task.step, `${steps[task.step].name}: sent back for changes`, notices);
+    const after = await tx.wfRequest.findFirstOrThrow({ where: { id: req.id } });
+    const type = this.type(req.requestType);
+    await type.sendBack!.apply(tx, after, reason);
+    if (req.requesterUserId) notices.push({ to: [req.requesterUserId], requestId: req.id, type: 'workflow.approval.decided', title: req.title, link: type.requesterLink(after), text: SENT_BACK, toRequester: req.requesterUserId, reason });
+  }
+
+  /**
+   * PLT-04 bulk decide: each task through decide(), one transaction each, so every check holds per task and one refusal
+   * never undoes or hides the others. Every task gets a line: decided, or refused with the reason a single decision gives.
+   */
+  async decideMany(ctx: CompanyContext, userId: string, taskIds: string[], decision: 'approve' | 'reject', reason: string | null, channel: 'web' | 'mobile' = 'web') {
+    if (decision === 'reject' && !reason?.trim()) throw new BadRequestException('Say why you are not approving them.');
+    const results: BulkResult[] = [];
+    for (const taskId of [...new Set(taskIds)]) {
+      try {
+        const r = await this.decide(ctx, userId, taskId, decision, reason, channel);
+        results.push({ taskId, ok: true, requestStatus: r.status });
+      } catch (e) {
+        if (!(e instanceof HttpException)) this.logger.error(`bulk decide ${taskId}: ${(e as Error).message}`);
+        results.push({ taskId, ok: false, message: e instanceof HttpException ? httpMessage(e) : 'Not decided. Try this one again.' });
+      }
+    }
+    return { results };
   }
 
   /** The module withdraws a pending request (the requester cancelled what it was for). */
@@ -645,7 +788,17 @@ export class ApprovalsEngine {
       const names = await this.names(tx, org, [...reqs.values()].flatMap((r) => [r.requesterUserId, r.raisedByUserId]).concat(tasks.map((t) => t.onBehalfOfUserId)));
       const personIds = [...new Set([...reqs.values()].map((r) => r.subjectPersonId).filter((x): x is string => Boolean(x)))];
       const persons = new Map((personIds.length ? await tx.person.findMany({ where: { organizationId: org, id: { in: personIds } }, select: { id: true, givenName: true, familyName: true, preferredName: true } }) : []).map((p) => [p.id, p.preferredName?.trim() || [p.givenName, p.familyName].filter(Boolean).join(' ')]));
-      return tasks
+      // Send back is offered where the type has it and the company allows it for this request.
+      const backable = new Set<string>();
+      for (const r of reqs.values()) {
+        const sb = this.types.get(r.requestType)?.sendBack;
+        if (sb && (await sb.allowed(tx, r))) backable.add(r.id);
+      }
+      const notes = new Map<string, string>();
+      const byType = new Map<string, Prisma.WfRequestGetPayload<object>[]>();
+      for (const r of reqs.values()) byType.set(r.requestType, [...(byType.get(r.requestType) ?? []), r]);
+      for (const [key, rs] of byType) for (const [id, n] of (await this.types.get(key)?.inboxNotes?.(tx, rs)) ?? []) notes.set(id, n);
+      const items: InboxItem[] = tasks
         .filter((t) => reqs.get(t.requestId)?.currentStep === t.step)
         .map((t) => {
           const r = reqs.get(t.requestId)!;
@@ -666,8 +819,12 @@ export class ApprovalsEngine {
             submittedAt: r.submittedAt,
             // Irreversible requests are decided on their own page (decideOnlyVia): the inbox links there.
             decideAt: this.types.get(r.requestType)?.decideOnlyVia ?? null,
+            canSendBack: backable.has(r.id),
+            quickApprove: Boolean(this.types.get(r.requestType)?.quickApprove && !this.types.get(r.requestType)?.decideOnlyVia),
+            note: notes.get(r.id) ?? null,
           };
         });
+      return [...items, ...(await this.sourceItems(tx, ctx, userId))];
     });
   }
 
@@ -711,13 +868,47 @@ export class ApprovalsEngine {
   async history(ctx: CompanyContext, userId: string) {
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       const org = ctx.organizationId;
-      const decided = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: userId, status: { in: ['approved', 'rejected'] } }, orderBy: { decidedAt: 'desc' }, take: 50 });
+      const decided = await tx.wfTask.findMany({ where: { organizationId: org, assigneeUserId: userId, status: { in: ['approved', 'rejected', 'sent_back'] } }, orderBy: { decidedAt: 'desc' }, take: 50 });
       const mine = await tx.wfRequest.findMany({ where: { organizationId: org, OR: [{ requesterUserId: userId }, { raisedByUserId: userId }] }, orderBy: { submittedAt: 'desc' }, take: 50 });
       const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: decided.map((t) => t.requestId) } }, select: { id: true, title: true, requestType: true, status: true } })).map((r) => [r.id, r]));
       return {
         decided: decided.map((t) => ({ requestId: t.requestId, title: reqs.get(t.requestId)?.title ?? '', type: this.types.get(reqs.get(t.requestId)?.requestType ?? '')?.label ?? '', decision: t.status, at: t.decidedAt, requestStatus: reqs.get(t.requestId)?.status ?? '' })),
         sent: mine.map((r) => ({ requestId: r.id, title: r.title, type: this.types.get(r.requestType)?.label ?? r.requestType, status: r.status, submittedAt: r.submittedAt, decidedAt: r.decidedAt })),
       };
+    });
+  }
+
+  /**
+   * PLT-04 "Team history": every decision (by anyone, newest first) on requests this person holds or held a task for,
+   * as approver or as the one a delegate acts for. The same requests view() already opens to them; requests they only
+   * sent are under "Sent by me".
+   */
+  async teamHistory(ctx: CompanyContext, userId: string) {
+    return this.tenantPrisma.forTenant(ctx, async (tx) => {
+      const org = ctx.organizationId;
+      const held = await tx.wfTask.findMany({ where: { organizationId: org, OR: [{ assigneeUserId: userId }, { onBehalfOfUserId: userId }] }, select: { requestId: true }, distinct: ['requestId'], orderBy: { requestId: 'asc' }, take: 1000 });
+      const actions = await tx.wfAction.findMany({ where: { organizationId: org, requestId: { in: held.map((h) => h.requestId) }, action: { in: ['approved', 'self_approved', 'rejected', 'sent_back'] } }, orderBy: { createdAt: 'desc' }, take: 200 });
+      const reqs = new Map((await tx.wfRequest.findMany({ where: { organizationId: org, id: { in: [...new Set(actions.map((a) => a.requestId))] } } })).map((r) => [r.id, r]));
+      const names = await this.names(tx, org, [...actions.flatMap((a) => [a.actorUserId, a.onBehalfOfUserId]), ...[...reqs.values()].map((r) => r.requesterUserId)]);
+      return actions.map((a) => {
+        const r = reqs.get(a.requestId)!;
+        return {
+          id: a.id,
+          requestId: a.requestId,
+          title: r.title,
+          type: this.types.get(r.requestType)?.label ?? r.requestType,
+          requester: r.requesterUserId ? (names.get(r.requesterUserId) ?? '') : '',
+          decision: a.action === 'rejected' ? 'rejected' : a.action === 'sent_back' ? 'sent_back' : 'approved',
+          by: a.actorUserId ? (names.get(a.actorUserId) ?? '') : null,
+          byMe: a.actorUserId === userId,
+          onBehalfOf: a.onBehalfOfUserId ? (names.get(a.onBehalfOfUserId) ?? '') : null,
+          reason: a.reason,
+          step: a.step === null ? null : a.step + 1,
+          at: a.createdAt,
+          submittedAt: r.submittedAt,
+          requestStatus: r.status,
+        };
+      });
     });
   }
 
@@ -752,6 +943,10 @@ export class ApprovalsEngine {
   /** Bell notices and email, after the transaction committed (never inside it). */
   async send(ctx: TenantContext, notices: Notice[]) {
     for (const n of notices) {
+      if (n.run) {
+        await n.run().catch((e) => this.logger.warn(`after-commit work failed: ${(e as Error).message}`));
+        continue;
+      }
       const to = [...new Set(n.to)];
       if (!to.length) continue;
       try {
@@ -782,4 +977,14 @@ export class ApprovalsEngine {
   }
 }
 
-export const isRuleError = (e: unknown): e is RuleError => e instanceof RuleError;
+/** One task of a bulk decision: decided (and where its request now is), or refused and why. */
+export type BulkResult = { taskId: string; ok: true; requestStatus: string } | { taskId: string; ok: false; message: string };
+
+/** The sentence an HTTP refusal carries ("This approval is already closed."). */
+export function httpMessage(e: HttpException): string {
+  const r = e.getResponse();
+  const m = typeof r === 'string' ? r : (r as { message?: unknown }).message;
+  return Array.isArray(m) ? m.join(' ') : typeof m === 'string' && m ? m : e.message;
+}
+
+export const isRuleError =(e: unknown): e is RuleError => e instanceof RuleError;

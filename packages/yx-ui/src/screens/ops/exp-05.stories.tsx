@@ -15,3 +15,4 @@ export const Forex: S = { name: 'Forex advance · exchange difference', render: 
 export const Request: S = { name: 'Request an advance', render: () => <AdvanceScreen advance={ADVANCE} today={TODAY} requestOpen /> };
 export const Phone: S = { name: 'Advances · phone', globals: PHONE, render: () => <AdvanceScreen device="phone" advance={OLD_ADVANCE} today={TODAY} /> };
 export const PhoneRequest: S = { name: 'Request · phone', globals: PHONE, render: () => <AdvanceScreen device="phone" advance={ADVANCE} today={TODAY} requestOpen /> };
+export const List: S = { name: 'Advances list · mine, waiting for me, finance', render: () => <AdvanceScreen advance={ADVANCE} today={TODAY} list /> };

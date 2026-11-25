@@ -6,14 +6,18 @@ import { Button, Link, type ButtonProps } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Icon } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { DatePicker } from '../../components/date';
 import { useNarrow } from '../../components/stepper';
 import { Dialog } from '../../components/overlay';
+import { useToast } from '../../components/notify';
+import { useRun } from '../org/org-kit';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { Stepper, type StepperStep } from '../../components/stepper';
+import { PlainTable } from '../../components/plain-table';
+import { SPECIAL_DAYS_SAMPLE, SpecialDaysCard } from './special-days-card';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu } from '../../components/filters';
 import { LineChart, StatCard } from '../../components/charts';
@@ -25,9 +29,9 @@ import {
   Amount,
   DueDateStrip,
   FactRow,
-  IrreversibleSheet,
   PayFrame,
   RunProgress,
+  RUN_STAGES,
   RunStageTrack,
   SectionTitle,
   StateBlock,
@@ -39,9 +43,12 @@ import {
   type RunStage,
   type ViewState,
 } from './pay-kit';
+import { IrreversibleSheet } from '../../components/irreversible';
 import { CONFIRM_PHRASE, DUE_ITEMS, EWA_REMITTANCE, FIN_APPROVER, PAYROLL_ADMIN, RUN, RUN_HISTORY, RUN_PICKS, RUN_ROWS, d, type RunRow } from './pay-data';
 import { variance } from './pay-logic';
 import { DueBadge } from '../time/time-kit';
+import { LiveFrequencyRun, LiveRunWorkspace, type LiveRunWorkspaceData } from './run-workspace-live';
+import { LiveCoverageScreen, LivePayrollHomeScreen, LiveRunListPanel, type LiveCoverage, type LivePayrollHome, type LiveRunList } from './payroll-home-live';
 
 /** Story ids this file links to (review/pay-story-ids.txt). */
 const STORY = {
@@ -125,6 +132,12 @@ export const HOME_BLOCKERS: Blocker[] = [
   { id: 'b3', severity: 'warn', title: '3 employees without a verified PAN', detail: 'Not a block. TDS will be deducted at 20% or the slab rate, whichever is higher, until PAN is verified.', action: 'View employees', to: STORY.readiness },
   { id: 'b4', severity: 'warn', title: `${plural(FLAGGED_ROWS.length, 'variance line')} need acknowledgement`, detail: 'Net change above 10% or a new component since August.', action: 'Review variance', to: STORY.variance },
 ];
+/** PAY-01 story "Several pay groups": three groups of Kaveri Foods in September. */
+export const HOME_GROUPS: GroupRunRow[] = [
+  { id: 'g1', group: 'Monthly staff · Bengaluru head office', run: 'September 2026 · monthly', stage: 'In review', blocking: 2 },
+  { id: 'g2', group: 'Plant workers · Hosur (weekly)', run: '22 to 28 Sep 2026', stage: 'Calculated', blocking: 0 },
+  { id: 'g3', group: 'Monthly staff · Kaveri Foods (Tamil Nadu)', run: null, stage: null, blocking: 0 },
+];
 const MONTH_NAME: Record<string, string> = { Apr: 'April', May: 'May', Jun: 'June', Jul: 'July', Aug: 'August', Sep: 'September' };
 /** Cost to company for a past month, scaled like that month's gross. */
 const ctcAt = (i: number) => Math.round((RUN.employerCost * RUN_HISTORY[i].gross) / RUN.gross);
@@ -135,13 +148,61 @@ export interface PayrollHomeProps {
   stage?: RunStage;
   blockers?: Blocker[];
   due?: DueItem[];
+  /** Several pay groups: one compact stage row per group's run of the month, in place of the single stage track. */
+  groups?: GroupRunRow[];
+}
+
+/** One pay group's run of the month on Payroll home (PAY-01, several pay groups). */
+export interface GroupRunRow {
+  id: string;
+  group: string;
+  /** The run's name, or null when the group's run is not started. */
+  run: string | null;
+  stage: RunStage | null;
+  /** Checks that block the run. */
+  blocking: number;
+  status?: ReactNode;
+  /** Open the run (or start it). */
+  action?: ReactNode;
+}
+
+/** PAY-01, several pay groups: a compact stage row per group (six-step bar, stage in words, what blocks it, open). */
+export function GroupRunRows({ rows }: { rows: GroupRunRow[] }) {
+  return (
+    <ul className="yx-pay-grouprows" aria-label="Runs by pay group">
+      {rows.map((r) => {
+        const idx = r.stage ? RUN_STAGES.indexOf(r.stage) : -1;
+        return (
+          <li key={r.id}>
+            <span className="yx-pay-grouprows__name">
+              <strong>{r.group}</strong>
+              <span className="yx-pay-muted">{r.run ?? 'Not started'}</span>
+            </span>
+            <ol className="yx-pay-grouprows__bar" aria-label={r.stage ? `Stage: ${r.stage}, step ${idx + 1} of ${RUN_STAGES.length}` : 'Not started'}>
+              {RUN_STAGES.map((st, i) => (
+                <li key={st} data-state={i < idx ? 'done' : i === idx ? (r.blocking ? 'blocked' : 'current') : 'todo'} title={st} />
+              ))}
+            </ol>
+            <span className="yx-pay-grouprows__stage">{r.stage ?? 'Not started'}</span>
+            <span>{r.status ?? (r.stage ? <Badge tone={r.blocking ? 'danger' : 'info'}>{r.blocking ? `${r.blocking} blocking` : 'On track'}</Badge> : null)}</span>
+            <span className="yx-pay-grouprows__act">{r.action}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 /** PAY-01 · Payroll home (T6): run stepper, blockers, due-date strip, last totals. */
-export function PayrollHomeScreen({ state = 'ready', persona = 'pa', stage = 'In review', blockers = HOME_BLOCKERS, due = DUE_ITEMS }: PayrollHomeProps) {
+export function PayrollHomeScreen(p: PayrollHomeProps & { live?: LivePayrollHome }) {
+  return p.live ? <LivePayrollHomeScreen live={p.live} /> : <SamplePayrollHome {...p} />;
+}
+
+function SamplePayrollHome({ state = 'ready', persona = 'pa', stage = 'In review', blockers = HOME_BLOCKERS, due = DUE_ITEMS, groups }: PayrollHomeProps) {
   const blocking = blockers.filter((b) => b.severity === 'block');
   const isFin = persona === 'fin';
   const [help, setHelp] = useState(false);
+  const { toast } = useToast();
   const loaded = state === 'ready';
   // A draft run has no September totals yet: the cards show the last finished run (August) against July.
   const last = RUN_HISTORY.length - (stage === 'Draft' ? 2 : 1);
@@ -161,7 +222,7 @@ export function PayrollHomeScreen({ state = 'ready', persona = 'pa', stage = 'In
             <span className="yx-pay-muted">
               {plural(blocking.length, 'item')} {blocking.length === 1 ? 'blocks' : 'block'} approval: {blocking.map((b) => (b.id === 'b1' ? 'attendance exceptions' : b.id === 'b2' ? 'PF coverage' : b.title)).join(', ')}
             </span>
-            <Button variant="primary" icon={Lock} disabled>
+            <Button variant="primary" icon={Lock} onClick={() => toast({ title: `Resolve the ${plural(blocking.length, 'blocking item')} first.` })}>
               Approve and lock
             </Button>
           </>
@@ -234,10 +295,17 @@ export function PayrollHomeScreen({ state = 'ready', persona = 'pa', stage = 'In
           />
         }
       >
-        <section className="yx-pay-stack" aria-label="Current run">
-          <SectionTitle actions={<Badge tone={blocking.length ? 'danger' : 'info'}>{blocking.length ? `${blocking.length} blocking` : 'On track'}</Badge>}>{RUN.name}</SectionTitle>
-          <RunStageTrack current={stage} blocked={stage === 'In review' && blocking.length ? 'Approval blocked' : undefined} />
-        </section>
+        {groups && groups.length > 1 ? (
+          <section className="yx-pay-stack" aria-label="Runs this month">
+            <SectionTitle>{`September runs · ${plural(groups.length, 'pay group')}`}</SectionTitle>
+            <GroupRunRows rows={groups.map((g) => ({ ...g, action: <StoryButton size="sm" to={g.run ? STORY.workspace : STORY.readiness}>{g.run ? 'Open run' : 'Start run'}</StoryButton> }))} />
+          </section>
+        ) : (
+          <section className="yx-pay-stack" aria-label="Current run">
+            <SectionTitle actions={<Badge tone={blocking.length ? 'danger' : 'info'}>{blocking.length ? `${blocking.length} blocking` : 'On track'}</Badge>}>{RUN.name}</SectionTitle>
+            <RunStageTrack current={stage} blocked={stage === 'In review' && blocking.length ? 'Approval blocked' : undefined} />
+          </section>
+        )}
         <div className="yx-pay-grid">
           <div data-span="7" className="yx-pay-panel">
             <SectionTitle>What needs attention</SectionTitle>
@@ -378,6 +446,8 @@ export interface CoverageRow {
   threshold: number;
   status: 'Below' | 'Approaching' | 'Covered' | 'Covered permanently' | 'Crossed: set-up needed';
   due?: string;
+  /** Live: the API's row behind it (passed back to onSettle). */
+  source?: unknown;
 }
 export const COVERAGE: CoverageRow[] = [
   { entity: 'Kaveri Foods (Tamil Nadu)', statute: 'PF', basis: 'Employees, any day in 12 months', headcount: 21, threshold: 20, status: 'Crossed: set-up needed', due: 'Register within 30 days of 24 Sep' },
@@ -391,18 +461,33 @@ export const COVERAGE: CoverageRow[] = [
 const COVER_TONE: Record<CoverageRow['status'], BadgeTone> = { Below: 'neutral', Approaching: 'warning', Covered: 'success', 'Covered permanently': 'success', 'Crossed: set-up needed': 'danger' };
 
 /** PAY-30 · Coverage monitor panel (T1 panel on run readiness). */
-export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready', onChange }: { rows?: CoverageRow[]; state?: ViewState; onChange?: (rows: CoverageRow[]) => void }) {
+export function CoverageMonitorPanel(p: { rows?: CoverageRow[]; state?: ViewState; onChange?: (rows: CoverageRow[]) => void; live?: LiveCoverage }) {
+  return p.live ? <LiveCoverageScreen live={p.live} /> : <CoveragePanel {...p} />;
+}
+
+/** The coverage panel itself. Live: `setupHref` opens statutory set-up; empty means the daily check has not run yet. */
+export function CoveragePanel({ rows: initial = COVERAGE, state = 'ready', onChange, setupHref, onSettle }: { rows?: CoverageRow[]; state?: ViewState; onChange?: (rows: CoverageRow[]) => void; setupHref?: string; /** Live: saves the switch-on or the application; without it (live, no key) the crossed row says where it is done. */ onSettle?: (row: CoverageRow, x: { applied: boolean; registrationNo?: string; from: string }) => Promise<unknown> }) {
+  const { toast } = useToast();
+  const { busy, error, run, clearError } = useRun();
+  // Live without payroll.statutory.setup: a crossed row says what is needed; the set-up page is where it is done.
+  const canSettle = !setupHref || !!onSettle;
   const phone = useNarrow(599);
   const [rows, setRows] = useState(initial);
   const [switching, setSwitching] = useState<{ row: CoverageRow; applied: boolean } | null>(null);
   const [regNo, setRegNo] = useState('');
   const [from, setFrom] = useState<Date | null>(d(1));
+  const early = useTooEarly([
+    ...(!switching?.applied && regNo.trim().length < 5 ? [{ fieldId: 'cov-reg', message: 'Give the registration number (at least 5 characters).' }] : []),
+    ...(!from ? [{ fieldId: 'cov-from', message: 'Choose the date coverage starts.' }] : []),
+  ]);
   const settle = (r: CoverageRow, due: string) => {
     const next = rows.map((x) => (x === r ? { ...x, status: 'Covered' as const, due } : x));
     setRows(next);
     onChange?.(next);
   };
   const close = () => {
+    early.reset();
+    clearError();
     setSwitching(null);
     setRegNo('');
     setFrom(d(1));
@@ -413,10 +498,21 @@ export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready'
       ? `PF deductions start for ${sw.headcount} employees of ${sw.entity} from the September run, with the company's matching contribution.`
       : `${sw.statute} provisioning starts for ${sw.headcount} employees of ${sw.entity}.`
     : '';
-  const canSave = !!from && (switching?.applied || regNo.trim().length >= 5);
   return (
     <section className="yx-pay-panel" aria-label="Coverage monitor">
-      <SectionTitle actions={<StoryButton size="sm" to={STORY.setup}>Open statutory set-up</StoryButton>}>Coverage monitor</SectionTitle>
+      <SectionTitle
+        actions={
+          setupHref ? (
+            <Button size="sm" asChild>
+              <a href={setupHref}>Open statutory set-up</a>
+            </Button>
+          ) : (
+            <StoryButton size="sm" to={STORY.setup}>Open statutory set-up</StoryButton>
+          )
+        }
+      >
+        Coverage monitor
+      </SectionTitle>
       <p className="yx-pay-muted">Sites within 2 employees (or 90%) of a legal threshold. A crossed threshold blocks run approval until the law is switched on for that site.</p>
       <Dialog
         open={!!switching}
@@ -428,10 +524,21 @@ export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready'
             <Button onClick={close}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!canSave}
+              loading={busy === 'settle'}
               onClick={() => {
-                if (sw && from) settle(sw, switching?.applied ? `Applied, number awaited · from ${formatDate(from)}` : `${sw.statute} ${regNo.trim()} · from ${formatDate(from)}`);
-                close();
+                if (early.stop()) return;
+                if (!sw || !from) return;
+                const applied = !!switching?.applied;
+                if (!onSettle) {
+                  settle(sw, applied ? `Applied, number awaited · from ${formatDate(from)}` : `${sw.statute} ${regNo.trim()} · from ${formatDate(from)}`);
+                  return close();
+                }
+                const day = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}`;
+                void run('settle', async () => {
+                  await onSettle(sw, { applied, from: day, ...(applied ? {} : { registrationNo: regNo.trim() }) });
+                  toast({ tone: 'success', title: applied ? `${sw.statute} recorded as applied for` : `${sw.statute} switched on for ${sw.entity}` });
+                  close();
+                });
               }}
             >
               {switching?.applied ? 'Record applied' : `Switch ${sw?.statute} on`}
@@ -440,17 +547,18 @@ export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready'
         }
       >
         <div className="yx-pay-stack">
+          {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
           {!switching?.applied && (
-            <FormField label="Registration number" required helper="As on the registration certificate.">
+            <FormField id="cov-reg" label="Registration number" required helper="As on the registration certificate." error={early.errorOf('cov-reg')}>
               <TextField value={regNo} onChange={setRegNo} />
             </FormField>
           )}
-          <FormField label="Covered from" required helper="The date the threshold was crossed or the registration starts.">
+          <FormField id="cov-from" label="Covered from" required helper="The date the threshold was crossed or the registration starts." error={early.errorOf('cov-from')}>
             <DatePicker value={from} onChange={setFrom} />
           </FormField>
         </div>
       </Dialog>
-      <StateBlock state={rows.length ? state : 'empty'} empty={<p className="yx-pay-muted">No site is near a threshold.</p>}>
+      <StateBlock state={rows.length ? state : 'empty'} empty={<p className="yx-pay-muted">{setupHref ? 'Not checked yet. The daily check fills this in.' : 'No site is near a threshold.'}</p>}>
         {phone ? (
           <ul className="yx-pay-cards" aria-label="Coverage">
             {rows.map((r) => (
@@ -464,7 +572,7 @@ export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready'
                 <span className="yx-pay-note">
                   {r.basis}: {groupIndian(r.headcount)} of {groupIndian(r.threshold)}
                 </span>
-                {r.status.startsWith('Crossed') ? (
+                {r.status.startsWith('Crossed') && canSettle ? (
                   <div className="yx-pay-row">
                     <Button size="sm" onClick={() => setSwitching({ row: r, applied: false })}>Switch on</Button>
                     <Button size="sm" onClick={() => setSwitching({ row: r, applied: true })}>Record applied</Button>
@@ -476,47 +584,32 @@ export function CoverageMonitorPanel({ rows: initial = COVERAGE, state = 'ready'
             ))}
           </ul>
         ) : (
-        <div className="yx-pay-scroll">
-          <table className="yx-pay-table">
-            <thead>
-              <tr>
-                <th scope="col">Entity</th>
-                <th scope="col">Statute</th>
-                <th scope="col">Counting</th>
-                <th scope="col" data-num>
-                  Headcount / threshold
-                </th>
-                <th scope="col">Status</th>
-                <th scope="col">Next step</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.entity + r.statute} data-state={r.status.startsWith('Crossed') ? 'error' : undefined}>
-                  <th scope="row">{r.entity}</th>
-                  <td>{r.statute}</td>
-                  <td>{r.basis}</td>
-                  <td data-num>
-                    {groupIndian(r.headcount)} / {groupIndian(r.threshold)}
-                  </td>
-                  <td>
-                    <Badge tone={COVER_TONE[r.status]}>{r.status}</Badge>
-                  </td>
-                  <td>
-                    {r.status.startsWith('Crossed') ? (
-                      <span className="yx-pay-row">
-                        <Button size="sm" onClick={() => setSwitching({ row: r, applied: false })}>Switch on</Button>
-                        <Button size="sm" onClick={() => setSwitching({ row: r, applied: true })}>Record applied</Button>
-                      </span>
-                    ) : (
-                      <span className="yx-pay-muted">{r.due ?? '—'}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlainTable
+          label="Coverage"
+          rows={rows}
+          getRowId={(r) => r.entity + r.statute}
+          rowTone={(r) => (r.status.startsWith('Crossed') ? { tone: 'danger', label: 'Crossed' } : undefined)}
+          columns={[
+            { key: 'entity', header: 'Entity', rowHeader: true, cell: (r) => r.entity },
+            { key: 'statute', header: 'Statute', cell: (r) => r.statute },
+            { key: 'basis', header: 'Counting', cell: (r) => r.basis },
+            { key: 'count', header: 'Headcount / threshold', num: true, cell: (r) => `${groupIndian(r.headcount)} / ${groupIndian(r.threshold)}` },
+            { key: 'status', header: 'Status', cell: (r) => <Badge tone={COVER_TONE[r.status]}>{r.status}</Badge> },
+            {
+              key: 'next',
+              header: 'Next step',
+              cell: (r) =>
+                r.status.startsWith('Crossed') && canSettle ? (
+                  <span className="yx-pay-row">
+                    <Button size="sm" onClick={() => setSwitching({ row: r, applied: false })}>Switch on</Button>
+                    <Button size="sm" onClick={() => setSwitching({ row: r, applied: true })}>Record applied</Button>
+                  </span>
+                ) : (
+                  <span className="yx-pay-muted">{r.due ?? '—'}</span>
+                ),
+            },
+          ]}
+        />
         )}
       </StateBlock>
     </section>
@@ -532,6 +625,74 @@ export interface ReadinessProps {
   state?: ViewState;
 }
 
+/** PAY-02 "Attendance mode per group" (design table, also rendered live in the run's Validations tab). */
+export function AttendanceGroupsPanel({ groups, lopAction }: { groups: AttendanceGroup[]; lopAction?: ReactNode }) {
+  const phone = useNarrow(599);
+  return (
+    <section className="yx-pay-panel" aria-label="Attendance mode per group">
+      <SectionTitle>Attendance mode per group</SectionTitle>
+      {phone ? (
+        <ul className="yx-pay-cards" aria-label="Attendance mode per group">
+          {groups.map((g) => (
+            <li key={`${g.group}|${g.mode}`} data-state={g.mode === 'Punch · block' && g.exceptions ? 'error' : undefined}>
+              <div className="yx-pay-cards__row">
+                <strong>{g.group}</strong>
+                <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge>
+              </div>
+              <span className="yx-pay-note">
+                {plural(g.employees, 'employee')} · {plural(g.exceptions, 'open exception')}
+                {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
+              </span>
+              <span className="yx-pay-note">{g.input}</span>
+              {g.mode === 'Assumed present' && (
+                <div className="yx-pay-row">
+                  {lopAction}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      ) : (
+      <PlainTable
+        label="Attendance mode per group"
+        rows={groups}
+        getRowId={(g) => `${g.group}|${g.mode}`}
+        rowTone={(g) => (g.mode === 'Punch · block' && g.exceptions ? { tone: 'danger', label: 'Blocks approval' } : undefined)}
+        columns={[
+          { key: 'group', header: 'Group', rowHeader: true, cell: (g) => g.group },
+          { key: 'mode', header: 'Mode', cell: (g) => <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge> },
+          { key: 'employees', header: 'Employees', num: true, cell: (g) => g.employees },
+          {
+            key: 'exceptions',
+            header: 'Open exceptions',
+            num: true,
+            cell: (g) => (
+              <>
+                {g.exceptions}
+                {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
+              </>
+            ),
+          },
+          {
+            key: 'input',
+            header: 'Input',
+            cell: (g) =>
+              g.mode === 'Assumed present' ? (
+                <span className="yx-pay-row">
+                  {g.input}
+                  {lopAction}
+                </span>
+              ) : (
+                g.input
+              ),
+          },
+        ]}
+      />
+      )}
+    </section>
+  );
+}
+
 /** PAY-02 · Run readiness / pre-flight (T5 step). */
 export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTENDANCE_GROUPS, inputs = INPUT_SOURCES, coverage: initialCoverage = COVERAGE, defaultWaiveId, state = 'ready' }: ReadinessProps) {
   const phone = useNarrow(599);
@@ -541,6 +702,7 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
   const [viewing, setViewing] = useState<Finding | null>(null);
   const [waiving, setWaiving] = useState<Finding | null>(initial.find((f) => f.id === defaultWaiveId) ?? null);
   const [reason, setReason] = useState('');
+  const waiveEarly = useTooEarly(reason.trim().length < 5 ? [{ fieldId: 'waive-reason', message: 'Give a reason of at least 5 characters.' }] : []);
   const hardBlocks = findings.filter((f) => f.severity === 'block' && !f.waived);
   const coverageBlock = coverage.some((c) => c.status.startsWith('Crossed'));
   const readiness = (
@@ -550,82 +712,18 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
           You can calculate once waivable items are waived with a reason. Attendance exceptions and coverage set-up can't be waived; they block approval.
         </InlineAlert>
       ) : (
-        <InlineAlert tone="success" title="Ready to calculate">
+        <InlineAlert tone="info" title="Ready to calculate">
           Every blocking item is resolved or waived with a reason.
         </InlineAlert>
       )}
-      <section className="yx-pay-panel" aria-label="Attendance mode per group">
-        <SectionTitle>Attendance mode per group</SectionTitle>
-        {phone ? (
-          <ul className="yx-pay-cards" aria-label="Attendance mode per group">
-            {groups.map((g) => (
-              <li key={g.group} data-state={g.mode === 'Punch · block' && g.exceptions ? 'error' : undefined}>
-                <div className="yx-pay-cards__row">
-                  <strong>{g.group}</strong>
-                  <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge>
-                </div>
-                <span className="yx-pay-note">
-                  {plural(g.employees, 'employee')} · {plural(g.exceptions, 'open exception')}
-                  {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
-                </span>
-                <span className="yx-pay-note">{g.input}</span>
-                {g.mode === 'Assumed present' && (
-                  <div className="yx-pay-row">
-                    <StoryButton size="sm" to={STORY.lopInput}>
-                      Open LOP input
-                    </StoryButton>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
-        ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-        <table className="yx-pay-table">
-          <thead>
-            <tr>
-              <th scope="col">Group</th>
-              <th scope="col">Mode</th>
-              <th scope="col" data-num>
-                Employees
-              </th>
-              <th scope="col" data-num>
-                Open exceptions
-              </th>
-              <th scope="col">Input</th>
-            </tr>
-          </thead>
-          <tbody>
-            {groups.map((g) => (
-              <tr key={g.group} data-state={g.mode === 'Punch · block' && g.exceptions ? 'error' : undefined}>
-                <th scope="row">{g.group}</th>
-                <td>
-                  <Badge tone={g.mode === 'Assumed present' ? 'info' : 'neutral'}>{g.mode}</Badge>
-                </td>
-                <td data-num>{g.employees}</td>
-                <td data-num>
-                  {g.exceptions}
-                  {g.exceptions > 0 && <> · {g.mode === 'Punch · block' ? 'blocks approval' : g.mode === 'Punch · warn' ? 'warning' : 'missing timesheet'}</>}
-                </td>
-                <td>
-                  {g.mode === 'Assumed present' ? (
-                    <span className="yx-pay-row">
-                      {g.input}
-                      <StoryButton size="sm" to={STORY.lopInput}>
-                        Open LOP input
-                      </StoryButton>
-                    </span>
-                  ) : (
-                    g.input
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
-        )}
-      </section>
+      <AttendanceGroupsPanel
+        groups={groups}
+        lopAction={
+          <StoryButton size="sm" to={STORY.lopInput}>
+            Open LOP input
+          </StoryButton>
+        }
+      />
       <section className="yx-pay-panel" aria-label="Inputs">
         <SectionTitle>Inputs for this period</SectionTitle>
         {phone ? (
@@ -645,36 +743,18 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
             ))}
           </ul>
         ) : (
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-        <table className="yx-pay-table">
-          <thead>
-            <tr>
-              <th scope="col">Source</th>
-              <th scope="col">What</th>
-              <th scope="col" data-num>
-                Records
-              </th>
-              <th scope="col" data-num>
-                Amount
-              </th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {inputs.map((s) => (
-              <tr key={s.source}>
-                <th scope="row">{s.source}</th>
-                <td>{s.detail}</td>
-                <td data-num>{groupIndian(s.count)}</td>
-                <td data-num>{s.amount != null ? formatINR(s.amount) : '—'}</td>
-                <td>
-                  <Badge tone={s.status === 'Received' ? 'success' : 'warning'}>{s.status}</Badge>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        </div>
+        <PlainTable
+          label="Inputs for this period"
+          rows={inputs}
+          getRowId={(s) => s.source}
+          columns={[
+            { key: 'source', header: 'Source', rowHeader: true, cell: (s) => s.source },
+            { key: 'detail', header: 'What', cell: (s) => s.detail },
+            { key: 'count', header: 'Records', num: true, cell: (s) => groupIndian(s.count) },
+            { key: 'amount', header: 'Amount', num: true, cell: (s) => (s.amount != null ? formatINR(s.amount) : '—') },
+            { key: 'status', header: 'Status', cell: (s) => <Badge tone={s.status === 'Received' ? 'success' : 'warning'}>{s.status}</Badge> },
+          ]}
+        />
         )}
       </section>
       <section className="yx-pay-panel" aria-label="Validations">
@@ -750,8 +830,9 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
             <Button onClick={() => setWaiving(null)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={reason.trim().length < 5}
               onClick={() => {
+                if (waiveEarly.stop()) return;
+                waiveEarly.reset();
                 setFindings((fs) => fs.map((f) => (f.id === waiving?.id ? { ...f, waived: reason } : f)));
                 setWaiving(null);
                 setReason('');
@@ -762,7 +843,7 @@ export function RunReadinessScreen({ findings: initial = FINDINGS, groups = ATTE
           </>
         }
       >
-        <FormField label="Reason" required helper="At least 5 characters. Shown to the approver.">
+        <FormField id="waive-reason" label="Reason" required helper="At least 5 characters. Shown to the approver." error={waiveEarly.errorOf('waive-reason')}>
           <TextArea value={reason} onChange={setReason} rows={3} />
         </FormField>
       </Dialog>
@@ -848,14 +929,21 @@ export interface RunWorkspaceProps {
   state?: ViewState;
   /** Attendance exceptions still open at Bengaluru head office (they block approval). Default: open until the run is approved. */
   exceptionsOpen?: boolean;
+  /** HLP-12 answers 92, 93: the Inputs tab's Special days card (stories). */
+  specialDays?: boolean;
 }
 
 const PHASE_STAGE: Record<RunPhase, RunStage> = { calculating: 'Draft', failed: 'Draft', review: 'In review', approved: 'Approved and locked', paid: 'Paid', published: 'Published' };
 const EXCEPTION_FILTER = ['Flagged', 'Held', 'Failed'];
 type Notice = { tone: 'success' | 'info' | 'warning' | 'danger'; title: string; body?: ReactNode; action?: ReactNode };
 
-/** PAY-03 · Run workspace (T3 / T5): Inputs · Payslips · Variance · Validations · Approvals · Files. */
-export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: initialPhase = 'review', rows: inputRows = RUN_ROWS, openRowId, sheet: initialSheet = null, sheetVariant = 'ready', state = 'ready', exceptionsOpen: exceptionsProp }: RunWorkspaceProps) {
+/** PAY-03 · Run workspace (T3 / T5): Inputs · Payslips · Variance · Validations · Approvals · Files. The app passes `live`
+ * (/yx/payroll/runs/[id]: PAY-02 checks, PAY-07 approve, PAY-08 bank file, PAY-09 publish inside it); stories show the sample. */
+export function RunWorkspaceScreen(p: RunWorkspaceProps & { live?: LiveRunWorkspaceData }) {
+  return p.live ? <LiveRunWorkspace live={p.live} /> : <SampleRunWorkspace {...p} />;
+}
+
+function SampleRunWorkspace({ persona = 'pa', tab = 'payslips', phase: initialPhase = 'review', rows: inputRows = RUN_ROWS, openRowId, sheet: initialSheet = null, sheetVariant = 'ready', state = 'ready', exceptionsOpen: exceptionsProp, specialDays }: RunWorkspaceProps) {
   const isFin = persona === 'fin';
   const approvingDone = initialSheet === 'approve' && sheetVariant === 'done';
   const [phase, setPhase] = useState<RunPhase>(approvingDone ? 'approved' : initialPhase);
@@ -867,6 +955,7 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
   const [sent, setSent] = useState(false);
   const [filters, setFilters] = useState<FilterValue[]>([{ key: 'status', type: 'multi', values: [] }]);
   const [notice, setNotice] = useState<Notice | null>(null);
+  const { toast } = useToast();
   const [audit, setAudit] = useState(false);
   const [voiding, setVoiding] = useState(false);
   const locked = !['review', 'calculating', 'failed'].includes(initialPhase);
@@ -928,7 +1017,7 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
       isFin ? (
         <>
           {approveBlock && <span className="yx-pay-muted">{approveBlock}</span>}
-          <Button variant="approve" icon={Lock} disabled={!!approveBlock} onClick={() => setSheet('approve')}>
+          <Button variant="approve" icon={Lock} onClick={() => (approveBlock ? toast({ title: `Not yet: ${approveBlock}.` }) : setSheet('approve'))}>
             Approve and lock
           </Button>
         </>
@@ -942,10 +1031,10 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
           <Button
             variant="primary"
             icon={Send}
-            disabled={!!ackReason}
             onClick={() => {
+              if (ackReason) return void toast({ title: `Not yet: ${ackReason}.` });
               setSubmitted(true);
-              setNotice({ tone: 'success', title: `Sent to ${FIN_APPROVER.name} for approval`, body: exceptionsOpen ? `They can approve and lock the period once the ${OPEN_EXCEPTIONS} attendance exceptions are resolved.` : 'They can now approve and lock the period.' });
+              toast({ tone: 'success', title: `Sent to ${FIN_APPROVER.name} for approval`, description: exceptionsOpen ? `They can approve and lock the period once the ${OPEN_EXCEPTIONS} attendance exceptions are resolved.` : 'They can now approve and lock the period.' });
             }}
           >
             Submit for approval
@@ -967,6 +1056,7 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
         onClick={() => {
           setPhase('review');
           setRetried(true);
+          toast({ tone: 'success', title: `${plural(failures.length, 'payslip')} recalculated`, description: `${failures.map((f) => f.employee).join(' and ')} calculated on retry. All ${groupIndian(RUN.employees)} payslips are ready for review.` });
         }}
       >
         Retry {failures.length} failed
@@ -1048,11 +1138,6 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
           onFix={() => goTo(STORY.compensation)}
         />
       )}
-      {retried && (
-        <InlineAlert tone="success" title={`${plural(failures.length, 'payslip')} recalculated`}>
-          {failures.map((f) => f.employee).join(' and ')} calculated on retry. All {groupIndian(RUN.employees)} payslips are ready for review.
-        </InlineAlert>
-      )}
       {notice && (
         <InlineAlert
           tone={notice.tone}
@@ -1131,30 +1216,17 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
                   { label: 'Recoveries', value: formatINR(1_46_380) },
                 ]}
               />
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Source</th>
-                    <th scope="col" data-num>
-                      Records
-                    </th>
-                    <th scope="col" data-num>
-                      Amount
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {INPUT_SOURCES.map((s) => (
-                    <tr key={s.source}>
-                      <th scope="row">{s.source}</th>
-                      <td data-num>{s.count}</td>
-                      <td data-num>{s.amount != null ? formatINR(s.amount) : '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
+              <PlainTable
+                label="Inputs"
+                rows={INPUT_SOURCES}
+                getRowId={(s) => s.source}
+                columns={[
+                  { key: 'source', header: 'Source', rowHeader: true, cell: (s) => s.source },
+                  { key: 'count', header: 'Records', num: true, cell: (s) => s.count },
+                  { key: 'amount', header: 'Amount', num: true, cell: (s) => (s.amount != null ? formatINR(s.amount) : '—') },
+                ]}
+              />
+              {specialDays && <SpecialDaysCard data={SPECIAL_DAYS_SAMPLE} onSave={async () => undefined} onNotPaid={async () => undefined} onUndoNotPaid={async () => undefined} />}
             </div>
           </TabsContent>
           <TabsContent value="payslips">
@@ -1183,7 +1255,7 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
                   onSelect={(id) => setFilters([{ key: 'status', type: 'multi', values: id === 'exc' ? EXCEPTION_FILTER : [] }])}
                 />
               }
-              onExport={(format) => setNotice({ tone: 'success', title: `Exported ${plural(shown.length, 'payslip')}`, body: `payslips-sep-2026.${format} is in your downloads.` })}
+              onExport={(format) => toast({ tone: 'success', title: `Exported ${plural(shown.length, 'payslip')}`, description: `payslips-sep-2026.${format} is in your downloads.` })}
               rowActions={(r) => (
                 <>
                   <MenuItem onSelect={() => setOpen(r)}>Why this number</MenuItem>
@@ -1191,11 +1263,9 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
                   {!periodLocked && (
                     <MenuItem
                       onSelect={() =>
-                        setNotice(
-                          r.status === 'Failed'
-                            ? { tone: 'danger', title: `${r.name}'s payslip still fails`, body: r.reason, action: <StoryButton size="sm" to={STORY.compensation}>Add compensation</StoryButton> }
-                            : { tone: 'success', title: `${r.name}'s payslip recalculated`, body: `Net pay ${formatINR(r.net)} is unchanged.` },
-                        )
+                        r.status === 'Failed'
+                          ? setNotice({ tone: 'danger', title: `${r.name}'s payslip still fails`, body: r.reason, action: <StoryButton size="sm" to={STORY.compensation}>Add compensation</StoryButton> })
+                          : toast({ tone: 'success', title: `${r.name}'s payslip recalculated`, description: `Net pay ${formatINR(r.net)} is unchanged.` })
                       }
                     >
                       Recalculate
@@ -1207,7 +1277,7 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
           </TabsContent>
           <TabsContent value="variance">
             <div className="yx-pay-stack">
-              <InlineAlert tone={unacked.length ? 'warning' : 'success'} title={unacked.length ? `${plural(unacked.length, 'change')} need acknowledgement before approval` : 'All variance acknowledged'}>
+              <InlineAlert tone={unacked.length ? 'warning' : 'info'} title={unacked.length ? `${plural(unacked.length, 'change')} need acknowledgement before approval` : 'All variance acknowledged'}>
                 Threshold: net change above 10% or any new or removed component, compared with August.
               </InlineAlert>
               {narrow ? (
@@ -1243,58 +1313,39 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
                   })}
                 </ul>
               ) : (
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-              <table className="yx-pay-table">
-                <thead>
-                  <tr>
-                    <th scope="col">Employee</th>
-                    <th scope="col" data-num>
-                      August net
-                    </th>
-                    <th scope="col" data-num>
-                      September net
-                    </th>
-                    <th scope="col" data-num>
-                      Change
-                    </th>
-                    <th scope="col">Cause</th>
-                    <th scope="col">
-                      <span className="yx-visually-hidden">Action</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {flagged.map((r) => {
-                    const v = variance(r.net, r.prevNet);
-                    const isAck = acked.includes(r.id);
-                    return (
-                      <tr key={r.id} data-state={isAck ? undefined : 'flag'}>
-                        <th scope="row">
-                          <PersonLabel name={r.name} secondary={r.code} />
-                        </th>
-                        <td data-num>{formatINR(r.prevNet)}</td>
-                        <td data-num>{formatINR(r.net)}</td>
-                        <td data-num>
-                          {v.diff >= 0 ? '+' : ''}
-                          {formatINR(v.diff)} ({v.pct >= 0 ? '+' : ''}
-                          {v.pct}%)
-                        </td>
-                        <td>{r.reason ?? 'No input change since August'}</td>
-                        <td>
-                          {isAck ? (
-                            <Badge tone="success">Acknowledged</Badge>
-                          ) : (
-                            <Button size="sm" onClick={() => setAcked((a) => [...a, r.id])}>
-                              Acknowledge
-                            </Button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
+              <PlainTable
+                label="Variance lines"
+                rows={flagged}
+                getRowId={(r) => r.id}
+                rowTone={(r) => (acked.includes(r.id) ? undefined : { tone: 'warning', label: 'Flagged' })}
+                columns={[
+                  { key: 'name', header: 'Employee', rowHeader: true, cell: (r) => <PersonLabel name={r.name} secondary={r.code} /> },
+                  { key: 'prev', header: 'August net', num: true, cell: (r) => formatINR(r.prevNet) },
+                  { key: 'net', header: 'September net', num: true, cell: (r) => formatINR(r.net) },
+                  {
+                    key: 'change',
+                    header: 'Change',
+                    num: true,
+                    cell: (r) => {
+                      const v = variance(r.net, r.prevNet);
+                      return `${v.diff >= 0 ? '+' : ''}${formatINR(v.diff)} (${v.pct >= 0 ? '+' : ''}${v.pct}%)`;
+                    },
+                  },
+                  { key: 'cause', header: 'Cause', cell: (r) => r.reason ?? 'No input change since August' },
+                  {
+                    key: 'action',
+                    header: <span className="yx-visually-hidden">Action</span>,
+                    cell: (r) =>
+                      acked.includes(r.id) ? (
+                        <Badge tone="success">Acknowledged</Badge>
+                      ) : (
+                        <Button size="sm" onClick={() => setAcked((a) => [...a, r.id])}>
+                          Acknowledge
+                        </Button>
+                      ),
+                  },
+                ]}
+              />
               )}
             </div>
           </TabsContent>
@@ -1421,20 +1472,18 @@ export function RunWorkspaceScreen({ persona = 'pa', tab = 'payslips', phase: in
         onConfirm={() => {
           setDone(true);
           setPhase('approved');
+          toast({ tone: 'success', title: 'September 2026 approved and locked' });
         }}
         done={
           done ? (
-            <InlineAlert
-              tone="success"
-              title="September 2026 approved and locked"
-              actions={
+            <div className="yx-pay-stack">
+              <p className="yx-pay-muted">Approved by {FIN_APPROVER.name} on 29 Sep 2026, 9:42 am. Bank file and payslip publishing are now available to payroll.</p>
+              <span className="yx-pay-row">
                 <StoryButton size="sm" icon={Landmark} to={STORY.bank}>
                   Open bank file
                 </StoryButton>
-              }
-            >
-              Approved by {FIN_APPROVER.name} on 29 Sep 2026, 9:42 am. Bank file and payslip publishing are now available to payroll.
-            </InlineAlert>
+              </span>
+            </div>
           ) : sent ? (
             <InlineAlert tone="info" title={`Sent to ${FIN_APPROVER.name} for approval`}>
               Sent on {formatDate(d(29))}. {FIN_APPROVER.name} gets a notification and approves from Payroll home.
@@ -1553,6 +1602,7 @@ function FilesPanel({ phase, narrow, onRelease, onPublish }: { phase: RunPhase; 
 
 export function BankFileSheet({ open, onOpenChange, variant = 'ready' }: { open: boolean; onOpenChange: (o: boolean) => void; variant?: RunWorkspaceProps['sheetVariant'] }) {
   const [done, setDone] = useState(variant === 'done');
+  const { toast } = useToast();
   const regenerate = variant === 'regenerate';
   return (
     <IrreversibleSheet
@@ -1573,13 +1623,13 @@ export function BankFileSheet({ open, onOpenChange, variant = 'ready' }: { open:
       maker={PAYROLL_ADMIN.name}
       checker={FIN_APPROVER.name}
       confirmLabel={regenerate ? 'Regenerate bank file' : 'Release bank file'}
-      onConfirm={() => setDone(true)}
+      onConfirm={() => (setDone(true), toast({ tone: 'success', title: 'Bank file released' }))}
       done={
         done ? (
           <div className="yx-pay-stack">
-            <InlineAlert tone="success" title="Bank file released">
+            <p className="yx-pay-muted">
               KFD_SAL_202609_01.txt · {plural(RUN.inBankFile, 'payment')} · {formatINR(RUN.bankFileTotal)}. Download it and upload it on the bank portal. Record payment status when the bank confirms.
-            </InlineAlert>
+            </p>
             <span className="yx-pay-row">
               <StoryButton icon={Download} to={STORY.bankFiles}>
                 Download bank file
@@ -1589,31 +1639,22 @@ export function BankFileSheet({ open, onOpenChange, variant = 'ready' }: { open:
         ) : undefined
       }
     >
-      <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Left out of this file, scrolls sideways on small screens">
-      <table className="yx-pay-table">
-        <caption>Left out of this file</caption>
-        <tbody>
-          <tr>
-            <th scope="row">Held salaries</th>
-            <td>{RUN.withheld} · released later into the next bank file or an off-cycle payment</td>
-          </tr>
-          {RUN.failed > 0 && (
-            <tr>
-              <th scope="row">Failed payslips</th>
-              <td>{RUN.failed} · paid in the next bank file or off-cycle once calculated</td>
-            </tr>
-          )}
-          <tr>
-            <th scope="row">Cash / cheque</th>
-            <td>{RUN.cashCheque} · paid through the disbursement register</td>
-          </tr>
-          <tr>
-            <th scope="row">EWA partner remittance</th>
-            <td>{formatINR(EWA_REMITTANCE)} to the EWA partner, added as one line</td>
-          </tr>
-        </tbody>
-      </table>
-      </div>
+      <PlainTable
+        label="Left out of this file"
+        caption="Left out of this file"
+        hideHeader
+        rows={[
+          { what: 'Held salaries', how: `${RUN.withheld} · released later into the next bank file or an off-cycle payment` },
+          ...(RUN.failed > 0 ? [{ what: 'Failed payslips', how: `${RUN.failed} · paid in the next bank file or off-cycle once calculated` }] : []),
+          { what: 'Cash / cheque', how: `${RUN.cashCheque} · paid through the disbursement register` },
+          { what: 'EWA partner remittance', how: `${formatINR(EWA_REMITTANCE)} to the EWA partner, added as one line` },
+        ]}
+        getRowId={(r) => r.what}
+        columns={[
+          { key: 'what', header: 'Left out', rowHeader: true, cell: (r) => r.what },
+          { key: 'how', header: 'How it is paid', cell: (r) => r.how },
+        ]}
+      />
     </IrreversibleSheet>
   );
 }
@@ -1622,6 +1663,7 @@ export function BankFileSheet({ open, onOpenChange, variant = 'ready' }: { open:
 
 export function PublishSheet({ open, onOpenChange, variant = 'ready' }: { open: boolean; onOpenChange: (o: boolean) => void; variant?: RunWorkspaceProps['sheetVariant'] }) {
   const [done, setDone] = useState(variant === 'done');
+  const { toast } = useToast();
   return (
     <IrreversibleSheet
       open={open}
@@ -1641,14 +1683,12 @@ export function PublishSheet({ open, onOpenChange, variant = 'ready' }: { open: 
       checker={variant === 'self-approval' ? PAYROLL_ADMIN.name : 'Priya Nair'}
       selfApproval={variant === 'self-approval'}
       confirmLabel="Publish payslips"
-      onConfirm={() => setDone(true)}
+      onConfirm={() => (setDone(true), toast({ tone: 'success', title: `${plural(PUBLISHED, 'payslip')} published` }))}
       done={
         done ? (
           <div className="yx-pay-stack">
             <RunProgress action="Publishing payslips" done={PUBLISHED} total={PUBLISHED} finished />
-            <InlineAlert tone="success" title={`${plural(PUBLISHED, 'payslip')} published`}>
-              Employees were notified in the app and by email with a link. Queries on these payslips go to the payroll query queue.
-            </InlineAlert>
+            <p className="yx-pay-muted">Employees were notified in the app and by email with a link. Queries on these payslips go to the payroll query queue.</p>
           </div>
         ) : undefined
       }
@@ -1677,8 +1717,29 @@ export const FREQ_RUNS: FrequencyRun[] = [
 ];
 const RUN_TONE: Record<FrequencyRun['status'], BadgeTone> = { Draft: 'neutral', 'In review': 'warning', Approved: 'info', Paid: 'success', Published: 'success' };
 
+/** PAY-29 "Weekly run": the run's four steps with the frequency on every step (design; also the live weekly run's lead). */
+export function FrequencyRunSteps(p: { frequency: string; period: string; ready: ReactNode; payslips: ReactNode; approve: ReactNode; bank: ReactNode; defaultCurrent?: string; current?: string; onCurrentChange?: (id: string) => void; finishLabel?: string; onFinish?: () => void }) {
+  const badge = <Badge tone="info">{p.frequency}</Badge>;
+  const step = (id: string, title: string, content: ReactNode): StepperStep => ({ id, title, description: `${p.frequency} · ${p.period}`, content: <div className="yx-pay-stack">{badge}{content}</div> });
+  return (
+    <Stepper
+      title={`${p.frequency} run`}
+      defaultCurrent={p.defaultCurrent}
+      current={p.current}
+      onCurrentChange={p.onCurrentChange}
+      finishLabel={p.finishLabel ?? 'Release bank file'}
+      onFinish={p.onFinish}
+      steps={[step('ready', 'Readiness', p.ready), step('payslips', 'Payslips', p.payslips), step('approve', 'Approve', p.approve), step('bank', 'Bank file', p.bank)]}
+    />
+  );
+}
+
 /** PAY-29 · Weekly / fortnightly pay run (T2 run list per frequency + T5 steps, frequency shown on every step). */
-export function FrequencyRunsScreen({ view = 'list', frequency = 'Weekly', state = 'ready' }: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState }) {
+export function FrequencyRunsScreen(p: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState; live?: LiveRunList; /** The live weekly or fortnightly run (/yx/payroll/runs/[id]). */ liveRun?: LiveRunWorkspaceData }) {
+  return p.liveRun ? <LiveFrequencyRun live={p.liveRun} /> : p.live ? <LiveRunListPanel live={p.live} /> : <SampleFrequencyRuns {...p} />;
+}
+
+function SampleFrequencyRuns({ view = 'list', frequency = 'Weekly', state = 'ready' }: { view?: 'list' | 'run'; frequency?: 'Weekly' | 'Fortnightly'; state?: ViewState }) {
   const runs = FREQ_RUNS.filter((r) => r.frequency === frequency);
   const phone = useNarrow(599);
   /** Not yet paid: the pay date gets a relative badge ("in 1 day"). */
@@ -1707,7 +1768,6 @@ export function FrequencyRunsScreen({ view = 'list', frequency = 'Weekly', state
   ];
   const cur = runs[0];
   const freqBadge = <Badge tone="info">{frequency}</Badge>;
-  const step = (id: string, title: string, content: ReactNode): StepperStep => ({ id, title, description: `${frequency} · ${cur?.period ?? ''}`, content: <div className="yx-pay-stack">{freqBadge}{content}</div> });
   return (
     <PayFrame page="runs" persona="pa">
       <PageHeader
@@ -1751,21 +1811,16 @@ export function FrequencyRunsScreen({ view = 'list', frequency = 'Weekly', state
           ))}
         </Tabs>
       ) : (
-        <Stepper
-          title={`${frequency} run`}
+        <FrequencyRunSteps
+          frequency={frequency}
+          period={cur?.period ?? ''}
           defaultCurrent="payslips"
-          finishLabel="Release bank file"
-          steps={[
-            step(
-              'ready',
-              'Readiness',
-              <InlineAlert tone="success" title="Ready">
-                Attendance feed for 21–27 Sep received for 38 of 38. PT and LWF use part-period rules; TDS projected on annualised weekly pay.
-              </InlineAlert>,
-            ),
-            step(
-              'payslips',
-              'Payslips',
+          ready={
+            <InlineAlert tone="info" title="Ready">
+              Attendance feed for 21–27 Sep received for 38 of 38. PT and LWF use part-period rules; TDS projected on annualised weekly pay.
+            </InlineAlert>
+          }
+          payslips={
               <DataTable
                 label="Weekly payslips"
                 columns={[
@@ -1776,15 +1831,10 @@ export function FrequencyRunsScreen({ view = 'list', frequency = 'Weekly', state
                 ]}
                 rows={RUN_ROWS.slice(0, 12)}
                 getRowId={(r) => r.id}
-              />,
-            ),
-            step(
-              'approve',
-              'Approve',
-              <p className="yx-pay-muted">Finance approves each weekly run. PF and ESI are computed per run and added up into the monthly ECR and ESI return.</p>,
-            ),
-            step('bank', 'Bank file', <FactRow items={[{ label: 'Payments', value: '38' }, { label: 'Total', value: formatINR(cur?.net ?? 0) }, { label: 'Pay date', value: formatDate(cur?.payDate) }]} />),
-          ]}
+              />
+          }
+          approve={<p className="yx-pay-muted">Finance approves each weekly run. PF and ESI are computed per run and added up into the monthly ECR and ESI return.</p>}
+          bank={<FactRow items={[{ label: 'Payments', value: '38' }, { label: 'Total', value: formatINR(cur?.net ?? 0) }, { label: 'Pay date', value: formatDate(cur?.payDate) }]} />}
         />
       )}
     </PayFrame>

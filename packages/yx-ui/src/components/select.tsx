@@ -1,10 +1,10 @@
 import { forwardRef, useEffect, useMemo, useRef, useState, type ForwardedRef, type ReactNode, type Ref } from 'react';
 import { Command, useCommandState } from 'cmdk';
-import { Check, ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { Icon } from './foundations';
 import { useFieldControl } from './field';
-import { Popover, PopoverContent, PopoverTrigger, closeOnEscape } from './popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger, closeOnEscape } from './popover';
 import { PersonLabel } from './display';
 
 const CLEAR = '__yx_clear__';
@@ -245,32 +245,28 @@ export function MultiSelect<V extends string = string>({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          role="combobox"
-          aria-expanded={open}
-          aria-haspopup="listbox"
-          aria-label={ariaLabel}
-          className={cx('yx-select', 'yx-select--multi', className)}
-          data-size={size}
-          data-placeholder={chosen.length ? undefined : true}
-          data-invalid={controlProps['aria-invalid']}
-          {...controlProps}
-        >
-          <span className="yx-select__value">
-            {chosen.length === 0
-              ? placeholder
-              : chosen.slice(0, maxChips).map((o) => (
-                  <span key={o.value} className="yx-select__chip">
-                    {o.label}
-                  </span>
-                ))}
-            {chosen.length > maxChips && <span className="yx-select__more">+{chosen.length - maxChips}</span>}
-          </span>
-          <Icon icon={ChevronDown} />
-        </button>
-      </PopoverTrigger>
+      {/* The chips sit beside the trigger, not inside it, so each one's remove button is its own control (founder 26 Oct 2026). */}
+      <PopoverAnchor asChild>
+        <div className={cx('yx-select', 'yx-select--multi', className)} data-size={size} data-placeholder={chosen.length ? undefined : true} data-invalid={controlProps['aria-invalid']} data-disabled={disabled || undefined} data-open={open || undefined}>
+          {chosen.slice(0, maxChips).map((o) => (
+            <span key={o.value} className="yx-select__chip">
+              {o.label}
+              {!disabled && (
+                <button type="button" className="yx-select__chip-remove" aria-label={`Remove ${o.label}`} title={`Remove ${o.label}`} onClick={() => toggle(o.value)}>
+                  <Icon icon={X} size="sm" />
+                </button>
+              )}
+            </span>
+          ))}
+          {chosen.length > maxChips && <span className="yx-select__more">+{chosen.length - maxChips}</span>}
+          <PopoverTrigger asChild>
+            <button type="button" role="combobox" aria-expanded={open} aria-haspopup="listbox" aria-label={ariaLabel} className="yx-select__trigger" {...controlProps}>
+              <span className="yx-select__value">{chosen.length === 0 ? placeholder : null}</span>
+              <Icon icon={ChevronDown} />
+            </button>
+          </PopoverTrigger>
+        </div>
+      </PopoverAnchor>
       <PopoverContent className="yx-select__popover" onKeyDown={closeOnEscape(setOpen)}>
         <OptionList
           options={options}
@@ -331,12 +327,13 @@ export function PersonPicker({ people, placeholder = 'Search people', ...rest }:
       placeholder={placeholder}
       searchable
       searchPlaceholder="Name, email, role or department"
+      // A searched list can drop the chosen person on the next search; fall back to the option itself, never crash.
       renderOption={(o) => {
-        const p = byId.get(o.value)!;
+        const p = byId.get(o.value) ?? { id: o.value, name: o.label };
         return <PersonLabel name={p.name} src={p.photoUrl} secondary={secondary(p)} />;
       }}
       renderValue={(o) => {
-        const p = byId.get(o.value)!;
+        const p = byId.get(o.value) ?? { id: o.value, name: o.label };
         return <PersonLabel name={p.name} src={p.photoUrl} size={20} />;
       }}
     />

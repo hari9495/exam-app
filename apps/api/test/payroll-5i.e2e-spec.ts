@@ -12,6 +12,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file';
+import { payReady } from './fixtures/pay-ready';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { markSteppedUp } from './fixtures/step-up';
 
@@ -37,7 +38,7 @@ describe('Payroll batch 5i', () => {
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
-  const api = (who: Who, method: 'get' | 'post' | 'patch', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const api = (who: Who, method: 'get' | 'post' | 'patch' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const inA = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org.A.id, isSuperAdmin: false }, fn);
   const scoped = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) =>
     inA(async (tx) => {
@@ -108,7 +109,11 @@ describe('Payroll batch 5i', () => {
       const created = await prisma.organization.create({ data: { name: `Pay5I Org ${k}`, slug: `pay5i-${k.toLowerCase()}-${run}`, planId } });
       org[k] = { id: created.id, slug: created.slug };
     }
-    const template = (key: string) => ROLE_TEMPLATES.find((t) => t.key === key)!.permissions;
+    // Founder 21 Oct 2026 (option A): only HR changes pay. These pay tests' payroll fixture also plays the HR person who
+    // sets the pay (the job-change key); payroll itself is refused a pay change (people-increment.e2e-spec.ts).
+    // Founder 28 Oct 2026: only HR approves job changes; the approver fixture also plays the HR approver who sees pay
+    // (payroll itself is refused: employee-history.e2e-spec.ts).
+    const template = (key: string) => [...ROLE_TEMPLATES.find((t) => t.key === key)!.permissions, ...(key === 'payroll_admin' ? ['employee.change.manage'] : key === 'payroll_approver' ? ['employee.change.approve'] : [])];
     const passwordHash = await argon2.hash(PASSWORD);
     const roster: [Who, 'A' | 'B', string, readonly string[] | null][] = [
       ['adminA', 'A', 'org_admin', null],
@@ -138,6 +143,8 @@ describe('Payroll batch 5i', () => {
       ids.perm = (await tx.employmentType.create({ data: { ...o, name: 'Permanent', code: 'PERM', category: 'permanent' } })).id;
       ids.uae = (await tx.legalEntity.create({ data: { ...o, name: 'Pay5I Gulf', shortName: `P5IAE-${run}`, country: 'AE', currency: 'AED' } })).id;
     });
+    // Batch H A2: approval needs the entity's TAN, PAN and PT registrations.
+    await payReady(tenantPrisma, org.A.id, ids.entity);
     const hire = async (who: Who, code: string, joinedOn: string) => {
       const res = await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, employeeCode: code, joinedOn, userId: users[who], workEmail: `${who}@pay5i-${run}.test`, assignment: { locationId: ids.loc, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null, skillClass: 'skilled' } });
       if (res.status !== 201) throw new Error(`hire ${who}: ${JSON.stringify(res.body)}`);
@@ -176,7 +183,7 @@ describe('Payroll batch 5i', () => {
   });
 
   it('every 5i table has forced RLS, tenant isolation, the support exclusion and the pay guard', async () => {
-    const tables = ['special_postings', 'piece_rate_cards', 'piece_outputs', 'unions', 'union_authorisations', 'wage_settlements', 'layoff_days', 'vrs_payouts', 'incentive_plans', 'incentive_results', 'incentive_clawbacks', 'tip_pools', 'tip_shares', 'oncall_rules', 'oncall_slots', 'ewa_policies', 'ewa_draws', 'equity_plans', 'equity_valuations', 'equity_grants', 'vesting_events', 'equity_exercises', 'actuarial_census_exports', 'actuarial_valuations', 'entity_country_packs', 'wps_employee_ids', 'wps_files', 'eosb_provisions', 'contractor_tax_forms'];
+    const tables = ['special_postings', 'piece_rate_cards', 'piece_outputs', 'unions', 'union_authorisations', 'wage_settlements', 'layoff_days', 'vrs_payouts', 'incentive_plans', 'incentive_results', 'incentive_clawbacks', 'tip_pools', 'tip_shares', 'oncall_rules', 'oncall_slots', 'ewa_policies', 'ewa_draws', 'equity_plans', 'equity_valuations', 'equity_grants', 'vesting_events', 'equity_exercises', 'actuarial_census_exports', 'actuarial_valuations', 'entity_country_packs', 'wps_employee_ids', 'wps_files', 'eosb_provisions', 'contractor_tax_forms', 'union_remittances'];
     const rows = await prisma.$queryRaw<{ t: string; ok: boolean }[]>`
       SELECT c.relname AS t, (c.relrowsecurity AND c.relforcerowsecurity
         AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid AND p.polname = 'tenant_isolation')
@@ -195,12 +202,27 @@ describe('Payroll batch 5i', () => {
     await api('payAdmin', 'post', '/payroll/special/rate-cards').send({ legalEntityId: ids.entity, operationCode: 'stitch', name: 'Stitch a shirt', unit: 'piece', rate: '2.50', validFrom: `${prevMonth}-01` }).expect(201);
     await api('payAdmin', 'post', '/payroll/special/outputs').send({ legalEntityId: ids.entity, rows: [{ employeeId: ids.emp1, workDate: first, operationCode: 'STITCH', quantity: '10' }, { employeeId: ids.emp2, workDate: first, operationCode: 'STITCH', quantity: '400' }] }).expect(201);
     await api('payAdmin', 'post', '/payroll/special/outputs').send({ legalEntityId: ids.entity, rows: [{ employeeId: ids.emp1, workDate: first, operationCode: 'NOPE', quantity: '1' }] }).expect(201);
-    // An output with no rate card in force is never paid at a guess.
+    // An output with no rate card in force is never paid at a guess (the earnings check says so too).
     await api('payAdmin', 'post', '/payroll/special/piece/post').send({ legalEntityId: ids.entity, month }).expect(400);
+    expect((await api('payAdmin', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(400)).body.message).toMatch(/NOPE/);
     await scoped((tx) => tx.pieceOutput.deleteMany({ where: { organizationId: org.A.id, operationCode: 'NOPE' } }));
+    // PAY-31 earnings check before sending: the same top-up the month would send; nothing kept; payroll.special.manage only.
+    const check = (await api('payAdmin', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(200)).body;
+    expect(check).toMatchObject({ month, sent: null });
+    const c1 = check.people.find((x: { employeeId: string }) => x.employeeId === ids.emp1);
+    expect(c1).toMatchObject({ earnings: '25.00', daysWorked: 1 });
+    expect(Number(c1.topUp)).toBeGreaterThan(0);
+    expect(check.people.find((x: { employeeId: string }) => x.employeeId === ids.emp2).topUp).toBe('0.00');
+    expect(await scoped((tx) => tx.specialPosting.count({ where: { kind: 'piece' } }))).toBe(0);
+    await api('approver1', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(403);
+    await api('payAdminB', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(404);
+    await api('payAdmin', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month: '2026-13' }).expect(400);
     const p = (await api('payAdmin', 'post', '/payroll/special/piece/post').send({ legalEntityId: ids.entity, month }).expect(201)).body.posting;
     const lines = p.lines as { employeeId: string; componentCode: string; amount: string }[];
     expect(lines.find((l) => l.employeeId === ids.emp1 && l.componentCode === 'piece_pay')!.amount).toBe('25.00');
+    const topUp = lines.find((l) => l.employeeId === ids.emp1 && l.componentCode === 'min_wage_topup')!.amount;
+    expect(topUp).toBe(c1.topUp);
+    expect((await api('payAdmin', 'get', '/payroll/special/piece/check').query({ legalEntityId: ids.entity, month }).expect(200)).body.sent).toBe('pending');
     expect(lines.some((l) => l.employeeId === ids.emp1 && l.componentCode === 'min_wage_topup')).toBe(true);
     expect(lines.some((l) => l.employeeId === ids.emp2 && l.componentCode === 'min_wage_topup')).toBe(false);
     // The same month again is refused while this one is live; the maker is not an approver.
@@ -214,15 +236,111 @@ describe('Payroll batch 5i', () => {
 
   it('incentives: the tiers with an accelerator; a worker reads only their own statement', async () => {
     const plan = (await api('payAdmin', 'post', '/payroll/special/plans').send({ legalEntityId: ids.entity, name: 'Line bonus', kind: 'production', metric: 'pieces', targetAmount: '1000', tiers: [{ from: 0, multiplier: 1 }, { from: 100, multiplier: 1.5 }], clawbackDays: 30 }).expect(201)).body.id;
-    const r = (await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results`).send({ month, rows: [{ employeeId: ids.emp1, quota: '100', actual: '120' }, { employeeId: ids.emp2, quota: '100', actual: '50' }] }).expect(200)).body as { employeeId: string; amount: string }[];
+    // PAY-33: part of a result can be held until the customer pays, never more than the incentive, always with a reason.
+    const res = (rows: object[]) => api('payAdmin', 'post', `/payroll/special/plans/${plan}/results`).send({ month, rows });
+    expect((await res([{ employeeId: ids.emp1, quota: '100', actual: '120', held: '1300.01', heldReason: 'Customer has not paid' }]).expect(400)).body.message).toMatch(/cannot be more than the incentive/);
+    expect((await res([{ employeeId: ids.emp1, quota: '100', actual: '120', held: '300' }]).expect(400)).body.message).toMatch(/Say why/);
+    await res([{ employeeId: ids.emp1, quota: '100', actual: '120', held: '-1', heldReason: 'Customer has not paid' }]).expect(400);
+    const r = (await res([{ employeeId: ids.emp1, quota: '100', actual: '120', held: '300', heldReason: 'Customer has not paid yet' }, { employeeId: ids.emp2, quota: '100', actual: '50' }]).expect(200)).body as { employeeId: string; amount: string }[];
     expect(r.find((x) => x.employeeId === ids.emp1)!.amount).toBe('1300.00');
     expect(r.find((x) => x.employeeId === ids.emp2)!.amount).toBe('500.00');
+    const saved = (await api('payAdmin', 'get', `/payroll/special/plans/${plan}/results`).query({ month }).expect(200)).body as { id: string; employeeId: string; held: string }[];
+    const held1 = saved.find((x) => x.employeeId === ids.emp1)!;
+    expect(held1.held).toBe('300.00');
+    // Releasing waits for the month to go to payroll first.
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(409);
     await api('payAdmin', 'post', `/payroll/special/plans/${plan}/post`).send({ month }).expect(201);
     await decide('approver2', /Incentives/);
-    expect((await oneTimes('incentive')).length).toBe(2);
+    expect((await oneTimes('incentive')).map((o) => o.amount.toFixed(2)).sort()).toEqual(['1000.00', '500.00']);
     const mine = (await api('emp1', 'get', '/payroll/special/me/incentives').expect(200)).body;
-    expect(mine.results).toEqual([expect.objectContaining({ plan: 'Line bonus', amount: '1300.00', sentToPayroll: true })]);
+    expect(mine.results).toEqual([expect.objectContaining({ plan: 'Line bonus', amount: '1300.00', sentToPayroll: true, held: '300.00', heldReason: 'Customer has not paid yet', heldReleased: false, tier: { from: 100, to: null }, quarter: expect.stringMatching(/^Q[1-4]$/), payoutFrequency: 'monthly' })]);
     await api('emp1', 'get', '/payroll/special/plans').query({ legalEntityId: ids.entity }).expect(403);
+    // The customer paid: payroll releases the held part, approved by someone else; only once; never by the worker or another company.
+    await api('emp1', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(403);
+    await api('payAdminB', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(404);
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month: 'soon' }).expect(400);
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${saved.find((x) => x.employeeId === ids.emp2)!.id}/release`).send({ month }).expect(409);
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(201);
+    await api('payAdmin', 'post', `/payroll/special/plans/${plan}/results/${held1.id}/release`).send({ month }).expect(409);
+    await decide('approver2', /held part/);
+    expect((await oneTimes('incentive')).map((o) => o.amount.toFixed(2)).sort()).toEqual(['1000.00', '300.00', '500.00']);
+    expect((await api('emp1', 'get', '/payroll/special/me/incentives').expect(200)).body.results[0]).toMatchObject({ heldReleased: true });
+  });
+
+  it('PAY-35 on-call: the public-holiday multiplier and the standby choice change the pay; a lower holiday multiplier is refused', async () => {
+    const base = { legalEntityId: ids.entity, name: 'Night standby', standbyAmount: '500', calloutMinHours: '3', calloutRate: '200', multiplier: '1.5' };
+    expect((await api('payAdmin', 'post', '/payroll/special/oncall-rules').send({ ...base, holidayMultiplier: '1.2' }).expect(400)).body.message).toMatch(/at least the normal-day multiplier/);
+    await api('payAdmin', 'post', '/payroll/special/oncall-rules').send({ ...base, payStandbyWhenCalled: 'no' }).expect(400);
+    await api('approver1', 'post', '/payroll/special/oncall-rules').send({ ...base, holidayMultiplier: '2' }).expect(403);
+    await api('payAdminB', 'post', '/payroll/special/oncall-rules').send({ ...base, holidayMultiplier: '2' }).expect(404);
+    const rule = (await api('payAdmin', 'post', '/payroll/special/oncall-rules').send({ ...base, holidayMultiplier: '2', payStandbyWhenCalled: false, countTowardsWeekly: true }).expect(201)).body.id;
+    expect((await api('payAdmin', 'get', '/payroll/special/oncall-rules').query({ legalEntityId: ids.entity }).expect(200)).body).toEqual([expect.objectContaining({ id: rule, holidayMultiplier: '2', payStandbyWhenCalled: false, countTowardsWeekly: true })]);
+    // emp1: a holiday call-out of 4 h, a normal call-out of 1 h (paid 3 h), and a slot with no call-out.
+    const day = (n: number) => `${month}-${String(n).padStart(2, '0')}`;
+    await api('payAdmin', 'post', '/payroll/special/oncall-slots').send({ ruleId: rule, employeeId: ids.emp1, slotDate: day(2), calloutHours: '4', onHoliday: true }).expect(201);
+    await api('payAdmin', 'post', '/payroll/special/oncall-slots').send({ ruleId: rule, employeeId: ids.emp1, slotDate: day(3), calloutHours: '1' }).expect(201);
+    await api('payAdmin', 'post', '/payroll/special/oncall-slots').send({ ruleId: rule, employeeId: ids.emp1, slotDate: day(4) }).expect(201);
+    expect(((await api('payAdmin', 'get', '/payroll/special/oncall-slots').query({ legalEntityId: ids.entity, month }).expect(200)).body as { onHoliday: boolean }[]).filter((x) => x.onHoliday)).toHaveLength(1);
+    const posting = (await api('payAdmin', 'post', '/payroll/special/oncall/post').send({ legalEntityId: ids.entity, month }).expect(201)).body.posting;
+    const lines = posting.lines as { employeeId: string; componentCode: string; amount: string; label: string }[];
+    // 4 h × 200 × 2 + 3 h × 200 × 1.5 = 2,500; standby only for the slot with no call-out.
+    expect(lines.find((l) => l.componentCode === 'callout_pay')).toMatchObject({ employeeId: ids.emp1, amount: '2500.00' });
+    expect(lines.find((l) => l.componentCode === 'standby_allowance')).toMatchObject({ amount: '500.00' });
+    expect(lines.find((l) => l.componentCode === 'callout_pay')!.label).toMatch(/1 on a public holiday at 2 ×/);
+  });
+
+  it('PAY-37 settlement preview: workers per category and each worker month by month, as the posting would send them', async () => {
+    const s = (await api('payAdmin', 'post', '/payroll/special/settlements').send({ legalEntityId: ids.entity, title: 'Settlement preview test', effectiveFrom: `${prevMonth}-01`, signedOn: today, rates: [{ category: 'skilled', monthlyIncrease: '1500' }, { category: 'unskilled', monthlyIncrease: '1200' }] }).expect(201)).body.id;
+    const pre = (await api('payAdmin', 'get', `/payroll/special/settlements/${s}/preview`).query({ month }).expect(200)).body;
+    expect(pre.categories).toEqual([
+      { category: 'skilled', monthlyIncrease: '1500.00', workers: 2, arrears: '3000.00' },
+      { category: 'unskilled', monthlyIncrease: '1200.00', workers: 0, arrears: '0.00' },
+    ]);
+    expect(pre.employees.map((e: { employeeId: string }) => e.employeeId).sort()).toEqual([ids.emp1, ids.emp2].sort());
+    expect(pre.employees[0]).toMatchObject({ category: 'skilled', from: `${prevMonth}-01`, total: '1500.00', months: [expect.objectContaining({ month: prevMonth, amount: '1500.00' })] });
+    expect(pre.total).toBe('3000.00');
+    // Nothing was sent; wrong role, another company and bad input refused; a pay month not after the effective date too.
+    expect(await scoped((tx) => tx.specialPosting.count({ where: { sourceRef: `settle:${s}` } }))).toBe(0);
+    await api('approver1', 'get', `/payroll/special/settlements/${s}/preview`).query({ month }).expect(403);
+    await api('payAdminB', 'get', `/payroll/special/settlements/${s}/preview`).query({ month }).expect(404);
+    await api('payAdmin', 'get', `/payroll/special/settlements/${s}/preview`).query({ month: 'soon' }).expect(400);
+    await api('payAdmin', 'get', `/payroll/special/settlements/${s}/preview`).query({ month: prevMonth }).expect(400);
+  });
+
+  it('PAY-32 plans: drafts, dates, payout frequency, who is on it, and versions', async () => {
+    const plan = { legalEntityId: ids.entity, name: 'Quarter bonus', kind: 'production', metric: 'pieces', targetAmount: '1000', tiers: [{ from: 0, multiplier: 1 }], clawbackDays: 0 };
+    await api('payAdmin', 'post', '/payroll/special/plans').send({ ...plan, effectiveFrom: first, effectiveTo: first }).expect(400);
+    await api('payAdmin', 'post', '/payroll/special/plans').send({ ...plan, payoutFrequency: 'weekly' }).expect(400);
+    await api('payAdmin', 'post', '/payroll/special/plans').send({ ...plan, locationId: randomUUID() }).expect(400);
+    await api('approver1', 'post', '/payroll/special/plans').send({ ...plan, draft: true }).expect(403);
+    const d = (await api('payAdmin', 'post', '/payroll/special/plans').send({ ...plan, draft: true, effectiveFrom: `${prevMonth}-01`, metricSource: 'import', locationId: ids.loc }).expect(201)).body;
+    expect(d.status).toBe('draft');
+    // A draft takes no results; it changes only at the version it was read at.
+    expect((await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/results`).send({ month, rows: [{ employeeId: ids.emp1, quota: '100', actual: '100' }] }).expect(409)).body.message).toMatch(/draft/);
+    await api('payAdmin', 'put', `/payroll/special/plans/${d.id}`).send({ ...plan, version: 9, payoutFrequency: 'quarterly' }).expect(409);
+    await api('payAdmin', 'put', `/payroll/special/plans/${d.id}`).send({ ...plan, version: 1, effectiveFrom: `${prevMonth}-01`, metricSource: 'import', locationId: ids.loc, payoutFrequency: 'quarterly' }).expect(200);
+    await api('payAdminB', 'post', `/payroll/special/plans/${d.id}/publish`).expect(404);
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/publish`).expect(200);
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/publish`).expect(409);
+    await api('payAdmin', 'put', `/payroll/special/plans/${d.id}`).send({ ...plan, version: 2 }).expect(409);
+    const listed = ((await api('payAdmin', 'get', '/payroll/special/plans').query({ legalEntityId: ids.entity }).expect(200)).body as { id: string }[]).find((x) => x.id === d.id);
+    expect(listed).toMatchObject({ status: 'active', payoutFrequency: 'quarterly', metricSource: 'import', locationId: ids.loc, planVersion: 1, effectiveFrom: `${prevMonth}-01` });
+    // A quarterly plan pays in the last month of a quarter; before its start is refused.
+    const quarterEnd = Number(month.slice(5)) % 3 === 0;
+    const r = await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/results`).send({ month, rows: [{ employeeId: ids.emp1, quota: '100', actual: '100' }] });
+    expect(r.status).toBe(quarterEnd ? 200 : 400);
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/results`).send({ month: '2020-03', rows: [{ employeeId: ids.emp1, quota: '100', actual: '100' }] }).expect(400);
+    // A new version from a later date; publishing it ends this one the day before.
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/versions`).send({ effectiveFrom: `${prevMonth}-01` }).expect(400);
+    const nextYear = `${Number(month.slice(0, 4)) + 1}-04-01`;
+    const nv = (await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/versions`).send({ effectiveFrom: nextYear }).expect(201)).body;
+    expect(nv).toMatchObject({ status: 'draft', planVersion: 2 });
+    await api('payAdmin', 'post', `/payroll/special/plans/${d.id}/versions`).send({ effectiveFrom: nextYear }).expect(409);
+    await api('payAdmin', 'post', `/payroll/special/plans/${nv.id}/publish`).expect(200);
+    const all = (await api('payAdmin', 'get', '/payroll/special/plans').query({ legalEntityId: ids.entity }).expect(200)).body as { id: string; effectiveTo: string | null; previousId: string | null }[];
+    expect(all.find((x) => x.id === d.id)!.effectiveTo).toBe(`${Number(month.slice(0, 4)) + 1}-03-31`);
+    expect(all.find((x) => x.id === nv.id)!.previousId).toBe(d.id);
+    expect(await scoped((tx) => tx.auditLog.count({ where: { action: { in: ['payroll.incentive.plan_drafted', 'payroll.incentive.plan_published', 'payroll.incentive.plan_versioned', 'payroll.incentive.plan_changed'] } } }))).toBe(5);
   });
 
   it('IR pay: union dues only with an authorisation, the remittance statement; VRS within the lifetime limit; lay-off pay', async () => {
@@ -232,7 +350,21 @@ describe('Payroll batch 5i', () => {
     const p = (await api('payAdmin', 'post', '/payroll/special/union/post').send({ legalEntityId: ids.entity, month }).expect(201)).body.posting;
     expect(p.lines).toEqual([expect.objectContaining({ employeeId: ids.emp1, componentCode: 'union_dues', amount: '50.00' })]);
     await decide('approver1', /Union dues/);
-    expect((await api('payAdmin', 'get', `/payroll/special/unions/${union}/remittance`).query({ month }).expect(200)).body).toMatchObject({ approved: true, total: '50.00', members: [{ employeeId: ids.emp1, amount: '50.00' }] });
+    expect((await api('payAdmin', 'get', `/payroll/special/unions/${union}/remittance`).query({ month }).expect(200)).body).toMatchObject({ approved: true, total: '50.00', members: [{ employeeId: ids.emp1, amount: '50.00' }], remitted: null });
+    // PAY-36 "Mark remitted": only an approved month, the amount from the check-off, once, audited; payroll.special.manage.
+    const remit = (body: Record<string, string>, who: Who = 'payAdmin') => api(who, 'post', `/payroll/special/unions/${union}/remittance`).send(body);
+    expect((await remit({ month: prevMonth, paidOn: today, reference: 'NEFT-1' }).expect(409)).body.message).toMatch(/not approved/);
+    await remit({ month, paidOn: '2999-01-01', reference: 'NEFT-1' }).expect(400);
+    await remit({ month, paidOn: `${prevMonth}-28`, reference: 'NEFT-1' }).expect(400);
+    await remit({ month, paidOn: today, reference: '<x>' }).expect(400);
+    await remit({ month, paidOn: today, reference: 'NEFT-1', amount: '1' } as Record<string, string>).expect(400);
+    await remit({ month, paidOn: today, reference: 'NEFT-1' }, 'approver1').expect(403);
+    await remit({ month, paidOn: today, reference: 'NEFT-1' }, 'payAdminB').expect(404);
+    const done = (await remit({ month, paidOn: today, reference: 'NEFT 20261030-01' }).expect(201)).body;
+    expect(done).toMatchObject({ amount: '50.00', paidOn: today, reference: 'NEFT 20261030-01' });
+    await remit({ month, paidOn: today, reference: 'NEFT-2' }).expect(409);
+    expect((await api('payAdmin', 'get', `/payroll/special/unions/${union}/remittance`).query({ month }).expect(200)).body.remitted).toMatchObject({ amount: '50.00', paidOn: today, reference: 'NEFT 20261030-01', recordedBy: users.payAdmin });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'payroll.union.remitted', entityId: done.id } }))).toBe(1);
     // VRS: 8,00,000 with 2,00,000 claimed before → what is left of the limit is exempt, the rest taxed.
     const vrs = (await api('payAdmin', 'post', `/payroll/special/entities/${ids.entity}/vrs`).send({ employeeId: ids.emp2, month, amount: '800000', priorExemption: '200000' }).expect(201)).body.posting;
     expect(vrs.lines.map((l: { componentCode: string; amount: string }) => [l.componentCode, l.amount])).toEqual([['vrs_exempt', '300000.00'], ['vrs_taxable', '500000.00']]);
@@ -280,6 +412,19 @@ describe('Payroll batch 5i', () => {
     const rec = await oneTimes('ewa');
     expect(rec).toEqual([expect.objectContaining({ componentCode: 'ewa_recovery', employeeId: ids.emp1 })]);
     expect(rec[0].amount.toFixed(2)).toBe('149.00');
+    // PAY-27: the month's recovery waits for its payroll; the finance side (run approvers) sees the reconciliation.
+    const recov = (await api('payAdmin', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=${month}`).expect(200)).body;
+    expect(recov).toEqual([{ month, draws: 1, toRecover: '149.00', recovered: '0.00', deferred: '0.00', fnf: { people: 0, amount: '0.00' }, waiting: '149.00' }]);
+    await api('approver1', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=${month}`).expect(403);
+    await api('payAdmin', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=2026-13`).expect(400);
+    const recon = (await api('approver1', 'get', `/payroll/ewa/reconciliation?legalEntityId=${ids.entity}&month=${month}`).expect(200)).body;
+    expect(recon.totals).toMatchObject({ draws: 1, paidOut: '100.00', fees: '49.00', toRecover: '149.00', recovered: '0.00', waiting: '149.00', difference: '149.00' });
+    expect(recon.draws).toEqual([expect.objectContaining({ drawId: d.id, state: 'waiting', paidRef: 'NEFT-0001', employeeName: expect.any(String) })]);
+    expect(recon.entities.map((x: { id: string }) => x.id)).toContain(ids.entity);
+    await api('emp1', 'get', `/payroll/ewa/reconciliation?legalEntityId=${ids.entity}&month=${month}`).expect(403);
+    await api('payAdminB', 'get', `/payroll/ewa/reconciliation?legalEntityId=${ids.entity}&month=${month}`).expect(404);
+    await api('payAdminB', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=${month}`).expect(404);
+    await api('approver1', 'get', `/payroll/ewa/reconciliation?legalEntityId=not-a-uuid`).expect(400);
   });
 
   it('weekly pay: the run that ends the month pays the items of the month and locks it', async () => {
@@ -291,7 +436,13 @@ describe('Payroll batch 5i', () => {
     const ll = await scoped((tx) => tx.payslipLine.findMany({ where: { payslipId: sl.id } }));
     expect(ll.some((l) => l.componentCode === 'piece_pay')).toBe(true);
     expect(ll.some((l) => l.componentCode === 'union_dues')).toBe(true);
-    if (Number(today.slice(8)) < 25) expect(ll.some((l) => l.componentCode === 'ewa_recovery')).toBe(true);
+    if (Number(today.slice(8)) < 25) {
+      expect(ll.some((l) => l.componentCode === 'ewa_recovery')).toBe(true);
+      // PAY-27: once the run is approved the draw is recovered and reconciles to nothing left.
+      const r = (await api('payAdmin', 'get', `/payroll/ewa/recoveries?legalEntityId=${ids.entity}&month=${month}`).expect(200)).body;
+      expect(r[0]).toMatchObject({ draws: 1, recovered: '149.00', waiting: '0.00' });
+      expect((await api('approver1', 'get', `/payroll/ewa/reconciliation?legalEntityId=${ids.entity}&month=${month}`).expect(200)).body.totals).toMatchObject({ recovered: '149.00', difference: '0.00' });
+    }
     const snap = await scoped((tx) => tx.payslipSnapshot.findFirstOrThrow({ where: { payslipId: sl.id } }));
     expect((snap.inputs as { sub: { final: boolean; mtd: { taxable: string } } }).sub).toMatchObject({ final: true, mtd: { taxable: expect.any(String) } });
     const p2 = await scoped((tx) => tx.payPeriod.findFirst({ where: { organizationId: org.A.id, legalEntityId: ids.entity, payGroupId: null, periodStart: new Date(`${first}T00:00:00Z`) } }));
@@ -315,6 +466,18 @@ describe('Payroll batch 5i', () => {
     expect(perq.map((p) => p.annualValue.toFixed(2))).toEqual(['15000.00']);
     const cap = await api('payAdmin', 'get', `/payroll/equity/plans/${plan}/cap-table`).expect(200);
     expect(cap.text).toContain('POOL LEFT,,200');
+    // PAY-58: a company role without payroll.equity.own sees the designed No access (403) and cannot exercise; the
+    // base role (no company role) keeps it.
+    const bare = await inA((tx) => tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `bare-${run}`, permissionsJson: JSON.stringify(['org:view']) } }));
+    await inA((tx) => tx.user.update({ where: { id: users.emp1 }, data: { permissionProfileId: bare.id } }));
+    try {
+      const t = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `emp1@pay5i-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
+      await request(server()).get('/api/v1/payroll/me/equity').set('Authorization', `Bearer ${t}`).expect(403);
+      await request(server()).post('/api/v1/payroll/me/equity/exercises').set('Authorization', `Bearer ${t}`).send({ grantId: mine[0].id, units: 1 }).expect(403);
+    } finally {
+      await inA((tx) => tx.user.update({ where: { id: users.emp1 }, data: { permissionProfileId: null } }));
+    }
+    await api('emp1', 'get', '/payroll/me/equity').expect(200);
   });
 
   it('actuarial: the census as a file; the provision journal posted by someone other than its recorder', async () => {
@@ -327,6 +490,17 @@ describe('Payroll batch 5i', () => {
     ]);
     await api('payAdmin', 'post', `/payroll/actuarial/valuations/${v.id}/post`).expect(403);
     await api('payAdmin2', 'post', `/payroll/actuarial/valuations/${v.id}/post`).expect(200);
+    // PAY-38 Upload: the leave valuation with the actuary's movement; it must add up from the opening (none posted: 0).
+    const leave = () => api('payAdmin', 'post', '/payroll/actuarial/valuations').field('legalEntityId', ids.entity).field('asOf', lastDay).field('standard', 'IND_AS_19').field('kind', 'leave');
+    expect((await leave().field('closing', '60000').field('serviceCost', '50000').expect(400)).body.message).toMatch(/all five movement figures/);
+    expect((await leave().field('closing', '60000').field('serviceCost', '50000').field('interestCost', '5000').field('benefitsPaid', '2000').field('actuarialLoss', '1000').field('actuarialGain', '0').expect(400)).body.message).toMatch(/do not add up/);
+    await leave().field('closing', '54000').field('serviceCost', '-1').field('interestCost', '5000').field('benefitsPaid', '2000').field('actuarialLoss', '1000').field('actuarialGain', '0').expect(400);
+    await api('approver1', 'post', '/payroll/actuarial/valuations').field('legalEntityId', ids.entity).field('asOf', lastDay).field('standard', 'IND_AS_19').field('kind', 'leave').field('closing', '54000').expect(403);
+    const lv = (await leave().field('closing', '54000').field('serviceCost', '50000').field('interestCost', '5000').field('benefitsPaid', '2000').field('actuarialLoss', '1000').field('actuarialGain', '0').expect(201)).body;
+    expect(lv.delta).toBe('54000.00');
+    const listed = (await api('payAdmin', 'get', '/payroll/actuarial').query({ legalEntityId: ids.entity }).expect(200)).body.valuations as { id: string; movement: Record<string, string> | null }[];
+    expect(listed.find((x) => x.id === lv.id)!.movement).toEqual({ serviceCost: '50000.00', interestCost: '5000.00', benefitsPaid: '2000.00', actuarialLoss: '1000.00', actuarialGain: '0.00' });
+    expect(listed.find((x) => x.id === v.id)!.movement).toBeNull();
   });
 
   it('country packs: a UAE entity is paid only once its pack is switched on after the completeness check', async () => {

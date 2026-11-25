@@ -1,5 +1,6 @@
 'use client';
 
+import { useToast } from '@yukthix/ui';
 import { FirstThirtyDaysScreen, type FirstThirtyDays } from '@yukthix/ui/lifecycle';
 import { loadState } from '../../../../../lib/yx-org';
 import { useLife, useTaskActions } from '../../../../../lib/yx-lifecycle';
@@ -9,5 +10,21 @@ import { useLife, useTaskActions } from '../../../../../lib/yx-lifecycle';
 export default function YxFirstThirtyDaysPage() {
   const card = useLife<{ card: FirstThirtyDays | null }>('/lifecycle/me/first-30-days');
   const actions = useTaskActions();
-  return <FirstThirtyDaysScreen state={loadState(card)} onRetry={() => void card.refetch()} data={card.data?.card ?? null} {...actions} />;
+  const { toast } = useToast();
+  return (
+    <FirstThirtyDaysScreen
+      state={loadState(card)}
+      onRetry={() => void card.refetch()}
+      data={card.data?.card ?? null}
+      {...actions}
+      onComplete={async (t, payload) => {
+        await actions.onComplete(t, payload);
+        toast({ tone: 'success', title: `Done: ${t.title}` });
+      }}
+      onSkip={async (t, reason) => {
+        await actions.onSkip(t, reason);
+        toast({ tone: 'success', title: `Skipped: ${t.title}` });
+      }}
+    />
+  );
 }

@@ -1,7 +1,8 @@
+import type { LiveTenantWizard } from './tenant-wizard-live';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { at, d } from './platform-data';
+import { d } from './platform-data';
 import {
-  NotificationSettingsScreen, PolicyEditorScreen, RolesAccessScreen, SetupHubScreen, TenantWizardScreen, type DeliveryRow, type ImportPreviewRow, type ModuleCard, type RoleRow,
+  PolicyEditorScreen, RolesAccessScreen, SetupHubScreen, TenantWizardScreen, type ImportPreviewRow, type ModuleCard, type RoleRow,
 } from './setup-admin';
 
 const meta: Meta = { title: 'Screens/Platform/Set-up & administration', parameters: { layout: 'fullscreen' } };
@@ -35,6 +36,19 @@ export const PLT09Company: S = { name: 'PLT-09 · Tenant wizard · company detai
 export const PLT09EntityError: S = { name: 'PLT-09 · Tenant wizard · entity PAN error', render: () => <TenantWizardScreen current="entities" errorStep="entities" /> };
 export const PLT09Locations: S = { name: 'PLT-09 · Tenant wizard · locations', render: () => <TenantWizardScreen current="locations" /> };
 export const PLT09Import: S = { name: 'PLT-09 · Tenant wizard · import validation preview', render: () => <TenantWizardScreen current="import" preview={PREVIEW} /> };
+// C-5 (answer 1053): the console's New company is the PLT-09 wizard with the console's steps.
+const WIZ: LiveTenantWizard = {
+  products: [{ code: 'hrms', name: 'YukthiX HR', unit: 'employee', inr: 99 }, { code: 'service_desk', name: 'YukthiX Service Desk', unit: 'agent', inr: 999 }],
+  onCreate: () => new Promise((r) => setTimeout(() => r({ id: 'c9' }), 500)),
+  onCancel: () => {},
+  onOpenCompany: () => {},
+};
+const FILLED = { name: 'Tunga Textiles', slug: 'tunga-textiles', leName: 'Tunga Textiles Pvt Ltd', pan: 'AAECT1234F', gstin: '29AAECT1234F1Z5', adminName: 'Meena Pillai', adminEmail: 'meena@tunga.test', products: ['hrms'] };
+export const PLT09ConsoleCompany: S = { name: 'PLT-09 · New company (console) · company details', render: () => <TenantWizardScreen live={WIZ} /> };
+export const PLT09ConsoleEntity: S = { name: 'PLT-09 · New company (console) · legal entity', render: () => <TenantWizardScreen live={{ ...WIZ, defaultStep: 'entity', defaults: { ...FILLED, pan: 'AAECT1234', gstin: '' } }} /> };
+export const PLT09ConsoleAdmin: S = { name: 'PLT-09 · New company (console) · first System Admin', render: () => <TenantWizardScreen live={{ ...WIZ, defaultStep: 'admin', defaults: FILLED }} /> };
+export const PLT09ConsoleProducts: S = { name: 'PLT-09 · New company (console) · plan and products', render: () => <TenantWizardScreen live={{ ...WIZ, defaultStep: 'products', defaults: FILLED }} /> };
+export const PLT09ConsoleCreated: S = { name: 'PLT-09 · New company (console) · created, the set-up hub next', render: () => <TenantWizardScreen live={{ ...WIZ, created: { id: 'c9', name: 'Tunga Textiles', adminEmail: 'meena@tunga.test' } }} /> };
 export const PLT09Review: S = { name: 'PLT-09 · Tenant wizard · review', render: () => <TenantWizardScreen current="review" preview={PREVIEW.filter((p) => p.result !== 'Error')} /> };
 
 /* PLT-11 */
@@ -54,18 +68,14 @@ export const PLT11User: S = { name: 'PLT-11 · Roles & access · user access & e
 
 /* PLT-12 */
 export const PLT12Editor: S = { name: 'PLT-12 · Approval policy editor', render: () => <PolicyEditorScreen /> };
+// Settings S-6 (answer 1330): the company's approval steps per request type, live.
+const PE_TYPES = [
+  { key: 'leave.request', label: 'Leave', steps: [{ name: 'Manager', approver: 'manager' as const, mode: 'any' as const }, { name: 'HR', approver: 'hr' as const, mode: 'any' as const }], approvers: 'Manager → HR Admins', version: 2, updatedBy: 'Lakshmi Venkatesan', updatedAt: '2026-11-12T10:00:00Z' },
+  { key: 'expense.claim', label: 'Expense claim', steps: null, approvers: 'Manager; then the cost-centre owner above the set amount', version: 0, updatedBy: null, updatedAt: null },
+];
+const peWait = () => new Promise<void>((r) => setTimeout(r, 400));
+export const PLT12Live: S = { name: 'PLT-12 · Approval policy editor · live, steps per request type (S-6)', render: () => <PolicyEditorScreen live={{ state: 'ready', onRetry: () => {}, types: PE_TYPES, remindHours: 24, escalateHours: 48, canEdit: true, onSave: peWait, onReset: peWait }} /> };
+export const PLT12LiveViewOnly: S = { name: 'PLT-12 · Approval policy editor · view only (S-6)', render: () => <PolicyEditorScreen live={{ state: 'ready', onRetry: () => {}, types: PE_TYPES, remindHours: 24, escalateHours: 48, canEdit: false, onSave: peWait, onReset: peWait }} /> };
 export const PLT12Simulated: S = { name: 'PLT-12 · Approval policy editor · simulate result', render: () => <PolicyEditorScreen simulated /> };
 export const PLT12SaveBlocked: S = { name: 'PLT-12 · Approval policy editor · save needs simulate', render: () => <PolicyEditorScreen saveTried /> };
 
-/* PLT-13 */
-const LOG: DeliveryRow[] = [
-  { id: 'l1', at: at(29, 9, 12), template: 'Leave applied', channel: 'Push', to: 'Karthik Subramanian', status: 'Delivered', detail: 'Opened 9:14 am' },
-  { id: 'l2', at: at(29, 7, 5), template: 'Payslip ready', channel: 'Email', to: 'divya.r@kaverifoods.in', status: 'Delivered', detail: 'Password-protected PDF' },
-  { id: 'l3', at: at(29, 7, 5), template: 'Payslip ready', channel: 'SMS', to: '+91 98••• ••210', status: 'Failed', detail: 'Number not reachable. Check the mobile number in the profile.' },
-  { id: 'l4', at: at(28, 18, 30), template: 'Leave approved', channel: 'WhatsApp', to: '+91 97••• ••455', status: 'Retrying', detail: 'Provider busy · next try 9:50 am' },
-];
-export const PLT13Templates: S = { name: 'PLT-13 · Notification settings · template editor', render: () => <NotificationSettingsScreen deliveries={LOG} /> };
-export const PLT13TestSent: S = { name: 'PLT-13 · Notification settings · test sent', render: () => <NotificationSettingsScreen deliveries={LOG} testSent /> };
-export const PLT13Channels: S = { name: 'PLT-13 · Notification settings · channels', render: () => <NotificationSettingsScreen tab="channels" deliveries={LOG} /> };
-export const PLT13Log: S = { name: 'PLT-13 · Notification settings · delivery log', render: () => <NotificationSettingsScreen tab="log" deliveries={LOG} /> };
-export const PLT13Usage: S = { name: 'PLT-13 · Notification settings · usage', render: () => <NotificationSettingsScreen tab="usage" deliveries={LOG} /> };

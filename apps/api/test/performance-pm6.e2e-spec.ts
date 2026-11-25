@@ -135,11 +135,11 @@ describe('Performance batch PM6', () => {
   it('the board: managers of the people in it read it, others do not; no pay; a guide note that never blocks (§11)', async () => {
     const b = (await api('fac', 'get', `/calibrations/${ids.session}`).expect(200)).body;
     expect(b.rows).toHaveLength(5);
-    expect(b.can).toEqual({ change: true, signOff: true });
+    expect(b.can).toEqual({ change: true, signOff: true, potential: true });
     expect(JSON.stringify(b)).not.toMatch(/ctc|salary|pay/i);
     expect(b.distribution.bands).not.toBeNull();
     expect(b.distribution.notes.length).toBeGreaterThan(0);
-    expect((await api('priya', 'get', `/calibrations/${ids.session}`).expect(200)).body.can).toEqual({ change: false, signOff: false });
+    expect((await api('priya', 'get', `/calibrations/${ids.session}`).expect(200)).body.can).toEqual({ change: false, signOff: false, potential: false });
     await api('kiran', 'get', `/calibrations/${ids.session}`).expect(404);
     await api('arjun', 'get', `/calibrations/${ids.session}`).expect(404);
   });
@@ -152,6 +152,21 @@ describe('Performance batch PM6', () => {
     expect(b.rows.find((r: { reviewId: string }) => r.reviewId === ids.r_arjun)).toMatchObject({ managerScore: 4, score: 3, moved: true });
     expect(b.changes).toEqual([expect.objectContaining({ from: 4, to: 3, reason: 'Compared with the plant leads' })]);
     await expect(inA((tx) => tx.$executeRaw`UPDATE calibration_changes SET reason = 'edited' WHERE review_id = ${ids.r_arjun}::uuid`)).rejects.toThrow(/permission denied/);
+  });
+
+  // PRF-09 (designs, builder 2): the 9-box potential, set by the facilitator with a reason; who changed what by name.
+  it('PRF-09: the facilitator sets potential with a reason; others cannot; changes carry who made them', async () => {
+    await api('priya', 'post', `/calibrations/${ids.session}/potential`).send({ reviewId: ids.r_arjun, potential: 3, reason: 'Ready for a bigger role' }).expect(403);
+    await api('fac', 'post', `/calibrations/${ids.session}/potential`).send({ reviewId: ids.r_arjun, potential: 4, reason: 'Ready for a bigger role' }).expect(400);
+    await api('fac', 'post', `/calibrations/${ids.session}/potential`).send({ reviewId: ids.r_arjun, potential: 3, reason: '' }).expect(400);
+    await api('fac', 'post', `/calibrations/${ids.session}/potential`).send({ reviewId: randomUUID(), potential: 3, reason: 'Not in this session' }).expect(404);
+    await api('adminB', 'post', `/calibrations/${ids.session}/potential`).send({ reviewId: ids.r_arjun, potential: 3, reason: 'Another company' }).expect((r) => expect([403, 404]).toContain(r.status));
+    const b = (await api('fac', 'post', `/calibrations/${ids.session}/potential`).send({ reviewId: ids.r_arjun, potential: 3, reason: 'Ready for a bigger role' }).expect(200)).body;
+    expect(b.rows.find((r: { reviewId: string }) => r.reviewId === ids.r_arjun).potential).toBe(3);
+    await api('fac', 'post', `/calibrations/${ids.session}/potential`).send({ reviewId: ids.r_arjun, potential: 3, reason: 'Again the same' }).expect(409);
+    expect(b.facilitator).toBeTruthy();
+    expect(b.changes[0].by).toBeTruthy();
+    expect(await inA((tx) => tx.auditLog.findFirst({ where: { action: 'perf.calibration.potential', entityId: ids.r_arjun } }))).toBeTruthy();
   });
 
   it('sign-off is never blocked by the guide; the employee sees only the released 3 (Q5, YX-PERF-08)', async () => {

@@ -1,5 +1,7 @@
 import {
+  Children,
   createContext,
+  isValidElement,
   forwardRef,
   useCallback,
   useContext,
@@ -18,6 +20,7 @@ import {
   type ReactNode,
 } from 'react';
 import * as RD from '@radix-ui/react-dialog';
+import { useInertBehindRef } from '../lib/inert';
 import * as DM from '@radix-ui/react-dropdown-menu';
 import * as RT from '@radix-ui/react-tabs';
 import { Command } from 'cmdk';
@@ -52,6 +55,7 @@ import {
   MessageCircleQuestionMark,
 } from 'lucide-react';
 import { cx } from '../lib/cx';
+import { AccessibilityMenu } from './accessibility';
 import { Heading, Icon, Kbd, type IconComponent } from './foundations';
 import { Button, IconButton } from './button';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuSeparator, MenuTrigger } from './menu';
@@ -161,6 +165,7 @@ export function AppShell({
   defaultNavOpen = false,
   mainId = 'yx-main',
 }: AppShellProps) {
+  const sheetRef = useInertBehindRef();
   const [collapsed, setCollapsed] = useControlled(panelCollapsed, defaultPanelCollapsed, onPanelCollapsedChange);
   const [sheetOpen, setSheetOpen] = useState(defaultNavOpen);
   const ctx = useMemo<ShellContextValue>(
@@ -256,6 +261,7 @@ export function AppShell({
             <RD.Portal>
               <RD.Overlay className="yx-shell__scrim" />
               <RD.Content
+                ref={sheetRef}
                 className="yx-shell__sheet"
                 aria-describedby={undefined}
                 tabIndex={-1}
@@ -410,17 +416,57 @@ export function SidePanel({ title, children }: SidePanelProps) {
   );
 }
 
-/** A labelled group of links, e.g. "Favourites", "Saved views", "Records". Omit label for the first group. */
+const groupKey = (label: string) => `yx-nav-closed:${label}`;
+const readClosed = (label: string) => {
+  try {
+    return localStorage.getItem(groupKey(label)) === '1';
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * A labelled group of links, e.g. "Onboarding", "Changes". Omit label for the first group (always open).
+ * A labelled group opens and closes from its header and remembers that in this browser; the group holding the
+ * page you are on always stays open (founder, 21 Oct 2026).
+ */
 export function PanelGroup({ label, children }: { label?: ReactNode; children: ReactNode }) {
   const id = useId();
+  const listId = useId();
+  const key = typeof label === 'string' ? label : null;
+  const [closed, setClosed] = useState(false);
+  useEffect(() => setClosed(key ? readClosed(key) : false), [key]);
+  const holdsActive = Children.toArray(children).some((c) => isValidElement<{ active?: boolean }>(c) && !!c.props.active);
+  const open = !label || !closed || holdsActive;
+  const toggle = () => {
+    const next = !closed;
+    setClosed(next);
+    try {
+      if (key) localStorage.setItem(groupKey(key), next ? '1' : '0');
+    } catch {
+      /* private mode: the choice lasts until reload */
+    }
+  };
   return (
-    <div className="yx-panel__group" role="group" aria-labelledby={label ? id : undefined}>
+    <div className="yx-panel__group" role="group" aria-labelledby={label ? id : undefined} data-closed={!open || undefined}>
       {label && (
-        <div className="yx-panel__group-label" id={id}>
-          {label}
-        </div>
+        <button
+          type="button"
+          className="yx-panel__group-label"
+          id={id}
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-disabled={holdsActive || undefined}
+          title={holdsActive ? 'The page you are on is in this section' : undefined}
+          onClick={() => !holdsActive && toggle()}
+        >
+          <span className="yx-panel__group-text">{label}</span>
+          <Icon icon={open ? ChevronDown : ChevronRight} className="yx-panel__group-chevron" />
+        </button>
       )}
-      <ul className="yx-panel__list">{children}</ul>
+      <ul className="yx-panel__list" id={listId} hidden={!open}>
+        {children}
+      </ul>
     </div>
   );
 }
@@ -469,8 +515,15 @@ export interface TopBarProps {
   /** Notification bell. */
   notifications?: ReactNode;
   onHelp?: () => void;
+  /** Answer 992: a dot on Help while What's new has unread entries. */
+  helpUnread?: boolean;
   /** <ProfileMenu>. */
   profile?: ReactNode;
+  /**
+   * The Accessibility menu, controlled by the host (signed in: saved on the account). Left out, the bar still shows
+   * one that keeps the choices in this browser: a company can never turn it off (answer 2330).
+   */
+  accessibility?: ReactNode;
 }
 
 export function TopBar({
@@ -482,7 +535,9 @@ export function TopBar({
   onAsk,
   notifications,
   onHelp,
+  helpUnread,
   profile,
+  accessibility,
 }: TopBarProps) {
   const shell = useContext(ShellContext);
   return (
@@ -503,8 +558,14 @@ export function TopBar({
         {entity && <div className="yx-topbar__entity">{entity}</div>}
         {/* Ask AI sits in the bar with the other tools, never floating over the page (R8). */}
         {onAsk && <IconButton icon={MessageCircleQuestionMark} label="Ask AI" variant="secondary" className="yx-ask-fab" onClick={onAsk} />}
+        {accessibility ?? <AccessibilityMenu />}
         {notifications}
-        {onHelp && <IconButton icon={CircleHelp} label="Help" onClick={onHelp} />}
+        {onHelp && (
+          <span className="yx-topbar__help">
+            <IconButton icon={CircleHelp} label={helpUnread ? "Help, new in What's new" : 'Help'} onClick={onHelp} />
+            {helpUnread && <span className="yx-topbar__help-dot" aria-hidden="true" />}
+          </span>
+        )}
         {profile}
       </div>
     </header>
@@ -567,7 +628,7 @@ export function ProfileMenu({
           <Avatar name={name} src={photoUrl} size={32} />
         </MenuTrigger>
       </Tooltip>
-      <MenuContent align="end">
+      <MenuContent align="end" className="yx-profile-menu">
         <div className="yx-profile-menu__who">
           <span className="yx-profile-menu__name">{name}</span>
           {email && <span className="yx-profile-menu__email">{email}</span>}
@@ -668,6 +729,7 @@ export function CommandPalette({
   onQueryChange,
   loading = false,
 }: CommandPaletteProps) {
+  const paletteRef = useInertBehindRef();
   const [open, setOpen] = useControlled(openProp, defaultOpen, onOpenChange);
   const [q, setQState] = useState(defaultSearch);
   const setQ = (v: string) => {
@@ -715,6 +777,7 @@ export function CommandPalette({
       <RD.Portal>
         <RD.Overlay className="yx-palette__scrim" />
         <RD.Content
+          ref={paletteRef}
           className="yx-palette"
           aria-describedby={undefined}
           // Focus the search box with the cursor after the text; Radix would select it all and the next key would wipe it.
@@ -878,6 +941,8 @@ export function useCommandPaletteShortcut(onToggle: () => void) {
 export interface Crumb {
   label: string;
   href?: string;
+  /** For a page held in screen state rather than its own address: the link runs this instead of navigating. */
+  onClick?: () => void;
 }
 
 /** Deep pages only (object → sub-object, §12). Last item is the current page. More than 4 collapses the middle into "…". */
@@ -889,7 +954,7 @@ export function Breadcrumbs({ items, max = 4 }: { items: Crumb[]; max?: number }
   const current = items[items.length - 1];
   const link = (c: Crumb) => (
     <li key={`${c.label}-${c.href}`} className="yx-crumbs__item">
-      <a className="yx-crumbs__link" href={c.href}>
+      <a className="yx-crumbs__link" href={c.href} onClick={c.onClick && ((e) => (e.preventDefault(), c.onClick!()))}>
         {c.label}
       </a>
       <Icon icon={ChevronRight} className="yx-crumbs__sep" />

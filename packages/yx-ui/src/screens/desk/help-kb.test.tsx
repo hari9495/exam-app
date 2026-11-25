@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { HelpCentreScreen, MyTicketScreen } from './help';
+import { MyTicketScreen } from './help';
 import { ArticleBody, RateTicketCard, type KbArticleView, type KbHome } from './help-kb';
 import { InsertArticleButton, TicketKbCard, articleLinkHtml } from './ticket-kb';
 import { MY_ROWS, MY_TICKET, RAISE_DESKS } from './data';
@@ -13,18 +13,6 @@ const ARTICLE: KbArticleView = { id: 'a1', number: 12, title: 'Connect to the of
 const HOME: KbHome = { spaces: [{ id: 's1', slug: 'it-help', name: 'IT help', categories: [{ id: 'c1', parentId: null, name: 'Network' }] }], featured: [{ id: 'a1', number: 12, title: 'Connect to the office Wi-Fi', summary: null }], articles: [{ id: 'a1', number: 12, title: 'Connect to the office Wi-Fi', summary: null, categoryId: 'c1', spaceId: 's1' }] };
 
 describe('help articles for requesters', () => {
-  it('suggests articles while the person types the subject, and opens one', async () => {
-    const onSearch = vi.fn().mockResolvedValue([{ id: 'a1', number: 12, title: 'Connect to the office Wi-Fi', summary: 'Join KaveriStaff.' }]);
-    const onArticle = vi.fn().mockResolvedValue(ARTICLE);
-    render(<HelpCentreScreen state="ready" desks={RAISE_DESKS} tickets={MY_ROWS} onRaise={vi.fn()} onOpen={() => {}} kb={{ home: HOME, onSearch, onArticle, onFeedback: vi.fn(), onSolved: vi.fn() }} />);
-    await ue.click(screen.getByRole('button', { name: 'Raise a ticket' }));
-    await ue.type(screen.getByRole('textbox', { name: /Subject/ }), 'wifi down');
-    await waitFor(() => expect(onSearch).toHaveBeenCalledWith(expect.stringContaining('wifi down')));
-    const links = await screen.findAllByRole('button', { name: 'Connect to the office Wi-Fi' });
-    await ue.click(links[links.length - 1]);
-    await waitFor(() => expect(onArticle).toHaveBeenCalledWith(12, undefined));
-  });
-
   it('"This solved it" counts and needs no ticket; feedback once; language is a single choice', async () => {
     const onSolved = vi.fn().mockResolvedValue(undefined);
     const onFeedback = vi.fn().mockResolvedValue(undefined);
@@ -34,10 +22,14 @@ describe('help articles for requesters', () => {
     expect(onLanguage).toHaveBeenCalledWith('hi');
     await ue.click(screen.getByRole('button', { name: 'Yes' }));
     expect(onFeedback).toHaveBeenCalledWith(true);
-    expect(screen.getByRole('button', { name: 'No' })).toBeDisabled();
+    await ue.click(screen.getByRole('button', { name: 'No' }));
+    expect(onFeedback).toHaveBeenCalledTimes(1);
+    expect((await screen.findAllByText('You have already told us. Thank you.'))[0]).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'This solved it' }));
     expect(onSolved).toHaveBeenCalled();
-    expect(await screen.findByText('No ticket was needed.')).toBeTruthy();
+    expect((await screen.findAllByText('No ticket was needed.'))[0]).toBeTruthy();
+    expect((await screen.findAllByText('Glad it helped'))[0]).toBeTruthy();
+
   });
 
   it('shows a notice when the article is not in the reader\'s language', () => {
@@ -50,8 +42,21 @@ describe('help articles for requesters', () => {
     render(<RateTicketCard rating={null} onRate={onRate} />);
     await ue.click(screen.getByRole('radio', { name: '2' }));
     await ue.click(screen.getByRole('button', { name: 'Send rating' }));
-    expect(onRate).toHaveBeenCalledWith(2, undefined);
+    expect(onRate).toHaveBeenCalledWith(2, undefined, undefined);
     expect(await screen.findByText(/You rated this ticket 2 of 5/)).toBeTruthy();
+  });
+
+  it('1643: a reason from the desk list may go with the stars; with no list no reason is asked', async () => {
+    const onRate = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = render(<RateTicketCard rating={null} reasons={['Slow', 'Not solved']} onRate={onRate} />);
+    await ue.click(screen.getByRole('radio', { name: '2' }));
+    await ue.click(screen.getByRole('combobox', { name: /The main reason/ }));
+    await ue.click(await screen.findByRole('option', { name: 'Slow' }));
+    await ue.click(screen.getByRole('button', { name: 'Send rating' }));
+    expect(onRate).toHaveBeenCalledWith(2, undefined, 'Slow');
+    unmount();
+    render(<RateTicketCard rating={null} reasons={[]} onRate={onRate} />);
+    expect(screen.queryByRole('combobox', { name: /The main reason/ })).toBeNull();
   });
 
   it('the requester\'s ticket shows the rating card only when it can be rated or was rated', () => {
@@ -86,8 +91,11 @@ describe('knowledge on a ticket', () => {
     expect(p.onSolvedBy).toHaveBeenCalledWith('a1');
     await ue.click(screen.getByRole('button', { name: 'Out of date' }));
     const flag = screen.getByRole('button', { name: 'Flag it' });
-    expect(flag).toBeDisabled();
-    await ue.type(screen.getByRole('textbox', { name: 'What is wrong?' }), 'Menu moved');
+    // Never disabled: pressed with no reason, it says what is missing and flags nothing.
+    await ue.click(flag);
+    expect(screen.getByText('Say what is wrong (at least 3 letters).')).toBeInTheDocument();
+    expect(p.onFlag).not.toHaveBeenCalled();
+    await ue.type(screen.getByRole('textbox', { name: /What is wrong/ }), 'Menu moved');
     await ue.click(flag);
     expect(p.onFlag).toHaveBeenCalledWith('a1', 'Menu moved');
     rerender(<TicketKbCard {...p} solved />);

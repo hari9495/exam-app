@@ -22,6 +22,8 @@ import { MailInService } from './mail-in.service';
 import { MailOutService, SD_DNS_RESOLVER, dnsResolverFactory } from './mail-out.service';
 import { PortalService } from './portal.service';
 import { PlatformModule } from '../platform/platform.module';
+import { HelpCentreController } from './help-centre.controller';
+import { HelpCentreService } from './help-centre.service';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { DirectoryService } from './directory.service';
 import { DeskInsightsController } from './insights.controller';
@@ -45,9 +47,14 @@ import { DeskChatController, DeskOrgController, MyChatController } from './esm2.
 import { JourneysService } from './journeys.service';
 import { LifecyclesService } from './lifecycles.service';
 import { RecurringService } from './recurring.service';
+import { FacilitiesService } from './facilities.service';
 import { DeskEsm3Controller, InboundMsgController, MyMessagingController, ReplyLinkController, WidgetPublicController } from './esm3.controller';
 import { MailboxSyncService } from './mailbox-sync.service';
 import { MessagingService } from './messaging.service';
+import { DeskItsmController } from './itsm.controller';
+import { ItsmService } from './itsm.service';
+import { ChangesService } from './changes.service';
+import { ProblemsService } from './problems.service';
 import { MobileService } from './mobile.service';
 import { TeamService } from './team.service';
 import { WidgetService } from './widget.service';
@@ -64,6 +71,8 @@ import { WidgetService } from './widget.service';
 @Module({
   imports: [AuditModule, StorageModule, NotificationsModule, CryptoModule, EmailModule, AuthModule, PlatformModule, OrganizationsModule, RulesEngineModule, WorkflowModule, JwtModule.register({})],
   controllers: [
+    // Console C-8, YX-11: the help-centre editor (staff).
+    HelpCentreController,
     DeskSetupController,
     DeskTicketsController,
     DeskWorkController,
@@ -94,8 +103,10 @@ import { WidgetService } from './widget.service';
     InboundMsgController,
     WidgetPublicController,
     ReplyLinkController,
+    DeskItsmController,
   ],
   providers: [
+    HelpCentreService,
     { provide: REDIS_CONNECTION, useFactory: createRedisConnection },
     DeskAccessService,
     DesksService,
@@ -126,6 +137,7 @@ import { WidgetService } from './widget.service';
     DocumentsService,
     JourneysService,
     RecurringService,
+    FacilitiesService,
     ChatService,
     ChatGateway,
     MessagingService,
@@ -133,8 +145,12 @@ import { WidgetService } from './widget.service';
     TeamService,
     MailboxSyncService,
     MobileService,
+    ItsmService,
+    ChangesService,
+    ProblemsService,
   ],
   // Lifecycle 6a: HR checklist tasks raise their desk requests through the journeys service (founder D1).
-  exports: [JourneysService],
+  // Answer 491: the staffing client portal raises and follows tickets through the Helpdesk's own create and reply paths.
+  exports: [JourneysService, DeskAccessService, WorkService, TicketsService, RequesterService, KbService, SupportBridgeService],
 })
 export class ServiceDeskModule {}

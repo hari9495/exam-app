@@ -10,7 +10,10 @@ import { displayName } from '../employee-history/employee-history.service';
 import { LettersService } from '../documents/letters/letters.service';
 import { joinerInScope } from '../documents/person-access';
 import { JoinersService } from './joiners.service';
+import { PreboardingPortalService } from './portal.service';
 import { LifecycleJourneysService } from './journeys.service';
+import { lookedAfter } from './people-registers.service';
+import { REHIRE_OPTIONS, offerRehire, rehireOverridesIn } from './rehire-policy';
 
 // Lifecycle batch 6e, the onboarding special cases (M01 §3.5; design §16.5):
 //   rehire   (LIFE-5.01, YX-LC-11 / 18) someone who worked here before joins on the same employee record; the
@@ -22,7 +25,7 @@ import { LifecycleJourneysService } from './journeys.service';
 //            checklist's buddy tasks (the day-30 check-in) go to them.
 
 const iso = (d: Date) => d.toISOString().slice(0, 10);
-export const REHIRE_OPTIONS = ['code', 'pf', 'same_fy_tax', 'service', 'gratuity', 'leave', 'probation', 'prior_records'] as const;
+export { REHIRE_OPTIONS };
 type RehireOption = (typeof REHIRE_OPTIONS)[number];
 const MEANING: Record<string, string> = {
   'code:reuse': 'Keeps their old employee code.',
@@ -67,6 +70,7 @@ export class OnboardingExtrasService {
     private readonly journeys: LifecycleJourneysService,
     private readonly joiners: JoinersService,
     private readonly letters: LettersService,
+    private readonly portal: PreboardingPortalService,
   ) {}
 
   private viewer(user: ScopeUser) {
@@ -82,7 +86,7 @@ export class OnboardingExtrasService {
   // ------------------------------------------------------------------------------------------ rehire (LIFE-5.01)
 
   /** The policy default of each option, this rehire's choice, and what it means (the impact preview). */
-  async rehireOptionsIn(tx: Tx, c: CompanyContext, pb: Prisma.PreboardingGetPayload<object>) {
+  async rehireOptionsIn(tx: Tx, c: CompanyContext, pb: Pick<Prisma.PreboardingGetPayload<object>, 'rehireOf' | 'rehireOverrides' | 'legalEntityId' | 'joiningOn'>) {
     const prev = await tx.employment.findFirstOrThrow({ where: { organizationId: c.organizationId, id: pb.rehireOf! } });
     const overrides = (pb.rehireOverrides ?? {}) as Record<string, { value: string; reason: string }>;
     const options = [];
@@ -101,20 +105,40 @@ export class OnboardingExtrasService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const pb = await this.joiner(tx, c, v, id);
       if (pb.personType !== 'rehire') throw new NotFoundException('This joiner is not a rehire.');
-      const o = await this.rehireOptionsIn(tx, c, pb);
-      const k = await tx.exitCase.findFirst({ where: { organizationId: c.organizationId, employmentId: o.prev.id }, orderBy: { createdAt: 'desc' } });
-      // YX-LC-29: HR sees whether they are eligible for rehire (yes / no; the reasons stay with the confidential key).
-      let eligible: boolean | null = null;
-      if (k) {
-        await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'on', true)`;
-        eligible = (await tx.exitCaseHr.findUnique({ where: { exitCaseId: k.id }, select: { rehireEligible: true } }))?.rehireEligible ?? null;
-        await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'off', true)`;
-      }
-      return {
-        previous: { employeeCode: o.prev.employeeCode, joinedOn: iso(o.prev.joinedOn), exitedOn: o.exitedOn, exitType: k?.exitType ?? null, rehireEligible: eligible, breakMonths: o.breakMonths, sameEntityFy: o.sameEntityFy },
-        options: o.options,
-        version: pb.version,
-      };
+      return this.rehireViewIn(tx, c, pb, pb.version);
+    });
+  }
+
+  /** The impact preview: the earlier spell, and each option's policy and choice. */
+  private async rehireViewIn(tx: Tx, c: CompanyContext, pb: Parameters<OnboardingExtrasService['rehireOptionsIn']>[2], version: number) {
+    const o = await this.rehireOptionsIn(tx, c, pb);
+    const k = await tx.exitCase.findFirst({ where: { organizationId: c.organizationId, employmentId: o.prev.id }, orderBy: { createdAt: 'desc' } });
+    // YX-LC-29: HR sees whether they are eligible for rehire (yes / no; the reasons stay with the confidential key).
+    let eligible: boolean | null = null;
+    if (k) {
+      await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'on', true)`;
+      eligible = (await tx.exitCaseHr.findUnique({ where: { exitCaseId: k.id }, select: { rehireEligible: true } }))?.rehireEligible ?? null;
+      await tx.$executeRaw`SELECT set_config('app.lifecycle_confidential', 'off', true)`;
+    }
+    return {
+      previous: { employeeCode: o.prev.employeeCode, joinedOn: iso(o.prev.joinedOn), exitedOn: o.exitedOn, exitType: k?.exitType ?? null, rehireEligible: eligible, breakMonths: o.breakMonths, sameEntityFy: o.sameEntityFy },
+      options: o.options,
+      version,
+    };
+  }
+
+  /**
+   * PPL-12: the same preview for an accepted offer, before the joiner exists, for the entity and joining day HR picked in
+   * the Create drawer. Refused for a new person (404) and a current employee (409, a job change).
+   */
+  async rehirePreview(ctx: TenantContext, user: ScopeUser, offerId: string, legalEntityId: string, joiningOn: string) {
+    const v = await this.viewer(user);
+    if (v.actingForOther || !v.grants.has('lifecycle.onboarding.manage')) throw new ForbiddenException('You cannot onboard joiners.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { rehire } = await offerRehire(tx, c.organizationId, offerId);
+      if (!rehire) throw new NotFoundException('This offer is for someone new, not a rehire.');
+      if (!(await tx.legalEntity.findFirst({ where: { organizationId: c.organizationId, id: legalEntityId }, select: { id: true } }))) throw new BadRequestException('No such legal entity.');
+      return this.rehireViewIn(tx, c, { rehireOf: rehire.employmentId, rehireOverrides: {}, legalEntityId, joiningOn: new Date(`${joiningOn}T00:00:00Z`) }, 0);
     });
   }
 
@@ -124,14 +148,7 @@ export class OnboardingExtrasService {
       const pb = await this.joiner(tx, c, v, id);
       if (pb.personType !== 'rehire' || pb.status !== 'invited') throw new ConflictException('Only a rehire waiting to join has rehire options.');
       if (pb.version !== dto.version) throw new ConflictException('Someone else changed this joiner. Reload it.');
-      const next: Record<string, { value: string; reason: string }> = {};
-      for (const [key, x] of Object.entries(dto.overrides)) {
-        if (!(REHIRE_OPTIONS as readonly string[]).includes(key) || !SETTINGS[`rehire.${key}`].values.includes(x.value)) throw new BadRequestException(`No such rehire choice: ${key}.`);
-        const policy = await settingFor(tx, c, `rehire.${key}`, { legalEntityId: pb.legalEntityId });
-        if (x.value === policy) continue;
-        if (!x.reason || x.reason.trim().length < 3) throw new BadRequestException(`Say why "${key.replace(/_/g, ' ')}" differs from the company policy.`);
-        next[key] = { value: x.value, reason: x.reason.trim().slice(0, 300) };
-      }
+      const next = await rehireOverridesIn(tx, c, pb.legalEntityId, dto.overrides);
       await tx.preboarding.update({ where: { id }, data: { rehireOverrides: next, version: { increment: 1 } } });
       await audit(tx, c, 'preboarding.rehire.options', 'preboarding', id, { overrides: Object.fromEntries(Object.entries(next).map(([k, x]) => [k, { value: x.value, reason: x.reason }])) });
     });
@@ -161,6 +178,9 @@ export class OnboardingExtrasService {
         const e = await tx.employee.findFirst({ where: { organizationId: org, id: dto.employeeId } });
         if (!e || e.personId === pb.personId || !(await tx.employment.findFirst({ where: { organizationId: org, employeeId: e.id, exitedOn: null }, select: { id: true } }))) throw new BadRequestException('Choose a current employee as the buddy.');
         userId = e.userId;
+        // A buddy in the pool looks after at most their cap of joiners at a time (PPL-41).
+        const inPool = dto.employeeId !== pb.buddyEmployeeId && (await tx.buddyPool.findUnique({ where: { organizationId_employeeId: { organizationId: org, employeeId: dto.employeeId } } }));
+        if (inPool && (await tx.preboarding.count({ where: { ...lookedAfter(org), buddyEmployeeId: dto.employeeId } })) >= inPool.cap) throw new BadRequestException(`${displayName(e)} already looks after ${inPool.cap === 1 ? '1 joiner' : `${inPool.cap} joiners`}. Choose another buddy.`);
       }
       await tx.preboarding.update({ where: { id }, data: { buddyEmployeeId: dto.employeeId, version: { increment: 1 } } });
       // The buddy's checklist tasks follow (the HR owner holds them while there is no buddy or the buddy has no login).
@@ -173,10 +193,14 @@ export class OnboardingExtrasService {
 
   // ------------------------------------------------------------------------------------------ campus batches (LIFE-5.02)
 
+  /** A batch is managed whole: company-wide, or with a legal-entity scope on its entity (a location or team scope is not enough). */
+  private canManageEntity(v: Viewer, legalEntityId: string) {
+    return v.grants.has('lifecycle.onboarding.manage') && !v.actingForOther && (tenantWide(v, 'lifecycle.onboarding.manage') || (v.scopes.get('lifecycle.onboarding.manage') ?? []).some((s) => s.type === 'legal_entity' && s.id === legalEntityId));
+  }
+
   private async mayManageEntity(v: Viewer, legalEntityId: string) {
     if (!v.grants.has('lifecycle.onboarding.manage') || v.actingForOther) throw new ForbiddenException('You cannot manage joiners.');
-    if (tenantWide(v, 'lifecycle.onboarding.manage')) return;
-    if (!(v.scopes.get('lifecycle.onboarding.manage') ?? []).some((s) => s.type === 'legal_entity' && s.id === legalEntityId)) throw new ForbiddenException('You cannot manage joiners of that legal entity.');
+    if (!this.canManageEntity(v, legalEntityId)) throw new ForbiddenException('You cannot manage joiners of that legal entity.');
   }
 
   async batches(ctx: TenantContext, user: ScopeUser) {
@@ -184,15 +208,32 @@ export class OnboardingExtrasService {
     if (!v.grants.has('lifecycle.onboarding.view') && !v.grants.has('lifecycle.onboarding.manage')) throw new ForbiddenException('You cannot see joiners.');
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const rows = await tx.joinerBatch.findMany({ where: { organizationId: c.organizationId }, orderBy: { joiningOn: 'desc' }, take: 200 });
+      // N6 (28 Oct 2026): a batch is listed company-wide, with a legal-entity scope on its entity, or (a location,
+      // department or team scope) when at least one of its members is the viewer's; never another entity's batch.
+      const entityScope = (key: string, entity: string) => tenantWide(v, key) || (v.scopes.get(key) ?? []).some((s) => s.type === 'legal_entity' && s.id === entity);
+      const entities = await tx.legalEntity.findMany({ where: { organizationId: c.organizationId, archivedAt: null }, select: { id: true } });
+      const createIn = entities.map((e) => e.id).filter((e) => this.canManageEntity(v, e));
       const out = [];
       for (const b of rows) {
         const members = await tx.preboarding.findMany({ where: { organizationId: c.organizationId, batchId: b.id, status: { not: 'cancelled' } } });
-        const visible = [];
+        const visible: typeof members = [];
         for (const m of members) {
           const sees = (await joinerInScope(tx, c, v, 'lifecycle.onboarding.view', m)) || (await joinerInScope(tx, c, v, 'lifecycle.onboarding.manage', m));
           if (sees) visible.push(m);
         }
+        if (!visible.length && !entityScope('lifecycle.onboarding.view', b.legalEntityId) && !entityScope('lifecycle.onboarding.manage', b.legalEntityId)) continue;
         const people = await tx.person.findMany({ where: { organizationId: c.organizationId, id: { in: visible.map((m) => m.personId) } } });
+        // PPL-14 "Offers issued": members who came from an accepted offer in Hiring or hold an issued appointment
+        // letter; the rest with an issued letter of intent are "still on letter of intent".
+        const letters = await tx.letterIssue.findMany({ where: { organizationId: c.organizationId, personId: { in: visible.map((m) => m.personId) }, letterType: { in: ['appointment', 'letter_of_intent'] }, status: 'issued' }, select: { personId: true, letterType: true } });
+        const holding = (t: string) => new Set(letters.filter((l) => l.letterType === t).map((l) => l.personId));
+        const appointed = holding('appointment');
+        const offered = (m: (typeof visible)[number]) => Boolean(m.offerId) || appointed.has(m.personId);
+        const intent = holding('letter_of_intent');
+        // Change date: the open checklist tasks of the members waiting to join (the ones a new day moves).
+        const waiting = visible.filter((m) => m.status === 'invited').map((m) => m.id);
+        const journeys = waiting.length ? await tx.journey.findMany({ where: { organizationId: c.organizationId, subjectType: 'preboarding', subjectId: { in: waiting }, kind: 'onboarding' }, select: { id: true } }) : [];
+        const openTasks = journeys.length ? await tx.journeyTask.count({ where: { organizationId: c.organizationId, journeyId: { in: journeys.map((j) => j.id) }, status: { in: ['waiting', 'open'] } } }) : 0;
         out.push({
           id: b.id,
           name: b.name,
@@ -202,15 +243,27 @@ export class OnboardingExtrasService {
           status: b.status,
           version: b.version,
           members: visible.map((m) => ({ id: m.id, personId: m.personId, name: displayName(people.find((p) => p.id === m.personId)!), status: m.status, joiningOn: iso(m.joiningOn) })),
+          offersIssued: visible.filter(offered).length,
+          lettersOfIntent: visible.filter((m) => intent.has(m.personId) && !offered(m)).length,
+          openTasks,
+          canManage: this.canManageEntity(v, b.legalEntityId),
         });
       }
-      return { today: todayIst(), rows: out };
+      return { today: todayIst(), rows: out, createIn };
     });
   }
 
-  async saveBatch(ctx: TenantContext, user: ScopeUser, id: string | null, dto: BatchInput & { reason?: string; version?: number }) {
+  async saveBatch(ctx: TenantContext, user: ScopeUser, id: string | null, dto: BatchInput & { reason?: string; notify?: boolean; version?: number }) {
     const v = await this.viewer(user);
     await this.mayManageEntity(v, dto.legalEntityId);
+    const r = await this.saveBatchIn(ctx, id, dto);
+    // PPL-14: after the commit, each moved member with a personal email hears their new day (when HR ticked it).
+    let emailed = 0;
+    if (dto.notify) for (const m of r.movedIds) if (await this.portal.dateMoved(ctx.organizationId!, m, dto.joiningOn).catch(() => false)) emailed++;
+    return { id: r.id, moved: r.movedIds.length, emailed };
+  }
+
+  private saveBatchIn(ctx: TenantContext, id: string | null, dto: BatchInput & { reason?: string; version?: number }): Promise<{ id: string; movedIds: string[] }> {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       if (dto.joiningOn < todayIst()) throw new BadRequestException('The batch joins today or later.');
@@ -219,23 +272,25 @@ export class OnboardingExtrasService {
       if (!id) {
         const b = await tx.joinerBatch.create({ data: { organizationId: org, name: dto.name.trim(), legalEntityId: dto.legalEntityId, joiningOn: new Date(`${dto.joiningOn}T00:00:00Z`), touchpoints: (dto.touchpoints ?? []) as Prisma.InputJsonValue, createdBy: c.userId ?? null } });
         await audit(tx, c, 'batch.created', 'joiner_batch', b.id, { joiningOn: dto.joiningOn });
-        return { id: b.id, moved: 0 };
+        return { id: b.id, movedIds: [] };
       }
       const b = await tx.joinerBatch.findFirst({ where: { organizationId: org, id } });
       if (!b) throw new NotFoundException('No such batch.');
+      // The entity was checked from the body: a batch keeps its own entity, so nobody changes another entity's batch.
+      if (b.legalEntityId !== dto.legalEntityId) throw new ForbiddenException('You cannot manage joiners of that legal entity.');
       if (b.version !== dto.version) throw new ConflictException('Someone else changed this batch. Reload it.');
       await tx.joinerBatch.update({ where: { id }, data: { name: dto.name.trim(), joiningOn: new Date(`${dto.joiningOn}T00:00:00Z`), touchpoints: (dto.touchpoints ?? []) as Prisma.InputJsonValue, version: { increment: 1 } } });
       // A new batch day moves every member waiting to join, and their checklists (YX-LC-13).
-      let moved = 0;
+      const movedIds: string[] = [];
       if (iso(b.joiningOn) !== dto.joiningOn) {
         if (!dto.reason || dto.reason.trim().length < 3) throw new BadRequestException('Say why the batch joining day moves.');
         for (const m of await tx.preboarding.findMany({ where: { organizationId: org, batchId: id, status: 'invited' } })) {
           await this.joiners.moveIn(tx, c, m, dto.joiningOn, `Batch day moved: ${dto.reason}`);
-          moved++;
+          movedIds.push(m.id);
         }
       }
-      await audit(tx, c, 'batch.updated', 'joiner_batch', id, { joiningOn: dto.joiningOn, moved });
-      return { id, moved };
+      await audit(tx, c, 'batch.updated', 'joiner_batch', id, { joiningOn: dto.joiningOn, moved: movedIds.length });
+      return { id, movedIds };
     });
   }
 
@@ -261,9 +316,11 @@ export class OnboardingExtrasService {
 
   /** A letter of intent to every member waiting to join (each through the ordinary letter issue, checks included). */
   async sendLoi(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
     const members = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const b = await tx.joinerBatch.findFirst({ where: { organizationId: c.organizationId, id } });
       if (!b) throw new NotFoundException('No such batch.');
+      await this.mayManageEntity(v, b.legalEntityId);
       return tx.preboarding.findMany({ where: { organizationId: c.organizationId, batchId: id, status: 'invited' }, select: { id: true, personId: true } });
     });
     const out = { issued: 0, failed: [] as { preboardingId: string; message: string }[] };

@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 
 export interface OfferPdfData {
   orgName: string;
@@ -18,17 +19,15 @@ export function buildOfferPdf(d: OfferPdfData): Promise<Buffer> {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    doc.fontSize(18).text(d.orgName, { align: 'left' });
+    writeText(doc.fontSize(18), d.orgName, { align: 'left' });
     doc.moveDown().fontSize(14).text('Offer of Employment', { align: 'left' });
-    doc.moveDown().fontSize(11).text(d.letterBody, { align: 'left' });
+    writeText(doc.moveDown().fontSize(11), d.letterBody, { align: 'left' });
     doc.moveDown();
-    doc
-      .fontSize(11)
-      .text(`Position: ${d.jobTitle}`)
-      .text(`Compensation: ${d.compensation}`)
+    writeText(doc.fontSize(11), `Position: ${d.jobTitle}`);
+    writeText(doc, `Compensation: ${d.compensation}`)
       .text(`Proposed start date: ${d.startDate.toLocaleDateString('en-US', { dateStyle: 'long' } as any)}`)
       .text(`This offer expires: ${d.expiresAt.toLocaleDateString('en-US', { dateStyle: 'long' } as any)}`);
-    doc.moveDown(2).text(`Sincerely,`).text(d.orgName);
+    writeText(doc.moveDown(2).text(`Sincerely,`), d.orgName);
     doc.end();
   });
 }

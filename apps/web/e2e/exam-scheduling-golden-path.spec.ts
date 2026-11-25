@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import { skipPreV2Console } from './fixtures/pre-v2';
+import { addSectionWithQuestion } from './fixtures/sections';
 
 skipPreV2Console('exam-scheduling-golden-path.spec.ts');
 
@@ -39,12 +40,7 @@ test('candidate is blocked before the window opens and can start once the recrui
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /What is 2 \+ 2\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /What is 2 \+ 2\?/);
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
 
@@ -83,7 +79,7 @@ test('candidate is blocked before the window opens and can start once the recrui
   // the "opens on"/scheduling-gate message only renders after practice is skipped/completed.
   await candidatePage.getByRole('button', { name: /skip practice/i }).click();
   await expect(candidatePage.getByText(/opens on/i)).toBeVisible();
-  await expect(candidatePage.getByRole('button', { name: 'Start exam' })).not.toBeVisible();
+  await expect(candidatePage.getByRole('button', { name: 'Start test' })).not.toBeVisible();
 
   await page.getByRole('link', { name: 'Exams' }).click();
   await page.locator('.group', { hasText: examTitle }).getByRole('link', { name: 'Edit' }).click();
@@ -94,10 +90,10 @@ test('candidate is blocked before the window opens and can start once the recrui
   await candidatePage.reload();
   // The reload resets the welcome page's local `step` state back to 'practice' -- skip it again.
   await candidatePage.getByRole('button', { name: /skip practice/i }).click();
-  await expect(candidatePage.getByRole('button', { name: 'Enable camera' })).toBeVisible({ timeout: 10_000 });
-  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await expect(candidatePage.getByRole('button', { name: 'Turn on camera' })).toBeVisible({ timeout: 10_000 });
+  await candidatePage.getByRole('button', { name: 'Turn on camera' }).click();
   await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
   await expect(candidatePage).toHaveURL(/\/exam/);
 
   await candidateContext.close();

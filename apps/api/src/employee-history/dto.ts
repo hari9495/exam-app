@@ -146,6 +146,40 @@ export class ChangeRequestDto {
   @MinLength(10)
   @MaxLength(1000)
   overrideReason?: string;
+
+  /** PPL-04: the raiser's own draft this change was filled in from; removed once the change is sent. */
+  @IsOptional()
+  @IsUUID()
+  draftId?: string;
+}
+
+/** PPL-04 "Save draft": the half-filled change form, kept for the raiser only. Checked again when it is sent. */
+export class ChangeDraftDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsOptional()
+  @IsIn(CHANGE_TYPES.filter((t) => t !== 'join' && !SYSTEM_CHANGE_TYPES.includes(t)))
+  changeType?: Exclude<ChangeType, 'join'>;
+
+  /** The form as the screen keeps it (at most 20 000 characters as JSON; the service checks). */
+  @IsObject()
+  form!: Record<string, unknown>;
+}
+
+/** PPL-04: the approval route a change for this person would take, before it is sent. */
+export class ChangeRouteQueryDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  @Matches(DATE, { message: `effectiveDate is ${DATE_MESSAGE}` })
+  effectiveDate?: string;
+
+  @IsOptional()
+  @IsIn(['true', 'false'])
+  pay?: string;
 }
 
 /** Q7: a pending or scheduled change may be edited until it takes effect. */

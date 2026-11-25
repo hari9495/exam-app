@@ -7,6 +7,7 @@ import { ErrorSummary, FormField, FormSection, useSaveErrors } from '../../compo
 import { Text } from '../../components/foundations';
 import { NumberField, TextArea } from '../../components/inputs';
 import { Segment } from '../../components/segment';
+import { useToast } from '../../components/notify';
 import { MultiSelect } from '../../components/select';
 import { Breadcrumbs, PageHeader } from '../../components/shell';
 import { formatDate } from '../../lib/format';
@@ -124,7 +125,7 @@ function EmailDomains({ domains, onVerify }: { domains: EmailDomainRow[]; onVeri
               )}
             </div>
             {!d.verifiedAt && onVerify && (
-              <Button size="sm" loading={checking === d.domain} disabled={busy && checking !== d.domain} onClick={() => verify(d.domain)}>Check record</Button>
+              <Button size="sm" loading={checking === d.domain} onClick={() => !busy && verify(d.domain)}>Check record</Button>
             )}
           </li>
         ))}
@@ -162,7 +163,8 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
   const [draft, setDraft] = useState(policy);
   // IP lists are edited as text so a half-typed line isn't lost; parsed on every change.
   const [ipText, setIpText] = useState({ desk: policy.ipAllowlistDesk.join('\n'), admin: policy.ipAllowlistAdmin.join('\n'), api: policy.ipAllowlistApi.join('\n') });
-  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' | 'saved' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
+  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
+  const { toast } = useToast();
 
   const changes = useMemo(() => policyChanges(saved, draft), [saved, draft]);
   const dirty = Object.keys(changes).length > 0;
@@ -182,13 +184,16 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
   const activeProvider = providers.some((p) => p.status === 'active');
 
   const save = async () => {
+    // Nothing changed: "No changes yet" already shows beside the button.
+    if (status.kind === 'saving' || !dirty) return;
     if (errors.length) return saveErrors.reveal();
     setStatus({ kind: 'saving' });
     try {
       await onSave(changes);
       setSaved(draft);
       saveErrors.reset();
-      setStatus({ kind: 'saved' });
+      setStatus({ kind: 'idle' });
+      toast({ tone: 'success', title: 'Security settings saved', description: 'New limits apply to sessions that are already open.' });
     } catch (err) {
       setStatus({ kind: 'failed', message: err instanceof Error && err.message ? err.message : 'We couldn’t save. Nothing has changed.' });
     }
@@ -221,6 +226,26 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
           ))}
           <Text as="p" tone={errorOf('sec-factor-passkey') ? 'danger' : 'secondary'} size="sm">Minimum allowed: passkey or authenticator app stays on.</Text>
         </fieldset>
+      </FormSection>
+
+      <FormSection title="Salary pages" description="On a shared computer, nobody else should see pay. People who open other people's salary, pay runs or pay ranges confirm it's them again with their passkey or app.">
+        <Switch
+          id="sec-salary"
+          label="Confirm it's you again before salary pages"
+          description="Their own payslips are not affected. People without a passkey or app are asked to set one up first."
+          checked={draft.salaryRecheck}
+          onChange={(salaryRecheck) => set({ salaryRecheck })}
+        />
+        {draft.salaryRecheck && (
+          <FormField label="Ask again after" helper="Minutes since they last confirmed it's them. YukthiX maximum: 15 minutes.">
+            <Segment
+              label="Ask again after"
+              options={[5, 10, 15].map((m) => ({ value: m, label: `${m} min` }))}
+              value={draft.salaryRecheckMinutes}
+              onChange={(salaryRecheckMinutes) => set({ salaryRecheckMinutes })}
+            />
+          </FormField>
+        )}
       </FormSection>
 
       <FormSection title="Sign in with a one-time code" description="A code by email or text instead of a password. Off unless you turn it on.">
@@ -338,12 +363,11 @@ function SecurityForm({ policy, floor, providers, admins, providersHref, onSave,
         </FormField>
       </FormSection>
 
-      {status.kind === 'saved' && <InlineAlert tone="success">Saved. New limits apply to sessions that are already open.</InlineAlert>}
       {status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
       <div className="yx-auth__row yx-auth__save">
-        <Button type="submit" variant="primary" loading={status.kind === 'saving'} disabled={!dirty}>Save changes</Button>
-        <Button onClick={discard} disabled={!dirty || status.kind === 'saving'}>Discard changes</Button>
-        {!dirty && status.kind !== 'saved' && <Text tone="secondary" size="sm">No changes yet</Text>}
+        <Button type="submit" variant="primary" loading={status.kind === 'saving'}>Save changes</Button>
+        <Button onClick={() => dirty && status.kind !== 'saving' && discard()}>Discard changes</Button>
+        {!dirty && <Text tone="secondary" size="sm">No changes yet</Text>}
       </div>
     </form>
   );

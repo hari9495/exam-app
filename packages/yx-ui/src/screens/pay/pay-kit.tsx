@@ -1,9 +1,8 @@
 // Pay-area building blocks (M03 §7): frames with the Pay panel (APX-D §1.2), net-first money summary,
 // days strip, "why this number" lines, run stage track, due-date strip, per-employee progress and the
 // irreversible-action sheet (APX-D §6.4). Token-only CSS in pay.css.
-import { useEffect, useState, type ReactNode } from 'react';
-import { AlertCircle, CheckCircle2, Circle, CircleDot, ExternalLink, Lock, RotateCcw, Send } from 'lucide-react';
-import type { IconComponent } from '../../components/foundations';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { AlertCircle, CheckCircle2, Circle, CircleDot, ExternalLink, RotateCcw } from 'lucide-react';
 import { TODAY } from '../_kit/data';
 import { FIN_APPROVER, HR_ADMIN, ME, OPEN_QUERIES, PAYROLL_ADMIN, PROOFS_WAITING } from './pay-data';
 import { DesktopFrame, SCREEN_RAIL, type PanelSection } from '../_kit/frames';
@@ -11,13 +10,13 @@ import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
-import { FormField } from '../../components/field';
-import { TextArea, TextField } from '../../components/inputs';
+import { ErrorSummary, useSaveErrors, type FormErrorItem } from '../../components/field';
 import { Icon } from '../../components/foundations';
 import { Link } from '../../components/button';
 import { cx } from '../../lib/cx';
 import { formatDate, formatINR, groupIndian } from '../../lib/format';
-import { confirmPhraseMatches } from './pay-logic';
+import { documentKind } from '../../components/document';
+import { useRun } from '../org/org-kit';
 import './pay.css';
 
 /* ------------------------------------------------------------------ Frames */
@@ -34,7 +33,8 @@ export type PayPage =
   | 'loans'
   | 'expenses'
   | 'payments'
-  | 'reports';
+  | 'reports'
+  | 'fbp';
 
 /** Pay panel, APX-D §1.2: Payroll (home, runs, queries) · Compensation · One-time pay & holds · Tax centre · Loans, recoveries & EWA · Expenses & advances · Payments & files · Reports. */
 export function payPanel(active: PayPage, persona: PayPersona = 'pa', counts: { queries?: number; tax?: number } = {}): PanelSection[] {
@@ -57,12 +57,14 @@ export function payPanel(active: PayPage, persona: PayPersona = 'pa', counts: { 
         { label: 'Expenses & advances', active: a('expenses') },
         { label: 'Payments & files', active: a('payments') },
         { label: 'Reports', active: a('reports') },
+        // PAY-60 (answer 2455): the March and exit settlement of flexible benefits.
+        { label: 'Flexible benefits', active: a('fbp') },
       ],
     },
   ];
 }
 
-export type MyPayPage = 'payslips' | 'tax' | 'form130' | 'loans' | 'ewa' | 'incentives' | 'band';
+export type MyPayPage = 'payslips' | 'tax' | 'form130' | 'loans' | 'ewa' | 'incentives' | 'band' | 'documents' | 'equity' | 'fbp';
 
 /** Employee view of Pay (Me › My pay; mobile Pay tab, APX-D §5). */
 export function myPayPanel(active: MyPayPage, show: { /** false for people on no incentive plan */ incentives?: boolean; /** false when band visibility is off */ band?: boolean } = {}): PanelSection[] {
@@ -78,12 +80,17 @@ export function myPayPanel(active: MyPayPage, show: { /** false for people on no
         { label: 'Get paid early', active: a('ewa') },
         ...(show.incentives === false ? [] : [{ label: 'My incentives', active: a('incentives') }]),
         ...(show.band === false ? [] : [{ label: 'My pay band', active: a('band') }]),
+        // Founder answer 4 (30 Oct 2026): PAY-54 and PAY-58 highlight their own item.
+        { label: 'Pay documents', active: a('documents') },
+        { label: 'My equity', active: a('equity') },
+        // PAY-59 (answer 2455): the person's flexible benefit ledger.
+        { label: 'Flexible benefits', active: a('fbp') },
       ],
     },
   ];
 }
 
-export type PaySettingsPage = '4.1' | '4.2' | '4.3' | '4.4' | '4.5' | '4.6' | '4.7' | '4.10' | '4.11';
+export type PaySettingsPage = '4.1' | '4.2' | '4.3' | '4.4' | '4.5' | '4.6' | '4.7' | '4.10' | '4.11' | 'budget';
 
 /** Settings › Group 4 · Payroll & Statutory (APX-D §3). */
 export function paySettingsPanel(active: PaySettingsPage): PanelSection[] {
@@ -97,6 +104,8 @@ export function paySettingsPanel(active: PaySettingsPage): PanelSection[] {
     ['4.7', 'Statutory set-up'],
     ['4.10', 'Earned wage access'],
     ['4.11', 'Benefits & FBP'],
+    // PAY-61 (answer 2473): the monthly payroll budget behind the finance Home's "Payroll cost vs budget".
+    ['budget', 'Payroll budget'],
   ];
   return [{ label: 'Payroll & Statutory', items: items.map(([id, label]) => ({ label, active: id === active })) }];
 }
@@ -480,10 +489,10 @@ export interface DueItem {
 const DUE_TONE: Record<DueItem['status'], BadgeTone> = { done: 'success', due: 'warning', overdue: 'danger', 'not-due': 'neutral' };
 
 /** Relative badge from today: "9 days overdue", "Due tomorrow", "Due in 8 days"; filed items say Filed. */
-function dueText(it: DueItem) {
+function dueText(it: DueItem, today: Date = TODAY) {
   if (it.status === 'done') return 'Filed';
   const day = (x: Date) => Date.UTC(x.getFullYear(), x.getMonth(), x.getDate());
-  const days = Math.round((day(it.due) - day(TODAY)) / 86_400_000);
+  const days = Math.round((day(it.due) - day(today)) / 86_400_000);
   if (days < 0) return `${-days} day${days === -1 ? '' : 's'} overdue`;
   if (days === 0) return 'Due today';
   if (days === 1) return 'Due tomorrow';
@@ -491,7 +500,7 @@ function dueText(it: DueItem) {
 }
 
 /** Compliance calendar items for the month (P07 calendar via SCH-07). Due and overdue items carry their next step. */
-export function DueDateStrip({ items }: { items: DueItem[] }) {
+export function DueDateStrip({ items, today }: { items: DueItem[]; /** Live pages pass the real day (stories use the sample day). */ today?: Date }) {
   return (
     <ul className="yx-pay-due" aria-label="Statutory due dates">
       {items.map((it) => (
@@ -499,7 +508,7 @@ export function DueDateStrip({ items }: { items: DueItem[] }) {
           <span className="yx-pay-due__statute">{it.statute}</span>
           <span className="yx-pay-due__what">{it.what}</span>
           <span className="yx-pay-due__date">{formatDate(it.due)}</span>
-          <Badge tone={DUE_TONE[it.status]}>{dueText(it)}</Badge>
+          <Badge tone={DUE_TONE[it.status]}>{dueText(it, today)}</Badge>
           {it.penalty != null && it.status === 'overdue' && <span className="yx-pay-due__pen">Penalty if filed today: about {formatINR(it.penalty)}</span>}
           {it.action && (it.status === 'due' || it.status === 'overdue') && (
             <span className="yx-pay-due__action">
@@ -608,200 +617,6 @@ export function RunProgress({
         </>
       )}
     </section>
-  );
-}
-
-/* ------------------------------------------------------------------ Irreversible action (APX-D §6.4) */
-
-export interface ImpactRow {
-  label: string;
-  value: ReactNode;
-}
-
-export interface IrreversibleSheetProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** "Approve and lock September 2026" */
-  title: string;
-  subtitle?: ReactNode;
-  impact: ImpactRow[];
-  /** What cannot be undone. */
-  cannotUndo: ReactNode;
-  /** Correction path afterwards. */
-  correction: ReactNode;
-  /** Phrase to type, e.g. "KAVERI FOODS SEP 2026". */
-  phrase: string;
-  reasonRequired?: boolean;
-  maker: string;
-  checker: string;
-  /** Sole-admin company: self-approval with a reason (P02 Q6). */
-  selfApproval?: boolean;
-  confirmLabel: string;
-  onConfirm: (reason: string) => void;
-  /** Blocks confirmation with a named reason (open attendance exceptions, missing permission…). */
-  blocked?: ReactNode;
-  children?: ReactNode;
-  defaultTyped?: string;
-  defaultReason?: string;
-  done?: ReactNode;
-  /** Confirm button colour: 'approve' (green) for approvals, 'primary' for publish or release, 'danger' only for destructive actions. Default 'danger'. */
-  confirmVariant?: 'approve' | 'primary' | 'danger';
-  /** Confirm button icon (default Lock; use Send for publishing). */
-  confirmIcon?: IconComponent;
-  /** Short reason shown beside the disabled confirm button while blocked, e.g. "4 attendance exceptions open". */
-  blockedReason?: string;
-  /** The fix for the block, shown in the blocked alert (e.g. "Open 4 exceptions"). */
-  blockedAction?: ReactNode;
-  /** When maker = checker: the person who can confirm instead, offered as "Send to … for approval". */
-  otherApprover?: string;
-  onSendToChecker?: () => void;
-  /** Saving failed or the run changed meanwhile: shown at the top with Try again / Reload run. */
-  error?: ReactNode;
-  onRetry?: () => void;
-  onReload?: () => void;
-}
-
-const REASON_MIN = 5;
-
-/** Impact preview + typed confirmation + reason + maker ≠ checker, as a T4 sheet. */
-export function IrreversibleSheet(p: IrreversibleSheetProps) {
-  const [typed, setTyped] = useState(p.defaultTyped ?? '');
-  const [reason, setReason] = useState(p.defaultReason ?? '');
-  const needReason = p.reasonRequired || p.selfApproval;
-  const phraseOk = confirmPhraseMatches(typed, p.phrase);
-  const reasonOk = !needReason || reason.trim().length >= REASON_MIN;
-  const ok = phraseOk && reasonOk && !p.blocked;
-  const makerCheckerOk = p.maker !== p.checker || p.selfApproval;
-  // Approvals stay green behind typed confirmation (R7); publishing is not a lock; danger is for release and void.
-  const approving = /^Approve/i.test(p.confirmLabel);
-  const publishing = /^Publish/i.test(p.confirmLabel);
-  const confirmVariant = p.confirmVariant ?? (approving ? 'approve' : publishing ? 'primary' : 'danger');
-  const confirmIcon = p.confirmIcon ?? (publishing ? Send : Lock);
-  // The first unmet condition, shown beside the disabled button (B7).
-  const why = p.blocked
-    ? (p.blockedReason ?? "Can't continue until the issue above is resolved")
-    : !phraseOk
-      ? `Type ${p.phrase} to continue`
-      : !reasonOk
-        ? `Add a reason (at least ${REASON_MIN} characters)`
-        : null;
-  const close = (open: boolean) => {
-    // Cancel clears the typed phrase and reason, so reopening never starts half-confirmed (B9).
-    if (!open) {
-      setTyped(p.defaultTyped ?? '');
-      setReason(p.defaultReason ?? '');
-    }
-    p.onOpenChange(open);
-  };
-  return (
-    <Drawer
-      open={p.open}
-      onOpenChange={close}
-      title={p.title}
-      subtitle={p.subtitle}
-      size="lg"
-      footer={
-        p.done ? (
-          <Button onClick={() => close(false)}>Close</Button>
-        ) : !makerCheckerOk ? (
-          <>
-            <Button onClick={() => close(false)}>Cancel</Button>
-            {p.onSendToChecker && (
-              <Button variant="primary" icon={Send} onClick={p.onSendToChecker}>
-                {p.otherApprover ? `Send to ${p.otherApprover} for approval` : 'Ask another approver'}
-              </Button>
-            )}
-          </>
-        ) : (
-          <>
-            {why && <span className="yx-pay-irrev__why">{why}</span>}
-            <Button onClick={() => close(false)}>Cancel</Button>
-            <Button variant={confirmVariant} icon={confirmIcon} disabled={!ok} onClick={() => p.onConfirm(reason)}>
-              {p.confirmLabel}
-            </Button>
-          </>
-        )
-      }
-    >
-      <div className="yx-pay-irrev">
-        {p.done ? (
-          p.done
-        ) : (
-          <>
-            {p.error && (
-              <InlineAlert
-                tone="danger"
-                title="This didn't go through"
-                actions={
-                  <>
-                    {p.onRetry && <Button onClick={p.onRetry}>Try again</Button>}
-                    {p.onReload && <Button onClick={p.onReload}>Reload run</Button>}
-                  </>
-                }
-              >
-                {p.error}
-              </InlineAlert>
-            )}
-            {p.blocked && (
-              <InlineAlert tone="danger" title="You can't do this yet" actions={p.blockedAction}>
-                {p.blocked}
-              </InlineAlert>
-            )}
-            {!makerCheckerOk && (
-              <InlineAlert tone="danger" title="Someone else must confirm this">
-                You prepared this run, so {p.otherApprover ?? 'another approver'} has to confirm it.
-              </InlineAlert>
-            )}
-            <section aria-label="What will happen">
-              <h3 className="yx-pay-section-title">What will happen</h3>
-              <dl className="yx-pay-impact">
-                {p.impact.map((r) => (
-                  <div key={r.label}>
-                    <dt>{r.label}</dt>
-                    <dd>{r.value}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
-            {p.children}
-            <InlineAlert tone="warning" title="This can't be undone">
-              {p.cannotUndo}
-              <br />
-              {p.correction}
-            </InlineAlert>
-            <section className="yx-pay-mc" aria-label="Maker and checker">
-              <p>
-                <span className="yx-pay-why__k">Prepared by</span> {p.maker}
-              </p>
-              <p>
-                <span className="yx-pay-why__k">Confirming</span> {p.checker}
-              </p>
-              {p.selfApproval ? (
-                <>
-                  <Badge tone="warning">Self-approval</Badge>
-                  <p className="yx-pay-mc__note">Only one eligible approver, so a reason is required.</p>
-                </>
-              ) : makerCheckerOk ? (
-                <Badge tone="success">Maker and checker are different people</Badge>
-              ) : (
-                // The danger alert above already says why; the badge only names the fact (one alert per message).
-                <Badge>Same person</Badge>
-              )}
-            </section>
-            {makerCheckerOk && needReason && (
-              <FormField label="Reason" required helper={`At least ${REASON_MIN} characters. Stored with the audit event.`}>
-                <TextArea value={reason} onChange={setReason} rows={2} />
-              </FormField>
-            )}
-            {makerCheckerOk && (
-              <FormField label={`Type ${p.phrase} to confirm`} required helper="Must match exactly, in capitals. The phrase and the totals above are stored with the audit event.">
-                <TextField value={typed} onChange={setTyped} autoComplete="off" spellCheck={false} />
-              </FormField>
-            )}
-          </>
-        )}
-      </div>
-    </Drawer>
   );
 }
 
@@ -915,4 +730,109 @@ export function PartnerLink({ children, href = 'https://partner.example.in' }: {
       </a>
     </Button>
   );
+}
+
+/* ------------------------------------------------------------------ Form drawer and file button (moved from the live copies) */
+
+/** A drawer with a form: errors show only after Save is pressed (no red while typing); the first bad field takes focus. */
+export function FormDrawer({ title, subtitle, confirm, errors, onClose, onSave, secondary, children }: { title: string; subtitle?: string; confirm: string; errors: FormErrorItem[]; onClose: () => void; onSave: () => Promise<unknown>; /** A second way to save (e.g. "Save draft"), checked the same way. */ secondary?: { label: string; onSave: () => Promise<unknown> }; children: (errorOf: (id: string) => string | undefined) => ReactNode }) {
+  const { busy, error, run } = useRun();
+  const save = useSaveErrors(errors);
+  const press = (key: string, fn: () => Promise<unknown>) => {
+    if (errors.length) {
+      save.reveal();
+      // Founder rule: the first bad field takes focus (after the error summary's own focus on show).
+      return void setTimeout(() => document.getElementById(errors[0].fieldId)?.focus());
+    }
+    void run(key, async () => {
+      await fn();
+      onClose();
+    });
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={title}
+      subtitle={subtitle}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          {secondary && (
+            <Button loading={busy === 'secondary'} onClick={() => press('secondary', secondary.onSave)}>
+              {secondary.label}
+            </Button>
+          )}
+          <Button variant="primary" loading={busy === 'save'} onClick={() => press('save', onSave)}>
+            {confirm}
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-tim-form">
+        <ErrorSummary errors={save.shownErrors} />
+        {error && (
+          <InlineAlert tone="danger" title="This didn't go through">
+            {error}
+          </InlineAlert>
+        )}
+        {children(save.errorOf)}
+      </div>
+    </Drawer>
+  );
+}
+
+/** A button that opens the file chooser (a real button, so it looks and behaves like one). */
+export function FileButton({ label, accept, ariaLabel, loading, onFile }: { label: string; accept: string; ariaLabel: string; loading?: boolean; onFile: (f: File) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <Button size="sm" loading={loading} aria-label={ariaLabel} onClick={() => input.current?.click()}>
+        {label}
+      </Button>
+      <input
+        ref={input}
+        type="file"
+        accept={accept}
+        hidden
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onFile(file);
+          e.target.value = '';
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * A file fetched by the page (same-origin, signed-in) as an object URL for the kit's viewers; revoked when the key changes
+ * or the view closes. Only PDFs and images get a URL (typed as such, so a browser never renders anything else); other
+ * files stay download-only.
+ */
+export function useFileUrl(key: string | null, load: (() => Promise<Blob>) | undefined, fileName: string) {
+  const [state, setState] = useState<{ key: string; url: string | null; type: string; failed: boolean } | null>(null);
+  useEffect(() => {
+    if (!key || !load) return;
+    let gone = false;
+    let url: string | null = null;
+    setState(null);
+    load().then(
+      (blob) => {
+        if (gone) return;
+        const kind = documentKind(fileName, blob.type);
+        const type = kind === 'pdf' ? 'application/pdf' : kind === 'image' ? blob.type || 'image/png' : '';
+        url = type ? URL.createObjectURL(blob.slice(0, blob.size, type)) : null;
+        setState({ key, url, type, failed: false });
+      },
+      () => !gone && setState({ key, url: null, type: '', failed: true }),
+    );
+    return () => {
+      gone = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+    // The loader is a fresh function each render; the key says when the file changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return state?.key === key ? state : null;
 }

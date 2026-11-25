@@ -1,28 +1,46 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { AdvisoriesScreen, type AdvisoryView, type SetupEntity } from '@yukthix/ui/pay';
+import { RulesBrowserScreen, type AdvisoryView, type RuleSetView, type SetupEntity, type TaskDesk } from '@yukthix/ui/pay';
+import { useYxPermissions } from '../../../../../lib/yx-org';
 import { payState, usePay } from '../../../../../lib/yx-pay';
 import { useApi, useApiWrite } from '../../../../../lib/yx-pay-5j';
+import { todayIndia } from '../../../../../lib/yx-time';
 
-// Payroll › Compliance advisories (PAY-10.14, CMP-12): law changes for the entity's states, each marked reviewed.
+// Compliance › Rules & updates: the designed CMP-08 screen on its "Labour-law updates" tab: law changes for the entity's
+// states, each marked reviewed with what was done. The "Rules" tab shows for payroll set-up holders.
 export default function YxPayAdvisoriesPage() {
+  const perms = useYxPermissions();
   const entities = usePay<SetupEntity[]>('/setup/entities');
   const [entityId, setEntityId] = useState<string | null>(null);
   useEffect(() => {
     if (!entityId && entities.data?.length) setEntityId(entities.data[0].id);
   }, [entities.data, entityId]);
+  const seeRules = perms.has('payroll.setup.manage');
+  const rules = usePay<RuleSetView[]>(seeRules ? `/statutory/rules${entityId ? `?entityId=${encodeURIComponent(entityId)}` : ''}` : null);
   const advisories = useApi<AdvisoryView[]>(entityId ? `/statutory/advisories?entityId=${encodeURIComponent(entityId)}` : null);
+  // CMP-08: the help desks the reviewer may put a follow-up task on.
+  const taskDesks = useApi<TaskDesk[]>('/statutory/advisories/task-desks');
   const write = useApiWrite();
   return (
-    <AdvisoriesScreen
-      state={payState(entities)}
-      onRetry={() => void entities.refetch()}
-      entities={entities.data ?? []}
-      entityId={entityId}
-      onEntity={setEntityId}
-      advisories={advisories.data ?? null}
-      onReview={(a, note) => write(`/statutory/advisories/${encodeURIComponent(a.code)}/review`, { entityId, note })}
+    <RulesBrowserScreen
+      rules={[]}
+      advisories={[]}
+      tab="updates"
+      live={{
+        // A refusal of the updates themselves is "no access", not "No updates".
+        state: entityId ? payState(entities, advisories) : payState(entities),
+        onRetry: () => void entities.refetch(),
+        entities: entities.data ?? [],
+        entityId,
+        onEntity: setEntityId,
+        rules: rules.data ?? null,
+        advisories: advisories.data ?? null,
+        can: { rules: seeRules, updates: true },
+        onReview: (a, note, extra) => write(`/statutory/advisories/${encodeURIComponent(a.code)}/review`, { entityId, note, ...extra }),
+        taskDesks: taskDesks.data ?? (taskDesks.isError ? [] : null),
+        today: todayIndia(),
+      }}
     />
   );
 }

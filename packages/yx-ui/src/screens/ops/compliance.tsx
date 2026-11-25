@@ -1,7 +1,8 @@
 // Compliance screens (M03 statutory, P07): CMP-01 statutory hub, CMP-12 supplementary filing panel, CMP-02 statutory set-up,
 // CMP-03 registers, CMP-04 TDS challan sheet, CMP-05 TDS return wizard, CMP-06 Form 16 bulk, CMP-07 missing IDs,
-// CMP-08 statutory rules browser + labour-law updates.
-import { useMemo, useState } from 'react';
+// CMP-08 statutory rules browser + labour-law updates, CMP-13 consultant TDS. Each takes `live` (compliance-live.tsx): the
+// app's pages render these designs with real data.
+import { useMemo, useState, type ReactNode } from 'react';
 import { Building2, Download, ExternalLink, Lock, Upload } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -14,9 +15,10 @@ import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { FileUpload } from '../../components/upload';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { Dialog, TypeToConfirmDialog } from '../../components/overlay';
+import { ConfirmDialog, Dialog, TypeToConfirmDialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { BarChart, StatCard } from '../../components/charts';
 import { Stepper } from '../../components/stepper';
@@ -26,6 +28,29 @@ import { Actions, CardGrid, CheckList, DueMonth, Facts, OpsDesk, StatusTrail, ty
 import { daysBetween, lateFilingFee, tdsLateInterest } from './ops-rules';
 import type { ListState } from './helpdesk';
 import type { FilingStep, RegisterRow, RuleSetRow, StatuteItem, SupplementaryFiling } from './compliance-data';
+import { CONSULTANT_CHALLANS, CONSULTANT_ENTITIES, CONSULTANT_RETURNS } from './compliance-data';
+import { useTooEarly } from '../../components/field';
+import {
+  ConsultantTdsBody,
+  LiveChallanSheet,
+  LiveConsultantTdsScreen,
+  LiveForm16Screen,
+  LiveMissingIdsScreen,
+  LiveRegistersScreen,
+  LiveRulesScreen,
+  LiveStatutoryHubScreen,
+  LiveTdsReturns,
+  type LiveChallanSheet as LiveChallan,
+  type LiveConsultantTds,
+  type LiveForm16,
+  type LiveMissingIds,
+  type LiveRegisters,
+  type LiveRules,
+  type LiveStatutoryHub,
+  type LiveTdsReturns as LiveReturns,
+} from './compliance-live';
+import { LivePage } from '../time/live/kit';
+import type { LoadState } from '../pay/live/types';
 
 /* ---------------- Statute card (hub) ---------------- */
 
@@ -35,8 +60,10 @@ export function stepIndex(step: FilingStep, mode: 'self' | 'partner'): number {
   if (mode === 'partner') return { due: 0, generated: 1, transmitted: 2, 'filed-by-partner': 4, acknowledged: 3, filed: 4, uploaded: 2, rejected: 2 }[step];
   return { due: 0, generated: 1, uploaded: 3, acknowledged: 4, filed: 5, transmitted: 2, 'filed-by-partner': 5, rejected: 2 }[step];
 }
-function statusFor(item: { due: Date; step: FilingStep }, today: Date): { tone: BadgeTone; text: string } {
+function statusFor(item: { due: Date; step: FilingStep; amount?: number }, today: Date): { tone: BadgeTone; text: string } {
   if (item.step === 'filed' || item.step === 'filed-by-partner') return { tone: 'success', text: 'Filed' };
+  // Nothing to pay this month is never overdue.
+  if (item.step === 'due' && item.amount === 0) return { tone: 'neutral', text: 'Nothing due' };
   if (item.step === 'rejected') return { tone: 'danger', text: 'Rejected by partner' };
   const left = daysBetween(today, item.due);
   if (left < 0) return { tone: 'danger', text: `Overdue by ${-left} days` };
@@ -44,7 +71,7 @@ function statusFor(item: { due: Date; step: FilingStep }, today: Date): { tone: 
   return { tone: 'neutral', text: `Due ${formatDate(item.due)}` };
 }
 
-export function StatuteCard({ item, today, onOpenChild, onAction }: { item: StatuteItem; today: Date; onOpenChild?: (c: SupplementaryFiling) => void; onAction?: (item: StatuteItem) => void }) {
+export function StatuteCard({ item, today, onOpenChild, onAction, actions }: { item: StatuteItem; today: Date; onOpenChild?: (c: SupplementaryFiling) => void; onAction?: (item: StatuteItem) => void; /** Live: the card's real actions, in place of the sample buttons. */ actions?: ReactNode }) {
   const st = statusFor(item, today);
   const steps = item.mode === 'partner' ? PARTNER_STEPS : SELF_STEPS;
   const done = item.step === 'filed' || item.step === 'filed-by-partner';
@@ -73,7 +100,7 @@ export function StatuteCard({ item, today, onOpenChild, onAction }: { item: Stat
         )}
         {item.excluded && <p className="yx-ops-muted">{item.excluded}</p>}
         {item.problems && <InlineAlert tone="warning">{item.problems}. Fix before generating.</InlineAlert>}
-        {item.estimatedPenalty && <p className="yx-ops-muted">Estimate from {item.penaltyRule}. Final amount depends on the payment date.</p>}
+        {!!item.estimatedPenalty && <p className="yx-ops-muted">Estimate from {item.penaltyRule}. Final amount depends on the payment date.</p>}
         <StatusTrail steps={steps.map((label) => ({ label }))} current={stepIndex(item.step, item.mode)} label={`${item.title} progress`} />
         {item.reference && (
           <p className="yx-ops-muted">
@@ -81,7 +108,9 @@ export function StatuteCard({ item, today, onOpenChild, onAction }: { item: Stat
           </p>
         )}
         <Actions>
-          {item.statute === 'Registers' ? (
+          {actions !== undefined ? (
+            actions
+          ) : item.statute === 'Registers' ? (
             <>
               <Button size="sm" icon={Download}>
                 PDF
@@ -97,6 +126,8 @@ export function StatuteCard({ item, today, onOpenChild, onAction }: { item: Stat
                 Filed file
               </Button>
               {(item.statute === 'PF' || item.statute === 'ESI') && <Button size="sm">Correct this month</Button>}
+              {/* Answer 842: the bank's challan receipt PDF, kept with the filing and put in client packs. */}
+              {(item.statute === 'PF' || item.statute === 'ESI' || item.statute === 'PT') && (item.receipt ? <Button size="sm" icon={Download}>Bank receipt</Button> : <Button size="sm" icon={Upload}>Add bank receipt</Button>)}
             </>
           ) : (
             <Button size="sm" onClick={() => onAction?.(item)}>
@@ -147,8 +178,13 @@ export interface StatutoryHubScreenProps {
   /** CMP-04: challan sheet open over the hub. */
   challanOpen?: boolean;
   setupNeeded?: boolean;
+  /** The live app's /yx/payroll/statutory (compliance-live.tsx). */
+  live?: LiveStatutoryHub;
 }
-export function StatutoryHubScreen({ items, today, state = 'ready', view = 'cards', openFiling = null, setupNeeded }: StatutoryHubScreenProps) {
+export function StatutoryHubScreen({ live, ...story }: StatutoryHubScreenProps) {
+  return live ? <LiveStatutoryHubScreen live={live} /> : <SampleStatutoryHub {...story} />;
+}
+function SampleStatutoryHub({ items, today, state = 'ready', view = 'cards', openFiling = null, setupNeeded }: StatutoryHubScreenProps) {
   const [tab, setTab] = useState(view);
   const [month, setMonth] = useState<string | null>('2026-09');
   const [filing, setFiling] = useState<SupplementaryFiling | null>(openFiling);
@@ -175,7 +211,7 @@ export function StatutoryHubScreen({ items, today, state = 'ready', view = 'card
         }
       />
       {setupNeeded ? (
-        <EmptyState title="Statutory set-up needed." description="Add registrations for PF, ESI, PT, LWF and TDS for each legal entity. Cards appear here after the first payroll run." action={<Button variant="primary">Open statutory set-up</Button>} />
+        <SetupNeededState action={<Button variant="primary">Open statutory set-up</Button>} />
       ) : state === 'loading' ? (
         <CardGrid>
           {[1, 2, 3, 4].map((i) => (
@@ -216,8 +252,13 @@ export function StatutoryHubScreen({ items, today, state = 'ready', view = 'card
   );
 }
 
+/** CMP-01 SetupNeeded: what the entity still has to register (live: from the hub's `setupMissing`). */
+export function SetupNeededState({ missing = 'PF, ESI, PT, LWF and TDS', entity = 'each legal entity', action }: { missing?: string; entity?: string; action?: ReactNode }) {
+  return <EmptyState title="Statutory set-up needed." description={`Add registrations for ${missing} for ${entity}. Cards appear here after the first payroll run.`} action={action} />;
+}
+
 /** CMP-12 · Supplementary filing panel (T3 panel): origin month, reason, amounts, status, TRRN, interest and damages lines. */
-export function SupplementaryFilingPanel({ filing, onClose }: { filing: SupplementaryFiling | null; onClose: () => void }) {
+export function SupplementaryFilingPanel({ filing, onClose, footer, refundNote }: { filing: SupplementaryFiling | null; onClose: () => void; /** Live: the filing's real actions. */ footer?: ReactNode; /** Live: what happens to a refund, in place of the sample text. */ refundNote?: ReactNode }) {
   const total = filing ? filing.penalties.reduce((s, p) => s + p.amount, 0) : 0;
   const refund = filing?.kind === 'Excess remittance refund request';
   return (
@@ -228,10 +269,12 @@ export function SupplementaryFilingPanel({ filing, onClose }: { filing: Suppleme
       title={filing ? `${filing.kind} · ${filing.originMonth}` : ''}
       subtitle={filing ? `Corrects ${filing.originalRef}` : ''}
       footer={
-        <>
-          <Button onClick={onClose}>Close</Button>
-          <Button variant="primary">{filing?.step === 'generated' ? 'Download file' : filing?.step === 'uploaded' ? 'Record acknowledgement' : 'Check status'}</Button>
-        </>
+        footer ?? (
+          <>
+            <Button onClick={onClose}>Close</Button>
+            <Button variant="primary">{filing?.step === 'generated' ? 'Download file' : filing?.step === 'uploaded' ? 'Record acknowledgement' : 'Check status'}</Button>
+          </>
+        )
       }
     >
       {filing && (
@@ -240,23 +283,29 @@ export function SupplementaryFilingPanel({ filing, onClose }: { filing: Suppleme
           <DescriptionList
             items={[
               { label: 'Why', value: filing.reason },
-              { label: 'People', value: filing.employees },
-              { label: 'Employee share', value: formatINR(filing.employeeShare) },
-              { label: 'Employer share', value: formatINR(filing.employerShare) },
+              ...(filing.amount != null
+                ? [{ label: 'Amount', value: formatINR(filing.amount) }]
+                : [
+                    { label: 'People', value: filing.employees },
+                    { label: 'Employee share', value: formatINR(filing.employeeShare) },
+                    { label: 'Employer share', value: formatINR(filing.employerShare) },
+                  ]),
               ...(filing.trrn ? [{ label: 'Reference', value: filing.trrn, mono: true, copyValue: filing.trrn }] : []),
             ]}
           />
-          <Card title="Caused by">
-            <ul className="yx-ops-list">
-              {filing.payslipLines.map((l) => (
-                <li key={l} className="yx-ops-list__item">
-                  {l}
-                </li>
-              ))}
-            </ul>
-          </Card>
+          {filing.payslipLines.length > 0 && (
+            <Card title="Caused by">
+              <ul className="yx-ops-list">
+                {filing.payslipLines.map((l) => (
+                  <li key={l} className="yx-ops-list__item">
+                    {l}
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
           {refund ? (
-            <InlineAlert tone="info">The over-deducted employee share ({formatINR(filing.employeeShare)}) goes back to the 3 employees as a named line in the next payroll run.</InlineAlert>
+            <InlineAlert tone="info">{refundNote ?? `The over-deducted employee share (${formatINR(filing.employeeShare)}) goes back to the 3 employees as a named line in the next payroll run.`}</InlineAlert>
           ) : (
             <Card title="Interest and damages (employer cost)">
               <DataTable
@@ -354,7 +403,7 @@ export function StatutorySetupScreen({ entity, registrations, tab = 'registratio
                   value={pfBasis}
                   onChange={setPfBasis}
                   options={[
-                    { value: 'ceiling', label: 'PF wage up to the ceiling (₹15,000)' },
+                    { value: 'ceiling', label: 'PF wage up to the ceiling (₹25,000 from 17 Sep 2026; ₹15,000 before)' },
                     { value: 'actual', label: 'Actual PF wage', description: 'Employer share on actual wage too' },
                   ]}
                 />
@@ -427,24 +476,75 @@ export interface RegistersScreenProps {
   kind?: RegisterKind;
   state?: ListState;
   lwfNotDue?: boolean;
+  /** The live app's /yx/payroll/registers (compliance-live.tsx). */
+  live?: LiveRegisters;
 }
-export function RegistersScreen({ rows, kind = 'EPF', state = 'ready', lwfNotDue }: RegistersScreenProps) {
+export function RegistersScreen({ live, ...story }: RegistersScreenProps) {
+  return live ? <LiveRegistersScreen live={live} /> : <SampleRegisters {...story} />;
+}
+function SampleRegisters({ rows, kind = 'EPF', state = 'ready', lwfNotDue }: RegistersScreenProps) {
   const [tab, setTab] = useState<RegisterKind>(kind);
+  // Sample figures only: the live page takes each person's amounts from their payslip.
+  const data = rows.map((x): RegisterRow => {
+    if (tab === 'ESIC') return x.gross <= 21000 ? { ...x, coverage: 'Covered', ee: Math.ceil(x.gross * 0.0075), er: Math.ceil(x.gross * 0.0325) } : { ...x, coverage: 'Not covered', reason: 'Wages above ₹21,000 at the start of the contribution period', ee: 0, er: 0 };
+    if (tab === 'LWF' && lwfNotDue) return { ...x, coverage: 'Not due', reason: 'LWF is deducted in December in Karnataka', ee: 0, er: 0 };
+    if (tab === 'LWF') return { ...x, ee: x.coverage === 'Covered' ? 50 : 0, er: x.coverage === 'Covered' ? 100 : 0 };
+    if (tab === 'PT') return { ...x, coverage: x.gross >= 25000 ? 'Covered' : 'Not covered', reason: x.gross >= 25000 ? undefined : 'Below the ₹25,000 slab', ee: x.gross >= 25000 ? 200 : 0 };
+    return x;
+  });
+  const exportLabel = { EPF: 'Download ECR file', ESIC: 'Download ESIC portal file', PT: 'Download PT return file', LWF: 'Download LWF file' }[tab];
+  return (
+    <OpsDesk area="compliance" active="Registers">
+      <PageHeader title="Statutory registers" description="Values stored on each payslip at calculation, never today's settings. Same numbers as the filing files." facts="August 2026 · Kaveri Foods Pvt Ltd" actions={<Button icon={Download}>{exportLabel}</Button>} />
+      <RegisterTabs
+        kind={tab}
+        onKind={setTab}
+        rows={state === 'empty' ? [] : data}
+        state={state === 'empty' ? 'ready' : state}
+        trend={{ categories: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'], employee: [182000, 184500, 186200, 188000, 189400, 191230], employer: [182000, 184500, 186200, 188000, 189400, 191230] }}
+        rates={{ EPF: { ee: '12%', eps: '8.33%', er: '3.67%' }, ESIC: { ee: '0.75%', er: '3.25%' } }}
+        locations={['Bengaluru head office', 'Chennai office', 'Hosur plant']}
+        empty={<EmptyState title="No register for this month yet." description="Registers are generated when the payroll period locks." />}
+        onExport={() => {}}
+      />
+    </OpsDesk>
+  );
+}
+
+export interface RegisterTabsProps {
+  kind: RegisterKind;
+  onKind: (k: RegisterKind) => void;
+  /** One row a person: `ee` / `er` are the statute's employee and employer amounts (PT: `ee`). */
+  rows: RegisterRow[];
+  state?: Exclude<ListState, 'empty'>;
+  onRetry?: () => void;
+  /** The six months up to the register's month: employee and employer totals. */
+  trend: { categories: string[]; employee: number[]; employer: number[] };
+  /** Rates shown in the column headers (the story); the live page leaves them out. */
+  rates?: Partial<Record<RegisterKind, { ee?: string; eps?: string; er?: string }>>;
+  locations: string[];
+  empty?: ReactNode;
+  onExport?: () => void;
+  /** Live: further tabs after EPF, ESIC, PT and LWF (the register files). */
+  extra?: { value: string; label: string; content: ReactNode }[];
+}
+
+/** CMP-03 · the per-statute register: six months of totals, then one row a person with coverage, filters and totals. */
+export function RegisterTabs({ kind, onKind, rows, state = 'ready', onRetry, trend, rates = {}, locations, empty, onExport, extra = [] }: RegisterTabsProps) {
+  const [tab, setTab] = useState<string>(kind);
   const [filters, setFilters] = useState<FilterValue[]>([]);
+  const current = (['EPF', 'ESIC', 'PT', 'LWF'] as string[]).includes(tab) ? (tab as RegisterKind) : kind;
   const fields: FilterFieldDef[] = [
-    { key: 'location', label: 'Location', type: 'multi', options: ['Bengaluru head office', 'Chennai office', 'Hosur plant'].map((v) => ({ value: v, label: v })) },
+    { key: 'location', label: 'Location', type: 'multi', options: locations.map((v) => ({ value: v, label: v })) },
     { key: 'coverage', label: 'Coverage', type: 'multi', options: ['Covered', 'Not covered', 'Not due'].map((v) => ({ value: v, label: v })) },
   ];
   const data = useMemo(() => {
-    let r = rows.map((x): RegisterRow => {
-      if (tab === 'ESIC') return x.gross <= 21000 ? { ...x, coverage: 'Covered' } : { ...x, coverage: 'Not covered', reason: 'Wages above ₹21,000 at the start of the contribution period' };
-      if (tab === 'LWF' && lwfNotDue) return { ...x, coverage: 'Not due', reason: 'LWF is deducted in December in Karnataka' };
-      if (tab === 'PT') return { ...x, coverage: x.gross >= 25000 ? 'Covered' : 'Not covered', reason: x.gross >= 25000 ? undefined : 'Below the ₹25,000 slab' };
-      return x;
-    });
+    let r = rows;
     for (const f of filters) if (f.type === 'multi' && f.values.length) r = r.filter((x) => f.values.includes(String((x as unknown as Record<string, unknown>)[f.key])));
     return r;
-  }, [rows, tab, filters, lwfNotDue]);
+  }, [rows, filters]);
+  const head = (label: string, rate?: string) => (rate ? `${label} ${rate}` : label);
+  const rate = rates[current] ?? {};
   const coverage: TableColumn<RegisterRow> = {
     key: 'coverage',
     header: 'Coverage',
@@ -461,43 +561,60 @@ export function RegistersScreen({ rows, kind = 'EPF', state = 'ready', lwfNotDue
   };
   const person: TableColumn<RegisterRow> = { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 200 };
   const cols: Record<RegisterKind, TableColumn<RegisterRow>[]> = {
-    EPF: [person, { key: 'uan', header: 'UAN', type: 'id', value: (r) => r.uan }, coverage, { key: 'pfw', header: 'PF wage', type: 'money', value: (r) => r.pfWage, total: 'sum' }, { key: 'ee', header: 'Employee 12%', type: 'money', value: (r) => r.ee, total: 'sum' }, { key: 'eps', header: 'EPS 8.33%', type: 'money', value: (r) => r.eps, total: 'sum' }, { key: 'er', header: 'EPF employer 3.67%', type: 'money', value: (r) => r.er, total: 'sum' }],
-    ESIC: [person, { key: 'ip', header: 'IP number', type: 'id', value: (r) => r.ip ?? '—' }, coverage, { key: 'g', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum' }, { key: 'ee', header: 'Employee 0.75%', type: 'money', value: (r) => (r.gross <= 21000 ? Math.ceil(r.gross * 0.0075) : 0), total: 'sum' }, { key: 'er', header: 'Employer 3.25%', type: 'money', value: (r) => (r.gross <= 21000 ? Math.ceil(r.gross * 0.0325) : 0), total: 'sum' }],
-    PT: [person, { key: 'loc', header: 'Work location', value: (r) => r.location }, coverage, { key: 'g', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum' }, { key: 'pt', header: 'PT', type: 'money', value: (r) => (r.gross >= 25000 ? 200 : 0), total: 'sum' }],
-    LWF: [person, { key: 'loc', header: 'Work location', value: (r) => r.location }, coverage, { key: 'ee', header: 'Employee', type: 'money', value: (r) => (r.coverage === 'Covered' ? 50 : 0), total: 'sum' }, { key: 'er', header: 'Employer', type: 'money', value: (r) => (r.coverage === 'Covered' ? 100 : 0), total: 'sum' }],
+    EPF: [person, { key: 'uan', header: 'UAN', type: 'id', value: (r) => r.uan }, coverage, { key: 'pfw', header: 'PF wage', type: 'money', value: (r) => r.pfWage, total: 'sum' }, { key: 'ee', header: head('Employee', rate.ee), type: 'money', value: (r) => r.ee, total: 'sum' }, { key: 'eps', header: head('EPS', rate.eps), type: 'money', value: (r) => r.eps, total: 'sum' }, { key: 'er', header: head('EPF employer', rate.er), type: 'money', value: (r) => r.er, total: 'sum' }],
+    ESIC: [person, { key: 'ip', header: 'IP number', type: 'id', value: (r) => r.ip ?? '—' }, coverage, { key: 'g', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum' }, { key: 'ee', header: head('Employee', rate.ee), type: 'money', value: (r) => r.ee, total: 'sum' }, { key: 'er', header: head('Employer', rate.er), type: 'money', value: (r) => r.er, total: 'sum' }],
+    PT: [person, { key: 'loc', header: 'Work location', value: (r) => r.location }, coverage, { key: 'g', header: 'Gross', type: 'money', value: (r) => r.gross, total: 'sum' }, { key: 'pt', header: 'PT', type: 'money', value: (r) => r.ee, total: 'sum' }],
+    LWF: [person, { key: 'loc', header: 'Work location', value: (r) => r.location }, coverage, { key: 'ee', header: 'Employee', type: 'money', value: (r) => r.ee, total: 'sum' }, { key: 'er', header: 'Employer', type: 'money', value: (r) => r.er, total: 'sum' }],
   };
-  const exportLabel = { EPF: 'Download ECR file', ESIC: 'Download ESIC portal file', PT: 'Download PT return file', LWF: 'Download LWF file' }[tab];
   return (
-    <OpsDesk area="compliance" active="Registers">
-      <PageHeader title="Statutory registers" description="Values stored on each payslip at calculation, never today's settings. Same numbers as the filing files." facts="August 2026 · Kaveri Foods Pvt Ltd" actions={<Button icon={Download}>{exportLabel}</Button>} />
-      <Tabs value={tab} onValueChange={(v) => setTab(v as RegisterKind)}>
-        <TabsList aria-label="Registers">
-          {(['EPF', 'ESIC', 'PT', 'LWF'] as RegisterKind[]).map((k) => (
-            <TabsTrigger key={k} value={k}>
-              {k}
-            </TabsTrigger>
-          ))}
-        </TabsList>
-        <TabsContent value={tab}>
-          <div className="yx-ops-stack">
-            <BarChart title={`${tab} contributions, last 6 months`} xLabel="Month" money categories={['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug']} series={[{ name: 'Employee', values: [182000, 184500, 186200, 188000, 189400, 191230] }, { name: 'Employer', values: [182000, 184500, 186200, 188000, 189400, 191230] }]} stacked loading={state === 'loading'} />
-            <DataTable
-              label={`${tab} register`}
-              columns={cols[tab]}
-              rows={state === 'empty' ? [] : data}
-              getRowId={(r) => r.id}
-              state={state === 'empty' ? 'ready' : state}
-              onRetry={() => {}}
-              empty={<EmptyState title="No register for this month yet." description="Registers are generated when the payroll period locks." />}
-              filtered={filters.length > 0}
-              onClearFilters={() => setFilters([])}
-              toolbar={<FilterBar fields={fields} value={filters} onChange={setFilters} searchPlaceholder="Search employee or UAN" />}
-              onExport={() => {}}
-            />
-          </div>
+    <Tabs
+      value={tab}
+      onValueChange={(v) => {
+        setTab(v);
+        setFilters([]);
+        if ((['EPF', 'ESIC', 'PT', 'LWF'] as string[]).includes(v)) onKind(v as RegisterKind);
+      }}
+    >
+      <TabsList aria-label="Registers">
+        {(['EPF', 'ESIC', 'PT', 'LWF'] as RegisterKind[]).map((k) => (
+          <TabsTrigger key={k} value={k}>
+            {k}
+          </TabsTrigger>
+        ))}
+        {extra.map((x) => (
+          <TabsTrigger key={x.value} value={x.value}>
+            {x.label}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {(['EPF', 'ESIC', 'PT', 'LWF'] as RegisterKind[]).map((k) => (
+        <TabsContent key={k} value={k}>
+          {k === current && (
+            <div className="yx-ops-stack">
+              <BarChart title={`${k} contributions, last 6 months`} xLabel="Month" money categories={trend.categories} series={[{ name: 'Employee', values: trend.employee }, { name: 'Employer', values: trend.employer }]} stacked loading={state === 'loading'} />
+              <DataTable
+                label={`${k} register`}
+                columns={cols[k]}
+                rows={data}
+                getRowId={(r) => r.id}
+                state={state}
+                onRetry={onRetry}
+                empty={empty}
+                filtered={filters.length > 0}
+                onClearFilters={() => setFilters([])}
+                toolbar={<FilterBar fields={fields} value={filters} onChange={setFilters} searchPlaceholder="Search employee or UAN" />}
+                onExport={onExport}
+              />
+            </div>
+          )}
         </TabsContent>
-      </Tabs>
-    </OpsDesk>
+      ))}
+      {extra.map((x) => (
+        <TabsContent key={x.value} value={x.value}>
+          {x.content}
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }
 
@@ -521,11 +638,17 @@ export interface TdsChallanSheetProps {
   depositOn?: Date;
   edited?: boolean;
   items: StatuteItem[];
+  /** Live: the sheet opened over the statutory hub with the month's real challan (compliance-live.tsx). */
+  live?: LiveChallan;
 }
-export function TdsChallanScreen({ challan, today, depositOn, edited, items }: TdsChallanSheetProps) {
+export function TdsChallanScreen({ live, ...story }: TdsChallanSheetProps) {
+  return live ? <LiveChallanSheet live={live} /> : <SampleTdsChallan {...story} />;
+}
+function SampleTdsChallan({ challan, today, depositOn, edited, items }: TdsChallanSheetProps) {
   const [deposit, setDeposit] = useState<Date | null>(depositOn ?? today);
   const [amount, setAmount] = useState<number | null>(edited ? challan.tds - 1200 : challan.tds);
   const [reason, setReason] = useState('');
+  const reasonCheck = useTooEarly(amount !== challan.tds && !reason.trim() ? [{ fieldId: 'tc-reason', message: 'Say why the amount differs from payroll. The change is audited.' }] : []);
   const interest = deposit ? tdsLateInterest(amount ?? 0, challan.deductedOn, challan.dueOn, deposit) : 0;
   const changed = amount !== challan.tds;
   const total = (amount ?? 0) + challan.surcharge + challan.cess + interest;
@@ -550,7 +673,7 @@ export function TdsChallanScreen({ challan, today, depositOn, edited, items }: T
         footer={
           <>
             <Button>Cancel</Button>
-            <Button variant="primary" disabled={changed && !reason.trim()}>
+            <Button variant="primary" onClick={() => reasonCheck.stop()}>
               Save challan
             </Button>
           </>
@@ -567,8 +690,8 @@ export function TdsChallanScreen({ challan, today, depositOn, edited, items }: T
             </FormField>
           </FieldRow>
           {changed && (
-            <FormField label="Reason for changing the amount" required error={reason.trim() ? null : 'Say why the amount differs from payroll. The change is audited.'}>
-              <TextArea value={reason} onChange={setReason} rows={2} />
+            <FormField id="tc-reason" label="Reason for changing the amount" required helper="Say why the amount differs from payroll. The change is audited." error={reasonCheck.errorOf('tc-reason')}>
+              <TextArea id="tc-reason" value={reason} onChange={setReason} rows={2} />
             </FormField>
           )}
           <DescriptionList
@@ -602,7 +725,7 @@ export function TdsChallanScreen({ challan, today, depositOn, edited, items }: T
  * ======================================================================================= */
 
 export interface TdsReturnWizardProps {
-  form?: 'Form 138' | '24Q';
+  form?: 'Form 138' | '24Q' | 'Form 140' | '26Q';
   quarter: string;
   months: { month: string; rows: number; status: string }[];
   current?: 'completeness' | 'reconcile' | 'validate' | 'file' | 'corrections';
@@ -610,14 +733,32 @@ export interface TdsReturnWizardProps {
   difference?: number;
   mode?: 'self' | 'partner';
   filed?: boolean;
+  /** Live: the entity's returns with the wizard of the one opened (compliance-live.tsx); salary on the hub, consultants on CMP-13. */
+  live?: LiveReturns;
+  /** MissingMonth: the "No deductees this month" confirm open (stories), or open with the server's refusal. */
+  noDeductees?: 'confirm' | 'refused';
 }
-export function TdsReturnWizardScreen({ form = 'Form 138', quarter, months, current = 'completeness', missingMonth, difference = 0, mode = 'self', filed }: TdsReturnWizardProps) {
+export function TdsReturnWizardScreen({ live, ...story }: TdsReturnWizardProps) {
+  return live ? <LiveTdsReturns live={live} /> : <SampleTdsReturnWizard {...story} />;
+}
+function SampleTdsReturnWizard({ form = 'Form 138', quarter, months, current = 'completeness', missingMonth, difference = 0, mode = 'self', filed, noDeductees }: TdsReturnWizardProps) {
+  const [nilOpen, setNilOpen] = useState(!!noDeductees);
   const monthRows: CheckRow[] = months.map((m, i) => ({
     id: m.month,
     status: missingMonth && i === 0 ? 'fail' : 'pass',
     label: `${m.month}: ${missingMonth && i === 0 ? 'no deductee rows' : `${m.rows} deductee rows`}`,
     detail: missingMonth && i === 0 ? 'This entity started on YukthiX mid-quarter. Import the prior-month rows so the return is complete.' : m.status,
-    action: missingMonth && i === 0 ? <Button size="sm" icon={Upload}>Import rows</Button> : undefined,
+    action:
+      missingMonth && i === 0 ? (
+        <span className="yx-ops-row">
+          <Button size="sm" icon={Upload}>
+            Import rows
+          </Button>
+          <Button size="sm" onClick={() => setNilOpen(true)}>
+            No deductees this month
+          </Button>
+        </span>
+      ) : undefined,
   }));
   const panRows: CheckRow[] = [
     { id: 'pan1', status: 'warn', label: 'Nisha Thomas: no PAN', detail: 'TDS at 20 %. The row carries the no-PAN flag.' },
@@ -653,7 +794,7 @@ export function TdsReturnWizardScreen({ form = 'Form 138', quarter, months, curr
       statusNote: difference ? `${formatINR(difference, { decimals: 2 })} difference` : undefined,
       content: (
         <div className="yx-ops-stack">
-          {difference ? <InlineAlert tone="danger">August deposit is {formatINR(difference, { decimals: 2 })} less than deducted. Pay the difference with interest, or correct the challan, before validating.</InlineAlert> : <InlineAlert tone="success">Every challan matches its deductions.</InlineAlert>}
+          {difference ? <InlineAlert tone="danger">August deposit is {formatINR(difference, { decimals: 2 })} less than deducted. Pay the difference with interest, or correct the challan, before validating.</InlineAlert> : <InlineAlert tone="info">Every challan matches its deductions.</InlineAlert>}
           <DataTable
             label="Challan reconciliation"
             columns={[
@@ -692,7 +833,7 @@ export function TdsReturnWizardScreen({ form = 'Form 138', quarter, months, curr
       title: 'File and acknowledgement',
       content: filed ? (
         <div className="yx-ops-stack">
-          <InlineAlert tone="success" title="Filed and locked">
+          <InlineAlert tone="info" title="Filed and locked">
             Acknowledgement 872310045612309 recorded on 29 Sep 2026. Corrections now go through a correction return.
           </InlineAlert>
         </div>
@@ -731,9 +872,55 @@ export function TdsReturnWizardScreen({ form = 'Form 138', quarter, months, curr
   ];
   return (
     <OpsDesk area="compliance" active="TDS & Form 16">
-      <PageHeader title={`${form} · ${quarter}`} description={form === 'Form 138' ? 'Salary TDS return under the Income-tax Act 2025.' : 'Correction of a quarter up to 31 Mar 2026, filed under the 1961 Act form.'} status={filed ? <Badge tone="success">Filed</Badge> : <Badge tone="warning">Draft</Badge>} />
+      <PageHeader title={`${form} · ${quarter}`} description={form === 'Form 138' ? 'Salary TDS return under the Income-tax Act 2025.' : form === 'Form 140' ? 'Non-salary TDS return (consultants) under the Income-tax Act 2025.' : 'Correction of a quarter up to 31 Mar 2026, filed under the 1961 Act form.'} status={filed ? <Badge tone="success">Filed</Badge> : <Badge tone="warning">Draft</Badge>} />
       <Stepper key={current} title={`${form} ${quarter}`} steps={steps} defaultCurrent={current} finishLabel="Mark return filed" onContinue={(id) => !(id === 'completeness' && missingMonth) && !(id === 'reconcile' && difference)} />
+      <NoDeducteesDialog
+        month={months[0]?.month ?? ''}
+        open={nilOpen}
+        onOpenChange={setNilOpen}
+        refusal={noDeductees === 'refused' ? `${months[0]?.month ?? 'This month'} has approved payslips with ₹4,200 of TDS. Its rows come from payroll, so it cannot be marked as having no deductees.` : undefined}
+        onConfirm={() => undefined}
+      />
     </OpsDesk>
+  );
+}
+
+/**
+ * CMP-05 MissingMonth (founder answer 2): a month before go-live that had no salary TDS at all is recorded with a short
+ * reason, so the return counts it complete with no rows. Undo stays possible until the return is filed.
+ */
+export function NoDeducteesDialog({ month, open, onOpenChange, onConfirm, refusal }: { month: string; open: boolean; onOpenChange: (o: boolean) => void; onConfirm: (reason: string) => unknown; /** A refusal to show (stories); live refusals show inline by themselves. */ refusal?: string }) {
+  const [reason, setReason] = useState('');
+  const check = useTooEarly(reason.trim().length < 5 ? [{ fieldId: 'nd-reason', message: 'Say why there was no salary TDS, in at least 5 characters.' }] : []);
+  return (
+    <ConfirmDialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) {
+          setReason('');
+          check.reset();
+        }
+        onOpenChange(o);
+      }}
+      title={`No salary TDS in ${month}?`}
+      consequence={`The return counts ${month} as complete with no deductee rows. You can undo this until the return is filed.`}
+      confirmLabel="Record no deductees"
+      onConfirm={async () => {
+        if (check.stop()) return false;
+        await onConfirm(reason.trim());
+      }}
+    >
+      <div className="yx-ops-stack">
+        {refusal && (
+          <InlineAlert tone="danger" title="This didn't go through">
+            {refusal}
+          </InlineAlert>
+        )}
+        <FormField id="nd-reason" label="Why there was no salary TDS" required error={check.errorOf('nd-reason')}>
+          <TextArea id="nd-reason" rows={3} value={reason} onChange={setReason} />
+        </FormField>
+      </div>
+    </ConfirmDialog>
   );
 }
 
@@ -750,13 +937,16 @@ export interface F16Row {
   signed: boolean;
   published: boolean;
 }
-export function Form16BulkScreen({ rows, current = 'partA', notYet, q2Linked }: { rows: F16Row[]; current?: string; notYet?: boolean; q2Linked?: boolean }) {
+export function Form16BulkScreen({ live, ...story }: { rows: F16Row[]; current?: string; notYet?: boolean; q2Linked?: boolean; /** The live app's /yx/payroll/certificates (compliance-live.tsx). */ live?: LiveForm16 }) {
+  return live ? <LiveForm16Screen live={live} /> : <SampleForm16Bulk {...story} />;
+}
+function SampleForm16Bulk({ rows, current = 'partA', notYet, q2Linked }: { rows: F16Row[]; current?: string; notYet?: boolean; q2Linked?: boolean }) {
   const [publishOpen, setPublishOpen] = useState(false);
   if (notYet)
     return (
       <OpsDesk area="compliance" active="TDS & Form 16">
         <PageHeader title="Form 130 · tax year 2026-27" />
-        <EmptyState title="Form 130 is available after the Q4 return is filed." description="For tax year 2026-27 that is after 31 May 2027. Employees see their monthly TDS in the tax workspace until then." action={<Button>Open Form 16 for FY 2025-26</Button>} />
+        <NotYetAvailableState form="Form 130" taxYear="2026-27" after={new Date(2027, 4, 31)} action={<Button>Open Form 16 for FY 2025-26</Button>} />
       </OpsDesk>
     );
   const cols: TableColumn<F16Row>[] = [
@@ -785,7 +975,7 @@ export function Form16BulkScreen({ rows, current = 'partA', notYet, q2Linked }: 
             content: q2Linked ? (
               <InlineAlert tone="danger">The return you chose is Q2 (Jul–Sep 2025). Form 16 needs the filed Q4 return (Jan–Mar 2026).</InlineAlert>
             ) : (
-              <InlineAlert tone="success">Linked: 24Q Q4 FY 2025-26, filed 28 May 2026, acknowledgement 872310045119004.</InlineAlert>
+              <InlineAlert tone="info">Linked: 24Q Q4 FY 2025-26, filed 28 May 2026, acknowledgement 872310045119004.</InlineAlert>
             ),
           },
           {
@@ -799,7 +989,7 @@ export function Form16BulkScreen({ rows, current = 'partA', notYet, q2Linked }: 
               </div>
             ),
           },
-          { id: 'partB', title: 'Generate Part B', content: <InlineAlert tone="success">Part B generated for {rows.length} employees from payroll: salary, exemptions, deductions and tax.</InlineAlert> },
+          { id: 'partB', title: 'Generate Part B', content: <InlineAlert tone="info">Part B generated for {rows.length} employees from payroll: salary, exemptions, deductions and tax.</InlineAlert> },
           {
             id: 'sign',
             title: 'Sign with DSC',
@@ -818,6 +1008,17 @@ export function Form16BulkScreen({ rows, current = 'partA', notYet, q2Linked }: 
   );
 }
 
+/** CMP-06 NotYetAvailable: certificates wait for the year's filed Q4 return (live: the date from the published calendar). */
+export function NotYetAvailableState({ form, taxYear, after, action }: { form: string; taxYear: string; after: Date | null; action?: ReactNode }) {
+  return (
+    <EmptyState
+      title={`${form} is available after the Q4 return is filed.`}
+      description={`${after ? `For tax year ${taxYear} that is after ${formatDate(after)}. ` : ''}Employees see their monthly TDS in the tax workspace until then.`}
+      action={action}
+    />
+  );
+}
+
 /* =========================================================================================
  * CMP-07 · Missing-ID dashboard (T6)
  * ======================================================================================= */
@@ -831,7 +1032,10 @@ export interface MissingIdRow {
   detail: string;
   severity: string;
 }
-export function MissingIdsScreen({ rows, loading, persona = 'pa' }: { rows: MissingIdRow[]; loading?: boolean; persona?: 'pa' | 'hr' }) {
+export function MissingIdsScreen({ live, ...story }: { rows: MissingIdRow[]; loading?: boolean; persona?: 'pa' | 'hr'; /** The live app's /yx/payroll/missing-ids (compliance-live.tsx). */ live?: LiveMissingIds }) {
+  return live ? <LiveMissingIdsScreen live={live} /> : <SampleMissingIds {...story} />;
+}
+function SampleMissingIds({ rows, loading, persona = 'pa' }: { rows: MissingIdRow[]; loading?: boolean; persona?: 'pa' | 'hr' }) {
   const count = (k: string) => rows.filter((r) => r.issue.startsWith(k)).length;
   const [selected, setSelected] = useState<string[]>([]);
   return (
@@ -891,7 +1095,19 @@ export interface Advisory {
   impact: string;
   reviewed: boolean;
 }
-export function RulesBrowserScreen({ rules, advisories, tab = 'rules', openRuleId = null, reviewId = null }: { rules: RuleSetRow[]; advisories: Advisory[]; tab?: 'rules' | 'updates'; openRuleId?: string | null; reviewId?: string | null }) {
+export interface RulesBrowserProps {
+  rules: RuleSetRow[];
+  advisories: Advisory[];
+  tab?: 'rules' | 'updates';
+  openRuleId?: string | null;
+  reviewId?: string | null;
+  /** The live app's /yx/payroll/statutory-rules (tab rules) and /yx/payroll/advisories (tab updates). */
+  live?: LiveRules;
+}
+export function RulesBrowserScreen({ live, ...story }: RulesBrowserProps) {
+  return live ? <LiveRulesScreen live={live} tab={story.tab ?? 'rules'} /> : <SampleRulesBrowser {...story} />;
+}
+function SampleRulesBrowser({ rules, advisories, tab = 'rules', openRuleId = null, reviewId = null }: RulesBrowserProps) {
   const [current, setCurrent] = useState(tab);
   const [open, setOpen] = useState<string | null>(openRuleId);
   const [review, setReview] = useState<string | null>(reviewId);
@@ -967,26 +1183,18 @@ export function RulesBrowserScreen({ rules, advisories, tab = 'rules', openRuleI
             <DescriptionList items={[{ label: 'Valid from', value: formatDate(rule.validFrom) }, { label: 'Status', value: rule.status }, { label: 'Source', value: rule.source }, { label: 'Stored copy', value: 'PDF, checked by compliance owner and a second reviewer' }]} />
             {rule.statute === 'IN.PT' && (
               <Card title="Monthly slabs">
-                <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-                <table className="yx-ops-matrix">
-                  <thead>
-                    <tr>
-                      <th scope="col">Gross monthly salary</th>
-                      <th scope="col">PT</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <th scope="row">Below {rule.version === '2026-10' ? '₹25,000' : '₹25,000'}</th>
-                      <td data-num>₹0</td>
-                    </tr>
-                    <tr>
-                      <th scope="row">₹25,000 and above</th>
-                      <td data-num>₹200 (₹300 in February)</td>
-                    </tr>
-                  </tbody>
-                </table>
-                </div>
+                <PlainTable
+                  label="Monthly slabs"
+                  rows={[
+                    { band: 'Below ₹25,000', pt: '₹0' },
+                    { band: '₹25,000 and above', pt: '₹200 (₹300 in February)' },
+                  ]}
+                  getRowId={(r) => r.band}
+                  columns={[
+                    { key: 'band', header: 'Gross monthly salary', rowHeader: true, cell: (r) => r.band },
+                    { key: 'pt', header: 'PT', cell: (r) => r.pt },
+                  ]}
+                />
               </Card>
             )}
             <Card title="Version history">
@@ -1024,10 +1232,62 @@ export function RulesBrowserScreen({ rules, advisories, tab = 'rules', openRuleI
             <TextArea rows={3} defaultValue="Checked contractor licences at Hosur; scope covers Tamil Nadu." />
           </FormField>
           <Checkbox label="Create a task" description="Assign follow-up work with a due date" />
-          <Switch label="Share with HR admins" />
+          <Checkbox label="Share with HR admins" description="They get a note in the app with what you did" />
         </div>
       </Dialog>
     </OpsDesk>
   );
 }
 
+
+/* =========================================================================================
+ * CMP-13 · Consultant TDS (new design, 29 Oct 2026: the live page had no Compliance design). Challans per section for a
+ * month, the quarterly non-salary return (the CMP-05 wizard with Form 140 / 26Q) and the Form 131 / 16A certificates.
+ * The stories and the live page render the same body; the stories pass sample data and sample answers.
+ * ======================================================================================= */
+
+export interface ConsultantTdsScreenProps {
+  state?: LoadState;
+  tab?: 'challans' | 'returns' | 'certificates';
+  /** Sample: every action is refused with this message (server refusal stories). */
+  refuse?: string;
+  /** Sample: no returns and nothing deducted. */
+  empty?: boolean;
+  /** Sample: the viewer only sees returns (no challans, no filing, no certificates). */
+  readOnly?: boolean;
+  /** The live app's /yx/payroll/consultant-tds (compliance-live.tsx). */
+  live?: LiveConsultantTds;
+}
+export function ConsultantTdsScreen({ live, ...story }: ConsultantTdsScreenProps) {
+  return live ? <LiveConsultantTdsScreen live={live} tab={story.tab} /> : <SampleConsultantTds {...story} />;
+}
+function SampleConsultantTds({ state = 'ready', tab, refuse, empty, readOnly }: ConsultantTdsScreenProps) {
+  const [entityId, setEntityId] = useState<string | null>(CONSULTANT_ENTITIES[0].id);
+  async function answer<T>(value: T): Promise<T> {
+    if (refuse) throw new Error(refuse);
+    return value;
+  }
+  const sample: LiveConsultantTds = {
+    state,
+    onRetry: () => undefined,
+    entities: CONSULTANT_ENTITIES,
+    entityId,
+    onEntity: setEntityId,
+    returns: empty ? [] : CONSULTANT_RETURNS,
+    can: readOnly ? { view: true, challans: false, file: false, certificates: false } : { view: true, challans: true, file: true, certificates: true },
+    onPrepareChallans: () => answer(empty ? [] : CONSULTANT_CHALLANS),
+    onDraft: () => answer(undefined),
+    onReconcile: () => answer(undefined),
+    onMakeFile: () => answer(undefined),
+    onDownload: () => answer(undefined),
+    onFiled: () => answer(undefined),
+    onImport: () => answer({ formCode: '131', matched: [{ name: 'Asha Rao' }, { name: 'Brightline Studio LLP' }], unmatched: ['AAAPZ9999Q_Q2.pdf'] }),
+  };
+  return (
+    <OpsDesk area="compliance" active="TDS & Form 16">
+      <LivePage title="Consultant TDS" description="TDS deducted from consultants: the month's challans per section, the quarterly return (Form 140; 26Q until March 2026) and the certificates from TRACES." state={state} onRetry={() => undefined} what="consultant TDS returns" grantedBy="your payroll admin">
+        <ConsultantTdsBody live={sample} tab={tab} />
+      </LivePage>
+    </OpsDesk>
+  );
+}

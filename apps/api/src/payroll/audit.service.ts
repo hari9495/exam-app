@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { auditSentence } from './audit-sentence';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
@@ -28,6 +29,24 @@ const RESTRICTED: { prefix: string; key: string }[] = [
   { prefix: 'whistleblower.', key: 'whistleblower.case.view' },
   { prefix: 'leave.medical', key: 'leave.medical.view' },
 ];
+
+/**
+ * Settings S-5 (answer 1563): the company audit log's areas, by the action's family (the part before the first dot).
+ * Payroll keeps its own audit page; here it is one area like the others, under the same scope and masking.
+ */
+export const AUDIT_AREAS: Record<string, { label: string; prefixes: string[] }> = {
+  settings: { label: 'Settings', prefixes: ['org.', 'setting.'] },
+  access: { label: 'Access & security', prefixes: ['access.', 'login.', 'step_up.', 'user.', 'permission_profile.', 'support_session.', 'support_access.', 'auth.', 'mfa.'] },
+  people: { label: 'People', prefixes: ['employee.', 'entry.', 'exit.', 'preboarding.', 'journey.', 'lifecycle.'] },
+  time: { label: 'Time and leave', prefixes: ['time.', 'leave.', 'attendance.', 'roster.', 'shift.'] },
+  payroll: { label: 'Payroll', prefixes: ['payroll.', 'pay.', 'tax.'] },
+  hiring: { label: 'Hiring', prefixes: ['job.', 'ats.', 'candidate.', 'offer.', 'offer_template.', 'interview.', 'job_board.', 'staffing.'] },
+  performance: { label: 'Performance', prefixes: ['perf.'] },
+  expenses: { label: 'Expenses', prefixes: ['expense.'] },
+  helpdesk: { label: 'Helpdesk', prefixes: ['desk.', 'policy.', 'help.'] },
+  approvals: { label: 'Approvals', prefixes: ['workflow.'] },
+  projects: { label: 'Projects', prefixes: ['project.', 'timesheet.'] },
+};
 
 /** Field-name parts that carry Confidential pay / identity values (P02 §4.4): masked without the field permission. */
 const PAY_FIELDS = /(amount|salary|ctc|gross|^net$|netpay|net_pay|earning|deduction|bonus|allowance|compensation|paise|rupees|tax|tds)/i;
@@ -185,6 +204,9 @@ export class PayAuditService {
       ...(q.entityId ? { entityId: q.entityId } : {}),
       ...(q.actorUserId ? { actorUserId: q.actorUserId } : {}),
       ...(q.action ? { action: { startsWith: q.action } } : {}),
+      // Answer 1563: an area (its action families) and a person (name or email, any part).
+      ...(q.area && AUDIT_AREAS[q.area] ? { OR: AUDIT_AREAS[q.area]!.prefixes.map((p) => ({ action: { startsWith: p } })) } : {}),
+      ...(q.actor ? { AND: [{ OR: [{ actorName: { contains: q.actor, mode: 'insensitive' as const } }, { actorEmail: { contains: q.actor, mode: 'insensitive' as const } }] }] } : {}),
       ...(q.from || q.to ? { createdAt: { ...(q.from ? { gte: new Date(`${q.from}T00:00:00+05:30`) } : {}), ...(q.to ? { lte: new Date(`${q.to}T23:59:59.999+05:30`) } : {}) } } : {}),
     };
   }
@@ -195,7 +217,9 @@ export class PayAuditService {
   }
 
   private view(r: Prisma.AuditLogGetPayload<object>, m: { canPay: boolean; canIdentity: boolean }) {
-    return { id: r.id, seq: r.chainSeq?.toString() ?? null, at: r.createdAt, action: r.action, entityType: r.entityType, entityId: r.entityId, actor: r.actorName || r.actorEmail || 'YukthiX system', actorRole: r.actorRole, details: maskMetadata(parse(r.metadataJson), m.canPay, m.canIdentity) };
+    const actor = r.actorName || r.actorEmail || 'YukthiX system';
+    const details = maskMetadata(parse(r.metadataJson), m.canPay, m.canIdentity);
+    return { id: r.id, seq: r.chainSeq?.toString() ?? null, at: r.createdAt, action: r.action, sentence: auditSentence(r.action, actor, details), entityType: r.entityType, entityId: r.entityId, actor, actorRole: r.actorRole, channel: r.channel, details };
   }
 
   /** Audit search in scope, newest first, by chain position (YX-AUD-06). */
@@ -225,7 +249,7 @@ export class PayAuditService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const m = this.masks(v);
       const rows = await tx.auditLog.findMany({ where: { AND: [await this.scopeWhere(tx, c, v), this.where(q)] }, orderBy: { chainSeq: 'desc' }, take: 5000 });
-      const lines = ['Position,When,Who,Role,What,Record type,Record,Details', ...rows.map((r) => this.view(r, m)).map((r) => [r.seq, r.at.toISOString(), r.actor, r.actorRole, r.action, r.entityType, r.entityId, r.details].map(csvCell).join(','))];
+      const lines = ['Position,When,Who,Role,What happened,Event code,Record type,Record,Details', ...rows.map((r) => this.view(r, m)).map((r) => [r.seq, r.at.toISOString(), r.actor, r.actorRole, r.sentence, r.action, r.entityType, r.entityId, r.details].map(csvCell).join(','))];
       const file = Buffer.from(`﻿${lines.join('\r\n')}\r\n`, 'utf8');
       await audit(tx, c, 'audit.exported', 'audit_log', c.organizationId, { filters: q, rows: rows.length, sha256: sha256(file), masked: { pay: !m.canPay, identity: !m.canIdentity } });
       return { file, name: `audit-log-${new Date().toISOString().slice(0, 10)}.csv` };

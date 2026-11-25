@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 import { skipPreV2Console } from './fixtures/pre-v2';
+import { addSectionWithQuestion } from './fixtures/sections';
 
 skipPreV2Console('live-monitoring-golden-path.spec.ts');
 
@@ -30,12 +31,7 @@ test('recruiter sees a candidate go live on the exam Live tab as they start thei
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /Live path: 2 \+ 2\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /Live path: 2 \+ 2\?/);
 
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
@@ -84,12 +80,12 @@ test('recruiter sees a candidate go live on the exam Live tab as they start thei
   });
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
-  // The welcome page always shows the practice step first -- "Enable camera" only renders
+  // The welcome page always shows the practice step first -- "Turn on camera" only renders
   // once practice is skipped/completed.
   await candidatePage.getByRole('button', { name: /skip practice/i }).click();
-  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('button', { name: 'Turn on camera' }).click();
   await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
 
   // Recruiter: the roster should flip to in_progress live, without a page reload
@@ -121,12 +117,7 @@ test('recruiter sees the leaderboard update when a candidate answers correctly',
   await page.getByRole('button', { name: 'Create exam' }).click();
   await expect(page).toHaveURL(/\/exams\/.+\/edit$/);
 
-  await page.getByRole('tab', { name: 'Sections & Questions' }).click();
-  await page.getByLabel('New section title').fill('Section One');
-  await page.getByRole('button', { name: 'Add section' }).click();
-  await page.getByRole('button', { name: 'Manage questions' }).click();
-  await page.getByRole('checkbox', { name: /Leaderboard path: 2 \+ 2\?/ }).first().click();
-  await page.getByRole('button', { name: 'Save questions' }).click();
+  await addSectionWithQuestion(page, 'Section One', /Leaderboard path: 2 \+ 2\?/);
 
   await page.getByRole('button', { name: 'Publish' }).click();
   await expect(page).toHaveURL(/\/exams$/);
@@ -166,12 +157,12 @@ test('recruiter sees the leaderboard update when a candidate answers correctly',
   });
   await candidatePage.goto(`/start?token=${inviteToken}`);
   await expect(candidatePage).toHaveURL(/\/welcome$/);
-  // The welcome page always shows the practice step first -- "Enable camera" only renders
+  // The welcome page always shows the practice step first -- "Turn on camera" only renders
   // once practice is skipped/completed.
   await candidatePage.getByRole('button', { name: /skip practice/i }).click();
-  await candidatePage.getByRole('button', { name: 'Enable camera' }).click();
+  await candidatePage.getByRole('button', { name: 'Turn on camera' }).click();
   await candidatePage.getByRole('checkbox', { name: /i understand and consent to monitoring/i }).click();
-  await candidatePage.getByRole('button', { name: 'Start exam' }).click();
+  await candidatePage.getByRole('button', { name: 'Start test' }).click();
   await expect(candidatePage).toHaveURL(/\/exam$/);
 
   await expect(candidatePage.getByText('Leaderboard path: 2 + 2?')).toBeVisible();

@@ -1,13 +1,18 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { TenantPrismaService } from '@exam-platform/shared';
+import { AuditService, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { deskRobot } from './catalog.service';
-import { DeskActor, SEAT_REQUIRED, audit, deskSystem, emit, requireDesk, requireSetUp, requireWork } from './desk-access';
+import { DeskActor, SEAT_REQUIRED, activeOn, audit, deskSystem, emit, requireDesk, requireSetUp, requireWork } from './desk-access';
 import { ScheduleError, dueBetween, nextRun, preview } from './recurrence';
 import { RequesterService } from './requester.service';
 import { cleanHtml, htmlToText } from './rich-text';
 import { OPEN_STATES, TicketsService } from './tickets.service';
+import { ChangesService, Owner } from './changes.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { todayIst } from '../org-structure/org-validation';
+import { Notice } from '../workflow/approvals-engine.service';
+import { checkPlace } from './facilities.service';
 
 // SD-2.13 (US-G-052, US-G-053). Recurring records: a template and an RFC 5545 rule; the job makes each due ticket once
 // (a run row per due time), marks one made after an outage as "late" and an earlier one still open when the next comes
@@ -26,6 +31,13 @@ interface Template {
   assigneeUserId?: string | null;
   priority?: number | null;
   requesterPersonId: string;
+  /** Helpdesk plan item 4: maintenance of one piece of equipment of this desk. */
+  equipmentId?: string | null;
+  /**
+   * ITSM answer 1952: each run raises a standard change from this pre-approved template (one schedule per template), its
+   * window starting this many hours after the run and lasting these minutes.
+   */
+  standard?: { templateId: string; startAfterHours: number; minutes: number } | null;
 }
 interface Step {
   afterHours: number;
@@ -49,6 +61,8 @@ export class RecurringService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly tickets: TicketsService,
     private readonly requesters: RequesterService,
+    private readonly notifications: NotificationsService,
+    private readonly changes: ChangesService,
   ) {}
 
   private tx<T>(a: DeskActor, fn: (tx: Tx) => Promise<T>) {
@@ -57,18 +71,35 @@ export class RecurringService {
 
   // ------------------------------------------------------------------------------------------ recurring: set-up
 
-  private async template(tx: Tx, a: DeskActor, deskId: string, x: Partial<Template>, requesterPersonId: string): Promise<Template> {
+  private async template(tx: Tx, a: DeskActor, deskId: string, x: Partial<Template>, requesterPersonId: string, scheduleId: string | null = null): Promise<Template> {
     const org = a.ctx.organizationId;
     const subject = (x.subject ?? '').trim();
     if (!subject || subject.length > 200) throw new BadRequestException('Give the ticket a subject (up to 200 characters).');
-    const bodyHtml = cleanHtml(x.bodyHtml ?? '');
+    const standard = x.standard ? await this.standardOf(tx, org, deskId, x.standard, scheduleId) : null;
+    const bodyHtml = cleanHtml(x.bodyHtml || (standard ? `<p>Standard change: ${subject.replace(/[<>&]/g, '')}</p>` : ''));
     if (!htmlToText(bodyHtml)) throw new BadRequestException('Describe what has to be done.');
     if (x.typeId && !(await tx.sdTicketType.findFirst({ where: { organizationId: org, deskId, id: x.typeId, active: true }, select: { id: true } }))) throw new BadRequestException('Choose a ticket type of this desk.');
     if (x.categoryId && !(await tx.sdCategory.findFirst({ where: { organizationId: org, deskId, id: x.categoryId, active: true }, select: { id: true } }))) throw new BadRequestException('Choose a category of this desk.');
     if (x.groupId && !(await tx.sdGroup.findFirst({ where: { organizationId: org, deskId, id: x.groupId, active: true }, select: { id: true } }))) throw new BadRequestException('Choose a team of this desk.');
     if (x.assigneeUserId && !(await this.tickets.seatHeld(tx, org, deskId, x.assigneeUserId))) throw new BadRequestException('Choose an agent of this desk.');
     if (x.priority !== undefined && x.priority !== null && (!Number.isInteger(x.priority) || x.priority < 1 || x.priority > 4)) throw new BadRequestException('Priority is 1 to 4.');
-    return { subject, bodyHtml, typeId: x.typeId ?? null, categoryId: x.categoryId ?? null, groupId: x.groupId ?? null, assigneeUserId: x.assigneeUserId ?? null, priority: x.priority ?? null, requesterPersonId };
+    if (x.equipmentId && !(await tx.sdEquipment.findFirst({ where: { organizationId: org, deskId, id: x.equipmentId, status: 'active' }, select: { id: true } }))) throw new BadRequestException("Choose active equipment of this desk's register.");
+    return { standard, equipmentId: x.equipmentId ?? null, subject, bodyHtml, typeId: x.typeId ?? null, categoryId: x.categoryId ?? null, groupId: x.groupId ?? null, assigneeUserId: x.assigneeUserId ?? null, priority: x.priority ?? null, requesterPersonId };
+  }
+
+  /** Answer 1952: a pre-approved change template of this IT desk, on at most one schedule; a sensible window. */
+  private async standardOf(tx: Tx, org: string, deskId: string, x: NonNullable<Template['standard']>, scheduleId: string | null) {
+    const desk = await tx.sdDesk.findFirst({ where: { organizationId: org, id: deskId }, select: { kind: true } });
+    if (desk?.kind !== 'it') throw new BadRequestException('Standard changes repeat on IT desks only.');
+    const tpl = typeof x.templateId === 'string' ? await tx.sdTemplate.findFirst({ where: { organizationId: org, deskId, id: x.templateId, active: true, preApproved: true } }) : null;
+    if (!tpl) throw new BadRequestException('Choose a pre-approved standard change of this desk.');
+    const startAfterHours = Number(x.startAfterHours);
+    const minutes = Number(x.minutes);
+    if (!Number.isInteger(startAfterHours) || startAfterHours < 0 || startAfterHours > 168) throw new BadRequestException('Start the window 0 to 168 hours after the schedule time.');
+    if (!Number.isInteger(minutes) || minutes < 15 || minutes > 720) throw new BadRequestException('A window lasts 15 to 720 minutes.');
+    const others = await tx.sdRecurring.findMany({ where: { organizationId: org, deskId, state: { not: 'ended' }, ...(scheduleId ? { id: { not: scheduleId } } : {}) }, select: { template: true } });
+    if (others.some((o) => (o.template as unknown as Template).standard?.templateId === tpl.id)) throw new ConflictException(`"${tpl.name}" already repeats on another schedule. Change that one instead.`);
+    return { templateId: tpl.id, startAfterHours, minutes };
   }
 
   async list(a: DeskActor, deskId: string) {
@@ -124,7 +155,7 @@ export class RecurringService {
       if (r.state === 'ended') throw new ConflictException('This schedule has ended. Make a new one.');
       const rule = dto.rrule ?? r.rrule;
       const zone = dto.timeZone ?? r.timeZone;
-      const template = dto.template ? await this.template(tx, a, r.deskId, dto.template, (r.template as unknown as Template).requesterPersonId) : undefined;
+      const template = dto.template ? await this.template(tx, a, r.deskId, dto.template, (r.template as unknown as Template).requesterPersonId, r.id) : undefined;
       const state = dto.state ?? r.state;
       const next = state === 'active' ? (plain(() => nextRun({ rule, zone, startsAt: r.startsAt }, new Date())) as Date | null) : null;
       const res = await tx.sdRecurring.updateMany({
@@ -145,17 +176,30 @@ export class RecurringService {
       tx.sdRecurring.findMany({ where: { state: 'active', nextRunAt: { lte: now } }, select: { id: true, organizationId: true }, take: 200 }),
     );
     let n = 0;
+    const paused: Paused[] = [];
     for (const d of due) {
       try {
-        n += await deskSystem(this.tenantPrisma, { organizationId: d.organizationId, isSuperAdmin: false }, (tx) => this.runOne(tx, { organizationId: d.organizationId, isSuperAdmin: false }, d.id, now), { timeout: 30_000 });
+        const after: (() => Promise<void>)[] = [];
+        const mine: Paused[] = []; // kept only once this desk's run is saved
+        n += await deskSystem(this.tenantPrisma, { organizationId: d.organizationId, isSuperAdmin: false }, (tx) => this.runOne(tx, { organizationId: d.organizationId, isSuperAdmin: false }, d.id, now, mine, after), { timeout: 30_000 });
+        paused.push(...mine);
+        // A standard change's notices leave only once the run is saved.
+        for (const fn of after) await fn().catch((e) => this.logger.warn(`recurring notice: ${(e as Error).message}`));
       } catch (e) {
         this.logger.warn(`recurring ${d.id}: ${(e as Error).message}`);
       }
     }
+    // Answers 1913, 1992: after the change is saved, the desk's admins hear that a schedule paused (once: it is no longer active).
+    for (const p of paused) {
+      if (!p.adminIds.length) continue;
+      await this.notifications
+        .notifySystem({ organizationId: p.organizationId, isSuperAdmin: false }, p.adminIds, 'helpdesk.recurring.paused', { entityType: 'sd_recurring', entityId: p.recurringId, contextText: `${p.name} paused: ${p.why}`.slice(0, 300), linkPath: '/yx/desk/setup?tab=schedules' }, { subject: `${p.subject}: ${p.name}`.slice(0, 150), html: `<p>The schedule ${esc(p.name)} paused because ${esc(p.why)}. ${esc(p.advice)}</p>` })
+        .catch((e) => this.logger.warn(`Paused-schedule notice not sent: ${(e as Error).message}`));
+    }
     return n;
   }
 
-  private async runOne(tx: Tx, ctx: CompanyContext, id: string, now: Date): Promise<number> {
+  private async runOne(tx: Tx, ctx: CompanyContext, id: string, now: Date, paused: Paused[] = [], after: (() => Promise<void>)[] = []): Promise<number> {
     const org = ctx.organizationId;
     const [locked] = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM sd_recurring WHERE organization_id = ${org}::uuid AND id = ${id}::uuid AND state = 'active' FOR UPDATE SKIP LOCKED`;
     if (!locked) return 0;
@@ -166,6 +210,20 @@ export class RecurringService {
     const times = dueBetween(s, new Date((r.lastRunAt ?? new Date(r.startsAt.getTime() - 1)).getTime()), now, MAX_CATCH_UP);
     if (!times.length) times.push(r.nextRunAt);
     const tpl = r.template as unknown as Template;
+    // Helpdesk plan item 4: maintenance of equipment that was retired stops (paused) instead of making tickets.
+    let place: { locationId: string | null; areaId: string | null; equipmentId: string | null } | null = null;
+    if (tpl.equipmentId) {
+      try {
+        place = await checkPlace(tx, org, { equipmentId: tpl.equipmentId });
+      } catch {
+        await tx.sdRecurring.update({ where: { id: r.id }, data: { state: 'paused', updatedAt: new Date() } });
+        await emit(tx, org, 'helpdesk.recurring.paused', { recurringId: r.id, deskId: r.deskId, reason: 'equipment_retired' });
+        await audit(tx, { ctx, userId: null as unknown as string }, 'desk.recurring.paused', 'sd_recurring', r.id, { reason: 'equipment_retired', equipmentId: tpl.equipmentId });
+        const eq = await tx.sdEquipment.findFirst({ where: { organizationId: org, id: tpl.equipmentId }, select: { name: true, tag: true } });
+        paused.push({ organizationId: org, recurringId: r.id, name: r.name, subject: 'Maintenance paused', why: `${eq ? `${eq.name} (${eq.tag})` : 'its equipment'} was retired`, advice: 'Point it at other equipment and resume it, or end it.', adminIds: await deskAdmins(tx, org, r.deskId) });
+        return 0;
+      }
+    }
     let made = 0;
     for (const at of times) {
       const run = await tx.sdRecurringRun.createMany({ data: [{ organizationId: org, deskId: r.deskId, recurringId: r.id, dueAt: at, late: now.getTime() - at.getTime() > LATE_MS }], skipDuplicates: true });
@@ -174,6 +232,13 @@ export class RecurringService {
       const prev = await tx.sdRecurringRun.findFirst({ where: { organizationId: org, recurringId: r.id, dueAt: { lt: at }, ticketId: { not: null } }, orderBy: { dueAt: 'desc' } });
       const prevTicket = prev?.ticketId ? await tx.sdTicket.findFirst({ where: { organizationId: org, id: prev.ticketId }, select: { systemState: true } }) : null;
       if (prev && prevTicket && OPEN_STATES.includes(prevTicket.systemState)) await tx.sdRecurringRun.update({ where: { id: prev.id }, data: { missed: true } });
+      if (tpl.standard) {
+        const got = await this.standardRun(tx, ctx, r, tpl, at, after, paused);
+        // A paused schedule stays paused (the state written below would make it active again).
+        if (got === 'paused') return made;
+        made += got;
+        continue;
+      }
       const robot = deskRobot({ ctx }, r.deskId);
       let t = await this.tickets.createIn(tx, { ctx, userId: null }, {
         deskId: r.deskId,
@@ -188,6 +253,7 @@ export class RecurringService {
         side: 'requester',
         authorPersonId: tpl.requesterPersonId,
         tags: ['recurring'],
+        ...(place ?? {}),
       });
       if (tpl.groupId || tpl.assigneeUserId) {
         const owner = tpl.assigneeUserId && (await this.tickets.seatHeld(tx, org, r.deskId, tpl.assigneeUserId)) ? tpl.assigneeUserId : null;
@@ -200,6 +266,54 @@ export class RecurringService {
     const next = nextRun(s, now);
     await tx.sdRecurring.update({ where: { id: r.id }, data: { lastRunAt: times[times.length - 1], nextRunAt: next, state: next ? 'active' : 'ended', updatedAt: new Date() } });
     return made;
+  }
+
+  /**
+   * Answer 1952: one run raises the standard change (scheduled at once, as any standard change). A window the change
+   * rules refuse (a freeze, outside the change window) skips that run and says why; a template that lost its
+   * pre-approval pauses the schedule.
+   */
+  private async standardRun(tx: Tx, ctx: CompanyContext, r: Prisma.SdRecurringGetPayload<object>, tpl: Template, at: Date, after: (() => Promise<void>)[], paused: Paused[] = []): Promise<number | 'paused'> {
+    const org = ctx.organizationId;
+    const st = tpl.standard!;
+    const template = await tx.sdTemplate.findFirst({ where: { organizationId: org, id: st.templateId, active: true, preApproved: true }, select: { name: true } });
+    if (!template || !r.createdBy) {
+      await tx.sdRecurring.update({ where: { id: r.id }, data: { state: 'paused', updatedAt: new Date() } });
+      await emit(tx, org, 'helpdesk.recurring.paused', { recurringId: r.id, deskId: r.deskId, reason: 'not_pre_approved' });
+      await audit(tx, { ctx, userId: null as unknown as string }, 'desk.recurring.paused', 'sd_recurring', r.id, { reason: 'not_pre_approved', templateId: st.templateId });
+      // Answer 1992: the desk's admins are told, as for paused maintenance (1913).
+      paused.push({ organizationId: org, recurringId: r.id, name: r.name, subject: 'Standard change schedule paused', why: template ? 'nobody who set it up is left to raise its changes' : 'its standard change template is no longer active and pre-approved', advice: 'Choose a pre-approved template (or set it up again) and resume it, or end it.', adminIds: await deskAdmins(tx, org, r.deskId) });
+      return 'paused';
+    }
+    const from = new Date(at.getTime() + st.startAfterHours * 3_600_000);
+    const notices: Notice[] = [];
+    const owner: Owner = { to: [] };
+    try {
+      await tx.$executeRaw`SAVEPOINT sd_recurring_change`;
+      const c = await this.changes.createIn(tx, { ctx, userId: r.createdBy }, { deskId: r.deskId, kind: 'standard', templateId: st.templateId, title: tpl.subject, service: r.name, from: from.toISOString(), to: new Date(from.getTime() + st.minutes * 60_000).toISOString(), backout: `As in the pre-approved template "${template.name}".`, banner: true }, notices, owner, true);
+      await tx.$executeRaw`RELEASE SAVEPOINT sd_recurring_change`;
+      const ticketId = (await tx.sdChange.findUniqueOrThrow({ where: { id: c.id }, select: { ticketId: true } })).ticketId;
+      await tx.sdRecurringRun.updateMany({ where: { organizationId: org, recurringId: r.id, dueAt: at }, data: { ticketId } });
+      await emit(tx, org, 'helpdesk.recurring.created', { ticketId, deskId: r.deskId, recurringId: r.id });
+      after.push(() => this.changes.afterRaise(ctx, notices, owner));
+      return 1;
+    } catch (e) {
+      await tx.$executeRaw`ROLLBACK TO SAVEPOINT sd_recurring_change`;
+      // The rule that refused it (a freeze, the window) in plain words; anything else stays in the server log.
+      const reason = e instanceof HttpException ? (e as Error).message.slice(0, 300) : 'It could not be raised; see the server log.';
+      if (!(e instanceof HttpException)) this.logger.warn(`recurring standard change ${r.id}: ${(e as Error).message}`);
+      await emit(tx, org, 'helpdesk.recurring.skipped', { recurringId: r.id, deskId: r.deskId, dueAt: at.toISOString(), reason });
+      await AuditService.recordIn(tx, ctx, { actorUserId: null, action: 'desk.recurring.skipped', entityType: 'sd_recurring', entityId: r.id, metadata: { dueAt: at.toISOString(), reason } });
+      // Answer 2054: the desk's IT leads are told (once the skip is saved).
+      const leads = (await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId: r.deskId, role: 'lead', ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId);
+      const text = `${r.name}: the standard change due ${at.toISOString().slice(0, 10)} was not raised. ${reason}`.slice(0, 300);
+      if (leads.length)
+        after.push(() =>
+          this.notifications.notifySystem(ctx, leads, 'helpdesk.recurring.skipped', { entityType: 'sd_recurring', entityId: r.id, contextText: text, linkPath: `/yx/desk/setup?tab=schedules` }, { subject: `A scheduled standard change was not raised: ${r.name}`.slice(0, 150), html: `<p>${text.replace(/[<>&]/g, '')}</p><p>Raise it by hand if it is still needed, or change the schedule.</p>` }),
+        );
+      this.logger.log(`recurring standard change ${r.id} skipped: ${reason}`);
+      return 0;
+    }
   }
 
   // ------------------------------------------------------------------------------------------ sequences: set-up
@@ -337,3 +451,22 @@ export class RecurringService {
     return n;
   }
 }
+
+/** Answer 1913: a schedule paused in this tick, told to its desk's admins once the change is saved. */
+interface Paused {
+  organizationId: string;
+  recurringId: string;
+  name: string;
+  /** The notice's subject start, e.g. "Maintenance paused". */
+  subject: string;
+  /** Why it paused, plain words after "because". */
+  why: string;
+  /** What an admin can do now. */
+  advice: string;
+  adminIds: string[];
+}
+
+/** The desk's admins today (each once). */
+const deskAdmins = async (tx: Tx, org: string, deskId: string) => [...new Set((await tx.sdDeskMember.findMany({ where: { organizationId: org, deskId, role: 'admin', ...activeOn(todayIst()) }, select: { userId: true } })).map((m) => m.userId))];
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);

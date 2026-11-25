@@ -1,31 +1,41 @@
 'use client';
 
-import { TimeSetupScreen, type TimeSetup, type YearEndPreview } from '@yukthix/ui/time';
-import { timeState, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
+import { useRouter } from 'next/navigation';
+import { LeavePoliciesScreen, type BlockDates, type TimeSetup } from '@yukthix/ui/time';
+import { timeState, useTime, useTimeWrite } from '../../../../../lib/yx-time';
 
 const id = encodeURIComponent;
 
-// HR › Leave and attendance set-up (TIM-26 / 27 / 28 / 29): leave.settings.manage for the whole company.
+// HR › Leave types & policies (TIM-28): leave.settings.manage for the whole company. Leave types open TIM-27 at
+// /yx/time/setup/types/<id>; holidays (TIM-26), year end (TIM-29) and locations (TIM-31) have their own pages here.
+// Company block dates (founder decision 1) sit on this page as a card.
 export default function YxTimeSetupPage() {
+  const router = useRouter();
   const setup = useTime<TimeSetup>('/setup');
-  const read = useTimeRead();
+  const blocks = useTime<BlockDates>('/setup/block-dates');
   const write = useTimeWrite();
   return (
-    <TimeSetupScreen
-      state={timeState(setup)}
-      onRetry={() => void setup.refetch()}
-      data={setup.data ?? null}
-      onSaveType={(tid, input) => (tid ? write(`/setup/types/${id(tid)}`, 'PUT', input) : write('/setup/types', 'POST', input))}
-      onCreatePolicy={(name) => write('/setup/policies', 'POST', { name })}
-      onAddVersion={(pid, input) => write(`/setup/policies/${id(pid)}/versions`, 'POST', input)}
-      onAssign={(pid, input) => write(`/setup/policies/${id(pid)}/assign`, 'POST', input)}
-      onRemoveAssignment={(aid) => write(`/setup/assignments/${id(aid)}/remove`)}
-      onCreateCalendar={(input) => write('/setup/calendars', 'POST', input)}
-      onAddHoliday={(cid, input) => write(`/setup/calendars/${id(cid)}/holidays`, 'POST', input)}
-      onRemoveHoliday={(hid) => write(`/setup/holidays/${id(hid)}/remove`)}
-      onSetRule={(lid, input) => write(`/setup/locations/${id(lid)}/rule`, 'POST', input)}
-      onYearEndPreview={(yearEnd) => read<YearEndPreview>(`/setup/year-end?yearEnd=${yearEnd}`)}
-      onYearEndRun={(yearEnd) => write('/setup/year-end', 'POST', { yearEnd })}
+    <LeavePoliciesScreen
+      live={{
+        state: timeState(setup),
+        onRetry: () => void setup.refetch(),
+        data: setup.data ?? null,
+        onCreatePolicy: (name) => write('/setup/policies', 'POST', { name }, true, 'Policy added'),
+        onAddVersion: (pid, input) => write(`/setup/policies/${id(pid)}/versions`, 'POST', input, true, 'Policy change saved'),
+        onAssign: (pid, input) => write(`/setup/policies/${id(pid)}/assign`, 'POST', input, true, 'Policy applied'),
+        onRemoveAssignment: (aid) => write(`/setup/assignments/${id(aid)}/remove`, 'POST', undefined, true, 'Policy removed from there'),
+        onSaveOrder: (policyIds, validFrom) => write('/setup/policy-order', 'POST', { policyIds, validFrom }, true, 'Policy order saved'),
+        onOpenType: (tid) => router.push(`/yx/time/setup/types/${id(tid)}`),
+        // HLP-12 answer 62: only when HR presses it.
+        onAddInjuryLeave: () => write('/setup/types/injury-leave', 'POST', undefined, true, 'Injury leave added'),
+        blockDates: {
+          state: timeState(blocks),
+          onRetry: () => void blocks.refetch(),
+          data: blocks.data ?? null,
+          onAdd: (input) => write('/setup/block-dates', 'POST', input, true, 'Block dates added'),
+          onRemove: (bid) => write(`/setup/block-dates/${id(bid)}/remove`, 'POST', undefined, true, 'Block dates removed'),
+        },
+      }}
     />
   );
 }

@@ -5,7 +5,7 @@ import { Clock, Coffee, LogIn, LogOut, MapPin, RotateCw, StickyNote } from 'luci
 import { DesktopFrame, EMPLOYEE_RAIL, type PanelSection } from '../_kit/frames';
 import { Button, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
-import { InlineAlert, Meter } from '../../components/feedback';
+import { EmptyState, InlineAlert, Meter } from '../../components/feedback';
 import { TextArea } from '../../components/inputs';
 import { formatDate } from '../../lib/format';
 import {
@@ -29,6 +29,8 @@ import {
   type ClockState,
   type DayCode,
   type Punch,
+  PLACE_LABEL,
+  type WorkPlace,
 } from './time-logic';
 import { AUGUST, LATE_PAYROLL, LOCATIONS, ME, NOW_MIN, OT_ROWS, SEPTEMBER, TODAY, myReports, seesEveryone, timeCounts, timeScope, type TimeUser } from './time-data';
 import './time-kit.css';
@@ -107,12 +109,25 @@ const NO_VERDICT: Punch['source'][] = ['biometric', 'kiosk', 'teams', 'desktop']
 const siteOf = (where: string) => LOCATIONS.find((l) => where.startsWith(l.name))?.name;
 /** Plain verdict wording: "At Chennai office" rather than "Inside geofence" (S9). */
 function verdictOf(p: Punch): { label: string; tone: BadgeTone } | null {
+  if (p.refusal) return { label: `Not recorded: ${p.refusal}`, tone: 'danger' };
   const site = siteOf(p.where);
   if (NO_VERDICT.includes(p.source)) return site ? { label: `At ${site}`, tone: 'success' } : null;
   if (p.verdict === 'inside') return { label: `At ${site ?? 'the office'}${p.distanceM ? ` (${formatDistance(p.distanceM)} from centre)` : ''}`, tone: 'success' };
   if (p.verdict === 'outside') return { label: `Outside the office${p.distanceM ? ` (${formatDistance(p.distanceM)} away)` : ''}`, tone: 'danger' };
   if (p.verdict === 'network') return { label: 'Office network', tone: 'success' };
   return { label: 'Location recorded', tone: 'info' };
+}
+/** A9: where a punch was made. The server stores it; a story punch has it worked out the same way from its checks. */
+export function punchPlace(p: Punch): WorkPlace {
+  if (p.place) return p.place;
+  if (p.refusal) return 'unknown';
+  if (NO_VERDICT.includes(p.source) || p.verdict === 'inside' || p.verdict === 'network') return 'office';
+  return p.verdict === 'field' ? 'remote' : 'unknown';
+}
+/** A9 (answer 2312): a day with both office and remote punches counts as office by default (company setting). */
+export function placeOfDay(punches: Punch[]): WorkPlace {
+  const known = punches.filter((p) => !p.refusal).map(punchPlace).filter((x) => x !== 'unknown');
+  return known.includes('office') ? 'office' : known.length ? 'remote' : 'unknown';
 }
 /** Place text without raw IPs (HR sees them) and with plain device wording. */
 const placeText = (p: Punch, showNetwork: boolean) => {
@@ -161,6 +176,7 @@ export function PunchList({ punches, showMapIndex, showNetwork = false, emptyTex
               <strong>{fmt12(p.time)}</strong> <span className="yx-tim-punches__kind">{KIND_LABEL[p.kind]}</span>
             </span>
             <span className="yx-tim-punches__src">
+              {punchPlace(p) !== 'unknown' && <Badge tone={punchPlace(p) === 'office' ? 'success' : 'info'}>{PLACE_LABEL[punchPlace(p)]}</Badge>}
               {showSource && <Badge tone="neutral">{source}</Badge>}
               {/* Recorded offline and already synced: accepted, so neutral. */}
               {p.offline && <Badge tone="neutral">Synced later</Badge>}
@@ -175,6 +191,7 @@ export function PunchList({ punches, showMapIndex, showNetwork = false, emptyTex
               ))}
             </span>
             <span className="yx-tim-punches__verdict">{v && <Badge tone={v.tone}>{v.label}</Badge>}</span>
+            {p.note && <span className="yx-tim-punches__note">{`Note: ${p.note}`}</span>}
           </li>
         );
       })}
@@ -441,6 +458,10 @@ export interface ClockCardProps {
   distanceM?: number;
   mode?: 'restricted' | 'field';
   deviceApproved?: boolean;
+  /** Answer 2477: the shift lets people clock in again after clocking out; the card offers "Clock in again". */
+  reclockIn?: boolean;
+  /** DeviceNotApproved: HR was already asked to approve this device (the card starts at "Requested"). */
+  deviceRequested?: boolean;
   /** Source recorded on a new punch. */
   channel?: 'web' | 'mobile';
   /** Where a new punch is recorded, e.g. "Chennai office · IP 10.20.4.17". */
@@ -449,12 +470,17 @@ export interface ClockCardProps {
   variant?: 'card' | 'page' | 'home';
   defaultNoteOpen?: boolean;
   /** Called with a chosen alternative, e.g. "wfh". */
-  onAlternative?: (option: string) => void;
+  /** A returned promise that fails puts the button back (say, "Ask HR to approve" when the request did not go). */
+  onAlternative?: (option: string) => void | Promise<unknown>;
   onRegularise?: () => void;
   /** Work mode chosen after an outside prompt (the card then allows clock-in). */
   defaultWorkMode?: 'office' | 'wfh' | 'on_duty';
-  /** Live app: records the punch on the server; the card shows the refusal, the parent reloads the day. */
-  onPunch?: (kind: Punch['kind']) => Promise<{ accepted: boolean; message: string }>;
+  /** Live app: records the punch on the server (with the work mode chosen on the card); the card shows the refusal, the parent reloads the day. */
+  onPunch?: (kind: Punch['kind'], mode: 'office' | 'wfh' | 'on_duty', note?: string) => Promise<{ accepted: boolean; message: string }>;
+  /** Live app: the ways round a block this person may take (default all the design shows). */
+  alternatives?: ('wfh' | 'on_duty' | 'retry' | 'ask_hr' | 'regularise')[];
+  /** Live app: who approves work from home and this month's days, for the "needs approval" line. */
+  wfhAsk?: { approver: string; used: number; limit: number };
   /** Breaks are punched (Start break / End break). */
   breaks?: boolean;
   /** Where "Today's punches" opens on the home card. */
@@ -506,7 +532,11 @@ export function ClockCard(p: ClockCardProps) {
   const [tick, setTick] = useState(0);
   const [announce, setAnnounce] = useState('');
   const [rechecked, setRechecked] = useState('');
-  const [hrAsked, setHrAsked] = useState(false);
+  const [hrAsked, setHrAsked] = useState(Boolean(p.deviceRequested));
+  // Why a punch button can't act right now (never a disabled button: pressed, it says why).
+  const [hint, setHint] = useState('');
+  // The last punch sent to the server, so a refusal (say, the location) can be tried again (YX-AT-23).
+  const [lastAct, setLastAct] = useState<ClockAction | null>(null);
 
   useEffect(() => {
     if (!live) return;
@@ -531,9 +561,19 @@ export function ClockCard(p: ClockCardProps) {
     mode: workMode === 'office' ? mode : 'field',
     deviceApproved,
     outAt,
+    reclockIn: p.reclockIn,
   };
   const evaluated = evaluateClock(ctx);
-  const { actions, block } = dayOff ? { actions: [] as ClockAction[], block: null } : evaluated;
+  const { actions, block: rawBlock } = dayOff ? { actions: [] as ClockAction[], block: null } : evaluated;
+  // Live: only the ways round the block this person has (say, no on-duty requests), and the words to match.
+  const alts = p.alternatives;
+  const block = rawBlock && alts
+    ? {
+        ...rawBlock,
+        options: rawBlock.options.filter((o) => alts.includes(o)),
+        message: rawBlock.code === 'outside' ? (alts.includes('wfh') ? `${state === 'not_in' ? 'Clock in' : 'Clock out'} as work from home instead? Your manager approves it.` : 'Connect to the office network, then check again.') : rawBlock.message,
+      }
+    : rawBlock;
 
   const firstIn = punches.find((x) => x.kind === 'in')?.time;
   const lastBreak = [...punches].reverse().find((x) => x.kind === 'break_start')?.time;
@@ -567,12 +607,21 @@ export function ClockCard(p: ClockCardProps) {
 
   const act = (a: ClockAction) => {
     const kind: Punch['kind'] = a === 'clock_in' ? 'in' : a === 'clock_out' ? 'out' : a === 'start_break' ? 'break_start' : 'break_end';
+    setHint('');
     if (p.onPunch) {
+      setLastAct(a);
       setRefused(null);
       setPunching(kind);
+      // WithNote: the saved note goes with this punch and is kept with it on the server.
+      const sent = note.trim() || undefined;
       void p
-        .onPunch(kind)
-        .then((r) => (r.accepted ? setAnnounce(`${KIND_LABEL[kind]} recorded.`) : setRefused(r.message)))
+        .onPunch(kind, workMode, sent)
+        .then((r) => {
+          if (!r.accepted) return setRefused(r.message);
+          setAnnounce(`${KIND_LABEL[kind]} recorded${sent ? ' with a note' : ''}.`);
+          setNote('');
+          setNoteOpen(false);
+        })
         .catch((e: unknown) => setRefused(e instanceof Error ? e.message : 'That did not work. Try again.'))
         .finally(() => setPunching(null));
       return;
@@ -595,7 +644,7 @@ export function ClockCard(p: ClockCardProps) {
 
   const primary: ClockAction | null = actions.includes('clock_in') ? 'clock_in' : actions.includes('clock_out') ? 'clock_out' : null;
   const breakAct: ClockAction | null = !breaks ? null : actions.includes('start_break') ? 'start_break' : actions.includes('end_break') ? 'end_break' : null;
-  // A note attaches to a punch, so it is offered once today has one.
+  // A note attaches to a punch, so it is offered once today has one (the live app sends it with the next punch).
   const canNote = variant !== 'home' && punches.length > 0 && (primary !== null || breakAct !== null);
   const statusId = useId();
 
@@ -629,7 +678,7 @@ export function ClockCard(p: ClockCardProps) {
           {workMode !== 'office' && state === 'not_in' && !p.wfhToday && (
             <p className="yx-tim-row">
               <span className="yx-tim-muted">
-                {workMode === 'wfh' ? 'WFH' : 'On duty'} · needs {ME.manager}'s approval · {usedOf(workMode === 'wfh' ? 'WFH' : 'OD')} of 4 used this month
+                {workMode === 'wfh' ? 'WFH' : 'On duty'} · needs {p.wfhAsk?.approver ?? ME.manager}'s approval · {p.wfhAsk ? p.wfhAsk.used : usedOf(workMode === 'wfh' ? 'WFH' : 'OD')} of {p.wfhAsk?.limit ?? 4} used this month
               </span>
               <Button size="sm" onClick={() => setWorkMode('office')}>Change</Button>
             </p>
@@ -664,7 +713,7 @@ export function ClockCard(p: ClockCardProps) {
                 <Button size="sm" icon={RotateCw} onClick={() => { setRechecked(fmt12(toHHMM(nowMin))); onAlternative?.('retry'); }}>{web && block.code === 'outside' ? 'Check again' : 'Retry location'}</Button>
               )}
               {block.options.includes('ask_hr') && (
-                <Button size="sm" disabled={hrAsked} onClick={() => { setHrAsked(true); onAlternative?.('ask_hr'); }}>{hrAsked ? 'Requested' : 'Ask HR to approve'}</Button>
+                <Button size="sm" onClick={() => { if (!hrAsked) { setHrAsked(true); void Promise.resolve(onAlternative?.('ask_hr')).catch(() => setHrAsked(false)); } }}>{hrAsked ? 'Requested' : 'Ask HR to approve'}</Button>
               )}
               {/* The check re-runs against the same policy: still blocked, so say so with the time it ran. */}
               {rechecked && block.options.includes('retry') && <span className="yx-tim-muted">{block.code === 'coarse' ? 'Location still not accurate enough' : web ? `Still not on ${locationName} Wi-Fi` : `Still outside ${locationName}`} · checked {rechecked}</span>}
@@ -672,26 +721,31 @@ export function ClockCard(p: ClockCardProps) {
               {block.options.includes('regularise') && <Button size="sm" onClick={onRegularise}>Regularise today</Button>}
             </div>
           )}
-          {block.code === 'outside' && <p className="yx-tim-note">WFH and on-duty days count towards your monthly limits (4 each). Your manager approves them.</p>}
+          {block.code === 'outside' && (p.wfhAsk ? block.options.includes('wfh') && <p className="yx-tim-note">Work from home days count towards your monthly limit ({p.wfhAsk.limit} without HR). Your manager approves them.</p> : <p className="yx-tim-note">WFH and on-duty days count towards your monthly limits (4 each). Your manager approves them.</p>)}
         </InlineAlert>
       )}
 
-      {refused && <InlineAlert tone="danger" title="Not recorded">{refused}</InlineAlert>}
+      {refused && <InlineAlert tone="danger" title="Not recorded" actions={lastAct ? <Button size="sm" icon={RotateCw} onClick={() => act(lastAct)}>Retry location</Button> : undefined}>{refused}</InlineAlert>}
 
       {!dayOff && <div className="yx-tim-clock__actions">
         {state === 'not_in' && (
-          <Button variant="primary" size="lg" icon={LogIn} disabled={!primary} loading={punching === 'in'} onClick={() => primary && act(primary)}>Clock in</Button>
+          <Button variant="primary" size="lg" icon={LogIn} loading={punching === 'in'} onClick={() => (primary ? act(primary) : setHint(blockTitle || 'You cannot clock in right now.'))}>Clock in</Button>
         )}
         {(state === 'working' || state === 'break') && (
-          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} disabled={primary !== 'clock_out'} loading={punching === 'out'} onClick={() => act('clock_out')}>Clock out</Button>
+          <Button variant="primary" size={variant === 'home' ? 'md' : 'lg'} icon={LogOut} loading={punching === 'out'} onClick={() => (primary === 'clock_out' ? act('clock_out') : setHint(state === 'break' ? 'End your break to clock out' : blockTitle || 'You cannot clock out right now.'))}>Clock out</Button>
         )}
         {breaks && (state === 'working' || state === 'break') && (
-          <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} disabled={!breakAct} loading={punching === 'break_start' || punching === 'break_end'} onClick={() => breakAct && act(breakAct)}>{state === 'break' ? 'End break' : 'Start break'}</Button>
+          <Button size={variant === 'home' ? 'md' : 'lg'} icon={Coffee} loading={punching === 'break_start' || punching === 'break_end'} onClick={() => (breakAct ? act(breakAct) : setHint(blockTitle || 'You cannot take a break right now.'))}>{state === 'break' ? 'End break' : 'Start break'}</Button>
         )}
-        {state === 'out' && <Button size="lg" icon={LogIn} disabled>Clock in</Button>}
+        {state === 'out' && (p.reclockIn ? (
+          <Button variant="primary" size="lg" icon={LogIn} loading={punching === 'in'} onClick={() => (primary ? act(primary) : setHint(blockTitle || 'You cannot clock in right now.'))}>Clock in again</Button>
+        ) : (
+          <Button size="lg" icon={LogIn} onClick={() => setHint(`You clocked out at ${fmt12(outAt ?? shift.end)}. To change today, regularise it.`)}>Clock in</Button>
+        ))}
         {/* A note goes with the next punch, so it is offered only while a punch can be made (R2: bordered button). */}
         {canNote && !noteOpen && <Button size="lg" icon={StickyNote} onClick={() => setNoteOpen(true)}>{note ? 'Edit note' : 'Add note'}</Button>}
-        {state === 'break' && primary !== 'clock_out' && <span className="yx-tim-muted">End your break to clock out</span>}
+        {state === 'break' && primary !== 'clock_out' && hint !== 'End your break to clock out' && <span className="yx-tim-muted">End your break to clock out</span>}
+        {hint && <span className="yx-tim-muted" role="status">{hint}</span>}
       </div>}
 
       {canNote && noteOpen && (
@@ -701,7 +755,7 @@ export function ClockCard(p: ClockCardProps) {
             <TextArea value={note} onChange={setNote} rows={2} maxLength={200} placeholder="For example: client call ran late" />
           </label>
           <span className="yx-tim-row">
-            <Button size="sm" disabled={!note.trim()} onClick={() => setNoteOpen(false)}>Save</Button>
+            <Button size="sm" onClick={() => note.trim() && setNoteOpen(false)}>Save</Button>
             <Button size="sm" onClick={() => { setNote(''); setNoteOpen(false); }}>Cancel</Button>
             {!note.trim() && <span className="yx-tim-muted">Type a note</span>}
           </span>
@@ -800,12 +854,12 @@ export function AttendanceMonth({
   );
 }
 
-const LEGEND_ORDER: DayCode[] = ['P', 'L', 'HD', 'A', 'LOP', 'CL', 'EL', 'SL', 'H', 'WO', 'WFH', 'OD', 'R', 'MP'];
+const LEGEND_ORDER: DayCode[] = ['P', 'L', 'HD', 'A', 'LOP', 'CL', 'EL', 'SL', 'LV', 'H', 'WO', 'WFH', 'OD', 'R', 'MP', 'MI'];
 
 /** Legend with counts per code and the month totals. */
 export function AttendanceLegend({ days, onFixDay, locked }: { days: AttendanceDay[]; /** Opens the fix (regularise) flow for a day that needs it. */ onFixDay?: (d: AttendanceDay) => void; /** Locked (paid) month: nothing left to fix, so "Days to fix" is not shown. */ locked?: boolean }) {
   const s = monthSummary(days);
-  const short = (d: AttendanceDay) => formatDate(d.date).replace(/^0/, '').replace(/ \d{4}$/, '');
+  const short = (d: AttendanceDay) => formatDate(d.date);
   // Today's late check-in is a late mark too (the "Late days" KPI counts it), though its cell reads "Today".
   const legendCount = (c: DayCode) => (s.counts[c] ?? 0) + (c === 'L' ? days.filter((d) => d.code === 'TODAY' && (d.lateMin ?? 0) > 0).length : 0);
   return (
@@ -856,6 +910,8 @@ function dayFence(punches: Punch[]) {
 }
 
 export interface DayCardBodyProps {
+  /** Batch A A9: the day's place by the company's rule (office, remote or unknown); stories work it out. */
+  place?: WorkPlace;
   day: AttendanceDay;
   punches: Punch[];
   shift: { name: string; start: string; end: string; graceMin: number };
@@ -881,11 +937,17 @@ export interface DayCardBodyProps {
   onRejectOvertime?: () => void;
   /** Manager / HR, holiday or weekly-off overtime: credit comp-off instead of pay; "Give comp-off" shows only when passed. */
   onCompOff?: () => void;
+  /** Minutes since midnight now, for today's shift bar (default: the story's 9:42 am). */
+  now?: number;
+  /** Live app: the punches carry no map position yet, so the map is left out. */
+  hideMap?: boolean;
   /**
    * What was just done on this card, so it stops offering the same action: overtime approved, rejected or given as
    * comp-off; the request withdrawn; the exception resolved. Set it after the confirm step succeeds.
    */
   outcome?: { ot?: 'approved' | 'rejected' | 'comp-off'; request?: 'withdrawn'; exception?: 'resolved' };
+  /** Late marks a month without a deduction (the company's setting; the stories use 3). */
+  lateFree?: number;
 }
 
 /**
@@ -893,8 +955,8 @@ export interface DayCardBodyProps {
  * request also needs HR, so it goes to the next month's run: October in the story world. One source for every screen.
  */
 export const latePayrollMonth = (today?: Date) => (today ? new Date(today.getFullYear(), today.getMonth() + 1, 1).toLocaleDateString('en-IN', { month: 'long' }) : LATE_PAYROLL);
-/** "21 Aug" (no leading zero, no year). */
-const shortDate = (d: Date) => formatDate(d).replace(/^0/, '').replace(/ \d{4}$/, '');
+/** "21 Aug 2026": the house date, always with the year. */
+const shortDate = formatDate;
 
 /** Legal overtime limit a quarter (the OT review screen, TIM-09, flags rows over it). */
 const OT_QUARTER_LIMIT = 75;
@@ -902,7 +964,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 export function DayCardBody({
   day,
-  punches,
+  punches: listed,
   shift,
   locked,
   viewer = 'emp',
@@ -916,8 +978,16 @@ export function DayCardBody({
   onReviewOvertime,
   onRejectOvertime,
   onCompOff,
+  now = NOW_MIN,
+  hideMap,
   outcome = {},
+  lateFree = 3,
+  place,
 }: DayCardBodyProps) {
+  // Refused punches are listed with their reason but never counted.
+  const punches = listed.filter((p) => !p.refusal);
+  // A9: the server's day place (by the company's rule for mixed days); stories work it out with the default rule.
+  const dayWhere = place ?? placeOfDay(listed);
   const monthLong = day.date.toLocaleDateString('en-IN', { month: 'long' });
   const monthYear = day.date.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' });
   const openPayroll = latePayrollMonth();
@@ -941,20 +1011,20 @@ export function DayCardBody({
       : { label: 'Worked', value: day.workedMin ? fmtDuration(day.workedMin) : '—' };
   // Overtime just decided on this card wins over the stored status.
   const otStatus = outcome.ot ?? day.otStatus;
-  const otPending = !!day.otMin && otStatus !== 'approved' && otStatus !== 'comp-off' && otStatus !== 'rejected';
+  const otPending = !!day.otMin && otStatus !== 'approved' && otStatus !== 'comp-off' && otStatus !== 'rejected' && otStatus !== 'unclaimed';
   // No punches and no recorded hours: late and overtime are not known, not "No" / "None".
   const noData = punches.length === 0 && !day.workedMin;
   // A holiday or weekly off has no shift: no late mark, and every worked minute is overtime.
   const offDay = day.code === 'H' || day.code === 'WO';
-  const otState = otPending ? 'pending approval' : otStatus === 'comp-off' ? 'taken as comp-off' : otStatus === 'rejected' ? 'rejected, not paid' : 'approved';
+  const otState = otPending ? 'pending approval' : otStatus === 'unclaimed' ? 'not claimed yet' : otStatus === 'comp-off' ? 'taken as comp-off' : otStatus === 'rejected' ? 'rejected, not paid' : 'approved';
   const otValue = open || noData ? '—' : day.otMin ? `${fmtDuration(day.otMin)} · ${otState}` : 'None';
   const lateValue = noData || offDay ? '—' : day.lateMin ? `${day.lateMin} min` : 'No';
   // The OT review row for this day (category, pre-approval, quarter hours): the facts the approve decision needs.
   const otRow = OT_ROWS.find((r) => r.person === person && r.date.toDateString() === day.date.toDateString());
 
-  const needsFix = (day.code === 'MP' || day.code === 'A') && !resolved;
+  const needsFix = (day.code === 'MP' || day.code === 'MI' || day.code === 'A') && !resolved;
   // In a locked month, an unpaid or missing day can still change, through a late request.
-  const canLate = locked && !resolved && (day.code === 'MP' || day.code === 'A' || day.code === 'LOP');
+  const canLate = locked && !resolved && (day.code === 'MP' || day.code === 'MI' || day.code === 'A' || day.code === 'LOP');
   const lateN = day.lateMin ? lateMarkNumber(day, monthDays ?? [...AUGUST, ...SEPTEMBER]) : 0;
 
   const fence = dayFence(punches);
@@ -980,11 +1050,12 @@ export function DayCardBody({
     tone: p.verdict === 'outside' ? 'bad' : p.verdict === 'field' ? 'field' : 'ok',
   }));
 
-  const fixButtons =
+  // No handler (the live muster is read only): no button that does nothing.
+  const fixButtons = !onFix ? null :
     viewer === 'hr' ? (
       <>
         <Button variant="primary" onClick={onFix}>Resolve with reason</Button>
-        <Button onClick={onRemind}>Remind employee</Button>
+        {onRemind && <Button onClick={onRemind}>Remind employee</Button>}
       </>
     ) : viewer === 'mgr' ? (
       <Button variant="primary" onClick={onFix}>Nudge to fix</Button>
@@ -1013,6 +1084,7 @@ export function DayCardBody({
           <span className="yx-tim-legend__chip" data-code={headCode}>{codeText(headCode)}</span>
           <strong>{DAY_CODE_LABEL[headCode]}</strong>
           {resolved ? <Badge tone="success">Resolved by HR</Badge> : headerNote && <span className="yx-tim-muted yx-tim-daynote">{headerNote}</span>}
+          {dayWhere !== 'unknown' && <Badge tone={dayWhere === 'office' ? 'success' : 'info'}>{dayWhere === 'office' ? 'Worked from the office' : 'Worked remotely'}</Badge>}
         </div>
       )}
       {locked && (
@@ -1020,13 +1092,13 @@ export function DayCardBody({
           <p>
             {viewer === 'hr' ? 'Changes to this day go as a late request.' : 'Changes to this day go as a late request, which HR also approves.'} The effect lands in the {openPayroll} payroll.
           </p>
-          {canLate && <div className="yx-tim-row">{fixButtons}</div>}
+          {canLate && fixButtons && <div className="yx-tim-row">{fixButtons}</div>}
         </InlineAlert>
       )}
       {needsFix && !locked && (
         <InlineAlert tone="danger" title={alertNote ? `${DAY_CODE_LABEL[day.code]} · ${alertNote}` : DAY_CODE_LABEL[day.code]}>
-          <p>Payroll for {monthLong} can't be approved until this day is fixed. {fixAsk}</p>
-          <div className="yx-tim-row">{fixButtons}</div>
+          <p>Payroll for {monthLong} can't be approved until this day is fixed. {onFix ? fixAsk : ''}</p>
+          {fixButtons && <div className="yx-tim-row">{fixButtons}</div>}
         </InlineAlert>
       )}
       <Kpis
@@ -1039,15 +1111,15 @@ export function DayCardBody({
       />
       {punches.length > 0 && (
         <>
-          <ShiftBar start={shift.start} end={shift.end} punches={dayPunches}now={day.code === 'TODAY' ? NOW_MIN : undefined} off={offDay} />
-          <GeoMap fences={fence ? [{ id: fence.id, label: `${fence.name} · ${formatDistance(fence.radiusM)}`, x: 150, y: 104, r: FENCE_R }] : []} pins={pins} caption={caption} height={170} />
+          <ShiftBar start={shift.start} end={shift.end} punches={dayPunches} now={day.code === 'TODAY' ? now : undefined} off={offDay} />
+          {!hideMap && <GeoMap fences={fence ? [{ id: fence.id, label: `${fence.name} · ${formatDistance(fence.radiusM)}`, x: 150, y: 104, r: FENCE_R }] : []} pins={pins} caption={caption} height={170} />}
         </>
       )}
       {/* On an on-duty day the header says "On duty", so field punches don't repeat it as a chip. */}
-      <PunchList punches={punches} showMapIndex showNetwork={viewer === 'hr'} emptyText="No punches on this day." hideSource={day.code === 'OD' ? ['field'] : []} />
+      <PunchList punches={listed} showMapIndex={!hideMap} showNetwork={viewer === 'hr'} emptyText="No punches on this day." hideSource={day.code === 'OD' ? ['field'] : []} />
       {lateN > 0 && (
         <p className="yx-tim-note">
-          {lateN <= 3 ? `Late mark ${lateN} of 3 free this month, so no penalty.` : `Late mark ${lateN} this month: over the 3 free, so a late penalty posts.`}
+          {lateN <= lateFree ? `Late mark ${lateN} of ${lateFree} free this month, so no penalty.` : `Late mark ${lateN} this month: over the ${lateFree} free, so a late penalty posts.`}
         </p>
       )}
       {/* Withdrawn: the success alert already says so; offer the next step instead of repeating it. */}
@@ -1062,16 +1134,16 @@ export function DayCardBody({
           <span className="yx-tim-row">
             {viewer === 'emp' ? (
               <>
-                <Button size="sm" onClick={onViewRequest}>View request</Button>
-                <Button size="sm" onClick={onWithdraw}>Withdraw</Button>
+                {onViewRequest && <Button size="sm" onClick={onViewRequest}>View request</Button>}
+                {onWithdraw && <Button size="sm" onClick={onWithdraw}>Withdraw</Button>}
               </>
             ) : (
-              <Button size="sm" variant="review" onClick={onViewRequest}>Review request</Button>
+              onViewRequest && <Button size="sm" variant="review" onClick={onViewRequest}>Review request</Button>
             )}
           </span>
         </div>
       )}
-      {otPending && !open && viewer !== 'emp' && (
+      {otPending && !open && viewer !== 'emp' && onReviewOvertime && (
         <div className="yx-tim-stack">
           {/* The facts the decision needs, beside the buttons. */}
           {otRow && (
@@ -1090,4 +1162,12 @@ export function DayCardBody({
       )}
     </div>
   );
+}
+
+/**
+ * The signed-in person has no employee record here (or no job today), so a "my" page has nothing to show: say so and
+ * what to do (house rule: the fact, then the next step). Retrying never helps, so there is no Try again.
+ */
+export function NoRecordState() {
+  return <EmptyState title="You have no employee record here" description="Your sign-in is not linked to an employee with a job today, so there is no attendance or leave to show. Ask HR to link your sign-in to your employee record." />;
 }

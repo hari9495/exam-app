@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { toBin } from '../recycle-bin/bin';
 import { TenantPrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 import { DEFAULT_WHATSAPP_TEMPLATES } from './default-whatsapp-templates';
 import { UpsertWhatsappTemplateDto } from './dto/upsert-whatsapp-template.dto';
@@ -159,6 +160,7 @@ export class CandidateWhatsappTemplatesService {
       const existing = await tx.candidateWhatsappTemplate.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!existing) throw new NotFoundException(`Template ${id} not found`);
 
+      await toBin(tx, { organizationId: context.organizationId as string, userId: actorUserId }, 'candidate_whatsapp_template', existing, existing.name);
       await tx.candidateWhatsappTemplate.delete({ where: { id } });
       await this.audit.record(context, {
         actorUserId,

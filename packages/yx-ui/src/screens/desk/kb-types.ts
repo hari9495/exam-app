@@ -98,6 +98,12 @@ export interface KbArticle {
   featured: boolean;
   outdated: boolean;
   outdatedReason: string | null;
+  /** HLP-04 "Also suggest for these words" (comma-separated). */
+  keywords: string | null;
+  /** HLP-04 "Use in assistant answers". */
+  assistantUse: boolean;
+  /** Help H-1 (answer 942): the pages it explains (app addresses); the Help drawer's "This page" lists it there. */
+  pages?: string[];
   version: number;
   updatedAt: string;
   space: Omit<KbSpace, 'publicUrl' | 'canAuthor' | 'canPublish' | 'canManage' | 'categories'>;
@@ -117,6 +123,8 @@ export interface KbArticle {
 
 /** What PATCH /kb/articles/:id takes besides the article's version. Send only what changed. */
 export interface KbArticleMeta {
+  /** Help H-1: the pages it explains. */
+  pages?: string[];
   categoryId?: string | null;
   slug?: string;
   seoTitle?: string;
@@ -127,6 +135,8 @@ export interface KbArticleMeta {
   expiresAt?: string | null;
   expiryAction?: 'flag' | 'hide';
   ownerUserId?: string;
+  keywords?: string;
+  assistantUse?: boolean;
 }
 
 export interface KbNewArticle {
@@ -158,6 +168,10 @@ export interface KbGaps {
   noResult: { query: string; times: number }[];
   noClick: { query: string; times: number }[];
   noArticle: { desk: string; category: string | null; tickets: number }[];
+  /** Answer 1647: articles people were reading when they still raised a ticket. */
+  ledToTickets?: { articleId: string; number: number; title: string; tickets: number }[];
+  /** Answer 1684: words people searched before they still raised a ticket. */
+  searchesToTickets?: { query: string; tickets: number }[];
 }
 
 export interface BinItem {

@@ -170,6 +170,7 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
   const [failed, setFailed] = useState<string | null>(null);
   const [match, setMatch] = useState<string | null>(null);
   const [sameConfirmed, setSameConfirmed] = useState(false);
+  const [triedLink, setTriedLink] = useState(false);
   const set = (patch: Partial<HireDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
     setDirty(true);
@@ -177,6 +178,7 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
     if ('workEmail' in patch || 'mobilePhone' in patch) {
       setMatch(null);
       setSameConfirmed(false);
+      setTriedLink(false);
     }
   };
   const { input, errors } = hireInput(draft, options.canPay);
@@ -197,7 +199,7 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
   );
   const save = async () => {
     if (!input) return saveErrors.reveal();
-    if (match && !sameConfirmed) return;
+    if (match && !sameConfirmed) return setTriedLink(true);
     setBusy(true);
     setFailed(null);
     try {
@@ -212,7 +214,6 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
       setBusy(false);
     }
   };
-  const blocked = Boolean(match && !sameConfirmed);
   return (
     <Drawer
       open
@@ -228,14 +229,16 @@ export function HireDrawer({ options, legalEntities, onSubmit, onClose, onCreate
             <InlineAlert tone="warning" title="This email or phone already belongs to someone here">
               It may be the same person (a rehire, a former candidate or contractor). Check before linking: their history stays with them. If it is someone else, change the email or phone.
             </InlineAlert>
-            <Checkbox label="I checked: this is the same person" checked={sameConfirmed} onChange={setSameConfirmed} />
+            <FormField id="hire-same" label="Same person" hideLabel error={triedLink && !sameConfirmed ? 'Tick that you checked it is the same person, or change the email or phone.' : null}>
+              <Checkbox label="I checked: this is the same person" checked={sameConfirmed} onChange={setSameConfirmed} />
+            </FormField>
           </div>
         )
       }
       footer={
         <>
           <Button onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button variant="primary" loading={busy} disabled={blocked} onClick={() => void save()}>{match ? 'Link and add' : 'Add person'}</Button>
+          <Button variant="primary" loading={busy} onClick={() => void save()}>{match ? 'Link and add' : 'Add person'}</Button>
         </>
       }
     >

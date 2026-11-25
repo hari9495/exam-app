@@ -6,7 +6,14 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, Viewer, buildViewer } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { FilesService } from './files.service';
-import { CLASS_KEY, ownOf, reachesDocument } from './person-access';
+import type { DocumentTypeDto as DocumentTypeInput } from './dto';
+
+/** 5.1 (answer 1331): the reminder sets a company type may choose (days before the expiry date). */
+export const REMINDER_SETS: readonly (readonly number[])[] = [[90, 30, 7], [60, 30, 7], [30, 7], [30], [15, 7]];
+/** P05 Q7: proofs HR always verifies before payroll uses them (a company cannot turn this off, answer 1822). */
+export const ALWAYS_VERIFIED: ReadonlySet<string> = new Set(['pan_card', 'aadhaar', 'bank_proof', 'education', 'experience']);
+import { CLASS_KEY, ownOf, reachesDocument, reachesPerson } from './person-access';
+import { covers, implicitPeriods } from '../access/scope';
 
 // LIFE-1.03 person documents (P05 §4.2; YX-DOC-04/05/06/17): typed documents of a person (an employee or a joiner:
 // they follow the person from before day one into the record), with versions, a verification queue and expiry.
@@ -16,7 +23,9 @@ import { CLASS_KEY, ownOf, reachesDocument } from './person-access';
 //   - a re-upload is a new version and goes back to the queue (YX-DOC-05);
 //   - expiring types remind the person at the type's days and turn "expired" on the day (P04 scheduler).
 
-const KEYS = ['document.view', 'document.manage', 'employee.personal.view', 'employee.identity.view'] as const;
+const KEYS = ['document.view', 'document.manage', 'employee.personal.view', 'employee.identity.view', 'employee.disability.view'] as const;
+/** PPL-38 (founder 27 Oct 2026): the HR diversity role keeps disability certificates with its own Special key. */
+const DISABILITY_CERT = 'disability_certificate';
 type DocType = Prisma.DocumentTypeGetPayload<object>;
 type Doc = Prisma.DocumentGetPayload<object>;
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -32,7 +41,9 @@ export async function documentsBlockingPay(tx: Tx, organizationId: string, emplo
     FROM employments em
     JOIN employees e ON e.organization_id = em.organization_id AND e.id = em.employee_id
     JOIN documents d ON d.organization_id = e.organization_id AND d.person_id = e.person_id
-    JOIN document_types t ON t.key = d.type_key AND (t.organization_id IS NULL OR t.organization_id = d.organization_id)
+    -- Answer 1822: the company's own choices for a starter type win over YukthiX's.
+    JOIN document_types t ON t.key = d.type_key AND ((t.organization_id = d.organization_id AND t.active)
+      OR (t.organization_id IS NULL AND NOT EXISTS (SELECT 1 FROM document_types o WHERE o.key = t.key AND o.organization_id = d.organization_id AND o.active)))
     WHERE em.organization_id = ${organizationId}::uuid AND em.id = ANY(${[...employmentIds]}::uuid[])
       AND t.requires_verification AND d.status <> 'verified'
     ORDER BY 1, 2`;
@@ -52,13 +63,28 @@ export class DocumentsService {
   }
 
   private async types(tx: Tx, org: string): Promise<DocType[]> {
-    return tx.documentType.findMany({ where: { active: true, OR: [{ organizationId: null }, { organizationId: org }] }, orderBy: [{ organizationId: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }] });
+    const rows = await tx.documentType.findMany({ where: { active: true, OR: [{ organizationId: null }, { organizationId: org }] }, orderBy: [{ organizationId: { sort: 'asc', nulls: 'first' } }, { name: 'asc' }] });
+    // Answer 1822: a company's own choices for a starter type (a company row with its key) replace YukthiX's, in place.
+    const byKey = new Map<string, DocType>();
+    for (const r of rows) byKey.set(r.key, r);
+    return [...byKey.values()];
+  }
+
+  private async starterKeys(tx: Tx): Promise<Set<string>> {
+    return new Set((await tx.documentType.findMany({ where: { organizationId: null }, select: { key: true } })).map((t) => t.key));
   }
 
   private async type(tx: Tx, org: string, key: string): Promise<DocType> {
     const t = (await this.types(tx, org)).find((x) => x.key === key);
     if (!t) throw new BadRequestException('No such document type.');
     return t;
+  }
+
+  /** Who uploaded the current file (HR for the person, or the person): the latest version's uploader. */
+  private async uploaderName(tx: Tx, org: string, documentId: string) {
+    const v = await tx.documentVersion.findFirst({ where: { organizationId: org, documentId }, orderBy: { version: 'desc' }, select: { uploadedBy: true } });
+    const u = v?.uploadedBy ? await tx.user.findFirst({ where: { organizationId: org, id: v.uploadedBy }, select: { name: true, email: true } }) : null;
+    return u ? u.name || u.email : null;
   }
 
   private async personName(tx: Tx, org: string, personId: string) {
@@ -71,12 +97,31 @@ export class DocumentsService {
   private async may(tx: Tx, c: CompanyContext, v: Viewer, action: 'view' | 'manage', t: DocType, personId: string) {
     const own = await ownOf(tx, c, v);
     if (action === 'view' && own.personId === personId) return { self: true, own };
+    if (t.key === DISABILITY_CERT && !v.actingForOther && (await reachesPerson(tx, c, v, 'employee.disability.view', personId, own))) return { self: false, own };
     if (!(await reachesDocument(tx, c, v, action === 'view' ? 'document.view' : 'document.manage', t.sensitivity, personId, own))) {
       // Managing implies viewing (a verifier must open the file).
       if (action === 'view' && (await reachesDocument(tx, c, v, 'document.manage', t.sensitivity, personId, own))) return { self: false, own };
+      // PPL-03: a manager (the implicit view) reads the team's Public and Internal documents only (a licence, a
+      // certificate); never Personal (photo, medical), Confidential or Special (founder 22 Oct 2026: need to know).
+      if (action === 'view' && (t.sensitivity === 'public' || t.sensitivity === 'internal') && (await this.managesPerson(tx, c, own.employeeId, personId))) return { self: false, own };
       throw new ForbiddenException('You cannot see this document.');
     }
     return { self: false, own };
+  }
+
+  private async managesPerson(tx: Tx, c: CompanyContext, own: string | null, personId: string) {
+    if (!own) return false;
+    const e = await tx.employee.findFirst({ where: { organizationId: c.organizationId, personId }, select: { id: true } });
+    return Boolean(e && e.id !== own && covers(await implicitPeriods(tx, c, own, e.id), todayIst()));
+  }
+
+  /** PPL-03 Documents tab for a manager: the team member's Public and Internal documents, nothing to manage. */
+  async forTeam(ctx: TenantContext, user: ScopeUser, personId: string) {
+    const v = await this.viewer(user);
+    const ok = await inCompany(this.tenantPrisma, ctx, async (tx, c) => this.managesPerson(tx, c, (await ownOf(tx, c, v)).employeeId, personId));
+    if (!ok) throw new NotFoundException('Not found');
+    const out = await this.forPerson(ctx, user, personId);
+    return { ...out, askable: [], canManage: false };
   }
 
   private view(d: Doc, t: DocType, extra: { person?: string; file?: { name: string; scanStatus: string; size: number } | null; versions?: number } = {}) {
@@ -107,9 +152,119 @@ export class DocumentsService {
   // ------------------------------------------------------------------------------------------ reads
 
   async typeList(ctx: TenantContext) {
-    return inCompany(this.tenantPrisma, ctx, async (tx, c) =>
-      (await this.types(tx, c.organizationId)).map((t) => ({ key: t.key, name: t.name, sensitivity: t.sensitivity, requiresVerification: t.requiresVerification, allowedMime: t.allowedMime, maxMb: t.maxMb, expiryTracked: t.expiryTracked, uploadBy: t.uploadBy, system: t.organizationId === null })),
-    );
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const starter = await this.starterKeys(tx);
+      return (await this.types(tx, c.organizationId)).map((t) => ({
+        key: t.key,
+        name: t.name,
+        sensitivity: t.sensitivity,
+        requiresVerification: t.requiresVerification,
+        allowedMime: t.allowedMime,
+        maxMb: t.maxMb,
+        expiryTracked: t.expiryTracked,
+        reminderDays: t.reminderDays,
+        uploadBy: t.uploadBy,
+        system: starter.has(t.key),
+        // Answer 1822: the company set its own verification or reminders for this starter type.
+        ownChoices: starter.has(t.key) && t.organizationId !== null,
+        verifyLocked: ALWAYS_VERIFIED.has(t.key),
+      }));
+    });
+  }
+
+  // ---------------------------------------------------------------- 5.1 company document types (answer 1331)
+
+  /** Checks a company type: the reminders are one of the offered sets, only with an expiry; HR always uploads. */
+  private typeData(dto: DocumentTypeInput) {
+    const days = dto.expiryTracked ? dto.reminderDays : [];
+    if (dto.expiryTracked && !REMINDER_SETS.some((r) => r.join() === days.join())) throw new BadRequestException('Choose when to remind from the offered days.');
+    if (!dto.uploadBy.includes('hr')) throw new BadRequestException('HR can always upload a document for the person.');
+    const uploadBy = dto.uploadBy.includes('person') ? ['person', 'hr'] : ['hr'];
+    return { name: dto.name, sensitivity: dto.sensitivity, requiresVerification: dto.requiresVerification, expiryTracked: dto.expiryTracked, reminderDays: days, uploadBy };
+  }
+
+  private async nameFree(tx: Tx, org: string, name: string, except?: string) {
+    const clash = (await this.types(tx, org)).find((t) => t.key !== except && t.name.trim().toLowerCase() === name.trim().toLowerCase());
+    if (clash) throw new ConflictException(`A document type called ${clash.name} already exists.`);
+  }
+
+  /** A company type, never a YukthiX starter one (those cannot be changed or removed). */
+  private async ownType(tx: Tx, org: string, key: string) {
+    const rows = await tx.documentType.findMany({ where: { key, OR: [{ organizationId: org }, { organizationId: null }] } });
+    const t = rows.find((r) => r.organizationId === org) ?? rows[0];
+    if (!t || !t.active) throw new NotFoundException('No such document type.');
+    if (t.organizationId === null) throw new ForbiddenException('YukthiX starter types cannot be changed or removed.');
+    return t;
+  }
+
+  async createType(ctx: TenantContext, dto: DocumentTypeInput) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const data = this.typeData(dto);
+      await this.nameFree(tx, c.organizationId, data.name);
+      // A company key never takes a starter one's: "c_" and the name in lower case (a number added when taken).
+      const base = `c_${data.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30) || 'type'}`;
+      const taken = new Set((await tx.documentType.findMany({ where: { key: { startsWith: base }, OR: [{ organizationId: c.organizationId }, { organizationId: null }] }, select: { key: true } })).map((t) => t.key));
+      let key = base;
+      for (let i = 2; taken.has(key); i++) key = `${base}_${i}`;
+      const row = await tx.documentType.create({ data: { organizationId: c.organizationId, key, allowedMime: ['application/pdf', 'image/jpeg', 'image/png'], maxMb: 10, ...data } });
+      await audit(tx, c, 'document.type.created', 'document_type', row.id, { key, ...data });
+      return { key };
+    });
+  }
+
+  /**
+   * Answer 1822: the company's choices for a starter type, verification and expiry reminders only (the type itself stays
+   * YukthiX's). Kept as a company row with the starter's key; PAN, Aadhaar, bank proof, education and experience proofs
+   * are always verified before payroll uses them.
+   */
+  private async starterChoices(tx: Tx, c: CompanyContext, key: string, dto: Pick<DocumentTypeInput, 'requiresVerification' | 'reminderDays'>) {
+    const s = await tx.documentType.findFirstOrThrow({ where: { key, organizationId: null } });
+    if (ALWAYS_VERIFIED.has(key) && !dto.requiresVerification) throw new BadRequestException(`HR always verifies the ${s.name} before payroll uses it.`);
+    const days = s.expiryTracked ? dto.reminderDays : [];
+    if (s.expiryTracked && !REMINDER_SETS.some((r) => r.join() === days.join())) throw new BadRequestException('Choose when to remind from the offered days.');
+    const own = await tx.documentType.findFirst({ where: { key, organizationId: c.organizationId } });
+    const before = own?.active ? { requiresVerification: own.requiresVerification, reminderDays: own.reminderDays } : { requiresVerification: s.requiresVerification, reminderDays: s.reminderDays };
+    const after = { requiresVerification: dto.requiresVerification, reminderDays: days };
+    if (own) await tx.documentType.update({ where: { id: own.id }, data: { ...after, active: true } });
+    else await tx.documentType.create({ data: { organizationId: c.organizationId, key, name: s.name, sensitivity: s.sensitivity, allowedMime: s.allowedMime, maxMb: s.maxMb, expiryTracked: s.expiryTracked, uploadBy: s.uploadBy, ...after } });
+    await audit(tx, c, 'document.type.starter_changed', 'document_type', key, { key, before, after });
+    return { key };
+  }
+
+  /** Answer 1822: back to YukthiX's own choices for a starter type. */
+  async resetStarter(ctx: TenantContext, key: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if (!(await this.starterKeys(tx)).has(key)) throw new NotFoundException('No such starter document type.');
+      const own = await tx.documentType.findFirst({ where: { key, organizationId: c.organizationId, active: true } });
+      if (!own) return;
+      await tx.documentType.update({ where: { id: own.id }, data: { active: false } });
+      await audit(tx, c, 'document.type.starter_reset', 'document_type', key, { key, before: { requiresVerification: own.requiresVerification, reminderDays: own.reminderDays } });
+    });
+  }
+
+  async updateType(ctx: TenantContext, key: string, dto: DocumentTypeInput) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if ((await this.starterKeys(tx)).has(key)) return this.starterChoices(tx, c, key, dto);
+      const before = await this.ownType(tx, c.organizationId, key);
+      const data = this.typeData(dto);
+      await this.nameFree(tx, c.organizationId, data.name, key);
+      await tx.documentType.update({ where: { id: before.id }, data });
+      const was = { name: before.name, sensitivity: before.sensitivity, requiresVerification: before.requiresVerification, expiryTracked: before.expiryTracked, reminderDays: before.reminderDays, uploadBy: before.uploadBy };
+      await audit(tx, c, 'document.type.changed', 'document_type', before.id, { key, before: was, after: data });
+      return { key };
+    });
+  }
+
+  /** Retires a company type no document uses (rows are never deleted). */
+  async retireType(ctx: TenantContext, key: string) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      if ((await this.starterKeys(tx)).has(key)) throw new ForbiddenException('YukthiX starter types cannot be changed or removed.');
+      const t = await this.ownType(tx, c.organizationId, key);
+      const used = await tx.document.count({ where: { organizationId: c.organizationId, typeKey: key } });
+      if (used) throw new ConflictException(`${used} ${used === 1 ? 'document uses' : 'documents use'} this type, so it stays.`);
+      await tx.documentType.update({ where: { id: t.id }, data: { active: false } });
+      await audit(tx, c, 'document.type.retired', 'document_type', t.id, { key, name: t.name });
+    });
   }
 
   /** A person's documents the viewer may see, plus the types HR could still ask for. */
@@ -121,7 +276,7 @@ export class DocumentsService {
       const types = await this.types(tx, org);
       const docs = await tx.document.findMany({ where: { organizationId: org, personId } });
       const out = [];
-      const askable: { key: string; name: string }[] = [];
+      const askable: { key: string; name: string; expiryTracked: boolean }[] = [];
       let canManage = false;
       for (const t of types) {
         const seen = await this.may(tx, c, v, 'view', t, personId).then(
@@ -136,8 +291,8 @@ export class DocumentsService {
         const d = docs.find((x) => x.typeKey === t.key);
         if (d && seen) {
           const f = await this.fileOf(tx, org, d);
-          out.push(this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }));
-        } else if (!d && manage) askable.push({ key: t.key, name: t.name });
+          out.push({ ...this.view(d, t, { person, file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size }, versions: await tx.documentVersion.count({ where: { organizationId: org, documentId: d.id } }) }), uploadedAt: f?.createdAt.toISOString() ?? null, uploadedBy: await this.uploaderName(tx, org, d.id) });
+        } else if (!d && manage) askable.push({ key: t.key, name: t.name, expiryTracked: t.expiryTracked });
       }
       return { person, personId, documents: out, askable, canManage };
     });
@@ -165,7 +320,7 @@ export class DocumentsService {
         const r = await this.may(tx, c, v, 'manage', t, d.personId).catch(() => null);
         if (!r || r.self || r.own.personId === d.personId) continue;
         const f = await this.fileOf(tx, org, d);
-        out.push({ ...this.view(d, t, { person: await this.personName(tx, org, d.personId), file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size } }), uploadedAt: d.updatedAt.toISOString() });
+        out.push({ ...this.view(d, t, { person: await this.personName(tx, org, d.personId), file: f && { name: f.fileName, scanStatus: f.scanStatus, size: f.size } }), uploadedAt: d.updatedAt.toISOString(), uploadedBy: await this.uploaderName(tx, org, d.id) });
       }
       return out;
     });
@@ -282,9 +437,11 @@ export class DocumentsService {
       await audit(tx, c, dto.decision === 'verify' ? 'document.verified' : 'document.rejected', 'document', id, { typeKey: d.typeKey });
       await tx.eventOutbox.create({ data: { organizationId: org, eventType: dto.decision === 'verify' ? 'document.verified' : 'document.rejected', payload: { documentId: id, personId: d.personId, typeKey: d.typeKey } } });
       const owner = await tx.employee.findFirst({ where: { organizationId: org, personId: d.personId, userId: { not: null } }, select: { userId: true } });
-      return { owner: owner?.userId ?? null, typeName: t.name };
+      return { owner: owner?.userId ?? null, typeName: t.name, typeKey: t.key };
     });
-    if (dto.decision === 'reject' && res.owner) void this.notifications.notify(ctx, user.userId!, [res.owner], 'document.rejected', { entityType: 'document', entityId: id, contextText: `${res.typeName} was not accepted. Please upload it again.`, linkPath: '/yx/me/documents' }).catch(() => undefined);
+    // A disability certificate is uploaded again from the person's declaration (PPL-38).
+    const link = res.typeKey === DISABILITY_CERT ? '/yx/me/declarations' : '/yx/me/documents';
+    if (dto.decision === 'reject' && res.owner) void this.notifications.notify(ctx, user.userId!, [res.owner], 'document.rejected', { entityType: 'document', entityId: id, contextText: `${res.typeName} was not accepted. Please upload it again.`, linkPath: link }).catch(() => undefined);
     return { ok: true };
   }
 
@@ -302,7 +459,11 @@ export class DocumentsService {
       // Earlier versions are for HR only (YX-DOC-05).
       if (r.self && ver.id !== d.currentVersionId) throw new ForbiddenException('Earlier versions are kept for HR.');
       const f = await tx.file.findFirstOrThrow({ where: { organizationId: org, id: ver.fileId } });
-      if (!r.self && CLASS_KEY[t.sensitivity] === 'employee.identity.view') await audit(tx, c, 'document.viewed', 'document', id, { typeKey: t.key, version: ver.version });
+      if (!r.self && t.key === DISABILITY_CERT) {
+        // Recorded as the declarations list records a look, so the person sees it in "Who accessed my data".
+        const e = await tx.employee.findFirst({ where: { organizationId: org, personId: d.personId }, select: { id: true } });
+        if (e) await audit(tx, c, 'employee.disability.viewed', 'employee', e.id, { what: 'certificate' });
+      } else if (!r.self && CLASS_KEY[t.sensitivity] === 'employee.identity.view') await audit(tx, c, 'document.viewed', 'document', id, { typeKey: t.key, version: ver.version });
       return f;
     });
     return { file: await this.files.bytes(row), name: row.fileName, contentType: row.mime };

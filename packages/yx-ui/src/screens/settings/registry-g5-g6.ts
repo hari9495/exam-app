@@ -727,23 +727,36 @@ const hiring: SettingsPageDef = {
             ['Sales', 'Applied, Phone screen, AI interview, Manager round, Offer, Joined', 'Sales roles'],
           ],
           addLabel: 'Add pipeline template',
+          // Founder answer 302: each pipeline's stage targets (days target and limit per stage) are edited here.
+          rowAction: 'Stage targets',
           starter: true,
-          synonyms: ['stages', 'hiring process'],
+          synonyms: ['stages', 'hiring process', 'stage targets', 'days target'],
         },
         {
           key: 'hire.scorecards',
           label: 'Scorecard templates',
           kind: 'list',
-          columns: ['Scorecard', 'Skills rated', 'Scale'],
+          // Founder answer 345: add, edit and archive here (the scorecard template sheet); weights in whole per cent.
+          columns: ['Scorecard', 'Skills rated', 'Scale', 'Pass bar'],
           rows: [
-            ['Plant technician', 'Machine safety, Food hygiene, Teamwork', '1–4'],
-            ['Sales executive', 'Communication, Negotiation, Territory knowledge', '1–4'],
-            ['Engineering', 'Problem solving, Code quality, Collaboration', '1–5'],
+            ['Plant technician', 'Machine safety 50 %, Food hygiene 30 %, Teamwork 20 %', '1–4', '2.5'],
+            ['Sales executive', 'Communication 40 %, Negotiation 40 %, Territory knowledge 20 %', '1–4', '3'],
+            ['Engineering', 'Problem solving 40 %, Code quality 40 %, Collaboration 20 %', '1–5', '3.5'],
           ],
           addLabel: 'Add scorecard',
+          helper: 'The skills a panel rates, each with a weight in per cent (adding up to 100), and the pass bar. A scorecard already used is copied when changed, so past interviews keep theirs.',
           starter: true,
           synonyms: ['interview feedback', 'rating form'],
         },
+        // Founder answer 291: a hiring manager's request starts with this recruiter, or none; never the manager themselves.
+        // Founder answer 348: only people who hold the recruiter key are offered.
+        { key: 'hire.default_recruiter', label: 'Default recruiter for new requisitions', kind: 'select', value: 'None', options: ['None', 'Neha Joshi', 'Arjun Kulkarni'], helper: 'A hiring manager’s request starts with this recruiter. Only people with the recruiter key are listed. None: it waits until recruiting assigns one. It is never the manager themselves.', starter: true, scope: 'Company', synonyms: ['recruiter', 'requisition', 'request a hire'] },
+        // Founder answer 341: requisitions and the headcount plan, and the hiring manager's view of it.
+        { key: 'hire.headcount_plan', label: 'Requisitions and the headcount plan', kind: 'segment', value: 'advisory', options: ['off', 'advisory', 'required'], optionLabels: { off: 'Not used', advisory: 'Advisory', required: 'Required' }, helper: 'Advisory: a requisition outside the plan needs the extra approver. Required: every requisition takes a place from an approved plan. Not used: the plan is not checked.', starter: true, scope: 'Company', synonyms: ['manpower plan', 'outside plan', 'budget'] },
+        // HIR-27 bulk interview day: slot length and how Auto-assign fills the day (company settings).
+        { key: 'hire.interview_day_minutes', label: 'Each interview on an interview day lasts', kind: 'segment', value: '45', options: ['30', '45', '60', '90'], optionLabels: { '30': '30 min', '45': '45 min', '60': '1 hour', '90': '1½ hours' }, helper: 'Used for new interview days; a day keeps the length it was planned with.', starter: true, scope: 'Company', synonyms: ['interview day', 'walk-in', 'drive', 'slot length'] },
+        { key: 'hire.interview_day_assign', label: 'Auto-assign on an interview day fills', kind: 'segment', value: 'by_slot', options: ['by_slot', 'by_panel'], optionLabels: { by_slot: 'Earliest slots first', by_panel: 'One panel at a time' }, helper: 'Earliest slots first: every panel starts together and candidates finish sooner. One panel at a time: a panel’s slots fill before the next panel is used.', starter: true, scope: 'Company', synonyms: ['interview day', 'walk-in', 'drive'] },
+        { key: 'hire.plan_manager_view', label: 'Hiring managers see their department’s headcount plan', kind: 'toggle', value: true, helper: 'Read-only, their own department only. Off: only HR and hiring admins see the plan.', starter: true, scope: 'Company', synonyms: ['manpower plan', 'manager'] },
         { key: 'hire.plan_approvers', label: 'Headcount plan approvers', kind: 'multiselect', value: ['HR head', 'Finance head'], options: ['HR head', 'Finance head', 'CEO', 'Department head'], starter: true, scope: 'Company', synonyms: ['manpower plan', 'budget approval'] },
         { key: 'hire.outside_plan_approver', label: 'Extra approver for outside-plan or over-budget hiring', kind: 'select', value: 'Chief Financial Officer', options: ['Chief Financial Officer', 'Chief Executive Officer', 'Managing Director', 'HR head'], starter: true, scope: 'Company' },
         { key: 'hire.replacement_link', label: 'Replacement hires use the leaver’s plan line', kind: 'toggle', value: true, starter: true, scope: INHERITED },
@@ -755,7 +768,14 @@ const hiring: SettingsPageDef = {
         { key: 'hire.offer_expiry', label: 'Offer expires after', kind: 'number', value: 7, unit: 'days', min: 1, max: 60, starter: true, scope: 'Company', synonyms: ['offer validity'] },
         { key: 'hire.clawback_months', label: 'Joining bonus clawback if the person leaves within', kind: 'number', value: 12, unit: 'months', min: 0, max: 36, scope: 'Company', synonyms: ['clawback', 'joining bonus recovery'] },
         { key: 'hire.range_check', label: 'Offers outside the grade pay range need extra approval', kind: 'toggle', value: true, starter: true, scope: INHERITED },
+        // HIR-09 founder answers 332, 334 and 337 (drawn 11 Nov 2026).
+        { key: 'hire.band_approver', label: 'Who approves an offer above the grade pay range', kind: 'select', value: 'HR head', options: ['HR head', 'Hiring manager', 'Meenakshi Sundaram'], helper: 'One extra approval step, after the company’s offer route. A named person must be allowed to see offer pay. The person who sends the offer never approves it.', starter: true, scope: 'Company', synonyms: ['band', 'pay range', 'above range', 'extra approval'] },
+        { key: 'hire.clawback_basis', label: 'Joining bonus repaid by someone who leaves within the clawback months', kind: 'radio', value: 'All of it', options: ['All of it', 'The part for the months not served'], helper: 'Recovered in the final settlement. A bonus not paid yet is simply not paid.', starter: true, scope: 'Company', synonyms: ['clawback', 'joining bonus recovery'] },
+        { key: 'hire.offer_esign', label: 'Offer letters the candidate signs electronically', kind: 'multiselect', value: [], options: ['Offer letter · Engineering', 'Offer letter · Plant'], helper: 'Signed with a one-time code sent to the candidate’s email. Every other letter is accepted by the link in the email.', starter: true, scope: 'Company', synonyms: ['e-sign', 'esign', 'otp', 'accept offer'] },
         { key: 'hire.offer_template', label: 'Offer letter template', kind: 'link', linkScreenId: 'PPL-29', linkLabel: 'Edit offer letter templates' },
+        // Founder answer 341: pay transparency choices for new jobs (where no law decides).
+        { key: 'hire.pay_range_show', label: 'Show the pay range on new jobs', kind: 'toggle', value: false, helper: 'On the careers page and job boards. Each job can still change it. Where a law requires it, the range always shows.', starter: true, scope: 'Company', synonyms: ['salary range', 'pay transparency', 'ctc'] },
+        { key: 'hire.pay_history_ask', label: 'Ask applicants about their current or past pay', kind: 'toggle', value: false, helper: 'On new jobs. Never asked where the location’s law bans it.', starter: true, scope: 'Company', synonyms: ['salary history', 'current ctc'] },
         { key: 'hire.handoff_mode', label: 'Hand-off to onboarding', kind: 'radio', value: 'Automatic', options: ['Automatic', 'Manual'], helper: 'Automatic creates the pre-boarding employee on acceptance. Manual puts the offer in HR’s Ready to onboard queue.', overrides: [{ scope: 'Kaveri Foods Pvt Ltd (Tamil Nadu)', value: 'Manual' }], synonyms: ['create employee', 'pre-boarding'] },
       ],
     },
@@ -779,6 +799,12 @@ const hiring: SettingsPageDef = {
         { key: 'hire.bgv_timing', label: 'Start background checks', kind: 'radio', value: 'After offer acceptance', options: ['After offer acceptance', 'Before the offer'], starter: true, scope: 'Company' },
         { key: 'hire.retention_months', label: 'Keep non-hired candidates for', kind: 'number', value: 12, unit: 'months after last activity', min: 6, max: 36, helper: 'A consent-renewal email goes before expiry. Otherwise the candidate is anonymised; funnel counts are kept. The law (DPDP Act, 2023 s.8(7)) says to erase data once its purpose is served; YukthiX caps this at 36 months.', starter: true, scope: 'Company', synonyms: ['candidate retention', 'talent pool', 'gdpr', 'dpdp'] },
         { key: 'hire.renewal_days', label: 'Send consent renewal before expiry', kind: 'number', value: 30, unit: 'days', min: 7, max: 90, starter: true, scope: INHERITED },
+        // Founder answer 362 (HIR-10): a background-check discrepancy goes to a second person.
+        { key: 'hire.bgv_decider_other_person', label: 'A discrepancy is decided by someone other than who recorded it', kind: 'toggle', value: true, helper: 'Anyone with the background-check key decides “proceed” or “do not proceed”, with a reason. On: never the person who recorded the result. Nothing is withdrawn automatically.', starter: true, scope: 'Company', synonyms: ['bgv', 'discrepancy', 'four eyes', 'background verification'] },
+        // Founder answer 341 (HIR-05 answer 272).
+        { key: 'hire.rehire_blocks_screening', label: '“Not eligible for rehire” stops an ex-employee at the first stage', kind: 'toggle', value: false, helper: 'On: they cannot move to Screening or later until HR clears the flag with a reason. Off: a banner only tells the recruiter.', starter: true, scope: 'Company', synonyms: ['rehire', 'ex-employee', 'blacklist'] },
+        // Careers answer 443 (352): tell an applicant whose résumé file was quarantined.
+        { key: 'hire.resume_quarantine_notice', label: 'Tell an applicant when their résumé file is blocked', kind: 'toggle', value: true, helper: 'On: an applicant whose résumé fails the virus check gets an email with a link to their candidate page to upload another file. Off: the file is blocked and nobody is told.', starter: true, scope: 'Company', synonyms: ['virus', 'quarantine', 'resume', 'infected'] },
         { key: 'hire.minors', label: 'Candidates under 18', kind: 'law', value: 'Guardian consent; no AI interview or profiling', law: 'Digital Personal Data Protection Act, 2023 s.9' },
       ],
     },
@@ -786,6 +812,8 @@ const hiring: SettingsPageDef = {
       title: 'AI interview and careers site',
       settings: [
         { key: 'hire.ai_interview', label: 'AI interview', kind: 'toggle', value: true, helper: 'A person reviews every result. Candidates are never rejected automatically.', scope: 'Company', synonyms: ['video interview', 'async interview'] },
+        // Founder answer 341 (HIR-26 rediscovery).
+        { key: 'hire.rediscovery_ai', label: 'AI notes on past candidates', kind: 'toggle', value: false, helper: 'A short note on why each past candidate suggested for a requisition may fit. A person decides. Off: plain text search only.', starter: true, scope: 'Company', synonyms: ['rediscovery', 'talent pool', 'past applicants'] },
         { key: 'hire.ai_languages', label: 'AI interview languages', kind: 'multiselect', value: ['English', 'Hindi'], options: ['English', 'Hindi'], starter: true, scope: 'Company' },
         { key: 'hire.brand_colour', label: 'Careers site colour', kind: 'colour', value: '#1F5FA8', scope: 'Company', synonyms: ['careers page', 'branding'] },
         { key: 'hire.careers_heading', label: 'Careers site heading', kind: 'text', value: 'Grow with Kaveri Foods', scope: 'Company' },
@@ -809,7 +837,38 @@ const hiring: SettingsPageDef = {
           dated: { validFrom: '2026-04-01' },
           synonyms: ['employee referral', 'referral bonus'],
         },
+        // Founder answer 341: no referral credit when the person applied on their own shortly before.
+        { key: 'hire.referral_self_apply_days', label: 'No referral credit if the person applied themselves within', kind: 'select', value: '90', options: ['0', '30', '60', '90', '180'], optionLabels: { '0': 'Always credit', '30': '30 days', '60': '60 days', '90': '90 days', '180': '180 days' }, starter: true, scope: 'Company', synonyms: ['referral', 'self applied'] },
         { key: 'hire.cost_categories', label: 'Recruiting cost categories', kind: 'multiselect', value: ['Job boards', 'Agency fees', 'Referral bonuses', 'Assessments', 'Campus events', 'Other'], options: ['Job boards', 'Agency fees', 'Referral bonuses', 'Assessments', 'Campus events', 'Other'], helper: 'Used for cost per hire. Recruiter time is not counted.', contributedBy: 'P09', scope: 'Company', synonyms: ['cost per hire'] },
+      ],
+    },
+    {
+      // HIR-25 (founder decision 2): off by default; consent from every participant before anything is recorded.
+      title: 'Interview notetaker',
+      settings: [
+        { key: 'hire.notetaker_enabled', label: 'Interview notetaker', kind: 'toggle', value: false, helper: 'Keeps an interview transcript only after every participant consents. Anyone saying no means no recording.', starter: true, scope: 'Company', synonyms: ['recording', 'transcript', 'notetaker', 'consent'] },
+        { key: 'hire.notetaker_ai_draft', label: 'AI drafts a scorecard from the transcript', kind: 'toggle', value: false, helper: 'A suggestion only: the interviewer confirms or changes every rating and submits. Uses your company’s AI.', starter: true, scope: 'Company', synonyms: ['ai', 'scorecard', 'draft'] },
+        { key: 'hire.notetaker_keep_days', label: 'Keep transcripts and drafts for', kind: 'select', value: '90', options: ['30', '90', '180', '365'], optionLabels: { '30': '30 days', '90': '90 days', '180': '180 days', '365': '1 year' }, helper: 'Then they are deleted. Erasing a candidate deletes them at once.', starter: true, scope: 'Company', synonyms: ['retention', 'transcript'] },
+        // HIR-23 (founder decision 2, question 7): NYC Local Law 144; on = a yearly independent bias audit in Hiring › Bias audits.
+        { key: 'hire.bias_audit_nyc', label: 'We use an automated tool for jobs in New York City', kind: 'toggle', value: false, helper: 'On: AI notes on past candidates and AI draft scorecards for New York City jobs need an independent bias audit in the last year (Hiring › Bias audits). Without one they are blocked for those jobs.', starter: true, scope: 'Company', synonyms: ['bias audit', 'nyc', 'local law 144', 'aedt'] },
+      ],
+    },
+    {
+      // HIR-20 Talent CRM (10 Nov 2026): when campaign messages go, how many a day, and how long a sourced profile waits.
+      title: 'Talent CRM',
+      settings: [
+        { key: 'hire.crm_send_window', label: 'Campaign messages go out', kind: 'select', value: '09-21', options: ['09-21', '10-18', '08-20', '00-24'], optionLabels: { '09-21': '9 am to 9 pm IST', '10-18': '10 am to 6 pm IST', '08-20': '8 am to 8 pm IST', '00-24': 'Any time' }, helper: 'A step that falls due outside these hours waits for the next window.', starter: true, scope: 'Company', synonyms: ['quiet hours', 'campaign', 'sequence', 'nurture'] },
+        { key: 'hire.crm_daily_cap', label: 'Most campaign messages a day', kind: 'select', value: '200', options: ['50', '100', '200', '500', '1000'], helper: 'For the whole company, all campaigns together. The rest go the next day.', starter: true, scope: 'Company', synonyms: ['limit', 'campaign', 'cap'] },
+        { key: 'hire.sourced_keep_days', label: 'Erase a sourced profile with no consent after', kind: 'select', value: '30', options: ['7', '15', '30'], optionLabels: { '7': '7 days', '15': '15 days', '30': '30 days' }, helper: 'A person added from outside YukthiX gets one consent email; with no yes by then, their details are deleted (DPDP).', starter: true, scope: 'Company', synonyms: ['sourced', 'consent', 'dpdp', 'retention'] },
+      ],
+    },
+    {
+      // HIR-13 (founder decision 6): who can apply for internal jobs, and when; the current manager is told, never asked.
+      title: 'Internal jobs',
+      settings: [
+        { key: 'hire.internal_after_probation', label: 'Only people past probation can apply for internal jobs', kind: 'toggle', value: true, helper: 'Off: people still on probation can apply too.', starter: true, scope: 'Company', synonyms: ['internal mobility', 'internal jobs', 'probation'] },
+        { key: 'hire.internal_months_in_role', label: 'Time in their current role before applying', kind: 'select', value: '12', options: ['0', '3', '6', '9', '12', '18', '24'], optionLabels: { '0': 'No wait', '3': '3 months', '6': '6 months', '9': '9 months', '12': '12 months', '18': '18 months', '24': '24 months' }, helper: 'Counted from the day their current designation started. People serving notice can never apply.', starter: true, scope: 'Company', synonyms: ['internal mobility', 'tenure', 'time in role'] },
+        { key: 'hire.internal_tell_manager', label: 'Tell the current manager', kind: 'segment', value: 'on_apply', options: ['on_apply', 'at_offer'], optionLabels: { on_apply: 'When they apply', at_offer: 'At the offer stage' }, helper: 'The manager is told, never asked. Test results stay with the job’s hiring manager and HR.', starter: true, scope: 'Company', synonyms: ['internal mobility', 'manager', 'notify'] },
       ],
     },
   ],
@@ -839,12 +898,36 @@ const staffing: SettingsPageDef = {
   permissionHolder: 'Account managers with finance approval',
   scopes: ['Company', 'Legal entity'],
   sections: [
+    // Staffing slice 1: the desk is off until a company that places people with clients turns it on (its own menu group).
+    {
+      title: 'Staffing desk',
+      settings: [
+        { key: 'staff.desk_enabled', label: 'Turn on the staffing desk', kind: 'toggle', value: false, helper: 'For a company that places its people with client companies: clients, rate cards and, later, placements and client invoices. Off: the staffing menu and pages stay hidden.', starter: true, scope: 'Company', synonyms: ['staffing', 'contract staffing', 'clients'] },
+      ],
+    },
     {
       title: 'Rate cards',
       settings: [
+        { key: 'staff.rate_backdate', label: 'A rate change may start up to', kind: 'select', value: '0', options: ['0', '7', '30', '90'], optionLabels: { '0': 'Today or later', '7': '7 days back', '30': '30 days back', '90': '90 days back' }, helper: 'Today or later keeps the rate of every day already billed.', starter: true, scope: 'Company', synonyms: ['backdate', 'rate change'] },
         { key: 'staff.ot_multiplier', label: 'Overtime bill multiplier', kind: 'number', value: 1.5, unit: '× hourly rate', min: 1, max: 3, starter: true, scope: 'Company', synonyms: ['rate card', 'overtime billing'] },
         { key: 'staff.holiday_multiplier', label: 'Holiday bill multiplier', kind: 'number', value: 2, unit: '× hourly rate', min: 1, max: 3, starter: true, scope: 'Company' },
         { key: 'staff.rate_cards', label: 'Client rate cards', kind: 'link', linkScreenId: 'HIR-15', linkLabel: 'Open rate cards' },
+      ],
+    },
+    // Staffing slice 2 (HIR-16, HIR-17, HIR-21): submissions, placements and vendors.
+    {
+      title: 'Submissions and placements',
+      settings: [
+        { key: 'staff.mask_contact', label: 'Hide phone and email from clients until they shortlist', kind: 'toggle', value: true, helper: 'The submission email names the people; their contact details follow once the client shortlists.', starter: true, scope: 'Company', synonyms: ['mask', 'submission email'] },
+        { key: 'staff.ending_soon', label: 'A placement is ending soon within', kind: 'select', value: '30', options: ['15', '30', '45', '60'], optionLabels: { '15': '15 days', '30': '30 days', '45': '45 days', '60': '60 days' }, starter: true, scope: 'Company', synonyms: ['placement end', 'redeploy'] },
+        { key: 'staff.statutory_cost', label: 'Statutory cost on own-payroll pay', kind: 'select', value: '0', options: ['0', '5', '10', '13', '15', '20'], optionLabels: { '0': 'None', '5': '5%', '10': '10%', '13': '13%', '15': '15%', '20': '20%' }, helper: 'Employer PF, ESI and similar costs as a share of the pay rate; taken off the margin of own-payroll placements. Starts at 13% when a legal entity has a PF or ESI registration, else none.', starter: true, scope: 'Company', synonyms: ['margin', 'pf', 'esi'] },
+      ],
+    },
+    {
+      title: 'Vendors',
+      settings: [
+        { key: 'staff.vendor_margin', label: 'Target margin for a vendor rate cap', kind: 'select', value: '25', options: ['10', '15', '20', '25', '30', '35', '40'], optionLabels: { '10': '10%', '15': '15%', '20': '20%', '25': '25%', '30': '30%', '35': '35%', '40': '40%' }, helper: 'Sharing a client job suggests the rate cap as the bill rate less this margin.', starter: true, scope: 'Company', synonyms: ['rate cap', 'vendor margin'] },
+        { key: 'staff.vendor_ownership', label: 'A vendor holds a candidate it submitted for', kind: 'select', value: '90', options: ['30', '60', '90', '180'], optionLabels: { '30': '30 days', '60': '60 days', '90': '90 days', '180': '180 days' }, helper: 'Per job. A later vendor’s submission of the same person is a duplicate; the vendor is never told who holds them.', starter: true, scope: 'Company', synonyms: ['duplicate', 'ownership'] },
       ],
     },
     {
@@ -866,6 +949,23 @@ const staffing: SettingsPageDef = {
         { key: 'staff.invoice_series_law', label: 'One continuous series per GSTIN per financial year', kind: 'law', value: 'On', law: 'CGST Rules, 2017 r.46(b)' },
         { key: 'staff.payment_terms', label: 'Default payment terms', kind: 'number', value: 30, unit: 'days', min: 0, max: 120, starter: true, scope: 'Company' },
         { key: 'staff.einvoice', label: 'E-invoicing (IRN and QR)', kind: 'toggle', value: false, availability: 'E-invoicing partner add-on', scope: 'Legal entity', synonyms: ['irn', 'e-invoice'] },
+      ],
+    },
+    // Staffing answer 522: the accounting export's ledgers (names as in the company's Tally or Zoho Books).
+    {
+      title: 'Accounting export',
+      settings: [
+        { key: 'staff.exp_sales', label: 'Sales ledger', kind: 'text', value: 'Sales - Staffing Services', helper: 'The ledger names must match your accounts in Tally or Zoho Books exactly.', starter: true, scope: 'Company', synonyms: ['tally', 'zoho', 'ledger', 'export'] },
+        { key: 'staff.exp_split', label: 'GST ledgers', kind: 'segment', value: 'separate', options: ['separate', 'combined'], optionLabels: { separate: 'CGST, SGST and IGST', combined: 'One GST ledger' }, starter: true, scope: 'Company' },
+        { key: 'staff.exp_cgst', label: 'CGST ledger', kind: 'text', value: 'Output CGST', starter: true, scope: 'Company' },
+        { key: 'staff.exp_sgst', label: 'SGST ledger', kind: 'text', value: 'Output SGST', starter: true, scope: 'Company' },
+        { key: 'staff.exp_igst', label: 'IGST ledger', kind: 'text', value: 'Output IGST', starter: true, scope: 'Company' },
+        { key: 'staff.exp_gst', label: 'GST ledger (one for all)', kind: 'text', value: 'Output GST', starter: true, scope: 'Company' },
+        { key: 'staff.exp_tds', label: 'TDS the client deducts', kind: 'segment', value: 'none', options: ['none', 'expected'], optionLabels: { none: 'Leave out', expected: 'Show the expected TDS' }, helper: 'Expected TDS: the client\'s section rate on the taxable value, to a TDS receivable ledger.', starter: true, scope: 'Company' },
+        { key: 'staff.exp_tds_ledger', label: 'TDS receivable ledger', kind: 'text', value: 'TDS Receivable', starter: true, scope: 'Company' },
+        { key: 'staff.exp_bank', label: 'Bank ledger (receipts)', kind: 'text', value: 'Bank Account', helper: 'Receipts are exported as receipt vouchers into this ledger, with the client’s TDS.', starter: true, scope: 'Company' },
+        { key: 'staff.exp_round', label: 'Round each total', kind: 'segment', value: 'rupee', options: ['rupee', 'none'], optionLabels: { rupee: 'To the rupee', none: 'Keep paise' }, starter: true, scope: 'Company' },
+        { key: 'staff.exp_round_ledger', label: 'Round-off ledger', kind: 'text', value: 'Round Off', starter: true, scope: 'Company' },
       ],
     },
     {
@@ -909,7 +1009,7 @@ const staffing: SettingsPageDef = {
       settings: [
         { key: 'staff.bench_pay', label: 'Bench pay', kind: 'percent', value: 50, min: 0, max: 100, helper: 'Share of fixed pay while between placements.', starter: true, scope: 'Company', synonyms: ['bench policy'] },
         { key: 'staff.bench_days', label: 'Maximum bench days', kind: 'number', value: 30, unit: 'days', min: 0, max: 180, starter: true, scope: 'Company' },
-        { key: 'staff.bench_after', label: 'After maximum bench days', kind: 'radio', value: 'Redeploy or exit review', options: ['Redeploy or exit review', 'Unpaid bench'], starter: true, scope: INHERITED },
+        { key: 'staff.bench_after', label: 'After maximum bench days', kind: 'segment', value: 'Redeploy or exit review', options: ['Redeploy or exit review', 'Unpaid bench'], starter: true, scope: INHERITED },
         {
           key: 'staff.portal_sla',
           label: 'Client portal response times',
@@ -921,6 +1021,17 @@ const staffing: SettingsPageDef = {
             ['Replacement request', '5 business days'],
           ],
           starter: true,
+        },
+        {
+          key: 'staff.portal_tickets',
+          label: 'Client portal tickets go to',
+          kind: 'select',
+          value: 'account_manager',
+          options: ['account_manager', 'Client support · Staffing team'],
+          optionLabels: { account_manager: "The client's account manager" },
+          helper: 'Tickets a client contact raises in the portal are Helpdesk tickets. They go to the account manager on their help desk, or to the Helpdesk team chosen here.',
+          starter: true,
+          scope: 'Company',
         },
       ],
     },
@@ -1168,10 +1279,17 @@ const assessments: SettingsPageDef = {
         { key: 'asmt.timer', label: 'Section timer', kind: 'radio', value: 'Advisory', options: ['Advisory', 'Enforced'], starter: true, scope: 'Company', synonyms: ['timer', 'auto submit'] },
         { key: 'asmt.navigation', label: 'Navigation', kind: 'radio', value: 'Free, with mark for review', options: ['Free, with mark for review', 'Forward only'], helper: 'Adaptive sections are always forward only.', starter: true, scope: 'Company' },
         { key: 'asmt.attempts_hiring', label: 'Attempts for hiring tests', kind: 'number', value: 1, unit: 'attempts', min: 1, max: 5, starter: true, scope: 'Company', synonyms: ['retake'] },
+        { key: 'asmt.result_reuse_months', label: 'An earlier result may be used again for', kind: 'select', value: '6 months', options: ['Never', '3 months', '6 months', '12 months'], helper: 'The same test only. The candidate chooses and agrees; a result under review is never used.', starter: true, scope: 'Company', synonyms: ['reuse', 'retake', 'earlier result'] },
         { key: 'asmt.attempts_training', label: 'Attempts for training tests', kind: 'number', value: 3, unit: 'attempts', min: 1, max: 10, starter: true, scope: 'Company' },
         { key: 'asmt.cooldown', label: 'Wait between attempts', kind: 'number', value: 7, unit: 'days', min: 0, max: 90, starter: true, scope: INHERITED },
         { key: 'asmt.exposure_cap', label: 'Show one question to at most', kind: 'percent', value: 30, min: 5, max: 100, unit: '% of candidates', helper: 'Counted over the last 30 days, so questions don’t leak.', starter: true, scope: 'Company', synonyms: ['question leak', 'exposure'] },
         { key: 'asmt.high_stakes', label: 'A test for more people than this needs an approver', kind: 'number', value: 500, unit: 'candidates', min: 50, starter: true, helper: 'Certification tests always need an approver.', scope: 'Company' },
+        // AS-6 (PRC-19): marking.
+        { key: 'asmt.blind_marking', label: 'Blind marking', kind: 'toggle', value: true, helper: 'Markers do not see who wrote the answer.', starter: true, scope: 'Company', synonyms: ['blind', 'anonymous marking'] },
+        { key: 'asmt.second_marker', label: 'A second marker for written answers', kind: 'toggle', value: false, helper: 'Two blind marks; far apart, a third person moderates.', starter: true, scope: 'Company', synonyms: ['double marking', 'moderation'] },
+        { key: 'asmt.moderation_gap', label: 'Moderate when two marks differ by more than', kind: 'select', value: '25 %', options: ['10 %', '20 %', '25 %', '33 %', '50 %'], helper: 'A share of the question’s marks.', starter: true, scope: 'Company' },
+        // AS-6 part 2 (answer 2272): AI-allowed tests.
+        { key: 'asmt.assistant_turns', label: 'Questions to the assistant in an AI-allowed test', kind: 'select', value: '20', options: ['10', '20', '40', '60'], helper: 'Per attempt. Every question and answer is kept for the markers.', starter: true, scope: 'Company', synonyms: ['AI allowed', 'assistant', 'ChatGPT'] },
       ],
     },
     {
@@ -1234,6 +1352,8 @@ const assessments: SettingsPageDef = {
           helper: 'Moved automatically only when no cheating was flagged. Nobody is rejected automatically.',
         },
         { key: 'asmt.bias_response', label: 'When a question seems unfair to one group', kind: 'radio', value: 'Alert and require review', options: ['Alert and require review', 'Suspend the question until cleared'], starter: true, scope: 'Company' },
+        // AS-6 (answer 2019): fairness from voluntary answers, shown only for groups at least this large.
+        { key: 'asmt.fairness_min_group', label: 'Show a group in fairness checks from', kind: 'select', value: '30', options: ['5', '10', '20', '30', '50', '100'], unit: 'answers', helper: 'Smaller groups are hidden so no one can be picked out.', starter: true, scope: 'Company', synonyms: ['fairness', 'adverse impact', 'bias'] },
       ],
     },
   ],

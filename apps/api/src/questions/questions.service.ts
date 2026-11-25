@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { companySetting } from '../assessments/asmt-rules';
 import { Prisma, Question, QuestionOption, QuestionTag, Tag } from '@prisma/client';
 import { TenantPrismaService, answerKeyDiffers, optionRowsDiffer, validateCodeTests, parseCodeTests, CodeTestCase } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
@@ -21,6 +22,11 @@ import {
   BulkQuestionRow,
   BulkUploadRowError,
 } from './bulk-upload-parser';
+import { queueNewQuestion } from './bank/queue';
+
+/** Answer 2121: the words of the older routes' refusals. */
+export const NEEDS_REVIEW = 'A question becomes usable only when another person approves it in the question bank (Hire › Assessments › Question review). Submit it for review there.';
+export const APPROVED_CHANGE = 'This question is approved. Change it in the question bank: the change goes to another person for review.';
 
 type QuestionWithRelations = Question & { options?: QuestionOption[]; tags: (QuestionTag & { tag: Tag })[] };
 type QuestionResponse = Omit<QuestionWithRelations, 'tags'> & { tags: { id: string; name: string }[]; codeTests: CodeTestCase[] };
@@ -96,7 +102,13 @@ export class QuestionsService {
     return languages.map((entry) => entry.language);
   }
 
-  async create(context: TenantContext, userId: string, dto: CreateQuestionDto): Promise<QuestionResponse> {
+  /** Answer 2143: a short-lived signed link to a stored question image (the stored value never carries one). */
+  async signedImage(url: string | null | undefined): Promise<string | null> {
+    return url ? ((await this.blobStorage.signIfOurs(url)) as string | null) : null;
+  }
+
+  /** `draft`: the question bank's review flow (AS-1) creates it unusable until another person approves it. */
+  async create(context: TenantContext, userId: string, dto: CreateQuestionDto, opts: { status?: 'draft' } = {}): Promise<QuestionResponse> {
     const availableLanguages = await this.fetchAvailableLanguagesIfNeeded(dto.type, dto.languageMode);
     validateQuestionPayload(
       {
@@ -135,6 +147,7 @@ export class QuestionsService {
           snippetCode: dto.type === 'code' ? null : dto.snippetCode ?? null,
           snippetLanguage: dto.type === 'code' ? null : dto.snippetLanguage ?? null,
           imageUrl: dto.type === 'code' ? null : toStoredImageUrl(dto.imageUrl),
+          ...(opts.status ? { status: opts.status } : {}),
           createdBy: userId,
           options: {
             create: dto.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index, imageUrl: toStoredImageUrl(o.imageUrl) })),
@@ -215,7 +228,7 @@ export class QuestionsService {
     });
   }
 
-  async update(context: TenantContext, actorUserId: string, id: string, dto: UpdateQuestionDto): Promise<QuestionResponse> {
+  async update(context: TenantContext, actorUserId: string, id: string, dto: UpdateQuestionDto, opts: { approved?: boolean } = {}): Promise<QuestionResponse> {
     const availableLanguages = await this.fetchAvailableLanguagesIfNeeded(dto.type, dto.languageMode);
     validateQuestionPayload(
       {
@@ -234,6 +247,12 @@ export class QuestionsService {
       const existing = await tx.question.findFirst({ where: { id, organizationId: context.organizationId as string } });
       if (!existing) {
         throw new NotFoundException(`Question ${id} not found`);
+      }
+      // Answer 2121: an approved question changes only through review, and a question in review is not changed under
+      // its reviewer. The question bank's approval calls this with opts.approved once another person approved it.
+      if (!opts.approved) {
+        if (existing.status === 'active') throw new ConflictException(APPROVED_CHANGE);
+        if (await tx.questionRevision.findFirst({ where: { questionId: id, organizationId: context.organizationId as string, state: 'in_review' }, select: { id: true } })) throw new ConflictException('This question is in review. Its author withdraws it in the question bank to change it.');
       }
 
       const tagIds = await this.resolveTagIds(tx, context.organizationId as string, dto.tags ?? []);
@@ -356,6 +375,10 @@ export class QuestionsService {
       });
     }
 
+    // Answer 2151: the company may switch AI drafts off (Settings › Assessments, asmt.ai_generation).
+    const aiOff = await this.tenantPrisma.forTenant(context, async (tx) => (await companySetting(tx, context.organizationId as string, 'asmt.ai_generation')) === 'off');
+    if (aiOff === true) throw new ForbiddenException('AI drafts are switched off for your company (Settings › Assessments).');
+
     // Fail fast. Without this the job is enqueued, picked up, and fails minutes later -- the
     // recruiter waits for a result that was never possible.
     //
@@ -393,26 +416,15 @@ export class QuestionsService {
   // in the same Archived list behave differently with nothing on screen explaining why, and the
   // invariant that actually protects exams is enforced elsewhere: a non-active question cannot be
   // added to a section (see exam-section-question-validation.ts).
-  async publish(context: TenantContext, actorUserId: string, id: string): Promise<QuestionResponse> {
-    const result = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const existing = await tx.question.findFirst({ where: { id, organizationId: context.organizationId as string } });
-      if (!existing) {
-        throw new NotFoundException(`Question ${id} not found`);
-      }
-      const published = await tx.question.update({
-        where: { id },
-        data: { status: 'active' },
-        include: { options: true, tags: { include: { tag: true } } },
-      });
-      return this.toResponse(published as QuestionWithRelations);
-    });
-    await this.audit.record(context, {
-      actorUserId,
-      action: 'question.published',
-      entityType: 'question',
-      entityId: id,
-    });
-    return result;
+  /**
+   * Answer 2121: the older publish never makes a question usable: another person approves it in the question bank. It
+   * says so (409), and the refusal is audited so an integration still calling it shows up.
+   */
+  async publish(context: TenantContext, actorUserId: string, id: string): Promise<never> {
+    const existing = await this.tenantPrisma.forTenant(context, (tx) => tx.question.findFirst({ where: { id, organizationId: context.organizationId as string }, select: { id: true } }));
+    if (!existing) throw new NotFoundException(`Question ${id} not found`);
+    await this.audit.record(context, { actorUserId, action: 'question.publish_refused', entityType: 'question', entityId: id });
+    throw new ConflictException(NEEDS_REVIEW);
   }
 
   async bulkUpload(context: TenantContext, userId: string, file: Express.Multer.File): Promise<BulkUploadResult> {
@@ -487,6 +499,8 @@ export class QuestionsService {
             languageMode: 'fixed',
             allowedLanguages: row.type === 'code' && row.codeLanguage ? JSON.stringify([row.codeLanguage]) : null,
             starterCode: row.starterCode,
+            // Answer 2121: an uploaded question is a draft in the review queue until another person approves it.
+            status: 'draft',
             createdBy: userId,
             options: {
               create: row.options.map((o, index) => ({ text: o.text, isCorrect: o.isCorrect, orderIndex: index })),
@@ -497,6 +511,7 @@ export class QuestionsService {
           },
           include: { options: true, tags: { include: { tag: true } } },
         });
+        await queueNewQuestion(tx, context, context.organizationId as string, question.id, userId, 'bulk_upload');
         results.push(await this.toResponse(question as QuestionWithRelations));
       }
       return results;

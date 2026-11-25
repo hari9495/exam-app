@@ -4,7 +4,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
-import { CompetencyDto, MergeDto, ScaleDto, SkillDto, TemplateDto, VersionDto } from './dto';
+import { Throttle } from '@nestjs/throttler';
+import { CompetencyDto, CompetencyImportDto, MergeDto, ScaleDto, SkillDto, TemplateDto, VersionDto } from './dto';
 import { PerformanceSetupService } from './setup.service';
 
 // Performance batch PM1 (M06-BUILD-DESIGN §19 "Set-up"): Settings › Performance. Every route needs
@@ -95,6 +96,22 @@ export class PerformanceSetupController {
     return this.setup.competencies(ctx);
   }
 
+  /** PRF-14 Import: all rows or none; the rows with problems come back in the refusal. */
+  @Post('competencies/import')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermissions('perf.setup.manage')
+  importCompetencies(@CurrentTenant() ctx: TenantContext, @Body() dto: CompetencyImportDto) {
+    return this.setup.importCompetencies(ctx, dto.csv);
+  }
+
+  /** PRF-14 skills test: the question-bank tags to choose from (names and counts only). */
+  @Get('competencies/question-tags')
+  @RequirePermissions('perf.setup.manage')
+  questionTags(@CurrentTenant() ctx: TenantContext) {
+    return this.setup.questionTags(ctx);
+  }
+
   @Post('competencies')
   @RequirePermissions('perf.setup.manage')
   addCompetency(@CurrentTenant() ctx: TenantContext, @Body() dto: CompetencyDto) {
@@ -112,6 +129,13 @@ export class PerformanceSetupController {
   @HttpCode(200)
   retireCompetency(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.setup.retireCompetency(ctx, id);
+  }
+
+  @Post('competencies/:id/merge')
+  @HttpCode(200)
+  @RequirePermissions('perf.setup.manage')
+  mergeCompetency(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MergeDto) {
+    return this.setup.mergeCompetency(ctx, id, dto.intoId);
   }
 
   @Get('skills')

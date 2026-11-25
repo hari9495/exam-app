@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom';
+import { configure } from '@testing-library/react';
 import { TextEncoder, TextDecoder } from 'util';
 import { randomUUID } from 'crypto';
 
@@ -147,3 +148,10 @@ if (typeof window !== 'undefined') {
     }
   });
 }
+
+// findBy* / waitFor give up after 1 s by default. A screen's first render in a test file (module start-up, then the
+// sign-in refresh, then GET /users/me, then a re-render with the ~430 time-zone options of the profile form) takes about
+// 0.9 s on an idle machine and 1.4 s or more while the other jest workers run: the cause of the ProfileForm
+// "Unable to find … Jane Recruiter" failures seen only in a full run. Passing tests return as soon as the element
+// shows; 4 s matches packages/yx-ui (test-setup.ts) and stays far below the 15 s test timeout.
+configure({ asyncUtilTimeout: 4000 });

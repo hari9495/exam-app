@@ -72,12 +72,12 @@ export const CLIENT_TIMESHEETS: ClientTimesheet[] = [
 export interface ClientInvoice {
   no: string;
   period: string;
-  kind: 'Placement fee' | 'Contract staffing';
+  kind: 'Placement fee' | 'Contract staffing' | 'Credit note';
   amount: number;
   gst: number;
   issuedOn: Date;
   dueOn: Date;
-  status: 'Paid' | 'Due' | 'Overdue';
+  status: 'Paid' | 'Due' | 'Overdue' | 'Credit';
 }
 export const CLIENT_INVOICES: ClientInvoice[] = [
   { no: 'SSS/26-27/0418', period: 'Sep 2026', kind: 'Contract staffing', amount: 3_45_600, gst: 62_208, issuedOn: d(2026, 9, 28), dueOn: d(2026, 10, 28), status: 'Due' },
@@ -158,6 +158,8 @@ export interface ClEstablishment {
   deployed: number;
   validTo: Date;
   nature: string;
+  /** CL-3: a renewal uploaded through the portal. */
+  renewal?: { licenceNo: string; status: 'pending' | 'verified' | 'rejected'; validTo: Date; rejectReason?: string | null } | null;
 }
 export const CL_ESTABLISHMENTS: ClEstablishment[] = [
   { id: 'hsr', name: 'Hosur plant · packing', licenceNo: 'TN/CLRA/HSR/2025/0441', authority: 'Assistant Commissioner of Labour, Hosur', maxWorkers: 50, deployed: 48, validTo: d(2026, 11, 20), nature: 'Packing and loading' },
@@ -174,17 +176,19 @@ export interface ClWorker {
   uan: string;
   esic: string;
   skill: 'Unskilled' | 'Semi-skilled' | 'Skilled';
+  /** Monthly, paid by the contractor. */
   wage: number;
   site: string;
   from: Date;
-  gatePass: string;
-  gateValidTo: Date;
+  gatePass: string | null;
+  gateValidTo: Date | null;
+  status?: 'Deployed' | 'Pending approval';
 }
 export const CL_WORKERS: ClWorker[] = [
-  { id: 'w1', name: 'Murugan Selvam', idMasked: 'Aadhaar XXXX XXXX 4417', dob: d(1990, 4, 12), gender: 'Male', uan: '101922344871', esic: '5102338841', skill: 'Semi-skilled', wage: 612, site: 'Hosur plant · packing', from: d(2025, 12, 1), gatePass: 'GP-HSR-0931', gateValidTo: d(2026, 12, 31) },
-  { id: 'w2', name: 'Lakshmi Devi', idMasked: 'Aadhaar XXXX XXXX 0921', dob: d(1995, 7, 30), gender: 'Female', uan: '101922344902', esic: '5102338877', skill: 'Unskilled', wage: 568, site: 'Hosur plant · packing', from: d(2026, 1, 15), gatePass: 'GP-HSR-0944', gateValidTo: d(2026, 12, 31) },
-  { id: 'w3', name: 'Siddharth Naik', idMasked: 'Voter ID XXXXXX2210', dob: d(1987, 1, 5), gender: 'Male', uan: '101922345013', esic: '5102338902', skill: 'Skilled', wage: 698, site: 'Hosur plant · packing', from: d(2025, 11, 3), gatePass: 'GP-HSR-0902', gateValidTo: d(2026, 10, 15) },
-  { id: 'w4', name: 'Chitra Arumugam', idMasked: 'Aadhaar XXXX XXXX 7710', dob: d(1999, 11, 22), gender: 'Female', uan: 'Not linked', esic: '5102339011', skill: 'Unskilled', wage: 568, site: 'Hosur plant · housekeeping', from: d(2026, 9, 1), gatePass: 'GP-HSR-1011', gateValidTo: d(2026, 12, 31) },
+  { id: 'w1', name: 'Murugan Selvam', idMasked: 'Aadhaar XXXX XXXX 4417', dob: d(1990, 4, 12), gender: 'Male', uan: '101922344871', esic: '5102338841', skill: 'Semi-skilled', wage: 15912, site: 'Hosur plant · packing', from: d(2025, 12, 1), gatePass: 'GP-HSR-0931', gateValidTo: d(2026, 12, 31) },
+  { id: 'w2', name: 'Lakshmi Devi', idMasked: 'Aadhaar XXXX XXXX 0921', dob: d(1995, 7, 30), gender: 'Female', uan: '101922344902', esic: '5102338877', skill: 'Unskilled', wage: 14768, site: 'Hosur plant · packing', from: d(2026, 1, 15), gatePass: 'GP-HSR-0944', gateValidTo: d(2026, 12, 31) },
+  { id: 'w3', name: 'Siddharth Naik', idMasked: 'Voter ID XXXXXX2210', dob: d(1987, 1, 5), gender: 'Male', uan: '101922345013', esic: '5102338902', skill: 'Skilled', wage: 18148, site: 'Hosur plant · packing', from: d(2025, 11, 3), gatePass: 'GP-HSR-0902', gateValidTo: d(2026, 10, 15) },
+  { id: 'w4', name: 'Chitra Arumugam', idMasked: 'Aadhaar XXXX XXXX 7710', dob: d(1999, 11, 22), gender: 'Female', uan: 'Not linked', esic: '5102339011', skill: 'Unskilled', wage: 14768, site: 'Hosur plant · housekeeping', from: d(2026, 9, 1), gatePass: 'GP-HSR-1011', gateValidTo: d(2026, 12, 31) },
 ];
 
 export type PackItemState = 'pending' | 'verified' | 'discrepancy' | 'missing';

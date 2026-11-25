@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
@@ -7,14 +7,6 @@ import { ConditionBuilder } from './condition';
 import { RichTextEditor } from './editor';
 import { FormField } from './field';
 import { BuilderCanvas, VersionCompare, diffFlows, outlineFlow, type Flow, type FlowVersion } from './builder';
-
-// ProseMirror measures ranges when it scrolls the selection into view; jsdom has no layout.
-beforeAll(() => {
-  const rect = { x: 0, y: 0, top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0, toJSON() {} } as DOMRect;
-  Range.prototype.getBoundingClientRect ??= () => rect;
-  Range.prototype.getClientRects ??= () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList;
-  document.elementFromPoint ??= () => null;
-});
 
 const SCHEMA: RuleSchema = {
   triggers: [
@@ -169,6 +161,119 @@ describe('RichTextEditor', () => {
     expect(bold).toHaveAttribute('aria-pressed', 'false');
     await u.click(bold);
     await waitFor(() => expect(bold).toHaveAttribute('aria-pressed', 'true'));
+  });
+
+  it('applies strikethrough, code, quote, highlight, colour and size from the toolbar', async () => {
+    const u = userEvent.setup();
+    const onChange = vi.fn();
+    render(<RichTextEditor aria-label="Message" defaultValue="<p>Hello</p>" onChange={onChange} />);
+    // Format selected text, as a person does. (With an empty cursor the marks were only "stored" marks, which
+    // ProseMirror drops whenever it re-reads the DOM selection: after a popover hands focus back, that read came
+    // before or after the check depending on load, so the test failed on a busy CI runner.)
+    await u.click(await screen.findByRole('textbox', { name: 'Message' }));
+    await u.keyboard('{Control>}a{/Control}');
+    const last = () => String(onChange.mock.lastCall?.[0] ?? '');
+    for (const [name, tag] of [['Strikethrough', '<s>'], ['Code', '<code>']] as const) {
+      const b = await screen.findByRole('button', { name });
+      await u.click(b);
+      await waitFor(() => expect(b).toHaveAttribute('aria-pressed', 'true'));
+      expect(last()).toContain(tag);
+      await u.click(b); // off again: code excludes every other mark
+      await waitFor(() => expect(b).toHaveAttribute('aria-pressed', 'false'));
+    }
+    await u.click(screen.getByRole('button', { name: 'Quote' }));
+    await waitFor(() => expect(last()).toContain('<blockquote>'));
+    // Each picker opens right after the previous change (the case that failed under load) and its choice is saved.
+    const pick = async (tool: string, choice: string, role: 'button' | 'radio', html: RegExp) => {
+      await u.click(screen.getByRole('button', { name: tool }));
+      await u.click(await screen.findByRole(role, { name: choice }));
+      await waitFor(() => expect(last()).toMatch(html));
+      await waitFor(() => expect(screen.getByRole('button', { name: tool })).toHaveAttribute('aria-pressed', 'true'));
+    };
+    await pick('Highlight', 'Yellow', 'button', /<mark[^>]*data-color/);
+    await pick('Text colour', 'Red', 'button', /color:/);
+    await pick('Font size', 'Large', 'radio', /font-size:/);
+  });
+
+  it('refuses a link that is not https or mailto (founder 27 Oct 2026)', async () => {
+    const u = userEvent.setup();
+    render(<RichTextEditor aria-label="Message" defaultValue="<p>Hello</p>" />);
+    await u.click(await screen.findByRole('button', { name: 'Link' }));
+    await u.type(await screen.findByLabelText('Link address'), 'http://example.com');
+    await u.click(screen.getByRole('button', { name: 'Apply link' }));
+    expect(await screen.findByText('Enter a full address starting with https:// or mailto:')).toBeInTheDocument();
+  });
+
+  it('hides the buttons a place cannot keep', async () => {
+    render(<RichTextEditor aria-label="Letter" hide={['code', 'highlight']} />);
+    expect(await screen.findByRole('button', { name: 'Strikethrough' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Code' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Highlight' })).toBeNull();
+  });
+
+  it('keeps focus in the text when the menu closes after the editor took focus (as under load)', async () => {
+    const u = userEvent.setup();
+    const real = window.setTimeout;
+    // Under load the menu's "focus back to its button" timer (0 ms) can run after the editor's focus frame. Make every
+    // 0 ms page timer late to force that order: the text must keep focus (it lost it to "More formatting" before).
+    window.setTimeout = ((fn: TimerHandler, ms?: number, ...a: unknown[]) => real(fn as () => void, ms ? ms : 40, ...a)) as typeof window.setTimeout;
+    // jsdom has no layout: every slot is 32 px wide with a 2 px gap, the toolbar 200 px.
+    const proto = HTMLElement.prototype;
+    const saved = ['offsetWidth', 'offsetLeft', 'clientWidth'].map((k) => [k, Object.getOwnPropertyDescriptor(proto, k)] as const);
+    Object.defineProperty(proto, 'offsetWidth', { configurable: true, get: () => 32 });
+    Object.defineProperty(proto, 'offsetLeft', { configurable: true, get(this: HTMLElement) { return [...(this.parentElement?.children ?? [])].indexOf(this) * 34; } });
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get(this: HTMLElement) { return this.classList.contains('yx-editor__tools') ? 200 : 0; } });
+    try {
+      render(<RichTextEditor aria-label="Message" defaultValue="<p>Hello</p>" />);
+      expect(await screen.findByRole('button', { name: 'Strikethrough' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Heading 2' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      expect(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' })).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByRole('menuitem', { name: 'Undo' })).toHaveAttribute('aria-disabled', 'true');
+      await u.click(screen.getByRole('menuitem', { name: 'Text colour' }));
+      await u.click(await screen.findByRole('button', { name: 'Red' }));
+      // The editor takes focus back on the next frame; a menu opened before that would close again.
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus());
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      await u.click(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' }));
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus());
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      expect(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' })).toHaveAttribute('aria-checked', 'true');
+    } finally {
+      window.setTimeout = real;
+      for (const [k, d] of saved) if (d) Object.defineProperty(proto, k, d);
+      else delete (proto as unknown as Record<string, unknown>)[k];
+    }
+  });  it('moves the buttons that do not fit into "More formatting"', async () => {
+    const u = userEvent.setup();
+    // jsdom has no layout: every slot is 32 px wide with a 2 px gap, the toolbar 200 px.
+    const proto = HTMLElement.prototype;
+    const saved = ['offsetWidth', 'offsetLeft', 'clientWidth'].map((k) => [k, Object.getOwnPropertyDescriptor(proto, k)] as const);
+    Object.defineProperty(proto, 'offsetWidth', { configurable: true, get: () => 32 });
+    Object.defineProperty(proto, 'offsetLeft', { configurable: true, get(this: HTMLElement) { return [...(this.parentElement?.children ?? [])].indexOf(this) * 34; } });
+    Object.defineProperty(proto, 'clientWidth', { configurable: true, get(this: HTMLElement) { return this.classList.contains('yx-editor__tools') ? 200 : 0; } });
+    try {
+      render(<RichTextEditor aria-label="Message" defaultValue="<p>Hello</p>" />);
+      expect(await screen.findByRole('button', { name: 'Strikethrough' })).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Heading 2' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull();
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      expect(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' })).toHaveAttribute('aria-checked', 'false');
+      expect(screen.getByRole('menuitem', { name: 'Undo' })).toHaveAttribute('aria-disabled', 'true');
+      await u.click(screen.getByRole('menuitem', { name: 'Text colour' }));
+      await u.click(await screen.findByRole('button', { name: 'Red' }));
+      // The editor takes focus back on the next frame; a menu opened before that would close again.
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus());
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      await u.click(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' }));
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Message' })).toHaveFocus());
+      await u.click(screen.getByRole('button', { name: 'More formatting' }));
+      expect(await screen.findByRole('menuitemcheckbox', { name: 'Heading 2' })).toHaveAttribute('aria-checked', 'true');
+    } finally {
+      for (const [k, d] of saved) if (d) Object.defineProperty(proto, k, d);
+      else delete (proto as unknown as Record<string, unknown>)[k];
+    }
   });
 
   it('marks the content invalid and hides the toolbar when read-only', async () => {

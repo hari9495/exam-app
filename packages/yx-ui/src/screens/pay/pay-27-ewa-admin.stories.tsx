@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { EwaAdminScreen } from './admin-tax-loans';
 
-const meta: Meta<typeof EwaAdminScreen> = { title: 'Screens/Pay/PAY-27 · EWA admin', component: EwaAdminScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof EwaAdminScreen> = { title: 'Screens/Pay/PAY-27 · EWA admin', component: EwaAdminScreen, render: (args) => <EwaAdminScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof EwaAdminScreen>;
 

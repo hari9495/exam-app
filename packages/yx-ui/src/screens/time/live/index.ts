@@ -1,14 +1,47 @@
 // Time and leave, wired to the API (M02 step 4 batch 1): Me › Leave, Me › Attendance, team leave, the muster,
 // leave balances, and HR set-up. Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { MyLeaveScreen, type MyLeaveScreenProps } from './my-leave';
-export { HomeClockCard, MyAttendanceScreen, TodayCard, type MyAttendanceScreenProps, type Pin } from './my-attendance';
-export { TeamLeaveScreen, MusterScreen, LeaveBalancesScreen, type TeamLeaveScreenProps, type MusterScreenProps, type LeaveBalancesScreenProps } from './team';
-export { TimeSetupScreen, type TimeSetupScreenProps } from './setup';
+export { LeaveHomeScreen, TeamLeaveCalendarScreen, LeaveCardScreen, type LiveLeaveHome, type LiveTeamLeave, type LiveLeaveCard, type LiveHrLeaveHome, type LiveMgrLeaveHome, type LiveMyLeaveCard, type LiveCompOff, type LiveEncash, type LiveApplyFor, type LiveAdjust } from '../leave';
+// Batch A item 2 (C2): my full leave history.
+export { LeaveHistoryDrawer, type LeaveHistoryPage, type LeaveHistoryQuery } from '../leave-history-live';
+// Me › Attendance (calendar + today's clock), Home's clock card and the muster: the designed screens, each with `live`.
+export { AttendanceCalendarScreen, MyAttendanceTodayScreen, HomeClockCard, MusterScreen, TodayBoardScreen, ExceptionsScreen, type LiveMyAttendance, type LivePersonAttendance, type LiveMusterData, type LiveTodayBoard, type LiveExceptions, type ExceptionsQuery } from '../attendance';
+// HR set-up: the designed TIM-26 / 27 / 28 / 29 / 31 screens, each with `live`.
+export { HolidayFeedScreen, type LiveHolidayFeeds } from '../leave-admin';
+export { GeofenceEditorScreen, HolidayCalendarsScreen, LeavePoliciesScreen, LeaveTypeEditorScreen, YearEndWizard, type LeaveTypeInput, type LiveHolidayCalendars, type LiveBlockDates, type LiveLeavePolicies, type LiveLeaveTypeEditor, type LiveLocations, type LiveYearEnd, type LocationRuleInput, type SetupLive } from '../leave-admin';
 // Batch 2: rosters and shifts, overtime, timesheets, periods, registers and the payroll feed.
-export { RosterPlannerScreen, MyShiftsScreen, type RosterPlannerScreenProps, type MyShiftsScreenProps } from './roster';
-export { ShiftsSetupScreen, type ShiftsSetupScreenProps } from './shifts-setup';
-export { MyOvertimeScreen, OvertimeReviewScreen, type MyOvertimeScreenProps, type OvertimeReviewScreenProps } from './overtime';
-export { MyTimesheetScreen, type MyTimesheetScreenProps } from './timesheet';
-export { PeriodsScreen, RegistersScreen, PayrollFeedScreen, type PeriodsScreenProps, type RegistersScreenProps, type PayrollFeedScreenProps } from './periods';
+export { RosterScreen, ShiftEditorScreen, BlockLeavePlannerScreen, type LiveRoster, type LiveBlockLeave, type LiveStaffRoster } from '../roster';
+export { ShiftSwapSheet, type LiveMyShifts } from '../requests';
+export { type LiveShiftSetup } from './shifts-setup';
+export { LeaveReportsScreen, type LiveLeaveReports } from '../ops';
+export { OtReviewScreen, PeriodsScreen, DeviceBackfillWizard, IndustrialActionScreen, type LiveOtReview, type LiveMyOvertime, type LivePeriods, type LiveDeviceBackfill, type LiveIndustrialAction } from '../requests';
+export { TimesheetScreen, AttendanceReportsScreen, type LiveTimesheet, type LiveReports, type LiveRegisters, type LivePayrollFeed, type LiveAttendanceReport, type LiveNightRegister } from '../ops';
+// Keka ideas (2026-11): the Time summary on My timesheet.
+export { TIME_SUMMARY_STATUS, TimeSummary, type TimeSummaryStatus, type TimeSummaryWeek } from '../time-summary';
+// Time ops (29 Oct 2026): presence-based attendance (TIM-36).
+export { PresenceDayScreen, type LivePresence } from '../field';
 export { DAY_STATUS, LEAVE_STATUS, dayText, rangeText } from './kit';
+// Devices and kiosks (TIM-14) and the kiosk tablet (TIM-13): the designed screens with `live`.
+export { DevicesScreen } from '../ops';
+export { KioskScreen } from '../field';
+export type { LiveDevices, DevicesData, KioskKey } from '../devices-live';
+export type { TrainingRow, TrainingInput, TrainingPerson } from '../training-tab';
+export type { LiveKiosk, KioskInfo, KioskToday, KioskPunched, KioskLeave, KioskTraining } from '../kiosk-live';
+// Field force (TIM-32): the designed map with `live`.
+export { FieldForceScreen } from '../field';
+export type { LiveFieldForce, FieldMap, FieldMapPerson, FieldMapVisit, FieldPersonDay, FieldFence } from '../field-force-live';
+// Hybrid office days (TIM-41) and timesheet pre-fill from my tools (TIM-43): the designed screens with `live`.
+export { HybridPlannerScreen } from '../roster';
+export type { LiveHybrid, HybridMe, HybridTeam, HybridCompliance, HybridPolicyGroup, HybridDay, HybridRule, HybridPlace } from '../hybrid-live';
+export type { LivePrefill, PrefillTools, PrefillSuggestions, ToolProvider } from '../prefill-live';
+// Open shifts and bids (TIM-35) and standby and call-out (TIM-38): the designed screens with `live`; OpenShiftsPanel is the
+// open-shifts table alone, for the roster's "Open shifts" tab.
+export { OpenShiftsScreen, StandbyScreen } from '../roster';
+export { OpenShiftsPanel, type LiveOpenShifts, type OpenShiftsData, type OpenShiftRow, type OpenShiftBid, type OpenShiftInput, type OpenShiftRule, type OpenShiftShift } from '../open-shifts-live';
+export type { LiveStandby, StandbyData, StandbyCallOut, StandbySlot, StandbyShift } from '../standby-live';
+// Auto-roster (TIM-34): the designed screen with `live`.
+export { AutoRosterScreen } from '../roster';
+export type { LiveAutoRoster, AutoRosterData, AutoRosterResult, AutoRosterSlot, AutoRosterSkip, AutoRosterShift } from '../auto-roster-live';
+// Licence requirements (TIM-40): the designed screen with `live`.
+export { LicenceRequirementsScreen } from '../roster';
+export type { LiveLicences, LicencesData, LicenceType, LicenceTypeInput, LicenceRequirement, LicenceWatch } from '../licences-live';

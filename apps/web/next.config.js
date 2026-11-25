@@ -28,12 +28,61 @@ const nextConfig = {
     return ['/sso/callback', '/yx/sign-in/callback'].map((source) => ({ source, headers: [{ key: 'Referrer-Policy', value: 'no-referrer' }] }));
   },
   async redirects() {
-    const routes = ['/dashboard', '/exams', '/questions', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
+    const routes = ['/dashboard', '/exams', '/walk-in-groups', '/analytics/hiring', '/message-templates', '/offer-template'];
+    // Decision 2398 (answers 2420-2438): each /v2 page with a YukthiX equivalent redirects there, so old bookmarks keep
+    // working. Gap pages stay until their new page exists (2438). Older addresses that pointed at one of these /v2 pages
+    // go straight to the new page (no double hop).
+    const v2Moved = {
+      '/v2/users': '/yx/settings/access',
+      '/v2/audit-log': '/yx/settings/audit-log',
+      '/v2/data-rights': '/yx/hiring/retention',
+      '/v2/settings/roles': '/yx/settings/access',
+      '/v2/settings/permission-profiles': '/yx/settings/access',
+      '/v2/settings/sso': '/yx/settings/identity-providers',
+      '/v2/settings/billing': '/yx/settings/account/plan-and-add-ons',
+      '/v2/settings/integrations': '/yx/settings/integrations/integrations',
+      '/v2/settings/recycle-bin': '/yx/settings/recycle-bin',
+      '/v2/calendar': '/yx/settings/integrations/calendar-and-chat',
+      '/v2/today': '/yx/home',
+      '/v2/exams': '/yx/hiring/assessments/tests',
+      '/v2/exams/new': '/yx/hiring/assessments/tests',
+      '/v2/exams/:id/edit': '/yx/hiring/assessments/tests/:id',
+      '/v2/exams/:id/preview': '/yx/hiring/assessments/tests/:id',
+      // A walk-in group's drives are its campus drive page; a single old drive goes to the invitations and drives list.
+      '/v2/walk-in-groups': '/yx/hiring/assessments/invitations',
+      '/v2/walk-in-groups/:groupId/drives': '/yx/hiring/assessments/drives/:groupId',
+      '/v2/drives/:driveId': '/yx/hiring/assessments/invitations',
+      '/v2/referrals': '/yx/hiring/referrals/all',
+      '/v2/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
+      '/v2/panel/reports/:examId/candidates/:candidateId': '/yx/hiring/assessments/reports/:examId/:candidateId',
+      // Answer 2432: the recruiting overview and hiring analytics are Hire › Dashboard.
+      '/v2/dashboard': '/yx/hiring/dashboard',
+      '/v2/analytics/hiring': '/yx/hiring/dashboard',
+      // Answer 2428: the weekly hiring digest is ANL-08 Report schedules.
+      '/v2/settings/scheduled-reports': '/yx/hiring/schedules',
+      // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
+      '/v2/reports': '/yx/hiring/assessments/tests',
+      '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',
+      '/v2/reports/:examId/compare': '/yx/hiring/assessments/tests/:examId?tab=results',
+      '/v2/panel/reports': '/yx/hiring/assessments/results',
+      '/v2/panel/reports/:examId': '/yx/hiring/assessments/results?test=:examId',
+      '/v2/panel/reports/:examId/compare': '/yx/hiring/assessments/results?test=:examId',
+    };
+    const direct = (r) => ({ ...r, destination: v2Moved[r.destination] ?? r.destination });
     return [
+      ...Object.entries(v2Moved).map(([source, destination]) => ({ source, destination, permanent: false })),
+      ...[
+      // PPL-30 (founder 26 Oct 2026): My letters is part of Me › Documents and letters.
+      { source: '/yx/me/letters', destination: '/yx/me/documents', permanent: false },
       // M10 AT1 / AT5 (founder D1): the jobs list and each job's workspace are YukthiX Hiring pages.
       { source: '/jobs', destination: '/yx/hiring/jobs', permanent: false },
       { source: '/v2/jobs', destination: '/yx/hiring/jobs', permanent: false },
       { source: '/v2/jobs/:jobId', destination: '/yx/hiring/jobs/:jobId', permanent: false },
+      // Founder answer 345: scorecard templates moved to Settings 6.1 Hiring; the old stand-in page is gone.
+      { source: '/yx/hiring/scorecards', destination: '/yx/settings/hiring', permanent: true },
+      // HIR-13: internal jobs are the designed YukthiX page now; the older Internal Mobility screen is gone.
+      { source: '/internal-mobility', destination: '/yx/hiring/internal-jobs', permanent: false },
+      { source: '/v2/internal-mobility', destination: '/yx/hiring/internal-jobs', permanent: false },
       // M10 AT5: an interviewer's interviews and scorecards.
       { source: '/v2/panel/interviews', destination: '/yx/hiring/interviews', permanent: false },
       // M10 AT2: hiring approval routes moved to YukthiX (requisitions now run on YukthiX Approvals).
@@ -42,6 +91,9 @@ const nextConfig = {
       // M10 AT3: the careers site, applicant consent and job boards moved to YukthiX Hiring.
       ...['careers', 'apply-consent'].flatMap((p) => [`/settings/${p}`, `/v2/settings/${p}`].map((source) => ({ source, destination: '/yx/hiring/careers', permanent: false }))),
       ...['/settings/job-boards', '/v2/settings/job-boards'].map((source) => ({ source, destination: '/yx/hiring/job-boards', permanent: false })),
+      // HIR-21 (staffing slice 2): one vendor model; the older agencies and agency-submissions pages are Hiring › Vendors.
+      ...['/settings/agencies', '/v2/settings/agencies'].map((source) => ({ source, destination: '/yx/hiring/vendors', permanent: false })),
+      ...['/agency-submissions', '/v2/agency-submissions'].map((source) => ({ source, destination: '/yx/hiring/vendors?tab=submissions', permanent: false })),
       // M10 AT4: the candidates list moved to YukthiX Hiring (bulk upload and invite included).
       ...['/candidates', '/v2/candidates', '/candidates/bulk-upload-invite'].map((source) => ({ source, destination: '/yx/hiring/candidates', permanent: false })),
       ...routes.map((source) => ({ source, destination: `/v2${source}`, permanent: false })),
@@ -49,13 +101,30 @@ const nextConfig = {
       // reset and reset link is the YukthiX one (old bookmarks and emails included). The query string
       // carries over; a ?next= path is honoured only when it is same-site (lib/safe-next.ts).
       // YukthiX platform staff sign in at /staff/sign-in, which nothing links to.
+      // T9-09 (founder decisions 8 and 10): the careers site and the candidate pages live under /yx; older emails, job
+      // boards and search results still carry these addresses.
+      // Founder answer 351: the API's emails and feeds use the /yx addresses since 13 Nov 2026; keep these redirects for a
+      // year, until 13 Nov 2027 (older emails and boards' cached links), then remove them.
+      { source: '/careers/:orgSlug', destination: '/yx/careers/:orgSlug', permanent: true },
+      { source: '/careers/:orgSlug/jobs/:slug', destination: '/yx/careers/:orgSlug/jobs/:slug', permanent: true },
+      { source: '/careers/:orgSlug/sitemap.xml', destination: '/yx/careers/:orgSlug/sitemap.xml', permanent: true },
+      { source: '/apply/:applyToken', destination: '/yx/apply/:applyToken', permanent: true },
+      { source: '/application/:statusToken', destination: '/yx/application/:statusToken', permanent: true },
+      { source: '/portal/:portalToken', destination: '/yx/candidate/:portalToken', permanent: true },
+      { source: '/offer/:token', destination: '/yx/offer/:token', permanent: true },
+      { source: '/interview/:token', destination: '/yx/interview/:token', permanent: true },
       { source: '/login', destination: '/yx/sign-in', permanent: true },
       { source: '/v2/login', destination: '/yx/sign-in', permanent: true },
       { source: '/forgot-password', destination: '/yx/forgot-password', permanent: true },
       { source: '/reset-password/:token', destination: '/yx/reset-password/:token', permanent: true },
       // Question editor is rebuilt in v2; redirect the old editor routes too.
-      { source: '/questions/new', destination: '/v2/questions/new', permanent: false },
-      { source: '/questions/:id/edit', destination: '/v2/questions/:id/edit', permanent: false },
+      // Answer 2121: the older question pages are retired; the designed question bank (Hire › Assessments) replaces them.
+      { source: '/questions/new', destination: '/yx/hiring/assessments/questions/new', permanent: false },
+      { source: '/questions/:id/edit', destination: '/yx/hiring/assessments/questions/:id', permanent: false },
+      { source: '/questions', destination: '/yx/hiring/assessments/questions', permanent: false },
+      { source: '/v2/questions', destination: '/yx/hiring/assessments/questions', permanent: false },
+      { source: '/v2/questions/new', destination: '/yx/hiring/assessments/questions/new', permanent: false },
+      { source: '/v2/questions/:id/edit', destination: '/yx/hiring/assessments/questions/:id', permanent: false },
       // Exam builder is rebuilt in v2. /exams/:id/preview is NOT rebuilt yet, so it stays put
       // (the v2 edit page links to the old preview route).
       { source: '/exams/new', destination: '/v2/exams/new', permanent: false },
@@ -69,7 +138,7 @@ const nextConfig = {
       { source: '/walk-in-groups/:groupId/drives', destination: '/v2/walk-in-groups/:groupId/drives', permanent: false },
       // Bulk upload became a modal on the v2 candidates/questions lists (no standalone route);
       // funnel the old standalone pages to those lists so no old recruiter UI stays reachable.
-      { source: '/questions/bulk-upload', destination: '/v2/questions', permanent: false },
+      { source: '/questions/bulk-upload', destination: '/yx/hiring/assessments/questions', permanent: false },
       // v2 cutover — org-admin console (settings + admin surfaces).
       { source: '/settings/billing', destination: '/v2/settings/billing', permanent: false },
       { source: '/settings/integrations', destination: '/v2/settings/integrations', permanent: false },
@@ -91,6 +160,7 @@ const nextConfig = {
       { source: '/reports/:examId', destination: '/v2/panel/reports/:examId', permanent: false },
       { source: '/reports/:examId/compare', destination: '/v2/panel/reports/:examId/compare', permanent: false },
       { source: '/reports/:examId/candidates/:candidateId', destination: '/v2/panel/reports/:examId/candidates/:candidateId', permanent: false },
+      ].map(direct),
     ];
   },
 };

@@ -33,120 +33,6 @@ const GROUP = { peer: 'Peers', report: 'People who report to them', others: 'Oth
 
 // ------------------------------------------------------------------------------------------ on the review (PRF-07)
 
-export interface PeerPanelProps {
-  data: Nominations;
-  groups: PeerGroups | null;
-  /** Question texts by id, to label the grouped ratings. */
-  questions: Record<string, string>;
-  /** Matches of the server search for people who can be asked. */
-  options: PersonOption[];
-  onSearch: (q: string) => void;
-  onNominate: (reviewerEmployeeId: string, relationship: Nomination['relationship']) => Promise<unknown>;
-  onDecide: (id: string, approve: boolean) => Promise<unknown>;
-  onWithdraw: (id: string) => Promise<unknown>;
-}
-
-/** Nominations and, when allowed, the grouped answers; shown inside the review screen. */
-export function PeerPanel(p: PeerPanelProps) {
-  const { busy, error, run } = useRun();
-  const [adding, setAdding] = useState(false);
-  const [who, setWho] = useState<string | null>(null);
-  const [chosen, setChosen] = useState<PersonOption | null>(null);
-  const [rel, setRel] = useState<Nomination['relationship']>('peer');
-  if (!p.data.peer) return null;
-  const live = p.data.nominations.filter((n) => n.status !== 'withdrawn' && n.status !== 'declined');
-  return (
-    <Card title="Feedback from colleagues" actions={(p.data.can.propose || p.data.can.add) && <Button icon={Plus} onClick={() => setAdding(true)}>{p.data.can.propose ? 'Suggest someone' : 'Ask someone'}</Button>}>
-      <Text as="p" tone="secondary">{`${p.data.peer.minNominees} to ${p.data.peer.maxNominees} people, by ${dateText(p.data.peer.dueOn)}. Their answers are anonymous, shown only as a group, and do not count towards the rating.`}</Text>
-      {error && (
-        <InlineAlert tone="danger" title="That didn't work">
-          {error}
-        </InlineAlert>
-      )}
-      {live.length === 0 ? (
-        <EmptyState compact title="No one asked yet." />
-      ) : (
-        <ul className="yx-lif-list">
-          {live.map((n) => (
-            <li key={n.id}>
-              <Text>{`${n.reviewer} · ${REL[n.relationship]}`}</Text> <Badge tone={STATUS[n.status].tone}>{STATUS[n.status].label}</Badge>{' '}
-              {n.status === 'proposed' && p.data.can.decide && (
-                <>
-                  <Button size="sm" variant="approve" loading={busy === `a-${n.id}`} onClick={() => void run(`a-${n.id}`, () => p.onDecide(n.id, true))}>
-                    Approve
-                  </Button>{' '}
-                  <Button size="sm" loading={busy === `d-${n.id}`} onClick={() => void run(`d-${n.id}`, () => p.onDecide(n.id, false))}>
-                    Decline
-                  </Button>
-                </>
-              )}
-              {n.status === 'proposed' && p.data.can.propose && n.proposedBy === 'employee' && (
-                <Button size="sm" loading={busy === `w-${n.id}`} onClick={() => void run(`w-${n.id}`, () => p.onWithdraw(n.id))}>
-                  Withdraw
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {p.groups && (p.groups.shown.length > 0 || p.groups.heldBack > 0) && (
-        <>
-          <InlineAlert tone="info" title="Advisory">
-            Shown as groups only. It does not change the rating.
-          </InlineAlert>
-          {p.groups.shown.map((g) => (
-            <div key={g.group} className="yx-tim-stack">
-              <Text weight="medium">{`${GROUP[g.group]} (${g.responses})`}</Text>
-              {Object.entries(g.ratings).map(([q, r]) => (
-                <Text as="p" key={q}>{`${p.questions[q] ?? 'Rating'}: average ${r.average}, from ${r.low} to ${r.high}`}</Text>
-              ))}
-              {g.texts.map((t, i) => (
-                <Text as="p" key={i} tone="secondary">
-                  {`“${t}”`}
-                </Text>
-              ))}
-            </div>
-          ))}
-          {p.groups.heldBack > 0 && <Text as="p" tone="secondary">{`Not enough responses to show ${p.groups.heldBack === 1 ? 'one answer' : `${p.groups.heldBack} answers`} without identifying who gave ${p.groups.heldBack === 1 ? 'it' : 'them'}.`}</Text>}
-        </>
-      )}
-      {adding && (
-        <ConfirmDialog
-          open
-          onOpenChange={(o) => !o && setAdding(false)}
-          size="md"
-          title={p.data.can.propose ? 'Suggest someone to give feedback' : 'Ask someone to give feedback'}
-          confirmLabel={p.data.can.propose ? 'Suggest' : 'Ask'}
-          confirmDisabled={!who}
-          onConfirm={async () => {
-            await p.onNominate(who!, rel);
-            setAdding(false);
-            setWho(null);
-          }}
-        >
-          <FormField id="nm-who" label="Who" required helper={p.data.can.propose ? 'Your manager approves it.' : undefined}>
-            <PersonPicker
-              aria-label="Who"
-              value={who}
-              onChange={(id) => {
-                setChosen(p.options.find((x) => x.id === id) ?? null);
-                setWho(id);
-              }}
-              people={chosen && !p.options.some((x) => x.id === chosen.id) ? [chosen, ...p.options] : p.options}
-              onSearchChange={p.onSearch}
-            />
-          </FormField>
-          <FormField id="nm-rel" label="They are">
-            <Segment label="How they work together" value={rel} onChange={setRel} options={[{ value: 'peer', label: REL.peer }, { value: 'report', label: REL.report }, { value: 'other', label: REL.other }]} />
-          </FormField>
-        </ConfirmDialog>
-      )}
-    </Card>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ my tasks and the form
-
 export interface FeedbackTasksScreenProps {
   state: LoadState;
   onRetry?: () => void;
@@ -288,6 +174,7 @@ export function ReviewerBlocksScreen(p: ReviewerBlocksScreenProps) {
   const [adding, setAdding] = useState(false);
   const [a, setA] = useState<PersonOption | null>(null);
   const [b, setB] = useState<PersonOption | null>(null);
+  const [tried, setTried] = useState(false);
   const [reason, setReason] = useState<ReviewerBlock['reasonCode']>('conflict');
   const [until, setUntil] = useState<Date | null>(null);
   const pick = (chosen: PersonOption | null) => (chosen && !p.people.some((x) => x.id === chosen.id) ? [chosen, ...p.people] : p.people);
@@ -299,7 +186,7 @@ export function ReviewerBlocksScreen(p: ReviewerBlocksScreenProps) {
       onRetry={p.onRetry}
       what="reviewer blocks"
       actions={
-        <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>
+        <Button variant="primary" icon={Plus} onClick={() => (setTried(false), setAdding(true))}>
           Block a pair
         </Button>
       }
@@ -334,16 +221,17 @@ export function ReviewerBlocksScreen(p: ReviewerBlocksScreenProps) {
           size="md"
           title="Block a pair from reviewing each other"
           confirmLabel="Block"
-          confirmDisabled={!a || !b || a.id === b.id}
           onConfirm={async () => {
+            setTried(true);
+            if (!a || !b || a.id === b.id) return false;
             await p.onBlock({ employeeA: a!.id, employeeB: b!.id, reasonCode: reason, untilOn: until ? dayKey(until) : null });
             setAdding(false);
           }}
         >
-          <FormField id="rb-a" label="One person" required>
+          <FormField id="rb-a" label="One person" required error={tried && !a ? 'Choose the first person.' : null}>
             <PersonPicker aria-label="One person" value={a?.id ?? null} onChange={(id) => setA(pick(a).find((x) => x.id === id) ?? null)} people={pick(a)} onSearchChange={p.onSearch} />
           </FormField>
-          <FormField id="rb-b" label="The other person" required>
+          <FormField id="rb-b" label="The other person" required error={!tried ? null : !b ? 'Choose the other person.' : a && a.id === b.id ? 'Choose a different person.' : null}>
             <PersonPicker aria-label="The other person" value={b?.id ?? null} onChange={(id) => setB(pick(b).find((x) => x.id === id) ?? null)} people={pick(b)} onSearchChange={p.onSearch} />
           </FormField>
           <FormField id="rb-reason" label="Reason (only HR sees it)">
@@ -355,47 +243,5 @@ export function ReviewerBlocksScreen(p: ReviewerBlocksScreenProps) {
         </ConfirmDialog>
       )}
     </LivePage>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ cycle set-up
-
-/** Peer feedback for a draft cycle: least and most nominees and a deadline; or off. */
-export function PeerSetup({ value, onSave }: { value: PeerConfig | null; onSave: (v: PeerConfig | null) => Promise<unknown> }) {
-  const { busy, error, run } = useRun();
-  const [min, setMin] = useState<number | null>(value?.minNominees ?? 3);
-  const [max, setMax] = useState<number | null>(value?.maxNominees ?? 6);
-  const [due, setDue] = useState<Date | null>(value ? new Date(`${value.dueOn}T00:00:00`) : null);
-  const ok = min !== null && max !== null && max >= min && max > 0 && due;
-  return (
-    <Card title="Feedback from colleagues">
-      {error && (
-        <InlineAlert tone="danger" title="That didn't work">
-          {error}
-        </InlineAlert>
-      )}
-      <Text as="p" tone="secondary">{value ? `On: ${value.minNominees} to ${value.maxNominees} people, by ${dateText(value.dueOn)}.` : 'Off. Turn it on to let people nominate colleagues for anonymous feedback.'}</Text>
-      <div className="yx-lif-grid">
-        <FormField id="ps-min" label="Least people">
-          <NumberField value={min} onChange={setMin} min={0} max={20} />
-        </FormField>
-        <FormField id="ps-max" label="Most people" error={min !== null && max !== null && max < min ? 'At least the least number.' : undefined}>
-          <NumberField value={max} onChange={setMax} min={1} max={20} />
-        </FormField>
-        <FormField id="ps-due" label="Answers by">
-          <DatePicker value={due} onChange={setDue} min={new Date()} aria-label="Feedback answers by" />
-        </FormField>
-      </div>
-      <div className="yx-lif-row">
-        <Button variant="primary" disabled={!ok} loading={busy === 'on'} onClick={() => void run('on', () => onSave({ minNominees: min!, maxNominees: max!, dueOn: dayKey(due!) }))}>
-          {value ? 'Save' : 'Turn on'}
-        </Button>
-        {value && (
-          <Button loading={busy === 'off'} onClick={() => void run('off', () => onSave(null))}>
-            Turn off
-          </Button>
-        )}
-      </div>
-    </Card>
   );
 }

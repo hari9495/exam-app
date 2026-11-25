@@ -8,6 +8,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { createFakeBlobStorage, FAKE_BLOB_CONTAINER_URL } from './fixtures/fake-blob-storage';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Question code-snippet and image content HTTP flow', () => {
   let adminApp: INestApplication;
@@ -89,7 +90,7 @@ describe('Question code-snippet and image content HTTP flow', () => {
     expect(storedImage.contentType).toBe('image/png');
 
     const snippetCode = 'function add(a, b) {\n  return a + b;\n}';
-    const questionResponse = await request(adminHttp)
+    const questionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
@@ -105,7 +106,7 @@ describe('Question code-snippet and image content HTTP flow', () => {
           { text: '6', isCorrect: false },
         ],
       })
-      .expect(201);
+      .expect(201));
     const questionId = questionResponse.body.id;
     const correctOptionId = questionResponse.body.options.find((o: { text: string }) => o.text === '5').id;
     expect(questionResponse.body.snippetCode).toBe(snippetCode);

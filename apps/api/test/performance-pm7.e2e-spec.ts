@@ -184,6 +184,51 @@ describe('Performance batch PM7', () => {
     await api('priya', 'put', `/comp-proposals/${arjun.id}`).send({ meritPct: 20, version: arjun.version }).expect(400);
     const p = (await api('priya', 'put', `/comp-proposals/${arjun.id}`).send({ meritPct: 20, justification: 'Took over the Madurai territory', version: arjun.version }).expect(200)).body;
     expect(p).toMatchObject({ outOfRange: true, meritAmount: 170_000, newCtc: 1_020_000 });
+    // PRF-10: the sheet shows the grade, department and score; a manager is never told who is below the pay median.
+    const again = (await api('priya', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as { proposals: { department: string; score: number | null; belowPeers: boolean }[]; can: { decide: boolean } };
+    expect(again.proposals.every((x) => x.belowPeers === false)).toBe(true);
+    expect(again.proposals[0]!.department).toBeTruthy();
+    expect(again.can.decide).toBe(false);
+    const hrSheet = (await api('hr', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as { proposals: { belowPeers: boolean; score: number | null }[] };
+    expect(hrSheet.proposals.every((x) => typeof x.belowPeers === 'boolean')).toBe(true);
+    expect(hrSheet.proposals.some((x) => typeof x.score === 'number')).toBe(true);
+  });
+
+  // Founder answer 12: market data is a salary-survey CSV per grade, checked row by row, versioned, audited, pay-scoped.
+  it('PRF-10 market data: HR uploads a survey (bad rows listed, nothing saved); the sheet shows the range and stale data', async () => {
+    const q = `/comp-market?legalEntityId=${ids.entity}`;
+    await api('fin', 'get', q).expect(403);
+    await api('priya', 'get', q).expect(403);
+    await api('adminB', 'get', q).expect((r) => expect([403, 404]).toContain(r.status));
+    expect((await api('hr', 'get', q).expect(200)).body).toMatchObject({ latest: null, versions: [], staleMonths: 12 });
+    const up = (body: object) => api('hr', 'post', '/comp-market').send({ legalEntityId: ids.entity, source: 'Aon salary survey 2026', asOf: shift(today, -30), fileName: 'aon.csv', ...body });
+    const bad = (await up({ csv: 'grade,min,median,max,currency\nG1,700000,800000,950000,INR\nG9,1,2,3,INR\nG1,900,800,700,INR\n' }).expect(400)).body as { message: string; errors: { row: number; message: string }[] };
+    expect(bad.message).toBe('2 rows need fixing. Nothing was saved.');
+    expect(bad.errors.map((e) => e.row)).toEqual([3, 4]);
+    expect((await api('hr', 'get', q).expect(200)).body.latest).toBeNull();
+    await up({ csv: 'grade,min,median,max,currency\nG1,700000,800000,950000,INR\n', asOf: shift(today, 3) }).expect(400);
+    await up({ csv: 'grade,min,median,max,currency\nG1,700000,800000,950000,INR\n', source: '' }).expect(400);
+    await api('fin', 'post', '/comp-market').send({ legalEntityId: ids.entity, source: 'x survey', asOf: today, csv: 'grade,min,median,max,currency\nG1,1,2,3,INR' }).expect(403);
+    expect((await up({ csv: 'grade,min,median,max,currency\ng1,"7,00,000",800000,950000,inr\n' }).expect(201)).body).toEqual({ version: 1, rows: 1 });
+    const m = (await api('hr', 'get', q).expect(200)).body;
+    expect(m.latest).toMatchObject({ version: 1, currency: 'INR', stale: false, rows: [{ grade: 'G1', min: 700000, median: 800000, max: 950000 }] });
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.comp.market_uploaded' } }))).toBe(1);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'perf.comp.market_viewed' } }))).toBeGreaterThan(0);
+    // The manager's sheet shows each person's grade range; nothing outside the pay scope reads the rows.
+    type S = { benchmark: { version: number; stale: boolean } | null; proposals: { market: { median: number } | null }[] };
+    let s = (await api('priya', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as S;
+    expect(s.benchmark).toMatchObject({ version: 1, stale: false });
+    expect(s.proposals.every((p) => p.market?.median === 800000)).toBe(true);
+    expect(await inA((tx) => tx.compMarketRate.count())).toBe(0);
+    await expect(inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return tx.$executeRaw`UPDATE comp_market_rates SET median_amount = 1`;
+    })).rejects.toThrow(/permission denied/);
+    // An older survey becomes version 2 and is stale after the company's 12 months.
+    expect((await up({ csv: 'grade,min,median,max,currency\nG1,600000,700000,800000,INR\n', asOf: shift(today, -400) }).expect(201)).body.version).toBe(2);
+    s = (await api('priya', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as S;
+    expect(s.benchmark).toMatchObject({ version: 2, stale: true });
+    expect((await api('hr', 'get', q).expect(200)).body.versions.map((v: { version: number }) => v.version)).toEqual([2, 1]);
   });
 
   it('over budget blocks with "block" and adds a finance step with "extra_approval"; the chain approves (PM-7.03, 7.05)', async () => {
@@ -197,7 +242,27 @@ describe('Performance batch PM7', () => {
     });
     const steps = (await inA((tx) => tx.wfRequest.findFirstOrThrow({ where: { id: wf } }))).steps as { name: string }[];
     expect(steps.map((x) => x.name)).toEqual(['Your manager', 'HR', 'Finance', 'Finance (exceptions)']);
-    await decideAll(wf);
+    // PRF-10: approvers decide from the sheet; only whoever holds an open task of the cycle; sending back needs a note.
+    const decide = (who: Who, body: object) => api(who, 'post', `/comp-cycles/${ids.comp}/decide`).send(body);
+    await decide('arjun', { decision: 'approve' }).expect(403);
+    await decide('priya', { decision: 'approve' }).expect(403);
+    await decide('fin', { decision: 'approve' }).expect(403);
+    await decide('head', { decision: 'maybe' }).expect(400);
+    await decide('head', { decision: 'send_back' }).expect(400);
+    await decide('adminB', { decision: 'approve' }).expect((r) => expect([403, 404]).toContain(r.status));
+    expect((await decide('head', { decision: 'send_back', reason: 'Lower Arjun to the range or add the promotion.' }).expect(200)).body.decided).toBe(1);
+    const back = (await api('priya', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as Sheet;
+    expect(back.proposals.every((x) => x.status === 'draft')).toBe(true);
+    await api('priya', 'post', `/comp-cycles/${ids.comp}/submit`).expect(200);
+    const wf2 = await inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+      return (await tx.compProposal.findFirstOrThrow({ where: { compCycleId: ids.comp } })).wfRequestId!;
+    });
+    expect(wf2).not.toBe(wf);
+    expect((await decide('head', { decision: 'approve' }).expect(200)).body.decided).toBe(1);
+    expect(((await api('hr', 'get', `/comp-cycles/${ids.comp}/sheet`).expect(200)).body as { can: { decide: boolean } }).can.decide).toBe(true);
+    await decide('hr', { decision: 'approve' }).expect(200);
+    await decideAll(wf2);
     expect((await api('hr', 'get', '/comp-cycles').expect(200)).body.find((x: { id: string }) => x.id === ids.comp).status).toBe('approved');
   });
 
@@ -256,8 +321,9 @@ describe('Performance batch PM7', () => {
 
   it('my pay band shows only my own range and where I sit (PAY-39)', async () => {
     const b = (await api('sita', 'get', '/me/pay-band').expect(200)).body;
-    expect(b).toMatchObject({ visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, position: 'within' });
-    expect(JSON.stringify(b)).not.toContain('850000');
+    // PAY-39: her own CTC comes back for the marker; no one else's pay is in it.
+    expect(b).toMatchObject({ visible: true, currency: 'INR', range: { min: 600_000, mid: 800_000, max: 1_000_000 }, ctc: pay.sita, position: 'within' });
+    expect(JSON.stringify(b)).not.toContain(String(pay.arjun));
   });
 
   it('pay equity: before and after, small groups suppressed (YX-PERF-18)', async () => {

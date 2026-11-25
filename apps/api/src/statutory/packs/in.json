@@ -88,6 +88,77 @@
       ]
     },
     {
+      "statute": "IN.PF",
+      "jurisdiction": "IN",
+      "version": "2026-v2",
+      "validFrom": "2026-09-17",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "PF wage ceiling raised from 15,000 to 25,000 a month, notified 17 Sep 2026 (S.O. 5109(E), Code on Social Security 2020); EPS employer maximum 2,083 a month (PIB PRID 2310973, 2313829). The EDLI and admin-charge ceilings were not found and stay as before (TODO: CA checklist item 46 confirms them). Rates as the 2025 version.",
+      "values": {
+        "kind": "pf",
+        "wageCeiling": "25000",
+        "employeeRate": "0.12",
+        "employerRate": "0.12",
+        "epsRate": "0.0833",
+        "epsCeiling": "25000",
+        "epsStopAge": 58,
+        "edliRate": "0.005",
+        "edliCeiling": "15000",
+        "adminRate": "0.005",
+        "adminMinimum": "500",
+        "rounding": "nearest"
+      },
+      "golden": [
+        {
+          "name": "From 17 Sep 2026: basic 20,000 is below the 25,000 ceiling: employee 2,400, EPS 1,666, EPF 734",
+          "fn": "pf",
+          "input": {
+            "pfWage": "20000",
+            "onActualWage": false,
+            "age": 30
+          },
+          "expected": {
+            "employee": "2400",
+            "eps": "1666",
+            "epf": "734",
+            "edli": "75"
+          }
+        },
+        {
+          "name": "From 17 Sep 2026: basic 30,000 on the 25,000 ceiling: employee 3,000, EPS 2,083, EPF 917",
+          "fn": "pf",
+          "input": {
+            "pfWage": "30000",
+            "onActualWage": false,
+            "age": 30
+          },
+          "expected": {
+            "employee": "3000",
+            "eps": "2083",
+            "epf": "917",
+            "edli": "75"
+          }
+        },
+        {
+          "name": "Age 58: no EPS, the whole employer share goes to EPF",
+          "fn": "pf",
+          "input": {
+            "pfWage": "25000",
+            "onActualWage": false,
+            "age": 58
+          },
+          "expected": {
+            "employee": "3000",
+            "eps": "0",
+            "epf": "3000",
+            "edli": "75"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.ESI",
       "jurisdiction": "IN",
       "version": "2019-v1",
@@ -327,6 +398,103 @@
     },
     {
       "statute": "IN.PT",
+      "jurisdiction": "IN-TN",
+      "version": "2026-v2",
+      "validFrom": "2026-10-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Greater Chennai Corporation, professional tax press release R.D. PT C.No/3555/2026 dated 04.08.2026 (TN Urban Local Bodies Rules 2023 r.277(2)-(3)): deducted from the August and January pay bills; slabs unchanged (rates II/2024-25). Other Tamil Nadu local bodies are not modelled. In force from the half-year starting 1 Oct 2026 (the April-September 2026 half-year was already deducted in September).",
+      "values": {
+        "kind": "pt",
+        "basis": "half_yearly",
+        "deductMonths": [
+          8,
+          1
+        ],
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "21000",
+            "amount": "0"
+          },
+          {
+            "from": "21000.01",
+            "to": "30000",
+            "amount": "180"
+          },
+          {
+            "from": "30000.01",
+            "to": "45000",
+            "amount": "425"
+          },
+          {
+            "from": "45000.01",
+            "to": "60000",
+            "amount": "930"
+          },
+          {
+            "from": "60000.01",
+            "to": "75000",
+            "amount": "1025"
+          },
+          {
+            "from": "75000.01",
+            "to": null,
+            "amount": "1250"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "Half-year income 1,80,000 in January: 1,250",
+          "fn": "pt",
+          "input": {
+            "ptWage": "180000",
+            "month": 1
+          },
+          "expected": {
+            "amount": "1250"
+          }
+        },
+        {
+          "name": "Half-year income 40,000 in August: 425",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000",
+            "month": 8
+          },
+          "expected": {
+            "amount": "425"
+          }
+        },
+        {
+          "name": "September and March are no longer deduction months",
+          "fn": "pt",
+          "input": {
+            "ptWage": "180000",
+            "month": 9
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "March: nothing",
+          "fn": "pt",
+          "input": {
+            "ptWage": "180000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ],
+      "validTo": null
+    },
+    {
+      "statute": "IN.PT",
       "jurisdiction": "IN-MH",
       "version": "2023-v1",
       "validFrom": "2023-04-01",
@@ -499,6 +667,1103 @@
       ]
     },
     {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-HR",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Haryana levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Haryana: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-UP",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Uttar Pradesh levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Uttar Pradesh: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-RJ",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Rajasthan levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Rajasthan: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-UK",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Uttarakhand levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Uttarakhand: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-HP",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Himachal Pradesh levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Himachal Pradesh: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-AR",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Arunachal Pradesh levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Arunachal Pradesh: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-JK",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Jammu and Kashmir levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Jammu and Kashmir: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-CH",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Chandigarh levies no professional tax on salaries, per secondary sources only (https://www.tankhapay.com/blog/state-wise-professional-tax-slabs/ ; https://hrone.cloud/blog/professional-tax-slab-rates-2026-27/). TODO: CA checklist item 23 confirms the no-PT list.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Chandigarh: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-AP",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Andhra Pradesh Tax on Professions, Trades, Callings and Employments Act, 1987, First Schedule entry 1 (official): https://apct.gov.in/apportal/AllActs/APPT/APPTSchedule.aspx . Monthly: up to 15,000 nil; 15,001 to 20,000 = 150; above 20,000 = 200. Read 17 Nov 2026; verify until the CA confirms (checklist items 3 and 24).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "15000",
+            "amount": "0"
+          },
+          {
+            "from": "15000.01",
+            "to": "20000",
+            "amount": "150"
+          },
+          {
+            "from": "20000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "15,000: nil (the slab edge)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "15,000.01: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "20,000: 150 (the slab edge)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "20,000.01: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "200"
+          }
+        },
+        {
+          "name": "February is not special: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "90000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-GJ",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Gujarat State Tax on Professions, Traders, Callings and Employments Act, 1976, rate of profession tax (official): https://commercialtax.gujarat.gov.in/vatwebsite/download/schedule/Rate_of_Profession_Tax.pdf . Monthly: up to 12,000 nil; above 12,000 = 200. Read 17 Nov 2026; verify until the CA confirms (checklist items 7 and 24).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "12000",
+            "amount": "0"
+          },
+          {
+            "from": "12000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "12,000: nil (the slab edge)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "12000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "12,000.01: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "12000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "200"
+          }
+        },
+        {
+          "name": "February is not special: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "90000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-WB",
+      "version": "2014-v1",
+      "validFrom": "2014-04-01",
+      "validTo": "2026-09-30",
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "West Bengal State Tax on Professions, Trades, Callings and Employments Act, 1979, schedule w.e.f. 1 Apr 2014 (official): https://comtax.wb.gov.in/Ptax-Schedule-New_(w.e.f._1-4-2014).pdf . Monthly: up to 10,000 nil; 10,001-15,000 = 110; 15,001-25,000 = 130; 25,001-40,000 = 150; above 40,000 = 200. In force to 30 Sep 2026 (replaced from 1 Oct 2026). Verify until the CA confirms (checklist items 6 and 24).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "10000",
+            "amount": "0"
+          },
+          {
+            "from": "10000.01",
+            "to": "15000",
+            "amount": "110"
+          },
+          {
+            "from": "15000.01",
+            "to": "25000",
+            "amount": "130"
+          },
+          {
+            "from": "25000.01",
+            "to": "40000",
+            "amount": "150"
+          },
+          {
+            "from": "40000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "10,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "10000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "10,000.01: 110",
+          "fn": "pt",
+          "input": {
+            "ptWage": "10000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "110"
+          }
+        },
+        {
+          "name": "15,000: 110",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "110"
+          }
+        },
+        {
+          "name": "15,000.01: 130",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "130"
+          }
+        },
+        {
+          "name": "25,000: 130",
+          "fn": "pt",
+          "input": {
+            "ptWage": "25000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "130"
+          }
+        },
+        {
+          "name": "25,000.01: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "25000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "40,000: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "40,000.01: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-WB",
+      "version": "2026-v2",
+      "validFrom": "2026-10-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "West Bengal PT schedule from 1 Oct 2026 (Act amended by notification 756-L of 07.08.2026; draft schedule 1407-F.T. of 18.08.2026; final number disputed, maybe 1607-F.T. of 16.09.2026). Secondary only: https://www.sgcms.com/regulatory-updates/west-bengal-overhauls-professional-tax-new-schedule-notified/ . Up to 20,000 nil; to 30,000 = 100; to 50,000 = 140; to 1,00,000 = 170; above = 208. TODO: CA checklist item 6.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "20000",
+            "amount": "0"
+          },
+          {
+            "from": "20000.01",
+            "to": "30000",
+            "amount": "100"
+          },
+          {
+            "from": "30000.01",
+            "to": "50000",
+            "amount": "140"
+          },
+          {
+            "from": "50000.01",
+            "to": "100000",
+            "amount": "170"
+          },
+          {
+            "from": "100000.01",
+            "to": null,
+            "amount": "208"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "20,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "20,000.01: 100",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "100"
+          }
+        },
+        {
+          "name": "30,000: 100",
+          "fn": "pt",
+          "input": {
+            "ptWage": "30000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "100"
+          }
+        },
+        {
+          "name": "30,000.01: 140",
+          "fn": "pt",
+          "input": {
+            "ptWage": "30000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "140"
+          }
+        },
+        {
+          "name": "50,000: 140",
+          "fn": "pt",
+          "input": {
+            "ptWage": "50000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "140"
+          }
+        },
+        {
+          "name": "50,000.01: 170",
+          "fn": "pt",
+          "input": {
+            "ptWage": "50000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "170"
+          }
+        },
+        {
+          "name": "1,00,000: 170",
+          "fn": "pt",
+          "input": {
+            "ptWage": "100000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "170"
+          }
+        },
+        {
+          "name": "1,00,000.01: 208",
+          "fn": "pt",
+          "input": {
+            "ptWage": "100000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "208"
+          }
+        },
+        {
+          "name": "February is not special: 208",
+          "fn": "pt",
+          "input": {
+            "ptWage": "500000",
+            "month": 2
+          },
+          "expected": {
+            "amount": "208"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "jurisdiction": "IN-OD",
+      "version": "2026-v1",
+      "validFrom": "2026-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Odisha repealed its professional tax from 1 Apr 2026 (Odisha Ordinance 02 of 2026, promulgated 21 Apr 2026); dues to March 2026 stay payable (that schedule is not loaded, question 2381). Secondary only: https://www.scconline.com/blog/post/2026/04/23/odisha-repeals-levy-of-professional-tax-effective-from-1-april-2026/ . TODO: CA checklist item 20 (was the ordinance replaced by an Act).",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "0",
+        "slabs": []
+      },
+      "golden": [
+        {
+          "name": "Odisha from April 2026: no professional tax",
+          "fn": "pt",
+          "input": {
+            "ptWage": "200000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "jurisdiction": "IN-MP",
+      "source": "Madhya Pradesh professional tax, a yearly amount on the year's salary, deducted monthly (2,500 = 208 x 11 + 212; 2,000 = 166 x 11 + 174). Nil band to 2,25,000 official (MPCTD rates checklist, https://mptax.mp.gov.in/mpvatweb/download/home/MPCTD_Registration_Checklist&_Rates.pdf); upper bands secondary only (https://hrms.verdeshell.com/guides/professional-tax-slabs-by-state). TODO: CA checklist item 8.",
+      "values": {
+        "kind": "pt",
+        "basis": "annual",
+        "lastMonth": 3,
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "225000",
+            "amount": "0"
+          },
+          {
+            "from": "225000.01",
+            "to": "300000",
+            "amount": "1500"
+          },
+          {
+            "from": "300000.01",
+            "to": "400000",
+            "amount": "2000"
+          },
+          {
+            "from": "400000.01",
+            "to": null,
+            "amount": "2500"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "Year 2,25,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "225000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "Year 2,25,000.01: 1,500 a year, 125 a month",
+          "fn": "pt",
+          "input": {
+            "ptWage": "225000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "125"
+          }
+        },
+        {
+          "name": "1,500 a year: March is 125 too",
+          "fn": "pt",
+          "input": {
+            "ptWage": "300000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "125"
+          }
+        },
+        {
+          "name": "Year 3,00,000.01: 2,000 a year, 166 a month",
+          "fn": "pt",
+          "input": {
+            "ptWage": "300000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "166"
+          }
+        },
+        {
+          "name": "2,000 a year: March takes the rest, 174",
+          "fn": "pt",
+          "input": {
+            "ptWage": "400000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "174"
+          }
+        },
+        {
+          "name": "Year 4,00,000.01: 2,500 a year, 208 a month",
+          "fn": "pt",
+          "input": {
+            "ptWage": "400000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "208"
+          }
+        },
+        {
+          "name": "2,500 a year: March takes the rest, 212",
+          "fn": "pt",
+          "input": {
+            "ptWage": "600000",
+            "month": 3
+          },
+          "expected": {
+            "amount": "212"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "jurisdiction": "IN-AS",
+      "source": "Assam professional tax from 1 Apr 2025 (eCF No. 169350/124): up to 15,000 nil; 15,001-24,999 = 180; 25,000 and above = 208 (exactly 25,000 = 208, founder answer 2383). Secondary only: https://ascent-hr.com/notification/revised-professional-tax-slabs-for-the-salaried-class/ . Due date not found. TODO: CA checklist item 9.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "15000",
+            "amount": "0"
+          },
+          {
+            "from": "15000.01",
+            "to": "24999.99",
+            "amount": "180"
+          },
+          {
+            "from": "25000",
+            "to": null,
+            "amount": "208"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "15,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "15,000.01: 180",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "180"
+          }
+        },
+        {
+          "name": "24,999.99: 180",
+          "fn": "pt",
+          "input": {
+            "ptWage": "24999.99",
+            "month": 4
+          },
+          "expected": {
+            "amount": "180"
+          }
+        },
+        {
+          "name": "Exactly 25,000: 208 (answer 2383)",
+          "fn": "pt",
+          "input": {
+            "ptWage": "25000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "208"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "version": "2025-v1",
+      "validFrom": "2024-07-11",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "jurisdiction": "IN-MZ",
+      "source": "Mizoram professional tax, schedule of 11 Jul 2024: up to 5,000 nil; to 8,000 = 75; to 10,000 = 120; to 12,000 = 150; to 15,000 = 180; to 20,000 = 195; above = 208. Secondary only, two sources agree (https://hrms.verdeshell.com/guides/professional-tax-slabs-by-state). Due date not found. TODO: CA checklist item 13.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "5000",
+            "amount": "0"
+          },
+          {
+            "from": "5000.01",
+            "to": "8000",
+            "amount": "75"
+          },
+          {
+            "from": "8000.01",
+            "to": "10000",
+            "amount": "120"
+          },
+          {
+            "from": "10000.01",
+            "to": "12000",
+            "amount": "150"
+          },
+          {
+            "from": "12000.01",
+            "to": "15000",
+            "amount": "180"
+          },
+          {
+            "from": "15000.01",
+            "to": "20000",
+            "amount": "195"
+          },
+          {
+            "from": "20000.01",
+            "to": null,
+            "amount": "208"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "5,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "5000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "5,000.01: 75",
+          "fn": "pt",
+          "input": {
+            "ptWage": "5000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "75"
+          }
+        },
+        {
+          "name": "8,000.01: 120",
+          "fn": "pt",
+          "input": {
+            "ptWage": "8000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "120"
+          }
+        },
+        {
+          "name": "12,000: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "12000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "15,000.01: 195",
+          "fn": "pt",
+          "input": {
+            "ptWage": "15000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "195"
+          }
+        },
+        {
+          "name": "20,000: 195",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "195"
+          }
+        },
+        {
+          "name": "20,000.01: 208",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "208"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.PT",
+      "version": "2025-v1",
+      "validFrom": "2025-04-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "jurisdiction": "IN-SK",
+      "source": "Sikkim professional tax: up to 20,000 nil; 20,001-30,000 = 125; 30,001-40,000 = 150; above 40,000 = 200 a month. Secondary only (https://hrms.verdeshell.com/guides/professional-tax-slabs-by-state); a second source could not confirm. Due date not found. TODO: CA checklist item 16.",
+      "values": {
+        "kind": "pt",
+        "basis": "monthly",
+        "annualCap": "2500",
+        "slabs": [
+          {
+            "from": "0",
+            "to": "20000",
+            "amount": "0"
+          },
+          {
+            "from": "20000.01",
+            "to": "30000",
+            "amount": "125"
+          },
+          {
+            "from": "30000.01",
+            "to": "40000",
+            "amount": "150"
+          },
+          {
+            "from": "40000.01",
+            "to": null,
+            "amount": "200"
+          }
+        ]
+      },
+      "golden": [
+        {
+          "name": "20,000: nil",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "0"
+          }
+        },
+        {
+          "name": "20,000.01: 125",
+          "fn": "pt",
+          "input": {
+            "ptWage": "20000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "125"
+          }
+        },
+        {
+          "name": "30,000.01: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "30000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "40,000: 150",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000",
+            "month": 4
+          },
+          "expected": {
+            "amount": "150"
+          }
+        },
+        {
+          "name": "40,000.01: 200",
+          "fn": "pt",
+          "input": {
+            "ptWage": "40000.01",
+            "month": 4
+          },
+          "expected": {
+            "amount": "200"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.LWF",
       "jurisdiction": "IN-KA",
       "version": "2024-v1",
@@ -662,6 +1927,250 @@
       ]
     },
     {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-AP",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Andhra Pradesh Labour Welfare Fund: 30 employee and 70 employer a year, with December pay. Secondary only (https://hrengage.ai/compliance/lwf ; https://www.incorpx.io/blog/labour-welfare-fund-state-wise-rates-due-dates); one outlier lists 10/30. TODO: CA checklist item 29.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          12
+        ],
+        "employee": "30",
+        "employer": "70"
+      },
+      "golden": [
+        {
+          "name": "December: 30 and 70",
+          "fn": "lwf",
+          "input": {
+            "month": 12
+          },
+          "expected": {
+            "employee": "30",
+            "employer": "70"
+          }
+        },
+        {
+          "name": "November: nothing",
+          "fn": "lwf",
+          "input": {
+            "month": 11
+          },
+          "expected": {
+            "employee": "0",
+            "employer": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-GJ",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Gujarat Labour Welfare Fund: 6 employee and 12 employer a half-year, with June and December pay. Secondary only (https://digiliance.in/labour-welfare-fund ; https://hrengage.ai/compliance/lwf). A wage ceiling (15,000) is claimed by one source and not applied. TODO: CA checklist item 31.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          6,
+          12
+        ],
+        "employee": "6",
+        "employer": "12"
+      },
+      "golden": [
+        {
+          "name": "June: 6 and 12",
+          "fn": "lwf",
+          "input": {
+            "month": 6
+          },
+          "expected": {
+            "employee": "6",
+            "employer": "12"
+          }
+        },
+        {
+          "name": "July: nothing",
+          "fn": "lwf",
+          "input": {
+            "month": 7
+          },
+          "expected": {
+            "employee": "0",
+            "employer": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-PB",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Punjab Labour Welfare Fund Act 1965 s.9A: 5 employee and 20 employer a month, remitted half-yearly. Secondary only (https://digiliance.in/labour-welfare-fund ; https://hrengage.ai/compliance/lwf). TODO: CA checklist item 33.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "employee": "5",
+        "employer": "20"
+      },
+      "golden": [
+        {
+          "name": "Any month: 5 and 20",
+          "fn": "lwf",
+          "input": {
+            "month": 4
+          },
+          "expected": {
+            "employee": "5",
+            "employer": "20"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-CH",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Chandigarh: Punjab Labour Welfare Fund Act 1965 s.9A(2) as extended; 5 employee and 20 employer a month, remitted half-yearly. Secondary only (https://taxguru.in/corporate-law/labour-welfare-fund-2026-payroll-months-amounts-change-state.html). TODO: CA checklist item 34.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "employee": "5",
+        "employer": "20"
+      },
+      "golden": [
+        {
+          "name": "Any month: 5 and 20",
+          "fn": "lwf",
+          "input": {
+            "month": 11
+          },
+          "expected": {
+            "employee": "5",
+            "employer": "20"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-WB",
+      "version": "2024-v1",
+      "validFrom": "2024-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "West Bengal Labour Welfare Fund Act 1974 s.9(3), Notification Labr/576641/2024 in force 1 Jan 2024: 3 employee and 30 employer a half-year, for those on the register on 30 June and 31 December. Secondary only (https://taxguru.in/corporate-law/labour-welfare-fund-2026-payroll-months-amounts-change-state.html). TODO: CA checklist item 35.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          6,
+          12
+        ],
+        "employee": "3",
+        "employer": "30"
+      },
+      "golden": [
+        {
+          "name": "December: 3 and 30",
+          "fn": "lwf",
+          "input": {
+            "month": 12
+          },
+          "expected": {
+            "employee": "3",
+            "employer": "30"
+          }
+        },
+        {
+          "name": "March: nothing",
+          "fn": "lwf",
+          "input": {
+            "month": 3
+          },
+          "expected": {
+            "employee": "0",
+            "employer": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.LWF",
+      "jurisdiction": "IN-OD",
+      "version": "2025-v1",
+      "validFrom": "2025-01-01",
+      "validTo": null,
+      "lawVersion": "OLD-ACT",
+      "verify": true,
+      "source": "Odisha Labour Welfare Fund Rules 2015 r.6: 20 employee and 40 employer a year, paid half-yearly for 30 June and 31 December. The per half-year split (10 and 20) is assumed, not stated. Secondary only (https://taxguru.in/corporate-law/labour-welfare-fund-2026-payroll-months-amounts-change-state.html). TODO: CA checklist item 36.",
+      "values": {
+        "kind": "lwf",
+        "months": [
+          6,
+          12
+        ],
+        "employee": "10",
+        "employer": "20"
+      },
+      "golden": [
+        {
+          "name": "June: 10 and 20 (half of the year, assumed)",
+          "fn": "lwf",
+          "input": {
+            "month": 6
+          },
+          "expected": {
+            "employee": "10",
+            "employer": "20"
+          }
+        }
+      ]
+    },
+    {
       "statute": "IN.MW",
       "jurisdiction": "IN",
       "version": "2019-v1",
@@ -798,6 +2307,77 @@
           "expected": {
             "eligible": false,
             "monthly": "0"
+          }
+        }
+      ]
+    },
+    {
+      "statute": "IN.BONUS",
+      "jurisdiction": "IN",
+      "version": "2025-v2",
+      "validFrom": "2025-11-21",
+      "validTo": null,
+      "lawVersion": "CODE",
+      "verify": true,
+      "source": "Code on Wages 2019 s.26 (in force 21 Nov 2025): eligible up to 21,000 a month (S.O. 4711(E)); calculated on 7,000 or the minimum wage if higher (S.O. 4710(E)), both of 25 Aug 2026, deemed from 21 Nov 2025: https://egazette.gov.in/WriteReadData/2026/275747.pdf . 8.33% (at least 100 a year, in the company bonus rules) to 20%. TODO: CA checklist items 42-44 (the exact s.26(2) formula and which minimum wage).",
+      "values": {
+        "kind": "bonus",
+        "eligibilityWage": "21000",
+        "calculationCeiling": "7000",
+        "minRate": "0.0833",
+        "maxRate": "0.2"
+      },
+      "golden": [
+        {
+          "name": "Wage 21,000 (the edge) at 8.33%: on 7,000 = 583.10",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "21000",
+            "rate": "0.0833",
+            "minWageMonthly": "4628"
+          },
+          "expected": {
+            "eligible": true,
+            "monthly": "583.10"
+          }
+        },
+        {
+          "name": "Wage 21,000.01: not eligible",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "21000.01",
+            "rate": "0.0833",
+            "minWageMonthly": "4628"
+          },
+          "expected": {
+            "eligible": false,
+            "monthly": "0"
+          }
+        },
+        {
+          "name": "State minimum wage 16,137.03 above 7,000: on the minimum wage = 1,344.21",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "20000",
+            "rate": "0.0833",
+            "minWageMonthly": "16137.03"
+          },
+          "expected": {
+            "eligible": true,
+            "monthly": "1344.21"
+          }
+        },
+        {
+          "name": "Wage below both ceilings: on the wage itself (5,000 x 20% = 1,000)",
+          "fn": "bonus",
+          "input": {
+            "bonusWage": "5000",
+            "rate": "0.2",
+            "minWageMonthly": "4628"
+          },
+          "expected": {
+            "eligible": true,
+            "monthly": "1000"
           }
         }
       ]

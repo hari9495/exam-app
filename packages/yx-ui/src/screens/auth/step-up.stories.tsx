@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { StepUpDialog } from './mfa';
 import { AuthFrame, RecoveryCodes } from './kit';
 import { RECOVERY_CODES } from './data';
+import { NoAccessState, SalaryCheckContext } from '../../components/feedback';
 
 const meta: Meta = { title: 'Screens/Security/Confirm it’s you', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -37,3 +38,13 @@ export const Codes: S = {
   ),
 };
 export const CodesPhone: S = { ...Codes, name: 'Recovery codes · phone', globals: { viewport: { value: 'phone' } } };
+
+// Answer 2370: "Confirm it's you" was cancelled on a salary page; the page asks again instead of "no access".
+export const SalaryCancelled: S = {
+  name: 'Step-up · cancelled on a salary page',
+  render: () => (
+    <SalaryCheckContext.Provider value={{ cancelled: true, onRetry: () => {} }}>
+      <NoAccessState grantedBy="your Payroll Admin" what="pay runs" />
+    </SalaryCheckContext.Provider>
+  ),
+};

@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Organization, Prisma } from '@prisma/client';
+import { careersLayout, layoutProblem, type CareersLayout } from '../hiring/careers-rules';
 import { randomBytes, createHash } from 'crypto';
 import * as argon2 from 'argon2';
 import * as nodemailer from 'nodemailer';
@@ -9,6 +10,7 @@ import { AuditService } from '@exam-platform/shared';
 import { OrgSecretsCryptoService } from '@exam-platform/shared';
 import { BlobStorageService } from '@exam-platform/shared';
 import { AiProvider, AnthropicProvider, OpenAiCompatibleProvider, OpenAiCompatibleEmbeddingProvider } from '@exam-platform/shared';
+import { assertPublicHttpsHost, orgAiFetch } from '../common/ssrf';
 import { EmailService } from '../email/email.service';
 import { companyWelcomeEmail } from '../email/account-emails';
 import { ACCOUNT_SETUP_EXPIRY_HOURS, issuePasswordToken } from '../auth/password-tokens';
@@ -139,6 +141,8 @@ export interface CareersSettingsResponse {
   intro: string | null;
   bannerUrl: string | null;
   assistantEnabled: boolean;
+  /** T9-09 page builder layout (made from headline and intro until first saved). */
+  config: CareersLayout;
 }
 
 export interface WhatsappConfigResponse {
@@ -541,11 +545,12 @@ export class OrganizationsService {
       apiKeyPrefix: org?.apiKeyPrefix ?? null,
       apiKeyCreatedAt: org?.apiKeyCreatedAt ?? null,
       webhookConfigured: org?.webhookUrl !== null && org?.webhookUrl !== undefined,
-      webhookUrl: org?.webhookUrl ?? null,
+      // S-10: a webhook or HRIS URL often carries a token: only its host and last characters come back.
+      webhookUrl: maskUrl(org?.webhookUrl ?? null),
       hrisExportConfigured: Boolean(org?.hrisTargetUrl),
       hrisExportEnabled: org?.hrisExportEnabled ?? false,
       hrisProvider: org?.hrisProvider ?? 'generic',
-      hrisTargetUrl: org?.hrisTargetUrl ?? null,
+      hrisTargetUrl: maskUrl(org?.hrisTargetUrl ?? null),
     };
   }
 
@@ -592,6 +597,8 @@ export class OrganizationsService {
   async updateSmtpSettings(context: TenantContext, actorUserId: string, dto: UpdateSmtpSettingsDto): Promise<{ smtpConfigured: boolean }> {
     const organizationId = this.requireOrganizationId(context);
 
+    // S-10 security check: the SMTP host must resolve to public addresses (no probing of internal hosts).
+    await publicUrlOrBadRequest(`https://${dto.host}`, 'The SMTP host');
     const transporter = nodemailer.createTransport(
       buildSmtpTransportOptions({ host: dto.host, port: dto.port, user: dto.user, password: dto.password }),
     );
@@ -623,9 +630,11 @@ export class OrganizationsService {
   async updateAiKey(context: TenantContext, actorUserId: string, dto: UpdateAiKeyDto): Promise<{ aiKeyConfigured: boolean }> {
     const organizationId = this.requireOrganizationId(context);
 
+    // S-10 security check: a company-supplied base URL must be public https (it receives the company's data).
+    if (dto.provider === 'openai-compatible') await publicUrlOrBadRequest(dto.baseUrl as string, 'The AI base URL');
     const provider: AiProvider =
       dto.provider === 'openai-compatible'
-        ? new OpenAiCompatibleProvider(dto.apiKey, dto.baseUrl as string, dto.modelFast as string, dto.modelStandard as string)
+        ? new OpenAiCompatibleProvider(dto.apiKey, dto.baseUrl as string, dto.modelFast as string, dto.modelStandard as string, orgAiFetch)
         : new AnthropicProvider(dto.apiKey);
 
     try {
@@ -653,6 +662,17 @@ export class OrganizationsService {
     return { aiKeyConfigured: true };
   }
 
+  /** Answer 1903: forget the company's own AI key; YukthiX AI (the default provider) is used again. */
+  async clearAiKey(context: TenantContext, actorUserId: string): Promise<{ aiKeyConfigured: boolean }> {
+    const organizationId = this.requireOrganizationId(context);
+    await this.prisma.organization.update({
+      where: { id: organizationId },
+      data: { aiProvider: 'anthropic', aiApiKeyEncrypted: null, aiBaseUrl: null, aiModelFast: null, aiModelStandard: null },
+    });
+    await this.audit.record(context, { actorUserId, action: 'organization.ai_key_removed', entityType: 'organization', entityId: organizationId });
+    return { aiKeyConfigured: false };
+  }
+
   async updateEmbeddingConfig(
     context: TenantContext,
     actorUserId: string,
@@ -662,7 +682,8 @@ export class OrganizationsService {
 
     // Verify the config at save time (embeds a tiny string) so a bad endpoint/key/model surfaces here
     // rather than silently failing every future search.
-    const provider = new OpenAiCompatibleEmbeddingProvider(dto.apiKey, dto.baseUrl, dto.model);
+    await publicUrlOrBadRequest(dto.baseUrl, 'The embeddings base URL');
+    const provider = new OpenAiCompatibleEmbeddingProvider(dto.apiKey, dto.baseUrl, dto.model, orgAiFetch);
     try {
       const [vector] = await provider.embed(['connection test']);
       if (!vector?.length) throw new Error('the endpoint returned no vector');
@@ -840,7 +861,7 @@ export class OrganizationsService {
     return this.getEasyApplyConfig(context);
   }
 
-  async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string }> {
+  async updateWebhookUrl(context: TenantContext, actorUserId: string, dto: UpdateWebhookUrlDto): Promise<{ webhookUrl: string | null }> {
     const organizationId = this.requireOrganizationId(context);
     // Same save-time rule as every other org-supplied endpoint (integrations, HRIS): https only, and
     // no private/loopback IP literal. Signed event payloads carry candidate data, so plain http is
@@ -856,7 +877,7 @@ export class OrganizationsService {
       entityType: 'organization',
       entityId: organizationId,
     });
-    return { webhookUrl: dto.url };
+    return { webhookUrl: maskUrl(dto.url) };
   }
 
   async updateHrisConfig(
@@ -970,11 +991,11 @@ export class OrganizationsService {
     return { remindersEnabled: org.remindersEnabled };
   }
 
-  async getScheduledReportSettings(context: TenantContext): Promise<{ enabled: boolean; recipientUserIds: string[] }> {
+  async getScheduledReportSettings(context: TenantContext): Promise<{ enabled: boolean; recipientUserIds: string[]; lastSentAt: Date | null }> {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { scheduledReportEnabled: true, scheduledReportRecipientsJson: true },
+      select: { scheduledReportEnabled: true, scheduledReportRecipientsJson: true, scheduledReportLastSentAt: true },
     });
     let recipientUserIds: string[] = [];
     if (org?.scheduledReportRecipientsJson) {
@@ -985,7 +1006,8 @@ export class OrganizationsService {
         recipientUserIds = [];
       }
     }
-    return { enabled: org?.scheduledReportEnabled ?? false, recipientUserIds };
+    // Answer 2428 (ANL-08): when the digest last went out, for the Schedules list.
+    return { enabled: org?.scheduledReportEnabled ?? false, recipientUserIds, lastSentAt: org?.scheduledReportLastSentAt ?? null };
   }
 
   async updateScheduledReportSettings(
@@ -1055,7 +1077,7 @@ export class OrganizationsService {
     const organizationId = this.requireOrganizationId(context);
     const org = await this.prisma.organization.findUnique({
       where: { id: organizationId },
-      select: { careersEnabled: true, careersHeadline: true, careersIntro: true, careersBannerPath: true, careersAssistantEnabled: true },
+      select: { name: true, careersEnabled: true, careersHeadline: true, careersIntro: true, careersBannerPath: true, careersAssistantEnabled: true, careersConfig: true },
     });
     return {
       enabled: org?.careersEnabled ?? false,
@@ -1063,6 +1085,7 @@ export class OrganizationsService {
       intro: org?.careersIntro ?? null,
       bannerUrl: org?.careersBannerPath ? ((await this.blobStorage.signIfOurs(org.careersBannerPath)) as string | null) : null,
       assistantEnabled: org?.careersAssistantEnabled ?? false,
+      config: careersLayout(org?.careersConfig ?? null, { name: org?.name ?? '', careersHeadline: org?.careersHeadline ?? null, careersIntro: org?.careersIntro ?? null }),
     };
   }
 
@@ -1072,16 +1095,23 @@ export class OrganizationsService {
       const t = (s ?? '').trim();
       return t.length ? t : null;
     };
+    const problem = dto.config ? layoutProblem(dto.config.sections) : null;
+    if (problem) throw new BadRequestException(problem);
+    // The builder's hero is the page's headline and intro (the job feed, the assistant and older pages read those).
+    const hero = dto.config?.sections.find((x) => x.type === 'hero');
+    const headline = dto.headline !== undefined ? dto.headline : hero?.title;
+    const intro = dto.intro !== undefined ? dto.intro : hero?.text;
     await this.prisma.organization.update({
       where: { id: organizationId },
       data: {
         careersEnabled: dto.enabled,
-        ...(dto.headline !== undefined && { careersHeadline: norm(dto.headline) }),
-        ...(dto.intro !== undefined && { careersIntro: norm(dto.intro) }),
+        ...(headline !== undefined && { careersHeadline: norm(headline) }),
+        ...(intro !== undefined && { careersIntro: norm(intro) }),
         ...(dto.assistantEnabled !== undefined && { careersAssistantEnabled: dto.assistantEnabled }),
+        ...(dto.config && { careersConfig: { theme: dto.config.theme, accent: dto.config.accent ?? null, sections: dto.config.sections } as unknown as Prisma.InputJsonValue }),
       },
     });
-    await this.audit.record(context, { actorUserId, action: 'organization.careers_updated', entityType: 'organization', entityId: organizationId });
+    await this.audit.record(context, { actorUserId, action: 'organization.careers_updated', entityType: 'organization', entityId: organizationId, metadata: { enabled: dto.enabled, ...(dto.config && { theme: dto.config.theme, sections: dto.config.sections.map((x) => x.type) }) } });
     return this.getCareers(context);
   }
 
@@ -1262,5 +1292,31 @@ export class OrganizationsService {
       textColor: org.textColor,
       loginWatermarkEnabled: org.loginWatermarkEnabled,
     };
+  }
+}
+
+/** S-10: a URL shown back to the company: the origin and the last 4 characters of the rest. */
+export function maskUrl(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const rest = `${u.pathname}${u.search}`;
+    return rest.length > 1 ? `${u.origin}/…${rest.slice(-4)}` : u.origin;
+  } catch {
+    return '…';
+  }
+}
+
+async function publicUrlOrBadRequest(raw: string, what: string): Promise<void> {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new BadRequestException(`${what} is not a valid address.`);
+  }
+  try {
+    await assertPublicHttpsHost(url);
+  } catch {
+    throw new BadRequestException(`${what} must be a public address (https for a web address).`);
   }
 }

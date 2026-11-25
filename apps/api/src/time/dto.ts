@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, ValidateNested, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, ArrayUnique, ValidateNested, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsISO8601, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const DATE = { strict: true } as const;
@@ -48,6 +48,46 @@ export class ApplyLeaveDto extends LeavePlanDto {
   @IsOptional()
   @IsBoolean()
   certificate?: boolean;
+
+  /** Batch A C4 (answer 2313): up to 10 colleagues told on approval, with the dates only. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  notifyUserIds?: string[];
+}
+
+/** Batch A D12: days of approved leave to cancel, with a reason. */
+export class CancelDaysDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(366)
+  @ArrayUnique()
+  @IsDateString(DATE, { each: true })
+  days!: string[];
+
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** Batch A D12: extend leave to a new last day (a new request linked to it). */
+export class ExtendLeaveDto {
+  @IsDateString(DATE)
+  to!: string;
+
+  @IsOptional()
+  @IsIn(['full', 'first'])
+  toHalf?: 'full' | 'first';
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
 }
 
 export class ReasonDto {
@@ -74,12 +114,95 @@ export class AdjustDto {
   reason!: string;
 }
 
+/** Batch A D10 (answer 2314): one cell of the balance grid, from the balance HR saw to the corrected one, with a reason. */
+export class CorrectBalanceDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsUUID()
+  leaveTypeId!: string;
+
+  /** The balance HR saw: a different one now means someone changed it since (409). */
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-1000)
+  @Max(1000)
+  from!: number;
+
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(-1000)
+  @Max(1000)
+  to!: number;
+
+  @trim()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class RangeQueryDto {
   @IsDateString(DATE)
   from!: string;
 
   @IsDateString(DATE)
   to!: string;
+}
+
+const LEAVE_STATUSES = ['pending', 'approved', 'rejected', 'withdrawn', 'cancel_pending', 'cancelled', 'sent_back', 'resent'] as const;
+const csv = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.split(',').map((x) => x.trim()).filter(Boolean) : value);
+
+/** Batch A item 2 (C2): my full leave history, filtered, a page at a time. */
+export class LeaveHistoryQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  page?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(5)
+  @Max(100)
+  pageSize?: number;
+
+  @IsOptional()
+  @Transform(csv)
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  types?: string[];
+
+  @IsOptional()
+  @Transform(csv)
+  @IsArray()
+  @IsIn(LEAVE_STATUSES, { each: true })
+  statuses?: string[];
+
+  @IsOptional()
+  @IsDateString(DATE)
+  from?: string;
+
+  @IsOptional()
+  @IsDateString(DATE)
+  to?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+}
+
+/** Batch A item 9 (D11): a holiday or weekly off marked as a working day. */
+export class WorkingDayDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsString()
+  @MinLength(5, { message: 'Say why the day is worked (at least 5 characters).' })
+  @MaxLength(300)
+  reason!: string;
 }
 
 export class MonthQueryDto {
@@ -122,7 +245,23 @@ export class PunchDto {
   @Min(0)
   @Max(100000)
   accuracyM?: number;
+
+  /** ChoseWfh: outside the office, clock in as work from home today (a request goes to the manager). */
+  @IsOptional()
+  @IsBoolean()
+  wfh?: boolean;
+
+  /** WithNote: a short note kept with this punch (never changed afterwards). */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MinLength(1, { message: 'Write a note, or leave the note out.' })
+  @MaxLength(200, { message: 'Keep the note to 200 characters.' })
+  note?: string;
 }
+
+/** Answer 2477: attendance fixes and work from home need a real reason; the approver sees it ("Why"). */
+const REASON_10 = 'Please say why, in at least 10 characters, so your manager can check it.';
 
 export class WfhDto {
   @IsDateString(DATE)
@@ -130,9 +269,64 @@ export class WfhDto {
 
   @trim()
   @IsString()
+  @MinLength(10, { message: REASON_10 })
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** Batch A item 7 (B4): hourly permission, a from and to time on one working day with a reason (never uses leave). */
+export class PermissionDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  inMinute!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  outMinute!: number;
+
+  @trim()
+  @IsString()
   @MinLength(1)
   @MaxLength(500)
   reason!: string;
+}
+
+/** TIM-07 OnDuty: a day, or part of it, on duty away from the office (a place, from and to, a reason). */
+export class OnDutyDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  inMinute!: number;
+
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  outMinute!: number;
+
+  @trim()
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  place!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+
+  /** Sending again a request that was sent back for changes (it is closed as "sent again"). */
+  @IsOptional()
+  @IsUUID()
+  resendOf?: string;
 }
 
 export class RegulariseDto {
@@ -156,7 +350,7 @@ export class RegulariseDto {
 
   @trim()
   @IsString()
-  @MinLength(1)
+  @MinLength(10, { message: REASON_10 })
   @MaxLength(500)
   reason!: string;
 }
@@ -187,6 +381,11 @@ export class LeaveTypeDto {
   @IsOptional()
   @IsObject()
   rules?: Record<string, unknown>;
+
+  /** Answer 2477: a change to the rules or pay applies from this date (today or later; absent: today). */
+  @IsOptional()
+  @IsDateString(DATE)
+  validFrom?: string;
 
   @IsOptional()
   @IsBoolean()
@@ -249,6 +448,16 @@ export class CalendarDto {
   @Min(0)
   @Max(20)
   optionalLimit?: number;
+
+  /** TIM-26: a holiday on the location's weekly off gives nothing extra, the next working day off, or a comp-off day. */
+  @IsOptional()
+  @IsIn(['none', 'substitute', 'comp_off'])
+  onWeeklyOff?: 'none' | 'substitute' | 'comp_off';
+
+  /** TIM-26: optional holidays after a move to this office: split by months, or this office's full number. */
+  @IsOptional()
+  @IsIn(['share', 'reset'])
+  onMove?: 'share' | 'reset';
 }
 
 export class HolidayDto {
@@ -267,6 +476,34 @@ export class HolidayDto {
   @IsOptional()
   @IsBoolean()
   halfDay?: boolean;
+}
+
+export class HolidayDateDto {
+  @IsDateString(DATE)
+  on!: string;
+}
+
+export class CalendarTemplateDto {
+  @IsUUID()
+  locationId!: string;
+}
+
+export class PublishDraftDto {
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  year!: number;
+}
+
+export class PolicyOrderDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @IsUUID('all', { each: true })
+  policyIds!: string[];
+
+  @IsDateString(DATE)
+  validFrom!: string;
 }
 
 export class AttendanceRuleDto {
@@ -301,11 +538,35 @@ export class AttendanceRuleDto {
 
   @IsIn(['restricted', 'field'])
   checkIn!: 'restricted' | 'field';
+
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class YearEndDto {
   @IsDateString(DATE)
   yearEnd!: string;
+}
+
+/** TIM-29 posting: HR may post with leave requests still waiting (they stay pending into the new year). */
+export class YearEndRunDto extends YearEndDto {
+  @IsOptional()
+  @IsBoolean()
+  acknowledgePending?: boolean;
+}
+
+/** TIM-29 Transition: change the leave year of one legal entity (preview with GET, schedule with POST). */
+export class YearChangeDto {
+  @IsUUID()
+  legalEntityId!: string;
+
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  newStartMonth!: number;
 }
 
 // ------------------------------------------------------------------------------------------ batch 2: shifts and rosters
@@ -350,9 +611,46 @@ export class ShiftTimesDto {
   @Min(0)
   @Max(960)
   breakAboveMinutes!: number;
+
+  /** TIM-06 flexi: core hours (wall-clock minutes inside the shift) and overtime after hours worked (default the full day). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  coreStart?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  coreEnd?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(30)
+  @Max(960)
+  otAfterMinutes?: number | null;
+
+  /** TIM-06 split: the first part ends and the second starts (start = first part from, end = second part to). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  firstEnd?: number | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(1439)
+  secondStart?: number | null;
 }
 
 export class ShiftDto extends ShiftTimesDto {
+  /** TIM-06: fixed (default), flexi or split; never changes once saved. Flexi and split need the company setting on. */
+  @IsOptional()
+  @IsIn(['fixed', 'flexi', 'split'])
+  kind?: 'fixed' | 'flexi' | 'split';
+
   @trim()
   @Matches(/^[A-Z][A-Z0-9]{0,5}$/, { message: 'A shift code is 1 to 6 capital letters or digits, starting with a letter (M, A, N, GEN).' })
   code!: string;
@@ -368,6 +666,11 @@ export class ShiftDto extends ShiftTimesDto {
 
   @IsBoolean()
   night!: boolean;
+
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class ShiftDetailsDto {
@@ -385,6 +688,11 @@ export class ShiftDetailsDto {
 
   @IsBoolean()
   active!: boolean;
+
+  /** Answer 2477: people may clock in again after clocking out (off by default). */
+  @IsOptional()
+  @IsBoolean()
+  reclockIn?: boolean;
 }
 
 export class PatternDto {
@@ -439,6 +747,47 @@ export class RosterCellDto {
   /** A shift id, 'off', or 'pattern' (back to the pattern / location default). */
   @Matches(/^(off|pattern|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/)
   value!: string;
+}
+
+/** Batch A B6 (answer 2316): one change for the ticked people of the roster, from a date. */
+export class RosterBulkDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(200)
+  @ArrayUnique()
+  @IsUUID('all', { each: true })
+  employeeIds!: string[];
+
+  @IsDateString(DATE)
+  from!: string;
+
+  @IsIn(['shift', 'weekly_off', 'penalty'])
+  change!: 'shift' | 'weekly_off' | 'penalty';
+
+  /** shift: the new shift; weekly_off: the shift for anyone on the location's usual shift. */
+  @IsOptional()
+  @IsUUID()
+  shiftId?: string;
+
+  /** weekly_off: the weekly-off days, 1 = Monday … 7 = Sunday. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(3)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(7, { each: true })
+  weeklyOffs?: number[];
+
+  /** penalty: late marks a month without a deduction, and what each one over costs (days of pay). */
+  @IsOptional()
+  @IsIn(['0', '1', '2', '3', '4', '5', '6'])
+  lateMarksFree?: string;
+
+  @IsOptional()
+  @IsIn(['0', '0.5', '1'])
+  lateMarkPenalty?: string;
 }
 
 export class RosterCellsDto {
@@ -602,6 +951,26 @@ export class OtClaimDto {
   reason!: string;
 }
 
+/** TIM-07 Ot: overtime asked for ahead (quarter hours, 0.5 to 12 h), paid or as comp-off. */
+export class OtPlanDto {
+  @IsDateString(DATE)
+  on!: string;
+
+  @IsInt()
+  @Min(30)
+  @Max(720)
+  minutes!: number;
+
+  @IsIn(['pay', 'comp_off'])
+  takeAs!: 'pay' | 'comp_off';
+
+  @trim()
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  reason!: string;
+}
+
 export class OverrideDto {
   @trim()
   @IsString()
@@ -611,35 +980,6 @@ export class OverrideDto {
 }
 
 // ------------------------------------------------------------------------------------------ batch 2: timesheets
-
-export class ProjectDto {
-  @trim()
-  @Matches(/^[A-Z][A-Z0-9-]{0,11}$/, { message: 'A project code is 1 to 12 capital letters, digits or dashes, starting with a letter.' })
-  code!: string;
-
-  @trim()
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
-  name!: string;
-
-  @IsOptional()
-  @IsUUID()
-  managerUserId?: string | null;
-
-  @IsBoolean()
-  billable!: boolean;
-
-  @IsArray()
-  @ArrayMaxSize(20)
-  @IsString({ each: true })
-  @MaxLength(60, { each: true })
-  activities!: string[];
-
-  @IsOptional()
-  @IsBoolean()
-  active?: boolean;
-}
 
 export class TimesheetLineDto {
   @IsUUID()
@@ -662,11 +1002,13 @@ export class TimesheetLineDto {
   @Max(1440, { each: true })
   minutes!: number[];
 
+  /** Answer 1787: a comment per day, Monday to Sunday; at least N words on each day with hours to submit. */
   @IsOptional()
-  @trim()
-  @IsString()
-  @MaxLength(200)
-  note?: string | null;
+  @IsArray()
+  @ArrayMaxSize(7)
+  @IsString({ each: true })
+  @MaxLength(2000, { each: true })
+  comments?: string[];
 }
 
 export class TimesheetDto {
@@ -732,4 +1074,59 @@ export class EligibilityOverrideDto {
   @MinLength(10)
   @MaxLength(500)
   reason!: string;
+}
+
+/** TIM-31 Multi: one check-in point of a location. */
+export class GeoPointDto {
+  @trim()
+  @IsString()
+  @MinLength(1, { message: 'Enter a point name' })
+  @MaxLength(60)
+  name!: string;
+
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-90)
+  @Max(90)
+  lat!: number;
+
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-180)
+  @Max(180)
+  lng!: number;
+
+  @IsInt()
+  @Min(50, { message: 'Enter a radius between 50 and 1,000 m' })
+  @Max(1000, { message: 'Enter a radius between 50 and 1,000 m' })
+  radiusM!: number;
+}
+
+/** TIM-31 Multi: every check-in point of a location (up to 20), with the location's updatedAt as last seen. */
+export class GeoPointsDto {
+  @IsArray()
+  @ArrayMaxSize(20, { message: 'A location can have up to 20 points.' })
+  @ValidateNested({ each: true })
+  @Type(() => GeoPointDto)
+  points!: GeoPointDto[];
+
+  @IsOptional()
+  @IsISO8601()
+  updatedAt?: string;
+}
+
+/** TIM-31: a location's office networks for web check-in, one IP range per line (checked again on the server). */
+export class NetworksDto {
+  @IsArray()
+  @ArrayMaxSize(50)
+  @IsString({ each: true })
+  @MaxLength(43, { each: true })
+  ipRanges!: string[];
+
+  /** Answer 2477: the office Wi-Fi names the phone app reports (absent keeps them). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(20)
+  @IsString({ each: true })
+  @MinLength(1, { each: true })
+  @MaxLength(32, { each: true, message: 'A Wi-Fi name is at most 32 characters.' })
+  wifiNames?: string[];
 }

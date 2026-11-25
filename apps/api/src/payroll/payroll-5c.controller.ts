@@ -7,7 +7,7 @@ import { RequireStepUp } from '../auth/step-up.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, JournalExportDto, LoanChangeDto, LoanRequestDto, LopInputsDto, OneTimeDto, OneTimeListDto, ReasonDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SubmitRunDto } from './dto-5c';
+import { AckDto, CostRateListDto, CourtOrderDto, HoldDto, HoldReleaseDto, JournalExportDto, LoanChangeDto, LoanPerquisiteDto, LoanRequestDto, LopInputsDto, OneTimeBulkDto, OneTimeDto, OneTimeListDto, ReasonDto, RemittanceDto, RunCreateDto, RunDecisionDto, RunListDto, SpecialDaysDto, SpecialDaysListDto, SubmitRunDto } from './dto-5c';
 import { PayInputsService } from './inputs.service';
 import { PayRunsService } from './runs.service';
 import { LedgerService } from './ledger.service';
@@ -47,6 +47,13 @@ export class Payroll5cController {
     return this.runs.create(ctx, this.user(req), dto.payGroupId, dto.month, dto.offcycleKind ?? null, dto.subPeriod ?? null);
   }
 
+  /** A3: current employees not ready for payroll (no salary, no salary bank account, no PAN), for People. */
+  @Get('not-ready-people')
+  @RequirePermissions('payroll.run.prepare')
+  notReadyPeople(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query('legalEntityId', new ParseUUIDPipe({ optional: true })) legalEntityId?: string) {
+    return this.runs.notReadyPeople(ctx, this.user(req), legalEntityId ?? null).then((r) => r ?? []);
+  }
+
   @Get('runs')
   @RequireAnyPermission(...RUN_VIEW)
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: RunListDto) {
@@ -83,6 +90,49 @@ export class Payroll5cController {
   @RequirePermissions('payroll.run.prepare')
   calculate(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.runs.calculate(ctx, this.user(req), id);
+  }
+
+  /** PAY-03 "Failed": calculates again only the people whose last calculation failed (the rest keep their payslips). */
+  @Post('runs/:id/retry-failed')
+  @HttpCode(202)
+  @RequirePermissions('payroll.run.prepare')
+  retryFailed(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.retryFailed(ctx, this.user(req), id);
+  }
+
+  /** PAY-03 "Inputs": what feeds the run, per source (people and amounts), for the run's month and people. */
+  /** HLP-12 answers 92, 93: the run's special days and late injury leave to review. */
+  @Get('runs/:id/special-days')
+  @RequireAnyPermission(...RUN_VIEW)
+  runSpecialDays(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.specialDays(ctx, this.user(req), id);
+  }
+
+  /** HLP-12 answer 121: a late injury correction is not paid in this run (reason required), or back to review. */
+  @Post('runs/:id/special-days/corrections/:cid/not-paid')
+  @RequirePermissions('payroll.input.manage')
+  correctionNotPaid(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('cid', ParseUUIDPipe) cid: string, @Body() dto: ReasonDto) {
+    return this.runs.correctionNotPaid(ctx, this.user(req), id, cid, dto.reason);
+  }
+
+  /** Answer 2300: a late correction whose F&F was already settled goes into an off-cycle correction run (one click). */
+  @Post('corrections/:cid/offcycle')
+  @HttpCode(200)
+  @RequirePermissions('payroll.offcycle.prepare')
+  correctionToOffcycle(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('cid', ParseUUIDPipe) cid: string) {
+    return this.runs.correctionToOffcycle(ctx, this.user(req), cid);
+  }
+
+  @Post('runs/:id/special-days/corrections/:cid/undo-not-paid')
+  @RequirePermissions('payroll.input.manage')
+  correctionNotPaidUndo(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('cid', ParseUUIDPipe) cid: string) {
+    return this.runs.correctionNotPaid(ctx, this.user(req), id, cid, null);
+  }
+
+  @Get('runs/:id/input-sources')
+  @RequireAnyPermission(...RUN_VIEW)
+  inputSources(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.inputSources(ctx, this.user(req), id);
   }
 
   @Get('runs/:id/progress')
@@ -171,10 +221,25 @@ export class Payroll5cController {
     return this.inputs.addOneTime(ctx, this.user(req), dto);
   }
 
+  /** PAY-05 bulk actions on drafts: send them for approval, or delete them. */
+  @Post('one-time-pays/bulk')
+  @HttpCode(200)
+  @RequirePermissions('payroll.input.manage')
+  bulkOneTime(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: OneTimeBulkDto) {
+    return this.inputs.bulkOneTime(ctx, this.user(req), dto.ids, dto.action);
+  }
+
   @Patch('one-time-pays/:id/cancel')
   @RequirePermissions('payroll.input.manage')
   cancelOneTime(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.inputs.cancelOneTime(ctx, this.user(req), id);
+  }
+
+  /** HLP-12 answer 65: the month's special days with their source (filled from injury leave, or payroll's own). */
+  @Get('special-days')
+  @RequirePermissions('payroll.input.manage')
+  specialDaysList(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: SpecialDaysListDto) {
+    return this.inputs.specialDaysList(ctx, this.user(req), q.month);
   }
 
   @Put('special-days')
@@ -198,8 +263,8 @@ export class Payroll5cController {
   @Post('holds/:id/release')
   @HttpCode(200)
   @RequirePermissions('payroll.hold.manage')
-  releaseHold(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.inputs.releaseHold(ctx, this.user(req), id);
+  releaseHold(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: HoldReleaseDto) {
+    return this.inputs.releaseHold(ctx, this.user(req), id, dto);
   }
 
   /** Your own requests and, with payroll.loan.manage, the loans of the entities in scope. */
@@ -208,16 +273,68 @@ export class Payroll5cController {
     return this.inputs.loans(ctx, this.user(req));
   }
 
+  /** Your own loan rules (no key): may you ask, and how much (founder decision 8). Declared before any ':id' route. */
+  @Get('loans/rules')
+  loanRules(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.inputs.myLoanRules(ctx, this.user(req));
+  }
+
   /** For yourself (no key); for someone else the service requires payroll.loan.manage over them. */
   @Post('loans')
   requestLoan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: LoanRequestDto) {
     return this.inputs.requestLoan(ctx, this.user(req), dto);
   }
 
+  /** A loan's months, recovered and scheduled, and its pre-closure today (founder answer 5): your own, or payroll.loan.manage in scope. */
+  @Get('loans/:id/repayments')
+  loanRepayments(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.inputs.loanRepayments(ctx, this.user(req), id);
+  }
+
   @Post('loans/:id/schedule-changes')
   @RequirePermissions('payroll.loan.manage')
   changeLoan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LoanChangeDto) {
     return this.inputs.changeLoan(ctx, this.user(req), id, dto);
+  }
+
+  /** D14: the loan type for the loan perquisite and the exempt mark (medical), with a reason; never your own loan. */
+  @Put('loans/:id/perquisite')
+  @RequirePermissions('payroll.loan.manage')
+  setLoanPerquisite(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: LoanPerquisiteDto) {
+    return this.inputs.setLoanPerquisite(ctx, this.user(req), id, dto);
+  }
+
+  /** PAY-19: each month's deduction for the order and whether it was paid to the court. */
+  @Get('court-orders/:id/remittances')
+  @RequirePermissions('payroll.input.manage')
+  remittances(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.inputs.courtOrderRemittances(ctx, this.user(req), id);
+  }
+
+  @Post('court-orders/:id/remittances')
+  @RequirePermissions('payroll.input.manage')
+  remit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RemittanceDto) {
+    return this.inputs.recordRemittance(ctx, this.user(req), id, dto.month, dto.reference);
+  }
+
+  /** PAY-19: negative net carried to later runs. */
+  @Get('carry-forwards')
+  @RequirePermissions('payroll.input.manage')
+  carryForwards(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.inputs.carryForwards(ctx, this.user(req));
+  }
+
+  /** PAY-19: payslips whose recoveries the deduction cap deferred, and one payslip's cap check. */
+  @Get('deferrals')
+  @RequireAnyPermission(...RUN_VIEW)
+  deferrals(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.runs.deferrals(ctx, this.user(req));
+  }
+
+  @Get('payslips/:id/deduction-cap')
+  @RequireAnyPermission(...RUN_VIEW)
+  deductionCap(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.runs.deductionCap(ctx, this.user(req), id);
   }
 
   @Get('court-orders')

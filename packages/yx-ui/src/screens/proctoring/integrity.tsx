@@ -22,6 +22,8 @@ import { PrcFrame, type ViewState } from './proctoring-shared';
 import { CameraFrame, EvidenceFrame, FlagTimeline, IntegrityScoreCard, ScreenThumb, CodeAnswer } from './proctoring-kit';
 import { impactRatios, needsModeration, verdictError, VERDICT_LABEL, type Verdict } from './proctoring-logic';
 import { EVENTS_SNEHA, INCIDENTS, PEOPLE, REVIEWERS, SIGNALS_SNEHA, d, type IncidentRow } from './proctoring-data';
+import { LiveAppealsScreen, LiveIncidentWorkspaceScreen, LiveIntegrityQueueScreen, LiveIntegrityReportsScreen, type LiveAppeals, type LiveIncidentWorkspace, type LiveIntegrityQueue, type LiveIntegrityReports } from './integrity-live';
+import { LiveEvaluatorScreen, LiveFairnessScreen, type LiveEvaluator, type LiveFairness } from './marking-live';
 
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const SEV_TONE = { High: 'danger', Medium: 'warning', Low: 'neutral' } as const;
@@ -60,8 +62,9 @@ const INC_COLS: TableColumn<IncidentRow>[] = [
   { key: 'due', header: 'SLA due', type: 'date', value: (r) => r.due, width: 110 },
 ];
 
-export function IntegrityQueueScreen({ incidents, state = 'ready', tab = 'queue', reassign = false }: { incidents: IncidentRow[]; state?: ViewState; tab?: 'queue' | 'capacity'; reassign?: boolean }) {
-  // PRC-16
+export function IntegrityQueueScreen({ incidents = [], state = 'ready', tab = 'queue', reassign = false, live }: { incidents?: IncidentRow[]; state?: ViewState; tab?: 'queue' | 'capacity'; reassign?: boolean; live?: LiveIntegrityQueue }) {
+  // PRC-16; with `live`, the company's real incidents (AS-5).
+  if (live) return <LiveIntegrityQueueScreen live={live} />;
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<string[]>(reassign ? ['INC-5510'] : []);
@@ -149,10 +152,13 @@ export interface IncidentWorkspaceProps {
   defaultVerdict?: Verdict | null;
   defaultReason?: string;
   variant?: 'review' | 'second-review' | 'identity' | 'escalated' | 'decided';
+  /** AS-5: a real incident. */
+  live?: LiveIncidentWorkspace;
 }
 
-export function IncidentWorkspaceScreen({ incident = INCIDENTS[0], defaultVerdict = null, defaultReason = '', variant = 'review' }: IncidentWorkspaceProps) {
-  // PRC-17
+export function IncidentWorkspaceScreen({ incident = INCIDENTS[0], defaultVerdict = null, defaultReason = '', variant = 'review', live }: IncidentWorkspaceProps) {
+  // PRC-17; with `live`, a real incident (AS-5).
+  if (live) return <LiveIncidentWorkspaceScreen live={live} />;
   const [at, setAt] = useState(1395);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState('1');
@@ -300,8 +306,9 @@ export const APPEALS: AppealRow[] = [
   { id: 'APL-110', candidate: 'Sanjay Chatterjee', about: 'INC-5470 · identity mismatch', original: 'Attempt invalidated', firstReviewer: 'Farah Siddiqui', assigned: 'Arvind Swamy', received: d(4), due: d(18), status: 'Upheld' },
 ];
 
-export function AppealsScreen({ appeals, state = 'ready', decided }: { appeals: AppealRow[]; state?: ViewState; decided?: 'upheld' | 'overturned' }) {
-  // PRC-18
+export function AppealsScreen({ appeals = [], state = 'ready', decided, live }: { appeals?: AppealRow[]; state?: ViewState; decided?: 'upheld' | 'overturned'; live?: LiveAppeals }) {
+  // PRC-18; with `live`, the company's real appeals (AS-5).
+  if (live) return <LiveAppealsScreen live={live} />;
   const [sel, setSel] = useState('APL-118');
   const [dec, setDec] = useState<string | undefined>(decided === 'overturned' ? 'overturn' : decided === 'upheld' ? 'uphold' : undefined);
   const a = appeals.find((x) => x.id === sel);
@@ -375,7 +382,12 @@ export interface EvaluatorConsoleProps {
   minor?: boolean;
 }
 
-export function EvaluatorConsoleScreen({ blind = true, kind = 'descriptive', defaultScores = {}, otherScore = null, minor = false }: EvaluatorConsoleProps) {
+/** PRC-19; with `live` (AS-6) the company's answers to mark, blind, with moderation and the AI suggestion after. */
+export function EvaluatorConsoleScreen(props: EvaluatorConsoleProps | { live: LiveEvaluator }) {
+  return 'live' in props ? <LiveEvaluatorScreen live={props.live} /> : <SampleEvaluatorConsole {...props} />;
+}
+
+function SampleEvaluatorConsole({ blind = true, kind = 'descriptive', defaultScores = {}, otherScore = null, minor = false }: EvaluatorConsoleProps) {
   // PRC-19
   const [scores, setScores] = useState<Record<string, number>>(defaultScores);
   const [focus, setFocus] = useState(0);
@@ -495,8 +507,9 @@ export function EvaluatorConsoleScreen({ blind = true, kind = 'descriptive', def
 /* PRC-20 · Integrity reports                                          */
 /* ================================================================== */
 
-export function IntegrityReportsScreen({ tab = 'collusion', state = 'ready' }: { tab?: 'collusion' | 'plagiarism' | 'agreement'; state?: 'ready' | 'loading' | 'empty' }) {
-  // PRC-20
+export function IntegrityReportsScreen({ tab = 'collusion', state = 'ready', live }: { tab?: 'collusion' | 'plagiarism' | 'agreement'; state?: 'ready' | 'loading' | 'empty'; live?: LiveIntegrityReports }) {
+  // PRC-20; with `live`, a real test (AS-5 part 3).
+  if (live) return <LiveIntegrityReportsScreen live={live} />;
   const loading = state === 'loading';
   return (
     <PrcFrame page="Integrity reports">
@@ -588,7 +601,12 @@ const GROUPS = [
   { group: 'Prefer not to say', passed: 71, total: 140 },
 ];
 
-export function FairnessScreen({ finding = true, validitySuppressed = false }: { finding?: boolean; validitySuppressed?: boolean }) {
+/** Fairness analytics; with `live` (AS-6, answer 2019) a test's pass rates per group from voluntary answers. */
+export function FairnessScreen(props: { finding?: boolean; validitySuppressed?: boolean } | { live: LiveFairness }) {
+  return 'live' in props ? <LiveFairnessScreen live={props.live} /> : <SampleFairness {...props} />;
+}
+
+function SampleFairness({ finding = true, validitySuppressed = false }: { finding?: boolean; validitySuppressed?: boolean }) {
   const groups = finding ? GROUPS : GROUPS.map((g) => (g.group === 'Women' ? { ...g, passed: 580 } : g));
   const rows = impactRatios(groups);
   return (

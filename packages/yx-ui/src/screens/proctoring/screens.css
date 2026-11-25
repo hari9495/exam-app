@@ -36,6 +36,8 @@
 .yx-prc-facet h3 { margin: 0; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-semibold); color: var(--yx-color-text-secondary); }
 .yx-prc-facet ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--yx-space-1); }
 .yx-prc-facet li { display: flex; justify-content: space-between; gap: var(--yx-space-2); font-size: var(--yx-text-sm); }
+/* A skill group (heading + its skills) sits clear of the row above: 4px row gap + 8px = 12px, not 4px. */
+.yx-prc-facet li.yx-prc-stack { margin-top: var(--yx-space-2); }
 
 /* Tables built by hand (grids, matrices, calendars) */
 .yx-prc-table { width: 100%; border-collapse: collapse; font-size: var(--yx-text-sm); }
@@ -103,6 +105,7 @@
 .yx-prc-block__body { flex: 1; min-width: 0; }
 .yx-prc-preview { border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); padding: var(--yx-space-4); background: var(--yx-color-bg-page); }
 .yx-prc-preview[data-device="mobile"] { max-width: calc(var(--yx-space-16) * 5.5); margin: 0 auto; }
+.yx-prc-preview__img { display: block; max-width: 100%; max-height: calc(var(--yx-space-16) * 4); margin-block: var(--yx-space-2); border-radius: var(--yx-radius-card); }
 
 /* Analytics */
 .yx-anl-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(var(--yx-space-16) * 4)), 1fr)); gap: var(--yx-space-3); }
@@ -121,3 +124,12 @@
 .yx-prc-big { font-size: var(--yx-text-3xl); margin: 0; }
 
 .yx-prc-slot:hover:not([aria-pressed="true"]), .yx-anl-choice:hover:not([aria-pressed="true"]):not([aria-checked="true"]) { border-color: var(--yx-color-text-muted); background: var(--yx-color-bg-subtle); }
+/* Answer 2161: going through only the unanswered or the marked questions. */
+.yx-prc-review { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-2) var(--yx-space-4); padding: var(--yx-space-2) var(--yx-space-3); border: var(--yx-border-width) solid var(--yx-color-border-strong); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); }
+.yx-prc-review__title { margin: 0; font-weight: var(--yx-weight-semibold); }
+/* Answer 2201: the candidate's own camera in the selfie step. */
+.yx-prc-selfie { margin: 0; aspect-ratio: 4 / 3; max-height: calc(var(--yx-space-16) * 6); display: flex; justify-content: center; align-items: center; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-subtle); overflow: hidden; }
+.yx-prc-selfie video { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+/* AS-6 (answer 2237): the company privacy notice keeps its own line breaks. */
+.yx-prc-notice-text { white-space: pre-wrap; }

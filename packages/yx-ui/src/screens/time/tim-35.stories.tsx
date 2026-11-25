@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { OpenShiftsPhone, OpenShiftsScreen } from './roster';
 
-const meta: Meta<typeof OpenShiftsScreen> = { title: 'Screens/Time/TIM-35 · Open shifts and bids', component: OpenShiftsScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof OpenShiftsScreen> = { title: 'Screens/Time/TIM-35 · Open shifts and bids', component: OpenShiftsScreen, render: (a) => <OpenShiftsScreen {...a} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof OpenShiftsScreen>;
 type P = StoryObj<typeof OpenShiftsPhone>;

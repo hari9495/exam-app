@@ -29,6 +29,7 @@ export function useWfDecide() {
   const queryClient = useQueryClient();
   return async (taskId: string, decision: 'approve' | 'reject', reason: string) => {
     await apiFetch(`/workflow/approvals/tasks/${encodeURIComponent(taskId)}/decide`, { method: 'POST', body: JSON.stringify({ decision, ...(reason ? { reason } : {}) }) }, accessToken ?? undefined);
+    void queryClient.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
     await queryClient.invalidateQueries({ queryKey: ['expenses'] });
   };
 }
@@ -65,4 +66,16 @@ export function useReceiptOpen() {
     window.open(url, '_blank', 'noopener');
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   };
+}
+
+/** A stored receipt photo as an object URL for a thumbnail (the caller frees it); streamed after the API's checks. */
+export function useReceiptUrl() {
+  const { accessToken } = useAuth();
+  return async (path: string) => URL.createObjectURL((await apiFetchBlob(`/expenses${path}`, {}, accessToken ?? undefined)).blob);
+}
+
+/** A one-off GET under /expenses (a search as the person types); not cached. */
+export function useExpGet() {
+  const { accessToken } = useAuth();
+  return async <T>(path: string): Promise<T> => (await apiFetch(`/expenses${path}`, {}, accessToken ?? undefined)) as T;
 }

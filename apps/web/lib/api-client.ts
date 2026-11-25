@@ -1,6 +1,8 @@
 import { humanizeHttpError, NetworkError } from './http-error-message';
 import { goTo } from './navigate';
 import { withNextHere } from './safe-next';
+import { noteNotFound } from './yx-not-found-store';
+import { SALARY_RECHECK_MESSAGE, salaryCheck } from './salary-check';
 
 // Exported for public, unauthenticated pages (e.g. the candidate apply/status pages) that hit
 // the backend with plain fetch instead of apiFetch -- there's no access token to attach.
@@ -27,6 +29,9 @@ let stepUpHandler: (() => Promise<boolean>) | null = null;
 export function setStepUpHandler(handler: (() => Promise<boolean>) | null) {
   stepUpHandler = handler;
 }
+
+// Answer 2370: the cancelled-salary-check store lives in its own module (pages read it even where api-client is mocked).
+export { SALARY_RECHECK_MESSAGE, salaryCheck };
 
 // A 401 from these means a wrong credential or code, not an expired session: refreshing is
 // pointless there (and /auth/refresh would recurse into its own handler).
@@ -77,7 +82,7 @@ async function doFetch(path: string, options: RequestInit, accessToken?: string)
 }
 
 // errors: per-field problems from a form the API checks (Settings › Notifications › Email).
-const DETAIL_FIELDS = ['personIds', 'clashes', 'errors', 'retryAfterSeconds', 'changes', 'problems', 'newMessages'] as const;
+const DETAIL_FIELDS = ['personIds', 'clashes', 'errors', 'retryAfterSeconds', 'changes', 'problems', 'newMessages', 'statementId', 'revision', 'triesLeft'] as const;
 
 async function throwForResponse(response: Response): Promise<never> {
   const body = await errorBody(response);
@@ -88,6 +93,8 @@ async function throwForResponse(response: Response): Promise<never> {
   const details = Object.fromEntries(DETAIL_FIELDS.filter((k) => k in body).map((k) => [k, body[k]]));
   if (Object.keys(details).length) error.body = details;
   if (typeof body.code === 'string') error.code = body.code;
+  // Answer 947: a Not found answer's reference, for the page's Not found state.
+  if (response.status === 404) noteNotFound(body.reference);
   if (body.code === PASSWORD_CHANGE_REQUIRED && typeof body.resetToken === 'string' && /^[0-9a-f]{64}$/.test(body.resetToken) && typeof window !== 'undefined') {
     window.location.assign(`/yx/reset-password/${body.resetToken}`);
   }
@@ -157,13 +164,34 @@ export async function apiFetch(path: string, options: RequestInit = {}, accessTo
     }
   }
 
-  if (code === STEP_UP_REQUIRED && stepUpHandler && (await stepUpHandler())) {
-    response = await doFetch(path, options, token);
+  if (code === STEP_UP_REQUIRED && stepUpHandler) {
+    if (await stepUpHandler()) {
+      response = await doFetch(path, options, token);
+      salaryCheck.set(false);
+    } else if ((await errorBody(response)).message === SALARY_RECHECK_MESSAGE) {
+      salaryCheck.set(true);
+    }
   }
 
   if (!response.ok) {
     await throwForResponse(response);
   }
+  return response.status === 204 ? null : response.json();
+}
+
+/**
+ * HLP-06: a call that must not carry who is asking (an anonymous speak-up report, check my report): no sign-in, no
+ * cookies. Errors throw like apiFetch (status, code, the allowed details).
+ */
+export async function apiFetchAnonymous(path: string, options: RequestInit = {}) {
+  const isFormData = options.body instanceof FormData;
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, { ...options, headers: isFormData ? {} : { 'Content-Type': 'application/json' }, credentials: 'omit', cache: 'no-store' });
+  } catch {
+    throw new NetworkError();
+  }
+  if (!response.ok) await throwForResponse(response);
   return response.status === 204 ? null : response.json();
 }
 

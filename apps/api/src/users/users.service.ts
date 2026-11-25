@@ -7,7 +7,7 @@ import { TenantPrismaService, holdsConfidential, revokeStaffSessions } from '@ex
 import { BlobStorageService } from '@exam-platform/shared';
 import { TenantContext } from '@exam-platform/shared';
 import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateProfileDto } from './dto/update-profile.dto';
+import { AccessibilityPrefsDto, UpdateProfileDto } from './dto/update-profile.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuditService } from '@exam-platform/shared';
@@ -36,7 +36,7 @@ import { assertAnotherSystemAdmin, SYSTEM_ADMIN_ROLE } from './system-admins';
 // business being in a staff-list row -- only the "me" endpoints need it (see ProfileUser).
 // notificationDigest/lastDigestSentAt are the user's own email-cadence prefs, managed via the
 // /notifications/digest endpoints -- not part of the staff-user surface, so kept out of SafeUser.
-export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt' | 'passwordRecheckPending' | 'passwordChangeRequired' | 'mfaEnrolmentDueAt' | 'mobileNumber' | 'mobileVerifiedAt'>;
+export type SafeUser = Omit<User, 'passwordHash' | 'avatarPath' | 'emailSignature' | 'notificationDigest' | 'lastDigestSentAt' | 'passwordRecheckPending' | 'passwordChangeRequired' | 'mfaEnrolmentDueAt' | 'mobileNumber' | 'mobileVerifiedAt' | 'accessibility'>;
 
 // The staff pickers advertise "Search staff by name or email", but this filter matched email
 // only, so typing a person's NAME silently returned nothing -- the audit-log actor picker looked
@@ -64,10 +64,21 @@ const SAFE_USER_SELECT = {
 // Only the "me" endpoints select avatarPath/emailSignature. avatarPath is mapped to a signed
 // avatarUrl before returning; emailSignature can run up to 2000 chars and has no reason to ride
 // along on every staff-list row. Neither belongs in SAFE_USER_SELECT.
-const PROFILE_USER_SELECT = { ...SAFE_USER_SELECT, avatarPath: true, emailSignature: true } as const;
+const PROFILE_USER_SELECT = { ...SAFE_USER_SELECT, avatarPath: true, emailSignature: true, accessibility: true } as const;
 
 /** What the "me" endpoints return: the safe user plus a ready-to-render avatar URL. */
-export type ProfileUser = SafeUser & { avatarUrl: string | null; emailSignature: string | null };
+export type ProfileUser = SafeUser & { avatarUrl: string | null; emailSignature: string | null; accessibility: Prisma.JsonValue | null };
+
+const pickAccessibility = (a: AccessibilityPrefsDto) => ({
+  contrast: a.contrast,
+  textSize: a.textSize,
+  textSpacing: a.textSpacing,
+  lineHeight: a.lineHeight,
+  bigCursor: a.bigCursor,
+  reduceMotion: a.reduceMotion,
+  strongFocus: a.strongFocus,
+  underlineLinks: a.underlineLinks,
+});
 
 const ALLOWED_AVATAR_MIME_TYPES: Record<string, string> = {
   'image/png': '.png',
@@ -159,12 +170,13 @@ export class UsersService {
     }
   }
 
-  async list(context: TenantContext, filters: { page?: string; pageSize?: string; search?: string } = {}): Promise<PaginatedResponse<SafeUser>> {
+  async list(context: TenantContext, filters: { page?: string; pageSize?: string; search?: string; role?: string } = {}): Promise<PaginatedResponse<SafeUser>> {
     const { page, pageSize, skip, take } = resolvePaginationParams(filters.page, filters.pageSize);
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const where = {
         organizationId: context.organizationId,
         ...staffSearchWhere(filters.search),
+        ...(filters.role ? { role: filters.role } : {}),
       };
       const [users, total] = await Promise.all([
         tx.user.findMany({ where, select: SAFE_USER_SELECT, orderBy: { createdAt: 'desc' }, skip, take }),
@@ -231,6 +243,8 @@ export class UsersService {
           ...(dto.name !== undefined ? { name: dto.name } : {}),
           ...(dto.timeZone !== undefined ? { timeZone: dto.timeZone || null } : {}),
           ...(dto.emailSignature !== undefined ? { emailSignature: dto.emailSignature || null } : {}),
+          // Rebuilt field by field: only the validated keys are stored, never anything else riding on the body.
+          ...(dto.accessibility !== undefined ? { accessibility: pickAccessibility(dto.accessibility) } : {}),
         },
         select: PROFILE_USER_SELECT,
       }),
@@ -244,7 +258,7 @@ export class UsersService {
    * were signed. signIfOurs passes a non-blob value (local dev, where storage is unconfigured)
    * through untouched. The path comes from our own row, never from client input.
    */
-  private async toProfileResponse(user: SafeUser & { avatarPath: string | null; emailSignature: string | null }): Promise<ProfileUser> {
+  private async toProfileResponse(user: SafeUser & { avatarPath: string | null; emailSignature: string | null; accessibility: Prisma.JsonValue | null }): Promise<ProfileUser> {
     const { avatarPath, ...safe } = user;
     return { ...safe, avatarUrl: ((await this.blobStorage.signIfOurs(avatarPath ?? null)) as string | null) ?? null };
   }
@@ -407,6 +421,8 @@ export class UsersService {
         action: status === 'deactivated' ? 'user.deactivated' : 'user.reactivated',
         entityType: 'user',
         entityId: targetUserId,
+        // Names the person in the activity log's sentence (admin B1).
+        metadata: { name: target.name || target.email },
       });
       return updated;
     });

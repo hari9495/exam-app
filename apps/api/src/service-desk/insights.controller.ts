@@ -26,6 +26,7 @@ import {
   PeriodDto,
   ReviewDto,
   TemplateDto,
+  KbSettingsDto,
   VersionDto,
 } from './dto-kb';
 import { CustomReportDto, DecideDto, DirectorySourceDto, KpiQueryDto, KpiTargetDto, MonthDto, PeopleImportDto, PersonDto, PrivacySettingsDto, ReportRunDto, ScheduleDto, SearchDto, StatusQueryDto, SurveyDto, WallboardDto } from './dto-ops';
@@ -58,6 +59,20 @@ export class DeskInsightsController {
   }
 
   // ---------------------------------------------------------------- knowledge (SD-1.24, SD-1.25)
+
+  @Get('kb/settings')
+  @RequireAnyPermission(...KB_READ, 'desk.desk.create')
+  async kbSettings(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.kb.kbSettings(await this.actor(req, t));
+  }
+
+  // A company-wide rule: the company's Service Desk owner (desk.desk.create) changes it, as with company-wide spaces.
+  @Put('kb/settings')
+  @RequirePermissions('desk.desk.create')
+  async setKbSettings(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: KbSettingsDto) {
+    assertOwnSession(req);
+    return this.kb.setKbSettings(await this.actor(req, t), dto);
+  }
 
   @Get('kb/spaces')
   @RequireAnyPermission(...KB_READ, 'desk.settings.manage', 'desk.desk.create')
@@ -146,6 +161,14 @@ export class DeskInsightsController {
   async submit(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionDto) {
     assertOwnSession(req);
     return this.kb.submit(await this.actor(req, t), id, dto.version);
+  }
+
+  @Post('kb/articles/:id/reviewed')
+  @HttpCode(200)
+  @RequirePermissions('desk.kb.author')
+  async markReviewed(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionDto) {
+    assertOwnSession(req);
+    return this.kb.markReviewed(await this.actor(req, t), id, dto.version);
   }
 
   @Post('kb/articles/:id/review')
@@ -285,6 +308,13 @@ export class DeskInsightsController {
     return this.reports.dashboard(await this.actor(req, t), q);
   }
 
+  /** HLP-05 SLA dashboard: targets met by desk, the weekly trend, at risk or missed now, agent load. */
+  @Get('reports/sla')
+  @RequirePermissions('desk.report.view')
+  async slaDashboard(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: ReportRunDto) {
+    return this.reports.slaDashboard(await this.actor(req, t), q);
+  }
+
   @Get('reports/library')
   @RequirePermissions('desk.report.view')
   library() {
@@ -325,6 +355,13 @@ export class DeskInsightsController {
   @RequirePermissions('desk.report.view')
   async custom(@Req() req: Request, @CurrentTenant() t: TenantContext) {
     return this.reports.customReports(await this.actor(req, t));
+  }
+
+  /** Answer 1844: the desk fields a report may show. */
+  @Get('reports/custom/field-columns')
+  @RequirePermissions('desk.report.view')
+  async fieldColumns(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.reports.fieldColumns(await this.actor(req, t));
   }
 
   @Post('reports/custom')

@@ -9,6 +9,10 @@ import { BillingModule } from '../billing/billing.module';
 import { ApiInternalClientModule } from '../api-internal-client/api-internal-client.module';
 import { AttemptController } from './attempt.controller';
 import { AttemptService } from './attempt.service';
+import { DeliveryService } from './delivery.service';
+import { AccommodationService } from './accommodation.service';
+import { PrivacyService } from './privacy.service';
+import { AssistantService } from './assistant.service';
 
 @Module({
   imports: [
@@ -24,6 +28,6 @@ import { AttemptService } from './attempt.service';
     ApiInternalClientModule,
   ],
   controllers: [AttemptController],
-  providers: [AttemptService],
+  providers: [AttemptService, DeliveryService, AccommodationService, PrivacyService, AssistantService],
 })
 export class AttemptModule {}

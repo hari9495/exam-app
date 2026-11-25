@@ -9,6 +9,8 @@ interface InvitationForResult {
   examId: string;
   exam: { title: string };
   attempt: { result: { passFail: string | null; percentage: number } | null } | null;
+  /** AS-3 (answer 2213): the earlier attempt whose result a reused invitation uses (counts like a submitted test). */
+  reusedAttempt?: { result: { passFail: string | null; percentage: number } | null } | null;
 }
 
 // Derived, not stored: for each of the candidate's invitations whose exam is one of the
@@ -21,7 +23,7 @@ export function deriveEntryExamResults(
   return invitations
     .filter((inv) => linked.has(inv.examId))
     .map((inv) => {
-      const result = inv.attempt?.result ?? null;
+      const result = inv.attempt?.result ?? inv.reusedAttempt?.result ?? null;
       const passFail = result?.passFail === 'pass' || result?.passFail === 'fail' ? result.passFail : null;
       return {
         examId: inv.examId,

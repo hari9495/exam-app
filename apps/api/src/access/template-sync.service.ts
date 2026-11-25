@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { AuditService, TenantPrismaService, holdsConfidential } from '@exam-platform/shared';
-import { ROLE_TEMPLATES } from './role-templates';
+import { OWN_PAY, ROLE_TEMPLATES } from './role-templates';
 import { TEMPLATE_HISTORY } from './role-template-history';
 
 // Role templates reach existing companies (P02 §4.2, Q5; migration 20261116100000_role_template_follow). A company role
@@ -15,7 +15,8 @@ const key = (keys: readonly string[]) => JSON.stringify([...new Set(keys)].sort(
 export function templateOf(keys: readonly string[]): { template: string; set: string[] } | null {
   const k = key(keys);
   for (const t of ROLE_TEMPLATES) {
-    const versions = [...(TEMPLATE_HISTORY[t.key] ?? []), [...t.permissions]];
+    // PAY-58 gave every company role payroll.equity.own; a past version plus that key is still the template.
+    const versions = [...(TEMPLATE_HISTORY[t.key] ?? []).flatMap((v) => [v, [...v, ...OWN_PAY]]), [...t.permissions]];
     const hit = versions.find((v) => key(v) === k);
     if (hit) return { template: t.key, set: JSON.parse(k) };
   }
@@ -55,7 +56,7 @@ export class TemplateSyncService implements OnApplicationBootstrap {
     const ctx = { organizationId, isSuperAdmin: false };
     return this.tenantPrisma.forTenant(ctx, async (tx) => {
       let changed = 0;
-      for (const p of await tx.permissionProfile.findMany({ where: { organizationId, OR: [{ templateChecked: false }, { templateKey: { not: null } }] } })) {
+      for (const p of await tx.permissionProfile.findMany({ where: { organizationId, archivedAt: null, OR: [{ templateChecked: false }, { templateKey: { not: null } }] } })) {
         let templateKey = p.templateKey;
         let templateSet = p.templateSet;
         const keys = JSON.parse(p.permissionsJson) as string[];

@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 
 // Expenses batch E2 request bodies (M05-BUILD-DESIGN §18 "Claims"). Amounts travel as decimal strings.
 
@@ -149,9 +149,54 @@ export class LineFxDto {
   rate?: string;
 }
 
+/** Keka ideas (2026-11): a spend saved for later (multipart: the fields as text, the receipt as `file`). */
+export class ExpenseItemDto {
+  /** Answer 2252: may be left out when a receipt is added; it is read from the receipt. */
+  @IsOptional()
+  @IsDateString({ strict: true })
+  spentOn?: string;
+
+  @IsOptional()
+  @Matches(/^\d{1,10}(\.\d{1,2})?$/, { message: 'Enter the amount, for example 1250 or 1250.50.' })
+  amount?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  categoryCode?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  merchant?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  description?: string | null;
+}
+
+export class ClaimItemsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsUUID('all', { each: true })
+  itemIds!: string[];
+}
+
 export class LineDto {
   @Matches(/^[a-z][a-z0-9_]{1,29}$/)
   categoryCode!: string;
+
+  /** Projects P-5 (answer 1419): the project the spend is for (only when the company switched it on). */
+  @IsOptional()
+  @IsUUID()
+  projectId?: string | null;
+
+  /** Projects P-5 (answer 1419): re-bill this spend to the project's client. */
+  @IsOptional()
+  @IsBoolean()
+  rebill?: boolean;
 
   @Matches(ISO)
   spentOn!: string;
@@ -260,8 +305,13 @@ export class FlagDto {
 
 export class ListQueryDto {
   @IsOptional()
-  @IsIn(['mine', 'approvals', 'review', 'scope'])
-  view?: 'mine' | 'approvals' | 'review' | 'scope';
+  @IsIn(['mine', 'approvals', 'review', 'scope', 'team'])
+  view?: 'mine' | 'approvals' | 'review' | 'scope' | 'team';
+
+  /** Team claims (round 2): the IST month the claims were sent, yyyy-mm; this month when left out. */
+  @IsOptional()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { message: 'Give the month as yyyy-mm, for example 2026-11.' })
+  month?: string;
 
   /** The company chosen in the top bar (design audit step 2); personal views ignore it. */
   @IsOptional()

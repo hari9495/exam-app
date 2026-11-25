@@ -67,7 +67,7 @@ describe('PipelineController', () => {
 
   it('createJob delegates to the service with the actor and dto', async () => {
     const dto = { title: 'Backend Engineer' };
-    await controller.createJob(tenant, 'user-1', dto as any);
+    await controller.createJob({}, tenant, 'user-1', dto as any);
     expect(service.createJob).toHaveBeenCalledWith(tenant, 'user-1', dto);
   });
 
@@ -88,18 +88,26 @@ describe('PipelineController', () => {
 
   it('updateJob delegates to the service with the actor, job id, dto, and role', async () => {
     const dto = { title: 'Senior Backend Engineer' };
-    await controller.updateJob(tenant, 'user-1', 'recruiter', 'job-1', dto as any);
+    await controller.updateJob({}, tenant, 'user-1', 'recruiter', 'job-1', dto as any);
     expect(service.updateJob).toHaveBeenCalledWith(tenant, 'user-1', 'job-1', dto, 'recruiter');
   });
 
   it('deleteJob delegates to the service with the actor and job id', async () => {
-    await controller.deleteJob(tenant, 'user-1', 'job-1');
+    await controller.deleteJob({}, tenant, 'user-1', 'job-1');
     expect(service.deleteJob).toHaveBeenCalledWith(tenant, 'user-1', 'job-1');
   });
 
+  it('refuses job writes while acting for someone else (HIR-03)', () => {
+    const acting = { user: { impersonatorUserId: 'admin-1' } };
+    expect(() => controller.createJob(acting, tenant, 'user-1', { title: 'X' } as any)).toThrow(/acting for someone else/);
+    expect(() => controller.updateJob({ user: { actingSuperAdmin: true } }, tenant, 'user-1', 'recruiter', 'job-1', {} as any)).toThrow(/acting for someone else/);
+    expect(() => controller.deleteJob(acting, tenant, 'user-1', 'job-1')).toThrow(/acting for someone else/);
+    expect(service.createJob).not.toHaveBeenCalled();
+  });
+
   it('getPipeline delegates to the service with the job id', async () => {
-    await controller.getPipeline(tenant, 'org_admin', 'user-1', 'job-1');
-    expect(service.getBoard).toHaveBeenCalledWith(tenant, 'job-1', 'org_admin', 'user-1');
+    await controller.getPipeline(tenant, 'org_admin', 'user-1', 'job-1', { mode: 'none' });
+    expect(service.getBoard).toHaveBeenCalledWith(tenant, 'job-1', 'org_admin', 'user-1', { mode: 'none' });
   });
 
   it('addEntry delegates to the service with the actor, job id, and dto', async () => {
@@ -136,9 +144,9 @@ describe('PipelineController', () => {
     expect(service.addFeedback).toHaveBeenCalledWith(tenant, 'user-1', 'entry-1', dto);
   });
 
-  it('listFeedback delegates to the service with the entry id', async () => {
-    await controller.listFeedback(tenant, 'entry-1');
-    expect(service.listFeedback).toHaveBeenCalledWith(tenant, 'entry-1');
+  it('listFeedback delegates to the service with the entry id and the viewer (HIR-13 hides internal applications from the manager)', async () => {
+    await controller.listFeedback(tenant, 'user-1', 'entry-1');
+    expect(service.listFeedback).toHaveBeenCalledWith(tenant, 'entry-1', 'user-1');
   });
 
   // Routes must be mounted behind JwtAuthGuard, not simply absent -- an unauthenticated

@@ -21,6 +21,7 @@ describe('NotificationsService', () => {
       const create = jest.fn();
       // user.findMany returns only the org-valid ids (simulates the org filter): user-2 valid, user-9 not returned
       const tx = {
+        setting: { findMany: jest.fn().mockResolvedValue([]) },
         user: {
           findMany: jest.fn().mockResolvedValue([{ id: 'user-2', email: null, name: null }]),
           findUnique: jest.fn().mockResolvedValue({ name: 'User One' }),
@@ -50,6 +51,7 @@ describe('NotificationsService', () => {
 
   describe('notify: email delivery', () => {
     let tx: {
+      setting: { findMany: jest.Mock };
       user: { findMany: jest.Mock; findUnique: jest.Mock };
       userNotification: { create: jest.Mock };
       userNotificationPreference: { findMany: jest.Mock };
@@ -58,6 +60,7 @@ describe('NotificationsService', () => {
 
     beforeEach(() => {
       tx = {
+        setting: { findMany: jest.fn().mockResolvedValue([]) },
         user: { findMany: jest.fn(), findUnique: jest.fn().mockResolvedValue({ name: 'U One' }) },
         userNotification: { create: jest.fn() },
         userNotificationPreference: { findMany: jest.fn() },
@@ -86,6 +89,17 @@ describe('NotificationsService', () => {
 
       await expect(service.notify(context, 'u1', ['u2'], 'mention', target)).resolves.toBeUndefined();
       expect(tx.userNotification.create).toHaveBeenCalled();
+    });
+
+    it('S-8 (5.4): with the company switch off, no email; the bell row is still created', async () => {
+      tx.user.findMany.mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'immediate' }]);
+      tx.userNotificationPreference.findMany.mockResolvedValue([]);
+      tx.setting.findMany.mockImplementation(async (a: { where: { key: string } }) => (a.where.key === 'notify.email.enabled' ? [{ id: 's1', scopeType: 'tenant', scopeId: 'org-1', value: 'off', validFrom: null }] : []));
+
+      await service.notify(context, 'u1', ['u2'], 'mention', target);
+
+      expect(tx.userNotification.create).toHaveBeenCalled();
+      expect(email.send).not.toHaveBeenCalled();
     });
 
     it('skips email for an opted-out recipient but still creates the bell row', async () => {
@@ -124,12 +138,14 @@ describe('NotificationsService', () => {
 
   describe('notifySystem (reminders)', () => {
     let tx: {
+      setting: { findMany: jest.Mock };
       user: { findMany: jest.Mock };
       userNotification: { create: jest.Mock };
       userNotificationPreference: { findMany: jest.Mock };
     };
     beforeEach(() => {
       tx = {
+        setting: { findMany: jest.fn().mockResolvedValue([]) },
         user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test', notificationDigest: 'immediate' }]) },
         userNotification: { create: jest.fn() },
         userNotificationPreference: { findMany: jest.fn().mockResolvedValue([]) },
@@ -158,6 +174,7 @@ describe('NotificationsService', () => {
 
   describe('notify: approval-template render branch', () => {
     let tx: {
+      setting: { findMany: jest.Mock };
       user: { findMany: jest.Mock; findUnique: jest.Mock };
       userNotification: { create: jest.Mock };
       userNotificationPreference: { findMany: jest.Mock };
@@ -173,7 +190,10 @@ describe('NotificationsService', () => {
     };
 
     beforeEach(() => {
+      // The link base comes from FRONTEND_URL; a developer's apps/api/.env (loaded on import) must not change it here.
+      process.env.FRONTEND_URL = 'http://localhost:3000';
       tx = {
+        setting: { findMany: jest.fn().mockResolvedValue([]) },
         user: { findMany: jest.fn().mockResolvedValue([{ id: 'u2', email: 'u2@x.test', name: 'U Two', notificationDigest: 'immediate' }]), findUnique: jest.fn().mockResolvedValue({ name: '<b>Actor</b>' }) },
         userNotification: { create: jest.fn() },
         userNotificationPreference: { findMany: jest.fn().mockResolvedValue([]) },

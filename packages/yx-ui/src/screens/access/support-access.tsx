@@ -8,7 +8,7 @@ import { Drawer } from '../../components/drawer';
 import { PageBanner } from '../../components/notify';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
-import { Breadcrumbs, PageHeader } from '../../components/shell';
+import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Timeline } from '../../components/timeline';
 import { SupportBadge, actionWords, when } from '../console/console-kit';
@@ -27,6 +27,8 @@ export interface SupportAccessScreenProps {
   /** Loads what was recorded for one session. */
   loadActivity: (id: string) => Promise<SupportActivity[]>;
   now?: Date;
+  /** Answer 1048: messages YukthiX staff sent to the company's System Admins, newest first. */
+  messages?: { id: string; subject: string; body: string; sentAt: string }[];
 }
 
 const choices = (asked: number) => [...new Set([4, 24, 72].filter((h) => h < asked).concat(asked))].map((h) => ({ value: h, label: `${h} hours` }));
@@ -166,6 +168,25 @@ export function SupportAccessScreen(props: SupportAccessScreenProps) {
             }
             empty={<EmptyState compact title="No support access requests." description="When YukthiX support needs to look at your data for a ticket, the request appears here for your approval." />}
           />
+          {props.messages && (
+            <Card title="Messages from YukthiX" id="messages">
+              {props.messages.length ? (
+                <ul className="yx-auth__stack" aria-label="Messages from YukthiX">
+                  {props.messages.map((m) => (
+                    <li key={m.id} className="yx-auth__stack">
+                      <strong>{m.subject}</strong>
+                      <Text tone="secondary">{when(m.sentAt)}</Text>
+                      {m.body.split(/\n{2,}/).map((para, i) => (
+                        <Text key={i}>{para}</Text>
+                      ))}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <EmptyState compact title="No messages from YukthiX." description="Messages the YukthiX team sends your System Admins appear here and in the bell." />
+              )}
+            </Card>
+          )}
         </>
       )}
       {reviewing && <Review session={reviewing} onClose={() => setReviewing(null)} onApprove={(hours, note) => props.onApprove(reviewing.id, hours, note)} onDecline={(note) => props.onDecline(reviewing.id, note)} />}

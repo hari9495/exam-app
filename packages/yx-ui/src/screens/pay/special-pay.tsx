@@ -1,12 +1,14 @@
 // Special pay types and marketplace: PAY-31 piece-rate, PAY-32 incentive / commission plan builder, PAY-34 tips pool,
-// PAY-35 on-call & standby rules, PAY-36 union check-off, PAY-43 group health (licensed partner only).
-import { useEffect, useMemo, useState } from 'react';
+// PAY-35 on-call & standby rules, PAY-36 union check-off, PAY-43 group health (licensed partner only), PAY-50 special pay
+// home. Each designed screen takes `live` (the app's data and actions, special-pay-live.tsx) in place of its sample.
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Download, Plus, Trash2, Upload } from 'lucide-react';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, PersonLabel, type BadgeTone } from '../../components/display';
 import { Drawer } from '../../components/drawer';
-import { EmptyState, InlineAlert } from '../../components/feedback';
-import { ErrorSummary, FieldRow, FormField, FormSection } from '../../components/field';
+import { EmptyState, InlineAlert, NoAccessState } from '../../components/feedback';
+import { useToast } from '../../components/notify';
+import { ErrorSummary, FieldRow, FormField, FormSection, type FormErrorItem } from '../../components/field';
 import { CurrencyField, NumberField, TextField } from '../../components/inputs';
 import { Checkbox } from '../../components/choice';
 import { Select } from '../../components/select';
@@ -16,15 +18,20 @@ import { FileUpload } from '../../components/upload';
 import { useNarrow } from '../../components/stepper';
 import { MenuItem } from '../../components/menu';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { DataTable, type TableColumn } from '../../components/table';
 import { formatDate, formatINR, formatTime } from '../../lib/format';
-import { FactRow, PartnerLink, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type ViewState } from './pay-kit';
+import { FactRow, FormDrawer, PartnerLink, PayFrame, PaySettingsFrame, SectionTitle, StateBlock, type ViewState } from './pay-kit';
 import { BulkUploadDrawer } from './payroll-inputs';
 import { DEPARTMENT_HEADS, EMPLOYEES, ENTITIES, PAY_CALENDAR, PAYROLL_ADMIN, TODAY } from '../_kit/data';
 import { Segment } from '../people/people-kit';
 import { DueBadge } from '../time/time-kit';
 import { d, ON_CALL_RULES, SALES_COMMISSION_PLAN } from './pay-data';
 import { commission, onCallPay, pieceRatePay, splitPool, type CommissionTier } from './pay-logic';
+import { PersonPicker, type PersonHit } from './live/inputs';
+import type { SpecialKind, SpecialPosting } from './live/types-5i';
+import { monthName } from './settlement-live';
+import { LiveIncentivePlans, LiveOnCallRules, LivePieceRate, LiveSpecialPayHome, LiveTipsPool, LiveUnionCheckoff, type LiveSpecialPay } from './special-pay-live';
 
 const tableState = (s: ViewState) => (s === 'loading' ? 'loading' : s === 'error' ? 'error' : 'ready');
 const storyHref = (id: string) => `/?path=/story/${id}`;
@@ -74,13 +81,26 @@ export const PIECE_WORKERS: PieceWorker[] = PLANT_WORKERS.slice(0, 10)
   .map((e, i) => ({ id: e.id, name: e.name, code: e.code, days: 26 - (i % 3), outputs: [{ qty: 180 + i * 17, rate: 42 }, { qty: 120 + i * 9, rate: 18 }, { qty: i === 2 ? 60 : 900 + i * 40, rate: 1.5 }] }));
 
 /** PAY-31 · Piece-rate cards and output import with minimum-wage top-up check. */
-export function PieceRateScreen({ tab = 'check', upload, state = 'ready' }: { tab?: 'cards' | 'output' | 'check'; upload?: boolean; state?: ViewState }) {
+/** Never a greyed-out button: pressed too early, a toast says why and nothing runs; done is a success toast (5 s). */
+function useSay() {
+  const { toast } = useToast();
+  return {
+    done: (title: string, description?: string) => void toast({ tone: 'success', title, description }),
+    why: (why: string | false | null | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.()),
+  };
+}
+
+export function PieceRateScreen({ live, ...story }: { tab?: 'cards' | 'output' | 'check'; upload?: boolean; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LivePieceRate live={live} /> : <SamplePieceRate {...story} />;
+}
+
+function SamplePieceRate({ tab = 'check', upload, state = 'ready' }: { tab?: 'cards' | 'output' | 'check'; upload?: boolean; state?: ViewState }) {
   const [showUpload, setShowUpload] = useState(!!upload);
   const [sent, setSent] = useState(false);
   const [cards, setCards] = useState<RateCard[]>(RATE_CARDS);
   const [editingCard, setEditingCard] = useState<RateCard | null>(null);
   const [workers, setWorkers] = useState<PieceWorker[]>(PIECE_WORKERS);
-  const [imported, setImported] = useState<string | null>(null);
+  const say = useSay();
   const ready = state === 'ready';
   const cardBlocked = !editingCard ? null : !editingCard.operation.trim() ? 'Enter the operation.' : !(editingCard.rate > 0) ? 'Enter a rate above zero.' : !editingCard.unit.trim() ? 'Enter the unit.' : !editingCard.from ? 'Enter the valid-from date.' : null;
   const saveCard = () => {
@@ -126,30 +146,29 @@ export function PieceRateScreen({ tab = 'check', upload, state = 'ready' }: { ta
             {sent ? (
               <span className="yx-pay-muted">September output is locked.</span>
             ) : (
-              <Button icon={Upload} onClick={() => setShowUpload(true)} disabled={!ready}>
+              <Button icon={Upload} onClick={() => say.why(!ready && 'Wait for the output to load.', () => setShowUpload(true))}>
                 Import output
               </Button>
             )}
-            <ConfirmDialog
-              trigger={
-                <Button variant="primary" disabled={sent || !ready}>
-                  {sent ? 'Sent to September run' : 'Send to September run'}
-                </Button>
-              }
-              title="Send piece-rate pay to the September run?"
-              consequence={`${rows.length} workers, ${formatINR(payTotal)} in all, including ${formatINR(topUpTotal)} minimum-wage top-up. The ${lock} cut-off has passed, so this goes in as a late input for ${PAYROLL_ADMIN.name} to accept before approval. September output is locked after this.`}
-              confirmLabel="Send to September run"
-              onConfirm={() => setSent(true)}
-            />
+            {sent || !ready ? (
+              <Button variant="primary" onClick={() => say.why(sent ? 'Already sent. September output is locked.' : 'Wait for the output to load.')}>
+                {sent ? 'Sent to September run' : 'Send to September run'}
+              </Button>
+            ) : (
+              <ConfirmDialog
+                trigger={<Button variant="primary">Send to September run</Button>}
+                title="Send piece-rate pay to the September run?"
+                consequence={`${rows.length} workers, ${formatINR(payTotal)} in all, including ${formatINR(topUpTotal)} minimum-wage top-up. The ${lock} cut-off has passed, so this goes in as a late input for ${PAYROLL_ADMIN.name} to accept before approval. September output is locked after this.`}
+                confirmLabel="Send to September run"
+                onConfirm={() => {
+                  setSent(true);
+                  say.done('Sent to the September run', `${formatINR(payTotal)} for ${rows.length} workers is in the run as piece-rate pay and minimum-wage top-up lines. September output is locked.`);
+                }}
+              />
+            )}
           </>
         }
       />
-      {imported && !sent && <InlineAlert tone="success" title={imported} />}
-      {sent && (
-        <InlineAlert tone="success" title="Sent to the September run">
-          {formatINR(payTotal)} for {rows.length} workers is in the run as piece-rate pay and minimum-wage top-up lines. September output is locked.
-        </InlineAlert>
-      )}
       <Tabs defaultValue={tab}>
         <TabsList aria-label="Piece-rate">
           <TabsTrigger value="cards" count={ready ? cards.length : undefined}>
@@ -214,7 +233,7 @@ export function PieceRateScreen({ tab = 'check', upload, state = 'ready' }: { ta
           <>
             {cardBlocked && <span className="yx-pay-muted">{cardBlocked}</span>}
             <Button onClick={() => setEditingCard(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!!cardBlocked} onClick={saveCard}>
+            <Button variant="primary" onClick={() => say.why(cardBlocked, saveCard)}>
               Save rate card
             </Button>
           </>
@@ -250,7 +269,7 @@ export function PieceRateScreen({ tab = 'check', upload, state = 'ready' }: { ta
           const add: Record<string, number> = { [PIECE_WORKERS[0].id]: 18, [PIECE_WORKERS[1].id]: 21 };
           setWorkers((ws) => ws.map((w) => (add[w.id] ? { ...w, outputs: w.outputs.map((o, i) => (i === 0 ? { ...o, qty: o.qty + add[w.id] } : o)) } : w)));
           setShowUpload(false);
-          setImported('2 output rows imported into 1 kg pouches · 2 rows skipped with errors');
+          say.done('2 output rows imported into 1 kg pouches · 2 rows skipped with errors');
         }}
         results={
           upload
@@ -289,9 +308,14 @@ const quartersSince = (from: Date) => {
 };
 
 /** PAY-32 · Incentive / commission plan builder: targets, slabs, accelerators, caps, clawback, effective dates. */
-export function IncentivePlanScreen({ variant = 'draft', state = 'ready' }: { variant?: 'draft' | 'overlap' | 'published'; state?: ViewState }) {
+export function IncentivePlanScreen({ live, ...story }: { variant?: 'draft' | 'overlap' | 'published'; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveIncentivePlans live={live} /> : <SampleIncentivePlan {...story} />;
+}
+
+function SampleIncentivePlan({ variant = 'draft', state = 'ready' }: { variant?: 'draft' | 'overlap' | 'published'; state?: ViewState }) {
   const narrow = useNarrow(599);
   const [status, setStatus] = useState<'draft' | 'published'>(variant === 'published' ? 'published' : 'draft');
+  const say = useSay();
   const ro = status === 'published';
   const [newVersion, setNewVersion] = useState(false);
   const [effFrom, setEffFrom] = useState<Date | null>(variant === 'published' ? d(1, 3) : NEXT_QUARTER);
@@ -387,7 +411,7 @@ export function IncentivePlanScreen({ variant = 'draft', state = 'ready' }: { va
             <>
               {previewLink}
               {publishBlocked && <span className="yx-pay-muted">{publishBlocked}</span>}
-              <Button variant="primary" disabled={!!publishBlocked} onClick={() => setConfirming(true)}>
+              <Button variant="primary" onClick={() => say.why(publishBlocked, () => setConfirming(true))}>
                 Publish plan
               </Button>
             </>
@@ -457,7 +481,7 @@ export function IncentivePlanScreen({ variant = 'draft', state = 'ready' }: { va
                   <span className="yx-pay-muted">
                     {members.length} {members.length === 1 ? 'person is' : 'people are'} on the plan.
                   </span>
-                  <Button size="sm" onClick={() => setShowPeople(true)} disabled={!members.length}>
+                  <Button size="sm" onClick={() => say.why(!members.length && 'No one is on the plan yet.', () => setShowPeople(true))}>
                     See people
                   </Button>
                 </div>
@@ -483,32 +507,26 @@ export function IncentivePlanScreen({ variant = 'draft', state = 'ready' }: { va
                     ))}
                   </div>
                 ) : (
-                  <table className="yx-pay-table">
-                    <thead>
-                      <tr>
-                        <th scope="col">Tier</th>
-                        <th scope="col">From % of quota</th>
-                        <th scope="col">Commission on sales in tier</th>
-                        <th scope="col">
-                          <span className="yx-visually-hidden">Remove</span>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tiers.map((t, i) => (
-                        <tr key={i} data-state={tierError?.i === i ? 'error' : undefined}>
-                          <th scope="row">{tierName(t, i)}</th>
-                          <td>
-                            <NumberField id={`tier-${i}`} size="sm" aria-label={`Tier ${i + 1} starts at`} value={t.fromPct} onChange={(v) => setTier(i, { fromPct: v ?? 0 })} suffix="%" />
-                          </td>
-                          <td>
-                            <NumberField id={`tier-rate-${i}`} size="sm" aria-label={`Tier ${i + 1} rate`} value={t.ratePct} decimals onChange={(v) => setTier(i, { ratePct: v ?? 0 })} suffix="%" />
-                          </td>
-                          <td>{i > 0 && <IconButton icon={Trash2} label={`Remove tier ${i + 1}`} size="sm" onClick={() => setTiers((ts) => ts.filter((_, j) => j !== i))} />}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <PlainTable
+                    label="Tiers"
+                    rows={tiers.map((_, i) => i)}
+                    getRowId={String}
+                    rowTone={(i) => (tierError?.i === i ? { tone: 'danger', label: 'Error' } : undefined)}
+                    columns={[
+                      { key: 'tier', header: 'Tier', rowHeader: true, cell: (i) => tierName(tiers[i]!, i) },
+                      {
+                        key: 'from',
+                        header: 'From % of quota',
+                        cell: (i) => <NumberField id={`tier-${i}`} size="sm" aria-label={`Tier ${i + 1} starts at`} value={tiers[i]!.fromPct} onChange={(v) => setTier(i, { fromPct: v ?? 0 })} suffix="%" />,
+                      },
+                      {
+                        key: 'rate',
+                        header: 'Commission on sales in tier',
+                        cell: (i) => <NumberField id={`tier-rate-${i}`} size="sm" aria-label={`Tier ${i + 1} rate`} value={tiers[i]!.ratePct} decimals onChange={(v) => setTier(i, { ratePct: v ?? 0 })} suffix="%" />,
+                      },
+                      { key: 'rm', header: <span className="yx-visually-hidden">Remove</span>, cell: (i) => i > 0 && <IconButton icon={Trash2} label={`Remove tier ${i + 1}`} size="sm" onClick={() => setTiers((ts) => ts.filter((_, j) => j !== i))} /> },
+                    ]}
+                  />
                 )}
                 <Button size="sm" icon={Plus} onClick={addTier}>
                   Add tier
@@ -624,7 +642,11 @@ function BasisChoice({ value, onChange, narrow }: { value: TipBasis; onChange: (
 }
 
 /** PAY-34 · Tips pool: pool period, collections, distribution basis, shares, send to run. */
-export function TipsPoolScreen({ openId, state = 'ready' }: { openId?: string; state?: ViewState }) {
+export function TipsPoolScreen({ live, ...story }: { openId?: string; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveTipsPool live={live} /> : <SampleTipsPool {...story} />;
+}
+
+function SampleTipsPool({ openId, state = 'ready' }: { openId?: string; state?: ViewState }) {
   const narrow = useNarrow(599);
   const [pools, setPools] = useState<TipPool[]>(state === 'empty' ? [] : TIP_POOLS);
   const [openPoolId, setOpenPoolId] = useState<string | null>(openId ?? null);
@@ -632,7 +654,7 @@ export function TipsPoolScreen({ openId, state = 'ready' }: { openId?: string; s
   const setOpen = (p: TipPool | null) => setOpenPoolId(p?.id ?? null);
   const [creating, setCreating] = useState(false);
   const [confirmingSend, setConfirmingSend] = useState(false);
-  const [sentPool, setSentPool] = useState<TipPool | null>(null);
+  const say = useSay();
   const [draft, setDraft] = useState<{ outlet: string; period: string; basis: TipBasis }>({ outlet: TIP_OUTLETS[0], period: 'October 2026', basis: 'points' });
   const shownState: ViewState = state === 'empty' && pools.length ? 'ready' : state;
   const duplicate = pools.some((p) => p.outlet === draft.outlet && p.period === draft.period);
@@ -671,11 +693,6 @@ export function TipsPoolScreen({ openId, state = 'ready' }: { openId?: string; s
   return (
     <PayFrame page="compensation" persona="hr">
       <PageHeader title="Tips and service charge" description="Pools per outlet and period. Amounts paid through payroll are a named line; tips paid directly by customers are recorded for statements only." actions={shownState === 'ready' ? newPoolButton : undefined} />
-      {sentPool && (
-        <InlineAlert tone="success" title={`${sentPool.outlet} tips sent to the September run`}>
-          {formatINR(sentPool.collected)} is split across {sentPool.staff.length} people on the {BASIS_LABEL[sentPool.basis]} basis and paid as a named tips line.
-        </InlineAlert>
-      )}
       <StateBlock state={shownState} errorTitle="Couldn't load tip pools." empty={<EmptyState title="No tip pools yet." description="Create a pool for an outlet and period, then add collections." action={newPoolButton} />}>
         <DataTable
           label="Tip pools"
@@ -700,7 +717,7 @@ export function TipsPoolScreen({ openId, state = 'ready' }: { openId?: string; s
           <>
             {sendBlocked && <span className="yx-pay-muted">{sendBlocked}</span>}
             <Button onClick={() => setOpen(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!!sendBlocked} onClick={() => setConfirmingSend(true)}>
+            <Button variant="primary" onClick={() => say.why(sendBlocked, () => setConfirmingSend(true))}>
               Send to September run
             </Button>
           </>
@@ -717,39 +734,17 @@ export function TipsPoolScreen({ openId, state = 'ready' }: { openId?: string; s
             <FormField label="Distribution basis" helper={basisLocked ? undefined : 'Hours come from attendance.'}>
               {basisLocked ? <p className="yx-pay-muted">{BASIS_LABEL[basis]} · can't be changed after the pool is sent.</p> : <BasisChoice value={basis} onChange={setBasis} narrow={narrow} />}
             </FormField>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col">Person</th>
-                  <th scope="col" data-num>
-                    {basis === 'points' ? 'Points' : basis === 'shifts' ? 'Shifts' : 'Hours'}
-                  </th>
-                  <th scope="col" data-num>
-                    Share
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {staff.map((s, i) => (
-                  <tr key={s.code}>
-                    <th scope="row">
-                      <PersonLabel name={s.name} secondary={s.code} />
-                    </th>
-                    <td data-num>{basis === 'points' ? s.points : basis === 'shifts' ? s.shifts : s.hours}</td>
-                    <td data-num>{formatINR(shares[i])}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Total</th>
-                  <td />
-                  <td data-num>{formatINR(shares.reduce((a, s) => a + s, 0))}</td>
-                </tr>
-              </tfoot>
-            </table>
-            </div>
+            <PlainTable
+              label="Shares"
+              rows={staff.map((_, i) => i)}
+              getRowId={(i) => staff[i]!.code}
+              columns={[
+                { key: 'who', header: 'Person', rowHeader: true, cell: (i) => <PersonLabel name={staff[i]!.name} secondary={staff[i]!.code} /> },
+                { key: 'basis', header: basis === 'points' ? 'Points' : basis === 'shifts' ? 'Shifts' : 'Hours', num: true, cell: (i) => (basis === 'points' ? staff[i]!.points : basis === 'shifts' ? staff[i]!.shifts : staff[i]!.hours) },
+                { key: 'share', header: 'Share', num: true, cell: (i) => formatINR(shares[i]!) },
+              ]}
+              footer={[{ id: 'total', label: 'Total', cells: { share: formatINR(shares.reduce((a, s) => a + s, 0)) } }]}
+            />
             <p className="yx-pay-note">Treatment in payroll (PF, ESI, tax) follows the central statutory rules for tips paid through payroll.</p>
           </div>
         )}
@@ -762,7 +757,7 @@ export function TipsPoolScreen({ openId, state = 'ready' }: { openId?: string; s
           <>
             {duplicate && <span className="yx-pay-muted">A pool for this outlet and period already exists.</span>}
             <Button onClick={() => setCreating(false)}>Cancel</Button>
-            <Button variant="primary" disabled={duplicate} onClick={createPool}>
+            <Button variant="primary" onClick={() => say.why(duplicate && 'A pool for this outlet and period already exists.', createPool)}>
               Create pool
             </Button>
           </>
@@ -789,7 +784,7 @@ export function TipsPoolScreen({ openId, state = 'ready' }: { openId?: string; s
           confirmLabel="Send to September run"
           onConfirm={() => {
             setPools((ps) => ps.map((p) => (p.id === open.id ? { ...p, status: 'In September run' } : p)));
-            setSentPool(open);
+            say.done(`${open.outlet} tips sent to the September run`, `${formatINR(open.collected)} is split across ${open.staff.length} people on the ${BASIS_LABEL[open.basis]} basis and paid as a named tips line.`);
             setOpen(null);
           }}
         />
@@ -835,7 +830,11 @@ const slotChanges = (before: OnCallSlot[], after: OnCallSlot[]) =>
   });
 
 /** PAY-35 · On-call & standby rules: rates per slot and call-out, minimum paid hours, link to the roster slot type. */
-export function OnCallRulesScreen({ variant = 'default', state = 'ready' }: { variant?: 'default' | 'holiday'; state?: ViewState }) {
+export function OnCallRulesScreen({ live, ...story }: { variant?: 'default' | 'holiday'; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveOnCallRules live={live} /> : <SampleOnCallRules {...story} />;
+}
+
+function SampleOnCallRules({ variant = 'default', state = 'ready' }: { variant?: 'default' | 'holiday'; state?: ViewState }) {
   const narrow = useNarrow(599);
   const [slots, setSlots] = useState<OnCallSlot[]>(state === 'empty' ? [] : ON_CALL_SLOTS);
   const [savedSlots, setSavedSlots] = useState<OnCallSlot[]>(slots);
@@ -846,7 +845,7 @@ export function OnCallRulesScreen({ variant = 'default', state = 'ready' }: { va
   const [appliesFrom, setAppliesFrom] = useState<Date | null>(NEXT_QUARTER);
   const [editing, setEditing] = useState<OnCallSlot | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const say = useSay();
   const [dayType, setDayType] = useState<'normal' | 'holiday'>(variant === 'holiday' ? 'holiday' : 'normal');
   const [savedFlags, setSavedFlags] = useState({ payStandby: true, countOvertime: true });
   const changes = [
@@ -897,18 +896,13 @@ export function OnCallRulesScreen({ variant = 'default', state = 'ready' }: { va
           shownState === 'ready' ? (
             <>
               <span className="yx-pay-muted">{saveBlocked ?? 'Unsaved changes.'}</span>
-              <Button variant="primary" disabled={!!saveBlocked} onClick={() => setConfirming(true)}>
+              <Button variant="primary" onClick={() => say.why(saveBlocked, () => setConfirming(true))}>
                 Save rules
               </Button>
             </>
           ) : undefined
         }
       />
-      {saved && appliesFrom && (
-        <InlineAlert tone="success" title="Rules saved">
-          New on-call rates apply to call-outs from {formatDate(appliesFrom)} <DueBadge date={appliesFrom} />.
-        </InlineAlert>
-      )}
       <StateBlock state={shownState} errorTitle="Couldn't load the on-call slot types." empty={<EmptyState title="No on-call slot types yet." description="Add them in Time › Roster first." action={openRoster} />}>
         {row && ex && (
           <div className="yx-pay-stack">
@@ -979,11 +973,9 @@ export function OnCallRulesScreen({ variant = 'default', state = 'ready' }: { va
             <Button onClick={() => setEditing(null)}>Cancel</Button>
             <Button
               variant="primary"
-              disabled={!!editBlocked}
               onClick={() => {
-                if (!editing) return;
+                if (!editing || editBlocked) return say.why(editBlocked);
                 setSlots((ss) => ss.map((s) => (s.id === editing.id ? editing : s)));
-                setSaved(false);
                 setEditing(null);
               }}
             >
@@ -1026,7 +1018,7 @@ export function OnCallRulesScreen({ variant = 'default', state = 'ready' }: { va
         onConfirm={() => {
           setSavedSlots(slots);
           setSavedFlags({ payStandby, countOvertime });
-          setSaved(true);
+          if (appliesFrom) say.done('Rules saved', `New on-call rates apply to call-outs from ${formatDate(appliesFrom)}.`);
         }}
       />
     </PayFrame>
@@ -1069,13 +1061,18 @@ const UNIONS = Array.from(new Set(CHECKOFF.map((c) => c.union)));
 const UNION_DUES: Record<string, number> = Object.fromEntries(CHECKOFF.map((c) => [c.union, c.dues]));
 
 /** PAY-36 · Union check-off: authorisations, monthly deduction list, remittance per union. */
-export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: 'auth' | 'deductions' | 'remit'; state?: ViewState }) {
+export function UnionCheckoffScreen({ live, ...story }: { tab?: 'auth' | 'deductions' | 'remit'; state?: ViewState; /** The live app's /yx/payroll/special-pay tab. */ live?: LiveSpecialPay }) {
+  return live ? <LiveUnionCheckoff live={live} /> : <SampleUnionCheckoff {...story} />;
+}
+
+function SampleUnionCheckoff({ tab = 'auth', state = 'ready' }: { tab?: 'auth' | 'deductions' | 'remit'; state?: ViewState }) {
   const [rows, setRows] = useState<CheckoffRow[]>(CHECKOFF);
   const [adding, setAdding] = useState<{ id: string | null; union: string; signed: Date | null; file: boolean } | null>(null);
   const deducting = rows.filter((c) => c.status === 'Authorised');
   const noAuth = rows.filter((c) => c.status === 'No authorisation').length;
   const withdrawn = rows.filter((c) => c.status === 'Withdrawn').length;
   const candidates = rows.filter((c) => c.status !== 'Authorised');
+  const say = useSay();
   const startAdding = (r?: CheckoffRow) => setAdding({ id: r?.id ?? candidates[0]?.id ?? null, union: r?.union ?? UNIONS[0], signed: null, file: false });
   const addBlocked = !adding ? null : !adding.id ? 'Choose a worker.' : !adding.signed ? 'Enter the date it was signed.' : !adding.file ? 'Upload the signed form.' : null;
   const saveAuth = () => {
@@ -1085,6 +1082,7 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
   };
   const [remitted, setRemitted] = useState<Record<string, { on: Date; reference: string }>>({});
   const [marking, setMarking] = useState<{ union: string; on: Date | null; reference: string } | null>(null);
+  const [triedMark, setTriedMark] = useState(false);
   const paid = startOfToday >= PAY_CALENDAR.payDate;
   const unions: Remittance[] = useMemo(
     () => Array.from(new Set(deducting.map((c) => c.union))).map((u) => ({ union: u, members: deducting.filter((c) => c.union === u).length, total: deducting.filter((c) => c.union === u).reduce((a, c) => a + c.dues, 0), remitted: remitted[u] ?? null })),
@@ -1146,7 +1144,7 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
       <PageHeader title="Union check-off" description="Dues are deducted only with the worker's written authorisation and remitted to each union every month." actions={
           <>
             {!candidates.length && <span className="yx-pay-muted">Every worker on the list has an authorisation.</span>}
-            <Button variant="primary" icon={Upload} disabled={!candidates.length || state !== 'ready'} onClick={() => startAdding()}>
+            <Button variant="primary" icon={Upload} onClick={() => say.why(state !== 'ready' ? 'Wait for the list to load.' : !candidates.length && 'Every worker on the list has an authorisation.', () => startAdding())}>
               Add authorisation
             </Button>
           </>
@@ -1216,7 +1214,7 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
                     Statement
                   </Button>
                   {!u.remitted && (
-                    <Button size="sm" disabled={!paid} onClick={() => setMarking({ union: u.union, on: null, reference: '' })}>
+                    <Button size="sm" onClick={() => say.why(!paid && `Mark it remitted after the ${formatDate(PAY_CALENDAR.payDate)} pay date.`, () => { setTriedMark(false); setMarking({ union: u.union, on: null, reference: '' }); })}>
                       Mark remitted
                     </Button>
                   )}
@@ -1232,8 +1230,9 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
         title={marking ? `Mark ${marking.union} dues remitted?` : ''}
         consequence={marking ? `${formatINR(unions.find((u) => u.union === marking.union)?.total ?? 0)} for September 2026.` : undefined}
         confirmLabel="Mark remitted"
-        confirmDisabled={!!markBlocked}
         onConfirm={() => {
+          setTriedMark(true);
+          if (markBlocked) return false;
           if (!marking?.on) return;
           setRemitted((r) => ({ ...r, [marking.union]: { on: marking.on as Date, reference: marking.reference.trim() } }));
           setMarking(null);
@@ -1241,10 +1240,10 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
       >
         {marking && (
           <div className="yx-pay-stack">
-            <FormField label="Paid on" required>
+            <FormField label="Paid on" required error={triedMark && !marking.on ? 'Enter the date it was paid.' : null}>
               <DatePicker value={marking.on} onChange={(v) => setMarking({ ...marking, on: v })} min={PAY_CALENDAR.payDate} max={TODAY} />
             </FormField>
-            <FormField label="Payment reference" required helper={markBlocked ?? undefined}>
+            <FormField label="Payment reference" required error={triedMark && !marking.reference.trim() ? 'Enter the payment reference.' : null}>
               <TextField value={marking.reference} onChange={(v) => setMarking({ ...marking, reference: v })} />
             </FormField>
           </div>
@@ -1258,7 +1257,7 @@ export function UnionCheckoffScreen({ tab = 'auth', state = 'ready' }: { tab?: '
           <>
             {addBlocked && <span className="yx-pay-muted">{addBlocked}</span>}
             <Button onClick={() => setAdding(null)}>Cancel</Button>
-            <Button variant="primary" disabled={!!addBlocked} onClick={saveAuth}>
+            <Button variant="primary" onClick={() => say.why(addBlocked, saveAuth)}>
               Save authorisation
             </Button>
           </>
@@ -1452,5 +1451,236 @@ export function GroupHealthScreen({ variant = 'quotes' }: { variant?: GroupHealt
         </div>
       )}
     </PaySettingsFrame>
+  );
+}
+
+/* ================================================================== PAY-50 Special pay home */
+
+/** The tabs of the special pay page: the home, then one per special pay type (PAY-31 … 37). */
+export type SpecialTab = 'home' | 'piece' | 'incentives' | 'tips' | 'oncall' | 'unions' | 'settlements';
+export const SPECIAL_TYPES: { tab: Exclude<SpecialTab, 'home'>; label: string; kinds: SpecialKind[]; note: string; story: string }[] = [
+  { tab: 'piece', label: 'Piece-rate pay', kinds: ['piece'], note: 'Rate cards and output', story: 'screens-pay-pay-31-·-piece-rate-cards-and-output--cards' },
+  { tab: 'incentives', label: 'Incentives', kinds: ['incentive'], note: 'Plans, results, clawbacks', story: 'screens-pay-pay-32-·-incentive-plan-builder--draft' },
+  { tab: 'tips', label: 'Tips', kinds: ['tips'], note: 'Pools per outlet', story: 'screens-pay-pay-34-·-tips-pool--pools' },
+  { tab: 'oncall', label: 'On-call pay', kinds: ['oncall'], note: 'Standby and call-outs', story: 'screens-pay-pay-35-·-on-call-and-standby-rules--weekday' },
+  { tab: 'unions', label: 'Union dues', kinds: ['union'], note: 'Check-off and remittance', story: 'screens-pay-pay-36-·-union-check-off--authorisations' },
+  { tab: 'settlements', label: 'Settlement arrears', kinds: ['settle'], note: 'Wage settlements', story: 'screens-pay-pay-37-·-wage-settlement-arrears--categories' },
+];
+export const SPECIAL_KIND_TEXT: Record<SpecialKind, string> = { piece: 'Piece-rate pay', incentive: 'Incentives', tips: 'Tips', oncall: 'On-call pay', union: 'Union dues', settle: 'Settlement arrears', layoff: 'Lay-off pay', vrs: 'VRS' };
+export const POSTING_STATUS: Record<SpecialPosting['status'], { label: string; tone: BadgeTone }> = { pending: { label: 'Waiting for approval', tone: 'warning' }, approved: { label: 'Approved, in payroll', tone: 'success' }, rejected: { label: 'Turned down', tone: 'danger' }, cancelled: { label: 'Cancelled', tone: 'neutral' } };
+/** Income-tax Act s. 10(10C): VRS compensation is exempt up to ₹5,00,000 in a lifetime (all employers together). Law, not company policy. */
+export const VRS_EXEMPT_LIMIT = 5_00_000;
+const MONEY_RE = /^\d{1,10}(\.\d{1,2})?$/;
+
+/** Sheets sent to payroll this month, the special pay types, and lay-off and VRS. The sample story and the live page show this same body. */
+export function SpecialPayHomeBody({ month, postings, nameOf, openType, onLayoff, onVrs, onSendLayoff }: {
+  month: string;
+  postings: SpecialPosting[];
+  nameOf: (employeeId: string) => string;
+  /** The Open control of a special pay type: a story link in Storybook, a tab switch in the app. */
+  openType: (tab: Exclude<SpecialTab, 'home'>, label: string) => ReactNode;
+  onLayoff: () => void;
+  onVrs: () => void;
+  onSendLayoff: () => Promise<unknown>;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState<SpecialPosting | null>(null);
+  const people = (p: SpecialPosting) => new Set(p.lines.map((l) => l.employeeId)).size;
+  const cols: TableColumn<SpecialPosting>[] = [
+    { key: 'sheet', header: 'Sheet', value: (p) => SPECIAL_KIND_TEXT[p.kind], render: (p) => <div>{SPECIAL_KIND_TEXT[p.kind]}{p.madeByMe && <p className="yx-pay-note">Sent by you</p>}</div>, width: 200 },
+    { key: 'people', header: 'People', type: 'number', value: (p) => people(p), width: 90 },
+    { key: 'total', header: 'Total', type: 'money', value: (p) => Number(p.total), total: 'sum', width: 130 },
+    { key: 'status', header: 'Status', type: 'status', value: (p) => POSTING_STATUS[p.status].label, statusTone: (v) => Object.values(POSTING_STATUS).find((s) => s.label === v)?.tone ?? 'neutral', width: 190 },
+  ];
+  const typeStatus = (kinds: SpecialKind[]) => {
+    const mine = postings.filter((p) => kinds.includes(p.kind) && p.status !== 'cancelled');
+    if (!mine.length) return <Badge tone="neutral">Not sent</Badge>;
+    const s = mine.some((p) => p.status === 'pending') ? 'pending' : mine.some((p) => p.status === 'rejected') ? 'rejected' : 'approved';
+    return <Badge tone={POSTING_STATUS[s].tone}>{POSTING_STATUS[s].label}</Badge>;
+  };
+  return (
+    <div className="yx-pay-split">
+      <div className="yx-pay-stack">
+        <SectionTitle>Sent to payroll · {monthName(month)}</SectionTitle>
+        <DataTable
+          label={`Special pay sent to payroll, ${monthName(month)}`}
+          columns={cols}
+          rows={postings}
+          getRowId={(p) => p.id}
+          rowNoun={['sheet', 'sheets']}
+          empty={<EmptyState compact title="Nothing sent to payroll this month" description="Each special pay type sends its month's sheet when it is ready. A payroll approver who did not make it, and is not paid in it, approves it." />}
+          rowButtons={(p) => (
+            <Button size="sm" onClick={() => setOpen(p)}>
+              Lines
+            </Button>
+          )}
+        />
+        <p className="yx-pay-note">Approved sheets are paid as named lines in the {monthName(month)} run.</p>
+      </div>
+      <div className="yx-pay-stack">
+        <aside className="yx-pay-panel" aria-label="Special pay types">
+          <SectionTitle>Special pay types</SectionTitle>
+          <ul className="yx-pay-cards">
+            {SPECIAL_TYPES.map((t) => (
+              <li key={t.tab}>
+                <div className="yx-pay-cards__row">
+                  <strong>{t.label}</strong>
+                  {openType(t.tab, t.label)}
+                </div>
+                <div className="yx-pay-cards__row">
+                  <span className="yx-pay-muted">{t.note}</span>
+                  {typeStatus(t.kinds)}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </aside>
+        <aside className="yx-pay-panel" aria-label="Lay-off and VRS">
+          <SectionTitle actions={typeStatus(['layoff', 'vrs'])}>Lay-off and VRS</SectionTitle>
+          <div className="yx-pay-row">
+            <Button onClick={onLayoff}>Record lay-off days</Button>
+            <ConfirmDialog
+              trigger={<Button>Send lay-off pay</Button>}
+              title={`Send ${monthName(month)} lay-off pay to payroll?`}
+              consequence="Every lay-off day recorded for the month goes to payroll as one sheet, for a payroll approver to approve."
+              confirmLabel="Send to payroll"
+              onConfirm={async () => {
+                await onSendLayoff();
+                toast({ tone: 'success', title: `${monthName(month)} lay-off pay sent to payroll for approval.` });
+              }}
+            />
+            <Button onClick={onVrs}>Pay VRS</Button>
+          </div>
+        </aside>
+      </div>
+      <Drawer open={!!open} onOpenChange={(o) => !o && setOpen(null)} title={open ? `${SPECIAL_KIND_TEXT[open.kind]} · ${monthName(open.month)}` : ''} subtitle={open ? POSTING_STATUS[open.status].label : undefined}>
+        {open && (
+          <PlainTable
+            label="Posting lines"
+            rows={open.lines}
+            getRowId={(l) => String(open.lines.indexOf(l))}
+            columns={[
+              { key: 'who', header: 'Person', rowHeader: true, cell: (l) => nameOf(l.employeeId) },
+              { key: 'line', header: 'Line', cell: (l) => l.label },
+              { key: 'amount', header: 'Amount', num: true, cell: (l) => formatINR(Number(l.amount)) },
+            ]}
+            footer={[{ id: 'total', label: 'Total', cells: { amount: formatINR(Number(open.total)) } }]}
+          />
+        )}
+      </Drawer>
+    </div>
+  );
+}
+
+/** Lay-off compensation days for one person and month (Industrial Disputes Act s. 25C: half of basic and DA a day; the API works out the amount). */
+export function LayoffDrawer({ month, onSearch, onClose, onSave }: { month: string; onSearch: (q: string) => Promise<PersonHit[]>; onClose: () => void; onSave: (x: { employeeId: string; days: string }) => Promise<unknown> }) {
+  const { toast } = useToast();
+  const [who, setWho] = useState<PersonHit | null>(null);
+  const [days, setDays] = useState('');
+  const errors: FormErrorItem[] = [...(!who ? [{ fieldId: 'lo-who', message: 'Choose the person.' }] : []), ...(!/^\d{1,2}(\.5)?$/.test(days) || Number(days) <= 0 ? [{ fieldId: 'lo-days', message: 'Lay-off days in whole or half days, like 3 or 2.5.' }] : [])];
+  return (
+    <FormDrawer
+      title={`Lay-off days · ${monthName(month)}`}
+      subtitle="Paid at half of basic and DA for each day laid off. Recording the same person again replaces the days."
+      confirm="Save days"
+      errors={errors}
+      onClose={onClose}
+      onSave={async () => {
+        await onSave({ employeeId: who!.id, days });
+        toast({ tone: 'success', title: `${days} lay-off ${Number(days) === 1 ? 'day' : 'days'} saved for ${who!.name}.` });
+      }}
+    >
+      {(errorOf) => (
+        <>
+          <PersonPicker id="lo-who" label="Person" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('lo-who')} />
+          <FormField id="lo-days" label="Days laid off" required error={errorOf('lo-days')} helper="Whole or half days.">
+            <TextField value={days} onChange={setDays} inputMode="decimal" />
+          </FormField>
+        </>
+      )}
+    </FormDrawer>
+  );
+}
+
+/** VRS compensation with the s. 10(10C) exemption worked out before it is sent to payroll. */
+export function VrsDrawer({ month, onSearch, onClose, onSave }: { month: string; onSearch: (q: string) => Promise<PersonHit[]>; onClose: () => void; onSave: (x: { employeeId: string; amount: string; priorExemption: string }) => Promise<unknown> }) {
+  const { toast } = useToast();
+  const [who, setWho] = useState<PersonHit | null>(null);
+  const [amount, setAmount] = useState('');
+  const [prior, setPrior] = useState('0');
+  const errors: FormErrorItem[] = [...(!who ? [{ fieldId: 'vr-who', message: 'Choose the person.' }] : []), ...(!MONEY_RE.test(amount) || Number(amount) <= 0 ? [{ fieldId: 'vr-amount', message: 'The VRS compensation, above zero.' }] : []), ...(!MONEY_RE.test(prior) ? [{ fieldId: 'vr-prior', message: 'VRS exemption claimed before, 0 if none.' }] : [])];
+  const left = Math.max(0, VRS_EXEMPT_LIMIT - (Number(prior) || 0));
+  const exempt = Math.min(Number(amount) || 0, left);
+  return (
+    <FormDrawer
+      title={`Pay VRS · ${monthName(month)}`}
+      subtitle="Exempt up to what is left of the ₹5,00,000 lifetime limit; the rest is taxed as salary. Sent to payroll for approval."
+      confirm="Send to payroll"
+      errors={errors}
+      onClose={onClose}
+      onSave={async () => {
+        await onSave({ employeeId: who!.id, amount, priorExemption: prior });
+        toast({ tone: 'success', title: `VRS for ${who!.name} sent to payroll for approval.` });
+      }}
+    >
+      {(errorOf) => (
+        <>
+          <PersonPicker id="vr-who" label="Person" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('vr-who')} />
+          <FormField id="vr-amount" label="VRS compensation (₹)" required error={errorOf('vr-amount')}>
+            <TextField value={amount} onChange={setAmount} inputMode="decimal" />
+          </FormField>
+          <FormField id="vr-prior" label="Exemption claimed before (₹)" required error={errorOf('vr-prior')} helper="From the person's declaration, any employer.">
+            <TextField value={prior} onChange={setPrior} inputMode="decimal" />
+          </FormField>
+          <FactRow
+            items={[
+              { label: 'Exempt', value: formatINR(exempt) },
+              { label: 'Taxed as salary', value: formatINR(Math.max(0, (Number(amount) || 0) - exempt)) },
+            ]}
+          />
+        </>
+      )}
+    </FormDrawer>
+  );
+}
+
+const SP_MONTH = '2026-09';
+const spPerson = (i: number) => PLANT_WORKERS[i] ?? EMPLOYEES[i];
+const SAMPLE_POSTINGS: SpecialPosting[] = [
+  { id: 'sp1', kind: 'piece', month: SP_MONTH, sourceRef: 'piece', lines: [0, 1, 2].map((i) => ({ employeeId: spPerson(i).id, componentCode: 'piece_pay', amount: String(14_250 + i * 410), label: `Piece-rate pay for ${26 - i} days in September.` })), total: String(14_250 * 3 + 410 * 3), status: 'pending', madeByMe: true, createdAt: '2026-09-26T05:00:00.000Z' },
+  { id: 'sp2', kind: 'union', month: SP_MONTH, sourceRef: 'union', lines: [0, 1].map((i) => ({ employeeId: spPerson(i).id, componentCode: 'union_dues', amount: '75.00', label: 'Kaveri Foods Workers Union dues.' })), total: '150.00', status: 'approved', madeByMe: false, createdAt: '2026-09-24T05:00:00.000Z' },
+  { id: 'sp3', kind: 'tips', month: SP_MONTH, sourceRef: 'tips', lines: [{ employeeId: spPerson(3).id, componentCode: 'tips', amount: '10000.00', label: 'Tips pool September: 3 points.' }], total: '10000.00', status: 'rejected', madeByMe: false, createdAt: '2026-09-23T05:00:00.000Z' },
+  { id: 'sp4', kind: 'layoff', month: SP_MONTH, sourceRef: 'layoff', lines: [{ employeeId: spPerson(4).id, componentCode: 'layoff_pay', amount: '2340.00', label: 'Lay-off compensation for 4 days.' }], total: '2340.00', status: 'pending', madeByMe: true, createdAt: '2026-09-27T05:00:00.000Z' },
+];
+const samplePeople = async (q: string): Promise<PersonHit[]> => PLANT_WORKERS.filter((e) => `${e.name} ${e.code}`.toLowerCase().includes(q.toLowerCase())).slice(0, 5).map((e) => ({ id: e.id, name: e.name, employeeCode: e.code }));
+const sampleName = (id: string) => EMPLOYEES.find((e) => e.id === id)?.name ?? 'Someone';
+const storyLink = (t: Exclude<SpecialTab, 'home'>, label: string) => (
+  <Link href={storyHref(SPECIAL_TYPES.find((x) => x.tab === t)!.story)} target="_top">
+    Open {label.toLowerCase()}
+  </Link>
+);
+
+/** PAY-50 · Special pay home: this month's sheets sent to payroll, the special pay types (PAY-31 … 37), lay-off and VRS. */
+export function SpecialPayHomeScreen({ live, ...story }: { state?: ViewState | 'no-access'; drawer?: 'layoff' | 'vrs'; /** The live app's /yx/payroll/special-pay. */ live?: LiveSpecialPay }) {
+  return live ? <LiveSpecialPayHome live={live} /> : <SampleSpecialPayHome {...story} />;
+}
+
+function SampleSpecialPayHome({ state = 'ready', drawer }: { state?: ViewState | 'no-access'; drawer?: 'layoff' | 'vrs' }) {
+  const [open, setOpen] = useState(drawer ?? null);
+  const ok = async () => ({});
+  const body = (postings: SpecialPosting[]) => <SpecialPayHomeBody month={SP_MONTH} postings={postings} nameOf={sampleName} openType={storyLink} onLayoff={() => setOpen('layoff')} onVrs={() => setOpen('vrs')} onSendLayoff={ok} />;
+  return (
+    <PayFrame page="compensation">
+      <PageHeader title="Special pay" description={`${ENTITIES[0].name} · ${monthName(SP_MONTH)}. Each month's sheet goes to payroll once a payroll approver who did not make it, and is not paid in it, approves it.`} />
+      {state === 'no-access' ? (
+        <NoAccessState grantedBy="your payroll admin" what="special pay" />
+      ) : (
+        <StateBlock state={state} errorTitle="Couldn't load special pay." empty={body([])}>
+          {body(SAMPLE_POSTINGS)}
+        </StateBlock>
+      )}
+      {open === 'layoff' && <LayoffDrawer month={SP_MONTH} onSearch={samplePeople} onClose={() => setOpen(null)} onSave={ok} />}
+      {open === 'vrs' && <VrsDrawer month={SP_MONTH} onSearch={samplePeople} onClose={() => setOpen(null)} onSave={ok} />}
+    </PayFrame>
   );
 }

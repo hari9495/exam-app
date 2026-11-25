@@ -1,8 +1,9 @@
 // Shell, homes, settings home, access states and search (PLT-01, 02, 10, 18, 20, 21; APX-D §1.1 Home).
 import { Fragment, useMemo, useState, type ReactNode } from 'react';
 import {
-  ArrowLeft, Bell, Bookmark, CalendarPlus, Megaphone, MessageCircleQuestionMark, Clock, CheckSquare, Download, Eye, EyeOff, FileText, House, FolderSearch, HelpCircle, IndianRupee, Lock, Receipt, Search, Settings as SettingsIcon, Ticket, UserRound, Users,
+  ArrowLeft, Bell, Bookmark, CalendarCheck, CalendarPlus, Megaphone, MessageCircleQuestionMark, Clock, CheckSquare, Download, Eye, EyeOff, FileText, House, FolderSearch, HelpCircle, IndianRupee, Lock, Receipt, Search, Settings as SettingsIcon, Ticket, UserRound, Users,
 } from 'lucide-react';
+import { Segment } from '../../components/segment';
 import {
   AppShell, CommandPalette, ScopePicker, type ScopePeriod, PanelGroup, PanelLink, ProfileMenu, SidePanel, SideRail, TopBar, PageHeader, Card, type PaletteGroup, type RailItem,
 } from '../../components/shell';
@@ -475,25 +476,10 @@ function homeWidgets(persona: Exclude<Persona, 'admin'>, data: HomeData, loading
       clock,
       {
         id: 'today',
-        title: 'Team today',
+        title: 'My team today',
         size: 8,
         actions: <Link href="#today">View all 14</Link>,
-        content: (
-          <div className="yx-plt-stack">
-            <p className="yx-plt-muted">11 in · 2 on leave · 1 not checked in · 0 late</p>
-            <ul className="yx-plt-list">
-              <li>
-                <span className="yx-plt-list__main"><PersonLabel name="Sanjay Gupta" secondary="Not checked in · General shift started 9:30 am" /></span>
-                <span className="yx-plt-row">
-                  <Button size="sm" icon={Bell}>Nudge</Button>
-                  <Button size="sm">Mark on duty</Button>
-                </span>
-              </li>
-              <li><PersonLabel name="Meera Krishnan" secondary="Sick leave today" /></li>
-              <li><PersonLabel name="Rahul Nair" secondary="Casual leave today and tomorrow" /></li>
-            </ul>
-          </div>
-        ),
+        content: <TeamTodayCard team={SAMPLE_TEAM_TODAY} onNudge={() => Promise.resolve()} />,
       },
       {
         id: 'off',
@@ -646,32 +632,8 @@ function homeWidgets(persona: Exclude<Persona, 'admin'>, data: HomeData, loading
         </div>
       ),
     },
-    {
-      id: 'trend',
-      title: 'Payroll cost',
-      size: 4,
-      bare: true,
-      content: hideMoney ? (
-        <section className="yx-stat" aria-label="Payroll cost">
-          <span className="yx-stat__label">Payroll cost, last 6 months</span>
-          <p className="yx-plt-muted">Amounts are hidden. Select Show amounts to see the chart.</p>
-        </section>
-      ) : (
-        <LineChart
-          title="Payroll cost vs budget"
-          description="Monthly cost to company, April to September"
-          money
-          xLabel="Month"
-          height={180}
-          yMin={20000000}
-          categories={['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep']}
-          series={[
-            { name: 'Cost', values: [20850000, 20910000, 21120000, 21300000, 21280000, 21560000] },
-            { name: 'Budget', values: [21400000, 21400000, 21400000, 21400000, 21400000, 21400000] },
-          ]}
-        />
-      ),
-    },
+    // The same drawing as the live Home (answer 2473), with the design's six months.
+    costTrend(DESIGN_TREND, hideMoney),
     news,
     coming,
   ];
@@ -705,20 +667,28 @@ export interface LiveHome {
   company: string;
   today: Date;
   approvalsHref: string;
-  onApprove?: (item: ActionItem) => void;
+  /** One-click Approve (items of kind 'approve'): resolves when done, rejects with the server's reason. */
+  onApprove?: (item: ActionItem) => Promise<unknown>;
   onReview?: (item: ActionItem) => void;
   /** The person's "Attendance today" card; left out for people with no attendance. */
   clock?: ReactNode;
+  /** C-8 (YX-12): the one nudge for this person (a suggestion or switch-on card), first on the page; absent when none. */
+  nudge?: ReactNode;
   /** Count cards. previous: last period's number, only when it is on record. empty: nothing to count yet, in words. money: a rupee amount, masked by "Hide amounts". */
   stats?: { id: string; title: string; label: string; value: number; unit?: string; money?: boolean; previous?: number; previousLabel?: string; empty?: string; drill: { label: string; href: string } }[];
   /** Finance: the "Hide amounts" button; the page remembers the choice for the person. */
   amounts?: { hidden: boolean; onToggle: () => void };
   /** Finance: "Money going out" in the next 30 days, by date; an empty list says so, an absent one hides the widget. amount: unknown until calculated. */
   moneyOut?: { id: string; date: string; what: string; amount: number | null; status: string; tone: BadgeTone; action: string; href: string }[];
+  /** Finance: "Payroll cost" against the payroll budget, month by month, oldest first; null = nothing on record that month. budgetHref: where the person sets the budget (only for those who may). */
+  trend?: { months: { label: string; name: string; cost: number | null; budget: number | null }[]; budgetHref?: string };
   /** Finance: "Payroll approval", the run waiting for this person. changePct: net against last month, when on record. */
   approval?: { month: string; preparedBy: string; role?: string; on?: string; previousMonth?: string; changePct?: number; flagged: number; threshold: string; href: string };
-  /** Manager: "Team today" (who is in, on leave, not checked in), with the people to look at. nudge: not checked in yet. */
-  team?: { summary: string; total: number; href: string; rows: { id: string; name: string; secondary: string; nudge?: boolean; reminded?: boolean }[] };
+  /**
+   * Manager: "My team today" (Keka ideas, 2026-11): direct reports only, a count per group (on leave, not in yet, late,
+   * working from home or on duty) and who is in it. nudge: not in yet, can be reminded.
+   */
+  team?: TeamToday;
   /** Nudge (Team today): reminds the person to check in. Rejects with a plain reason (already reminded today). */
   onNudge?: (row: { id: string; name: string }) => Promise<void>;
   /** Manager: "Who's off this week", day by day. */
@@ -742,6 +712,66 @@ export interface LiveHome {
   hiring?: HiringHomeView;
 }
 
+export type TeamTodayKey = 'leave' | 'not_in' | 'late' | 'away';
+export interface TeamTodayPerson {
+  id: string;
+  name: string;
+  secondary?: string;
+  nudge?: boolean;
+  reminded?: boolean;
+}
+export interface TeamToday {
+  /** Direct reports counted today. */
+  total: number;
+  href: string;
+  groups: { key: TeamTodayKey; label: string; people: TeamTodayPerson[] }[];
+}
+
+const NOBODY: Record<TeamTodayKey, string> = { leave: 'No one is on leave today.', not_in: 'Everyone is in.', late: 'No late check-ins today.', away: 'No one is working from home or on duty today.' };
+
+/** "My team today": one pick-one control of groups with counts, then who is in the chosen group. */
+export function TeamTodayCard({ team, onNudge }: { team: TeamToday; onNudge?: (row: { id: string; name: string }) => Promise<void> }) {
+  const first = team.groups.find((g) => g.people.length)?.key ?? team.groups[0]?.key ?? 'leave';
+  const [key, setKey] = useState<TeamTodayKey>(first);
+  const group = team.groups.find((g) => g.key === key) ?? team.groups[0];
+  if (!group) return null;
+  return (
+    <div className="yx-plt-stack">
+      <Segment label="Who" value={group.key} onChange={setKey} options={team.groups.map((g) => ({ value: g.key, label: `${g.label} · ${g.people.length}` }))} />
+      {group.people.length === 0 ? (
+        <p className="yx-plt-muted">{NOBODY[group.key]}</p>
+      ) : (
+        <ul className="yx-plt-list" aria-label={group.label}>
+          {group.people.map((r) => (
+            <li key={r.id}>
+              {r.nudge && onNudge ? (
+                <>
+                  <span className="yx-plt-list__main"><PersonLabel name={r.name} secondary={r.secondary} /></span>
+                  <NudgeButton name={r.name} reminded={r.reminded} onNudge={() => onNudge(r)} />
+                </>
+              ) : (
+                <PersonLabel name={r.name} secondary={r.secondary} />
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** The manager sample: 14 direct reports today. */
+const SAMPLE_TEAM_TODAY: TeamToday = {
+  total: 14,
+  href: '#today',
+  groups: [
+    { key: 'leave', label: 'On leave', people: [{ id: 'm1', name: 'Meera Krishnan', secondary: 'Sick leave today' }, { id: 'm2', name: 'Rahul Nair', secondary: 'Casual leave today and tomorrow' }] },
+    { key: 'not_in', label: 'Not in yet', people: [{ id: 'm3', name: 'Sanjay Gupta', secondary: 'General shift started 9:30 am', nudge: true }] },
+    { key: 'late', label: 'Late', people: [{ id: 'm4', name: 'Kavya Reddy', secondary: 'In at 9:52 am, 22 minutes late' }] },
+    { key: 'away', label: 'Working from home or on duty', people: [{ id: 'm5', name: 'Vikram Rao', secondary: 'On duty: client visit, Hosur' }, { id: 'm6', name: 'Anjali Iyer', secondary: 'Working from home' }] },
+  ],
+};
+
 /** Nudge on Team today (PLT-02): once sent it says so and stays done; a refusal says why in a toast. */
 function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boolean; onNudge: () => Promise<void> }) {
   const { toast } = useToast();
@@ -753,8 +783,10 @@ function NudgeButton({ name, reminded, onNudge }: { name: string; reminded?: boo
       setState('done');
       toast({ tone: 'success', title: `Reminder sent to ${name}`, description: 'They get a notification, and an email if they allow it.' });
     } catch (e) {
-      setState('idle');
-      toast({ tone: 'error', title: 'Reminder not sent', description: e instanceof Error ? e.message : 'Try again in a moment.' });
+      // Already reminded (409): nothing went wrong, so a warning, and the button says it is done.
+      const conflict = (e as { status?: number })?.status === 409;
+      setState(conflict ? 'done' : 'idle');
+      toast({ tone: conflict ? 'warning' : 'error', title: 'Reminder not sent', description: e instanceof Error ? e.message : 'Try again in a moment.' });
     }
   };
   return (
@@ -771,6 +803,56 @@ const partOfDay = (d: Date) => (d.getHours() < 12 ? 'morning' : d.getHours() < 1
 const SHARE: Record<number, WidgetSize> = { 1: 12, 2: 6, 3: 4 };
 const fill = (ws: DashboardWidget[], many: WidgetSize = 3) => ws.map((w) => ({ ...w, size: SHARE[ws.length] ?? many }));
 
+/** A round axis floor below the lowest amount, so the months' differences show (the design starts at ₹2 crore). */
+const axisFloor = (values: number[]) => {
+  const low = Math.min(...values) * 0.97;
+  if (!Number.isFinite(low) || low <= 0) return 0;
+  const step = 10 ** (Math.floor(Math.log10(low)) - 1);
+  return Math.floor(low / step) * step;
+};
+
+/** The design's six months of payroll cost against a flat budget (PLT-02 finance). */
+const DESIGN_TREND: NonNullable<LiveHome['trend']> = {
+  months: ([
+    ['Apr', 'April', 20850000], ['May', 'May', 20910000], ['Jun', 'June', 21120000],
+    ['Jul', 'July', 21300000], ['Aug', 'August', 21280000], ['Sep', 'September', 21560000],
+  ] as const).map(([label, name, cost]) => ({ label, name, cost, budget: 21400000 })),
+};
+
+/** "Payroll cost" (PLT-02 finance): cost to company against the payroll budget; hidden with the amounts; worded when no budget is set. */
+function costTrend(t: NonNullable<LiveHome['trend']>, hide: boolean): DashboardWidget {
+  const span = t.months.length ? `${t.months[0].name} to ${t.months[t.months.length - 1].name}` : '';
+  const values = t.months.flatMap((m) => [m.cost, m.budget]).filter((v): v is number => v !== null);
+  const noBudget = t.months.every((m) => m.budget === null);
+  const content = hide ? (
+    <section className="yx-stat" aria-label="Payroll cost">
+      <span className="yx-stat__label">Payroll cost, last {t.months.length} months</span>
+      <p className="yx-plt-muted">Amounts are hidden. Select Show amounts to see the chart.</p>
+    </section>
+  ) : noBudget ? (
+    <section className="yx-stat" aria-label="Payroll cost">
+      <span className="yx-stat__label">Payroll cost vs budget</span>
+      <p className="yx-plt-muted">No payroll budget set yet, so there is nothing to compare the cost with.</p>
+      {t.budgetHref && <Link className="yx-stat__drill" href={t.budgetHref}>Set the budget</Link>}
+    </section>
+  ) : (
+    <LineChart
+      title="Payroll cost vs budget"
+      description={`Monthly cost to company, ${span}`}
+      money
+      xLabel="Month"
+      height={180}
+      yMin={axisFloor(values)}
+      categories={t.months.map((m) => m.label)}
+      series={[
+        { name: 'Cost', values: t.months.map((m) => m.cost) },
+        { name: 'Budget', values: t.months.map((m) => m.budget) },
+      ]}
+    />
+  );
+  return { id: 'trend', title: 'Payroll cost', size: 4, bare: true, content };
+}
+
 const HIDDEN = '₹ ••••••';
 const hideRupees = (t: string) => t.replace(/₹[\d,]+(\.\d+)?/g, HIDDEN);
 
@@ -786,6 +868,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
   const laterHiring = hiring.filter((w) => !besideActions.includes(w) && w.id !== 'interviewsToday');
   const pair = (ws: DashboardWidget[]) => (ws.length === 1 ? [{ ...ws[0], size: 12 as const }] : ws);
   const widgets: DashboardWidget[] = [
+    ...(live.nudge ? [{ id: 'nudge', pinned: true, bare: true, title: 'For you', size: 12 as const, content: live.nudge }] : []),
     {
       id: 'actions',
       title: 'Needs your action',
@@ -800,30 +883,10 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
     ...(live.team
       ? [{
           id: 'today',
-          title: 'Team today',
+          title: 'My team today',
           size: 8 as const,
           actions: <Link href={live.team.href}>{`View all ${live.team.total}`}</Link>,
-          content: (
-            <div className="yx-plt-stack">
-              <p className="yx-plt-muted">{live.team.summary}</p>
-              {live.team.rows.length > 0 && (
-                <ul className="yx-plt-list">
-                  {live.team.rows.map((r) => (
-                    <li key={r.id}>
-                      {r.nudge && live.onNudge ? (
-                        <>
-                          <span className="yx-plt-list__main"><PersonLabel name={r.name} secondary={r.secondary} /></span>
-                          <NudgeButton name={r.name} reminded={r.reminded} onNudge={() => live.onNudge!(r)} />
-                        </>
-                      ) : (
-                        <PersonLabel name={r.name} secondary={r.secondary} />
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          ),
+          content: <TeamTodayCard team={live.team} onNudge={live.onNudge} />,
         }]
       : []),
     ...(live.off
@@ -974,6 +1037,7 @@ function LiveHomeBody({ persona, data, loading, live }: { persona: RoleHomeScree
       : []),
     ]),
     ...fill([
+    ...(live.trend ? [costTrend(live.trend, hide)] : []),
     ...(live.goals
       ? [{
           id: 'goals',
@@ -1303,14 +1367,16 @@ export const PALETTE_GROUPS: PaletteGroup[] = [
       { id: 'ac1', label: 'Apply leave', secondary: 'Opens the request sheet', icon: CalendarPlus, shortcut: 'N L', keywords: ['leave', ...pfx('>', ['apply leave'])] },
       { id: 'ac2', label: 'Approve leave', secondary: 'Approvals › Leave · 2 waiting', icon: CheckSquare, keywords: pfx('>', ['approve leave']) },
       { id: 'ac3', label: 'New expense claim', secondary: 'Opens the request sheet', icon: Receipt, shortcut: 'N E', keywords: pfx('>', ['new expense claim']) },
+      { id: 'ac4', label: 'Regularise a day', secondary: 'Fix a missed or wrong punch', icon: CalendarCheck, keywords: pfx('>', ['regularise a day', 'missed punch']) },
+      { id: 'ac5', label: 'Raise a ticket', secondary: 'Ask HR, IT or finance', icon: Ticket, keywords: pfx('>', ['raise a ticket', 'helpdesk']) },
     ],
   },
   {
     heading: 'People',
     prefix: '@',
     items: [
-      { id: 'pp1', label: 'Arjun Mehta', secondary: 'KF-0231 · QA Engineer · Quality', icon: UserRound, keywords: ['KF-0231', 'arjun.m@kaverifoods.in', ...pfx('@', ['Arjun Mehta'])] },
-      { id: 'pp2', label: 'Anjali Iyer', secondary: 'KF-0118 · Brand Manager · Sales', icon: UserRound, keywords: ['KF-0118', ...pfx('@', ['Anjali Iyer'])] },
+      { id: 'pp1', label: 'Arjun Mehta', secondary: 'KF-0231 · Kaveri Foods Pvt Ltd (Tamil Nadu) · QA Engineer · Quality · Chennai office', icon: UserRound, keywords: ['KF-0231', 'arjun.m@kaverifoods.in', ...pfx('@', ['Arjun Mehta'])] },
+      { id: 'pp2', label: 'Anjali Iyer', secondary: 'KF-0118 · Kaveri Foods Pvt Ltd · Brand Manager · Sales · Bengaluru head office', icon: UserRound, keywords: ['KF-0118', ...pfx('@', ['Anjali Iyer'])] },
       { id: 'pp3', label: 'Ananya Kulkarni', secondary: 'Candidate · Quality Analyst', icon: Users, keywords: pfx('@', ['Ananya Kulkarni']) },
     ],
   },

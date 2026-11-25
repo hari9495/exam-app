@@ -141,6 +141,8 @@ export interface ClaimSummary {
   /** YX-EXP-06: the headline figure. */
   netPayable: string;
   risk: 'none' | 'low' | 'high';
+  tripId?: string | null;
+  advanceId?: string | null;
   submittedAt: string | null;
   decidedAt: string | null;
   version: number;
@@ -151,6 +153,17 @@ export interface ExpenseHome {
   waitingForMe: number;
   toReview: number | null;
   toReceive: string;
+  /** EXP-01: my direct reports' claims by the month they were sent (null when I have no reports). */
+  team?: { people: number; month: string; spend: string; previous: string | null; trend: string[]; overLimit: number; overLimitPrevious: number | null } | null;
+  /** EXP-01: the company's payroll cut-off day and the payroll a claim approved today goes to. */
+  payroll?: { cutoffDay: number; month: string };
+}
+
+/** Round 2 (founder answer 1): a manager's read-only list of their direct reports' sent claims in one IST month. */
+export interface TeamClaims {
+  month: string;
+  people: number;
+  claims: (ClaimSummary & { overLimit: number; canOpen: boolean })[];
 }
 
 export interface Suggested {
@@ -162,6 +175,9 @@ export interface ClaimLine {
   id: string;
   lineNo: number;
   categoryCode: string;
+  /** Projects P-5 (answer 1419): the project the spend is for, and whether it is re-billed to the client. */
+  projectId?: string | null;
+  rebill?: boolean;
   spentOn: string;
   merchant: string | null;
   city: string | null;
@@ -170,6 +186,8 @@ export interface ClaimLine {
   payMode: 'personal' | 'company_card' | 'company_paid';
   description: string | null;
   hasReceipt: boolean;
+  /** Round 2: what the receipt thumbnail shows: the photo itself, or a PDF tile (no PDF page is drawn). */
+  receiptType?: 'image' | 'pdf' | null;
   selfDeclared: boolean;
   claimed: string;
   approved: string | null;
@@ -201,17 +219,22 @@ export interface ClaimFlag {
 export interface ClaimDetail extends ClaimSummary {
   decisionNote: string | null;
   lines: ClaimLine[];
+  /** Answer 1419: the projects a line can name (absent or null: the company has it off). */
+  projects?: { id: string; code: string; name: string; client: boolean }[] | null;
   changes: { lineId: string; from: string; to: string; reason: string; at: string }[];
   flags: ClaimFlag[];
-  route: { status: string; currentStep: number; steps: { name: string; state: string }[] } | null;
+  route: { status: string; currentStep: number; steps: { name: string; state: string; approvers?: string[]; decidedAt?: string | null }[] } | null;
   /** E3: how and when an approved claim is paid. */
   payment?: { route: 'payroll' | 'payout'; month: string | null; paidOn: string | null } | null;
-  can: { edit: boolean; withdraw: boolean; decide: boolean; changeAmounts: boolean; review: boolean };
+  can: { own?: boolean; edit: boolean; withdraw: boolean; decide: boolean; changeAmounts: boolean; review: boolean };
 }
 
 /** What a line save sends (the API works out mileage and per diem). */
 export interface LineInput {
   categoryCode: string;
+  /** Answer 1419: only when the company lets lines name a project. */
+  projectId?: string | null;
+  rebill?: boolean;
   spentOn: string;
   merchant: string | null;
   city: string | null;
@@ -305,6 +328,14 @@ export interface BookingInput {
 export interface AdvanceDetail extends AdvanceSummary {
   person: string;
   payCurrency?: string;
+  /** EXP-05: the company's settle-by days and how many salary instalments recover an overdue balance. */
+  policy?: { settleDays: number; recoveryInstalments: number };
+  /**
+   * Round 2 (EXP-05 recovery): the salary instalments of an overdue balance, in the pay currency: `scheduled` once the
+   * daily job has made the recovery loan (the loan engine's schedule), else what it will recover. Only for the employee
+   * and finance; null when nothing is recovered from salary.
+   */
+  recovery?: { scheduled: boolean; total: string; instalments: { month: string; amount: string; status: 'recovered' | 'paused' | 'scheduled' }[] } | null;
   ledger: { id: string; on: string; kind: string; text: string; amount: string; amountPay?: string; claimId: string | null }[];
   can: { changeAmount: boolean; decide: string | null; pay: boolean; recordReturn: boolean; claim: boolean };
 }
@@ -328,6 +359,15 @@ export interface ExpenseReport {
   to: string;
   columns: { key: string; label: string }[];
   rows: Record<string, string | number | null>[];
+  /** EXP-09: the chart figures (exact decimal strings) and the department filter's choices. */
+  charts?: { byCategory?: ReportBar[]; paidThrough?: ReportBar[]; ageing?: ReportBar[] };
+  departments?: { id: string; name: string }[];
+}
+
+export interface ReportBar {
+  label: string;
+  amount: string;
+  count?: number;
 }
 
 // ------------------------------------------------------------------------------------------ E3: To pay (EXP-06)
@@ -363,6 +403,8 @@ export interface PayoutBatchRow {
 }
 
 export interface ToPayData {
+  /** EXP-06: the payroll cut-off day and the payroll a claim approved today goes to. */
+  payroll?: { cutoffDay: number; month: string };
   entities: { id: string; name: string }[];
   claims: ToPayClaim[];
   batches: PayoutBatchRow[];
@@ -381,4 +423,115 @@ export interface PayoutResultInput {
   status: 'paid' | 'failed' | 'returned';
   ref?: string;
   reason?: string;
+}
+
+// EXP-08 card statements (apps/api/src/expenses/cards.service.ts). Only the last 4 digits of a card ever arrive.
+export type CardDateFormat = 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD' | 'DD-MMM-YYYY';
+export interface CardMapping {
+  date: string;
+  dateFormat: CardDateFormat;
+  description: string;
+  amountMode: 'signed' | 'split' | 'indicator';
+  amount?: string;
+  negativeIs?: 'credit' | 'debit';
+  debit?: string;
+  credit?: string;
+  indicator?: string;
+  card?: string;
+  merchant?: string;
+  currency?: string;
+}
+export interface CardBank {
+  bankName: string;
+  mapping: CardMapping;
+  version: number;
+}
+export interface CardPreview {
+  fileName: string;
+  columns: string[];
+  sample: string[][];
+  rows: number;
+  mapping: CardBank | null;
+}
+export type CardStatementStatus = 'open' | 'closed' | 'replaced';
+export interface CardStatementHead {
+  id: string;
+  bankName: string;
+  revision: number;
+  periodFrom: string;
+  periodTo: string;
+  fileName: string;
+  rowCount: number;
+  debitTotal: string;
+  creditTotal: string;
+  fullNumbersDropped: number;
+  status: CardStatementStatus;
+  note: string | null;
+  version: number;
+  importedAt: string;
+}
+export interface CardStatements {
+  statements: (CardStatementHead & { open: number; toChase: number })[];
+  banks: CardBank[];
+  rules: { within: string; days: number; recoveryInstalments: number };
+}
+export type CardLineStatus = 'open' | 'matched' | 'to_chase' | 'personal' | 'refund' | 'replaced';
+export interface CardLineRow {
+  id: string;
+  rowNo: number;
+  txnOn: string;
+  description: string;
+  merchant: string | null;
+  amount: string;
+  direction: 'debit' | 'credit';
+  currency: string;
+  cardLast4: string | null;
+  holders: { id: string; name: string }[];
+  status: CardLineStatus;
+  matchGone: boolean;
+  matchedTo: { lineId: string; claimId: string; text: string } | null;
+  suggestion: { lineId: string; claimId: string; text: string; amount: string; spentOn: string } | null;
+  chasedOn: string | null;
+  own: boolean;
+  version: number;
+}
+export interface CardCandidate {
+  lineId: string;
+  claimId: string;
+  employeeId: string;
+  text: string;
+  amount: string;
+  currency: string;
+  spentOn: string;
+  payMode: 'personal' | 'company_card';
+}
+export interface CardStatementView {
+  statement: CardStatementHead;
+  rules: { within: string; days: number };
+  lines: CardLineRow[];
+  candidates: CardCandidate[];
+}
+/** A refusal of an import: the rows to fix, the same file, or the same bank and period. */
+export type CardImportProblem =
+  | { kind: 'rows'; message: string; problems: { rowNo: number; problems: string[] }[] }
+  | { kind: 'duplicate'; message: string; statementId: string | null }
+  | { kind: 'period'; message: string; statementId: string | null; revision: number | null }
+  | { kind: 'other'; message: string };
+export interface MyCardLine {
+  id: string;
+  txnOn: string;
+  description: string;
+  merchant: string | null;
+  amount: string;
+  currency: string;
+  cardLast4: string | null;
+  bankName: string;
+  periodFrom: string;
+  periodTo: string;
+  suggestion: { claimId: string; text: string } | null;
+  version: number;
+}
+export interface MyCardLines {
+  lines: MyCardLine[];
+  recoveryInstalments: number;
 }

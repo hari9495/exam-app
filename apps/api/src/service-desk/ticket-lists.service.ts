@@ -7,6 +7,8 @@ import { Tx } from '../org-structure/org-structure.service';
 import { DeskActor, audit, canLead, has, visibleTickets } from './desk-access';
 import { TicketFiltersDto, TicketListQueryDto, ViewDto } from './dto';
 import { MeService } from './me.service';
+import { fieldTable, sees } from './ticket-fields';
+import { SlaService, clockState } from './sla.service';
 
 // SD-1.07 agent desk lists (US-B-089, US-G-002, US-G-010): filters, saved views, the board, CSV export. Every list
 // starts from the visibility filter (§5.7), so a search, a count or an export never holds a ticket the person may
@@ -29,7 +31,10 @@ const safeCell = (v: unknown) => {
 
 @Injectable()
 export class TicketListsService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly sla: SlaService,
+  ) {}
 
   private tx<T>(a: DeskActor, fn: (tx: Tx) => Promise<T>) {
     return this.tenantPrisma.forTenant(a.ctx, fn);
@@ -49,8 +54,28 @@ export class TicketListsService {
     if (f.snoozed === 'only') and.push({ id: { in: snoozed } });
     else if (f.snoozed !== 'show' && snoozed.length) and.push({ id: { notIn: snoozed } });
     if (f.breaching) {
-      const soon = await tx.sdSlaTimer.findMany({ where: { organizationId: a.ctx.organizationId, kind: 'sla', state: { in: ['running', 'paused'] }, OR: [{ breachedAt: { not: null } }, { dueAt: { lte: new Date(Date.now() + 4 * 3_600_000) } }] }, select: { ticketId: true }, take: 5000 });
-      and.push({ id: { in: [...new Set(soon.map((x) => x.ticketId))] } });
+      // HLP-05b: missed, or at risk by the desk's own at-risk point (the one clock rule, clockState).
+      // shortcut: the newest 5000 live timers are checked; more needs a stored clock state.
+      const live = await tx.sdSlaTimer.findMany({ where: { organizationId: a.ctx.organizationId, kind: 'sla', state: { in: ['running', 'paused'] } }, select: { ticketId: true, breachedAt: true }, orderBy: { startedAt: 'desc' }, take: 5000 });
+      const clocks = await this.sla.clocks(tx, a.ctx.organizationId, [...new Set(live.map((x) => x.ticketId))], ['first_response', 'resolution']);
+      const late = live.filter((x) => x.breachedAt || Object.values(clocks.get(x.ticketId) ?? {}).some((c) => c && ['at-risk', 'breached'].includes(clockState(c))));
+      and.push({ id: { in: [...new Set(late.map((x) => x.ticketId))] } });
+    }
+    if (f.createdFrom || f.createdTo) {
+      const from = f.createdFrom ? new Date(`${f.createdFrom}T00:00:00+05:30`) : null;
+      const to = f.createdTo ? new Date(`${f.createdTo}T00:00:00+05:30`) : null;
+      if ((from && isNaN(+from)) || (to && isNaN(+to))) throw new BadRequestException('Give real dates for Raised.');
+      if (from && to && from > to) throw new BadRequestException('Raised from must be on or before Raised to.');
+      and.push({ createdAt: { ...(from ? { gte: from } : {}), ...(to ? { lt: new Date(to.getTime() + 86_400_000) } : {}) } });
+    }
+    if (f.fieldKey || f.fieldValues?.length) {
+      // Answers 1641, 1650: only on desks where this person may see the field (a team-lead-only field filters for leads).
+      if (!f.fieldKey || !f.fieldValues?.length) throw new BadRequestException('Choose a field and a value.');
+      const defs = await tx.sdTicketField.findMany({ where: { organizationId: a.ctx.organizationId, key: f.fieldKey, active: true, deskId: { in: [...a.roles.keys()] } } });
+      const allowed = defs.filter((d) => ['agent', 'lead'].includes(a.roles.get(d.deskId) ?? '') && sees(d, a.roles.get(d.deskId) === 'lead' ? 'lead' : 'agent'));
+      if (!allowed.length) throw new BadRequestException('No such field on your desks.');
+      const value = (d: (typeof allowed)[number], v: string) => (d.fieldType === 'number' ? Number(v) : v.trim());
+      and.push({ OR: allowed.flatMap((d) => f.fieldValues!.map((v) => ({ deskId: d.deskId, fieldValues: { path: [d.key], equals: value(d, v) } }))) });
     }
     if (f.assignee === 'me') and.push({ assigneeUserId: a.userId });
     else if (f.assignee === 'none') and.push({ assigneeUserId: null });
@@ -111,6 +136,8 @@ export class TicketListsService {
       const dueAt = [cur?.dueAt, x.state === 'running' ? x.dueAt : null].filter((d): d is Date => Boolean(d)).sort((p, q) => p.getTime() - q.getTime())[0] ?? null;
       sla.set(x.ticketId, { dueAt, breached, paused: x.state === 'paused' && (cur?.paused ?? true) });
     }
+    // HLP-02: each ticket's first response and resolution clock (business minutes used of the target).
+    const clocks = await this.sla.clocks(tx, org, rows.map((r) => r.id), ['first_response', 'resolution']);
     const m = <T extends { id: string }>(xs: T[]) => new Map(xs.map((x) => [x.id, x]));
     const [D, S, T, C, G, P, U] = [m(desks), m(statuses), m(types), m(cats), m(groups), m(people), m(users)];
     const person = (id: string | null) => {
@@ -144,6 +171,9 @@ export class TicketListsService {
       customerAccountId: t.customerAccountId,
       senderVerified: t.senderVerified,
       sla: sla.get(t.id) ?? null,
+      firstResponse: clocks.get(t.id)?.first_response ?? null,
+      resolution: clocks.get(t.id)?.resolution ?? null,
+      firstResponseAt: t.firstResponseAt,
       createdAt: t.createdAt,
       updatedAt: t.updatedAt,
       // Lead-only actions show only to those who may do them.
@@ -163,8 +193,13 @@ export class TicketListsService {
       await audit(tx, a, 'desk.ticket.exported', 'sd_ticket', a.userId, { rows: items.length, filters: { ...(view?.filters ?? {}), ...rest } });
       // US-G-030: an export counts as reading every ticket in it.
       if (rows.length) await tx.sdTicketRead.createMany({ data: rows.map((t) => ({ organizationId: t.organizationId, deskId: t.deskId, ticketId: t.id, userId: a.userId, access: 'export' })) });
-      const header = ['Number', 'Subject', 'Desk', 'Type', 'Status', 'Priority', 'Category', 'Group', 'Requester', 'Requested for', 'Assignee', 'Tags', 'VIP', 'Raised', 'Updated'];
-      const body = items.map((t) => [t.number, t.subject, t.desk, t.type, t.status, `P${t.priority}`, t.category, t.group, t.requester, t.requestedFor, t.assignee, t.tags.join(' '), t.vip ? 'Yes' : 'No', t.createdAt.toISOString(), t.updatedAt.toISOString()].map(safeCell));
+      // Answer 1844: the desks' own fields, one column each; a team-lead-only field only for that desk's leads.
+      const defs = rows.length ? await tx.sdTicketField.findMany({ where: { organizationId: a.ctx.organizationId, deskId: { in: [...new Set(rows.map((t) => t.deskId))] }, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] }) : [];
+      const fields = fieldTable(defs, rows, (deskId) => (a.roles.get(deskId) === 'lead' ? 'lead' : 'agent'));
+      const keys = [...fields.labels.keys()];
+      const cellsOf = new Map(rows.map((t, i) => [t.id, fields.cells[i]]));
+      const header = ['Number', 'Subject', 'Desk', 'Type', 'Status', 'Priority', 'Category', 'Group', 'Requester', 'Requested for', 'Assignee', 'Tags', 'VIP', 'Raised', 'Updated', ...keys.map((k) => fields.labels.get(k)!)];
+      const body = items.map((t) => [t.number, t.subject, t.desk, t.type, t.status, `P${t.priority}`, t.category, t.group, t.requester, t.requestedFor, t.assignee, t.tags.join(' '), t.vip ? 'Yes' : 'No', t.createdAt.toISOString(), t.updatedAt.toISOString(), ...keys.map((k) => cellsOf.get(t.id)?.get(k) ?? '')].map(safeCell));
       return stringify([header, ...body]);
     });
   }

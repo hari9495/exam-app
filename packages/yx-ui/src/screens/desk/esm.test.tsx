@@ -1,11 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { answersToSend, formProblems, fromServerGroup, resolveForm, toServerGroup, type FormDef } from '../../lib/forms';
-import { ApprovalsScreen } from './approvals';
 import { CatalogScreen } from './catalog';
 import { CatalogAdmin } from './catalog-admin';
-import type { ApprovalTask, CatalogItemPage } from './esm-types';
+import type { CatalogItemPage } from './esm-types';
 
 const ue = userEvent.setup({ pointerEventsCheck: 0 });
 
@@ -77,48 +76,51 @@ describe('service catalogue (SD-2.03, SD-2.04)', () => {
     expect(await screen.findByRole('button', { name: 'Follow IT-1020' })).toBeInTheDocument();
   });
 
+  it('1802, 1846: an item with a device field asks who it is for first (only people one may raise for); the device list is then that person list', async () => {
+    const DEVICE_PAGE: CatalogItemPage = { ...PAGE, id: 'i2', name: 'Laptop repair', form: { sections: [{ id: 's', columns: 1, fields: [{ key: 'device', type: 'asset', label: 'Which device?' }] }], rules: [] } };
+    const p = { ...props(), onOpenItem: vi.fn(async () => DEVICE_PAGE), onPick: vi.fn(async (kind: string) => (kind === 'on-behalf' ? [{ id: 'p-ravi', label: 'Ravi Kumar', detail: null }] : kind === 'people' ? [{ id: 'p-all', label: 'Anyone at all', detail: null }] : [{ id: 'as9', label: 'HP EliteBook (KF-LT-0009)', detail: null }])) };
+    render(<CatalogScreen {...p} />);
+    await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('radio', { name: 'For someone else' }));
+    await ue.click(within(dialog).getByRole('combobox', { name: 'Person it is for' }));
+    expect(await screen.findByRole('option', { name: /Ravi Kumar/ })).toBeInTheDocument();
+    // 1846: never the whole company list.
+    expect(screen.queryByRole('option', { name: /Anyone at all/ })).toBeNull();
+    expect(p.onPick).not.toHaveBeenCalledWith('people', expect.anything());
+    await ue.click(screen.getByRole('option', { name: /Ravi Kumar/ }));
+    await waitFor(() => expect(p.onPick).toHaveBeenCalledWith('assets', '', 'p-ravi'));
+  });
+
+  it('1802: an item without a device field has no "Who is this for" on its page', async () => {
+    const p = props();
+    render(<CatalogScreen {...p} />);
+    await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByRole('radiogroup', { name: 'Who is this for' })).toBeNull();
+  });
+
+  it('Send request for someone else with nobody chosen says so, and sends nothing', async () => {
+    const p = props();
+    render(<CatalogScreen {...p} />);
+    await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
+    const dialog = await screen.findByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Model/ }));
+    await ue.click(screen.getByRole('option', { name: 'Standard' }));
+    await ue.click(within(dialog).getByRole('button', { name: 'Add to cart' }));
+    await ue.click(screen.getByRole('radio', { name: 'For someone else' }));
+    await ue.click(screen.getByRole('button', { name: 'Send request' }));
+    expect(await screen.findByText('Choose who it is for.')).toBeInTheDocument();
+    expect(p.onCheckout).not.toHaveBeenCalled();
+  });
+
   it('forms switch language; the choice for "who it is for" is a Segment', async () => {
+
     const p = props();
     render(<CatalogScreen {...p} />);
     await ue.click(screen.getByRole('radio', { name: 'हिन्दी' }));
     await ue.click(screen.getByRole('button', { name: 'Open New laptop' }));
     expect(await within(await screen.findByRole('dialog')).findByText('मॉडल')).toBeInTheDocument();
-  });
-});
-
-describe('approvals inbox (P03)', () => {
-  const TASK: ApprovalTask = { taskId: 't1', requestId: 'r1', type: 'Service request', title: 'New laptop for Arjun', summary: [{ label: 'Item', value: 'New laptop' }], requester: 'Arjun', raisedBy: null, onBehalfOf: 'Divya', step: { index: 1, of: 2, name: 'Your manager', need: 1, approvers: 1 }, dueAt: null, submittedAt: '2026-10-08T05:00:00Z' };
-
-  it('the request a notice points at is marked and scrolled into view', () => {
-    const scroll = vi.fn();
-    Element.prototype.scrollIntoView = scroll;
-    const other = { ...TASK, taskId: 't2', requestId: 'r2', title: 'Monitor for Meera' };
-    render(<ApprovalsScreen state="ready" tasks={[TASK, other]} history={null} delegations={[]} onDecide={vi.fn()} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} focusRequestId="r2" />);
-    expect(document.getElementById('approval-r2')).toHaveAttribute('data-focused', 'true');
-    expect(document.getElementById('approval-r1')).not.toHaveAttribute('data-focused');
-    expect(scroll).toHaveBeenCalled();
-  });
-
-  it('a request made for someone without a login is "From" that person, never blank', () => {
-    render(<ApprovalsScreen state="ready" tasks={[{ ...TASK, requester: '', person: 'Meera Iyer' }]} history={null} delegations={[]} onDecide={vi.fn()} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} />);
-    expect(screen.getByText(/From Meera Iyer · step 1 of 2/)).toBeInTheDocument();
-  });
-
-  it('approve at once; not approving needs a reason; delegated tasks say for whom', async () => {
-    const onDecide = vi.fn(async () => undefined);
-    render(<ApprovalsScreen state="ready" tasks={[TASK]} history={null} delegations={[]} onDecide={onDecide} onDelegate={vi.fn()} onRevoke={vi.fn()} onFindPeople={vi.fn(async () => [])} />);
-    expect(screen.getByText(/you answer for Divya/)).toBeInTheDocument();
-    // Approve is the designed approve button; "Do not approve" is plain until the reason dialog (founder review 20 Oct).
-    expect(screen.getByRole('button', { name: 'Approve' })).toHaveAttribute('data-variant', 'approve');
-    expect(screen.getByRole('button', { name: 'Do not approve' })).not.toHaveAttribute('data-variant', 'danger');
-    await ue.click(screen.getByRole('button', { name: 'Do not approve' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Do not approve' })).toBeDisabled();
-    await ue.type(within(dialog).getByRole('textbox'), 'Not this quarter');
-    await ue.click(within(dialog).getByRole('button', { name: 'Do not approve' }));
-    expect(onDecide).toHaveBeenCalledWith(TASK, 'reject', 'Not this quarter');
-    await ue.click(screen.getByRole('button', { name: 'Approve' }));
-    expect(onDecide).toHaveBeenCalledWith(TASK, 'approve', '');
   });
 });
 
@@ -129,9 +131,12 @@ describe('catalogue set-up: the company line above which a person must approve (
     render(<CatalogAdmin items={[]} schema={null} onLoad={none} onCreate={none} onSave={none} onPublish={none} onRetire={none} onFindPeople={async () => []} onPick={async () => []} highValueAbove={50000} onHighValue={onHighValue} />);
     const box = screen.getByRole('textbox', { name: 'Amount' });
     expect(box).toHaveValue('50,000');
-    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     await ue.clear(box);
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(onHighValue).not.toHaveBeenCalled();
+    expect(await screen.findByText('Enter an amount.')).toBeInTheDocument();
     await ue.type(box, '75000');
+
     await ue.click(screen.getByRole('button', { name: 'Save' }));
     expect(onHighValue).toHaveBeenCalledWith(75000);
   });

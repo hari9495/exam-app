@@ -16,6 +16,7 @@ describe('CandidateAuthService', () => {
     attempt: { findUnique: jest.Mock };
     proctoringEvent: { create: jest.Mock };
     organization: { findUnique: jest.Mock };
+    exam: { findUniqueOrThrow: jest.Mock };
     $transaction: jest.Mock;
   };
   let tenantPrisma: { forTenant: jest.Mock };
@@ -30,10 +31,12 @@ describe('CandidateAuthService', () => {
       attempt: { findUnique: jest.fn() },
       proctoringEvent: { create: jest.fn() },
       organization: { findUnique: jest.fn().mockResolvedValue({ id: 'org-1', status: 'active' }) },
+      exam: { findUniqueOrThrow: jest.fn() },
       $transaction: jest.fn(),
     };
     prisma.$transaction.mockImplementation((callback: (tx: typeof prisma) => unknown) => callback(prisma));
-    tenantPrisma = { forTenant: jest.fn() };
+    // AS-0: invitations, attempts and events are under forced RLS, so every read runs in a context (system or the exam's company).
+    tenantPrisma = { forTenant: jest.fn((_ctx: unknown, fn: (tx: typeof prisma) => unknown) => fn(prisma)) };
     monitoringGateway = { emitProctoringFlag: jest.fn() };
     audit = { record: jest.fn().mockResolvedValue(undefined) };
 
@@ -81,7 +84,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'draft' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'draft' });
 
       await expect(service.redeem('token', '')).rejects.toThrow(BadRequestException);
     });
@@ -90,7 +93,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'suspended' });
 
       await expect(service.redeem('token', '')).rejects.toThrow(BadRequestException);
@@ -102,7 +105,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'suspended' });
 
       await expect(service.redeem('token', '')).rejects.toThrow(/^This exam is not currently available$/);
@@ -112,7 +115,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.organization.findUnique.mockResolvedValue({ id: 'org-1', status: 'deleted' });
 
       await expect(service.redeem('token', '')).rejects.toThrow('This exam is not currently available');
@@ -122,7 +125,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.create.mockResolvedValue({});
 
       const result = await service.redeem('token', '');
@@ -138,7 +141,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: null,
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 
@@ -156,7 +159,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: 'old-family',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
       prisma.attempt.findUnique.mockResolvedValue(null);
       prisma.candidateRefreshToken.create.mockResolvedValue({});
@@ -175,7 +178,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: 'old-family',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
       prisma.attempt.findUnique.mockResolvedValue({ id: 'attempt-1' });
       prisma.proctoringEvent.create.mockResolvedValue({});
@@ -194,7 +197,7 @@ describe('CandidateAuthService', () => {
         id: 'inv-1', candidateId: 'cand-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000),
         examId: 'exam-1', activeSessionFamilyId: 'old-family',
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.updateMany.mockResolvedValue({});
       prisma.attempt.findUnique.mockResolvedValue({ id: 'attempt-1' });
       prisma.proctoringEvent.create.mockResolvedValue({ occurredAt: new Date('2026-07-09T00:00:00Z') });
@@ -213,7 +216,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: null,
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', status: 'published', organizationId: 'org-1' });
       prisma.candidateRefreshToken.create.mockResolvedValue({});
       prisma.invitation.update.mockResolvedValue({});
 
@@ -229,7 +232,7 @@ describe('CandidateAuthService', () => {
       prisma.invitation.findUnique.mockResolvedValue({
         id: 'inv-1', status: 'invited', expiresAt: new Date(Date.now() + 86_400_000), examId: 'exam-1', activeSessionFamilyId: null,
       });
-      tenantPrisma.forTenant.mockResolvedValue({ id: 'exam-1', organizationId: 'org-1', status: 'published', allowedIpRange });
+      prisma.exam.findUniqueOrThrow.mockResolvedValue({ id: 'exam-1', organizationId: 'org-1', status: 'published', allowedIpRange });
     }
 
     it('blocks redeem from a disallowed IP with the observed IP in the message, and audit-logs it', async () => {

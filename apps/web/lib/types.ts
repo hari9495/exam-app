@@ -64,6 +64,8 @@ export interface StaffUser {
   // emailSignature, unlike timeZone, really is /users/me-exclusive -- see SafeUser's comment
   // in apps/api/src/users/users.service.ts.
   emailSignature?: string | null;
+  // The Accessibility menu's saved choices (answers 2330 to 2334); /users/me only. null = never saved.
+  accessibility?: unknown;
   // null/omitted = the user's role default permission set; a profile id overrides it. Set via
   // PATCH /users/:id; takes effect on the user's next login/token refresh (JWT-embedded).
   permissionProfileId?: string | null;
@@ -415,6 +417,14 @@ export interface WalkInExamsResponse {
   exams: WalkInExamOption[];
   applyConsentText: string | null;
   applyConsentVersion: number;
+  /** AS-3 (PRC-29): a campus drive's own fields and the colleges to pick from; null for a plain walk-in. */
+  campus?: WalkInCampusForm | null;
+}
+
+export type WalkInFieldMode = 'off' | 'optional' | 'required';
+export interface WalkInCampusForm {
+  fields: { phone: WalkInFieldMode; branch: WalkInFieldMode; graduationYear: WalkInFieldMode; cgpa: WalkInFieldMode };
+  institutions: { id: string; name: string; code: string }[];
 }
 
 export interface WalkInGroupExamSummary {
@@ -430,7 +440,8 @@ export interface WalkInGroup {
   jobId: string | null;
 }
 
-export type JobStatus = 'draft' | 'pending_approval' | 'open' | 'closed';
+/** HIR-03 answer 223: on_hold hides the job from careers and boards; candidates stay. */
+export type JobStatus = 'draft' | 'pending_approval' | 'open' | 'on_hold' | 'closed';
 
 // --- Configurable pipeline config types (Phase A, Task 9) ---
 // Mirrors apps/api/src/pipeline/pipelines.service.ts + apps/api's PipelineWithStages/Board.
@@ -464,6 +475,9 @@ export interface PipelineStageConfig {
   position: number;
   statuses: PipelineStatus[];
   rules?: BlueprintRule[];
+  /** HIR-04 answer 263: optional days target and card limit (null = none). */
+  daysTarget?: number | null;
+  stageLimit?: number | null;
 }
 
 export interface Pipeline {
@@ -538,6 +552,20 @@ export interface PublicJob {
   // M10 AT3: every consent notice at its current version; 'application' is required, 'talent_pool' optional.
   consents?: { purpose: 'application' | 'talent_pool'; version: number; text: string; required: boolean }[];
   customFields: PublicCustomFieldDef[];
+  /** T9-09: the job's department, the range when shown, and the pay-history question where the job asks and the law allows. */
+  department?: string | null;
+  salary?: { min: number; max: number; currency: string; period: string } | null;
+  askPayHistory?: boolean;
+  /** Careers answer 359: the job is outside India, so the apply form takes any country code. */
+  internationalPhone?: boolean;
+  /** Answer 474: a New York City job's automated tool notice (null elsewhere). */
+  nycNotice?: { assesses: string[]; businessDays: number } | null;
+  /** Careers answer 353: the last day to apply (YYYY-MM-DD) and the experience asked for. */
+  applyBy?: string | null;
+  experience?: string | null;
+  /** The careers site this job sits on (jobSlug null when unlisted); null when the company has no public page. */
+  careers?: { orgSlug: string; jobSlug: string | null } | null;
+  accent?: string | null;
 }
 
 // GET /public/careers/:orgSlug -- unauthenticated, mirrors PublicApplicationsService.getCareers
@@ -553,6 +581,8 @@ export interface CareersJob {
   salaryMin: number | null;
   salaryMax: number | null;
   salaryCurrency: string | null;
+  /** HIR-24: year, month or hour (older API: year). */
+  salaryPeriod?: string;
   company?: { name: string; slug: string | null } | null;
   postedAt?: string;
 }
@@ -563,9 +593,19 @@ export interface CareersJobDetail extends CareersJob {
   orgName: string;
   logoUrl: string | null;
   primaryColor: string | null;
+  accent?: string | null;
+}
+
+/** T9-09 page builder layout: the fixed section library (plain text only). */
+export interface CareersLayout {
+  theme: 'classic' | 'compact' | 'split';
+  accent: string | null;
+  sections: { id: string; type: string; title: string; hidden?: boolean; text?: string; photoAlt?: string; items?: Record<string, string>[] }[];
 }
 
 export interface CareersPageResponse {
+  /** Careers answer 356: hide "Powered by YukthiX". */
+  whiteLabel?: boolean;
   orgName: string;
   /** M10 AT3: the legal entity whose page this is (?company=), else null. */
   companyName?: string | null;
@@ -578,6 +618,7 @@ export interface CareersPageResponse {
   primaryColor: string | null;
   accentColor: string | null;
   textColor: string | null;
+  config?: CareersLayout;
   jobs: CareersJob[];
 }
 
@@ -589,6 +630,7 @@ export interface CareersSettingsResponse {
   intro: string | null;
   bannerUrl: string | null;
   assistantEnabled: boolean;
+  config: CareersLayout;
 }
 
 export interface PortalApplication {
@@ -597,7 +639,7 @@ export interface PortalApplication {
   rejected: boolean;
   appliedAt: string;
   statusToken: string | null;
-  interviews: { token: string | null; status: string; location: string; timeZone: string; confirmed: boolean; slots: { startsAt: string; endsAt: string }[] }[];
+  interviews: { token: string | null; status: string; location: string; timeZone: string; confirmed: boolean; confirmedAt?: string | null; slots: { startsAt: string; endsAt: string }[] }[];
   offers: { token: string | null; status: string; compensation: string; startDate: string; expiresAt: string }[];
 }
 
@@ -605,9 +647,14 @@ export interface PortalView {
   candidateName: string;
   candidateEmail: string;
   candidatePhone: string | null;
+  /** Answer 691: the WhatsApp tick on the candidate page. */
+  whatsappOptedIn?: boolean;
   resume: { hasResume: boolean; parseStatus: string | null };
   orgName: string;
   applications: PortalApplication[];
+  /** T9-09 branding: the company's careers page (null when it has none) and accent. */
+  careersSlug?: string | null;
+  accent?: string | null;
 }
 
 export interface PortalOpenJob {
@@ -626,8 +673,16 @@ export interface PortalOpenJobs {
 
 export interface ApplicationStatus {
   jobTitle: string;
+  location?: string | null;
   appliedAt: string;
   statusBucket: string;
+  orgName?: string;
+  careersSlug?: string | null;
+  accent?: string | null;
+  /** Answer 502: the New York City automated-tool notice and when this candidate asked for another process. */
+  toolNotice?: { assesses: string[]; businessDays: number; requestedAt: string | null } | null;
+  /** Answer 561: the WhatsApp tick on the status page. */
+  whatsapp?: { optedIn: boolean; hasPhone: boolean } | null;
 }
 
 // StageCounts mirrors apps/api/src/pipeline/pipeline.service.ts's StageCounts -- a job's
@@ -969,6 +1024,8 @@ export interface OfferTemplate {
 
 // GET /public/offers/:token -- unauthenticated, deliberately thin (no offer id, no org internals).
 export interface PublicOffer {
+  /** Careers answer 362: the company's logo, colour, careers link and white-label. */
+  brand?: { orgName?: string; orgLogo?: string | null; careersSlug?: string | null; accent?: string | null; whiteLabel?: boolean };
   jobTitle: string;
   orgName: string;
   compensation: string;
@@ -976,6 +1033,8 @@ export interface PublicOffer {
   expiresAt: string;
   status: OfferStatus;
   pdfUrl: string | null;
+  /** HIR-09: the company's letter asks for an e-signature (a one-time code by email). */
+  esign?: boolean;
 }
 
 export type InterviewStatus = 'proposed' | 'confirmed' | 'declined' | 'reschedule_requested' | 'cancelled';
@@ -1005,6 +1064,8 @@ export interface Interview {
 // bookingMode/slotDurationMinutes/availableSlots are present only for a self-book interview that
 // isn't confirmed yet -- proposed mode and already-confirmed interviews omit them (today's shape).
 export interface PublicInterview {
+  /** Careers answer 362: the company's logo, colour, careers link and white-label. */
+  brand?: { orgName?: string; orgLogo?: string | null; careersSlug?: string | null; accent?: string | null; whiteLabel?: boolean };
   jobTitle: string;
   orgName: string;
   slots: InterviewSlot[];
@@ -1207,18 +1268,6 @@ export interface SurveySummary {
 }
 
 // Self-serve billing. Mirrors apps/api/src/billing/billing-checkout.service.ts.
-export interface PurchasablePlan {
-  id: string;
-  name: string;
-  priceLabel: string | null;
-  billingInterval: string;
-  seatLimit: number;
-  candidateLimit: number;
-  aiCreditLimit: number;
-  proctoringMinutesLimit: number;
-  current: boolean;
-}
-
 export interface BillingInvoice {
   id: string;
   number: string | null;
@@ -1389,6 +1438,8 @@ export interface AttemptQuestionOption {
   id: string;
   text: string;
   imageUrl: string | null;
+  /** The writer's alt text for the picture (answer 2126); older runtimes leave it out. */
+  imageAlt?: string | null;
 }
 
 export interface AttemptQuestion {
@@ -1403,6 +1454,7 @@ export interface AttemptQuestion {
   snippetCode: string | null;
   snippetLanguage: CodeLanguage | null;
   imageUrl: string | null;
+  imageAlt?: string | null;
   options: AttemptQuestionOption[];
 }
 
@@ -1459,12 +1511,16 @@ export interface AttemptPreview {
     availabilityWindowStart: string | null;
     availabilityWindowEnd: string | null;
     proctoring: ExamProctoringConfig;
+    /** AS-2 (answer 2008): how long the company keeps recordings, clips and face data (30 to 365 days). */
+    evidenceRetentionDays?: number;
   };
   schedulingWindowState: 'not_open' | 'open' | 'closed' | null;
   sections: AttemptSectionSummary[];
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+  /** AS-6 (answer 2237): the company's privacy notice for applicants (latest version); absent on an older runtime. */
+  privacyNotice?: string | null;
 }
 
 export interface AttemptSectionFeedback {
@@ -1474,7 +1530,9 @@ export interface AttemptSectionFeedback {
 }
 
 export interface AttemptFeedback {
-  status: 'pending_review' | 'awaiting_release' | 'settled';
+  // 'held' (AS-4a, PRC-27): held for review; the candidate sees that it is under review, never why or the score.
+  // 'invalidated' (AS-5): an integrity decision invalidated the attempt; the decision shows instead of a score.
+  status: 'pending_review' | 'awaiting_release' | 'held' | 'invalidated' | 'settled';
   visibility: 'none' | 'pass_fail' | 'score' | 'breakdown';
   passFail: 'pass' | 'fail' | null;
   percentage: number | null;
@@ -1482,6 +1540,20 @@ export interface AttemptFeedback {
   // Optional web-side so partial test fixtures need not set it; the API always sends it. Read
   // defensively (feedback?.certificateAvailable).
   certificateAvailable?: boolean;
+  /** AS-5 (answer 2012): an integrity decision other than "cleared", its appeal window and the appeal. */
+  integrity?: CandidateIntegrity | null;
+}
+
+export interface CandidateIntegrity {
+  verdict: 'warning' | 'section' | 'attempt';
+  sectionTitle: string | null;
+  reason: string | null;
+  decidedAt: string;
+  appealUntil: string | null;
+  canAppeal: boolean;
+  appeal: { status: 'open' | 'upheld' | 'overturned'; sentAt: string; decidedAt: string | null; reason: string | null } | null;
+  /** Answer 2262: the flagged moments and how many frames are kept. */
+  evidence?: { moments: { at: string; what: string }[]; cameraFrames: number; screenFrames: number };
 }
 
 export interface AttemptState {
@@ -1492,7 +1564,11 @@ export interface AttemptState {
   browserActivityViolationCount: number;
   // Server-authoritative owner of the current pause -- use this instead of guessing from the
   // violation counters. Null if not paused/blocked, or for a pause predating this field.
-  pausedReason: 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | null;
+  pausedReason: 'webcam' | 'browser_activity' | 'screen_share' | 'face_mismatch' | 'break' | 'proctor' | 'face_recheck' | null;
+  /** AS-5: what the proctor said when pausing (pausedReason 'proctor'). */
+  pauseMessage?: string | null;
+  /** Answer 2270: face checks left before a proctor takes over. */
+  faceRecheckTriesLeft?: number | null;
   // Stage-3 face enforcement 'warn': ISO timestamp of an unacknowledged non-freezing heads-up, or
   // null. Distinct from pausedReason -- warn never pauses, so the candidate keeps working while it
   // shows and clears it via /attempt/face-warning-ack.
@@ -1507,9 +1583,27 @@ export interface AttemptState {
   answers: AttemptAnswerSummary[];
   messages: AttemptMessageSummary[];
   feedback: AttemptFeedback | null;
+  /** AS-4a (PRC-26): calculator, breaks, offline answering and time credit. Optional for older fixtures. */
+  runner?: AttemptRunnerInfo;
   organizationName: string | null;
   organizationLogoUrl: string | null;
   organizationPrimaryColor: string | null;
+  /** AS-6 (answer 2237): the company's privacy notice for applicants (latest version); absent on an older runtime. */
+  privacyNotice?: string | null;
+}
+
+export interface AttemptRunnerInfo {
+  calculator: 'none' | 'basic' | 'scientific';
+  breaksAllowed: number;
+  breaksUsed: number;
+  breakMinutes: number;
+  breakEndsAt: string | null;
+  offlineMinutes: number;
+  timeCreditCapMinutes: number;
+  offlineCreditSeconds: number;
+  surveyDone: boolean;
+  /** AS-6 part 2 (answer 2272): the approved assistant is allowed in this test. */
+  aiAllowed?: boolean;
 }
 
 export type AttemptCurrent = AttemptPreview | AttemptState;

@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { writeText } from '../../documents/pdf-text';
 import { ExportResultRow } from '../reports.service';
 import { formatFaceEnrolment } from './face-enrolment-label';
 
@@ -33,7 +34,7 @@ export function exportResultsToPdf(rows: ExportResultRow[]): Promise<Buffer> {
     doc.fontSize(10);
 
     rows.forEach((row) => {
-      doc.text(buildResultLine(row));
+      writeText(doc, buildResultLine(row));
     });
 
     doc.end();

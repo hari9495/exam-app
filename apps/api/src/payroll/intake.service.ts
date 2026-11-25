@@ -24,6 +24,10 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 export const MODULE_SOURCES = {
   m05: ['exp_reimb', 'exp_taxable'],
   m06: ['perf_bonus'],
+  // B8/E5 (answer 2406): an unclaimed flexible benefit balance paid as taxable salary in March or at exit (FlexBenefitsService).
+  m11: ['fbp_unclaimed'],
+  // HIR-12 answer 231: a referral bonus marked paid (ReferralsService), linked by sourceRef 'referral:<id>'.
+  m10: ['referral_bonus', 'joining_bonus'],
   // Batch 5i: approved special-pay postings (SpecialPayService).
   piece: ['piece_pay', 'min_wage_topup'],
   incentive: ['incentive', 'incentive_clawback'],

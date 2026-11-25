@@ -11,14 +11,17 @@ import { FieldRow, FormField, FormSection } from '../../components/field';
 import { CurrencyField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { Select } from '../../components/select';
+import { Segment } from '../../components/segment';
 import { FileUpload } from '../../components/upload';
 import { PageHeader, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
+import { PlainTable } from '../../components/plain-table';
 import { DataTable, tableToCsv, type TableColumn } from '../../components/table';
 import { FilterBar, SavedViewMenu } from '../../components/filters';
 import { BarChart } from '../../components/charts';
 import { MenuItem } from '../../components/menu';
 import { CommentThread } from '../../components/timeline';
 import { ConfirmDialog } from '../../components/overlay';
+import { useToast } from '../../components/notify';
 import { DatePicker } from '../../components/date';
 import { formatDate, formatINR, groupIndian } from '../../lib/format';
 import { matchesFilter, toCsv, type FilterValue } from '../../lib/table';
@@ -27,6 +30,9 @@ import { Amount, FactRow, PayFrame, SectionTitle, StateBlock, type PayPersona, t
 import { FIN_APPROVER, HOLDS, HR_HEAD, LOP_ROWS, MY_LOP_DAY, ONE_TIME, PAYROLL_ADMIN, QUERIES, RUN, RUN_HISTORY, RUN_ROWS, d, type HoldRow, type LopRow, type OneTimeRow, type QueryRow } from './pay-data';
 import { FNF_LEAVER, FNF_NET } from './offcycle';
 import { applyDeductionCap, computeTax, esiContribution, pfContribution, type DeductionLine } from './pay-logic';
+import { PersonPicker, type PersonHit } from './live/inputs';
+import { LiveHoldsPanel, LiveInputsScreen, LiveLopPanel, LiveQueryQueue, LiveRecoveries, type LiveInputs, type LiveQueries, type LiveRecoveriesData } from './payroll-inputs-live';
+import { LivePaymentsScreen, SamplePaymentModes, type LivePayments } from './payments-live';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH_NAME = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -64,7 +70,7 @@ const STORY = {
 const storyHref = (id: string) => `/?path=/story/${id}`;
 
 /** A bordered button that opens another story (the next screen in the flow). */
-function StoryButton({ to, icon, children, ...rest }: { to: string; children: ReactNode } & Pick<ButtonProps, 'variant' | 'size' | 'icon' | 'disabled'>) {
+function StoryButton({ to, icon, children, ...rest }: { to: string; children: ReactNode } & Pick<ButtonProps, 'variant' | 'size' | 'icon'>) {
   return (
     <Button {...rest} asChild>
       <a href={storyHref(to)} target="_top">
@@ -75,9 +81,16 @@ function StoryButton({ to, icon, children, ...rest }: { to: string; children: Re
   );
 }
 
-/** Result of the last action on the page. */
-function Done({ text }: { text: string | null }) {
-  return text ? <InlineAlert tone="success" title={text} /> : null;
+/** Says the last action is done: a success toast (5 s), never a green alert that stays. */
+function useDone() {
+  const { toast } = useToast();
+  return (text: string) => void toast({ tone: 'success', title: text });
+}
+
+/** Never a greyed-out button: pressed too early, a toast says why and nothing runs. */
+function useWhy() {
+  const { toast } = useToast();
+  return (why: string | false | null | undefined, act?: () => void) => (why ? void toast({ title: why }) : act?.());
 }
 
 /* ------------------------------------------------------------------ Bulk upload with row validation (shared) */
@@ -98,6 +111,7 @@ export function BulkUploadDrawer({
   columns = ['Employee ID', 'Employee name', 'Value', 'Reason'],
   results,
   onImport,
+  onFile,
 }: {
   open: boolean;
   onOpenChange: (o: boolean) => void;
@@ -106,10 +120,14 @@ export function BulkUploadDrawer({
   /** Header row of the downloadable template. */
   columns?: string[];
   results?: UploadRowResult[];
-  onImport: () => void;
+  onImport: () => void | Promise<void>;
+  /** Live: reads the picked file and sets `results`; reject with an Error whose message says what to fix. */
+  onFile?: (file: File) => Promise<void>;
 }) {
   const bad = results?.filter((r) => r.error) ?? [];
   const good = (results?.length ?? 0) - bad.length;
+  const [early, setEarly] = useState(false);
+  const [importing, setImporting] = useState(false);
   return (
     <Drawer
       open={open}
@@ -121,7 +139,20 @@ export function BulkUploadDrawer({
         <>
           {!results && <span className="yx-pay-muted">Upload a file to check the rows.</span>}
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!results || good === 0} onClick={onImport}>
+          <Button
+            variant="primary"
+            loading={importing}
+            onClick={async () => {
+              // Never disabled: pressed before there is a valid row, it says what is missing.
+              if (!results || good === 0) return setEarly(true);
+              setImporting(true);
+              try {
+                await onImport();
+              } finally {
+                setImporting(false);
+              }
+            }}
+          >
             {results ? `Import ${good} valid rows` : 'Import rows'}
           </Button>
         </>
@@ -133,36 +164,29 @@ export function BulkUploadDrawer({
             Download {template} template (CSV)
           </Button>
         </div>
-        <FileUpload upload={okUpload} accept={['.csv', '.xlsx']} multiple={false} />
+        <FileUpload upload={onFile ? (f) => (setEarly(false), onFile(f)) : okUpload} accept={onFile ? ['.csv'] : ['.csv', '.xlsx']} multiple={false} />
+        {early && (!results || good === 0) && (
+          <InlineAlert tone="danger" title={results ? 'No row is ready to import' : 'Upload a file first'}>
+            {results ? 'Fix the rows with errors in the file and upload it again.' : 'Pick the filled-in template; its rows are checked before anything is imported.'}
+          </InlineAlert>
+        )}
         {results && (
           <>
-            <InlineAlert tone={bad.length ? 'warning' : 'success'} title={`${good} rows ready · ${bad.length} rows with errors`}>
+            <InlineAlert tone={bad.length ? 'warning' : 'info'} title={`${good} rows ready · ${bad.length} rows with errors`}>
               {bad.length ? 'Each error says what to change in the file.' : 'Every row passed validation.'}
             </InlineAlert>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col" data-num>
-                    Row
-                  </th>
-                  <th scope="col">Employee</th>
-                  <th scope="col">Value</th>
-                  <th scope="col">Result</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((r) => (
-                  <tr key={r.row} data-state={r.error ? 'error' : undefined}>
-                    <td data-num>{r.row}</td>
-                    <th scope="row">{r.employee}</th>
-                    <td>{r.value}</td>
-                    <td>{r.error ? <span>{r.error}</span> : <Badge tone="success">Ready</Badge>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
+            <PlainTable
+              label="Rows checked"
+              rows={results}
+              getRowId={(r) => String(r.row)}
+              rowTone={(r) => (r.error ? { tone: 'danger', label: 'Error' } : undefined)}
+              columns={[
+                { key: 'row', header: 'Row', num: true, cell: (r) => r.row },
+                { key: 'employee', header: 'Employee', rowHeader: true, cell: (r) => r.employee },
+                { key: 'value', header: 'Value', cell: (r) => r.value },
+                { key: 'result', header: 'Result', cell: (r) => (r.error ? <span>{r.error}</span> : <Badge tone="success">Ready</Badge>) },
+              ]}
+            />
           </>
         )}
       </div>
@@ -182,12 +206,19 @@ export const LOP_UPLOAD: UploadRowResult[] = [
   { row: 6, employee: lopWho(5), value: 'LOP 1', error: 'Reason is empty. Add a reason for each row with LOP.' },
 ];
 
-/** PAY-04 · Manual LOP / payable-days input for Assumed-present groups (+ bulk upload). */
-export function LopInputScreen({ state = 'ready', upload, locked, rows: initial = LOP_ROWS }: { state?: ViewState; upload?: boolean; locked?: boolean; rows?: LopRow[] }) {
+type LopInputProps = { state?: ViewState; upload?: boolean; locked?: boolean; rows?: LopRow[] };
+/** PAY-04 · Manual LOP / payable-days input for Assumed-present groups (+ bulk upload). The app passes `live` (the Loss of pay tab of Payroll › Inputs). */
+export function LopInputScreen(p: LopInputProps & { live?: LiveInputs }) {
+  return p.live ? <LiveLopPanel live={p.live} /> : <SampleLopInputScreen {...p} />;
+}
+
+function SampleLopInputScreen({ state = 'ready', upload, locked, rows: initial = LOP_ROWS }: LopInputProps) {
   const [rows, setRows] = useState(initial);
   const [showUpload, setShowUpload] = useState(!!upload);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const errors = rows.filter((r) => r.error);
+  const frozen = locked && 'Inputs are frozen for September. Changes now go through a late request.';
   const cols: TableColumn<LopRow>[] = [
     { key: 'employee', header: 'Employee', type: 'person', value: (r) => r.employee, person: (r) => ({ name: r.employee, secondary: r.code }), width: 240 },
     { key: 'lop', header: 'LOP days', type: 'number', value: (r) => r.lop, editable: locked ? undefined : 'number', total: 'sum', width: 110 },
@@ -205,16 +236,15 @@ export function LopInputScreen({ state = 'ready', upload, locked, rows: initial 
         status={locked ? <Badge tone="neutral">Period frozen</Badge> : <Badge tone="warning">Open</Badge>}
         actions={
           <>
-            <Button icon={Upload} disabled={locked} onClick={() => setShowUpload(true)}>
+            <Button icon={Upload} onClick={() => why(frozen, () => setShowUpload(true))}>
               Bulk upload
             </Button>
-            <Button variant="primary" disabled={locked || errors.length > 0} onClick={() => setDone(`LOP saved for ${rows.length} employees · ${rows.reduce((a, r) => a + r.lop, 0)} unpaid days in total`)}>
+            <Button variant="primary" onClick={() => why(frozen || (errors.length > 0 && `Fix ${errors[0].employee}'s row first: ${errors[0].error}`), () => setDone(`LOP saved for ${rows.length} employees · ${rows.reduce((a, r) => a + r.lop, 0)} unpaid days in total`))}>
               Save LOP for {rows.length} employees
             </Button>
           </>
         }
       />
-      <Done text={done} />
       {locked && (
         <InlineAlert tone="info" title="Inputs are frozen for September">
           The cut-off passed on {formatDate(RUN.cutOff)}. Changes now go through a late request; approved late items reach October as arrears or LOP reversal.
@@ -244,6 +274,8 @@ export function LopInputScreen({ state = 'ready', upload, locked, rows: initial 
           )
         }
         empty={<EmptyState title="No Assumed-present groups in this run." description="Every group in this pay group uses punches or timesheets, so LOP comes from the attendance feed." />}
+        // Answers 241/286: the file is CSV, so the menu offers CSV only.
+        exportFormats={['csv']}
         onExport={() => saveFile('lop-input-sep-2026.csv', tableToCsv(rows, cols))}
       />
       <BulkUploadDrawer
@@ -271,6 +303,169 @@ export function LopInputScreen({ state = 'ready', upload, locked, rows: initial 
         }}
       />
     </PayFrame>
+  );
+}
+
+/* ================================================================== PAY-04 · Reverse loss of pay (batch A item 8, D15) */
+
+/** One day to reverse and what it should have been (answer 2315: never "unpaid"; that is not a reversal). */
+export interface LopReversalDay { on: Date | null; shouldBe: 'present' | 'half_day' | 'leave'; leave: string | null }
+const REVERSE_AS: { value: LopReversalDay['shouldBe']; label: string }[] = [
+  { value: 'present', label: 'Paid day' },
+  { value: 'half_day', label: 'Half day' },
+  { value: 'leave', label: 'Leave' },
+];
+export interface LopReversalDrawerProps {
+  /** "2026-09": the month on the inputs page. */
+  month: string;
+  /** The month is still open (not frozen or locked): the drawer sends HR to regularisation instead. */
+  monthOpen: boolean;
+  /** Where HR regularises days of an open month. */
+  regulariseHref: string;
+  /** Finds the person (the payroll inputs search). */
+  onSearch: (q: string) => Promise<PersonHit[]>;
+  leaveTypes?: { code: string; name: string }[];
+  /** Sends the days as HR corrections (POST /payroll/corrections/lop-reversal); throws a plain message on failure. */
+  onSend: (x: { employeeId: string; days: { on: string; shouldBe: string }[]; reason: string }) => Promise<unknown>;
+  onClose: () => void;
+  /** Stories: start with a person and days filled in. */
+  start?: { who: PersonHit; days: LopReversalDay[]; reason: string };
+}
+const lopIso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+const lopMonthName = (m: string) => new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+
+/**
+ * PAY-04 "Reverse loss of pay": HR picks a person, the days of a locked month and what each should have been. Each day
+ * goes as an HR correction for someone in payroll to approve, and the next regular run pays it back. An open month
+ * has nothing to reverse yet: the drawer sends HR to regularisation instead.
+ */
+export function LopReversalDrawer({ month, monthOpen, regulariseHref, onSearch, leaveTypes = [], onSend, onClose, start }: LopReversalDrawerProps) {
+  const label = lopMonthName(month);
+  const [who, setWho] = useState<PersonHit | null>(start?.who ?? null);
+  const [days, setDays] = useState<LopReversalDay[]>(start?.days ?? [{ on: null, shouldBe: 'present', leave: null }]);
+  const [reason, setReason] = useState(start?.reason ?? '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [tried, setTried] = useState(false);
+  const { toast } = useToast();
+  const first = new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1, 1);
+  const last = new Date(first.getFullYear(), first.getMonth() + 1, 0);
+  const kinds = leaveTypes.length ? REVERSE_AS : REVERSE_AS.filter((o) => o.value !== 'leave');
+  const picked = days.filter((d) => d.on).map((d) => lopIso(d.on!));
+  const errors = [
+    ...(!who ? [{ fieldId: 'lopr-who', message: 'Choose the person.' }] : []),
+    ...days.flatMap((d, i) => [
+      ...(!d.on ? [{ fieldId: `lopr-day-${i}`, message: `Choose day ${i + 1} in ${label}.` }] : picked.indexOf(lopIso(d.on)) !== i ? [{ fieldId: `lopr-day-${i}`, message: `${formatDate(d.on)} is listed twice.` }] : []),
+      ...(d.shouldBe === 'leave' && !d.leave ? [{ fieldId: `lopr-leave-${i}`, message: `Choose the leave type for day ${i + 1}.` }] : []),
+    ]),
+    ...(reason.trim().length < 10 ? [{ fieldId: 'lopr-why', message: 'Say why, in at least 10 characters.' }] : []),
+  ];
+  const errorOf = (id: string) => (tried ? errors.find((e) => e.fieldId === id)?.message : undefined);
+  const set = (i: number, patch: Partial<LopReversalDay>) => setDays(days.map((d, k) => (k === i ? { ...d, ...patch } : d)));
+  const send = async () => {
+    if (errors.length) {
+      setTried(true);
+      document.getElementById(errors[0].fieldId)?.focus();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await onSend({ employeeId: who!.id, days: days.map((d) => ({ on: lopIso(d.on!), shouldBe: d.shouldBe === 'leave' ? `leave:${d.leave}` : d.shouldBe })), reason: reason.trim() });
+      toast({ tone: 'success', title: `Loss of pay reversal for ${who!.name} sent to payroll`, description: `${days.length === 1 ? '1 day' : `${days.length} days`} of ${label}. Paid in the next regular payroll once approved.` });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Not sent. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title="Reverse loss of pay"
+      subtitle={monthOpen ? `${label} is still open` : `${label} is locked. Someone in payroll approves it; the next regular payroll pays it back.`}
+      dirty={!monthOpen && Boolean(reason || who)}
+      footer={
+        monthOpen ? (
+          <Button onClick={onClose}>Close</Button>
+        ) : (
+          <>
+            {tried && errors[0] && <span className="yx-pay-muted">{errors[0].message}</span>}
+            <Button onClick={onClose}>Cancel</Button>
+            <Button variant="primary" loading={busy} onClick={() => void send()}>
+              Send to payroll
+            </Button>
+          </>
+        )
+      }
+    >
+      {monthOpen ? (
+        <div className="yx-pay-stack">
+          <InlineAlert tone="info" title={`${label} has not been locked yet`}>
+            Loss of pay in an open month is fixed in attendance: regularise the days, and this month's payroll pays them as usual.
+          </InlineAlert>
+          <div className="yx-pay-row">
+            <Button variant="primary" asChild>
+              <a href={regulariseHref}>Go to regularisation</a>
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="yx-pay-stack">
+          {error && (
+            <InlineAlert tone="danger" title="Not sent">
+              {error}
+            </InlineAlert>
+          )}
+          <PersonPicker id="lopr-who" label="Employee" value={who} onChange={setWho} onSearch={onSearch} error={errorOf('lopr-who')} />
+          <FormSection title="Days to pay back">
+            <div className="yx-pay-stack">
+              {days.map((d, i) => (
+                // One day: the date (and Remove) on a row, the choice under it at full width so the Segment stays on one line.
+                <div key={i} className="yx-pay-stack">
+                  <FieldRow>
+                    <FormField id={`lopr-day-${i}`} label={`Day ${i + 1}`} required error={errorOf(`lopr-day-${i}`)}>
+                      <DatePicker value={d.on} onChange={(on) => set(i, { on })} min={first} max={last} aria-label={`Day ${i + 1}`} />
+                    </FormField>
+                    {days.length > 1 && (
+                      <FormField label="Remove">
+                        <Button onClick={() => setDays(days.filter((_, k) => k !== i))} aria-label={`Remove day ${i + 1}`}>
+                          Remove
+                        </Button>
+                      </FormField>
+                    )}
+                  </FieldRow>
+                  <FormField label="It should be">
+                    <Segment label={`Day ${i + 1} should be`} value={d.shouldBe} onChange={(shouldBe) => set(i, { shouldBe })} options={kinds} />
+                  </FormField>
+                  {d.shouldBe === 'leave' && (
+                    <FormField id={`lopr-leave-${i}`} label="Leave type" required error={errorOf(`lopr-leave-${i}`)}>
+                      <Select value={d.leave} onChange={(leave) => set(i, { leave })} options={leaveTypes.map((t) => ({ value: t.code, label: t.name }))} placeholder="Choose the leave type" />
+                    </FormField>
+                  )}
+                </div>
+              ))}
+              {days.length < 31 && (
+                <div className="yx-pay-row">
+                  <Button icon={Plus} onClick={() => setDays([...days, { on: null, shouldBe: 'present', leave: null }])}>
+                    Add a day
+                  </Button>
+                </div>
+              )}
+            </div>
+          </FormSection>
+          <FormField id="lopr-why" label="Reason" required error={errorOf('lopr-why')} helper="Saved with each correction and in the audit trail.">
+            <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+          </FormField>
+          <p className="yx-pay-muted">
+            {who ? `${who.name}: ` : ''}
+            {days.length === 1 ? '1 day goes' : `${days.length} days go`} to payroll for approval, one correction each. Nothing changes in {label}; the next regular payroll pays the difference.
+          </p>
+        </div>
+      )}
+    </Drawer>
   );
 }
 
@@ -305,7 +500,7 @@ const OTP_UPLOAD: { row: number; item: Pick<OneTimeRow, 'employee' | 'code' | 't
 const payeeLabel = (p: { name: string; code: string }) => `${p.name} · ${p.code}`;
 
 /** Prorated months of a recurring item: part month at the start, full months, part month at the end. */
-function recurringPlan(amount: number, start: Date, end: Date) {
+export function recurringPlan(amount: number, start: Date, end: Date) {
   const apart = monthsApart(start, end);
   if (apart < 1 || end <= start) return null;
   const firstDays = daysIn(start) - start.getDate() + 1;
@@ -324,14 +519,21 @@ function recurringPlan(amount: number, start: Date, end: Date) {
 
 type Hold = HoldRow & { /** New hold: applies from the October run (September's bank file is already released). */ fromOct?: boolean };
 
-/** PAY-05 · One-time pay: list, bulk upload, recurring, add sheet with effect summary. */
-export function OneTimePayScreen({ state = 'ready', sheet, upload, rows: initialRows = ONE_TIME_ROWS, tab = 'onetime' }: { state?: ViewState; sheet?: 'add' | 'recurring'; upload?: boolean; rows?: OneTimeRow[]; tab?: 'onetime' | 'holds' }) {
+type OneTimePayProps = { state?: ViewState; sheet?: 'add' | 'recurring'; upload?: boolean; rows?: OneTimeRow[]; tab?: 'onetime' | 'holds' };
+/** PAY-05 · One-time pay: list, bulk upload, recurring, add sheet with effect summary. The app passes `live`: Payroll ›
+ * Inputs, with the loss of pay (PAY-04) and salary holds (PAY-06) as tabs next to it. */
+export function OneTimePayScreen(p: OneTimePayProps & { live?: LiveInputs }) {
+  return p.live ? <LiveInputsScreen live={p.live} lopPanel={<LopInputScreen key={p.live.month} live={p.live} />} holdsPanel={<SalaryHoldsScreen live={p.live} />} /> : <SampleOneTimePayScreen {...p} />;
+}
+
+function SampleOneTimePayScreen({ state = 'ready', sheet, upload, rows: initialRows = ONE_TIME_ROWS, tab = 'onetime' }: OneTimePayProps) {
   const ready = state === 'ready';
   // Before the upload is imported, its bonus (o7) is not in the list yet.
   const [rows, setRows] = useState(upload ? initialRows.filter((r) => r.id !== O7.id) : initialRows);
   const [holds, setHolds] = useState<Hold[]>(HOLDS);
   const [selected, setSelected] = useState<string[]>([]);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [type, setType] = useState<OneTimeRow['type']>(sheet === 'recurring' ? 'Incentive' : 'Bonus');
   const [payIn, setPayIn] = useState('Oct 2026');
   const [who, setWho] = useState(sheet ? payeeLabel(DEFAULT_PAYEE) : '');
@@ -499,16 +701,15 @@ export function OneTimePayScreen({ state = 'ready', sheet, upload, rows: initial
         facts={ready ? `${plural(rows.length, 'item')} · ${formatINR(rows.filter((r) => r.kind === 'Earning').reduce((a, r) => a + r.amount, 0))} earnings · ${formatINR(rows.filter((r) => r.kind === 'Deduction').reduce((a, r) => a + r.amount, 0))} deductions` : undefined}
         actions={
           <>
-            <Button icon={Upload} disabled={!ready} onClick={() => setShowUpload(true)}>
+            <Button icon={Upload} onClick={() => why(!ready && 'Wait for the list to load.', () => setShowUpload(true))}>
               Bulk upload
             </Button>
-            <Button variant="primary" icon={Plus} disabled={!ready} onClick={openAdd}>
+            <Button variant="primary" icon={Plus} onClick={() => why(!ready && 'Wait for the list to load.', openAdd)}>
               Add one-time pay
             </Button>
           </>
         }
       />
-      <Done text={done} />
       <Tabs defaultValue={tab}>
         <TabsList aria-label="One-time pay and holds">
           <TabsTrigger value="onetime" count={ready ? rows.length : undefined}>
@@ -532,10 +733,10 @@ export function OneTimePayScreen({ state = 'ready', sheet, upload, rows: initial
               const drafts = draftsIn(ids);
               return (
                 <>
-                  <Button size="sm" disabled={drafts.length === 0} onClick={() => sendForApproval(drafts)}>
+                  <Button size="sm" onClick={() => why(drafts.length === 0 && 'None of the selected items is a draft.', () => sendForApproval(drafts))}>
                     Send {drafts.length} for approval
                   </Button>
-                  <Button size="sm" variant="danger" disabled={drafts.length === 0} onClick={() => setDeleting(drafts)}>
+                  <Button size="sm" variant="danger" onClick={() => why(drafts.length === 0 && 'Only drafts can be deleted, and none is selected.', () => setDeleting(drafts))}>
                     Delete {plural(drafts.length, 'draft')}
                   </Button>
                   {drafts.length < ids.length && <span className="yx-pay-note">Only drafts can be sent or deleted</span>}
@@ -577,6 +778,8 @@ export function OneTimePayScreen({ state = 'ready', sheet, upload, rows: initial
                 </MenuItem>
               </>
             )}
+            // Answers 241/286: the file is CSV, so the menu offers CSV only.
+            exportFormats={['csv']}
             onExport={() => saveFile('one-time-pay.csv', tableToCsv(shown, cols))}
           />
         </TabsContent>
@@ -609,7 +812,7 @@ export function OneTimePayScreen({ state = 'ready', sheet, upload, rows: initial
           <>
             <Button onClick={() => setAdding(false)}>Cancel</Button>
             {addMissing && <span className="yx-pay-note">{addMissing}</span>}
-            <Button variant="primary" disabled={!!addMissing} onClick={saveItem}>
+            <Button variant="primary" onClick={() => why(addMissing, saveItem)}>
               Send for approval
             </Button>
           </>
@@ -715,7 +918,8 @@ function statutoryText(h: Hold) {
 }
 
 function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: ViewState; holds: Hold[]; setHolds: (fn: (hs: Hold[]) => Hold[]) => void; releaseId?: string; addOpen?: boolean }) {
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [release, setRelease] = useState<Hold | null>(holds.find((h) => h.id === releaseId) ?? null);
   const [payThrough, setPayThrough] = useState('next');
   const [releaseReason, setReleaseReason] = useState(releaseDefault(release));
@@ -817,7 +1021,6 @@ function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: Vie
   const releaseMonths = release ? heldMonths(release) : [];
   return (
     <div className="yx-pay-stack">
-      <Done text={done} />
       <InlineAlert tone="info">While a salary is held, PF, ESI and TDS are still computed and deposited on the accrued pay. Only the net is held.</InlineAlert>
       <SectionTitle
         actions={
@@ -871,7 +1074,7 @@ function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: Vie
           <>
             <Button onClick={() => setRelease(null)}>Cancel</Button>
             {!releaseReason.trim() && <span className="yx-pay-note">Add a reason to release</span>}
-            <Button variant="primary" disabled={!releaseReason.trim()} onClick={() => setConfirmRelease(true)}>
+            <Button variant="primary" onClick={() => why(!releaseReason.trim() && 'Add a reason to release.', () => setConfirmRelease(true))}>
               Release {release ? formatINR(heldTotal(release)) : ''}
             </Button>
           </>
@@ -923,7 +1126,7 @@ function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: Vie
           <>
             <Button onClick={() => setAdding(false)}>Cancel</Button>
             {holdMissing && <span className="yx-pay-note">{holdMissing}</span>}
-            <Button variant="primary" disabled={!!holdMissing} onClick={() => setConfirmHold(true)}>
+            <Button variant="primary" onClick={() => why(holdMissing, () => setConfirmHold(true))}>
               Hold salary
             </Button>
           </>
@@ -953,8 +1156,13 @@ function HoldsPanel({ state, holds, setHolds, releaseId, addOpen }: { state: Vie
   );
 }
 
-/** PAY-06 · Salary holds & releases (reason codes, hold ageing). Lives on the One-time pay & holds page. */
-export function SalaryHoldsScreen({ state = 'ready', releaseId, addOpen }: { state?: ViewState; releaseId?: string; addOpen?: boolean }) {
+type SalaryHoldsProps = { state?: ViewState; releaseId?: string; addOpen?: boolean };
+/** PAY-06 · Salary holds & releases (reason codes, hold ageing). Lives on the One-time pay & holds page; the app passes `live` (the Salary holds tab of Payroll › Inputs). */
+export function SalaryHoldsScreen(p: SalaryHoldsProps & { live?: LiveInputs }) {
+  return p.live ? <LiveHoldsPanel live={p.live} /> : <SampleSalaryHoldsScreen {...p} />;
+}
+
+function SampleSalaryHoldsScreen({ state = 'ready', releaseId, addOpen }: SalaryHoldsProps) {
   const [holds, setHolds] = useState<Hold[]>(HOLDS);
   const open = openHolds(holds);
   return (
@@ -1100,8 +1308,23 @@ const REPAY_ROUTE = {
 } as const;
 type RepayRoute = keyof typeof REPAY_ROUTE;
 
-/** PAY-10 · Payments & files: payment status and failures, disbursement register, journal export. */
-export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready', failure: openStatus }: { persona?: PayPersona; tab?: 'status' | 'register' | 'files' | 'journal'; state?: ViewState; failure?: 'Returned' | 'Failed' }) {
+export interface PaymentsProps {
+  persona?: PayPersona;
+  tab?: 'status' | 'register' | 'files' | 'journal' | 'modes';
+  state?: ViewState;
+  failure?: 'Returned' | 'Failed';
+  /** "Payment modes" tab (founder decision 3): its own states and the ask drawer. */
+  modes?: 'ready' | 'empty' | 'no-access';
+  asking?: boolean;
+}
+
+/** PAY-10 · Payments & files: payment status and failures, disbursement register, bank files, journal export and
+ * payment modes. The app passes `live` (a run's payments, every payroll file, or the payment modes); stories show the sample. */
+export function PaymentsScreen(p: PaymentsProps & { live?: LivePayments }) {
+  return p.live ? <LivePaymentsScreen live={p.live} /> : <SamplePayments {...p} />;
+}
+
+function SamplePayments({ persona = 'pa', tab = 'status', state = 'ready', failure: openStatus, modes = 'ready', asking = false }: PaymentsProps) {
   // After Retry on the error state the panel loads (StateBlock waits 1.2 s), so the header follows it.
   const [retried, setRetried] = useState(false);
   const ready = state === 'ready' || (state === 'error' && retried);
@@ -1111,7 +1334,8 @@ export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready'
   const [route, setRoute] = useState<RepayRoute>('next');
   const [repayReason, setRepayReason] = useState(defaultReason(first));
   const [confirming, setConfirming] = useState(false);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [acks, setAcks] = useState(PAY_LINES.filter((p) => p.acknowledged).map((p) => p.id));
   const [uploading, setUploading] = useState(false);
   const [format, setFormat] = useState('csv');
@@ -1215,10 +1439,10 @@ export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready'
         facts={ready ? `${RUN.employees} employees · ${IN_BANK_FILE - failedOrReturned} paid by bank · ${failedOrReturned} failed or returned · ${RUN.cashCheque} cash or cheque · ${RUN.withheld} held · ${RUN.failed} not calculated` : undefined}
         actions={
           <>
-            <Button icon={showPay ? EyeOff : Eye} aria-pressed={showPay} disabled={!ready} onClick={() => setShowPay(!showPay)}>
+            <Button icon={showPay ? EyeOff : Eye} aria-pressed={showPay} onClick={() => why(!ready && 'Wait for the payments to load.', () => setShowPay(!showPay))}>
               {showPay ? 'Hide pay' : 'Show pay'}
             </Button>
-            <Button icon={Upload} disabled={!ready} onClick={() => setUploading(true)}>
+            <Button icon={Upload} onClick={() => why(!ready && 'Wait for the payments to load.', () => setUploading(true))}>
               Upload bank response
             </Button>
             {persona === 'pa' &&
@@ -1227,14 +1451,13 @@ export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready'
                   Start off-cycle payment
                 </StoryButton>
               ) : (
-                <Button variant="primary" disabled>
+                <Button variant="primary" onClick={() => why('Wait for the payments to load.')}>
                   Start off-cycle payment
                 </Button>
               ))}
           </>
         }
       />
-      <Done text={done} />
       {showPay && <p className="yx-pay-muted">Pay is showing. Each time you show it is recorded.</p>}
       <StateBlock state={state} rows={8} onRetry={() => setTimeout(() => setRetried(true), 1200)}>
       <Tabs defaultValue={tab}>
@@ -1249,7 +1472,11 @@ export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready'
             Bank files
           </TabsTrigger>
           <TabsTrigger value="journal">Journal export</TabsTrigger>
+          <TabsTrigger value="modes">Payment modes</TabsTrigger>
         </TabsList>
+        <TabsContent value="modes">
+          <SamplePaymentModes variant={modes} asking={asking} />
+        </TabsContent>
         <TabsContent value="status">
           <div className="yx-pay-stack">
             <DataTable
@@ -1270,6 +1497,8 @@ export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready'
                   </StoryButton>
                 ) : null
               }
+              // Answers 241/286: the file is CSV, so the menu offers CSV only.
+              exportFormats={['csv']}
               onExport={() => {
                 saveFile('payment-status-sep-2026.csv', tableToCsv(lines, cols));
                 setDone(`Payment status exported (${lines.length} rows)`);
@@ -1356,39 +1585,19 @@ export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready'
                 ]}
               />
             </FormField>
-            <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Table, scrolls sideways on small screens">
-            <table className="yx-pay-table">
-              <thead>
-                <tr>
-                  <th scope="col">Ledger</th>
-                  <th scope="col" data-num>
-                    Debit
-                  </th>
-                  <th scope="col" data-num>
-                    Credit
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {JOURNAL.map((l) => (
-                  <tr key={l.ledger}>
-                    <th scope="row">{l.ledger}</th>
-                    <td data-num>{l.debit ? formatINR(l.debit) : ''}</td>
-                    <td data-num>{l.credit ? formatINR(l.credit) : ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <th scope="row">Total</th>
-                  <td data-num>{formatINR(debits)}</td>
-                  <td data-num>{formatINR(credits)}</td>
-                </tr>
-              </tfoot>
-            </table>
-            </div>
+            <PlainTable
+              label="Journal"
+              rows={JOURNAL}
+              getRowId={(l) => l.ledger}
+              columns={[
+                { key: 'ledger', header: 'Ledger', rowHeader: true, cell: (l) => l.ledger },
+                { key: 'debit', header: 'Debit', num: true, cell: (l) => (l.debit ? formatINR(l.debit) : '') },
+                { key: 'credit', header: 'Credit', num: true, cell: (l) => (l.credit ? formatINR(l.credit) : '') },
+              ]}
+              footer={[{ id: 'total', label: 'Total', cells: { debit: formatINR(debits), credit: formatINR(credits) } }]}
+            />
             <div className="yx-pay-row">
-              <Button variant="primary" icon={format === 'api' ? undefined : Download} disabled={!balanced} onClick={exportJournal}>
+              <Button variant="primary" icon={format === 'api' ? undefined : Download} onClick={() => why(!balanced && 'Debits and credits must match before the journal can go.', exportJournal)}>
                 {format === 'api' ? 'Send journal' : 'Export journal'}
               </Button>
               {!balanced && <span className="yx-pay-note">Debits and credits must match</span>}
@@ -1429,7 +1638,7 @@ export function PaymentsScreen({ persona = 'pa', tab = 'status', state = 'ready'
           <>
             <Button onClick={() => setFailure(null)}>Cancel</Button>
             {repayBlocked && <span className="yx-pay-note">{repayBlocked}</span>}
-            <Button variant="primary" disabled={!!repayBlocked} onClick={() => setConfirming(true)}>
+            <Button variant="primary" onClick={() => why(repayBlocked, () => setConfirming(true))}>
               {REPAY_ROUTE[route].button}
             </Button>
           </>
@@ -1559,8 +1768,14 @@ export const RECOVERIES: Recovery[] = [
   { id: 'r4', employee: SPARE[4].name, code: SPARE[4].code, kind: 'Overpayment', origin: 'Incentive paid twice, Feb 2025', balance: 2_300, plan: 'Write off', note: 'Below the cost of recovery', consent: 'Not needed', status: 'Write-off asked' },
 ];
 
-/** PAY-19 · Court orders, carry-forwards & overpayment recoveries (T2 / T3) with the deduction-cap preview. */
-export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { tab?: 'court' | 'carry' | 'over' | 'cap'; state?: ViewState; openId?: string }) {
+type RecoveriesProps = { tab?: 'court' | 'carry' | 'over' | 'cap'; state?: ViewState; openId?: string };
+/** PAY-19 · Court orders, carry-forwards & overpayment recoveries (T2 / T3) with the deduction-cap preview. The app passes
+ * `live`: the court orders and overpayments tabs on Payroll › Arrears and recoveries (founder decision 7). */
+export function RecoveriesScreen(p: RecoveriesProps & { live?: LiveRecoveriesData }) {
+  return p.live ? <LiveRecoveries live={p.live} /> : <SampleRecoveriesScreen {...p} />;
+}
+
+function SampleRecoveriesScreen({ tab = 'court', state = 'ready', openId }: RecoveriesProps) {
   const [orders, setOrders] = useState(COURT_ORDERS);
   const [openRef, setOpenRef] = useState<string | null>(COURT_ORDERS.find((c) => c.id === openId)?.id ?? null);
   const open = orders.find((c) => c.id === openRef) ?? null;
@@ -1568,7 +1783,8 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
   const [septRemitted, setSeptRemitted] = useState<string[]>([]);
   const [recoveries, setRecoveries] = useState(RECOVERIES);
   const [writeOff, setWriteOff] = useState<Recovery | null>(null);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [adding, setAdding] = useState(false);
   const [newWho, setNewWho] = useState('');
   const [newRef, setNewRef] = useState('');
@@ -1578,6 +1794,7 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
   const [newEnd, setNewEnd] = useState<Date | null>(null);
   const [remitting, setRemitting] = useState<CourtOrder | null>(null);
   const [remitRef, setRemitRef] = useState('');
+  const [triedRemit, setTriedRemit] = useState(false);
   const newPerson = findRunPerson(newWho);
   // Deductions start with the October 2026 run and run to the end month.
   const OCT = d(1, 9);
@@ -1681,12 +1898,11 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
         title="Court orders and recoveries"
         description="Court orders, unpaid balances carried to the next run, and overpayment recovery plans. Total deductions stay within the legal cap."
         actions={
-          <Button variant="primary" icon={Plus} disabled={state !== 'ready'} onClick={() => setAdding(true)}>
+          <Button variant="primary" icon={Plus} onClick={() => why(state !== 'ready' && 'Wait for the orders to load.', () => setAdding(true))}>
             Add court order
           </Button>
         }
       />
-      <Done text={done} />
       <StateBlock state={state} rows={6}>
         <Tabs defaultValue={tab}>
           <TabsList aria-label="Recoveries">
@@ -1757,7 +1973,7 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
           <>
             <Button onClick={() => setOpen(null)}>Close</Button>
             {open && (open.start > d(1) ? <span className="yx-pay-note">Deductions start with the October run</span> : septRemitted.includes(open.id) && <span className="yx-pay-note">September is already remitted</span>)}
-            <Button variant="primary" disabled={!open || open.start > d(1) || septRemitted.includes(open.id)} onClick={() => open && setRemitting(open)}>
+            <Button variant="primary" onClick={() => open && why(open.start > d(1) ? 'Deductions start with the October run.' : septRemitted.includes(open.id) && 'September is already remitted.', () => setRemitting(open))}>
               Record September remittance
             </Button>
           </>
@@ -1777,20 +1993,18 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
               ]}
             />
             {openMonths.length ? (
-              <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Remittances, scrolls sideways on small screens">
-                <table className="yx-pay-table">
-                  <caption>Remittances</caption>
-                  <tbody>
-                    {openMonths.map((m, i) => (
-                      <tr key={m.getMonth()}>
-                        <th scope="row">{monthLabel(m)}</th>
-                        <td data-num>{formatINR(open.monthly)}</td>
-                        <td>{i < open.paidMonths || septRemitted.includes(open.id) ? <Badge tone="success">Remitted</Badge> : <Badge tone="warning">Due with September run</Badge>}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <PlainTable
+                label="Remittances"
+                caption="Remittances"
+                hideHeader
+                rows={openMonths}
+                getRowId={(m) => String(m.getMonth())}
+                columns={[
+                  { key: 'month', header: 'Month', rowHeader: true, cell: (m) => monthLabel(m) },
+                  { key: 'amount', header: 'Amount', num: true, cell: () => formatINR(open.monthly) },
+                  { key: 'status', header: 'Status', cell: (m) => (openMonths.indexOf(m) < open.paidMonths || septRemitted.includes(open.id) ? <Badge tone="success">Remitted</Badge> : <Badge tone="warning">Due with September run</Badge>) },
+                ]}
+              />
             ) : (
               <p className="yx-pay-muted">No remittances yet. The first deduction is in the October run.</p>
             )}
@@ -1803,17 +2017,19 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
           if (!o) {
             setRemitting(null);
             setRemitRef('');
+            setTriedRemit(false);
           }
         }}
         title={remitting ? `Record ${formatINR(remitting.monthly)} paid to the ${remitting.payee.toLowerCase()} for ${remitting.ref} (September)?` : ''}
         consequence={remitting ? `Remitted becomes ${formatINR(remitting.remitted + remitting.monthly)} of ${formatINR(remitting.total)}. The payment reference is saved in the audit trail.` : undefined}
         confirmLabel="Record remittance"
-        confirmDisabled={!remitRef.trim()}
         onConfirm={() => {
+          setTriedRemit(true);
+          if (!remitRef.trim()) return false;
           if (remitting) recordRemittance(remitting);
         }}
       >
-        <FormField label="Payment reference" required helper="The bank or challan reference of the payment to the court.">
+        <FormField label="Payment reference" required helper="The bank or challan reference of the payment to the court." error={triedRemit && !remitRef.trim() ? 'Enter the payment reference.' : null}>
           <TextField value={remitRef} onChange={setRemitRef} placeholder="UTR or challan number" />
         </FormField>
       </ConfirmDialog>
@@ -1826,7 +2042,7 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
           <>
             <Button onClick={() => setAdding(false)}>Cancel</Button>
             {newMissing && <span className="yx-pay-note">{newMissing}</span>}
-            <Button variant="primary" disabled={!!newMissing} onClick={addOrder}>
+            <Button variant="primary" onClick={() => why(newMissing, addOrder)}>
               Add court order
             </Button>
           </>
@@ -1875,7 +2091,7 @@ export function RecoveriesScreen({ tab = 'court', state = 'ready', openId }: { t
   );
 }
 
-type CapLine = ReturnType<typeof applyDeductionCap>['lines'][number];
+type CapLine = { id: string; label: string; amount: number; deducted: number; deferred: number };
 const capCols: TableColumn<CapLine>[] = [
   { key: 'label', header: 'Deduction', value: (l) => l.label, width: 260 },
   { key: 'due', header: 'Due', type: 'money', value: (l) => l.amount, total: 'sum', width: 120 },
@@ -1883,15 +2099,16 @@ const capCols: TableColumn<CapLine>[] = [
   { key: 'deferred', header: 'Deferred', type: 'money', value: (l) => l.deferred, render: (l) => (l.deferred ? formatINR(l.deferred) : '—'), total: 'sum', width: 120 },
 ];
 
-function CapPreview({ wages, result }: { wages: number; result: ReturnType<typeof applyDeductionCap> }) {
+/** PAY-19 "Deduction cap check" (design; also rendered live for one payslip from the calculator's own working). */
+export function CapPreview({ wages, result, who = `${COURT_ORDERS[0].employee} · ${COURT_ORDERS[0].code}`, capText, protectedNet = 12_000 }: { wages: number; result: { cap: number; net: number; lines: CapLine[] }; who?: string; capText?: string; protectedNet?: number }) {
   return (
     <div className="yx-pay-stack">
       <FactRow
         items={[
-          { label: 'Employee', value: `${COURT_ORDERS[0].employee} · ${COURT_ORDERS[0].code}` },
+          { label: 'Employee', value: who },
           { label: 'Wages this month', value: formatINR(wages) },
-          { label: 'Legal cap (Code on Wages)', value: `50% · ${formatINR(result.cap)}` },
-          { label: 'Protected net (company)', value: formatINR(12_000) },
+          { label: 'Legal cap (Code on Wages)', value: capText ?? `50% · ${formatINR(result.cap)}` },
+          { label: 'Protected net (company)', value: formatINR(protectedNet) },
           { label: 'Net pay', value: <Amount value={result.net} strong /> },
         ]}
       />
@@ -1960,14 +2177,20 @@ const dueText = (q: QueryRow) => {
   return n < 0 ? `Overdue ${plural(-n, 'day')}` : n === 0 ? 'Today' : `In ${plural(n, 'day')}`;
 };
 
-/** PAY-20 · Payslip query queue (T2) with in-app reply thread. */
-export function QueryQueueScreen({ state = 'ready', openId, rows: initialRows = QUERY_ROWS }: { state?: ViewState; openId?: string; rows?: QueryRow[] }) {
+type QueryQueueProps = { state?: ViewState; openId?: string; rows?: QueryRow[] };
+/** PAY-20 · Payslip query queue (T2) with in-app reply thread. The app passes `live` (Payroll › Payslip queries). */
+export function QueryQueueScreen(p: QueryQueueProps & { live?: LiveQueries }) {
+  return p.live ? <LiveQueryQueue live={p.live} /> : <SampleQueryQueueScreen {...p} />;
+}
+
+function SampleQueryQueueScreen({ state = 'ready', openId, rows: initialRows = QUERY_ROWS }: QueryQueueProps) {
   const [rows, setRows] = useState(initialRows);
   const [openRef, setOpenRef] = useState<string | null>(initialRows.find((q) => q.id === openId)?.id ?? null);
   const open = rows.find((q) => q.id === openRef) ?? null;
   const setOpen = (q: QueryRow | null) => setOpenRef(q?.id ?? null);
   const [selected, setSelected] = useState<string[]>([]);
-  const [done, setDone] = useState<string | null>(null);
+  const setDone = useDone();
+  const why = useWhy();
   const [assignTo, setAssignTo] = useState<string | null>(null);
   const [replied, setReplied] = useState<string[]>([]);
   const ASSIGNEES = [PAYROLL_ADMIN.name, OTHER_ASSIGNEE];
@@ -2023,7 +2246,6 @@ export function QueryQueueScreen({ state = 'ready', openId, rows: initialRows = 
   return (
     <PayFrame page="queries" counts={{ queries: openCount }}>
       <PageHeader title="Payslip queries" description="Questions employees raised on a payslip or a line. Replies stay in the app." facts={ready ? `${openCount} open · reply target 2 working days` : undefined} />
-      <Done text={done} />
       <DataTable
         label="Payslip queries"
         columns={cols}
@@ -2058,9 +2280,9 @@ export function QueryQueueScreen({ state = 'ready', openId, rows: initialRows = 
             <Button onClick={() => setOpen(null)}>Close</Button>
             {!assignTo && <span className="yx-pay-note">Choose who to {open?.assignee === UNASSIGNED ? 'assign' : 'reassign'} to</span>}
             <Button
-              disabled={!assignTo}
               onClick={() => {
-                if (!open || !assignTo) return;
+                if (!open) return;
+                if (!assignTo) return why(`Choose who to ${open.assignee === UNASSIGNED ? 'assign' : 'reassign'} to.`);
                 update([open.id], () => ({ assignee: assignTo }));
                 setDone(`Query from ${open.employee} ${open.assignee === UNASSIGNED ? 'assigned' : 'reassigned'} to ${assignTo}`);
                 setAssignTo(null);
@@ -2071,9 +2293,9 @@ export function QueryQueueScreen({ state = 'ready', openId, rows: initialRows = 
             {open?.status === 'Resolved' ? <span className="yx-pay-note">Already resolved</span> : !hasReply && <span className="yx-pay-note">Reply to the employee first</span>}
             <Button
               variant="primary"
-              disabled={!open || open.status === 'Resolved' || !hasReply}
               onClick={() => {
                 if (!open) return;
+                if (open.status === 'Resolved' || !hasReply) return why(open.status === 'Resolved' ? 'This query is already resolved.' : 'Reply to the employee first.');
                 update([open.id], () => ({ status: 'Resolved' }));
                 setDone(`Query from ${open.employee} on "${open.line}" marked resolved`);
                 setOpen(null);

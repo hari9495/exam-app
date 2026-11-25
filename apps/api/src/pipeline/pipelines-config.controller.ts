@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import { assertOwnSession } from '../service-desk/desk-access';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
@@ -61,7 +63,11 @@ export class PipelinesConfigController {
     @CurrentUserId() userId: string,
     @Param('stageId') stageId: string,
     @Body() dto: UpdateStageDto,
+    @Req() req?: Request,
   ) {
+    // HIR-04 answer 263: stage targets are a pipeline write, never while acting for someone else (req is always there in
+    // a request; the unit spec calls the method directly).
+    if (req) assertOwnSession(req);
     return this.pipelines.updateStage(tenant, userId, stageId, dto);
   }
 

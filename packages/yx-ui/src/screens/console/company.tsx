@@ -8,12 +8,14 @@ import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { MenuItem } from '../../components/menu';
 import { Segment } from '../../components/segment';
-import { Breadcrumbs, Card, ObjectHeader } from '../../components/shell';
+import { Breadcrumbs, Card, DescriptionList, ObjectHeader } from '../../components/shell';
+import { DatePicker } from '../../components/date';
 import { DataTable, type TableColumn } from '../../components/table';
 import { Timeline } from '../../components/timeline';
 import { EditorDrawer, useRun } from '../org/org-kit';
+import { ConfirmDialog } from '../../components/overlay';
 import { ConsolePage, LifecycleBadge, SupportBadge, actionWords, day, daysLeft, productNames, useReasonDialog, when, LIFECYCLE_LABEL } from './console-kit';
-import type { CompanyDetail, LifecycleAction, LoadState, SupportRequestInput, SupportSession } from './types';
+import type { CompanyDetail, CompanyFeature, LegalHoldInput, LifecycleAction, LoadState, SupportRequestInput, SupportSession } from './types';
 
 const HOURS = [
   { value: 4, label: '4 hours' },
@@ -32,7 +34,8 @@ export function supportInput(d: { reason: string; ticket: string; hours: number 
 
 function SupportRequestDrawer({ company, onClose, onSend }: { company: string; onClose: () => void; onSend: (input: SupportRequestInput) => Promise<void> }) {
   const [draft, setDraft] = useState({ reason: '', ticket: '', hours: 24 });
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
   const { busy, error, run } = useRun();
   const set = (patch: Partial<typeof draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
@@ -75,6 +78,62 @@ function SupportRequestDrawer({ company, onClose, onSend }: { company: string; o
   );
 }
 
+/** Answer 2081: the kept groups as people read them. */
+const GROUP_WORDS: Record<string, string> = { audit: 'Audit log', pay: 'Payroll records', filings: 'Statutory filings', company: 'The company and its people' };
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/** The legal hold body, or what to fix. Mirrors the API's checks; the API checks again. */
+export function legalHoldInput(d: { caseRef: string; reason: string; until: Date | null }, today = new Date()): { input: LegalHoldInput | null; errors: FormErrorItem[] } {
+  const errors: FormErrorItem[] = [];
+  if (!d.caseRef.trim()) errors.push({ fieldId: 'lh-case', message: 'Give the case or matter reference' });
+  if (d.reason.trim().length < 10) errors.push({ fieldId: 'lh-reason', message: 'Say why the records must stay, in at least 10 characters' });
+  if (!d.until || isoDay(d.until) <= isoDay(today)) errors.push({ fieldId: 'lh-until', message: 'Choose a day after today' });
+  return errors.length ? { input: null, errors } : { input: { caseRef: d.caseRef.trim(), reason: d.reason.trim(), until: isoDay(d.until!) }, errors };
+}
+
+/** Answer 2083: staff set a legal hold on a deleted company: its kept records stay past their day until the hold ends. */
+function LegalHoldDrawer({ company, onClose, onSet }: { company: string; onClose: () => void; onSet: (input: LegalHoldInput) => Promise<unknown> }) {
+  const [draft, setDraft] = useState<{ caseRef: string; reason: string; until: Date | null }>({ caseRef: '', reason: '', until: null });
+  const [dirty, setDirty] = useState(false);
+  const { busy, error, run } = useRun();
+  const set = (patch: Partial<typeof draft>) => {
+    setDraft((d) => ({ ...d, ...patch }));
+    setDirty(true);
+  };
+  const { input, errors } = legalHoldInput(draft);
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
+  return (
+    <EditorDrawer
+      open
+      onClose={onClose}
+      dirty={dirty}
+      title="Set a legal hold"
+      subtitle={company}
+      errors={saveErrors.shownErrors}
+      saving={busy === 'hold'}
+      failed={error}
+      saveLabel="Set the hold"
+      onSave={() => {
+        if (!input) return saveErrors.reveal();
+        void run('hold', () => onSet(input).then(() => undefined)).then((ok) => ok && onClose());
+      }}
+    >
+      <FormSection title="Hold" description="While the hold is in force, the nightly removal leaves this company's kept records alone, even past their day. Your security key confirms it.">
+        <FormField id="lh-case" label="Case or matter reference" required error={errorOf('lh-case')}>
+          <TextField value={draft.caseRef} onChange={(caseRef) => set({ caseRef })} maxLength={100} />
+        </FormField>
+        <FormField id="lh-reason" label="Why the records must stay" required error={errorOf('lh-reason')}>
+          <TextArea value={draft.reason} onChange={(reason) => set({ reason })} rows={3} maxLength={500} />
+        </FormField>
+        <FormField id="lh-until" label="Until" required helper="The hold ends on its own after this day; you can also end it sooner." error={errorOf('lh-until')}>
+          <DatePicker value={draft.until} onChange={(until) => set({ until })} min={new Date(Date.now() + 86_400_000)} />
+        </FormField>
+      </FormSection>
+    </EditorDrawer>
+  );
+}
+
 export interface CompanyScreenProps {
   state: LoadState;
   onRetry?: () => void;
@@ -91,7 +150,22 @@ export interface CompanyScreenProps {
   onOpenSession: (session: SupportSession) => Promise<void>;
   onEndSession: (id: string) => Promise<void>;
   onWithdrawRequest: (id: string) => Promise<void>;
+  /** Careers answer 442: opens Company settings (white-label and other plan settings). */
+  onOpenSettings?: () => void;
+  /** Answer 1050: opens Contain company (suspected compromise); shown to staff with the contain key. */
+  onContain?: () => void;
   now?: Date;
+  /** C-5 (answer 1053): the products and features switched on for this company. */
+  features?: CompanyFeature[];
+  /** Answer 1882: ask to delete a closed company's data, confirm someone else's ask, or withdraw one's own. */
+  onAskDeletion?: (reason: string) => Promise<unknown>;
+  onConfirmDeletion?: () => Promise<unknown>;
+  onWithdrawDeletion?: () => Promise<unknown>;
+  /** Answer 1973: download the deletion certificate. */
+  onDownloadCertificate?: () => Promise<unknown>;
+  /** Answer 2083: set or end a legal hold on a deleted company (security key; audited). */
+  onSetHold?: (input: LegalHoldInput) => Promise<unknown>;
+  onEndHold?: (id: string, reason: string) => Promise<unknown>;
 }
 
 const MOVE: Record<LifecycleAction, { title: (n: string) => string; consequence: string; label: string; destructive?: boolean }> = {
@@ -107,8 +181,10 @@ export function CompanyScreen(props: CompanyScreenProps) {
   const [requesting, setRequesting] = useState<number | null>(null);
   const [reasonDialog, askReason] = useReasonDialog();
   const [days, setDays] = useState(14);
+  const [holding, setHolding] = useState(false);
   const { busy, error, run } = useRun();
   const now = props.now ?? new Date();
+  const [confirmingDeletion, setConfirmingDeletion] = useState(false);
 
   const move = (action: LifecycleAction) => () =>
     c && askReason({ title: MOVE[action].title(c.name), consequence: MOVE[action].consequence, confirmLabel: MOVE[action].label, destructive: MOVE[action].destructive, action: (reason) => props.onLifecycle(action, reason) });
@@ -159,6 +235,8 @@ export function CompanyScreen(props: CompanyScreenProps) {
             ]}
             actions={
               <>
+                {props.onOpenSettings && <Button onClick={props.onOpenSettings}>Company settings</Button>}
+                {props.onContain && <Button onClick={props.onContain}>Contain company</Button>}
                 {props.canSupport && c.signInAllowed && !open && !waiting && <Button onClick={() => setRequesting(Date.now())}>Ask for support access</Button>}
                 {props.canManage && c.lifecycle === 'trial' && <Button variant="primary" onClick={move('activate')}>Switch on</Button>}
                 {props.canManage && c.lifecycle === 'suspended' && <Button variant="primary" onClick={move('reinstate')}>Reinstate</Button>}
@@ -173,6 +251,83 @@ export function CompanyScreen(props: CompanyScreenProps) {
               ) : undefined
             }
           />
+
+          {c.closureRequest?.status === 'requested' && (
+            <InlineAlert
+              tone="warning"
+              title={`${c.name} asked to close its account on ${day(c.closureRequest.askedAt)}`}
+              actions={props.canManage && c.lifecycle !== 'closed' ? <Button variant="danger" onClick={move('close')}>Close company</Button> : undefined}
+            >
+              Reason: {c.closureRequest.reason}. Talk to them first; after closing, nobody can sign in and the data is kept until it is deleted.
+            </InlineAlert>
+          )}
+          {c.closureRequest?.status === 'closed' && c.closureRequest.keepUntil && (
+            <InlineAlert tone="info" title={`Closed at the company's request. Data is kept until ${day(c.closureRequest.keepUntil)}.`}>
+              Reason: {c.closureRequest.reason}.
+            </InlineAlert>
+          )}
+
+          {c.deleted && (
+            <InlineAlert
+              tone="info"
+              title={`${c.name}'s data was deleted on ${day(c.deleted.at)}`}
+              actions={props.onDownloadCertificate && <Button onClick={() => void run('certificate', () => props.onDownloadCertificate!())}>Download certificate</Button>}
+            >
+              {c.deleted.recordsKeptUntil ? `Its statutory records (audit log, payroll, filings) are kept read-only until ${day(c.deleted.recordsKeptUntil)}.` : 'Its statutory records are kept read-only.'}
+            </InlineAlert>
+          )}
+          {c.deleted && (
+            <Card title="Kept records" actions={props.canManage && props.onSetHold ? <Button onClick={() => setHolding(true)}>Set a legal hold</Button> : undefined}>
+              {/* Answers 2081 and 2083: what the nightly removal took, and the holds that stop it. */}
+              {c.deleted.removals?.length ? (
+                <DescriptionList items={c.deleted.removals.map((r) => ({ label: `${GROUP_WORDS[r.group] ?? r.group} removed ${day(r.removedAt)}`, value: r.sha256, mono: true, copyValue: r.sha256 }))} />
+              ) : (
+                <Text tone="secondary">Nothing removed yet. Each group is removed the night after its day, with its own certificate.</Text>
+              )}
+              {c.deleted.holds?.map((h) => (
+                <InlineAlert
+                  key={h.id}
+                  tone="warning"
+                  title={`Legal hold ${h.caseRef} until ${day(h.until)}`}
+                  actions={props.canManage && props.onEndHold && <Button onClick={() => askReason({ title: `End the legal hold ${h.caseRef}?`, consequence: 'The nightly removal may then take the kept records whose day has passed.', confirmLabel: 'End the hold', action: (reason) => props.onEndHold!(h.id, reason).then(() => undefined) })}>End the hold</Button>}
+                >
+                  {h.reason}
+                </InlineAlert>
+              ))}
+            </Card>
+          )}
+          {holding && props.onSetHold && <LegalHoldDrawer company={c.name} onClose={() => setHolding(false)} onSet={props.onSetHold} />}
+          {props.canManage && c.lifecycle === 'closed' && !c.deleted && (
+            <InlineAlert
+              tone="danger"
+              title={c.deletion ? (c.deletion.mine ? `You asked on ${day(c.deletion.askedAt)} to delete ${c.name}'s data` : `Deleting ${c.name}'s data was asked on ${day(c.deletion.askedAt)}`) : `Delete ${c.name}'s data`}
+              actions={
+                !c.deletion ? (
+                  props.onAskDeletion && <Button variant="danger" onClick={() => askReason({ title: `Delete all of ${c.name}'s data?`, consequence: 'Only after the kept days. A second staff member confirms; nothing can bring it back. Statutory records (audit log, payroll, filings) stay read-only for their legal period. A deletion certificate is kept.', confirmLabel: 'Ask to delete', destructive: true, action: (reason) => props.onAskDeletion!(reason).then(() => undefined) })}>Ask to delete the data</Button>
+                ) : c.deletion.mine ? (
+                  props.onWithdrawDeletion && <Button onClick={() => void run('withdraw', () => props.onWithdrawDeletion!())}>Withdraw</Button>
+                ) : (
+                  props.onConfirmDeletion && <Button variant="danger" onClick={() => setConfirmingDeletion(true)}>Confirm deletion</Button>
+                )
+              }
+            >
+              {c.deletion ? `Reason: ${c.deletion.reason}. ${c.deletion.mine ? 'A second staff member confirms it.' : 'You are the second staff member: confirming deletes it now.'}` : 'After the kept days, one staff member asks and a second confirms. A legal hold keeps the data.'}
+            </InlineAlert>
+          )}
+          {confirmingDeletion && c.deletion && (
+            <ConfirmDialog
+              open
+              onOpenChange={(o) => !o && setConfirmingDeletion(false)}
+              title={`Delete all of ${c.name}'s data now?`}
+              consequence="Every record and stored file of this company is deleted for good, except its statutory records (audit log, payroll, filings), kept read-only for their legal period. Nothing can bring it back. The deletion certificate is kept."
+              confirmLabel="Delete all data"
+              destructive
+              onConfirm={async () => {
+                await props.onConfirmDeletion!();
+                setConfirmingDeletion(false);
+              }}
+            />
+          )}
 
           {open && (
             <InlineAlert
@@ -209,6 +364,22 @@ export function CompanyScreen(props: CompanyScreenProps) {
 
           <div className="yx-console__split">
             <div className="yx-auth__stack">
+              {props.features && (
+                <Card title="Products and features">
+                  {props.features.length ? (
+                    <ul className="yx-console__list" aria-label="Products and features">
+                      {props.features.map((f) => (
+                        <li key={f.key}>
+                          <Text>{f.label}</Text>
+                          <Badge tone={f.on ? 'success' : 'neutral'}>{f.on ? 'On' : (f.note ?? 'Off')}</Badge>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <EmptyState compact title="No products yet." />
+                  )}
+                </Card>
+              )}
               <Card title="Support sessions">
                 <DataTable
                   label="Support sessions"

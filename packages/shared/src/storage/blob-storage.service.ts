@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BlobServiceClient, BlockBlobClient, ContainerClient, BlobSASPermissions, SASProtocol } from '@azure/storage-blob';
+import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
+import { dirname, join, resolve, sep } from 'path';
 
 // Data URIs into uploadDataUri come straight from a candidate (webcam/screen captures), so
 // the content type is untrusted input, not a server-chosen value. Without an allowlist a
@@ -37,6 +39,13 @@ export type BlobDeleteOutcome =
   | 'skipped-empty-name'
   | 'skipped-not-configured';
 
+/**
+ * Dev only (founder answer 792, 11 Nov 2026): with no blob store set, files go to a folder instead of failing, so a
+ * laptop or test app can keep visitor and kiosk photos. Never in production (it still fails there, as before). Refs are
+ * "local-blob:<path>"; they are read back through the API (downloadToBuffer), never signed for a browser.
+ */
+export const LOCAL_BLOB_PREFIX = 'local-blob:';
+
 @Injectable()
 export class BlobStorageService {
   private readonly logger = new Logger(BlobStorageService.name);
@@ -54,7 +63,28 @@ export class BlobStorageService {
     return this.containerClient;
   }
 
+  /** The dev folder when no blob store is set (never in production); null otherwise. */
+  localDir(): string | null {
+    if (this.isConfigured() || process.env.NODE_ENV === 'production') return null;
+    return resolve(process.env.BLOB_LOCAL_DIR ?? join(process.cwd(), '.blob-files'));
+  }
+
+  /** A path inside the dev folder; a name that climbs out of it is refused. */
+  private localPath(name: string): string {
+    const dir = this.localDir();
+    if (!dir) throw new Error('No blob store is configured (AZURE_STORAGE_CONNECTION_STRING / AZURE_STORAGE_CONTAINER)');
+    const path = resolve(dir, name);
+    if (!name || !path.startsWith(dir + sep)) throw new Error('Blob path is outside the local store');
+    return path;
+  }
+
   async upload(blobPath: string, data: Buffer, contentType: string): Promise<string> {
+    if (this.localDir()) {
+      const path = this.localPath(blobPath);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, data);
+      return `${LOCAL_BLOB_PREFIX}${blobPath}`;
+    }
     const blockBlobClient = this.getContainer().getBlockBlobClient(blobPath);
     await blockBlobClient.uploadData(data, { blobHTTPHeaders: { blobContentType: contentType } });
     return blockBlobClient.url;
@@ -66,6 +96,7 @@ export class BlobStorageService {
   // -- so resolve it through resolveOwnedBlob the same way deleteByUrl/signIfOurs do, rather than
   // treating it as a container-relative blob name.
   async downloadToBuffer(blobUrl: string): Promise<Buffer> {
+    if (blobUrl.startsWith(LOCAL_BLOB_PREFIX)) return readFile(this.localPath(blobUrl.slice(LOCAL_BLOB_PREFIX.length)));
     const resolved = this.resolveOwnedBlob(blobUrl);
     if (!resolved.blob) {
       throw new Error(`Cannot download blob: URL is not one of ours (${resolved.reason}): ${blobUrl}`);
@@ -125,6 +156,16 @@ export class BlobStorageService {
   }
 
   async deleteByUrl(blobUrl: string): Promise<BlobDeleteOutcome> {
+    if (blobUrl.startsWith(LOCAL_BLOB_PREFIX)) {
+      if (!this.localDir()) return 'skipped-not-configured';
+      return unlink(this.localPath(blobUrl.slice(LOCAL_BLOB_PREFIX.length))).then(
+        () => 'deleted' as const,
+        (e: NodeJS.ErrnoException) => {
+          if (e.code === 'ENOENT') return 'not-found' as const;
+          throw e;
+        },
+      );
+    }
     if (!this.isConfigured()) {
       return 'skipped-not-configured';
     }

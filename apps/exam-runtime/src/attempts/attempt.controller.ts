@@ -1,12 +1,18 @@
-import { Body, Controller, Get, Header, Post, Req, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Post, Req, UseGuards, UseInterceptors } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { CandidateJwtAuthGuard } from '../candidate-auth/candidate-jwt-auth.guard';
 import { CurrentCandidate, CandidateSession } from '../candidate-auth/current-candidate.decorator';
 import { LastSeenInterceptor } from './last-seen.interceptor';
 import { AttemptService } from './attempt.service';
+import { DeliveryService } from './delivery.service';
+import { ReuseDto } from './dto/reuse.dto';
+import { AccommodationService } from './accommodation.service';
+import { PrivacyService } from './privacy.service';
+import { AssistantService } from './assistant.service';
+import { AccommodationDto } from './dto/accommodation.dto';
 import { resolveClientIp } from '../network/resolve-client-ip';
-import { AnswerDto } from './dto/answer.dto';
+import { AnswerDto, AppealDto, AssistantAskDto, ProctorReplyDto, SurveyDto } from './dto/answer.dto';
 import { StartAttemptDto } from './dto/start-attempt.dto';
 import { ReportProctoringEventDto } from './dto/report-proctoring-event.dto';
 import { ClientErrorDto } from './dto/client-error.dto';
@@ -23,7 +29,82 @@ import { MODERATE_ATTEMPT_THROTTLE, STRICT_CODE_RUN_THROTTLE } from '../rate-lim
 @UseGuards(CandidateJwtAuthGuard)
 @UseInterceptors(LastSeenInterceptor)
 export class AttemptController {
-  constructor(private readonly attemptService: AttemptService) {}
+  constructor(
+    private readonly attemptService: AttemptService,
+    private readonly delivery: DeliveryService,
+    private readonly accommodations: AccommodationService,
+    private readonly privacy: PrivacyService,
+    private readonly assistant: AssistantService,
+  ) {}
+
+  /** AS-3 (PRC-21): this candidate's tests at this company. */
+  @Get('my-tests')
+  myTests(@CurrentCandidate() candidate: CandidateSession) {
+    return this.delivery.myTests(candidate);
+  }
+
+  /** AS-3 (answer 2013, PRC-32): an earlier result on the same test this invitation may use. */
+  @Get('reuse')
+  reuseOffer(@CurrentCandidate() candidate: CandidateSession) {
+    return this.delivery.reuseOffer(candidate);
+  }
+
+  @Post('reuse')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  useResult(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ReuseDto) {
+    return this.delivery.useResult(candidate, dto.attemptId);
+  }
+
+  @Post('reuse/withdraw')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  withdrawReuse(@CurrentCandidate() candidate: CandidateSession) {
+    return this.delivery.withdrawReuse(candidate);
+  }
+
+  /** AS-4b (answer 2011, PRC-23): the candidate's requests for help and what was approved for them. */
+  // AS-6 part 2 (answer 2272): the approved assistant of an AI-allowed test; every message is logged.
+  @Get('assistant')
+  assistantView(@CurrentCandidate() candidate: CandidateSession) {
+    return this.assistant.view(candidate);
+  }
+
+  @Post('assistant')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  assistantAsk(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AssistantAskDto) {
+    return this.assistant.ask(candidate, dto.message, dto.questionId ?? null);
+  }
+
+  // AS-5 part 3 (PRC-28): the privacy centre: what the company keeps, a copy, and an erasure request.
+  @Get('privacy')
+  privacyView(@CurrentCandidate() candidate: CandidateSession) {
+    return this.privacy.view(candidate);
+  }
+
+  @Get('privacy/export')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  privacyExport(@CurrentCandidate() candidate: CandidateSession) {
+    return this.privacy.export(candidate);
+  }
+
+  @Post('privacy/erase')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  privacyErase(@CurrentCandidate() candidate: CandidateSession) {
+    return this.privacy.requestErase(candidate);
+  }
+
+  @Get('accommodation')
+  accommodation(@CurrentCandidate() candidate: CandidateSession) {
+    return this.accommodations.help(candidate);
+  }
+
+  /** AS-4b: ask for help before the test (one open request at a time; evidence optional). */
+  @Post('accommodation')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  askAccommodation(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AccommodationDto) {
+    return this.accommodations.ask(candidate, dto);
+  }
 
   @Get('current')
   getCurrent(@CurrentCandidate() candidate: CandidateSession) {
@@ -79,6 +160,41 @@ export class AttemptController {
     return this.attemptService.submit(candidate);
   }
 
+  // AS-4a (PRC-26): breaks, back after a lost connection, and the optional after-test survey.
+  @Post('break/start')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  startBreak(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.startBreak(candidate);
+  }
+
+  @Post('break/end')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  endBreak(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.endBreak(candidate);
+  }
+
+  @Post('reconnected')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  reconnected(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.reconnected(candidate);
+  }
+
+  @Post('survey')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  survey(@CurrentCandidate() candidate: CandidateSession, @Body() dto: SurveyDto) {
+    return this.attemptService.submitSurvey(candidate, dto);
+  }
+
+  // AS-5 (answer 2012): appeal an integrity decision within the company's window.
+  @Post('appeal')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  appeal(@CurrentCandidate() candidate: CandidateSession, @Body() dto: AppealDto) {
+    return this.attemptService.appeal(candidate, dto.text, dto.file ?? null);
+  }
+
   @Post('client-error')
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   clientError(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ClientErrorDto) {
@@ -107,6 +223,27 @@ export class AttemptController {
   @Throttle(MODERATE_ATTEMPT_THROTTLE)
   faceEnrolment(@CurrentCandidate() candidate: CandidateSession, @Body() dto: FaceEnrolmentDto) {
     return this.attemptService.recordFaceEnrolment(candidate, dto);
+  }
+
+  // Answer 2269: the candidate reads the proctor's messages and replies.
+  @Post('messages/read')
+  @HttpCode(200)
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  readMessages(@CurrentCandidate() candidate: CandidateSession) {
+    return this.attemptService.readMessages(candidate);
+  }
+
+  @Post('messages')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  replyToProctor(@CurrentCandidate() candidate: CandidateSession, @Body() dto: ProctorReplyDto) {
+    return this.attemptService.replyToProctor(candidate, dto.body);
+  }
+
+  // AS-5 (answer 2205): the face check after approved extra time.
+  @Post('face-recheck')
+  @Throttle(MODERATE_ATTEMPT_THROTTLE)
+  faceRecheck(@CurrentCandidate() candidate: CandidateSession, @Body() dto: WebcamSnapshotDto) {
+    return this.attemptService.faceRecheck(candidate, dto.snapshot);
   }
 
   @Post('webcam-resume')

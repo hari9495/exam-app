@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, tenantWide } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, implicitPeriods, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { checkAnswers } from '../rules-engine/forms';
 import { displayName } from '../employee-history/employee-history.service';
@@ -92,29 +92,91 @@ export class OffboardingService {
     });
   }
 
+  /**
+   * PPL-20 HR view by leaver: every department's items for the leavers in HR's scope (lifecycle.exit.manage on the
+   * person) whose clearance is still open. Never the HR person's own exit.
+   */
+  async hrClearance(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const own = await ownOf(tx, c, v);
+      const openCases = await tx.clearanceItem.findMany({ where: { organizationId: org, status: 'open' }, select: { exitCaseId: true }, distinct: ['exitCaseId'] });
+      const cases = (await tx.exitCase.findMany({ where: { organizationId: org, id: { in: openCases.map((x) => x.exitCaseId) }, status: { in: ['accepted', 'cleared', 'exited'] } }, orderBy: { createdAt: 'asc' } })).filter((k) => k.employeeId !== own.employeeId);
+      const reach = await Promise.all(cases.map((k) => reachesPerson(tx, c, v, 'lifecycle.exit.manage', k.personId, own)));
+      const mine = cases.filter((_, i) => reach[i]);
+      const items = await tx.clearanceItem.findMany({ where: { organizationId: org, exitCaseId: { in: mine.map((k) => k.id) } }, orderBy: { createdAt: 'asc' } });
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: mine.map((k) => k.employeeId) } } });
+      const names = await this.exits.userNames(tx, org, items.map((i) => i.ownerUserId));
+      const gnames = await this.exits.groupNames(tx, org, items.map((i) => i.ownerGroupId));
+      return {
+        today: todayIst(),
+        rows: items.map((i) => {
+          const k = mine.find((x) => x.id === i.exitCaseId)!;
+          return { ...this.exits.itemView(i, names, gnames), exitCaseId: k.id, person: displayName(people.find((p) => p.id === k.employeeId)!), lastDay: iso(k.approvedLwd ?? k.standardLwd) };
+        }),
+      };
+    });
+  }
+
+  /** The item, if the viewer owns it (themselves or a group) or is HR over the leaver; never the leaver themselves. */
+  private async ownedItem(tx: Tx, c: CompanyContext, v: Viewer, itemId: string) {
+    const org = c.organizationId;
+    const i = await tx.clearanceItem.findFirst({ where: { organizationId: org, id: itemId } });
+    if (!i) throw new NotFoundException('No such clearance item.');
+    const k = await tx.exitCase.findFirstOrThrow({ where: { organizationId: org, id: i.exitCaseId } });
+    const own = await ownOf(tx, c, v);
+    const groups = await this.groupsOf(tx, org, v.userId);
+    const owner = i.ownerUserId === v.userId || (i.ownerGroupId !== null && groups.includes(i.ownerGroupId));
+    const hr = !v.actingForOther && (await reachesPerson(tx, c, v, 'lifecycle.exit.manage', k.personId, own));
+    if ((!owner && !hr) || own.employeeId === k.employeeId) throw new NotFoundException('No such clearance item.');
+    if (v.actingForOther) throw new ForbiddenException('Sign-offs are made by the owner, signed in as themselves.');
+    if (!['accepted', 'cleared', 'exited'].includes(k.status)) throw new ConflictException('This exit is not accepted.');
+    if (i.status !== 'open') throw new ConflictException('This item is already signed off.');
+    return { i, k };
+  }
+
+  /**
+   * PPL-20: the owner (or HR) marks an open item blocked with the reason, e.g. an unclaimed advance. It stays open: it
+   * still holds F&F finalisation, and signing it off or waiving it ends the block. Marking it again replaces the reason.
+   */
+  async block(ctx: TenantContext, user: ScopeUser, itemId: string, dto: { reason: string; version: number }) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { i, k } = await this.ownedItem(tx, c, v, itemId);
+      const n = await tx.clearanceItem.updateMany({
+        where: { organizationId: c.organizationId, id: itemId, version: dto.version, status: 'open' },
+        data: { blockedReason: dto.reason.trim().slice(0, 300), blockedAt: new Date(), blockedBy: c.userId ?? null, version: { increment: 1 } },
+      });
+      if (!n.count) throw new ConflictException('This item changed meanwhile. Reload it.');
+      await audit(tx, c, 'exit.clearance.blocked', 'exit_case', k.id, { itemId, department: i.department });
+      return { ok: true };
+    });
+  }
+
   async signOff(ctx: TenantContext, user: ScopeUser, itemId: string, dto: SignOffDto) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const i = await tx.clearanceItem.findFirst({ where: { organizationId: org, id: itemId } });
-      if (!i) throw new NotFoundException('No such clearance item.');
-      const k = await tx.exitCase.findFirstOrThrow({ where: { organizationId: org, id: i.exitCaseId } });
-      const own = await ownOf(tx, c, v);
-      const groups = await this.groupsOf(tx, org, v.userId);
-      const owner = i.ownerUserId === v.userId || (i.ownerGroupId !== null && groups.includes(i.ownerGroupId));
-      const hr = !v.actingForOther && (await reachesPerson(tx, c, v, 'lifecycle.exit.manage', k.personId, own));
-      if ((!owner && !hr) || own.employeeId === k.employeeId) throw new NotFoundException('No such clearance item.');
-      if (v.actingForOther) throw new ForbiddenException('Sign-offs are made by the owner, signed in as themselves.');
-      if (!['accepted', 'cleared', 'exited'].includes(k.status)) throw new ConflictException('This exit is not accepted.');
-      if (i.status !== 'open') throw new ConflictException('This item is already signed off.');
+      const { i, k } = await this.ownedItem(tx, c, v, itemId);
       if (dto.action === 'waive' && !dto.note?.trim()) throw new BadRequestException('Say why it is waived.');
       if (dto.recoveryAmount && !dto.recoveryReason?.trim()) throw new BadRequestException('Say what the recovery is for.');
       if (dto.action === 'waive' && dto.recoveryAmount) throw new BadRequestException('A waived item has no recovery.');
       const n = await tx.clearanceItem.updateMany({
         where: { organizationId: org, id: itemId, version: dto.version, status: 'open' },
-        data: { status: dto.action === 'clear' ? 'cleared' : 'waived', note: dto.note?.trim() || null, recoveryAmount: dto.recoveryAmount ? new Prisma.Decimal(dto.recoveryAmount) : null, recoveryReason: dto.recoveryReason?.trim() || null, signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } },
+        data: { status: dto.action === 'clear' ? 'cleared' : 'waived', blockedReason: null, blockedAt: null, blockedBy: null, note: dto.note?.trim() || null, recoveryAmount: dto.recoveryAmount ? new Prisma.Decimal(dto.recoveryAmount) : null, recoveryReason: dto.recoveryReason?.trim() || null, signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } },
       });
       if (!n.count) throw new ConflictException('Someone else signed this off. Reload it.');
+      // An asset item cleared with nothing owed means the asset came back: record the return as "Take back" does
+      // (founder 23 Oct 2026: the Assets tab still showed the phone with the leaver).
+      if (i.assetAssignmentId && dto.action === 'clear' && !dto.recoveryAmount) {
+        const x = await tx.assetAssignment.findFirst({ where: { organizationId: org, id: i.assetAssignmentId, returnedOn: null } });
+        if (x) {
+          await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(todayIst()), returnCondition: (dto.note?.trim() || 'Returned at clearance').slice(0, 200), returnedBy: c.userId ?? null, version: { increment: 1 } } });
+          await tx.asset.update({ where: { id: x.assetId }, data: { status: 'in_stock', version: { increment: 1 } } });
+          await freezeSettlementIn(tx, c, k.id, 'asset_returned');
+        }
+      }
       await audit(tx, c, `exit.clearance.${dto.action === 'clear' ? 'cleared' : 'waived'}`, 'exit_case', k.id, { itemId, department: i.department, recovery: dto.recoveryAmount ?? null });
       if (dto.recoveryAmount) await freezeSettlementIn(tx, c, k.id, 'recovery');
       await this.maybeClearedIn(tx, c, k.id);
@@ -167,7 +229,16 @@ export class OffboardingService {
       await this.confidential(tx);
       await tx.exitInterviewAnswers.createMany({ data: [{ exitInterviewId: iv.id, organizationId: org, answersEnc: this.crypto.encrypt(JSON.stringify(values)) }] });
       await audit(tx, c, 'exit.interview.submitted', 'exit_case', k.id, {});
-      return { status: 'submitted' };
+      // HR who owns the exit is told it is in (founder 24 Oct 2026); only that it was answered, never the answers.
+      const j = await tx.journey.findFirst({ where: { organizationId: org, subjectType: 'exit_case', subjectId: k.id, status: { not: 'cancelled' } }, select: { ownerUserId: true } });
+      const p = await tx.employee.findFirst({ where: { organizationId: org, id: k.employeeId } });
+      return { status: 'submitted', tell: j?.ownerUserId ? { to: j.ownerUserId, who: p ? displayName(p) : 'A leaver', caseId: k.id } : null };
+    }).then(async (r) => {
+      if (r.tell)
+        await this.notifications
+          .notifySystem(ctx, [r.tell.to], 'exit.case.update', { entityType: 'exit_case', entityId: r.tell.caseId, contextText: `${r.tell.who} answered the exit interview`, linkPath: `/yx/people/exits/${r.tell.caseId}` }, { subject: `${r.tell.who} answered the exit interview`, html: '<p>The exit interview answers are in YukthiX. Only HR can read them.</p>' })
+          .catch(() => undefined);
+      return { status: r.status };
     });
   }
 
@@ -217,6 +288,13 @@ export class OffboardingService {
       const rows = (await tx.asset.findMany({ where: { organizationId: org }, orderBy: [{ category: 'asc' }, { tag: 'asc' }], take: 2000 })).filter((a) => this.reachesAsset(v, 'asset.view', a));
       const open = await tx.assetAssignment.findMany({ where: { organizationId: org, assetId: { in: rows.map((a) => a.id) }, returnedOn: null } });
       const people = await tx.employee.findMany({ where: { organizationId: org, personId: { in: open.map((o) => o.personId) } } });
+      // A holder who is leaving (their asset is on an open clearance item): the return form offers a recovery for F&F.
+      const leaving = await tx.clearanceItem.findMany({ where: { organizationId: org, status: 'open', assetAssignmentId: { in: open.map((o) => o.id) } }, select: { assetAssignmentId: true, exitCaseId: true } });
+      const cases = leaving.length ? await tx.exitCase.findMany({ where: { organizationId: org, id: { in: leaving.map((l) => l.exitCaseId) } }, select: { id: true, approvedLwd: true, standardLwd: true } }) : [];
+      const lastDayOf = (assignmentId: string) => {
+        const k = cases.find((c) => c.id === leaving.find((l) => l.assetAssignmentId === assignmentId)?.exitCaseId);
+        return k ? iso(k.approvedLwd ?? k.standardLwd) : null;
+      };
       return {
         today: todayIst(),
         rows: rows.map((a) => {
@@ -235,8 +313,43 @@ export class OffboardingService {
             status: a.status,
             version: a.version,
             canManage: this.reachesAsset(v, 'asset.manage', a),
-            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), acknowledged: Boolean(o.ackEvidence) } : null,
+            holder: o ? { assignmentId: o.id, employeeId: p?.id ?? null, name: p ? displayName(p) : 'Someone', issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence), leavingOn: lastDayOf(o.id) } : null,
           };
+        }),
+      };
+    });
+  }
+
+  /** The Issue picker: current employees (id and name only), for whoever may issue assets. */
+  async assetPeople(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    if (!v.grants.has('asset.manage')) throw new ForbiddenException('You cannot issue assets.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const current = await tx.employment.findMany({ where: { organizationId: org, exitedOn: null }, select: { employeeId: true }, distinct: ['employeeId'] });
+      const people = await tx.employee.findMany({ where: { organizationId: org, id: { in: current.map((e) => e.employeeId) } } });
+      return people.map((p) => ({ id: p.id, name: displayName(p) })).sort((a, b) => a.name.localeCompare(b.name));
+    });
+  }
+
+  /** PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers. */
+  async personAssets(ctx: TenantContext, user: ScopeUser, employeeId: string) {
+    const v = await this.viewer(user);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const emp = await tx.employee.findFirst({ where: { organizationId: org, id: employeeId }, select: { id: true, personId: true } });
+      if (!emp) throw new NotFoundException('Not found');
+      const own = await ownOf(tx, c, v);
+      const team = own.employeeId !== emp.id && covers(await implicitPeriods(tx, c, own.employeeId, emp.id), todayIst());
+      const self = own.employeeId === emp.id;
+      const open = await tx.assetAssignment.findMany({ where: { organizationId: org, personId: emp.personId, returnedOn: null }, orderBy: { issuedOn: 'asc' } });
+      const assets = await tx.asset.findMany({ where: { organizationId: org, id: { in: open.map((o) => o.assetId) } } });
+      const shown = assets.filter((a) => self || team || this.reachesAsset(v, 'asset.view', a));
+      if (!self && !team && !v.grants.has('asset.view')) throw new NotFoundException('Not found');
+      return {
+        rows: open.flatMap((o) => {
+          const a = shown.find((x) => x.id === o.assetId);
+          return a ? [{ tag: a.tag, name: a.name, issuedOn: iso(o.issuedOn), condition: o.issueCondition, acknowledged: Boolean(o.ackEvidence) }] : [];
         }),
       };
     });
@@ -303,7 +416,7 @@ export class OffboardingService {
     return { ok: true };
   }
 
-  async takeBack(ctx: TenantContext, user: ScopeUser, assetId: string, dto: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost' }) {
+  async takeBack(ctx: TenantContext, user: ScopeUser, assetId: string, dto: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost'; recoveryAmount?: string | null }) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -315,8 +428,19 @@ export class OffboardingService {
       if (!lost) await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(dto.returnedOn), returnCondition: dto.condition.trim(), returnedBy: c.userId ?? null, version: { increment: 1 } } });
       else await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(dto.returnedOn), returnCondition: `Not returned: ${dto.condition.trim()}`.slice(0, 200), returnedBy: c.userId ?? null, version: { increment: 1 } } });
       await tx.asset.update({ where: { id: assetId }, data: { status: dto.status, version: { increment: 1 } } });
+      // A recovery (damage or loss, founder 24 Oct 2026) signs the leaver's clearance item off with it: an F&F recovery line.
+      const recovery = dto.recoveryAmount && Number(dto.recoveryAmount) > 0 ? dto.recoveryAmount : null;
+      if (recovery) {
+        const items = await tx.clearanceItem.findMany({ where: { organizationId: org, assetAssignmentId: x.id, status: 'open' } });
+        if (!items.length) throw new BadRequestException('A recovery goes on a leaver’s F&F; this person is not leaving.');
+        for (const i of items) {
+          await tx.clearanceItem.update({ where: { id: i.id }, data: { status: 'cleared', note: `${lost ? 'Not returned' : `Returned on ${dto.returnedOn}`}: ${dto.condition.trim()}`.slice(0, 1000), recoveryAmount: new Prisma.Decimal(recovery), recoveryReason: (lost ? `Not returned: ${dto.condition.trim()}` : dto.condition.trim()).slice(0, 300), signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } } });
+          await freezeSettlementIn(tx, c, i.exitCaseId, 'recovery');
+          await this.maybeClearedIn(tx, c, i.exitCaseId);
+        }
+      }
       // Returning closes its clearance item; a lost asset leaves the item open for a recovery.
-      if (!lost) {
+      if (!lost && !recovery) {
         const items = await tx.clearanceItem.findMany({ where: { organizationId: org, assetAssignmentId: x.id, status: 'open' } });
         for (const i of items) {
           await tx.clearanceItem.update({ where: { id: i.id }, data: { status: 'cleared', note: `Returned on ${dto.returnedOn}: ${dto.condition.trim()}`.slice(0, 1000), signedOffBy: c.userId ?? null, signedOffAt: new Date(), version: { increment: 1 } } });

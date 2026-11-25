@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../components/button';
 import { DatePicker } from '../../components/date';
 import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
@@ -14,7 +14,8 @@ import { DataTable, type TableColumn } from '../../components/table';
 import { dayKey } from '../../lib/dates';
 import { dateLabel, errorText } from '../org/org-kit';
 import { codeOf, ConfidentialBadge, GrantStatusBadge, isSystemAdmin, SCOPE_LABEL, SCOPE_TARGET, SystemAdminBadge } from './access-kit';
-import type { AccessRole, AccessUser, EffectiveAccess, Grant, GrantInput, LoadState, RoleTemplate, ScopeChoices, ScopeType } from './types';
+import { Badge } from '../../components/display';
+import type { AccessRequestRow, AccessRole, AccessUser, EffectiveAccess, Grant, GrantInput, LoadState, RoleTemplate, ScopeChoices, ScopeType } from './types';
 
 // Settings › Roles & access (PLT-11; P02 §4.2–4.3, §4.6, §7): who holds which role over which people. A role
 // opening Confidential data waits for a second admin (never the one who asked, never the person receiving it);
@@ -37,34 +38,76 @@ export interface RolesAccessScreenProps {
   onReject: (grantId: string, reason: string) => Promise<void>;
   onRevoke: (grantId: string, reason: string) => Promise<void>;
   onFromTemplate: (templateKey: string, name: string) => Promise<void>;
+  /** Answer 795: deletes a role nobody holds, with a reason (the Delete button shows only when this is passed). */
+  onDeleteRole?: (roleId: string, reason: string) => Promise<void>;
+  /**
+   * Answer 946: requests from "You don't have access" pages. Approve gives a role (the usual rules: a Confidential role
+   * waits for a second admin), until a last day within the company's longest access; refuse says why.
+   */
+  requests?: AccessRequestRow[];
+  /** The company setting "Longest access" (days). */
+  maxDays?: number;
+  onApproveRequest?: (requestId: string, input: GrantInput) => Promise<void>;
+  onRefuseRequest?: (requestId: string, reason: string) => Promise<void>;
+  /** Stories: the tab shown first, and a role whose Delete dialog is open. */
+  initialView?: View;
+  deletingRoleId?: string;
   /** Makes the person a System Admin (true) or takes it away (false); the API asks for a second factor and refuses the last one. */
   onSystemAdmin: (userId: string, makeAdmin: boolean, reason: string) => Promise<void>;
 }
 
-type View = 'people' | 'waiting' | 'roles';
+type View = 'people' | 'waiting' | 'requests' | 'roles';
+const REQUEST_STATE: Record<AccessRequestRow['state'], { label: string; tone: 'info' | 'warning' | 'success' | 'neutral' | 'danger' }> = {
+  waiting: { label: 'Waiting for you', tone: 'warning' },
+  approval: { label: 'Given · second admin approves', tone: 'info' },
+  open: { label: 'Open', tone: 'success' },
+  refused: { label: 'Refused', tone: 'danger' },
+  ended: { label: 'Ended', tone: 'neutral' },
+};
 const userLabel = (u: AccessUser) => `${u.name ? `${u.name} · ${u.email}` : u.email}${isSystemAdmin(u) ? ' · System Admin' : ''}`;
-const SCOPE_TYPES = Object.keys(SCOPE_LABEL) as ScopeType[];
+const SCOPE_TYPES = (Object.keys(SCOPE_LABEL) as ScopeType[]).filter((t) => t !== 'one_report');
 const scopeText = (g: Grant) => (g.scope.name ? `${SCOPE_LABEL[g.scope.type]}: ${g.scope.name}` : SCOPE_LABEL[g.scope.type]);
 const period = (g: Grant) => {
   const end = g.revokedAt ? dayKey(new Date(g.revokedAt)) : g.validTo;
   return end ? `${dateLabel(g.validFrom)} to ${dateLabel(end)}` : `From ${dateLabel(g.validFrom)}`;
 };
 
-function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: Pick<RolesAccessScreenProps, 'users' | 'roles' | 'scopes' | 'today' | 'onGrant'> & { userId: string | null; onClose: () => void }) {
-  const [user, setUser] = useState<string | null>(userId);
+const dayAfter = (today: string, n: number) => {
+  const d = new Date(`${today}T00:00:00`);
+  d.setDate(d.getDate() + n);
+  return d;
+};
+
+function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose, request, maxDays = 30 }: Pick<RolesAccessScreenProps, 'users' | 'roles' | 'scopes' | 'today' | 'onGrant' | 'maxDays'> & { userId: string | null; onClose: () => void; request?: AccessRequestRow }) {
+  const [user, setUser] = useState<string | null>(request?.user.id ?? userId);
   const [role, setRole] = useState<string | null>(null);
   const [scopeType, setScopeType] = useState<ScopeType | null>(null);
   const [target, setTarget] = useState<string | null>(null);
   const [from, setFrom] = useState<Date | null>(new Date(`${today}T00:00:00`));
-  const [to, setTo] = useState<Date | null>(null);
-  const [reason, setReason] = useState('');
+  // A request's access ends by itself: the last day is the asked length, never past the company's longest access.
+  const last = request ? dayAfter(today, maxDays - 1) : undefined;
+  const [to, setTo] = useState<Date | null>(request ? dayAfter(today, Math.min(request.days, maxDays) - 1) : null);
+  const [reason, setReason] = useState(request ? `Access request: ${request.reason}`.slice(0, 500) : '');
   const [risk, setRisk] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const picked = roles.find((r) => r.id === role);
   const targetList = scopeType && SCOPE_TARGET[scopeType] ? scopes[SCOPE_TARGET[scopeType]!] : null;
-  const ready = Boolean(user && role && scopeType && (!targetList || target) && from && reason.trim());
+  // The button is never disabled: pressing it early names each missing field and moves focus there (walk-through 11 Nov 2026).
+  const early = useTooEarly(
+    [
+      !user && { fieldId: 'ga-user', message: 'Choose the person.' },
+      !role && { fieldId: 'ga-role', message: 'Choose the role.' },
+      !scopeType && { fieldId: 'ga-scope', message: 'Choose over whom.' },
+      targetList && !target && { fieldId: 'ga-target', message: `Choose the ${SCOPE_LABEL[scopeType!].toLowerCase()}.` },
+      !from && { fieldId: 'ga-from', message: 'Choose the start date.' },
+      request && !to && { fieldId: 'ga-to', message: 'Choose the last day: access from a request always ends.' },
+      request && to && last && to > last && { fieldId: 'ga-to', message: `At most ${maxDays} days from today.` },
+      !reason.trim() && { fieldId: 'ga-reason', message: 'Say why: it is kept on the record.' },
+    ].filter(Boolean) as { fieldId: string; message: string }[],
+  );
   const send = async () => {
+    if (early.stop()) return;
     setBusy(true);
     setError(null);
     try {
@@ -82,8 +125,8 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
       open
       onOpenChange={(o) => !o && onClose()}
       size="md"
-      title="Give access"
-      description="A role over a set of people, from a date. Roles that open pay, identity or bank details wait for another admin's approval."
+      title={request ? `Give ${request.user.name} access` : 'Give access'}
+      description={request ? `They asked for ${request.what} for ${request.days} ${request.days === 1 ? 'day' : 'days'}. Choose the role that opens it; roles that open pay, identity or bank details wait for another admin's approval.` : "A role over a set of people, from a date. Roles that open pay, identity or bank details wait for another admin's approval."}
       preventClose={busy}
       // Above the buttons, never scrolled out of sight (founder review 14 Oct 2026).
       notice={
@@ -99,33 +142,35 @@ function GrantDialog({ users, roles, scopes, userId, today, onGrant, onClose }: 
           <Button onClick={onClose} disabled={busy}>
             Cancel
           </Button>
-          <Button variant="primary" loading={busy} disabled={!ready} onClick={send}>
+          <Button variant="primary" loading={busy} onClick={() => void send()}>
             {risk ? (picked?.confidential ? 'Send for approval anyway' : 'Give access anyway') : picked?.confidential ? 'Send for approval' : 'Give access'}
           </Button>
         </>
       }
     >
-      <FormField id="ga-user" label="Person" required>
-        <Select aria-label="Person" value={user} onChange={setUser} searchable options={users.map((u) => ({ value: u.id, label: userLabel(u) }))} />
-      </FormField>
-      <FormField id="ga-role" label="Role" required helper={picked?.confidential ? 'Opens Confidential data: another admin approves it.' : undefined}>
+      {!request && (
+        <FormField id="ga-user" error={early.errorOf('ga-user')} label="Person" required>
+          <Select aria-label="Person" value={user} onChange={setUser} searchable options={users.map((u) => ({ value: u.id, label: userLabel(u) }))} />
+        </FormField>
+      )}
+      <FormField id="ga-role" error={early.errorOf('ga-role')} label="Role" required helper={picked?.confidential ? 'Opens Confidential data: another admin approves it.' : undefined}>
         <Select aria-label="Role" value={role} onChange={(v) => (setRole(v), setRisk(null))} options={roles.map((r) => ({ value: r.id, label: r.confidential ? `${r.name} (Confidential)` : r.name }))} />
       </FormField>
-      <FormField id="ga-scope" label="Over" required helper={picked?.companyWideOnly.length ? `${picked.companyWideOnly.length === 1 ? 'One of this role’s permissions works' : `${picked.companyWideOnly.length} of this role’s permissions work`} only over the whole company.` : undefined}>
+      <FormField id="ga-scope" error={early.errorOf('ga-scope')} label="Over" required helper={picked?.companyWideOnly.length ? `${picked.companyWideOnly.length === 1 ? 'One of this role’s permissions works' : `${picked.companyWideOnly.length} of this role’s permissions work`} only over the whole company.` : undefined}>
         <Select aria-label="Over" value={scopeType} onChange={(v) => (setScopeType(v), setTarget(null), setRisk(null))} options={SCOPE_TYPES.map((t) => ({ value: t, label: SCOPE_LABEL[t] }))} />
       </FormField>
       {targetList && (
-        <FormField id="ga-target" label={SCOPE_LABEL[scopeType!]} required>
+        <FormField id="ga-target" error={early.errorOf('ga-target')} label={SCOPE_LABEL[scopeType!]} required>
           <Select aria-label={SCOPE_LABEL[scopeType!]} value={target} onChange={(v) => (setTarget(v), setRisk(null))} searchable options={targetList} />
         </FormField>
       )}
-      <FormField id="ga-from" label="From" required>
+      <FormField id="ga-from" error={early.errorOf('ga-from')} label="From" required>
         <DatePicker value={from} onChange={setFrom} min={new Date(`${today}T00:00:00`)} />
       </FormField>
-      <FormField id="ga-to" label="Until" optional helper="Leave empty for no end date. Auditors and cover roles should have one.">
-        <DatePicker value={to} onChange={setTo} min={from ?? undefined} />
+      <FormField id="ga-to" error={early.errorOf('ga-to')} label="Until" {...(request ? { required: true, helper: `The last day; access ends by itself. At most ${maxDays} days.` } : { optional: true, helper: 'Leave empty for no end date. Auditors and cover roles should have one.' })}>
+        <DatePicker value={to} onChange={setTo} min={from ?? undefined} max={last} />
       </FormField>
-      <FormField id="ga-reason" label="Reason" required helper="Kept on the record.">
+      <FormField id="ga-reason" error={early.errorOf('ga-reason')} label="Reason" required helper="Kept on the record.">
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </Dialog>
@@ -136,6 +181,7 @@ function TemplateDialog({ templates, onFromTemplate, onClose }: { templates: Rol
   const [key, setKey] = useState<string | null>(null);
   const [name, setName] = useState('');
   const t = templates.find((x) => x.key === key);
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -144,13 +190,14 @@ function TemplateDialog({ templates, onFromTemplate, onClose }: { templates: Rol
       title="New role from a template"
       consequence="The template stays as it is; you can change the new role's permissions afterwards."
       confirmLabel="Create role"
-      confirmDisabled={!key || !name.trim()}
       onConfirm={async () => {
-        await onFromTemplate(key!, name.trim());
+        setTried(true);
+        if (!key || !name.trim()) return false;
+        await onFromTemplate(key, name.trim());
         onClose();
       }}
     >
-      <FormField id="rt-template" label="Template" required>
+      <FormField id="rt-template" label="Template" required error={tried && !key ? 'Choose a template.' : null}>
         <Select aria-label="Template" value={key} onChange={(v) => (setKey(v), setName(templates.find((x) => x.key === v)?.name ?? ''))} options={templates.map((x) => ({ value: x.key, label: x.name }))} />
       </FormField>
       {t && (
@@ -158,7 +205,7 @@ function TemplateDialog({ templates, onFromTemplate, onClose }: { templates: Rol
           {`${t.summary} Not included: ${t.cannot}`}
         </Text>
       )}
-      <FormField id="rt-name" label="Role name" required>
+      <FormField id="rt-name" label="Role name" required error={tried && !name.trim() ? 'Enter the role name.' : null}>
         <TextField value={name} onChange={setName} maxLength={200} />
       </FormField>
     </ConfirmDialog>
@@ -167,9 +214,35 @@ function TemplateDialog({ templates, onFromTemplate, onClose }: { templates: Rol
 
 type Ask = { kind: 'revoke' | 'reject'; grant: Grant };
 
+/** Answer 946: refuse a request with a reason the person reads. */
+function RefuseRequestDialog({ request, onRefuse, onClose }: { request: AccessRequestRow; onRefuse: (id: string, reason: string) => Promise<void>; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const early = useTooEarly(reason.trim() ? [] : [{ fieldId: 'rr-reason', message: 'Say why: they read it.' }]);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Refuse ${request.user.name}'s request?`}
+      consequence={`They asked for ${request.what}. They are told, with your reason, and can ask again.`}
+      confirmLabel="Refuse"
+      destructive
+      onConfirm={async () => {
+        if (early.stop()) return false;
+        await onRefuse(request.id, reason.trim());
+        onClose();
+      }}
+    >
+      <FormField id="rr-reason" label="Reason" required error={early.errorOf('rr-reason')} helper="They read it; it is kept on the record.">
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
 function ReasonDialog({ ask, onClose, onRevoke, onReject }: { ask: Ask; onClose: () => void; onRevoke: RolesAccessScreenProps['onRevoke']; onReject: RolesAccessScreenProps['onReject'] }) {
   const [reason, setReason] = useState('');
   const g = ask.grant;
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -178,13 +251,40 @@ function ReasonDialog({ ask, onClose, onRevoke, onReject }: { ask: Ask; onClose:
       consequence={ask.kind === 'revoke' ? 'The access ends now. The grant stays on the record.' : 'The grant never starts. It stays on the record.'}
       confirmLabel={ask.kind === 'revoke' ? 'Revoke' : 'Reject'}
       destructive
-      confirmDisabled={!reason.trim()}
       onConfirm={async () => {
+        setTried(true);
+        if (!reason.trim()) return false;
         await (ask.kind === 'revoke' ? onRevoke(g.id, reason.trim()) : onReject(g.id, reason.trim()));
         onClose();
       }}
     >
-      <FormField id="gr-reason" label="Reason" required>
+      <FormField id="gr-reason" label="Reason" required error={tried && !reason.trim() ? 'Enter a reason.' : null}>
+        <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+/** Answer 795: a role nobody holds goes, with a reason; one with past grants is kept out of sight for their history. */
+function DeleteRoleDialog({ role, onDelete, onClose }: { role: AccessRole; onDelete: (roleId: string, reason: string) => Promise<void>; onClose: () => void }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Delete the role ${role.name}?`}
+      consequence="Nobody holds it. It leaves the list and cannot be given again; past grants keep their history. Recorded in the audit log."
+      confirmLabel="Delete role"
+      destructive
+      onConfirm={async () => {
+        setTried(true);
+        if (!reason.trim()) return false;
+        await onDelete(role.id, reason.trim());
+        onClose();
+      }}
+    >
+      <FormField id="dr-reason" label="Reason" required error={tried && !reason.trim() ? 'Enter a reason.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -195,6 +295,7 @@ function SystemAdminDialog({ user, onSystemAdmin, onClose }: { user: AccessUser;
   const [reason, setReason] = useState('');
   const remove = isSystemAdmin(user);
   const name = user.name ?? user.email;
+  const [tried, setTried] = useState(false);
   return (
     <ConfirmDialog
       open
@@ -207,13 +308,14 @@ function SystemAdminDialog({ user, onSystemAdmin, onClose }: { user: AccessUser;
       }
       confirmLabel={remove ? 'Remove System Admin' : 'Make System Admin'}
       destructive={remove}
-      confirmDisabled={!reason.trim()}
       onConfirm={async () => {
+        setTried(true);
+        if (!reason.trim()) return false;
         await onSystemAdmin(user.id, !remove, reason.trim());
         onClose();
       }}
     >
-      <FormField id="sa-reason" label="Reason" required helper="Kept on the record.">
+      <FormField id="sa-reason" label="Reason" required helper="Kept on the record." error={tried && !reason.trim() ? 'Enter a reason.' : null}>
         <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
       </FormField>
     </ConfirmDialog>
@@ -279,7 +381,8 @@ function Effective({ userId, loadEffective }: { userId: string; loadEffective: R
 
 export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const { state, onRetry, users, roles, templates, grants, meId, loadEffective } = props;
-  const [view, setView] = useState<View>('people');
+  const [view, setView] = useState<View>(props.initialView ?? 'people');
+  const [deleting, setDeleting] = useState<AccessRole | null>(roles.find((r) => r.id === props.deletingRoleId) ?? null);
   const [picked, setUserId] = useState<string | null>(null);
   // The first person until one is picked (the list may arrive after the first render).
   const userId = picked ?? users[0]?.id ?? null;
@@ -287,6 +390,10 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
   const [fromTemplate, setFromTemplate] = useState(false);
   const [ask, setAsk] = useState<Ask | null>(null);
   const [adminAsk, setAdminAsk] = useState<AccessUser | null>(null);
+  const [approving, setApproving] = useState<AccessRequestRow | null>(null);
+  const [refusing, setRefusing] = useState<AccessRequestRow | null>(null);
+  const requests = props.requests;
+  const open = (requests ?? []).filter((r) => r.state === 'waiting');
   const person = users.find((u) => u.id === userId) ?? null;
   const admins = users.filter(isSystemAdmin);
   const [busy, setBusy] = useState<string | null>(null);
@@ -324,6 +431,11 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
     { key: 'scope', header: 'Over', value: (g) => scopeText(g), width: 230 },
     { key: 'asked', header: 'Asked by', value: (g) => g.grantedBy, render: (g) => <span className="yx-auth__item-main"><Text>{g.grantedBy ?? '—'}</Text><Text tone="secondary" size="sm">{g.reason}</Text></span>, width: 240, optional: true },
   ];
+  const requestColumns: TableColumn<AccessRequestRow>[] = [
+    { key: 'who', header: 'Person', type: 'person', value: (r) => r.user.name, person: (r) => ({ name: r.user.name, secondary: r.what }), width: 240, hideable: false },
+    { key: 'reason', header: 'Why', value: (r) => r.reason, render: (r) => <span className="yx-auth__item-main"><Text>{r.reason}</Text><Text tone="secondary" size="sm">{`${r.days} ${r.days === 1 ? 'day' : 'days'} · asked ${dateLabel(r.askedAt.slice(0, 10))}`}</Text></span>, width: 300 },
+    { key: 'state', header: 'Status', value: (r) => r.state, render: (r) => <span className="yx-auth__item-main"><Badge tone={REQUEST_STATE[r.state].tone}>{REQUEST_STATE[r.state].label}</Badge>{r.state === 'open' && r.validTo && <Text tone="secondary" size="sm">{`Until ${dateLabel(r.validTo)}`}</Text>}{r.state === 'refused' && r.decisionNote && <Text tone="secondary" size="sm">{r.decisionNote}</Text>}</span>, width: 200 },
+  ];
   const roleColumns: TableColumn<AccessRole>[] = [
     { key: 'name', header: 'Role', value: (r) => r.name, render: (r) => <span className="yx-ppl2__row"><Text>{r.name}</Text>{r.confidential && <ConfidentialBadge />}</span>, width: 260, hideable: false },
     { key: 'perms', header: 'Permissions', value: (r) => r.permissions.length, render: (r) => `${r.permissions.length} ${r.permissions.length === 1 ? 'permission' : 'permissions'}`, width: 140 }, // worded like Held by: a right-aligned bare number ran into it ("14 1 person")
@@ -342,7 +454,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
       {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what="roles and access" />}
       {state === 'ready' && (
         <>
-          <Segment label="Show" value={view} onChange={setView} options={[{ value: 'people', label: 'People' }, { value: 'waiting', label: `Waiting (${waiting.length})` }, { value: 'roles', label: 'Roles' }]} />
+          <Segment label="Show" value={view} onChange={setView} options={[{ value: 'people', label: 'People' }, { value: 'waiting', label: `Waiting (${waiting.length})` }, ...(requests ? [{ value: 'requests' as const, label: `Requests (${open.length})` }] : []), { value: 'roles', label: 'Roles' }]} />
           {error && <InlineAlert tone="danger" title={error} />}
           {view === 'people' && (
             <>
@@ -397,19 +509,49 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
               }}
             />
           )}
+          {view === 'requests' && requests && (
+            <DataTable
+              label="Access requests"
+              columns={requestColumns}
+              rows={requests}
+              getRowId={(r) => r.id}
+              rowNoun={['request', 'requests']}
+              cardSummary
+              empty={<EmptyState compact title="No access requests." description={'People ask from a page that says "You don\'t have access".'} />}
+              rowButtons={(r) =>
+                r.state !== 'waiting' ? null : r.user.id === meId ? (
+                  <Text tone="secondary" size="sm">Yours: another admin decides</Text>
+                ) : (
+                  <>
+                    <Button size="sm" variant="approve" onClick={() => setApproving(r)}>
+                      Approve
+                    </Button>
+                    <Button size="sm" onClick={() => setRefusing(r)}>
+                      Refuse
+                    </Button>
+                  </>
+                )
+              }
+            />
+          )}
           {view === 'roles' && (
             <>
               <div className="yx-ppl2__row">
                 <Button onClick={() => setFromTemplate(true)}>New role from a template</Button>
               </div>
-              <DataTable label="Roles" columns={roleColumns} rows={roles} getRowId={(r) => r.id} rowNoun={['role', 'roles']} cardSummary empty={<EmptyState compact title="No roles yet." description="Start from a template." action={<Button onClick={() => setFromTemplate(true)}>New role from a template</Button>} />} />
+              <DataTable label="Roles" columns={roleColumns} rows={roles} getRowId={(r) => r.id} rowNoun={['role', 'roles']} cardSummary rowButtons={(r) => (props.onDeleteRole && r.grants + r.assignedUsers === 0 ? <Button size="sm" onClick={() => setDeleting(r)}>Delete</Button> : null)} empty={<EmptyState compact title="No roles yet." description="Start from a template." action={<Button onClick={() => setFromTemplate(true)}>New role from a template</Button>} />} />
             </>
           )}
         </>
       )}
       {giving && <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={userId} onGrant={said(props.onGrant, () => 'Access saved.')} onClose={() => setGiving(false)} />}
+      {approving && props.onApproveRequest && (
+        <GrantDialog users={users} roles={roles} scopes={props.scopes} today={props.today} userId={approving.user.id} request={approving} maxDays={props.maxDays} onGrant={said((input: GrantInput) => props.onApproveRequest!(approving.id, input), () => 'Access given.')} onClose={() => setApproving(null)} />
+      )}
+      {refusing && props.onRefuseRequest && <RefuseRequestDialog request={refusing} onRefuse={said(props.onRefuseRequest, () => 'Request refused.')} onClose={() => setRefusing(null)} />}
       {fromTemplate && <TemplateDialog templates={templates} onFromTemplate={said(props.onFromTemplate, (_key, name) => `Role "${name}" created.`)} onClose={() => setFromTemplate(false)} />}
       {adminAsk && <SystemAdminDialog user={adminAsk} onSystemAdmin={said(props.onSystemAdmin, () => 'System Admins saved.')} onClose={() => setAdminAsk(null)} />}
+      {deleting && props.onDeleteRole && <DeleteRoleDialog role={deleting} onDelete={said(props.onDeleteRole, () => `Role "${deleting.name}" deleted.`)} onClose={() => setDeleting(null)} />}
       {ask && <ReasonDialog ask={ask} onClose={() => setAsk(null)} onRevoke={said(props.onRevoke, () => 'Revoked.')} onReject={said(props.onReject, () => 'Rejected.')} />}
     </div>
   );

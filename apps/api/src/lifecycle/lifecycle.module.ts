@@ -1,3 +1,6 @@
+import { ContractConversionController } from './contract-conversion.controller';
+import { ContractConversionService } from './contract-conversion.service';
+import { OffersModule } from '../offers/offers.module';
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
 import { CryptoModule } from '@exam-platform/shared';
@@ -14,6 +17,8 @@ import { JoiningService } from './joining.service';
 import { LifecycleJourneysService } from './journeys.service';
 import { LifeEventsService } from './life-events.service';
 import { LifecycleController } from './lifecycle.controller';
+import { PipelineModule } from '../pipeline/pipeline.module';
+import { PayrollModule } from '../payroll/payroll.module';
 import { ExitsController } from './exits.controller';
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
@@ -23,6 +28,8 @@ import { AlumniPortalController } from './alumni.controller';
 import { OnboardingExtrasService } from './onboarding-extras.service';
 import { ExitExtrasService } from './exit-extras.service';
 import { SpecialCasesController } from './special-cases.controller';
+import { PeopleRegistersController } from './people-registers.controller';
+import { PeopleRegistersService } from './people-registers.service';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { LifecycleJobs } from './lifecycle-jobs';
 import { PreboardingPortalController } from './portal.controller';
@@ -31,9 +38,10 @@ import { PreboardingPortalService } from './portal.service';
 // M01 lifecycle: checklists and joiners (6a); the pre-boarding portal, joining, BGV and the ATS hand-off (6b); probation
 // reviews, resignations, company exits, clearance, exit interviews and assets (6c).
 @Module({
-  imports: [WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule],
-  controllers: [LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService],
+  // The alumni login shows the pay documents portal's payslips and Form 16 (PayDocumentsService).
+  imports: [OffersModule, WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule, PipelineModule, PayrollModule],
+  controllers: [ContractConversionController, LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController, PeopleRegistersController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService, ContractConversionService],
   // M06 PM8 opens a company exit from an improvement plan through M01's own checks.
   exports: [LifecycleJourneysService, ExitsService],
 })

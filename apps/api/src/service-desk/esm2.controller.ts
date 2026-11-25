@@ -50,10 +50,17 @@ import {
   UpdateRecurringDto,
   UpdateSequenceDto,
   VersionDto,
+  EquipmentDto,
+  FacilityAreaDto,
+  PlacePickDto,
+  WorkOrderPageDto,
+  TicketPlaceDto,
 } from './dto-esm2';
 import { JourneysService } from './journeys.service';
 import { LifecyclesService } from './lifecycles.service';
 import { RecurringService } from './recurring.service';
+import { FacilitiesService } from './facilities.service';
+import { TicketsService } from './tickets.service';
 import { RequesterService } from './requester.service';
 
 // M14 §12.2 phase 3b-2, batch 2. Staff routes declare their key (YX-SEC-01); the services also check the seat or the
@@ -73,7 +80,66 @@ export class DeskOrgController {
     private readonly journeys: JourneysService,
     private readonly recurring: RecurringService,
     private readonly tenantPrisma: TenantPrismaService,
+    private readonly facilities: FacilitiesService,
+    private readonly tickets: TicketsService,
   ) {}
+
+  // ---- Helpdesk plan item 4: buildings, areas and equipment; the place a facilities ticket names
+
+  @Get('facilities')
+  @RequireAnyPermission('desk.desk.create', 'desk.ticket.view')
+  async facilitiesRegister(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    return this.facilities.register(await this.access.actor(req, t));
+  }
+
+  @Get('facilities/pick')
+  @RequireAnyPermission('desk.desk.create', 'desk.ticket.view')
+  async facilitiesPick(@Req() req: Request, @CurrentTenant() t: TenantContext, @Query() q: PlacePickDto) {
+    return this.facilities.pick(await this.access.actor(req, t), q.kind, q.q ?? '', q.locationId, q.deskId);
+  }
+
+  @Get('facilities/equipment/:id')
+  @RequireAnyPermission('desk.desk.create', 'desk.ticket.view')
+  async equipmentPage(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.facilities.equipmentPage(await this.access.actor(req, t), id);
+  }
+
+  /** Answer 1914: older work orders of the equipment, 25 at a time. */
+  @Get('facilities/equipment/:id/work-orders')
+  @RequireAnyPermission('desk.desk.create', 'desk.ticket.view')
+  async workOrders(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: WorkOrderPageDto) {
+    return this.facilities.workOrders(await this.access.actor(req, t), id, q.after);
+  }
+
+  @Post('facilities/areas')
+  @RequirePermissions('desk.settings.manage')
+  async addArea(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: FacilityAreaDto) {
+    return this.facilities.saveArea(await this.access.actor(req, t), null, dto);
+  }
+
+  @Patch('facilities/areas/:id')
+  @RequirePermissions('desk.settings.manage')
+  async editArea(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: FacilityAreaDto) {
+    return this.facilities.saveArea(await this.access.actor(req, t), id, dto);
+  }
+
+  @Post('facilities/equipment')
+  @RequirePermissions('desk.settings.manage')
+  async addEquipment(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: EquipmentDto) {
+    return this.facilities.saveEquipment(await this.access.actor(req, t), null, dto);
+  }
+
+  @Patch('facilities/equipment/:id')
+  @RequirePermissions('desk.settings.manage')
+  async editEquipment(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: EquipmentDto) {
+    return this.facilities.saveEquipment(await this.access.actor(req, t), id, dto);
+  }
+
+  @Put('tickets/:id/place')
+  @RequirePermissions('desk.ticket.work')
+  async setPlace(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: TicketPlaceDto) {
+    return this.tickets.setPlace(await this.access.actor(req, t), id, dto);
+  }
 
   // ---- SD-2.10 HR summary, move, share, forwarding, clone, branches; SD-2.09 starter pack
 

@@ -19,6 +19,23 @@ globalThis.ResizeObserver ??= RO as unknown as typeof ResizeObserver;
 Element.prototype.scrollIntoView ??= function () {};
 Element.prototype.hasPointerCapture ??= () => false;
 Element.prototype.releasePointerCapture ??= () => {};
+// ProseMirror (the rich text editor) measures ranges when it scrolls the selection into view; jsdom has no layout.
+const noRect = { x: 0, y: 0, top: 0, left: 0, bottom: 0, right: 0, width: 0, height: 0, toJSON() {} } as DOMRect;
+Range.prototype.getBoundingClientRect ??= () => noRect;
+Range.prototype.getClientRects ??= () => ({ length: 0, item: () => null, [Symbol.iterator]: [][Symbol.iterator] }) as unknown as DOMRectList;
+document.elementFromPoint ??= () => null;
+
+// The app (and every story) renders screens inside a ToastProvider, and screens say "done" with useToast; so does
+// every test render here.
+vi.mock('@testing-library/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@testing-library/react')>();
+  const { createElement } = await import('react');
+  const { ToastProvider } = await import('./components/notify');
+  type Wrapper = React.JSXElementConstructor<{ children: React.ReactNode }>;
+  const withToasts = (Own?: Wrapper) => ({ children }: { children: React.ReactNode }) => createElement(ToastProvider, null, Own ? createElement(Own, null, children) : children);
+  const render = ((ui: React.ReactNode, options?: Parameters<typeof actual.render>[1]) => actual.render(ui, { ...options, wrapper: withToasts(options?.wrapper as Wrapper | undefined) })) as typeof actual.render;
+  return { ...actual, render };
+});
 
 // user-event waits a real timer turn (setTimeout 0) between every key and pointer action by default. Each of those
 // turns lets the whole screen re-render, and on a loaded machine (a full run, CI) typing a few words into a big form

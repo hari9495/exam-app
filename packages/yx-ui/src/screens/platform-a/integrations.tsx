@@ -23,6 +23,7 @@ import { DesktopFrame } from '../_kit/frames';
 import { TODAY } from '../_kit/data';
 import { DiffTable, ListPage, Tile, settingsPanel, toneFor, type DiffRow } from './platform-kit';
 import { at } from './platform-data';
+import { LiveAuditLogScreen, type LiveAuditLog } from './audit-log-live';
 
 const stamp = (x: Date) => `${formatDate(x)}, ${timeOf(x)}`;
 
@@ -176,7 +177,7 @@ export function IntegrationsScreen({ view, connectors, runs, wizardStep = 'metho
               <DataTable
                 label="Run log"
                 columns={[
-                  { key: 'at', header: 'Time', value: (r: RunRow) => r.at, render: (r) => stamp(r.at) },
+                  { key: 'at', header: 'Time', type: 'date', value: (r: RunRow) => r.at, render: (r) => stamp(r.at) },
                   { key: 'kind', header: 'Run', value: (r) => r.kind },
                   { key: 'records', header: 'Records', type: 'number', value: (r) => r.records },
                   { key: 'errors', header: 'Errors', type: 'number', value: (r) => r.errors },
@@ -269,7 +270,7 @@ export function DevelopersScreen({ tab = 'keys', keys, deliveries, createOpen, n
                 { key: 'prefix', header: 'Key', type: 'id', value: (r) => `${r.prefix}••••` },
                 { key: 'scopes', header: 'Scopes', value: (r) => r.scopes, width: 220 },
                 { key: 'classes', header: 'Field classes', value: (r) => r.classes },
-                { key: 'lastUsed', header: 'Last used', value: (r) => r.lastUsed, render: (r) => (r.lastUsed ? stamp(r.lastUsed) : 'Never') },
+                { key: 'lastUsed', header: 'Last used', type: 'date', value: (r) => r.lastUsed, render: (r) => (r.lastUsed ? stamp(r.lastUsed) : 'Never') },
                 { key: 'expires', header: 'Expires', type: 'date', value: (r) => r.expires },
                 { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => toneFor(v) },
               ]}
@@ -315,7 +316,7 @@ export function DevelopersScreen({ tab = 'keys', keys, deliveries, createOpen, n
             <DataTable
               label="Webhook deliveries"
               columns={[
-                { key: 'at', header: 'Time', value: (r: WebhookDelivery) => r.at, render: (r) => stamp(r.at) },
+                { key: 'at', header: 'Time', type: 'date', value: (r: WebhookDelivery) => r.at, render: (r) => stamp(r.at) },
                 { key: 'event', header: 'Event', type: 'id', value: (r) => r.event },
                 { key: 'code', header: 'Response', value: (r) => r.code ?? 'No response' },
                 { key: 'attempts', header: 'Attempts', type: 'number', value: (r) => r.attempts },
@@ -404,7 +405,8 @@ const auditColumns: TableColumn<AuditRow>[] = [
   { key: 'channel', header: 'From', value: (r) => r.channel },
 ];
 
-export function AuditLogScreen({ rows, openId, chain = 'verified', state = 'ready', masked }: { rows: AuditRow[]; openId?: string; chain?: 'verified' | 'broken'; state?: 'ready' | 'loading' | 'error'; masked?: boolean }) {
+export function AuditLogScreen({ rows, openId, chain = 'verified', state = 'ready', masked, live }: { rows: AuditRow[]; openId?: string; chain?: 'verified' | 'broken'; state?: 'ready' | 'loading' | 'error'; masked?: boolean; /** Settings S-5 (answer 1563): the company's audit log. */ live?: LiveAuditLog }) {
+  if (live) return <LiveAuditLogScreen live={live} />;
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const current = rows.find((r) => r.id === open);
   return (

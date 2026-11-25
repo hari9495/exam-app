@@ -1,12 +1,15 @@
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import * as RD from '@radix-ui/react-dialog';
-import { Check, CheckCircle2, Clock, CloudOff, Flag, Video } from 'lucide-react';
+import { useInertBehindRef } from '../lib/inert';
+import { Check, CheckCircle2, Clock, CloudOff, Flag, ListOrdered, Video } from 'lucide-react';
 import { cx } from '../lib/cx';
 import { formatTime } from '../lib/format';
 import { Icon, Spinner } from './foundations';
 import { Button } from './button';
 import { Checkbox } from './choice';
 import { PoweredBy } from './brand';
+import { AccessibilityMenu } from './accessibility';
+import { Drawer } from './drawer';
 
 /* ------------------------------------------------------------------ */
 /* Pure helpers                                                        */
@@ -278,6 +281,10 @@ export interface QuestionCardProps {
   onNext?: () => void;
   /** Marks shown next to the number, e.g. "2 marks". */
   marks?: ReactNode;
+  /** A picture or code snippet that belongs to the question, shown under its text (answer 2161). */
+  media?: ReactNode;
+  /** A line above the question, e.g. the section and "answer any 3 of 5". */
+  context?: ReactNode;
 }
 
 /** Sample MCQ card: large targets, "Mark for review", Previous (secondary) / Next (primary). */
@@ -294,6 +301,8 @@ export function QuestionCard({
   onPrevious,
   onNext,
   marks,
+  media,
+  context,
 }: QuestionCardProps) {
   const name = useId();
   const toggle = (id: string, checked: boolean) => {
@@ -302,6 +311,7 @@ export function QuestionCard({
   };
   return (
     <article className="yx-question">
+      {context && <p className="yx-question__context">{context}</p>}
       <fieldset className="yx-question__set">
         <legend className="yx-question__legend">
           <span className="yx-question__meta">
@@ -311,6 +321,7 @@ export function QuestionCard({
           </span>
           <span className="yx-question__text">{question}</span>
         </legend>
+        {media && <div className="yx-question__media">{media}</div>}
         <div className="yx-question__options">
           {options.map((o) => {
             const checked = value.includes(o.id);
@@ -385,6 +396,16 @@ export interface ExamShellProps {
   finishOpen?: boolean;
   defaultFinishOpen?: boolean;
   onFinishOpenChange?: (open: boolean) => void;
+  /** Answer 2161: from the Finish confirmation, go through only the unanswered or the marked questions. */
+  onReview?: (which: 'unanswered' | 'review') => void;
+  /** Shown in the Finish confirmation, e.g. sections with fewer answers than they ask for. */
+  finishNote?: ReactNode;
+  /** Phone layout without a phone-sized window (a story in a phone frame): the question list opens from the header. */
+  compact?: boolean;
+  /** The phone question list open at first, for docs and tests. */
+  defaultListOpen?: boolean;
+  /** Shown above the question area, e.g. the review banner. */
+  banner?: ReactNode;
 }
 
 /** Distraction-free full-screen test runner: no sidebar, 16 px body, timer always visible (§40). */
@@ -405,8 +426,15 @@ export function ExamShell({
   finishOpen,
   defaultFinishOpen = false,
   onFinishOpenChange,
+  onReview,
+  finishNote,
+  compact,
+  defaultListOpen = false,
+  banner,
 }: ExamShellProps) {
+  const confirmRef = useInertBehindRef();
   const [openState, setOpenState] = useState(defaultFinishOpen);
+  const [listOpen, setListOpen] = useState(defaultListOpen);
   const open = finishOpen ?? openState;
   const setOpen = (o: boolean) => {
     setOpenState(o);
@@ -415,7 +443,7 @@ export function ExamShell({
   const counts = countQuestions(questions);
 
   return (
-    <div className="yx-exam">
+    <div className="yx-exam" data-compact={compact || undefined}>
       <header className="yx-exam__header">
         <div className="yx-exam__id">
           {logo && <span className="yx-exam__logo">{logo}</span>}
@@ -425,7 +453,13 @@ export function ExamShell({
           </div>
         </div>
         <div className="yx-exam__status">
+          {/* Answer 2331: the exam screens carry the Accessibility menu (kept in this browser). */}
+          <AccessibilityMenu />
           <AutosaveIndicator status={saveStatus} savedAt={savedAt} />
+          {/* Answer 2161: on a phone the numbers sit behind this button instead of beside the question. */}
+          <Button className="yx-exam__qlist" size="sm" icon={ListOrdered} onClick={() => setListOpen(true)} aria-haspopup="dialog">
+            {`Question ${current + 1} of ${questions.length}`}
+          </Button>
           <ExamTimer seconds={seconds} />
           <Button onClick={() => setOpen(true)}>
             Finish test
@@ -434,7 +468,10 @@ export function ExamShell({
       </header>
       {proctored && <ProctoringNotice />}
       <div className="yx-exam__body">
-        <main className="yx-exam__main">{children}</main>
+        <main className="yx-exam__main">
+          {banner}
+          {children}
+        </main>
         <aside className="yx-exam__aside">
           <QuestionNavigator questions={questions} current={current} onNavigate={onNavigate} />
         </aside>
@@ -442,11 +479,21 @@ export function ExamShell({
       <footer className="yx-exam__footer">
         <PoweredBy whiteLabel={whiteLabel} />
       </footer>
+      <Drawer open={listOpen} onOpenChange={setListOpen} title="Questions" description="Choose a question to open it">
+        <QuestionNavigator
+          questions={questions}
+          current={current}
+          onNavigate={(i) => {
+            setListOpen(false);
+            onNavigate(i);
+          }}
+        />
+      </Drawer>
 
       <RD.Root open={open} onOpenChange={setOpen}>
         <RD.Portal>
           <RD.Overlay className="yx-exam-confirm__scrim" />
-          <RD.Content className="yx-exam-confirm">
+          <RD.Content ref={confirmRef} className="yx-exam-confirm">
             <RD.Title className="yx-exam-confirm__title">Finish the test?</RD.Title>
             <RD.Description asChild>
               <div className="yx-exam-confirm__body">
@@ -472,6 +519,21 @@ export function ExamShell({
                     Marked for review <strong>{counts.review}</strong>
                   </li>
                 </ul>
+                {finishNote}
+                {onReview && (counts.unanswered > 0 || counts.review > 0) && (
+                  <div className="yx-exam-confirm__review">
+                    {counts.unanswered > 0 && (
+                      <Button size="sm" onClick={() => { setOpen(false); onReview('unanswered'); }}>
+                        {`Go through the ${plural(counts.unanswered, 'unanswered question')}`}
+                      </Button>
+                    )}
+                    {counts.review > 0 && (
+                      <Button size="sm" onClick={() => { setOpen(false); onReview('review'); }}>
+                        {`Go through the ${plural(counts.review, 'marked question')}`}
+                      </Button>
+                    )}
+                  </div>
+                )}
                 <p>You can't change your answers after you finish.</p>
               </div>
             </RD.Description>

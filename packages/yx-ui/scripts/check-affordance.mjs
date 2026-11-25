@@ -100,7 +100,8 @@ function collect(exceptions) {
   // Navigation (rail, side panel, tab bars, breadcrumbs, column headers) is not a button: it needs hover, pointer, focus and a
   // clear current item, not a border.
   const NAV = 'nav, [role=navigation], [role=tablist], thead, .yx-crumbs, .yx-rail, .yx-panel, .yx-mobile-tabs';
-  const visible = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 2 && r.height > 2 && cs.visibility !== 'hidden' && cs.opacity !== '0' && !el.closest('[aria-hidden="true"], [inert]'); };
+  // checkVisibility: a control inside a closed <details> keeps a layout box (content-visibility) but is not shown.
+  const visible = (el) => { if (el.checkVisibility && !el.checkVisibility({ contentVisibilityAuto: true, visibilityProperty: true, opacityProperty: true })) return false; const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 2 && r.height > 2 && cs.visibility !== 'hidden' && cs.opacity !== '0' && !el.closest('[aria-hidden="true"], [inert]'); };
   const inText = (el) => {
     if (el.tagName !== 'A' && el.getAttribute('role') !== 'link') return false;
     const p = el.parentElement; if (!p) return false;

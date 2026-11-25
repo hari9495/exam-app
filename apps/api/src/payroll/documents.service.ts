@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, UnauthorizedException } from '@nestjs/common';
-import { join } from 'path';
-import { FONT_DIR, FONT_FILE, LABELS, localOf, writeLabel, type LocalLanguage } from '../documents/payslip-languages';
+import { LABELS, localOf, writeLabel, type LocalLanguage } from '../documents/payslip-languages';
+import { writeText } from '../documents/pdf-text';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
 import { createHash, randomBytes } from 'crypto';
@@ -63,7 +63,7 @@ const MONEY = /^\d{1,10}(\.\d{1,2})?$/;
 export function money(s: string): string {
   const [i, f] = new Prisma.Decimal(s).toFixed(2).split('.');
   const head = i.slice(0, -3);
-  return `Rs. ${head ? `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},` : ''}${i.slice(-3)}.${f}`;
+  return `₹${head ? `${head.replace(/\B(?=(\d{2})+(?!\d))/g, ',')},` : ''}${i.slice(-3)}.${f}`;
 }
 
 const tokenHash = (t: string) => createHash('sha256').update(t).digest('hex');
@@ -124,8 +124,8 @@ export class PayDocumentsService {
       doc.on('data', (c) => chunks.push(c));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
-      if (local) doc.fontSize(15).font(join(FONT_DIR, FONT_FILE[local])).text(LABELS[local].payslip).font('Helvetica');
-      doc.fontSize(15).text(title);
+      if (local) writeText(doc.fontSize(15), LABELS[local].payslip);
+      writeText(doc.fontSize(15), title);
       doc.fontSize(9).fillColor('#444').text(`Reference ${referenceNo}`).fillColor('#000').moveDown();
       for (const f of required) {
         const v = fields[f.key];
@@ -137,7 +137,7 @@ export class PayDocumentsService {
         const lines = (fields[k] as { label: string; amount: string }[] | undefined) ?? [];
         doc.moveDown(0.5).fontSize(11);
         writeLabel(doc, local, k, k === 'earnings' ? 'Earnings' : 'Deductions', '');
-        for (const l of lines) doc.fontSize(10).text(`${l.label}  ${money(l.amount)}`);
+        for (const l of lines) writeText(doc.fontSize(10), `${l.label}  ${money(l.amount)}`);
         if (!lines.length) doc.fontSize(10).text('None');
       }
       doc.moveDown();
@@ -297,7 +297,8 @@ export class PayDocumentsService {
       const me = await tx.employee.findMany({ where: { organizationId: c.organizationId, userId: c.userId ?? '00000000-0000-0000-0000-000000000000' }, select: { id: true } });
       // The pay guard opens only the person's own rows here (app_current_employee_ids).
       const rows = await tx.payDocument.findMany({ where: { organizationId: c.organizationId, employeeId: { in: me.map((e) => e.id) }, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' }, take: 200 });
-      return rows.map((r) => this.summary(r));
+      // PPL-30 shows the size; a DSC-signed copy differs from the issued bytes, so it has none.
+      return rows.map((r) => ({ ...this.summary(r), size: r.signature === 'signed' ? null : r.unsignedBytes }));
     });
   }
 
@@ -411,19 +412,53 @@ export class PayDocumentsService {
    */
   private async eligible(tx: Tx, org: string, email: string): Promise<{ employeeId: string; nomineeId: string | null } | null> {
     const today = todayIst();
-    const [alumni] = await tx.$queryRaw<{ id: string }[]>`
-      SELECT e.id::text FROM employees e
-      JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id
-      LEFT JOIN employee_personal_details pd ON pd.organization_id = e.organization_id AND pd.employee_id = e.id
-      WHERE e.organization_id = ${org}::uuid AND (lower(pd.personal_email) = ${email} OR lower(e.work_email) = ${email})
-        AND m.exited_on IS NOT NULL AND m.exited_on <= ${today}::date AND m.exited_on + ${ALUMNI_YEARS}::int * interval '1 year' >= ${today}::date
-        AND NOT EXISTS (SELECT 1 FROM employments x WHERE x.organization_id = e.organization_id AND x.employee_id = e.id AND x.exited_on IS NULL)
-      ORDER BY m.exited_on DESC LIMIT 1`;
-    if (alumni) return { employeeId: alumni.id, nomineeId: null };
+    const alumni = await this.formerEmployee(tx, org, Prisma.sql`(lower(pd.personal_email) = ${email} OR lower(e.work_email) = ${email})`);
+    if (alumni) return { employeeId: alumni, nomineeId: null };
     await tx.$executeRaw`SELECT set_config('app.pay_entities', (SELECT coalesce(array_agg(id)::text, '{}') FROM legal_entities WHERE organization_id = ${org}::uuid), true)`;
     const n = await tx.payDocumentNominee.findFirst({ where: { organizationId: org, emailHash: this.crypto.hmac('pay-portal-email', email), revokedAt: null, validUntil: { gte: asDate(today) } } });
     await payScope(tx, []);
     return n ? { employeeId: n.employeeId, nomineeId: n.id } : null;
+  }
+
+  /** A former employee within 7 years of leaving who does not work here again (their latest employee record). */
+  private async formerEmployee(tx: Tx, org: string, who: Prisma.Sql): Promise<string | null> {
+    const today = todayIst();
+    const [row] = await tx.$queryRaw<{ id: string }[]>`
+      SELECT e.id::text FROM employees e
+      JOIN employments m ON m.organization_id = e.organization_id AND m.employee_id = e.id
+      LEFT JOIN employee_personal_details pd ON pd.organization_id = e.organization_id AND pd.employee_id = e.id
+      WHERE e.organization_id = ${org}::uuid AND ${who}
+        AND m.exited_on IS NOT NULL AND m.exited_on <= ${today}::date AND m.exited_on + ${ALUMNI_YEARS}::int * interval '1 year' >= ${today}::date
+        AND NOT EXISTS (SELECT 1 FROM employments x WHERE x.organization_id = e.organization_id AND x.employee_id = e.id AND x.exited_on IS NULL)
+      ORDER BY m.exited_on DESC LIMIT 1`;
+    return row?.id ?? null;
+  }
+
+  /**
+   * The alumni login (LIFE-4.04, T9-02) shows a former employee's payslips and Form 16 from this portal: the same rule
+   * as signing in here (left, within 7 years, not working here again; never a nominee), the same database guard
+   * (app.pay_portal_employee) and the same documents, for that one person. Runs in the alumni session's transaction.
+   */
+  async alumniDocuments(tx: Tx, org: string, personId: string) {
+    const employeeId = await this.alumniEmployee(tx, org, personId);
+    if (!employeeId) return [];
+    const rows = await tx.payDocument.findMany({ where: { organizationId: org, employeeId, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' }, take: 200 });
+    return rows.map((r) => this.summary(r));
+  }
+
+  async alumniFile(tx: Tx, org: string, personId: string, id: string) {
+    const employeeId = await this.alumniEmployee(tx, org, personId);
+    const d = employeeId ? await tx.payDocument.findFirst({ where: { organizationId: org, id, employeeId, status: { in: ['issued', 'superseded'] } } }) : null;
+    if (!d) throw new NotFoundException('Not found');
+    await audit(tx, { organizationId: org, isSuperAdmin: false }, 'payroll.portal.document_downloaded', 'pay_document', d.id, { employeeId, via: 'alumni' });
+    return { file: await this.bytes(d), name: `${d.referenceNo.replace(/[^A-Za-z0-9]+/g, '-')}.pdf` };
+  }
+
+  /** The person's employee record the pay portal would open, with the database guard set to it. */
+  private async alumniEmployee(tx: Tx, org: string, personId: string): Promise<string | null> {
+    const employeeId = await this.formerEmployee(tx, org, Prisma.sql`e.person_id = ${personId}::uuid`);
+    if (employeeId) await tx.$executeRaw`SELECT set_config('app.pay_portal_employee', ${employeeId}, true)`;
+    return employeeId;
   }
 
   private async orgOf(slug: string) {
@@ -478,6 +513,24 @@ export class PayDocumentsService {
     return this.inPortal(slug, token, async (tx, s) => {
       const rows = await tx.payDocument.findMany({ where: { organizationId: s.org, employeeId: s.employeeId, status: { in: ['issued', 'superseded'] } }, orderBy: { issuedAt: 'desc' }, take: 200 });
       return rows.map((r) => this.summary(r));
+    });
+  }
+
+  /** Who this session is for (T9-02): the former employee, or the nominee and the person who died; when access ends. */
+  async portalMe(slug: string, token: string | undefined) {
+    return this.inPortal(slug, token, async (tx, s) => {
+      const company = await tx.organization.findUnique({ where: { id: s.org }, select: { name: true } });
+      const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: s.org, id: s.employeeId }, select: { givenName: true, familyName: true, preferredName: true } });
+      const last = await tx.employment.findFirst({ where: { organizationId: s.org, employeeId: s.employeeId, exitedOn: { not: null } }, orderBy: { exitedOn: 'desc' }, select: { exitedOn: true } });
+      const lastDay = last?.exitedOn ? dateOf(last.exitedOn) : todayIst();
+      let nominee: { name: string; validUntil: Date } | null = null;
+      if (s.nomineeId) {
+        await tx.$executeRaw`SELECT set_config('app.pay_entities', (SELECT coalesce(array_agg(id)::text, '{}') FROM legal_entities WHERE organization_id = ${s.org}::uuid), true)`;
+        nominee = await tx.payDocumentNominee.findFirst({ where: { organizationId: s.org, id: s.nomineeId }, select: { name: true, validUntil: true } });
+        await payScope(tx, []);
+      }
+      const accessUntil = nominee ? dateOf(nominee.validUntil) : `${Number(lastDay.slice(0, 4)) + ALUMNI_YEARS}${lastDay.slice(4)}`;
+      return { company: company?.name ?? '', name: [emp.preferredName ?? emp.givenName, emp.familyName].filter(Boolean).join(' '), nominee: nominee?.name ?? null, lastDay, accessUntil };
     });
   }
 

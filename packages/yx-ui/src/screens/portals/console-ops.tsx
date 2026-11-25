@@ -1,4 +1,4 @@
-// YukthiX console: tenants and customer success (YX-04, incl. tenant detail, support access with tenant consent, feature flags),
+// YukthiX console: customer success (YX-04: tenant health, churn alerts, admin messages; feature flags),
 // product analytics (YX-09), incidents / status / probes (YX-10), help-centre editor (YX-11), nudge editor (YX-12),
 // sales assist (YX-13), cost per tenant (YX-17) and contain tenant (YX-18).
 import { useState } from 'react';
@@ -6,7 +6,7 @@ import { Building2, Plus, ShieldAlert } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
-import { EmptyState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../components/feedback';
 import { FieldRow, FormField } from '../../components/field';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
@@ -14,7 +14,7 @@ import { MultiSelect, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
 import { ConfirmDialog, TypeToConfirmDialog } from '../../components/overlay';
-import { PageBanner } from '../../components/notify';
+import { PageBanner, useToastIfAny } from '../../components/notify';
 import { MenuItem } from '../../components/menu';
 import { BarChart, Funnel, Heatmap, StatCard } from '../../components/charts';
 import { RichTextEditor } from '../../components/editor';
@@ -25,6 +25,14 @@ import { BlockNote, Fact, FactRow, OtpInput, StatusBadge } from './portals-kit';
 import { FilteredTable, opts } from './list-kit';
 import { Console } from './console-kit';
 import type { TenantRow } from './console-data';
+import { LiveCustomerSuccessScreen, type LiveCustomerSuccess } from './console-cs-live';
+import { LiveMaintenanceScreen, type LiveMaintenance } from './console-maintenance-live';
+import { LiveHelpCentreScreen, type LiveHelpCentre } from './console-helpcentre-live';
+import { BoardNoticeSteps, type BoardNotice } from './board-notice';
+import { LiveIncidentsScreen, type LiveIncidents } from './console-incidents-live';
+import { LiveNudgesScreen, type LiveNudges } from './console-nudges-live';
+import { LiveSalesScreen, type LiveSales } from './console-sales-live';
+import { LiveAnalyticsScreen, type LiveAnalytics } from './console-analytics-live';
 
 const STATE_TONE: Record<TenantRow['state'], BadgeTone> = { trial: 'info', active: 'success', 'past due': 'warning', restricted: 'danger', suspended: 'danger', cancelled: 'neutral' };
 const CHURN_TONE = { low: 'success', medium: 'warning', high: 'danger' } as const;
@@ -45,6 +53,7 @@ export function CustomerSuccessScreen({
   composerOpen,
   state = 'ready',
   me,
+  live,
 }: {
   tenants: TenantRow[];
   alerts: Alert[];
@@ -52,8 +61,11 @@ export function CustomerSuccessScreen({
   composerOpen?: boolean;
   state?: 'ready' | 'loading' | 'error';
   me: string;
+  /** The live console (C-2, answers 1047 and 1048): /staff/customers. */
+  live?: LiveCustomerSuccess;
 }) {
   const [composer, setComposer] = useState(!!composerOpen);
+  if (live) return <LiveCustomerSuccessScreen live={live} />;
   return (
     <Console page="Customer success">
       <PageHeader
@@ -189,149 +201,137 @@ function MessageComposer({ open, onOpenChange, me }: { open: boolean; onOpenChan
   );
 }
 
-/** Tenants list and one tenant: lifecycle, billing adjustment with a reason, support access that the tenant admin approves. */
-export function TenantDetailScreen({ tenant, support = 'none', now }: { tenant: TenantRow; support?: 'none' | 'requested' | 'approved' | 'declined' | 'request-form'; now: Date }) {
-  const [hours, setHours] = useState<number | null>(24);
-  const [open, setOpen] = useState(support === 'request-form');
-  const err = supportWindowError(hours ?? 0);
-  return (
-    <Console page="Tenants">
-      <ObjectHeader
-        name={tenant.name}
-        icon={Building2}
-        secondary={`${tenant.products} · region ${tenant.region} · since ${formatDate(tenant.signedUp)}`}
-        status={<Badge tone={STATE_TONE[tenant.state]}>{cap(tenant.state)}</Badge>}
-        facts={[
-          { label: 'Billed employees', value: tenant.employees.toLocaleString('en-IN') },
-          { label: 'Monthly revenue', value: formatINR(tenant.mrr) },
-          { label: 'Health', value: `${tenant.health} · ${HEALTH_LABEL[healthBand(tenant.health)]}` },
-          { label: 'CS owner', value: tenant.owner },
-        ]}
-        actions={
-          <>
-            <Button>Extend trial</Button>
-            <Button variant="primary" onClick={() => setOpen(true)}>
-              Request support access
-            </Button>
-          </>
-        }
-        menu={
-          <>
-            <MenuItem>Issue credit note</MenuItem>
-            <MenuItem>Pause dunning</MenuItem>
-            <MenuItem destructive>Suspend tenant</MenuItem>
-          </>
-        }
-      />
-      {support === 'approved' && (
-        <PageBanner tone="warning" action={<Button size="sm">End session</Button>}>
-          Support session active: approved by Lakshmi Venkatesan (System Admin) until 30 Sep 2026, 9:42 am. Confidential and Special data is masked; POSH and cases are excluded.
-        </PageBanner>
-      )}
-      {support === 'requested' && (
-        <InlineAlert tone="info" title="Waiting for the tenant to approve">
-          Sent to 2 System Admins at 9:31 am. Nothing is visible until one of them approves.
-        </InlineAlert>
-      )}
-      {support === 'declined' && (
-        <InlineAlert tone="warning" title="The tenant declined support access">
-          Lakshmi Venkatesan declined at 9:38 am: "Please walk us through it on a call instead." Book a guided session.
-        </InlineAlert>
-      )}
-      <div className="yx-split">
-        <div className="yx-split__main">
-          <Card title="Lifecycle">
-            <DescriptionList
-              columns={2}
-              items={[
-                { label: 'State', value: cap(tenant.state) },
-                { label: 'Dunning', value: tenant.state === 'past due' ? 'Reminder sent day +7; read-only from day +15, suspended from day +30' : 'Not in dunning' },
-                { label: 'Plan changes', value: 'Adds prorated now; removals at period end' },
-                { label: 'Renewal notices', value: '30 and 7 days before' },
-              ]}
-            />
-          </Card>
-          <Card title="Staff actions on this tenant">
-            <p className="yx-ps-muted">Every action needs a reason, is audited with your name and is visible to the tenant's admins.</p>
-            <ul className="yx-ps-list">
-              <li>28 Sep 2026 · Joseph Thomas extended trial by 14 days · "Set-up call booked"</li>
-              <li>12 Aug 2026 · Kavitha Rao issued credit note CN-0228 for ₹4,800 · "Duplicate SMS charges"</li>
-            </ul>
-          </Card>
-        </div>
-        <div className="yx-split__aside">
-          <Card title="Support access">
-            <p className="yx-ps-muted">A tenant admin approves every session. Default 24 hours, never more than 72. Restricted areas are always excluded.</p>
-          </Card>
-        </div>
-      </div>
-      <Drawer
-        open={open}
-        onOpenChange={setOpen}
-        title="Request support access"
-        subtitle={tenant.name}
-        footer={
-          <>
-            <Button onClick={() => setOpen(false)}>Cancel</Button>
-            <Button variant="primary" disabled={!!err}>
-              Send request to tenant
-            </Button>
-          </>
-        }
-      >
-        <div className="yx-ps-stack">
-          <FormField label="Reason" required helper="The tenant admin sees this.">
-            <TextArea rows={3} defaultValue="Ticket TKT-8841: September payroll run stuck at readiness; need to check the PF mapping." />
-          </FormField>
-          <FormField label="How long (hours)" required error={err}>
-            <NumberField value={hours} onChange={setHours} min={1} max={72} />
-          </FormField>
-          <FormField label="Areas">
-            <MultiSelect value={['payroll']} onChange={() => undefined} options={[{ value: 'payroll', label: 'Payroll set-up' }, { value: 'time', label: 'Time and leave set-up' }, { value: 'people', label: 'People (masked)' }]} />
-          </FormField>
-          <InlineAlert tone="info" title="Always excluded">
-            POSH, disciplinary, grievance, whistleblower and medical records. Confidential and Special fields stay masked.
-          </InlineAlert>
-          <p className="yx-ps-muted">Requested at {timeOf(now)}. The session ends on its own.</p>
-        </div>
-      </Drawer>
-    </Console>
-  );
-}
-
-/** Tenants list (T2): search, lifecycle and region filters, saved views. */
-export function TenantsListScreen({ tenants, state = 'ready' }: { tenants: TenantRow[]; state?: 'ready' | 'loading' | 'error' }) {
-  return (
-    <Console page="Tenants">
-      <PageHeader title="Tenants" description="Search across every tenant. Opening a tenant never shows HR data; use a support session for that." />
-      <FilteredTable
-        label="Tenants"
-        rows={tenants}
-        state={state}
-        getRowId={(r) => r.id}
-        searchText={(r) => r.name}
-        fields={[
-          { key: 'state', label: 'Lifecycle', type: 'multi', options: opts(['trial', 'active', 'past due', 'restricted', 'suspended', 'cancelled']) },
-          { key: 'region', label: 'Region', type: 'multi', options: opts(['IN', 'ME-AE', 'SG']) },
-        ]}
-        columns={[
-          { key: 'name', header: 'Tenant', value: (r) => r.name, width: 230 },
-          { key: 'products', header: 'Products', value: (r) => r.products, width: 140 },
-          { key: 'employees', header: 'Billed units', type: 'number', value: (r) => r.employees, width: 120, total: 'sum' },
-          { key: 'mrr', header: 'Monthly revenue', type: 'money', value: (r) => r.mrr, width: 150, total: 'sum' },
-          { key: 'region', header: 'Region', value: (r) => r.region, width: 90 },
-          { key: 'state', header: 'Lifecycle', type: 'status', value: (r) => cap(r.state), statusTone: (v) => STATE_TONE[String(v).toLowerCase() as TenantRow['state']], width: 110 },
-          { key: 'signedUp', header: 'Signed up', type: 'date', value: (r) => r.signedUp, width: 120 },
-        ]}
-        empty={<EmptyState title="No tenants yet." />}
-      />
-    </Console>
-  );
-}
+// Answer 1045: the drawn Tenants list and Tenant detail are retired; the live Companies pages (screens/console
+// CompaniesScreen, CompanyScreen) are the one version, and the YX-04 stories draw them.
 
 /** Feature flags: per-wave flags, tenant beta groups and kill switches (P13 #7). */
-export function FeatureFlagsScreen({ flags, killOpen }: { flags: { key: string; desc: string; scope: string; state: 'on' | 'off' | 'beta'; killSwitch: boolean }[]; killOpen?: boolean }) {
+/** Answer 1049: a feature switch as the console API gives it. */
+export interface LiveFlag {
+  key: string;
+  label: string;
+  description: string;
+  defaultOn: boolean;
+  killed: { at: string; by: string | null; reason: string | null } | null;
+  overrides: { organizationId: string; company: string; on: boolean; reason: string; at: string }[];
+}
+
+export interface LiveFeatureFlags {
+  state: 'loading' | 'error' | 'no-access' | 'ready';
+  onRetry: () => void;
+  flags: LiveFlag[];
+  companies: { id: string; name: string }[];
+  /** The signed-in staff member: who killed a feature never turns it back on. */
+  meId: string;
+  onDefault: (key: string, on: boolean, reason: string) => Promise<void>;
+  onOverride: (key: string, organizationId: string, on: boolean | null, reason: string) => Promise<void>;
+  onKill: (key: string, reason: string) => Promise<void>;
+  onRevive: (key: string, reason: string) => Promise<void>;
+}
+
+type FlagAsk = { kind: 'kill' | 'revive' | 'default' | 'company'; flag: LiveFlag };
+
+/** The reason every change asks for, and the company picker for a company's own value. */
+function FlagDialog({ ask, live, onClose }: { ask: FlagAsk; live: LiveFeatureFlags; onClose: () => void }) {
+  const { flag, kind } = ask;
+  const [reason, setReason] = useState('');
+  const [company, setCompany] = useState<string | null>(null);
+  const [value, setValue] = useState<string>('off');
+  const [tried, setTried] = useState(false);
+  const toast = useToastIfAny();
+  const reasonError = tried && reason.trim().length < 5 ? 'Give a reason of at least 5 characters: it is kept in the audit log.' : null;
+  const companyError = tried && kind === 'company' && !company ? 'Choose the company.' : null;
+  const words = {
+    kill: { title: `Engage the kill switch for ${flag.label}?`, consequence: `${flag.label} stops for every company at once, whatever its own value. Turning it back on takes another staff member.`, label: 'Engage kill switch' },
+    revive: { title: `Turn ${flag.label} back on?`, consequence: `It comes back for every company, on their own value or the default. The kill switch was engaged${flag.killed?.reason ? `: ${flag.killed.reason}` : '.'}`, label: 'Turn back on' },
+    default: { title: `Turn ${flag.label} ${flag.defaultOn ? 'off' : 'on'} for every company?`, consequence: `Companies with their own value keep it. ${flag.overrides.length} ${flag.overrides.length === 1 ? 'company has' : 'companies have'} one.`, label: flag.defaultOn ? 'Turn off by default' : 'Turn on by default' },
+    company: { title: `${flag.label} for one company`, consequence: 'Its own value beats the default; the kill switch still beats both.', label: 'Save' },
+  }[kind];
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => !o && onClose()}
+      destructive={kind === 'kill'}
+      title={words.title}
+      consequence={words.consequence}
+      confirmLabel={words.label}
+      onConfirm={async () => {
+        setTried(true);
+        if (reason.trim().length < 5 || (kind === 'company' && !company)) return false;
+        const why = reason.trim();
+        if (kind === 'kill') await live.onKill(flag.key, why);
+        else if (kind === 'revive') await live.onRevive(flag.key, why);
+        else if (kind === 'default') await live.onDefault(flag.key, !flag.defaultOn, why);
+        else await live.onOverride(flag.key, company!, value === 'default' ? null : value === 'on', why);
+        toast?.toast({ tone: 'success', title: kind === 'kill' ? 'Kill switch engaged.' : kind === 'revive' ? 'Turned back on.' : 'Saved.' });
+        onClose();
+      }}
+    >
+      {kind === 'company' && (
+        <>
+          <FormField label="Company" required error={companyError}>
+            <Select aria-label="Company" value={company} onChange={setCompany} searchable options={live.companies.map((c) => ({ value: c.id, label: c.name }))} />
+          </FormField>
+          <FormField label="For this company">
+            <RadioGroup value={value} onChange={setValue} options={[{ value: 'on', label: 'On' }, { value: 'off', label: 'Off' }, { value: 'default', label: `The default (${flag.defaultOn ? 'on' : 'off'})` }]} />
+          </FormField>
+        </>
+      )}
+      <FormField label="Reason" required error={reasonError} helper="Kept in the audit log.">
+        <TextField value={reason} onChange={setReason} maxLength={500} />
+      </FormField>
+    </ConfirmDialog>
+  );
+}
+
+function LiveFeatureFlagsScreen({ live }: { live: LiveFeatureFlags }) {
+  const [ask, setAsk] = useState<FlagAsk | null>(null);
+  const scope = (f: LiveFlag) => `${f.defaultOn ? 'On' : 'Off'} for every company${f.overrides.length ? ` · ${f.overrides.length} with their own value (${f.overrides.map((o) => `${o.company}: ${o.on ? 'on' : 'off'}`).join(', ')})` : ''}`;
+  return (
+    <>
+      <PageHeader title="Feature flags" description="A default for every company and a company's own value. The kill switch turns a feature off for everyone; another staff member turns it back on. Every change needs a reason and is audited." />
+      {live.state === 'loading' && <Skeleton height={240} />}
+      {live.state === 'error' && <ErrorState title="We couldn't load the feature flags." description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />}
+      {live.state === 'no-access' && <NoAccessState grantedBy="a YukthiX console owner" what="feature flags" />}
+      {live.state === 'ready' && (
+        <FilteredTable
+          label="Feature flags"
+          rows={live.flags}
+          getRowId={(r) => r.key}
+          searchText={(r) => r.key + r.label + r.description}
+          fields={[]}
+          columns={[
+            { key: 'key', header: 'Flag', type: 'id', value: (r) => r.key, width: 200 },
+            { key: 'desc', header: 'What it controls', value: (r) => r.description, width: 280 },
+            { key: 'scope', header: 'Who has it', value: (r) => scope(r), width: 260 },
+            { key: 'kill', header: 'Kill switch', value: (r) => (r.killed ? 'Engaged' : 'Ready'), render: (r) => (r.killed ? <Badge tone="danger">Engaged</Badge> : 'Ready'), width: 120 },
+          ]}
+          rowActions={(r) => (
+            <>
+              <MenuItem onSelect={() => setAsk({ kind: 'default', flag: r })}>{r.defaultOn ? 'Turn off by default' : 'Turn on by default'}</MenuItem>
+              <MenuItem onSelect={() => setAsk({ kind: 'company', flag: r })}>Set for one company</MenuItem>
+              {r.killed ? (
+                r.killed.by === live.meId ? (
+                  <MenuItem disabled>You engaged it: another staff member turns it back on</MenuItem>
+                ) : (
+                  <MenuItem onSelect={() => setAsk({ kind: 'revive', flag: r })}>Turn back on</MenuItem>
+                )
+              ) : (
+                <MenuItem destructive onSelect={() => setAsk({ kind: 'kill', flag: r })}>
+                  Engage kill switch
+                </MenuItem>
+              )}
+            </>
+          )}
+        />
+      )}
+      {ask && <FlagDialog ask={ask} live={live} onClose={() => setAsk(null)} />}
+    </>
+  );
+}
+
+export function FeatureFlagsScreen({ flags, killOpen, live }: { flags: { key: string; desc: string; scope: string; state: 'on' | 'off' | 'beta'; killSwitch: boolean }[]; killOpen?: boolean; live?: LiveFeatureFlags }) {
   const [kill, setKill] = useState(!!killOpen);
+  if (live) return <LiveFeatureFlagsScreen live={live} />;
   return (
     <Console page="Feature flags">
       <PageHeader title="Feature flags" description="Changes need a reason and are audited. Kill switches fall back to the non-AI or previous path." actions={<Button variant="primary" icon={Plus}>New flag</Button>} />
@@ -379,6 +379,7 @@ export function ProductAnalyticsScreen({
   quickstart,
   loading,
   noAccess,
+  live,
 }: {
   funnel: { step: string; n: number }[];
   cohorts: { cohort: string; m: number[] }[];
@@ -386,7 +387,10 @@ export function ProductAnalyticsScreen({
   quickstart: { step: string; done: number }[];
   loading?: boolean;
   noAccess?: boolean;
+  /** The live console (C-8, YX-09): which features companies use, counts only. */
+  live?: LiveAnalytics;
 }) {
+  if (live) return <LiveAnalyticsScreen live={live} />;
   if (noAccess)
     return (
       <Console page="Product analytics">
@@ -442,13 +446,21 @@ export function IncidentComposerScreen({
   me,
   maintenanceStart,
   now,
+  live,
+  liveIncidents,
 }: {
   incidents: IncidentRow[];
   mode?: 'list' | 'incident' | 'maintenance';
   me: string;
   maintenanceStart?: Date;
   now: Date;
+  /** The live console's Planned maintenance (C-5, answers 948 and 1053). */
+  live?: LiveMaintenance;
+  /** The live console's Incidents (C-8, YX-10; answer 1124). */
+  liveIncidents?: LiveIncidents;
 }) {
+  if (live) return <LiveMaintenanceScreen live={live} />;
+  if (liveIncidents) return <LiveIncidentsScreen live={liveIncidents} />;
   const [approver, setApprover] = useState<string | null>(null);
   const [stage, setStage] = useState<string | null>('identified');
   const [start, setStart] = useState<Date | null>(maintenanceStart ?? new Date(2026, 9, 11, 1, 0));
@@ -604,7 +616,8 @@ type ArticleRow = { key: string; title: string; product: string; audience: strin
 
 // YX-11
 /** Articles keyed by screen ID, versions, captioned videos, no-result searches; articles unreviewed for 12 months are flagged. */
-export function HelpEditorScreen({ articles, noResults, editing, today }: { articles: ArticleRow[]; noResults: { term: string; count: number }[]; editing?: boolean; today: Date }) {
+export function HelpEditorScreen({ articles, noResults, editing, today, live }: { articles: ArticleRow[]; noResults: { term: string; count: number }[]; editing?: boolean; today: Date; /** The live console (C-8, YX-11). */ live?: LiveHelpCentre }) {
+  if (live) return <LiveHelpCentreScreen live={live} />;
   const stale = (d: Date) => today.getTime() - d.getTime() > 365 * 86_400_000;
   if (editing)
     return (
@@ -693,7 +706,8 @@ export function HelpEditorScreen({ articles, noResults, editing, today }: { arti
 
 // YX-12
 /** Trial nudges per day and trigger, switch-on cards, preview, second approval, A/B off by default. */
-export function NudgeEditorScreen({ nudges, me, editing }: { nudges: { key: string; day: number; product: string; condition: string; channels: string; version: string; approvedBy: string | null }[]; me: string; editing?: boolean }) {
+export function NudgeEditorScreen({ nudges, me, editing, live }: { nudges: { key: string; day: number; product: string; condition: string; channels: string; version: string; approvedBy: string | null }[]; me: string; editing?: boolean; /** The live console (C-8, YX-12). */ live?: LiveNudges }) {
+  if (live) return <LiveNudgesScreen live={live} />;
   const [ab, setAb] = useState(false);
   const [approver, setApprover] = useState<string | null>(me);
   return (
@@ -769,7 +783,8 @@ type SalesRow = { id: string; tenant: string; band: string; trigger: string; set
 
 // YX-13
 /** "Talk to us" requests and size triggers; owner, 1-business-day SLA, outcome; no employee names, no private discounts. */
-export function SalesAssistScreen({ rows, now, state = 'ready' }: { rows: SalesRow[]; now: Date; state?: 'ready' | 'loading' | 'error' }) {
+export function SalesAssistScreen({ rows, now, state = 'ready', live }: { rows: SalesRow[]; now: Date; state?: 'ready' | 'loading' | 'error'; /** The live console (C-8, YX-13). */ live?: LiveSales }) {
+  if (live) return <LiveSalesScreen live={live} />;
   return (
     <Console page="Sales assist">
       <PageHeader title="Sales assist" description="Trials with 200+ employees, 3 entities, 10 recruiters or 2,000 test attempts, or asking for migration help. Reply within 1 business day. No private discounts." />
@@ -856,10 +871,158 @@ export function CostPerTenantScreen({ rows, alertShare = 35 }: { rows: CostRow[]
 /* YX-18 Contain tenant + tenant-side banner                           */
 /* ================================================================== */
 
+/** Answer 1050: a company's containment as the console API gives it. */
+export interface ContainView {
+  company: { id: string; name: string };
+  users: number;
+  apps: number;
+  breach: { certinHours: number; dpdpHours: number };
+  containment: {
+    open: boolean;
+    reason: string;
+    containedBy: string;
+    containedAt: string;
+    certinDueAt: string;
+    dpdpDueAt: string;
+    signedOut: number;
+    appsRevoked: number;
+    liftRequest: { by: string | null; byMe: boolean; at: string; reason: string | null } | null;
+    lifted: { by: string | null; at: string } | null;
+    /** DPDP Rule 7: the first notice to the Data Protection Board, once marked sent. */
+    boardNotice?: BoardNotice | null;
+  } | null;
+}
+
+export interface LiveContain {
+  state: 'loading' | 'error' | 'no-access' | 'ready';
+  onRetry: () => void;
+  view: ContainView | null;
+  onContain: (reason: string) => Promise<void>;
+  onRequestLift: (reason: string) => Promise<void>;
+  onLift: () => Promise<void>;
+  /** DPDP Rule 7: mark the first notice to the Board as sent (security key). */
+  onBoardNotice?: (sentAt: string, note: string) => Promise<unknown>;
+}
+
+const BANNER = "We've paused some actions to protect your company's data. Sign in again. Bank-detail changes, exports and payouts are on hold; your admin has details.";
+const at = (iso: string) => new Date(iso).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' });
+
+/** The company's banner while it is contained (shown on every page of the company's app). */
+export function ContainedBanner() {
+  return <PageBanner tone="danger">{BANNER}</PageBanner>;
+}
+
+function LiveContainScreen({ live }: { live: LiveContain }) {
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [lifting, setLifting] = useState(false);
+  const [liftReason, setLiftReason] = useState('');
+  const [liftTried, setLiftTried] = useState(false);
+  const toast = useToastIfAny();
+  const v = live.view;
+  const c = v?.containment?.open ? v.containment : null;
+  const name = v?.company.name ?? '';
+  const reasonError = tried && reason.trim().length < 10 ? 'Say what happened, in a sentence (at least 10 characters).' : null;
+  return (
+    <>
+      <PageHeader title="Contain company" description={`For a suspected compromise. Opens the breach clock: CERT-In ${v?.breach.certinHours ?? 6} hours; DPDP Rules 2025 detailed report to the Data Protection Board ${v?.breach.dpdpHours ?? 72} hours.`} />
+      {live.state === 'loading' && <Skeleton height={240} />}
+      {live.state === 'error' && <ErrorState title="We couldn't load this company." description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />}
+      {live.state === 'no-access' && <NoAccessState grantedBy="a YukthiX console owner" what="containing companies" />}
+      {live.state === 'ready' && v && !c && (
+        <Card
+          title={name}
+          footer={
+            <TypeToConfirmDialog
+              objectName={`CONTAIN ${name.toUpperCase()}`}
+              trigger={<Button variant="danger" icon={ShieldAlert}>Contain company</Button>}
+              title={`Contain ${name} now?`}
+              consequence={`All ${v.users} people are signed out and must sign in again. ${v.apps} connected ${v.apps === 1 ? 'app is' : 'apps are'} revoked.`}
+              confirmLabel="Contain company"
+              onConfirm={async () => {
+                setTried(true);
+                if (reason.trim().length < 10) return false;
+                await live.onContain(reason.trim());
+                toast?.toast({ tone: 'success', title: `${name} is contained.` });
+              }}
+            />
+          }
+        >
+          <div className="yx-ps-stack">
+            <FormField label="Reason" required error={reasonError} helper="Kept in the audit log; the company's admins see it.">
+              <TextArea rows={3} value={reason} onChange={setReason} maxLength={500} />
+            </FormField>
+            <InlineAlert tone="warning" title="What happens at once">
+              Everyone signed out · connected apps revoked · bank-detail changes, exports and payouts held · a banner on every page of the company's app.
+            </InlineAlert>
+            {v.containment?.lifted && <p className="yx-ps-p">Last contained {at(v.containment.containedAt)}; lifted by {v.containment.lifted.by} on {at(v.containment.lifted.at)}.</p>}
+          </div>
+        </Card>
+      )}
+      {live.state === 'ready' && v && c && (
+        <>
+          <InlineAlert tone="danger" title={`${name} is contained since ${at(c.containedAt)}`} actions={!c.liftRequest ? <Button size="sm" onClick={() => setLifting(true)}>Request lift</Button> : undefined}>
+            Breach clock: CERT-In report due by {at(c.certinDueAt)}; DPDP Board report due by {at(c.dpdpDueAt)}. Contained by {c.containedBy}: {c.reason}. {c.signedOut} sessions ended, {c.appsRevoked} connected apps revoked. Frozen items resume only after a two-person lift.
+          </InlineAlert>
+          <BoardNoticeSteps notice={c.boardNotice ?? null} dpdpDueAt={c.dpdpDueAt} dpdpHours={v.breach.dpdpHours} onMark={live.onBoardNotice} />
+          <Card title="What the company's people see">
+            <ContainedBanner />
+          </Card>
+          {c.liftRequest && (
+            <Card
+              title="Lift containment"
+              footer={
+                c.liftRequest.byMe ? undefined : (
+                  <ConfirmDialog
+                    trigger={<Button variant="primary">Lift containment</Button>}
+                    title={`Lift the containment of ${name}?`}
+                    consequence="Exports, bank-detail changes and payouts work again, and the banner goes. Revoked apps stay revoked until the company connects them again."
+                    confirmLabel="Lift containment"
+                    onConfirm={async () => {
+                      await live.onLift();
+                      toast?.toast({ tone: 'success', title: 'Containment lifted.' });
+                    }}
+                  />
+                )
+              }
+            >
+              <div className="yx-ps-stack">
+                <DescriptionList items={[{ label: 'Requested by', value: `${c.liftRequest.by}, ${at(c.liftRequest.at)}` }, { label: 'Why', value: c.liftRequest.reason ?? '' }, { label: 'Second approver', value: c.liftRequest.byMe ? 'Waiting for another staff member' : 'You' }]} />
+                <BlockNote>Lifting needs two different people. Frozen items resume after the second approval.</BlockNote>
+              </div>
+            </Card>
+          )}
+          {lifting && (
+            <ConfirmDialog
+              open
+              onOpenChange={(o) => !o && setLifting(false)}
+              title="Request the lift"
+              consequence="Another staff member then lifts it."
+              confirmLabel="Request lift"
+              onConfirm={async () => {
+                setLiftTried(true);
+                if (liftReason.trim().length < 10) return false;
+                await live.onRequestLift(liftReason.trim());
+                toast?.toast({ tone: 'success', title: 'Lift requested. Another staff member lifts it.' });
+                setLifting(false);
+              }}
+            >
+              <FormField label="Why it is safe now" required error={liftTried && liftReason.trim().length < 10 ? 'Say why, in a sentence (at least 10 characters).' : null}>
+                <TextArea rows={3} value={liftReason} onChange={setLiftReason} maxLength={500} />
+              </FormField>
+            </ConfirmDialog>
+          )}
+        </>
+      )}
+    </>
+  );
+}
+
 // YX-18
 /** One action revokes sessions, keys and grants, forces MFA, freezes bank changes, exports and payouts; needs reason + step-up. Lift needs two people. */
-export function ContainTenantScreen({ state = 'form', stepUpAt, now }: { state?: 'form' | 'contained' | 'lift'; stepUpAt: Date | null; now: Date }) {
+export function ContainTenantScreen({ state = 'form', stepUpAt, now, live }: { state?: 'form' | 'contained' | 'lift'; stepUpAt: Date | null; now: Date; live?: LiveContain }) {
   const [otp, setOtp] = useState('');
+  if (live) return <LiveContainScreen live={live} />;
   const fresh = stepUpFresh(stepUpAt, now);
   return (
     <Console page="Contain tenant">

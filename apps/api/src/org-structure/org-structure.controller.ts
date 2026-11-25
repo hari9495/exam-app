@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseEnumPipe, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, HttpCode, Param, ParseEnumPipe, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -18,13 +18,16 @@ import {
   PayRangeQueryDto,
   ResolveSettingQueryDto,
   SettingDto,
+  SettingRejectDto,
+  SettingsHistoryQueryDto,
   masterBody,
 } from './dto';
 import { IN_STATES, REGIONS } from './org-validation';
 import { OrgSettingsService } from './org-settings.service';
-import { SETTINGS } from './settings-registry';
+import { SETTINGS, moduleSettingKey } from './settings-registry';
 import { OrgStructureService } from './org-structure.service';
 import { OrgScopeService } from '../access/org-scope.service';
+import { SettingChangeNoticesService } from './setting-change-notices.service';
 
 // Settings › Organisation (P01 §8, APX-D 1.2–1.4) and the scoped-settings API (P01 §4.6). Every route
 // declares its permission (P02 YX-SEC-01):
@@ -32,9 +35,14 @@ import { OrgScopeService } from '../access/org-scope.service';
 //   org.settings.manage          change them and scoped settings (HR / System Admin)
 //   org.entity.statutory.manage  the Confidential entity identifiers (P02 §4.4)
 //   pay.range.view / .manage     grade pay ranges (founder rule R1: pay is private)
+//   payroll.setup.manage         reads the settings (Settings › Payroll & Statutory › Payroll rules, founder 30 Oct 2026,
+//                                last 10, item 5); changing them stays HR's (MT-PAY-B-07: payroll never changes policy)
+//   leave.settings.manage        reads the settings and changes the leave-page ones (Settings 3.6, 3.8, 3.9; answer 1485)
 // Each key may be held for the whole company or one legal entity (P02 §4.3): writes and pay / Confidential
 // reads are checked against the record's entity here (OrgScopeService) before the service runs.
 const VIEW = ['org.structure.view', 'org.settings.manage'] as const;
+// S-8 (answer 1323): the expenses and performance set-up keys read the company settings (their pages 4.8 and 6.3).
+const MODULE_READ = ['expense.policy.view', 'expense.policy.manage', 'perf.setup.manage', 'assessments.settings.manage'] as const;
 const KIND = new ParseEnumPipe(Object.fromEntries(MASTER_KINDS.map((k) => [k, k])));
 
 interface RequestUser {
@@ -58,10 +66,26 @@ export class OrgStructureController {
     private readonly org: OrgStructureService,
     private readonly settings: OrgSettingsService,
     private readonly scope: OrgScopeService,
+    private readonly notices: SettingChangeNoticesService,
   ) {}
 
   private manage(req: Request, entityId: string | null) {
     return this.scope.require(req, 'org.settings.manage', entityId);
+  }
+
+  /**
+   * Answer 1485: a leave-page setting may be changed with leave.settings.manage instead (same entity reach); S-8 (answer
+   * 1323): an expenses setting with expense.policy.manage, a performance setting with perf.setup.manage; AS-2: an assessments setting with assessments.settings.manage. Others need
+   * org.settings.manage.
+   */
+  private async manageSetting(req: Request, key: string, entityId: string | null) {
+    const module = moduleSettingKey(key);
+    if (!module) return this.manage(req, entityId);
+    try {
+      await this.manage(req, entityId);
+    } catch {
+      await this.scope.require(req, module, entityId);
+    }
   }
 
   /** Settings that loosen an access or fraud guard also need their guard key, company-wide (P02 §4.2, YX-SEC-02). */
@@ -326,9 +350,36 @@ export class OrgStructureController {
   // ---- scoped settings (P01 §4.6) ----
 
   @Get('settings')
-  @RequireAnyPermission(...VIEW)
+  @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', ...MODULE_READ)
   listSettings(@CurrentTenant() ctx: TenantContext) {
     return this.settings.list(ctx);
+  }
+
+  /**
+   * Settings S-5 (answers 1326, 1461): the last changes of the given settings (a page's, or every page the person may
+   * open for the home). Only settings the person may read: the Projects settings (3.11) need the company settings key
+   * or Projects manage; every other one the keys that read the company settings (as GET settings).
+   */
+  @Get('settings/history')
+  @RequireAnyPermission(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', 'projects.manage', ...MODULE_READ)
+  async settingsHistory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: SettingsHistoryQueryDto) {
+    const keys = [...new Set(q.keys.split(',').map((k) => k.trim()).filter(Boolean))];
+    if (!keys.length || keys.length > 300) throw new BadRequestException('Name between 1 and 300 settings.');
+    const holds = async (...ks: string[]) => {
+      for (const k of ks) {
+        const r = await this.scope.reach(req, k);
+        if (r === 'all' || r.size > 0) return true;
+      }
+      return false;
+    };
+    const projectKey = (k: string) => k.startsWith('projects.') || k === 'timesheet.tool_suggestions';
+    const readsCompany = await holds(...VIEW, 'payroll.setup.manage', 'leave.settings.manage', ...MODULE_READ);
+    const readsProjects = await holds('org.settings.manage', 'projects.manage');
+    for (const k of keys) {
+      if (!SETTINGS[k]) throw new BadRequestException(`Unknown setting ${k}`);
+      if (projectKey(k) ? !readsProjects : !readsCompany) throw new ForbiddenException(`You cannot see the changes to ${SETTINGS[k]!.label}.`);
+    }
+    return this.settings.history(ctx, keys, q.limit ?? 20);
   }
 
   @Get('settings/resolve')
@@ -340,21 +391,49 @@ export class OrgStructureController {
   }
 
   @Put('settings')
-  @RequirePermissions('org.settings.manage')
+  @RequireAnyPermission('org.settings.manage', 'leave.settings.manage', 'expense.policy.manage', 'perf.setup.manage', 'assessments.settings.manage', 'benefits.settings.manage')
   async setSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettingDto) {
     ownSession(req);
-    await this.manage(req, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));
+    await this.manageSetting(req, dto.key, await this.scope.settingEntity(ctx, dto.scopeType, dto.scopeId));
     await this.settingGuard(req, dto.key);
-    return this.settings.set(ctx, dto);
+    const out = await this.settings.set(ctx, dto);
+    // Answer 1522: the others with HR's settings key hear that a payroll change waits for them.
+    if ('pending' in out && out.pending) await this.notices.waiting(ctx, ctx.userId!, { id: out.id, key: dto.key, value: dto.value });
+    return out;
+  }
+
+  // Answer 1325: a payroll setting change waiting for a second person (never the one who asked; the API and the database check).
+  @Post('settings/requests/:id/approve')
+  @HttpCode(200)
+  @RequirePermissions('org.settings.manage')
+  async approveSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    const r = await this.settings.request(ctx, id);
+    await this.manageSetting(req, r.key, await this.scope.settingEntity(ctx, r.scopeType, r.scopeType === 'tenant' ? undefined : r.scopeId));
+    await this.settingGuard(req, r.key);
+    const row = await this.settings.approve(ctx, id);
+    await this.notices.decided(ctx, ctx.userId!, { id, ...r }, 'approved');
+    return row;
+  }
+
+  @Post('settings/requests/:id/reject')
+  @HttpCode(204)
+  @RequirePermissions('org.settings.manage')
+  async rejectSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SettingRejectDto) {
+    ownSession(req);
+    const r = await this.settings.request(ctx, id);
+    await this.manageSetting(req, r.key, await this.scope.settingEntity(ctx, r.scopeType, r.scopeType === 'tenant' ? undefined : r.scopeId));
+    await this.settings.reject(ctx, id, dto.note);
+    await this.notices.decided(ctx, ctx.userId!, { id, ...r }, 'rejected');
   }
 
   @Delete('settings/:id')
   @HttpCode(204)
-  @RequirePermissions('org.settings.manage')
+  @RequireAnyPermission('org.settings.manage', 'leave.settings.manage')
   async removeSetting(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     ownSession(req);
     const row = await this.scope.settingById(ctx, id);
-    await this.manage(req, row.entityId);
+    await this.manageSetting(req, row.key, row.entityId);
     await this.settingGuard(req, row.key);
     await this.settings.remove(ctx, id);
   }

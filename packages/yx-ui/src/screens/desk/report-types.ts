@@ -180,3 +180,42 @@ export interface UserHit {
   name: string | null;
   email: string;
 }
+
+/** HLP-05 SLA dashboard (`GET desk/reports/sla`): business minutes from the SLA engine's clocks. */
+export interface SlaClock {
+  usedMinutes: number;
+  targetMinutes: number;
+  paused: boolean;
+  atRiskPercent?: number;
+}
+export interface SlaAtRiskRow {
+  id: string;
+  number: string;
+  subject: string;
+  deskId: string;
+  deskName: string;
+  priority: number;
+  assignee: { id: string; name: string } | null;
+  resolution: SlaClock;
+}
+export interface SlaDashboard {
+  /** YYYY-MM-DD, India dates. */
+  from: string;
+  to: string;
+  open: number;
+  breachedNow: number;
+  atRiskCount: number;
+  /** At risk or missed, but on tickets this person may not open (sensitive or private). */
+  atRiskHidden: number;
+  firstResponseMetPct: number | null;
+  firstResponseMetPctBefore: number | null;
+  articlePct: number | null;
+  articlePctBefore: number | null;
+  /** The desk's own resolution target (%), only when one desk is chosen. */
+  resolutionTarget: number | null;
+  queues: { deskId: string; name: string; met: number; breached: number }[];
+  weeks: { week: string; metPct: number | null }[];
+  firstResponseWeeks: { week: string; metPct: number | null }[];
+  agents: { userId: string; name: string; desks: string; open: number; atRisk: number; rating: number | null }[];
+  atRisk: SlaAtRiskRow[];
+}

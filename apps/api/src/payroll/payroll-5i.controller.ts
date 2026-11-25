@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
@@ -13,8 +13,9 @@ import {
   AuthorisationDto,
   ClawbackDto,
   EntityMonthQuery,
-  IncentivePlanDto,
+  IncentivePlanDto, IncentivePlanUpdateDto, IncentivePlanVersionDto,
   IncentiveResultsDto,
+  ReleaseHeldDto,
   LayoffDto,
   OncallRuleDto,
   OncallSlotDto,
@@ -22,6 +23,7 @@ import {
   OutputsDto,
   PostMonthDto,
   RateCardDto,
+  RemittedDto,
   RevokeDto,
   SettlementDto,
   SettlementPostDto,
@@ -87,6 +89,13 @@ export class Payroll5iController {
     return this.special.importOutputs(ctx, this.user(req), dto.legalEntityId, f?.buffer);
   }
 
+  /** PAY-31: the month's piece pay and minimum-wage top-up per person, before it is sent (nothing is kept). */
+  @Get('piece/check')
+  @RequirePermissions('payroll.special.manage')
+  pieceCheck(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PostMonthDto) {
+    return this.special.pieceCheck(ctx, this.user(req), q.legalEntityId, q.month);
+  }
+
   @Post('piece/post')
   @RequirePermissions('payroll.special.manage')
   postPiece(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PostMonthDto) {
@@ -107,6 +116,26 @@ export class Payroll5iController {
     return this.special.addPlan(ctx, this.user(req), dto);
   }
 
+  /** PAY-32: a draft's changes; publishing a draft; a new version of a published plan. */
+  @Put('plans/:id')
+  @RequirePermissions('payroll.special.manage')
+  updatePlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: IncentivePlanUpdateDto) {
+    return this.special.updatePlan(ctx, this.user(req), id, dto);
+  }
+
+  @Post('plans/:id/publish')
+  @HttpCode(200)
+  @RequirePermissions('payroll.special.manage')
+  publishPlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.special.publishPlan(ctx, this.user(req), id);
+  }
+
+  @Post('plans/:id/versions')
+  @RequirePermissions('payroll.special.manage')
+  newPlanVersion(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: IncentivePlanVersionDto) {
+    return this.special.newPlanVersion(ctx, this.user(req), id, dto.effectiveFrom);
+  }
+
   @Get('plans/:id/results')
   @RequirePermissions('payroll.special.manage')
   results(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: SettlementPostDto) {
@@ -118,6 +147,13 @@ export class Payroll5iController {
   @RequirePermissions('payroll.special.manage')
   saveResults(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: IncentiveResultsDto) {
     return this.special.saveResults(ctx, this.user(req), id, dto);
+  }
+
+  /** PAY-33: the held part of a result goes to payroll once the customer has paid (approved like any posting). */
+  @Post('plans/:id/results/:resultId/release')
+  @RequirePermissions('payroll.special.manage')
+  releaseHeld(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('resultId', ParseUUIDPipe) resultId: string, @Body() dto: ReleaseHeldDto) {
+    return this.special.releaseHeld(ctx, this.user(req), id, resultId, dto.month);
   }
 
   @Post('plans/:id/post')
@@ -233,10 +269,24 @@ export class Payroll5iController {
     return this.special.remittance(ctx, this.user(req), id, q.month);
   }
 
+  /** PAY-36: mark a month's approved check-off as paid to the union (once; audited). */
+  @Post('unions/:id/remittance')
+  @RequirePermissions('payroll.special.manage')
+  markRemitted(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RemittedDto) {
+    return this.special.markRemitted(ctx, this.user(req), id, dto);
+  }
+
   @Post('settlements')
   @RequirePermissions('payroll.special.manage')
   addSettlement(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SettlementDto) {
     return this.special.addSettlement(ctx, this.user(req), dto);
+  }
+
+  /** PAY-37: workers per category and each worker's arrears month by month for a pay month (nothing saved). */
+  @Get('settlements/:id/preview')
+  @RequirePermissions('payroll.special.manage')
+  settlementPreview(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: SettlementPostDto) {
+    return this.special.settlementPreview(ctx, this.user(req), id, q.month);
   }
 
   @Post('settlements/:id/post')

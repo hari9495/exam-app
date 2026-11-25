@@ -4,13 +4,16 @@ import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { MultiSelect, Select } from '../../components/select';
 import { Card } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { when } from './desk-kit';
+import { LivePicker } from './service-form';
+import type { PickOption } from './esm-types';
 import type { ActionLinkView, BranchView, ChannelLinkView, ChatPrompt, ChatQueue, DocTemplate, DocumentsView, HrSummary, JourneySetup, LifecycleSetup, LifecycleTransition, LifecycleView, RecurringView, RequestDocument, SequenceDef, SequenceRunView, TicketShare } from './esm2-types';
 
 // Service Desk 3b-2 batch 2 screens (plain simple English; single choices use the joined Segment; nothing is checked
@@ -88,6 +91,9 @@ function MoveShareCard(p: TicketEsmRailProps) {
   const [reason, setReason] = useState('');
   const [level, setLevel] = useState<'view' | 'comment'>('view');
   const { busy, error, run } = useRun();
+  const noDesk = !deskId ? [{ fieldId: 'esm-desk', message: 'Choose the desk.' }] : [];
+  const shareEarly = useTooEarly(noDesk);
+  const moveEarly = useTooEarly([...noDesk, ...(reason.trim().length < 3 ? [{ fieldId: 'esm-why', message: 'Say why it moves (at least 3 letters).' }] : [])]);
   const others = p.desks.filter((d) => d.id !== p.currentDeskId);
   const cats = deskId ? p.categories(deskId).filter((c) => !p.sensitive || c.sensitive) : [];
   return (
@@ -108,7 +114,7 @@ function MoveShareCard(p: TicketEsmRailProps) {
           </ul>
         )}
         <Segment label="What to do" value={mode} onChange={setMode} options={[{ value: 'share', label: 'Share' }, { value: 'move', label: 'Move' }]} />
-        <FormField label="Desk" required>
+        <FormField id="esm-desk" label="Desk" required error={(mode === 'share' ? shareEarly : moveEarly).errorOf('esm-desk')}>
           <Select value={deskId} onChange={setDeskId} options={others.map((d) => ({ value: d.id, label: d.name }))} />
         </FormField>
         {mode === 'share' ? (
@@ -121,7 +127,7 @@ function MoveShareCard(p: TicketEsmRailProps) {
             <FormField label="Category there" required={p.sensitive} optional={!p.sensitive} helper={p.sensitive ? 'This ticket is sensitive: it goes only into a sensitive category.' : undefined}>
               <Select value={categoryId} onChange={setCategoryId} options={cats.map((c) => ({ value: c.id, label: c.name }))} />
             </FormField>
-            <FormField label="Why" required>
+            <FormField id="esm-why" label="Why" required error={moveEarly.errorOf('esm-why')}>
               <TextField value={reason} onChange={setReason} maxLength={500} />
             </FormField>
           </>
@@ -129,11 +135,11 @@ function MoveShareCard(p: TicketEsmRailProps) {
         <Problem error={error} />
         <div className="yx-ops-row">
           {mode === 'share' ? (
-            <Button icon={Share2} disabled={!deskId} loading={busy === 'share'} onClick={() => void run('share', () => p.onShare(deskId!, level))}>
+            <Button icon={Share2} loading={busy === 'share'} onClick={() => !shareEarly.stop() && void run('share', () => p.onShare(deskId!, level))}>
               Share
             </Button>
           ) : (
-            <Button icon={Truck} disabled={!deskId || reason.trim().length < 3} loading={busy === 'move'} onClick={() => void run('move', () => p.onMove({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), reason: reason.trim() }))}>
+            <Button icon={Truck} loading={busy === 'move'} onClick={() => !moveEarly.stop() && void run('move', () => p.onMove({ deskId: deskId!, ...(categoryId ? { categoryId } : {}), reason: reason.trim() }))}>
               Move ticket
             </Button>
           )}
@@ -154,6 +160,7 @@ const DOC_STATE: Record<RequestDocument['status'], { label: string; tone: 'succe
 function DocumentsCard(p: TicketEsmRailProps & { documents: DocumentsView }) {
   const [templateId, setTemplateId] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(templateId ? [] : [{ fieldId: 'doc-template', message: 'Choose a document.' }]);
   return (
     <Card title="Documents">
       <div className="yx-ops-stack" data-gap="sm">
@@ -179,12 +186,12 @@ function DocumentsCard(p: TicketEsmRailProps & { documents: DocumentsView }) {
         )}
         {p.canWork && p.documents.templates.length > 0 && (
           <>
-            <FormField label="Make a document">
+            <FormField id="doc-template" label="Make a document" error={early.errorOf('doc-template')}>
               <Select value={templateId} onChange={setTemplateId} options={p.documents.templates.map((t) => ({ value: t.id, label: t.name, description: t.needsSignature ? 'Needs a signature' : 'For information' }))} />
             </FormField>
             <Problem error={error} />
             <div className="yx-ops-row">
-              <Button icon={FileSignature} disabled={!templateId} loading={busy === 'make'} onClick={() => void run('make', () => p.onMakeDocument(templateId!))}>
+              <Button icon={FileSignature} loading={busy === 'make'} onClick={() => !early.stop() && void run('make', () => p.onMakeDocument(templateId!))}>
                 Make and send
               </Button>
             </div>
@@ -198,6 +205,7 @@ function DocumentsCard(p: TicketEsmRailProps & { documents: DocumentsView }) {
 function SequencesCard(p: TicketEsmRailProps) {
   const [sequenceId, setSequenceId] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly(sequenceId ? [] : [{ fieldId: 'seq-start', message: 'Choose a sequence.' }]);
   if (!p.sequences.length && !p.runs.length) return null;
   return (
     <Card title="Follow-up messages">
@@ -216,12 +224,12 @@ function SequencesCard(p: TicketEsmRailProps) {
         ))}
         {p.sequences.length > 0 && (
           <>
-            <FormField label="Start a sequence" helper="It stops by itself when the requester replies or the ticket is resolved.">
+            <FormField id="seq-start" error={early.errorOf('seq-start')} label="Start a sequence" helper="It stops by itself when the requester replies or the ticket is resolved.">
               <Select value={sequenceId} onChange={setSequenceId} options={p.sequences.filter((s) => s.active).map((s) => ({ value: s.id, label: s.name, description: `${s.steps.length} message${s.steps.length > 1 ? 's' : ''}` }))} />
             </FormField>
             <Problem error={error} />
             <div className="yx-ops-row">
-              <Button disabled={!sequenceId} loading={busy === 'start'} onClick={() => void run('start', () => p.onStartSequence(sequenceId!))}>
+              <Button loading={busy === 'start'} onClick={() => !early.stop() && void run('start', () => p.onStartSequence(sequenceId!))}>
                 Start
               </Button>
             </div>
@@ -257,6 +265,10 @@ export function MyDocumentsCard({
   const [sent, setSent] = useState<{ to: string; minutes: number } | null>(null);
   const [mode, setMode] = useState<'sign' | 'decline'>('sign');
   const { busy, error, run } = useRun();
+  const nameOk = [...(!name.trim() ? [{ fieldId: `doc-name-${open}`, message: 'Type your full name.' }] : []), ...(!agree ? [{ fieldId: `doc-agree-${open}`, message: 'Tick that you have read the document.' }] : [])];
+  const codeEarly = useTooEarly(nameOk);
+  const signEarly = useTooEarly([...nameOk, ...(code.length !== 6 ? [{ fieldId: `doc-code-${open}`, message: 'Type the 6-digit code from the email.' }] : [])]);
+  const declineEarly = useTooEarly(!reason.trim() ? [{ fieldId: `doc-why-${open}`, message: 'Say why you do not sign.' }] : []);
   if (!documents.length) return null;
   const close = () => {
     setOpen(null);
@@ -285,14 +297,15 @@ export function MyDocumentsCard({
                 <Segment label="Your answer" value={mode} onChange={setMode} options={[{ value: 'sign', label: 'Sign' }, { value: 'decline', label: 'Do not sign' }]} />
                 {mode === 'sign' ? (
                   <>
-                    <FormField label="Type your full name" required helper="As it appears on the document.">
+                    <FormField id={`doc-name-${d.id}`} label="Type your full name" required helper="As it appears on the document." error={(sent ? signEarly : codeEarly).errorOf(`doc-name-${d.id}`)}>
                       <TextField value={name} onChange={setName} maxLength={150} />
                     </FormField>
-                    <Checkbox checked={agree} onChange={setAgree} label="I have read this document and I sign it." />
+                    <Checkbox id={`doc-agree-${d.id}`} checked={agree} onChange={setAgree} label="I have read this document and I sign it." />
+                    {(sent ? signEarly : codeEarly).errorOf(`doc-agree-${d.id}`) && <p className="yx-field__error">{(sent ? signEarly : codeEarly).errorOf(`doc-agree-${d.id}`)}</p>}
                     {sent ? (
                       <>
                         <InlineAlert tone="info">{`We sent a 6-digit code to ${sent.to}. It works for ${sent.minutes} minutes.`}</InlineAlert>
-                        <FormField label="6-digit code" required helper="From the email we just sent you.">
+                        <FormField id={`doc-code-${d.id}`} label="6-digit code" required helper="From the email we just sent you." error={signEarly.errorOf(`doc-code-${d.id}`)}>
                           <TextField value={code} onChange={(v) => setCode(v.replace(/\D/g, '').slice(0, 6))} maxLength={6} />
                         </FormField>
                       </>
@@ -301,22 +314,22 @@ export function MyDocumentsCard({
                     )}
                   </>
                 ) : (
-                  <FormField label="Why not?" required>
+                  <FormField id={`doc-why-${d.id}`} label="Why not?" required error={declineEarly.errorOf(`doc-why-${d.id}`)}>
                     <TextField value={reason} onChange={setReason} maxLength={500} />
                   </FormField>
                 )}
                 <Problem error={error} />
                 <div className="yx-ops-row">
                   {mode === 'sign' && !sent ? (
-                    <Button variant="primary" disabled={!agree || !name.trim()} loading={busy === `code-${d.id}`} onClick={() => void run(`code-${d.id}`, async () => setSent(await onSendCode(d)))}>
+                    <Button variant="primary" loading={busy === `code-${d.id}`} onClick={() => !codeEarly.stop() && void run(`code-${d.id}`, async () => setSent(await onSendCode(d)))}>
                       Send me a code
                     </Button>
                   ) : (
                     <Button
                       variant={mode === 'sign' ? 'primary' : 'danger'}
-                      disabled={mode === 'sign' ? !agree || !name.trim() || code.length !== 6 : !reason.trim()}
                       loading={busy === d.id}
                       onClick={() =>
+                        !(mode === 'sign' ? signEarly : declineEarly).stop() &&
                         void run(d.id, async () => {
                           await (mode === 'sign' ? onSign(d, name.trim(), code) : onDecline(d, reason.trim()));
                           close();
@@ -348,6 +361,7 @@ export function ActionLinkScreen({ view, error, onDecide, done, onSignIn }: { vi
   const [reason, setReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
   const { busy, error: failed, run } = useRun();
+  const early = useTooEarly(reason.trim() ? [] : [{ fieldId: 'act-reason', message: 'Say why, so the person who asked knows.' }]);
   return (
     <main className="yx-auth__page yx-desk yx-act">
       <Card title={view?.title ?? 'Approval'}>
@@ -374,7 +388,7 @@ export function ActionLinkScreen({ view, error, onDecide, done, onSignIn }: { vi
               <Rows rows={view.summary.map((s) => [s.label, s.value])} />
               <p className="yx-chat__meta">This link works once, until {when(view.expiresAt)}.</p>
               {rejecting && (
-                <FormField label="Why are you not approving it?" required>
+                <FormField id="act-reason" label="Why are you not approving it?" required error={early.errorOf('act-reason')}>
                   <TextArea rows={2} value={reason} onChange={setReason} maxLength={1000} />
                 </FormField>
               )}
@@ -389,7 +403,7 @@ export function ActionLinkScreen({ view, error, onDecide, done, onSignIn }: { vi
                   </>
                 ) : (
                   <>
-                    <Button variant="danger" disabled={!reason.trim()} loading={busy === 'reject'} onClick={() => void run('reject', () => onDecide('reject', reason.trim()))}>
+                    <Button variant="danger" loading={busy === 'reject'} onClick={() => !early.stop() && void run('reject', () => onDecide('reject', reason.trim()))}>
                       Send: not approved
                     </Button>
                     <Button onClick={() => setRejecting(false)}>Back</Button>
@@ -411,6 +425,7 @@ export function ChannelLinksCard({ links, sent, onAdd, onRemove }: { links: Chan
   const [provider, setProvider] = useState<'teams' | 'slack'>('teams');
   const [ref, setRef] = useState('');
   const { busy, error, run } = useRun();
+  const early = useTooEarly(ref.trim().length < 3 ? [{ fieldId: 'cl-ref', message: 'Enter your account in that app (at least 3 letters).' }] : []);
   if (!links) return null;
   return (
     <Card title="Approve from chat apps">
@@ -432,14 +447,15 @@ export function ChannelLinksCard({ links, sent, onAdd, onRemove }: { links: Chan
         {links.typedLinksAllowed && (
           <>
             <Segment label="App" value={provider} onChange={setProvider} options={[{ value: 'teams', label: 'Teams' }, { value: 'slack', label: 'Slack' }]} />
-            <FormField label="Your account in that app" helper="Demo only. In production you link from the YukthiX app inside Teams or Slack.">
+            <FormField id="cl-ref" label="Your account in that app" error={early.errorOf('cl-ref')} helper="Demo only. In production you link from the YukthiX app inside Teams or Slack.">
               <TextField value={ref} onChange={setRef} maxLength={200} />
             </FormField>
             <Problem error={error} />
             <div className="yx-ops-row">
-              <Button icon={Link2} disabled={ref.trim().length < 3} loading={busy === 'add'} onClick={() => void run('add', async () => {
+              <Button icon={Link2} loading={busy === 'add'} onClick={() => !early.stop() && void run('add', async () => {
                 await onAdd(provider, ref.trim());
                 setRef('');
+                early.reset();
               })}>
                 Link
               </Button>
@@ -486,6 +502,7 @@ export function LifecycleAdmin(p: LifecycleAdminProps) {
   const [typeId, setTypeId] = useState<string | null>(null);
   const { busy, error, run } = useRun();
   const [check, setCheck] = useState<{ ok: boolean; problem: string | null } | null>(null);
+  const { toast } = useToast();
   const setup = p.setup;
   const lc = setup?.lifecycles.find((l) => l.ticketTypeId === typeId) ?? null;
   const [draft, setDraft] = useState<LifecycleView['draft']>({});
@@ -584,12 +601,12 @@ export function LifecycleAdmin(p: LifecycleAdminProps) {
                   ))}
                 </ul>
               )}
-              {check && (check.ok ? <InlineAlert tone="success">This lifecycle is ready to use.</InlineAlert> : <InlineAlert tone="warning">{check.problem}</InlineAlert>)}
+              {check && !check.ok && <InlineAlert tone="warning">{check.problem}</InlineAlert>}
               <div className="yx-ops-row">
                 <Button loading={busy === 'save'} onClick={() => void run('save', () => p.onSave(lc, draft))}>
                   Save draft
                 </Button>
-                <Button loading={busy === 'check'} onClick={() => void run('check', async () => setCheck(await p.onCheck(lc)))}>
+                <Button loading={busy === 'check'} onClick={() => void run('check', async () => { const r = await p.onCheck(lc); setCheck(r); if (r.ok) toast({ tone: 'success', title: 'This lifecycle is ready to use.' }); })}>
                   Check
                 </Button>
                 <Button variant="primary" loading={busy === 'publish'} onClick={() => void run('publish', () => p.onPublish(lc))}>
@@ -627,7 +644,11 @@ export interface SchedulesAdminProps {
   groups: { id: string; name: string }[];
   recurring: RecurringView[];
   sequences: SequenceDef[];
-  onCreate: (input: { name: string; rrule: string; timeZone: string; startsAt: string; template: { subject: string; bodyHtml: string; groupId?: string } }) => Promise<unknown>;
+  onCreate: (input: { name: string; rrule: string; timeZone: string; startsAt: string; template: { subject: string; bodyHtml: string; groupId?: string; equipmentId?: string; standard?: { templateId: string; startAfterHours: number; minutes: number } } }) => Promise<unknown>;
+  /** ITSM answer 1952 (IT desks): pre-approved standard changes that may repeat, one schedule each. */
+  standardChanges?: { id: string; name: string }[];
+  /** Helpdesk plan item 4: maintenance of one piece of equipment (a facilities desk's own register). */
+  onPickEquipment?: (q: string) => Promise<PickOption[]>;
   onState: (r: RecurringView, state: RecurringView['state']) => Promise<unknown>;
   onSaveSequence: (s: SequenceDef | null, input: { name: string; steps: { afterHours: number; bodyHtml: string }[]; active?: boolean }) => Promise<unknown>;
 }
@@ -643,9 +664,23 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const [groupId, setGroupId] = useState<string | null>(null);
+  const [equipmentId, setEquipmentId] = useState<string | null>(null);
+  const [makes, setMakes] = useState<'ticket' | 'change'>('ticket');
+  const [stdId, setStdId] = useState<string | null>(null);
+  const [startAfter, setStartAfter] = useState<number | null>(24);
+  const [minutes, setMinutes] = useState<number | null>(120);
   const [seqName, setSeqName] = useState('');
   const [steps, setSteps] = useState<{ afterHours: number | null; text: string }[]>([{ afterHours: 24, text: '' }]);
   const { busy, error, run } = useRun();
+  const schedEarly = useTooEarly([
+    ...(name.trim() ? [] : [{ fieldId: 'sch-name', message: 'Name the schedule.' }]),
+    ...(subject.trim() ? [] : [{ fieldId: 'sch-subject', message: 'Write the ticket subject.' }]),
+    ...(makes === 'change' ? (stdId ? [] : [{ fieldId: 'sch-std', message: 'Choose the standard change.' }]) : body.trim() ? [] : [{ fieldId: 'sch-body', message: 'Say what to do.' }]),
+  ]);
+  const seqEarly = useTooEarly([
+    ...(seqName.trim() ? [] : [{ fieldId: 'seq-name', message: 'Name the sequence.' }]),
+    ...steps.flatMap((s, i) => [...(s.afterHours ? [] : [{ fieldId: `seq-after-${i}`, message: 'Say after how many hours.' }]), ...(s.text.trim() ? [] : [{ fieldId: `seq-text-${i}`, message: 'Write the message.' }])]),
+  ]);
   const rule = useMemo(() => {
     if (freq === 'DAILY') return 'FREQ=DAILY';
     if (freq === 'WEEKLY') return `FREQ=WEEKLY;BYDAY=${day ?? 'MO'}`;
@@ -694,7 +729,36 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
             </ul>
           )}
           <strong>New repeating ticket</strong>
-          <FormField label="Name" required>
+          {p.standardChanges && p.standardChanges.length > 0 && (
+            <FormField label="Each time it makes" helper="A standard change is scheduled without approval, its window starting the hours below after the schedule time.">
+              <Segment label="Each time it makes" value={makes} onChange={setMakes} options={[{ value: 'ticket', label: 'A ticket' }, { value: 'change', label: 'A standard change' }]} />
+            </FormField>
+          )}
+          {makes === 'change' && p.standardChanges && (
+            <>
+              <FormField id="sch-std" label="Standard change" required error={schedEarly.errorOf('sch-std')} helper="Each standard change repeats on one schedule at most.">
+                <Select
+                  value={stdId}
+                  onChange={(v) => {
+                    setStdId(v);
+                    const t = p.standardChanges!.find((x) => x.id === v);
+                    if (t && !subject.trim()) setSubject(t.name);
+                    if (t && !name.trim()) setName(t.name);
+                  }}
+                  options={p.standardChanges.map((x) => ({ value: x.id, label: x.name }))}
+                />
+              </FormField>
+              <div className="yx-ops-row">
+                <FormField label="Window starts after (hours)">
+                  <NumberField value={startAfter} onChange={setStartAfter} min={0} max={168} />
+                </FormField>
+                <FormField label="Window lasts (minutes)">
+                  <NumberField value={minutes} onChange={setMinutes} min={15} max={720} />
+                </FormField>
+              </div>
+            </>
+          )}
+          <FormField id="sch-name" label="Name" required error={schedEarly.errorOf('sch-name')}>
             <TextField value={name} onChange={setName} maxLength={100} />
           </FormField>
           <Segment label="How often" value={freq} onChange={setFreq} options={[{ value: 'DAILY', label: 'Daily' }, { value: 'WEEKLY', label: 'Weekly' }, { value: 'MONTHLY', label: 'Monthly' }, { value: 'YEARLY', label: 'Yearly' }]} />
@@ -717,24 +781,29 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
               <TextField type="time" value={time} onChange={setTime} />
             </FormField>
           </div>
-          <FormField label="Ticket subject" required>
+          <FormField id="sch-subject" label="Ticket subject" required error={schedEarly.errorOf('sch-subject')}>
             <TextField value={subject} onChange={setSubject} maxLength={200} />
           </FormField>
-          <FormField label="What to do" required>
+          <FormField id="sch-body" label="What to do" required={makes === 'ticket'} optional={makes === 'change'} error={schedEarly.errorOf('sch-body')}>
             <TextArea rows={3} value={body} onChange={setBody} />
           </FormField>
           <FormField label="Team" optional>
             <Select value={groupId} onChange={setGroupId} clearable options={p.groups.map((g) => ({ value: g.id, label: g.name }))} />
           </FormField>
+          {p.onPickEquipment && (
+            <FormField label="Equipment" optional helper="Each ticket names it, with its building and area. Retired equipment pauses the schedule.">
+              <LivePicker kind="equipment" label="Equipment" value={equipmentId} onChange={setEquipmentId} onPick={(_k, q) => p.onPickEquipment!(q)} />
+            </FormField>
+          )}
           <div className="yx-ops-row">
             <Button
               variant="primary"
-              disabled={!name.trim() || !subject.trim() || !body.trim()}
               loading={busy === 'create'}
               onClick={() =>
+                !schedEarly.stop() &&
                 void run('create', async () => {
                   const offset = zoneOffset(p.timeZone, `${start}T${time}:00`);
-                  await p.onCreate({ name: name.trim(), rrule: rule, timeZone: p.timeZone, startsAt: new Date(Date.parse(`${start}T${time}:00Z`) - offset).toISOString(), template: { subject: subject.trim(), bodyHtml: `<p>${esc(body.trim())}</p>`, ...(groupId ? { groupId } : {}) } });
+                  await p.onCreate({ name: name.trim(), rrule: rule, timeZone: p.timeZone, startsAt: new Date(Date.parse(`${start}T${time}:00Z`) - offset).toISOString(), template: { subject: subject.trim(), bodyHtml: body.trim() ? `<p>${esc(body.trim())}</p>` : '', ...(groupId ? { groupId } : {}), ...(equipmentId ? { equipmentId } : {}), ...(makes === 'change' && stdId ? { standard: { templateId: stdId, startAfterHours: startAfter ?? 24, minutes: minutes ?? 120 } } : {}) } });
                   setName('');
                   setSubject('');
                   setBody('');
@@ -759,15 +828,15 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
             </div>
           ))}
           <strong>New sequence</strong>
-          <FormField label="Name" required>
+          <FormField id="seq-name" label="Name" required error={seqEarly.errorOf('seq-name')}>
             <TextField value={seqName} onChange={setSeqName} maxLength={100} />
           </FormField>
           {steps.map((s, i) => (
             <div key={i} className="yx-esm-field-editor">
-              <FormField label={`Message ${i + 1}: send after (hours)`}>
+              <FormField id={`seq-after-${i}`} label={`Message ${i + 1}: send after (hours)`} error={seqEarly.errorOf(`seq-after-${i}`)}>
                 <NumberField value={s.afterHours} onChange={(v) => setSteps(steps.map((x, j) => (j === i ? { ...x, afterHours: v } : x)))} min={1} max={720} />
               </FormField>
-              <FormField label="Message">
+              <FormField id={`seq-text-${i}`} label="Message" error={seqEarly.errorOf(`seq-text-${i}`)}>
                 <TextArea rows={2} value={s.text} onChange={(v) => setSteps(steps.map((x, j) => (j === i ? { ...x, text: v } : x)))} />
               </FormField>
             </div>
@@ -780,9 +849,9 @@ export function SchedulesAdmin(p: SchedulesAdminProps) {
             )}
             <Button
               variant="primary"
-              disabled={!seqName.trim() || steps.some((s) => !s.text.trim() || !s.afterHours)}
               loading={busy === 'seq'}
               onClick={() =>
+                !seqEarly.stop() &&
                 void run('seq', async () => {
                   await p.onSaveSequence(null, { name: seqName.trim(), steps: steps.map((s) => ({ afterHours: s.afterHours!, bodyHtml: `<p>${esc(s.text.trim())}</p>` })) });
                   setSeqName('');
@@ -819,6 +888,7 @@ export function ChatQueuesAdmin({ queues, groups, onSave }: { queues: ChatQueue[
   const [question, setQuestion] = useState('');
   const [prompt, setPrompt] = useState<ChatPrompt>({ pathPrefix: '/yx/desk/help', text: '', afterSeconds: 20 });
   const { busy, error, run } = useRun();
+  const early = useTooEarly(name.trim() ? [] : [{ fieldId: 'cq-name', message: 'Name the queue.' }]);
   useEffect(() => {
     setName(q?.name ?? '');
     setGroupId(q?.groupId ?? null);
@@ -847,7 +917,7 @@ export function ChatQueuesAdmin({ queues, groups, onSave }: { queues: ChatQueue[
         </ul>
         {editing !== null && (
           <div className="yx-esm-field-editor">
-            <FormField label="Name" required>
+            <FormField id="cq-name" label="Name" required error={early.errorOf('cq-name')}>
               <TextField value={name} onChange={setName} maxLength={100} />
             </FormField>
             <FormField label="Team" optional>
@@ -877,9 +947,9 @@ export function ChatQueuesAdmin({ queues, groups, onSave }: { queues: ChatQueue[
             <div className="yx-ops-row">
               <Button
                 variant="primary"
-                disabled={!name.trim()}
                 loading={busy === 'save'}
                 onClick={() =>
+                  !early.stop() &&
                   void run('save', async () => {
                     await onSave(q, {
                       name: name.trim(),
@@ -941,12 +1011,16 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
   const [tplName, setTplName] = useState('');
   const [tplBody, setTplBody] = useState('');
   const [tplSign, setTplSign] = useState<'yes' | 'no'>('yes');
-  const [packDone, setPackDone] = useState<string | null>(null);
+  const { toast } = useToast();
   const [packAsk, setPackAsk] = useState<string[] | null>(null);
   const [jKind, setJKind] = useState<'join' | 'exit'>('join');
   const [jName, setJName] = useState('');
   const [jItems, setJItems] = useState<string[]>([]);
   const { busy, error, run } = useRun();
+  const branchEarly = useTooEarly(loc ? [] : [{ fieldId: 'br-loc', message: 'Choose a location.' }]);
+  const tplEarly = useTooEarly([...(tplName.trim() ? [] : [{ fieldId: 'tpl-name', message: 'Name the template.' }]), ...(tplBody.trim() ? [] : [{ fieldId: 'tpl-body', message: 'Write the text.' }])]);
+  const jEarly = useTooEarly([...(jName.trim() ? [] : [{ fieldId: 'jr-name', message: 'Name the journey.' }]), ...(jItems.length ? [] : [{ fieldId: 'jr-items', message: 'Choose what it orders.' }])]);
+  const cloneEarly = useTooEarly([...(cloneName.trim() ? [] : [{ fieldId: 'cl-name', message: 'Name the new desk.' }]), ...(cloneKey.length >= 2 ? [] : [{ fieldId: 'cl-key', message: 'Use 2 to 10 capital letters or digits.' }])]);
   useEffect(() => setForward(p.forwardTo), [p.forwardTo.join(',')]);
   /** The HR pack on an existing standard desk answers CONFIRM_RESTRICT first, with what changes; the admin chooses. */
   const addPack = async (restrict: boolean | undefined) => {
@@ -954,11 +1028,10 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
       const r = await p.onStarterPack(restrict);
       setPackAsk(null);
       const what = r.items || r.sla ? `Added ${r.items} catalogue item${r.items === 1 ? '' : 's'}${r.sla ? ' and response targets' : ''}.` : 'Nothing was missing.';
-      setPackDone(restrict ? `${what} The desk is restricted now.` : what);
+      toast({ tone: 'success', title: restrict ? `${what} The desk is restricted now.` : what });
     } catch (e) {
       const err = e as Error & { code?: string; body?: { changes?: string[] } };
       if (err.code === 'CONFIRM_RESTRICT' && err.body?.changes) {
-        setPackDone(null);
         setPackAsk(err.body.changes);
         return;
       }
@@ -972,7 +1045,7 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
       <Card title="Starter pack">
         <div className="yx-ops-stack" data-gap="sm">
           <p className="yx-chat__meta">Ready catalogue items, response targets and (for HR) private sensitive categories for this kind of desk. Only what is missing is added.</p>
-          {packDone && <InlineAlert tone="success">{packDone}</InlineAlert>}
+
           {packAsk ? (
             <InlineAlert tone="warning" title="This makes the desk restricted">
               <ul className="yx-esm-changes">
@@ -1024,9 +1097,11 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
             </div>
           ))}
           <div className="yx-ops-row">
-            <Select aria-label="Location" placeholder="Location" value={loc} onChange={setLoc} options={p.locations.map((l) => ({ value: l.id, label: l.name }))} />
+            <FormField id="br-loc" label="Location" hideLabel error={branchEarly.errorOf('br-loc')}>
+              <Select aria-label="Location" placeholder="Location" value={loc} onChange={setLoc} options={p.locations.map((l) => ({ value: l.id, label: l.name }))} />
+            </FormField>
             <Select aria-label="Team" placeholder="Team" value={team} onChange={setTeam} options={p.groups.map((g) => ({ value: g.id, label: g.name }))} />
-            <Button icon={Plus} disabled={!loc} loading={busy === 'branch'} onClick={() => void run('branch', () => p.onAddBranch({ locationId: loc!, ...(team ? { groupId: team } : {}) }))}>
+            <Button icon={Plus} loading={busy === 'branch'} onClick={() => !branchEarly.stop() && void run('branch', () => p.onAddBranch({ locationId: loc!, ...(team ? { groupId: team } : {}) }))}>
               Add site
             </Button>
           </div>
@@ -1042,15 +1117,15 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
                 </span>
               </div>
             ))}
-            <FormField label="Name" required>
+            <FormField id="tpl-name" label="Name" required error={tplEarly.errorOf('tpl-name')}>
               <TextField value={tplName} onChange={setTplName} maxLength={100} />
             </FormField>
-            <FormField label="Text" required helper={`Fields you can use: ${p.docFields.map((f) => `{{${f.key}}}`).join(', ')}, and {{answer.<question key>}}.`}>
+            <FormField id="tpl-body" error={tplEarly.errorOf('tpl-body')} label="Text" required helper={`Fields you can use: ${p.docFields.map((f) => `{{${f.key}}}`).join(', ')}, and {{answer.<question key>}}.`}>
               <TextArea rows={5} value={tplBody} onChange={setTplBody} />
             </FormField>
             <Segment label="Signature" value={tplSign} onChange={setTplSign} options={[{ value: 'yes', label: 'Needs a signature' }, { value: 'no', label: 'For information' }]} />
             <div className="yx-ops-row">
-              <Button disabled={!tplName.trim() || !tplBody.trim()} loading={busy === 'tpl'} onClick={() => void run('tpl', async () => {
+              <Button loading={busy === 'tpl'} onClick={() => !tplEarly.stop() && void run('tpl', async () => {
                 await p.onSaveTemplate(null, { name: tplName.trim(), body: tplBody, needsSignature: tplSign === 'yes' });
                 setTplName('');
                 setTplBody('');
@@ -1070,14 +1145,14 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
               </div>
             ))}
             <Segment label="When" value={jKind} onChange={setJKind} options={[{ value: 'join', label: 'Someone joins' }, { value: 'exit', label: 'Someone leaves' }]} />
-            <FormField label="Name" required>
+            <FormField id="jr-name" label="Name" required error={jEarly.errorOf('jr-name')}>
               <TextField value={jName} onChange={setJName} maxLength={100} />
             </FormField>
-            <FormField label="What it orders" required>
+            <FormField id="jr-items" label="What it orders" required error={jEarly.errorOf('jr-items')}>
               <MultiSelect value={jItems} onChange={setJItems} options={p.journeys.setup.items.map((i) => ({ value: i.id, label: i.name, description: i.journeyOnly ? 'Only for journeys' : undefined }))} />
             </FormField>
             <div className="yx-ops-row">
-              <Button disabled={!jName.trim() || !jItems.length} loading={busy === 'journey'} onClick={() => void run('journey', async () => {
+              <Button loading={busy === 'journey'} onClick={() => !jEarly.stop() && void run('journey', async () => {
                 await p.journeys!.onSave({ kind: jKind, name: jName.trim(), itemIds: jItems });
                 setJName('');
                 setJItems([]);
@@ -1093,15 +1168,16 @@ export function DeskOrgAdmin(p: DeskOrgAdminProps) {
           <div className="yx-ops-stack" data-gap="sm">
             <p className="yx-chat__meta">A new desk with the same set-up. Tickets, people and rules are not copied; catalogue items arrive as drafts.</p>
             <div className="yx-ops-row">
-              <FormField label="New desk name">
+              <FormField id="cl-name" label="New desk name" error={cloneEarly.errorOf('cl-name')}>
                 <TextField value={cloneName} onChange={setCloneName} maxLength={100} />
               </FormField>
-              <FormField label="Key" helper="2 to 10 capital letters or digits, like ITP.">
+              <FormField id="cl-key" label="Key" helper="2 to 10 capital letters or digits, like ITP." error={cloneEarly.errorOf('cl-key')}>
                 <TextField value={cloneKey} onChange={(v) => setCloneKey(v.toUpperCase())} maxLength={10} />
               </FormField>
             </div>
             <div className="yx-ops-row">
-              <Button disabled={!cloneName.trim() || cloneKey.length < 2} loading={busy === 'clone'} onClick={() => void run('clone', () => p.onClone({ name: cloneName.trim(), key: cloneKey }))}>
+              <Button loading={busy === 'clone'} onClick={() => !cloneEarly.stop() && void run('clone',
+ () => p.onClone({ name: cloneName.trim(), key: cloneKey }))}>
                 Copy desk
               </Button>
             </div>

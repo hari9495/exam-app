@@ -1,11 +1,8 @@
-import { TerminalCard } from '../components/TerminalCard';
+'use client';
 
+import { CandidateLinkScreen } from '@yukthix/ui/assessments';
+
+// Decision 2398 (step 4): the kit's "Your session has ended" screen.
 export default function CandidateSessionEndedPage() {
-  return (
-    <TerminalCard
-      tone="neutral"
-      title="Your session has ended"
-      body="This can happen if the exam was opened in another browser or tab, or if your session expired. If the exam is still open, use your invitation link again to continue."
-    />
-  );
+  return <CandidateLinkScreen live={{ state: 'ended' }} />;
 }

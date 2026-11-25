@@ -7,7 +7,7 @@ export interface Choice {
   label: string;
 }
 
-export type HiringJobStatus = 'draft' | 'pending_approval' | 'open' | 'closed';
+export type HiringJobStatus = 'draft' | 'pending_approval' | 'open' | 'on_hold' | 'closed';
 
 export interface HiringJob {
   id: string;
@@ -70,27 +70,6 @@ export interface PlanLine {
   filled: number;
 }
 
-export interface HeadcountPlan {
-  id: string;
-  departmentId: string;
-  department: string;
-  legalEntityId: string | null;
-  fyStart: number;
-  status: 'draft' | 'submitted' | 'approved' | 'rejected';
-  note: string | null;
-  version: number;
-  lines: PlanLine[];
-}
-
-export interface PlanInput {
-  departmentId: string;
-  legalEntityId: string | null;
-  fyStart: number;
-  note: string | null;
-  lines: { designationId: string; gradeId: string | null; locationId: string | null; count: number; budget: number | null }[];
-  version?: number;
-}
-
 /** A line of an approved plan a requisition can draw on. */
 export interface OpenPlanLine extends PlanLine {
   planId: string;
@@ -123,29 +102,8 @@ export interface CareersSettings {
   bannerUrl: string | null;
 }
 
-export interface CareersEntityPage {
-  slug: string;
-  headline: string | null;
-  intro: string | null;
-  primaryColor: string | null;
-}
-
-/** A legal entity and its own careers page, if it has one. */
-export interface CareersEntity {
-  id: string;
-  name: string;
-  page: CareersEntityPage | null;
-}
-
-export type ConsentPurpose = 'application' | 'talent_pool';
-
-export interface ConsentNotice {
-  id: string;
-  purpose: ConsentPurpose;
-  version: number;
-  text: string;
-  publishedAt: string;
-}
+// Company pages and privacy notices are Surfaces/Careers kit parts now (components/careers-admin).
+export type { CareersEntity, CareersEntityPage, ConsentNotice, ConsentPurpose } from '../../../components/careers-admin';
 
 export interface JobBoardRow {
   id: string;
@@ -166,23 +124,6 @@ export interface BoardSettings {
   provider: string;
   /** Only the fields typed in; blank secrets keep what is stored. */
   config?: Record<string, string>;
-}
-
-export interface RecruitingCostRow {
-  id: string;
-  source: string;
-  jobTitle: string | null;
-  amount: number;
-  currency: string;
-  createdAt: string;
-}
-
-export interface CostInput {
-  jobBoardId: string;
-  jobId: string | null;
-  amount: number;
-  currency: string;
-  note: string | null;
 }
 
 // ------------------------------------------------------------------------------------------ AT4: candidates
@@ -229,14 +170,32 @@ export interface UploadInviteResult {
   errors: { row: number; message: string }[];
 }
 
+/**
+ * HIR-05 ex-employee match (YX-ATS-33), as the API gives it to this viewer: 'flag' (may see the employee, no exit key),
+ * 'exit' (exit date and type) or 'rehire' (also rehire eligibility). exitCaseId and version only when they may clear it.
+ */
+export interface ExEmployeeView {
+  level: 'flag' | 'exit' | 'rehire';
+  exitDate: string | null;
+  exitType: string | null;
+  rehireEligible: boolean | null;
+  rehireReason: string | null;
+  exitCaseId: string | null;
+  version: number | null;
+}
+
+/** GET hiring/candidates/:id. A view-only holder (hiring manager) gets no contact details, messages, consents or retention. */
 export interface CandidateProfileView {
-  candidate: { id: string; name: string; email: string; phone: string | null; phoneE164: string | null; status: string; globalStage: GlobalStage; createdAt: string; erasedAt: string | null; emailOptedOut: boolean; smsOptedOut?: boolean; whatsappOptedOut?: boolean };
+  candidate: { id: string; name: string; email: string | null; phone: string | null; phoneE164: string | null; status: string; globalStage: GlobalStage; createdAt: string; erasedAt: string | null; emailOptedOut: boolean; smsOptedOut?: boolean; whatsappOptedOut?: boolean };
   legalHold: { at: string; reason: string | null } | null;
-  retention: { months: number; lastActivityAt: string; until: string | null; noticeAt: string | null };
+  retention: { months: number; lastActivityAt: string; until: string | null; noticeAt: string | null } | null;
+  exEmployee?: ExEmployeeView | null;
+  /** HIR-05 under 18 (rule set HIR.MINOR): the date of birth only for candidate key holders; null when not a minor. */
+  minor?: { dob: string | null; guardian: 'none' | 'pending' | 'given' | 'declined'; minAge: number } | null;
   resume: { hasFile: boolean; scan: string; parseStatus: string; title: string | null; summary: string | null; skills: string | null; years: number | null } | null;
   applications: { id: string; jobId: string; jobTitle: string; jobStatus: string; stage: string | null; status: string | null; appliedAt: string; closed: boolean; closedReason: string | null; source: string | null }[];
   assessments: { id: string; exam: string; status: string; invitedAt: string }[];
-  interviews: { id: string; status: string; createdAt: string }[];
+  interviews: { id: string; status: string; createdAt: string; entryId?: string; jobTitle?: string; when?: string | null }[];
   messages: { emails: { id: string; subject: string; status: string; createdAt: string }[]; sms: number; whatsapp: number };
   consents: { id: string; purpose: string; version: number; source: string; givenAt: string; withdrawnAt: string | null }[];
   lists: { id: string; name: string; kind: 'pool' | 'hotlist'; addedAt: string }[];
@@ -368,16 +327,24 @@ export interface ApplicationView {
   fit: { status: string | null; score: number | null; summary: string | null; stale: boolean } | null;
   tests: { examId: string; title: string; score: number | null; passFail: string | null; status: string }[];
   customFields: { label: string; value: string }[];
+  /** Careers answer 355: the pay the applicant gave when asked (rupees a year); only for holders of the offer-pay key. */
+  currentPay?: number | null;
+  /** Answer 474: a New York City applicant asked for another process than the automated tool (ISO time). */
+  alternativeRequestedAt?: string | null;
+  /** Answer 502: the New York City notice applies to this job (the recruiter may record a request for another process). */
+  toolNotice?: boolean;
+  /** Answer 531: a candidate added by hand who was never sent the New York City notice. */
+  toolNoticeNeeded?: boolean;
   checklist: { id: string; label: string; done: boolean }[];
   assignee: string | null;
-  interviews: { id: string; status: string; when: string | null; panel: string[]; location: string; meetingUrl: string | null; scorecards: ScorecardSummary | null }[];
   emails: { id: string; subject: string; status: string; at: string }[];
   sms: { id: string; body: string; status: string; at: string }[];
   whatsapp: { id: string; body: string; status: string; at: string }[];
   smsOptedOut: boolean;
   whatsappOptedOut: boolean;
   notes: { id: string; author: string; note: string | null; rating: number | null; at: string }[];
-  offers: { id: string; status: string; compensation: string; startDate: string; expiresAt: string }[];
+  /** HIR-09: the pay text only with the offer-pay key (null otherwise). */
+  offers: { id: string; status: string; compensation: string | null; startDate: string; expiresAt: string }[];
 }
 
 export interface ScheduleInput {
@@ -391,16 +358,6 @@ export interface ScheduleInput {
   timeZone: string;
   note: string | null;
   scorecardTemplateId: string | null;
-}
-
-export interface OfferInput {
-  compensation: string;
-  startDate: string;
-  expiresAt: string;
-  templateId: string | null;
-  subject: string;
-  body: string;
-  then: 'save' | 'send' | 'approval';
 }
 
 export interface ScorecardTemplateView {
@@ -421,13 +378,23 @@ export interface ScorecardTemplateInput {
 
 export type Recommendation = 'strong_no' | 'no' | 'yes' | 'strong_yes';
 
+/** HIR-07 answer 322: one append-only comment under a submitted scorecard. */
+export interface ScorecardCommentView {
+  id: string;
+  authorUserId: string;
+  author: string;
+  body: string;
+  at: string;
+  redacted: boolean;
+}
+
 export interface InterviewView {
   interview: { id: string; status: string; location: string; timeZone: string; meetingUrl: string | null; slots: { startsAt: string; endsAt: string; confirmed: boolean }[]; jobId: string; jobTitle: string; candidateId: string; candidateName: string };
   panel: { userId: string; name: string; submitted: boolean }[];
   resume: { title: string | null; summary: string | null; skills: string | null; hasFile: boolean } | null;
   template: { id: string; name: string; scaleMax: number; passBar: number; items: { id: string; label: string; guidance: string | null; weight: number }[] } | null;
   viewer: { isPanelist: boolean; isOverseer: boolean };
-  scorecards: { id: string; panelistUserId: string; panelistName: string; mine: boolean; status: 'draft' | 'submitted'; recommendation: Recommendation | null; summary: string | null; weightedScore: number | null; passes: boolean | null; submittedAt: string | null; ratings: { itemId: string; rating: number | null; notes: string | null }[] }[];
+  scorecards: { id: string; panelistUserId: string; panelistName: string; mine: boolean; status: 'draft' | 'submitted'; recommendation: Recommendation | null; summary: string | null; weightedScore: number | null; passes: boolean | null; submittedAt: string | null; ratings: { itemId: string; rating: number | null; notes: string | null }[]; comments?: ScorecardCommentView[] }[];
   result: (ScorecardSummary & { score: number | null }) | null;
   earlier: { interviewId: string; panelistName: string; recommendation: string | null; weightedScore: number; passes: boolean | null; summary: string | null }[];
 }
@@ -445,4 +412,208 @@ export interface MyInterviewRow {
   when: string | null;
   status: string;
   scorecard: 'not_started' | 'draft' | 'submitted' | 'none';
+  /** HIR-06: still missing the company's overdue hours after the interview ended. */
+  overdue?: boolean;
+}
+
+/** HIR-06: one interview on the calendar (GET hiring/interviews?from=&to=). */
+export interface InterviewRangeRow {
+  id: string;
+  candidateId: string;
+  candidateName: string;
+  jobTitle: string;
+  startsAt: string;
+  endsAt: string;
+  confirmed: boolean;
+  status: string;
+  /** The viewer is on the panel. */
+  mine: boolean;
+}
+
+/* ---------------- HIR-09 offer builder and HIR-29 conditions (live) ---------------- */
+
+/** One line of an offer's CTC, as the kit's CTC breakup table shows it (rupees a year and a month). */
+export interface OfferCtcLine {
+  key: string;
+  label: string;
+  kind: 'earning' | 'employer' | 'variable' | 'one-time';
+  annual: number;
+  monthly: number;
+}
+
+/** What the builder needs for one application (GET hiring/offers/setup). */
+export interface OfferSetupView {
+  entryId: string;
+  candidate: { id: string; name: string };
+  job: { id: string; title: string; locationId: string | null };
+  company: string;
+  grade: { id: string | null; name: string } | null;
+  band: { min: number; max: number } | null;
+  /** The company's salary structures the job's legal entity can use (value: the structure version). */
+  structures: Choice[];
+  locations: Choice[];
+  letters: { value: string; label: string; esign: boolean; subject: string; body: string }[];
+  defaultConditions: string[];
+  /** Offers answer 404: a new offer expires this many days after today unless changed (Settings › Hiring). */
+  expiryDays?: number;
+  /** The company's offer route for this sender (the sender is never an approver) and the step above the range. */
+  route: { steps: { name: string; approvers: string[] }[]; bandStep: { name: string; approvers: string[] } };
+}
+
+export interface OfferDraftInput {
+  templateVersionId: string;
+  annualCtc: number;
+  variablePay: number;
+  joiningBonus: number;
+  clawbackMonths: number | null;
+  locationId: string;
+  /** ISO dates. */
+  startDate: string;
+  expiresAt: string;
+  letterKind: 'offer' | 'loi';
+  templateId: string | null;
+  addConditions: boolean;
+}
+
+export interface OfferPreview {
+  lines: OfferCtcLine[];
+  monthlyGross: number;
+  bandPosition: 'within' | 'above' | 'below' | 'none';
+  bandText: string;
+  extraApproval: boolean;
+  warnings: string[];
+}
+
+export interface LiveOfferBuilder {
+  state: 'loading' | 'ready' | 'error' | 'denied' | 'not-found';
+  onRetry: () => void;
+  setup: OfferSetupView | null;
+  /** A revision: the version it starts from (its pay and terms fill the form). */
+  previous?: { version: number; ctc: number; grade: string; input: OfferDraftInput } | null;
+  /** The CTC lines from the company's salary structure (Pay's breakup); nothing is kept. */
+  onPreview: (input: Pick<OfferDraftInput, 'templateVersionId' | 'annualCtc' | 'variablePay' | 'joiningBonus' | 'clawbackMonths' | 'locationId'>) => Promise<OfferPreview>;
+  /** Saves the version and sends it on (for approval, or to the candidate); resolves with the toast text. */
+  onFinish: (input: OfferDraftInput) => Promise<string>;
+  /** Saves the version as a draft and leaves. */
+  onSaveDraft: (input: OfferDraftInput) => Promise<void>;
+  now: Date;
+}
+
+export type OfferApiStatus = 'draft' | 'pending_approval' | 'approved' | 'sent' | 'accepted' | 'declined' | 'withdrawn';
+
+/** One offer as the record shows it (GET hiring/offers/:id). Pay fields only with the offer-pay key. */
+export interface OfferRecordView {
+  id: string;
+  status: OfferApiStatus;
+  entryId: string;
+  candidate: { id: string; name: string };
+  job: { id: string; title: string };
+  grade: string | null;
+  location: string | null;
+  currentVersion: number;
+  startDate: string;
+  expiresAt: string;
+  esign: boolean;
+  canSeePay: boolean;
+  templateId: string | null;
+  current: { version: number; letterKind: 'offer' | 'loi'; templateVersionId: string; locationId: string | null; bandPosition: string; bandText: string; extraApproval: boolean; annualCtc?: number; variablePay?: number; joiningBonus?: number; clawbackMonths?: number | null; lines?: OfferCtcLine[] } | null;
+  versions: { version: number; current: boolean; at: string; by: string | null; note: string | null; needsApproval: boolean; annualCtc: number | null; text?: string | null }[];
+  conditions: { id: string; name: string; dueOn: string; status: 'open' | 'met' | 'waived'; reason: string | null }[];
+  approval: { requestId: string; status: string; steps: { name: string; state: string; approvers: string[] }[]; myTaskId: string | null } | null;
+  activity: { id: string; actor: string; action: string; at: string }[];
+  joiner: { id: string; status: string } | null;
+  /** Answer 377: the sealed copy of an e-signed acceptance; missing = not made yet (HR makes it again); null = none expected. */
+  sealedCopy?: 'made' | 'missing' | null;
+}
+
+export interface LiveOfferRecord {
+  state: 'loading' | 'ready' | 'error' | 'denied' | 'not-found';
+  onRetry: () => void;
+  offer: OfferRecordView | null;
+  now: Date;
+  onBack: () => void;
+  onRevise: () => void;
+  /** Each resolves when done; the screen shows the toast. */
+  onSubmit: () => Promise<string>;
+  onSend: () => Promise<void>;
+  onWithdraw: () => Promise<void>;
+  onCancelApproval: () => Promise<void>;
+  onLetter: () => Promise<void>;
+  /** Answer 377: download the sealed copy, or make it again when it is missing. */
+  onSealedCopy?: () => Promise<void>;
+  onMakeSealedCopy?: () => Promise<void>;
+  /** Answer 336: the company's reminder email (answer the offer, or what is still due); resolves with the toast text. */
+  onRemind: () => Promise<string>;
+  /** People › Ready to onboard, where HR adds the joiner from the accepted offer (PPL-12, unchanged). */
+  onCreateEmployee: () => void;
+  onAddCondition: (name: string, dueOn: string) => Promise<void>;
+  onMet: (conditionId: string) => Promise<void>;
+  onWaive: (conditionId: string, reason: string) => Promise<void>;
+}
+
+/* ---------------- HIR-28 bulk offers (live) ---------------- */
+
+/** GET hiring/offer-batches/setup: the job's facts for a batch, and the candidates who can get an offer now. */
+export interface BulkOfferSetup {
+  job: { id: string; title: string; locationId: string | null };
+  company: string;
+  grade: string | null;
+  band: { min: number; max: number } | null;
+  structures: Choice[];
+  /** legalEntityId: answer 401 (a joiner batch is for one legal entity). */
+  locations: (Choice & { legalEntityId?: string })[];
+  /** Answer 401: open People joiner batches (offered when on the chosen joining day and the location's entity). */
+  joinerBatches?: { value: string; label: string; joiningOn: string; legalEntityId: string }[];
+  letters: { value: string; label: string; esign: boolean; subject: string; body: string }[];
+  defaultConditions: string[];
+  expiryDays: number;
+  /** Rows beyond the free places on the job's plan line are held ('hold'), or the check is off. free: null = not checked. */
+  plan: { check: 'hold' | 'off'; linked: boolean; free: number | null };
+  route: { steps: { name: string; approvers: string[] }[]; bandStep: { name: string; approvers: string[] } };
+  candidates: { entryId: string; name: string; email: string }[];
+}
+
+export interface BulkOfferInput {
+  templateVersionId: string;
+  templateId: string | null;
+  letterKind: 'offer' | 'loi';
+  /** ISO date. */
+  startDate: string;
+  locationId: string;
+  addConditions: boolean;
+  /** Answer 401: the People joiner batch the accepted offers join. */
+  joinerBatchId?: string;
+  rows: { entryId: string; annualCtc: number }[];
+}
+
+export type BulkRowStatus = 'sent' | 'pending_approval' | 'approved' | 'draft' | 'held' | 'skipped' | 'failed';
+
+/** GET hiring/offer-batches/:id: each row's result and its offer's status now (amounts only with the offer-pay key). */
+export interface BulkBatchView {
+  id: string;
+  status: 'running' | 'done';
+  job: { id: string; title: string };
+  startDate: string;
+  expiresAt: string;
+  canSeePay: boolean;
+  /** Answer 405: rows done of all while it runs in the background. */
+  progress?: { done: number; total: number };
+  /** Answer 401: the People joiner batch its accepted offers join. */
+  joinerBatch?: { id: string; name: string } | null;
+  rows: { entryId: string; name: string; annualCtc: number | null; status: BulkRowStatus; offerId: string | null; reason: string | null; offerStatus: string | null; esign: boolean; band: string | null }[];
+}
+
+export interface LiveBulkOffers {
+  state: 'loading' | 'ready' | 'error' | 'denied' | 'not-found';
+  onRetry: () => void;
+  /** The batch builder; null on the sent page. */
+  setup: BulkOfferSetup | null;
+  /** The sent page: the batch and each row's result. */
+  batch?: BulkBatchView | null;
+  /** Makes the batch and starts it in the background (answer 405); the page then opens the batch and shows its progress. */
+  onSend: (input: BulkOfferInput) => Promise<void>;
+  onOpenOffer: (offerId: string) => void;
+  now: Date;
+  /** Offers answer 402: the candidates ticked on the pipeline board's Bulk actions (the rest start unticked). */
+  selected?: string[];
 }

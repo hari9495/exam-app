@@ -19,7 +19,7 @@ import { Dialog } from '../../components/overlay';
 import { PageBanner } from '../../components/notify';
 import { StatCard } from '../../components/charts';
 import { formatDate } from '../../lib/format';
-import { Actions, CardGrid, ClockPanel, Confidential, Facts, MembersList, OpsDesk, StatusTrail, Workspace, type CaseMember } from './ops-kit';
+import { Actions, CardGrid, ClockPanel, Confidential, Facts, MembersList, OpsDesk, StatusTrail, Workspace, useSay, type CaseMember } from './ops-kit';
 import { addDays, icIssues, poshClock, poshFilingWindow, type IcMember } from './ops-rules';
 import { RestrictedNotFound } from './cases';
 import type { Device } from './helpdesk';
@@ -238,6 +238,8 @@ export function PoshComplaintScreen({ device = 'desk', today, incidentDate = nul
   const [conc, setConc] = useState(false);
   const [place, setPlace] = useState<string | null>('blr');
   const windowState = incident ? poshFilingWindow(incident, today) : null;
+  const { say } = useSay();
+  const file = () => say(windowState === 'out-of-window' && "This is more than 6 months after the incident, so the committee can't take it as a POSH complaint. You can still raise a grievance.");
   const body = filed ? (
     <div className="yx-ops-stack">
       <InlineAlert tone="success" title="Your complaint is with the Internal Committee">
@@ -310,7 +312,7 @@ export function PoshComplaintScreen({ device = 'desk', today, incidentDate = nul
         <p className="yx-ops-muted">Only committee members on your case see this. Every view is logged.</p>
         {body}
         {!filed && (
-          <Button variant="primary" icon={Send} fullWidth disabled={windowState === 'out-of-window'}>
+          <Button variant="primary" icon={Send} fullWidth onClick={file}>
             File complaint
           </Button>
         )}
@@ -324,7 +326,7 @@ export function PoshComplaintScreen({ device = 'desk', today, incidentDate = nul
           !filed && (
             <Actions end>
               <Button>Save draft</Button>
-              <Button variant="primary" icon={Send} disabled={windowState === 'out-of-window'}>
+              <Button variant="primary" icon={Send} onClick={file}>
                 File complaint
               </Button>
             </Actions>

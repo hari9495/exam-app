@@ -312,6 +312,14 @@ describe('Time and leave batch 1', () => {
   });
 
   describe('delegation while the approver is away (P03 Q3) and the Service Desk seam', () => {
+    it("no manager to approve: HR gets the leave, and the HR Admins' notice names HR (not a desk's team leads)", async () => {
+      const res = (await api('boss', 'post', '/time/me/leave').send({ leaveTypeId: ids.CL, from: d(40), to: d(40), reason: 'Personal' }).expect(201)).body;
+      const notice = await inA((tx) => tx.userNotification.findFirst({ where: { recipientUserId: users.hrAdmin, type: 'workflow.approval.no_approver' }, orderBy: { createdAt: 'desc' } }));
+      expect(notice?.contextText).toMatch(/so HR got it\. Check the person's manager on their record/);
+      expect(notice?.contextText).not.toMatch(/team leads|cost-centre/);
+      expect(res).toBeTruthy();
+    });
+
     it('approved leave of the manager hands their approvals to their own manager, and the desk sees them on leave', async () => {
       const pending = (await inbox('mgr')).length;
       expect(pending).toBeGreaterThan(0);
@@ -344,17 +352,20 @@ describe('Time and leave batch 1', () => {
       expect(me.next).toBe('out');
       expect(me.fences).toEqual([{ name: 'Bengaluru', lat: 12.9716, lng: 77.5946, radiusM: 150 }]);
       // Day cards: the manager in scope, never the peer or the other company.
-      await api('mgr', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(200);
+      const card = (await api('mgr', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(200)).body;
+      // The day's shift goes with the card (shift bar and late mark), or null on a weekly off.
+      expect(card.shift === null || (typeof card.shift.name === 'string' && typeof card.shift.start === 'number' && typeof card.shift.grace === 'number')).toBe(true);
       await api('peer', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(404);
       await api('empB', 'get', `/time/people/${ids.empEmp}/days/${today}`).expect(404);
     });
 
     it('a fix goes to the manager; beyond the monthly limit HR approves too; approval re-evaluates the day', async () => {
       await api('emp', 'post', '/time/me/regularise').send({ on: d(1), kind: 'full_day', reason: 'x' }).expect(400);
-      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'missed_out', reason: 'Forgot' }).expect(400);
+      expect((await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Was there' }).expect(400)).body.message).toEqual(['Please say why, in at least 10 characters, so your manager can check it.']);
+      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'missed_out', reason: 'Forgot to clock out' }).expect(400);
       const r = (await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Client visit all day' }).expect(201)).body;
       expect(r.hrStep).toBe(false);
-      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Again' }).expect(409);
+      await api('emp', 'post', '/time/me/regularise').send({ on: d(-1), kind: 'full_day', reason: 'Asking again for this day' }).expect(409);
       const t = (await inbox('boss')).find((x) => x.title.includes('fix'))!;
       await decide('boss', t.taskId, 'approve').expect(200);
       const day = await inA((tx) => tx.attendanceDay.findFirst({ where: { organizationId: org.A.id, employeeId: ids.empEmp, workOn: new Date(`${d(-1)}T00:00:00Z`) } }));
@@ -370,6 +381,142 @@ describe('Time and leave batch 1', () => {
       await api('empB', 'post', `/time/me/holidays/${ids.optional}/choose`).expect(404);
       // A chosen optional holiday is a holiday in the day count.
       expect((await api('emp', 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.CL, from: d(25), to: d(25) }).expect(200)).body.total).toBe(0);
+    });
+  });
+
+  // ------------------------------------------------------------------------------------------ small items (30 Oct 2026)
+  describe('TIM-26 calendars and TIM-28 policy order', () => {
+    const next = String(Number(today.slice(0, 4)) + 1);
+    const setup = async () => (await api('hrAdmin', 'get', '/time/setup').expect(200)).body;
+    const calOf = async () => (await setup()).calendars.find((c: { id: string }) => c.id === ids.cal);
+
+    it('calendar rules: weekly-off rule and the move rule are saved; bad values and other roles refused', async () => {
+      await api('hrAdmin', 'put', `/time/setup/calendars/${ids.cal}`).send({ name: 'Bengaluru', locationId: ids.locA, onWeeklyOff: 'sometimes' }).expect(400);
+      await api('hrExec', 'put', `/time/setup/calendars/${ids.cal}`).send({ name: 'Bengaluru', locationId: ids.locA, onWeeklyOff: 'substitute' }).expect(403);
+      await api('adminB', 'put', `/time/setup/calendars/${ids.cal}`).send({ name: 'Bengaluru', locationId: ids.locA, onWeeklyOff: 'substitute' }).expect(404);
+      await api('hrAdmin', 'put', `/time/setup/calendars/${ids.cal}`).send({ name: 'Bengaluru', locationId: ids.locA, optionalLimit: 1, onWeeklyOff: 'none', onMove: 'reset' }).expect(200);
+      expect(await calOf()).toEqual(expect.objectContaining({ onWeeklyOff: 'none', onMove: 'reset' }));
+      const row = await inA((tx) => tx.setting.findFirst({ where: { key: 'leave.optional_holiday.prorate_on_move', scopeType: 'location', scopeId: ids.locA } }));
+      expect(row!.value).toBe('no');
+      await api('hrAdmin', 'put', `/time/setup/calendars/${ids.cal}`).send({ name: 'Bengaluru', locationId: ids.locA, optionalLimit: 1, onMove: 'share' }).expect(200);
+      expect((await calOf()).onMove).toBe('share');
+    });
+
+    it('a holiday on a weekly off gives the next working day off with the substitute rule only', async () => {
+      // d(9) falls on the location's weekly off (the weekday of d(2)); its substitute is d(10).
+      const h = (await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/holidays`).send({ on: d(9), name: 'Weekly-off festival', kind: 'national' }).expect(201)).body.id as string;
+      // A preview with no days to count earlier in this suite used to break the next previews (a cached array type); fixed in plan().
+      const total = async () => (await api('emp', 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.CL, from: d(10), to: d(10) }).expect(200)).body.total;
+      expect(await total()).toBe(1);
+      await api('hrAdmin', 'put', `/time/setup/calendars/${ids.cal}`).send({ name: 'Bengaluru', locationId: ids.locA, optionalLimit: 1, onWeeklyOff: 'substitute' }).expect(200);
+      expect(await total()).toBe(0);
+      await api('hrAdmin', 'put', `/time/setup/calendars/${ids.cal}`).send({ name: 'Bengaluru', locationId: ids.locA, optionalLimit: 1, onWeeklyOff: 'none' }).expect(200);
+      await api('hrAdmin', 'post', `/time/setup/holidays/${h}/remove`).expect(200);
+    });
+
+    it('change date: a future holiday moves in its year; past, other year, clashes and other companies refused', async () => {
+      const h = (await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/holidays`).send({ on: d(13), name: 'Movable day', kind: 'festival' }).expect(201)).body.id as string;
+      await api('hrAdmin', 'post', `/time/setup/holidays/${h}/date`).send({ on: d(-1) }).expect(400);
+      await api('hrAdmin', 'post', `/time/setup/holidays/${h}/date`).send({ on: `${next}-01-15` }).expect(400);
+      await api('hrAdmin', 'post', `/time/setup/holidays/${h}/date`).send({ on: d(12) }).expect(409);
+      await api('hrAdmin', 'post', `/time/setup/holidays/${h}/date`).send({ on: 'tomorrow' }).expect(400);
+      await api('adminB', 'post', `/time/setup/holidays/${h}/date`).send({ on: d(14) }).expect(404);
+      await api('hrExec', 'post', `/time/setup/holidays/${h}/date`).send({ on: d(14) }).expect(403);
+      expect((await api('hrAdmin', 'post', `/time/setup/holidays/${h}/date`).send({ on: d(14) }).expect(200)).body).toEqual(expect.objectContaining({ id: h, on: d(14) }));
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'holiday.date_changed', entityId: h } }))).toBe(1);
+      await api('hrAdmin', 'post', `/time/setup/holidays/${h}/remove`).expect(200);
+    });
+
+    it('clone to next year: a draft with festival dates to confirm; publish only after; drafts never reach employees', async () => {
+      await api('hrExec', 'post', `/time/setup/calendars/${ids.cal}/clone`).expect(403);
+      await api('adminB', 'post', `/time/setup/calendars/${ids.cal}/clone`).expect(404);
+      // A feed change waiting for this calendar blocks the clone.
+      const feed = await inA((tx) => tx.holidayFeed.create({ data: { organizationId: org.A.id, state: 'IN-KA', provider: 'dev-fake' } }));
+      const change = await inA((tx) => tx.holidayFeedChange.create({ data: { organizationId: org.A.id, feedId: feed.id, calendarId: ids.cal, action: 'add', holidayOn: new Date(`${d(40)}T00:00:00Z`), name: 'Feed day' } }));
+      expect((await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/clone`).expect(409)).body.message).toMatch(/^Review the holiday feed change first/);
+      await inA((tx) => tx.holidayFeedChange.update({ where: { id: change.id }, data: { status: 'ignored' } }));
+      const res = (await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/clone`).expect(201)).body;
+      expect(res).toEqual(expect.objectContaining({ year: Number(next), toConfirm: 3 }));
+      await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/clone`).expect(409);
+      const cal = await calOf();
+      const drafts = cal.drafts.filter((x: { on: string }) => x.on.startsWith(next));
+      expect(drafts.filter((x: { confirm: boolean }) => x.confirm)).toHaveLength(3);
+      expect(cal.holidays.some((x: { on: string }) => x.on.startsWith(next))).toBe(false);
+      expect((await api('emp', 'get', '/time/me/leave').expect(200)).body.holidays.list.some((x: { on: string }) => x.on.startsWith(next))).toBe(false);
+      expect((await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/publish`).send({ year: Number(next) }).expect(409)).body.message).toBe('Confirm the 3 festival dates first.');
+      const [first, second, third] = drafts.filter((x: { confirm: boolean }) => x.confirm);
+      await api('hrAdmin', 'post', `/time/setup/holiday-drafts/${first.id}/confirm`).send({ on: today }).expect(400);
+      await api('hrAdmin', 'post', `/time/setup/holiday-drafts/${first.id}/confirm`).send({ on: second.on }).expect(409);
+      await api('adminB', 'post', `/time/setup/holiday-drafts/${first.id}/confirm`).send({ on: first.on }).expect(404);
+      for (const x of [first, second]) await api('hrAdmin', 'post', `/time/setup/holiday-drafts/${x.id}/confirm`).send({ on: x.on }).expect(200);
+      await api('hrAdmin', 'post', `/time/setup/holiday-drafts/${third.id}/remove`).expect(200);
+      await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/publish`).send({ year: 1999 }).expect(400);
+      const pub = (await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/publish`).send({ year: Number(next) }).expect(200)).body;
+      expect(pub.added).toBe(drafts.length - 1);
+      const after = await calOf();
+      expect(after.drafts).toEqual([]);
+      expect(after.publishedAt).toEqual(expect.any(String));
+      expect(after.holidays.filter((x: { on: string }) => x.on.startsWith(next))).toHaveLength(drafts.length - 1);
+      await api('hrAdmin', 'post', `/time/setup/calendars/${ids.cal}/publish`).send({ year: Number(next) }).expect(404);
+      const actions = (await inA((tx) => tx.auditLog.findMany({ where: { entityId: ids.cal }, select: { action: true } }))).map((a) => a.action);
+      expect(actions).toEqual(expect.arrayContaining(['holiday.calendar.cloned', 'holiday.draft.confirmed', 'holiday.draft.removed', 'holiday.calendar.published']));
+    });
+
+    it('state template: a location without holidays starts from its state as a draft; no template for an unknown state', async () => {
+      const [ka, zz] = await inA(async (tx) => {
+        const o = { organizationId: org.A.id, legalEntityId: ids.entityA, address: {}, country: 'IN', timezone: 'Asia/Kolkata' };
+        return [(await tx.location.create({ data: { ...o, name: 'Mysuru', code: 'MYS', state: 'IN-KA' } })).id, (await tx.location.create({ data: { ...o, name: 'Nowhere', code: 'NWH', state: 'IN-ZZ' } })).id];
+      });
+      expect((await setup()).templates).toEqual(expect.objectContaining({ [ka]: 'Karnataka' }));
+      await api('hrExec', 'post', '/time/setup/calendars/template').send({ locationId: ka }).expect(403);
+      await api('hrAdmin', 'post', '/time/setup/calendars/template').send({ locationId: 'x' }).expect(400);
+      await api('adminB', 'post', '/time/setup/calendars/template').send({ locationId: ka }).expect(404);
+      expect((await api('hrAdmin', 'post', '/time/setup/calendars/template').send({ locationId: zz }).expect(409)).body.message).toBe('There is no state template for Nowhere. Add its holidays one by one.');
+      await api('hrAdmin', 'post', '/time/setup/calendars/template').send({ locationId: ids.locA }).expect(409);
+      // The dev-fake feed has Kannada Rajyotsava (1 Nov) as the only Karnataka day after the end of October.
+      const res = await api('hrAdmin', 'post', '/time/setup/calendars/template').send({ locationId: ka });
+      if (today <= `${today.slice(0, 4)}-11-01`) {
+        expect(res.status).toBe(201);
+        const cal = (await setup()).calendars.find((c: { locationId: string }) => c.locationId === ka);
+        expect(cal.drafts).toEqual([expect.objectContaining({ name: 'Kannada Rajyotsava', kind: 'state', source: 'template', confirm: false })]);
+        expect(cal.holidays).toEqual([]);
+        await api('hrAdmin', 'post', '/time/setup/calendars/template').send({ locationId: ka }).expect(409);
+        await api('hrAdmin', 'post', `/time/setup/calendars/${cal.id}/publish`).send({ year: Number(today.slice(0, 4)) }).expect(200);
+        expect((await setup()).calendars.find((c: { locationId: string }) => c.locationId === ka).holidays).toHaveLength(1);
+      } else {
+        expect(res.status).toBe(409);
+      }
+    });
+
+    it('policy order: people per policy; the order decides who gets which policy; dates and lists checked', async () => {
+      const before = await setup();
+      expect(before.coverage[ids.policy].people).toBeGreaterThan(0);
+      expect(before.order).toEqual({ current: null, currentFrom: null, upcoming: null });
+      const interns = (await api('hrAdmin', 'post', '/time/setup/policies').send({ name: 'Interns' }).expect(201)).body.id as string;
+      await api('hrAdmin', 'post', `/time/setup/policies/${interns}/versions`).send({ validFrom: today, lines: [{ leaveTypeId: ids.CL, annualDays: 2, frequency: 'yearly', proRata: false, rounding: 0.5, carryForwardMax: 0 }] }).expect(201);
+      await api('hrAdmin', 'post', `/time/setup/policies/${interns}/assign`).send({ scopeType: 'location', scopeId: ids.locA, validFrom: today }).expect(201);
+      // The location is more specific than the entity: everyone at it moves to Interns.
+      const mid = await setup();
+      expect(mid.coverage[interns].people).toBe(before.coverage[ids.policy].people);
+      expect(mid.coverage[ids.policy].people).toBe(0);
+      await api('hrExec', 'post', '/time/setup/policy-order').send({ policyIds: [ids.policy, interns], validFrom: today }).expect(403);
+      await api('hrAdmin', 'post', '/time/setup/policy-order').send({ policyIds: [ids.policy], validFrom: today }).expect(400);
+      await api('hrAdmin', 'post', '/time/setup/policy-order').send({ policyIds: [ids.policy, ids.policy], validFrom: today }).expect(400);
+      await api('hrAdmin', 'post', '/time/setup/policy-order').send({ policyIds: [ids.policy, interns], validFrom: d(-1) }).expect(400);
+      await api('adminB', 'post', '/time/setup/policy-order').send({ policyIds: [ids.policy, interns], validFrom: today }).expect(400);
+      await api('hrAdmin', 'post', '/time/setup/policy-order').send({ policyIds: [ids.policy, interns], validFrom: d(30) }).expect(201);
+      await api('hrAdmin', 'post', '/time/setup/policy-order').send({ policyIds: [interns, ids.policy], validFrom: d(30) }).expect(201);
+      expect((await setup()).order.upcoming).toEqual({ validFrom: d(30), policyIds: [interns, ids.policy] });
+      await api('hrAdmin', 'post', '/time/setup/policy-order').send({ policyIds: [ids.policy, interns], validFrom: today }).expect(201);
+      await api('hrAdmin', 'post', '/time/setup/policy-order').send({ policyIds: [interns, ids.policy], validFrom: today }).expect(409);
+      const after = await setup();
+      expect(after.order.current).toEqual([ids.policy, interns]);
+      expect(after.coverage[ids.policy].people).toBe(before.coverage[ids.policy].people);
+      expect(after.coverage[interns].people).toBe(0);
+      expect(after.uncovered.count).toBe(0);
+      // The person's balance follows the order too (Karnataka staff gives earned leave).
+      expect((await api('emp', 'get', '/time/me/leave').expect(200)).body.balances.some((b: { code: string }) => b.code === 'EL')).toBe(true);
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'leave.policy.order_saved' } }))).toBe(3);
     });
   });
 });

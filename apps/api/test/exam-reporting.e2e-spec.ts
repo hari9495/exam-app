@@ -6,6 +6,7 @@ import { bootAdminApp, bootRuntimeApp } from './dual-app';
 import { PrismaService } from '@exam-platform/shared';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import { asApproved } from './fixtures/approved-question';
 
 describe('Exam Reporting HTTP flow', () => {
   let adminApp: INestApplication;
@@ -54,7 +55,8 @@ describe('Exam Reporting HTTP flow', () => {
       Promise.all([
         tx.user.create({ data: { organizationId: orgId, email: 'recruiter@ci-reporting.test', passwordHash: recruiterHash, role: 'recruiter' } }),
         tx.user.create({ data: { organizationId: orgId, email: 'viewonly@ci-reporting.test', passwordHash: viewOnlyHash, role: 'recruiter', permissionProfileId: viewOnlyProfile.id } }),
-        tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-reporting.test', passwordHash: panelHash, role: 'panel' } }),
+        // Answer 511 took results:view from the panel role; the older hiring_manager role still reads results (and writes no tests).
+        tx.user.create({ data: { organizationId: orgId, email: 'panel@ci-reporting.test', passwordHash: panelHash, role: 'hiring_manager' } }),
       ]),
     );
 
@@ -93,14 +95,14 @@ describe('Exam Reporting HTTP flow', () => {
       .expect(201);
     const sectionId = sectionResponse.body.id;
 
-    const question = await request(adminHttp)
+    const question = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'single_mcq', text: 'What is 2+2?', difficulty: 'easy', marks: 10,
         options: [{ text: '4', isCorrect: true }, { text: '5', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     questionId = question.body.id;
     correctOptionId = question.body.options.find((o: { text: string }) => o.text === '4').id;
     wrongOptionId = question.body.options.find((o: { text: string }) => o.text === '5').id;
@@ -341,7 +343,10 @@ describe('Exam Reporting HTTP flow', () => {
     expect(detailResponse.body.sections[0].questions[0]).toMatchObject({
       questionId, questionText: 'What is 2+2?', isCorrect: true, marksAwarded: 10,
     });
-    expect(detailResponse.body.sections[0].questions[0].correctOptionIds).toEqual([correctOptionId]);
+    // Security fix: a reader of results gets no answer key; a test writer (the recruiter) still does.
+    expect(detailResponse.body.sections[0].questions[0].correctOptionIds).toEqual([]);
+    const writerView = await request(adminHttp).get(`/api/v1/exams/${examId}/candidates/${aliceCandidateId}/report`).set('Authorization', `Bearer ${recruiterAccessToken}`).expect(200);
+    expect(writerView.body.sections[0].questions[0].correctOptionIds).toEqual([correctOptionId]);
   });
 
   it('returns 404 for a candidate not invited to the exam', async () => {

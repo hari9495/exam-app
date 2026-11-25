@@ -107,9 +107,13 @@ describe('Recruitment batch AT5', () => {
   });
 
   it('scorecard templates: weights, a pass bar within the scale, and from the competency library (AT-5.03)', async () => {
-    await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'Engineer round 1', scaleMax: 4, passBar: 5, items: [{ label: 'Safety', weight: 1 }] }).expect(400);
-    await api('p1', 'post', '/hiring/scorecard-templates').send({ name: 'x', scaleMax: 4, passBar: 2, items: [{ label: 'x', weight: 1 }] }).expect(403);
-    const t = (await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'Engineer round 1', scaleMax: 4, passBar: 2.5, items: [{ label: 'Plant safety', weight: 2 }, { label: 'Communication', weight: 1, guidance: 'Explains clearly' }] }).expect(201)).body;
+    await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'Engineer round 1', scaleMax: 4, passBar: 5, items: [{ label: 'Safety', weight: 100 }] }).expect(400);
+    await api('p1', 'post', '/hiring/scorecard-templates').send({ name: 'x', scaleMax: 4, passBar: 2, items: [{ label: 'x', weight: 100 }] }).expect(403);
+    // Answer 345: weights are whole per cent adding up to 100.
+    expect((await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'x', scaleMax: 4, passBar: 2, items: [{ label: 'a', weight: 60 }, { label: 'b', weight: 30 }] }).expect(400)).body.message).toBe('The weights must add up to 100 per cent (now 90).');
+    await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'x', scaleMax: 4, passBar: 2, items: [{ label: 'a', weight: 101 }] }).expect(400);
+    await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'x', scaleMax: 4, passBar: 2, items: [{ label: 'a', weight: 50.5 }, { label: 'b', weight: 49.5 }] }).expect(400);
+    const t = (await api('admin', 'post', '/hiring/scorecard-templates').send({ name: 'Engineer round 1', scaleMax: 4, passBar: 2.5, items: [{ label: 'Plant safety', weight: 75 }, { label: 'Communication', weight: 25, guidance: 'Explains clearly' }] }).expect(201)).body;
     ids.template = t.id;
     ids.itemA = t.items[0].id;
     ids.itemB = t.items[1].id;
@@ -126,7 +130,7 @@ describe('Recruitment batch AT5', () => {
     await api('p1', 'post', `/hiring/interviews/${ids.iv}/scorecard/submit`).send({ ratings: [{ itemId: ids.itemA, rating: 4 }], recommendation: 'yes' }).expect(400);
     await api('p1', 'put', `/hiring/interviews/${ids.iv}/scorecard`).send({ ratings: [{ itemId: ids.itemA, rating: 5 }] }).expect(400);
     const s1 = (await api('p1', 'post', `/hiring/interviews/${ids.iv}/scorecard/submit`).send({ ratings: [{ itemId: ids.itemA, rating: 4, notes: 'Knows the plant' }, { itemId: ids.itemB, rating: 1 }], recommendation: 'yes', summary: 'Strong on safety' }).expect(200)).body;
-    expect(s1).toMatchObject({ status: 'submitted', weightedScore: 3, passes: true });
+    expect(s1).toMatchObject({ status: 'submitted', weightedScore: 3.25, passes: true });
     await api('p1', 'put', `/hiring/interviews/${ids.iv}/scorecard`).send({ ratings: [{ itemId: ids.itemB, rating: 4 }] }).expect(409);
     await expect(inOrg((tx) => tx.$executeRaw`UPDATE scorecards SET summary = 'changed' WHERE interview_id = ${ids.iv}::uuid`)).rejects.toThrow(/cannot be changed/);
 
@@ -143,7 +147,7 @@ describe('Recruitment batch AT5', () => {
     await api('p2', 'post', `/hiring/interviews/${ids.iv}/scorecard/submit`).send({ ratings: [{ itemId: ids.itemA, rating: 2 }, { itemId: ids.itemB, rating: 2 }], recommendation: 'no' }).expect(200);
     const after = (await api('p2', 'get', `/hiring/interviews/${ids.iv}`).expect(200)).body;
     expect(after.scorecards).toHaveLength(2);
-    expect(after.result).toMatchObject({ complete: true, score: 2.5, passes: true });
+    expect(after.result).toMatchObject({ complete: true, score: 2.63, passes: true });
     const row = (await api('admin', 'get', `/hiring/jobs/${ids.job}/board`).expect(200)).body.columns;
     const card = Object.values(row).flat().find((r) => (r as { entryId: string }).entryId === ids.c1) as { scorecards: { passes: boolean }; stageEnteredAt: string };
     expect(card.scorecards).toMatchObject({ complete: true, passes: true });

@@ -1,14 +1,29 @@
 // Ops screens kit: reusable pieces for Helpdesk, Compliance, Expenses, Contract labour and Visitors screens.
 // Token-only CSS in ops.css. Pure rules live in ops-rules.ts.
 import { useState, type ReactNode } from 'react';
-import { AlertTriangle, Camera, Check, CircleDashed, Clock, Copy, Download, Lock, UserRound, X } from 'lucide-react';
+import { AlertTriangle, Camera, Check, CircleDashed, Clock, Copy, Download, FileText, Lock, UserRound, X } from 'lucide-react';
 import { DesktopFrame, type AreaId, type PanelSection } from '../_kit/frames';
 import { Badge, type BadgeTone } from '../../components/display';
 import { Button } from '../../components/button';
 import { Icon, Text } from '../../components/foundations';
-import { formatDate, formatINR } from '../../lib/format';
+import { useToast } from '../../components/notify';
+import { formatDate, formatINR, formatMoney } from '../../lib/format';
 import { clockState, clockText, slaState, slaText, type ClockItem, type ClockState, type SlaState } from './ops-rules';
 import './ops.css';
+
+/** Never a greyed-out button (founder rule): pressed when it cannot act, it says why in a toast. */
+export function useSay() {
+  const { toast } = useToast();
+  return {
+    toast,
+    /** Why something cannot happen yet (or, with no reason, do it): a neutral note. */
+    say: (why: string | false | undefined, act?: () => void) => (why ? void toast({ tone: 'default', title: why }) : act?.()),
+    /** Founder answer 802: a done message is a success toast. */
+    done: (title: string) => void toast({ tone: 'success', title }),
+    /** Something failed: the reason as an error toast. */
+    fail: (title: string) => void toast({ tone: 'error', title }),
+  };
+}
 
 /* ---------------- Desktop frame per area (APX-D §1.2 panel links) ---------------- */
 
@@ -36,14 +51,15 @@ function panelFor(area: OpsArea, active: string, member: boolean, counts: Record
   switch (area) {
     case 'helpdesk':
       // Cases visible to case members only (YX-CASE-02).
-      return [{ items: mk(['Help centre', 'Tickets', 'Knowledge base', ...(member ? ['Cases'] : []), 'Speak-up', 'Policies', 'SLAs']) }];
+      // HLP-15 to HLP-19 (12 Nov 2026): the catalogue, chat, team and set-up pages join the panel as the live menu has them.
+      return [{ items: mk(['Help centre', 'Service catalogue', 'Chat', 'Tickets', 'Live chat', 'Knowledge base', ...(member ? ['Cases'] : []), 'Speak-up', 'Policies', 'SLAs', 'Desk team', 'Applications', 'Changes', 'Problems', 'Buildings and equipment', 'Desk set-up']) }];
     case 'compliance':
       // POSH only for IC members (YX-POSH-05).
       return [{ items: mk(['Statutory hub', 'Statutory set-up', 'Registers', 'TDS & Form 16', 'Missing IDs', 'Rules & updates', ...(member ? ['POSH'] : [])]) }];
     case 'expenses':
       return [
         { items: mk(['Payroll', 'Compensation', 'One-time pay & holds', 'Tax centre', 'Loans, recoveries & EWA']) },
-        { label: 'Expenses & advances', items: mk(['Expenses home', 'Claims', 'Trips', 'Advances', 'To pay', 'Card statements', 'Expense policy', 'Expense reports']) },
+        { label: 'Expenses & advances', items: mk(['Expenses home', 'Team claims', 'Claims', 'Trips', 'Advances', 'To pay', 'Card statements', 'Expense policy', 'Expense reports']) },
         { items: mk(['Payments & files', 'Reports']) },
       ];
     case 'contract':
@@ -54,7 +70,8 @@ function panelFor(area: OpsArea, active: string, member: boolean, counts: Record
         { label: 'As a contractor', items: mk(['Client establishments', 'Own licences', 'Client compliance packs']) },
       ];
     case 'visitors':
-      return [{ items: mk(["Today's visitors", 'Invites', 'Visitor log', 'Kiosks & badges', 'Reports']) }];
+      // Answer 617: no "Kiosks & badges" item (kiosks are enrolled on the Time devices page; the badge is a 3.12 setting).
+      return [{ items: mk(["Today's visitors", 'Invites', 'Visitor log', 'Watch-list', 'Roll-call', 'Reports']) }];
   }
 }
 
@@ -78,8 +95,8 @@ export function OpsDesk({ area, active, member = true, counts = {}, children }: 
 /* ---------------- SLA badge (YX-HD-02) ---------------- */
 
 const SLA_TONE: Record<SlaState, BadgeTone> = { 'on-track': 'neutral', 'at-risk': 'warning', breached: 'danger', paused: 'info', met: 'success' };
-export function SlaBadge({ elapsedMin, targetMin, paused, met, label }: { elapsedMin: number; targetMin: number; paused?: boolean; met?: boolean; label?: string }) {
-  const state = slaState(elapsedMin, targetMin, { paused, met });
+export function SlaBadge({ elapsedMin, targetMin, paused, met, label, atRiskPercent }: { elapsedMin: number; targetMin: number; paused?: boolean; met?: boolean; label?: string; atRiskPercent?: number }) {
+  const state = slaState(elapsedMin, targetMin, { paused, met, atRiskPercent });
   return (
     <Badge tone={SLA_TONE[state]}>
       {label ? `${label}: ` : ''}
@@ -148,9 +165,22 @@ export function Confidential({ children, note = 'Confidential. Only case members
 
 /* ---------------- Receipt, camera, photo, QR placeholders (no external resources) ---------------- */
 
-export function ReceiptImage({ merchant, amount, date, label }: { merchant: string; amount: number; date: Date; label?: string }) {
+/**
+ * A receipt thumbnail. With `src` (an object or data URL of the stored photo) it shows the real picture; with
+ * kind="pdf" a PDF tile (no PDF page is drawn); otherwise the drawn receipt stands in (while the file loads, or in a
+ * design story).
+ */
+export function ReceiptImage({ merchant, amount, date, label, src, kind = 'image' }: { merchant: string; amount: number; date: Date; label?: string; src?: string | null; kind?: 'image' | 'pdf' }) {
   return (
-    <figure className="yx-ops-receipt" aria-label={label ?? `Receipt from ${merchant}, ${formatINR(amount)}, ${formatDate(date)}`}>
+    <figure className="yx-ops-receipt" data-kind={kind} aria-label={label ?? `Receipt from ${merchant}, ${formatINR(amount)}, ${formatDate(date)}${kind === 'pdf' ? ', a PDF' : ''}`}>
+      {kind === 'pdf' ? (
+        <span className="yx-ops-receipt__pdf" aria-hidden="true">
+          <Icon icon={FileText} size="md" />
+          PDF
+        </span>
+      ) : src ? (
+        <img className="yx-ops-receipt__img" src={src} alt="" />
+      ) : (
       <svg viewBox="0 0 120 160" role="img" aria-hidden="true" className="yx-ops-receipt__svg">
         <rect x="10" y="6" width="100" height="148" className="yx-ops-receipt__paper" />
         <rect x="24" y="18" width="72" height="8" className="yx-ops-receipt__ink" />
@@ -160,6 +190,7 @@ export function ReceiptImage({ merchant, amount, date, label }: { merchant: stri
         <rect x="20" y="116" width="80" height="2" className="yx-ops-receipt__ink" />
         <rect x="56" y="126" width="44" height="8" className="yx-ops-receipt__ink" />
       </svg>
+      )}
       <figcaption className="yx-ops-receipt__cap">
         <span>{merchant}</span>
         <span>
@@ -337,11 +368,11 @@ export function MembersList({ members, title = 'Who can see this case' }: { memb
 
 /* ---------------- Money lead ("You will receive ₹X", YX-EXP-06) ---------------- */
 
-export function MoneyLead({ label, amount, sub, tone }: { label: string; amount: number; sub?: ReactNode; tone?: 'default' | 'warning' }) {
+export function MoneyLead({ label, amount, sub, tone, currency = 'INR' }: { label: string; amount: number; sub?: ReactNode; tone?: 'default' | 'warning'; currency?: string }) {
   return (
     <div className="yx-ops-lead" data-tone={tone ?? 'default'} aria-live="polite">
       <span className="yx-ops-lead__label">{label}</span>
-      <span className="yx-ops-lead__amount">{formatINR(amount)}</span>
+      <span className="yx-ops-lead__amount">{formatMoney(amount, currency)}</span>
       {sub && <span className="yx-ops-lead__sub">{sub}</span>}
     </div>
   );

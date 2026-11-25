@@ -16,6 +16,8 @@ export default function YxSupportAccessPage() {
   const token = accessToken ?? undefined;
   const queryClient = useQueryClient();
   const sessions = useQuery<SupportSession[]>({ queryKey: ['yx', 'support-access'], queryFn: () => apiFetch('/support-access', {}, token), enabled: Boolean(token), retry: false });
+  // Answer 1048: the messages YukthiX staff sent the company's System Admins.
+  const messages = useQuery<{ id: string; subject: string; body: string; sentAt: string }[]>({ queryKey: ['yx', 'support-access', 'messages'], queryFn: () => apiFetch('/support-access/messages', {}, token), enabled: Boolean(token), retry: false });
   const act = async (id: string, what: 'approve' | 'decline' | 'end', body: object) => {
     await apiFetch(`/support-access/${encodeURIComponent(id)}/${what}`, { method: 'POST', body: JSON.stringify(body) }, token);
     await queryClient.invalidateQueries({ queryKey: ['yx', 'support-access'] });
@@ -30,6 +32,7 @@ export default function YxSupportAccessPage() {
       onDecline={(id, note) => act(id, 'decline', note ? { note } : {})}
       onEnd={(id) => act(id, 'end', {})}
       loadActivity={loadActivity}
+      messages={messages.data}
     />
   );
 }

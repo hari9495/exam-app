@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import PDFDocument from 'pdfkit';
+import { writeText } from '../documents/pdf-text';
 import { createHash, randomUUID } from 'crypto';
 import { TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
@@ -62,15 +63,15 @@ export function fill(body: string, values: Record<string, string | null | undefi
   return { text, missing: [...missing] };
 }
 
-function pdf(title: string, text: string, extra?: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
+export function pdf(title: string, text: string, extra?: (doc: PDFKit.PDFDocument) => void): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 56, info: { Title: title } });
     const chunks: Buffer[] = [];
     doc.on('data', (c: Buffer) => chunks.push(c));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
-    doc.fontSize(16).text(title);
-    doc.moveDown().fontSize(11).text(text);
+    writeText(doc.fontSize(16), title);
+    writeText(doc.moveDown().fontSize(11), text);
     extra?.(doc);
     doc.end();
   });
@@ -321,7 +322,7 @@ export class DocumentsService {
       const signed = await pdf(d.title, d.bodyText, (doc) => {
         doc.addPage().fontSize(14).text('Completion certificate');
         doc.moveDown().fontSize(10);
-        for (const [k, v] of [['Signed by', name], ['Typed name', typed], ['Signed at (UTC)', at.toISOString()], ['From', meta.ip ?? 'unknown'], ['Device', (meta.userAgent ?? 'unknown').slice(0, 200)], ['Sign-in strength', meta.assurance ?? 'unknown'], ['Document fingerprint (SHA-256)', d.sha256], ['Method', 'Signed in YukthiX by typing the name and a one-time code sent to the signer']]) doc.text(`${k}: ${v}`);
+        for (const [k, v] of [['Signed by', name], ['Typed name', typed], ['Signed at (UTC)', at.toISOString()], ['From', meta.ip ?? 'unknown'], ['Device', (meta.userAgent ?? 'unknown').slice(0, 200)], ['Sign-in strength', meta.assurance ?? 'unknown'], ['Document fingerprint (SHA-256)', d.sha256], ['Method', 'Signed in YukthiX by typing the name and a one-time code sent to the signer']]) writeText(doc, `${k}: ${v}`);
       });
       const signedHash = sha(signed);
       const signedKey = await this.files.put(`desk/${org}/${t.id}/doc-${d.id}-signed.pdf`, signed, 'application/pdf');

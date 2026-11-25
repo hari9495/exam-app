@@ -1,0 +1,41 @@
+/* Accessibility menu (answers 2330 to 2334): a popover with a grid of tiles in groups, in the YukthiX look. */
+.yx-a11y-pop {
+  width: min(var(--yx-a11y-panel-w), calc(100vw - var(--yx-space-4)));
+  max-height: var(--radix-popover-content-available-height);
+  overflow-y: auto;
+  padding: var(--yx-space-4);
+}
+.yx-a11y-pop__title { margin: 0 0 var(--yx-space-3); font-size: var(--yx-text-lg); line-height: var(--yx-leading-lg); font-weight: var(--yx-weight-semibold); }
+
+.yx-a11y { display: flex; flex-direction: column; gap: var(--yx-space-4); }
+.yx-a11y__group { display: flex; flex-direction: column; gap: var(--yx-space-2); }
+.yx-a11y__group-title { margin: 0; font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); font-weight: var(--yx-weight-semibold); color: var(--yx-color-text-secondary); }
+.yx-a11y__tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--yx-a11y-tile-min), 1fr)); gap: var(--yx-space-2); }
+.yx-a11y__note { margin: 0; font-size: var(--yx-text-sm); line-height: var(--yx-leading-sm); color: var(--yx-color-text-secondary); }
+.yx-a11y__foot { display: flex; justify-content: flex-end; padding-top: var(--yx-space-3); border-top: var(--yx-border-width) solid var(--yx-color-border); }
+
+/* A tile: bordered like every control (rule 5), fills when on. */
+.yx-a11y-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--yx-space-1);
+  min-height: var(--yx-space-16);
+  padding: var(--yx-space-2);
+  border: var(--yx-border-width) solid var(--yx-color-border-input);
+  border-radius: var(--yx-radius-control);
+  background: var(--yx-color-bg-surface);
+  color: var(--yx-color-text);
+  font: inherit;
+  font-size: var(--yx-text-sm);
+  line-height: var(--yx-leading-sm);
+  text-align: center;
+  cursor: pointer;
+}
+.yx-a11y-tile:hover { border-color: var(--yx-color-text-secondary); background: var(--yx-color-bg-subtle); }
+.yx-a11y-tile:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); }
+.yx-a11y-tile[aria-pressed='true'] { border-color: var(--yx-color-action-primary); background: var(--yx-color-bg-selected); color: var(--yx-color-action-primary); }
+.yx-a11y-tile__label { font-weight: var(--yx-weight-medium); }
+.yx-a11y-tile__state { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); color: var(--yx-color-text-secondary); }
+.yx-a11y-tile[aria-pressed='true'] .yx-a11y-tile__state { color: inherit; }

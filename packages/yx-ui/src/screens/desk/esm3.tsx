@@ -3,7 +3,8 @@ import { MessageCircle, Plus, RefreshCw, Send, Unlink } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
-import { FormField } from '../../components/field';
+import { FormField, useTooEarly } from '../../components/field';
+import { useToast } from '../../components/notify';
 import { NumberField, TextArea, TextField } from '../../components/inputs';
 import { Segment } from '../../components/segment';
 import { Select } from '../../components/select';
@@ -52,6 +53,7 @@ export function MessagingAdmin(p: MessagingAdminProps) {
   const [smsBody, setSmsBody] = useState('');
   const [shown, setShown] = useState<LineSecret | null>(null);
   const { busy, error, run } = useRun();
+  const lineEarly = useTooEarly([...(!name.trim() ? [{ fieldId: 'ml-name', message: 'Name the line.' }] : []), ...(kind === 'sms' && smsBody.split('{#var#}').length !== 3 ? [{ fieldId: 'ml-sms', message: 'Paste the registered text with exactly two {#var#}.' }] : [])]);
   const lines = p.setup?.channels ?? [];
   const accounts = (p.setup?.accounts ?? []).filter((a) => a.channel === kind && a.active);
   const taken = new Set(lines.map((l) => l.kind));
@@ -111,7 +113,7 @@ export function MessagingAdmin(p: MessagingAdminProps) {
             <InlineAlert tone="info">Your company already has a {KIND_LABEL[kind]} line. Bring it to this desk above.</InlineAlert>
           ) : (
             <>
-              <FormField label="Name" required>
+              <FormField id="ml-name" label="Name" required error={lineEarly.errorOf('ml-name')}>
                 <TextField value={name} onChange={setName} maxLength={100} placeholder={`IT help on ${KIND_LABEL[kind]}`} />
               </FormField>
               {(kind === 'whatsapp' || kind === 'sms') && (
@@ -126,7 +128,7 @@ export function MessagingAdmin(p: MessagingAdminProps) {
               )}
               {kind === 'sms' && (
                 <>
-                  <FormField label="Registered reply template (DLT)" helper="The text exactly as registered, with two {#var#}: the request number, then the link to read the reply (e.g. “You have a reply on {#var#}. Read it: {#var#}”). The reply itself never goes by SMS.">
+                  <FormField id="ml-sms" error={lineEarly.errorOf('ml-sms')} label="Registered reply template (DLT)" helper="The text exactly as registered, with two {#var#}: the request number, then the link to read the reply (e.g. “You have a reply on {#var#}. Read it: {#var#}”). The reply itself never goes by SMS.">
                     <TextArea value={smsBody} onChange={setSmsBody} rows={2} maxLength={500} />
                   </FormField>
                   <FormField label="DLT template id">
@@ -138,9 +140,9 @@ export function MessagingAdmin(p: MessagingAdminProps) {
                 <Button
                   variant="primary"
                   icon={Plus}
-                  disabled={!name.trim() || (kind === 'sms' && smsBody.split('{#var#}').length !== 3)}
                   loading={busy === 'add'}
                   onClick={() =>
+                    !lineEarly.stop() &&
                     void run('add', async () => {
                       const templates = kind === 'whatsapp' && tplName.trim() ? { reply_notice: { name: tplName.trim(), language: 'en', status: 'approved' } } : kind === 'sms' ? { reply_notice: { body: smsBody.trim(), dltTemplateId: dltId.trim() || null, status: 'approved' } } : {};
                       setShown(await p.onAdd({ kind, name: name.trim(), accountId: account, templates }));
@@ -168,6 +170,7 @@ function WidgetsCard(p: NonNullable<MessagingAdminProps['widgets']>) {
   const [mobile, setMobile] = useState<'yes' | 'no'>('no');
   const [secret, setSecret] = useState<string | null>(null);
   const { busy, error, run } = useRun();
+  const early = useTooEarly([...(portal ? [] : [{ fieldId: 'wg-portal', message: 'Choose a help page.' }]), ...(name.trim() ? [] : [{ fieldId: 'wg-name', message: 'Name the widget.' }])]);
   const list = (t: string) => t.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
   return (
     <Card title="Help widget for your website and app">
@@ -197,10 +200,10 @@ function WidgetsCard(p: NonNullable<MessagingAdminProps['widgets']>) {
             </div>
           </div>
         ))}
-        <FormField label="Help page it opens" required>
+        <FormField id="wg-portal" label="Help page it opens" required error={early.errorOf('wg-portal')}>
           <Select value={portal} onChange={setPortal} options={p.portals.map((x) => ({ value: x.id, label: x.name }))} placeholder="Choose a help page" />
         </FormField>
-        <FormField label="Name" required>
+        <FormField id="wg-name" label="Name" required error={early.errorOf('wg-name')}>
           <TextField value={name} onChange={setName} maxLength={100} placeholder="Website help" />
         </FormField>
         <FormField label="Sites it may run on" helper="Full addresses like https://shop.example.com, one per line.">
@@ -212,9 +215,9 @@ function WidgetsCard(p: NonNullable<MessagingAdminProps['widgets']>) {
           <Button
             variant="primary"
             icon={Plus}
-            disabled={!portal || !name.trim()}
             loading={busy === 'add-w'}
             onClick={() =>
+              !early.stop() &&
               void run('add-w', async () => {
                 const w = await p.onAdd({ portalId: portal!, name: name.trim(), allowedOrigins: list(sites), allowAnonymous: anonymous === 'yes', mobile: mobile === 'yes' });
                 setSecret(w.secret);
@@ -306,6 +309,7 @@ function DevPhone({ lines, join, outbox, onSend }: { lines: { kind: MsgKind; lin
   const [text, setText] = useState('');
   const [phone, setPhone] = useState('');
   const { busy, error, run } = useRun();
+  const early = useTooEarly(text.trim() ? [] : [{ fieldId: 'dev-text', message: 'Write a message.' }]);
   useEffect(() => {
     if (join) setText(join);
   }, [join]);
@@ -321,16 +325,16 @@ function DevPhone({ lines, join, outbox, onSend }: { lines: { kind: MsgKind; lin
           <TextField value={phone} onChange={setPhone} maxLength={16} inputMode="tel" />
         </FormField>
       )}
-      <FormField label="Message">
+      <FormField id="dev-text" label="Message" error={early.errorOf('dev-text')}>
         <TextArea value={text} onChange={setText} rows={2} maxLength={2000} />
       </FormField>
       <div className="yx-ops-row">
         <Button
           variant="primary"
           icon={Send}
-          disabled={!text.trim()}
           loading={busy === 'send'}
           onClick={() =>
+            !early.stop() &&
             void run('send', async () => {
               await onSend(kind, text.trim(), phone.trim() || undefined);
               setText('');
@@ -501,14 +505,16 @@ function ShiftsCard(p: TeamScreenProps) {
   const [from, setFrom] = useState('09:00');
   const [to, setTo] = useState('17:00');
   const [csv, setCsv] = useState('');
-  const [done, setDone] = useState<string | null>(null);
+  const { toast } = useToast();
   const { busy, error, run } = useRun();
+  const addEarly = useTooEarly([...(who ? [] : [{ fieldId: 'sh-who', message: 'Choose the agent.' }]), ...(day ? [] : [{ fieldId: 'sh-day', message: 'Choose the day.' }])]);
+  const csvEarly = useTooEarly(csv.trim() ? [] : [{ fieldId: 'sh-csv', message: 'Paste at least one line.' }]);
   const at = (d: string, t: string) => new Date(`${d}T${t}:00`).toISOString();
   return (
     <Card title="Shifts">
       <div className="yx-ops-stack" data-gap="sm">
         <Problem error={error} />
-        {done && <InlineAlert tone="success">{done}</InlineAlert>}
+
         {p.shifts.length ? (
           <ul className="yx-esm-runs" aria-label="Shifts">
             {p.shifts.map((s) => (
@@ -531,10 +537,10 @@ function ShiftsCard(p: TeamScreenProps) {
         {p.canLead && p.team && (
           <>
             <div className="yx-ops-row">
-              <FormField label="Agent" required>
+              <FormField id="sh-who" label="Agent" required error={addEarly.errorOf('sh-who')}>
                 <Select value={who} onChange={setWho} options={p.team.map((m) => ({ value: m.userId, label: m.name }))} placeholder="Choose" />
               </FormField>
-              <FormField label="Day" required>
+              <FormField id="sh-day" label="Day" required error={addEarly.errorOf('sh-day')}>
                 <TextField type="date" value={day} onChange={setDay} />
               </FormField>
               <FormField label="From" required>
@@ -545,17 +551,17 @@ function ShiftsCard(p: TeamScreenProps) {
               </FormField>
             </div>
             <div className="yx-ops-row">
-              <Button variant="primary" icon={Plus} disabled={!who || !day} loading={busy === 'add'} onClick={() => void run('add', () => p.onAddShift({ userId: who!, startsAt: at(day, from), endsAt: to > from ? at(day, to) : new Date(new Date(at(day, to)).getTime() + 86_400_000).toISOString() }))}>
+              <Button variant="primary" icon={Plus} loading={busy === 'add'} onClick={() => !addEarly.stop() && void run('add', () => p.onAddShift({ userId: who!, startsAt: at(day, from), endsAt: to > from ? at(day, to) : new Date(new Date(at(day, to)).getTime() + 86_400_000).toISOString() }))}>
                 Add the shift
               </Button>
             </div>
-            <FormField label="Or paste shifts as CSV" helper="One per line: email, start, end, note. For example: suresh@company.com, 2026-10-12 09:00, 2026-10-12 17:00, Day">
+            <FormField id="sh-csv" error={csvEarly.errorOf('sh-csv')} label="Or paste shifts as CSV" helper="One per line: email, start, end, note. For example: suresh@company.com, 2026-10-12 09:00, 2026-10-12 17:00, Day">
               <TextArea value={csv} onChange={setCsv} rows={3} />
             </FormField>
             <div className="yx-ops-row">
-              <Button disabled={!csv.trim()} loading={busy === 'csv'} onClick={() => void run('csv', async () => {
+              <Button loading={busy === 'csv'} onClick={() => !csvEarly.stop() && void run('csv', async () => {
                 const r = await p.onImportShifts(csv);
-                setDone(`Added ${r.added} shift${r.added === 1 ? '' : 's'}.`);
+                toast({ tone: 'success', title: `Added ${r.added} shift${r.added === 1 ? '' : 's'}.` });
                 setCsv('');
               })}>
                 Import shifts
@@ -639,6 +645,7 @@ function MailboxCard({ current, devAllowed, onLink, onUnlink, busy, run }: NonNu
   const [b, setB] = useState('');
   const [c, setC] = useState('');
   const fields: Record<'m365' | 'gmail', [string, string, string]> = { m365: ['Tenant id', 'Client id', 'Client secret'], gmail: ['Client id', 'Client secret', 'Refresh token'] };
+  const early = useTooEarly(kind === 'dev' ? [] : [a, b, c].flatMap((v, i) => (v ? [] : [{ fieldId: `mb-${i}`, message: `Enter the ${fields[kind][i].toLowerCase()}.` }])));
   return (
     <Card title="My mailbox">
       <div className="yx-ops-stack" data-gap="sm">
@@ -664,16 +671,16 @@ function MailboxCard({ current, devAllowed, onLink, onUnlink, busy, run }: NonNu
             <Segment label="Mailbox" value={kind} onChange={setKind} options={[{ value: 'm365', label: 'Microsoft 365' }, { value: 'gmail', label: 'Gmail' }, ...(devAllowed ? [{ value: 'dev' as const, label: 'Demo mailbox' }] : [])]} />
             {kind !== 'dev' &&
               fields[kind].map((label, i) => (
-                <FormField key={label} label={label} required>
+                <FormField key={label} id={`mb-${i}`} label={label} required error={early.errorOf(`mb-${i}`)}>
                   <TextField value={[a, b, c][i]} onChange={[setA, setB, setC][i]} type={i === 2 ? 'password' : 'text'} autoComplete="off" />
                 </FormField>
               ))}
             <div className="yx-ops-row">
               <Button
                 variant="primary"
-                disabled={kind !== 'dev' && (!a || !b || !c)}
                 loading={busy === 'link'}
-                onClick={() => void run('link', () => onLink(kind, kind === 'm365' ? { tenantId: a, clientId: b, clientSecret: c } : kind === 'gmail' ? { clientId: a, clientSecret: b, refreshToken: c } : undefined))}
+                onClick={() => !early.stop() && void run('link',
+ () => onLink(kind, kind === 'm365' ? { tenantId: a, clientId: b, clientSecret: c } : kind === 'gmail' ? { clientId: a, clientSecret: b, refreshToken: c } : undefined))}
               >
                 Link my mailbox
               </Button>

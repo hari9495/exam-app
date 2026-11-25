@@ -9,6 +9,9 @@ import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.de
 import type { ScopeUser } from '../access/scope';
 import { AnswerDto, ConfirmBaseDto, DismissDto, FnfPatchDto, FnfPayeesDto, OffcycleItemDto, OverpaymentDto, OverpaymentListDto, WorksheetApproveDto, WorksheetCreateDto, WriteOffDto } from './dto-5g';
 import { ArrearsService } from './arrears.service';
+import { OneTimeEffectDto } from './dto-5c';
+import { Throttle } from '@nestjs/throttler';
+import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { FnfService } from './fnf.service';
 
 // Payroll batch 5g (M03-BUILD-DESIGN §14.7). Every route declares its key (YX-SEC-01); the services check the legal
@@ -37,6 +40,20 @@ export class Payroll5gController {
   @RequirePermissions('payroll.offcycle.prepare')
   addItem(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: OffcycleItemDto) {
     return this.arrears.addItem(ctx, this.user(req), id, dto);
+  }
+
+  /** PAY-05 "effect summary": gross, PF, ESI, TDS and net change for one item, from the payroll calculator (nothing saved). */
+  @Get('payroll/one-time-pays/effect')
+  @RequirePermissions('payroll.input.manage')
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  oneTimeEffect(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: OneTimeEffectDto) {
+    return this.arrears.oneTimeEffect(ctx, this.user(req), q);
+  }
+
+  @Get('payroll/runs/:id/items')
+  @RequireAnyPermission('payroll.offcycle.prepare', 'payroll.run.view', 'payroll.run.approve')
+  items(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.arrears.items(ctx, this.user(req), id);
   }
 
   @Post('payroll/runs/:id/items/:itemId/remove')

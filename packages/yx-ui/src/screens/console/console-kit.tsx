@@ -47,10 +47,19 @@ export function actionWords(action: string, details: Record<string, unknown> | n
       return `Changed the company from ${LIFECYCLE_LABEL[d.from as Lifecycle] ?? d.from} to ${LIFECYCLE_LABEL[d.to as Lifecycle] ?? d.to}`;
     case 'platform.company.trial_extended':
       return `Extended the trial by ${d.days} days`;
+    case 'platform.company.setting_changed':
+      return `Turned ${d.key === 'brand.white_label' ? 'white-label' : String(d.key)} ${d.to === 'on' ? 'on' : 'off'}`;
     case 'platform.price.scheduled':
       return `Set a new ${PRODUCT_LABEL[String(d.product)] ?? d.product} price (${d.currency} ${d.unitPrice}) from ${d.validFrom}`;
     case 'platform.price.withdrawn':
       return `Withdrew the ${PRODUCT_LABEL[String(d.product)] ?? d.product} price planned from ${d.validFrom}`;
+    // Help H-4 (answer 943).
+    case 'platform.whats_new.created':
+      return `Added the What's new entry “${d.title}” (from ${d.publishOn})`;
+    case 'platform.whats_new.updated':
+      return `Changed the What's new entry “${(d.after as { title?: string } | undefined)?.title ?? ''}”`;
+    case 'platform.whats_new.withdrawn':
+      return `Withdrew the What's new entry “${d.title}”`;
     case 'platform.cross_tenant_read':
       return `Looked across companies (${d.purpose})`;
     case 'support_session.requested':
@@ -124,6 +133,8 @@ export interface ReasonAsk {
   destructive?: boolean;
   /** Field label; the reason is kept in the audit log and shown to the company's admins. */
   label?: string;
+  /** Under the field; default: kept in the audit log, the company's admins can see it. */
+  helper?: string;
   action: (reason: string) => Promise<void>;
 }
 
@@ -148,7 +159,7 @@ export function useReasonDialog(min = 5): [ReactNode, (ask: ReasonAsk) => void] 
         await ask.action(reason.trim());
       }}
     >
-      <FormField label={ask.label ?? 'Reason'} required helper="Kept in the audit log. The company's admins can see it." error={tried && short ? `Write at least ${min} characters` : undefined}>
+      <FormField label={ask.label ?? 'Reason'} required helper={ask.helper ?? "Kept in the audit log. The company's admins can see it."} error={tried && short ? `Write at least ${min} characters` : undefined}>
         <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
       </FormField>
     </ConfirmDialog>

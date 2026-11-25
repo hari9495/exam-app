@@ -1,6 +1,7 @@
 import { Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { TenantContext } from '@exam-platform/shared';
@@ -8,7 +9,8 @@ import { QuestionAiService } from './question-ai.service';
 import { SuggestTagsDto, GenerateDistractorsDto } from './dto/question-ai.dto';
 
 @Controller('questions/ai')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// AS-0 (answer 2006): no assessments change while acting for someone else.
+@UseGuards(JwtAuthGuard, OwnSessionChangesGuard, PermissionsGuard)
 export class QuestionAiController {
   constructor(private readonly questionAi: QuestionAiService) {}
 

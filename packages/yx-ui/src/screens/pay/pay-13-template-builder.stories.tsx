@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { TemplateBuilderScreen } from './comp-setup';
 
-const meta: Meta<typeof TemplateBuilderScreen> = { title: 'Screens/Pay/PAY-13 · Template builder', component: TemplateBuilderScreen, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof TemplateBuilderScreen> = { title: 'Screens/Pay/PAY-13 · Template builder', component: TemplateBuilderScreen, render: (args) => <TemplateBuilderScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof TemplateBuilderScreen>;
 

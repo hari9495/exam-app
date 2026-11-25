@@ -1,25 +1,29 @@
 // Rostering: roster, shift editor + patterns, auto-roster, open shifts & bids, standby, block leave,
 // licences, hybrid office days. TIM-05, TIM-06, TIM-34, TIM-35, TIM-38, TIM-39, TIM-40, TIM-41.
 import { useMemo, useRef, useState, type ReactNode } from 'react';
-import { ArrowDown, ArrowUp, Check, ChevronLeft, ChevronRight, Copy, Lock, Play, Plus, Send, Trash2 } from 'lucide-react';
+import { FilterToggle } from '../../components/filter-toggle';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Copy, Lock, Play, Plus, Send, Trash2 } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
 import { locationHeadcount } from '../_kit/data';
 import { Button, IconButton } from '../../components/button';
-import { AiBadge, Badge, PersonLabel, Tag } from '../../components/display';
+import { AiBadge, Badge, DayDate, PersonLabel, Tag } from '../../components/display';
 import { Drawer } from '../../components/drawer';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
-import { EmptyState, ErrorState, InlineAlert } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, NoAccessState } from '../../components/feedback';
+import { useToast } from '../../components/notify';
 import { Icon } from '../../components/foundations';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { RadioGroup, Switch, Checkbox } from '../../components/choice';
 import { NumberField, TextField, TimeField } from '../../components/inputs';
-import { FieldRow, FormField, FormSection } from '../../components/field';
+import { ErrorSummary, FieldRow, FormField, FormSection, useSaveErrors } from '../../components/field';
 import { Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
 import { useNarrow } from '../../components/stepper';
 import { ON_CALL_RULES } from '../pay/pay-data';
+import { formatDate } from '../../lib/format';
+import { useRun } from '../org/org-kit';
 import {
   BLOCKING_CONFLICTS,
   RosterGrid,
@@ -33,11 +37,32 @@ import {
   type Shift,
 } from '../../components/roster';
 import { Segment } from '../people/people-kit';
-import { DueBadge, Kpis, ShiftBar, TimePage } from './time-kit';
+import { DueBadge, Kpis, NoRecordState, ShiftBar, TimePage } from './time-kit';
 import { countLeaveDays, daysUntil, fmt12, relativeDue, type Punch } from './time-logic';
 import { HOLIDAYS, HR_ADMIN, ME, TODAY, myReports, type TimeUser } from './time-data';
 import { LoadingBlock, type ViewState } from './attendance';
+import { COLOURS, NightWorkTab, OvertimeRulesTab, ProjectsTab, SCOPES, fromMinute, toMinute, type LiveShiftSetup } from './live/shifts-setup';
+import type { BlockLeaveList, LoadState, RosterWeek, ShiftRow, ShiftSetup, TeamRosterWeek } from './live/types';
+import { type LiveHybrid, LiveHybridScreen } from './hybrid-live';
+import { type LiveOpenShifts, LiveOpenShiftsScreen, OpenShiftsPanel } from './open-shifts-live';
+import { type LiveStandby, LiveStandbyScreen } from './standby-live';
+import { type LiveAutoRoster, LiveAutoRosterScreen } from './auto-roster-live';
+import { type LiveLicences, LiveLicencesScreen } from './licences-live';
 import './time.css';
+
+/** Founder rule: no greyed-out button. Pressed too early it says why in a toast; otherwise it runs `go`. */
+function useWhy() {
+  const { toast } = useToast();
+  return (why: string | false | null | undefined, go?: () => void) => () => {
+    if (why) toast({ title: why, tone: 'warning' });
+    else go?.();
+  };
+}
+/** Success after an action is a toast (5 s), never a green inline alert. */
+function useDone() {
+  const { toast } = useToast();
+  return (title: string, description?: string) => toast({ title, description, tone: 'success' });
+}
 
 /** Opens another screen's story, so buttons that lead to a screen go somewhere. */
 const storyHref = (id: string) => `/?path=/story/${id}`;
@@ -54,13 +79,11 @@ const STORY = {
 const PLANT_MANAGER: TimeUser = { name: 'Ramesh Gowda', email: 'ramesh.g@kaverifoods.in', role: 'Head of Operations' };
 const LINE_OPERATOR: TimeUser = { name: 'Rekha Balan', email: 'rekha.b@kaverifoods.in', role: 'Line Operator' };
 
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/** "Wed 7 Oct" */
-const dayName = (d: Date) => `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}`;
-/** "7 Oct" */
-const shortDate = (d: Date) => `${d.getDate()} ${MON[d.getMonth()]}`;
+/** "7 Oct 2026": in a list of days, show the weekday beside it with <DayDate>, never merged into the text. */
+const dayName = (d: Date) => formatDate(d);
+const shortDate = dayName;
 /** "7 Oct 2026" (no leading zero, like the rest of the app). */
-const longDate = (d: Date) => `${shortDate(d)} ${d.getFullYear()}`;
+const longDate = (d: Date) => formatDate(d);
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
 const hm = (mins: number) => `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} m` : ''}`;
 const toMins = (hhmm: string) => {
@@ -84,7 +107,7 @@ const AWAY: Shift = { code: 'Away', name: 'Away', hours: 0 };
 const STAFF_SHIFTS = [...PLANT_SHIFTS, AWAY];
 const legendText = (s: Shift) => (s.code === 'SB' ? 'Standby 6 pm – 6 am (on call, not counted in hours)' : s.code === 'SB+' ? 'Standby, called out (paid call-out time counted in hours)' : s.code === 'OFF' ? 'Weekly off' : s.code === AWAY.code ? 'on leave' : `${s.name} ${shiftTimes(s)}`);
 /** Key for the shift codes, shown wherever the grid has no palette (staff and read-only views): small read-only chips, one line each. */
-function Legend({ shifts = PLANT_SHIFTS }: { shifts?: Shift[] }) {
+export function Legend({ shifts = PLANT_SHIFTS }: { shifts?: Shift[] }) {
   return (
     <div className="yx-tim-row" role="list" aria-label="Shift key">
       {shifts.map((s) => <span key={s.code} role="listitem" className="yx-tim-nowrap"><Badge tone="neutral"><span className="yx-roster__code">{s.code}</span> {legendText(s)}</Badge></span>)}
@@ -190,15 +213,27 @@ function copyLastWeek(v: RosterValue) {
    TIM-05 · Roster (drag, copy week, swap, conflicts, publish)
    ===================================================================== */
 
+/** Who and what the swap dialog checks: the Hosur plant sample in stories, the planner's real week in the app. */
+interface SwapCtx {
+  people: RosterPerson[];
+  /** One label per day, "Mon 5 Oct". */
+  days: string[];
+  check: (v: RosterValue) => RosterConflict[];
+  label: (code: string | null | undefined) => string;
+  pair: [string, string];
+}
+// Default pair: two line operators on the same day (Fri 9), so the morning keeps its cover: Jaya takes Selvi's morning, Selvi gets the day off.
+const PLANT_SWAP: SwapCtx = { people: PLANT_PEOPLE, days: DAYS.map((d) => `${d} Oct`), check: (v) => checkPlant(v), label: (c) => shiftText(c), pair: ['p5:4', 'p8:4'] };
+
 /** Runs the grid's rest, leave and night-consent checks on the chosen pair before the swap is allowed. */
-function SwapDialog({ open, onOpenChange, value, onSwap }: { open: boolean; onOpenChange: (o: boolean) => void; value: RosterValue; onSwap: (v: RosterValue) => void }) {
-  // Default pair: two line operators on the same day (Fri 9), so the morning keeps its cover: Jaya takes Selvi's morning, Selvi gets the day off.
-  const [a, setA] = useState('p5:4');
-  const [b, setB] = useState('p8:4');
-  const options = PLANT_PEOPLE.flatMap((p) => DAYS.map((d, i) => ({ value: `${p.id}:${i}`, label: `${p.name} · ${d} Oct · ${shiftText(value[p.id]?.[i])}` })));
+function SwapDialog({ open, onOpenChange, value, onSwap, ctx = PLANT_SWAP }: { open: boolean; onOpenChange: (o: boolean) => void; value: RosterValue; onSwap: (v: RosterValue) => void; ctx?: SwapCtx }) {
+  const why = useWhy();
+  const [a, setA] = useState(ctx.pair[0]);
+  const [b, setB] = useState(ctx.pair[1]);
+  const options = ctx.people.flatMap((p) => ctx.days.map((d, i) => ({ value: `${p.id}:${i}`, label: `${p.name} · ${d} · ${ctx.label(value[p.id]?.[i])}` })));
   const swapped = useMemo(() => swapCells(value, a, b), [value, a, b]);
-  const before = useMemo(() => checkPlant(value), [value]);
-  const after = useMemo(() => checkPlant(swapped), [swapped]);
+  const before = useMemo(() => ctx.check(value), [ctx, value]);
+  const after = useMemo(() => ctx.check(swapped), [ctx, swapped]);
   const beforeKeys = new Set(before.map(conflictKey));
   const afterKeys = new Set(after.map(conflictKey));
   const added = after.filter((x) => !beforeKeys.has(conflictKey(x)));
@@ -206,15 +241,15 @@ function SwapDialog({ open, onOpenChange, value, onSwap }: { open: boolean; onOp
   const same = a === b || (value[cellOf(a)[0]]?.[cellOf(a)[1]] ?? null) === (value[cellOf(b)[0]]?.[cellOf(b)[1]] ?? null);
   const blocking = added.filter((x) => BLOCKING_CONFLICTS.includes(x.kind));
   // Skill check: a shift goes only to someone in the same role (a Maintenance Technician can't cover a Shift Supervisor's shift).
-  const pa = PLANT_PEOPLE.find((p) => p.id === cellOf(a)[0])!;
-  const pb = PLANT_PEOPLE.find((p) => p.id === cellOf(b)[0])!;
+  const pa = ctx.people.find((p) => p.id === cellOf(a)[0]) ?? ctx.people[0];
+  const pb = ctx.people.find((p) => p.id === cellOf(b)[0]) ?? ctx.people[0];
   const roleClash = pa.id !== pb.id && pa.role !== pb.role ? `${pa.name} (${pa.role}) and ${pb.name} (${pb.role}) aren't trained for each other's shifts` : '';
   // Cover check: on different days, each working shift that changes day leaves its own day one person short.
   const [ia, ib] = [cellOf(a)[1], cellOf(b)[1]];
   const va = value[pa.id]?.[ia] ?? null;
   const vb = value[pb.id]?.[ib] ?? null;
   const working = (c: string | null) => !!c && c !== 'OFF';
-  const gaps = ia === ib ? [] : ([[ia, va], [ib, vb]] as const).filter(([, c]) => working(c)).map(([i, c]) => `${DAYS[i]} Oct ${shiftText(c).toLowerCase()} would be 1 person short`);
+  const gaps = ia === ib ? [] : ([[ia, va], [ib, vb]] as const).filter(([, c]) => working(c)).map(([i, c]) => `${ctx.days[i]} ${ctx.label(c).toLowerCase()} would be 1 person short`);
   // A shift traded for a day off on another date is a move, not a swap.
   const move = ia !== ib && (!working(va) || !working(vb));
   const reason = same ? 'Pick two different shifts' : roleClash ? 'Roles differ' : gaps.length ? `Leaves ${gaps.length === 1 ? 'a shift' : `${gaps.length} shifts`} short` : blocking.length ? `Breaks ${blocking.length === 1 ? 'a rule' : `${blocking.length} rules`}` : '';
@@ -227,7 +262,7 @@ function SwapDialog({ open, onOpenChange, value, onSwap }: { open: boolean; onOp
         <>
           {reason && <span className="yx-tim-muted">{reason}</span>}
           <Button onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button variant="primary" disabled={!!reason} onClick={() => { onSwap(swapped); onOpenChange(false); }}>{move ? 'Move shift' : 'Swap shifts'}</Button>
+          <Button variant="primary" onClick={why(reason, () => { onSwap(swapped); onOpenChange(false); })}>{move ? 'Move shift' : 'Swap shifts'}</Button>
         </>
       }
     >
@@ -240,7 +275,7 @@ function SwapDialog({ open, onOpenChange, value, onSwap }: { open: boolean; onOp
           </InlineAlert>
         )}
         {!same && !roleClash && !gaps.length && blocking.length === 0 && (
-          <InlineAlert tone="success" title="Cover, role, rest, leave and night-consent checks pass">
+          <InlineAlert tone="info" title="Cover, role, rest, leave and night-consent checks pass">
             {cleared.length > 0 ? `Fixes: ${cleared.map((x) => x.message).join('; ')}.` : 'No new conflicts.'}
             {added.length > 0 && ` Still check: ${added.map((x) => x.message).join('; ')}.`}
           </InlineAlert>
@@ -291,7 +326,16 @@ function MyWeekList({ row, pid }: { row: (string | null)[]; pid: string }) {
   );
 }
 
-export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial }: { persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean }) {
+// TIM-05: the story shows the Hosur plant sample; the app passes `live` (the planner's real week).
+export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state = 'ready', readOnly, partial, live, staffLive, ticked, bulk }: { /** B6 stories: people already ticked, and a bulk change drawer open. */ ticked?: string[]; bulk?: BulkChange; persona?: 'mgr' | 'hr' | 'emp'; status?: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night' | 'notice'; state?: ViewState; readOnly?: boolean; /** Draft with Fri–Sun still empty. */ partial?: boolean; live?: LiveRoster; /** The employee's read-only week (the Staff story with real data). */ staffLive?: LiveStaffRoster }) {
+  return live ? <LiveRosterScreen live={live} /> : staffLive ? <LiveStaffRosterScreen live={staffLive} /> : <SampleRosterScreen {...{ persona, status, dialog, state, readOnly, partial, ticked, bulk }} />;
+}
+
+function SampleRosterScreen({ persona, status, dialog, state, readOnly, partial, ticked: ticked0 = [], bulk: bulk0 }: { persona: 'mgr' | 'hr' | 'emp'; status: 'draft' | 'published'; dialog?: 'copy' | 'swap' | 'night' | 'notice'; state: ViewState; readOnly?: boolean; partial?: boolean; ticked?: string[]; bulk?: BulkChange }) {
+  const [ticked, setTicked] = useState<string[]>(ticked0);
+  const [bulk, setBulk] = useState<BulkChange | undefined>(bulk0);
+  const why = useWhy();
+  const done = useDone();
   const [dlg, setDlg] = useState(dialog);
   const [st, setSt] = useState<ViewState>(state);
   const [value, setValue] = useState<RosterValue>(state === 'empty' ? {} : status === 'published' ? PUBLISHED_ROSTER : partial ? PART_ROSTER : PLANT_ROSTER);
@@ -346,9 +390,12 @@ export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state 
           onChange={change}
           leave={staff ? PLANT_LEAVE.filter((l) => l.personId === me.id) : PLANT_LEAVE}
           status={rs}
-          onPublish={() => { setRs('published'); setPublishedOn('today'); }}
+          onPublish={() => { setRs('published'); setPublishedOn('today'); done('Roster published', 'Staff are notified.'); }}
           readOnly={staff}
           rules={PLANT_RULES}
+          selectedPeople={ticked}
+          onSelectedPeopleChange={setTicked}
+          bulkActions={() => <BulkButtons hr={persona === 'hr'} onPick={setBulk} />}
         />
         {!staff && <GuardsCard />}
       </div>
@@ -364,14 +411,14 @@ export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state 
             <Button asChild><a href={storyHref(STORY.swap)} target="_top">Ask to swap a shift</a></Button>
           ) : (
             <div className="yx-tim-row">
-              {/* One reason ahead of the whole group, so it reads as applying to every disabled button. */}
+              {/* One reason ahead of the whole group: each button says it again when pressed. */}
               {notReady && <span className="yx-tim-muted">{notReady}</span>}
               {draftTools && ready && copy.filled === 0 && <span className="yx-tim-muted">Every cell is set</span>}
-              {draftTools && <Button icon={Copy} disabled={!ready || copy.filled === 0} onClick={() => setDlg('copy')}>Copy last week</Button>}
-              <Button disabled={!ready} onClick={() => setDlg('swap')}>Swap shifts</Button>
+              {draftTools && <Button icon={Copy} onClick={why(notReady || (copy.filled === 0 && 'Every cell is set, so there is nothing to copy'), () => setDlg('copy'))}>Copy last week</Button>}
+              <Button onClick={why(notReady, () => setDlg('swap'))}>Swap shifts</Button>
               {draftTools && (ready
                 ? <Button asChild><a href={storyHref(STORY.autoRoster)} target="_top">Auto-roster</a></Button>
-                : <Button disabled>Auto-roster</Button>)}
+                : <Button onClick={why(notReady)}>Auto-roster</Button>)}
             </div>
           )
         }
@@ -394,11 +441,110 @@ export function RosterScreen({ persona = 'mgr', status = 'draft', dialog, state 
         title="Copy week of 28 Sep into this week?"
         consequence={`${copy.filled ? `Fills ${copy.filled} empty ${copy.filled === 1 ? 'cell' : 'cells'}; cells you already set stay.` : 'Every cell is already set, so nothing would change.'}${copy.leaveKept.length ? ` ${copy.leaveKept.join(' and ')}'s leave ${copy.leaveKept.length === 1 ? 'day stays' : 'days stay'} empty.` : ''}`}
         confirmLabel="Copy week"
-        confirmDisabled={copy.filled === 0}
-        onConfirm={() => { change(copy.next); setSt('ready'); setDlg(undefined); }}
+        onConfirm={() => { change(copy.next); setSt('ready'); setDlg(undefined); if (copy.filled) done(`${copy.filled} ${copy.filled === 1 ? 'cell' : 'cells'} copied from last week`); }}
       />
       <SwapDialog open={dlg === 'swap' && ready} onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={change} />
+      {bulk && ticked.length > 0 && <BulkChangeDrawer change={bulk} names={PLANT_PEOPLE.filter((p) => ticked.includes(p.id)).map((p) => p.name)} shifts={PLANT_SHIFTS.filter((x) => x.code !== 'OFF').map((x) => ({ id: x.code, label: `${x.name}${x.start ? ` · ${x.start} – ${x.end}` : ''}` }))} onSend={async () => setTicked([])} onClose={() => setBulk(undefined)} />}
+      {/* Rule 5: Senthil's Thursday morning starts tomorrow, inside the 24 h notice, so publishing asks why. */}
+      <NoticeDialog open={dlg === 'notice'} onOpenChange={(o) => !o && setDlg(undefined)} onPublish={() => { setDlg(undefined); setRs('published'); setPublishedOn('today'); done('Roster published', 'Staff are notified; Senthil is told why his Thursday changed.'); }} />
     </TimePage>
+  );
+}
+
+
+/* =====================================================================
+   TIM-05 · Bulk team changes (batch A B6, founder answer 2316): tick people in the roster, then change their shift,
+   weekly off or late-mark penalty policy from a chosen date. Never before the last locked attendance month (the server
+   refuses it with the reason); a penalty change starts on the 1st of a month.
+   ===================================================================== */
+
+export type BulkChange = 'shift' | 'weekly_off' | 'penalty';
+export interface BulkChangeInput {
+  change: BulkChange;
+  from: string;
+  shiftId?: string;
+  weeklyOffs?: number[];
+  lateMarksFree?: string;
+  lateMarkPenalty?: string;
+}
+const BULK_TITLE: Record<BulkChange, string> = { shift: 'Change shift', weekly_off: 'Change weekly off', penalty: 'Change penalty policy' };
+const WEEKDAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+export function BulkChangeDrawer({ change, names, shifts, onSend, onClose, from: from0 = null }: {
+  change: BulkChange;
+  /** The ticked people's names (the drawer lists up to five). */
+  names: string[];
+  /** Shifts in use, by id. */
+  shifts: { id: string; label: string }[];
+  onSend: (x: BulkChangeInput) => Promise<unknown>;
+  onClose: () => void;
+  from?: Date | null;
+}) {
+  const [from, setFrom] = useState<Date | null>(from0);
+  const [shiftId, setShiftId] = useState<string | null>(null);
+  const [offs, setOffs] = useState<number[]>([7]);
+  const [free, setFree] = useState('3');
+  const [cost, setCost] = useState('0.5');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const errors = [
+    ...(!from ? [{ fieldId: 'bk-from', message: 'Choose the date it starts from.' }] : change === 'penalty' && from.getDate() !== 1 ? [{ fieldId: 'bk-from', message: 'A penalty policy change starts on the 1st of a month.' }] : []),
+    ...(change === 'shift' && !shiftId ? [{ fieldId: 'bk-shift', message: 'Choose the new shift.' }] : []),
+    ...(change === 'weekly_off' && !offs.length ? [{ fieldId: 'bk-offs', message: 'Choose at least one weekly-off day.' }] : change === 'weekly_off' && offs.length > 3 ? [{ fieldId: 'bk-offs', message: 'Choose up to three weekly-off days.' }] : []),
+  ];
+  const shown = useSaveErrors(errors);
+  const who = `${names.length} ${names.length === 1 ? 'person' : 'people'}`;
+  const send = () => {
+    if (errors.length) {
+      shown.reveal();
+      document.getElementById(errors[0].fieldId)?.focus();
+      return;
+    }
+    const input: BulkChangeInput = { change, from: isoOfDate(from!), ...(change === 'shift' ? { shiftId: shiftId! } : change === 'weekly_off' ? { weeklyOffs: [...offs].sort(), ...(shiftId ? { shiftId } : {}) } : { lateMarksFree: free, lateMarkPenalty: cost }) };
+    void run('send', async () => {
+      await onSend(input);
+      toast({ tone: 'success', title: `${BULK_TITLE[change]}: done for ${who}`, description: `From ${formatDate(from!)}.` });
+      onClose();
+    });
+  };
+  return (
+    <Drawer open onOpenChange={(o) => !o && onClose()} title={BULK_TITLE[change]} subtitle={`${who}: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ` and ${names.length - 5} more` : ''}`} footer={<><Button onClick={onClose}>Cancel</Button><Button variant="primary" loading={busy === 'send'} onClick={send}>Apply to {who}</Button></>}>
+      <div className="yx-tim-form">
+        <ErrorSummary errors={shown.shownErrors} />
+        {error && <InlineAlert tone="danger" title="Nothing was changed">{error}</InlineAlert>}
+        <FormField id="bk-from" label="From" required error={shown.errorOf('bk-from')} helper={change === 'penalty' ? 'The 1st of a month: late marks are counted a month at a time. Months before keep their policy.' : 'Not before the last locked attendance month. Past days from this date are worked out again.'}>
+          <DatePicker value={from} onChange={setFrom} />
+        </FormField>
+        {change === 'shift' && (
+          <FormField id="bk-shift" label="New shift" required error={shown.errorOf('bk-shift')} helper="Each person keeps their own weekly offs.">
+            <Select value={shiftId} onChange={setShiftId} options={shifts.map((s) => ({ value: s.id, label: s.label }))} />
+          </FormField>
+        )}
+        {change === 'weekly_off' && (
+          <>
+            <FormField id="bk-offs" label="Weekly-off days" required error={shown.errorOf('bk-offs')} helper="Up to three. Each person keeps their own shift on the other days.">
+              <div className="yx-tim-stack" role="group" aria-label="Weekly-off days">
+                {WEEKDAY_NAMES.map((n, i) => <Checkbox key={n} label={n} checked={offs.includes(i + 1)} onChange={(on) => setOffs(on ? [...offs, i + 1] : offs.filter((x) => x !== i + 1))} />)}
+              </div>
+            </FormField>
+            <FormField id="bk-shift" label="Shift for anyone on the location's usual shift" optional>
+              <Select value={shiftId} onChange={setShiftId} options={shifts.map((s) => ({ value: s.id, label: s.label }))} />
+            </FormField>
+          </>
+        )}
+        {change === 'penalty' && (
+          <>
+            <FormField label="Late marks a month without a deduction">
+              <Segment label="Free late marks" value={free} onChange={setFree} options={['0', '1', '2', '3', '4', '5', '6'].map((v) => ({ value: v, label: v }))} />
+            </FormField>
+            <FormField label="Each late mark over that costs">
+              <Segment label="Cost of each late mark" value={cost} onChange={setCost} options={[{ value: '0', label: 'Nothing' }, { value: '0.5', label: 'Half a day' }, { value: '1', label: 'A day' }]} />
+            </FormField>
+          </>
+        )}
+        <p className="yx-tim-muted">Saved in the audit trail. It can't start inside a locked attendance month.</p>
+      </div>
+    </Drawer>
   );
 }
 
@@ -410,6 +556,321 @@ export function MyShiftsPhone() {
       <MyWeekList row={PUBLISHED_ROSTER.p2} pid="p2" />
       <Button fullWidth asChild><a href={storyHref(STORY.swap)} target="_top">Ask to swap a shift</a></Button>
     </PhoneFrame>
+  );
+}
+
+/* ---------------- TIM-05 live: the planner's real week (M02 §B2, YX-AT-07) ---------------- */
+
+/** The roster page's data and handlers: a manager's own team, or the people HR plans; the API checks each cell. */
+export interface LiveRoster {
+  state: LoadState;
+  onRetry?: () => void;
+  data: RosterWeek | null;
+  /** Monday of the week on screen, "2026-10-12". */
+  week: string;
+  onWeek: (week: string) => void;
+  /** value: a shift id, 'off', or 'pattern' (back to the pattern / location default). */
+  onCells: (cells: { employeeId: string; on: string; value: string }[]) => Promise<unknown>;
+  onCopy: (fromWeek: string, toWeek: string) => Promise<unknown>;
+  /** reason: why published days inside the notice change (rule 5); the API answers NOTICE_REASON when one is needed. */
+  onPublish: (week: string, reason?: string) => Promise<unknown>;
+  /** The Open shifts tab (TIM-35), when the page loads it. */
+  openShifts?: LiveOpenShifts;
+  /** Where the header's "Auto-roster" goes (TIM-34), for people who plan. */
+  autoRosterHref?: string;
+  /** Batch A B6: one change for the ticked people from a date (absent: no row checkboxes). */
+  onBulk?: (x: BulkChangeInput & { employeeIds: string[] }) => Promise<unknown>;
+  /** The viewer may change the penalty policy (attendance.lock); the server checks each person again. */
+  canPenalty?: boolean;
+}
+
+/** TIM-05 Staff (founder decision 29 Oct 2026): the employee's read-only week, with their team's when the company allows it. */
+export interface LiveStaffRoster {
+  state: LoadState;
+  onRetry?: () => void;
+  data: TeamRosterWeek | null;
+  week: string;
+  onWeek: (week: string) => void;
+  /** Where "Ask to swap a shift" goes (the live My shifts page). */
+  swapHref: string;
+}
+
+const COLOUR_NUMBER: Record<string, number> = { blue: 1, green: 2, teal: 3, purple: 4, orange: 5, pink: 6, grey: 7, red: 8 };
+/** "2026-10-12" as a local date. */
+const isoDate = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const isoPlus = (iso: string, n: number) => isoOf(addDays(isoDate(iso), n));
+const SCOPE_TEXT = { team: 'Your team', granted: 'The people you plan', company: 'Everyone' };
+const CHECK_KIND = { night: 'Night work', holiday: 'Holiday', rest: 'Rest', overlap: 'Overlap', leave: 'Leave', hours: 'Hours', spread: 'Spread-over', week: 'Weekly hours', weekly_off: 'Weekly off', licence: 'Licence' } as const;
+/** Breaks that stop a publish (feature sheet rules 1–4 and 8); leave and holidays stay warnings. */
+const LAW_KINDS = ['night', 'licence'];
+
+/** Rule 5: publishing changes to shifts that start sooner than the notice needs a reason; the people are told at once. */
+/** The bulk bar's buttons: shift and weekly off for planners; the penalty policy for HR (attendance.lock). */
+function BulkButtons({ hr, onPick }: { hr: boolean; onPick: (c: BulkChange) => void }) {
+  return (
+    <>
+      <Button size="sm" onClick={() => onPick('shift')}>Change shift</Button>
+      <Button size="sm" onClick={() => onPick('weekly_off')}>Change weekly off</Button>
+      {hr && <Button size="sm" onClick={() => onPick('penalty')}>Change penalty policy</Button>}
+    </>
+  );
+}
+
+function NoticeDialog({ open, onOpenChange, onPublish }: { open: boolean; onOpenChange: (o: boolean) => void; onPublish: (reason: string) => Promise<unknown> | void }) {
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState<string | undefined>();
+  const id = 'roster-notice-reason';
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Some changes start too soon"
+      footer={
+        <>
+          <Button onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (reason.trim().length < 5) {
+                setError('Say why, in at least 5 letters. The people see it.');
+                return document.getElementById(id)?.focus();
+              }
+              setError(undefined);
+              return onPublish(reason.trim());
+            }}
+          >
+            Publish with reason
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-tim-stack">
+        <p className="yx-tim-muted">People are owed notice of a shift change (HR sets how much). These changes start sooner, so they are published only with a reason. The people are told at once, and the reason is kept with the change.</p>
+        <FormField label="Reason" required error={error} id={id}>
+          <TextField id={id} value={reason} placeholder="For example Machine breakdown on line 2" onChange={setReason} />
+        </FormField>
+      </div>
+    </Dialog>
+  );
+}
+
+function LiveRosterScreen({ live: p }: { live: LiveRoster }) {
+  const d = p.data;
+  const why = useWhy();
+  const { busy, error, run } = useRun();
+  const [dlg, setDlg] = useState<'copy' | 'swap' | undefined>();
+  const start = isoDate(d?.week ?? p.week);
+  const shifts: Shift[] = useMemo(
+    () => [
+      ...(d?.shifts ?? []).filter((s) => s.start !== null && s.end !== null).map((s) => ({ code: s.code, name: s.name, start: hhmm(s.start!), end: hhmm(s.end!), hours: Math.round((((s.end! - s.start! + 1440) % 1440) / 60) * 10) / 10, color: COLOUR_NUMBER[s.colour] ?? 1 })),
+      { code: 'OFF', name: 'Weekly off', hours: 0 },
+    ],
+    [d],
+  );
+  const codeOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.id, s.code])), [d]);
+  const idOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.code, s.id])), [d]);
+  // What each cell will be once published: a shift code, OFF, or empty (the pattern or the location's usual shift).
+  const value: RosterValue = useMemo(() => Object.fromEntries((d?.people ?? []).map((x) => [x.id, x.cells.map((c) => (!c.employed ? null : c.planned ? (c.planned.shiftId ? (codeOf.get(c.planned.shiftId) ?? null) : null) : 'OFF'))])), [d, codeOf]);
+  const leave: RosterLeave[] = useMemo(() => (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind === 'leave').map((k) => ({ personId: x.id, date: isoDate(c.on), code: k.message.startsWith('Half') ? 'half day' : 'full day' })))), [d]);
+  const serverChecks = (d?.people ?? []).flatMap((x) => x.cells.flatMap((c) => (c.conflicts ?? []).filter((k) => k.kind !== 'leave').map((k) => ({ who: x.name, ...k }))));
+  const people: RosterPerson[] = (d?.people ?? []).map((x) => ({ id: x.id, name: x.name, role: x.code ?? undefined }));
+  const limits = d?.rules;
+  const rules: RosterRules = { minRestHours: limits?.minRestHours ?? 11, maxWeeklyHours: limits?.maxWeeklyHours };
+  const [notice, setNotice] = useState(false);
+  const [offer, setOffer] = useState(false);
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [bulk, setBulk] = useState<BulkChange | undefined>();
+  const publish = (reason?: string) =>
+    run('publish', async () => {
+      try {
+        await (reason ? p.onPublish(d!.week, reason) : p.onPublish(d!.week));
+        setNotice(false);
+      } catch (e) {
+        // Rule 5: the API asks for a reason; the dialog asks the planner instead of an error.
+        if ((e as { code?: string }).code === 'NOTICE_REASON' && !reason) return setNotice(true);
+        throw e;
+      }
+    });
+  const swapCtx: SwapCtx = {
+    // No roles from the API yet, so the swap checks cover, rest, leave and night consent only.
+    people: people.map((x) => ({ ...x, role: undefined })),
+    days: Array.from({ length: 7 }, (_, i) => dayName(addDays(start, i))),
+    check: (v) => checkRoster({ people, value: v, start, days: 7, shifts, leave, rules }),
+    label: (c) => (!c ? 'Pattern shift' : c === 'OFF' ? 'Off' : (shifts.find((s) => s.code === c)?.name ?? c)),
+    pair: [`${people[0]?.id}:0`, `${people[1]?.id ?? people[0]?.id}:0`],
+  };
+  const change = (next: RosterValue) => {
+    if (!d) return;
+    const cells: { employeeId: string; on: string; value: string }[] = [];
+    for (const person of d.people)
+      person.cells.forEach((c, i) => {
+        const was = value[person.id]?.[i] ?? null;
+        const now = next[person.id]?.[i] ?? null;
+        if (was === now || !c.employed) return;
+        cells.push({ employeeId: person.id, on: c.on, value: now === null ? 'pattern' : now === 'OFF' ? 'off' : (idOf.get(now) ?? 'pattern') });
+      });
+    if (cells.length) void run('save', () => p.onCells(cells));
+  };
+  const ready = p.state === 'ready' && !!d;
+  const prev = isoPlus(p.week, -7);
+  // The design's Roster | Open shifts tabs (the pattern "Bids" windows are not built, so that tab is left out).
+  const withTabs = (body: ReactNode) =>
+    p.openShifts ? (
+      <Tabs defaultValue="roster">
+        <TabsList aria-label="Roster views">
+          <TabsTrigger value="roster">Roster</TabsTrigger>
+          <TabsTrigger value="open" count={p.openShifts.data?.rows.filter((o) => o.status === 'open').length}>Open shifts</TabsTrigger>
+        </TabsList>
+        <TabsContent value="roster">{body}</TabsContent>
+        <TabsContent value="open"><OpenShiftsPanel live={p.openShifts} offer={offer} onOffer={setOffer} /></TabsContent>
+      </Tabs>
+    ) : body;
+  return (
+    <TimePage active="Roster">
+      <PageHeader
+        // The design's "Roster · <place>": the API gives the reach, not one place, so the reach names it ("Everyone", "Your team").
+        title={d ? `Roster · ${SCOPE_TEXT[d.scope]}` : 'Roster'}
+        description={`Week of ${formatDate(start)} · minimum rest ${rules.minRestHours} h${limits ? ` · max ${limits.maxDailyHours} h a day, ${limits.maxWeeklyHours} h a week` : ''} · changes are drafts until you publish them`}
+        status={ready && d ? d.drafts > 0 ? <Badge tone="warning">{`Draft · ${d.drafts} ${d.drafts === 1 ? 'change' : 'changes'} not visible to staff`}</Badge> : <Badge tone="success">Published</Badge> : undefined}
+        actions={
+          <div className="yx-tim-row">
+            <IconButton icon={ChevronLeft} label="Previous week" size="sm" onClick={() => p.onWeek(prev)} />
+            <IconButton icon={ChevronRight} label="Next week" size="sm" onClick={() => p.onWeek(isoPlus(p.week, 7))} />
+            {ready && <Button icon={Copy} onClick={() => setDlg('copy')}>Copy last week</Button>}
+            {ready && <Button onClick={why(!people.length && 'No one to plan this week', () => setDlg('swap'))}>Swap shifts</Button>}
+            {ready && p.autoRosterHref && <Button asChild><a href={p.autoRosterHref}>Auto-roster</a></Button>}
+          </div>
+        }
+      />
+      {withTabs(p.state === 'loading' || (p.state === 'ready' && !d) ? (
+        <LoadingBlock rows={8} />
+      ) : p.state === 'error' ? (
+        <ErrorState title="The roster didn't load" description="Check your connection and try again. Nothing you published is lost." onRetry={p.onRetry} />
+      ) : p.state === 'no-access' ? (
+        <NoAccessState what="the roster" grantedBy="HR" />
+      ) : d && (
+        <div className="yx-tim-stack">
+          {error && <InlineAlert tone="danger" title="That change was not saved">{error}</InlineAlert>}
+          {people.length ? (
+            <RosterGrid
+              // A fresh grid after each server refresh, so its own change count starts from what is saved.
+              key={`${d.week}:${d.drafts}:${JSON.stringify(value)}`}
+              people={people}
+              start={start}
+              days={7}
+              shifts={shifts}
+              value={value}
+              onChange={change}
+              leave={leave}
+              rules={rules}
+              status={d.drafts > 0 ? 'draft' : 'published'}
+              hideStatus
+              onPublish={() => void publish()}
+              today={isoDate(d.today)}
+              {...(p.onBulk ? { selectedPeople: ticked, onSelectedPeopleChange: setTicked, bulkActions: () => <BulkButtons hr={!!p.canPenalty} onPick={setBulk} /> } : {})}
+            />
+          ) : (
+            <EmptyState title="No one to plan" description="You plan the roster of your own team. HR can give you more people to plan." />
+          )}
+          {serverChecks.length > 0 && (
+            <Card title="Law and rule checks">
+              <ul className="yx-tim-list" aria-label="Roster checks">
+                {serverChecks.map((x, i) => (
+                  <li key={i}>
+                    <span className="yx-tim-list__main"><strong>{x.who} · {dayName(isoDate(x.on))}</strong><span className="yx-tim-muted">{x.message}</span></span>
+                    <Badge tone={LAW_KINDS.includes(x.kind) ? 'danger' : 'warning'}>{CHECK_KIND[x.kind]}</Badge>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+          <p className="yx-tim-note">Empty cells follow the person’s shift pattern or the location’s usual shift. Past days and locked months can’t change here.{busy === 'save' ? ' Saving…' : ''}</p>
+          <ConfirmDialog
+            open={dlg === 'copy'}
+            onOpenChange={(o) => !o && setDlg(undefined)}
+            title={`Copy week of ${shortDate(isoDate(prev))} into this week?`}
+            consequence="Fills the empty days from last week's roster; days you already set stay, and approved leave days stay empty. It is saved as a draft until you publish it."
+            confirmLabel="Copy week"
+            onConfirm={async () => {
+              await p.onCopy(prev, p.week);
+            }}
+          />
+          {dlg === 'swap' && people.length > 0 && <SwapDialog open onOpenChange={(o) => !o && setDlg(undefined)} value={value} onSwap={change} ctx={swapCtx} />}
+          <NoticeDialog open={notice} onOpenChange={setNotice} onPublish={(reason) => publish(reason)} />
+          {bulk && p.onBulk && ticked.length > 0 && (
+            <BulkChangeDrawer
+              change={bulk}
+              names={d.people.filter((x) => ticked.includes(x.id)).map((x) => x.name)}
+              shifts={d.shifts.filter((s) => s.start !== null && s.end !== null).map((s) => ({ id: s.id, label: `${s.name} · ${hhmm(s.start!)} – ${hhmm(s.end!)}` }))}
+              onSend={async (x) => {
+                await p.onBulk!({ ...x, employeeIds: ticked });
+                setTicked([]);
+              }}
+              onClose={() => setBulk(undefined)}
+            />
+          )}
+        </div>
+      ))}
+    </TimePage>
+  );
+}
+
+/** TIM-05 Staff with real data: the same read-only grid, legend and swap link as the design. */
+function LiveStaffRosterScreen({ live: p }: { live: LiveStaffRoster }) {
+  const d = p.data;
+  const narrow = useNarrow();
+  const start = isoDate(d?.week ?? p.week);
+  const shifts: Shift[] = useMemo(
+    () => [
+      ...(d?.shifts ?? []).filter((s) => s.start !== null && s.end !== null).map((s) => ({ code: s.code, name: s.name, start: hhmm(s.start!), end: hhmm(s.end!), hours: Math.round((((s.end! - s.start! + 1440) % 1440) / 60) * 10) / 10, color: COLOUR_NUMBER[s.colour] ?? 1 })),
+      { code: 'OFF', name: 'Weekly off', hours: 0 },
+      AWAY,
+    ],
+    [d],
+  );
+  const codeOf = useMemo(() => new Map((d?.shifts ?? []).map((s) => [s.id, s.code])), [d]);
+  const me = d?.people.find((x) => x.me);
+  // Own leave keeps its own mark; a colleague's leave shows only as Away (the leave type stays private).
+  const value: RosterValue = Object.fromEntries((d?.people ?? []).map((x) => [x.id, x.cells.map((c) => (!c.employed ? null : c.leave === 'away' ? AWAY.code : c.leave === 'full' ? null : c.shift ? (c.shift.shiftId ? (codeOf.get(c.shift.shiftId) ?? null) : null) : 'OFF'))]));
+  const leave: RosterLeave[] = (me?.cells ?? []).filter((c) => c.leave === 'full' || c.leave === 'half').map((c) => ({ personId: me!.id, date: isoDate(c.on), code: c.leave === 'half' ? 'half day' : 'Leave' }));
+  const people: RosterPerson[] = (d?.people ?? []).map((x) => ({ id: x.id, name: x.name, role: x.me ? 'You' : (x.code ?? undefined) }));
+  const text = (c: TeamRosterWeek['people'][number]['cells'][number]) => (c.leave === 'full' ? 'On leave' : c.shift ? `${c.shift.name} ${fmt12(hhmm(c.shift.start))} – ${fmt12(hhmm(c.shift.end))}`.replace(/:00/g, '') : c.off ? 'Weekly off' : 'No shift');
+  return (
+    <TimePage active="My shifts">
+      <PageHeader
+        title="Roster"
+        description={`Week of ${formatDate(start)}${d && !d.team ? ' · your shifts only' : ''}`}
+        status={d ? <Badge tone="success">Published</Badge> : undefined}
+        actions={
+          <div className="yx-tim-row">
+            <IconButton icon={ChevronLeft} label="Previous week" size="sm" onClick={() => p.onWeek(isoPlus(p.week, -7))} />
+            <IconButton icon={ChevronRight} label="Next week" size="sm" onClick={() => p.onWeek(isoPlus(p.week, 7))} />
+            {p.state !== 'no-record' && <Button asChild><a href={p.swapHref}>Ask to swap a shift</a></Button>}
+          </div>
+        }
+      />
+      {p.state === 'loading' || (p.state === 'ready' && !d) ? (
+        <LoadingBlock rows={6} />
+      ) : p.state === 'error' ? (
+        <ErrorState title="The roster didn't load" description="Check your connection and try again." onRetry={p.onRetry} />
+      ) : p.state === 'no-access' ? (
+        <NoAccessState what="the roster" grantedBy="HR" />
+      ) : p.state === 'no-record' ? (
+        <NoRecordState />
+      ) : d && me && narrow ? (
+        <div className="yx-tim-stack">
+          <ul className="yx-tim-list">{me.cells.map((c) => <li key={c.on}><DayDate date={isoDate(c.on)} /><strong>{text(c)}</strong></li>)}</ul>
+          <p className="yx-tim-note">Your shifts only. Open the roster on a wider screen to see your colleagues' shifts.</p>
+        </div>
+      ) : d && (
+        <div className="yx-tim-stack">
+          <Legend shifts={shifts} />
+          <RosterGrid people={people} start={start} days={7} shifts={shifts} value={value} onChange={() => undefined} leave={leave} status="published" hideStatus readOnly today={isoDate(d.today)} />
+          {!d.team && <p className="yx-tim-note">You see your own shifts. Your company shows employees only their own roster; HR can change that.</p>}
+        </div>
+      )}
+    </TimePage>
   );
 }
 
@@ -512,11 +973,16 @@ const hhmm = (mins: number) => `${String(Math.floor(mins / 60) % 24).padStart(2,
 /** "6:52 pm" from minutes after midnight. */
 const clock = (mins: number) => fmt12(hhmm(mins));
 
-export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', saveState }: { tab?: 'shift' | 'patterns'; kind?: ShiftKind; saveState?: 'error' | 'saved' }) {
+// TIM-06: the story shows the sample shifts; the app passes `live` (HR › Shifts set-up), which adds the Overtime,
+// Timesheet projects and Night work tabs that have no design of their own yet.
+export function ShiftEditorScreen({ tab = 'shift', kind = 'fixed', saveState, live }: { tab?: 'shift' | 'patterns'; kind?: ShiftKind; saveState?: 'error' | 'saved'; live?: LiveShiftSetup }) {
+  return live ? <LiveShiftSetupPage live={live} /> : <SampleShiftEditor tab={tab} kindProp={kind} saveState={saveState} />;
+}
+
+function SampleShiftEditor({ tab, kindProp, saveState }: { tab: 'shift' | 'patterns'; kindProp: ShiftKind; saveState?: 'error' | 'saved' }) {
   const [t, setT] = useState<string>(tab);
   const [patterns, setPatterns] = useState(PATTERNS);
   const [patternId, setPatternId] = useState('m42');
-  const [patternSaved, setPatternSaved] = useState<string | null>(null);
   const [kind, setKind] = useState<ShiftKind>(kindProp);
   const [f, setF] = useState<ShiftFields>(() => fieldsOf(kindProp, saveState === 'error' ? 8 : 4));
   const [nameVal, setNameVal] = useState(SHIFT_TYPES[kindProp].name);
@@ -536,6 +1002,8 @@ export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', sav
   const [saved, setSaved] = useState(saveState === 'saved');
   const [effective, setEffective] = useState<Date | null>(addDays(TODAY, 1));
   const narrow = useNarrow(1023);
+  const why = useWhy();
+  const done = useDone();
   const pattern = patterns.find((p) => p.id === patternId) ?? patterns[0];
   const shift = SHIFT_TYPES[kind];
   const copy = copyFrom !== null;
@@ -561,6 +1029,7 @@ export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', sav
     }
     setBase(formNow);
     setSaved(true);
+    done(`Saved ${name}`, `Applies from ${longDate(effective ?? addDays(TODAY, 1))}.`);
   };
   const discardChanges = () => {
     setKind(base.kind); setF(base.f); setNameVal(base.name); setCodeVal(base.code); setBreakRule(base.breakRule);
@@ -617,24 +1086,25 @@ export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', sav
   const onPatterns = t === 'patterns';
   const patternStarted = pattern.start.getTime() <= TODAY.getTime() && pattern.people > 0;
   const patternBlocked = !pattern.name.trim() ? 'Enter a pattern name' : !pattern.group ? 'Choose who it applies to' : '';
-  const updatePattern = (patch: Partial<Pattern>) => { setPatterns(patterns.map((p) => (p.id === pattern.id ? { ...p, ...patch } : p))); setPatternSaved(null); };
+  const updatePattern = (patch: Partial<Pattern>) => { setPatterns(patterns.map((p) => (p.id === pattern.id ? { ...p, ...patch } : p))); };
   const addPattern = () => {
     const id = `new${patterns.length}`;
     setPatterns([...patterns, { id, name: '', weekly: true, cycle: Array(7).fill('OFF'), group: '', people: 0, start: WEEK, draft: true }]);
     setPatternId(id);
-    setPatternSaved(null);
+   
   };
   const removePattern = (id: string) => {
     const rest = patterns.filter((p) => p.id !== id);
     setPatterns(rest);
     if (id === pattern.id) setPatternId(rest[0]?.id ?? '');
-    setPatternSaved(null);
+   
   };
   const savePattern = () => {
     // A group follows one pattern: the one saved here takes it over from any other.
     const moved = patterns.find((p) => p.id !== pattern.id && p.group === pattern.group);
     setPatterns(patterns.map((p) => (p.id === pattern.id ? { ...p, draft: false } : moved && p.id === moved.id ? { ...p, group: '', people: 0 } : p)));
-    setPatternSaved(`Saved ${pattern.name}${patternStarted ? ` · applies from ${longDate(pattern.effective ?? addDays(TODAY, 1))}` : ''}${moved ? ` · ${pattern.group} moved from ${moved.name}` : ''}`);
+    const msg = `Saved ${pattern.name}${patternStarted ? ` · applies from ${longDate(pattern.effective ?? addDays(TODAY, 1))}` : ''}`;
+    done(msg, moved ? `${pattern.group} moved from ${moved.name}.` : undefined);
   };
   const used = onPatterns ? pattern.people : people;
   const previewCard = (
@@ -664,14 +1134,14 @@ export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', sav
         }
         actions={
           onPatterns ? (
-            <span className="yx-tim-row">{patternBlocked && <span className="yx-tim-muted">{patternBlocked}</span>}<Button variant="primary" disabled={!!patternBlocked} onClick={savePattern}>Save pattern</Button></span>
+            <span className="yx-tim-row">{patternBlocked && <span className="yx-tim-muted">{patternBlocked}</span>}<Button variant="primary" onClick={why(patternBlocked, savePattern)}>Save pattern</Button></span>
           ) : (
             <span className="yx-tim-row">
               {copy
                 ? <Button onClick={discardCopy}>Discard copy</Button>
                 : <Button icon={Copy} onClick={duplicate}>Duplicate</Button>}
               {shiftBlocked && <span className="yx-tim-muted">{shiftBlocked}</span>}
-              <Button variant="primary" disabled={!!shiftBlocked} onClick={saveShift}>Save shift</Button>
+              <Button variant="primary" onClick={why(!halfDayError && shiftBlocked, saveShift)}>Save shift</Button>
             </span>
           )
         }
@@ -682,11 +1152,10 @@ export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', sav
         </InlineAlert>
       )}
       {saved && !onPatterns && effective && (
-        <InlineAlert tone="success" title={`Saved · applies from ${longDate(effective)}`}>
+        <InlineAlert tone="info" title={`Applies from ${longDate(effective)}`}>
           {people ? `Applies to the ${people} people on this shift from ${longDate(effective)}. Earlier days keep the old rules.` : `${name} is in the shift list and can be used from ${longDate(effective)}.`}
         </InlineAlert>
       )}
-      {patternSaved && onPatterns && <InlineAlert tone="success" title={patternSaved} />}
       {copy && !saved && !onPatterns && <InlineAlert tone="info" title={`Copy of ${copyFrom.name}`}>No one uses this copy yet, so you can pick its type. Save it to add it to the shift list, or discard it.</InlineAlert>}
       <Tabs value={t} onValueChange={setT}>
         <TabsList aria-label="Shift editor">
@@ -704,12 +1173,12 @@ export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', sav
                     return (
                       <li key={s.id}>
                         <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{s.title}</strong><span className="yx-tim-muted">{s.sub}</span></span>
-                        <Button size="sm" disabled={current || copy || dirty} onClick={() => openShift(s.id)}>{current ? 'Editing' : 'Edit'}</Button>
+                        <Button size="sm" onClick={why(current ? 'You are editing this shift' : copy ? 'Save or discard the copy first' : dirty && 'Save or discard your changes first', () => openShift(s.id))}>{current ? 'Editing' : 'Edit'}</Button>
                       </li>
                     );
                   })}
                   {dirty && <li><span className="yx-tim-muted" style={{ flex: '1 1 0', minWidth: 0 }}>Save or discard your changes first</span><Button size="sm" onClick={discardChanges}>Discard changes</Button></li>}
-                  {copy && <li><span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{name || 'New shift'}</strong><span className="yx-tim-muted">Copy · not saved. Save or discard it to open another shift.</span></span><Button size="sm" disabled>Editing</Button></li>}
+                  {copy && <li><span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{name || 'New shift'}</strong><span className="yx-tim-muted">Copy · not saved. Save or discard it to open another shift.</span></span><Button size="sm" onClick={why('You are editing this copy')}>Editing</Button></li>}
                 </ul>
               </Card>
               <FormSection title="Basics">
@@ -767,7 +1236,7 @@ export function ShiftEditorScreen({ tab = 'shift', kind: kindProp = 'fixed', sav
             {!narrow && <div className="yx-tim-sticky">{previewCard}</div>}
           </div>
         </TabsContent>
-        <TabsContent value="patterns"><PatternsPanel patterns={patterns} pattern={pattern} started={patternStarted} onPick={(id) => { setPatternId(id); setPatternSaved(null); }} onAdd={addPattern} onRemove={removePattern} onUpdate={updatePattern} /></TabsContent>
+        <TabsContent value="patterns"><PatternsPanel patterns={patterns} pattern={pattern} started={patternStarted} onPick={(id) => { setPatternId(id); }} onAdd={addPattern} onRemove={removePattern} onUpdate={updatePattern} /></TabsContent>
       </Tabs>
     </TimePage>
   );
@@ -779,6 +1248,7 @@ const posMod = (n: number, m: number) => ((n % m) + m) % m;
 
 function PatternsPanel({ patterns, pattern, started, onPick, onAdd, onRemove, onUpdate }: { patterns: Pattern[]; pattern: Pattern; started: boolean; onPick: (id: string) => void; onAdd: () => void; onRemove: (id: string) => void; onUpdate: (patch: Partial<Pattern>) => void }) {
   const { cycle, weekly: isWeekly } = pattern;
+  const why = useWhy();
   const setCycle = (c: string[]) => onUpdate({ cycle: c });
   // A pattern in use changes from its effective date: the preview opens a few days before it (not before tomorrow), keeps the saved cycle
   // up to that date and shows the edited one from it. A pattern not started yet opens on its start date.
@@ -806,7 +1276,7 @@ function PatternsPanel({ patterns, pattern, started, onPick, onAdd, onRemove, on
                 {/* Only the text wraps; the buttons keep their place on the right on every row. */}
                 <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{p.name || 'New pattern'}</strong><span className="yx-tim-muted">{p.weekly ? 'Weekly' : `${p.cycle.length}-day cycle`} · {p.group || 'Not assigned yet'} · {p.people} people{p.draft ? ' · not saved' : ''}</span></span>
                 <span className="yx-tim-row" style={{ flexShrink: 0, justifyContent: 'flex-end' }}>
-                  <Button size="sm" onClick={() => onPick(p.id)} disabled={p.id === pattern.id}>{p.id === pattern.id ? 'Editing' : 'Edit'}</Button>
+                  <Button size="sm" onClick={why(p.id === pattern.id && 'You are editing this pattern', () => onPick(p.id))}>{p.id === pattern.id ? 'Editing' : 'Edit'}</Button>
                   {(p.draft || p.people === 0) && patterns.length > 1 && <Button size="sm" icon={Trash2} onClick={() => onRemove(p.id)}>{p.draft ? 'Discard' : 'Delete'}</Button>}
                 </span>
               </li>
@@ -852,7 +1322,7 @@ function PatternsPanel({ patterns, pattern, started, onPick, onAdd, onRemove, on
             {!isWeekly && (
               <div className="yx-tim-row">
                 <Button size="sm" icon={Plus} onClick={() => setCycle([...cycle, 'OFF'])}>Day</Button>
-                <Button size="sm" icon={Trash2} disabled={cycle.length <= 2} onClick={() => setCycle(cycle.slice(0, -1))}>Remove day {cycle.length}</Button>
+                <Button size="sm" icon={Trash2} onClick={why(cycle.length <= 2 && 'A cycle needs at least 2 days', () => setCycle(cycle.slice(0, -1)))}>Remove day {cycle.length}</Button>
               </div>
             )}
           </div>
@@ -877,11 +1347,505 @@ function PatternsPanel({ patterns, pattern, started, onPick, onAdd, onRemove, on
             // Weekly patterns follow the weekday (Mon = first day); cycles count days from the start date.
             const s = shiftOf(codeOn(d));
             const firstNew = eff && d.getTime() === eff.getTime();
-            return <li key={i}><span className="yx-tim-row">{dayName(d)}{firstNew && <Badge tone="info">Changes from here</Badge>}</span><strong>{!s?.start ? 'Off' : `${s.name} ${shiftTimes(s)}`}</strong></li>;
+            return <li key={i}><span className="yx-tim-row"><DayDate date={d} />{firstNew && <Badge tone="info">Changes from here</Badge>}</span><strong>{!s?.start ? 'Off' : `${s.name} ${shiftTimes(s)}`}</strong></li>;
           })}
         </ul>
       </Card>
     </div>
+  );
+}
+
+/* ---------------- TIM-06 live: HR › Shifts set-up (M02 §B2, Q7, §B7) ---------------- */
+
+type SetupData = ShiftSetup;
+type LiveTab = 'shift' | 'patterns' | 'overtime' | 'projects' | 'night';
+/** The shift's rules in force today (or the first one still to come). */
+const versionNow = (s: ShiftRow, today: string) => s.versions.filter((x) => x.validFrom <= today).pop() ?? s.versions[0];
+const timesOf = (start: number, end: number) => `${fmt12(fromMinute(start))} – ${fmt12(fromMinute(end))}${end < start ? ' (next day)' : ''}`;
+/** Hours as the form shows them: 450 min → 7.5. */
+const hrs = (m: number) => Math.round((m / 60) * 100) / 100;
+
+/**
+ * The form as the design has it (TIM-06): `end` is the shift's end, or a split's first part end; a split's second part
+ * is `p2From`–`p2To`. Flexi adds core hours and overtime after hours worked (empty: the full day).
+ */
+interface ShiftForm { kind: LiveShiftKind; code: string; name: string; colour: string; night: boolean; reclockIn: boolean; start: string | null; end: string | null; coreFrom: string | null; coreTo: string | null; otAfter: number | null; p2From: string | null; p2To: string | null; grace: number | null; full: number | null; half: number | null; breakRule: 'fixed' | 'none'; brk: number | null; brkAbove: number | null; from: Date | null }
+type LiveShiftKind = NonNullable<ShiftRow['kind']>;
+const KIND_LABEL: Record<LiveShiftKind, string> = { fixed: 'Fixed', flexi: 'Flexi with core hours', split: 'Split' };
+const hhmmOr = (m: number | null | undefined, fallback: string) => (m == null ? fallback : fromMinute(m));
+const formOf = (s: ShiftRow | null, today: string): ShiftForm => {
+  const v = s ? versionNow(s, today) : undefined;
+  const kind = s?.kind ?? 'fixed';
+  const split = kind === 'split';
+  return {
+    kind,
+    code: s?.code ?? '',
+    name: s?.name ?? '',
+    colour: s?.colour ?? 'blue',
+    night: s?.night ?? false,
+    reclockIn: s?.reclockIn ?? false,
+    start: v ? fromMinute(v.start) : '09:00',
+    end: v ? fromMinute(split ? (v.firstEnd ?? v.end) : v.end) : '17:30',
+    coreFrom: hhmmOr(v?.coreStart, '11:00'),
+    coreTo: hhmmOr(v?.coreEnd, '16:00'),
+    otAfter: v?.otAfterMinutes != null ? hrs(v.otAfterMinutes) : null,
+    p2From: hhmmOr(v?.secondStart, '17:00'),
+    p2To: split && v ? fromMinute(v.end) : '21:00',
+    grace: v?.graceMinutes ?? 10,
+    full: hrs(v?.fullDayMinutes ?? 450),
+    half: hrs(v?.halfDayMinutes ?? 240),
+    breakRule: v && !v.breakMinutes ? 'none' : 'fixed',
+    brk: v?.breakMinutes || 30,
+    brkAbove: hrs(v?.breakAboveMinutes ?? 300),
+    from: isoDate(today),
+  };
+};
+
+/** The Shift tab: the shift list, the editor form and its preview, as in the design. */
+function useLiveShiftTab(d: SetupData, p: LiveShiftSetup) {
+  const why = useWhy();
+  const narrow = useNarrow(1023);
+  const { busy, error, run } = useRun();
+  const today = isoDate(d.today);
+  /** A shift id, 'new', or 'code:X' for a shift just added (found by its code once the list refreshes). */
+  const [sel, setSel] = useState<string>(d.shifts[0]?.id ?? 'new');
+  const row = d.shifts.find((s) => s.id === sel || `code:${s.code}` === sel) ?? null;
+  const isNew = !row;
+  const [f, setF] = useState<ShiftForm>(() => formOf(row, d.today));
+  const [base, setBase] = useState<ShiftForm>(f);
+  const set = (patch: Partial<ShiftForm>) => setF({ ...f, ...patch });
+  const dirty = JSON.stringify({ ...f, from: null }) !== JSON.stringify({ ...base, from: null });
+  const flexi = f.kind === 'flexi';
+  const split = f.kind === 'split';
+  const types = d.types ?? { flexi: false, split: false, minGapMinutes: 60 };
+  /** The day's last minute: the end, or a split's second part end. */
+  const lastEnd = split ? f.p2To : f.end;
+  const overnight = !!f.start && !!lastEnd && lastEnd < f.start;
+  // TIM-06: minutes after the start (a time before the start is next day), as the server checks them.
+  const rel = (t: string | null) => (t && f.start ? ((((toMinute(t)! - toMinute(f.start)!) % 1440) + 1440) % 1440) : 0);
+  const len = rel(lastEnd) || 1440;
+  const gap = rel(f.p2From) - rel(f.end);
+  const at = (t: string) => fmt12(t);
+  const errors = [
+    ...(isNew && !/^[A-Z][A-Z0-9]{0,5}$/.test(f.code) ? [{ fieldId: 'sh-code', message: 'Use 1 to 6 capital letters or digits, starting with a letter (M, A, N, GEN).' }] : []),
+    ...(!f.name.trim() ? [{ fieldId: 'sh-name', message: 'Name the shift.' }] : []),
+    ...(!f.start || !f.end || f.start === f.end ? [{ fieldId: 'sh-end', message: split ? 'Give the first part a start and an end that differ.' : 'Give a start and an end that differ.' }] : []),
+    ...(flexi && (!f.coreFrom || !f.coreTo || rel(f.coreFrom) >= rel(f.coreTo) || rel(f.coreTo) > len) ? [{ fieldId: 'sh-core-to', message: `Core hours sit inside the shift${f.start && f.end ? ` (${at(f.start)} to ${at(f.end)})` : ''} and end after they start.` }] : []),
+    ...(split && (!f.p2From || !f.p2To || rel(f.p2From) < rel(f.end) || rel(f.end) >= len || rel(f.p2From) >= len) ? [{ fieldId: 'sh-p2-to', message: 'The second part starts after the first part ends and ends within 24 hours of the start.' }] : []),
+    ...(split && f.p2From && f.p2To && rel(f.p2From) >= rel(f.end) && rel(f.p2From) < len && gap < types.minGapMinutes ? [{ fieldId: 'sh-p2-from', message: `Leave at least ${mins(types.minGapMinutes)} between the parts (company setting).` }] : []),
+    ...(f.full === null || f.half === null || f.half >= f.full ? [{ fieldId: 'half-day', message: `Make the half day less than the full day${f.full !== null ? ` (${f.full} h)` : ''}.` }] : []),
+    ...(f.breakRule === 'fixed' && !f.brk ? [{ fieldId: 'sh-break', message: 'Give the break in minutes, or pick No break.' }] : []),
+    ...(split && f.breakRule === 'fixed' ? [{ fieldId: 'sh-break', message: 'A split shift has no break rule: the gap is the break. Pick No break.' }] : []),
+    ...(!f.from || isoOf(f.from) < d.today ? [{ fieldId: 'sh-from', message: 'Choose today or a later date.' }] : []),
+  ];
+  const saveErrors = useSaveErrors(errors);
+  const { errorOf } = saveErrors;
+  const open = (id: string) => {
+    const next = formOf(d.shifts.find((s) => s.id === id) ?? null, d.today);
+    setSel(id);
+    setF(next);
+    setBase(next);
+    saveErrors.reset();
+  };
+  const duplicate = () => {
+    const copy = { ...f, code: '', name: `${f.name.trim()} (copy)` };
+    setSel('new');
+    setF(copy);
+    setBase(formOf(null, d.today));
+    saveErrors.reset();
+  };
+  /** A new shift's type (as the design's pickKind): only the type's own times change; a split has no break rule. */
+  const pickKind = (k: LiveShiftKind) => {
+    if (k === f.kind) return;
+    if (k === 'flexi') set({ kind: k, start: '08:00', end: '20:00', coreFrom: '11:00', coreTo: '16:00' });
+    else if (k === 'split') set({ kind: k, start: '07:00', end: '11:00', p2From: '17:00', p2To: '21:00', breakRule: 'none' });
+    else set({ kind: k, end: split ? f.p2To : f.end });
+  };
+  const times = {
+    validFrom: f.from ? isoOf(f.from) : d.today,
+    start: toMinute(f.start) ?? 0,
+    end: toMinute(lastEnd) ?? 0,
+    graceMinutes: f.grace ?? 0,
+    halfDayMinutes: Math.round((f.half ?? 4) * 60),
+    fullDayMinutes: Math.round((f.full ?? 8) * 60),
+    breakMinutes: f.breakRule === 'fixed' ? (f.brk ?? 0) : 0,
+    breakAboveMinutes: Math.round((f.brkAbove ?? 0) * 60),
+    ...(flexi ? { coreStart: toMinute(f.coreFrom), coreEnd: toMinute(f.coreTo), otAfterMinutes: f.otAfter !== null ? Math.round(f.otAfter * 60) : null } : {}),
+    ...(split ? { firstEnd: toMinute(f.end), secondStart: toMinute(f.p2From) } : {}),
+  };
+  const save = () => {
+    if (errors.length) return saveErrors.reveal();
+    const detailsChanged = row && (f.name.trim() !== row.name || f.colour !== row.colour || f.night !== row.night || f.reclockIn !== Boolean(row.reclockIn));
+    const timed = (x: ShiftForm) => JSON.stringify([x.start, x.end, x.grace, x.full, x.half, x.breakRule, x.brk, x.brkAbove, ...(flexi ? [x.coreFrom, x.coreTo, x.otAfter] : []), ...(split ? [x.p2From, x.p2To] : [])]);
+    const timesChanged = row && timed(f) !== timed(base);
+    if (row && !detailsChanged && !timesChanged) return why('Nothing has changed yet')();
+    void run('save', async () => {
+      if (!row) {
+        await p.onCreateShift({ code: f.code, name: f.name.trim(), colour: f.colour, night: f.night, reclockIn: f.reclockIn, ...(f.kind !== 'fixed' ? { kind: f.kind } : {}), ...times });
+        setSel(`code:${f.code}`);
+      } else {
+        if (detailsChanged) await p.onShiftDetails(row.id, { name: f.name.trim(), colour: f.colour, night: f.night, active: row.active, reclockIn: f.reclockIn });
+        if (timesChanged) await p.onShiftTimes(row.id, times);
+      }
+      setBase(f);
+    });
+  };
+  const waiting = row?.versions.find((x) => x.validFrom > d.today);
+  const ready = !!f.start && !!f.end && f.start !== f.end && (!split || (!!f.p2From && !!f.p2To));
+  const coreAt = flexi && f.coreFrom ? fmt12(fromMinute((toMinute(f.coreFrom)! + (f.grace ?? 0)) % 1440)) : '';
+  const previewText = !ready
+    ? 'Enter the start and end to see the day.'
+    : flexi
+      ? `A day on this shift: in from ${at(f.start!)}, out by ${at(f.end!)}${f.end! < f.start! ? ' (next day)' : ''}.${f.coreFrom && f.coreTo ? ` Everyone is in for core hours, ${at(f.coreFrom)} – ${at(f.coreTo)}.` : ''}`
+      : split
+        ? `Two parts: ${timesOf(toMinute(f.start)!, toMinute(f.end)!)} and ${timesOf(toMinute(f.p2From)!, toMinute(f.p2To)!)}. The ${at(f.end!)} – ${at(f.p2From!)} gap is the break, not shift time.`
+        : `A day on this shift: ${timesOf(toMinute(f.start)!, toMinute(f.end)!)}.${f.grace ? ` Check-ins up to ${fmt12(fromMinute((toMinute(f.start)! + f.grace) % 1440))} are on time.` : ''}`;
+  const previewCard = (
+    <Card title="Preview">
+      <p className="yx-tim-muted">{previewText}</p>
+      {ready && <ShiftBar start={f.start!} end={lastEnd!} parts={split ? [[f.start!, f.end!], [f.p2From!, f.p2To!]] : undefined} punches={[]} from={overnight ? 18 * 60 : 6 * 60} to={overnight ? 32 * 60 : 23 * 60} />}
+      <ul className="yx-tim-days">
+        {flexi && <li><span>Core hours</span><strong>{f.coreFrom && f.coreTo ? `${at(f.coreFrom)} – ${at(f.coreTo)}` : '—'}</strong></li>}
+        <li><span>{flexi ? 'Late' : 'Late grace'}</span><strong>{flexi ? (d.types?.flexiLate === 'never' ? 'Never: only the hours worked count (company setting)' : `Checking in after ${coreAt || 'core start'}`) : f.grace ? `${f.grace} min${split ? ', for each part' : ''}` : 'None'}</strong></li>
+        <li><span>Break deducted</span><strong>{split ? 'None (the gap is the break)' : f.breakRule === 'fixed' && f.brk ? `${f.brk} min when worked time is above ${f.brkAbove ?? 0} h` : 'None'}</strong></li>
+        <li><span>Full day</span><strong>{f.full !== null ? `From ${f.full} h worked${split ? ' over both parts' : ''}` : '—'}</strong></li>
+        <li><span>Half day</span><strong>{split ? 'Missing one part' : flexi && d.types?.flexiShort === 'core_hours' ? 'Only when core hours are missed (company setting)' : f.half !== null ? `From ${f.half} h worked; under it is absent` : '—'}</strong></li>
+        {flexi && <li><span>Overtime</span><strong>{`After ${f.otAfter ?? f.full ?? 0} h worked`}</strong></li>}
+        <li><span>Allowance</span><strong>{f.night ? 'Night allowance' : 'None'}</strong></li>
+      </ul>
+    </Card>
+  );
+  const header = {
+    title: isNew ? (f.name.trim() ? `${f.name.trim()} shift` : 'New shift') : `${row.name} shift`,
+    description: `Time › Time settings › Shifts & patterns · ${isNew ? 'not saved yet' : row.active ? 'in use' : 'not in use'}`,
+    status: isNew ? <Badge tone="neutral">Not saved yet</Badge> : !row.active ? <Badge tone="neutral">Not in use</Badge> : waiting ? <Badge tone="info">{`Changes from ${shortDate(isoDate(waiting.validFrom))}`}</Badge> : <Badge tone="success">Active</Badge>,
+    actions: (
+      <span className="yx-tim-row">
+        {isNew ? d.shifts.length > 0 && <Button onClick={() => open(d.shifts[0].id)}>Discard</Button> : <Button icon={Copy} onClick={duplicate}>Duplicate</Button>}
+        <Button variant="primary" loading={busy === 'save'} onClick={save}>Save shift</Button>
+      </span>
+    ),
+  };
+  // Type: shown once the company turns on flexi or split (Settings › Company rules), or for a shift that has another type.
+  const kinds = (Object.keys(KIND_LABEL) as LiveShiftKind[]).filter((k) => k === 'fixed' || k === f.kind || types[k]);
+  const body = (
+    <div className="yx-tim-editor">
+      <div className="yx-tim-form">
+        <ErrorSummary errors={saveErrors.shownErrors} title="Fix these to save" />
+        {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+        <Card title="Shifts" actions={<Button size="sm" icon={Plus} onClick={why(dirty && 'Save or discard your changes first', () => open('new'))}>Add a shift</Button>}>
+          {d.shifts.length ? (
+            <ul className="yx-tim-list" aria-label="Shifts">
+              {d.shifts.map((s) => {
+                const v = versionNow(s, d.today);
+                const current = row?.id === s.id;
+                const when = !v ? '—' : s.kind === 'split' && v.firstEnd != null && v.secondStart != null ? `${timesOf(v.start, v.firstEnd)}, ${timesOf(v.secondStart, v.end)}` : timesOf(v.start, v.end);
+                return (
+                  <li key={s.id}>
+                    <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{s.name}</strong><span className="yx-tim-muted">{s.code} · {s.kind && s.kind !== 'fixed' ? `${KIND_LABEL[s.kind]} · ` : ''}{when}{s.active ? '' : ' · not in use'}</span></span>
+                    <span className="yx-tim-row" style={{ flexShrink: 0, justifyContent: 'flex-end' }}>
+                      <Button size="sm" onClick={why(current ? 'You are editing this shift' : dirty && 'Save or discard your changes first', () => open(s.id))}>{current ? 'Editing' : 'Edit'}</Button>
+                      <Button size="sm" loading={busy === s.id} onClick={() => void run(s.id, () => p.onShiftDetails(s.id, { name: s.name, colour: s.colour, night: s.night, active: !s.active, reclockIn: Boolean(s.reclockIn) }))}>{s.active ? 'Stop using' : 'Use again'}</Button>
+                    </span>
+                  </li>
+                );
+              })}
+              {dirty && <li><span className="yx-tim-muted" style={{ flex: '1 1 0', minWidth: 0 }}>Save or discard your changes first</span><Button size="sm" onClick={() => setF(base)}>Discard changes</Button></li>}
+            </ul>
+          ) : (
+            <p className="yx-tim-muted">No shifts yet. Without shifts, each location's usual hours apply.</p>
+          )}
+        </Card>
+        <FormSection title="Basics">
+          <FieldRow>
+            <FormField id="sh-name" label="Name" required error={errorOf('sh-name')}><TextField value={f.name} maxLength={60} onChange={(v) => set({ name: v })} /></FormField>
+            <FormField id="sh-code" label="Code" required helper={isNew ? 'Shown in every roster cell.' : 'A code never changes.'} error={errorOf('sh-code')}><TextField value={f.code} placeholder="For example GC" maxLength={6} disabled={!isNew} onChange={(v) => set({ code: v.toUpperCase() })} /></FormField>
+          </FieldRow>
+          <FormField id="sh-colour" label="Colour" helper="The colour of the shift on the roster."><Select value={f.colour} onChange={(v) => v && set({ colour: v })} options={COLOURS} /></FormField>
+          {kinds.length > 1 && (
+            <FormField label="Type" helper={isNew ? 'Pick the type. It cannot change once the shift is saved.' : 'Type is fixed once the shift is saved. Duplicate it to make a shift of another type.'}>
+              <RadioGroup aria-label="Type" value={f.kind} disabled={!isNew} onChange={(v) => pickKind(v as LiveShiftKind)} orientation="horizontal" options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} />
+            </FormField>
+          )}
+          <FieldRow>
+            <FormField id="sh-start" label={split ? 'First part from' : 'Start'} required><TimeField value={f.start} onChange={(v) => set({ start: v })} /></FormField>
+            <FormField id="sh-end" label={split ? 'First part to' : 'End'} required helper={split ? undefined : overnight ? 'Ends next day; the day belongs to the start date' : 'Before the start for a night shift.'} error={errorOf('sh-end')}><TimeField value={f.end} onChange={(v) => set({ end: v })} /></FormField>
+          </FieldRow>
+          {flexi && (
+            <FieldRow>
+              <FormField id="sh-core-from" label="Core from"><TimeField value={f.coreFrom} onChange={(v) => set({ coreFrom: v })} /></FormField>
+              <FormField id="sh-core-to" label="Core to" error={errorOf('sh-core-to')}><TimeField value={f.coreTo} onChange={(v) => set({ coreTo: v })} /></FormField>
+            </FieldRow>
+          )}
+          {split && (
+            <FieldRow>
+              <FormField id="sh-p2-from" label="Second part from" error={errorOf('sh-p2-from')}><TimeField value={f.p2From} onChange={(v) => set({ p2From: v })} /></FormField>
+              <FormField id="sh-p2-to" label="Second part to" helper={overnight ? 'Ends next day; the day belongs to the start date' : undefined} error={errorOf('sh-p2-to')}><TimeField value={f.p2To} onChange={(v) => set({ p2To: v })} /></FormField>
+            </FieldRow>
+          )}
+        </FormSection>
+        {narrow && previewCard}
+        <FormSection title="Check-in and grace">
+          <FieldRow>
+            <FormField id="sh-grace" label="Late grace (min)" helper={flexi ? 'Counted from the start of core hours.' : split ? 'For each part.' : undefined}><NumberField value={f.grace} min={0} max={120} onChange={(v) => set({ grace: v })} /></FormField>
+          </FieldRow>
+        </FormSection>
+        <FormSection title="Break rule">
+          <RadioGroup aria-label="Break rule" value={f.breakRule} onChange={(v) => set({ breakRule: v as ShiftForm['breakRule'] })} options={[{ value: 'fixed', label: 'Fixed unpaid break', description: 'Deducted when worked time is above the hours below' }, { value: 'none', label: 'No break' }]} />
+          {f.breakRule === 'fixed' && (
+            <FieldRow>
+              <FormField id="sh-break" label="Break (min)" error={errorOf('sh-break')}><NumberField value={f.brk} min={0} max={120} onChange={(v) => set({ brk: v })} /></FormField>
+              <FormField id="sh-break-above" label="Taken off above (h worked)"><NumberField value={f.brkAbove} min={0} max={16} decimals onChange={(v) => set({ brkAbove: v })} /></FormField>
+            </FieldRow>
+          )}
+        </FormSection>
+        <FormSection title="Day thresholds">
+          <FieldRow>
+            <FormField id="sh-full" label="Full day from (h)"><NumberField value={f.full} min={0.5} max={16} decimals onChange={(v) => set({ full: v })} /></FormField>
+            <FormField id="half-day" label="Half day from (h)" error={errorOf('half-day')}><NumberField value={f.half} min={0.5} max={16} decimals onChange={(v) => set({ half: v })} /></FormField>
+          </FieldRow>
+          <p className="yx-tim-note">{split ? 'Missing one part is a half day. ' : f.half != null ? `Under ${f.half} h worked counts as absent. ` : ''}A missing punch shows as "Missing check-out".</p>
+        </FormSection>
+        {flexi && (
+          <FormSection title="Overtime">
+            <FormField id="sh-ot-after" label="Overtime after (h worked)" helper="Flexi shifts have no fixed end, so overtime counts from hours worked. Empty: from the full day."><NumberField value={f.otAfter} min={0.5} max={16} decimals onChange={(v) => set({ otAfter: v })} /></FormField>
+          </FormSection>
+        )}
+        <FormSection title="Allowances">
+          <Switch label="Night allowance" description="Counts this shift for the night allowance in payroll" checked={f.night} onChange={(v) => set({ night: v })} />
+          {(f.night || overnight) && <InlineAlert tone="info" title="Night window for women (law)">The legal night window is 7 pm – 6 am. Women can be rostered on a shift touching it only with written consent and every safeguard in date (Night work tab). The allowance is for pay only; consent checks always use 7 pm – 6 am.</InlineAlert>}
+          {/* Answer 2477: off by default (split days and field visits turn it on). */}
+          <Switch label="Clock in again after clocking out" description="People on this shift may clock in again the same day; worked time is the sum of the in and out sessions." checked={f.reclockIn} onChange={(v) => set({ reclockIn: v })} />
+        </FormSection>
+        <FormSection title="When it applies">
+          <FormField id="sh-from" label="Effective from" required helper={isNew ? 'The shift can be used from this date.' : 'New times and rules apply from this date. Earlier days keep the old rules.'} error={errorOf('sh-from')}>
+            <DatePicker value={f.from} min={today} onChange={(v) => set({ from: v })} />
+          </FormField>
+        </FormSection>
+      </div>
+      {!narrow && <div className="yx-tim-sticky">{previewCard}</div>}
+    </div>
+  );
+  return { header, body };
+}
+
+/** The Patterns tab: the pattern list, a new pattern's days, who follows a saved one, and 14 days of preview. */
+function useLivePatternsTab(d: SetupData, p: LiveShiftSetup) {
+  const why = useWhy();
+  const { busy, error, run } = useRun();
+  const today = isoDate(d.today);
+  const [sel, setSel] = useState<string>(d.patterns[0]?.id ?? 'new');
+  const pattern = d.patterns.find((x) => x.id === sel || `name:${x.name}` === sel) ?? null;
+  const isNew = !pattern;
+  const [draft, setDraft] = useState<{ name: string; weekly: boolean; cycle: (string | null)[] }>({ name: '', weekly: true, cycle: Array(7).fill(null) });
+  const [apply, setApply] = useState<{ scopeType: string; scopeId: string | null; from: Date | null; day: number | null }>({ scopeType: 'employee', scopeId: null, from: today, day: 1 });
+  const cycle = pattern ? pattern.cycle : draft.cycle;
+  const weekly = pattern ? pattern.kind === 'weekly' : draft.weekly;
+  const shiftById = (id: string | null) => (id ? d.shifts.find((s) => s.id === id) : undefined);
+  const codeOfId = (id: string | null) => (id ? (shiftById(id)?.code ?? '?') : 'OFF');
+  const dayText = (id: string | null) => {
+    const s = shiftById(id);
+    const v = s && versionNow(s, d.today);
+    return !s ? 'Off' : v ? `${s.name} ${timesOf(v.start, v.end)}` : s.name;
+  };
+  const newErrors = [...(!draft.name.trim() ? [{ fieldId: 'pt-name', message: 'Name the pattern.' }] : []), ...(draft.cycle.every((c) => c === null) ? [{ fieldId: 'pt-days', message: 'Give at least one day a shift.' }] : [])];
+  const applyErrors = [...(apply.scopeType !== 'tenant' && !apply.scopeId ? [{ fieldId: 'pa-who', message: 'Choose who the pattern is for.' }] : []), ...(!apply.from || isoOf(apply.from) < d.today ? [{ fieldId: 'pa-from', message: 'Choose today or a later date.' }] : [])];
+  const saveErrors = useSaveErrors(isNew ? newErrors : applyErrors);
+  const { errorOf } = saveErrors;
+  const pick = (id: string) => {
+    setSel(id);
+    saveErrors.reset();
+  };
+  const setCycle = (c: (string | null)[]) => setDraft({ ...draft, cycle: c });
+  const options = [{ value: 'off', label: 'Weekly off' }, ...d.shifts.filter((s) => s.active).map((s) => ({ value: s.id, label: `${s.code} · ${dayText(s.id)}` }))];
+  const scopeList = apply.scopeType === 'employee' ? d.people.map((x) => ({ value: x.id, label: x.code ? `${x.name} (${x.code})` : x.name })) : apply.scopeType === 'location' ? d.locations.map((x) => ({ value: x.id, label: x.name })) : apply.scopeType === 'department' ? d.departments.map((x) => ({ value: x.id, label: x.name })) : apply.scopeType === 'legal_entity' ? d.entities.map((x) => ({ value: x.id, label: x.name })) : [];
+  const save = () => {
+    if (newErrors.length) return saveErrors.reveal();
+    void run('save', async () => {
+      await p.onCreatePattern({ name: draft.name.trim(), kind: draft.weekly ? 'weekly' : 'cycle', cycle: draft.cycle });
+      setSel(`name:${draft.name.trim()}`);
+    });
+  };
+  const applyNow = () => {
+    if (!pattern) return;
+    if (applyErrors.length) return saveErrors.reveal();
+    void run('apply', () => p.onAssignPattern(pattern.id, { scopeType: apply.scopeType, ...(apply.scopeType === 'tenant' ? {} : { scopeId: apply.scopeId! }), validFrom: isoOf(apply.from!), offsetDays: weekly ? 0 : Math.max(0, Math.min(cycle.length - 1, (apply.day ?? 1) - 1)) }));
+  };
+  // Preview: a saved pattern from the date it would apply (with its start day); a new one from today.
+  const from = !isNew && apply.from ? apply.from : today;
+  const offset = isNew || weekly ? 0 : Math.max(0, (apply.day ?? 1) - 1);
+  const length = Math.max(14, cycle.length);
+  const days = Array.from({ length }, (_, i) => addDays(from, i));
+  const codeOn = (dt: Date, i: number) => (weekly ? cycle[(dt.getDay() + 6) % 7] : cycle[posMod(i + offset, cycle.length)]) ?? null;
+  const header = {
+    title: isNew ? draft.name.trim() || 'New pattern' : pattern.name,
+    description: `Time › Time settings › Shifts & patterns · ${isNew ? 'not saved yet' : pattern.assignments.length ? `followed by ${pattern.assignments.map((a) => a.scopeName).join(', ')}` : 'not applied yet'}`,
+    status: isNew ? <Badge tone="neutral">Not saved yet</Badge> : !pattern.active ? <Badge tone="neutral">Not in use</Badge> : pattern.assignments.length ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Not applied yet</Badge>,
+    actions: isNew ? (
+      <span className="yx-tim-row">
+        {d.patterns.length > 0 && <Button onClick={() => pick(d.patterns[0].id)}>Discard</Button>}
+        <Button variant="primary" loading={busy === 'save'} onClick={save}>Save pattern</Button>
+      </span>
+    ) : (
+      <Button variant="primary" loading={busy === 'apply'} onClick={why(!pattern.active && 'This pattern is not in use', applyNow)}>Apply pattern</Button>
+    ),
+  };
+  const body = (
+    <div className="yx-tim-editor">
+      <div className="yx-tim-form">
+        <ErrorSummary errors={saveErrors.shownErrors} title={isNew ? 'Fix these to save' : 'Fix these to apply'} />
+        {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+        <Card title="Patterns" actions={<Button size="sm" icon={Plus} onClick={why(!d.shifts.length && 'Add a shift first (Shift tab)', () => pick('new'))}>Add pattern</Button>}>
+          {d.patterns.length ? (
+            <ul className="yx-tim-list" aria-label="Patterns">
+              {d.patterns.map((x) => (
+                <li key={x.id}>
+                  <span className="yx-tim-list__main" style={{ flex: '1 1 0', minWidth: 0 }}><strong>{x.name}</strong><span className="yx-tim-muted">{x.kind === 'weekly' ? 'Weekly' : `${x.cycle.length}-day cycle`} · {x.assignments.length ? x.assignments.map((a) => a.scopeName).join(', ') : 'Not applied yet'}</span></span>
+                  <Button size="sm" onClick={why(x.id === pattern?.id && 'You are looking at this pattern', () => pick(x.id))}>{x.id === pattern?.id ? 'Editing' : 'Edit'}</Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="yx-tim-muted">No patterns yet. A pattern repeats shifts and weekly offs, every week or in a cycle (4 on, 2 off; a 3-shift rotation).</p>
+          )}
+        </Card>
+        {isNew ? (
+          <>
+            <FormField id="pt-name" label="Pattern name" required error={errorOf('pt-name')}><TextField value={draft.name} maxLength={60} placeholder="For example 4 on / 2 off · Evening" onChange={(v) => setDraft({ ...draft, name: v })} /></FormField>
+            <FormField label="Repeat">
+              <RadioGroup aria-label="Repeat" value={draft.weekly ? 'week' : 'cycle'} onChange={(v) => setDraft({ ...draft, weekly: v === 'week', cycle: v === 'week' ? [...draft.cycle, ...Array(7).fill(null)].slice(0, 7) : draft.cycle })} orientation="horizontal" options={[{ value: 'week', label: 'Weekly' }, { value: 'cycle', label: 'N-day cycle' }]} />
+            </FormField>
+            <FormField id="pt-days" label={draft.weekly ? 'Week (Mon to Sun)' : `Cycle (${draft.cycle.length} days)`} helper="Click a day and pick its shift, or OFF for a weekly off." error={errorOf('pt-days')}>
+              <div className="yx-tim-stack">
+                {Array.from({ length: Math.ceil(draft.cycle.length / 7) }, (_, w) => (
+                  <div key={w} className="yx-tim-row" role="group" aria-label={draft.weekly ? 'Week' : `Week ${w + 1} of the cycle`}>
+                    {draft.cycle.slice(w * 7, w * 7 + 7).map((c, j) => {
+                      const i = w * 7 + j;
+                      const label = draft.weekly ? WD_SHORT[i] : `Day ${i + 1}`;
+                      return (
+                        <Menu key={i}>
+                          <MenuTrigger asChild>
+                            <Button size="sm" aria-label={`${label}: ${dayText(c)}. Change`}>{draft.weekly ? label : i + 1} · {codeOfId(c)}</Button>
+                          </MenuTrigger>
+                          <MenuContent align="start">
+                            {options.map((o) => <MenuItem key={o.value} onSelect={() => setCycle(draft.cycle.map((x, k) => (k === i ? (o.value === 'off' ? null : o.value) : x)))}>{o.label}</MenuItem>)}
+                          </MenuContent>
+                        </Menu>
+                      );
+                    })}
+                  </div>
+                ))}
+                {!draft.weekly && (
+                  <div className="yx-tim-row">
+                    <Button size="sm" icon={Plus} onClick={why(draft.cycle.length >= 56 && 'A cycle has at most 56 days', () => setCycle([...draft.cycle, null]))}>Day</Button>
+                    <Button size="sm" icon={Trash2} onClick={why(draft.cycle.length <= 2 && 'A cycle needs at least 2 days', () => setCycle(draft.cycle.slice(0, -1)))}>Remove day {draft.cycle.length}</Button>
+                  </div>
+                )}
+              </div>
+            </FormField>
+            <p className="yx-tim-note">Once saved, apply it to people, a department, a location or the whole company.</p>
+          </>
+        ) : (
+          <>
+            <FormField label={weekly ? 'Week (Mon to Sun)' : `Cycle (${cycle.length} days)`} helper="A saved pattern doesn't change; add a new one for a new rhythm.">
+              <div className="yx-tim-row" role="list" aria-label="Pattern days">
+                {cycle.map((c, i) => <span key={i} role="listitem"><Badge tone="neutral">{weekly ? WD_SHORT[i] : i + 1} · {codeOfId(c)}</Badge></span>)}
+              </div>
+            </FormField>
+            <FormSection title="Who follows it">
+              {pattern.assignments.length ? (
+                <ul className="yx-tim-list" aria-label="Who follows it">
+                  {pattern.assignments.map((a) => (
+                    <li key={a.id}>
+                      <span className="yx-tim-list__main"><strong>{a.scopeName}</strong><span className="yx-tim-muted">From {formatDate(isoDate(a.validFrom))}{a.offsetDays ? ` · starts on day ${a.offsetDays + 1}` : ''}</span></span>
+                      {a.removable && <Button size="sm" loading={busy === a.id} onClick={() => void run(a.id, () => p.onRemoveAssignment(a.id))}>Remove</Button>}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="yx-tim-muted">Not applied to anyone yet.</p>
+              )}
+              <FieldRow>
+                <FormField id="pa-scope" label="Applies to" helper="The most specific one wins: a person over a department over a location over the company.">
+                  <Select value={apply.scopeType} onChange={(v) => v && setApply({ ...apply, scopeType: v, scopeId: null })} options={SCOPES} />
+                </FormField>
+                {apply.scopeType !== 'tenant' && (
+                  <FormField id="pa-who" label="Who" required error={errorOf('pa-who')}>
+                    <Select searchable value={apply.scopeId} placeholder="Choose" onChange={(v) => setApply({ ...apply, scopeId: v })} options={scopeList} />
+                  </FormField>
+                )}
+              </FieldRow>
+              <FieldRow>
+                <FormField id="pa-from" label="From" required helper="What is already in force stays as it was." error={errorOf('pa-from')}>
+                  <DatePicker value={apply.from} min={today} onChange={(v) => setApply({ ...apply, from: v })} />
+                </FormField>
+                {!weekly && (
+                  <FormField id="pa-offset" label="Starts on day of the cycle" helper="Crews on one rotation start on different days.">
+                    <NumberField value={apply.day} min={1} max={cycle.length} onChange={(v) => setApply({ ...apply, day: v })} />
+                  </FormField>
+                )}
+              </FieldRow>
+            </FormSection>
+          </>
+        )}
+      </div>
+      <Card title={`${length === 14 ? '14 days' : `One full cycle (${length} days)`} from ${dayName(from)}`}>
+        <ul className="yx-tim-days">
+          {days.map((dt, i) => <li key={i}><DayDate date={dt} /><strong>{dayText(codeOn(dt, i))}</strong></li>)}
+        </ul>
+      </Card>
+    </div>
+  );
+  return { header, body };
+}
+
+const WD_SHORT = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const EXTRA_TITLE: Record<Exclude<LiveTab, 'shift' | 'patterns'>, { title: string; description: string }> = {
+  overtime: { title: 'Overtime rules', description: 'Time › Time settings › Shifts & patterns · who can claim overtime, how it counts and how it is settled' },
+  projects: { title: 'Timesheet projects', description: 'Time › Time settings › Shifts & patterns · what people in Timesheet mode log their hours against' },
+  night: { title: 'Night work', description: "Time › Time settings › Shifts & patterns · women's night-work consents and each establishment's safeguards (law)" },
+};
+
+function LiveShiftEditor({ live: p, data: d }: { live: LiveShiftSetup; data: SetupData }) {
+  const [t, setT] = useState<LiveTab>('shift');
+  const shift = useLiveShiftTab(d, p);
+  const patterns = useLivePatternsTab(d, p);
+  const head = t === 'shift' ? shift.header : t === 'patterns' ? patterns.header : { ...EXTRA_TITLE[t], status: undefined, actions: undefined };
+  return (
+    <TimePage active="Shifts & patterns" user={HR_ADMIN}>
+      <PageHeader title={head.title} description={head.description} status={head.status} actions={head.actions} />
+      <Tabs value={t} onValueChange={(v) => setT(v as LiveTab)}>
+        <TabsList aria-label="Shift editor">
+          <TabsTrigger value="shift">Shift</TabsTrigger>
+          <TabsTrigger value="patterns">Patterns</TabsTrigger>
+          <TabsTrigger value="overtime">Overtime</TabsTrigger>
+          <TabsTrigger value="projects">Timesheet projects</TabsTrigger>
+          <TabsTrigger value="night">Night work</TabsTrigger>
+        </TabsList>
+        <TabsContent value="shift">{shift.body}</TabsContent>
+        <TabsContent value="patterns">{patterns.body}</TabsContent>
+        <TabsContent value="overtime"><OvertimeRulesTab data={d} onCreateOtRule={p.onCreateOtRule} onRemoveOtRule={p.onRemoveOtRule} /></TabsContent>
+        <TabsContent value="projects"><ProjectsTab /></TabsContent>
+        <TabsContent value="night"><NightWorkTab data={d} onAddConsent={p.onAddConsent} onWithdrawConsent={p.onWithdrawConsent} onAttest={p.onAttest} /></TabsContent>
+      </Tabs>
+    </TimePage>
+  );
+}
+
+/** Loading, error and no-access before the set-up is there; the editor once it is. */
+function LiveShiftSetupPage({ live }: { live: LiveShiftSetup }) {
+  if (live.state === 'ready' && live.data) return <LiveShiftEditor live={live} data={live.data} />;
+  return (
+    <TimePage active="Shifts & patterns" user={HR_ADMIN}>
+      <PageHeader title="Shifts and patterns" description="Time › Time settings › Shifts & patterns" />
+      {live.state === 'error' ? (
+        <ErrorState title="The shifts set-up didn't load" description="Nothing has changed. Try again in a moment." onRetry={live.onRetry} />
+      ) : live.state === 'no-access' ? (
+        <NoAccessState what="the shifts set-up" grantedBy="your HR admin" />
+      ) : (
+        <LoadingBlock rows={8} />
+      )}
+    </TimePage>
   );
 }
 
@@ -927,7 +1891,7 @@ const NIGHTS_MIN = Math.min(...NIGHTS.map((x) => x.n));
 const NIGHTS_MAX = Math.max(...NIGHTS.map((x) => x.n));
 
 /** Two-column fact list with a fixed label width, so the reasons line up. */
-function FactList({ rows }: { rows: [string, ReactNode][] }) {
+export function FactList({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <ul className="yx-tim-days">
       {rows.map(([k, v], i) => (
@@ -940,7 +1904,10 @@ function FactList({ rows }: { rows: [string, ReactNode][] }) {
   );
 }
 
-export function AutoRosterScreen({ step = 'draft', explainOpen = false, approved: approvedProp = false }: { step?: 'demand' | 'draft' | 'running'; explainOpen?: boolean; approved?: boolean }) {
+export function AutoRosterScreen({ live, ...story }: { step?: 'demand' | 'draft' | 'running'; explainOpen?: boolean; approved?: boolean; /** The live app's /time/auto-roster. */ live?: LiveAutoRoster }) {
+  return live ? <LiveAutoRosterScreen live={live} /> : <SampleAutoRosterScreen {...story} />;
+}
+function SampleAutoRosterScreen({ step = 'draft', explainOpen = false, approved: approvedProp = false }: { step?: 'demand' | 'draft' | 'running'; explainOpen?: boolean; approved?: boolean }) {
   const [tab, setTab] = useState(step === 'demand' ? 'demand' : 'draft');
   const [explain, setExplain] = useState<string | null>(explainOpen ? 'Night:2' : null);
   const [approved, setApproved] = useState(approvedProp);
@@ -952,6 +1919,8 @@ export function AutoRosterScreen({ step = 'draft', explainOpen = false, approved
   const [csv, setCsv] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const narrow = useNarrow();
+  const why = useWhy();
+  const done = useDone();
   // Demand being edited, and the demand the last run used (coverage follows the run, not the unsaved edits).
   const [need, setNeed] = useState(() => DEMAND.map((r) => r.need));
   const [usedNeed, setUsedNeed] = useState(need);
@@ -1038,15 +2007,15 @@ export function AutoRosterScreen({ step = 'draft', explainOpen = false, approved
         actions={
           <div className="yx-tim-row">
             {(blockedReason || approveBlocked) && <span className="yx-tim-muted">{blockedReason || approveBlocked}</span>}
-            <Button icon={Play} disabled={!!blockedReason} onClick={rerunAction}>Run again</Button>
+            <Button icon={Play} onClick={why(blockedReason, rerunAction)}>Run again</Button>
             {!published && (approved
-              ? <Button variant="primary" icon={Send} disabled={running || !!approveBlocked} onClick={() => setPub(true)}>Publish roster</Button>
-              : <Button variant="approve" disabled={running || !!approveBlocked} onClick={() => setApproved(true)}>Approve draft</Button>)}
+              ? <Button variant="primary" icon={Send} loading={running} onClick={why(approveBlocked, () => setPub(true))}>Publish roster</Button>
+              : <Button variant="approve" loading={running} onClick={why(approveBlocked, () => { setApproved(true); done('Draft approved', 'Publish it to tell the people.'); })}>Approve draft</Button>)}
           </div>
         }
       />
       {published && (
-        <InlineAlert tone="success" title={`Published · ${RUN_PEOPLE} people notified`} actions={<Button size="sm" asChild><a href={storyHref(STORY.openShifts)} target="_top">Open open shifts</a></Button>}>
+        <InlineAlert tone="info" title={`Published · ${RUN_PEOPLE} people notified`} actions={<Button size="sm" asChild><a href={storyHref(STORY.openShifts)} target="_top">Open open shifts</a></Button>}>
           {toOffer.length ? `Went out as open shifts: ${toOffer.map(slotName).join(', ')}.` : 'No new open shifts.'}
           {short.length > toOffer.length && ` Already open: ${short.filter((c) => offeredOf(c)).map(slotName).join(', ')}.`}
         </InlineAlert>
@@ -1184,7 +2153,7 @@ export function AutoRosterScreen({ step = 'draft', explainOpen = false, approved
           </div>
         )}
       </Drawer>
-      <ConfirmDialog open={pub} onOpenChange={setPub} title="Publish the roster for 5–11 Oct?" consequence={`${RUN_PEOPLE} people are notified by push and SMS.${toOffer.length ? ` ${toOffer.length} unfilled ${toOffer.length === 1 ? 'slot goes' : 'slots go'} out as open shifts to eligible people only: ${toOffer.map(slotName).join(', ')}.` : ''}${short.length > toOffer.length ? ` ${short.length - toOffer.length} already ${short.length - toOffer.length === 1 ? 'is an open shift' : 'are open shifts'}.` : ''}`} confirmLabel="Publish roster" onConfirm={() => { setPublished(true); setPub(false); }} />
+      <ConfirmDialog open={pub} onOpenChange={setPub} title="Publish the roster for 5–11 Oct?" consequence={`${RUN_PEOPLE} people are notified by push and SMS.${toOffer.length ? ` ${toOffer.length} unfilled ${toOffer.length === 1 ? 'slot goes' : 'slots go'} out as open shifts to eligible people only: ${toOffer.map(slotName).join(', ')}.` : ''}${short.length > toOffer.length ? ` ${short.length - toOffer.length} already ${short.length - toOffer.length === 1 ? 'is an open shift' : 'are open shifts'}.` : ''}`} confirmLabel="Publish roster" onConfirm={() => { setPublished(true); setPub(false); done('Roster published', `${RUN_PEOPLE} people notified.`); }} />
       <ConfirmDialog open={rerun} onOpenChange={setRerun} title="Run auto-roster again?" consequence="Running again discards the approval. You'll need to review and approve the new draft." confirmLabel="Run again" onConfirm={() => { setRerun(false); run(); }} />
     </TimePage>
   );
@@ -1222,7 +2191,10 @@ function OpenShiftsManager({ state = 'ready', offer = false, onOffer }: { state?
   const [pick, setPick] = useState('');
   const [reminded, setReminded] = useState<string[]>([]);
   const [offerLocal, setOfferLocal] = useState(false);
+  const [tried, setTried] = useState(false);
   const [form, setForm] = useState<{ date: Date | null; code: string; skill: string }>({ date: new Date(2026, 9, 10), code: 'E', skill: 'Line operator' });
+  const why = useWhy();
+  const done = useDone();
   const offering = onOffer ? offer : offerLocal;
   const setOffering = onOffer ?? setOfferLocal;
   const update = (id: string, patch: Partial<OpenShift>) => setRows(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
@@ -1237,7 +2209,7 @@ function OpenShiftsManager({ state = 'ready', offer = false, onOffer }: { state?
     { key: 'when', header: 'Shift', width: 260, value: (r) => r.date, render: (r) => (
       <span className="yx-tim-list__main">
         <span className="yx-tim-row">
-          <strong>{dayName(r.date)}</strong>
+          <strong><DayDate date={r.date} /></strong>
           <Badge tone={r.status === 'Open' ? 'warning' : 'success'}>{r.status}</Badge>
           {r.status === 'Open' ? <DueBadge date={r.date} /> : <Badge tone="neutral">{capFirst(relativeDue(r.date, TODAY).text)}</Badge>}
         </span>
@@ -1267,7 +2239,7 @@ function OpenShiftsManager({ state = 'ready', offer = false, onOffer }: { state?
             <Button size="sm" variant="review" onClick={() => { setAward(r); setPick(r.claims[0].name); }}>Pick claimant</Button>
           ) : (
             <>
-              <Button size="sm" disabled={reminded.includes(r.id)} onClick={() => setReminded([...reminded, r.id])}>{reminded.includes(r.id) ? 'Reminded' : 'Remind eligible'}</Button>
+              <Button size="sm" onClick={why(reminded.includes(r.id) && 'Already reminded today', () => { setReminded([...reminded, r.id]); done('Eligible people reminded'); })}>{reminded.includes(r.id) ? 'Reminded' : 'Remind eligible'}</Button>
               {r.pool === 'Hosur plant'
                 ? <span className="yx-tim-muted">Already offered to the whole plant</span>
                 : <Button size="sm" onClick={() => update(r.id, { pool: 'Hosur plant' })}>Offer to all Hosur lines</Button>}
@@ -1279,7 +2251,7 @@ function OpenShiftsManager({ state = 'ready', offer = false, onOffer }: { state?
         open={!!award}
         onOpenChange={(o) => !o && setAward(null)}
         title={award ? `Award ${dayName(award.date)} · ${award.slot}` : ''}
-        footer={<><Button onClick={() => setAward(null)}>Cancel</Button><Button variant="approve" onClick={() => { if (award) update(award.id, { status: 'Awarded', awardedTo: pick }); setAward(null); }}>Award shift</Button></>}
+        footer={<><Button onClick={() => setAward(null)}>Cancel</Button><Button variant="approve" onClick={() => { if (award) { update(award.id, { status: 'Awarded', awardedTo: pick }); done(`Shift awarded to ${pick}`); } setAward(null); }}>Award shift</Button></>}
       >
         <RadioGroup aria-label="Claimant" value={pick} onChange={setPick} options={(award?.claims ?? []).map((c) => ({ value: c.name, label: c.name, description: c.detail }))} />
       </Dialog>
@@ -1287,10 +2259,10 @@ function OpenShiftsManager({ state = 'ready', offer = false, onOffer }: { state?
         open={offering}
         onOpenChange={setOffering}
         title="Offer an open shift"
-        footer={<>{!form.date && <span className="yx-tim-muted">Pick a date</span>}<Button onClick={() => setOffering(false)}>Cancel</Button><Button variant="primary" disabled={!form.date} onClick={addOffer}>Offer shift</Button></>}
+        footer={<><Button onClick={() => setOffering(false)}>Cancel</Button><Button variant="primary" onClick={() => { if (!form.date) { setTried(true); document.getElementById('os-date')?.focus(); } else addOffer(); }}>Offer shift</Button></>}
       >
         <div className="yx-tim-stack">
-          <FormField label="Date" required><DatePicker value={form.date} min={TODAY} onChange={(d) => setForm({ ...form, date: d })} /></FormField>
+          <FormField id="os-date" label="Date" required error={tried && !form.date ? 'Pick a date' : undefined}><DatePicker value={form.date} min={TODAY} onChange={(d) => setForm({ ...form, date: d })} /></FormField>
           <FormField label="Shift" required><Select value={form.code} onChange={(v) => v && setForm({ ...form, code: v })} options={PLANT_SHIFTS.filter((s) => s.start).map((s) => ({ value: s.code, label: `${s.name} ${shiftTimes(s)}` }))} /></FormField>
           <FormField label="Skill" required><Select value={form.skill} onChange={(v) => v && setForm({ ...form, skill: v })} options={SKILLS.map((s) => ({ value: s, label: s }))} /></FormField>
           <p className="yx-tim-muted">Offered first to Hosur plant · Line 2, only to people who pass skill, rest and hour checks. You pick from the claims.</p>
@@ -1301,6 +2273,8 @@ function OpenShiftsManager({ state = 'ready', offer = false, onOffer }: { state?
 }
 
 function BidWindowPanel() {
+  const why = useWhy();
+  const done = useDone();
   const [reminded, setReminded] = useState(false);
   const [closing, setClosing] = useState(false);
   const [closed, setClosed] = useState(false);
@@ -1311,7 +2285,7 @@ function BidWindowPanel() {
         <p className="yx-tim-muted">Ties go to the person with the fewest nights, then the longest service.</p>
         {!closed && (
           <div className="yx-tim-row">
-            <Button disabled={reminded} onClick={() => setReminded(true)}>{reminded ? 'Reminded' : "Remind 15 who haven't bid"}</Button>
+            <Button onClick={why(reminded && 'Already reminded today', () => { setReminded(true); done("15 people reminded to bid"); })}>{reminded ? 'Reminded' : "Remind 15 who haven't bid"}</Button>
             <Button onClick={() => setClosing(true)}>Close window early</Button>
           </div>
         )}
@@ -1322,7 +2296,7 @@ function BidWindowPanel() {
           {closed ? (
             <span className="yx-tim-row"><Button size="sm" variant="primary" asChild><a href={storyHref(STORY.autoRoster)} target="_top">Run auto-roster for November</a></Button></span>
           ) : (
-            <span className="yx-tim-row"><Button size="sm" disabled>Open November roster</Button><span className="yx-tim-muted">Available after 15 Oct</span></span>
+            <span className="yx-tim-row"><Button size="sm" onClick={why('The November roster opens after the bid window closes on 15 Oct')}>Open November roster</Button><span className="yx-tim-muted">Available after 15 Oct</span></span>
           )}
         </div>
       </Card>
@@ -1333,13 +2307,16 @@ function BidWindowPanel() {
         consequence="27 of 42 eligible people have bid. The 15 who haven't lose the chance to rank patterns for November and get the leftover slots."
         confirmLabel="Close window"
         confirmVariant="danger"
-        onConfirm={() => setClosed(true)}
+        onConfirm={() => { setClosed(true); done('Bid window closed'); }}
       />
     </div>
   );
 }
 
-export function OpenShiftsScreen({ state = 'ready' }: { state?: ViewState }) {
+export function OpenShiftsScreen({ live, ...story }: { state?: ViewState; /** The live app's /time/open-shifts. */ live?: LiveOpenShifts }) {
+  return live ? <LiveOpenShiftsScreen live={live} /> : <SampleOpenShiftsScreen {...story} />;
+}
+function SampleOpenShiftsScreen({ state = 'ready' }: { state?: ViewState }) {
   const [offer, setOffer] = useState(false);
   return (
     <TimePage active="Roster" user={PLANT_MANAGER}>
@@ -1366,6 +2343,8 @@ export function OpenShiftsPhone({ view = 'list' }: { view?: 'list' | 'claimed' |
   const [daysOff, setDaysOff] = useState<Date[]>([new Date(2026, 10, 14), new Date(2026, 10, 15)]);
   const [claimed, setClaimed] = useState<string[]>(view === 'claimed' ? ['n'] : []);
   const [sent, setSent] = useState(false);
+  const why = useWhy();
+  const done = useDone();
   const move = (i: number, by: number) => {
     const next = [...order];
     [next[i], next[i + by]] = [next[i + by], next[i]];
@@ -1388,7 +2367,7 @@ export function OpenShiftsPhone({ view = 'list' }: { view?: 'list' | 'claimed' |
             return (
               <li key={s.id}>
                 <span className="yx-tim-list__main">
-                  <span className="yx-tim-row"><strong>{dayName(SHIFT_DAY)}</strong><DueBadge date={SHIFT_DAY} /></span>
+                  <span className="yx-tim-row"><strong><DayDate date={SHIFT_DAY} /></strong><DueBadge date={SHIFT_DAY} /></span>
                   <span style={nowrap}>{s.name} {s.time}</span>
                   <span className="yx-tim-muted">{s.detail}</span>
                   {other && !claimed.includes(s.id) && <span className="yx-tim-muted">Clashes with your {other.name.toLowerCase()} claim (8 h rest)</span>}
@@ -1396,10 +2375,10 @@ export function OpenShiftsPhone({ view = 'list' }: { view?: 'list' | 'claimed' |
                 {claimed.includes(s.id) ? (
                   <span className="yx-tim-stack">
                     <Badge tone="neutral">Waiting for manager</Badge>
-                    <Button size="sm" onClick={() => setClaimed(claimed.filter((x) => x !== s.id))}>Withdraw claim</Button>
+                    <Button size="sm" onClick={() => { setClaimed(claimed.filter((x) => x !== s.id)); done('Claim withdrawn'); }}>Withdraw claim</Button>
                   </span>
                 ) : (
-                  <Button size="sm" disabled={!!other} onClick={() => setClaimed([...claimed, s.id])}>Claim</Button>
+                  <Button size="sm" onClick={why(other && `It clashes with your ${other.name.toLowerCase()} claim (8 h rest). Withdraw that one first.`, () => { setClaimed([...claimed, s.id]); done('Shift claimed', 'Your manager picks from the claims.'); })}>Claim</Button>
                 )}
               </li>
             );
@@ -1416,8 +2395,8 @@ export function OpenShiftsPhone({ view = 'list' }: { view?: 'list' | 'claimed' |
                 {/* Only the label wraps; the arrows keep a fixed place on the right. */}
                 <span style={{ flex: '1 1 0', minWidth: 0 }}>{i + 1}. {p}</span>
                 <span className="yx-tim-row" style={{ flexWrap: 'nowrap', flexShrink: 0 }}>
-                  <IconButton icon={ArrowUp} size="sm" label={`Move ${p} up`} disabled={i === 0} onClick={() => move(i, -1)} />
-                  <IconButton icon={ArrowDown} size="sm" label={`Move ${p} down`} disabled={i === order.length - 1} onClick={() => move(i, 1)} />
+                  <IconButton icon={ArrowUp} size="sm" label={`Move ${p} up`} onClick={why(i === 0 && `${p} is already first`, () => move(i, -1))} />
+                  <IconButton icon={ArrowDown} size="sm" label={`Move ${p} down`} onClick={why(i === order.length - 1 && `${p} is already last`, () => move(i, 1))} />
                 </span>
               </li>
             ))}
@@ -1428,8 +2407,8 @@ export function OpenShiftsPhone({ view = 'list' }: { view?: 'list' | 'claimed' |
               <div className="yx-tim-row">{daysOff.map((d) => <Tag key={d.getTime()} onRemove={() => { setDaysOff(daysOff.filter((x) => x !== d)); setSent(false); }} removeLabel={`Remove ${dayName(d)}`}>{dayName(d)}</Tag>)}</div>
             </div>
           </FormField>
-          {sent && <InlineAlert tone="success" title="Bid sent">You can change it until 15 Oct.</InlineAlert>}
-          <Button variant="primary" fullWidth disabled={sent} onClick={() => setSent(true)}>{sent ? 'Bid sent' : 'Send bid'}</Button>
+          {sent && <p className="yx-tim-note">Bid sent. You can change it until 15 Oct.</p>}
+          <Button variant="primary" fullWidth onClick={why(sent && 'Bid already sent. Change the order or days off to send it again.', () => { setSent(true); done('Bid sent', 'You can change it until 15 Oct.'); })}>{sent ? 'Bid sent' : 'Send bid'}</Button>
         </div>
       )}
     </PhoneFrame>
@@ -1462,7 +2441,10 @@ const slotMins = (s: string) => (toMins(s) >= toMins('18:00') ? toMins(s) - 1440
 /** Clock time for minutes that may run before midnight (negative) or past it. */
 const clockAt = (m: number) => clock(posMod(m, 1440));
 
-export function StandbyScreen({ dialog = false, moved = false }: { dialog?: boolean; moved?: boolean }) {
+export function StandbyScreen({ live, ...story }: { dialog?: boolean; moved?: boolean; /** The live app's /time/standby. */ live?: LiveStandby }) {
+  return live ? <LiveStandbyScreen live={live} /> : <SampleStandbyScreen {...story} />;
+}
+function SampleStandbyScreen({ dialog = false, moved = false }: { dialog?: boolean; moved?: boolean }) {
   const [open, setOpen] = useState(dialog);
   const [moving, setMoving] = useState(false);
   /** Anil's moved start today (minutes), or null while it is still 9:30 am. `moved` opens with it already moved (11 h after the 2:30 am call-out). */
@@ -1474,6 +2456,7 @@ export function StandbyScreen({ dialog = false, moved = false }: { dialog?: bool
   const [source, setSource] = useState('Phone call');
   const [reason, setReason] = useState('Conveyor jam, Line 2');
   const narrow = useNarrow();
+  const why = useWhy();
   const nextShift = movedTo ?? SHIFT_TODAY;
   const anil = log.filter((c) => c.who === 'Anil Kumar');
   const latest = anil.reduce((x, c) => (c.end > x.end ? c : x), anil[0]);
@@ -1563,7 +2546,7 @@ export function StandbyScreen({ dialog = false, moved = false }: { dialog?: bool
         confirmLabel="Move shift"
         onConfirm={() => setMovedTo(moveTarget)}
       />
-      <Dialog open={open} onOpenChange={setOpen} title="Log a call-out" footer={<>{blocked && <span className="yx-tim-muted">{blocked}</span>}<Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" disabled={!!blocked} onClick={save}>Save call-out</Button></>}>
+      <Dialog open={open} onOpenChange={setOpen} title="Log a call-out" footer={<>{blocked && <span className="yx-tim-muted">{blocked}</span>}<Button onClick={() => setOpen(false)}>Cancel</Button><Button variant="primary" onClick={why(blocked, save)}>Save call-out</Button></>}>
         <div className="yx-tim-stack">
           <FormField label="Person on standby" required helper="Only standby slots that have started are listed"><Select value="a" onChange={() => {}} options={[{ value: 'a', label: 'Anil Kumar · standby Mon 28 Sep, 6 pm – 6 am' }]} /></FormField>
           <FieldRow><FormField label="Start" required><TimeField value={from} onChange={setFrom} /></FormField><FormField label="End" required><TimeField value={to} onChange={setTo} /></FormField></FieldRow>
@@ -1583,6 +2566,7 @@ export function StandbyScreen({ dialog = false, moved = false }: { dialog?: bool
 /** Anil Kumar's phone on Tue 29 Sep: today's shift (moved for rest after the night call-out), then his next standby on Thu 8 Oct. */
 export function StandbyPhone({ moved = false }: { moved?: boolean }) {
   const next = new Date(2026, 9, 8);
+  const why = useWhy();
   return (
     <PhoneFrame tab="time" title="Standby" user={{ name: 'Anil Kumar', email: 'anil.k@kaverifoods.in' }}>
       <Card title="Today · Tue 29 Sep" actions={moved ? undefined : <Badge tone="warning">Rest 7 h</Badge>}>
@@ -1594,7 +2578,7 @@ export function StandbyPhone({ moved = false }: { moved?: boolean }) {
       </Card>
       <Card title="Next standby" actions={<DueBadge date={next} />}>
         <p className="yx-tim-muted">Thu 8 Oct, 6:00 pm – 6:00 am · {STANDBY_ALLOWANCE}</p>
-        <Button variant="primary" fullWidth disabled aria-describedby="sb-reason">Start call-out</Button>
+        <Button variant="primary" fullWidth aria-describedby="sb-reason" onClick={why('You can start a call-out once your standby begins.')}>Start call-out</Button>
         <p className="yx-tim-note" id="sb-reason">You can start a call-out once your standby begins.</p>
       </Card>
       <Card title="Last call-out">
@@ -1626,10 +2610,13 @@ const restoreOn = (to: Date) => {
   while (d.getDay() === 0 || d.getDay() === 6 || HOLIDAY_TIMES.includes(d.getTime())) d = addDays(d, 1);
   return d;
 };
-const shortRange = (a: Date, b: Date) => `${a.getDate()}${a.getMonth() === b.getMonth() ? '' : ` ${MON[a.getMonth()]}`}–${b.getDate()} ${MON[b.getMonth()]}${b.getFullYear() !== TODAY.getFullYear() ? ` ${b.getFullYear()}` : ''}`;
+const shortRange = (a: Date, b: Date) => (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear() ? `${a.getDate()}–${formatDate(b)}` : `${formatDate(a)} – ${formatDate(b)}`);
 
-export function BlockLeavePlannerScreen({ persona = 'hr', confirm = false }: { persona?: 'hr' | 'mgr'; confirm?: boolean }) {
+export function BlockLeavePlannerScreen({ persona = 'hr', confirm = false, live }: { persona?: 'hr' | 'mgr'; confirm?: boolean; /** The app: the people whose role needs block leave (HR plans; managers see their team). */ live?: LiveBlockLeave }) {
+  if (live) return <LiveBlockLeavePlanner live={live} />;
   const [sel, setSel] = useState<BlockRow | null>(confirm ? BLOCK_ROWS[0] : null);
+  const why = useWhy();
+  const done = useDone();
   const [nudged, setNudged] = useState<string[]>([]);
   const [paused, setPaused] = useState<string[]>([]);
   /** Blocks HR plans here for someone who hadn't planned one. */
@@ -1720,7 +2707,7 @@ export function BlockLeavePlannerScreen({ persona = 'hr', confirm = false }: { p
         open={!!planFor}
         onOpenChange={(o) => !o && setPlanFor(null)}
         title={planFor ? `Plan block leave for ${planFor.name}` : ''}
-        footer={<>{planBlocked && <span className="yx-tim-muted">{planBlocked}</span>}<Button onClick={() => setPlanFor(null)}>Cancel</Button><Button variant="primary" disabled={!!planBlocked} onClick={() => { if (planFor && pFrom && pTo) setPlanned({ ...planned, [planFor.name]: { from: pFrom, to: pTo } }); setPlanFor(null); }}>Plan block</Button></>}
+        footer={<>{planBlocked && <span className="yx-tim-muted">{planBlocked}</span>}<Button onClick={() => setPlanFor(null)}>Cancel</Button><Button variant="primary" onClick={why(planBlocked, () => { if (planFor && pFrom && pTo) { setPlanned({ ...planned, [planFor.name]: { from: pFrom, to: pTo } }); done(`Block leave planned for ${planFor.name}`); } setPlanFor(null); })}>Plan block</Button></>}
       >
         <div className="yx-tim-stack">
           <FieldRow>
@@ -1739,10 +2726,10 @@ export function BlockLeavePlannerScreen({ persona = 'hr', confirm = false }: { p
    ===================================================================== */
 
 interface LicHolder { name: string; expires: Date }
-interface LicRow { id: string; req: string; kind: 'Role' | 'Skill' | 'Shift'; licence: string; /** Short second line under the licence name. */ note?: string; legal: boolean; holders: number; watch: LicHolder[]; /** Days before expiry that reminders go out. */ remind: number[] }
-const REMIND_DEFAULT = [60, 30, 7];
+export interface LicRow { id: string; req: string; kind: 'Role' | 'Skill' | 'Shift'; licence: string; /** Short second line under the licence name. */ note?: string; legal: boolean; holders: number; watch: LicHolder[]; /** Days before expiry that reminders go out. */ remind: number[] }
+export const REMIND_DEFAULT = [60, 30, 7];
 /** "60, 30 and 7" */
-const daysList = (d: number[]) => (d.length > 1 ? `${d.slice(0, -1).join(', ')} and ${d[d.length - 1]}` : String(d[0] ?? ''));
+export const daysList = (d: number[]) => (d.length > 1 ? `${d.slice(0, -1).join(', ')} and ${d[d.length - 1]}` : String(d[0] ?? ''));
 const LIC: LicRow[] = [
   { id: 'l1', req: 'Forklift driver', kind: 'Role', licence: 'Forklift licence', note: 'LMV endorsement', legal: true, holders: 6, remind: REMIND_DEFAULT, watch: [{ name: 'Babu Raj', expires: new Date(2026, 8, 27) }, { name: 'Mohammed Irfan', expires: new Date(2026, 9, 12) }] },
   {
@@ -1760,17 +2747,17 @@ function FORKLIFT_WATCH() {
   return LIC[0].watch;
 }
 /** Holders overridden by HR (name → reason): they can be rostered, so they don't count as needing action. */
-type Overrides = Record<string, string>;
+export type Overrides = Record<string, string>;
 /** The needs-action window is the row's first (longest) reminder. */
-const windowOf = (r: LicRow) => Math.max(...r.remind);
-const expiredOf = (r: LicRow, ov: Overrides = {}) => r.watch.filter((h) => !ov[h.name] && daysUntil(h.expires, TODAY) < 0).length;
-const expiringOf = (r: LicRow, ov: Overrides = {}) => r.watch.filter((h) => { const n = daysUntil(h.expires, TODAY); return !ov[h.name] && n >= 0 && n <= windowOf(r); }).length;
+export const windowOf = (r: LicRow) => Math.max(...r.remind);
+export const expiredOf = (r: LicRow, ov: Overrides = {}, today = TODAY) => r.watch.filter((h) => !ov[h.name] && daysUntil(h.expires, today) < 0).length;
+export const expiringOf = (r: LicRow, ov: Overrides = {}, today = TODAY) => r.watch.filter((h) => { const n = daysUntil(h.expires, today); return !ov[h.name] && n >= 0 && n <= windowOf(r); }).length;
 const actionCount = (r: LicRow, ov: Overrides = {}) => expiredOf(r, ov) + expiringOf(r, ov);
 const needsAction = (r: LicRow, ov: Overrides = {}) => actionCount(r, ov) > 0;
 
-function NeedsAction({ r, ov }: { r: LicRow; ov: Overrides }) {
-  const ex = expiredOf(r, ov);
-  const soon = expiringOf(r, ov);
+export function NeedsAction({ r, ov, today = TODAY }: { r: LicRow; ov: Overrides; today?: Date }) {
+  const ex = expiredOf(r, ov, today);
+  const soon = expiringOf(r, ov, today);
   const overridden = r.watch.filter((h) => ov[h.name]).length;
   if (!ex && !soon) return <span className="yx-tim-row"><span className="yx-tim-muted">All valid {windowOf(r)}+ days</span>{overridden > 0 && <Badge tone="neutral">{overridden} overridden</Badge>}</span>;
   // Two short badges, one line each, instead of one badge that wraps.
@@ -1783,14 +2770,37 @@ function NeedsAction({ r, ov }: { r: LicRow; ov: Overrides }) {
   );
 }
 
-export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: { state?: ViewState; blocked?: boolean }) {
+export function LicenceRequirementsScreen({ live, ...story }: { state?: ViewState; blocked?: boolean; /** The holders drawer with "Record licence" open. */ record?: boolean; /** The live app's /time/setup/licences. */ live?: LiveLicences }) {
+  return live ? <LiveLicencesScreen live={live} /> : <SampleLicenceRequirements {...story} />;
+}
+function SampleLicenceRequirements({ state = 'ready', blocked = false, record = false }: { state?: ViewState; blocked?: boolean; record?: boolean }) {
   const [lics, setLics] = useState(state === 'empty' ? [] : LIC);
   const [onlyAction, setOnlyAction] = useState(false);
-  const [holders, setHolders] = useState<LicRow | null>(null);
+  const [holders, setHolders] = useState<LicRow | null>(record ? LIC[0] : null);
+  /** "Record licence": HR records a person's licence or its renewal (the latest one counts). */
+  const [recording, setRecording] = useState(record);
+  const [recTried, setRecTried] = useState(false);
+  const [rec, setRec] = useState<{ person: string | null; number: string; from: Date | null; to: Date | null }>({ person: null, number: '', from: null, to: null });
+  const recError = { person: !rec.person ? 'Choose the person.' : '', from: !rec.from ? 'Enter the date the licence is valid from.' : '', to: rec.from && rec.to && rec.to < rec.from ? 'The expiry is after the valid-from date.' : '' };
+  const saveRecord = () => {
+    setRecTried(true);
+    const bad = (['person', 'from', 'to'] as const).find((k) => recError[k]);
+    if (bad) return void document.getElementById(`yx-lic-rec-${bad}`)?.focus();
+    done(`Licence recorded for ${rec.person}`, rec.to ? `Valid until ${longDate(rec.to)}.` : 'It has no expiry date.');
+    setRecording(false);
+    setRecTried(false);
+    setRec({ person: null, number: '', from: null, to: null });
+  };
+  const [code, setCode] = useState('');
+  const [note, setNote] = useState('');
+  const [until, setUntil] = useState<Date | null>(null);
   const [edit, setEdit] = useState<LicRow | 'new' | null>(null);
   /** People asked to renew (blocked alert and drawer share it). */
   const [asked, setAsked] = useState<string[]>([]);
-  const ask = (names: string[]) => setAsked([...asked, ...names.filter((n) => !asked.includes(n))]);
+  const ask = (names: string[]) => {
+    setAsked([...asked, ...names.filter((n) => !asked.includes(n))]);
+    done(names.length === 1 ? `${names[0]} asked to renew` : `${names.length} people asked to renew`);
+  };
   const [overrides, setOverrides] = useState<Record<string, string>>({});
   const [overrideFor, setOverrideFor] = useState<string | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
@@ -1800,22 +2810,28 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
   const [licence, setLicence] = useState('');
   const [remind, setRemind] = useState<(number | null)[]>(REMIND_DEFAULT);
   const [saved, setSaved] = useState<{ title: string; text: string } | null>(null);
+  const why = useWhy();
+  const done = useDone();
   const openEdit = (r: LicRow | 'new') => {
     setEdit(r);
     setKind(r === 'new' ? 'Role' : r.kind);
     setLegal(r !== 'new' && !r.legal ? 'company' : 'legal');
     setReq(r === 'new' ? '' : r.req);
     setLicence(r === 'new' ? '' : r.licence);
+    setCode('');
+    setNote(r === 'new' ? '' : r.note ?? '');
     setRemind(r === 'new' ? REMIND_DEFAULT : r.remind);
   };
   const missing = !req.trim() ? `Enter the ${kind.toLowerCase()}` : !licence.trim() ? 'Enter the licence' : remind.some((n) => n == null) ? 'Fill in all three reminder days' : '';
   const saveEdit = () => {
     if (!edit || missing) return;
-    const patch = { req: req.trim(), kind, licence: licence.trim(), legal: legal === 'legal', remind: remind.map(Number).sort((a, b) => b - a) };
+    const patch = { req: req.trim(), kind, licence: licence.trim(), note: note.trim() || undefined, legal: legal === 'legal', remind: remind.map(Number).sort((a, b) => b - a) };
     setLics(edit === 'new' ? [...lics, { id: `l${lics.length + 1}`, holders: 0, watch: [], ...patch }] : lics.map((r) => (r.id === edit.id ? { ...r, ...patch } : r)));
-    setSaved(edit === 'new'
-      ? { title: `Added ${patch.req}`, text: `No one holds this licence yet, so from today the roster blocks ${kind === 'Role' ? `everyone in the ${patch.req.toLowerCase()} role` : kind === 'Skill' ? `everyone rostered for ${patch.req.toLowerCase()} work` : `everyone on ${patch.req.toLowerCase()}`} until licences are recorded${patch.legal ? '' : ' or HR overrides with a reason'}.` }
-      : { title: `Saved ${patch.req}`, text: `Reminders go out ${daysList(patch.remind)} days before expiry.` });
+    // A new requirement blocks rostering from today, so that stays on screen; a saved edit is a toast.
+    if (edit === 'new') {
+      done(`Added ${patch.req}`);
+      setSaved({ title: `${patch.req}: no one holds this licence yet`, text: `From today the roster blocks ${kind === 'Role' ? `everyone in the ${patch.req.toLowerCase()} role` : kind === 'Skill' ? `everyone rostered for ${patch.req.toLowerCase()} work` : `everyone on ${patch.req.toLowerCase()}`} until licences are recorded${patch.legal ? '' : ' or HR overrides with a reason'}.` });
+    } else done(`Saved ${patch.req}`, `Reminders go out ${daysList(patch.remind)} days before expiry.`);
     setEdit(null);
   };
   const cols: TableColumn<LicRow>[] = [
@@ -1835,14 +2851,14 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
       <PageHeader
         title="Licence requirements"
         description={`People without a valid licence can't be rostered. Reminders go out before expiry (${daysList(REMIND_DEFAULT)} days by default). Legal licences have no override; HR can override company ones with a reason.`}
-        actions={<span className="yx-tim-row">{state === 'loading' && <span className="yx-tim-muted">Requirements are loading</span>}<Button variant="primary" icon={Plus} disabled={state === 'loading'} onClick={() => openEdit('new')}>Add requirement</Button></span>}
+        actions={<span className="yx-tim-row">{state === 'loading' && <span className="yx-tim-muted">Requirements are loading</span>}<Button variant="primary" icon={Plus} onClick={why(state === 'loading' && 'Wait for the requirements to load', () => openEdit('new'))}>Add requirement</Button></span>}
       />
-      {saved && <InlineAlert tone="success" title={saved.title}>{saved.text}</InlineAlert>}
+      {saved && <InlineAlert tone="warning" title={saved.title}>{saved.text}</InlineAlert>}
       {blocked && (
         <InlineAlert
           tone="danger"
           title="Assignment blocked · Forklift, Morning 6 am – 2 pm, Thu 1 Oct"
-          actions={<><Button size="sm" asChild><a href={storyHref(STORY.openShifts)} target="_top">Offer as open shift</a></Button><Button size="sm" disabled={asked.includes(babu.name)} onClick={() => ask([babu.name])}>{asked.includes(babu.name) ? 'Reminder sent' : 'Ask to renew'}</Button></>}
+          actions={<><Button size="sm" asChild><a href={storyHref(STORY.openShifts)} target="_top">Offer as open shift</a></Button><Button size="sm" onClick={why(asked.includes(babu.name) && 'Reminder already sent today', () => ask([babu.name]))}>{asked.includes(babu.name) ? 'Reminder sent' : 'Ask to renew'}</Button></>}
         >
           <span className="yx-tim-row">{babu.name}'s forklift licence expired {shortDate(babu.expires)} <DueBadge date={babu.expires} /></span>
           He can't be rostered on forklift duty until it's renewed, so his Thu 1 Oct morning shift needs someone else.
@@ -1857,13 +2873,12 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
         onRetry={() => {}}
         toolbar={
           state === 'ready' && (
-            <button type="button" className="yx-ppl__chip yx-ppl__chip--toggle" aria-pressed={onlyAction} onClick={() => setOnlyAction(!onlyAction)}>
-              {onlyAction && <Icon icon={Check} size="sm" />}
-              Only needing action ({lics.filter(act).length})
-            </button>
+            <FilterToggle pressed={onlyAction} onPressedChange={setOnlyAction}>
+Only needing action ({lics.filter(act).length})
+</FilterToggle>
           )
         }
-        rowButtons={(r) => <><Button size="sm" disabled={!act(r)} title={act(r) ? undefined : `All holders valid for ${windowOf(r)}+ days`} onClick={() => setHolders(r)}>Who needs action</Button><Button size="sm" onClick={() => openEdit(r)}>Edit</Button></>}
+        rowButtons={(r) => <><Button size="sm" onClick={() => setHolders(r)}>Who needs action</Button><Button size="sm" onClick={() => openEdit(r)}>Edit</Button></>}
         empty={
           onlyAction ? (
             <EmptyState title="No licences need action" description="Every holder's licence is valid past its first reminder." action={<Button onClick={() => setOnlyAction(false)}>Show all</Button>} />
@@ -1876,7 +2891,8 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
         {holders && (holders.watch.length ? (
           <div className="yx-tim-stack">
             <span className="yx-tim-row">
-              <Button size="sm" disabled={drawerNames.every((n) => asked.includes(n))} onClick={() => ask(drawerNames)}>{drawerNames.every((n) => asked.includes(n)) ? 'All asked to renew' : 'Ask all to renew'}</Button>
+              <Button size="sm" onClick={why(drawerNames.every((n) => asked.includes(n)) && 'Everyone was already asked today', () => ask(drawerNames))}>{drawerNames.every((n) => asked.includes(n)) ? 'All asked to renew' : 'Ask all to renew'}</Button>
+              <Button size="sm" icon={Plus} onClick={() => setRecording(true)}>Record licence</Button>
             </span>
             <ul className="yx-tim-list">
               {[...holders.watch].sort((a, b) => a.expires.getTime() - b.expires.getTime()).map((h) => {
@@ -1886,7 +2902,7 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
                     <PersonLabel name={h.name} secondary={overrides[h.name] ? `Overridden: ${overrides[h.name]}` : `${gone ? 'Expired' : 'Expires'} ${longDate(h.expires)}`} />
                     <span className="yx-tim-row">
                       <DueBadge date={h.expires} />
-                      <Button size="sm" disabled={asked.includes(h.name)} onClick={() => ask([h.name])}>{asked.includes(h.name) ? 'Reminder sent' : 'Ask to renew'}</Button>
+                      <Button size="sm" onClick={why(asked.includes(h.name) && 'Reminder already sent today', () => ask([h.name]))}>{asked.includes(h.name) ? 'Reminder sent' : 'Ask to renew'}</Button>
                       {/* Company licences only: HR can let an expired holder be rostered, with a reason. */}
                       {!holders.legal && gone && !overrides[h.name] && <Button size="sm" onClick={() => { setOverrideFor(h.name); setOverrideReason(''); }}>Override…</Button>}
                     </span>
@@ -1895,29 +2911,57 @@ export function LicenceRequirementsScreen({ state = 'ready', blocked = false }: 
               })}
             </ul>
           </div>
-        ) : <p className="yx-tim-muted">{holders.holders ? `All ${holders.holders} holders have a licence valid for more than ${windowOf(holders)} days.` : 'No holders yet.'}</p>)}
+        ) : (
+          <div className="yx-tim-stack">
+            <span className="yx-tim-row"><Button size="sm" icon={Plus} onClick={() => setRecording(true)}>Record licence</Button></span>
+            <p className="yx-tim-muted">{holders.holders ? `All ${holders.holders} holders have a licence valid for more than ${windowOf(holders)} days.` : 'No holders yet.'}</p>
+          </div>
+        ))}
       </Drawer>
+      <Dialog
+        open={recording}
+        onOpenChange={(o) => !o && setRecording(false)}
+        title={holders ? `Record a ${holders.licence.toLowerCase()}` : 'Record a licence'}
+        description="A renewal is recorded the same way: the latest licence counts."
+        footer={<><Button onClick={() => setRecording(false)}>Cancel</Button><Button variant="primary" onClick={saveRecord}>Record licence</Button></>}
+      >
+        <div className="yx-tim-form">
+          <FormField id="yx-lic-rec-person" label="Person" required error={recTried ? recError.person : undefined}>
+            <Select searchable value={rec.person} placeholder="Choose a person" onChange={(person) => setRec({ ...rec, person })} options={PLANT_PEOPLE.map((p) => ({ value: p.name, label: p.name }))} />
+          </FormField>
+          <FormField label="Licence number" optional><TextField value={rec.number} placeholder="For example TN-FL-2026-0412" onChange={(number) => setRec({ ...rec, number })} /></FormField>
+          <FieldRow>
+            <FormField id="yx-lic-rec-from" label="Valid from" required error={recTried ? recError.from : undefined}><DatePicker value={rec.from} max={TODAY} onChange={(from) => setRec({ ...rec, from })} /></FormField>
+            <FormField id="yx-lic-rec-to" label="Expires on" optional helper="Leave empty if it never expires." error={recTried ? recError.to : undefined}><DatePicker value={rec.to} min={rec.from ?? undefined} onChange={(to) => setRec({ ...rec, to })} /></FormField>
+          </FieldRow>
+        </div>
+      </Dialog>
       <Dialog
         open={!!overrideFor}
         onOpenChange={(o) => !o && setOverrideFor(null)}
         title={overrideFor ? `Override for ${overrideFor}` : ''}
-        footer={<>{!overrideReason.trim() && <span className="yx-tim-muted">Enter a reason</span>}<Button onClick={() => setOverrideFor(null)}>Cancel</Button><Button variant="primary" disabled={!overrideReason.trim()} onClick={() => { if (overrideFor) setOverrides({ ...overrides, [overrideFor]: overrideReason.trim() }); setOverrideFor(null); }}>Override</Button></>}
+        footer={<>{!overrideReason.trim() && <span className="yx-tim-muted">Enter a reason</span>}<Button onClick={() => setOverrideFor(null)}>Cancel</Button><Button variant="primary" onClick={why(!overrideReason.trim() && 'Enter a reason', () => { if (overrideFor) { setOverrides({ ...overrides, [overrideFor]: overrideReason.trim() }); done(`${overrideFor} can be rostered`, 'The override is logged.'); } setOverrideFor(null); })}>Override</Button></>}
       >
         <div className="yx-tim-stack">
           <p className="yx-tim-muted">{overrideFor} can be rostered while the company licence is renewed. The override and its reason are logged.</p>
           <FormField label="Reason" required><TextField value={overrideReason} placeholder="For example Renewal course booked for 6 Oct" onChange={setOverrideReason} /></FormField>
+          <FormField label="Until" optional helper="At most 90 days. Renewing the licence is the fix."><DatePicker value={until} min={TODAY} max={addDays(TODAY, 90)} onChange={setUntil} /></FormField>
         </div>
       </Dialog>
       <Dialog
         open={!!edit}
         onOpenChange={(o) => !o && setEdit(null)}
         title={edit === 'new' ? 'Add requirement' : 'Edit requirement'}
-        footer={<>{missing && <span className="yx-tim-muted">{missing}</span>}<Button onClick={() => setEdit(null)}>Cancel</Button><Button variant="primary" disabled={!!missing} onClick={saveEdit}>Save requirement</Button></>}
+        footer={<>{missing && <span className="yx-tim-muted">{missing}</span>}<Button onClick={() => setEdit(null)}>Cancel</Button><Button variant="primary" onClick={why(missing, saveEdit)}>Save requirement</Button></>}
       >
         <div className="yx-tim-stack">
           <FormField label="Required for"><Segment label="Required for" value={kind} onChange={setKind} options={(['Role', 'Skill', 'Shift'] as const).map((k) => ({ value: k, label: k }))} /></FormField>
           <FormField label={kind} required><TextField value={req} onChange={setReq} /></FormField>
           <FormField label="Licence" required><TextField value={licence} onChange={setLicence} /></FormField>
+          <FieldRow>
+            {edit === 'new' && <FormField label="Code" optional helper="Made from the licence name if left empty."><TextField value={code} placeholder={licence.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^[^A-Z]+|-+$/g, '').slice(0, 20) || 'FORKLIFT'} onChange={(v) => setCode(v.toUpperCase())} /></FormField>}
+            <FormField label="Note" optional><TextField value={note} placeholder="For example LMV endorsement" onChange={setNote} /></FormField>
+          </FieldRow>
           <FormField label="Type" helper={legal === 'legal' ? 'Required by law: no one can override it.' : 'Company rule: HR can override it with a reason.'}>
             <Segment label="Type" value={legal} onChange={setLegal} options={[{ value: 'legal', label: 'Legal' }, { value: 'company', label: 'Company' }]} />
           </FormField>
@@ -1966,11 +3010,12 @@ const samePolicy = (a: Policy, b: Policy) => a.group === b.group && a.days === b
 const NOW_WEEK = new Date(2026, 8, 28);
 type HybridWeek = 'now' | 'next';
 function WeekBar({ wk, onWk }: { wk: HybridWeek; onWk: (w: HybridWeek) => void }) {
+  const why = useWhy();
   return (
     <div className="yx-tim-row">
-      <IconButton icon={ChevronLeft} label="Previous week" size="sm" disabled={wk === 'now'} onClick={() => onWk('now')} />
+      <IconButton icon={ChevronLeft} label="Previous week" size="sm" onClick={why(wk === 'now' && 'Earlier weeks are in Compliance', () => onWk('now'))} />
       <strong>Week of {wk === 'now' ? '28 Sep' : '5 Oct'} 2026</strong>
-      <IconButton icon={ChevronRight} label="Next week" size="sm" disabled={wk === 'next'} onClick={() => onWk('next')} />
+      <IconButton icon={ChevronRight} label="Next week" size="sm" onClick={why(wk === 'next' && 'Plans open one week ahead', () => onWk('next'))} />
       <span className="yx-tim-muted">{wk === 'now' ? 'This week · earlier weeks are in Compliance' : 'Plans open one week ahead'}</span>
     </div>
   );
@@ -2005,17 +3050,21 @@ function DayChoice({ label, anchor, office, onChange }: { label: string; anchor:
     : <Segment label={label} value={office ? 'office' : 'home'} onChange={(v) => onChange(v === 'office')} options={[{ value: 'home', label: 'Home' }, { value: 'office', label: 'Office' }]} />;
 }
 
-export function HybridPlannerScreen({ persona = 'mgr', tab = 'plan' }: { persona?: 'hr' | 'mgr' | 'emp'; tab?: 'plan' | 'compliance' | 'policy' }) {
+export function HybridPlannerScreen({ live, ...story }: { persona?: 'hr' | 'mgr' | 'emp'; tab?: 'plan' | 'compliance' | 'policy'; /** The live app's /time/hybrid. */ live?: LiveHybrid }) {
+  return live ? <LiveHybridScreen live={live} /> : <SampleHybridPlanner {...story} />;
+}
+function SampleHybridPlanner({ persona = 'mgr', tab = 'plan' }: { persona?: 'hr' | 'mgr' | 'emp'; tab?: 'plan' | 'compliance' | 'policy' }) {
   const [baseline, setBaseline] = useState(initialPlan);
   const [plan, setPlan] = useState(initialPlan);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [reminded, setReminded] = useState<string[]>([]);
-  const [remindMsg, setRemindMsg] = useState<string | null>(null);
   const [wk, setWk] = useState<HybridWeek>('next');
   /** One policy per group; HR picks the group first and edits that group's policy. */
   const [policies, setPolicies] = useState<Record<string, Policy>>({ [POLICY0.group]: POLICY0 });
   const [draft, setDraft] = useState(POLICY0);
   const [policySaved, setPolicySaved] = useState(false);
+  const why = useWhy();
+  const done = useDone();
   // The planner follows the team's own group policy; the HR form follows the group being edited.
   const policy = policies[POLICY0.group];
   const groupPolicy = policies[draft.group];
@@ -2041,10 +3090,11 @@ export function HybridPlannerScreen({ persona = 'mgr', tab = 'plan' }: { persona
   const savePlan = () => {
     setBaseline(plan);
     setSavedMsg(emp ? 'Plan for week of 5 Oct saved' : `Plan for week of 5 Oct saved · ${changed.join(', ')} notified`);
+    done(emp ? 'Plan for week of 5 Oct saved' : `Plan for week of 5 Oct saved`, emp ? undefined : `${changed.join(', ')} notified.`);
   };
   /** Remind sends a reminder about the week of 5 Oct and says what was sent. */
   const remindBtn = (key: string, label: string, msg: string) => (
-    <Button size="sm" disabled={reminded.includes(key)} onClick={() => { setReminded([...reminded, key]); setRemindMsg(msg); }}>{reminded.includes(key) ? 'Reminded' : label}</Button>
+    <Button size="sm" onClick={why(reminded.includes(key) && 'Already reminded today', () => { setReminded([...reminded, key]); done(msg); })}>{reminded.includes(key) ? 'Reminded' : label}</Button>
   );
   const vsTarget = (p: string) => {
     const s = shortOf(p);
@@ -2143,10 +3193,8 @@ export function HybridPlannerScreen({ persona = 'mgr', tab = 'plan' }: { persona
           </ul>
         </Card>
       )}
-      {remindMsg && <InlineAlert tone="success" title={remindMsg} />}
-      {savedMsg && <InlineAlert tone="success" title={savedMsg} />}
       <span className="yx-tim-row">
-        <Button variant="primary" disabled={!changed.length} onClick={savePlan}>Save plan</Button>
+        <Button variant="primary" onClick={why(!changed.length && 'No changes yet: pick office days first', savePlan)}>Save plan</Button>
         {!changed.length && !savedMsg && <span className="yx-tim-muted">No changes yet</span>}
       </span>
     </div>
@@ -2169,9 +3217,8 @@ export function HybridPlannerScreen({ persona = 'mgr', tab = 'plan' }: { persona
       <FormField label="Pay and ratings">
         <Checkbox label="Link to pay deductions or ratings" description={draft.payLink ? 'Missed office days can reduce pay or ratings. Set the amounts in pay rules.' : "Missed office days don't affect pay or ratings."} checked={draft.payLink} onChange={(c) => updPolicy({ payLink: c })} />
       </FormField>
-      {policySaved && groupPolicy && <InlineAlert tone="success" title="Policy saved">Applies from the week of 5 Oct to {groupPolicy.group}. Evidence: {groupPolicy.evidence.length ? groupPolicy.evidence.join(', ').toLowerCase() : 'none'}.</InlineAlert>}
       <span className="yx-tim-row">
-        <Button variant="primary" disabled={!policyDirty || !!daysError || !draft.evidence.length} onClick={() => { setPolicies({ ...policies, [draft.group]: draft }); setPolicySaved(true); }}>Save policy</Button>
+        <Button variant="primary" onClick={why(!policyDirty ? 'No changes yet' : daysError ? 'Fix office days per week' : !draft.evidence.length && 'Pick at least one kind of evidence', () => { setPolicies({ ...policies, [draft.group]: draft }); setPolicySaved(true); done('Policy saved', `Applies from the week of 5 Oct to ${draft.group}. Evidence: ${draft.evidence.join(', ').toLowerCase()}.`); })}>Save policy</Button>
         {!policyDirty && !policySaved ? <span className="yx-tim-muted">No changes yet</span> : daysError ? <span className="yx-tim-muted">Fix office days per week</span> : !draft.evidence.length ? <span className="yx-tim-muted">Pick at least one kind of evidence</span> : null}
       </span>
       <ConfirmDialog
@@ -2212,7 +3259,6 @@ export function HybridPlannerScreen({ persona = 'mgr', tab = 'plan' }: { persona
                   </li>
                 ))}
               </ul>
-              {remindMsg && <InlineAlert tone="success" title={remindMsg} />}
               <p className="yx-tim-note">On-duty days and leave days count as office days.</p>
             </Card>
           </TabsContent>
@@ -2228,6 +3274,8 @@ export function HybridPhone() {
   const [baseline, setBaseline] = useState(() => team[HYBRID_EMP.name]);
   const [office, setOffice] = useState(() => team[HYBRID_EMP.name]);
   const [saved, setSaved] = useState(false);
+  const why = useWhy();
+  const done = useDone();
   // Same policy and the same list body as the employee planner at phone width.
   const { anchors, days: target } = POLICY0;
   const isAnchor = (j: number) => anchors.includes(j);
@@ -2252,11 +3300,123 @@ export function HybridPhone() {
           );
         })}
       </ul>
-      {saved && <InlineAlert tone="success" title="Plan for week of 5 Oct saved" />}
       <span className="yx-tim-row">
-        <Button variant="primary" disabled={!dirty} onClick={() => { setBaseline(office); setSaved(true); }}>Save plan</Button>
+        <Button variant="primary" onClick={why(!dirty && 'No changes yet: pick office days first', () => { setBaseline(office); setSaved(true); done('Plan for week of 5 Oct saved'); })}>Save plan</Button>
         {!dirty && !saved && <span className="yx-tim-muted">No changes yet</span>}
       </span>
     </PhoneFrame>
+  );
+}
+
+/* ---------------- TIM-39 live: block leave for the roles that need it (company setting) ---------------- */
+
+export interface LiveBlockLeave {
+  state: LoadState;
+  onRetry?: () => void;
+  data: BlockLeaveList | null;
+  onPlan: (employeeId: string, from: string, to: string) => Promise<unknown>;
+  onNudge: (employeeId: string) => Promise<unknown>;
+  onPause: (employeeId: string, pause: boolean) => Promise<unknown>;
+  teamLeaveHref: string;
+  onNavigate: (href: string) => void;
+}
+
+const isoOfDate = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dateOfIso = (s: string) => new Date(`${s}T00:00:00`);
+const BLOCK_STATUS = { taken: ['Taken', 'success'], planned: ['Planned', 'info'], not_planned: ['Not planned', 'warning'] } as const;
+
+function LiveBlockLeavePlanner({ live }: { live: LiveBlockLeave }) {
+  const d = live.data;
+  const rows = d?.rows ?? [];
+  const today = d ? dateOfIso(d.today) : TODAY;
+  const [planFor, setPlanFor] = useState<BlockLeaveList['rows'][number] | null>(null);
+  const [pFrom, setPFrom] = useState<Date | null>(null);
+  const [pTo, setPTo] = useState<Date | null>(null);
+  const [tried, setTried] = useState(false);
+  const [pause, setPause] = useState<BlockLeaveList['rows'][number] | null>(null);
+  const { busy, error, run } = useRun();
+  const count = (s: string) => rows.filter((r) => r.status === s).length;
+  const planErr = !pFrom ? 'Choose the first day.' : !pTo ? 'Choose the last day.' : pTo < pFrom ? 'The last day is before the first.' : null;
+  return (
+    <TimePage active="Block leave">
+      <PageHeader title="Block leave" description="Some roles take a block of working days off in a row each leave year. Their system access can be paused while away." />
+      {live.state !== 'ready' ? (
+        live.state === 'loading' ? <LoadingBlock rows={6} /> : live.state === 'no-access' ? <NoAccessState grantedBy="HR" what="block leave" /> : <ErrorState title="Block leave didn't load" description="Try again. Nothing was changed." onRetry={live.onRetry} />
+      ) : rows.length === 0 ? (
+        <EmptyState
+          title="No one in a block-leave role"
+          description="Block leave applies to the roles HR names in the leave settings. Other leave is on the team leave calendar."
+          action={<Button onClick={() => live.onNavigate(live.teamLeaveHref)}>Open team leave calendar</Button>}
+        />
+      ) : (
+        <>
+          {error && <InlineAlert tone="danger" title="Not saved">{error}</InlineAlert>}
+          <Kpis items={[{ label: 'People', value: rows.length }, { label: 'Taken', value: count('taken') }, { label: 'Planned', value: count('planned') }, { label: 'Not planned', value: count('not_planned') }]} />
+          <Card title="People in scope">
+            <ul className="yx-tim-list">
+              {rows.map((r) => {
+                const [label, tone] = BLOCK_STATUS[r.status];
+                const startsIn = r.plan ? Math.round((dateOfIso(r.plan.from).getTime() - today.getTime()) / 86_400_000) : 0;
+                return (
+                  <li key={r.employeeId}>
+                    <PersonLabel name={r.name} secondary={r.code ?? undefined} />
+                    <span className="yx-tim-row">
+                      <span className="yx-tim-muted">{r.plan ? `${formatDate(dateOfIso(r.plan.from))} – ${formatDate(dateOfIso(r.plan.to))} · ` : ''}{r.need} working days · {r.earnedLeft} days earned leave left</span>
+                      <Badge tone={tone}>{label}</Badge>
+                      {r.plan && startsIn > 1 && <DueBadge date={dateOfIso(r.plan.from)} today={today} prefix="Starts" />}
+                      {r.canPlan && r.status === 'not_planned' && (
+                        <>
+                          {r.nudgedAt ? <span className="yx-tim-muted">Nudged {formatDate(new Date(r.nudgedAt))}</span> : <Button size="sm" loading={busy === `n${r.employeeId}`} onClick={() => void run(`n${r.employeeId}`, () => live.onNudge(r.employeeId))}>Nudge to plan</Button>}
+                          <Button size="sm" onClick={() => { setTried(false); setPFrom(null); setPTo(null); setPlanFor(r); }}>Plan block leave</Button>
+                        </>
+                      )}
+                      {/* From the first day the pause runs (the server's hourly job) and ends by itself after the block. */}
+                      {r.plan?.accessPause === 'scheduled' && startsIn <= 0 && <span className="yx-tim-muted">Access paused</span>}
+                      {r.canPlan && r.plan && r.status !== 'taken' && startsIn > 0 && (
+                        r.plan.accessPause === 'scheduled'
+                          ? <span className="yx-tim-row"><span className="yx-tim-muted">Access pause scheduled from {formatDate(dateOfIso(r.plan.from))}</span><Button size="sm" loading={busy === `p${r.employeeId}`} onClick={() => void run(`p${r.employeeId}`, () => live.onPause(r.employeeId, false))}>Cancel pause</Button></span>
+                          : <Button size="sm" onClick={() => setPause(r)}>Schedule access pause</Button>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
+        </>
+      )}
+      <ConfirmDialog
+        open={!!pause}
+        onOpenChange={(o) => !o && setPause(null)}
+        title={pause?.plan ? `Pause ${pause.name}'s access from ${formatDate(dateOfIso(pause.plan.from))}?` : ''}
+        consequence={pause?.plan ? `${pause.name}'s access to YukthiX is paused from ${formatDate(dateOfIso(pause.plan.from))}, 12:00 am and restored on ${formatDate(addDays(dateOfIso(pause.plan.to), 1))}. Their sign-ins end when the pause starts. Only HR can turn access back on as an exception, and each one is logged.` : undefined}
+        confirmLabel="Schedule access pause"
+        confirmVariant="danger"
+        onConfirm={async () => {
+          if (pause) await live.onPause(pause.employeeId, true);
+          setPause(null);
+        }}
+      />
+      <ConfirmDialog
+        open={!!planFor}
+        onOpenChange={(o) => !o && setPlanFor(null)}
+        title={planFor ? `Plan block leave for ${planFor.name}` : ''}
+        confirmLabel="Plan block"
+        onConfirm={async () => {
+          setTried(true);
+          if (planErr || !planFor) return false;
+          await live.onPlan(planFor.employeeId, isoOfDate(pFrom!), isoOfDate(pTo!));
+          setPlanFor(null);
+        }}
+      >
+        <div className="yx-tim-stack">
+          <FieldRow>
+            <FormField label="First day" required error={tried && !pFrom ? 'Choose the first day.' : null}><DatePicker value={pFrom} min={addDays(today, 1)} onChange={setPFrom} /></FormField>
+            <FormField label="Last day" required error={tried && pFrom && (!pTo || pTo < pFrom) ? (planErr ?? null) : null}><DatePicker value={pTo} min={pFrom ?? addDays(today, 1)} onChange={setPTo} /></FormField>
+          </FieldRow>
+          {planFor && <p className="yx-tim-muted">{planFor.need} working days in a row · charged to earned leave ({planFor.earnedLeft} days left now). {planFor.name} and their manager are told.</p>}
+        </div>
+      </ConfirmDialog>
+    </TimePage>
   );
 }

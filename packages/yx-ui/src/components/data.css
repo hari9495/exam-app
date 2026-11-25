@@ -1,3 +1,25 @@
+/* Frame notice bar: one line above every page (icon, text, link, close) */
+.yx-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--yx-space-2);
+  min-height: var(--yx-space-8);
+  padding: 0 var(--yx-space-1) 0 var(--yx-space-3);
+  border: var(--yx-border-width) solid var(--yx-color-warning-border);
+  border-radius: var(--yx-radius-card);
+  background: var(--yx-color-warning-bg);
+  color: var(--yx-color-text);
+  font-size: var(--yx-text-sm);
+  line-height: var(--yx-leading-sm);
+}
+.yx-notice > .yx-icon { flex: none; color: var(--yx-color-warning-text); }
+.yx-notice__text { flex: 1 1 auto; min-width: 0; padding: var(--yx-space-1) 0; }
+.yx-notice__action { flex: none; white-space: nowrap; padding-right: var(--yx-space-2); }
+.yx-notice[data-tone="info"] { border-color: var(--yx-color-info-border); background: var(--yx-color-info-bg); }
+.yx-notice[data-tone="info"] > .yx-icon { color: var(--yx-color-info-text); }
+.yx-notice[data-tone="danger"] { border-color: var(--yx-color-danger-border); background: var(--yx-color-danger-bg); }
+.yx-notice[data-tone="danger"] > .yx-icon { color: var(--yx-color-danger-text); }
+
 /* §25 Inline alert */
 .yx-alert {
   display: flex;
@@ -10,6 +32,8 @@
   color: var(--yx-color-text);
 }
 .yx-alert > .yx-icon { margin-top: var(--yx-space-half); color: var(--yx-color-info-text); }
+/* A link inside a message looks like a link (founder 24 Oct 2026: "Answer it" read as plain text). */
+.yx-alert__text a[href] { color: var(--yx-color-link); text-decoration: underline; }
 .yx-alert[data-tone="success"] { border-color: var(--yx-color-success-border); background: var(--yx-color-success-bg); }
 .yx-alert[data-tone="success"] > .yx-icon { color: var(--yx-color-success-text); }
 .yx-alert[data-tone="warning"] { border-color: var(--yx-color-warning-border); background: var(--yx-color-warning-bg); }
@@ -39,6 +63,9 @@
 .yx-empty__desc { margin: 0; max-width: var(--yx-form-max); }
 .yx-empty__actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: var(--yx-space-3); margin-top: var(--yx-space-2); }
 .yx-empty__ref { margin: var(--yx-space-2) 0 0; font-family: var(--yx-font-mono); font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+/* Answer 946: the Request access form inside a no-access state; fields read left-aligned, as in any form. */
+.yx-empty__request { display: flex; flex-direction: column; gap: var(--yx-space-4); width: 100%; max-width: var(--yx-form-max); margin-top: var(--yx-space-2); text-align: left; }
+.yx-empty__request .yx-empty__actions { justify-content: flex-end; margin-top: 0; }
 .yx-empty__icon--danger { color: var(--yx-color-danger-text); }
 
 .yx-skeleton {
@@ -99,6 +126,8 @@
 .yx-drawer__subtitle { margin: 0; font-size: var(--yx-text-sm); color: var(--yx-color-text-secondary); }
 .yx-drawer__meta { display: flex; flex-wrap: wrap; gap: var(--yx-space-2); margin-top: var(--yx-space-1); }
 .yx-drawer__body { flex: 1; overflow-y: auto; padding: var(--yx-space-4) var(--yx-space-5); }
+/* Blocks placed straight in a drawer never touch (same rule as the card body). */
+.yx-drawer__body > :where(* + *:not(.yx-badge + .yx-badge, .yx-button + .yx-button)) { margin-top: var(--yx-space-4); }
 .yx-drawer__foot { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--yx-space-2); padding: var(--yx-space-3) var(--yx-space-5); border-top: var(--yx-border-width) solid var(--yx-color-border); }
 .yx-drawer__foot > .yx-alert { flex: 1; }
 .yx-drawer__notice { flex: 0 0 100%; order: -3; }
@@ -178,6 +207,8 @@
 /* Phones: the filter bar takes the full toolbar width whether or not the table has rows. */
 @media (max-width: 599px) { .yx-table__toolbar-left { flex-basis: 100%; } }
 .yx-table[data-layout="cards"] .yx-table__toolbar-left { flex-basis: 100%; }
+/* A filter choice in the toolbar is as wide as its text: full width stacked each one on its own line (TIM-30, 29 Oct 2026). */
+.yx-table__toolbar .yx-select { width: auto; }
 .yx-table__controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); margin-left: auto; }
 .yx-table__bulk { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); min-height: var(--yx-control-sm); }
 .yx-table__bulk-count { font-weight: var(--yx-weight-semibold); margin-right: var(--yx-space-2); }
@@ -203,6 +234,11 @@
 .yx-table th[data-align="end"] .yx-table__sort > span { text-align: right; }
 /* IDs and masked account numbers never break mid-digits. */
 .yx-table td .yx-mono { white-space: nowrap; }
+/* Badges and dates in any table stay on one line: content-sized tables widen the column, DataTable keeps it wide enough
+   (table.tsx keepW). They wrap when a person dragged the widths, when the table has to shrink to fit, or in a cell
+   marked data-wrap (a narrow side card). */
+td .yx-badge, .yx-table td[data-type="date"] { white-space: nowrap; }
+.yx-table[data-wrap] td .yx-badge, .yx-table[data-wrap] td[data-type="date"], td[data-wrap] .yx-badge { white-space: normal; }
 .yx-table td {
   height: var(--yx-row-height);
   /* Vertical padding keeps a two-line cell (name over a code or date) inside its row instead of touching the divider. */
@@ -382,33 +418,38 @@
 .yx-ts__range { font-weight: var(--yx-weight-semibold); padding: 0 var(--yx-space-1); font-variant-numeric: tabular-nums; }
 .yx-ts__problems { margin: 0; padding-left: var(--yx-space-5); }
 .yx-ts__scroll { overflow-x: auto; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
-.yx-ts__table { width: 100%; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+.yx-ts__table { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
 .yx-ts__table th, .yx-ts__table td { padding: var(--yx-space-2); border-bottom: var(--yx-border-width) solid var(--yx-color-border); vertical-align: middle; }
 .yx-ts__table th { font-size: var(--yx-text-xs); line-height: var(--yx-leading-xs); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-muted); text-align: left; }
 .yx-ts__table tfoot td { border-bottom: 0; background: var(--yx-color-bg-subtle); font-weight: var(--yx-weight-medium); }
-.yx-ts__col-proj { width: 20%; }
-.yx-ts__col-task { width: 14%; }
+/* Fixed layout (founder walk, 1278 x 635): the week, Billable, Total and Remove take what they need; Task a set width;
+   Project the rest, so Total stays in view without a sideways scroll. */
+.yx-ts__col-proj { width: auto; }
 /* Narrow day columns so the whole week fits at 1440 even when every day is an input (sent-back weeks). */
-.yx-ts__table .yx-ts__col-day { padding-left: var(--yx-space-1); padding-right: var(--yx-space-1); }
+.yx-ts__table .yx-ts__col-day { width: var(--yx-space-16); padding-left: var(--yx-space-1); padding-right: var(--yx-space-1); }
 .yx-ts__table { min-width: calc(var(--yx-space-16) * 13); }
 .yx-ts__daytotal[data-tone="short"] { color: var(--yx-color-warning-text); }
 .yx-ts__dayhint[data-tone="short"] { color: var(--yx-color-warning-text); }
 /* Correction line: one hours field across the day columns, not counted in the day totals. */
 .yx-ts__correction { display: flex; align-items: center; justify-content: space-between; gap: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
-.yx-ts__col-bill { width: var(--yx-space-16); text-align: center !important; }
+.yx-ts__col-bill { width: var(--yx-space-12); text-align: center !important; }
 .yx-ts__table .yx-ts__col-day { text-align: center; }
 .yx-ts__table th.yx-ts__col-day { text-align: center; }
-.yx-ts__col-total { width: calc(var(--yx-space-16) + var(--yx-space-6)); text-align: right !important; white-space: nowrap; }
+.yx-ts__col-total { width: calc(var(--yx-space-16) + var(--yx-space-4)); text-align: right !important; white-space: nowrap; }
 .yx-ts__col-remove { width: var(--yx-space-10); }
 .yx-ts__col-day[data-kind="weekend"], .yx-ts__col-day[data-kind="holiday"], .yx-ts__col-day[data-kind="leave"] { background: var(--yx-color-bg-subtle); }
 .yx-ts__table th.yx-ts__col-day[data-invalid] { color: var(--yx-color-danger-text); }
 .yx-ts__dayname { display: block; color: var(--yx-color-text); font-weight: var(--yx-weight-semibold); white-space: nowrap; }
 .yx-ts__daydate, .yx-ts__dayexp { display: block; }
+/* One line each (a long holiday name ends in …, its full name in the tooltip), and no paragraph margins: the grid and
+   its error box fit 1278 x 635 (founder walk). */
+.yx-ts__dayexp, .yx-ts__dayhint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.yx-ts p.yx-ts__muted { margin: 0; }
 .yx-ts__col-day[data-kind="holiday"] .yx-ts__dayexp, .yx-ts__col-day[data-kind="leave"] .yx-ts__dayexp { color: var(--yx-color-info-text); }
 .yx-ts__table tr[data-invalid] > td { background: var(--yx-color-danger-bg); }
 .yx-ts__hours {
   box-sizing: border-box;
-  width: var(--yx-space-12);
+  width: var(--yx-space-10);
   height: var(--yx-control-sm);
   padding: 0 var(--yx-space-2);
   border: var(--yx-border-width) solid var(--yx-color-border-input);
@@ -460,3 +501,80 @@
 .yx-table__sort { border-radius: var(--yx-radius-control); }
 .yx-table__sort:hover { background: var(--yx-color-bg-subtle); }
 .yx-table__group-toggle:hover { text-decoration: underline; text-underline-offset: var(--yx-space-half); }
+
+/* PlainTable: a small read-only table. Long values wrap; headings and badges wrap only between words. */
+.yx-plain-table { width: 100%; border-collapse: collapse; font-size: var(--yx-text-sm); }
+.yx-plain-table th, .yx-plain-table td { text-align: start; vertical-align: top; padding: var(--yx-space-2) var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); overflow-wrap: break-word; /* words stay whole; only an unbreakable string (a file name, a long ID) wraps */ }
+.yx-plain-table thead th { color: var(--yx-color-text-secondary); font-weight: var(--yx-weight-medium); }
+.yx-plain-table thead th, .yx-plain-table .yx-badge { overflow-wrap: normal; }
+.yx-plain-table [data-date] { white-space: nowrap; }
+.yx-plain-table [data-changed] { font-weight: var(--yx-weight-medium); }
+.yx-plain-table [data-num] { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.yx-plain-table tfoot th, .yx-plain-table tfoot td { font-weight: var(--yx-weight-semibold); border-bottom: 0; }
+/* A picked-out row: tint plus a start-edge bar (and a read-out word), so colour is never the only sign. */
+.yx-plain-table tr[data-tone] > * { background: var(--yx-plain-tone-bg); }
+.yx-plain-table tr[data-tone] > :first-child { box-shadow: inset var(--yx-space-1) 0 0 var(--yx-plain-tone-bar); }
+.yx-plain-table tr[data-tone='warning'] { --yx-plain-tone-bg: var(--yx-color-warning-bg); --yx-plain-tone-bar: var(--yx-color-warning-border); }
+.yx-plain-table tr[data-tone='danger'] { --yx-plain-tone-bg: var(--yx-color-danger-bg); --yx-plain-tone-bar: var(--yx-color-danger-border); }
+.yx-plain-table tr[data-tone='success'] { --yx-plain-tone-bg: var(--yx-color-success-bg); --yx-plain-tone-bar: var(--yx-color-success-border); }
+.yx-plain-table tr[data-tone='selected'] { --yx-plain-tone-bg: var(--yx-color-bg-selected); --yx-plain-tone-bar: var(--yx-color-action-primary); }
+.yx-plain-table .yx-number-field, .yx-plain-table input { min-width: 0; }
+.yx-plain-table__caption { caption-side: top; text-align: start; padding-bottom: var(--yx-space-2); color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
+/* Answer 1787: a comment per day: a "Comment" link under the day's hours opens a small box below the cell. */
+.yx-ts__comment { display: grid; gap: var(--yx-space-1); justify-items: center; margin-top: var(--yx-space-1); }
+.yx-ts__comment-link { border: 0; background: none; padding: 0; font: inherit; font-size: var(--yx-text-xs); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--yx-space-1); color: var(--yx-color-link); text-decoration: underline; cursor: pointer; }
+.yx-ts__comment-link:hover { text-decoration-thickness: 2px; }
+.yx-ts__comment-link[data-tone='short'] { color: var(--yx-color-warning-text); }
+.yx-ts__comment-box { display: grid; gap: var(--yx-space-1); width: 14rem; text-align: left; }
+.yx-ts__note-count { color: var(--yx-color-text-muted); font-size: var(--yx-text-sm); }
+.yx-ts__note-count[data-tone='short'] { color: var(--yx-color-warning-text); }
+.yx-ts__note-text { margin: 0; white-space: pre-wrap; }
+/* Grid: an open day comment gets its own full-width row under the line, never spilling over the other days. */
+.yx-ts__table .yx-ts__comment-row > td { background: var(--yx-color-bg-subtle); padding: var(--yx-space-3); }
+.yx-ts__comment-head { display: block; margin-bottom: var(--yx-space-2); font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
+.yx-ts__comment-row .yx-ts__comment-box { width: min(40rem, 100%); }
+
+/* Founder reference (16 Nov 2026): one card holding the week bar, a total strip, the grid and a footer bar with
+   Save and Submit; project and task share the first column so the day columns have room; a day's comment opens in a
+   small box right under its hours; a "Comments this week" card below. */
+.yx-ts[data-layout="grid"] { gap: var(--yx-space-4); }
+.yx-ts__card { display: flex; flex-direction: column; min-width: 0; border: var(--yx-border-width) solid var(--yx-color-border); border-radius: var(--yx-radius-card); background: var(--yx-color-bg-surface); }
+.yx-ts__card > .yx-ts__bar { padding: var(--yx-space-3) var(--yx-space-4); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-ts__card > .yx-alert, .yx-ts__card > p.yx-ts__muted { margin: var(--yx-space-3) var(--yx-space-4) 0; }
+.yx-ts__card > .yx-ts__scroll { border: 0; border-radius: 0; margin-top: var(--yx-space-3); border-top: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-ts__summary { display: flex; flex-wrap: wrap; gap: var(--yx-space-8); padding: var(--yx-space-3) var(--yx-space-4) 0; }
+.yx-ts__summary-item { display: grid; gap: var(--yx-space-1); min-width: calc(var(--yx-space-16) * 4); }
+.yx-ts__summary-label { font-size: var(--yx-text-xs); color: var(--yx-color-text-muted); }
+.yx-ts__summary-value { font-variant-numeric: tabular-nums; color: var(--yx-color-text-secondary); }
+.yx-ts__summary-value strong { color: var(--yx-color-text); }
+.yx-ts__table thead th { background: var(--yx-color-bg-subtle); }
+.yx-ts__table .yx-ts__col-proj { padding-left: var(--yx-space-4); }
+.yx-ts__pickrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); min-width: 0; }
+.yx-ts__pickrow > .yx-select:first-child { flex: 1 1 100%; min-width: 0; }
+.yx-ts__pickrow > .yx-select:nth-child(2) { flex: 1 1 0; min-width: 0; }
+.yx-ts__pickrow > :last-child:not(.yx-select) { flex: none; white-space: nowrap; }
+.yx-ts__billtext { color: var(--yx-color-text-muted); font-size: var(--yx-text-sm); }
+.yx-ts__projtext { display: grid; gap: var(--yx-space-half); min-width: 0; }
+.yx-ts__cell { position: relative; display: block; }
+.yx-ts__table .yx-ts__col-day .yx-ts__hours { width: 100%; text-align: center; }
+.yx-ts__comment-pop { display: grid; gap: var(--yx-space-2); width: calc(var(--yx-space-16) * 5); padding: var(--yx-space-3); }
+.yx-ts__comment-pop .yx-ts__comment-box { width: 100%; }
+.yx-ts__comment-head { display: block; font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); color: var(--yx-color-text-secondary); }
+.yx-ts__addrow > td { border-bottom: 0; padding: var(--yx-space-2) var(--yx-space-4); }
+.yx-ts__foot-label { text-align: right; color: var(--yx-color-text-secondary); }
+.yx-ts__footbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--yx-space-3); padding: var(--yx-space-3) var(--yx-space-4); border-top: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-ts__footbar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-2); margin-left: auto; }
+.yx-ts__notes { padding: var(--yx-space-4); gap: var(--yx-space-3); }
+.yx-ts__notes-title { margin: 0; font-size: var(--yx-text-md); font-weight: var(--yx-weight-semibold); }
+.yx-ts__notes-list { display: grid; gap: var(--yx-space-3); margin: 0; padding: 0; list-style: none; }
+.yx-ts__notes-list > li { display: grid; gap: var(--yx-space-1); padding-bottom: var(--yx-space-3); border-bottom: var(--yx-border-width) solid var(--yx-color-border); }
+.yx-ts__notes-list > li:last-child { padding-bottom: 0; border-bottom: 0; }
+.yx-ts__notes-meta { font-size: var(--yx-text-sm); color: var(--yx-color-text-muted); }
+/* The comment's state is a dot on the box's corner: it never takes room, so every day box lines up. */
+/* The dot looks 16 px (a 1 px ring drawn by the background); the button around it is 24 px so it meets the minimum
+   target size (WCAG 2.5.8). Tones change the ring and fill colours only. */
+.yx-ts__comment-dot { --dot-fill: var(--yx-color-bg-surface); --dot-ring: var(--yx-color-border); position: absolute; top: calc(var(--yx-space-2) * -1); right: calc(var(--yx-space-2) * -1); display: inline-flex; align-items: center; justify-content: center; width: var(--yx-space-6); height: var(--yx-space-6); padding: 0; border: 0; border-radius: 999px; background: radial-gradient(circle closest-side, var(--dot-fill) calc(var(--yx-space-2) - var(--yx-border-width)), var(--dot-ring) calc(var(--yx-space-2) - var(--yx-border-width)) var(--yx-space-2), transparent var(--yx-space-2)); color: var(--yx-color-text-muted); cursor: pointer; }
+.yx-ts__comment-dot:hover { --dot-ring: var(--yx-color-link); color: var(--yx-color-link); }
+.yx-ts__comment-dot:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); }
+.yx-ts__comment-dot[data-tone='short'] { --dot-fill: var(--yx-color-warning-bg); --dot-ring: var(--yx-color-warning-border); color: var(--yx-color-warning-text); }
+.yx-ts__comment-dot[data-tone='done'] { --dot-ring: var(--yx-color-link); color: var(--yx-color-link); }

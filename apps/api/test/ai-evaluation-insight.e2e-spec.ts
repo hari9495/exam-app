@@ -8,6 +8,7 @@ import { TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
 import { ProctoringRiskClient } from '../../exam-runtime/src/proctoring-analysis/proctoring-risk.client';
 import { InsightClient } from '../../exam-runtime/src/attempt-insight/insight.client';
+import { asApproved } from './fixtures/approved-question';
 
 describe('AI Evaluation Insight flow', () => {
   let adminApp: INestApplication;
@@ -101,14 +102,14 @@ describe('AI Evaluation Insight flow', () => {
       .send({ title: 'Section One' })
       .expect(201);
 
-    const questionResponse = await request(adminHttp)
+    const questionResponse = await asApproved(await request(adminHttp)
       .post('/api/v1/questions')
       .set('Authorization', `Bearer ${recruiterAccessToken}`)
       .send({
         type: 'true_false', text: 'Is this an AI insight test?', topic: 'SQL', difficulty: 'easy', marks: 5,
         options: [{ text: 'True', isCorrect: true }, { text: 'False', isCorrect: false }],
       })
-      .expect(201);
+      .expect(201));
     trueFalseQuestionId = questionResponse.body.id;
     correctOptionId = questionResponse.body.options.find((option: { text: string }) => option.text === 'True').id;
 

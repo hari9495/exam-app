@@ -1,10 +1,10 @@
 'use client';
 
-import { MyIncentivesScreen, type MyIncentives } from '@yukthix/ui/pay';
-import { usePay } from '../../../../../lib/yx-pay';
+import { IncentiveStatementScreen, type MyIncentives } from '@yukthix/ui/pay';
+import { payState, usePay } from '../../../../../lib/yx-pay';
 
-// Me › My incentives (PAY-9.06, PAY-33): the person's incentive results and clawbacks.
+// Me › My incentives (PAY-33): the person's incentive results, what went to payroll, and clawbacks.
 export default function YxMyIncentivesPage() {
   const data = usePay<MyIncentives>('/special/me/incentives');
-  return <MyIncentivesScreen data={data.data ?? null} />;
+  return <IncentiveStatementScreen live={{ state: payState(data), onRetry: () => void data.refetch(), data: data.data ?? null }} />;
 }

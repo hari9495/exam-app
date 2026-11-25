@@ -1,7 +1,7 @@
 import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Transform } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsIn, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -15,6 +15,18 @@ import { ApprovalsEngine } from './approvals-engine.service';
 // requests and delegations. Decisions are made by the person themselves, never while acting for someone else.
 
 export class DecideDto {
+  @IsIn(['approve', 'reject', 'send_back'])
+  decision!: 'approve' | 'reject' | 'send_back';
+
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
+}
+
+export class DecideManyDto {
+  // Bulk: approve, or do not approve with one reason; sending back is one request at a time.
   @IsIn(['approve', 'reject'])
   decision!: 'approve' | 'reject';
 
@@ -23,6 +35,12 @@ export class DecideDto {
   @IsString()
   @MaxLength(1000)
   reason?: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsUUID('all', { each: true })
+  taskIds!: string[];
 }
 
 export class PeopleQueryDto {
@@ -82,6 +100,13 @@ export class WorkflowController {
     return this.engine.history(m.ctx, m.userId);
   }
 
+  /** PLT-04 "Team history": decisions anyone made on requests I hold or held a task for (as approver or the one they act for). */
+  @Get('approvals/team-history')
+  teamHistory(@Req() req: Request, @CurrentTenant() t: TenantContext) {
+    const m = me(req, t);
+    return this.engine.teamHistory(m.ctx, m.userId);
+  }
+
   @Get('approvals/mine')
   mine(@Req() req: Request, @CurrentTenant() t: TenantContext) {
     const m = me(req, t);
@@ -100,6 +125,19 @@ export class WorkflowController {
   decide(@Req() req: Request, @CurrentTenant() t: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideDto) {
     const m = me(req, t, true);
     return this.engine.decide(m.ctx, m.userId, id, dto.decision, dto.reason ?? null, 'web');
+  }
+
+  /**
+   * PLT-04 bulk approve (or not approve): each task is decided on its own, with every check of a single decision (only
+   * its holder, still open, not their own request, not one decided on its own page). The answer lists each task's
+   * outcome; a refused task says why and the others still go through.
+   */
+  @Post('approvals/tasks/decide')
+  @HttpCode(200)
+  @Throttle(MODERATE_UPLOAD_THROTTLE)
+  decideMany(@Req() req: Request, @CurrentTenant() t: TenantContext, @Body() dto: DecideManyDto) {
+    const m = me(req, t, true);
+    return this.engine.decideMany(m.ctx, m.userId, dto.taskIds, dto.decision, dto.reason ?? null, 'web');
   }
 
   /** Colleagues to choose as a delegate or a named approver: active logins of the company, names only. */

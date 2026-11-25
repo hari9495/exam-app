@@ -12,6 +12,7 @@ export const Calculating: S = { name: 'Calculating · per-employee progress', ar
 export const Failed: S = { name: 'Calculation failed · named fixes', args: { phase: 'failed' } };
 export const Variance: S = { name: 'Variance tab · acknowledge', args: { tab: 'variance' } };
 export const Inputs: S = { name: 'Inputs tab', args: { tab: 'inputs' } };
+export const InputsSpecialDays: S = { name: 'Inputs tab · special days and late injury leave to review', args: { tab: 'inputs', specialDays: true } };
 export const Validations: S = { name: 'Validations tab', args: { tab: 'validations' } };
 export const Approvals: S = { name: 'Approvals tab (finance approver)', args: { tab: 'approvals', persona: 'fin' } };
 export const Files: S = { name: 'Files tab · approved', args: { tab: 'files', phase: 'approved' } };

@@ -1,4 +1,4 @@
-import { ACCOUNT_LOCKED, CODE_FAILED, RECOVERY_CODE_FAILED, TOO_MANY_TRIES, tryAgainIn, yxAuthMessage, yxProofError } from './yx-auth-messages';
+import { ACCOUNT_LOCKED, CODE_FAILED, RECOVERY_CODE_FAILED, TOO_MANY_TRIES, lockWaitSeconds, tryAgainIn, yxAuthMessage, yxProofError } from './yx-auth-messages';
 
 const httpError = (status: number, message: string) => Object.assign(new Error(message), { status });
 
@@ -6,6 +6,12 @@ describe('YukthiX sign-in words', () => {
   it('the request throttle (a 429 without the lock message): wait a minute', () => {
     expect(yxAuthMessage(httpError(429, 'Too many attempts. Please wait a minute and try again.'), 'x')).toBe(TOO_MANY_TRIES);
     expect(TOO_MANY_TRIES).toBe('Too many tries. Wait a minute and try again.');
+  });
+
+  it('TIM-39 Suspend: the paused-for-block-leave refusal reaches the person word for word', () => {
+    const paused = 'Your access is paused for block leave until 7 Nov 2026. Ask HR if you need access sooner.';
+    expect(yxAuthMessage(httpError(401, paused), 'x')).toBe(paused);
+    expect(yxAuthMessage(httpError(401, 'This account has been deactivated'), 'x')).toBe('This account has been deactivated');
   });
 
   it('the account / IP lock: wait a few minutes', () => {
@@ -23,6 +29,16 @@ describe('YukthiX sign-in words', () => {
     // Precise enough to count down on screen.
     expect(tryAgainIn(1781)).toBe('Too many tries. Try again in 29 min 41 sec.');
     expect(tryAgainIn(3900)).toBe('Too many tries. Try again in 1 h 5 min.');
+  });
+
+  it('the code-send limit with its wait: the real time left, not "a minute"', () => {
+    const codes = (retryAfterSeconds: unknown) => Object.assign(httpError(429, 'Please wait before asking for another code.'), { body: { retryAfterSeconds } });
+    expect(yxAuthMessage(codes(3054), 'x')).toBe('Too many tries. Try again in 50 min 54 sec.');
+    expect(lockWaitSeconds(codes(3054))).toBe(3054);
+    // No usable wait: the plain throttle words, and no countdown.
+    expect(yxAuthMessage(codes(undefined), 'x')).toBe(TOO_MANY_TRIES);
+    expect(lockWaitSeconds(codes(0))).toBeNull();
+    expect(lockWaitSeconds(httpError(400, 'Please wait before asking for another code.'))).toBeNull();
   });
 
   it('a wrong password reads the same as an unknown email; other messages pass through', () => {

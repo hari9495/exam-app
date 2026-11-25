@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseEnumPipe, ParseUUIDPipe, Patch, Post, Query, Req, Res, StreamableFile, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { Request, Response } from 'express';
@@ -18,15 +18,24 @@ import {
   ConfirmDto5f,
   EntityDto,
   FilingDto,
+  Form16LinkDto,
+  Form16StatusDto,
+  RegisterRowsDto,
+  HomeDuesDto,
   HubDto,
+  NilMonthDto,
+  NilUndoDto,
   PartADto,
   RegisterDto,
   ReturnDto,
   ReturnFiledDto,
   UploadedDto,
 } from './dto-5f';
-import { StatutoryFilingsService } from './statutory-filings.service';
+import { StatutoryFilingsService, homeDueMonths, onlyUnfiled } from './statutory-filings.service';
 import { StatutoryRegistersService } from './statutory-registers.service';
+import { DeskAccessService } from '../service-desk/desk-access';
+
+const REGISTER_KINDS = { epf: 'epf', esic: 'esic', pt: 'pt', lwf: 'lwf' } as const;
 
 // Payroll batch 5f (M03-BUILD-DESIGN §14.6). Every route declares its key (YX-SEC-01); the services check the key's
 // legal entities again and the database pay guard is the second layer. ⚡ = a fresh second sign-in step (P12).
@@ -54,6 +63,7 @@ export class StatutoryController {
   constructor(
     private readonly filings: StatutoryFilingsService,
     private readonly registers: StatutoryRegistersService,
+    private readonly desks: DeskAccessService,
   ) {}
 
   private user(req: Request) {
@@ -64,6 +74,21 @@ export class StatutoryController {
   @RequirePermissions('statutory.filing.view')
   hub(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: HubDto) {
     return this.filings.hub(ctx, this.user(req), q.entityId, q.month);
+  }
+
+  /**
+   * Payroll home (PAY-01 "Due this month"): PF, ESI, PT, LWF and TDS of this month and the three before it (founder 30 Oct
+   * 2026, item 13: what was never filed stays visible), per legal entity in the person's statutory.filing.view scope.
+   * Of the earlier months only the unfiled items are sent. Read only; the same hub figures the finance home shows.
+   */
+  @Get('home-dues')
+  @RequirePermissions('statutory.filing.view')
+  async homeDues(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: HomeDuesDto) {
+    const { months, unfiledOnly } = homeDueMonths(q.month);
+    const dues = (await this.filings.homeDues(ctx, this.user(req), months, q.legalEntityId ?? null))?.flatMap((d) => (unfiledOnly.includes(d.month) ? onlyUnfiled(d) : [d]));
+    // Null: acting for someone else (the route's key is checked by the guard).
+    if (!dues) throw new ForbiddenException('You do not have access to statutory dues.');
+    return dues.map((d) => ({ entity: d.entity, entityId: d.entityId, month: d.month, today: d.today, cards: d.cards.map(({ filingId: _f, penaltyEstimate, verifyDueDate: _v, ...c }) => ({ ...c, penaltyEstimate })), tds: d.tds }));
   }
 
   // ------------------------------------------------------------------------------------------ filings
@@ -88,6 +113,23 @@ export class StatutoryController {
     return this.filings.uploaded(ctx, this.user(req), id, dto.reference);
   }
 
+  /** Answer 842: the bank's challan receipt PDF for a PF, ESI or PT return. */
+  @Post('filings/:id/receipt')
+  @RequirePermissions('statutory.filing.mark_filed')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 5 * 1024 * 1024, files: 1 } }))
+  addReceipt(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @UploadedFile() file?: { originalname?: string; buffer?: Buffer }) {
+    if (this.user(req).impersonatorUserId || this.user(req).actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
+    return this.filings.addReceipt(ctx, this.user(req), id, file);
+  }
+
+  @Get('filings/:id/receipt')
+  @RequirePermissions('statutory.filing.view')
+  async receipt(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Res({ passthrough: true }) res: Response) {
+    const f = await this.filings.receipt(ctx, this.user(req), id);
+    res.set({ 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${f.name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return new StreamableFile(f.file);
+  }
+
   @Post('filings/:id/filed')
   @HttpCode(200)
   @RequirePermissions('statutory.filing.mark_filed')
@@ -101,6 +143,13 @@ export class StatutoryController {
   @RequirePermissions('statutory.filing.generate')
   transmit(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.filings.transmit(ctx, this.user(req), id);
+  }
+
+  /** CMP-07 Missing IDs (founder answer 22): who in the entity lacks a statutory ID or a usable bank account (no values). */
+  @Get('missing-ids')
+  @RequirePermissions('statutory.filing.view')
+  missingIds(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: EntityDto) {
+    return this.filings.missingIds(ctx, this.user(req), q.entityId);
   }
 
   // ------------------------------------------------------------------------------------------ TDS challans and returns
@@ -182,6 +231,20 @@ export class StatutoryController {
     return this.filings.correction(ctx, this.user(req), id);
   }
 
+  /** CMP-05 (founder answer 2): a month before go-live recorded as having no salary TDS, and undone. */
+  @Post('tds-nil-months')
+  @RequirePermissions('statutory.filing.generate')
+  recordNil(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: NilMonthDto) {
+    return this.filings.recordNilMonth(ctx, this.user(req), dto.entityId, dto.month, dto.reason);
+  }
+
+  @Post('tds-nil-months/:id/undo')
+  @HttpCode(200)
+  @RequirePermissions('statutory.filing.generate')
+  undoNil(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: NilUndoDto) {
+    return this.filings.undoNilMonth(ctx, this.user(req), id, dto.version);
+  }
+
   @Post('tds-returns/part-a')
   @HttpCode(200)
   @RequirePermissions('statutory.filing.generate')
@@ -189,6 +252,20 @@ export class StatutoryController {
   @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 50 * 1024 * 1024, files: 1 } }))
   partA(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: PartADto, @UploadedFile() file?: { buffer: Buffer }) {
     return this.registers.importPartA(ctx, this.user(req), dto.entityId, dto.taxYear, file?.buffer);
+  }
+
+  /** CMP-06: the return the year's certificates are linked to, the year's Q4 return, and when certificates are due. */
+  @Get('form16-status')
+  @RequirePermissions('statutory.filing.view')
+  form16Status(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: Form16StatusDto) {
+    return this.registers.form16Status(ctx, this.user(req), q.entityId, q.taxYear);
+  }
+
+  @Post('form16-link')
+  @HttpCode(200)
+  @RequirePermissions('statutory.filing.generate')
+  form16Link(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: Form16LinkDto) {
+    return this.registers.linkForm16(ctx, this.user(req), dto.entityId, dto.taxYear, dto.returnId, dto.version);
   }
 
   @Post('form130/batch')
@@ -211,6 +288,13 @@ export class StatutoryController {
   @RequirePermissions('statutory.filing.generate')
   registerMake(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: RegisterDto) {
     return this.registers.generate(ctx, this.user(req), dto.entityId, dto.month, dto.locationId ?? null, dto.reason);
+  }
+
+  /** CMP-03: one statute's register, person by person, with the six-month totals. */
+  @Get('registers/:kind/rows')
+  @RequirePermissions('statutory.filing.view')
+  registerRows(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('kind', new ParseEnumPipe(REGISTER_KINDS)) kind: keyof typeof REGISTER_KINDS, @Query() q: RegisterRowsDto) {
+    return this.filings.registerRows(ctx, this.user(req), q.entityId, q.month, kind);
   }
 
   @Get('registers/:id/file')
@@ -257,9 +341,17 @@ export class StatutoryController {
     return this.registers.advisories(ctx, this.user(req), q.entityId);
   }
 
+  /** CMP-08: the help desks the reviewer may put a follow-up task on. */
+  @Get('advisories/task-desks')
+  @RequirePermissions('statutory.advisory.review')
+  async taskDesks(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.registers.taskDesks(ctx, await this.desks.actor(req, ctx));
+  }
+
   @Post('advisories/:code/review')
   @RequirePermissions('statutory.advisory.review')
-  review(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('code') code: string, @Body() dto: AdvisoryReviewDto) {
-    return this.registers.review(ctx, this.user(req), code.slice(0, 40), dto.entityId, dto.note);
+  async review(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('code') code: string, @Body() dto: AdvisoryReviewDto) {
+    const task = dto.task ? { ...dto.task, actor: await this.desks.actor(req, ctx) } : undefined;
+    return this.registers.review(ctx, this.user(req), code.slice(0, 40), dto.entityId, dto.note, { share: dto.share, task });
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useViewInUrl } from '../../lib/view-in-url';
 import { Badge } from '../../components/display';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
@@ -6,6 +7,7 @@ import { ErrorState, InlineAlert, NoAccessState, Skeleton } from '../../componen
 import { FormField, FormSection } from '../../components/field';
 import { Text } from '../../components/foundations';
 import { TextArea, TextField } from '../../components/inputs';
+import { useToast } from '../../components/notify';
 import { ConfirmDialog } from '../../components/overlay';
 import { Breadcrumbs, Card, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
@@ -54,8 +56,9 @@ const same = (a: EmailWording, b: EmailWording) => FIELDS.every(({ field }) => a
 function BrandingForm({ overview, onSave, brandingHref }: { overview: EmailOverview; onSave: (b: EmailBranding) => Promise<void>; brandingHref?: string }) {
   const saved = overview.branding;
   const [draft, setDraft] = useState<EmailBranding>(saved);
-  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' | 'saved' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
+  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
   const [show, setShow] = useState(false);
+  const { toast } = useToast();
   const errors = brandingErrors(draft);
   const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const set = (patch: Partial<EmailBranding>) => {
@@ -63,12 +66,15 @@ function BrandingForm({ overview, onSave, brandingHref }: { overview: EmailOverv
     setStatus({ kind: 'idle' });
   };
   const save = async () => {
+    // Nothing changed: "No changes yet" already shows beside the button.
+    if (status.kind === 'saving' || !dirty) return;
     setShow(true);
     if (Object.keys(errors).length) return;
     setStatus({ kind: 'saving' });
     try {
       await onSave({ ...draft, senderName: draft.senderName?.trim() || null, replyTo: draft.replyTo?.trim() || null });
-      setStatus({ kind: 'saved' });
+      setStatus({ kind: 'idle' });
+      toast({ tone: 'success', title: 'Branding saved', description: 'New emails use it.' });
     } catch (err) {
       setStatus({ kind: 'failed', message: messageOf(err, 'We couldn’t save. Nothing has changed.') });
     }
@@ -110,11 +116,11 @@ function BrandingForm({ overview, onSave, brandingHref }: { overview: EmailOverv
             <TextField type="email" value={draft.replyTo ?? ''} onChange={(v) => set({ replyTo: v || null })} maxLength={254} placeholder="hr@yourcompany.com" />
           </FormField>
         </FormSection>
-        {status.kind === 'saved' && <InlineAlert tone="success">Saved. New emails use it.</InlineAlert>}
         {status.kind === 'failed' && <InlineAlert tone="danger" title="Not saved">{status.message}</InlineAlert>}
         <div className="yx-auth__row yx-auth__save">
-          <Button type="submit" variant="primary" loading={status.kind === 'saving'} disabled={!dirty}>Save branding</Button>
-          <Button onClick={() => { setDraft(saved); setShow(false); setStatus({ kind: 'idle' }); }} disabled={!dirty || status.kind === 'saving'}>Discard changes</Button>
+          <Button type="submit" variant="primary" loading={status.kind === 'saving'}>Save branding</Button>
+          <Button onClick={() => { if (!dirty || status.kind === 'saving') return; setDraft(saved); setShow(false); setStatus({ kind: 'idle' }); }}>Discard changes</Button>
+          {!dirty && <Text tone="secondary" size="sm">No changes yet</Text>}
         </div>
       </form>
     </Card>
@@ -138,7 +144,8 @@ export function EmailEditor({ row, overview, onBack, onSave, onReset, onPreview,
   const [draft, setDraft] = useState<EmailWording>(start);
   const [errors, setErrors] = useState<Partial<Record<string, string>>>({});
   const [preview, setPreview] = useState<EmailPreview | null>(null);
-  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' | 'testing' | 'saved' } | { kind: 'tested'; to: string } | { kind: 'failed'; message: string }>({ kind: 'idle' });
+  const [status, setStatus] = useState<{ kind: 'idle' | 'saving' | 'testing' } | { kind: 'failed'; message: string }>({ kind: 'idle' });
+  const { toast } = useToast();
   const focused = useRef<{ field: EmailField; el: HTMLInputElement | HTMLTextAreaElement } | null>(null);
   const top = useRef<HTMLDivElement>(null);
   // Opened from further down the list: start at the top of the editor.
@@ -180,9 +187,11 @@ export function EmailEditor({ row, overview, onBack, onSave, onReset, onPreview,
     });
   };
   const run = async (kind: 'saving' | 'testing', fn: () => Promise<void>) => {
+    if (status.kind === 'saving' || status.kind === 'testing') return;
     setStatus({ kind });
     try {
       await fn();
+      setStatus({ kind: 'idle' });
     } catch (err) {
       setErrors(fieldErrorsOf(err));
       setStatus({ kind: 'failed', message: messageOf(err, 'Something went wrong. Nothing has changed.') });
@@ -200,7 +209,11 @@ export function EmailEditor({ row, overview, onBack, onSave, onReset, onPreview,
         actions={<Button onClick={onBack}>Back to emails</Button>}
       />
       <div className="yx-ntf__split">
-        <form className="yx-ntf__editor" onSubmit={(e) => { e.preventDefault(); void run('saving', async () => { await onSave(row.type, draft); setStatus({ kind: 'saved' }); }); }} noValidate>
+        <form className="yx-ntf__editor" onSubmit={(e) => {
+            e.preventDefault();
+            // Nothing changed: "No changes yet" already shows beside the button.
+            if (dirty) void run('saving', async () => { await onSave(row.type, draft); toast({ tone: 'success', title: 'Wording saved', description: `The next ${row.name.toLowerCase()} email uses your wording.` }); });
+          }} noValidate>
           <InlineAlert tone="info" title="Always included">
             {row.locked.join(' · ')}. These keep the email safe and can’t be changed.
           </InlineAlert>
@@ -225,12 +238,10 @@ export function EmailEditor({ row, overview, onBack, onSave, onReset, onPreview,
               ))}
             </div>
           </FormSection>
-          {status.kind === 'saved' && <InlineAlert tone="success">Saved. The next {row.name.toLowerCase()} email uses your wording.</InlineAlert>}
-          {status.kind === 'tested' && <InlineAlert tone="success">Test sent to {status.to}. It starts with “Test:”.</InlineAlert>}
           {status.kind === 'failed' && <InlineAlert tone="danger" title="Not done">{status.message}</InlineAlert>}
           <div className="yx-auth__row yx-auth__save">
-            <Button type="submit" variant="primary" loading={status.kind === 'saving'} disabled={!dirty}>Save wording</Button>
-            <Button loading={status.kind === 'testing'} onClick={() => void run('testing', async () => setStatus({ kind: 'tested', to: (await onTest(row.type, { wording: draft })).to }))}>
+            <Button type="submit" variant="primary" loading={status.kind === 'saving'}>Save wording</Button>
+            <Button loading={status.kind === 'testing'} onClick={() => void run('testing', async () => { const { to } = await onTest(row.type, { wording: draft }); toast({ tone: 'success', title: `Test sent to ${to}`, description: 'It starts with “Test:”.' }); })}>
               Send me a test
             </Button>
             {row.custom && (
@@ -246,7 +257,8 @@ export function EmailEditor({ row, overview, onBack, onSave, onReset, onPreview,
                 }}
               />
             )}
-            <Button onClick={() => setDraft(start)} disabled={!dirty}>Discard changes</Button>
+            <Button onClick={() => dirty && setDraft(start)}>Discard changes</Button>
+            {!dirty && <Text tone="secondary" size="sm">No changes yet</Text>}
           </div>
         </form>
         <section className="yx-ntf__preview" aria-label="Preview">
@@ -291,8 +303,14 @@ export interface EmailSettingsScreenProps {
 export function EmailSettingsScreen(props: EmailSettingsScreenProps) {
   const [editing, setEditing] = useState<string | null>(null);
   const row = props.overview?.emails.find((e) => e.type === editing);
+  const ready = props.state === 'ready' && Boolean(props.overview);
+  const back = useViewInUrl('email', row ? row.type : null, ready, (id) => {
+    const ok = Boolean(id && props.overview?.emails.some((e) => e.type === id));
+    setEditing(ok ? id : null);
+    return ok;
+  });
   if (props.state === 'ready' && props.overview && row) {
-    return <EmailEditor key={row.type} row={row} overview={props.overview} onBack={() => setEditing(null)} onSave={props.onSaveWording} onReset={props.onResetWording} onPreview={props.onPreview} onTest={props.onTest} />;
+    return <EmailEditor key={row.type} row={row} overview={props.overview} onBack={back} onSave={props.onSaveWording} onReset={props.onResetWording} onPreview={props.onPreview} onTest={props.onTest} />;
   }
   return (
     <div className="yx-auth__page">

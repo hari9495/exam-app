@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { TenantPrismaService, TenantContext, StageCategory } from '@exam-platform/shared';
-import { computeHiringAnalytics, HiringAnalytics, EntryRow, JobMeta } from './pipeline-analytics';
+import { computeHiringAnalytics, HiringDashboard, EntryRow, JobMeta } from './pipeline-analytics';
 
 // category is read via the status FK (the flat pipeline_entries.stage column is gone) -- the
 // funnel pivots on the stage's category so custom/renamed stages still count (Task 10).
@@ -35,7 +35,7 @@ function toEntryRow(r: {
 export class PipelineAnalyticsService {
   constructor(private readonly tenantPrisma: TenantPrismaService) {}
 
-  async getHiring(context: TenantContext, filter: { from: Date; to: Date; jobId?: string }): Promise<HiringAnalytics> {
+  async getHiring(context: TenantContext, filter: { from: Date; to: Date; jobId?: string }): Promise<HiringDashboard> {
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const orgId = context.organizationId as string;
       // archivedAt: null matches the board/counts filters (Task 6) -- an archived entry (e.g. a
@@ -55,7 +55,17 @@ export class PipelineAnalyticsService {
 
       const full = computeHiringAnalytics(filtered.map(toEntryRow), jobMeta);
       const jobsSource = orgWide ? computeHiringAnalytics(orgWide.map(toEntryRow), jobMeta) : full;
-      return { funnel: full.funnel, timeToHire: full.timeToHire, sources: full.sources, jobs: jobsSource.jobs };
+      // Answer 2432 (ANL-02): open jobs now, and offers the candidates answered in the window (offer acceptance).
+      const answered = await tx.offer.groupBy({ by: ['status'], where: { organizationId: orgId, status: { in: ['accepted', 'declined'] }, respondedAt: { gte: filter.from, lte: filter.to }, ...(filter.jobId ? { pipelineEntry: { jobId: filter.jobId } } : {}) }, _count: { _all: true } });
+      const count = (s: string) => answered.find((a) => a.status === s)?._count._all ?? 0;
+      return {
+        funnel: full.funnel,
+        timeToHire: full.timeToHire,
+        sources: full.sources,
+        jobs: jobsSource.jobs,
+        openJobs: jobRows.filter((j: { status: string }) => j.status === 'open').length,
+        offers: { accepted: count('accepted'), declined: count('declined') },
+      };
     });
   }
 }

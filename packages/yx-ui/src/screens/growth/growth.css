@@ -11,13 +11,16 @@
 .yx-growth-cols[data-n="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .yx-growth-cols[data-n="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .yx-growth-cols[data-n="5"] { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--yx-space-2); }
+/* PRF-09 live: a scale may have 4 or 6 bands. */
+.yx-growth-cols[data-n="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--yx-space-2); }
+.yx-growth-cols[data-n="6"] { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--yx-space-2); }
 .yx-growth-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--yx-space-4); }
 @media (max-width: 1100px) {
   .yx-growth-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .yx-growth-cols[data-n="3"], .yx-growth-cols[data-n="5"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .yx-growth-cols[data-n="3"], .yx-growth-cols[data-n="4"], .yx-growth-cols[data-n="5"], .yx-growth-cols[data-n="6"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 767px) {
-  .yx-growth-kpis, .yx-growth-cols[data-n="2"], .yx-growth-cols[data-n="3"], .yx-growth-cols[data-n="5"] { grid-template-columns: minmax(0, 1fr); }
+  .yx-growth-kpis, .yx-growth-cols[data-n="2"], .yx-growth-cols[data-n="3"], .yx-growth-cols[data-n="4"], .yx-growth-cols[data-n="5"], .yx-growth-cols[data-n="6"] { grid-template-columns: minmax(0, 1fr); }
 }
 
 .yx-growth-meta { color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
@@ -129,7 +132,8 @@
 .yx-growth-code { font-family: var(--yx-font-mono); font-size: var(--yx-text-xl); padding: var(--yx-space-3) var(--yx-space-4); border: var(--yx-border-width) dashed var(--yx-color-border-strong); border-radius: var(--yx-radius-control); text-align: center; letter-spacing: 0.08em; }
 
 /* Notes side by side (1:1 shared / private) */
-.yx-growth-note { padding: var(--yx-space-3); border-radius: var(--yx-radius-control); border: var(--yx-border-width) solid var(--yx-color-border); background: var(--yx-color-bg-surface); display: flex; flex-direction: column; gap: var(--yx-space-2); }
+/* margin 0: a <blockquote> brought the browser's 14px / 40px margins (30px gaps, indented box) */
+.yx-growth-note { margin: 0; padding: var(--yx-space-3); border-radius: var(--yx-radius-control); border: var(--yx-border-width) solid var(--yx-color-border); background: var(--yx-color-bg-surface); display: flex; flex-direction: column; gap: var(--yx-space-2); }
 .yx-growth-note[data-private] { background: var(--yx-color-bg-subtle); border-style: dashed; }
 
 /* Builder canvas: question library + questions + preview */
@@ -141,3 +145,9 @@
 .yx-growth-center { display: flex; flex-direction: column; align-items: center; text-align: center; gap: var(--yx-space-3); }
 
 .yx-growth-scale__opt:hover:not([aria-checked="true"]) { background: var(--yx-color-bg-subtle); border-color: var(--yx-color-text-muted); }
+
+/* Key result rows in the goal form (live PRF-02 / PRF-03): name, how, from, target, unit, remove. */
+.yx-growth-kr-row { display: grid; grid-template-columns: minmax(0, 2fr) repeat(4, minmax(0, 1fr)) auto; gap: var(--yx-space-3); align-items: end; }
+@media (max-width: 767px) {
+  .yx-growth-kr-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+}

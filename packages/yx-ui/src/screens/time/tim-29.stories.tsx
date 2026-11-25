@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { YearEndWizard } from './leave-admin';
 
-const meta: Meta<typeof YearEndWizard> = { title: 'Screens/Time/TIM-29 · Year-end wizard', component: YearEndWizard, parameters: { layout: 'fullscreen' } };
+const meta: Meta<typeof YearEndWizard> = { title: 'Screens/Time/TIM-29 · Year-end wizard', component: YearEndWizard, render: (args) => <YearEndWizard {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj<typeof YearEndWizard>;
 

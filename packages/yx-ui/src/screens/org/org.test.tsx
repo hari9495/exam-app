@@ -5,9 +5,8 @@ import { LegalEntitiesScreen, entityInput, statutoryErrors, type LegalEntitiesSc
 import { LocationsScreen, locationInput, timeZoneOptions, type LocationsScreenProps } from './locations';
 import { StructureScreen, masterInput, payRangeErrors, subtree, type StructureScreenProps } from './structure';
 import { addressDraft, ownershipLabel } from './org-kit';
-import { CompanySettingsScreen, companyValue, settingInput, type CompanySettingsScreenProps } from './settings';
-import { ToastProvider } from '../../components/notify';
-import { ENTITIES, LOCATIONS, MASTERS, PAY_RANGES, RULES, SETTING_CHOICES, SETTING_OVERRIDES, SETTING_REGISTRY, STATES, TODAY_ISO } from './data';
+import { ENTITIES, ERASURE_DRY_RUN, ERASURE_ON_DUE, LOCATIONS, MASTERS, PAY_RANGES, RULES, STATES, TODAY_ISO } from './data';
+import { ErasureCard } from './erasure-card';
 
 const ok = () => vi.fn().mockResolvedValue(undefined);
 
@@ -159,6 +158,7 @@ describe('LocationsScreen (P01 §4.2)', () => {
         minWageZone: null,
         geofence: { lat: 12.7409, lng: 77.8253, radiusM: 300 },
         ipRanges: ['10.20.0.0/16'],
+        registeredFactory: true,
       }),
     );
   });
@@ -198,7 +198,7 @@ describe('LocationsScreen (P01 §4.2)', () => {
   });
 
   it('YX-ORG-02: state and time zone are required; geofence and networks are checked', () => {
-    const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: addressDraft(null), timezone: 'Asia/Kolkata', minWageZone: '', fence: false, lat: null, lng: null, radiusM: 200, ipRanges: '' };
+    const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: addressDraft(null), timezone: 'Asia/Kolkata', minWageZone: '', fence: false, lat: null, lng: null, radiusM: 200, ipRanges: '', factory: false };
     expect(locationInput(base).errors.map((e) => e.fieldId)).toEqual(['loc-addr-lines', 'loc-addr-city', 'loc-addr-state']);
     const filled = { ...base, address: { lines: '1 Main Road', city: 'Hosur', state: 'IN-TN', postalCode: '635126' } };
     expect(locationInput(filled).input).toMatchObject({ address: { state: 'IN-TN', country: 'IN' }, geofence: null, ipRanges: [] });
@@ -318,132 +318,53 @@ describe('rules without a screen', () => {
   });
 });
 
-describe('Company rules and access settings (P01 §4.6; YX-ORG-12/18)', () => {
-  const base: CompanySettingsScreenProps = {
-    section: 'organisation',
-    state: 'ready',
-    registry: SETTING_REGISTRY,
-    overrides: SETTING_OVERRIDES,
-    choices: SETTING_CHOICES,
-    canManage: true,
-    heldGuards: ['access.role.manage'],
-    today: TODAY_ISO,
-    onSave: ok(),
-    onRemove: ok(),
+describe('Locations: registered factory', () => {
+  it('the input carries the flag; off unless ticked', () => {
+    const base = { legalEntityId: 'le-tn', name: 'Plant 2', code: '', address: { lines: '1 Main Road', city: 'Hosur', state: 'IN-TN', postalCode: '635126' }, timezone: 'Asia/Kolkata', minWageZone: '', fence: false, lat: null, lng: null, radiusM: 200, ipRanges: '', factory: false };
+    expect(locationInput(base).input).toMatchObject({ registeredFactory: false });
+    expect(locationInput({ ...base, factory: true }).input).toMatchObject({ registeredFactory: true });
+  });
+});
+
+// Founder answer 151: an old location-level Factories Act value; the form says what to do; nothing moves by itself.
+describe('Locations: an old Factories Act value (answer 151)', () => {
+  const props = (locations: LocationsScreenProps['locations']): LocationsScreenProps => ({ state: 'ready', locations, entities: ENTITIES, states: STATES, canManage: true, onSave: ok(), onArchive: ok(), onRestore: ok(), onDelete: ok() });
+  const openHosur = async () => {
+    const row = [...screen.getByRole('table', { name: 'Locations' }).querySelectorAll('tbody tr')].find((r) => r.textContent?.includes('Hosur plant')) as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit' }));
   };
+  it('covered by the setting, not flagged: "mark it"; ticking the box says the setting is no longer needed', async () => {
+    render(<LocationsScreen {...props(LOCATIONS.map((l) => (l.id === 'loc-hsr' ? { ...l, registeredFactory: false, factoriesActSetting: 'covered' } : l)))} />);
+    await openHosur();
+    expect(screen.getByText('Mark the location as a registered factory to make it the one source')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: /Registered factory/ }));
+    expect(screen.queryByText('Mark the location as a registered factory to make it the one source')).toBeNull();
+    expect(screen.getByText('The Factories Act setting for this location is no longer needed')).toBeInTheDocument();
+  });
+  it('no old value, or "not covered" without the flag: no hint', async () => {
+    render(<LocationsScreen {...props(LOCATIONS.map((l) => (l.id === 'loc-hsr' ? { ...l, registeredFactory: false, factoriesActSetting: 'not_covered' } : l)))} />);
+    await openHosur();
+    expect(screen.queryByText('Mark the location as a registered factory to make it the one source')).toBeNull();
+    expect(screen.queryByText('The Factories Act setting for this location is no longer needed')).toBeNull();
+  });
+});
 
-  it('YX-ORG-12/18: the company value says where it comes from; dated values resolve as of today', () => {
-    const def = SETTING_REGISTRY['attendance.mode'];
-    expect(companyValue(def, SETTING_OVERRIDES.filter((r) => r.key === 'attendance.mode'), TODAY_ISO).value).toBe('punch');
-    // A company value starting later is not in force yet.
-    expect(companyValue(def, [{ id: 'x', key: 'attendance.mode', scopeType: 'tenant', scopeId: 'o', value: 'timesheet', validFrom: '2026-12-01' }], TODAY_ISO)).toEqual({ value: 'punch', row: null });
-    render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
-    expect(screen.getAllByText('Starter value').length).toBeGreaterThan(0); // unchanged settings carry a quiet tag; the value itself is bold
-    expect(screen.getByText('Set for your company from 1 Apr 2026')).toBeInTheDocument();
-    expect(screen.getAllByText('Punch in and out').length).toBeGreaterThan(0);
-    expect(screen.getByText('Hosur plant')).toBeInTheDocument();
-    expect(screen.getByText('Scheduled')).toBeInTheDocument();
+// Answer 1781: the erasure dry run, now its own card on Settings › 2.2 Directory & privacy.
+describe('ErasureCard', () => {
+  it('off: what would be deleted today, from whom, and that it has not run', () => {
+    render(<ErasureCard report={ERASURE_DRY_RUN} />);
+    expect(screen.getByText(/Off. Nothing is deleted/)).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'If it ran today, it would delete' })).toBeInTheDocument();
+    expect(screen.getByRole('table', { name: 'Whose data' })).toBeInTheDocument();
+    expect(screen.getByText('It has not run yet.')).toBeInTheDocument();
   });
 
-  it('builds a scoped body; dated keys need a start date; the record is required; only registered values', () => {
-    const def = SETTING_REGISTRY['attendance.mode'];
-    expect(settingInput('attendance.mode', def, { scopeType: 'location', scopeId: null, value: 'punch', validFrom: null }).errors.map((e) => e.fieldId)).toEqual(['set-scope-id', 'set-from']);
-    expect(settingInput('attendance.mode', def, { scopeType: 'location', scopeId: 'loc-hsr', value: 'punch', validFrom: new Date(2026, 10, 1) }).input).toEqual({ key: 'attendance.mode', scopeType: 'location', scopeId: 'loc-hsr', value: 'punch', validFrom: '2026-11-01' });
-    const who = SETTING_REGISTRY['privacy.who_accessed'];
-    expect(settingInput('privacy.who_accessed', who, { scopeType: 'tenant', scopeId: null, value: 'nope', validFrom: null }).input).toBeNull();
-    expect(settingInput('privacy.who_accessed', who, { scopeType: 'tenant', scopeId: null, value: 'off', validFrom: null }).input).toEqual({ key: 'privacy.who_accessed', scopeType: 'tenant', value: 'off' });
-  });
-
-  it('a company-only setting: no repeated table, "Use starter value", no empty Applies to, and a toast on save', async () => {
-    const onSave = ok();
-    const onRemove = ok();
-    const overrides = [{ id: 's-risk', key: 'access.risk.confidential_threshold', scopeType: 'tenant' as const, scopeId: 'o', value: '5', validFrom: null }];
-    render(<ToastProvider><CompanySettingsScreen {...base} section="access" overrides={overrides} onSave={onSave} onRemove={onRemove} /></ToastProvider>);
-    const block = screen.getByText('Warn when a grant opens Confidential data of more than (people)').closest('.yx-org__rule') as HTMLElement;
-    expect(within(block).getByText('Set for your company')).toBeInTheDocument();
-    expect(within(block).queryByRole('table')).toBeNull(); // the line above already says "5 · Set for your company"
-    await userEvent.click(within(block).getByRole('button', { name: 'Use starter value' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(onRemove).toHaveBeenCalledWith('s-risk'));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Back to the starter value.')).toBeInTheDocument();
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).queryByText('Applies to')).toBeNull();
-    await userEvent.click(within(dialog).getByRole('combobox', { name: 'Warn when a grant opens Confidential data of more than (people)' }));
-    await userEvent.click(await screen.findByRole('option', { name: '10' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'access.risk.confidential_threshold', scopeType: 'tenant', value: '10' }));
-    expect(await within(screen.getByRole('region', { name: 'Notifications' })).findByText('Saved.')).toBeInTheDocument();
-  });
-
-  it('Home page: net pay on the employee home is off to start; turning it on is a pick-one, saved for the company', async () => {
-    const onSave = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} onSave={onSave} /></ToastProvider>);
-    const block = screen.getByText('Show net pay on the employee home').closest('.yx-org__rule') as HTMLElement;
-    expect(within(block).getByText('Not shown')).toBeInTheDocument();
-    expect(within(block).getByText('Starter value')).toBeInTheDocument();
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('radio', { name: 'Shown, hidden until the employee asks' }));
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ key: 'home.pay_on_employee_home', scopeType: 'tenant', value: 'on' }));
-  });
-
-  it('YX-HIS-07: removes a scheduled value only after confirming; values in force have no Remove', async () => {
-    const onRemove = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} onRemove={onRemove} /></ToastProvider>);
-    const table = screen.getByRole('table', { name: /Attendance mode/ });
-    const rows = within(table).getAllByRole('row');
-    const blr = rows.find((r) => within(r).queryByText('Bengaluru head office'))!;
-    expect(within(blr).queryAllByRole('button')).toHaveLength(0);
-    const hosur = rows.find((r) => within(r).queryByText('Hosur plant'))!;
-    await userEvent.click(within(hosur).getByRole('button'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: 'Remove' }));
-    await userEvent.click(await screen.findByRole('button', { name: 'Remove' }));
-    await waitFor(() => expect(onRemove).toHaveBeenCalledWith('s-5'));
-  });
-
-  it('YX-SEC-02: guarded settings are disabled with the reason without access management; view-only has no buttons', () => {
-    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} section="access" heldGuards={[]} /></ToastProvider>);
-    const buttons = screen.getAllByRole('button', { name: 'Change' }).filter((b) => !b.closest('.yx-org__rule')?.textContent?.includes('net pay'));
-    expect(buttons).toHaveLength(4);
-    buttons.forEach((b) => expect(b).toBeDisabled());
-    expect(screen.getAllByText(/Only an admin who manages roles and access changes this/)).toHaveLength(4);
+  it('negative: on with a failed person, the warning shows; nobody due shows the empty state', () => {
+    const { unmount } = render(<ErasureCard report={ERASURE_ON_DUE} />);
+    expect(screen.getByRole('table', { name: 'Due at the next run' })).toBeInTheDocument();
     unmount();
-    render(<ToastProvider><CompanySettingsScreen {...base} canManage={false} /></ToastProvider>);
-    expect(screen.queryByRole('button', { name: 'Change' })).toBeNull();
-  });
-
-  it('a single choice of 2-4 options is the Segment control; longer lists stay a dropdown', async () => {
-    const { unmount } = render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
-    const block = (label: string) => screen.getAllByText(label).map((el) => el.closest('.yx-org__rule')).find(Boolean) as HTMLElement;
-    const attendance = block('Attendance mode');
-    await userEvent.click(within(attendance).getByRole('button', { name: 'Change' }));
-    let dialog = await screen.findByRole('dialog');
-    // Three values: a joined pick-one. Five scopes: a dropdown.
-    expect(within(within(dialog).getByRole('radiogroup', { name: 'Attendance mode' })).getAllByRole('radio').map((r) => r.textContent)).toEqual(['Punch in and out', 'Present unless on leave', 'Timesheet']);
-    expect(within(dialog).getByRole('combobox', { name: 'Applies to' })).toBeInTheDocument();
-    await userEvent.click(within(dialog).getByRole('radio', { name: 'Timesheet' }));
-    expect(within(dialog).getByRole('radio', { name: 'Timesheet' })).toHaveAttribute('aria-checked', 'true');
-    unmount();
-    render(<ToastProvider><CompanySettingsScreen {...base} /></ToastProvider>);
-    const confirm = block('Confirm automatically after the end date');
-    await userEvent.click(within(confirm).getByRole('button', { name: 'Change' }));
-    dialog = await screen.findByRole('dialog');
-    expect(within(dialog).queryByRole('radiogroup', { name: 'Confirm automatically after the end date' })).toBeNull();
-    expect(within(dialog).getByRole('combobox', { name: 'Confirm automatically after the end date' })).toBeInTheDocument();
-    // Two scopes: a Segment.
-    expect(within(dialog).getByRole('radiogroup', { name: 'Applies to' })).toBeInTheDocument();
-  });
-
-  it('the editor refuses to save without a value', async () => {
-    const onSave = ok();
-    render(<ToastProvider><CompanySettingsScreen {...base} onSave={onSave} /></ToastProvider>);
-    const block = screen.getByText('Probation review reminder (days before the end)').closest('.yx-auth__stack') as HTMLElement;
-    await userEvent.click(within(block).getByRole('button', { name: 'Change' }));
-    const dialog = await screen.findByRole('dialog');
-    await userEvent.click(within(dialog).getByRole('button', { name: 'Save' }));
-    expect(onSave).not.toHaveBeenCalled();
-    expect(within(dialog).getAllByText('Choose the value').length).toBeGreaterThan(0);
+    render(<ErasureCard report={{ ...ERASURE_DRY_RUN, who: [], lastRun: { at: '2026-10-29T22:45:00Z', people: 1, aadhaar: 1, documents: 0, backgroundChecks: 0, disability: 0, failed: 1 } }} />);
+    expect(screen.getByText("No one's data is due.")).toBeInTheDocument();
+    expect(screen.getByText('1 person was not done')).toBeInTheDocument();
   });
 });

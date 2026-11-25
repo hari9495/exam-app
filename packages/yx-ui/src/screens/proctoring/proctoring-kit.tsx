@@ -19,7 +19,7 @@ import { Icon, Spinner } from '../../components/foundations';
 import { Badge, AiBadge } from '../../components/display';
 import { Button, IconButton } from '../../components/button';
 import { formatClock } from '../../components/exam';
-import { calcApply, integrityLevel, integrityScore, LEVEL_LABEL, LEVEL_TONE, type LiveTileData, type SignalCount } from './proctoring-logic';
+import { calcApply, calcUnary, integrityLevel, tileLevel, integrityScore, LEVEL_LABEL, LEVEL_TONE, type CalcFn, type CalcOp, type LiveTileData, type SignalCount } from './proctoring-logic';
 import './proctoring-kit.css';
 
 /* ---------- Camera / screen placeholders ---------- */
@@ -36,9 +36,16 @@ const CAMERA_TEXT: Record<CameraState, string> = {
 };
 
 /** SVG silhouette with a state line. No real video: a labelled placeholder frame. */
-export function CameraFrame({ state = 'live', label, size = 'md', kind = 'camera' }: { state?: CameraState; label?: string; size?: 'sm' | 'md' | 'lg'; kind?: 'camera' | 'id' | 'room' }) {
+export function CameraFrame({ state = 'live', label, size = 'md', kind = 'camera', src }: { state?: CameraState; label?: string; size?: 'sm' | 'md' | 'lg'; kind?: 'camera' | 'id' | 'room'; src?: string }) {
   const faces = state === 'no-face' || state === 'off' || state === 'connecting' ? 0 : state === 'multiple' ? 2 : 1;
   const alert = state === 'no-face' || state === 'multiple' || state === 'phone';
+  // Answer 2268: a real frame (the live console's latest camera frame) in place of the drawing.
+  if (src)
+    return (
+      <figure className="yx-cam" data-size={size} data-state={state} data-alert={alert || undefined}>
+        <img src={src} alt={`${label ? label + ': ' : ''}latest camera frame`} className="yx-cam__svg yx-cam__img" />
+      </figure>
+    );
   return (
     <figure className="yx-cam" data-size={size} data-state={state} data-alert={alert || undefined}>
       <svg viewBox="0 0 160 100" className="yx-cam__svg" role="img" aria-label={`${label ? label + ': ' : ''}${CAMERA_TEXT[state]}`}>
@@ -229,13 +236,13 @@ const TILE_STATUS: Record<LiveTileData['status'], { label: string; tone: 'succes
 };
 
 export function ProctorTile({ tile, selected, onOpen, index }: { tile: LiveTileData; selected?: boolean; onOpen?: (id: string) => void; index?: number }) {
-  const level = integrityLevel(tile.score);
+  const level = tileLevel(tile);
   const st = TILE_STATUS[tile.status];
   const cam: CameraState = tile.status === 'disconnected' ? 'connecting' : tile.lastFlag?.startsWith('More than one') ? 'multiple' : tile.lastFlag?.startsWith('Face') ? 'no-face' : tile.lastFlag?.startsWith('Phone') ? 'phone' : 'live';
   return (
-    <button type="button" className="yx-ptile" data-level={level} aria-pressed={selected} onClick={() => onOpen?.(tile.id)} aria-label={`${tile.name}, ${st.label}, integrity ${tile.score}, ${tile.flags} flags${index != null ? `, shortcut ${index + 1}` : ''}`}>
+    <button type="button" className="yx-ptile" data-level={level} aria-pressed={selected} onClick={() => onOpen?.(tile.id)} aria-label={`${tile.name}, ${st.label}, ${tile.score != null ? `integrity ${tile.score}` : LEVEL_LABEL[level]}, ${tile.flags} flags${index != null ? `, shortcut ${index + 1}` : ''}`}>
       <div className="yx-ptile__media">
-        <CameraFrame state={cam} size="sm" />
+        <CameraFrame state={cam} size="sm" src={tile.thumbUrl} label={tile.name} />
         <ScreenThumb note={tile.question} />
       </div>
       <div className="yx-ptile__row">
@@ -245,7 +252,7 @@ export function ProctorTile({ tile, selected, onOpen, index }: { tile: LiveTileD
       <div className="yx-ptile__row">
         <Badge tone={st.tone}>{st.label}</Badge>
         <Badge tone={LEVEL_TONE[level]}>
-          {tile.score} · {LEVEL_LABEL[level]}
+          {tile.score != null ? `${tile.score} · ${LEVEL_LABEL[level]}` : LEVEL_LABEL[level]}
         </Badge>
       </div>
       <div className="yx-ptile__row yx-ptile__meta">
@@ -342,7 +349,7 @@ export function FlagTimeline({ duration, events, current, onSeek, label = 'Sessi
 /* ---------- Connection status (runner) ---------- */
 
 export type ConnState = 'online' | 'weak' | 'reconnecting' | 'offline';
-export function ConnectionStatus({ state, queued = 0, offlineSeconds = 0 }: { state: ConnState; queued?: number; offlineSeconds?: number }) {
+export function ConnectionStatus({ state, queued = 0, offlineSeconds = 0, offlineMinutes = 5 }: { state: ConnState; queued?: number; offlineSeconds?: number; offlineMinutes?: number }) {
   const text =
     state === 'online'
       ? 'Connected'
@@ -350,7 +357,9 @@ export function ConnectionStatus({ state, queued = 0, offlineSeconds = 0 }: { st
         ? 'Weak connection, answers still saving'
         : state === 'reconnecting'
           ? `Reconnecting… ${queued} ${queued === 1 ? 'answer' : 'answers'} kept on this device`
-          : `Offline for ${formatClock(offlineSeconds)}. You can keep answering for up to 5 minutes.`;
+          : offlineSeconds >= offlineMinutes * 60
+            ? `Offline for ${formatClock(offlineSeconds)}. Answering stops until the connection is back; your saved answers are kept.`
+            : `Offline for ${formatClock(offlineSeconds)}. You can keep answering for up to ${offlineMinutes} ${offlineMinutes === 1 ? 'minute' : 'minutes'}.`;
   return (
     <p className="yx-conn" data-state={state} role="status" aria-live="polite">
       <Icon icon={state === 'online' || state === 'weak' ? Wifi : WifiOff} />
@@ -361,38 +370,75 @@ export function ConnectionStatus({ state, queued = 0, offlineSeconds = 0 }: { st
 
 /* ---------- Calculator ---------- */
 
-export function Calculator({ onClose }: { onClose?: () => void }) {
+/** Answer 2162: the scientific keys (degrees by default), on top of the basic ones. */
+const SCI_KEYS: [string, CalcFn | 'pi' | 'e' | 'pow', string][] = [
+  ['sin', 'sin', 'sine'], ['cos', 'cos', 'cosine'], ['tan', 'tan', 'tangent'], ['π', 'pi', 'pi'],
+  ['√', 'sqrt', 'square root'], ['x²', 'square', 'squared'], ['xʸ', 'pow', 'to the power of'], ['±', 'negate', 'change sign'],
+  ['ln', 'ln', 'natural log'], ['log', 'log', 'log base 10'], ['1/x', 'inverse', 'one over'], ['e', 'e', 'e'],
+];
+const OP_LABEL: Record<string, string> = { '-': 'minus', '×': 'times', '÷': 'divide by', '+': 'plus', '=': 'equals' };
+
+export function Calculator({ onClose, scientific = false }: { onClose?: () => void; scientific?: boolean }) {
   const [display, setDisplay] = useState('0');
   const [acc, setAcc] = useState<number | null>(null);
-  const [op, setOp] = useState<'+' | '-' | '×' | '÷' | null>(null);
+  const [op, setOp] = useState<CalcOp | null>(null);
+  /** The next digit starts a new number. */
   const [fresh, setFresh] = useState(true);
+  /** The display holds a number not yet used by the waiting operation. */
+  const [entered, setEntered] = useState(false);
+  const [radians, setRadians] = useState(false);
+  const show = (v: number | 'Error') => {
+    setDisplay(String(v));
+    setFresh(true);
+    setEntered(v !== 'Error');
+  };
   const digit = (d: string) => {
     if (display === 'Error' || fresh) {
       setDisplay(d === '.' ? '0.' : d);
       setFresh(false);
     } else if (!(d === '.' && display.includes('.'))) setDisplay(display === '0' && d !== '.' ? d : display + d);
+    setEntered(true);
   };
-  const operate = (next: '+' | '-' | '×' | '÷' | '=') => {
+  const operate = (next: CalcOp | '=') => {
     const cur = Number(display);
     let val: number | 'Error' = cur;
-    if (acc != null && op && !fresh) val = calcApply(acc, op, cur);
+    if (acc != null && op && entered) val = calcApply(acc, op, cur);
     setDisplay(String(val));
     setAcc(val === 'Error' ? null : val);
     setOp(next === '=' ? null : next);
     setFresh(true);
+    setEntered(false);
+  };
+  const science = (k: CalcFn | 'pi' | 'e' | 'pow') => {
+    if (k === 'pow') return operate('^');
+    if (k === 'pi' || k === 'e') return show(Math.round((k === 'pi' ? Math.PI : Math.E) * 1e8) / 1e8);
+    if (display !== 'Error') show(calcUnary(k, Number(display), radians));
   };
   const clear = () => {
     setDisplay('0');
     setAcc(null);
     setOp(null);
     setFresh(true);
+    setEntered(false);
   };
-  const keys: (string | [string, () => void])[] = ['7', '8', '9', ['÷', () => operate('÷')], '4', '5', '6', ['×', () => operate('×')], '1', '2', '3', ['-', () => operate('-')], '0', '.', ['=', () => operate('=')], ['+', () => operate('+')]];
+  const keys: (string | [string, () => void, string])[] = [
+    ...(scientific ? SCI_KEYS.map(([label, k, name]): [string, () => void, string] => [label, () => science(k), name]) : []),
+    ...(['7', '8', '9', '÷', '4', '5', '6', '×', '1', '2', '3', '-', '0', '.', '=', '+'] as const).map((k): string | [string, () => void, string] =>
+      k in OP_LABEL ? [k, () => operate(k as CalcOp | '='), OP_LABEL[k]!] : k,
+    ),
+  ];
   return (
-    <section className="yx-calc" aria-label="Calculator">
+    <section className="yx-calc" aria-label={scientific ? 'Scientific calculator' : 'Calculator'} data-scientific={scientific || undefined}>
       <div className="yx-calc__head">
-        <strong>Calculator</strong>
-        {onClose && <IconButton icon={XCircle} label="Close calculator" size="sm" onClick={onClose} />}
+        <strong>{scientific ? 'Scientific calculator' : 'Calculator'}</strong>
+        <span className="yx-calc__tools">
+          {scientific && (
+            <Button size="sm" onClick={() => setRadians(!radians)} aria-pressed={radians} aria-label={radians ? 'Angles in radians: switch to degrees' : 'Angles in degrees: switch to radians'}>
+              {radians ? 'Rad' : 'Deg'}
+            </Button>
+          )}
+          {onClose && <IconButton icon={XCircle} label="Close calculator" size="sm" onClick={onClose} />}
+        </span>
       </div>
       <output className="yx-calc__display" aria-live="polite">
         {display}
@@ -404,7 +450,7 @@ export function Calculator({ onClose }: { onClose?: () => void }) {
               {k}
             </button>
           ) : (
-            <button key={k[0]} type="button" className="yx-calc__key" data-op onClick={k[1]} aria-label={k[0] === '-' ? 'minus' : k[0] === '×' ? 'times' : k[0] === '÷' ? 'divide by' : k[0] === '+' ? 'plus' : 'equals'}>
+            <button key={k[0]} type="button" className="yx-calc__key" data-op onClick={k[1]} aria-label={k[2]}>
               {k[0]}
             </button>
           ),
@@ -414,6 +460,41 @@ export function Calculator({ onClose }: { onClose?: () => void }) {
         </button>
       </div>
     </section>
+  );
+}
+
+/* ---------- Question media (answer 2161) ---------- */
+
+export interface QuestionImage {
+  src: string;
+  /** The writer's alt text (answer 2126); a plain description stands in when there is none. */
+  alt?: string | null;
+}
+/** A question's picture and read-only code snippet, under its text. */
+export function QuestionMedia({ image, snippet }: { image?: QuestionImage | null; snippet?: { language?: string | null; code: string } | null }) {
+  if (!image && !snippet) return null;
+  return (
+    <>
+      {image && <img className="yx-prc-qimg" src={image.src} alt={image.alt?.trim() || 'Picture for this question'} />}
+      {snippet && (
+        <figure className="yx-prc-snippet">
+          <figcaption>{snippet.language || 'Code'}</figcaption>
+          <pre tabIndex={0} aria-label={`Code, ${snippet.language || 'plain text'}`}>
+            <code>{snippet.code}</code>
+          </pre>
+        </figure>
+      )}
+    </>
+  );
+}
+/** An answer option with its picture, if it has one. */
+export function OptionLabel({ text, image }: { text: string; image?: QuestionImage | null }) {
+  if (!image) return <>{text}</>;
+  return (
+    <span className="yx-prc-option">
+      <img className="yx-prc-optimg" src={image.src} alt={image.alt?.trim() || (text ? `Picture: ${text}` : 'Picture for this option')} />
+      {text && <span>{text}</span>}
+    </span>
   );
 }
 
@@ -459,6 +540,61 @@ export function CodeAnswer({ language, value, onChange, results, running, onRun,
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+/** What the runtime returns for one press of Run (answer 2234). */
+export interface CodeRun {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  compileError: string | null;
+  timedOut: boolean;
+  runsRemaining: number;
+}
+
+/**
+ * Answer 2234: the candidate's own Run output in the coding story's results panel, under the editor. `timeoutSeconds`
+ * must match the sandbox's run limit (RUN_TIMEOUT_MS in the runtime's piston client).
+ */
+export function CodeRunOutput({ result, error, timeoutSeconds = 5 }: { result: CodeRun | null; error: string | null; timeoutSeconds?: number }) {
+  const failed = Boolean(error) || (result != null && (result.exitCode !== 0 || result.compileError != null || result.timedOut));
+  return (
+    <div className="yx-code">
+      <div className="yx-code__results" aria-live="polite">
+        {error ? (
+          <>
+            <p className="yx-code__head" data-status="fail">
+              <span><Icon icon={XCircle} /> Couldn't run</span>
+            </p>
+            <pre className="yx-code__out" data-tone="danger">{error}</pre>
+          </>
+        ) : !result ? (
+          <p className="yx-code__detail">Press Run to see your output here.</p>
+        ) : (
+          <>
+            <p className="yx-code__head" data-status={failed ? 'fail' : 'pass'}>
+              <span><Icon icon={failed ? XCircle : CheckCircle2} /> {result.compileError ? 'Did not compile' : result.timedOut ? 'Stopped' : `Exit code ${result.exitCode}`}</span>
+              <span className="yx-code__detail">{`${result.runsRemaining} ${result.runsRemaining === 1 ? 'run' : 'runs'} left`}</span>
+            </p>
+            {result.compileError ? (
+              <pre className="yx-code__out" data-tone="danger">{result.compileError}</pre>
+            ) : (
+              <>
+                {result.stdout && <pre className="yx-code__out" aria-label="Output">{result.stdout}</pre>}
+                {result.stderr && <pre className="yx-code__out" data-tone="danger" aria-label="Errors">{result.stderr}</pre>}
+                {!result.stdout && !result.stderr && !result.timedOut && <p className="yx-code__detail">Your program printed nothing.</p>}
+              </>
+            )}
+            {result.timedOut && (
+              <p className="yx-code__detail" data-tone="warning">
+                {`Your program ran for more than ${timeoutSeconds} seconds and was stopped. This usually means a loop never finishes: check that its condition eventually becomes false.`}
+              </p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

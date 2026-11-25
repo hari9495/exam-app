@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsDefined, IsEmail, IsIn, IsISO8601, IsObject, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsDateString, IsDefined, IsEmail, IsISO8601, IsIn, IsObject, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength, ValidateNested } from 'class-validator';
 
 const trim = () => Transform(({ value }) => (typeof value === 'string' ? value.trim() : value));
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -76,11 +76,44 @@ export class LateCorrectionDto {
   @IsIn(['attendance', 'leave'])
   kind!: 'attendance' | 'leave';
 
-  /** What it should have been: "present", "half_day", "on_leave", or a leave type's name. */
+  /**
+   * Answer 2282: what the day should have been, a fixed choice: "present", "half_day", "unpaid" or "leave:<leave type
+   * code>" (the leave type is checked against the company's).
+   */
   @trim()
   @IsString()
-  @Length(2, 120)
+  @Matches(/^(present|half_day|unpaid|leave:[A-Za-z0-9_-]{1,20})$/, { message: 'Choose what the day should have been: present, half day, a leave type or unpaid.' })
   shouldBe!: string;
+
+  @trim()
+  @IsString()
+  @MinLength(10)
+  @MaxLength(500)
+  reason!: string;
+}
+
+/** Batch A item 8 (D15): one day of an LOP reversal and what it should have been (never "unpaid": that is no reversal). */
+export class LopReversalDayDto {
+  @IsDateString({ strict: true })
+  on!: string;
+
+  @trim()
+  @IsString()
+  @Matches(/^(present|half_day|leave:[A-Za-z0-9_-]{1,20})$/, { message: 'Choose what the day should have been: a paid day, a half day or a leave type.' })
+  shouldBe!: string;
+}
+
+/** Batch A item 8 (D15, answer 2315): HR reverses loss of pay for days of a locked month, paid in the next regular run. */
+export class LopReversalDto {
+  @IsUUID()
+  employeeId!: string;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(31)
+  @ValidateNested({ each: true })
+  @Type(() => LopReversalDayDto)
+  days!: LopReversalDayDto[];
 
   @trim()
   @IsString()
@@ -182,6 +215,18 @@ export class AuditQueryDto {
   @IsOptional()
   @Matches(/^\d{1,18}$/)
   before?: string;
+
+  /** Settings S-5 (answer 1563): one area of the company audit log (AUDIT_AREAS). */
+  @IsOptional()
+  @IsIn(['settings', 'access', 'people', 'time', 'payroll', 'hiring', 'performance', 'expenses', 'helpdesk', 'approvals', 'projects'])
+  area?: string;
+
+  /** Answer 1563: a person, by any part of their name or email. */
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(100)
+  actor?: string;
 }
 
 export class TimelineQueryDto {

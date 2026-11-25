@@ -19,6 +19,8 @@ export interface ComponentDef {
   name: string;
   kind: 'earning' | 'deduction' | 'employer' | 'reimbursement' | 'info';
   pfWage: boolean;
+  /** B2: with pfWage, part of the PF wage only while the rest of the month's PF wage is below the ceiling. */
+  pfBelowCeiling?: boolean;
   esiWage: boolean;
   ptWage: boolean;
   gratuityWage: boolean;
@@ -82,6 +84,36 @@ export interface Breakup {
 
 const roundFor = (x: Prisma.Decimal, r: ComponentDef['rounding']) => (r === 'none' ? x.toDecimalPlaces(2, Prisma.Decimal.ROUND_HALF_UP) : r === 'up_rupee' ? x.ceil() : x.toDecimalPlaces(0, Prisma.Decimal.ROUND_HALF_UP));
 
+/** What counts inside the CTC: earnings marked so, and the employer costs the template puts inside it. */
+export function inCtcOf(c: ComponentDef, o: Pick<Options, 'employerPfInCtc' | 'employerEsiInCtc' | 'gratuityInCtc'>): boolean {
+  if (c.kind === 'earning') return c.inCtc;
+  if (c.kind !== 'employer') return false;
+  if (c.statutory === 'pf_employer') return o.employerPfInCtc;
+  if (c.statutory === 'esi_employer') return o.employerEsiInCtc;
+  if (c.statutory === 'gratuity_provision') return o.gratuityInCtc;
+  return c.inCtc;
+}
+
+/** The basis shown after an employer line's name (PPL-03), from the rules in force: "12% of ₹15,000", "4.81% of basic". */
+export function lineBasis(c: ComponentDef, components: ComponentDef[], rules: RuleSet[], on: string): string | null {
+  const pct = (x: number) => `${Number((x * 100).toFixed(2))}%`;
+  const v = (statute: string) => inForce(rules, statute, ['IN'], on)?.values as Record<string, unknown> | undefined;
+  if (c.statutory === 'pf_employer') {
+    const r = v('IN.PF');
+    return r ? `${pct(Number(r.employerRate))} of ₹${Number(r.wageCeiling).toLocaleString('en-IN')}` : null;
+  }
+  if (c.statutory === 'esi_employer') {
+    const r = v('IN.ESI');
+    return r ? `${pct(Number(r.employerRate))} of the ESI wage` : null;
+  }
+  if (c.statutory === 'gratuity_provision') {
+    const r = v('IN.SS-CODE')?.kind === 'gratuity' ? v('IN.SS-CODE') : v('IN.GRATUITY');
+    const wage = components.filter((x) => x.kind === 'earning' && x.gratuityWage);
+    return r ? `${pct(Number(r.daysPerYear) / Number(r.monthDays) / 12)} of ${wage.length === 1 ? wage[0].name.toLowerCase() : 'the gratuity wage'}` : null;
+  }
+  return null;
+}
+
 /** Lines in the order they must be worked out; a line using a statutory amount comes after every plain earning. */
 export function lineOrder(lines: Line[], components: Map<string, ComponentDef>): string[] {
   const plainEarnings = lines.filter((l) => !l.statutory.length && components.get(l.code)?.kind === 'earning').map((l) => l.code);
@@ -111,16 +143,7 @@ export function breakup(a: { lines: Line[]; components: ComponentDef[]; options:
   const mwFacts = { table: mwTable, zone: a.facts.zone, skill: a.facts.skill };
   const used: RuleSet[] = [];
 
-  /** What counts inside the CTC: earnings marked so, and the employer costs the template puts inside it. */
-  const inCtc = (code: string) => {
-    const c = comps.get(code)!;
-    if (c.kind === 'earning') return c.inCtc;
-    if (c.kind !== 'employer') return false;
-    if (c.statutory === 'pf_employer') return a.options.employerPfInCtc;
-    if (c.statutory === 'esi_employer') return a.options.employerEsiInCtc;
-    if (c.statutory === 'gratuity_provision') return a.options.gratuityInCtc;
-    return c.inCtc;
-  };
+  const inCtc = (code: string) => inCtcOf(comps.get(code)!, a.options);
 
   const solve = (esiAssumed: boolean | null) => {
     const monthlyCtc = a.ctc !== undefined ? D(a.ctc).div(12) : null;
@@ -140,7 +163,10 @@ export function breakup(a: { lines: Line[]; components: ComponentDef[]; options:
         };
         const cw = codeRs ? codeWage(codeRs, { wageParts: sum('codeWagePart'), exclusions: sum('codeExclusion') }) : null;
         addBack = cw ? D(cw.codeWage).sub(sum('codeWagePart')) : ZERO;
-        const pfWage = sum('pfWage').add(addBack);
+        // B2: a "below the ceiling" component counts only while the rest of the PF wage is under the ceiling.
+        const pfPart = (below: boolean) => [...values.entries()].filter(([c]) => comps.get(c)!.kind === 'earning' && comps.get(c)!.pfWage && !!comps.get(c)!.pfBelowCeiling === below).reduce((s, [, v]) => s.add(v), ZERO);
+        const pfAlways = pfPart(false).add(addBack);
+        const pfWage = pfRs && pfAlways.lt(D(String(pfRs.values.wageCeiling))) ? pfAlways.add(pfPart(true)) : pfAlways;
         if (fn === 'code_wage') return cw ? D(cw.codeWage) : sum('codeWagePart');
         if (fn === 'pf_employee' || fn === 'pf_employer') {
           if (!a.facts.pf) return ZERO;

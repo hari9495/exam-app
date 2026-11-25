@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useState } from 'react';
-import { LoginActivityScreen, NO_FILTERS, type LoginActivityFilters, type LoginActivityScreenProps } from './login-activity';
+import { LoginActivityScreen, NO_FILTERS, type AccountFilter, type AccountRow, type LoginActivityFilters, type LoginActivityScreenProps, type LoginActivityTab } from './login-activity';
 import { SecuritySettingsScreen, type SecuritySettingsScreenProps } from './security-settings';
 import { LinksFrame, type StoryLink } from '../_kit/story-frame';
 import { ADMINS, FLOOR, IDPS, ORG_EVENTS, ORG_SESSIONS, PEOPLE, POLICY } from './data';
@@ -10,6 +10,14 @@ export default meta;
 type S = StoryObj;
 
 const wait = (ms = 600) => new Promise<void>((r) => setTimeout(r, ms));
+const ACCOUNT_ROWS: AccountRow[] = [
+  { id: 'u1', name: 'Lakshmi Venkatesan', email: 'lakshmi@kaverifoods.in', roleLabel: 'System Admin', status: 'active', lastLoginAt: '2026-11-17T09:12:00+05:30', twoStep: true, self: true },
+  { id: 'u2', name: 'Ravi Kumar', email: 'ravi.kumar@kaverifoods.in', roleLabel: 'Employee', status: 'active', lastLoginAt: '2026-11-16T18:40:00+05:30', twoStep: false },
+  { id: 'u3', name: 'Meena Iyer', email: 'meena.iyer@kaverifoods.in', roleLabel: 'HR', status: 'invited', lastLoginAt: null, twoStep: false },
+  { id: 'u4', name: 'Suresh Pillai', email: 'suresh.pillai@kaverifoods.in', roleLabel: 'Payroll Admin', status: 'active', lastLoginAt: '2026-11-15T10:05:00+05:30', twoStep: true },
+  { id: 'u5', name: 'Kavya Reddy', email: 'kavya.reddy@kaverifoods.in', roleLabel: 'Manager', status: 'off', lastLoginAt: '2026-10-10T17:30:00+05:30', twoStep: true },
+];
+const ACCOUNTS = { data: ACCOUNT_ROWS, total: ACCOUNT_ROWS.length, page: 1, pageSize: 25 };
 const LINKS: StoryLink[] = [
   { id: 'activity', label: 'Login activity', href: '#activity', group: 'Security' },
   { id: 'settings', label: 'Security settings', href: '#settings', group: 'Security' },
@@ -22,8 +30,11 @@ const Shell = ({ active, children }: { active: string; children: React.ReactNode
 );
 
 function Activity(over: Partial<LoginActivityScreenProps>) {
-  const [tab, setTab] = useState<'events' | 'sessions'>(over.tab ?? 'events');
+  const [tab, setTab] = useState<LoginActivityTab>(over.tab ?? 'events');
   const [filters, setFilters] = useState<LoginActivityFilters>(NO_FILTERS);
+  const [accountFilter, setAccountFilter] = useState<AccountFilter>('all');
+  const [accountSearch, setAccountSearch] = useState('');
+  const accounts = over.accounts === undefined ? { ...ACCOUNTS, data: ACCOUNTS.data.filter((a) => (accountFilter === 'all' || a.status === accountFilter) && `${a.name} ${a.email}`.toLowerCase().includes(accountSearch.toLowerCase())) } : over.accounts;
   const events = { ...ORG_EVENTS, data: ORG_EVENTS.data.filter((e) => (!filters.result || e.result === filters.result) && (!filters.method || e.method === filters.method)) };
   return (
     <Shell active="activity">
@@ -40,7 +51,15 @@ function Activity(over: Partial<LoginActivityScreenProps>) {
         onSessionsPage={() => {}}
         onRevokeSession={() => wait()}
         onUnlock={() => wait()}
+        accountsState="ready"
+        accountFilter={accountFilter}
+        onAccountFilter={setAccountFilter}
+        accountSearch={accountSearch}
+        onAccountSearch={setAccountSearch}
+        onSetSignIn={() => wait()}
+        onResendLink={() => wait()}
         {...over}
+        accounts={accounts}
         tab={tab}
         onTabChange={setTab}
       />
@@ -76,6 +95,29 @@ export const LoginActivityEmpty: S = {
   name: 'Login activity · nothing yet',
   render: () => <Activity events={{ data: [], total: 0, page: 1, pageSize: 25 }} failedLast24h={0} sessions={{ data: [], total: 0, page: 1, pageSize: 25 }} />,
 };
+// Admin A6 (batch B item 20): everyone with an account, whether they can sign in, last sign-in, two-step.
+export const LoginActivityAccounts: S = { name: 'Login activity · accounts (who can sign in)', render: () => <Activity tab="accounts" /> };
+export const LoginActivityAccountsTurnOff: S = {
+  name: 'Login activity · accounts · turn off sign-in',
+  render: () => <Activity tab="accounts" />,
+  play: async ({ canvasElement }) => canvasElement.querySelector<HTMLButtonElement>('button[aria-label="Turn off sign-in for Ravi Kumar"]')?.click(),
+};
+export const LoginActivityAccountsRefused: S = {
+  name: 'Login activity · accounts · turn off refused',
+  render: () => (
+    <Activity
+      tab="accounts"
+      onSetSignIn={async () => {
+        await wait(300);
+        throw new Error('Keep at least one other active System Admin first.');
+      }}
+    />
+  ),
+};
+export const LoginActivityAccountsLoading: S = { name: 'Login activity · accounts · loading', render: () => <Activity tab="accounts" accounts={null} accountsState="loading" /> };
+export const LoginActivityAccountsError: S = { name: 'Login activity · accounts · could not load', render: () => <Activity tab="accounts" accounts={null} accountsState="error" onRetry={() => {}} /> };
+export const LoginActivityAccountsEmpty: S = { name: 'Login activity · accounts · nobody matches', render: () => <Activity tab="accounts" accounts={{ data: [], total: 0, page: 1, pageSize: 25 }} /> };
+export const LoginActivityAccountsPhone: S = { name: 'Login activity · accounts · phone', globals: { viewport: { value: 'phone' } }, render: () => <Activity tab="accounts" /> };
 export const LoginActivityPhone: S = { name: 'Login activity · phone', globals: { viewport: { value: 'phone' } }, render: () => <Activity /> };
 export const LoginActivitySessionsPhone: S = { name: 'Login activity · signed in now · phone', globals: { viewport: { value: 'phone' } }, render: () => <Activity tab="sessions" /> };
 
@@ -133,6 +175,9 @@ export const SecuritySettingsDomains: S = {
     />
   ),
 };
+// Batch B item 1 (pay B12 / admin B4): confirm it's you again before salary pages, after 5, 10 or 15 minutes.
+export const SecuritySettingsSalaryShort: S = { name: '2.3 Security · salary pages, ask again after 5 min', render: () => <Settings policy={{ ...POLICY, salaryRecheckMinutes: 5 }} /> };
+export const SecuritySettingsSalaryOff: S = { name: '2.3 Security · salary pages re-check off', render: () => <Settings policy={{ ...POLICY, salaryRecheck: false }} /> };
 export const SecuritySettingsNoProviders: S = { name: '2.3 Security · no identity providers', render: () => <Settings providers={[]} /> };
 export const SecuritySettingsLoading: S = { name: '2.3 Security · loading', render: () => <Settings state="loading" policy={null} floor={null} /> };
 export const SecuritySettingsError: S = { name: '2.3 Security · could not load', render: () => <Settings state="error" policy={null} floor={null} onRetry={() => {}} /> };

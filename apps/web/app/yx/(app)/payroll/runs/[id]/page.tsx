@@ -2,12 +2,14 @@
 
 import { useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { PayRunScreen, type BankFileMade, type BankFileRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
+import { FrequencyRunsScreen, OffCycleRunScreen, RunWorkspaceScreen, type FnfSettlementView, type LiveRunWorkspaceData, type OffcycleItem, type RunInputSources, type RunSpecialDays, type BankFileMade, type BankFileRow, type FilingRow, type PayRun, type PayslipDetail, type RunPayslip, type RunPerson, type RunProgressData, type RunReadiness, type RunVariance } from '@yukthix/ui/pay';
 import { useYxPermissions } from '../../../../../../lib/yx-org';
 import { payState, usePay, usePayDownload, usePayRead, usePayWrite } from '../../../../../../lib/yx-pay';
 import { usePeopleSearch } from '../../../../../../lib/yx-pay-5b';
+import { useApi, useNames } from '../../../../../../lib/yx-pay-5j';
 
-// Payroll › one run (PAY-10.01, PAY-02 … PAY-11): checks, calculation, payslips, approval, bank file and publishing.
+// Payroll › one run: the designed run workspace (PAY-03, with PAY-02 checks, PAY-07 approve, PAY-08 bank file, PAY-09
+// publish) with this run's data: checks, calculation, payslips, approval, bank file and publishing.
 export default function YxPayRunPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -17,14 +19,31 @@ export default function YxPayRunPage() {
   const calculating = run.data?.status === 'calculating';
   const people = usePay<RunPerson[]>(`${base}/people`);
   const readiness = usePay<RunReadiness>(`${base}/readiness`);
-  const progress = usePay<RunProgressData>(calculating ? `${base}/progress` : null);
+  // Progress while it calculates, and after a calculation that failed for some people (PAY-03 "retry the failed").
+  const failedLast = run.data?.status === 'draft' && Boolean(run.data.totals?.failed);
+  const progress = usePay<RunProgressData>(calculating || failedLast ? `${base}/progress` : null);
+  const inputSources = usePay<RunInputSources>(`${base}/input-sources`);
+  // HLP-12 answers 92, 93: special days with their source, and late injury leave to review.
+  const specialDays = usePay<RunSpecialDays>(run.data?.runType === 'regular' ? `${base}/special-days` : null);
   const payslips = usePay<RunPayslip[]>(`${base}/payslips`);
   const variances = usePay<RunVariance[]>(`${base}/variances`);
   const bankFiles = usePay<BankFileRow[]>(run.data && ['approved', 'paid'].includes(run.data.status) ? `${base}/bank-files` : null);
+  // PAY-03 Files tab: the journal and the month's statutory files, for the people who may see them.
+  const locked = !!run.data && ['approved', 'paid'].includes(run.data.status);
+  const journalOk = perms.has('payroll.journal.export');
+  const journal = usePay<{ lines: unknown[]; postedAt: string | null; canPost: boolean }>(locked && journalOk ? `${base}/journal` : null);
+  const filingsOk = perms.has('statutory.filing.view');
+  const filings = useApi<FilingRow[]>(locked && filingsOk && run.data ? `/statutory/filings?entityId=${encodeURIComponent(run.data.legalEntityId)}&month=${run.data.month}` : null);
   const read = usePayRead();
   const write = usePayWrite();
   const download = usePayDownload();
   const search = usePeopleSearch();
+  // An F&F run: its settlement (lines, deadline, payees) for people who manage full and final.
+  const fnf = usePay<FnfSettlementView[]>(run.data?.offcycleKind === 'fnf' && perms.has('payroll.fnf.manage') ? '/fnf' : null);
+  const settlement = fnf.data?.find((f) => f.runId === id || f.secondRunId === id) ?? null;
+  const nameOf = useNames();
+  // PAY-11 Bonus: a non-F&F off-cycle run shows its own lines (the design's table).
+  const items = usePay<OffcycleItem[]>(run.data?.runType === 'offcycle' && run.data.offcycleKind !== 'fnf' ? `${base}/items` : null);
   // While it calculates, look again every two seconds.
   useEffect(() => {
     if (!calculating) return;
@@ -33,46 +52,77 @@ export default function YxPayRunPage() {
   }, [calculating]); // eslint-disable-line react-hooks/exhaustive-deps
   // Each new status (calculated, approved, paid) brings new payslips, checks and files: read them again.
   useEffect(() => {
-    void Promise.all([payslips.refetch(), variances.refetch(), readiness.refetch(), people.refetch()]);
+    void Promise.all([payslips.refetch(), variances.refetch(), readiness.refetch(), people.refetch(), inputSources.refetch()]);
   }, [run.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
-  return (
-    <PayRunScreen
-      state={payState(run)}
-      onRetry={() => void run.refetch()}
-      run={run.data ?? null}
-      people={people.data ?? []}
-      readiness={readiness.data ?? null}
-      progress={progress.data ?? null}
-      payslips={payslips.data ?? null}
-      variances={variances.data ?? null}
-      bankFiles={bankFiles.data ?? null}
-      published={Boolean(run.data?.publishedAt)}
-      can={{
-        prepare: perms.has('payroll.run.prepare'),
-        approve: perms.has('payroll.run.approve'),
-        bankGenerate: perms.has('payroll.bankfile.generate'),
-        bankRelease: perms.has('payroll.bankfile.release'),
-        publish: perms.has('payroll.payslip.publish'),
-        offcycle: perms.has('payroll.offcycle.prepare'),
-      }}
-      onBack={() => router.push('/yx/payroll/runs')}
-      onPayments={() => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/payments`)}
-      onWaive={(vid, reason) => write(`${base}/validations/${encodeURIComponent(vid)}/waive`, { reason })}
-      onCalculate={() => write(`${base}/calculate`)}
-      onPayslip={(sid) => read<PayslipDetail>(`/payslips/${encodeURIComponent(sid)}`)}
-      onAck={(vid, note) => write(`${base}/variances/${encodeURIComponent(vid)}/ack`, note ? { note } : {})}
-      onSubmit={(selfApprovalReason) => write(`${base}/submit`, selfApprovalReason ? { selfApprovalReason } : {})}
-      onDecide={(decision, reason, confirmation) => write(`${base}/decision`, { decision, ...(reason ? { reason } : {}), ...(decision === 'approve' ? { confirmation } : {}) })}
-      onVoid={(reason) => write(`${base}/void`, { reason })}
-      onGenerateBank={(debitAccount, reason) => write<BankFileMade>(`${base}/bank-files`, { debitAccount, ...(reason ? { reason } : {}) })}
-      onReleaseBank={(bid, confirmation) => write(`/bank-files/${encodeURIComponent(bid)}/release`, { confirmation })}
-      onDownload={async (fileId, name) => {
-        const link = await write<{ path: string }>(`/files/${encodeURIComponent(fileId)}/link`);
-        await download(link.path, name);
-      }}
-      onPublish={(confirmation) => write(`${base}/publish`, { confirmation })}
-      onSearchPeople={(q) => search(q)}
-      onAddItem={(item) => write(`${base}/items`, item)}
-    />
+  const workspace: LiveRunWorkspaceData = {
+    state: payState(run),
+    onRetry: () => void run.refetch(),
+    run: run.data ?? null,
+    people: people.data ?? [],
+    readiness: readiness.data ?? null,
+    progress: progress.data ?? null,
+    inputSources: inputSources.data ?? null,
+    specialDays: specialDays.data ?? null,
+    onSaveSpecialDays: async (input) => {
+      await write('/special-days', { ...input, month: run.data!.month }, 'PUT');
+      await specialDays.refetch();
+    },
+    onNotPaid: async (cid, reason) => {
+      await write(`/runs/${encodeURIComponent(id)}/special-days/corrections/${encodeURIComponent(cid)}/not-paid`, { reason });
+      await specialDays.refetch();
+    },
+    onUndoNotPaid: async (cid) => {
+      await write(`/runs/${encodeURIComponent(id)}/special-days/corrections/${encodeURIComponent(cid)}/undo-not-paid`);
+      await specialDays.refetch();
+    },
+    payslips: payslips.data ?? null,
+    variances: variances.data ?? null,
+    bankFiles: bankFiles.data ?? null,
+    published: Boolean(run.data?.publishedAt),
+    can: {
+      prepare: perms.has('payroll.run.prepare'),
+      approve: perms.has('payroll.run.approve'),
+      bankGenerate: perms.has('payroll.bankfile.generate'),
+      bankRelease: perms.has('payroll.bankfile.release'),
+      publish: perms.has('payroll.payslip.publish'),
+      offcycle: perms.has('payroll.offcycle.prepare'),
+    },
+    onBack: () => router.push('/yx/payroll/runs'),
+    onPayments: () => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/payments`),
+    journal: !journalOk ? null : locked ? (journal.data ?? null) : undefined,
+    filings: filingsOk ? (locked ? (filings.data ?? []) : []) : undefined,
+    onJournal: () => router.push(`/yx/payroll/runs/${encodeURIComponent(id)}/payments?tab=journal`),
+    onStatutory: () => router.push('/yx/payroll/statutory'),
+    onLopInput: () => router.push('/yx/payroll/inputs'),
+    onWaive: (vid, reason) => write(`${base}/validations/${encodeURIComponent(vid)}/waive`, { reason }),
+    onCalculate: () => write(`${base}/calculate`),
+    onRetryFailed: () => write(`${base}/retry-failed`),
+    onPayslip: (sid) => read<PayslipDetail>(`/payslips/${encodeURIComponent(sid)}`),
+    onAck: (vid, note) => write(`${base}/variances/${encodeURIComponent(vid)}/ack`, note ? { note } : {}),
+    onSubmit: (selfApprovalReason) => write(`${base}/submit`, selfApprovalReason ? { selfApprovalReason } : {}),
+    onDecide: (decision, reason, confirmation) => write(`${base}/decision`, { decision, ...(reason ? { reason } : {}), ...(decision === 'approve' ? { confirmation } : {}) }),
+    onVoid: (reason) => write(`${base}/void`, { reason }),
+    onGenerateBank: (debitAccount, reason) => write<BankFileMade>(`${base}/bank-files`, { debitAccount, ...(reason ? { reason } : {}) }),
+    onReleaseBank: (bid, confirmation) => write(`/bank-files/${encodeURIComponent(bid)}/release`, { confirmation }),
+    onDownload: async (fileId, name) => {
+      const link = await write<{ path: string }>(`/files/${encodeURIComponent(fileId)}/link`);
+      await download(link.path, name);
+    },
+    onPublish: (confirmation, selfApprovalReason) => write(`${base}/publish`, { confirmation, ...(selfApprovalReason ? { selfApprovalReason } : {}) }),
+    onSearchPeople: (q) => search(q),
+    onAddItem: async (item) => {
+      const out = await write(`${base}/items`, item);
+      void items.refetch();
+      return out;
+    },
+  };
+  // PAY-11: an off-cycle run opens in the designed off-cycle screen (its settlement lines on top of the same steps).
+  return run.data?.runType === 'offcycle' ? (
+    <OffCycleRunScreen live={{ mode: 'run', workspace, settlement, person: settlement ? nameOf(settlement.employeeId) : null, fnfHref: '/yx/payroll/fnf', items: items.data ?? null }} />
+  ) : run.data?.payGroup && ['weekly', 'fortnightly'].includes(run.data.payGroup.frequency) ? (
+    // PAY-29: a weekly or fortnightly run opens in the design's step view over the same workspace.
+    <FrequencyRunsScreen liveRun={workspace} />
+  ) : (
+    <RunWorkspaceScreen live={workspace} />
   );
 }
