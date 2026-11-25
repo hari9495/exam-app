@@ -452,4 +452,86 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     expect(hr).toMatchObject({ status: 'Completed' });
     expect(hr).not.toHaveProperty('result');
   });
+  it('G3d skills: a completed course suggests its library skills; the person or their manager decides once; the manager assesses; the team matrix', async () => {
+    const skill = await tenantPrisma.forTenant(SUPER, async (tx) => {
+      const domain = await tx.companySkill.create({ data: { organizationId: org.A.id, name: 'Safety', kind: 'domain' } });
+      const s = await tx.companySkill.create({ data: { organizationId: org.A.id, name: 'Forklift handling', kind: 'skill', parentId: domain.id } });
+      const k = await tx.competency.create({ data: { organizationId: org.A.id, companySkillId: s.id, group: 'functional' } });
+      await tx.roleCompetencyMap.create({ data: { organizationId: org.A.id, designationId: ids.desKF, competencyId: k.id, expectedLevel: 3, validFrom: new Date('2020-01-01T00:00:00Z') } });
+      return s.id;
+    });
+    const id = (await api('ldA', 'post', '/learning/admin/courses').send({ ...course, title: 'Forklift basics', mandatory: false, certificate: false, cost: 5000, skills: ['forklift handling', 'Not in the library'] }).expect(201)).body.id;
+    const item = (await api('ldA', 'post', `/learning/admin/courses/${id}/items`).send({ title: 'Walk-round video link', kind: 'link', minutes: 10, required: true, url: 'https://example.test/walk' }).expect(201)).body.id;
+    await api('ldA', 'post', `/learning/admin/courses/${id}/status`).send({ status: 'published', version: 1 }).expect(200);
+    const enrol = (await api('arjunU', 'post', `/learning/courses/${id}/enrol`).send({}).expect(201)).body;
+    const enrolmentId = enrol.id ?? enrol.enrolmentId;
+    expect((await api('arjunU', 'post', `/learning/enrolments/${enrolmentId}/items/${item}/done`).expect(200)).body.completed).toBe(true);
+    const mine = (await api('arjunU', 'get', '/learning/skills/me').expect(200)).body;
+    expect(mine.skills).toEqual([expect.objectContaining({ id: skill, name: 'Forklift handling', level: null, required: 3, source: 'Not assessed' })]);
+    expect(mine.suggestions).toEqual([expect.objectContaining({ skill: 'Forklift handling', level: 2, evidence: 'Forklift basics' })]);
+    expect(mine.canAssess).toBe(false);
+    // Others: 404; the manager (Divya) sees and may assess; L&D sees but neither decides nor assesses.
+    await api('imranU', 'get', `/learning/skills/people/${ids.arjun}`).expect(404);
+    await api('adminB', 'get', `/learning/skills/people/${ids.arjun}`).expect(404);
+    expect((await api('mgrU', 'get', `/learning/skills/people/${ids.arjun}`).expect(200)).body).toMatchObject({ canAssess: true, canDecide: true });
+    expect((await api('ldA', 'get', `/learning/skills/people/${ids.arjun}`).expect(200)).body).toMatchObject({ canAssess: false, canDecide: false, suggestions: [] });
+    await api('ldA', 'post', `/learning/skills/suggestions/${mine.suggestions[0].id}`).send({ confirm: true }).expect(404);
+    await api('imranU', 'post', `/learning/skills/suggestions/${mine.suggestions[0].id}`).send({ confirm: true }).expect(404);
+    await api('arjunU', 'post', `/learning/skills/suggestions/${mine.suggestions[0].id}`).send({ confirm: true }).expect(200);
+    await api('mgrU', 'post', `/learning/skills/suggestions/${mine.suggestions[0].id}`).send({ confirm: false }).expect(409);
+    expect((await api('arjunU', 'get', '/learning/skills/me').expect(200)).body.skills[0]).toMatchObject({ level: 2, source: 'Course', evidence: 'Forklift basics' });
+    // Assessing: the manager only, levels 1-5, library skills only.
+    await api('arjunU', 'post', `/learning/skills/people/${ids.arjun}/assess`).send({ skillId: skill, level: 5 }).expect(403);
+    await api('mgrU', 'post', `/learning/skills/people/${ids.arjun}/assess`).send({ skillId: skill, level: 6 }).expect(400);
+    await api('mgrU', 'post', `/learning/skills/people/${ids.arjun}/assess`).send({ skillId: randomUUID(), level: 3 }).expect(400);
+    await api('mgrU', 'post', `/learning/skills/people/${ids.arjun}/assess`).send({ skillId: skill, level: 4 }).expect(200);
+    const team = (await api('mgrU', 'get', '/learning/skills/team').expect(200)).body;
+    expect(team.skills).toEqual(['Forklift handling']);
+    expect(team.people.find((p: { name: string }) => p.name === 'Arjun')).toMatchObject({ levels: [4], required: [3] });
+    expect((await api('arjunU', 'get', '/learning/skills/team').expect(200)).body.people).toEqual([]);
+    ids.forkliftBasics = id;
+    ids.forkliftSkill = skill;
+  });
+
+  it('G3d needs and budgets: L&D only; a need is for a person or a department; a plan needs its course; spent follows completions', async () => {
+    await api('arjunU', 'get', '/learning/needs').expect(403);
+    await api('mgrU', 'post', '/learning/budgets').send({ departmentId: ids.deptKF, year: 2026, amount: 100000 }).expect(403);
+    const need = { title: 'Forklift refresher for Arjun', source: 'skill_gap', priority: 'high', estCost: 5000, skillId: ids.forkliftSkill };
+    await api('ldA', 'post', '/learning/needs').send({ ...need, employeeId: ids.arjun, departmentId: ids.deptKF }).expect(400);
+    await api('ldA', 'post', '/learning/needs').send(need).expect(400);
+    await api('ldA', 'post', '/learning/needs').send({ ...need, employeeId: ids.arjun, priority: 'urgent' }).expect(400);
+    const nid = (await api('ldA', 'post', '/learning/needs').send({ ...need, employeeId: ids.arjun }).expect(201)).body.id;
+    await api('ldA', 'patch', '/learning/needs').send({ ids: [nid], status: 'planned' }).expect(400);
+    await api('ldA', 'patch', '/learning/needs').send({ ids: [nid, randomUUID()], status: 'closed' }).expect(404);
+    await api('ldA', 'patch', '/learning/needs').send({ ids: [nid], status: 'planned', courseId: ids.forkliftBasics }).expect(200);
+    expect((await api('ldA', 'get', '/learning/needs').expect(200)).body).toEqual([expect.objectContaining({ who: 'Arjun', source: 'Skill gap', skill: 'Forklift handling', priority: 'High', status: 'Planned', plan: 'Forklift basics', estCost: 5000 })]);
+    expect((await api('adminB', 'get', '/learning/needs').expect(200)).body).toEqual([]);
+    const fy = Number(today.slice(5, 7)) >= 4 ? Number(today.slice(0, 4)) : Number(today.slice(0, 4)) - 1;
+    await api('ldA', 'post', '/learning/budgets').send({ departmentId: ids.deptKF, year: fy, amount: -1 }).expect(400);
+    await api('ldA', 'post', '/learning/budgets').send({ departmentId: randomUUID(), year: fy, amount: 1 }).expect(400);
+    await api('ldA', 'post', '/learning/budgets').send({ departmentId: ids.deptKF, year: fy, amount: 4000 }).expect(200);
+    const b = (await api('ldA', 'get', `/learning/budgets?year=${fy}`).expect(200)).body;
+    // Spent: completed courses (Forklift basics, 5000) plus approved external training of people in the department.
+    const external = await tenantPrisma.forTenant(SUPER, (tx) => tx.learningExternalRequest.findMany({ where: { organizationId: org.A.id, status: 'approved', employeeId: { in: [ids.arjun, ids.divya] } } }));
+    expect(b.rows.find((r: { dept: string }) => r.dept === 'Quality KF')).toMatchObject({ planned: 4000, spent: 5000 + external.reduce((a, x) => a + Number(x.cost), 0) });
+    expect((await api('adminB', 'get', '/learning/budgets').expect(200)).body.rows).toEqual([]);
+  });
+
+  it('answers 2620 and 2624: HR counts of the committees (company-wide training reports only, none below 5); POSH course completions count', async () => {
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.speakupTeamMember.create({ data: { organizationId: org.A.id, team: 'ic', userId: users.mgrU, role: 'presiding', woman: true } }));
+    const posh = (await api('ldA', 'post', '/learning/admin/courses').send({ ...course, title: 'POSH awareness', mandatory: false, certificate: false, skills: [], poshAwareness: true }).expect(201)).body.id;
+    const item = (await api('ldA', 'post', `/learning/admin/courses/${posh}/items`).send({ title: 'What the law says', kind: 'link', minutes: 10, required: true, url: 'https://example.test/posh' }).expect(201)).body.id;
+    await api('ldA', 'post', `/learning/admin/courses/${posh}/status`).send({ status: 'published', version: 1 }).expect(200);
+    const e = (await api('imranU', 'post', `/learning/courses/${posh}/enrol`).send({}).expect(201)).body;
+    await api('imranU', 'post', `/learning/enrolments/${e.id ?? e.enrolmentId}/items/${item}/done`).expect(200);
+    // 2624: the committee's annual report counts the completion next to the sessions logged by hand.
+    expect((await api('mgrU', 'get', '/desk/speakup/ic').expect(200)).body.reports[0]).toMatchObject({ committee: 'Whole company', sessions: 0, trainings: 1 });
+    // 2620: training reports for the whole company see counts; fewer than 5 complaints show none.
+    await api('arjunU', 'get', '/desk/speakup/ic/counts').expect(403);
+    await api('hrTn', 'get', '/desk/speakup/ic/counts').expect(403);
+    const counts = (await api('ldA', 'get', '/desk/speakup/ic/counts').expect(200)).body;
+    expect(counts).toEqual({ minimum: 5, committees: [expect.objectContaining({ committee: 'Whole company', shown: false, received: null, disposed: null, pendingOver90: null, trainings: 1 })] });
+    expect(JSON.stringify(counts)).not.toMatch(/Divya|Imran/);
+    expect((await api('adminB', 'get', '/desk/speakup/ic/counts').expect(200)).body.committees).toEqual([]);
+  });
 });

@@ -92,6 +92,8 @@ export interface IcAnnualReport {
   disposed: number;
   pendingOver90: number;
   sessions: number;
+  /** Answer 2624: POSH awareness course completions this year (Learning). */
+  trainings?: number;
   actionTaken: string | null;
   stage: 'draft' | 'reviewed' | 'employer' | 'district';
   /** The person looking is this committee's presiding officer (only they move the report on). */
@@ -246,6 +248,7 @@ function LiveIcConsoleScreen({ live, today }: { live: LiveIcConsole; today: Date
                             { label: 'Disposed of', value: r.disposed },
                             { label: 'Pending more than 90 days', value: r.pendingOver90, tone: r.pendingOver90 ? 'danger' : undefined },
                             { label: 'Workshops and sessions', value: r.sessions },
+                            ...(r.trainings != null ? [{ label: 'Awareness course completions', value: r.trainings }] : []),
                             { label: 'Action taken', value: r.actionTaken ?? 'Written when the presiding officer reviews it' },
                           ]}
                         />

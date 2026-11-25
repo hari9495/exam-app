@@ -25,6 +25,7 @@ import { budgetCheck, enrol } from './growth-logic';
 import type { LoadState } from './perf-goals';
 import { LiveCoursePlayerScreen, LiveMyLearningScreen, type LiveMyLearning, type LivePlayer } from './learn-live';
 import { LiveTrainingFeedbackScreen, type LiveFeedback } from './learn-feedback-live';
+import { LiveSkillSuggestionsScreen, LiveSkillsProfileScreen, type LiveSkillSuggestions, type LiveSkillsProfile } from './learn-skills-live';
 import './growth.css';
 
 /* ================================================================== Shared types */
@@ -571,7 +572,22 @@ export interface PersonSkill {
 }
 
 /** LRN-10 Skills profile (T3): confirmed skills with source and evidence, gaps for the next role; only confirmed skills count (YX-PERF-20). */
-export function SkillsProfileScreen({ persona, device = 'desktop', person, role, nextRole, skills, pending, state = 'ready' }: { persona: 'emp' | 'mgr'; device?: Device; person: string; role: string; nextRole: string; skills: PersonSkill[]; pending: number; state?: LoadState }) {
+export function SkillsProfileScreen(props: SkillsProfileProps | { live: LiveSkillsProfile }) {
+  return 'live' in props ? <LiveSkillsProfileScreen live={props.live} /> : <SkillsProfileDesign {...props} />;
+}
+
+interface SkillsProfileProps {
+  persona: 'emp' | 'mgr';
+  device?: Device;
+  person: string;
+  role: string;
+  nextRole: string;
+  skills: PersonSkill[];
+  pending: number;
+  state?: LoadState;
+}
+
+function SkillsProfileDesign({ persona, device = 'desktop', person, role, nextRole, skills, pending, state = 'ready' }: SkillsProfileProps) {
   const list =
     state === 'empty' || skills.length === 0 ? (
       <EmptyState title="No confirmed skills yet" description="Skills are added from completed courses, tests, projects and your manager. Confirm suggestions to build your profile." action={<Button>Add a skill</Button>} />
@@ -821,7 +837,18 @@ export interface SkillSuggestion {
 }
 
 /** LRN-15 (T3 / T8): AI skill suggestions stay pending until the employee or manager confirms; rejected ones aren't re-offered from the same evidence. */
-export function SkillSuggestionsScreen({ persona, device = 'desktop', person, suggestions }: { persona: 'emp' | 'mgr'; device?: Device; person: string; suggestions: SkillSuggestion[] }) {
+export function SkillSuggestionsScreen(props: SkillSuggestionsProps | { live: LiveSkillSuggestions }) {
+  return 'live' in props ? <LiveSkillSuggestionsScreen live={props.live} /> : <SkillSuggestionsDesign {...props} />;
+}
+
+interface SkillSuggestionsProps {
+  persona: 'emp' | 'mgr';
+  device?: Device;
+  person: string;
+  suggestions: SkillSuggestion[];
+}
+
+function SkillSuggestionsDesign({ persona, device = 'desktop', person, suggestions }: SkillSuggestionsProps) {
   const [decided, setDecided] = useState<Record<string, 'Confirmed' | 'Rejected'>>({});
   const open = suggestions.filter((s) => !decided[s.id]);
   const list =

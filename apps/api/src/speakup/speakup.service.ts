@@ -2,7 +2,8 @@ import { BadRequestException, ConflictException, ForbiddenException, HttpExcepti
 import { Prisma } from '@prisma/client';
 import { createHash } from 'crypto';
 import Redis from 'ioredis';
-import { OrgSecretsCryptoService, TenantContext, TenantPrismaService, isOrganizationActive } from '@exam-platform/shared';
+import { OrgSecretsCryptoService, PrismaService, TenantContext, TenantPrismaService, isOrganizationActive } from '@exam-platform/shared';
+import { ScopeUser, buildViewer, tenantWide } from '../access/scope';
 import { REDIS_CONNECTION } from '../jobs/redis-connection';
 import { EmailService } from '../email/email.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -13,6 +14,7 @@ import { settingFor } from '../people/probation';
 import { safeName } from '../service-desk/attachments.service';
 import { SPEAKUP_TEAMS, type AnnualReportStepDto, type AnonymousReportDto, type AwarenessSessionDto, type ReportDto, type SpeakupKind, type SpeakupTeam, type TeamMemberDto } from './dto';
 import { isoDay } from '../cases/case-rules';
+import { jobsToday } from '../learning/learning-core';
 import { addDays, anonymousAllowed, caseNumber, newReplyCode, poshLate, readCode, route, showCode } from './speakup-rules';
 
 // HLP-06 speak-up filing (rules: docs/yukthix/helpdesk-design-map.md section 4e). Named reports come from the signed-in
@@ -51,6 +53,7 @@ export class SpeakupService {
   private readonly logger = new Logger(SpeakupService.name);
 
   constructor(
+    private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
     private readonly files: FilesService,
@@ -465,6 +468,8 @@ export class SpeakupService {
           disposed: cases.filter((x) => x.status === 'closed').length,
           pendingOver90: cases.filter((x) => x.status !== 'closed' && addDays(isoDay(x.filedAt)!, 90) < today).length,
           sessions: log.filter((a) => a.committeeLocationId === cid && a.heldOn.toISOString().slice(0, 4) === String(year)).length,
+          // Answer 2624: completions of courses marked as POSH awareness this year, by people at the committee's workplace.
+          trainings: await this.poshTrainings(tx, c, year, cid),
           actionTaken: row?.actionTaken ?? null,
           stage: (row?.stage ?? 'draft') as 'draft' | 'reviewed' | 'employer' | 'district',
           presiding: all.some((r) => r.locationId === cid && r.role === 'presiding' && r.userId === c.userId),
@@ -479,6 +484,51 @@ export class SpeakupService {
           return { id: r.id, name: u?.name ?? u?.email ?? 'Former user', role: r.role as 'presiding' | 'member' | 'external', since: isoDay(r.addedAt), woman: r.woman, termEndsOn: r.termEndsOn ? r.termEndsOn.toISOString().slice(0, 10) : null, committeeId: r.locationId, committee: r.locationId ? (places.find((p) => p.id === r.locationId)?.name ?? 'A workplace') : 'Whole company' };
         }),
       };
+    });
+  }
+
+  /** Answer 2624: POSH awareness course completions in a calendar year, for one workplace (null: the whole company). */
+  private async poshTrainings(tx: Tx, c: CompanyContext, year: number, locationId: string | null) {
+    const done = await tx.learningEnrolment.findMany({
+      where: { organizationId: c.organizationId, status: 'completed', completedAt: { gte: new Date(`${year}-01-01T00:00:00+05:30`), lt: new Date(`${year + 1}-01-01T00:00:00+05:30`) }, courseId: { in: (await tx.learningCourse.findMany({ where: { organizationId: c.organizationId, poshAwareness: true }, select: { id: true } })).map((x) => x.id) } },
+      select: { employeeId: true },
+    });
+    if (!locationId) return done.length;
+    const at = new Set((await jobsToday(tx, c, todayIst(), done.map((d) => d.employeeId))).filter((j) => j.locationId === locationId).map((j) => j.employeeId));
+    return done.filter((d) => at.has(d.employeeId)).length;
+  }
+
+  /**
+   * Answer 2620: HR's view of the Internal Committees (CMP-09): this year's counts per committee only, never a case, a
+   * name or a member; a committee with fewer than 5 complaints shows no counts at all, so no one can be singled out.
+   */
+  async icCounts(ctx: TenantContext, user: ScopeUser) {
+    const v = await buildViewer(this.prisma, this.tenantPrisma, user, ['learning.report.view']);
+    // The counts are the whole company's committees, so a grant for part of it confers nothing here.
+    if (!tenantWide(v, 'learning.report.view') || v.actingForOther) throw new ForbiddenException('The committee counts need training reports for the whole company.');
+    return this.tx(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const year = Number(todayIst().slice(0, 4));
+      const today = todayIst();
+      const committees = [...new Set((await tx.speakupTeamMember.findMany({ where: { organizationId: org, team: 'ic', removedAt: null }, select: { locationId: true } })).map((r) => r.locationId))];
+      const places = await tx.location.findMany({ where: { organizationId: org, id: { in: committees.filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
+      const out = [];
+      for (const cid of committees) {
+        const cases = await tx.speakupCase.findMany({ where: { organizationId: org, kind: 'posh', icLocationId: cid, filedAt: { gte: new Date(`${year}-01-01T00:00:00+05:30`), lt: new Date(`${year + 1}-01-01T00:00:00+05:30`) } }, select: { status: true, filedAt: true } });
+        const shown = cases.length >= 5;
+        out.push({
+          committee: cid ? (places.find((p) => p.id === cid)?.name ?? 'A workplace') : 'Whole company',
+          year,
+          shown,
+          received: shown ? cases.length : null,
+          disposed: shown ? cases.filter((x) => x.status === 'closed').length : null,
+          pendingOver90: shown ? cases.filter((x) => x.status !== 'closed' && addDays(isoDay(x.filedAt)!, 90) < today).length : null,
+          sessions: await tx.poshAwarenessSession.count({ where: { organizationId: org, committeeLocationId: cid, heldOn: { gte: new Date(`${year}-01-01T00:00:00Z`), lt: new Date(`${year + 1}-01-01T00:00:00Z`) } } }),
+          trainings: await this.poshTrainings(tx, c, year, cid),
+        });
+      }
+      await audit(tx, c, 'posh.counts_viewed', 'organization', org, { committees: out.length });
+      return { minimum: 5, committees: out.sort((a, b) => a.committee.localeCompare(b.committee)) };
     });
   }
 

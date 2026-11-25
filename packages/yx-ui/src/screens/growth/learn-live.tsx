@@ -3,6 +3,7 @@
 // team view. Each keeps its design's layout and words; what the core does not have yet is left out, never faked.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { PlainTable } from '../../components/plain-table';
+import { PoshCountsCard, type PoshCounts } from './learn-skills-live';
 import { ArrowDown, ArrowUp, Award, BookOpen, CheckCircle2, ClipboardCheck, Download, ExternalLink, FileText, Film, Package, Play, Plus, Trash2 } from 'lucide-react';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -597,8 +598,10 @@ export interface CourseDetails {
   certificate: boolean;
   certificateMonths: number | null;
   skills: string[];
+  /** Answer 2624: completions count in the Internal Committee annual report. */
+  poshAwareness?: boolean;
 }
-export const NEW_COURSE: CourseDetails = { title: '', description: '', source: 'company', provider: '', durationMinutes: 30, cost: 0, mandatory: false, needsApproval: false, certificate: true, certificateMonths: 12, skills: [] };
+export const NEW_COURSE: CourseDetails = { title: '', description: '', source: 'company', provider: '', durationMinutes: 30, cost: 0, mandatory: false, needsApproval: false, certificate: true, certificateMonths: 12, skills: [], poshAwareness: false };
 
 /** A course's details: what it is, where it is from, what it costs, whether it is mandatory and gives a certificate. */
 export function CourseDetailsFields({ value, onChange, showErrors }: { value: CourseDetails; onChange: (v: CourseDetails) => void; showErrors?: boolean }) {
@@ -633,6 +636,7 @@ export function CourseDetailsFields({ value, onChange, showErrors }: { value: Co
       <Switch checked={value.mandatory} onChange={(c) => set({ mandatory: c })} label="Mandatory" description="Counts on the compliance dashboard. Assign it to people with an assignment rule." />
       <Switch checked={value.needsApproval} onChange={(c) => set({ needsApproval: c })} label="Self-enrolment needs approval" />
       <Switch checked={value.certificate} onChange={(c) => set({ certificate: c })} label="Issue a certificate on completion" description="With a code anyone can check on the verify page." />
+      <Switch checked={Boolean(value.poshAwareness)} onChange={(c) => set({ poshAwareness: c })} label="POSH awareness training" description="Completions count in the Internal Committee’s annual report, next to the sessions it logs." />
       {value.certificate && (
         <FormField label="Valid for" helper="Leave empty for no expiry. Assignment rules that repeat enrol people again 30 days before it runs out.">
           <NumberField value={value.certificateMonths} onChange={(v) => set({ certificateMonths: v })} suffix="months" min={1} max={120} />
@@ -1174,6 +1178,8 @@ export interface LiveCompliance {
   onRemind: () => Promise<void>;
   /** The rules page, for L&D (learning.manage). */
   onRules?: () => void;
+  /** Answer 2620: the Internal Committees' counts, for company-wide training reports (absent for others). */
+  posh?: PoshCounts | null;
 }
 
 export function LiveComplianceScreen({ live, persona = 'ld' }: { live: LiveCompliance; persona?: 'ld' | 'hr' }) {
@@ -1238,6 +1244,7 @@ export function LiveComplianceScreen({ live, persona = 'ld' }: { live: LiveCompl
           )
         }
       </Loading>
+      {live.posh && <PoshCountsCard counts={live.posh} />}
     </GrowthFrame>
   );
 }

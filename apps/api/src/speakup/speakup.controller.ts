@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
+import type { ScopeUser } from '../access/scope';
 import { MODERATE_UPLOAD_THROTTLE, PUBLIC_API_THROTTLE, STRICT_AUTH_THROTTLE } from '../rate-limit-tiers';
 import { assertOwnSession } from '../service-desk/desk-access';
 import { AnnualReportStepDto, AnonymousReportDto, AwarenessSessionDto, CodeDto, ReplyDto, ReportDto, TeamMemberDto, TeamReplyDto } from './dto';
@@ -71,6 +72,14 @@ export class SpeakupController {
   icCommittee(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     assertOwnSession(req);
     return this.speakup.icCommittee(ctx);
+  }
+
+  // Answer 2620: HR's counts view of the committees (training reports, company-wide): counts only, none below 5 complaints.
+  @Get('ic/counts')
+  @RequirePermissions('learning.report.view')
+  icCounts(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    assertOwnSession(req);
+    return this.speakup.icCounts(ctx, req.user as ScopeUser);
   }
 
   // Batch G1 answer 2593: the committee's awareness log and annual report (members only; presiding moves the report on).

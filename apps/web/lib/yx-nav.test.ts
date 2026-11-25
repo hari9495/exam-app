@@ -91,13 +91,15 @@ describe('buildNav: scorecard templates (answer 345)', () => {
 
 describe('buildNav: Learning', () => {
   it('employees learn; managers add My team; training reports and L&D add Compliance and Course builder', () => {
-    expect(labels(nav([], { employee: true }), 'learning')).toEqual(['My learning', 'Catalogue']);
-    expect(labels(nav([], { employee: true, manager: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My team', 'Training checks']);
-    expect(labels(nav(['learning.report.view', 'learning.manage']), 'learning')).toEqual(['Sessions', 'Compliance', 'Course builder']);
-    expect(labels(nav([], { employee: true, trainer: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'Sessions']);
+    expect(labels(nav([], { employee: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My skills']);
+    expect(labels(nav([], { employee: true, manager: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My skills', 'My team', 'Team skills', 'Training checks']);
+    expect(labels(nav(['learning.report.view', 'learning.manage']), 'learning')).toEqual(['Sessions', 'Compliance', 'Course builder', 'Needs & budgets']);
+    expect(labels(nav([], { employee: true, trainer: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My skills', 'Sessions']);
     expect(areas(nav(['learning.manage'], { support: true }))).not.toContain('learning');
     expect(activeLink(nav(['learning.manage', 'learning.report.view'], { employee: true }), '/yx/learning/compliance/rules')?.link.label).toBe('Compliance');
     expect(activeLink(nav([], { employee: true }), '/yx/learning/enrolments/abc')?.link.label).toBe('My learning');
+    expect(activeLink(nav([], { employee: true, manager: true }), '/yx/learning/skills/people/abc')?.link.label).toBe('My skills');
+    expect(activeLink(nav(['learning.manage']), '/yx/learning/needs')?.link.label).toBe('Needs & budgets');
   });
 });
 

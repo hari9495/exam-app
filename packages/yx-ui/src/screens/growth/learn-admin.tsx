@@ -27,6 +27,7 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, QrTile, SkillLevel, SplitLayout } from './growth-kit';
 import { complianceCell, completionStatus, withdraw } from './growth-logic';
 import type { Course } from './learn-me';
+import { LiveTeamSkillsScreen, LiveTrainingNeedsScreen, type LiveTeamSkills, type LiveTrainingNeeds } from './learn-skills-live';
 import { LiveSessionPageScreen, LiveSessionsScreen, LiveTrainerQrScreen, type LiveSessionPage, type LiveSessions, type LiveTrainerQr } from './learn-sessions-live';
 import { CourseDetailsFields, LiveAssignmentRulesScreen, LiveComplianceScreen, LiveCourseBuilderScreen, NEW_COURSE, type CourseDetails, type LiveBuilder, type LiveCompliance, type LiveRules } from './learn-live';
 import type { LoadState } from './perf-goals';
@@ -807,7 +808,17 @@ export function ComplianceDashboardScreen({ persona = 'ld', data, state = 'ready
 /* ================================================================== LRN-09 · Team skills matrix */
 
 /** LRN-09 Team skills matrix (T6, Mgr): people × competencies, gaps against the role highlighted with words (U87). */
-export function TeamSkillsMatrixScreen({ people, skills, state = 'ready' }: { people: { name: string; role: string; levels: (number | null)[]; required: number[] }[]; skills: string[]; state?: LoadState }) {
+export function TeamSkillsMatrixScreen(props: TeamSkillsProps | { live: LiveTeamSkills }) {
+  return 'live' in props ? <LiveTeamSkillsScreen live={props.live} /> : <TeamSkillsDesign {...props} />;
+}
+
+interface TeamSkillsProps {
+  people: { name: string; role: string; levels: (number | null)[]; required: number[] }[];
+  skills: string[];
+  state?: LoadState;
+}
+
+function TeamSkillsDesign({ people, skills, state = 'ready' }: TeamSkillsProps) {
   const gaps = people.reduce((a, p) => a + p.levels.filter((l, i) => l == null || l < p.required[i]).length, 0);
   return (
     <GrowthFrame area="learning" active="Skills" persona="mgr">
@@ -875,7 +886,19 @@ const NEED_FIELDS: FilterFieldDef[] = [
 ];
 
 /** LRN-11 Training needs (T2) grouped into plans, and department budgets per FY (planned, spent, committed) (Q4, Q5). */
-export function TrainingNeedsScreen({ persona, needs, budgets, tab = 'needs', state = 'ready' }: { persona: 'ld' | 'fin'; needs: TrainingNeed[]; budgets: { dept: string; planned: number; spent: number; committed: number }[]; tab?: 'needs' | 'budgets'; state?: LoadState }) {
+export function TrainingNeedsScreen(props: TrainingNeedsProps | { live: LiveTrainingNeeds }) {
+  return 'live' in props ? <LiveTrainingNeedsScreen live={props.live} /> : <TrainingNeedsDesign {...props} />;
+}
+
+interface TrainingNeedsProps {
+  persona: 'ld' | 'fin';
+  needs: TrainingNeed[];
+  budgets: { dept: string; planned: number; spent: number; committed: number }[];
+  tab?: 'needs' | 'budgets';
+  state?: LoadState;
+}
+
+function TrainingNeedsDesign({ persona, needs, budgets, tab = 'needs', state = 'ready' }: TrainingNeedsProps) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<string[]>([]);

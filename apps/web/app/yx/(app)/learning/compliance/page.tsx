@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
-import { ComplianceDashboardScreen, type LiveComplianceData } from '@yukthix/ui/frame';
+import { ComplianceDashboardScreen, type LiveComplianceData, type PoshCounts } from '@yukthix/ui/frame';
+import { useDesk } from '../../../../../lib/yx-desk';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { useJoinerPlaces } from '../../../../../lib/yx-lifecycle';
 import { useLearning, useLearningFiles, useLearningWrite } from '../../../../../lib/yx-learning';
@@ -21,6 +22,8 @@ export default function YxCompliancePage() {
   const entity = picked ?? scope.entity ?? 'all';
   const q = entity === 'all' ? '' : `?entityId=${encodeURIComponent(entity)}`;
   const data = useLearning<LiveComplianceData>(`/compliance${q}`);
+  // Answer 2620: the committees' counts, for company-wide training reports (others get 403 and see no card).
+  const posh = useDesk<PoshCounts>('/speakup/ic/counts');
   const places = useJoinerPlaces(true);
   const write = useLearningWrite();
   const files = useLearningFiles();
@@ -44,6 +47,7 @@ export default function YxCompliancePage() {
             toast({ tone: 'error', title: e instanceof Error ? e.message : 'The reminders were not sent. Try again.' });
           }
         },
+        posh: posh.data ?? null,
         onRules: perms.has('learning.manage') ? () => router.push('/yx/learning/compliance/rules') : undefined,
       }}
     />

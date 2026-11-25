@@ -128,3 +128,7 @@ export {
 // LRN-12: a session's rating and the manager's training check (ported onto the sessions above).
 export { TrainingFeedbackScreen } from '../growth/learn-me';
 export type { LiveFeedback } from '../growth/learn-feedback-live';
+// G3d: skills (LRN-09, 10, 15), training needs and budgets (LRN-11), and the committees' counts (answer 2620).
+export { SkillsProfileScreen, SkillSuggestionsScreen } from '../growth/learn-me';
+export { TeamSkillsMatrixScreen, TrainingNeedsScreen } from '../growth/learn-admin';
+export type { LiveNeedRow, LiveSkillProfileData, LiveSkillSuggestions, LiveSkillsProfile, LiveTeamSkills, LiveTeamSkillsData, LiveTrainingNeeds, NeedInput, PoshCounts } from '../growth/learn-skills-live';

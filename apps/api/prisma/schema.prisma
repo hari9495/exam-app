@@ -15410,6 +15410,8 @@ model LearningCourse {
   certificate       Boolean  @default(false)
   certificateMonths Int?     @map("certificate_months")
   /// Share of session slots attended that completes a classroom or virtual course.
+  /// Answer 2624: completions count in the Internal Committee annual report as POSH awareness training.
+  poshAwareness     Boolean  @default(false) @map("posh_awareness")
   attendancePct     Int      @default(75) @map("attendance_pct")
   skills            String[] @default([])
   /// draft · published · retired
@@ -15645,4 +15647,80 @@ model LearningFeedback {
   @@unique([enrolmentId, kind], map: "learning_feedback_once")
   @@index([organizationId, sessionId], map: "learning_feedback_session_idx")
   @@map("learning_feedback")
+}
+
+/// LRN-10: a person's confirmed level of a library skill (source course or manager).
+model LearningSkillLevel {
+  organizationId String   @map("organization_id") @db.Uuid
+  employeeId     String   @map("employee_id") @db.Uuid
+  companySkillId String   @map("company_skill_id") @db.Uuid
+  level          Int      @db.SmallInt
+  /// course · manager
+  source         String   @db.VarChar(8)
+  evidence       String?  @db.VarChar(200)
+  setBy          String?  @map("set_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([employeeId, companySkillId])
+  @@index([organizationId, employeeId], map: "learning_skill_levels_org_idx")
+  @@map("learning_skill_levels")
+}
+
+/// LRN-15: a suggested level from evidence, pending until the person or their manager decides; never re-offered.
+model LearningSkillSuggestion {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  companySkillId String    @map("company_skill_id") @db.Uuid
+  level          Int       @db.SmallInt
+  source         String    @db.VarChar(8)
+  sourceRef      String    @map("source_ref") @db.Uuid
+  evidence       String    @db.VarChar(200)
+  /// pending · confirmed · rejected
+  status         String    @default("pending") @db.VarChar(10)
+  decidedBy      String?   @map("decided_by") @db.Uuid
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([employeeId, companySkillId, sourceRef], map: "learning_skill_suggestions_once")
+  @@index([organizationId, employeeId], map: "learning_skill_suggestions_org_idx")
+  @@map("learning_skill_suggestions")
+}
+
+/// LRN-11: a training need for a person or a department.
+model LearningNeed {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  title          String   @db.VarChar(200)
+  employeeId     String?  @map("employee_id") @db.Uuid
+  departmentId   String?  @map("department_id") @db.Uuid
+  companySkillId String?  @map("company_skill_id") @db.Uuid
+  /// skill_gap · manager · compliance · review
+  source         String   @db.VarChar(12)
+  /// high · medium · low
+  priority       String   @db.VarChar(6)
+  /// new · planned · in_progress · closed
+  status         String   @default("new") @db.VarChar(12)
+  courseId       String?  @map("course_id") @db.Uuid
+  estCost        Decimal  @default(0) @map("est_cost") @db.Decimal(14, 2)
+  raisedBy       String   @map("raised_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  @@index([organizationId, status], map: "learning_needs_org_idx")
+  @@map("learning_needs")
+}
+
+/// LRN-11: a department's training budget for a financial year (April's year).
+model LearningBudget {
+  organizationId String   @map("organization_id") @db.Uuid
+  departmentId   String   @map("department_id") @db.Uuid
+  year           Int
+  amount         Decimal  @db.Decimal(14, 2)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([departmentId, year])
+  @@index([organizationId, year], map: "learning_budgets_org_idx")
+  @@map("learning_budgets")
 }

@@ -13,6 +13,7 @@ import { ANY_ENTITY, LEARNING_KEYS, asDate, iso, ownEmployee } from './learning-
 import { settingFor } from '../people/probation';
 import { addMonths, durationText, progressPct, shownStatus } from './learning-rules';
 import { placeInSession } from './session-place';
+import { suggestFromCourse } from './learning-skills.service';
 
 // Learning for the learner and L&D (LRN-01 My learning and catalogue, LRN-02 course player, LRN-03 course builder):
 // published courses are the company's catalogue; a person enrols (or asks, when the course needs approval), works
@@ -33,6 +34,7 @@ export interface CourseInput {
   title: string;
   type?: 'self_paced' | 'classroom' | 'virtual';
   attendancePct?: number;
+  poshAwareness?: boolean;
   description?: string | null;
   source: 'company' | 'provider' | 'partner';
   provider?: string | null;
@@ -119,6 +121,7 @@ export class LearningService implements OnModuleInit {
       certificateMonths: c.certificateMonths,
       typeKey: c.type,
       attendancePct: c.attendancePct,
+      poshAwareness: c.poshAwareness,
       status: c.status,
       version: c.version,
     };
@@ -370,6 +373,8 @@ export class LearningService implements OnModuleInit {
     if (!moved.count) throw new ConflictException('This course changed. Reload it.');
     const course = await tx.learningCourse.findFirstOrThrow({ where: { organizationId: c.organizationId, id: e.courseId } });
     await audit(tx, c, 'learning.completed', 'learning_enrolment', e.id, { course: course.title });
+    // LRN-15: the course's skills become suggestions for the person (or their manager) to confirm.
+    await suggestFromCourse(tx, c, e, course);
     if (!course.certificate) return null;
     const person = await tx.employee.findFirstOrThrow({ where: { organizationId: c.organizationId, id: e.employeeId }, select: { givenName: true, familyName: true, preferredName: true } });
     const cert = await tx.learningCertificate.create({
@@ -501,6 +506,7 @@ export class LearningService implements OnModuleInit {
       title: dto.title.trim(),
       ...(dto.type ? { type: dto.type } : {}),
       ...(dto.attendancePct ? { attendancePct: dto.attendancePct } : {}),
+      poshAwareness: Boolean(dto.poshAwareness),
       description: dto.description?.trim() || null,
       source: dto.source,
       provider: dto.source === 'company' ? null : dto.provider!.trim(),

@@ -16,11 +16,14 @@ import { LearningAssignService } from './learning-assign.service';
 import { LearningReportsService } from './learning-reports.service';
 import { LearningSessionsService } from './learning-sessions.service';
 import { LearningFeedbackService } from './learning-feedback.service';
+import { LearningSkillsService } from './learning-skills.service';
 
 export class CourseDto {
   @IsString() @MinLength(2) @MaxLength(200) title!: string;
   @IsOptional() @IsIn(['self_paced', 'classroom', 'virtual']) type?: 'self_paced' | 'classroom' | 'virtual';
   @IsOptional() @IsInt() @Min(1) @Max(100) attendancePct?: number;
+  /** Answer 2624: completions count in the Internal Committee annual report. */
+  @IsOptional() @IsBoolean() poshAwareness?: boolean;
   @IsOptional() @IsString() @MaxLength(2000) description?: string | null;
   @IsIn(['company', 'provider', 'partner']) source!: 'company' | 'provider' | 'partner';
   @IsOptional() @IsString() @MaxLength(120) provider?: string | null;
@@ -152,6 +155,41 @@ export class TrainingCheckDto {
   @IsOptional() @IsString() @MaxLength(1000) comment?: string;
 }
 
+export class DecideSkillDto {
+  @IsBoolean() confirm!: boolean;
+}
+
+export class AssessDto {
+  @IsUUID() skillId!: string;
+  @IsInt() @Min(1) @Max(5) level!: number;
+}
+
+export class NeedDto {
+  @IsString() @MinLength(3) @MaxLength(200) title!: string;
+  @IsOptional() @IsUUID() employeeId?: string;
+  @IsOptional() @IsUUID() departmentId?: string;
+  @IsOptional() @IsUUID() skillId?: string;
+  @IsIn(['skill_gap', 'manager', 'compliance', 'review']) source!: string;
+  @IsIn(['high', 'medium', 'low']) priority!: string;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(100_000_000) estCost!: number;
+}
+
+export class NeedsUpdateDto {
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(200) @IsUUID('all', { each: true }) ids!: string[];
+  @IsIn(['new', 'planned', 'in_progress', 'closed']) status!: 'new' | 'planned' | 'in_progress' | 'closed';
+  @IsOptional() @IsUUID() courseId?: string;
+}
+
+export class BudgetDto {
+  @IsUUID() departmentId!: string;
+  @IsInt() @Min(2000) @Max(2100) year!: number;
+  @IsNumber({ maxDecimalPlaces: 2 }) @Min(0) @Max(10_000_000_000) amount!: number;
+}
+
+export class BudgetQueryDto {
+  @IsOptional() @Type(() => Number) @IsInt() @Min(2000) @Max(2100) year?: number;
+}
+
 export class CheckInDto {
   @IsUUID() sessionId!: string;
   @IsUUID() slotId!: string;
@@ -197,6 +235,7 @@ export class LearningController {
     private readonly reports: LearningReportsService,
     private readonly sessions: LearningSessionsService,
     private readonly feedback: LearningFeedbackService,
+    private readonly skills: LearningSkillsService,
   ) {}
 
   private user(req: Request) {
@@ -437,6 +476,71 @@ export class LearningController {
     const out = await this.sessions.confirm(ctx, this.user(req), id, dto.version);
     await this.feedback.askRatings(ctx, id);
     return out;
+  }
+
+  // ---- G3d: skills (LRN-09, 10, 15): the person, their manager chain or L&D, decided per record; needs and budgets (LRN-11)
+
+  @Get('skills/me')
+  mySkills(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.skills.profile(ctx, this.user(req), 'me');
+  }
+
+  @Get('skills/team')
+  teamSkills(@CurrentTenant() ctx: TenantContext) {
+    return this.skills.team(ctx);
+  }
+
+  @Get('skills/people/:employeeId')
+  personSkills(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string) {
+    return this.skills.profile(ctx, this.user(req), employeeId);
+  }
+
+  @Post('skills/people/:employeeId/assess')
+  @HttpCode(200)
+  assessSkill(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Body() dto: AssessDto) {
+    ownSession(req);
+    return this.skills.assess(ctx, this.user(req), employeeId, dto);
+  }
+
+  @Post('skills/suggestions/:id')
+  @HttpCode(200)
+  decideSkill(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideSkillDto) {
+    ownSession(req);
+    return this.skills.decide(ctx, this.user(req), id, dto.confirm);
+  }
+
+  @Get('needs')
+  @RequirePermissions('learning.manage')
+  needs(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.skills.needs(ctx, this.user(req));
+  }
+
+  @Post('needs')
+  @RequirePermissions('learning.manage')
+  addNeed(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: NeedDto) {
+    ownSession(req);
+    return this.skills.addNeed(ctx, this.user(req), dto);
+  }
+
+  @Patch('needs')
+  @RequirePermissions('learning.manage')
+  updateNeeds(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: NeedsUpdateDto) {
+    ownSession(req);
+    return this.skills.updateNeeds(ctx, this.user(req), dto);
+  }
+
+  @Get('budgets')
+  @RequirePermissions('learning.manage')
+  budgets(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: BudgetQueryDto) {
+    return this.skills.budgets(ctx, this.user(req), q.year);
+  }
+
+  @Post('budgets')
+  @HttpCode(200)
+  @RequirePermissions('learning.manage')
+  setBudget(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: BudgetDto) {
+    ownSession(req);
+    return this.skills.setBudget(ctx, this.user(req), dto);
   }
 
   // ---- LRN-12: rating a confirmed session (once), and the manager's later training check (once per person)
