@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SETTINGS_GROUPS, ScorecardTemplateSheet, SettingsPageScreen, StageTargetsSheet, hiringSettingsChanges, hiringSettingsPage, type HiringSettingsData } from '@yukthix/ui/hiring';
+import { PipelineSheet, SETTINGS_GROUPS, ScorecardTemplateSheet, SettingsPageScreen, StageTargetsSheet, hiringSettingsChanges, hiringSettingsPage, type EditablePipeline, type HiringSettingsData } from '@yukthix/ui/hiring';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiFetch } from '../../../../../lib/api-client';
+import { useExams } from '../../../../../lib/hooks/useExams';
 import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { useApiWrite, useHiring, useHiringWrite } from '../../../../../lib/yx-hiring';
 import { useAuth } from '../../../../../lib/auth-context';
@@ -25,6 +28,16 @@ export default function YxHiringSettingsPage() {
   const apiWrite = useApiWrite();
   const [targets, setTargets] = useState<number | null>(null);
   const [scorecard, setScorecard] = useState<number | 'new' | null>(null);
+  // Answer 2631: the pipeline editor (replaces /v2 Settings › Pipelines), for the pipelines key.
+  const [editPipeline, setEditPipeline] = useState<number | 'new' | null>(null);
+  const { accessToken } = useAuth();
+  const queryClient = useQueryClient();
+  const pipelines = useQuery<EditablePipeline[]>({ queryKey: ['api', 'pipelines'], queryFn: () => apiFetch('/pipelines', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && configure && editPipeline !== null });
+  const tests = useExams('published', { pageSize: 100 }, configure && editPipeline !== null);
+  const pipeWrite = async (method: 'POST' | 'PATCH' | 'DELETE', path: string, body?: unknown) => {
+    await apiWrite(method, path, body);
+    await Promise.all([data.refetch(), queryClient.invalidateQueries({ queryKey: ['api', 'pipelines'] })]);
+  };
   const competencies = useHiring<{ id: string; name: string }[]>('/scorecard-competencies', configure && scorecard !== null);
   const state = loadState(data);
   const page = useMemo(() => (data.data ? hiringSettingsPage(design, data.data) : design), [data.data]);
@@ -47,7 +60,7 @@ export default function YxHiringSettingsPage() {
             if (changes.length) await write('PUT', '/settings', { changes });
           },
           onRowAction: (key, i) => key === 'hire.pipelines' && setTargets(i),
-          listEditors: configure ? { 'hire.scorecards': setScorecard } : undefined,
+          listEditors: configure ? { 'hire.scorecards': setScorecard, 'hire.pipelines': setEditPipeline } : undefined,
           onOpenScreen: (screenId) => screenId === 'HIR-05' && router.push('/yx/hiring/retention'),
         }}
       />
@@ -62,6 +75,29 @@ export default function YxHiringSettingsPage() {
           onSave={async (changes) => {
             for (const c of changes) await apiWrite('PATCH', `/pipelines/stages/${encodeURIComponent(c.stageId)}`, { daysTarget: c.daysTarget, limit: c.limit });
             await data.refetch();
+          }}
+        />
+      )}
+      {editPipeline !== null && (editPipeline === 'new' || pipelines.data) && (
+        <PipelineSheet
+          key={editPipeline === 'new' ? 'new' : String(editPipeline)}
+          open
+          onOpenChange={(o) => !o && setEditPipeline(null)}
+          pipeline={editPipeline === 'new' ? null : (pipelines.data?.find((x) => x.id === data.data?.pipelines[editPipeline]?.id) ?? null)}
+          tests={(tests.data?.data ?? []).map((e) => ({ value: e.id, label: e.title }))}
+          canEdit={configure}
+          onCreate={(name) => pipeWrite('POST', '/pipelines', { name })}
+          onDeletePipeline={(id) => pipeWrite('DELETE', `/pipelines/${encodeURIComponent(id)}`)}
+          onAddStage={(id, name, category, position) => pipeWrite('POST', `/pipelines/${encodeURIComponent(id)}/stages`, { name, category, position })}
+          onMoveStage={(stageId, position) => pipeWrite('PATCH', `/pipelines/stages/${encodeURIComponent(stageId)}`, { position })}
+          onRemoveStage={(stageId) => pipeWrite('DELETE', `/pipelines/stages/${encodeURIComponent(stageId)}`)}
+          onSaveStage={async (stageId, st) => {
+            await apiWrite('PATCH', `/pipelines/stages/${encodeURIComponent(stageId)}`, { name: st.name, category: st.category, rules: st.rules });
+            for (const r of st.statuses.rename) await apiWrite('PATCH', `/pipelines/statuses/${encodeURIComponent(r.id)}`, { name: r.name });
+            for (const id of st.statuses.remove) await apiWrite('DELETE', `/pipelines/statuses/${encodeURIComponent(id)}`);
+            let pos = 1000;
+            for (const name of st.statuses.add) await apiWrite('POST', `/pipelines/stages/${encodeURIComponent(stageId)}/statuses`, { name, position: pos++ });
+            await Promise.all([data.refetch(), queryClient.invalidateQueries({ queryKey: ['api', 'pipelines'] })]);
           }}
         />
       )}

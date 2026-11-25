@@ -112,3 +112,5 @@ export type { LiveAuditLog, LiveAuditEntry, LiveAuditFilters } from '../../platf
 // Settings S-6 (answer 1330): the approval policy editor (PLT-12), live.
 export { PolicyEditorScreen } from '../../platform-a/setup-admin';
 export type { LivePolicyEditor, PolicyTypeRow, PolicyStepInput, PolicyApprover } from '../../platform-a/policy-editor-live';
+// Answer 2631: the pipeline editor on Settings › Hiring (6.1).
+export { PipelineSheet, type EditablePipeline, type EditableStage, type PipelineSheetProps, type StageKind, type StageRule, type StageSave } from '../pipeline-sheet';

@@ -95,6 +95,9 @@ const nextConfig = {
       // M10 AT2: hiring approval routes moved to YukthiX (requisitions now run on YukthiX Approvals).
       { source: '/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
       { source: '/v2/settings/approvals', destination: '/yx/hiring/approval-routes', permanent: false },
+      // Answer 2631: the older hiring settings pages have YukthiX homes.
+      { source: '/v2/settings/pipelines', destination: '/yx/settings/hiring', permanent: false },
+      { source: '/v2/settings/easy-apply', destination: '/yx/hiring/job-boards', permanent: false },
       // M10 AT3: the careers site, applicant consent and job boards moved to YukthiX Hiring.
       ...['careers', 'apply-consent'].flatMap((p) => [`/settings/${p}`, `/v2/settings/${p}`].map((source) => ({ source, destination: '/yx/hiring/careers', permanent: false }))),
       ...['/settings/job-boards', '/v2/settings/job-boards'].map((source) => ({ source, destination: '/yx/hiring/job-boards', permanent: false })),
