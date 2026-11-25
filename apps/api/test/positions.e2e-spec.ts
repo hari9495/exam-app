@@ -78,7 +78,7 @@ describe('Enterprise E1 positions', () => {
       ['adminA', 'A', 'org_admin', null],
       ['adminB', 'B', 'org_admin', null],
       ['hrA', 'A', 'panel', HR_KEYS],
-      ['hrB', 'A', 'panel', [...HR_KEYS, 'ats.headcount.manage']],
+      ['hrB', 'A', 'panel', [...HR_KEYS, 'ats.headcount.manage', 'payroll.cost_rate.view']],
       ['viewer', 'A', 'panel', ['org.structure.view']],
       ['emp', 'A', 'panel', []],
     ];
@@ -225,6 +225,18 @@ describe('Enterprise E1 positions', () => {
     expect(lead).toMatchObject({ role: 'Store lead', openings: 1 });
     const senior = chart.vacancies.find((x: { id: string }) => x.id === `pos:${ids.seniorSeat}`);
     expect(senior).toMatchObject({ role: 'Senior cashier', managerId: ids.lead1, openings: 1 });
+  });
+
+  it('answer 2682: what a seat costs a year shows only with the cost-rate key, from the people in it (positive and negative)', async () => {
+    await inA(async (tx) => {
+      await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entityA}}`}, true)`;
+      for (const [emp, cost] of [[ids.cash1, 30000], [ids.cash2, 28000]] as const)
+        await tx.employeeCostRate.create({ data: { organizationId: org.A.id, legalEntityId: ids.entityA, employeeId: emp, periodStart: new Date(`${today.slice(0, 7)}-01T00:00:00Z`), employerCost: cost, standardHours: 208, rate: cost / 208, sourcePayslipId: randomUUID() } });
+    });
+    const row = (await api('hrB', 'get', '/org/positions').expect(200)).body.rows.find((r: { id: string }) => r.id === ids.cashierSeat);
+    expect(row.yearlyCost).toBe((30000 + 28000) * 12);
+    expect((await api('hrB', 'get', '/org/positions').expect(200)).body.rows.find((r: { id: string }) => r.id === ids.seniorSeat)?.yearlyCost ?? null).toBeNull();
+    expect((await api('hrA', 'get', '/org/positions').expect(200)).body.rows[0]).not.toHaveProperty('yearlyCost');
   });
 
   it('another company sees nothing; a stranger seat or entity is refused (negative)', async () => {

@@ -162,9 +162,16 @@ describe('buildNav: Time, Pay, Compliance', () => {
     expect(labels(nav(['leave.view', 'leave.liability.view']), 'time')).not.toContain('Leave liability');
   });
 
+  it('Enterprise E4: Ledger mapping for payroll ledger key only; Accounting & costing with the pay settings pages (positive and negative)', () => {
+    expect(labels(nav(['payroll.setup.manage', 'payroll.ledger.manage']), 'settings')).toContain('Ledger mapping');
+    expect(labels(nav(['payroll.setup.manage']), 'settings')).not.toContain('Ledger mapping');
+    expect(labels(nav(['payroll.journal.export']), 'settings')).not.toContain('Ledger mapping');
+    expect(labels(nav(['org.settings.manage']), 'settings')).toContain('Accounting & costing');
+  });
+
   it('payroll set-up pages sit in Settings › Payroll & Statutory, by the batch-5b keys', () => {
     const n = nav(['payroll.setup.manage', 'payroll.template.manage', 'employee.salary.manage']);
-    expect(labels(n, 'settings')).toEqual(['All settings', 'Payroll set-up', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Pay groups', 'Payslip layout', 'Country packs', 'Payroll budget', 'Salary templates']);
+    expect(labels(n, 'settings')).toEqual(['All settings', 'Payroll set-up', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Pay groups', 'Payslip layout', 'Country packs', 'Payroll budget', 'Salary templates']);
     // Whoever sees the runs reads the payroll budget (read-only without set-up).
     expect(labels(nav(['payroll.run.approve']), 'settings')).toContain('Payroll budget');
     // Founder answer 19 (30 Oct 2026): the item opens the rules page, so it is "Statutory rules"; registrations stay in Payroll set-up.
@@ -253,7 +260,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets the S-7 pages (no retired Company rules), Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     // AS-2 (Settings 6.5): a test owner with only the assessments settings key gets that page and nothing else.

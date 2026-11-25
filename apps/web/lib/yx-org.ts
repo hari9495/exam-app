@@ -256,6 +256,7 @@ export const YX_KEYS = [
   // Answer 2430: staff groups on Settings › Roles & access.
   'users:manage_groups',
   'org.position.manage',
+  'payroll.ledger.manage',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

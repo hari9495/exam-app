@@ -651,6 +651,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // M03 §7.6 / YX-HIS-13 (PAY-2.05): how a change in the middle of a pay period is paid, per change type. Statutory
   // items always follow the legal basis whatever is chosen here.
   // M03 batch 5c (PAY-3.08, 3.12, §9.4): variance threshold, protected net, net rounding, standard hours, one-time review.
+  // Enterprise E4 (O20-O22, answers 2653-2655): accounting and costing, on Settings 4.12.
+  'payroll.journal.suspense': { label: 'Pay lines with no ledger account go to the suspense account', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'On: park them there and let the journal go to the books', off: 'Off: refuse the export until every line is mapped' } },
+  'payroll.costing.split': { label: 'Split each person\'s payroll cost by', scopes: ['tenant', 'legal_entity'], dated: false, values: ['cost_centre', 'project_hours'], default: 'cost_centre', labels: { cost_centre: 'Cost centre (from the job)', project_hours: 'Project hours (approved timesheets, else allocations)' } },
+  'payroll.journal.format': { label: 'Journal export format', scopes: ['tenant', 'legal_entity'], dated: false, values: ['csv', 'tally', 'zoho', 'sap', 'oracle'], default: 'csv', labels: { csv: 'CSV', tally: 'Tally (XML)', zoho: 'Zoho Books (CSV)', sap: 'SAP (flat file)', oracle: 'Oracle GL (interface CSV)' } },
   'payroll.variance_threshold_pct': { label: 'Ask to confirm a net pay change above (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15', '20', '25'], default: '10' },
   // Founder answer 2 (2 Nov 2026): approving PAY-25 "Request access" gives read-only payroll reports for this many days.
   'payroll.reports_access.days': { label: 'Payroll reports access given on request lasts (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['7', '30', '60', '90', '180', '365'], default: '90' },

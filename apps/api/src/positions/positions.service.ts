@@ -9,6 +9,7 @@ import { holdersOf } from '../time/time-core';
 import { EmployeeHistoryService, HISTORY_KEYS, displayName } from '../employee-history/employee-history.service';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
 import { incumbentsOn, positionsOn } from './seat-rules';
+import { withPayScope } from '../payroll/pay-access';
 import { checkSeatValues, groupForSwitchOn, nextStatus, type SeatValues, type SwitchOnPerson } from './position-rules';
 
 // Enterprise E1 (founder answers 2340, 2341, 2641-2643; Oracle O1-O6, O8, O9):
@@ -22,7 +23,7 @@ import { checkSeatValues, groupForSwitchOn, nextStatus, type SeatValues, type Sw
 //   view          org.structure.view or org.position.manage in scope; the entry salary needs pay.range.view and the
 //                 budget ats.headcount.manage
 export const POSITION_TYPE = 'org.position_change';
-export const SEAT_KEYS = ['org.structure.view', 'org.position.manage', 'pay.range.view', 'ats.headcount.manage', 'employee.change.manage', 'employee.change.approve'] as const;
+export const SEAT_KEYS = ['org.structure.view', 'org.position.manage', 'pay.range.view', 'ats.headcount.manage', 'payroll.cost_rate.view', 'employee.change.manage', 'employee.change.approve'] as const;
 const MAX_ITEMS = 100;
 
 type Kind = 'create' | 'change' | 'freeze' | 'activate' | 'eliminate';
@@ -121,6 +122,27 @@ export class PositionsService implements OnModuleInit {
     return new Map(rows.map((r) => [r.position_id, { budget: num(r.budget), count: r.count }]));
   }
 
+  /**
+   * Answer 2682 (with E4 costing): what the people in each seat cost a year, from their latest employer cost per month
+   * (payroll's cost rates, behind the pay guard). Only for payroll.cost_rate.view; empty seats cost nothing.
+   */
+  private async costs(tx: Tx, org: string, seats: { id: string; legalEntityId: string }[], date: string) {
+    const people = await tx.$queryRaw<{ position_id: string; employee_id: string }[]>`
+      SELECT DISTINCT ON (employment_id) position_id, employee_id FROM employee_assignments
+      WHERE organization_id = ${org}::uuid AND position_id = ANY(${seats.map((s) => s.id)}::uuid[]) AND superseded_at IS NULL
+        AND valid_from <= ${date}::date AND (valid_to IS NULL OR valid_to >= ${date}::date)`;
+    if (!people.length) return new Map<string, number>();
+    const entities = [...new Set(seats.map((s) => s.legalEntityId))];
+    const rates = await withPayScope(tx, entities, () =>
+      tx.employeeCostRate.findMany({ where: { organizationId: org, employeeId: { in: people.map((p) => p.employee_id) }, periodStart: { lte: new Date(`${date}T00:00:00Z`) } }, orderBy: { periodStart: 'desc' }, select: { employeeId: true, employerCost: true } }),
+    );
+    const latest = new Map<string, number>();
+    for (const r of rates) if (!latest.has(r.employeeId)) latest.set(r.employeeId, Number(r.employerCost.toString()));
+    const out = new Map<string, number>();
+    for (const p of people) if (latest.has(p.employee_id)) out.set(p.position_id, Math.round(((out.get(p.position_id) ?? 0) + latest.get(p.employee_id)! * 12) * 100) / 100);
+    return out;
+  }
+
   async list(ctx: TenantContext, v: Viewer, q: { asOf?: string; status?: string; legalEntityId?: string; q?: string }) {
     return this.history.run(ctx, async (tx, c) => {
       const org = c.organizationId;
@@ -133,6 +155,7 @@ export class PositionsService implements OnModuleInit {
       const filled = await incumbentsOn(tx, org, date, visible.map((s) => s.id));
       const open = await tx.positionChange.findMany({ where: { organizationId: org, status: 'submitted', positionId: { in: visible.map((s) => s.id) } }, select: { positionId: true } });
       const budgets = has(v, 'ats.headcount.manage') ? await this.budgets(tx, org, visible.map((s) => s.id), date) : null;
+      const costs = has(v, 'payroll.cost_rate.view') ? await this.costs(tx, org, visible, date) : null;
       const supervisors = new Map(seats.map((s) => [s.id, { id: s.id, code: s.code, title: now.get(s.id)?.title ?? s.code }]));
       const text = q.q?.trim().toLowerCase();
       const rows = visible
@@ -158,6 +181,7 @@ export class PositionsService implements OnModuleInit {
             pendingChange: open.some((o) => o.positionId === s.id),
             ...(has(v, 'pay.range.view') ? { entrySalary: num(x.entrySalary) } : {}),
             ...(budgets ? { budget: budgets.get(s.id)?.budget ?? null, budgetCount: budgets.get(s.id)?.count ?? null } : {}),
+            ...(costs ? { yearlyCost: costs.get(s.id) ?? null } : {}),
           };
         })
         .filter((r) => !q.status || r.status === q.status)

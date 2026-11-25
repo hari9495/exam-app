@@ -27548,5 +27548,44 @@
                     "expected": "Step 1: refused, 'choose the seat'. Step 2: full and frozen seats are refused with the reason; the seat with room is accepted. Step 3: refused, raise it against a seat or mark it outside the plan. Step 4: the full seat is refused ('no openings left'); the vacancy is accepted. Step 5: each empty seat shows as a vacancy under the person in the seat above it.",
                     "stories": [],
                     "note": "Enterprise E1 (answers 2340, 2341, 2641-2643). Positive and negative: API positions.e2e-spec.ts and position-rules.spec.ts; kit positions.test.tsx; web yx-positions-pages.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E4-LEDGER-MAPPING",
+                    "area": "Enterprise E4: ledger mapping and the suspense account (O19, O20)",
+                    "screen": "Pay › Ledger mapping (PAY-62); Settings › Payroll & Statutory › Accounting & costing (4.12)",
+                    "url": "http://localhost:3000/yx/payroll/accounting",
+                    "account": "payroll@demo-org.test (Payroll Admin, ledger key); finance@demo-org.test (journal export only); hr@demo-org.test (settings).",
+                    "steps": [
+                              "As payroll@: open Pay › Ledger mapping. Press Add mapping and Save mapping with nothing filled in.",
+                              "Map Net pay (payable) to 2100 Net salary payable for the company; then Basic (expense) to 5110 for one cost centre.",
+                              "Press Set suspense account and save 9999 Payroll suspense.",
+                              "Remove the Basic cost-centre override and confirm.",
+                              "As finance@: open the same page.",
+                              "As hr@: open Settings › Payroll & Statutory › Accounting & costing. Look at the suspense, costing split and export format settings; change the export format to SAP and save."
+                    ],
+                    "expected": "Step 1: the field errors show and nothing is saved. Step 2: a toast 'Ledger mapping saved'; the override shows its cost centre. Step 3: the suspense card shows 'Company: 9999 · Payroll suspense'. Step 4: a confirm says the company default is used instead; a toast 'Mapping removed'. Step 5: read only: no Add, Change or Remove. Step 6: the page shows the three settings with their starter values and a link 'Edit ledger mapping'; the change waits for a second person when that switch is on. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Pay/PAY-62 · Ledger mapping · PAY-62 · Ledger mapping with the suspense account",
+                              "Screens/Pay/PAY-62 · Ledger mapping · PAY-62 · Read only (journal export key)"
+                    ],
+                    "note": "Enterprise E4 (answers 2653-2655; Oracle O19-O22). Positive and negative: API costing.spec.ts, ledger.spec.ts and payroll-5c.e2e-spec.ts; kit ledger-mapping.test.tsx and payments-live.test.tsx; web yx-ledger-mapping.test.tsx and yx-nav.test.ts."
+          },
+          {
+                    "id": "MT-E4-JOURNAL",
+                    "area": "Enterprise E4: the run journal with suspense, dimensions, formats and reversal (O20-O22)",
+                    "screen": "Pay › Runs › a run › Payments & files › Journal export",
+                    "url": "http://localhost:3000/yx/payroll/runs",
+                    "account": "payroll@demo-org.test; finance@demo-org.test.",
+                    "steps": [
+                              "On an approved run with one pay line unmapped and no suspense account, open Journal export and press Export journal.",
+                              "Set the suspense account (MT-E4-LEDGER-MAPPING step 3) and open the journal again.",
+                              "Export as SAP; then as Oracle GL; open both files.",
+                              "Map the unmapped line and open the journal again.",
+                              "Reopen the month (two approvals), then open the run's Journal export.",
+                              "Press Export reversing journal and open the file."
+                    ],
+                    "expected": "Step 1: 'Map every pay line to a ledger account first.' and nothing is exported. Step 2: an alert '₹X is in suspense (9999 · Payroll suspense)' with the fix list; the export works. Step 3: SAP has posting key 40/S for debits and 50/H for credits; Oracle has ENTERED_DR and ENTERED_CR; both have cost centre, department, location and project columns; a ledger name starting with = is quoted with an apostrophe. Step 4: nothing in suspense. Step 5: the alert says the run was reopened after its journal went to the books; only 'Export reversing journal' is offered. Step 6: every debit of the last export is a credit and back; the file name ends in -reversal.",
+                    "stories": [],
+                    "note": "Enterprise E4 (answers 2653-2655; Oracle O19-O22). Positive and negative: API costing.spec.ts, ledger.spec.ts and payroll-5c.e2e-spec.ts; kit ledger-mapping.test.tsx and payments-live.test.tsx; web yx-ledger-mapping.test.tsx and yx-nav.test.ts."
           }
 ]

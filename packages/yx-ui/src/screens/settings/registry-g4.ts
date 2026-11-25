@@ -1426,10 +1426,58 @@ const benefits: SettingsPageDef = {
   note: SECOND_APPROVER + ' Health and dependant details are private and never shown to managers.',
 };
 
+/* ---------------- 4.12 Accounting & costing (Enterprise E4) ---------------- */
+const accounting: SettingsPageDef = {
+  id: '4.12',
+  group: 4,
+  title: 'Accounting & costing',
+  summary: 'Which ledger account each pay line goes to, the suspense account for lines with none, how payroll costs are split, and the journal file your accountant imports.',
+  owner: ['M03'],
+  contributes: ['P23'],
+  permission: 'org.settings.manage',
+  permissionHolder: 'HR Admin (the ledger mapping: Payroll Admin)',
+  scopes: ['Company', 'Legal entity'],
+  lastChange: { by: 'Suresh Pillai', role: 'Payroll Manager', at: '2026-11-20T11:05', what: 'Set the suspense account to 9999 · Payroll suspense' },
+  sections: [
+    {
+      title: 'Ledger accounts',
+      settings: [
+        {
+          key: 'ledger.mapping',
+          label: 'Ledger mapping',
+          kind: 'link',
+          linkScreenId: 'PAY-62',
+          linkLabel: 'Edit ledger mapping',
+          helper: 'Each pay line to an account: a company default, with overrides for a legal entity or a cost centre. The suspense account is set there too.',
+        },
+      ],
+    },
+    {
+      title: 'Suspense',
+      settings: [
+        { key: 'payroll.journal.suspense', label: 'Pay lines with no ledger account go to the suspense account', kind: 'radio', value: 'On: park them there and let the journal go to the books', options: ['On: park them there and let the journal go to the books', 'Off: refuse the export until every line is mapped'], starter: true, scope: 'Company', synonyms: ['unmapped', 'suspense account'] },
+      ],
+    },
+    {
+      title: 'Costing',
+      settings: [
+        { key: 'payroll.costing.split', label: "Split each person's payroll cost by", kind: 'radio', value: 'Cost centre (from the job)', options: ['Cost centre (from the job)', 'Project hours (approved timesheets, else allocations)'], starter: true, scope: 'Company', synonyms: ['cost allocation', 'project costing'] },
+      ],
+    },
+    {
+      title: 'Export',
+      settings: [
+        { key: 'payroll.journal.format', label: 'Journal export format', kind: 'select', value: 'CSV', options: ['CSV', 'Tally (XML)', 'Zoho Books (CSV)', 'SAP (flat file)', 'Oracle GL (interface CSV)'], starter: true, scope: 'Company', synonyms: ['SAP', 'Oracle', 'Tally'] },
+      ],
+    },
+  ],
+  note: SECOND_APPROVER,
+};
+
 export const GROUP_4: SettingsGroupDef = {
   id: 4,
   title: 'Payroll & Statutory',
   summary:
     'Pay groups, components and templates, payroll policies, payslip layout, tax windows, loans, statutory set-up, expenses, contract labour, earned wage access and benefits.',
-  pages: [payGroups, components, payrollPolicies, payslipLayout, tax, loans, statutory, expenses, contractLabour, ewa, benefits],
+  pages: [payGroups, components, payrollPolicies, payslipLayout, tax, loans, statutory, expenses, contractLabour, ewa, benefits, accounting],
 };

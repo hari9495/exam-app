@@ -49,6 +49,8 @@ export interface SeatRow {
   entrySalary?: number | null;
   /** Only with ats.headcount.manage: the approved plan budget for the seat this financial year. */
   budget?: number | null;
+  /** Only with payroll.cost_rate.view (answer 2682): what the people in the seat cost a year (employer cost). */
+  yearlyCost?: number | null;
 }
 export interface SeatList {
   asOf: string;
@@ -404,6 +406,7 @@ export function PositionsScreen({ state, onRetry, data, options, today, onOpen, 
   }, [data, status, q]);
   const money = Boolean(data?.rows.some((r) => 'entrySalary' in r));
   const budget = Boolean(data?.rows.some((r) => 'budget' in r));
+  const cost = Boolean(data?.rows.some((r) => 'yearlyCost' in r));
   const act = async (kind: SeatChangeKind, r: SeatRow) => setDrawer({ kind, seat: { id: r.id, code: r.code, title: r.title, legalEntityId: r.legalEntity?.id ?? null, values: await valuesOf(r.id) } });
   const columns: TableColumn<SeatRow>[] = [
     { key: 'code', header: 'Seat', type: 'id', value: (r) => r.code, width: 132 },
@@ -416,6 +419,7 @@ export function PositionsScreen({ state, onRetry, data, options, today, onOpen, 
     { key: 'status', header: 'Status', value: (r) => r.status, render: (r) => seatStatusBadge(r.status) },
     { key: 'supervisor', header: 'Reports to', value: (r) => r.supervisor?.title ?? '', optional: true },
     ...(budget ? [{ key: 'budget', header: 'Budget (plan)', type: 'money' as const, value: (r: SeatRow) => r.budget ?? null, optional: true }] : []),
+    ...(cost ? [{ key: 'cost', header: 'Cost a year', type: 'money' as const, value: (r: SeatRow) => r.yearlyCost ?? null, optional: true, total: 'sum' as const }] : []),
     ...(money ? [{ key: 'entry', header: 'Entry salary', type: 'money' as const, value: (r: SeatRow) => r.entrySalary ?? null, optional: true }] : []),
   ];
   const manage = Boolean(data?.canManage);
