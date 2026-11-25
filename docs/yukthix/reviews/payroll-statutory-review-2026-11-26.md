@@ -193,3 +193,24 @@ Rounding
 8. M8: rounding of TDS to ₹10.
 9. Everything still open on the CA checklist (items 1–56); this review found no figure in the packs that contradicts the
    research document where the code has a set, except those listed above.
+
+## Fixes (26 Nov 2026, founder answer 2730)
+
+Fixed on `review/yukthix-statutory`, one commit each, each with its review test passing and a negative test:
+
+- **R1** PF admin charges on the wage PF is paid on (`acdf70a04`).
+- **R3** no employee ESI at or below Rs 176 a day over the days paid; the employer still pays (`dde2648b0`).
+- **R7** surcharge marginal relief at each threshold (`37cf0fd4d`, typed in `c3b927e41`).
+- **F1** the PF challan's admin charges are at least Rs 500 (`808c2c93c`; the ECR summary carries `adminCharges`).
+- **M5 / M6** Tamil Nadu half-yearly and Madhya Pradesh yearly PT on the actual income so far plus the months left; an
+  unchanged MP year stays 208 x 11 + 212 (`50d64a3ef`).
+- **M7** employer PF, pension and NPS above Rs 7.5 lakh a year is taxable (`df7b297c9`; new rule set IN.RETIRE-CAP,
+  migration 771). The accretion on the excess is not worked out.
+- **M3** Tamil Nadu LWF only for people employed 30 days or more (`d1159805e`; IN.LWF IN-TN 2026-v2, migration 772).
+  Not done: the managers and supervisors above 15,000 (Tamil Nadu) and the supervisors above 2,500 (Delhi): the person
+  record has no role for "manager or supervisor" to test against.
+- **M2** needed no change: the annual bonus already pays at least Rs 100 (`apps/api/src/payroll/bonus.ts:177`); only the
+  monthly provision has no floor, and the provision is not money paid.
+
+Waiting for the CA (tests skipped, 2730): R2, R4, R5 / R6, F2 (R8), the September 2026 PF ceiling split, the minimum-wage
+comparison, M8 and M1.
