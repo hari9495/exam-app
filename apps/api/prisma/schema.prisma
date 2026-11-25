@@ -7959,6 +7959,11 @@ model Asset {
   purchasedOn    DateTime? @map("purchased_on") @db.Date
   cost           Decimal?  @db.Decimal(14, 2)
   status         String    @default("in_stock") @db.VarChar(10)
+  /// IT assets (plan 26 Nov 2026): plain details on the asset page; the warranty end follows from purchasedOn.
+  maker          String?   @db.VarChar(100)
+  model          String?   @db.VarChar(100)
+  invoiceNumber  String?   @map("invoice_number") @db.VarChar(60)
+  warrantyMonths Int?      @map("warranty_months") @db.SmallInt
   version        Int       @default(1)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)

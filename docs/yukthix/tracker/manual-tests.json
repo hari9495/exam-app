@@ -28215,5 +28215,24 @@
                               "Screens/Learning/LRN-09 · Team skills"
                     ],
                     "note": "Positive and negative (learning e2e 'answers 2672, 2673, 2675': levels must match skills 400, level 6 400, suggestion levels 4/5; self-add bad skill 400, level 0 400, already higher 400, twice 409, manager notified once, self decide 403, outsider 404, manager confirms, audit; raise need self/L&D 403, outsider/other company 404, bad priority 400, open need for the skill 409, L&D sees it, audit; kit tests 6). Migration 751 learning_skill_followups (skill_levels on courses, source 'self'); routes in endpoint-permissions; notification type learning.skill_added."
+          },
+          {
+                    "id": "MT-IT-ASSETS-ASSET-PAGE",
+                    "area": "IT assets (plan 26 Nov 2026), the part with no open question: the asset page with Details and History",
+                    "screen": "People › Assets › an asset (tag link): Details, History, Edit details",
+                    "url": "http://localhost:3000/yx/people/assets",
+                    "account": "IT / Admin coordinator (asset.view and asset.manage); HR Admin; an employee with no asset key; another company's admin.",
+                    "steps": [
+                              "As IT open People › Assets and press an asset's tag. Look at the Details tab, then History.",
+                              "Press Edit details: clear the name and save; then fill maker, model, purchase date, cost, invoice number, warranty 36 months and save.",
+                              "Issue the asset to an employee, let them confirm it in My assets, then take it back; open History again.",
+                              "Set the purchase date three years back with a 24-month warranty.",
+                              "As the employee with no asset key, and as another company's admin, open /yx/people/assets/<that id>. Open /yx/people/assets/<a random id> as IT."
+                    ],
+                    "expected": "Step 1: the page shows the name, kind and tag, the status, who has it, location and warranty; History lists who added it. Step 2: 'Enter the name.' and nothing saved; then toast '<name> (<tag>) saved.' and the warranty shows '36 months · ends <date>'. Step 3: History, newest first: took it back from <person> (<condition>), <person> confirmed they received it, issued it to <person> (<condition>), changed the details, added the asset. Step 4: the warranty shows 'ended' in red. Step 5: no access for the employee (403); not found for the other company and for an unknown asset (404). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset register (Asset page · details, history, edit details, view only, in stock warranty ended)"
+                    ],
+                    "note": "Positive and negative (lifecycle-6c e2e 'the asset page': warranty months 121 and -1 refused 400, details with warranty end 2026-01-31 + 13 months = 2027-02-28, five history events with who, holder cleared on return, IT reads it, employee 403, unknown 404, other company 404; kit asset-page tests 5). Migration 761 (maker, model, invoice_number, warranty_months on assets); route GET lifecycle/assets/:id (asset.view, checked per place)."
           }
 ]

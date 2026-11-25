@@ -204,6 +204,13 @@ export class ExitsController {
     return this.offboarding.assets(ctx, this.user(req));
   }
 
+  // IT assets plan (26 Nov 2026): the asset page, details and history (asset.view over its place; else 404).
+  @Get('assets/:id')
+  @RequirePermissions('asset.view')
+  assetPage(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.offboarding.assetPage(ctx, this.user(req), id);
+  }
+
   @Post('assets')
   @RequirePermissions('asset.manage')
   addAsset(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: AssetDto) {

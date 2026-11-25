@@ -233,6 +233,27 @@ export class AssetDto {
   status?: 'in_stock' | 'in_repair' | 'retired' | 'lost';
 
   @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  maker?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  model?: string | null;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  invoiceNumber?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(120)
+  warrantyMonths?: number | null;
+
+  @IsOptional()
   @IsInt()
   version?: number;
 }

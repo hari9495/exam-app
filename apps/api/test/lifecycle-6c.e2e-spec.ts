@@ -433,6 +433,33 @@ describe('Lifecycle batch 6c', () => {
     expect((await withdraw('hr', ids.raviCase, { reason: 'Not HR to undo' }).expect(400)).body.message).toMatch(/employee/);
   });
 
+  it('the asset page (IT assets plan, 26 Nov 2026): details with maker, model, invoice and warranty end; the history; who may see it', async () => {
+    const tag = `MB-${run}`;
+    const base = { category: 'Laptop', name: 'MacBook Air', tag, legalEntityId: ids.entity, locationId: ids.blr, purchasedOn: '2026-01-31', cost: '99000.00', maker: 'Apple', model: 'M3 13-inch', invoiceNumber: 'INV-77' };
+    await api('hr', 'post', '/lifecycle/assets').send({ ...base, warrantyMonths: 121 }).expect(400);
+    await api('hr', 'post', '/lifecycle/assets').send({ ...base, warrantyMonths: -1 }).expect(400);
+    const id = (await api('hr', 'post', '/lifecycle/assets').send({ ...base, warrantyMonths: 13 }).expect(201)).body.id as string;
+    await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: emp.sita, issuedOn: today, condition: 'New' }).expect(200);
+    const mine = (await api('sita', 'get', '/lifecycle/me/assets').expect(200)).body.rows.find((r: { tag: string }) => r.tag === tag);
+    await api('sita', 'post', `/lifecycle/me/assets/${mine.assignmentId}/acknowledge`).expect(200);
+    await api('hr', 'post', `/lifecycle/assets/${id}/return`).send({ returnedOn: today, condition: 'Good', status: 'in_stock' }).expect(200);
+    const before = (await api('hr', 'get', `/lifecycle/assets/${id}`).expect(200)).body;
+    await api('hr', 'put', `/lifecycle/assets/${id}`).send({ ...base, model: 'M3 15-inch', warrantyMonths: 13, version: before.asset.version }).expect(200);
+    // IT (asset.view and asset.manage, no employee grant) reads the page.
+    const page = (await api('it', 'get', `/lifecycle/assets/${id}`).expect(200)).body;
+    expect(page.asset).toMatchObject({ tag, maker: 'Apple', model: 'M3 15-inch', invoiceNumber: 'INV-77', warrantyMonths: 13, warrantyEndsOn: '2027-02-28', purchasedOn: '2026-01-31', status: 'in_stock' });
+    expect(page.asset.location).toBeTruthy();
+    expect(page.holder).toBeNull();
+    const whats = page.history.map((h: { what: string }) => h.what);
+    expect(whats).toHaveLength(5);
+    expect(whats).toEqual(expect.arrayContaining(['added the asset', 'changed the details', expect.stringMatching(/^issued it to Sita.* \(New\)$/), 'confirmed they received it', expect.stringMatching(/^took it back from Sita.* \(Good\)$/)]));
+    expect(page.history.find((h: { what: string }) => h.what === 'confirmed they received it').who).toMatch(/Sita/);
+    // Refusals: no asset key 403; an unknown asset or another company's 404.
+    await api('ravi', 'get', `/lifecycle/assets/${id}`).expect(403);
+    await api('hr', 'get', `/lifecycle/assets/${randomUUID()}`).expect(404);
+    await api('adminB', 'get', `/lifecycle/assets/${id}`).expect(404);
+  });
+
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);

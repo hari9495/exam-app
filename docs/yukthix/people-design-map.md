@@ -775,6 +775,11 @@ Live page: /yx/people/assets (menu People › Assets; asset.view, add/issue/retu
 | AddAssetFilled · Add asset · filled | live | kind, name, tag, serial, entity, location, cost |
 | AddAssetMissing · Add asset · nothing filled, Add asset pressed | live | errors under each required field, nothing sent |
 | AddAssetFailed · Add asset · the server refuses (tag already used) | live | POST lifecycle/assets refuses a used tag; the drawer shows the server's message |
+| AssetPage · Asset page · details | live | IT assets plan (26 Nov 2026): the register's tag opens /yx/people/assets/:id (`AssetPageScreen`); `GET lifecycle/assets/:id` (asset.view over its place, else 404): maker, model, invoice number, warranty months and end date |
+| AssetPageHistory · Asset page · history | live | added and changed (audit log), issued, confirmed and taken back (assignments), newest first |
+| AssetPageEdit · Asset page · edit details | live | Edit details (asset.manage over its place): `PUT lifecycle/assets/:id` with the version |
+| AssetPageReadOnly · Asset page · view only | live | without asset.manage: no Edit details |
+| AssetPageInStock · Asset page · in stock, warranty ended | live | an ended warranty shows in red |
 
 #### PPL-26 · Succession
 

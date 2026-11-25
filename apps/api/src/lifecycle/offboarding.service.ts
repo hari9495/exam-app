@@ -22,6 +22,14 @@ import { freezeSettlementIn } from './settlement';
 //   assets     asset.view / asset.manage per legal entity or location; one open assignment per asset (database);
 //              the person acknowledges by a click; returning an asset clears its clearance item.
 
+/** A day plus whole months; the 31st becomes the month's last day (warranty ends). */
+export function addMonthsIso(day: string, months: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, last))).toISOString().slice(0, 10);
+}
+
 const KEYS = ['lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'asset.manage'] as const;
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
@@ -44,6 +52,10 @@ export interface AssetDto {
   cost?: string | null;
   status?: 'in_stock' | 'in_repair' | 'retired' | 'lost';
   version?: number;
+  maker?: string | null;
+  model?: string | null;
+  invoiceNumber?: string | null;
+  warrantyMonths?: number | null;
 }
 
 @Injectable()
@@ -320,6 +332,69 @@ export class OffboardingService {
     });
   }
 
+  /**
+   * The asset page (IT assets plan, 26 Nov 2026): the details and the history (added, changed, issued, confirmed,
+   * returned), for whoever sees the asset (asset.view over its place); others: 404.
+   */
+  async assetPage(ctx: TenantContext, user: ScopeUser, id: string) {
+    const v = await this.viewer(user);
+    if (!v.grants.has('asset.view')) throw new ForbiddenException('You cannot see the asset list.');
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const a = await this.assetOr404(tx, org, v, id, 'asset.view');
+      const [entity, location] = await Promise.all([
+        a.legalEntityId ? tx.legalEntity.findFirst({ where: { organizationId: org, id: a.legalEntityId }, select: { name: true } }) : null,
+        a.locationId ? tx.location.findFirst({ where: { organizationId: org, id: a.locationId }, select: { name: true } }) : null,
+      ]);
+      const spells = await tx.assetAssignment.findMany({ where: { organizationId: org, assetId: a.id }, orderBy: { issuedOn: 'asc' } });
+      const people = await tx.employee.findMany({ where: { organizationId: org, personId: { in: spells.map((s) => s.personId) } } });
+      const audits = await tx.auditLog.findMany({ where: { organizationId: org, entityType: 'asset', entityId: a.id, action: { in: ['asset.added', 'asset.updated'] } }, orderBy: { createdAt: 'asc' }, take: 500 });
+      const userIds = [...new Set(spells.flatMap((s) => [s.issuedBy, s.returnedBy]).filter((x): x is string => Boolean(x)))];
+      const users = new Map((await tx.user.findMany({ where: { organizationId: org, id: { in: userIds } }, select: { id: true, name: true, email: true } })).map((u) => [u.id, u.name ?? u.email]));
+      const nameOf = (personId: string) => {
+        const p = people.find((x) => x.personId === personId);
+        return p ? displayName(p) : 'Someone';
+      };
+      const by = (uid: string | null) => (uid ? (users.get(uid) ?? 'Someone') : 'Automatic');
+      const history: { id: string; at: string; who: string; what: string }[] = [
+        ...audits.map((x) => ({ id: x.id, at: x.createdAt.toISOString(), who: x.actorName ?? 'Someone', what: x.action === 'asset.added' ? 'added the asset' : 'changed the details' })),
+        ...spells.flatMap((s) => [
+          { id: `${s.id}-i`, at: iso(s.issuedOn), who: by(s.issuedBy), what: `issued it to ${nameOf(s.personId)} (${s.issueCondition})` },
+          ...((s.ackEvidence as { at?: string } | null)?.at ? [{ id: `${s.id}-a`, at: (s.ackEvidence as { at: string }).at, who: nameOf(s.personId), what: 'confirmed they received it' }] : []),
+          ...(s.returnedOn ? [{ id: `${s.id}-r`, at: iso(s.returnedOn), who: by(s.returnedBy), what: s.returnCondition?.startsWith('Not returned') ? `marked it not returned by ${nameOf(s.personId)}` : `took it back from ${nameOf(s.personId)} (${s.returnCondition ?? 'returned'})` }] : []),
+        ]),
+      ].sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
+      const open = spells.find((s) => !s.returnedOn);
+      const warrantyEndsOn = a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null;
+      return {
+        today: todayIst(),
+        canManage: this.reachesAsset(v, 'asset.manage', a),
+        asset: {
+          id: a.id,
+          category: a.category,
+          name: a.name,
+          tag: a.tag,
+          serial: a.serial,
+          maker: a.maker,
+          model: a.model,
+          status: a.status,
+          legalEntityId: a.legalEntityId,
+          locationId: a.locationId,
+          legalEntity: entity?.name ?? null,
+          location: location?.name ?? null,
+          purchasedOn: a.purchasedOn ? iso(a.purchasedOn) : null,
+          cost: a.cost?.toFixed(2) ?? null,
+          invoiceNumber: a.invoiceNumber,
+          warrantyMonths: a.warrantyMonths,
+          warrantyEndsOn,
+          version: a.version,
+        },
+        holder: open ? { name: nameOf(open.personId), issuedOn: iso(open.issuedOn), acknowledged: Boolean(open.ackEvidence) } : null,
+        history,
+      };
+    });
+  }
+
   /** PPL-03 Assets tab: what one person holds now, read-only: themselves, asset.view over the asset, or their managers. */
   async personAssets(ctx: TenantContext, user: ScopeUser, employeeId: string) {
     const v = await this.viewer(user);
@@ -353,7 +428,7 @@ export class OffboardingService {
         const l = await tx.location.findFirst({ where: { organizationId: org, id: place.locationId }, select: { legalEntityId: true } });
         if (!l || l.legalEntityId !== place.legalEntityId) throw new BadRequestException('That location is not in that legal entity.');
       }
-      const data = { category: dto.category.trim(), name: dto.name.trim(), tag: dto.tag.trim(), serial: dto.serial?.trim() || null, ...place, purchasedOn: dto.purchasedOn ? asDate(dto.purchasedOn) : null, cost: dto.cost ? new Prisma.Decimal(dto.cost) : null };
+      const data = { category: dto.category.trim(), name: dto.name.trim(), tag: dto.tag.trim(), serial: dto.serial?.trim() || null, ...place, purchasedOn: dto.purchasedOn ? asDate(dto.purchasedOn) : null, cost: dto.cost ? new Prisma.Decimal(dto.cost) : null, maker: dto.maker?.trim() || null, model: dto.model?.trim() || null, invoiceNumber: dto.invoiceNumber?.trim() || null, warrantyMonths: dto.warrantyMonths ?? null };
       try {
         if (!id) {
           const a = await tx.asset.create({ data: { organizationId: org, ...data, createdBy: c.userId ?? null } });

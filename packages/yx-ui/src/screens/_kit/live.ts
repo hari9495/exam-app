@@ -70,6 +70,7 @@ export { MyDocuments, type LiveMyDocuments, type MyDocSource, type MyLetter, typ
 // PPL-31 Me › Request a certificate: the kinds the company switched on, made at once or sent to HR.
 export { CertificateRequest, type LiveCertificateRequest, type MyCertificateKind } from '../people/documents';
 export { AssetRegister, type Asset as AssetListRow, type LiveAssets } from '../people/assets';
+export { AssetPageScreen, type AssetPageData, type AssetDetailsInput, type LiveAssetPage } from '../people/asset-page';
 // People › Import (PPL-07), Buddies (PPL-41), Succession (PPL-26) and Union register (PPL-39) with live data.
 export { EmployeeImportWizard } from '../people/changes';
 export type { ImportDraftState, ImportDraftSummary, ImportFile, ImportInput, ImportResult, LiveImport } from '../people/import';
