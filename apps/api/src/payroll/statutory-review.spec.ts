@@ -3,7 +3,7 @@ import { join } from 'path';
 import { Prisma } from '@prisma/client';
 import { calculatePayslip, type Snapshot } from './calc';
 import { projectTax, type TaxInputs } from './tax';
-import { inForce, tds, type RuleSet } from '../statutory/evaluator';
+import { inForce, pfAdminDue, tds, type RuleSet } from '../statutory/evaluator';
 import { PACKAGE, RULES, snapshot } from './regression/fixtures';
 
 // Payroll statutory review, 26 Nov 2026 (docs/yukthix/reviews/payroll-statutory-review-2026-11-26.md). Each test states
@@ -91,6 +91,15 @@ describe('payroll statutory review (26 Nov 2026): figures the code gets wrong to
     // 60,00,000 new regime: slab 13,80,000, surcharge 10% = 1,38,000 (relief would allow 10,80,000 + 10,00,000), cess 4%: 15,78,720.
     expect(tds(rs, { taxable: '6000000', regime: 'new', age: 35 }).tax.toFixed(0)).toBe('1578720');
     expect(tds(rs, { taxable: '5000000', regime: 'new', age: 35 }).surcharge.toFixed(0)).toBe('0');
+  });
+
+  it('F1 a month of PF admin charges are at least Rs 500 per establishment; more stays as it is; none with no PF', () => {
+    const rs = inForce(RULES, 'IN.PF', ['IN'], '2026-10-01')!;
+    // 5 people on basic 10,000: 0.5% x 50,000 = 250 on the payslips; the challan pays 500.
+    expect(pfAdminDue(rs, { charges: '250' })).toMatchObject({ minimumApplied: true });
+    expect(pfAdminDue(rs, { charges: '250' }).due.toFixed(2)).toBe('500.00');
+    expect(pfAdminDue(rs, { charges: '1250' }).due.toFixed(2)).toBe('1250.00');
+    expect(pfAdminDue(rs, { charges: '0' }).due.toFixed(2)).toBe('0.00');
   });
 
   it('R8 employer NPS (80CCD(2), now s.124(1)(a)) is capped at 14% of basic + DA in the new regime', () => {

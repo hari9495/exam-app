@@ -6,7 +6,7 @@ import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-struc
 import { IN_STATES, entityTimeZone, localDate, todayIst } from '../org-structure/org-validation';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { StatutoryRulesService } from '../statutory/statutory.service';
-import { damages, due, inForce, noPt, penalty, type RuleSet } from '../statutory/evaluator';
+import { pfAdminDue, damages, due, inForce, noPt, penalty, type RuleSet } from '../statutory/evaluator';
 import { FORMATS, ecrFile, esiFile, lwfFile, ptFile, type EcrRow, type EsiRow, type LwfRow, type PtRow, type TdsRow } from '../statutory/filing-files';
 import { ETDS_FORMAT, checkFvu, etdsFile, type Deductor } from '../statutory/etds';
 import { FvuRunner, FvuUnavailable, type FvuOutcome } from '../statutory/fvu';
@@ -238,7 +238,10 @@ export class StatutoryFilingsService {
         per[s.id] = { gross: r.gross, amounts: { employee: r.epfEmployee, eps: r.eps, diff: r.epfDiff } };
       }
       const total = rows.reduce((t, r) => t.add(r.epfEmployee).add(r.eps).add(r.epfDiff), ZERO);
-      return { rows, missing, per, totals: { contributions: total.toFixed(2) }, data: async () => ecrFile(rows), ext: 'txt', type: 'text/plain; charset=utf-8' };
+      // Review F1: the challan's admin charges are the payslips' charges, at least the establishment minimum.
+      const pfRs = inForce(rules, 'IN.PF', ['IN'], `${month}-01`);
+      const admin = pfRs ? pfAdminDue(pfRs, { charges: m.slips.reduce((t, s) => t.add(m.sum(s.id, new Set(['pf_admin']))), ZERO) }).due : ZERO;
+      return { rows, missing, per, totals: { contributions: total.toFixed(2), adminCharges: admin.toFixed(2) }, data: async () => ecrFile(rows), ext: 'txt', type: 'text/plain; charset=utf-8' };
     }
     if (statute === 'IN.ESI') {
       const rows: EsiRow[] = [];
