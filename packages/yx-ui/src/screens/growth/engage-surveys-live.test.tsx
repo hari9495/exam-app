@@ -37,6 +37,37 @@ describe('ENG-04 surveys (live)', () => {
   });
 });
 
+describe('follow-ups 2664 and 2668', () => {
+  const base = { id: 's3', name: 'Pulse', type: 'pulse' as const, anonymous: true, minGroup: 5, questions: liveSurveyBuilder().options!.starters.pulse, locationIds: [], departmentIds: [], opensOn: '2026-10-01', closesOn: '2026-10-12', remind: true };
+  it('2664: a pulse keeps its repeat; an onboarding survey sends automatically and never repeats', async () => {
+    const onSave = vi.fn().mockResolvedValue({ id: 's3' });
+    const { unmount } = show(<SurveyBuilderScreen live={liveSurveyBuilder({ onSave, initial: { ...base, repeat: 'monthly' } })} />);
+    await ue.click(screen.getByRole('button', { name: /Save and exit/ }));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ repeat: 'monthly', autoInvite: false }), 's3');
+    unmount();
+    show(<SurveyBuilderScreen live={liveSurveyBuilder({ onSave, initial: { ...base, name: 'Day 30', type: 'onboarding', anonymous: false, repeat: 'monthly', autoInvite: true, autoAfterDays: 30 } })} />);
+    await ue.click(screen.getByRole('button', { name: /Save and exit/ }));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ type: 'onboarding', repeat: 'none', autoInvite: true, autoAfterDays: 30 }), 's3');
+  });
+
+  it('2668: HR can export the shown results; a manager has no export', async () => {
+    const onExport = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = show(<SurveyResultsScreen live={liveSurveyResults({ onExport })} />);
+    await ue.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect(onExport).toHaveBeenCalled();
+    expect((await screen.findAllByText(/Results downloaded/)).length).toBeGreaterThan(0);
+    unmount();
+    show(<SurveyResultsScreen live={liveSurveyResults({ persona: 'mgr', onExport })} />);
+    expect(screen.queryByRole('button', { name: 'Export CSV' })).toBeNull();
+  });
+
+  it('2668: a failed export says why', async () => {
+    show(<SurveyResultsScreen live={liveSurveyResults({ onExport: vi.fn().mockRejectedValue(new Error('No access.')) })} />);
+    await ue.click(screen.getByRole('button', { name: 'Export CSV' }));
+    expect((await screen.findAllByText(/No access/)).length).toBeGreaterThan(0);
+  });
+});
+
 describe('ENG-05 take a survey (live)', () => {
   it('says it is anonymous; Send with nothing answered says so; answers are sent', async () => {
     const onSend = vi.fn().mockResolvedValue(undefined);

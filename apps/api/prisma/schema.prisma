@@ -13279,6 +13279,12 @@ model EngSurvey {
   closesOn       DateTime  @map("closes_on") @db.Date
   remind         Boolean   @default(true)
   remindedOn     DateTime? @map("reminded_on") @db.Date
+  /// Answer 2664: none · monthly · quarterly; each run is its own survey, made when the next one is due.
+  repeat         String    @default("none") @db.VarChar(10)
+  repeatedAt     DateTime? @map("repeated_at") @db.Timestamptz(3)
+  /// Answer 2664: onboarding and exit surveys invite people as they reach the event (joining + days; an accepted exit).
+  autoInvite     Boolean   @default(false) @map("auto_invite")
+  autoAfterDays  Int       @default(30) @map("auto_after_days")
   launchedAt     DateTime? @map("launched_at") @db.Timestamptz(3)
   closedAt       DateTime? @map("closed_at") @db.Timestamptz(3)
   createdBy      String    @map("created_by") @db.Uuid

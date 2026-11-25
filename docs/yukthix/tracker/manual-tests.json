@@ -28171,5 +28171,27 @@
                               "Screens/Analytics/ANL-08 · Schedules and export log"
                     ],
                     "note": "Positive and negative (library-g4 e2e 5/5 incl. schedules: report you can't open 404, bad frequency 400, no recipients 400, recipient who can't open it 400, manager-only report 404, weekly runs Monday 07:00 IST, own copy each, claimed once, lost access gets nothing, confidential is a link, end only your own (404); export log: key only (403), bad date 400, CSV with header, its own download logged, other company empty; nextRunAt unit spec; kit report-schedules-live 2). New table report_schedules in rls-isolation; key exports.log.view (System Admin, auditor); routes in endpoint-permissions; sweep report-schedules every 15 minutes; menu Analytics › Schedules and exports."
+          },
+          {
+                    "id": "MT-ENGAGE-FOLLOWUPS-2664-2666-2668",
+                    "area": "Engage follow-ups (answers 2664, 2666, 2668): repeating and automatic surveys, Route to HR, results CSV (25 Nov 2026)",
+                    "screen": "Engage › Surveys (builder Settings step: Repeat / Send automatically), Survey results (Export CSV), Moderation (Route to HR)",
+                    "url": "http://localhost:3000/yx/engage/surveys",
+                    "account": "HR Admin (survey manage, moderate); an HR person who can raise a disciplinary case; a plain employee; another company's admin.",
+                    "steps": [
+                              "As HR make a pulse survey, set Repeat to Every month, launch it. Run the Engage jobs on the day a month later (test DB: move opens on back a month); run them again at once.",
+                              "Make an onboarding survey, tick 'Send it to each new joiner automatically', 30 days after joining, launch it. Add a joiner who joined 30 days ago and one who joined today; run the Engage jobs twice.",
+                              "Make an exit survey with automatic sending; accept a resignation; run the jobs.",
+                              "Try (API) a pulse survey with automatic sending, and an onboarding survey that repeats.",
+                              "Open a survey's results with one department below the smallest group; Export CSV. As the plain employee and another company's admin call the CSV link.",
+                              "In Moderation open a held post by someone with earlier actions; Route to HR. Press it again. Check the HR person's notifications and the author's. As the plain employee call the route link (API)."
+                    ],
+                    "expected": "Step 1: a new survey 'name · Mon YYYY' opens launched with invitations; the second run makes nothing. Step 2: only the 30-day joiner is invited, once; today's joiner waits. Step 3: the leaver is invited. Step 4: both refused (400). Step 5: a CSV of what the page shows; the small department is not in it (a note says so); no text answers; logged in the audit; employee 403, other company 404. Step 6: toast 'HR is told about …'; the second press says it was sent already; HR's notice names the author and the count, never the post's words; the author gets nothing; employee 403. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-04 · Survey builder",
+                              "Screens/Engage/ENG-06 · Survey results",
+                              "Screens/Engage/ENG-11 · Moderation"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e follow-ups 4: CSV key only/no text/small groups out/audit/other company 404; monthly repeat once; onboarding day 0 vs 30 once with notices; exit only accepted after launch; Route to HR 403/400/once 409/notice text/no author notice/other company 404; kit tests 4). Migration 741 engage_followups (columns on eng_surveys, route_hr action); new routes in endpoint-permissions; notification type engage.moderation.routed; jobs run with the 15-minute Engage jobs."
           }
 ]

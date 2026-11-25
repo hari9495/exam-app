@@ -128,6 +128,17 @@ describe('ENG-11 moderation (live)', () => {
     expect(onAct).toHaveBeenLastCalledWith(expect.objectContaining({ id: 'm1' }), 'restore', undefined);
   });
 
+  it('2666: Route to HR sends the item; without it there is no button', async () => {
+    const onRouteToHr = vi.fn().mockResolvedValue(undefined);
+    const { unmount } = show(<ModerationScreen live={liveModeration({ onRouteToHr, start: { open: 'm1' } })} />);
+    await ue.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Route to HR' }));
+    expect(onRouteToHr).toHaveBeenCalledWith(expect.objectContaining({ id: 'm1' }));
+    expect((await screen.findAllByText(/They see the name and the count, not the post/)).length).toBeGreaterThan(0);
+    unmount();
+    show(<ModerationScreen live={liveModeration({ start: { open: 'm1' } })} />);
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Route to HR' })).toBeNull();
+  });
+
   it('delete asks first', async () => {
     const onAct = vi.fn().mockResolvedValue(undefined);
     show(<ModerationScreen live={liveModeration({ onAct, start: { open: 'm3' } })} />);

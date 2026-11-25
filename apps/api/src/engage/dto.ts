@@ -75,6 +75,23 @@ export class SurveyDto {
 
   @IsBoolean()
   remind!: boolean;
+
+  /** Answer 2664: repeat every month or quarter (each run its own survey). */
+  @IsOptional()
+  @IsIn(['none', 'monthly', 'quarterly'])
+  repeat?: 'none' | 'monthly' | 'quarterly';
+
+  /** Answer 2664: onboarding and exit surveys invite people as they reach the event. */
+  @IsOptional()
+  @IsBoolean()
+  autoInvite?: boolean;
+
+  /** Onboarding: days after joining (0 to 365). */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  autoAfterDays?: number;
 }
 
 export class AnswersDto {

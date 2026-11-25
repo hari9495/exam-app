@@ -9,6 +9,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { AnnouncementsService } from './announcements.service';
 import { ActionPlanDto, AnswersDto, SurveyDto, type SurveyQuestionDto } from './dto';
 import { enpsOf, favourable, STARTER_QUESTIONS, type QuestionKind } from './engage-rules';
+import { addMonths } from '../learning/learning-rules';
 
 // Batch G2 item 74 (M09 Q3, Q8; ENG-04 to ENG-07; answer 2604). engage.survey.manage builds, launches and closes
 // surveys and sees company results; a manager sees their own team's results and keeps an action plan. Engagement, pulse
@@ -45,6 +46,8 @@ export class SurveysService {
   private check(dto: SurveyDto) {
     if (!dto.anonymous && !['onboarding', 'exit'].includes(dto.type)) throw new BadRequestException('Engagement, pulse and eNPS surveys are anonymous; only onboarding and exit surveys may be named.');
     if (dto.closesOn < dto.opensOn) throw new BadRequestException('The survey must close on or after the day it opens.');
+    if (dto.autoInvite && !['onboarding', 'exit'].includes(dto.type)) throw new BadRequestException('Only onboarding and exit surveys invite people automatically.');
+    if (dto.autoInvite && dto.repeat && dto.repeat !== 'none') throw new BadRequestException('An automatic survey does not repeat; it stays open and invites people as they reach the event.');
     const ids = new Set<string>();
     for (const q of dto.questions) {
       if (ids.has(q.id)) throw new BadRequestException('Each question needs its own id.');
@@ -82,7 +85,7 @@ export class SurveysService {
   detail(ctx: TenantContext, id: string) {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const s = await this.survey(tx, c.organizationId, id);
-      return { id: s.id, name: s.name, type: s.type, anonymous: s.anonymous, minGroup: s.minGroup, questions: s.questions as Q[], locationIds: s.locationIds, departmentIds: s.departmentIds, opensOn: s.opensOn.toISOString().slice(0, 10), closesOn: s.closesOn.toISOString().slice(0, 10), remind: s.remind, status: statusOf(s, todayIst()) };
+      return { id: s.id, name: s.name, type: s.type, anonymous: s.anonymous, minGroup: s.minGroup, questions: s.questions as Q[], locationIds: s.locationIds, departmentIds: s.departmentIds, opensOn: s.opensOn.toISOString().slice(0, 10), closesOn: s.closesOn.toISOString().slice(0, 10), remind: s.remind, repeat: s.repeat, autoInvite: s.autoInvite, autoAfterDays: s.autoAfterDays, status: statusOf(s, todayIst()) };
     });
   }
 
@@ -112,7 +115,7 @@ export class SurveysService {
 
   private data(dto: SurveyDto) {
     const day = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00Z`);
-    return { name: dto.name, type: dto.type, anonymous: dto.anonymous, minGroup: dto.minGroup, questions: dto.questions as unknown as Prisma.InputJsonValue, locationIds: [...new Set(dto.locationIds)], departmentIds: [...new Set(dto.departmentIds)], opensOn: day(dto.opensOn), closesOn: day(dto.closesOn), remind: dto.remind };
+    return { name: dto.name, type: dto.type, anonymous: dto.anonymous, minGroup: dto.minGroup, questions: dto.questions as unknown as Prisma.InputJsonValue, locationIds: [...new Set(dto.locationIds)], departmentIds: [...new Set(dto.departmentIds)], opensOn: day(dto.opensOn), closesOn: day(dto.closesOn), remind: dto.remind, repeat: dto.repeat ?? 'none', autoInvite: Boolean(dto.autoInvite), autoAfterDays: dto.autoAfterDays ?? 30 };
   }
 
   private async lists(tx: Tx, org: string, dto: { locationIds: string[]; departmentIds: string[] }) {
@@ -128,8 +131,9 @@ export class SurveysService {
       if (s.launchedAt) throw new ConflictException({ statusCode: 409, code: 'ENGAGE_SURVEY_LAUNCHED', message: 'This survey was launched already.' });
       if (!(s.questions as Q[]).length) throw new BadRequestException('Add at least one question.');
       if (s.closesOn.toISOString().slice(0, 10) < today) throw new BadRequestException('The closing day has passed. Choose a later one.');
-      const people = await this.announcements.audience(tx, c.organizationId, s.locationIds, s.departmentIds);
-      if (!people.length) throw new BadRequestException('Nobody is in that audience today.');
+      // Answer 2664: an automatic onboarding or exit survey invites people later, as they reach the event.
+      const people = s.autoInvite ? [] : await this.announcements.audience(tx, c.organizationId, s.locationIds, s.departmentIds);
+      if (!people.length && !s.autoInvite) throw new BadRequestException('Nobody is in that audience today.');
       await tx.engSurveyInvite.createMany({ data: people.map((p) => ({ organizationId: c.organizationId, surveyId: s.id, userId: p.userId })), skipDuplicates: true });
       await tx.engSurvey.update({ where: { id }, data: { launchedAt: new Date() } });
       await audit(tx, c, 'engage.survey.launched', 'eng_survey', id, { invited: people.length });
@@ -137,6 +141,102 @@ export class SurveysService {
     });
     if (out.s.opensOn.toISOString().slice(0, 10) <= today) await this.tell(ctx.organizationId as string, out.s, out.users, 'engage.survey.open');
     return { invited: out.users.length };
+  }
+
+  // ------------------------------------------------------------------------------------------ answer 2664
+
+  /**
+   * Job: repeats and automatic invitations. A launched repeating survey makes its next run (its own survey, the same
+   * questions and audience, the dates moved by a month or a quarter) once that run's opening day comes, and launches it.
+   * An open automatic onboarding survey invites people who joined after it launched, its days after joining; an open
+   * automatic exit survey invites people whose exit was accepted after it launched. Each person is invited once.
+   */
+  async cycleDue(today = todayIst()): Promise<{ repeated: number; invited: number }> {
+    const due = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.engSurvey.findMany({ where: { launchedAt: { not: null }, OR: [{ repeat: { not: 'none' }, repeatedAt: null }, { autoInvite: true, closedAt: null }] }, take: 500 }),
+    );
+    let repeated = 0;
+    let invited = 0;
+    for (const s of due) {
+      try {
+        if (s.repeat !== 'none') {
+          const months = s.repeat === 'monthly' ? 1 : 3;
+          const opens = addMonths(s.opensOn.toISOString().slice(0, 10), months);
+          if (opens > today) continue;
+          const closes = addMonths(s.closesOn.toISOString().slice(0, 10), months);
+          const out = await inCompany(this.tenantPrisma, { organizationId: s.organizationId, isSuperAdmin: false }, async (tx, c) => {
+            const claimed = await tx.engSurvey.updateMany({ where: { id: s.id, repeatedAt: null }, data: { repeatedAt: new Date() } });
+            if (!claimed.count) return null;
+            const label = new Date(`${opens}T00:00:00Z`).toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+            const base = s.name.replace(/ · [A-Z][a-z]{2} \d{4}$/, '');
+            const next = await tx.engSurvey.create({ data: { organizationId: s.organizationId, name: `${base} · ${label}`.slice(0, 150), type: s.type, anonymous: s.anonymous, minGroup: s.minGroup, questions: s.questions as Prisma.InputJsonValue, locationIds: s.locationIds, departmentIds: s.departmentIds, opensOn: new Date(`${opens}T00:00:00Z`), closesOn: new Date(`${closes}T00:00:00Z`), remind: s.remind, repeat: s.repeat, createdBy: s.createdBy, launchedAt: new Date() } });
+            const people = await this.announcements.audience(tx, s.organizationId, s.locationIds, s.departmentIds);
+            await tx.engSurveyInvite.createMany({ data: people.map((p) => ({ organizationId: s.organizationId, surveyId: next.id, userId: p.userId })), skipDuplicates: true });
+            await audit(tx, c, 'engage.survey.repeated', 'eng_survey', next.id, { from: s.id, invited: people.length });
+            return { next, users: people.map((p) => p.userId) };
+          });
+          if (out) {
+            repeated++;
+            await this.tell(s.organizationId, out.next, out.users, 'engage.survey.open');
+          }
+          continue;
+        }
+        if (statusOf(s, today) !== 'open') continue;
+        const fresh = await inCompany(this.tenantPrisma, { organizationId: s.organizationId, isSuperAdmin: false }, async (tx, c) => {
+          const since = s.launchedAt!.toISOString();
+          const raw =
+            s.type === 'onboarding'
+              ? await tx.$queryRaw<{ user_id: string }[]>`SELECT DISTINCT e.user_id::text FROM employments m JOIN employees e ON e.organization_id = m.organization_id AND e.id = m.employee_id
+                  WHERE m.organization_id = ${s.organizationId}::uuid AND e.user_id IS NOT NULL AND m.joined_on >= (${since}::timestamptz AT TIME ZONE 'Asia/Kolkata')::date
+                    AND m.joined_on + ${s.autoAfterDays}::int <= ${today}::date AND (m.exited_on IS NULL OR m.exited_on >= ${today}::date)`
+              : await tx.$queryRaw<{ user_id: string }[]>`SELECT DISTINCT e.user_id::text FROM exit_cases x JOIN employees e ON e.organization_id = x.organization_id AND e.id = x.employee_id
+                  WHERE x.organization_id = ${s.organizationId}::uuid AND e.user_id IS NOT NULL AND x.status IN ('accepted', 'cleared') AND x.accepted_at >= ${since}::timestamptz`;
+          // Only people in the survey's audience (its locations and departments), each once.
+          const inAudience = new Set((await this.announcements.audience(tx, s.organizationId, s.locationIds, s.departmentIds)).map((p) => p.userId));
+          const already = new Set((await tx.engSurveyInvite.findMany({ where: { surveyId: s.id }, select: { userId: true } })).map((i) => i.userId));
+          const users = raw.map((r) => r.user_id).filter((u) => (s.type === 'exit' || inAudience.has(u)) && !already.has(u));
+          if (!users.length) return [];
+          await tx.engSurveyInvite.createMany({ data: users.map((u) => ({ organizationId: s.organizationId, surveyId: s.id, userId: u })), skipDuplicates: true });
+          await audit(tx, c, 'engage.survey.auto_invited', 'eng_survey', s.id, { invited: users.length });
+          return users;
+        });
+        if (fresh.length) {
+          invited += fresh.length;
+          await this.tell(s.organizationId, s, fresh, 'engage.survey.open');
+        }
+      } catch (e) {
+        this.logger.warn(`survey cycle ${s.id}: ${(e as Error).message}`);
+      }
+    }
+    return { repeated, invited };
+  }
+
+  /** Answer 2668: the results as CSV, only what the results page shows (groups at or above the smallest group). */
+  async resultsCsv(ctx: TenantContext, id: string) {
+    const r = await this.results(ctx, id);
+    const cell = (v: string | number | null) => {
+      const t = v == null ? '' : typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : String(v);
+      return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const lines: (string | number | null)[][] = [['Survey', r.name], ['Responses', r.responded], ['Invited', r.invited], ['Smallest group shown', r.minGroup], []];
+    if (r.suppressed) lines.push([`Fewer than ${r.minGroup} responses: no results are shown.`]);
+    else {
+      if (r.enps) lines.push(['eNPS', r.enps.score], []);
+      if (r.themes.length) {
+        lines.push(['Theme', 'Favourable %', ...r.heat.filter((h) => h.values.some((v) => v != null)).map((h) => h.label)]);
+        r.themes.forEach((t, i) => lines.push([t.theme, t.favourable, ...r.heat.filter((h) => h.values.some((v) => v != null)).map((h) => h.values[i] ?? null)]));
+        lines.push([]);
+      }
+      for (const ch of r.choices) {
+        lines.push([ch.question, 'Responses']);
+        for (const o of ch.counts) lines.push([o.option, o.count]);
+        lines.push([]);
+      }
+      const hidden = r.departments.filter((d) => !d.shown).length;
+      if (hidden) lines.push([`${hidden} department(s) below ${r.minGroup} responses are not shown.`]);
+    }
+    await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'engage.survey.results_exported', 'eng_survey', id, { responses: r.responded }));
+    return { name: r.name, csv: `${lines.map((l) => l.map(cell).join(',')).join('\r\n')}\r\n` };
   }
 
   /** Close now (before the closing day). */

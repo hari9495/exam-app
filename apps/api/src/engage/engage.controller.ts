@@ -1,5 +1,5 @@
-import { Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import { BadRequestException, Body, Controller, ForbiddenException, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { Request, Response } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -251,6 +251,16 @@ export class ModerationController {
     return this.feedSvc.moderate(ctx, 'comment', id, dto);
   }
 
+  // Answer 2666: Route to HR (the author and the count, never the words).
+  @Post(':target/:id/route-to-hr')
+  @RequirePermissions('engage.moderate')
+  async routeToHr(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('target') target: string, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    await this.gate(req);
+    if (target !== 'posts' && target !== 'comments') throw new BadRequestException('Route a post or a comment.');
+    return this.feedSvc.routeToHr(ctx, target === 'posts' ? 'post' : 'comment', id);
+  }
+
   @Put('spaces/:id')
   @RequirePermissions('engage.moderate')
   async space(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SpaceApprovalDto) {
@@ -329,6 +339,16 @@ export class SurveysController {
   async results(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: ResultsQueryDto) {
     await this.gate(req);
     return this.surveys.results(ctx, id, q.departmentId);
+  }
+
+  // Answer 2668: the shown results as CSV (groups at or above the smallest group only).
+  @Get(':id/results/csv')
+  @RequirePermissions('engage.survey.manage')
+  async resultsCsv(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.gate(req);
+    const out = await this.surveys.resultsCsv(ctx, id);
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="survey-results-${id.slice(0, 8)}.csv"`, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+    return out.csv;
   }
 
   @Get(':id/plans')

@@ -16,6 +16,7 @@ import { TextArea, TextField } from '../../components/inputs';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { DatePicker } from '../../components/date';
+import { Segment } from '../../components/segment';
 import { useToast } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import { errorText } from '../org/org-kit';
@@ -118,6 +119,10 @@ export interface SurveyInput {
   opensOn: string;
   closesOn: string;
   remind: boolean;
+  /** Answer 2664: repeat every month or quarter; onboarding and exit surveys may invite people automatically instead. */
+  repeat?: 'none' | 'monthly' | 'quarterly';
+  autoInvite?: boolean;
+  autoAfterDays?: number;
 }
 export interface LiveSurveyBuilder {
   options: { starters: Record<SurveyType, LiveQuestion[]>; minGroup: number; locations: { id: string; name: string }[]; departments: { id: string; name: string }[] } | null;
@@ -135,6 +140,7 @@ export function LiveSurveyBuilderScreen({ live }: { live: LiveSurveyBuilder }) {
   const init = live.initial;
   const [id, setId] = useState<string | undefined>(init?.id);
   const [type, setType] = useState<SurveyType>(init?.type ?? 'pulse');
+  const lifecycle = type === 'onboarding' || type === 'exit';
   const [name, setName] = useState(init?.name ?? '');
   const [questions, setQuestions] = useState<LiveQuestion[]>(init?.questions ?? o?.starters.pulse ?? []);
   const [anon, setAnon] = useState(init ? init.anonymous : true);
@@ -143,6 +149,9 @@ export function LiveSurveyBuilderScreen({ live }: { live: LiveSurveyBuilder }) {
   const [opens, setOpens] = useState<Date | null>(init ? day(init.opensOn) : live.today);
   const [closes, setCloses] = useState<Date | null>(init ? day(init.closesOn) : null);
   const [remind, setRemind] = useState(init?.remind ?? true);
+  const [repeat, setRepeat] = useState<'none' | 'monthly' | 'quarterly'>(init?.repeat ?? 'none');
+  const [auto, setAuto] = useState(init?.autoInvite ?? false);
+  const [autoDays, setAutoDays] = useState<string>(String(init?.autoAfterDays ?? 30));
   const [newQ, setNewQ] = useState('');
   const [newKind, setNewKind] = useState<LiveQuestionKind>('rating');
   const [newOptions, setNewOptions] = useState('');
@@ -186,7 +195,7 @@ export function LiveSurveyBuilderScreen({ live }: { live: LiveSurveyBuilder }) {
   const library = Object.values(o.starters).flat().filter((l, i, all) => all.findIndex((x) => x.id === l.id && x.text === l.text) === i && !questions.some((q) => q.text === l.text));
   const input = (): SurveyInput => {
     const everyone = audience.includes('everyone');
-    return { name: name.trim(), type, anonymous: namedOk ? anon : true, minGroup: Number(min), questions, locationIds: everyone ? [] : audience.filter((x) => x.startsWith('loc:')).map((x) => x.slice(4)), departmentIds: everyone ? [] : audience.filter((x) => x.startsWith('dep:')).map((x) => x.slice(4)), opensOn: iso(opens ?? live.today), closesOn: iso(closes!), remind };
+    return { name: name.trim(), type, anonymous: namedOk ? anon : true, minGroup: Number(min), questions, locationIds: everyone ? [] : audience.filter((x) => x.startsWith('loc:')).map((x) => x.slice(4)), departmentIds: everyone ? [] : audience.filter((x) => x.startsWith('dep:')).map((x) => x.slice(4)), opensOn: iso(opens ?? live.today), closesOn: iso(closes!), remind, ...(lifecycle ? { repeat: 'none' as const, autoInvite: auto, autoAfterDays: Number(autoDays) || 0 } : { repeat, autoInvite: false }) };
   };
   const save = async (launch: boolean) => {
     if (early.stop()) return;
@@ -334,6 +343,20 @@ export function LiveSurveyBuilderScreen({ live }: { live: LiveSurveyBuilder }) {
                   </FormField>
                 </FieldRow>
                 <Checkbox checked={remind} onChange={setRemind} label="Remind people who haven’t answered, 3 days before closing" description="Reminders use only whether someone answered, never what they said." />
+                {lifecycle ? (
+                  <>
+                    <Checkbox checked={auto} onChange={setAuto} label={type === 'onboarding' ? 'Send it to each new joiner automatically' : 'Send it to each person whose resignation is accepted'} description="It stays open until it closes; each person is invited once." />
+                    {auto && type === 'onboarding' && (
+                      <FormField label="Days after joining">
+                        <Select value={autoDays} onChange={(v) => setAutoDays(v ?? '30')} options={['0', '7', '30', '60', '90'].map((v) => ({ value: v, label: v === '0' ? 'On the joining day' : `${v} days` }))} />
+                      </FormField>
+                    )}
+                  </>
+                ) : (
+                  <FormField label="Repeat" helper="Each run is its own survey with its own results, sent to the audience of the day.">
+                    <Segment<'none' | 'monthly' | 'quarterly'> label="Repeat" value={repeat} onChange={setRepeat} options={[{ value: 'none', label: 'Once' }, { value: 'monthly', label: 'Every month' }, { value: 'quarterly', label: 'Every quarter' }]} />
+                  </FormField>
+                )}
               </div>
             ),
             summary: <Text>{audience.includes('everyone') ? 'Everyone' : `${audience.length} groups`} · {opens ? formatDate(opens) : ''}–{closes ? formatDate(closes) : ''}</Text>,
@@ -502,6 +525,8 @@ export interface LiveSurveyResults {
   onDepartment?: (id: string | null) => void;
   onPlan?: () => void;
   onPlans?: () => void;
+  /** Answer 2668: download the shown results as CSV (HR). */
+  onExport?: () => Promise<unknown>;
 }
 
 export function LiveSurveyResultsScreen({ live }: { live: LiveSurveyResults }) {
@@ -532,6 +557,7 @@ export function LiveSurveyResultsScreen({ live }: { live: LiveSurveyResults }) {
               <Select aria-label="Department" placeholder="All departments" clearable value={live.department ?? null} onChange={(v) => live.onDepartment?.(v)} options={d.departments.map((x) => ({ value: x.id, label: x.shown ? x.name : `${x.name} (fewer than ${d.minGroup})`, disabled: !x.shown }))} />
             )}
             {live.persona === 'hr' && live.onPlans && <Button onClick={live.onPlans}>Action plans</Button>}
+            {live.persona === 'hr' && live.onExport && <ExportButton onExport={live.onExport} />}
             {live.persona === 'mgr' && !d.suppressed && live.onPlan && (
               <Button variant="primary" icon={Plus} onClick={live.onPlan}>
                 {d.plan ? 'Open action plan' : 'Create action plan'}
@@ -741,5 +767,15 @@ export function LiveActionPlanScreen({ live }: { live: LiveActionPlan }) {
         }
       />
     </Hr>
+  );
+}
+
+/** Answer 2668: the shown results as CSV (groups below the smallest group are not in it). */
+function ExportButton({ onExport }: { onExport: () => Promise<unknown> }) {
+  const { toast } = useToast();
+  return (
+    <Button onClick={() => void onExport().then(() => toast({ tone: 'success', title: 'Results downloaded. Groups below the smallest group are not in it.' }), (e: unknown) => toast({ tone: 'error', title: errorText(e) }))}>
+      Export CSV
+    </Button>
   );
 }

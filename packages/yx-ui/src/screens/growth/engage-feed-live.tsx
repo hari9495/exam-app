@@ -2,7 +2,7 @@
 // moderation queue with real records, drawn in the designed layouts. FeedScreen, PostComposerScreen and ModerationScreen
 // (engage-feed.tsx) render these when given `live`.
 import { useState } from 'react';
-import { Eye, EyeOff, Flag, Plus, RotateCcw, Send, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Flag, Plus, RotateCcw, Send, Trash2, UserX } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge } from '../../components/display';
 import { Text } from '../../components/foundations';
@@ -445,6 +445,8 @@ export interface LiveModeration {
   onRetry?: () => void;
   items: LiveModItem[];
   onAct: (item: LiveModItem, action: 'approve' | 'restore' | 'hide' | 'delete' | 'warn', note?: string) => Promise<unknown>;
+  /** Answer 2666: tell HR about a repeat author (the name and the count, never the words). */
+  onRouteToHr?: (item: LiveModItem) => Promise<unknown>;
   /** Stories and tests only. */
   start?: { open?: string };
 }
@@ -559,8 +561,18 @@ export function LiveModerationScreen({ live }: { live: LiveModeration }) {
               </div>
             </dl>
             {cur.priorActions >= 2 && (
-              <InlineAlert tone="warning" title="Repeat pattern">
-                {cur.author} has {cur.priorActions} earlier moderation actions. Tell HR if further steps are needed.
+              <InlineAlert
+                tone="warning"
+                title="Repeat pattern"
+                actions={
+                  live.onRouteToHr ? (
+                    <Button size="sm" icon={UserX} onClick={() => void live.onRouteToHr!(cur).then(() => toast({ tone: 'success', title: `HR is told about ${cur.author}. They see the name and the count, not the post.` }), (e: unknown) => toast({ tone: 'error', title: errorText(e) }))}>
+                      Route to HR
+                    </Button>
+                  ) : undefined
+                }
+              >
+                {cur.author} has {cur.priorActions} earlier moderation actions. HR can decide on further steps.
               </InlineAlert>
             )}
             <FormField id="md-note" label="Note to the author" optional helper="Sent with Warn author." error={tried && !note.trim() ? 'Write the note first.' : null}>

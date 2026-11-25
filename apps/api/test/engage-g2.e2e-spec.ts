@@ -551,6 +551,94 @@ describe('Batch G2 Engage', () => {
     });
   });
 
+  describe('follow-ups 2664, 2666, 2668', () => {
+    const Q = [
+      { id: 'enps', text: 'How likely are you to recommend us?', kind: 'enps', theme: 'eNPS' },
+      { id: 'clarity', text: 'I know what is expected of me.', kind: 'rating', theme: 'Clarity' },
+    ];
+    const BASE = { name: 'Monthly pulse', type: 'pulse', anonymous: true, minGroup: 3, questions: Q, locationIds: [] as string[], departmentIds: [] as string[], opensOn: today, closesOn: shift(7), remind: false };
+    const addMonths = (d: string, n: number) => {
+      const [y, m, dd] = d.split('-').map(Number);
+      const t = new Date(Date.UTC(y, m - 1 + n, 1));
+      const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+      return new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), Math.min(dd, last))).toISOString().slice(0, 10);
+    };
+
+    it('2668: the results export holds only what the results page shows; no text answers; the key only', async () => {
+      await api('emp1', 'get', `/engage/surveys/${ids.survey}/results/csv`).expect(403);
+      const csv = (await api('hr', 'get', `/engage/surveys/${ids.survey}/results/csv`).expect(200)).text;
+      expect(csv).toMatch(/^Survey,/);
+      expect(csv).toContain('Theme,Favourable %');
+      expect(csv).not.toContain('More training');
+      const shown = (await api('hr', 'get', `/engage/surveys/${ids.survey}/results`).expect(200)).body.departments.filter((d: { shown: boolean }) => d.shown).map((d: { name: string }) => d.name);
+      expect(csv).toContain(`Theme,Favourable %,${shown.join(',')}`);
+      expect(csv).not.toMatch(/not shown/); // every department here is at or above the smallest group
+      expect(await inA((tx) => tx.auditLog.count({ where: { action: 'engage.survey.results_exported', entityId: ids.survey } }))).toBe(1);
+      await api('adminB', 'get', `/engage/surveys/${ids.survey}/results/csv`).expect(404);
+    });
+
+    it('2664: a monthly survey makes its next run (launched, invited) when it is due, once', async () => {
+      const surveys = app.get(SurveysService);
+      await api('hr', 'post', '/engage/surveys').send({ ...BASE, repeat: 'weekly' }).expect(400);
+      await api('hr', 'post', '/engage/surveys').send({ ...BASE, autoInvite: true }).expect(400);
+      const id = (await api('hr', 'post', '/engage/surveys').send({ ...BASE, repeat: 'monthly' }).expect(201)).body.id;
+      expect((await api('hr', 'get', `/engage/surveys/${id}`).expect(200)).body.repeat).toBe('monthly');
+      await api('hr', 'post', `/engage/surveys/${id}/launch`).expect(201);
+      expect((await surveys.cycleDue(today)).repeated).toBe(0);
+      const due = addMonths(today, 1);
+      expect((await surveys.cycleDue(due)).repeated).toBe(1);
+      expect((await surveys.cycleDue(due)).repeated).toBe(0);
+      const next = await inA((tx) => tx.engSurvey.findFirstOrThrow({ where: { name: { startsWith: 'Monthly pulse · ' } } }));
+      expect(next).toMatchObject({ repeat: 'monthly', repeatedAt: null });
+      expect(next.launchedAt).not.toBeNull();
+      expect(next.opensOn.toISOString().slice(0, 10)).toBe(due);
+      expect(await inA((tx) => tx.engSurveyInvite.count({ where: { surveyId: next.id } }))).toBeGreaterThan(0);
+    });
+
+    it('2664: an automatic onboarding survey invites joiners its days after joining, once; an exit survey invites accepted exits', async () => {
+      const surveys = app.get(SurveysService);
+      const make = async (body: object) => {
+        const id = (await api('hr', 'post', '/engage/surveys').send({ ...BASE, type: 'onboarding', anonymous: false, autoInvite: true, closesOn: shift(60), ...body }).expect(201)).body.id;
+        expect((await api('hr', 'post', `/engage/surveys/${id}/launch`).expect(201)).body.invited).toBe(0);
+        return id;
+      };
+      const later = await make({ name: 'Onboarding, day 30', autoAfterDays: 30 });
+      const now = await make({ name: 'Onboarding, day 0', autoAfterDays: 0 });
+      await surveys.cycleDue(today);
+      expect(await inA((tx) => tx.engSurveyInvite.count({ where: { surveyId: later } }))).toBe(0);
+      const first = await inA((tx) => tx.engSurveyInvite.count({ where: { surveyId: now } }));
+      expect(first).toBeGreaterThan(0);
+      await surveys.cycleDue(today);
+      expect(await inA((tx) => tx.engSurveyInvite.count({ where: { surveyId: now } }))).toBe(first);
+      expect(await inA((tx) => tx.userNotification.count({ where: { type: 'engage.survey.open', entityId: now } }))).toBe(first);
+      // Exit: only people whose exit was accepted after the survey launched.
+      const exit = await make({ name: 'Exit interview survey', type: 'exit' });
+      const r3 = await inA((tx) => tx.employee.findFirstOrThrow({ where: { organizationId: org.A.id, userId: users.r3 }, select: { id: true, personId: true } }));
+      const e = await inA((tx) => tx.employment.findFirstOrThrow({ where: { organizationId: org.A.id, employeeId: r3.id } }));
+      const lwd = new Date(`${shift(30)}T00:00:00Z`);
+      await inA((tx) => tx.exitCase.create({ data: { organizationId: org.A.id, employmentId: e.id, employeeId: r3.id, personId: r3.personId, exitType: 'resignation', initiatedBy: 'employee', submittedOn: new Date(`${today}T00:00:00Z`), noticePeriod: '30d', standardLwd: lwd, approvedLwd: lwd, status: 'accepted', acceptedAt: new Date() } }));
+      await surveys.cycleDue(today);
+      expect((await inA((tx) => tx.engSurveyInvite.findMany({ where: { surveyId: exit }, select: { userId: true } }))).map((i) => i.userId)).toEqual([users.r3]);
+    });
+
+    it('2666: Route to HR tells HR the author and the count (never the words), once; the key only', async () => {
+      // emp2 is HR for this test (may raise a disciplinary case), so someone other than the moderator is told.
+      await inA(async (tx) => {
+        const pp = await tx.permissionProfile.create({ data: { organizationId: org.A.id, name: `hr-cases-${run}`, permissionsJson: JSON.stringify(['case.disciplinary.raise']) } });
+        await tx.user.update({ where: { id: users.emp2 }, data: { permissionProfileId: pp.id } });
+      });
+      await api('emp1', 'post', `/engage/moderation/posts/${ids.held}/route-to-hr`).expect(403);
+      await api('hr', 'post', `/engage/moderation/things/${ids.held}/route-to-hr`).expect(400);
+      expect((await api('hr', 'post', `/engage/moderation/posts/${ids.held}/route-to-hr`).expect(201)).body.routed).toBeGreaterThanOrEqual(1);
+      expect((await api('hr', 'post', `/engage/moderation/posts/${ids.held}/route-to-hr`).expect(409)).body.code).toBe('ENGAGE_ROUTED');
+      const n = await inA((tx) => tx.userNotification.findFirstOrThrow({ where: { recipientUserId: users.emp2, type: 'engage.moderation.routed' } }));
+      expect(n.contextText).toMatch(/emp1 .*: \d+ earlier moderation actions/);
+      expect(n.contextText).not.toMatch(/IDIOT/i);
+      expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.emp1, type: 'engage.moderation.routed' } }))).toBe(0);
+      await api('adminB', 'post', `/engage/moderation/posts/${ids.held}/route-to-hr`).expect(404);
+    });
+  });
+
   describe('item 76: celebrations', () => {
     const list = async (who: Who) => (await api(who, 'get', '/engage/my/celebrations').expect(200)).body as { id: string; name: string; kind: string; detail: string }[];
     const employeeOf = (who: Who) => inA((tx) => tx.employee.findFirstOrThrow({ where: { userId: users[who] }, select: { id: true } }));

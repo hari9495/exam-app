@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { companyKeyHolders } from '../access/key-holders';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { settingFor } from '../people/probation';
@@ -297,6 +298,30 @@ export class FeedService {
         .catch((e: Error) => this.logger.warn(`moderation notice: ${e.message}`));
     }
     return { state: out.state };
+  }
+
+  /**
+   * Answer 2666: a moderator routes a repeat author to HR (holders of case.disciplinary.raise for the whole company): HR
+   * is told the author and how many earlier moderation actions there are, never the post's words. Once per item.
+   */
+  async routeToHr(ctx: TenantContext, target: 'post' | 'comment', id: string) {
+    const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const item = target === 'post' ? await tx.engPost.findFirst({ where: { organizationId: org, id, kind: { in: ['update', 'kudos', 'poll'] } } }) : await tx.engComment.findFirst({ where: { organizationId: org, id } });
+      if (!item || !item.authorUserId) throw new NotFoundException('Not found.');
+      if (await tx.engModAction.findFirst({ where: { organizationId: org, target, targetId: id, action: 'route_hr' }, select: { id: true } })) throw new ConflictException({ statusCode: 409, code: 'ENGAGE_ROUTED', message: 'This was sent to HR already.' });
+      const prior = await tx.engModAction.count({ where: { organizationId: org, authorUserId: item.authorUserId, action: { in: ['hide', 'delete', 'warn'] } } });
+      const hr = (await companyKeyHolders(tx, org, 'case.disciplinary.raise', todayIst())).filter((u) => u !== item.authorUserId && u !== c.userId);
+      if (!hr.length) throw new ConflictException({ statusCode: 409, code: 'ENGAGE_NO_HR', message: 'Nobody in HR can take this (the key to raise a disciplinary case). Ask your System Admin.' });
+      const author = (await this.names(tx, org, [item.authorUserId])).get(item.authorUserId)?.name ?? 'An employee';
+      await tx.engModAction.create({ data: { organizationId: org, target, targetId: id, authorUserId: item.authorUserId, action: 'route_hr', byUserId: c.userId! } });
+      await audit(tx, c, `engage.${target}.route_hr`, target === 'post' ? 'eng_post' : 'eng_comment', id, { author: item.authorUserId, prior, hr: hr.length });
+      return { hr, text: `A feed moderator asks HR to look at ${author}: ${prior} earlier moderation ${prior === 1 ? 'action' : 'actions'} on their posts or comments.` };
+    });
+    await this.notifications
+      .notifySystem(ctx, out.hr, 'engage.moderation.routed', { entityType: target === 'post' ? 'eng_post' : 'eng_comment', entityId: id, contextText: out.text, linkPath: '/yx/home' }, { subject: 'A feed moderator asks HR to look at someone', html: '<p>A feed moderator asks HR to look at someone. Open YukthiX to see who.</p>' })
+      .catch((e: Error) => this.logger.warn(`route to HR notice: ${e.message}`));
+    return { routed: out.hr.length };
   }
 
   /** M09 Q2: a moderator switches a space to approval (or back). The company space always needs approval for non-announcers. */

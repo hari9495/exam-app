@@ -44,6 +44,9 @@ export class EngageJobs implements OnModuleInit, OnModuleDestroy {
     if (sent || reminded) this.logger.log(`announcements sent ${sent}, reminded ${reminded}`);
     // Batch G2 item 74: three days before a survey closes, people who have not answered are reminded once.
     const surveys = await this.surveys.remindDue().catch((e: Error) => (this.logger.warn(`survey reminders: ${e.message}`), 0));
+    // Answer 2664: repeating surveys and automatic onboarding / exit invitations.
+    const cycle = await this.surveys.cycleDue().catch((e: Error) => (this.logger.warn(`survey cycle: ${e.message}`), { repeated: 0, invited: 0 }));
+    if (cycle.repeated || cycle.invited) this.logger.log(`surveys repeated ${cycle.repeated}, auto-invited ${cycle.invited}`);
     if (surveys) this.logger.log(`survey reminders ${surveys}`);
   }
 }

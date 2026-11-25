@@ -14,6 +14,7 @@ export default function YxModerationPage() {
         onRetry: () => void items.refetch(),
         items: items.data ?? [],
         onAct: (item, action, note) => write('POST', `/moderation/${item.kind === 'post' ? 'posts' : 'comments'}/${encodeURIComponent(item.id)}`, { action, ...(note ? { note } : {}) }),
+        onRouteToHr: (item) => write('POST', `/moderation/${item.kind === 'post' ? 'posts' : 'comments'}/${encodeURIComponent(item.id)}/route-to-hr`),
       }}
     />
   );
