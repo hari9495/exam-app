@@ -52,7 +52,8 @@ describe('Console C-5: company wizard and planned maintenance', () => {
    * The next India day at least `minHours` ahead that passes the default rules (8th to month end less 3, not 15 or 20),
    * 01:00 IST, whose 01:00-06:00 never overlaps a window left waiting or scheduled by another run (so the suite reruns).
    */
-  const goodStart = (minHours = 80) => {
+  // The first `first` and last `last` days of the month are blocked (defaults 7 and 3, as the platform settings).
+  const goodStart = (minHours = 80, first = 7, last3 = 3) => {
     for (let t = Date.now() + minHours * 3_600_000; ; t += 86_400_000) {
       const d = new Date(t + 330 * 60_000);
       const day = d.getUTCDate();
@@ -60,7 +61,7 @@ describe('Console C-5: company wizard and planned maintenance', () => {
       const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), day, 1) - 330 * 60_000);
       const end = new Date(start.getTime() + 5 * 3_600_000);
       const free = !busy.some((w) => w.startsAt < end && w.endsAt > start);
-      if (free && day > 7 && day <= last - 3 && ![15, 20].includes(day) && start.getTime() >= Date.now() + minHours * 3_600_000) return start;
+      if (free && day > first && day <= last - last3 && ![7, 15, 20].includes(day) && start.getTime() >= Date.now() + minHours * 3_600_000) return start;
     }
   };
 
@@ -206,7 +207,11 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     // Saved on Platform settings, shown on the maintenance page.
     const rules = (await api('staff', 'get', '/platform/maintenance').expect(200)).body.settings.numbers as { key: string; value: number }[];
     expect(rules.find((n) => n.key === 'maintenance.banner_hours')?.value).toBe(168);
-    const start = goodStart();
+    // The blocked first 7 and last 3 days can push the first legal start past the 168 hours (from 25 Nov it was 8 Dec),
+    // so this test frees them; 7, 15 and 20 stay blocked, and 80-168 hours always holds a day that is none of them.
+    for (const k of ['block_first_days', 'block_last_days']) await api('staff', 'put', `/platform/settings/maintenance.${k}`).send({ value: '0', reason: 'Room for the banner test' }).expect(200);
+    const start = goodStart(80, 0, 0);
+    expect(start.getTime()).toBeLessThan(Date.now() + 160 * 3_600_000);
     const body = (await api('staff', 'post', '/platform/maintenance').send({ title: `Database upgrade ${run}`, startsAt: start.toISOString(), hours: 2 }).expect(201)).body;
     const w = body.windows.find((x: { title: string }) => x.title === `Database upgrade ${run}`);
     windowId = w.id;
@@ -223,6 +228,7 @@ describe('Console C-5: company wizard and planned maintenance', () => {
     expect(a).toEqual({ maintenance: { phase: 'upcoming', title: `Database upgrade ${run}`, startsAt: start.toISOString(), endsAt: new Date(start.getTime() + 2 * 3_600_000).toISOString() }, incident: null });
     // Back to the 24-hour banner: the window is days away, so nothing shows yet.
     await api('staff', 'put', '/platform/settings/maintenance.banner_hours').send({ value: '24', reason: 'Back to the default' }).expect(200);
+    for (const [k, v] of [['block_first_days', '7'], ['block_last_days', '3']]) await api('staff', 'put', `/platform/settings/maintenance.${k}`).send({ value: v, reason: 'Back to the default' }).expect(200);
     expect((await api('adminA', 'get', '/availability').expect(200)).body).toEqual({ maintenance: null, incident: null });
     const audit = await tenantPrisma.forTenant(SUPER, (tx) => tx.auditLog.findMany({ where: { entityId: windowId }, select: { action: true } }));
     expect(audit.map((x) => x.action).sort()).toEqual(['platform.maintenance.approved', 'platform.maintenance.scheduled']);
