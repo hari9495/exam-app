@@ -47,5 +47,13 @@ describe('role template sync', () => {
     expect(upgrade(demo, recruiter.permissions, true).granted).toContain('ats.staffing.view');
     expect(templateOf([...demo, 'company.own.key'])).toBeNull();
   });
-});
 
+  it('answer 2681: every unchanged HR Admin copy gains org.position.manage at the next start; an edited one does not', () => {
+    const hr = ROLE_TEMPLATES.find((t) => t.key === 'hr_admin')!;
+    const before = TEMPLATE_HISTORY.hr_admin.find((v) => !v.includes('org.position.manage'))!;
+    expect(templateOf(before)).toEqual({ template: 'hr_admin', set: [...before].sort() });
+    expect(upgrade(before, hr.permissions, true).granted).toContain('org.position.manage');
+    // A company that changed its HR Admin role keeps its own keys: it is not a copy, so nothing is added.
+    expect(templateOf([...before, 'custom.key'])).toBeNull();
+  });
+});
