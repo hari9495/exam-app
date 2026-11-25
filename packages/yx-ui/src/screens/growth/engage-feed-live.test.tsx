@@ -76,7 +76,7 @@ describe('ENG-02 composer (live)', () => {
     await ue.type(screen.getByRole('textbox', { name: /^Post/ }), 'The supervisor is an idiot');
     expect(screen.getByText('This post will be held for review')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Post' }));
-    expect(onPost).toHaveBeenCalledWith('s-hsr', 'The supervisor is an idiot');
+    expect(onPost).toHaveBeenCalledWith('s-hsr', 'The supervisor is an idiot', undefined);
     expect((await screen.findAllByText(/held for review/)).length).toBeGreaterThan(0);
     expect(onClose).toHaveBeenCalled();
   });

@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { AnnouncementsService } from '../src/engage/announcements.service';
+import { SurveysService } from '../src/engage/surveys.service';
 
 // Batch G2 (M09 Engage), end to end against the real database (forced RLS, the app role): item 12 announcements: the
 // key, the audience by location and department, the email rule, scheduling, reading and acknowledging, reminders by
@@ -18,6 +19,7 @@ describe('Batch G2 Engage', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let announcements: AnnouncementsService;
+  let surveys: SurveysService;
   const sent: { to: string; subject: string; html: string }[] = [];
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
@@ -25,7 +27,7 @@ describe('Batch G2 Engage', () => {
   const server = () => app.getHttpServer();
   let planId: string;
   const org = { A: { id: '', slug: '' }, B: { id: '', slug: '' } };
-  type Who = 'adminA' | 'adminB' | 'hr' | 'emp1' | 'emp2' | 'noJob' | 'empB';
+  type Who = 'adminA' | 'adminB' | 'hr' | 'emp1' | 'emp2' | 'noJob' | 'empB' | 'mgr' | 'r1' | 'r2' | 'r3';
   const users = {} as Record<Who, string>;
   const token = {} as Record<Who, string>;
   const ids: Record<string, string> = {};
@@ -48,6 +50,7 @@ describe('Batch G2 Engage', () => {
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
     announcements = moduleRef.get(AnnouncementsService);
+    surveys = moduleRef.get(SurveysService);
 
     planId = (await prisma.plan.create({ data: { name: `eng-plan-${run}`, candidateLimit: 1, aiCreditLimit: 1, proctoringMinutesLimit: 1 } })).id;
     for (const k of ['A', 'B'] as const) {
@@ -386,6 +389,165 @@ describe('Batch G2 Engage', () => {
     it('another company sees none of it (kudos)', async () => {
       expect((await api('empB', 'get', '/engage/my/kudos').expect(200)).body.kudos).toEqual([]);
       await api('empB', 'post', `/engage/my/posts/${ids.kudos}/like`).expect(404);
+    });
+  });
+
+  describe('items 74 and 75: surveys, results, action plans; polls', () => {
+    const Q = [
+      { id: 'enps', text: 'How likely are you to recommend us?', kind: 'enps', theme: 'eNPS' },
+      { id: 'clarity', text: 'I know what is expected of me.', kind: 'rating', theme: 'Clarity' },
+      { id: 'workload', text: 'My workload was…', kind: 'single', options: ['Light', 'Right', 'Heavy'] },
+      { id: 'change', text: 'What should we change?', kind: 'text' },
+    ];
+    const SURVEY = { name: 'Pulse, this month', type: 'pulse', anonymous: true, minGroup: 3, questions: Q, locationIds: [] as string[], departmentIds: [] as string[], opensOn: today, closesOn: shift(7), remind: true };
+    const ANSWERS = { enps: 9, clarity: 4, workload: 'Right', change: 'More training' };
+
+    it('a manager and three reports join (for team results)', async () => {
+      const passwordHash = await argon2.hash(PASSWORD);
+      for (const who of ['mgr', 'r1', 'r2', 'r3'] as const) {
+        users[who] = (await inA((tx) => tx.user.create({ data: { organizationId: org.A.id, email: `${who}@eng-${run}.test`, name: `${who} ${run}`, passwordHash, role: 'panel' } }))).id;
+        token[who] = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `${who}@eng-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken;
+      }
+      const hireIn = async (who: Who, manager: string | null) =>
+        (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entityA, status: 'confirmed', reason: 'Joined', givenName: who, familyName: run, joinedOn: today, userId: users[who], workEmail: `${who}@eng-${run}.test`, assignment: { locationId: ids.HSRA, departmentId: ids.OPSA, designationId: ids.desigA, employmentTypeId: ids.permA, managerEmployeeId: manager } }).expect(201)).body.id as string;
+      ids.mgrEmp = await hireIn('mgr', null);
+      for (const who of ['r1', 'r2', 'r3'] as const) await hireIn(who, ids.mgrEmp);
+    });
+
+    it('surveys need engage.survey.manage; the builder refuses a named pulse, bad dates and bad questions', async () => {
+      await api('emp1', 'get', '/engage/surveys').expect(403);
+      await api('mgr', 'post', '/engage/surveys').send(SURVEY).expect(403);
+      const o = (await api('hr', 'get', '/engage/surveys/options').expect(200)).body;
+      expect(o.minGroup).toBe(5);
+      expect(o.starters.pulse.length).toBeGreaterThan(0);
+      const bad = (body: object) => api('hr', 'post', '/engage/surveys').send({ ...SURVEY, ...body }).expect(400);
+      await bad({ anonymous: false });
+      await bad({ closesOn: shift(-1) });
+      await bad({ minGroup: 2 });
+      await bad({ questions: [{ id: 'a', text: 'Pick one', kind: 'single', options: ['Only'] }] });
+      await bad({ questions: [{ id: 'a', text: 'Rate it', kind: 'rating', options: ['x', 'y'] }] });
+      await bad({ questions: [Q[0], { ...Q[1], id: 'enps' }] });
+      await bad({ questions: [{ id: 'a', text: 'Hmm?', kind: 'slider' }] });
+      await bad({ locationIds: [ids.HSRB] });
+    });
+
+    it('a draft changes until launch; launch invites the audience today and locks it', async () => {
+      const s = (await api('hr', 'post', '/engage/surveys').send(SURVEY).expect(201)).body;
+      ids.survey = s.id;
+      await api('hr', 'put', `/engage/surveys/${s.id}`).send({ ...SURVEY, name: 'Pulse, this month (v2)' }).expect(200);
+      await api('emp1', 'get', `/engage/my/surveys/${s.id}`).expect(404);
+      expect((await api('hr', 'post', `/engage/surveys/${s.id}/launch`).expect(201)).body.invited).toBe(7);
+      await api('hr', 'post', `/engage/surveys/${s.id}/launch`).expect(409);
+      expect((await api('hr', 'put', `/engage/surveys/${s.id}`).send({ ...SURVEY, anonymous: true, name: 'Changed' }).expect(409)).body.code).toBe('ENGAGE_SURVEY_LAUNCHED');
+      expect(await inA((tx) => tx.userNotification.count({ where: { type: 'engage.survey.open', entityId: s.id } }))).toBe(7);
+      const list = (await api('hr', 'get', '/engage/surveys').expect(200)).body as { id: string; status: string; invited: number }[];
+      expect(list.find((x) => x.id === s.id)).toMatchObject({ status: 'open', invited: 7 });
+    });
+
+    it('answering: each answer is checked; once only; never stored with the person; not for the uninvited', async () => {
+      expect(((await api('emp1', 'get', '/engage/my/surveys').expect(200)).body as { id: string }[]).map((x) => x.id)).toContain(ids.survey);
+      expect((await api('emp1', 'get', `/engage/my/surveys/${ids.survey}`).expect(200)).body).toMatchObject({ anonymous: true, answered: false, closed: false });
+      const send = (who: Who, answers: object) => api(who, 'post', `/engage/my/surveys/${ids.survey}/answers`).send({ answers });
+      await send('emp1', { enps: 11 }).expect(400);
+      await send('emp1', { clarity: 6 }).expect(400);
+      await send('emp1', { workload: 'Maybe' }).expect(400);
+      await send('emp1', { nope: 'x' }).expect(400);
+      await send('emp1', {}).expect(400);
+      await send('emp1', ANSWERS).expect(201);
+      expect((await send('emp1', ANSWERS).expect(409)).body.code).toBe('ENGAGE_SURVEY_ANSWERED');
+      await send('noJob', ANSWERS).expect(404);
+      await send('empB', ANSWERS).expect(404);
+      expect(((await api('emp1', 'get', '/engage/my/surveys').expect(200)).body as { id: string }[]).map((x) => x.id)).not.toContain(ids.survey);
+      const rows = await inA((tx) => tx.engSurveyResponse.findMany({ where: { surveyId: ids.survey } }));
+      expect(rows).toHaveLength(1);
+      expect(rows[0].namedUserId).toBeNull();
+      expect(JSON.stringify(rows[0])).not.toContain(users.emp1);
+      const audits = await inA((tx) => tx.auditLog.findMany({ where: { entityId: ids.survey, action: 'engage.survey.answered' } }));
+      expect(audits.map((a) => a.actorUserId)).toEqual([null]);
+    });
+
+    it('a manager sees the team only from the smallest group up, and only then keeps an action plan; HR sees every plan', async () => {
+      const send = (who: Who) => api(who, 'post', `/engage/my/surveys/${ids.survey}/answers`).send({ answers: ANSWERS }).expect(201);
+      await send('r1');
+      await send('r2');
+      expect((await api('mgr', 'get', `/engage/my/team-surveys/${ids.survey}`).expect(200)).body).toMatchObject({ responded: 2, suppressed: true, enps: null });
+      const plan = { focus: 'Clarity', status: 'draft', items: [{ id: 'a1', action: 'Weekly priorities', dueOn: shift(10), done: false }] };
+      await api('mgr', 'put', `/engage/my/team-surveys/${ids.survey}/plan`).send(plan).expect(400);
+      await send('r3');
+      const team = (await api('mgr', 'get', `/engage/my/team-surveys/${ids.survey}`).expect(200)).body;
+      expect(team).toMatchObject({ responded: 3, suppressed: false, enps: { score: 100, n: 3 } });
+      expect(team.themes).toEqual([{ theme: 'Clarity', favourable: 100 }]);
+      expect(((await api('mgr', 'get', '/engage/my/team-surveys').expect(200)).body as { id: string; shown: boolean }[]).find((x) => x.id === ids.survey)?.shown).toBe(true);
+      await api('emp2', 'get', `/engage/my/team-surveys/${ids.survey}`).expect(404);
+      await api('mgr', 'put', `/engage/my/team-surveys/${ids.survey}/plan`).send({ ...plan, status: 'completed', items: [] }).expect(400);
+      await api('mgr', 'put', `/engage/my/team-surveys/${ids.survey}/plan`).send({ ...plan, status: 'ship' }).expect(400);
+      await api('mgr', 'put', `/engage/my/team-surveys/${ids.survey}/plan`).send(plan).expect(200);
+      await api('mgr', 'put', `/engage/my/team-surveys/${ids.survey}/plan`).send({ ...plan, status: 'shared' }).expect(200);
+      expect((await api('mgr', 'get', `/engage/my/team-surveys/${ids.survey}/plan`).expect(200)).body).toMatchObject({ focus: 'Clarity', status: 'shared' });
+      await api('mgr', 'put', `/engage/my/team-surveys/${ids.survey}/plan`).send({ ...plan, status: 'completed' }).expect(200);
+      expect((await api('mgr', 'put', `/engage/my/team-surveys/${ids.survey}/plan`).send(plan).expect(409)).body.code).toBe('ENGAGE_PLAN_DONE');
+      const hrPlans = (await api('hr', 'get', `/engage/surveys/${ids.survey}/plans`).expect(200)).body;
+      expect(hrPlans.plans).toEqual([expect.objectContaining({ manager: `mgr ${run}`, focus: 'Clarity', status: 'completed' })]);
+      await api('mgr', 'get', `/engage/surveys/${ids.survey}/plans`).expect(403);
+    });
+
+    it('company results: overall, departments below the smallest group hidden and not choosable', async () => {
+      const r = (await api('hr', 'get', `/engage/surveys/${ids.survey}/results`).expect(200)).body;
+      expect(r).toMatchObject({ responded: 4, invited: 7, suppressed: false, enps: { n: 4 } });
+      expect(r.departments).toEqual([expect.objectContaining({ name: 'OPS', size: 4, shown: true })]);
+      expect(r.choices[0].counts).toEqual([{ option: 'Light', count: 0 }, { option: 'Right', count: 4 }, { option: 'Heavy', count: 0 }]);
+      await api('hr', 'get', `/engage/surveys/${ids.survey}/results?departmentId=${ids.ENGA}`).expect(400);
+      expect((await api('hr', 'get', `/engage/surveys/${ids.survey}/results?departmentId=${ids.OPSA}`).expect(200)).body.suppressed).toBe(false);
+    });
+
+    it('closing: closed early stops answers', async () => {
+      await api('hr', 'post', `/engage/surveys/${ids.survey}/close`).expect(201);
+      await api('hr', 'post', `/engage/surveys/${ids.survey}/close`).expect(409);
+      expect((await api('emp2', 'post', `/engage/my/surveys/${ids.survey}/answers`).send({ answers: ANSWERS }).expect(409)).body.code).toBe('ENGAGE_SURVEY_NOT_OPEN');
+      expect((await api('emp2', 'get', `/engage/my/surveys/${ids.survey}`).expect(200)).body.closed).toBe(true);
+    });
+
+    it('a named exit survey keeps who answered; the reminder goes 3 days before closing to non-answerers only, once', async () => {
+      const s = (await api('hr', 'post', '/engage/surveys').send({ ...SURVEY, name: 'Exit', type: 'exit', anonymous: false, closesOn: shift(2), questions: [Q[2]] }).expect(201)).body;
+      await api('hr', 'post', `/engage/surveys/${s.id}/launch`).expect(201);
+      await api('emp1', 'post', `/engage/my/surveys/${s.id}/answers`).send({ answers: { workload: 'Heavy' } }).expect(201);
+      expect((await inA((tx) => tx.engSurveyResponse.findFirstOrThrow({ where: { surveyId: s.id } }))).namedUserId).toBe(users.emp1);
+      await surveys.remindDue(today);
+      const reminded = await inA((tx) => tx.userNotification.findMany({ where: { type: 'engage.survey.reminder', entityId: s.id }, select: { recipientUserId: true } }));
+      expect(reminded).toHaveLength(6);
+      expect(reminded.map((n) => n.recipientUserId)).not.toContain(users.emp1);
+      await surveys.remindDue(today);
+      expect(await inA((tx) => tx.userNotification.count({ where: { type: 'engage.survey.reminder', entityId: s.id } }))).toBe(6);
+    });
+
+    it('polls: 2 to 5 different options and a closing day; one vote each; counts after voting; not after closing', async () => {
+      const hsr = ((await api('emp1', 'get', '/engage/my/spaces').expect(200)).body as { id: string; name: string }[]).find((x) => x.name === 'Hosur plant')!.id;
+      const poll = (body: object) => api('emp1', 'post', '/engage/my/posts').send({ spaceId: hsr, body: 'Breakfast on Friday?', options: ['Idli', 'Pongal'], closesOn: shift(2), ...body });
+      await poll({ options: ['Idli'] }).expect(400);
+      await poll({ options: ['Idli', 'idli'] }).expect(400);
+      await poll({ options: ['a', 'b', 'c', 'd', 'e', 'f'] }).expect(400);
+      await poll({ closesOn: shift(-1) }).expect(400);
+      await poll({ closesOn: undefined }).expect(400);
+      await api('emp1', 'post', '/engage/my/posts').send({ spaceId: hsr, body: 'Plain', closesOn: shift(2) }).expect(400);
+      const p = (await poll({}).expect(201)).body;
+      const seen = ((await api('r1', 'get', '/engage/my/feed').expect(200)).body.posts as { id: string; kind: string; poll: { votes: number[] | null } }[]).find((x) => x.id === p.id)!;
+      expect(seen.kind).toBe('poll');
+      expect(seen.poll.votes).toBeNull();
+      await api('r1', 'post', `/engage/my/posts/${p.id}/vote`).send({ option: 2 }).expect(400);
+      expect((await api('r1', 'post', `/engage/my/posts/${p.id}/vote`).send({ option: 1 }).expect(201)).body).toMatchObject({ myVote: 1, votes: [0, 1] });
+      expect((await api('r1', 'post', `/engage/my/posts/${p.id}/vote`).send({ option: 0 }).expect(409)).body.code).toBe('ENGAGE_ALREADY_VOTED');
+      await api('emp2', 'post', `/engage/my/posts/${p.id}/vote`).send({ option: 0 }).expect(404);
+      await inA((tx) => tx.engPost.update({ where: { id: p.id }, data: { pollClosesOn: new Date(`${shift(-1)}T00:00:00Z`) } }));
+      expect((await api('r2', 'post', `/engage/my/posts/${p.id}/vote`).send({ option: 0 }).expect(409)).body.code).toBe('ENGAGE_POLL_CLOSED');
+      const closed = ((await api('r2', 'get', '/engage/my/feed').expect(200)).body.posts as { id: string; poll: { closed: boolean; votes: number[] } }[]).find((x) => x.id === p.id)!;
+      expect(closed.poll).toMatchObject({ closed: true, votes: [0, 1] });
+    });
+
+    it('another company sees none of it (surveys)', async () => {
+      expect((await api('adminB', 'get', '/engage/surveys').expect(200)).body).toEqual([]);
+      await api('adminB', 'get', `/engage/surveys/${ids.survey}/results`).expect(404);
+      await api('empB', 'get', `/engage/my/surveys/${ids.survey}`).expect(404);
+      expect((await api('empB', 'get', '/engage/my/surveys').expect(200)).body).toEqual([]);
     });
   });
 });

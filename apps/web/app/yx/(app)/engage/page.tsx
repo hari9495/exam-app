@@ -19,6 +19,7 @@ export default function YxEngageFeedPage() {
   const posts = useEngage<LiveFeedPost[]>('/my/announcements');
   const feed = useEngage<{ spaces: LiveSpace[]; posts: LiveUpdate[]; can: { moderate: boolean } }>(`/my/feed${space ? `?spaceId=${id(space)}` : ''}`);
   const directory = useEngage<LiveSpace[]>('/my/spaces');
+  const surveys = useEngage<{ id: string; name: string; closesOn: string; questions: number; anonymous: boolean }[]>('/my/surveys');
   const write = useEngageWrite();
   const state = engageState(posts, feed);
   return (
@@ -41,6 +42,10 @@ export default function YxEngageFeedPage() {
         onComment: (p, body) => write<{ held: boolean }>('POST', `/my/posts/${id(p)}/comments`, { body }),
         onReportComment: (c) => write('POST', `/my/comments/${id(c)}/report`),
         onApproval: feed.data?.can.moderate ? (s, approval) => write('PUT', `/moderation/spaces/${id(s)}`, { approval }) : undefined,
+        // Batch G2 items 74 and 75: a vote on a poll; the first open survey for me.
+        onVote: (p, option) => write('POST', `/my/posts/${id(p)}/vote`, { option }),
+        openSurvey: surveys.data?.[0] ?? null,
+        onTakeSurvey: (s) => router.push(`/yx/engage/surveys/${id(s)}/take`),
       }}
     />
   );

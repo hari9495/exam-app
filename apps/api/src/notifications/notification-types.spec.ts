@@ -103,6 +103,8 @@ describe('notification catalog', () => {
       'engage.announcement.reminder',
       'engage.moderation.outcome',
       'engage.kudos.received',
+      'engage.survey.open',
+      'engage.survey.reminder',
       'helpdesk.policy.to_acknowledge',
       'helpdesk.policy.overdue_report',
       'helpdesk.policy.to_publish',

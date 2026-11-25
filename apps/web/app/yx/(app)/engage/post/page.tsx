@@ -21,7 +21,8 @@ function YxEngagePostInner() {
         blockedWords: feed.data.blockedWords,
         canAnnounce: feed.data.can.announce,
         defaultSpace: space,
-        onPost: (spaceId, body) => write<{ state: 'published' | 'pending' | 'held' }>('POST', '/my/posts', { spaceId, body }),
+        onPost: (spaceId, body, poll) => write<{ state: 'published' | 'pending' | 'held' }>('POST', '/my/posts', { spaceId, body, ...(poll ?? {}) }),
+        today: new Date(),
         onClose: () => router.push('/yx/engage'),
       }}
     />

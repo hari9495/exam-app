@@ -1,6 +1,7 @@
 import type { LiveAnnouncements } from './engage-announce-live';
 import type { LiveFeed, LiveModeration, LivePostComposer, LiveSpace } from './engage-feed-live';
 import type { LiveGiveKudos, LiveRecognitionWall } from './engage-recognition-live';
+import type { LiveActionPlan, LiveQuestion, LiveSurveyBuilder, LiveSurveyResults, LiveSurveysList, LiveTakeSurvey } from './engage-surveys-live';
 
 // Batch G2: sample live data for the Engage screens (stories and tests).
 export const ENG_TODAY = new Date(2026, 9, 1, 10, 0);
@@ -127,3 +128,73 @@ export const liveWall = (over: Partial<LiveRecognitionWall> = {}): LiveRecogniti
   onLike: async () => undefined,
   ...over,
 });
+
+// Batch G2 items 74 and 75: surveys, results, action plans; a poll in the feed.
+const PULSE: LiveQuestion[] = [
+  { id: 'enps', text: 'How likely are you to recommend this company as a place to work?', kind: 'enps', theme: 'eNPS' },
+  { id: 'clarity', text: 'I know what is expected of me at work.', kind: 'rating', theme: 'Clarity' },
+  { id: 'workload', text: 'My workload this month was…', kind: 'single', options: ['Too light', 'About right', 'Too heavy'], theme: 'Workload' },
+  { id: 'change', text: 'What one thing should we change?', kind: 'text', theme: 'Open' },
+];
+
+export const liveSurveysList = (over: Partial<LiveSurveysList> = {}): LiveSurveysList => ({
+  state: 'ready',
+  rows: [
+    { id: 's1', name: 'Monthly pulse, October 2026', type: 'pulse', anonymous: true, audience: 'Everyone', status: 'open', invited: 248, responded: 131, opensOn: '2026-10-01', closesOn: '2026-10-12' },
+    { id: 's2', name: 'Exit survey', type: 'exit', anonymous: false, audience: 'Everyone', status: 'draft', invited: 0, responded: 0, opensOn: '2026-10-15', closesOn: '2026-12-31' },
+  ],
+  onNew: () => undefined,
+  onOpen: () => undefined,
+  ...over,
+});
+
+export const liveSurveyBuilder = (over: Partial<LiveSurveyBuilder> = {}): LiveSurveyBuilder => ({
+  options: { starters: { pulse: PULSE, enps: PULSE.slice(0, 1), engagement: PULSE, onboarding: PULSE.slice(1), exit: PULSE.slice(2) }, minGroup: 5, locations: [{ id: 'loc-hsr', name: 'Hosur plant' }], departments: [{ id: 'dep-ops', name: 'Operations' }] },
+  today: ENG_TODAY,
+  onSave: async () => ({ id: 's3' }),
+  onLaunch: async () => ({ invited: 248 }),
+  onDone: () => undefined,
+  ...over,
+});
+
+export const liveTakeSurvey = (over: Partial<LiveTakeSurvey> = {}): LiveTakeSurvey => ({
+  state: 'ready',
+  survey: { id: 's1', name: 'Monthly pulse, October 2026', anonymous: true, minGroup: 5, closesOn: '2026-10-12', closed: false, answered: false, questions: PULSE },
+  onSend: async () => undefined,
+  ...over,
+});
+
+export const liveSurveyResults = (over: Partial<LiveSurveyResults> = {}): LiveSurveyResults => ({
+  persona: 'hr',
+  state: 'ready',
+  data: {
+    name: 'Monthly pulse, October 2026',
+    minGroup: 5,
+    responded: 131,
+    invited: 248,
+    suppressed: false,
+    enps: { score: 18, promoters: 52, passives: 51, detractors: 28, n: 131 },
+    themes: [{ theme: 'Clarity', favourable: 72 }],
+    choices: [{ question: 'My workload this month was…', counts: [{ option: 'Too light', count: 9 }, { option: 'About right', count: 88 }, { option: 'Too heavy', count: 34 }] }],
+    departments: [{ id: 'dep-ops', name: 'Operations', size: 61, shown: true }, { id: 'dep-q', name: 'Quality', size: 3, shown: false }],
+    heat: [{ label: 'Operations', groupSize: 61, values: [70] }, { label: 'Quality', groupSize: 3, values: [null] }],
+  },
+  department: null,
+  onDepartment: () => undefined,
+  onPlans: () => undefined,
+  ...over,
+});
+
+export const liveActionPlan = (over: Partial<LiveActionPlan> = {}): LiveActionPlan => ({
+  persona: 'mgr',
+  state: 'ready',
+  survey: 'Monthly pulse, October 2026',
+  plan: null,
+  focusOptions: [{ label: 'Clarity', score: '58% favourable' }, { label: 'eNPS', score: 'eNPS 4' }],
+  dueOn: '2026-11-11',
+  onSave: async () => undefined,
+  today: ENG_TODAY,
+  ...over,
+});
+
+export const POLL_UPDATE = { id: 'p1', kind: 'update' as const, spaceId: 's-hsr', space: 'Hosur plant', body: 'Canteen breakfast on Friday?', author: 'Selvi R.', authorLeft: false, mine: false, at: '2026-10-01T03:00:00Z', state: 'published' as const, likes: 0, liked: false, comments: 0, poll: { options: ['Idli and vada', 'Pongal', 'Poori'], closesOn: '2026-10-03', closed: false, myVote: null, votes: null } };

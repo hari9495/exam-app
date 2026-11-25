@@ -517,6 +517,10 @@ describe('buildNav: Engage (batch G2)', () => {
   it('the feed for everyone with a job; Announcements only with engage.announce; nothing on a support session', () => {
     expect(engage({})).toEqual(['Feed', 'Recognition']);
     expect(engage({}, ['engage.announce'])).toEqual(['Feed', 'Recognition', 'Announcements']);
+    // Batch G2 item 74: surveys for the key; a manager's own team results otherwise.
+    expect(engage({}, ['engage.survey.manage'])).toEqual(['Feed', 'Recognition', 'Surveys']);
+    expect(engage({ manager: true })).toEqual(['Feed', 'Recognition', 'Team surveys']);
+    expect(engage({ manager: true }, ['engage.survey.manage'])).toEqual(['Feed', 'Recognition', 'Surveys']);
     expect(engage({ employee: false }, ['engage.announce'])).toEqual(['Announcements']);
     expect(engage({ support: true }, ['engage.announce'])).toEqual([]);
     expect(engage({}, ['engage.moderate'])).toEqual(['Feed', 'Recognition', 'Moderation']);
@@ -528,5 +532,6 @@ describe('buildNav: Engage (batch G2)', () => {
     expect(pageLink(all, '/yx/engage')?.link.label).toBe('Feed');
     expect(pageLink(all, '/yx/engage/post')?.link.label).toBe('Feed');
     expect(pageLink(all, '/yx/engage/recognition')?.link.label).toBe('Recognition');
+    expect(pageLink(nav(['engage.survey.manage'], { employee: true }), '/yx/engage/surveys/x/results')?.link.label).toBe('Surveys');
   });
 });

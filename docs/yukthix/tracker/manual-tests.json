@@ -27990,5 +27990,33 @@
                               "Screens/Engage/ENG-09 · Recognition wall and leaderboard"
                     ],
                     "note": "Positive and negative (engage-g2 e2e: choices and people never yourself, yourself / unknown value / unknown badge / another company / nobody / more than 20 / no message / unknown field (points) 400, posted on the company space and the wall, filter by value, the people thanked told (not the giver), likes, a blocked word holds it untold and in moderation, company B sees nothing; kit engage-recognition-live). New table eng_kudos in rls-isolation. Settings engage.values and engage.badges on 5.7. Menu: Engage › Recognition."
+          },
+          {
+                    "id": "MT-G2-74-75-SURVEYS-POLLS",
+                    "area": "Batch G2 items 74 and 75: surveys, pulse and eNPS with results and action plans; polls in the feed (M09 Q3, Q8; answer 2604; 25 Nov 2026)",
+                    "screen": "Engage › Surveys (list, New survey, results, action plans); a survey to take (from the feed or the bell); Engage › Team surveys (a manager); Engage › Feed › Write a post › Poll",
+                    "url": "http://localhost:3000/yx/engage/surveys",
+                    "account": "HR admin (engage.survey.manage; also the System Admin); a manager with at least 5 direct reports, and those reports; another employee; a manager with fewer than 5 reports.",
+                    "steps": [
+                              "As HR open Engage › Surveys › New survey. Press Save and exit with no name.",
+                              "Name it, choose Pulse, keep the questions, add one of your own; try 'Named' (it is only for onboarding and exit); choose a closing day a week away; Launch.",
+                              "Try to change the launched survey.",
+                              "As an employee open Engage › Feed: the Open survey card; Take survey; press Send answers with nothing answered; answer and send; open it again.",
+                              "As 4 of the manager's reports answer; as the manager open Engage › Team surveys › the survey; then let a 5th report answer and open it again; Create action plan: share it without a focus, then choose a focus, add an action with a due day, Share with team, Mark plan complete.",
+                              "As HR open the survey's results: choose a department with fewer than 5 answers; open Action plans.",
+                              "As HR close the survey; as an employee who has not answered try to answer.",
+                              "As an employee write a poll in your plant space: press Post with one option and no closing day; then 3 options and a closing day; as a colleague vote; vote again.",
+                              "As the manager with fewer than 5 reports open the team results."
+                    ],
+                    "expected": "Step 1: 'Name the survey…'; nothing saved. Step 2: Named cannot be chosen for a pulse; toast 'Survey launched to N people.'; everyone in the audience gets a bell notice. Step 3: refused (the anonymity mode is locked). Step 4: 'Answer at least one question.'; then 'Thank you, your answers are in'; opening again shows it is answered; the card goes away. Step 5: with 4 answers the manager sees 'Team results' hidden (fewer than 5) and no plan button; with 5 the eNPS and themes show; the plan needs a focus ('Choose the area to focus on.'), then toasts 'Plan shared with your team.' and 'Plan marked complete.'. Step 6: small departments are greyed out '(fewer than 5)'; the heat map hides them; the plan shows in Action plans. Step 7: the survey is closed for them. Step 8: 'Add at least 2 options.' and 'Choose the day the poll closes.'; the poll appears; the voter sees the results after voting; a second vote is refused. Step 9: no numbers. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-04 · Surveys list and builder",
+                              "Screens/Engage/ENG-05 · Take survey, pulse and eNPS",
+                              "Screens/Engage/ENG-06 · Survey results",
+                              "Screens/Engage/ENG-07 · Action plans",
+                              "Screens/Engage/ENG-01 · Feed and spaces",
+                              "Screens/Engage/ENG-02 · Post composer"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e: key 403, named pulse / closing before opening / smallest group 2 / bad options / duplicate ids / unknown kind / another company's place 400, draft edits, launch once (409), locked after launch (409), invitations and notices, answer checks (out of range, unknown option or question, nothing) 400, once only 409, uninvited and other company 404, the response stores no person and the audit no actor, team results hidden below the smallest group and plan refused there, plan states, completed 409, HR sees plans, company results with small departments refused, close once, answering a closed survey 409, a named exit survey keeps the person, the 3-day reminder only to non-answerers and only once, polls (1 option, same option twice, 6 options, past day, missing day, day without options 400; one vote 409; non-member 404; closed 409; counts after voting); kit engage-surveys-live 10/10). New key engage.survey.manage (System Admin and HR Admin). New tables eng_surveys, eng_survey_invites, eng_survey_responses, eng_action_plans, eng_poll_votes in rls-isolation. Setting engage.survey.min_group on 5.7. Menu: Engage › Surveys (key) or Team surveys (managers)."
           }
 ]

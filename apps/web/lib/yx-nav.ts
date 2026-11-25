@@ -579,6 +579,9 @@ export function buildNav(n: NavInput): NavArea[] {
       ...when(!support && employee, L('engage-feed', 'Feed', '/yx/engage')),
       // Batch G2 item 73: kudos (badges only).
       ...when(!support && employee, L('engage-recognition', 'Recognition', '/yx/engage/recognition')),
+      // Batch G2 item 74: company surveys (the key), or a manager's own team results.
+      ...when(!support && has('engage.survey.manage'), L('engage-surveys', 'Surveys', '/yx/engage/surveys')),
+      ...when(!support && manager && !has('engage.survey.manage'), L('engage-team-surveys', 'Team surveys', '/yx/engage/team-surveys')),
       ...when(!support && has('engage.announce'), L('engage-announcements', 'Announcements', '/yx/engage/announcements')),
       // Batch G2 item 100: the moderation queue (held, reported and waiting posts).
       ...when(!support && has('engage.moderate'), L('engage-moderation', 'Moderation', '/yx/engage/moderation')),

@@ -12,7 +12,9 @@ import { DataTable } from '../../components/table';
 import { Drawer } from '../../components/drawer';
 import { ConfirmDialog } from '../../components/overlay';
 import { FormField, useTooEarly } from '../../components/field';
-import { TextArea } from '../../components/inputs';
+import { TextArea, TextField } from '../../components/inputs';
+import { RadioGroup } from '../../components/choice';
+import { DatePicker } from '../../components/date';
 import { Select } from '../../components/select';
 import { MenuItem } from '../../components/menu';
 import { useToast } from '../../components/notify';
@@ -52,6 +54,8 @@ export interface LiveUpdate {
   comments: number;
   /** Batch G2 item 73: a kudos names the people thanked, the value and the badge. */
   kudos?: { to: string[]; value: string; badge: string | null } | null;
+  /** Batch G2 item 75: a poll; the counts come once I voted or after it closed. */
+  poll?: { options: string[]; closesOn: string; closed: boolean; myVote: number | null; votes: number[] | null } | null;
 }
 export interface LiveSpace {
   id: string;
@@ -81,6 +85,10 @@ export interface LiveFeed {
   loadComments?: (id: string) => Promise<FeedComment[]>;
   onComment?: (id: string, text: string) => Promise<{ held: boolean }>;
   onReportComment?: (id: string) => Promise<unknown>;
+  onVote?: (id: string, option: number) => Promise<unknown>;
+  /** Batch G2 item 74: an open survey for me (the side card). */
+  openSurvey?: { id: string; name: string; closesOn: string; questions: number; anonymous: boolean } | null;
+  onTakeSurvey?: (id: string) => void;
   /** A moderator switches approval on a location or department space. */
   onApproval?: (spaceId: string, approval: boolean) => Promise<unknown>;
   /** Stories and tests only. */
@@ -122,13 +130,14 @@ export function LiveFeedScreen({ live }: { live: LiveFeed }) {
     src: u,
     post: {
       id: u.id,
-      type: (u.kudos ? 'Kudos' : 'Update') as FeedPost['type'],
+      type: (u.kudos ? 'Kudos' : u.poll ? 'Poll' : 'Update') as FeedPost['type'],
+      ...(u.poll ? { poll: { question: u.body, options: u.poll.options, votes: u.poll.votes ?? u.poll.options.map(() => 0), myVote: u.poll.myVote, closes: new Date(`${u.poll.closesOn}T00:00:00`), closed: u.poll.closed } } : {}),
       ...(u.kudos ? { to: u.kudos.to, value: u.kudos.badge ? `${u.kudos.value} · ${u.kudos.badge}` : u.kudos.value } : {}),
       author: u.author,
       authorNote: u.authorLeft ? 'Former employee' : undefined,
       space: u.space,
       at: new Date(u.at),
-      body: <span className="yx-growth-pre">{u.body}</span>,
+      body: u.poll ? null : <span className="yx-growth-pre">{u.body}</span>,
       reactions: u.likes,
       reacted: u.liked,
       comments: u.comments,
@@ -181,6 +190,7 @@ export function LiveFeedScreen({ live }: { live: LiveFeed }) {
             onLike={live.onLike ? () => live.onLike!(src.id) : undefined}
             onComment={live.loadComments ? () => openThread(src.id, `${src.author} in ${src.space}`) : undefined}
             onReport={!src.mine && src.state === 'published' && live.onReport ? () => report(src.id) : undefined}
+            onVote={live.onVote && src.state === 'published' ? (i) => void live.onVote!(src.id, i).catch((e: unknown) => toast({ tone: 'error', title: errorText(e) })) : undefined}
           />
         ))}
         {rest.map((p) => (
@@ -241,9 +251,20 @@ export function LiveFeedScreen({ live }: { live: LiveFeed }) {
               {spaceFilter}
               {feed}
             </div>
-            {live.spaces && live.spaces.length > 0 && (
+            {((live.spaces && live.spaces.length > 0) || live.openSurvey) && (
               <aside className="yx-growth-stack">
-                <Card title="My spaces">
+                {live.openSurvey && (
+                  <Card title="Open survey">
+                    <Text>{live.openSurvey.name}</Text>
+                    <Text size="sm" tone="secondary">
+                      {live.openSurvey.questions} questions · {live.openSurvey.anonymous ? 'anonymous' : 'named'} · closes {formatDate(new Date(`${live.openSurvey.closesOn}T00:00:00`))}
+                    </Text>
+                    <Button size="sm" onClick={() => live.onTakeSurvey?.(live.openSurvey!.id)}>
+                      Take survey
+                    </Button>
+                  </Card>
+                )}
+                {live.spaces && live.spaces.length > 0 && <Card title="My spaces">
                   <ul className="yx-growth-list">
                     {live.spaces.map((s) => (
                       <li key={s.id} className="yx-growth-list__item">
@@ -260,7 +281,7 @@ export function LiveFeedScreen({ live }: { live: LiveFeed }) {
                       </li>
                     ))}
                   </ul>
-                </Card>
+                </Card>}
               </aside>
             )}
           </div>
@@ -293,7 +314,8 @@ export interface LivePostComposer {
   /** engage.announce: posts on the company space without approval. */
   canAnnounce: boolean;
   defaultSpace?: string | null;
-  onPost: (spaceId: string, body: string) => Promise<{ state: 'published' | 'pending' | 'held' }>;
+  onPost: (spaceId: string, body: string, poll?: { options: string[]; closesOn: string }) => Promise<{ state: 'published' | 'pending' | 'held' }>;
+  today?: Date;
   onClose: () => void;
 }
 
@@ -301,18 +323,29 @@ export function LivePostComposerScreen({ live }: { live: LivePostComposer }) {
   const { toast } = useToast();
   const [space, setSpace] = useState<string | null>(live.defaultSpace ?? live.spaces.find((s) => s.kind !== 'company')?.id ?? live.spaces[0]?.id ?? null);
   const [text, setText] = useState('');
+  const [kind, setKind] = useState<'Update' | 'Poll'>('Update');
+  const [options, setOptions] = useState(['', '']);
+  const [closes, setCloses] = useState<Date | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const sp = live.spaces.find((s) => s.id === space);
-  const check = moderate(text, 0, live.blockedWords);
+  const check = moderate([text, ...(kind === 'Poll' ? options : [])].join(' '), 0, live.blockedWords);
+  const filled = options.map((o) => o.trim()).filter(Boolean);
+  const today = live.today ?? new Date();
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const needsApproval = sp ? (sp.kind === 'company' ? !live.canAnnounce : sp.approval) : false;
-  const early = useTooEarly([...(!space ? [{ fieldId: 'pc-space', message: 'Choose the space.' }] : []), ...(!text.trim() ? [{ fieldId: 'pc-text', message: 'Write the post.' }] : [])]);
+  const early = useTooEarly([
+    ...(!space ? [{ fieldId: 'pc-space', message: 'Choose the space.' }] : []),
+    ...(!text.trim() ? [{ fieldId: 'pc-text', message: kind === 'Poll' ? 'Write the question.' : 'Write the post.' }] : []),
+    ...(kind === 'Poll' && filled.length < 2 ? [{ fieldId: 'pc-opt-0', message: 'Add at least 2 options.' }] : []),
+    ...(kind === 'Poll' && !closes ? [{ fieldId: 'pc-closes', message: 'Choose the day the poll closes.' }] : []),
+  ]);
   const send = async () => {
     if (early.stop()) return;
     setBusy(true);
     setFailed(null);
     try {
-      const out = await live.onPost(space!, text.trim());
+      const out = await live.onPost(space!, text.trim(), kind === 'Poll' ? { options: filled, closesOn: iso(closes!) } : undefined);
       toast({ tone: out.state === 'published' ? 'success' : 'warning', title: out.state === 'published' ? 'Posted.' : out.state === 'pending' ? 'Sent for approval. You’ll be told when it appears.' : 'Your post is held for review. A moderator will check it.' });
       live.onClose();
     } catch (e) {
@@ -340,12 +373,30 @@ export function LivePostComposerScreen({ live }: { live: LivePostComposer }) {
       >
         <div className="yx-growth-stack">
           {failed && <InlineAlert tone="danger" title="Not posted">{failed}</InlineAlert>}
+          <RadioGroup aria-label="Post type" orientation="horizontal" value={kind} onChange={(v) => setKind(v as 'Update' | 'Poll')} options={[{ value: 'Update', label: 'Update' }, { value: 'Poll', label: 'Poll' }]} />
           <FormField id="pc-space" label="Space" required error={early.errorOf('pc-space')} helper={sp ? policy(sp) : undefined}>
             <Select value={space} onChange={setSpace} options={live.spaces.map((s) => ({ value: s.id, label: s.name, description: policy(s) }))} />
           </FormField>
-          <FormField id="pc-text" label="Post" required error={early.errorOf('pc-text')}>
-            <TextArea value={text} onChange={setText} rows={5} maxLength={3000} />
+          <FormField id="pc-text" label={kind === 'Poll' ? 'Question' : 'Post'} required error={early.errorOf('pc-text')}>
+            <TextArea value={text} onChange={setText} rows={kind === 'Poll' ? 2 : 5} maxLength={3000} />
           </FormField>
+          {kind === 'Poll' && (
+            <>
+              {options.map((o, i) => (
+                <FormField key={i} id={`pc-opt-${i}`} label={`Option ${i + 1}`} error={i === 0 ? early.errorOf('pc-opt-0') : null}>
+                  <TextField value={o} onChange={(v) => setOptions((xs) => xs.map((x, j) => (j === i ? v : x)))} maxLength={100} />
+                </FormField>
+              ))}
+              {options.length < 5 && (
+                <Button size="sm" icon={Plus} onClick={() => setOptions((xs) => [...xs, ''])}>
+                  Add option
+                </Button>
+              )}
+              <FormField id="pc-closes" label="Poll closes" required error={early.errorOf('pc-closes')}>
+                <DatePicker value={closes} onChange={setCloses} min={today} max={new Date(today.getFullYear(), today.getMonth(), today.getDate() + 90)} />
+              </FormField>
+            </>
+          )}
           {check.state === 'Held' && (
             <InlineAlert tone="warning" title="This post will be held for review">
               It contains a word on the company’s blocked list ({check.reason?.replace('Blocked word ', '')}). Edit it, or post and a moderator will decide.
@@ -356,6 +407,7 @@ export function LivePostComposerScreen({ live }: { live: LivePostComposer }) {
             <ul>
               <li>{needsApproval ? `A moderator approves it before it appears in ${sp?.name}.` : `It appears in ${sp?.name ?? 'the space'} straight away.`}</li>
               <li>Members of the space see it in their feed.</li>
+              {kind === 'Poll' && <li>Results show to each person after they vote.</li>}
             </ul>
           </div>
         </div>

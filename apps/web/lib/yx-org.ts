@@ -131,6 +131,7 @@ export const YX_KEYS = [
   // Batch G2 item 12: announcements.
   'engage.announce',
   'engage.moderate',
+  'engage.survey.manage',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',

@@ -17,3 +17,4 @@ export const Phone: S = { name: 'Phone', globals: PHONE, render: () => <PostComp
 // Batch G2 item 100: posting to my own spaces.
 export const MySpaces: S = { name: 'Update to one of my spaces', render: () => <PostComposerScreen live={livePostComposer()} /> };
 export const MySpacesApproval: S = { name: 'Company space · sent for approval', render: () => <PostComposerScreen live={livePostComposer({ defaultSpace: 's-co' })} /> };
+export const MySpacesPoll: S = { name: 'Poll to one of my spaces', render: () => <PostComposerScreen live={livePostComposer({ today: new Date(2026, 9, 1) })} /> };

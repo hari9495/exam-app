@@ -8,3 +8,6 @@ export type { AnnouncementDetail, AnnouncementInput, AnnouncementOptions, Announ
 // Item 73: ENG-08 Give kudos and ENG-09 Recognition wall (badges only).
 export { GiveKudosScreen, RecognitionWallScreen } from './engage-recognition';
 export type { KudosInput, KudosOptions, LiveGiveKudos, LiveRecognitionWall, WallKudos } from './engage-recognition-live';
+// Items 74 and 75: ENG-04 to ENG-07 surveys, results and action plans; polls are feed posts.
+export { SurveysListScreen, SurveyBuilderScreen, TakeSurveyScreen, SurveyResultsScreen, ActionPlanScreen } from './engage-surveys';
+export type { LiveActionPlan, LivePlanItem, LiveQuestion, LiveResultsData, LiveSurveyBuilder, LiveSurveyResults, LiveSurveyRow, LiveSurveysList, LiveTakeSurvey, SurveyInput, SurveyType } from './engage-surveys-live';

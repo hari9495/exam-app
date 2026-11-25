@@ -13232,6 +13232,10 @@ model EngPost {
   remindedOn    DateTime? @map("reminded_on") @db.Date
   heldReason    String?   @map("held_reason") @db.VarChar(200)
   reports       Int       @default(0)
+  /// Batch G2 item 75: a poll's options (2 to 5) and the day it closes.
+  pollOptions   Json?     @map("poll_options")
+  pollClosesOn  DateTime? @map("poll_closes_on") @db.Date
+  votes         EngPollVote[]
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
   reads         EngPostRead[]
@@ -13256,6 +13260,94 @@ model EngSpace {
   posts          EngPost[]
 
   @@map("eng_spaces")
+}
+
+/// Batch G2 item 74 (M09 Q3, Q8; answer 2604): a survey; anonymous unless onboarding or exit; locked at launch.
+model EngSurvey {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(150)
+  type           String    @db.VarChar(12)
+  anonymous      Boolean   @default(true)
+  minGroup       Int       @default(5) @map("min_group")
+  questions      Json      @default("[]")
+  locationIds    String[]  @default([]) @map("location_ids") @db.Uuid
+  departmentIds  String[]  @default([]) @map("department_ids") @db.Uuid
+  opensOn        DateTime  @map("opens_on") @db.Date
+  closesOn       DateTime  @map("closes_on") @db.Date
+  remind         Boolean   @default(true)
+  remindedOn     DateTime? @map("reminded_on") @db.Date
+  launchedAt     DateTime? @map("launched_at") @db.Timestamptz(3)
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz(3)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  invites        EngSurveyInvite[]
+  responses      EngSurveyResponse[]
+  plans          EngActionPlan[]
+
+  @@map("eng_surveys")
+}
+
+/// Batch G2 item 74: who was asked, and only whether they answered (for reminders); never joined to a response.
+model EngSurveyInvite {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  surveyId       String    @map("survey_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  answered       Boolean   @default(false)
+  survey         EngSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, userId], map: "eng_survey_invites_key")
+  @@map("eng_survey_invites")
+}
+
+/// Batch G2 item 74: one set of answers; anonymous ones carry slices only (department, location, the manager's team).
+model EngSurveyResponse {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  surveyId       String    @map("survey_id") @db.Uuid
+  answers        Json
+  departmentId   String?   @map("department_id") @db.Uuid
+  locationId     String?   @map("location_id") @db.Uuid
+  teamManagerId  String?   @map("team_manager_id") @db.Uuid
+  namedUserId    String?   @map("named_user_id") @db.Uuid
+  submittedOn    DateTime  @map("submitted_on") @db.Date
+  survey         EngSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@index([surveyId], map: "eng_survey_responses_survey_idx")
+  @@map("eng_survey_responses")
+}
+
+/// Batch G2 item 74 (M09 Q8): a manager's action plan on their team's results.
+model EngActionPlan {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  surveyId       String    @map("survey_id") @db.Uuid
+  managerUserId  String    @map("manager_user_id") @db.Uuid
+  focus          String    @db.VarChar(300)
+  focusScore     String?   @map("focus_score") @db.VarChar(40)
+  status         String    @default("draft") @db.VarChar(10)
+  items          Json      @default("[]")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  survey         EngSurvey @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+
+  @@unique([surveyId, managerUserId], map: "eng_action_plans_key")
+  @@map("eng_action_plans")
+}
+
+/// Batch G2 item 75: one vote per person on a poll.
+model EngPollVote {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  postId         String   @map("post_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  option         Int
+  post           EngPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId], map: "eng_poll_votes_key")
+  @@map("eng_poll_votes")
 }
 
 /// Batch G2 item 73 (answer 2603): a kudos: the giver, the people thanked, the company value and an optional badge.

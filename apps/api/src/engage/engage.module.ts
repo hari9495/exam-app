@@ -4,7 +4,8 @@ import Redis from 'ioredis';
 import { AuthModule } from '../auth/auth.module';
 import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from '../jobs/redis-connection';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { AnnouncementsController, ModerationController, MyEngageController } from './engage.controller';
+import { AnnouncementsController, ModerationController, MyEngageController, SurveysController } from './engage.controller';
+import { SurveysService } from './surveys.service';
 import { FeedService } from './feed.service';
 import { KudosService } from './kudos.service';
 import { AnnouncementsService } from './announcements.service';
@@ -21,6 +22,7 @@ export class EngageJobs implements OnModuleInit, OnModuleDestroy {
   constructor(
     @Inject(REDIS_CONNECTION) private readonly connection: Redis,
     private readonly announcements: AnnouncementsService,
+    private readonly surveys: SurveysService,
   ) {
     this.queue = logBullErrors(new Queue(QUEUE, bullOpts(connection)), QUEUE);
   }
@@ -39,13 +41,16 @@ export class EngageJobs implements OnModuleInit, OnModuleDestroy {
     const sent = await this.announcements.publishDue().catch((e: Error) => (this.logger.warn(`announcements: ${e.message}`), 0));
     const reminded = await this.announcements.remindDue().catch((e: Error) => (this.logger.warn(`announcement reminders: ${e.message}`), 0));
     if (sent || reminded) this.logger.log(`announcements sent ${sent}, reminded ${reminded}`);
+    // Batch G2 item 74: three days before a survey closes, people who have not answered are reminded once.
+    const surveys = await this.surveys.remindDue().catch((e: Error) => (this.logger.warn(`survey reminders: ${e.message}`), 0));
+    if (surveys) this.logger.log(`survey reminders ${surveys}`);
   }
 }
 
 // Batch G2 (M09 Engage): announcements (item 12); the feed, kudos, surveys and celebrations follow.
 @Module({
   imports: [AuthModule, NotificationsModule],
-  controllers: [AnnouncementsController, MyEngageController, ModerationController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, AnnouncementsService, FeedService, KudosService, EngageJobs],
+  controllers: [AnnouncementsController, MyEngageController, ModerationController, SurveysController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, AnnouncementsService, FeedService, KudosService, SurveysService, EngageJobs],
 })
 export class EngageModule {}

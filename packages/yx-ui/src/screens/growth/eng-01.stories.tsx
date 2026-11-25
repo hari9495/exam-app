@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { FeedScreen } from './engage-feed';
 import { CELEBRATIONS, POSTS, SPACES } from './engage-data';
 import { d } from './perf-data';
-import { liveFeed, liveFeedWithPosts } from './engage-live-samples';
+import { POLL_UPDATE, liveFeed, liveFeedWithPosts } from './engage-live-samples';
 
 const meta: Meta = { title: 'Screens/Engage/ENG-01 · Feed and spaces', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -25,3 +25,5 @@ export const AnnouncementsEmpty: S = { name: 'Feed · nothing for me yet', rende
 export const MyFeed: S = { name: 'Feed · my spaces, updates and announcements', render: () => <FeedScreen live={liveFeedWithPosts()} /> };
 export const MyDirectory: S = { name: 'Spaces directory · company spaces', render: () => <FeedScreen live={liveFeedWithPosts({ start: { tab: 'spaces' } })} /> };
 export const ModeratorDirectory: S = { name: 'Spaces directory · moderator turns approval on or off', render: () => <FeedScreen live={liveFeedWithPosts({ start: { tab: 'spaces' }, onApproval: async () => undefined })} /> };
+export const MyFeedPoll: S = { name: 'Feed · a poll to vote on', render: () => <FeedScreen live={liveFeedWithPosts({ updates: [POLL_UPDATE], onVote: async () => undefined })} /> };
+export const MyFeedSurvey: S = { name: 'Feed · an open survey for me', render: () => <FeedScreen live={liveFeedWithPosts({ openSurvey: { id: 's1', name: 'Monthly pulse, October 2026', closesOn: '2026-10-12', questions: 4, anonymous: true }, onTakeSurvey: () => undefined })} /> };

@@ -126,6 +126,8 @@ export const PERMISSIONS = [
   // Batch G2 item 12 (answer 2602): announcements (also in the engage_announcements migration).
   { key: 'engage.announce', description: 'Write and publish company announcements, choose who they go to and see who read and acknowledged them' },
   // Batch G2 item 100: the feed's moderation queue (also in the engage_feed migration).
+  // Batch G2 item 74: surveys (also in the engage_surveys_polls migration).
+  { key: 'engage.survey.manage', description: 'Build, launch and close engagement, pulse, eNPS, onboarding and exit surveys; see company results above the smallest group and every action plan' },
   { key: 'engage.moderate', description: 'Review held and reported posts and comments in the feed: approve, restore, keep hidden, delete or warn the author; switch a space to approval' },
 ];
 
@@ -231,6 +233,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // Batch G2 item 12 (answer 2602): announcements (System Admin and HR by default).
     'engage.announce',
     'engage.moderate',
+    'engage.survey.manage',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',

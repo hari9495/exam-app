@@ -688,7 +688,7 @@ const TYPE_TONE: Record<PostType, BadgeTone> = { Announcement: 'info', Update: '
 /** One feed item: author, space, type, body, poll / kudos / event block, reactions, comments, report (M09 §3). */
 /** `social` false hides Like and Comment (batch G2: an announcement before the feed's reactions are live). onAck may be async: a failure undoes it. */
 /** Batch G2 item 100: onLike (may be async; a failure undoes it) and onComment open the live actions. */
-export function PostCard({ post, now, onAck, onReport, social = true, onLike, onComment }: { post: FeedPost; now: Date; onAck?: () => void | Promise<unknown>; onReport?: () => void; social?: boolean; onLike?: () => void | Promise<unknown>; onComment?: () => void }) {
+export function PostCard({ post, now, onAck, onReport, social = true, onLike, onComment, onVote }: { post: FeedPost; now: Date; onAck?: () => void | Promise<unknown>; onReport?: () => void; social?: boolean; onLike?: () => void | Promise<unknown>; onComment?: () => void; onVote?: (i: number) => void }) {
   const [reacted, setReacted] = useState(!!post.reacted);
   const [acked, setAcked] = useState(!!post.ack?.done);
   const mins = Math.round((now.getTime() - post.at.getTime()) / 60000);
@@ -734,7 +734,7 @@ export function PostCard({ post, now, onAck, onReport, social = true, onLike, on
         </p>
       )}
       <div className="yx-post__body">{post.body}</div>
-      {post.poll && <PollBlock poll={post.poll} />}
+      {post.poll && <PollBlock poll={post.poll} onVote={onVote} />}
       {post.event && (
         <p className="yx-post__event">
           <Icon icon={CalendarDays} /> {post.event.when} · {post.event.where} · {post.event.going} going

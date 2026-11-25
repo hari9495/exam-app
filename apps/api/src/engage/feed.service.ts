@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { settingFor } from '../people/probation';
+import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, buildViewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AnnouncementsService } from './announcements.service';
@@ -106,10 +107,10 @@ export class FeedService {
       const ids = mine.map((s) => s.id).filter((id) => !spaceId || id === spaceId);
       if (spaceId && !ids.length) throw new NotFoundException('No such space.');
       const posts = await tx.engPost.findMany({
-        where: { organizationId: org, kind: { in: ['update', 'kudos'] }, spaceId: { in: ids }, OR: [{ state: 'published' }, { authorUserId: me, state: { in: ['pending', 'held'] } }] },
+        where: { organizationId: org, kind: { in: ['update', 'kudos', 'poll'] }, spaceId: { in: ids }, OR: [{ state: 'published' }, { authorUserId: me, state: { in: ['pending', 'held'] } }] },
         orderBy: { createdAt: 'desc' },
         take: 100,
-        include: { _count: { select: { reactions: true, comments: { where: { state: 'published' } } } }, reactions: { where: { userId: me }, select: { id: true } }, kudos: true },
+        include: { _count: { select: { reactions: true, comments: { where: { state: 'published' } } } }, reactions: { where: { userId: me }, select: { id: true } }, kudos: true, votes: { select: { userId: true, option: true } } },
       });
       const who = await this.names(tx, org, [...posts.map((p) => p.authorUserId), ...posts.flatMap((p) => p.kudos?.receiverIds ?? [])]);
       return {
@@ -119,7 +120,7 @@ export class FeedService {
         spaces: mine.map((s) => ({ id: s.id, name: s.name, kind: s.kind, approval: s.approval })),
         posts: posts.map((p) => ({
           id: p.id,
-          kind: 'update' as const,
+          kind: (p.kind === 'poll' ? 'poll' : 'update') as 'update' | 'poll',
           spaceId: p.spaceId,
           space: mine.find((s) => s.id === p.spaceId)?.name ?? '',
           body: p.body,
@@ -133,6 +134,8 @@ export class FeedService {
           comments: p._count.comments,
           // Batch G2 item 73: a kudos names the people thanked, the value and the badge.
           kudos: p.kudos ? { to: p.kudos.receiverIds.map((u) => who.get(u)?.name ?? 'Former user'), value: p.kudos.value, badge: p.kudos.badge } : null,
+          // Item 75: the counts show to me only once I voted, or after the poll closed.
+          poll: p.pollOptions ? this.pollView(p.pollOptions as string[], p.pollClosesOn!, p.votes, me) : null,
         })),
       };
     });
@@ -147,10 +150,17 @@ export class FeedService {
       const space = mine.find((s) => s.id === dto.spaceId);
       if (!space) throw new NotFoundException('You can post only in your own spaces.');
       const s = await this.settings(tx, c);
-      const word = blockedWord(dto.body, s.words);
+      // Item 75: a poll has 2 to 5 different options and closes today or later (within 90 days).
+      if (dto.options) {
+        const opts = dto.options.map((o) => o.trim());
+        if (opts.some((o) => !o) || new Set(opts.map((o) => o.toLowerCase())).size !== opts.length) throw new BadRequestException('Give 2 to 5 different options.');
+        if (!dto.closesOn) throw new BadRequestException('Choose the day the poll closes.');
+        if (dto.closesOn < todayIst() || dto.closesOn > new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10)) throw new BadRequestException('The poll closes from today and within 90 days.');
+      } else if (dto.closesOn) throw new BadRequestException('A closing day is only for a poll.');
+      const word = blockedWord([dto.body, ...(dto.options ?? [])].join(' '), s.words);
       const direct = space.kind === 'company' ? await this.companyWide(user, 'engage.announce') : !space.approval;
       const state = word ? 'held' : direct ? 'published' : 'pending';
-      const p = await tx.engPost.create({ data: { organizationId: org, kind: 'update', spaceId: space.id, authorUserId: me, body: dto.body, state, heldReason: word ? `Blocked word "${word}"` : state === 'pending' ? 'Needs approval' : null } });
+      const p = await tx.engPost.create({ data: { organizationId: org, kind: dto.options ? 'poll' : 'update', spaceId: space.id, authorUserId: me, body: dto.body, state, heldReason: word ? `Blocked word "${word}"` : state === 'pending' ? 'Needs approval' : null, ...(dto.options ? { pollOptions: dto.options.map((o) => o.trim()), pollClosesOn: new Date(`${dto.closesOn}T00:00:00Z`) } : {}) } });
       await audit(tx, c, 'engage.post.created', 'eng_post', p.id, { spaceId: space.id, state });
       return { id: p.id, state };
     });
@@ -158,11 +168,33 @@ export class FeedService {
 
   /** A post I may read: in one of my spaces and published. */
   private async readable(tx: Tx, org: string, me: string, id: string) {
-    const p = await tx.engPost.findFirst({ where: { organizationId: org, id, kind: { in: ['update', 'kudos'] }, state: 'published' } });
+    const p = await tx.engPost.findFirst({ where: { organizationId: org, id, kind: { in: ['update', 'kudos', 'poll'] }, state: 'published' } });
     if (!p) throw new NotFoundException('No such post.');
     const space = (await this.spaces(tx, org)).find((s) => s.id === p.spaceId);
     if (!space || !(await this.members(tx, org, space, me)).length) throw new NotFoundException('No such post.');
     return p;
+  }
+
+  private pollView(options: string[], closesOn: Date, votes: { userId: string; option: number }[], me: string) {
+    const mine = votes.find((v) => v.userId === me)?.option ?? null;
+    const closed = closesOn.toISOString().slice(0, 10) < todayIst();
+    return { options, closesOn: closesOn.toISOString().slice(0, 10), closed, myVote: mine, votes: mine !== null || closed ? options.map((_, i) => votes.filter((v) => v.option === i).length) : null };
+  }
+
+  /** Item 75: I vote once on an open poll I can read; then I see the counts. */
+  vote(ctx: TenantContext, user: ScopeUser, id: string, option: number) {
+    const me = this.me(user, true);
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const p = await this.readable(tx, c.organizationId, me, id);
+      if (!p.pollOptions) throw new BadRequestException('This post is not a poll.');
+      const options = p.pollOptions as string[];
+      if (option >= options.length) throw new BadRequestException('Choose one of the poll’s options.');
+      if (p.pollClosesOn!.toISOString().slice(0, 10) < todayIst()) throw new ConflictException({ statusCode: 409, code: 'ENGAGE_POLL_CLOSED', message: 'This poll has closed.' });
+      const made = await tx.engPollVote.createMany({ data: [{ organizationId: c.organizationId, postId: p.id, userId: me, option }], skipDuplicates: true });
+      if (!made.count) throw new ConflictException({ statusCode: 409, code: 'ENGAGE_ALREADY_VOTED', message: 'You have voted on this poll already.' });
+      const votes = await tx.engPollVote.findMany({ where: { postId: p.id }, select: { userId: true, option: true } });
+      return this.pollView(options, p.pollClosesOn!, votes, me);
+    });
   }
 
   /** Like or unlike. */
@@ -225,7 +257,7 @@ export class FeedService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const spaces = await this.spaces(tx, org);
-      const posts = await tx.engPost.findMany({ where: { organizationId: org, kind: { in: ['update', 'kudos'] }, state: { in: ['pending', 'held', 'hidden'] } }, orderBy: { createdAt: 'asc' }, take: 200 });
+      const posts = await tx.engPost.findMany({ where: { organizationId: org, kind: { in: ['update', 'kudos', 'poll'] }, state: { in: ['pending', 'held', 'hidden'] } }, orderBy: { createdAt: 'asc' }, take: 200 });
       const comments = await tx.engComment.findMany({ where: { organizationId: org, state: { in: ['held', 'hidden'] } }, orderBy: { createdAt: 'asc' }, take: 200, include: { post: { select: { spaceId: true } } } });
       const authors = [...posts.map((p) => p.authorUserId), ...comments.map((x) => x.authorUserId)];
       const who = await this.names(tx, org, authors);
@@ -243,7 +275,7 @@ export class FeedService {
   async moderate(ctx: TenantContext, target: 'post' | 'comment', id: string, dto: ModerateDto) {
     const out = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
-      const item = target === 'post' ? await tx.engPost.findFirst({ where: { organizationId: org, id, kind: { in: ['update', 'kudos'] }, state: { in: ['pending', 'held', 'hidden', 'published'] } } }) : await tx.engComment.findFirst({ where: { organizationId: org, id, state: { in: ['held', 'hidden', 'published'] } } });
+      const item = target === 'post' ? await tx.engPost.findFirst({ where: { organizationId: org, id, kind: { in: ['update', 'kudos', 'poll'] }, state: { in: ['pending', 'held', 'hidden', 'published'] } } }) : await tx.engComment.findFirst({ where: { organizationId: org, id, state: { in: ['held', 'hidden', 'published'] } } });
       if (!item) throw new NotFoundException('Not found.');
       if (dto.action === 'warn' && !dto.note?.trim()) throw new BadRequestException('Write the note to the author.');
       if (dto.action === 'approve' && item.state !== 'pending') throw new ConflictException({ statusCode: 409, code: 'ENGAGE_NOT_WAITING', message: 'Only a post waiting for approval can be approved.' });

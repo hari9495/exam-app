@@ -10,7 +10,6 @@
   ],
   "notLive": [
     "_kit: LinksFrame",
-    "growth: ActionPlanScreen",
     "growth: AiCourseDraftScreen",
     "growth: AssignmentRulesScreen",
     "growth: ComplianceDashboardScreen",
@@ -25,10 +24,6 @@
     "growth: SkillSuggestionsScreen",
     "growth: SkillsLibraryScreen",
     "growth: SkillsProfileScreen",
-    "growth: SurveyBuilderScreen",
-    "growth: SurveyResultsScreen",
-    "growth: SurveysListScreen",
-    "growth: TakeSurveyScreen",
     "growth: TeamSkillsMatrixScreen",
     "growth: TrainerQrScreen",
     "growth: TrainingFeedbackScreen",

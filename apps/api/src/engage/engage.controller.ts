@@ -7,7 +7,8 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { assertOwnSession } from '../service-desk/desk-access';
 import type { ScopeUser } from '../access/scope';
-import { AnnouncementDto, AudienceDto, CommentDto, FeedQueryDto, KudosDto, KudosQueryDto, ModerateDto, PeopleQueryDto, PostDto, SpaceApprovalDto } from './dto';
+import { ActionPlanDto, AnnouncementDto, AnswersDto, AudienceDto, CommentDto, FeedQueryDto, KudosDto, KudosQueryDto, ModerateDto, PeopleQueryDto, PostDto, ResultsQueryDto, SpaceApprovalDto, SurveyDto, VoteDto } from './dto';
+import { SurveysService } from './surveys.service';
 import { KudosService } from './kudos.service';
 import { FeedService } from './feed.service';
 import { AnnouncementsService } from './announcements.service';
@@ -75,7 +76,53 @@ export class MyEngageController {
     private readonly svc: AnnouncementsService,
     private readonly feedSvc: FeedService,
     private readonly kudosSvc: KudosService,
+    private readonly surveys: SurveysService,
   ) {}
+
+  // Batch G2 item 75: a vote on a poll.
+  @Post('posts/:id/vote')
+  vote(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VoteDto) {
+    assertOwnSession(req);
+    return this.feedSvc.vote(ctx, req.user as ScopeUser, id, dto.option);
+  }
+
+  // Batch G2 item 74: my open surveys, taking one; a manager's own team results and action plan.
+  @Get('surveys')
+  mySurveys(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.surveys.mine(ctx, req.user as ScopeUser);
+  }
+
+  @Get('surveys/:id')
+  toTake(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.surveys.toTake(ctx, req.user as ScopeUser, id);
+  }
+
+  @Post('surveys/:id/answers')
+  answer(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AnswersDto) {
+    assertOwnSession(req);
+    return this.surveys.answer(ctx, req.user as ScopeUser, id, dto);
+  }
+
+  @Get('team-surveys')
+  teamSurveys(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.surveys.teamSurveys(ctx, req.user as ScopeUser);
+  }
+
+  @Get('team-surveys/:id')
+  teamResults(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.surveys.teamResults(ctx, req.user as ScopeUser, id);
+  }
+
+  @Get('team-surveys/:id/plan')
+  myPlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.surveys.myPlan(ctx, req.user as ScopeUser, id);
+  }
+
+  @Put('team-surveys/:id/plan')
+  savePlan(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ActionPlanDto) {
+    assertOwnSession(req);
+    return this.surveys.savePlan(ctx, req.user as ScopeUser, id, dto);
+  }
 
   // Batch G2 item 73: kudos (badges only) and the recognition wall.
   @Get('kudos/options')
@@ -191,5 +238,84 @@ export class ModerationController {
     assertOwnSession(req);
     await this.gate(req);
     return this.feedSvc.setApproval(ctx, id, dto.approval);
+  }
+}
+
+// Batch G2 item 74: engage.survey.manage (held for the whole company) builds, launches and closes surveys and reads
+// company results and every action plan.
+@Controller('engage/surveys')
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+export class SurveysController {
+  constructor(private readonly surveys: SurveysService) {}
+
+  private async gate(req: Request) {
+    if (!(await this.surveys.companyWide(req.user as ScopeUser))) throw new ForbiddenException('Surveys cover the whole company: this needs the key for the whole company.');
+  }
+
+  @Get()
+  @RequirePermissions('engage.survey.manage')
+  async list(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    await this.gate(req);
+    return this.surveys.list(ctx);
+  }
+
+  @Get('options')
+  @RequirePermissions('engage.survey.manage')
+  async options(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    await this.gate(req);
+    return this.surveys.options(ctx);
+  }
+
+  @Post()
+  @RequirePermissions('engage.survey.manage')
+  async create(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SurveyDto) {
+    assertOwnSession(req);
+    await this.gate(req);
+    return this.surveys.create(ctx, dto);
+  }
+
+  @Get(':id')
+  @RequirePermissions('engage.survey.manage')
+  async detail(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.gate(req);
+    return this.surveys.detail(ctx, id);
+  }
+
+  @Put(':id')
+  @RequirePermissions('engage.survey.manage')
+  async update(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SurveyDto) {
+    assertOwnSession(req);
+    await this.gate(req);
+    return this.surveys.update(ctx, id, dto);
+  }
+
+  @Post(':id/launch')
+  @RequirePermissions('engage.survey.manage')
+  async launch(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    await this.gate(req);
+    return this.surveys.launch(ctx, id);
+  }
+
+  @Post(':id/close')
+  @RequirePermissions('engage.survey.manage')
+  async close(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    assertOwnSession(req);
+    await this.gate(req);
+    return this.surveys.close(ctx, id);
+  }
+
+  @Get(':id/results')
+  @RequirePermissions('engage.survey.manage')
+  async results(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Query() q: ResultsQueryDto) {
+    await this.gate(req);
+    return this.surveys.results(ctx, id, q.departmentId);
+  }
+
+  @Get(':id/plans')
+  @RequirePermissions('engage.survey.manage')
+  async plans(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    await this.gate(req);
+    return this.surveys.plans(ctx, id);
   }
 }

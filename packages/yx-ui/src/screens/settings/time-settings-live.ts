@@ -235,6 +235,8 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       // Batch G2 item 73: the company values and badges of kudos.
       { section: 'Engage feed', key: 'engage.values', synonyms: ['company values', 'kudos'] },
       { section: 'Engage feed', key: 'engage.badges', synonyms: ['badges', 'kudos'] },
+      // Batch G2 item 74: survey results are shown only for groups this big or bigger.
+      { section: 'Engage feed', key: 'engage.survey.min_group', synonyms: ['surveys', 'anonymous', 'smallest group'] },
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },

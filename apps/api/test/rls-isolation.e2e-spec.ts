@@ -95,7 +95,9 @@ const LATER_SUPPORT_EXCLUDED = [
   // Batch G2 item 100: spaces, comments, likes, reports and moderation actions.
   'eng_spaces', 'eng_comments', 'eng_reactions', 'eng_reports', 'eng_mod_actions',
   // Batch G2 item 73: kudos.
-  'eng_kudos'];
+  'eng_kudos',
+  // Batch G2 items 74 and 75: surveys, invitations, anonymous responses, action plans, poll votes.
+  'eng_surveys', 'eng_survey_invites', 'eng_survey_responses', 'eng_action_plans', 'eng_poll_votes'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 
