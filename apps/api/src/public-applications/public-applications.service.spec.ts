@@ -421,6 +421,11 @@ describe('PublicApplicationsService', () => {
   });
 
   describe('apply — consent', () => {
+    // The consent IP hash is keyed on JWT_ACCESS_SECRET (security review F10).
+    const savedSecret = process.env.JWT_ACCESS_SECRET;
+    beforeAll(() => { process.env.JWT_ACCESS_SECRET = 'a-test-secret-of-good-length-0123456789'; });
+    afterAll(() => { if (savedSecret === undefined) delete process.env.JWT_ACCESS_SECRET; else process.env.JWT_ACCESS_SECRET = savedSecret; });
+
     function buildWriteTx(existingCandidate: unknown) {
       return withRecomputeMocks({
         candidate: {
