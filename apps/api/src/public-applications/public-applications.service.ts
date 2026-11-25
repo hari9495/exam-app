@@ -492,7 +492,7 @@ export class PublicApplicationsService {
       }
       // What the applicant accepted, at which version, when and (hashed) from where.
       if (consent.record.length) {
-        await tx.candidateConsent.createMany({ data: consent.record.map((n) => ({ organizationId: job.organizationId, candidateId: candidate.id, noticeId: n.id, purpose: n.purpose, version: n.version, source: 'apply', ipHash: ipHash(ip, process.env.JWT_SECRET ?? 'yukthix') })) });
+        await tx.candidateConsent.createMany({ data: consent.record.map((n) => ({ organizationId: job.organizationId, candidateId: candidate.id, noticeId: n.id, purpose: n.purpose, version: n.version, source: 'apply', ipHash: ipHash(ip) })) });
       }
       // New entries land on the job's pipeline's first active-category stage's first status (by
       // position), same rule as PipelineService.addEntry -- falls back to the pipeline's first

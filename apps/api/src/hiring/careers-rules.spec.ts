@@ -1,5 +1,8 @@
 import { checkConsents, ipHash, isSlug, jobSlug, safeColor } from './careers-rules';
 
+// The keyed hashes derive their key from the API secret (security review F10).
+process.env.JWT_ACCESS_SECRET ??= 'unit-test-secret-only-for-these-hashes';
+
 describe('careers rules (AT3)', () => {
   it('job slugs are ASCII, readable and carry a stable id part', () => {
     expect(jobSlug('Senior Accountant', 'Chennai', '7f3k2a99-0000-0000-0000-000000000000')).toBe('senior-accountant-chennai-7f3k2a');
@@ -16,9 +19,9 @@ describe('careers rules (AT3)', () => {
   });
 
   it('the IP is kept only as a salted hash', () => {
-    expect(ipHash('1.2.3.4', 's')).toMatch(/^[0-9a-f]{64}$/);
-    expect(ipHash('1.2.3.4', 's')).not.toBe(ipHash('1.2.3.4', 't'));
-    expect(ipHash(null, 's')).toBeNull();
+    expect(ipHash('1.2.3.4')).toMatch(/^[0-9a-f]{64}$/);
+    expect(ipHash('1.2.3.4')).not.toBe(ipHash('1.2.3.5'));
+    expect(ipHash(null)).toBeNull();
   });
 
   it('the application notice is required at its current version; a stale page is refused', () => {

@@ -1,15 +1,15 @@
-import { createHmac } from 'crypto';
 import { DateTime } from 'luxon';
+import { keyedHash } from '../common/keyed-hash';
 
 // Visitors slice 2 rules (answers 601, 604, 606, 610), kept pure so they are tested without a database.
 
 /** Answer 606: an NDA counts for a year for the same person and company; the induction is every visit. */
 export const NDA_VALID_DAYS = 365;
 
-/** The person an NDA belongs to: a keyed hash of the mobile and the company name (never the number itself). */
+/** The person an NDA belongs to: a keyed hash of the mobile and the company name (never the number itself; F10: the key
+ * comes from the API secret, not the code). */
 export function personKey(org: string, mobile: string, company: string | null): string {
-  const secret = process.env.JWT_SECRET ?? 'yukthix-visitors';
-  return createHmac('sha256', `${secret}:visitor-person`).update(`${org}|${mobile}|${(company ?? '').trim().toLowerCase().replace(/\s+/g, ' ')}`).digest('hex');
+  return keyedHash('visitor-person', `${org}|${mobile}|${(company ?? '').trim().toLowerCase().replace(/\s+/g, ' ')}`);
 }
 
 /** Is the moment inside the location's allowed hours ("09:00" to "18:30", in its time zone)? */
