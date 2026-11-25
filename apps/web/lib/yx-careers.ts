@@ -6,10 +6,19 @@ import type { CareersJob, CareersLayout, PublicJob } from './types';
 // T9-09 careers site and the candidate pages outside the app (founder decisions 8 and 10): the public, unauthenticated
 // API calls (no auth header, never cached) and the mapping from the API's answers to the designed screens' props.
 
-/** GET /public/<path>; null on any failure or a 404 (the page shows its own "not found"). */
-export async function publicGet<T>(path: string): Promise<T | null> {
+/**
+ * Security review F7: the visitor's IP for the API's per-company, per-IP rate limit when a server page calls it. The
+ * rightmost X-Forwarded-For entry is the one our own proxy added (earlier entries are whatever the visitor sent).
+ */
+export function visitorIp(h: { get(name: string): string | null }): string | null {
+  const chain = (h.get('x-forwarded-for') ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  return chain[chain.length - 1] ?? h.get('x-real-ip') ?? null;
+}
+
+/** GET /public/<path>; null on any failure or a 404 (the page shows its own "not found"). A server page passes the visitor's IP. */
+export async function publicGet<T>(path: string, forwardedFor?: string | null): Promise<T | null> {
   try {
-    const res = await fetch(`${API_BASE}/public${path}`, { cache: 'no-store' });
+    const res = await fetch(`${API_BASE}/public${path}`, { cache: 'no-store', ...(forwardedFor ? { headers: { 'X-Forwarded-For': forwardedFor } } : {}) });
     return res.ok ? ((await res.json()) as T) : null;
   } catch {
     return null;
