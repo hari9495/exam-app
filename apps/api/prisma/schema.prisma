@@ -15771,3 +15771,22 @@ model CompanyDocument {
   @@index([organizationId, folderId], map: "company_documents_folder_idx")
   @@map("company_documents")
 }
+
+/// G4 (answers 2690-2691): a report-library report emailed on a schedule; each recipient's copy is built with their own rights.
+model ReportSchedule {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  reportId       String    @map("report_id") @db.VarChar(60)
+  /// daily · weekdays · weekly · monthly
+  frequency      String    @db.VarChar(10)
+  recipients     String[]  @db.Uuid
+  nextRunAt      DateTime  @map("next_run_at") @db.Timestamptz(3)
+  lastRunAt      DateTime? @map("last_run_at") @db.Timestamptz(3)
+  lastResult     String?   @map("last_result") @db.VarChar(300)
+  active         Boolean   @default(true)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, createdBy], map: "report_schedules_org_idx")
+  @@map("report_schedules")
+}

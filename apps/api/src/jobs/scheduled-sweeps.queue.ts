@@ -97,4 +97,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'speakup-ic-terms', cron: '30 1 * * *' },
   // G4 (answer 2696): company documents expiring within the company's days, one note each (07:15 IST).
   { id: 'company-docs-expiry', cron: '45 1 * * *' },
+  // G4 (2690): scheduled report emails, every 15 minutes (each schedule runs at 07:00 IST on its days).
+  { id: 'report-schedules', cron: '*/15 * * * *' },
 ];

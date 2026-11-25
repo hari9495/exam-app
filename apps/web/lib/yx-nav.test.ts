@@ -93,8 +93,9 @@ describe('buildNav: scorecard templates (answer 345)', () => {
 describe('buildNav: G4 report library and company documents', () => {
   it('Report library for a report key or a manager, never a plain employee or a support session; Company documents for everyone with a job or the key', () => {
     expect(areas(nav([], { employee: true }))).not.toContain('analytics');
-    expect(labels(nav(['expense.report.view']), 'analytics')).toEqual(['Report library']);
+    expect(labels(nav(['expense.report.view']), 'analytics')).toEqual(['Report library', 'Schedules and exports']);
     expect(labels(nav([], { employee: true, manager: true }), 'analytics')).toEqual(['Report library']);
+    expect(labels(nav(['exports.log.view']), 'analytics')).toEqual(['Schedules and exports']);
     expect(areas(nav(['expense.report.view'], { support: true }))).not.toContain('analytics');
     expect(labels(nav(['company.documents.manage']), 'people')).toContain('Company documents');
     expect(labels(nav([], { employee: true, support: true }), 'people')).not.toContain('Company documents');

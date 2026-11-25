@@ -103,7 +103,7 @@ const IMPLICIT: Record<string, string[]> = {
   PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap'], // batch F item 30: the manager's own team, checked in the service
   // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
   // G4: the report library (entries follow their area's keys) and company documents (the service decides per folder).
-  LibraryController: ['reports', 'favourite', 'documents', 'file'],
+  LibraryController: ['reports', 'favourite', 'documents', 'file', 'schedulesList', 'schedule', 'endSchedule'],
   LearningController: ['me', 'mySkills', 'teamSkills', 'personSkills', 'assessSkill', 'decideSkill', 'feedbackDue', 'react', 'checks', 'check', 'roles', 'external', 'sessionList', 'upcoming', 'sessionPage', 'nominate', 'checkinCode', 'closeCheckin', 'mark', 'checkIn', 'decline', 'enrol', 'player', 'markDone', 'itemFile', 'certificatePdf', 'team', 'person'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   // counts: the record's Performance tab, counts only; the service checks who may ask.

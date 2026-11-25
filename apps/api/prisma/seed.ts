@@ -263,8 +263,9 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // Learning: courses and assignment rules; training compliance.
     'learning.manage',
     'learning.report.view',
-    // G4: company documents.
+    // G4: company documents; the export log (2692).
     'company.documents.manage',
+    'exports.log.view',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned', 'payroll.equity.own'],
   // Founder answer 511: a plain employee holds no interviewer key; being on an interview panel opens interviews.
@@ -279,7 +280,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
   // so an org admin can't accidentally hand it write access.
   // Employee records are not part of the permanent base role: P02 YX-SEC-15 time-boxes auditor access, so it
   // comes from an expiring role grant (the Auditor template in Roles & access).
-  auditor: ['org:view', 'results:view', 'audit:view', 'audit.view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view'],
+  auditor: ['org:view', 'results:view', 'audit:view', 'audit.view', 'ai_jobs:view', 'candidate:view', 'question_bank:view', 'interview:view_assigned', 'org.structure.view', 'exports.log.view'],
 };
 
 async function main() {

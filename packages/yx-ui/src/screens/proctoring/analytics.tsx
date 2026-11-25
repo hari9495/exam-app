@@ -23,6 +23,7 @@ import { HiringDashboardScreen, LiveSchedulesScreen, type LiveHiringDashboard, t
 import { deliveryMode, inheritedSensitivity, suppress, type Sensitivity } from './proctoring-logic';
 import { EXPORTS, METRICS, MONTHS, REPORTS, SCHEDULES, d, type MetricRow, type ReportRow, type ScheduleRow } from './proctoring-data';
 import { LiveReportLibraryScreen, type LiveReportLibrary } from './report-library-live';
+import { LiveReportSchedulesScreen, type LiveReportSchedules } from './report-schedules-live';
 
 const DEPTS = ['Engineering', 'Operations', 'Finance', 'People', 'Sales', 'Quality'];
 const SENS_TONE: Record<Sensitivity, 'neutral' | 'warning' | 'danger'> = { Internal: 'neutral', Confidential: 'warning', Special: 'danger' };
@@ -644,7 +645,8 @@ export function MetricCatalogueScreen({ selected = 'workforce.attrition_rate', b
 /* ================================================================== */
 
 /** ANL-08. With `live`, the company's schedules (today the weekly hiring digest, answer 2428). */
-export function SchedulesScreen(props: { tab?: 'schedules' | 'exports'; dialog?: boolean; persona?: 'HR' | 'Auditor' } | { live: LiveSchedules }) {
+export function SchedulesScreen(props: { tab?: 'schedules' | 'exports'; dialog?: boolean; persona?: 'HR' | 'Auditor' } | { live: LiveSchedules } | { library: LiveReportSchedules }) {
+  if ('library' in props) return <LiveReportSchedulesScreen live={props.library} />;
   return 'live' in props ? <LiveSchedulesScreen live={props.live} /> : <SampleSchedules {...props} />;
 }
 

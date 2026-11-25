@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { CompanyDocsService } from '../src/library/company-docs.service';
+import { ReportSchedulesService } from '../src/library/report-schedules.service';
 
 // G4, end to end against the real database (forced RLS, the app role): the report library (each entry by its area's
 // key or being a manager; personal favourites) and company documents (folders for everyone or the managers, upload with
@@ -19,7 +20,7 @@ describe('G4 reports library and company documents', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let docs: CompanyDocsService;
-  const sent: { to: string; subject: string; html: string }[] = [];
+  const sent: { to: string; subject: string; html: string; attachments?: { filename: string; content: Buffer }[] }[] = [];
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -39,7 +40,7 @@ describe('G4 reports library and company documents', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(EmailService)
-      .useValue({ send: jest.fn(async (m: { to: string; subject: string; html: string }) => (sent.push(m), { success: true })) })
+      .useValue({ send: jest.fn(async (m: { to: string; subject: string; html: string; attachments?: { filename: string; content: Buffer }[] }) => (sent.push(m), { success: true })) })
       .compile();
     app = moduleRef.createNestApplication();
     app.use(cookieParser());
@@ -190,5 +191,59 @@ describe('G4 reports library and company documents', () => {
     await api('hr', 'post', `/library/documents/${ids.doc}/remove`).expect(200);
     await api('hr', 'post', `/library/documents/folders/${ids.lic}/remove`).expect(200);
     expect((await api('emp1', 'get', '/library/documents').expect(200)).body.folders).toEqual([]);
+  });
+  it('answers 2690 and 2691: schedules for reports the person opens, to people who open them; each copy built for its recipient; confidential ones are a link', async () => {
+    const svc = app.get(ReportSchedulesService);
+    await api('emp1', 'post', '/library/schedules').send({ reportId: 'learning.compliance', frequency: 'weekly', recipientIds: [users.emp1] }).expect(404);
+    await api('adminA', 'post', '/library/schedules').send({ reportId: 'learning.compliance', frequency: 'hourly', recipientIds: [users.adminA] }).expect(400);
+    await api('adminA', 'post', '/library/schedules').send({ reportId: 'learning.compliance', frequency: 'weekly', recipientIds: [] }).expect(400);
+    await api('adminA', 'post', '/library/schedules').send({ reportId: 'learning.compliance', frequency: 'weekly', recipientIds: [users.emp1] }).expect(400);
+    await api('adminA', 'post', '/library/schedules').send({ reportId: 'learning.team', frequency: 'weekly', recipientIds: [users.adminA] }).expect(404);
+    const made = (await api('adminA', 'post', '/library/schedules').send({ reportId: 'learning.compliance', frequency: 'weekly', recipientIds: [users.adminA, users.hr] }).expect(201)).body;
+    expect(new Date(made.nextRunAt).getUTCDay()).toBe(1);
+    const mine = (await api('adminA', 'get', '/library/schedules').expect(200)).body;
+    expect(mine.schedules).toEqual([expect.objectContaining({ reportId: 'learning.compliance', frequency: 'weekly', delivery: 'Email · CSV attached' })]);
+    expect((await api('hr', 'get', '/library/schedules').expect(200)).body.schedules).toEqual([]);
+    // Due: each recipient gets their own CSV; a second run at the same moment sends nothing more.
+    const at = new Date(Date.parse(made.nextRunAt) + 60_000);
+    sent.length = 0;
+    expect(await svc.sendDue(at)).toBe(2);
+    expect(sent.map((m) => m.attachments?.[0]?.filename)).toEqual(['compliance-training.csv', 'compliance-training.csv']);
+    expect(await svc.sendDue(at)).toBe(0);
+    // HR loses training reports: next time only the admin gets it.
+    await inA(async (tx) => {
+      const u = await tx.user.findUniqueOrThrow({ where: { id: users.hr } });
+      const pp = await tx.permissionProfile.findUniqueOrThrow({ where: { id: u.permissionProfileId! } });
+      await tx.permissionProfile.update({ where: { id: pp.id }, data: { permissionsJson: JSON.stringify((JSON.parse(pp.permissionsJson) as string[]).filter((k) => k !== 'learning.report.view')) } });
+      await tx.reportSchedule.update({ where: { id: made.id }, data: { nextRunAt: new Date(Date.now() - 60_000) } });
+    });
+    sent.length = 0;
+    expect(await svc.sendDue(new Date())).toBe(1);
+    expect((await api('adminA', 'get', '/library/schedules').expect(200)).body.schedules[0].lastResult).toBe('Sent to 1 of 2');
+    // A confidential report (performance) is a link, never an attachment.
+    const perf = (await api('hr', 'post', '/library/schedules').send({ reportId: 'perf.completion', frequency: 'daily', recipientIds: [users.hr] }).expect(201)).body;
+    sent.length = 0;
+    expect(await svc.sendDue(new Date(Date.parse(perf.nextRunAt) + 60_000))).toBe(1);
+    expect(sent[0]!.attachments).toBeUndefined();
+    expect(sent[0]!.html).toMatch(/Sign in to YukthiX to open it/);
+    await api('hr', 'post', `/library/schedules/${made.id}/end`).expect(404);
+    await api('adminA', 'post', `/library/schedules/${made.id}/end`).expect(200);
+    expect((await api('adminA', 'get', '/library/schedules').expect(200)).body.schedules).toEqual([]);
+    expect(await inA((tx) => tx.auditLog.count({ where: { action: 'library.report.scheduled' } }))).toBe(2);
+  });
+
+  it('answer 2692: the export log lists the company exports for its key holders only, and downloads as CSV', async () => {
+    await api('adminA', 'get', '/learning/compliance/export').expect(200);
+    await api('emp1', 'get', '/library/exports').expect(403);
+    await api('hr', 'get', '/library/exports').expect(403);
+    const log = (await api('adminA', 'get', '/library/exports').expect(200)).body;
+    expect(log[0]).toMatchObject({ what: 'Training compliance', sensitivity: 'Internal' });
+    expect(log.every((r: { what: string }) => r.what !== 'Payslip')).toBe(true);
+    await api('adminA', 'get', '/library/exports?from=26-11-2026').expect(400);
+    const csv = (await api('adminA', 'get', '/library/exports/csv').expect(200)).text;
+    expect(csv.split('\r\n')[0]).toBe('When,Who,What,Detail,Rows,Sensitivity');
+    expect(csv).toContain('Training compliance');
+    expect((await api('adminA', 'get', '/library/exports').expect(200)).body[0].what).toBe('Export log');
+    expect((await api('adminB', 'get', '/library/exports').expect(200)).body).toEqual([]);
   });
 });

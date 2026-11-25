@@ -19,6 +19,6 @@ import { LearningSkillsService } from './learning-skills.service';
   imports: [AuthModule, CryptoModule, DocumentsModule, NotificationsModule, WorkflowModule],
   controllers: [LearningController],
   providers: [LearningService, LearningAssignService, LearningReportsService, LearningSessionsService, LearningFeedbackService, LearningSkillsService],
-  exports: [LearningAssignService],
+  exports: [LearningAssignService, LearningReportsService],
 })
 export class LearningModule {}

@@ -2,7 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
-import { IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsISO8601, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -12,9 +12,20 @@ import { ownSession } from '../org-structure/org-structure.controller';
 import type { ScopeUser } from '../access/scope';
 import { LibraryService } from './library.service';
 import { CompanyDocsService } from './company-docs.service';
+import { ExportLogService, FREQUENCIES, ReportSchedulesService, type Frequency } from './report-schedules.service';
 
 export class FavouriteDto {
   @IsBoolean() on!: boolean;
+}
+
+export class ScheduleDto {
+  @IsString() @MaxLength(60) reportId!: string;
+  @IsIn(FREQUENCIES as unknown as string[]) frequency!: Frequency;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(50) @IsUUID('all', { each: true }) recipientIds!: string[];
+}
+
+export class FromQueryDto {
+  @IsOptional() @IsISO8601({ strict: true }) @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string;
 }
 
 export class FolderDto {
@@ -46,6 +57,8 @@ export class LibraryController {
   constructor(
     private readonly library: LibraryService,
     private readonly docs: CompanyDocsService,
+    private readonly schedules: ReportSchedulesService,
+    private readonly exportLog: ExportLogService,
   ) {}
 
   private user(req: Request) {
@@ -62,6 +75,42 @@ export class LibraryController {
   favourite(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id') id: string, @Body() dto: FavouriteDto) {
     ownSession(req);
     return this.library.favourite(ctx, this.user(req), String(id).slice(0, 60), dto.on);
+  }
+
+  // ---- answers 2690-2691: scheduled report emails (any report the person opens; recipients must open it too)
+
+  @Get('schedules')
+  schedulesList(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.schedules.list(ctx, this.user(req));
+  }
+
+  @Post('schedules')
+  schedule(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ScheduleDto) {
+    ownSession(req);
+    return this.schedules.create(ctx, this.user(req), dto);
+  }
+
+  @Post('schedules/:id/end')
+  @HttpCode(200)
+  endSchedule(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    ownSession(req);
+    return this.schedules.end(ctx, id);
+  }
+
+  // ---- answer 2692: the export log
+
+  @Get('exports')
+  @RequirePermissions('exports.log.view')
+  exports(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: FromQueryDto) {
+    return this.exportLog.list(ctx, this.user(req), q.from);
+  }
+
+  @Get('exports/csv')
+  @RequirePermissions('exports.log.view')
+  async exportsCsv(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Query() q: FromQueryDto) {
+    const csv = await this.exportLog.csv(ctx, this.user(req), q.from);
+    download(res, 'text/csv; charset=utf-8', `export-log-${new Date().toISOString().slice(0, 10)}.csv`);
+    return csv;
   }
 
   @Get('documents')

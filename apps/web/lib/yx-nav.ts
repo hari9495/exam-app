@@ -699,7 +699,11 @@ export function buildNav(n: NavInput): NavArea[] {
   const analytics: NavArea = {
     id: 'analytics',
     title: 'Analytics',
-    sections: sec(undefined, when(!support && (manager || REPORT_KEYS.some(has)), L('report-library', 'Report library', '/yx/analytics/reports'))),
+    sections: sec(undefined, [
+      ...when(!support && (manager || REPORT_KEYS.some(has)), L('report-library', 'Report library', '/yx/analytics/reports')),
+      // Answers 2690-2692: scheduled report emails (report keys) and the export log (exports.log.view).
+      ...when(!support && (REPORT_KEYS.some(has) || has('exports.log.view')), L('report-schedules', 'Schedules and exports', '/yx/analytics/schedules')),
+    ]),
   };
   const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, learning, helpdesk, engage, visitors, analytics, settings];
   // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.

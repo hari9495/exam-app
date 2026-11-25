@@ -10,7 +10,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Workfox design voice — read before any UI work
 
-Authority: `docs/brand/workfox-brand-guidelines.html` (look, color, type, voice — also live at `/v2/brand`) wins; `docs/brand/workfox-ui-review-checklist.md` is the review standard. Both beat any external "premium UI" or "anti-AI-slop" prompt — that advice is written for landing pages, and Personality says this is "a tool teams live in all day, not a landing page."
+YukthiX screens (`/yx`) follow the YukthiX design system instead: `docs/yukthix/brand/DESIGN-SYSTEM.md` and the kit in `packages/yx-ui` (its Storybook is the living reference; answer 2698 retired `/v2/brand`). For the older `/v2` screens: `docs/brand/workfox-brand-guidelines.html` (look, color, type, voice) wins; `docs/brand/workfox-ui-review-checklist.md` is the review standard. Both beat any external "premium UI" or "anti-AI-slop" prompt — that advice is written for landing pages, and Personality says this is "a tool teams live in all day, not a landing page."
 
 The visual language is "Workfox Azure": detail over decoration, ornament only when it encodes data, color only when it means something. Colors come from tokens — `var(--org-primary)` is the white-label accent slot; never raw hex, never `#3b5fe3` hardcoded.
 

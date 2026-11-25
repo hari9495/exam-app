@@ -137,3 +137,6 @@ export { ReportLibraryScreen } from '../proctoring/analytics';
 export type { LiveReportLibrary, LiveReportRow } from '../proctoring/report-library-live';
 export { CompanyDocumentsScreen } from '../people/company-docs';
 export type { CompanyDocRow, CompanyDocsData, LiveCompanyDocs, UploadInput } from '../people/company-docs';
+// G4 (2690-2692): scheduled report emails and the export log (ANL-08).
+export { SchedulesScreen } from '../proctoring/analytics';
+export type { LiveExportRow, LiveReportSchedules, LiveScheduleRow, ScheduleFrequency } from '../proctoring/report-schedules-live';
