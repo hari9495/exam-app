@@ -580,4 +580,12 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2695: who sees company documents. Suggested answer: a new key company.documents.manage (System Admin and HR Admin) creates folders and uploads; every employee sees folders marked "Everyone"; a folder marked "Document managers only" is seen only by key holders.
 - 2696: expiring documents. Suggested answer: the uploader and the document managers are told once, 30 days before expiry (a company setting); an expired document stays listed, marked Expired, until someone removes or replaces it.
 - 2697: policies stay in Policies (with acknowledgement); company documents are reference files people read and download, with no acknowledgement. Suggested answer: yes.
+- G4 built (25 Nov 2026): Analytics › Report library (ANL-06 live, favourites) and People › Company documents (PPL-51, drawn then live, with expiry reminders) per 2695-2697 as suggested; the budgets export (2676). Scheduled emails, the export log and team reports wait on 2690-2693.
+- Hiring settings plan (2631, 25 Nov 2026): the four older /v2 pages get YukthiX homes, then they are deleted (with redirects):
+  - /v2/settings/pipelines → Settings › Hiring (6.1): pipelines become editable there (add a pipeline; stages: name, kind, order, remove; the statuses inside a stage; the stage rules that must be met before a candidate enters it: feedback, a passed test, a checklist), in a sheet drawn in the kit first, next to the stage targets.
+  - /v2/settings/easy-apply → Hiring › Job boards: an Easy Apply part for LinkedIn and Indeed (the address to give the board, set or change the shared secret, turn off).
+  - /v2/campaigns → Hiring › Talent pools (HIR-20 campaigns, where the older drips were already moved, answers 2433, 2512, 2513): a redirect only; see 2699.
+  - /v2/brand: see 2698.
+- 2698: /v2/brand is the older product's (Workfox) brand guidelines page, not a company setting. YukthiX's brand is its design system (the Storybook foundations and brand/DESIGN-SYSTEM.md). Suggested answer: no YukthiX page; delete /v2/brand and point the web app's notes at the YukthiX design system.
+- 2699: the older campaigns could enrol a candidate automatically when they reached a pipeline stage; HIR-20 campaigns send only to a talent pool whose members gave talent-pool consent. Suggested answer: keep HIR-20 as it is (consent first); stage-triggered enrolment later, asking for talent-pool consent at that stage.
 - Founder answers (25 Nov 2026, "ok for all"): 2670-2678 approved exactly as suggested above.
