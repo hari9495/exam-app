@@ -51,7 +51,8 @@ export default function YxPipPage() {
       persona={p.role === 'employee' ? 'emp' : p.role === 'manager' ? 'mgr' : 'hr'}
       pip={pip}
       live={{
-        today: new Date(),
+        // The company's day from the API, not the browser's clock (a browser in another time zone is a day behind).
+        today: p.today ? day(p.today) : new Date(),
         can: { decide: Boolean(p.approval?.canDecide), acknowledge: p.can.acknowledge, checkin: p.can.checkin, employeeNote: p.can.employeeNote, outcome: p.can.outcome, letter: p.can.letter, startExit: p.can.startExit, extend: p.can.extend, extendAgain: Boolean(p.can.extendAgain) },
         extendDays: p.extendDays ?? 30,
         extendAgainDays: p.extendAgainDays ?? 30,
