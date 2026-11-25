@@ -792,16 +792,13 @@ describe('AuthService', () => {
       );
     }
 
-    it('lets a super_admin impersonate a recruiter in another org', async () => {
-      // The target has its own profile assignment ('target-profile'), but an impersonation
-      // token must never carry it -- see permissionProfileId: null below. The guard (T4)
-      // bypasses field/permission restriction entirely via actingSuperAdmin/impersonation
-      // regardless, so the impersonated session is never resolved from a real profile.
+    it('lets an org_admin impersonate a recruiter in their own org, with the admin session and no profile (positive)', async () => {
+      // The target has its own profile assignment ('target-profile'), but an impersonation token never carries it.
       mockTarget(
-        { id: 'target1', role: 'recruiter', organizationId: 'orgB', status: 'active', email: 't@x.com', permissionProfileId: 'target-profile' },
+        { id: 'target1', role: 'recruiter', organizationId: 'orgA', status: 'active', email: 't@x.com', permissionProfileId: 'target-profile' },
         { id: 'admin1', email: 'admin@x.com' },
       );
-      const token = await service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin', sessionId: SESSION_ID }, 'target1');
+      const token = await service.impersonate({ userId: 'admin1', organizationId: 'orgA', role: 'org_admin', sessionId: SESSION_ID }, 'target1');
       expect(token).toBe('signed.jwt.token');
       expect(jwt.sign).toHaveBeenCalledWith(
         // sid is the impersonator's session: ending it ends the impersonation.
@@ -811,9 +808,11 @@ describe('AuthService', () => {
       expect(audit.record).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ action: 'user.impersonate_start' }));
     });
 
-    it('forbids a super_admin impersonating another super_admin', async () => {
-      mockTarget({ id: 'target1', role: 'super_admin', organizationId: null, status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
+    it('security review F1: YukthiX staff never impersonate; they use the approved support session (negative)', async () => {
+      mockTarget({ id: 'target1', role: 'org_admin', organizationId: 'orgB', status: 'active', email: 't@x.com' }, { id: 'admin1', email: 'admin@x.com' });
       await expect(service.impersonate({ userId: 'admin1', organizationId: null, role: 'super_admin', sessionId: SESSION_ID }, 'target1')).rejects.toThrow(ForbiddenException);
+      expect(jwt.sign).not.toHaveBeenCalled();
+      expect(audit.record).not.toHaveBeenCalled();
     });
 
     it('forbids an org_admin impersonating a user in another org', async () => {

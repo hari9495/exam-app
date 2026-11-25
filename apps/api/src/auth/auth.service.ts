@@ -1607,8 +1607,10 @@ export class AuthService {
       throw new BadRequestException('You cannot impersonate yourself');
     }
 
-    const isSuper = caller.role === 'super_admin';
-    const lookupContext = { organizationId: isSuper ? null : caller.organizationId, isSuperAdmin: isSuper };
+    // Security review F1 (25 Nov 2026): YukthiX staff reach a company only through the approved switch-into support session
+    // (P02 Q8 / YX-SEC-20: company approval, a time window, read-only, every request recorded), never by impersonation.
+    if (caller.role === 'super_admin') throw new ForbiddenException('YukthiX staff enter a company only through a support session the company approved.');
+    const lookupContext = { organizationId: caller.organizationId, isSuperAdmin: false };
     const { target, callerRecord } = await this.tenantPrisma.forTenant(lookupContext, async (tx) => ({
       target: await tx.user.findUnique({ where: { id: targetUserId } }),
       callerRecord: await tx.user.findUnique({ where: { id: caller.userId } }),
@@ -1620,11 +1622,7 @@ export class AuthService {
     if (target.status !== 'active') {
       throw new BadRequestException('Cannot impersonate a deactivated user');
     }
-    if (isSuper) {
-      if (target.role === 'super_admin') {
-        throw new ForbiddenException('Cannot impersonate another platform administrator');
-      }
-    } else if (caller.role === 'org_admin') {
+    if (caller.role === 'org_admin') {
       const inOrg = target.organizationId === caller.organizationId;
       const impersonatable = target.role === 'recruiter' || target.role === 'panel' || target.role === 'hiring_manager';
       if (!inOrg || !impersonatable) {
@@ -1635,7 +1633,7 @@ export class AuthService {
     }
 
     await this.audit.record(
-      { organizationId: target.organizationId, isSuperAdmin: isSuper },
+      { organizationId: target.organizationId, isSuperAdmin: false },
       { actorUserId: caller.userId, action: 'user.impersonate_start', entityType: 'user', entityId: target.id },
     );
 
