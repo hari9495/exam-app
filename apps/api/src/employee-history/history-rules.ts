@@ -29,6 +29,8 @@ export interface AssignmentValues {
   hoursPerWeek: string | null;
   employmentTypeId: string;
   managerEmployeeId: string | null;
+  /** Enterprise E1: the person's seat when the company uses positions, else null. */
+  positionId: string | null;
   costCentres: CostCentreShare[];
   /** M01 Q5: visibility and feedback only, never an approver unless a policy names them (YX-EMP-04). Sorted. */
   dottedLineManagerIds: string[];
@@ -36,7 +38,7 @@ export interface AssignmentValues {
 export const SKILL_CLASSES = ['unskilled', 'semi_skilled', 'skilled', 'highly_skilled'] as const;
 export type SkillClass = (typeof SKILL_CLASSES)[number];
 export type AssignmentField = keyof AssignmentValues;
-export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'hoursPerWeek', 'employmentTypeId', 'managerEmployeeId', 'costCentres', 'dottedLineManagerIds'];
+export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'hoursPerWeek', 'employmentTypeId', 'managerEmployeeId', 'positionId', 'costCentres', 'dottedLineManagerIds'];
 const REQUIRED_ASSIGNMENT: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'employmentTypeId'];
 
 export interface StatusValues {
@@ -75,9 +77,9 @@ export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   join: { assignment: 'all', status: ['probation', 'confirmed'], compensation: true, requires: ['assignment', 'status'] },
   // A promotion moves the designation or the grade (the comp cycle may promote within the grade); a transfer moves the
   // location or the department (a reorganisation inside one entity, PPL-09).
-  promotion: { assignment: ['designationId', 'gradeId', 'skillClass'], compensation: true, requires: ['assignment'], changes: ['designationId', 'gradeId'] },
-  transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'], changes: ['locationId', 'departmentId'] },
-  redesignation: { assignment: ['designationId', 'skillClass'], requires: ['assignment'] },
+  promotion: { assignment: ['designationId', 'gradeId', 'skillClass', 'positionId'], compensation: true, requires: ['assignment'], changes: ['designationId', 'gradeId'] },
+  transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds', 'positionId'], requires: ['assignment'], changes: ['locationId', 'departmentId', 'positionId'] },
+  redesignation: { assignment: ['designationId', 'skillClass', 'positionId'], requires: ['assignment'] },
   // M01 §3.2: the primary manager and the dotted lines change through the same change type.
   manager_change: { assignment: ['managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
   salary_revision: { compensation: true, requires: ['compensation'] },
@@ -192,6 +194,7 @@ export function applyFact(fact: Fact, base: unknown, p: ChangePayload): unknown 
     next.skillClass ??= null;
     next.hoursPerWeek = next.hoursPerWeek === null || next.hoursPerWeek === undefined ? null : new Prisma.Decimal(next.hoursPerWeek).toFixed(1);
     next.managerEmployeeId ??= null;
+    next.positionId ??= null;
     // Stored form: shares sorted, two decimals, so equal splits compare equal.
     next.costCentres = (next.costCentres ?? []).map((x) => ({ costCentreId: x.costCentreId, percent: new Prisma.Decimal(x.percent).toFixed(2) })).sort((a, b) => a.costCentreId.localeCompare(b.costCentreId));
     // A dotted-line manager who becomes the manager stops being a dotted line.

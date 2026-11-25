@@ -81,6 +81,7 @@ const LATER_SUPPORT_EXCLUDED = [
   'tax_window_actions',
   // Batch H part 3, B8/E5: flexible benefit components and settlements.
   'flex_components', 'flex_settlements',
+  'positions', 'position_versions', 'position_changes',
   // Expenses cards; performance market rates, coach and disputes.
   'expense_cards', 'expense_card_lines', 'expense_card_mappings', 'expense_card_statements',
   'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots'];

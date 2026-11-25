@@ -78,6 +78,7 @@ export { SuccessionScreen, type LiveSuccession } from '../people/assets';
 export { UnionRegister, type LiveUnionRegister } from '../people/relations';
 // People › Restructure (PPL-09): the wizard, the record with approval and results, and the PPL-10 checklist.
 export { RestructureWizard } from '../people/changes';
+export { MassUpdateDrawer, PositionRecordScreen, PositionsScreen, PositionsSwitchOnScreen, SeatChangeDrawer, seatStatusBadge, type SeatChangeInput, type SeatList, type SeatOptions, type SeatRecord, type SeatRow, type SeatValues, type SwitchOnData } from '../people/positions';
 export { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureDraftState, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
 export { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
 export { DispatchProofDialog, StartAbscondingDialog, StopAbscondingDialog } from '../people/exits';

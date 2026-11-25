@@ -89,6 +89,7 @@ import { AccessModule } from './access/access.module';
 import { HelpModule } from './help/help.module';
 import { AssistantModule } from './help/assistant/assistant.module';
 import { PeopleModule } from './people/people.module';
+import { PositionsModule } from './positions/positions.module';
 import { WorkspaceModule } from './workspace/workspace.module';
 import { FieldPermissionsModule } from './field-permissions/field-permissions.module';
 import { RecycleBinModule } from './recycle-bin/recycle-bin.module';
@@ -204,6 +205,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     EmployeeHistoryModule,
     GlobalModule,
     PeopleModule,
+    PositionsModule,
     ServiceDeskModule,
     AccessModule,
     HelpModule,

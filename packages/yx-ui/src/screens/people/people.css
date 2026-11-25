@@ -227,3 +227,8 @@
 .yx-ppl__phase-title { margin: 0; font-size: var(--yx-text-body); font-weight: var(--yx-weight-semibold); }
 .yx-ppl__done-fold > summary { cursor: pointer; padding: var(--yx-space-2) 0; color: var(--yx-color-link); font-size: var(--yx-text-sm); font-weight: var(--yx-weight-medium); }
 .yx-ppl__done-fold > summary:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: var(--yx-space-half); border-radius: var(--yx-radius-badge); }
+/* Enterprise E1 positions (POS-01 … POS-04). */
+.yx-pos-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--yx-space-3); }
+.yx-pos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--yx-space-6); }
+.yx-pos-muted { margin: 0; color: var(--yx-color-text-secondary); font-size: var(--yx-text-sm); }
+@media (max-width: 960px) { .yx-pos-grid { grid-template-columns: minmax(0, 1fr); } }

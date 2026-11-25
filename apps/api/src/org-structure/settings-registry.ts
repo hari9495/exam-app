@@ -182,6 +182,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'employee_code.scope': { label: 'Employee codes are unique', scopes: ['tenant'], dated: false, values: ['legal_entity', 'tenant'], default: 'legal_entity' },
   // YX-ORG-15: whether a new structure master starts shared or entity-only.
   'org.master.default_ownership': { label: 'New masters are', scopes: ['tenant'], dated: false, values: ['shared', 'entity_only'], default: 'shared' },
+  // Enterprise E1 (answer 2341): positions are off by default; the switch-on plan turns them on (answer 2642).
+  'org.positions.enabled': { label: 'Use positions (seats)', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // G1 (gap pass C1): a full-time week; a job's FTE is its hours over this. Starter: the country pack's value.
   'work.normal_week_hours': { label: 'Normal working week (hours)', scopes: ['tenant', 'legal_entity', 'location'], dated: false, values: ['pack', '35', '37.5', '38', '40', '42', '44', '45', '48'], default: 'pack' },
   // G1 (gap pass G1): the company value is the language its own words are typed in; an entity or a person may differ.

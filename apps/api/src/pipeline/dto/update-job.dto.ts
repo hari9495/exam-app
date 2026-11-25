@@ -107,6 +107,10 @@ export class UpdateJobDto {
   @IsOptional() @IsUUID()
   headcountPlanLineId?: string | null;
 
+  /** Enterprise E1 (O4): the seat the requisition is raised against (positions on); its open headcount caps the openings. */
+  @IsOptional() @IsUUID()
+  positionId?: string | null;
+
   @IsOptional() @IsBoolean()
   outsidePlan?: boolean;
 
