@@ -104,6 +104,7 @@ describe('notification catalog', () => {
       'engage.moderation.outcome',
       'engage.kudos.received',
       'engage.survey.open',
+      'learning.enrolment.update',
       'engage.survey.reminder',
       'helpdesk.policy.to_acknowledge',
       'helpdesk.policy.overdue_report',

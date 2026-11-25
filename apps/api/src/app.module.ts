@@ -110,6 +110,7 @@ import { LifecycleModule } from './lifecycle/lifecycle.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { PoliciesModule } from './policies/policies.module';
 import { EngageModule } from './engage/engage.module';
+import { LearningModule } from './learning/learning.module';
 import { SpeakupModule } from './speakup/speakup.module';
 import { AccidentsModule } from './accidents/accidents.module';
 import { ContractLabourModule } from './contract-labour/contract-labour.module';
@@ -230,6 +231,7 @@ import { SentryShutdownFlush } from './sentry-shutdown.provider';
     ExpensesModule,
     PoliciesModule,
     EngageModule,
+    LearningModule,
     SpeakupModule,
     AccidentsModule,
     ContractLabourModule,

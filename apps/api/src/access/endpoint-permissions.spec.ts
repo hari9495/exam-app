@@ -33,6 +33,7 @@ import { BfsiController } from '../people/bfsi.controller';
 import { MyPoliciesController, PoliciesAdminController } from '../policies/policies.controller';
 import { SpeakupController } from '../speakup/speakup.controller';
 import { AnnouncementsController, ModerationController, MyEngageController, SurveysController } from '../engage/engage.controller';
+import { CoursesController, MyLearningController } from '../learning/learning.controller';
 import { CasesController, EthicsController, MisconductReportsController, MyCasesController } from '../cases/cases.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
@@ -135,12 +136,15 @@ const IMPLICIT: Record<string, string[]> = {
   // Items 100, 73, 74, 75: my spaces, an invitation, my own team or a readable post (404 otherwise).
   MyEngageController: ['announcements', 'acknowledge', 'feed', 'spaces', 'post', 'like', 'comments', 'comment', 'reportPost', 'reportComment', 'kudosOptions', 'giveKudos', 'wall', 'vote', 'mySurveys', 'toTake', 'answer', 'teamSurveys', 'teamResults', 'myPlan', 'savePlan', 'celebrationsToday', 'myCelebrations', 'setMyCelebrations'],
   SurveysController: [],
+  // Batch G3a: courses need learning.manage; my learning is my own (enrolment checked); nominating checks the reporting line.
+  CoursesController: [],
+  MyLearningController: ['mine', 'enrol', 'player', 'done', 'itemFile', 'decline', 'people', 'nominate'],
   ModerationController: [],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets'],
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CoursesController, MyLearningController, CasesController, EthicsController, MyCasesController, MisconductReportsController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

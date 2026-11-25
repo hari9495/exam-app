@@ -23,6 +23,7 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, ProgressRing, RatingScale, SkillLevel, type Device } from './growth-kit';
 import { budgetCheck, enrol } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { LiveMyLearningScreen, LiveNominateSheet, LivePlayerScreen, type LiveMyLearning, type LiveNominate, type LivePlayer } from './learn-courses-live';
 import './growth.css';
 
 /* ================================================================== Shared types */
@@ -109,7 +110,12 @@ const CAT_FIELDS: FilterFieldDef[] = [
 ];
 
 /** LRN-01 My learning (mobile first) + catalogue: assigned with due dates, continue, recommendations (AI, no auto-enrol), certificates. */
-export function MyLearningScreen({ device = 'desktop', state = 'ready', enrolments, certificates, catalogue, recommendations, points, tab = 'mine' }: MyLearningProps) {
+/** LRN-01; batch G3a: with `live`, my enrolments, the catalogue and my certificates. */
+export function MyLearningScreen(props: MyLearningProps | { live: LiveMyLearning }) {
+  return 'live' in props ? <LiveMyLearningScreen live={props.live} /> : <MyLearningDesign {...props} />;
+}
+
+function MyLearningDesign({ device = 'desktop', state = 'ready', enrolments, certificates, catalogue, recommendations, points, tab = 'mine' }: MyLearningProps) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [optOut, setOptOut] = useState(!!points?.optedOut);
@@ -311,7 +317,12 @@ export interface CoursePlayerProps {
 }
 
 /** LRN-02 Course player (T3): outline, sandboxed content, required items; SCORM status comes from the package (YX-LRN-09). */
-export function CoursePlayerScreen({ device = 'desktop', course, items: initial, currentId, scormStatus, completed }: CoursePlayerProps) {
+/** LRN-02; batch G3a: with `live`, a course I am enrolled in. */
+export function CoursePlayerScreen(props: CoursePlayerProps | { live: LivePlayer }) {
+  return 'live' in props ? <LivePlayerScreen live={props.live} /> : <CoursePlayerDesign {...props} />;
+}
+
+function CoursePlayerDesign({ device = 'desktop', course, items: initial, currentId, scormStatus, completed }: CoursePlayerProps) {
   const [items, setItems] = useState(initial);
   const [cur, setCur] = useState(currentId);
   const item = items.find((i) => i.id === cur) ?? items[0];
@@ -405,7 +416,12 @@ export interface EnrolmentSheetProps {
 }
 
 /** LRN-06 request sheet (T4): nominate (seats / waitlist), self-enrol, external training (cost, bond, budget), decline a nomination. */
-export function EnrolmentSheet({ mode, persona, device = 'desktop', course, session, people = [], budget, bondAbove = 25000, defaultCost, mandatory }: EnrolmentSheetProps) {
+/** LRN-06; batch G3a: with `live`, nominating people for a course (declining is in My learning). */
+export function EnrolmentSheet(props: EnrolmentSheetProps | { live: LiveNominate }) {
+  return 'live' in props ? <LiveNominateSheet live={props.live} /> : <EnrolmentDesign {...props} />;
+}
+
+function EnrolmentDesign({ mode, persona, device = 'desktop', course, session, people = [], budget, bondAbove = 25000, defaultCost, mandatory }: EnrolmentSheetProps) {
   const [who, setWho] = useState<string[]>(mode === 'nominate' ? people.slice(0, 2).map((p) => p.value) : []);
   const [cost, setCost] = useState<number | null>(defaultCost ?? course.cost);
   const [bond, setBond] = useState(false);

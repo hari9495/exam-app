@@ -28038,5 +28038,31 @@
                               "Screens/Performance/Kit · Growth building blocks"
                     ],
                     "note": "Positive and negative (engage-g2 e2e: birthday without the year, anniversary in whole years, joiners of this week only, hidden birthday never shows, personal opt-outs per kind (bad value 400), company setting off, company B sees none; unit: 29 Feb on 28 Feb outside leap years). Nothing is posted or stored except the opt-outs (new table eng_celebration_optouts in rls-isolation). Settings engage.celebrate.birthdays / anniversaries / new_joiners on 5.7. Kit: CelebrationStrip moved into the kit; new CelebrationChoices (story)."
+          },
+          {
+                    "id": "MT-G3A-COURSES",
+                    "area": "Batch G3a: courses, catalogue, my learning, player, nominate and decline, certificates (M07 Q1-Q2; answers 2606, 2608; 25 Nov 2026)",
+                    "screen": "Learning › Courses (list, New course, one course); Learning › My learning (My learning, Catalogue, Certificates); a course I am in; Nominate",
+                    "url": "http://localhost:3000/yx/learning/courses",
+                    "account": "HR admin (learning.manage; also the System Admin); a manager with direct reports; one of the reports; another employee; an employee of another company.",
+                    "steps": [
+                              "As HR open Learning › Courses › New course. Press Save with no name; add a link with http://; then name it, add an https link, Save.",
+                              "On the saved course: Add video or PDF (name it, choose a PDF); try a .txt renamed .pdf. Mark items required, reorder, map a skill with a level, turn on a certificate valid 12 months; Publish (try first with no required item).",
+                              "Make a second course that needs approval, and a mandatory one; publish both.",
+                              "As an employee open Learning › My learning › Catalogue: Enrol in the first; Request the approval one.",
+                              "As HR open the approval course › People: Refuse with no reason, then Approve.",
+                              "As the employee open the course: open the PDF (after the virus check), Mark each required item as done.",
+                              "As the manager open the catalogue › Nominate for the mandatory course: choose nobody, then a report and a due day; try someone not in your team.",
+                              "As the report try to decline the mandatory course; as HR nominate the report for a non-mandatory course; as the report decline it with a short reason, then a proper one.",
+                              "As an employee of another company open Learning."
+                    ],
+                    "expected": "Step 1: 'Name the course…'; the link is refused ('…https://'); then 'Course saved.' and it opens. Step 2: 'Added. It opens for learners once the virus check passes.'; the fake PDF is refused; publishing without a required item is refused; then 'Course published.'. Step 4: toasts 'Enrolled.' and 'Request sent to L&D.'; the request shows as Requested. Step 5: a refusal needs a reason; approving tells the employee. Step 6: progress goes 0 → 50 → 100%; on the last item 'You completed …' and the certificate appears in Certificates valid for 12 months. Step 7: 'Choose at least one person.'; then '1 person nominated. They are told.'; only the manager's own reports can be picked (the server refuses others). Step 8: the mandatory course has no Decline (the server refuses it too); the decline needs 10 letters; HR sees the reason in People and gets a notice. Step 9: none of this company's courses. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Learning/LRN-01 · My learning and catalogue",
+                              "Screens/Learning/LRN-02 · Course player",
+                              "Screens/Learning/LRN-03 · Course builder and learning paths",
+                              "Screens/Learning/LRN-06 · Nomination, enrolment and external request"
+                    ],
+                    "note": "Positive and negative (learning-g3 e2e 6/6: key 403, short title / link without url / http link / file item in JSON / months without certificate / unknown skill / level 6 / unknown field 400, a fake PDF refused, publish needs a required item (400), publish once (409), an item of another course 400, drafts not in the catalogue (404), enrol once (409), a request is not playable (409), refusal needs a reason, decide once (409), the key for deciding (403), progress only by the learner (404 for others), the file only to the learner, completion and the certificate, done after completion 409, a manager nominates only their reports (403), past due 400, mandatory can't be declined (409), a short reason 400, company B sees nothing; rls; kit learn-courses-live 9/9). New key learning.manage (System Admin and HR Admin). New tables lrn_courses, lrn_course_items, lrn_enrolments, lrn_item_progress, lrn_certificates in rls-isolation. New menu area Learning (My learning; Courses with the key)."
           }
 ]

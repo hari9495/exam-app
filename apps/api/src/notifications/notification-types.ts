@@ -40,6 +40,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // HLP-10 / HLP-11 company policies.
   // Batch G2 item 12: an announcement for you, and the day-2 / day-5 reminder to acknowledge it.
   { type: 'engage.announcement.published', group: 'mentions', label: 'A company announcement is for you' },
+  // Batch G3a: a nomination, a decided request, or a declined nomination.
+  { type: 'learning.enrolment.update', group: 'assignments', label: 'An update on your learning: a nomination or a decided request' },
   { type: 'engage.survey.open', group: 'reminders', label: 'A survey is open for you' },
   { type: 'engage.survey.reminder', group: 'reminders', label: 'A survey you have not answered closes soon' },
   { type: 'engage.kudos.received', group: 'mentions', label: 'A colleague thanked you with kudos' },

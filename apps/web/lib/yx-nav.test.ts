@@ -22,8 +22,9 @@ describe('buildNav: areas', () => {
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
     const n = nav(['employee.profile.view', 'payroll.run.view', 'statutory.filing.view', 'pipeline:manage', 'perf.goal.view', 'org.settings.manage'], { employee: true });
     // Batch G2: Engage (the feed) for everyone with a job.
-    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'engage', 'visitors', 'settings']);
-    for (const unbuilt of ['assess', 'learning', 'analytics', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
+    // Batch G3: Learning (my learning) for everyone with a job.
+    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'learning', 'helpdesk', 'engage', 'visitors', 'settings']);
+    for (const unbuilt of ['assess', 'analytics', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
   });
 
   it('YukthiX Hiring for hiring; no menu link leads to the older /v2 screens (decision 2398, step 5)', () => {
@@ -533,5 +534,17 @@ describe('buildNav: Engage (batch G2)', () => {
     expect(pageLink(all, '/yx/engage/post')?.link.label).toBe('Feed');
     expect(pageLink(all, '/yx/engage/recognition')?.link.label).toBe('Recognition');
     expect(pageLink(nav(['engage.survey.manage'], { employee: true }), '/yx/engage/surveys/x/results')?.link.label).toBe('Surveys');
+  });
+});
+
+describe('buildNav: Learning (batch G3)', () => {
+  const learning = (over: Partial<NavInput>, keys: string[] = []) => labels(nav(keys, { employee: true, ...over }), 'learning');
+  it('My learning for everyone with a job; Courses with learning.manage; nothing on a support session', () => {
+    expect(learning({})).toEqual(['My learning']);
+    expect(learning({}, ['learning.manage'])).toEqual(['My learning', 'Courses']);
+    expect(learning({ support: true }, ['learning.manage'])).toEqual([]);
+    const all = nav(['learning.manage'], { employee: true });
+    expect(pageLink(all, '/yx/learning/courses/new')?.link.label).toBe('Courses');
+    expect(pageLink(all, '/yx/learning/enrolments/x')?.link.label).toBe('My learning');
   });
 });
