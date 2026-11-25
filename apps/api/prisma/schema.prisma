@@ -13230,12 +13230,106 @@ model EngPost {
   notifiedAt    DateTime? @map("notified_at") @db.Timestamptz(3)
   remindersSent Int       @default(0) @map("reminders_sent")
   remindedOn    DateTime? @map("reminded_on") @db.Date
+  heldReason    String?   @map("held_reason") @db.VarChar(200)
+  reports       Int       @default(0)
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
   reads         EngPostRead[]
+  space         EngSpace? @relation(fields: [spaceId], references: [id], onDelete: Cascade, map: "eng_posts_space_fkey")
+  comments      EngComment[]
+  reactions     EngReaction[]
+  kudos         EngKudos?
 
   @@index([organizationId, kind, publishAt(sort: Desc)], map: "eng_posts_feed_idx")
   @@map("eng_posts")
+}
+
+/// Batch G2 item 100: a feed space (the company, a location, a department); approval: posts wait for a moderator.
+model EngSpace {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  kind           String    @db.VarChar(12)
+  refId          String?   @map("ref_id") @db.Uuid
+  name           String    @db.VarChar(150)
+  approval       Boolean   @default(false)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  posts          EngPost[]
+
+  @@map("eng_spaces")
+}
+
+/// Batch G2 item 73 (answer 2603): a kudos: the giver, the people thanked, the company value and an optional badge.
+model EngKudos {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  postId         String   @unique(map: "eng_kudos_post_key") @map("post_id") @db.Uuid
+  giverUserId    String   @map("giver_user_id") @db.Uuid
+  receiverIds    String[] @map("receiver_ids") @db.Uuid
+  value          String   @db.VarChar(80)
+  badge          String?  @db.VarChar(80)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  post           EngPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("eng_kudos")
+}
+
+/// Batch G2 item 100: a comment on a feed post.
+model EngComment {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  postId         String   @map("post_id") @db.Uuid
+  authorUserId   String   @map("author_user_id") @db.Uuid
+  body           String   @db.VarChar(2000)
+  state          String   @default("published") @db.VarChar(10)
+  heldReason     String?  @map("held_reason") @db.VarChar(200)
+  reports        Int      @default(0)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  post           EngPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, createdAt], map: "eng_comments_post_idx")
+  @@map("eng_comments")
+}
+
+/// Batch G2 item 100: a like on a feed post (one per person).
+model EngReaction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  postId         String   @map("post_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  post           EngPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId], map: "eng_reactions_key")
+  @@map("eng_reactions")
+}
+
+/// Batch G2 item 100: a report of a post or comment (one per person).
+model EngReport {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  target         String   @db.VarChar(8)
+  targetId       String   @map("target_id") @db.Uuid
+  reporterUserId String   @map("reporter_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([target, targetId, reporterUserId], map: "eng_reports_key")
+  @@map("eng_reports")
+}
+
+/// Batch G2 item 100: what a moderator did, and to whose post or comment.
+model EngModAction {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  target         String   @db.VarChar(8)
+  targetId       String   @map("target_id") @db.Uuid
+  authorUserId   String?  @map("author_user_id") @db.Uuid
+  action         String   @db.VarChar(10)
+  note           String?  @db.VarChar(1000)
+  byUserId       String   @map("by_user_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, authorUserId], map: "eng_mod_actions_author_idx")
+  @@map("eng_mod_actions")
 }
 
 /// Batch G2 item 12: who read an announcement, and when they acknowledged it.

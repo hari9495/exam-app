@@ -207,7 +207,7 @@ describe('Batch G2 Engage', () => {
       expect(await inA((tx) => tx.userNotification.count({ where: { type: 'engage.announcement.reminder', entityId: a.id, recipientUserId: users.emp2 } }))).toBe(0);
     });
 
-    it('another company sees none of it', async () => {
+    it('another company sees none of it (announcements)', async () => {
       expect(((await api('adminB', 'get', '/engage/announcements').expect(200)).body as unknown[]).length).toBe(0);
       await api('adminB', 'get', `/engage/announcements/${ids.hosur}`).expect(404);
       await api('adminB', 'post', `/engage/announcements/${ids.hosur}/remind`).expect(404);
@@ -215,6 +215,177 @@ describe('Batch G2 Engage', () => {
       await api('empB', 'post', `/engage/my/announcements/${ids.hosur}/acknowledge`).expect(404);
       // The database too: company B's session reads no row of company A.
       expect(await tenantPrisma.forTenant({ organizationId: org.B.id, isSuperAdmin: false }, (tx) => tx.engPost.count({ where: { id: ids.hosur } }))).toBe(0);
+    });
+  });
+
+  describe('item 100: the feed, spaces and moderation', () => {
+    const space = async (who: Who, name: string) => ((await api(who, 'get', '/engage/my/spaces').expect(200)).body as { id: string; name: string }[]).find((x) => x.name === name)!.id;
+    const feedOf = async (who: Who) => (await api(who, 'get', '/engage/my/feed').expect(200)).body as { spaces: { name: string }[]; posts: { id: string; state: string; likes: number; liked: boolean; comments: number }[]; blockedWords: string[]; can: { announce: boolean; moderate: boolean } };
+
+    it('spaces for the company, each location and each department; a person is in the company space and their job spaces', async () => {
+      const dir = (await api('emp1', 'get', '/engage/my/spaces').expect(200)).body as { name: string; kind: string; members: number; joined: boolean; approval: boolean }[];
+      expect(dir.map((x) => x.name)).toEqual(['Company', 'Bengaluru', 'Chennai', 'Hosur plant', 'ENG', 'OPS']);
+      expect(dir.filter((x) => x.joined).map((x) => x.name)).toEqual(['Company', 'Hosur plant', 'OPS']);
+      expect(dir.find((x) => x.name === 'Company')).toMatchObject({ members: 3, approval: true });
+      expect(dir.find((x) => x.name === 'Hosur plant')).toMatchObject({ members: 1, approval: false });
+      const f = await feedOf('emp1');
+      expect(f.spaces.map((x) => x.name)).toEqual(['Company', 'Hosur plant', 'OPS']);
+      expect(f.can).toEqual({ announce: false, moderate: false });
+      expect(f.blockedWords).toContain('idiot');
+      expect((await feedOf('hr')).can).toEqual({ announce: true, moderate: true });
+      expect((await api('noJob', 'get', '/engage/my/feed').expect(200)).body.spaces).toEqual([]);
+    });
+
+    it('posting: own spaces only; the company space waits for approval unless you announce; a blocked word holds it', async () => {
+      const hsr = await space('emp1', 'Hosur plant');
+      const blr = await space('emp1', 'Bengaluru');
+      const co = await space('emp1', 'Company');
+      expect((await api('emp1', 'post', '/engage/my/posts').send({ spaceId: hsr, body: 'Line 2 crossed 1,000 safe days.' }).expect(201)).body.state).toBe('published');
+      await api('emp1', 'post', '/engage/my/posts').send({ spaceId: blr, body: 'Hello Bengaluru' }).expect(404);
+      await api('emp1', 'post', '/engage/my/posts').send({ spaceId: hsr, body: '   ' }).expect(400);
+      await api('emp1', 'post', '/engage/my/posts').send({ spaceId: hsr, body: 'x'.repeat(3001) }).expect(400);
+      ids.pending = (await api('emp1', 'post', '/engage/my/posts').send({ spaceId: co, body: 'Cricket nets on Saturdays.' }).expect(201)).body.id;
+      ids.held = (await api('emp1', 'post', '/engage/my/posts').send({ spaceId: hsr, body: 'The night supervisor is an IDIOT.' }).expect(201)).body.id;
+      const hrPost = (await api('hr', 'post', '/engage/my/posts').send({ spaceId: await space('hr', 'Company'), body: 'Welcome to the new canteen.' }).expect(201)).body;
+      expect(hrPost.state).toBe('published');
+      ids.hrPost = hrPost.id;
+      const mine = await feedOf('emp1');
+      expect(mine.posts.find((p) => p.id === ids.pending)?.state).toBe('pending');
+      expect(mine.posts.find((p) => p.id === ids.held)?.state).toBe('held');
+      // Others never see a waiting or held post, nor a space they are not in.
+      const other = await feedOf('emp2');
+      expect(other.posts.map((p) => p.id)).toEqual([ids.hrPost]);
+    });
+
+    it('likes and comments: toggled, counted, held for a blocked word, and only on posts I may read', async () => {
+      expect((await api('emp2', 'post', `/engage/my/posts/${ids.hrPost}/like`).expect(201)).body).toEqual({ liked: true, likes: 1 });
+      expect((await api('emp2', 'post', `/engage/my/posts/${ids.hrPost}/like`).expect(201)).body).toEqual({ liked: false, likes: 0 });
+      await api('emp2', 'post', `/engage/my/posts/${ids.hrPost}/like`).expect(201);
+      await api('emp2', 'post', `/engage/my/posts/${ids.pending}/like`).expect(404);
+      await api('emp2', 'post', `/engage/my/posts/${ids.held}/comments`).send({ body: 'hi' }).expect(404);
+      await api('emp1', 'post', `/engage/my/posts/${ids.hrPost}/comments`).send({ body: '' }).expect(400);
+      expect((await api('emp1', 'post', `/engage/my/posts/${ids.hrPost}/comments`).send({ body: 'Looks great!' }).expect(201)).body.held).toBe(false);
+      const heldComment = (await api('emp1', 'post', `/engage/my/posts/${ids.hrPost}/comments`).send({ body: 'Food is stupid expensive' }).expect(201)).body;
+      expect(heldComment.held).toBe(true);
+      ids.heldComment = heldComment.id;
+      expect(((await api('emp2', 'get', `/engage/my/posts/${ids.hrPost}/comments`).expect(200)).body as { body: string }[]).map((c) => c.body)).toEqual(['Looks great!']);
+      expect(((await api('emp1', 'get', `/engage/my/posts/${ids.hrPost}/comments`).expect(200)).body as { held: boolean }[]).map((c) => c.held)).toEqual([false, true]);
+      const f = (await feedOf('emp2')).posts.find((p) => p.id === ids.hrPost)!;
+      expect(f).toMatchObject({ likes: 1, liked: true, comments: 1 });
+    });
+
+    it('reports: never your own, once each; the company number hides the post until a moderator acts', async () => {
+      await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'engage.hide_after_reports', value: '2' } }));
+      await api('hr', 'post', `/engage/my/posts/${ids.hrPost}/report`).expect(400);
+      expect((await api('emp1', 'post', `/engage/my/posts/${ids.hrPost}/report`).expect(201)).body).toEqual({ reported: true, hidden: false });
+      expect((await api('emp1', 'post', `/engage/my/posts/${ids.hrPost}/report`).expect(409)).body.code).toBe('ENGAGE_ALREADY_REPORTED');
+      expect((await api('emp2', 'post', `/engage/my/posts/${ids.hrPost}/report`).expect(201)).body).toEqual({ reported: true, hidden: true });
+      expect((await feedOf('emp2')).posts.map((p) => p.id)).not.toContain(ids.hrPost);
+      await api('emp2', 'post', `/engage/my/posts/${ids.hrPost}/like`).expect(404);
+    });
+
+    it('moderation: the key only; approve, restore, warn with a note, delete; the author is told; every action counted', async () => {
+      await api('emp1', 'get', '/engage/moderation').expect(403);
+      await api('emp1', 'post', `/engage/moderation/posts/${ids.pending}`).send({ action: 'approve' }).expect(403);
+      const q = (await api('hr', 'get', '/engage/moderation').expect(200)).body as { id: string; kind: string; state: string; reason: string }[];
+      expect(q.find((x) => x.id === ids.pending)).toMatchObject({ kind: 'post', state: 'pending', reason: 'Needs approval' });
+      expect(q.find((x) => x.id === ids.held)).toMatchObject({ state: 'held', reason: 'Blocked word "idiot"' });
+      expect(q.find((x) => x.id === ids.hrPost)).toMatchObject({ state: 'hidden', reason: '2 reports' });
+      expect(q.find((x) => x.id === ids.heldComment)).toMatchObject({ kind: 'comment', state: 'held' });
+      const act = (target: 'posts' | 'comments', id: string, body: object) => api('hr', 'post', `/engage/moderation/${target}/${id}`).send(body);
+      await act('posts', ids.pending, { action: 'approve' }).expect(201);
+      expect((await act('posts', ids.pending, { action: 'approve' }).expect(409)).body.code).toBe('ENGAGE_NOT_WAITING');
+      expect((await feedOf('emp2')).posts.map((p) => p.id)).toContain(ids.pending);
+      await act('posts', ids.hrPost, { action: 'restore' }).expect(201);
+      expect((await feedOf('emp2')).posts.map((p) => p.id)).toContain(ids.hrPost);
+      // Restored: its reports are cleared, so one more report does not hide it again at once.
+      expect((await api('emp1', 'post', `/engage/my/posts/${ids.hrPost}/report`).expect(201)).body.hidden).toBe(false);
+      await act('posts', ids.held, { action: 'warn' }).expect(400);
+      await act('posts', ids.held, { action: 'warn', note: 'Please keep it civil.' }).expect(201);
+      await act('posts', ids.held, { action: 'ban' }).expect(400);
+      await act('comments', ids.heldComment, { action: 'hide' }).expect(201);
+      await act('posts', ids.held, { action: 'delete' }).expect(201);
+      await act('posts', ids.held, { action: 'restore' }).expect(404);
+      const told = await inA((tx) => tx.userNotification.findMany({ where: { recipientUserId: users.emp1, type: 'engage.moderation.outcome' }, select: { contextText: true } }));
+      expect(told.map((n) => n.contextText).sort()).toEqual(['A moderator wrote to you about your post: Please keep it civil.', 'Your comment was hidden by a moderator.', 'Your post was approved and is in the feed.', 'Your post was removed by a moderator.'].sort());
+      const after = (await api('hr', 'get', '/engage/moderation').expect(200)).body as { id: string }[];
+      expect(after.map((x) => x.id)).not.toContain(ids.held);
+      expect(await inA((tx) => tx.engModAction.count({ where: { authorUserId: users.emp1 } }))).toBe(4);
+      // The audit row carries no words of the post.
+      const audits = await inA((tx) => tx.auditLog.findMany({ where: { entityId: ids.held, action: { startsWith: 'engage.post.' } }, select: { metadataJson: true } }));
+      expect(audits.map((a) => a.metadataJson ?? '').join(' ')).not.toMatch(/IDIOT|civil/);
+    });
+
+    it('approval on a space: a moderator switches a location on, posts there wait; never the company space; not without the key', async () => {
+      const hsr = await space('hr', 'Hosur plant');
+      await api('emp1', 'put', `/engage/moderation/spaces/${hsr}`).send({ approval: true }).expect(403);
+      await api('hr', 'put', `/engage/moderation/spaces/${await space('hr', 'Company')}`).send({ approval: false }).expect(400);
+      await api('hr', 'put', `/engage/moderation/spaces/${hsr}`).send({ approval: 'yes' }).expect(400);
+      await api('hr', 'put', `/engage/moderation/spaces/${hsr}`).send({ approval: true }).expect(200);
+      expect((await api('emp1', 'post', '/engage/my/posts').send({ spaceId: hsr, body: 'Shift swap board is up.' }).expect(201)).body.state).toBe('pending');
+      await api('hr', 'put', `/engage/moderation/spaces/${hsr}`).send({ approval: false }).expect(200);
+    });
+
+    it('another company sees none of it (feed)', async () => {
+      expect((await api('adminB', 'get', '/engage/moderation').expect(200)).body).toEqual([]);
+      await api('adminB', 'post', `/engage/moderation/posts/${ids.pending}`).send({ action: 'hide' }).expect(404);
+      await api('empB', 'post', `/engage/my/posts/${ids.pending}/like`).expect(404);
+      await api('empB', 'get', `/engage/my/posts/${ids.pending}/comments`).expect(404);
+      await api('empB', 'post', '/engage/my/posts').send({ spaceId: await space('emp1', 'Hosur plant'), body: 'Hi' }).expect(404);
+      expect((await feedOf('empB')).posts).toEqual([]);
+    });
+  });
+
+  describe('item 73: kudos (badges only)', () => {
+    it('the choices: the company values, badges and active colleagues (never yourself)', async () => {
+      const o = (await api('emp1', 'get', '/engage/my/kudos/options').expect(200)).body;
+      expect(o.values).toEqual(['Customer first', 'Own it', 'Win together', 'Do the right thing']);
+      expect(o.badges).toContain('Team player');
+      expect(o.people.map((p: { id: string }) => p.id)).not.toContain(users.emp1);
+      expect(o.people.map((p: { id: string }) => p.id)).toContain(users.emp2);
+      expect(o.people.map((p: { id: string }) => p.id)).not.toContain(users.empB);
+      expect((await api('emp1', 'get', '/engage/my/kudos/options?q=emp2').expect(200)).body.people.map((p: { id: string }) => p.id)).toEqual([users.emp2]);
+    });
+
+    it('refuses: yourself, an unknown value or badge, someone of another company, nobody, too many, no message, unknown fields', async () => {
+      const bad = (body: object) => api('emp1', 'post', '/engage/my/kudos').send({ to: [users.emp2], value: 'Own it', message: 'Thanks!', ...body }).expect(400);
+      await bad({ to: [users.emp1] });
+      await bad({ value: 'Be cool' });
+      await bad({ badge: 'Rock star' });
+      await bad({ to: [users.empB] });
+      await bad({ to: [] });
+      await bad({ to: Array.from({ length: 21 }, () => randomUUID()) });
+      await bad({ message: ' ' });
+      await bad({ points: 50 });
+    });
+
+    it('a kudos is posted on the company space and the wall; the people thanked are told; likes work', async () => {
+      const k = (await api('emp1', 'post', '/engage/my/kudos').send({ to: [users.emp2, users.hr], value: 'Own it', badge: 'Team player', message: 'Fixed the jam in 20 minutes.' }).expect(201)).body;
+      expect(k.held).toBe(false);
+      ids.kudos = k.id;
+      const wall = (await api('emp2', 'get', '/engage/my/kudos').expect(200)).body;
+      expect(wall.kudos[0]).toMatchObject({ id: k.id, from: `emp1 ${run}`, value: 'Own it', badge: 'Team player', body: 'Fixed the jam in 20 minutes.' });
+      expect(wall.kudos[0].to.sort()).toEqual([`emp2 ${run}`, `hr ${run}`].sort());
+      expect(wall.values.find((v: { value: string }) => v.value === 'Own it').count).toBe(1);
+      expect((await api('emp2', 'get', '/engage/my/kudos?value=Customer%20first').expect(200)).body.kudos).toEqual([]);
+      const feed = (await api('emp2', 'get', '/engage/my/feed').expect(200)).body.posts as { id: string; kudos: { value: string } | null }[];
+      expect(feed.find((p) => p.id === k.id)?.kudos?.value).toBe('Own it');
+      for (const who of ['emp2', 'hr'] as const) expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users[who], type: 'engage.kudos.received', entityId: k.id } }))).toBe(1);
+      expect(await inA((tx) => tx.userNotification.count({ where: { recipientUserId: users.emp1, type: 'engage.kudos.received' } }))).toBe(0);
+      expect((await api('emp2', 'post', `/engage/my/posts/${k.id}/like`).expect(201)).body.liked).toBe(true);
+    });
+
+    it('a blocked word holds it: nobody is told, the wall does not show it, the moderator sees it', async () => {
+      const k = (await api('emp2', 'post', '/engage/my/kudos').send({ to: [users.emp1], value: 'Own it', message: 'You absolute idiot genius' }).expect(201)).body;
+      expect(k.held).toBe(true);
+      expect(((await api('emp1', 'get', '/engage/my/kudos').expect(200)).body.kudos as { id: string }[]).map((x) => x.id)).not.toContain(k.id);
+      expect(await inA((tx) => tx.userNotification.count({ where: { type: 'engage.kudos.received', entityId: k.id } }))).toBe(0);
+      expect(((await api('hr', 'get', '/engage/moderation').expect(200)).body as { id: string }[]).map((x) => x.id)).toContain(k.id);
+    });
+
+    it('another company sees none of it (kudos)', async () => {
+      expect((await api('empB', 'get', '/engage/my/kudos').expect(200)).body.kudos).toEqual([]);
+      await api('empB', 'post', `/engage/my/posts/${ids.kudos}/like`).expect(404);
     });
   });
 });

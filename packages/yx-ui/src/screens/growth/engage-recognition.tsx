@@ -18,6 +18,7 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, PostCard, type Device, type FeedPost } from './growth-kit';
 import { redemptionTax, validateKudos } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { LiveGiveKudosScreen, LiveRecognitionWallScreen, type LiveGiveKudos, type LiveRecognitionWall } from './engage-recognition-live';
 import './growth.css';
 
 /* ================================================================== ENG-08 · Give kudos */
@@ -35,7 +36,12 @@ export interface KudosSheetProps {
 }
 
 /** ENG-08 Give kudos (T4): people, a company value (required), optional badge and points; approval above threshold (YX-ENG-06). */
-export function GiveKudosScreen({ device = 'desktop', me, people, values, badges, points, defaults = {}, sent }: KudosSheetProps) {
+/** ENG-08; batch G2 item 73: with `live`, kudos to colleagues (badges only). */
+export function GiveKudosScreen(props: KudosSheetProps | { live: LiveGiveKudos }) {
+  return 'live' in props ? <LiveGiveKudosScreen live={props.live} /> : <GiveKudosDesign {...props} />;
+}
+
+function GiveKudosDesign({ device = 'desktop', me, people, values, badges, points, defaults = {}, sent }: KudosSheetProps) {
   const [to, setTo] = useState<string[]>(defaults.to ?? []);
   const [value, setValue] = useState<string | null>(defaults.value ?? null);
   const [badge, setBadge] = useState<string | null>(null);
@@ -142,7 +148,13 @@ export interface LeaderRow {
 }
 
 /** ENG-09 Recognition wall + leaderboard (T6): filter by value; leaderboard shows points only, per scope and period; company can switch it off. */
-export function RecognitionWallScreen({ device = 'desktop', kudos, values, leaders, leaderboardOn = true, optedOut, state = 'ready' }: { device?: Device; kudos: FeedPost[]; values: string[]; leaders: LeaderRow[]; leaderboardOn?: boolean; optedOut?: boolean; state?: LoadState }) {
+type WallDesignProps = { device?: Device; kudos: FeedPost[]; values: string[]; leaders: LeaderRow[]; leaderboardOn?: boolean; optedOut?: boolean; state?: LoadState };
+/** ENG-09; batch G2 item 73: with `live`, the company's kudos (badges only, no leaderboard). */
+export function RecognitionWallScreen(props: WallDesignProps | { live: LiveRecognitionWall }) {
+  return 'live' in props ? <LiveRecognitionWallScreen live={props.live} /> : <RecognitionWallDesign {...props} />;
+}
+
+function RecognitionWallDesign({ device = 'desktop', kudos, values, leaders, leaderboardOn = true, optedOut, state = 'ready' }: WallDesignProps) {
   const [value, setValue] = useState<string | null>(null);
   const [scope, setScope] = useState('department');
   const shown = kudos.filter((k) => !value || k.value === value);

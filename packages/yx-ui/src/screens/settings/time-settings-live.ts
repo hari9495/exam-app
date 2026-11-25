@@ -229,6 +229,12 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Company policies', key: 'policy.publish.second_person' },
       { section: 'Company policies', key: 'policy.ai_writer', synonyms: ['AI policy'] },
       { section: 'Company policies', key: 'company.industry', synonyms: ['industry'] },
+      // Batch G2 item 100 (M09 Q2): the feed's moderation choices.
+      { section: 'Engage feed', key: 'engage.blocked_words', synonyms: ['blocked words', 'moderation', 'feed'] },
+      { section: 'Engage feed', key: 'engage.hide_after_reports', synonyms: ['reports', 'hide posts'] },
+      // Batch G2 item 73: the company values and badges of kudos.
+      { section: 'Engage feed', key: 'engage.values', synonyms: ['company values', 'kudos'] },
+      { section: 'Engage feed', key: 'engage.badges', synonyms: ['badges', 'kudos'] },
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },

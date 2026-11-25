@@ -25,9 +25,7 @@ import { GrowthFrame, PostCard, type Device, type FeedPost } from './growth-kit'
 import { moderate } from './growth-logic';
 import type { LoadState } from './perf-goals';
 import { LiveAnnouncementScreen, type LiveAnnouncements } from './engage-announce-live';
-import { MessageBody } from '../desk/desk-kit';
-import { useToast } from '../../components/notify';
-import { errorText } from '../org/org-kit';
+import { LiveFeedScreen, LiveModerationScreen, LivePostComposerScreen, type LiveFeed, type LiveModeration, type LivePostComposer } from './engage-feed-live';
 import './growth.css';
 
 /* ================================================================== ENG-01 · Feed + spaces directory */
@@ -82,79 +80,6 @@ function CelebrationStrip({ items }: { items: Celebration[] }) {
         </ul>
       </div>
     </section>
-  );
-}
-
-/** Batch G2 item 12: what the feed shows from the company's records (announcements now; posts, kudos next). */
-export interface LiveFeedPost {
-  id: string;
-  kind: 'announcement';
-  title: string;
-  /** Cleaned HTML (the server's allow-list). */
-  body: string;
-  author: string;
-  authorLeft: boolean;
-  at: string;
-  pinned: boolean;
-  ack: { due: string | null; done: boolean } | null;
-}
-export interface LiveFeed {
-  state: 'ready' | 'loading' | 'error';
-  onRetry?: () => void;
-  posts: LiveFeedPost[];
-  onAck: (id: string) => Promise<unknown>;
-  now: Date;
-  persona?: 'emp' | 'hr' | 'mgr';
-}
-
-function LiveFeedScreen({ live }: { live: LiveFeed }) {
-  const { toast } = useToast();
-  const posts: FeedPost[] = live.posts.map((p) => ({
-    id: p.id,
-    type: 'Announcement',
-    author: p.author,
-    authorNote: p.authorLeft ? 'Former employee' : undefined,
-    space: 'Company',
-    at: new Date(p.at),
-    body: (
-      <>
-        <strong>{p.title}</strong>
-        <MessageBody html={p.body} />
-      </>
-    ),
-    pinned: p.pinned,
-    reactions: 0,
-    comments: 0,
-    ack: p.ack ? { required: true, done: p.ack.done, due: p.ack.due ? new Date(`${p.ack.due}T00:00:00`) : undefined } : undefined,
-  }));
-  const ack = (id: string) =>
-    live.onAck(id).then(
-      () => toast({ tone: 'success', title: 'Acknowledged.' }),
-      (e: unknown) => {
-        toast({ tone: 'error', title: errorText(e) });
-        throw e;
-      },
-    );
-  return (
-    <GrowthFrame area="engage" active="Feed" persona={live.persona ?? 'emp'}>
-      <PageHeader title="Feed" />
-      {live.state === 'error' ? (
-        <EmptyState title="We couldn't load the feed" description="Try again in a moment." action={<Button onClick={live.onRetry}>Try again</Button>} />
-      ) : live.state === 'loading' ? (
-        <div className="yx-growth-stack">
-          <Skeleton height={140} />
-          <Skeleton height={180} />
-        </div>
-      ) : posts.length === 0 ? (
-        <EmptyState title="Your feed is empty" description="Company announcements for you show here." />
-      ) : (
-        <div className="yx-growth-stack" aria-live="polite">
-          {posts.map((p) => (
-            <PostCard key={p.id} post={p} now={live.now} social={false} onAck={() => ack(p.id)} />
-          ))}
-        </div>
-      )}
-    </GrowthFrame>
   );
 }
 
@@ -309,7 +234,12 @@ export interface PostComposerProps {
 }
 
 /** ENG-02 Post composer (T4): update, poll or event; space by posting policy; moderation check before posting (YX-ENG-02/03). */
-export function PostComposerScreen({ device = 'desktop', kind: kind0 = 'Update', spaces, defaultSpace, defaultText = '', blockedWords }: PostComposerProps) {
+/** ENG-02; batch G2 item 100: with `live`, posting an update to one of my spaces. */
+export function PostComposerScreen(props: PostComposerProps | { live: LivePostComposer }) {
+  return 'live' in props ? <LivePostComposerScreen live={props.live} /> : <PostComposerDesign {...props} />;
+}
+
+function PostComposerDesign({ device = 'desktop', kind: kind0 = 'Update', spaces, defaultSpace, defaultText = '', blockedWords }: PostComposerProps) {
   const [kind, setKind] = useState(kind0);
   const [space, setSpace] = useState<string | null>(defaultSpace ?? spaces.find((s) => s.joined)?.id ?? null);
   const [text, setText] = useState(defaultText);
@@ -583,7 +513,13 @@ export interface ModItem {
 }
 
 /** ENG-11 Moderation queue (T2): held and reported items; restore, hide, delete (confirmed), warn; repeat offenders to HR. All actions audited. */
-export function ModerationScreen({ items: initial, openId, deleteOpen, state = 'ready' }: { items: ModItem[]; openId?: string; deleteOpen?: boolean; state?: LoadState }) {
+type ModerationDesignProps = { items: ModItem[]; openId?: string; deleteOpen?: boolean; state?: LoadState };
+/** ENG-11; batch G2 item 100: with `live`, the company's queue and the actions. */
+export function ModerationScreen(props: ModerationDesignProps | { live: LiveModeration }) {
+  return 'live' in props ? <LiveModerationScreen live={props.live} /> : <ModerationDesign {...props} />;
+}
+
+function ModerationDesign({ items: initial, openId, deleteOpen, state = 'ready' }: ModerationDesignProps) {
   const [items, setItems] = useState(initial);
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const [del, setDel] = useState(!!deleteOpen);

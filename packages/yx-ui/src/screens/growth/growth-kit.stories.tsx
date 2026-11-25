@@ -19,6 +19,7 @@ import {
   StageTrack,
   SuppressedNotice,
 } from './growth-kit';
+import { CommentsDrawer } from './growth-kit';
 import { detectBiasFlags } from './growth-logic';
 import { GOALS, MY_STAGES, NUDGES, d } from './perf-data';
 import { POSTS } from './engage-data';
@@ -138,3 +139,20 @@ export const Posts: S = { name: 'Feed posts', render: () => <div style={box}>{PO
 export const Poll: S = { render: () => <div style={box}><PollBlock poll={{ question: 'Breakfast on 20 Oct?', options: ['Idli and vada', 'Pongal', 'Poori'], votes: [22, 14, 9], closes: d(3, 9) }} /><PollBlock poll={{ question: 'Closed poll', options: ['Yes', 'No'], votes: [30, 12], closed: true }} /></div> };
 export const Coach: S = { name: 'Coach card', render: () => <div style={box}><CoachCard nudges={NUDGES} weekOf={d(28)} /><CoachCard nudges={[]} weekOf={d(28)} /><CoachCard nudges={NUDGES} weekOf={d(28)} optedOut /></div> };
 export const Bias: S = { name: 'Bias flags', render: () => <div style={box}><BiasFlagList flags={detectBiasFlags('Good job overall but abrasive in meetings; young and energetic. Missed two deadlines and delayed the audit.', 4)} decided={{ 'Vague, no example-good job': 'ignored' }} /><BiasFlagList flags={[]} /></div> };
+// Batch G2 item 100: the comments on one post.
+export const Comments: S = {
+  name: 'Comments drawer',
+  render: () => (
+    <CommentsDrawer
+      open
+      onClose={() => {}}
+      title="Selvi R. in Hosur plant"
+      comments={[
+        { id: 'c1', author: 'Arun K.', mine: false, body: 'Well done, team!', at: '2026-10-01T03:30:00Z', held: false },
+        { id: 'c2', author: 'You', mine: true, body: 'Proud of line 2.', at: '2026-10-01T03:40:00Z', held: true },
+      ]}
+      onAdd={async () => {}}
+      onReport={async () => {}}
+    />
+  ),
+};

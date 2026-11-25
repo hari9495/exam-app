@@ -27942,5 +27942,53 @@
                               "Screens/Engage/ENG-01 · Feed and spaces"
                     ],
                     "note": "Positive and negative (engage-g2 e2e 8/8: key 403, audience by location and department, short title / empty or script-only message / amount by email / due day without acknowledging / past or far schedule / another company's place / nobody in the audience / unknown field 400, the message cleaned, only the audience sees and acknowledges (others 404), email title only, reminders once a day 409, scheduled kept back and sent once by the job, day-2 / day-5 job reminders to non-acknowledgers only, company B sees nothing incl. the database; rls 33/33; kit 9/9). New key engage.announce (System Admin and HR Admin). New tables eng_posts and eng_post_reads (RLS tenant + support excluded) in rls-isolation. New menu area Engage (Feed; Announcements with the key)."
+          },
+          {
+                    "id": "MT-G2-100-FEED-SPACES-MODERATION",
+                    "area": "Batch G2 item 100: the feed, spaces, posts, likes, comments, reports and moderation (M09 Q1-Q2, answer 2601; 25 Nov 2026)",
+                    "screen": "Engage › Feed (Feed and Spaces tabs; Write a post; Comment); Engage › Moderation",
+                    "url": "http://localhost:3000/yx/engage",
+                    "account": "Two employees at one plant (A, B) and one elsewhere (C); HR admin (engage.announce and engage.moderate; also the System Admin); an employee with no job record.",
+                    "steps": [
+                              "As A open Engage › Feed › Spaces: Company, each location, each department; you are a member of Company, your plant and your department.",
+                              "Write a post: press Post with nothing written; then post to your plant; then to Company; then write one with a blocked word (e.g. 'idiot').",
+                              "As B (same plant) and C (elsewhere) open the feed.",
+                              "As B like A's plant post, unlike it, like it again; open Comment, press Comment empty, then comment; write a comment with a blocked word.",
+                              "As B report A's post from the post's menu; report it again.",
+                              "As HR open Engage › Moderation: approve A's Company post, open the held post: press Warn author with no note, then with a note; Delete it (confirm); Restore a hidden one.",
+                              "As HR in Feed › Spaces press 'Turn on approval' for the plant; as A post there. Turn it off again.",
+                              "Settings › Policies › Engage feed: change the blocked words and 'reports that hide a post' to 2; report a post twice from two people.",
+                              "As an employee without engage.moderate open /yx/engage/moderation."
+                    ],
+                    "expected": "Step 2: 'Write the post.' under the field, nothing sent; the plant post appears at once (toast 'Posted.'); the Company post says 'Send for approval' and shows to A as 'Waiting for approval'; the blocked-word post warns before posting and shows as 'Held for review'. Step 3: B sees A's plant post, not the waiting or held ones; C sees none of A's posts. Step 4: the Like count goes up and down; comments show; 'Write the comment first.'; the blocked-word comment shows only to its author, held. Step 5: 'Thanks for reporting'; the second time the server refuses (already reported). Step 6: approving publishes it and A is told; 'Write the note first.' then 'Warning sent to the author.'; Delete asks first; each action tells A in the bell; the queue shows earlier actions and 'Repeat pattern' from 2. Step 7: A's post waits for approval. Step 8: the new words hold posts; 2 reports hide it until a moderator acts. Step 9: no menu item, no access. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-01 · Feed and spaces",
+                              "Screens/Engage/ENG-02 · Post composer",
+                              "Screens/Engage/ENG-11 · Moderation queue",
+                              "Screens/Performance/Kit · Growth building blocks"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e: spaces and membership, own spaces only 404, empty / too long 400, company space approval, blocked words hold posts and comments, likes toggle, comments only on readable posts 404, own report 400, twice 409, reports hide, moderation key 403, approve twice 409, restore clears reports, warn without note 400, unknown action 400, deleted 404, author told, audit without words, space approval on/off, never the company space 400, company B sees nothing; rls; kit engage-feed-live 11/11). New key engage.moderate (System Admin and HR Admin). New tables eng_spaces, eng_comments, eng_reactions, eng_reports, eng_mod_actions in rls-isolation. Settings engage.blocked_words and engage.hide_after_reports on Settings 5.7. Menu: Engage › Moderation with the key. Kit: CommentsDrawer (new, with a story)."
+          },
+          {
+                    "id": "MT-G2-73-KUDOS",
+                    "area": "Batch G2 item 73: kudos with company values and badges, the recognition wall (M09 Q4, answer 2603: badges only; 25 Nov 2026)",
+                    "screen": "Engage › Recognition (wall; Give kudos)",
+                    "url": "http://localhost:3000/yx/engage/recognition",
+                    "account": "Two employees (A, B); HR admin; an employee of another company.",
+                    "steps": [
+                              "As A open Engage › Recognition › Give kudos and press Send kudos with nothing chosen.",
+                              "Search for B, choose B, a company value and a badge, write a message and send.",
+                              "As B open the bell, Engage › Recognition and Engage › Feed; like the kudos.",
+                              "Filter the wall by another value.",
+                              "As A send a kudos whose message has a blocked word.",
+                              "Try to find yourself in 'Who do you want to thank?'.",
+                              "As HR change Settings › Policies › Engage feed › company values and badges; give a kudos again."
+                    ],
+                    "expected": "Step 1: 'Choose at least one person to thank.', 'Pick a company value for this kudos.', 'Write what they did.' under the fields; nothing sent. Step 2: toast 'Kudos sent to B.'; back on the wall it shows with B, the value and the badge. Step 3: B has a bell notice (and an email with no details); the kudos is on the wall and in the feed as Kudos; the Like count goes up. Step 4: 'No kudos for … yet' when none. Step 5: a warning before sending; the toast says it is held; it is not on the wall and B is not told; HR sees it in Moderation. Step 6: you are not in the list (the server refuses yourself too). Step 7: the new values and badges are the choices. The leaderboard card says there are no points or leaderboard (badges only). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-08 · Give kudos",
+                              "Screens/Engage/ENG-09 · Recognition wall and leaderboard"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e: choices and people never yourself, yourself / unknown value / unknown badge / another company / nobody / more than 20 / no message / unknown field (points) 400, posted on the company space and the wall, filter by value, the people thanked told (not the giver), likes, a blocked word holds it untold and in moderation, company B sees nothing; kit engage-recognition-live). New table eng_kudos in rls-isolation. Settings engage.values and engage.badges on 5.7. Menu: Engage › Recognition."
           }
 ]

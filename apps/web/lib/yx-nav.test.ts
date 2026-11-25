@@ -515,14 +515,18 @@ describe('buildNav: Settings S-6', () => {
 describe('buildNav: Engage (batch G2)', () => {
   const engage = (over: Partial<NavInput>, keys: string[] = []) => labels(nav(keys, { employee: true, ...over }), 'engage');
   it('the feed for everyone with a job; Announcements only with engage.announce; nothing on a support session', () => {
-    expect(engage({})).toEqual(['Feed']);
-    expect(engage({}, ['engage.announce'])).toEqual(['Feed', 'Announcements']);
+    expect(engage({})).toEqual(['Feed', 'Recognition']);
+    expect(engage({}, ['engage.announce'])).toEqual(['Feed', 'Recognition', 'Announcements']);
     expect(engage({ employee: false }, ['engage.announce'])).toEqual(['Announcements']);
     expect(engage({ support: true }, ['engage.announce'])).toEqual([]);
+    expect(engage({}, ['engage.moderate'])).toEqual(['Feed', 'Recognition', 'Moderation']);
+    expect(engage({ support: true }, ['engage.moderate'])).toEqual([]);
   });
   it('pages name themselves', () => {
     const all = nav(['engage.announce'], { employee: true });
     expect(pageLink(all, '/yx/engage/announcements/new')?.link.label).toBe('Announcements');
     expect(pageLink(all, '/yx/engage')?.link.label).toBe('Feed');
+    expect(pageLink(all, '/yx/engage/post')?.link.label).toBe('Feed');
+    expect(pageLink(all, '/yx/engage/recognition')?.link.label).toBe('Recognition');
   });
 });

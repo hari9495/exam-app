@@ -40,6 +40,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   // HLP-10 / HLP-11 company policies.
   // Batch G2 item 12: an announcement for you, and the day-2 / day-5 reminder to acknowledge it.
   { type: 'engage.announcement.published', group: 'mentions', label: 'A company announcement is for you' },
+  { type: 'engage.kudos.received', group: 'mentions', label: 'A colleague thanked you with kudos' },
+  { type: 'engage.moderation.outcome', group: 'mentions', label: 'A moderator approved, hid or removed your post, or wrote to you' },
   { type: 'engage.announcement.reminder', group: 'reminders', label: 'An announcement is waiting for you to acknowledge it' },
   { type: 'helpdesk.policy.to_acknowledge', group: 'reminders', label: 'A company policy is waiting for you to acknowledge it' },
   { type: 'helpdesk.policy.overdue_report', group: 'reminders', label: 'Someone in your team is overdue acknowledging a policy' },

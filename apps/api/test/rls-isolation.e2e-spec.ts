@@ -91,7 +91,11 @@ const LATER_SUPPORT_EXCLUDED = [
   // Batch G1 answer 2593: the Internal Committee's awareness log and annual report (also RESTRICTIVE ic_member_only).
   'posh_awareness_sessions', 'posh_annual_reports',
   // Batch G2 item 12 (M09 Engage): feed posts and who read / acknowledged them.
-  'eng_posts', 'eng_post_reads'];
+  'eng_posts', 'eng_post_reads',
+  // Batch G2 item 100: spaces, comments, likes, reports and moderation actions.
+  'eng_spaces', 'eng_comments', 'eng_reactions', 'eng_reports', 'eng_mod_actions',
+  // Batch G2 item 73: kudos.
+  'eng_kudos'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

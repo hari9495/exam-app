@@ -101,6 +101,8 @@ describe('notification catalog', () => {
       // Batch G2 item 12: announcements.
       'engage.announcement.published',
       'engage.announcement.reminder',
+      'engage.moderation.outcome',
+      'engage.kudos.received',
       'helpdesk.policy.to_acknowledge',
       'helpdesk.policy.overdue_report',
       'helpdesk.policy.to_publish',

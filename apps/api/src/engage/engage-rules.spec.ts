@@ -1,4 +1,4 @@
-import { carriesAmount, reminderDue } from './engage-rules';
+import { blockedWord, carriesAmount, reminderDue } from './engage-rules';
 
 describe('engage rules', () => {
   it('spots an amount meant to stay in the app', () => {
@@ -7,6 +7,12 @@ describe('engage rules', () => {
     expect(carriesAmount('INR 300 meal card')).toBe(true);
     expect(carriesAmount('Revised canteen hygiene rules, Hosur plant')).toBe(false);
     expect(carriesAmount('Hall 2 on floor 3')).toBe(false);
+  });
+  it('finds a blocked word as a whole word only, in any case', () => {
+    expect(blockedWord('You are an IDIOT, frankly', ['idiot'])).toBe('idiot');
+    expect(blockedWord('Idiotic plan', ['idiot'])).toBeNull();
+    expect(blockedWord('Great work team', ['idiot', ''])).toBeNull();
+    expect(blockedWord('a (b) c', ['(b)'])).toBe('(b)');
   });
   it('reminds on day 2 and day 5 after publishing, then stops (answer 2602)', () => {
     expect(reminderDue('2026-11-01', '2026-11-02', 0)).toBe(false);

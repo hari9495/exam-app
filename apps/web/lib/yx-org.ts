@@ -130,6 +130,7 @@ export const YX_KEYS = [
   'case.disciplinary.raise',
   // Batch G2 item 12: announcements.
   'engage.announce',
+  'engage.moderate',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',

@@ -577,7 +577,11 @@ export function buildNav(n: NavInput): NavArea[] {
     title: 'Engage',
     sections: sec(undefined, [
       ...when(!support && employee, L('engage-feed', 'Feed', '/yx/engage')),
+      // Batch G2 item 73: kudos (badges only).
+      ...when(!support && employee, L('engage-recognition', 'Recognition', '/yx/engage/recognition')),
       ...when(!support && has('engage.announce'), L('engage-announcements', 'Announcements', '/yx/engage/announcements')),
+      // Batch G2 item 100: the moderation queue (held, reported and waiting posts).
+      ...when(!support && has('engage.moderate'), L('engage-moderation', 'Moderation', '/yx/engage/moderation')),
     ]),
   };
 

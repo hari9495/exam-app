@@ -25,7 +25,8 @@ import { DesktopFrame, PhoneFrame, SCREEN_RAIL, type PanelSection } from '../_ki
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, AiBadge, Avatar, type BadgeTone } from '../../components/display';
 import { Icon, Text, VisuallyHidden } from '../../components/foundations';
-import { InlineAlert } from '../../components/feedback';
+import { InlineAlert, Skeleton } from '../../components/feedback';
+import { Drawer } from '../../components/drawer';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from '../../components/menu';
 import { RadioGroup } from '../../components/choice';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
@@ -678,14 +679,16 @@ export interface FeedPost {
   points?: number;
   event?: { when: string; where: string; going: number };
   ack?: { required: boolean; done?: boolean; due?: Date };
-  state?: 'Published' | 'Held' | 'Hidden';
+  /** Batch G2 item 100: Pending = waiting for a moderator's approval (shown to its author only). */
+  state?: 'Published' | 'Held' | 'Hidden' | 'Pending';
 }
 
 const TYPE_TONE: Record<PostType, BadgeTone> = { Announcement: 'info', Update: 'neutral', Kudos: 'success', Celebration: 'success', Poll: 'neutral', Event: 'neutral' };
 
 /** One feed item: author, space, type, body, poll / kudos / event block, reactions, comments, report (M09 §3). */
 /** `social` false hides Like and Comment (batch G2: an announcement before the feed's reactions are live). onAck may be async: a failure undoes it. */
-export function PostCard({ post, now, onAck, onReport, social = true }: { post: FeedPost; now: Date; onAck?: () => void | Promise<unknown>; onReport?: () => void; social?: boolean }) {
+/** Batch G2 item 100: onLike (may be async; a failure undoes it) and onComment open the live actions. */
+export function PostCard({ post, now, onAck, onReport, social = true, onLike, onComment }: { post: FeedPost; now: Date; onAck?: () => void | Promise<unknown>; onReport?: () => void; social?: boolean; onLike?: () => void | Promise<unknown>; onComment?: () => void }) {
   const [reacted, setReacted] = useState(!!post.reacted);
   const [acked, setAcked] = useState(!!post.ack?.done);
   const mins = Math.round((now.getTime() - post.at.getTime()) / 60000);
@@ -709,6 +712,8 @@ export function PostCard({ post, now, onAck, onReport, social = true }: { post: 
           </Badge>
         )}
         <Badge tone={TYPE_TONE[post.type]}>{post.type}</Badge>
+        {post.state === 'Held' && <Badge tone="warning">Held for review</Badge>}
+        {post.state === 'Pending' && <Badge tone="warning">Waiting for approval</Badge>}
         {onReport && (
           <Menu>
             <MenuTrigger asChild>
@@ -758,10 +763,19 @@ export function PostCard({ post, now, onAck, onReport, social = true }: { post: 
         </div>
       )}
       {social && <footer className="yx-post__foot">
-        <Button size="sm" icon={Heart} aria-pressed={reacted} onClick={() => setReacted((r) => !r)}>
+        <Button
+          size="sm"
+          icon={Heart}
+          aria-pressed={reacted}
+          onClick={() => {
+            const was = reacted;
+            setReacted(!was);
+            void Promise.resolve(onLike?.()).catch(() => setReacted(was));
+          }}
+        >
           {reacted ? 'Liked' : 'Like'} · {post.reactions + (reacted && !post.reacted ? 1 : !reacted && post.reacted ? -1 : 0)}
         </Button>
-        <Button size="sm" icon={MessageSquare}>
+        <Button size="sm" icon={MessageSquare} onClick={onComment}>
           Comment · {post.comments}
         </Button>
       </footer>}
@@ -1035,5 +1049,75 @@ export function CalibrationPlan({ sessions, onChange, facilitators, departments 
         </div>
       </Dialog>
     </div>
+  );
+}
+
+/* ================================================================== Comments drawer (batch G2 item 100) */
+
+export interface FeedComment {
+  id: string;
+  author: string;
+  mine: boolean;
+  body: string;
+  at: string;
+  /** Held for a blocked word: only its author sees it, marked. */
+  held: boolean;
+}
+
+/** The comments on one post: read, add (a blocked word holds it for a moderator), report someone else's. */
+export function CommentsDrawer({ open, onClose, title, comments, onAdd, onReport }: { open: boolean; onClose: () => void; title: string; comments: FeedComment[] | null; onAdd: (text: string) => Promise<unknown>; onReport: (id: string) => Promise<unknown> }) {
+  const [text, setText] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const [reported, setReported] = useState<string[]>([]);
+  const add = async () => {
+    setTried(true);
+    if (!text.trim()) return void setTimeout(() => document.getElementById('cm-text')?.focus(), 0);
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onAdd(text.trim());
+      setText('');
+      setTried(false);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'Not sent. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Drawer open={open} onOpenChange={(o) => !o && onClose()} title="Comments" subtitle={title} footer={<Button variant="primary" loading={busy} onClick={() => void add()}>Comment</Button>}>
+      <div className="yx-growth-stack">
+        {failed && <InlineAlert tone="danger" title="Not sent">{failed}</InlineAlert>}
+        {comments === null ? (
+          <Skeleton height={80} />
+        ) : comments.length === 0 ? (
+          <Text tone="secondary">No comments yet.</Text>
+        ) : (
+          <ul className="yx-growth-list" aria-label="Comments">
+            {comments.map((c) => (
+              <li key={c.id} className="yx-growth-list__item">
+                <div className="yx-growth-list__main">
+                  <span>
+                    <strong>{c.author}</strong> {c.held && <Badge tone="warning">Held for review</Badge>}
+                  </span>
+                  <span>{c.body}</span>
+                  <span className="yx-growth-meta">{formatDate(new Date(c.at))}</span>
+                </div>
+                {!c.mine && (
+                  <Button size="sm" icon={Flag} disabled={reported.includes(c.id)} onClick={() => void onReport(c.id).then(() => setReported((r) => [...r, c.id]), (e: unknown) => setFailed(e instanceof Error ? e.message : 'Not reported.'))}>
+                    {reported.includes(c.id) ? 'Reported' : 'Report'}
+                  </Button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <FormField id="cm-text" label="Your comment" required error={tried && !text.trim() ? 'Write the comment first.' : null}>
+          <TextArea value={text} onChange={setText} rows={3} maxLength={2000} />
+        </FormField>
+      </div>
+    </Drawer>
   );
 }

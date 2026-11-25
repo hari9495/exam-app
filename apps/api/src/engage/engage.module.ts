@@ -4,7 +4,9 @@ import Redis from 'ioredis';
 import { AuthModule } from '../auth/auth.module';
 import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from '../jobs/redis-connection';
 import { NotificationsModule } from '../notifications/notifications.module';
-import { AnnouncementsController, MyEngageController } from './engage.controller';
+import { AnnouncementsController, ModerationController, MyEngageController } from './engage.controller';
+import { FeedService } from './feed.service';
+import { KudosService } from './kudos.service';
 import { AnnouncementsService } from './announcements.service';
 
 const QUEUE = 'engage-jobs';
@@ -43,7 +45,7 @@ export class EngageJobs implements OnModuleInit, OnModuleDestroy {
 // Batch G2 (M09 Engage): announcements (item 12); the feed, kudos, surveys and celebrations follow.
 @Module({
   imports: [AuthModule, NotificationsModule],
-  controllers: [AnnouncementsController, MyEngageController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, AnnouncementsService, EngageJobs],
+  controllers: [AnnouncementsController, MyEngageController, ModerationController],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, AnnouncementsService, FeedService, KudosService, EngageJobs],
 })
 export class EngageModule {}

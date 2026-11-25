@@ -125,6 +125,8 @@ export const PERMISSIONS = [
   { key: 'case.disciplinary.raise', description: 'Open a disciplinary show-cause case about an employee (HR); the case is seen only by its HR members and the employee' },
   // Batch G2 item 12 (answer 2602): announcements (also in the engage_announcements migration).
   { key: 'engage.announce', description: 'Write and publish company announcements, choose who they go to and see who read and acknowledged them' },
+  // Batch G2 item 100: the feed's moderation queue (also in the engage_feed migration).
+  { key: 'engage.moderate', description: 'Review held and reported posts and comments in the feed: approve, restore, keep hidden, delete or warn the author; switch a space to approval' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -228,6 +230,7 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'case.disciplinary.raise',
     // Batch G2 item 12 (answer 2602): announcements (System Admin and HR by default).
     'engage.announce',
+    'engage.moderate',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',

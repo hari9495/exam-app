@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { GiveKudosScreen } from './engage-recognition';
 import { BADGES, VALUES } from './engage-data';
 import { PEOPLE } from './perf-data-2';
+import { liveGiveKudos } from './engage-live-samples';
 
 const meta: Meta = { title: 'Screens/Engage/ENG-08 · Give kudos', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -16,3 +17,5 @@ export const NeedsApproval: S = { name: 'Above threshold: needs approval', rende
 export const Errors: S = { name: 'Errors: over allowance, manager chain', render: () => <GiveKudosScreen me="Divya Raghunathan" people={OPTS} values={VALUES} badges={BADGES} points={POINTS} defaults={{ to: ['t2', 'x1'], value: 'Ownership', points: 200, message: 'Thank you both.' }} /> };
 export const Phone: S = { name: 'Phone', globals: PHONE, render: () => <GiveKudosScreen device="phone" me="Divya Raghunathan" people={OPTS} values={VALUES} badges={BADGES} points={null} /> };
 export const Sent: S = { name: 'Sent', render: () => <GiveKudosScreen me="Divya Raghunathan" people={OPTS} values={VALUES} badges={BADGES} points={null} defaults={{ to: ['t3'] }} sent /> };
+// Batch G2 item 73: thanking colleagues for a company value, with a badge (badges only).
+export const Colleagues: S = { name: 'Colleagues, values and badges (badges only)', render: () => <GiveKudosScreen live={liveGiveKudos()} /> };
