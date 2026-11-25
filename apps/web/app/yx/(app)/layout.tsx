@@ -1,5 +1,6 @@
 'use client';
 
+import { useLearning } from '../../../lib/yx-learning';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -77,6 +78,8 @@ function Frame({ children }: { children: React.ReactNode }) {
   const myTasks = useLife<{ tasks: unknown[] }>('/lifecycle/my-tasks');
   const myClearance = useLife<{ rows: unknown[] }>('/lifecycle/clearance/mine');
   const firstDays = useLife<{ card: unknown }>('/lifecycle/me/first-30-days');
+  // Internal trainers get Learning › Sessions.
+  const learningRoles = useLearning<{ trainer: boolean }>('/me/roles');
   const counts = useWorkspaceCounts();
   // Founder answer 511: Interviews shows for anyone on an interview panel (their own interviews; no key needed).
   const myInterviews = useQuery<unknown[]>({ queryKey: ['hiring', '/interviews/mine'], queryFn: () => apiFetch('/hiring/interviews/mine', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
@@ -145,6 +148,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         projects: Boolean(projectsOn.data?.canOpen),
         lineApprovals: projectsOn.data?.lineApprovals ?? 0,
         panellist: Boolean(myInterviews.data?.length),
+        trainer: Boolean(learningRoles.data?.trainer),
       }),
     // perms.data drives perms.has
     // eslint-disable-next-line react-hooks/exhaustive-deps

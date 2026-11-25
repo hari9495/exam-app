@@ -16,6 +16,7 @@ import { usePayRead } from '../../../../lib/yx-pay';
 import { assetRows, attendanceCard, bankRows, currentPeriod, customRows, docRows, familyData, leaveOrder, payShown, type Compensation, type PersonMonth, historyRows, identityRows, jobRows, performanceData, personalRows, scheduledNotes, upcoming, type ReverifDue } from '../../../../lib/yx-record';
 import { usePerf } from '../../../../lib/yx-performance';
 import { reportErrors } from './report-errors';
+import { useLearning } from '../../../../lib/yx-learning';
 
 const id = encodeURIComponent;
 const day = (iso: string) => new Date(`${iso.slice(0, 10)}T00:00:00`);
@@ -120,6 +121,8 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   const periodId = periods.data ? currentPeriod(periods.data, today) : null;
   const goals = usePerf<{ goals: { id: string; title: string; status: string; progress: number }[] }>(perfAllowed && periodId ? `/goals?period=${id(periodId)}&view=${profile.data?.self ? 'mine' : 'employee'}${profile.data?.self ? '' : `&employeeId=${p}`}` : null);
   const reviews = usePerf<{ employeeId: string; cycle: string; status: string; band: string | null }[]>(perfAllowed ? `/reviews?view=${profile.data?.self ? 'mine' : hr && perms.has('perf.review.view') ? 'scope' : 'team'}` : null);
+  // Learning tab: the person, their manager or training reports in scope (the API decides; a refusal hides the tab).
+  const learning = useLearning<{ id: string; course: string; status: 'Requested' | 'Enrolled' | 'In progress' | 'Completed' | 'Overdue'; due: string | null; completed: string | null; validUntil: string | null; progress: number }[]>(personId ? `/people/${p}` : null);
   const meetings = usePerf<{ meetings: { with: string; on: string; status: string }[] }>(perfAllowed && !profile.data?.self ? '/one-on-ones' : null);
   // Counts only (PPL-03); the API decides who may ask (the person, their managers, HR with review access).
   const feedbackCounts = usePerf<{ received: number; given: number }>(perfAllowed ? `/feedback/employee/${p}/counts` : null);
@@ -347,6 +350,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           },
         }
       : {}),
+    learning: learning.data ? learning.data.map((x) => ({ ...x, due: x.due ? new Date(`${x.due}T00:00:00`) : null, completed: x.completed ? new Date(`${x.completed}T00:00:00`) : null, validUntil: x.validUntil ? new Date(`${x.validUntil}T00:00:00`) : null })) : null,
     ...(perms.has('letter.issue') && !self ? { onIssueLetter: () => router.push(`/yx/people/letters?people=${p}`) } : {}),
     onRetry: () => void Promise.all([profile.refetch(), view.refetch(), history.refetch()]),
   };

@@ -1,5 +1,6 @@
 import { EmployeeImportDraftsService } from '../people/employee-import-drafts.service';
 import { ErasureService } from '../people/erasure.service';
+import { LearningAssignService } from '../learning/learning-assign.service';
 import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import Redis from 'ioredis';
@@ -91,6 +92,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
     deletions: CompanyDeletionService,
     questionReviews: QuestionReviewNudgesService,
     staffNotices: StaffNoticesService,
+    learning: LearningAssignService,
   ) {
     // Keys MUST match SWEEP_SCHEDULE ids.
     this.handlers = {
@@ -145,6 +147,7 @@ export class ScheduledSweepsWorkerService implements OnModuleInit, OnModuleDestr
       'retention-expiry': () => deletions.releaseSweep(),
       // Assessments answer 2129.
       'question-review-nudges': () => questionReviews.sweep(),
+      'learning-daily': () => learning.sweep(),
     };
     this.worker = logBullErrors(new Worker(SCHEDULED_SWEEPS_QUEUE_NAME, (job) => this.dispatch(job), bullOpts(this.connection)), SCHEDULED_SWEEPS_QUEUE_NAME);
     this.worker.on('failed', (job, err) => this.logger.error(`Sweep "${job?.name}" failed: ${msg(err)}`));

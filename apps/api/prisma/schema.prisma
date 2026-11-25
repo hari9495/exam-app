@@ -15389,3 +15389,237 @@ model PayrollBudget {
   @@unique([organizationId, legalEntityId, month])
   @@map("payroll_budgets")
 }
+
+// ---- Learning core (LRN-01, 02, 03, 07, 08). Checks, RLS and keys in migration 20261207000000_learning. ----
+
+/// A course: what it is, who it is for, whether it gives a certificate and for how long.
+model LearningCourse {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String   @map("organization_id") @db.Uuid
+  title             String   @db.VarChar(200)
+  description       String?  @db.VarChar(2000)
+  /// self_paced · classroom · virtual · scorm · assessment
+  type              String   @default("self_paced") @db.VarChar(20)
+  /// company · provider · partner
+  source            String   @default("company") @db.VarChar(20)
+  provider          String?  @db.VarChar(120)
+  durationMinutes   Int      @default(0) @map("duration_minutes")
+  cost              Decimal  @default(0) @db.Decimal(12, 2)
+  mandatory         Boolean  @default(false)
+  needsApproval     Boolean  @default(false) @map("needs_approval")
+  certificate       Boolean  @default(false)
+  certificateMonths Int?     @map("certificate_months")
+  /// Share of session slots attended that completes a classroom or virtual course.
+  attendancePct     Int      @default(75) @map("attendance_pct")
+  skills            String[] @default([])
+  /// draft · published · retired
+  status            String   @default("draft") @db.VarChar(10)
+  createdBy         String?  @map("created_by") @db.Uuid
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  version           Int      @default(1)
+
+  @@map("learning_courses")
+}
+
+/// One piece of a course's content, in order: a PDF or video (a stored file) or a link.
+model LearningCourseItem {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  courseId       String   @map("course_id") @db.Uuid
+  position       Int
+  title          String   @db.VarChar(200)
+  /// pdf · video · link
+  kind           String   @db.VarChar(10)
+  minutes        Int      @default(0)
+  required       Boolean  @default(true)
+  fileId         String?  @map("file_id") @db.Uuid
+  url            String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([organizationId, courseId, position], map: "learning_course_items_course_idx")
+  @@map("learning_course_items")
+}
+
+/// Who must complete a course (job today in the listed entities, locations and departments; designation words), by when, how often.
+model LearningRule {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  courseId       String   @map("course_id") @db.Uuid
+  legalEntityIds String[] @default([]) @map("legal_entity_ids") @db.Uuid
+  locationIds    String[] @default([]) @map("location_ids") @db.Uuid
+  departmentIds  String[] @default([]) @map("department_ids") @db.Uuid
+  designation    String?  @db.VarChar(120)
+  dueDays        Int      @default(30) @map("due_days")
+  /// 0 (once) · 12 · 24
+  repeatMonths   Int      @default(0) @map("repeat_months")
+  active         Boolean  @default(true)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+  version        Int      @default(1)
+
+  @@map("learning_rules")
+}
+
+model LearningEnrolment {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  courseId       String    @map("course_id") @db.Uuid
+  /// rule · renewal · self · nominated
+  source         String    @db.VarChar(12)
+  ruleId         String?   @map("rule_id") @db.Uuid
+  assignedOn     DateTime  @map("assigned_on") @db.Date
+  dueOn          DateTime? @map("due_on") @db.Date
+  /// requested · waitlisted · enrolled · in_progress · completed · no_show · failed · cancelled · declined
+  /// (overdue is enrolled or in_progress past due_on)
+  status         String    @default("enrolled") @db.VarChar(12)
+  /// The session the seat or waitlist place is in (classroom and virtual courses).
+  sessionId      String?   @map("session_id") @db.Uuid
+  waitlistedAt   DateTime? @map("waitlisted_at") @db.Timestamptz(3)
+  /// Why a nomination was declined (seen by the manager).
+  declineReason  String?   @map("decline_reason") @db.VarChar(500)
+  /// Why a session result is what it is ("Attended 1 of 2 slots; needs 75%").
+  resultReason   String?   @map("result_reason") @db.VarChar(200)
+  /// The approval request (LRN-06) when the course needs approval.
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  bondAcceptedAt DateTime? @map("bond_accepted_at") @db.Timestamptz(3)
+  startedAt      DateTime? @map("started_at") @db.Timestamptz(3)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(3)
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version        Int       @default(1)
+
+  @@index([organizationId, employeeId], map: "learning_enrolments_employee_idx")
+  @@map("learning_enrolments")
+}
+
+model LearningItemProgress {
+  organizationId String   @map("organization_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  itemId         String   @map("item_id") @db.Uuid
+  doneAt         DateTime @default(now()) @map("done_at") @db.Timestamptz(3)
+
+  @@id([enrolmentId, itemId])
+  @@map("learning_item_progress")
+}
+
+model LearningCertificate {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  enrolmentId    String    @map("enrolment_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  courseId       String    @map("course_id") @db.Uuid
+  courseTitle    String    @map("course_title") @db.VarChar(200)
+  personName     String    @map("person_name") @db.VarChar(200)
+  issuedOn       DateTime  @map("issued_on") @db.Date
+  expiresOn      DateTime? @map("expires_on") @db.Date
+  verifyCode     String    @map("verify_code") @db.VarChar(10)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([enrolmentId], map: "learning_certificates_enrolment_key")
+  @@unique([verifyCode], map: "learning_certificates_verify_key")
+  @@index([organizationId, employeeId], map: "learning_certificates_employee_idx")
+  @@map("learning_certificates")
+}
+
+model LearningReminder {
+  organizationId String   @map("organization_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  /// before_7 · before_2 · overdue_manager · overdue_hr
+  kind           String   @db.VarChar(20)
+  sentAt         DateTime @default(now()) @map("sent_at") @db.Timestamptz(3)
+
+  @@id([enrolmentId, kind])
+  @@map("learning_reminders")
+}
+
+/// LRN-06: external training a person asks for (outside the catalogue), decided by the manager, then L&D.
+model LearningExternalRequest {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  employeeId     String    @map("employee_id") @db.Uuid
+  title          String    @db.VarChar(200)
+  provider       String    @db.VarChar(200)
+  cost           Decimal   @db.Decimal(12, 2)
+  reason         String    @db.VarChar(2000)
+  bondAcceptedAt DateTime? @map("bond_accepted_at") @db.Timestamptz(3)
+  /// requested · approved · declined
+  status         String    @default("requested") @db.VarChar(10)
+  wfRequestId    String?   @map("wf_request_id") @db.Uuid
+  createdBy      String?   @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
+
+  @@index([organizationId, employeeId], map: "learning_external_requests_employee_idx")
+  @@map("learning_external_requests")
+}
+
+/// LRN-04: a trainer: an employee (internal) or someone from a training company (external).
+model LearningTrainer {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(200)
+  orgName        String?  @map("org_name") @db.VarChar(200)
+  external       Boolean
+  employeeId     String?  @map("employee_id") @db.Uuid
+  email          String?  @db.VarChar(254)
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("learning_trainers")
+}
+
+/// LRN-04: a classroom or virtual session of a course: seats, a trainer, slots and cost lines.
+model LearningSession {
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId        String    @map("organization_id") @db.Uuid
+  courseId              String    @map("course_id") @db.Uuid
+  /// classroom · virtual
+  mode                  String    @db.VarChar(10)
+  /// A room and site, or the meeting link.
+  venue                 String    @db.VarChar(300)
+  trainerId             String    @map("trainer_id") @db.Uuid
+  seats                 Int
+  /// scheduled · completed · cancelled
+  status                String    @default("scheduled") @db.VarChar(12)
+  /// [{ label, amount }]
+  costLines             Json      @default("[]") @map("cost_lines")
+  attendanceConfirmedAt DateTime? @map("attendance_confirmed_at") @db.Timestamptz(3)
+  createdBy             String?   @map("created_by") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  version               Int       @default(1)
+
+  @@index([organizationId, courseId], map: "learning_sessions_course_idx")
+  @@map("learning_sessions")
+}
+
+model LearningSessionSlot {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String    @map("organization_id") @db.Uuid
+  sessionId       String    @map("session_id") @db.Uuid
+  position        Int
+  startsAt        DateTime  @map("starts_at") @db.Timestamptz(3)
+  endsAt          DateTime  @map("ends_at") @db.Timestamptz(3)
+  checkinClosedAt DateTime? @map("checkin_closed_at") @db.Timestamptz(3)
+
+  @@unique([sessionId, position], map: "learning_session_slots_position_key")
+  @@map("learning_session_slots")
+}
+
+model LearningAttendance {
+  organizationId String   @map("organization_id") @db.Uuid
+  slotId         String   @map("slot_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  /// present · late · absent
+  status         String   @db.VarChar(8)
+  /// qr · code · manual
+  method         String   @db.VarChar(10)
+  markedBy       String?  @map("marked_by") @db.Uuid
+  markedAt       DateTime @default(now()) @map("marked_at") @db.Timestamptz(3)
+
+  @@id([slotId, enrolmentId])
+  @@map("learning_attendance")
+}

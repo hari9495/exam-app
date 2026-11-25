@@ -21,9 +21,9 @@ describe('buildNav: areas', () => {
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
     const n = nav(['employee.profile.view', 'payroll.run.view', 'statutory.filing.view', 'pipeline:manage', 'perf.goal.view', 'org.settings.manage'], { employee: true });
-    // Batch G2: Engage (the feed) for everyone with a job.
-    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'engage', 'visitors', 'settings']);
-    for (const unbuilt of ['assess', 'learning', 'analytics', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
+    // Learning (PR #210) for everyone with a job; batch G2: Engage (the feed) for everyone with a job.
+    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'learning', 'helpdesk', 'engage', 'visitors', 'settings']);
+    for (const unbuilt of ['assess', 'analytics', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
   });
 
   it('YukthiX Hiring for hiring; no menu link leads to the older /v2 screens (decision 2398, step 5)', () => {
@@ -86,6 +86,18 @@ describe('buildNav: scorecard templates (answer 345)', () => {
     expect(all.map((l) => l.href)).toContain('/yx/settings/hiring');
     for (const keys of [['pipelines:configure'], ['pipeline:manage', 'pipelines:configure', 'ats.settings.manage']])
       expect(nav(keys).flatMap((a) => a.sections.flatMap((s) => s.items)).filter((l) => /scorecards$/.test(l.href) || l.label === 'Scorecards')).toEqual([]);
+  });
+});
+
+describe('buildNav: Learning', () => {
+  it('employees learn; managers add My team; training reports and L&D add Compliance and Course builder', () => {
+    expect(labels(nav([], { employee: true }), 'learning')).toEqual(['My learning', 'Catalogue']);
+    expect(labels(nav([], { employee: true, manager: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My team']);
+    expect(labels(nav(['learning.report.view', 'learning.manage']), 'learning')).toEqual(['Sessions', 'Compliance', 'Course builder']);
+    expect(labels(nav([], { employee: true, trainer: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'Sessions']);
+    expect(areas(nav(['learning.manage'], { support: true }))).not.toContain('learning');
+    expect(activeLink(nav(['learning.manage', 'learning.report.view'], { employee: true }), '/yx/learning/compliance/rules')?.link.label).toBe('Compliance');
+    expect(activeLink(nav([], { employee: true }), '/yx/learning/enrolments/abc')?.link.label).toBe('My learning');
   });
 });
 

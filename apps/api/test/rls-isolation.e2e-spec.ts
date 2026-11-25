@@ -62,6 +62,9 @@ const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successo
   'employee_change_drafts',
   // PPL-07: saved employee imports (also restricted to the person who saved them).
   'employee_import_drafts'];
+// Learning: courses, rules, enrolments, progress, certificates and the reminder log.
+const LEARNING_SUPPORT_EXCLUDED = ['learning_courses', 'learning_course_items', 'learning_rules', 'learning_enrolments', 'learning_item_progress', 'learning_certificates', 'learning_reminders', 'learning_external_requests',
+  'learning_trainers', 'learning_sessions', 'learning_session_slots', 'learning_attendance'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Later features that also carry the RESTRICTIVE support_session_excluded policy (added 9 Nov 2026 from the catalogue,
 // pg_policy, when this list had fallen behind): helpdesk cases, BFSI and pay extras, expenses cards, performance disputes.
@@ -754,7 +757,7 @@ describe('PostgreSQL row-level security (app role)', () => {
     const restrictive = await prisma.$queryRaw<{ table: string }[]>`
       SELECT c.relname AS table FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
       WHERE p.polname = 'support_session_excluded' AND NOT p.polpermissive ORDER BY c.relname`;
-    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED, ...LATER_SUPPORT_EXCLUDED].sort());
+    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED, ...LATER_SUPPORT_EXCLUDED, ...LEARNING_SUPPORT_EXCLUDED].sort());
   });
 
   it("(b) org A cannot read, change or point at org B's grants, personal data, identifiers, bank accounts or requests", async () => {

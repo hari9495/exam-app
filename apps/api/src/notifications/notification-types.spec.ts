@@ -129,6 +129,15 @@ describe('notification catalog', () => {
       // Settings (1522, 1523).
       'settings.change.waiting',
       'settings.change.decided',
+      'learning.before_7',
+      'learning.before_2',
+      'learning.overdue',
+      'learning.overdue_manager',
+      'learning.overdue_hr',
+      'learning.nominated',
+      'learning.waitlist_promoted',
+      'learning.session_changed',
+      'learning.nomination_declined',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

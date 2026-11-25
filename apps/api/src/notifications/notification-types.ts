@@ -142,6 +142,16 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'perf.pip.checkin_missed', group: 'reminders', label: 'An improvement plan check-in was missed (HR and the manager)' },
   { type: 'perf.pip.handed_over', group: 'assignments', label: 'An improvement plan was handed over to you' },
   { type: 'perf.pip.extended', group: 'reminders', label: 'An improvement plan was extended after it was not met' },
+  // Learning: due dates of assigned courses, and who is told when one is missed.
+  { type: 'learning.before_7', group: 'reminders', label: 'A course assigned to you is due in a week' },
+  { type: 'learning.before_2', group: 'reminders', label: 'A course assigned to you is due in 2 days' },
+  { type: 'learning.overdue', group: 'reminders', label: 'A reminder to finish a course that is overdue' },
+  { type: 'learning.overdue_manager', group: 'reminders', label: 'Someone on your team missed a course due date' },
+  { type: 'learning.overdue_hr', group: 'reminders', label: 'Someone is a week past a course due date (training reports)' },
+  { type: 'learning.nominated', group: 'assignments', label: 'You were nominated for a training session' },
+  { type: 'learning.waitlist_promoted', group: 'assignments', label: 'A seat came free for you in a training session' },
+  { type: 'learning.session_changed', group: 'reminders', label: 'A training session you are in changed or was cancelled' },
+  { type: 'learning.nomination_declined', group: 'reminders', label: 'Someone in your team declined a nomination' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },

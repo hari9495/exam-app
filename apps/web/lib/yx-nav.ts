@@ -61,6 +61,8 @@ export interface NavInput {
   projects?: boolean;
   /** P-2 (1406): timesheet lines waiting for this person's decision (the server decides). */
   lineApprovals?: number;
+  /** Runs learning sessions as an internal trainer. */
+  trainer?: boolean;
 }
 
 /** Possible same person is in the menu when the server sends its count: company-wide HR while a pair waits or for 90 days after any merge, even at 0. */
@@ -475,6 +477,21 @@ export function buildNav(n: NavInput): NavArea[] {
         ],
   };
 
+  // Learning (the core): the designed panel's names (LRN): My learning and Catalogue for employees, My team for
+  // managers, Compliance for training reports, Course builder for L&D. My tests, Sessions, Needs & budgets and Skills
+  // have no live page yet (hidden).
+  const learning: NavArea = {
+    id: 'learning',
+    title: 'Learning',
+    sections: sec(undefined, [
+      ...when(self, L('my-learning', 'My learning', '/yx/learning'), L('catalogue', 'Catalogue', '/yx/learning/catalogue')),
+      ...when(self && manager, L('team-learning', 'My team', '/yx/learning/team')),
+      ...when(!support && (has('learning.manage') || Boolean(n.trainer)), L('learning-sessions', 'Sessions', '/yx/learning/sessions')),
+      ...when(!support && has('learning.report.view'), L('learning-compliance', 'Compliance', '/yx/learning/compliance')),
+      ...when(!support && has('learning.manage'), L('course-builder', 'Course builder', '/yx/learning/courses')),
+    ]),
+  };
+
   const performance: NavArea = {
     id: 'performance',
     title: 'Performance',
@@ -674,7 +691,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, helpdesk, engage, visitors, settings];
+  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, learning, helpdesk, engage, visitors, settings];
   // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.
   const mine = new Set(areas.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))));
   if (Object.values(SETTINGS_PAGE_EDITORS).some((hrefs) => hrefs.some((h) => mine.has(h)))) settings.sections.unshift({ items: [L('settings-home', 'All settings', SETTINGS_HOME)] });

@@ -91,4 +91,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'retention-expiry', cron: '35 21 * * *' },
   // Assessments answer 2129: one note a day to bank writers with questions waiting for their review (09:30 IST).
   { id: 'question-review-nudges', cron: '0 4 * * *' },
+  // Learning: assignment rules, renewals, reminders and escalation, daily at 06:30 IST.
+  { id: 'learning-daily', cron: '0 1 * * *' },
 ];

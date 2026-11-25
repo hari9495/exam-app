@@ -27,6 +27,7 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, QrTile, SkillLevel, SplitLayout } from './growth-kit';
 import { complianceCell, completionStatus, withdraw } from './growth-logic';
 import type { Course } from './learn-me';
+import { CourseDetailsFields, LiveAssignmentRulesScreen, LiveComplianceScreen, LiveCourseBuilderScreen, NEW_COURSE, type CourseDetails, type LiveBuilder, type LiveCompliance, type LiveRules } from './learn-live';
 import type { LoadState } from './perf-goals';
 import './growth.css';
 
@@ -46,11 +47,18 @@ export interface CourseBuilderProps {
   tab?: 'content' | 'assessment' | 'certificate' | 'skills' | 'settings' | 'paths';
   paths?: { id: string; name: string; courses: string[]; certificate: boolean; enrolled: number }[];
   status?: 'Draft' | 'Published';
+  /** Wired to the API (the core: content, certificate, skills, settings). */
+  live?: LiveBuilder;
 }
 
 /** LRN-03 Course builder (T3): content items, assessment picker, certificate (+ Open Badge / Credly), skill mapping, settings; learning paths. */
-export function CourseBuilderScreen({ course, items: initial, tab = 'content', paths = [], status = 'Draft' }: CourseBuilderProps) {
+export function CourseBuilderScreen(props: CourseBuilderProps) {
+  return props.live ? <LiveCourseBuilderScreen live={props.live} /> : <SampleCourseBuilder {...props} />;
+}
+
+function SampleCourseBuilder({ course, items: initial, tab = 'content', paths = [], status = 'Draft' }: CourseBuilderProps) {
   const [items, setItems] = useState(initial);
+  const [details, setDetails] = useState<CourseDetails>({ ...NEW_COURSE, title: course.title, source: course.source === 'Provider' ? 'provider' : course.source === 'Partner pack' ? 'partner' : 'company', provider: course.provider ?? '', cost: course.cost, mandatory: Boolean(course.mandatory), needsApproval: Boolean(course.approval), certificate: Boolean(course.certificate), skills: course.skills });
   const [badge, setBadge] = useState(true);
   const [credly, setCredly] = useState(false);
   const [threshold, setThreshold] = useState<number | null>(75);
@@ -144,6 +152,7 @@ export function CourseBuilderScreen({ course, items: initial, tab = 'content', p
         </TabsContent>
         <TabsContent value="certificate">
           <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
+            <Switch checked={details.certificate} onChange={(c) => setDetails({ ...details, certificate: c })} label="Issue a certificate on completion" description="A PDF with a code anyone can check on the verify page." />
             <FormField label="Certificate template">
               <Select value="c1" onChange={() => {}} options={[{ value: 'c1', label: 'Training certificate with QR verification' }]} />
             </FormField>
@@ -178,6 +187,7 @@ export function CourseBuilderScreen({ course, items: initial, tab = 'content', p
         </TabsContent>
         <TabsContent value="settings">
           <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
+            <CourseDetailsFields value={details} onChange={setDetails} />
             <FieldRow>
               <FormField label="Cost per person">
                 <CurrencyField value={course.cost} onChange={() => {}} />
@@ -636,7 +646,12 @@ const HOSUR_RULE: Rule = {
 };
 
 /** LRN-07 Assignment rules (T3): population, course, due in N days, recurrence, reminders and escalation; preview of who matches (Q3). */
-export function AssignmentRulesScreen({ rules, openId }: { rules: AssignmentRule[]; openId?: string }) {
+export function AssignmentRulesScreen({ rules, openId, live }: { rules: AssignmentRule[]; openId?: string; live?: LiveRules }) {
+  if (live) return <LiveAssignmentRulesScreen live={live} />;
+  return <SampleAssignmentRules rules={rules} openId={openId} />;
+}
+
+function SampleAssignmentRules({ rules, openId }: { rules: AssignmentRule[]; openId?: string }) {
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const current = rules.find((r) => r.id === open);
   return (
@@ -673,6 +688,9 @@ export function AssignmentRulesScreen({ rules, openId }: { rules: AssignmentRule
           }
         >
           <div className="yx-growth-stack">
+            <FormField label="Rule name" required>
+              <TextField value={current.name} onChange={() => {}} />
+            </FormField>
             <ConditionBuilder schema={RULE_SCHEMA} defaultValue={HOSUR_RULE} parts={['when', 'if']} />
             <FieldRow>
               <FormField label="Course">
@@ -688,6 +706,7 @@ export function AssignmentRulesScreen({ rules, openId }: { rules: AssignmentRule
             <FormField label="Reminders and escalation">
               <Text>Reminders 7 and 2 days before the due date; the manager is told the day after it’s missed, then HR after 7 days.</Text>
             </FormField>
+            <Switch defaultChecked={current.active} label="Active" description="A paused rule enrols nobody new. Enrolments it made stay." />
             <div className="yx-growth-effect">
               <span className="yx-growth-effect__title">Preview</span>
               <ul>
@@ -712,7 +731,8 @@ export interface ComplianceData {
 }
 
 /** LRN-08 Compliance dashboard (T6): department × mandatory course heatmap with % in every cell, overdue list, audit export. */
-export function ComplianceDashboardScreen({ persona = 'ld', data, state = 'ready' }: { persona?: 'ld' | 'hr'; data: ComplianceData; state?: LoadState }) {
+export function ComplianceDashboardScreen({ persona = 'ld', data, state = 'ready', live }: { persona?: 'ld' | 'hr'; data: ComplianceData; state?: LoadState; live?: LiveCompliance }) {
+  if (live) return <LiveComplianceScreen live={live} persona={persona} />;
   const cells = data.rows.map((r) => ({ label: r.dept, groupSize: r.size, values: r.done.map((d, i) => complianceCell(d, r.assigned[i]).pct) }));
   const all = data.rows.flatMap((r) => r.done.map((d, i) => ({ d, a: r.assigned[i] })));
   const overall = complianceCell(all.reduce((a, x) => a + x.d, 0), all.reduce((a, x) => a + x.a, 0));

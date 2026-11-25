@@ -21,7 +21,7 @@ export { BfsiComplianceList, BfsiDeclarations, type BfsiHolding, type BfsiRelate
 export { DeclarationsSwitch, DisabilityDeclaration, type DeclarationsPage, type DisabilityInput, type LiveDisability, type LiveDisabilityList } from '../people/selfservice';
 // PPL-46: the salary account abroad (HR's page and the person's own).
 export { InternationalBankPhone, InternationalBankTab, type LiveIntlBank, type LiveSplit, type SplitLineInput } from '../people/record';
-export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
+export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordLearning, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
 export { CustomFieldsDrawer, EmployeeFieldsScreen, CLASS_LABEL as CUSTOM_CLASS_LABEL, customValueText, type DataClass, type EmployeeFieldDef, type EmployeeFieldsScreenProps, type RecordCustomField } from '../people/custom-fields';
 export type { CustomField as RecordCustomRow } from '../people/record';
@@ -82,3 +82,46 @@ export { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData,
 export { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
 export { DispatchProofDialog, StartAbscondingDialog, StopAbscondingDialog } from '../people/exits';
 export { SetupHubScreen, type LiveSetupHub, type ModuleCard, type SetupHubProps } from '../platform-a/setup-admin';
+// Learning (the core): My learning and catalogue, the player, courses and the builder, assignment rules, compliance, the team.
+export { MyLearningScreen, CoursePlayerScreen, type Course as LearningCourse } from '../growth/learn-me';
+export { CourseBuilderScreen, AssignmentRulesScreen, ComplianceDashboardScreen } from '../growth/learn-admin';
+export {
+  CoursesListScreen,
+  TeamLearningScreen,
+  fromConditions,
+  type CourseDetails,
+  type CourseRow,
+  type BuilderLiveItem,
+  type LiveBuilder,
+  type LiveCertificate,
+  type LiveCompliance,
+  type LiveComplianceData,
+  type LiveCourses,
+  type LiveEnrolment,
+  type LiveExternal,
+  type ExternalInput,
+  type LiveMyLearning,
+  type LivePlayer,
+  type LivePlayerItem,
+  type LiveRule,
+  type LiveRules,
+  type LiveTeamLearning,
+  type RuleInput as LearningRuleInput,
+  type TeamLearningData,
+} from '../growth/learn-live';
+// Learning sessions (LRN-04, 05, 06).
+export {
+  LiveSessionsScreen,
+  LiveSessionPageScreen,
+  LiveTrainerQrScreen,
+  CheckInScreen,
+  type LiveSessions,
+  type LiveSessionRow,
+  type LiveTrainerRow,
+  type LiveSessionPage,
+  type LiveSessionPageData,
+  type LiveTrainerQr,
+  type ScheduleInput,
+  type TrainerInput,
+  type SessionOption,
+} from '../growth/learn-sessions-live';
