@@ -28107,5 +28107,27 @@
                               "Screens/Helpdesk/HLP-06 · Speak-up set-up"
                     ],
                     "note": "Positive and negative (hlp06 e2e 15/15 incl. the new one: key 403, unknown 404, term today 400, over 3 years 400, man presiding 400, second presiding 409, bad type 400, other lists 400, audit before/after; ended term skips routing; reminder 30 days before, once, again after a term change, only System Admins; kit test for Edit). New column speakup_team_members.term_reminded_at; new route PATCH desk/speakup/setup/members/:id (speakup.setup.manage); new sweep speakup-ic-terms (07:00 IST); notification type helpdesk.ic.term_ending."
+          },
+          {
+                    "id": "MT-G4-LIBRARY-DOCS",
+                    "area": "G4: the report library (ANL-06, item 14) and company documents in folders with expiry (PPL-51, item 21) (25 Nov 2026)",
+                    "screen": "Analytics › Report library; People › Company documents (folders, Upload document, Replace, Remove, Download, New folder)",
+                    "url": "http://localhost:3000/yx/analytics/reports",
+                    "account": "System Admin; HR Admin (company documents and training reports); a manager with a report; a plain employee; an employee of another company.",
+                    "steps": [
+                              "As each account open Analytics › Report library (the plain employee: check the menu has no Analytics).",
+                              "As HR search 'training', mark Mandatory training compliance with the star, turn on Favourites only, then Open it. Sign in as the System Admin and look at the same report's star.",
+                              "As HR open People › Company documents › New folder: save with no name; then 'Licences' for everyone; try 'licences' again; make 'Board papers' for document managers only.",
+                              "Upload document: press Upload with nothing; then a renamed .txt as PDF; then a PDF with an expiry yesterday; then the factory licence expiring in 20 days.",
+                              "As the plain employee open Company documents: open the licence; try the Board papers folder address; download the licence.",
+                              "As HR replace the licence with a new PDF and expiry; try to remove the non-empty folder; run the daily sweep (company-docs-expiry) twice; set Settings › company documents reminder to 7 days and upload one expiring in 25 days; run the sweep.",
+                              "As another company's employee open the document's download address."
+                    ],
+                    "expected": "Step 1: each sees only reports their keys open (payroll for payroll keys, the team ones for the manager); the plain employee has none and no Analytics menu. Step 2: the star is personal (the System Admin's is off); Favourites only hides the rest; Open goes to the area's page. Step 3: 'Name the folder…'; then the folder; the second 'licences' is refused (exists). Step 4: errors for title, folder and file; the fake PDF is refused; the past expiry is refused; then 'uploaded. It opens once the virus check passes.' and the row shows Expiring soon. Step 5: the employee sees Licences only, not Board papers (not found), and the download is recorded in the audit log. Step 6: replace keeps one row with the new file; the folder can't be removed while it has documents; the uploader and document managers get one note; nothing for the 25-day one with a 7-day setting. Step 7: not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Analytics/ANL-06 · Report library",
+                              "Screens/People/PPL-51 · Company documents"
+                    ],
+                    "note": "Positive and negative (library-g4 e2e: entries by key or manager, favourites personal, favourite of a report not yours 404, bad body 400; folders by the key only (403), name too short 400, bad audience 400, duplicate name 409, managers folder hidden (404) from employees, upload needs a file (400), past expiry 400, fake PDF 400, unknown folder 404, download audited, clean files only, other company 404; replace; folder with documents 409; reminder once to uploader and managers, the company's days; remove 403/200/404). New key company.documents.manage (System Admin, HR Admin); new tables report_favourites, company_doc_folders, company_documents in rls-isolation; new routes in endpoint-permissions; setting company_docs.expiry_reminder_days (30); sweep company-docs-expiry; menu Analytics › Report library and People › Company documents. Scheduled report emails, the export log and team reports wait on 2690-2693."
           }
 ]
