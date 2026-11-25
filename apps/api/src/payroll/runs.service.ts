@@ -1036,7 +1036,8 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         gender: personal?.gender ?? null,
         age,
       },
-      ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2) },
+      joinedOn: dateOf(em.joinedOn),
+      ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2), ...(await this.ptWageSoFar(tx, org, employmentId, run.periodStart, fyStart, month, components)) },
       oneTime: [
         ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}) })),
         // Late corrections approved after their month locked, paid in this regular run (PAY-1.03 / 1.04).
@@ -1138,6 +1139,18 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Earlier sub-periods of the month (approved): taxable pay, PT wage, basic, HRA and PT, for the run that ends the month. */
+  /** Review M5 / M6: the PT wage of this financial year's and this half-year's approved payslips before this month. */
+  private async ptWageSoFar(tx: Tx, org: string, employmentId: string, periodStart: Date, fyStart: string, month: string, components: CalcComponent[]) {
+    const codes = components.filter((x) => x.kind === 'earning' && x.ptWage).map((x) => x.code);
+    const slips = await tx.payslip.findMany({ where: { organizationId: org, employmentId, status: 'approved', periodStart: { gte: asDate(fyStart), lt: periodStart } }, select: { id: true, periodStart: true } });
+    const lines = slips.length && codes.length ? await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((x) => x.id) }, componentCode: { in: codes } }, select: { payslipId: true, amount: true } }) : [];
+    const m = Number(month.slice(5, 7));
+    const halfStart = m >= 4 && m <= 9 ? fyStart : `${fyStart.slice(0, 4)}-10-01`;
+    const inHalf = new Set(slips.filter((x) => dateOf(x.periodStart) >= halfStart).map((x) => x.id));
+    const sum = (pick: (l: { payslipId: string }) => boolean) => lines.filter(pick).reduce((t, l) => t.add(l.amount), D(0)).toFixed(2);
+    return { ptWage: sum(() => true), halfPtWage: sum((l) => inHalf.has(l.payslipId)) };
+  }
+
   private async monthToDate(tx: Tx, org: string, employmentId: string, run: Run, comps: { code: string; taxable: boolean; ptWage: boolean; statutory: string | null; kind: string }[]) {
     const slips = await tx.payslip.findMany({ where: { organizationId: org, employmentId, periodStart: run.periodStart, runType: 'regular', status: 'approved', subPeriod: { gt: 0, not: run.subPeriod } }, select: { id: true } });
     const lines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((x) => x.id) } }, select: { componentCode: true, kind: true, amount: true } });
