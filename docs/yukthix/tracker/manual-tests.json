@@ -28088,5 +28088,24 @@
                               "Screens/Learning/LRN-11 · Training needs and budgets"
                     ],
                     "note": "Positive and negative (learning e2e 15/15 incl. G3d: suggestion from a completed course once; others 404, another company 404; L&D sees but neither decides nor assesses; decide once (409); assess by the manager only (403 self), level 1-5 (400), library skills only (400); team matrix for direct reports; needs L&D only (403), person or department not both (400), bad priority 400, plan needs a course (400), unknown ids 404; budget negative 400, unknown department 400, spent = completed course costs + approved external; 2620 counts company-wide training reports only (403 entity-scoped and employees), none below 5, no names; 2624 POSH course completions in the committee report; rls 33/33; kit learn-skills-live 9). New tables learning_skill_levels, learning_skill_suggestions, learning_needs, learning_budgets in rls-isolation; learning_courses.posh_awareness; new routes in endpoint-permissions; menu: My skills (everyone), Team skills (managers), Needs & budgets (learning.manage)."
+          },
+          {
+                    "id": "MT-G1-FOLLOWUPS-2623-2625",
+                    "area": "G1 follow-ups: Edit member on the Speak-up set-up lists (2625); an ended committee term takes no new complaint and the System Admin is reminded 30 days before (2623) (25 Nov 2026)",
+                    "screen": "Helpdesk › Speak-up set-up (Internal Committee and Industrial relations lists: Edit); the bell and email of the System Admin; filing a POSH complaint",
+                    "url": "http://localhost:3000/yx/desk/speakup-setup",
+                    "account": "System Admin (speakup.setup.manage); HR without the key; an employee filing a complaint; two Internal Committee members.",
+                    "steps": [
+                              "As the System Admin open Speak-up set-up. Check the Ethics and Escalation rows have no Edit; the Internal Committee and IR rows do.",
+                              "Edit a male committee member: make him Presiding officer; then a woman member to Presiding while another presides; then a term end of today and one more than 3 years away; then a valid change.",
+                              "As HR try the same change through the API (PATCH /desk/speakup/setup/members/:id).",
+                              "Set one member's term to end yesterday (test DB) and file a POSH complaint as an employee.",
+                              "Set a member's term to end in 20 days (test DB); run the daily sweep (speakup-ic-terms) twice; then change the term in Edit and run it again."
+                    ],
+                    "expected": "Step 1: Edit only on the IC and IR lists. Step 2: 'The presiding officer must be a senior woman employee.'; 'This committee already has a presiding officer. Change them first.'; 'The term must end after today.' / 'A term is at most 3 years.'; then a toast and the row shows the change; the audit log has the before and after. Step 3: 403. Step 4: the complaint reaches the other members only, never the one whose term ended. Step 5: the System Admins get one bell and email naming the member, the committee and the day; the second run sends nothing; after a term change one new note. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Helpdesk/HLP-06 · Speak-up set-up"
+                    ],
+                    "note": "Positive and negative (hlp06 e2e 15/15 incl. the new one: key 403, unknown 404, term today 400, over 3 years 400, man presiding 400, second presiding 409, bad type 400, other lists 400, audit before/after; ended term skips routing; reminder 30 days before, once, again after a term change, only System Admins; kit test for Edit). New column speakup_team_members.term_reminded_at; new route PATCH desk/speakup/setup/members/:id (speakup.setup.manage); new sweep speakup-ic-terms (07:00 IST); notification type helpdesk.ic.term_ending."
           }
 ]
