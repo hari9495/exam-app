@@ -62,3 +62,5 @@ export async function ownEmployee(tx: Tx, c: CompanyContext): Promise<string | n
 
 export const iso = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : null);
 export const asDate = (day: string) => new Date(`${day}T00:00:00Z`);
+/** Company-level settings (no entity override). */
+export const ANY_ENTITY = { legalEntityId: '00000000-0000-0000-0000-000000000000' };

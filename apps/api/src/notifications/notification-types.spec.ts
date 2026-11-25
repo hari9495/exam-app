@@ -138,6 +138,8 @@ describe('notification catalog', () => {
       'learning.waitlist_promoted',
       'learning.session_changed',
       'learning.nomination_declined',
+      'learning.rate_session',
+      'learning.training_check',
     ];
     for (const k of expected) expect(keys).toContain(k);
     expect(NOTIFICATION_TYPES.length).toBe(expected.length);

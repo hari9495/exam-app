@@ -30,9 +30,15 @@ describe('learning rules', () => {
     expect(reminderDue('2026-11-20', '2026-11-13')).toBe('before_7');
     expect(reminderDue('2026-11-20', '2026-11-18')).toBe('before_2');
     expect(reminderDue('2026-11-20', '2026-11-20')).toBe('before_2');
-    expect(reminderDue('2026-11-20', '2026-11-21')).toBe('overdue_manager');
-    expect(reminderDue('2026-11-20', '2026-11-26')).toBe('overdue_manager');
-    expect(reminderDue('2026-11-20', '2026-11-27')).toBe('overdue_hr');
+    // Answer 2609: the learner the day after; the manager after 7 days; HR after 14 (company settings).
+    expect(reminderDue('2026-11-20', '2026-11-21')).toBe('overdue');
+    expect(reminderDue('2026-11-20', '2026-11-26')).toBe('overdue');
+    expect(reminderDue('2026-11-20', '2026-11-27')).toBe('overdue_manager');
+    expect(reminderDue('2026-11-20', '2026-12-03')).toBe('overdue_manager');
+    expect(reminderDue('2026-11-20', '2026-12-04')).toBe('overdue_hr');
+    expect(reminderDue('2026-11-20', '2026-11-23', 3, 21)).toBe('overdue_manager');
+    expect(reminderDue('2026-11-20', '2026-12-10', 3, 21)).toBe('overdue_manager');
+    expect(reminderDue('2026-11-20', '2026-12-11', 3, 21)).toBe('overdue_hr');
   });
 
   it('status words, progress, validity and durations', () => {

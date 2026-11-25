@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
-import { ScopeUser, Viewer, buildViewer, has, implicitSql, inEntitySql, inScopeSql } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, has, implicitSql, inEntitySql, inScopeSql, tenantWide } from '../access/scope';
 import { JobToday, LEARNING_KEYS, iso, jobsToday, ownEmployee } from './learning-core';
 import { addDays, progressPct, shownStatus, validOn } from './learning-rules';
 import { LearningAssignService } from './learning-assign.service';
@@ -167,9 +167,12 @@ export class LearningReportsService {
       const today = todayIst();
       if (!(await tx.employee.count({ where: { organizationId: c.organizationId, id: employeeId } }))) throw new NotFoundException('Not found');
       const me = await ownEmployee(tx, c);
+      // Answer 2608: results (and later test scores) only for the person, their manager chain and L&D (learning.manage).
+      let results = me === employeeId || (tenantWide(v, 'learning.manage') && !v.actingForOther);
       if (me !== employeeId) {
-        const [row] = await tx.$queryRaw<{ ok: boolean }[]>`SELECT (${has(v, 'learning.report.view') && !v.actingForOther ? inScopeSql(c, v, 'learning.report.view', Prisma.sql`${employeeId}::uuid`, Prisma.sql`${today}::date`, me) : Prisma.sql`FALSE`}) OR (${await implicitSql(tx, c, me, Prisma.sql`${employeeId}::uuid`, Prisma.sql`${today}::date`)}) AS ok`;
-        if (!row?.ok) throw new NotFoundException('Not found');
+        const [row] = await tx.$queryRaw<{ reports: boolean; chain: boolean }[]>`SELECT (${has(v, 'learning.report.view') && !v.actingForOther ? inScopeSql(c, v, 'learning.report.view', Prisma.sql`${employeeId}::uuid`, Prisma.sql`${today}::date`, me) : Prisma.sql`FALSE`}) AS reports, (${await implicitSql(tx, c, me, Prisma.sql`${employeeId}::uuid`, Prisma.sql`${today}::date`)}) AS chain`;
+        if (!row?.reports && !row?.chain) throw new NotFoundException('Not found');
+        results ||= Boolean(row.chain);
       }
       const rows = await tx.learningEnrolment.findMany({ where: { organizationId: c.organizationId, employeeId, status: { in: ['requested', 'enrolled', 'in_progress', 'completed'] } }, orderBy: [{ completedAt: 'desc' }, { dueOn: 'asc' }] });
       const courses = new Map((await tx.learningCourse.findMany({ where: { organizationId: c.organizationId, id: { in: [...new Set(rows.map((r) => r.courseId))] } }, select: { id: true, title: true } })).map((x) => [x.id, x.title]));
@@ -193,6 +196,7 @@ export class LearningReportsService {
             validUntil: iso(cert?.expiresOn),
             certificateId: cert?.id ?? null,
             progress: progressPct(progress.filter((p) => p.enrolmentId === r.id && req.some((i) => i.id === p.itemId)).length, req.length),
+            ...(results ? { result: r.resultReason } : {}),
           };
         });
     });

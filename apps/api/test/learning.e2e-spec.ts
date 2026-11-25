@@ -9,6 +9,7 @@ import { AppModule } from '../src/app.module';
 import { EmailService } from '../src/email/email.service';
 import { addDays, todayIst } from '../src/org-structure/org-validation';
 import { LearningAssignService } from '../src/learning/learning-assign.service';
+import { LearningFeedbackService } from '../src/learning/learning-feedback.service';
 import { verifyElsewhere } from '../src/documents/verify-code';
 
 // Learning core against the real database (forced RLS): courses (LRN-03), assignment rules (LRN-07), My learning and
@@ -328,20 +329,80 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     expect(page.attendance[0]).toMatchObject({ name: 'Imran', method: expect.stringContaining('QR') });
     expect(((await api('imranU', 'get', '/learning/me').expect(200)).body.certificates as { title: string }[]).map((x) => x.title)).toContain('Forklift refresher');
     expect(await audits('learning.attendance.confirmed')).toHaveLength(1);
+    ids.forkliftSession = sid;
   });
 
-  it('reminders 7 and 2 days ahead, the manager the day after, training reports after 7 days; each once', async () => {
+  it('LRN-12 and 2608: attendees rate a confirmed session once; the trainer sees no results; the manager is asked later, once', async () => {
+    const sid = ids.forkliftSession;
+    // 2608: Divya trains the session but is not L&D: attendance, never results.
+    const trainerView = (await api('mgrU', 'get', `/learning/sessions/${sid}`).expect(200)).body;
+    expect(trainerView.results).toEqual([]);
+    expect(trainerView.attendance[0]).toMatchObject({ name: 'Imran' });
+    expect(await bells('imranU', 'learning.rate_session')).toBe(1);
+    expect((await api('imranU', 'get', '/learning/feedback/due').expect(200)).body).toEqual([expect.objectContaining({ sessionId: sid, course: 'Forklift refresher', trainer: 'Divya' })]);
+    expect((await api('arjunU', 'get', '/learning/feedback/due').expect(200)).body).toEqual([]);
+    await api('imranU', 'post', `/learning/sessions/${sid}/reaction`).send({ overall: 6, trainer: 4 }).expect(400);
+    await api('arjunU', 'post', `/learning/sessions/${sid}/reaction`).send({ overall: 4, trainer: 4 }).expect(404);
+    await api('adminB', 'post', `/learning/sessions/${sid}/reaction`).send({ overall: 4, trainer: 4 }).expect(404);
+    await api('imranU', 'post', `/learning/sessions/${sid}/reaction`).send({ overall: 4, trainer: 5, comment: 'Good drills' }).expect(200);
+    expect((await api('imranU', 'post', `/learning/sessions/${sid}/reaction`).send({ overall: 4, trainer: 5 }).expect(409)).body.code).toBe('LEARNING_RATED');
+    expect((await api('imranU', 'get', '/learning/feedback/due').expect(200)).body).toEqual([]);
+    expect((await api('ldA', 'get', `/learning/sessions/${sid}`).expect(200)).body.feedback).toEqual({ responses: 1, overall: 4, trainer: 5, comments: ['Good drills'] });
+    // The manager's check: only after the company's days (60), only about their own reports, once; asked once.
+    const feedback = app.get(LearningFeedbackService);
+    expect((await api('mgrU', 'get', '/learning/checks').expect(200)).body).toEqual([]);
+    await feedback.askChecks();
+    expect(await bells('mgrU', 'learning.training_check')).toBe(0);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.learningSession.update({ where: { id: sid }, data: { attendanceConfirmedAt: new Date(Date.now() - 61 * 86_400_000) } }));
+    const due = (await api('mgrU', 'get', '/learning/checks').expect(200)).body;
+    expect(due).toEqual([expect.objectContaining({ person: 'Imran', course: 'Forklift refresher', trainer: 'Divya' })]);
+    expect((await api('arjunU', 'get', '/learning/checks').expect(200)).body).toEqual([]);
+    await api('arjunU', 'post', `/learning/checks/${due[0].enrolmentId}`).send({ applying: 'yes' }).expect(404);
+    await api('mgrU', 'post', `/learning/checks/${due[0].enrolmentId}`).send({ applying: 'maybe' }).expect(400);
+    await feedback.askChecks();
+    expect(await bells('mgrU', 'learning.training_check')).toBe(1);
+    await feedback.askChecks();
+    expect(await bells('mgrU', 'learning.training_check')).toBe(1);
+    await api('mgrU', 'post', `/learning/checks/${due[0].enrolmentId}`).send({ applying: 'partly', comment: 'Uses the checklist' }).expect(200);
+    await api('mgrU', 'post', `/learning/checks/${due[0].enrolmentId}`).send({ applying: 'yes' }).expect(404);
+    expect(await audits('learning.session.checked')).toHaveLength(1);
+  });
+
+  it('a classroom course completes only by attending: its items alone never complete it; new courses take the company share', async () => {
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'learning.attendance_share', value: '90' } }));
+    const id = (await api('ldA', 'post', '/learning/admin/courses').send({ ...course, title: 'Crane signals', type: 'classroom', mandatory: false }).expect(201)).body.id;
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.learningCourse.findUniqueOrThrow({ where: { id } }))).attendancePct).toBe(90);
+    const item = (await api('ldA', 'post', `/learning/admin/courses/${id}/items`).send({ title: 'Hand signals chart', kind: 'link', url: 'https://example.com/signals', minutes: 5, required: true }).expect(201)).body.id;
+    const e = await tenantPrisma.forTenant(SUPER, (tx) => tx.learningEnrolment.create({ data: { organizationId: org.A.id, employeeId: ids.arjun, courseId: id, source: 'self', assignedOn: new Date(`${today}T00:00:00Z`), status: 'enrolled' } }));
+    expect((await api('arjunU', 'post', `/learning/enrolments/${e.id}/items/${item}/done`).expect(200)).body).toEqual({ completed: false, certificateId: null });
+    expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.learningEnrolment.findUniqueOrThrow({ where: { id: e.id } }))).status).toBe('in_progress');
+  });
+
+  it('reminders 7 and 2 days ahead; the learner the day after; answer 2609: the manager after 7 days, HR after 14 (company settings); each once', async () => {
     const remind = app.get(LearningAssignService);
     const setDue = (id: string, day: string) => tenantPrisma.forTenant(SUPER, (tx) => tx.learningEnrolment.update({ where: { id }, data: { dueOn: new Date(`${day}T00:00:00Z`) } }));
+    const run = () => remind.remind(today, { organizationId: org.A.id, enrolmentIds: [ids.imranEnrol] });
     await setDue(ids.imranEnrol, addDays(today, 2));
-    expect(await remind.remind(today, { organizationId: org.A.id, enrolmentIds: [ids.imranEnrol] })).toBe(1);
-    expect(await remind.remind(today, { organizationId: org.A.id, enrolmentIds: [ids.imranEnrol] })).toBe(0);
+    expect(await run()).toBe(1);
+    expect(await run()).toBe(0);
     expect(await bells('imranU', 'learning.before_2')).toBe(1);
+    // The day after: only the learner.
     await setDue(ids.imranEnrol, addDays(today, -1));
-    expect(await remind.remind(today, { organizationId: org.A.id, enrolmentIds: [ids.imranEnrol] })).toBe(1);
+    expect(await run()).toBe(1);
+    expect(await bells('imranU', 'learning.overdue')).toBe(1);
+    expect(await bells('mgrU', 'learning.overdue_manager')).toBe(0);
+    // 6 days late: nobody new; 7 days: the manager.
+    await setDue(ids.imranEnrol, addDays(today, -6));
+    expect(await run()).toBe(0);
+    await setDue(ids.imranEnrol, addDays(today, -7));
+    expect(await run()).toBe(1);
     expect(await bells('mgrU', 'learning.overdue_manager')).toBe(1);
-    await setDue(ids.imranEnrol, addDays(today, -8));
-    expect(await remind.remind(today, { organizationId: org.A.id, enrolmentIds: [ids.imranEnrol] })).toBe(1);
+    // HR after 14 by default; a company that set 21 days waits.
+    const hrDays = await tenantPrisma.forTenant(SUPER, (tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'learning.overdue.hr_days', value: '21' } }));
+    await setDue(ids.imranEnrol, addDays(today, -14));
+    expect(await run()).toBe(0);
+    await tenantPrisma.forTenant(SUPER, (tx) => tx.setting.delete({ where: { id: hrDays.id } }));
+    expect(await run()).toBe(1);
     // Training reports over Imran: the company-wide L&D and the TN reporter.
     expect(await bells('ldA', 'learning.overdue_hr')).toBe(1);
     expect(await bells('hrTn', 'learning.overdue_hr')).toBe(1);
@@ -364,7 +425,7 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     expect(csv).toContain('Arjun,Quality KF,Line Operator KF,Fire safety and evacuation,Compliant');
     expect(csv).toContain('Imran,Quality TN,Line Operator TN,Fire safety and evacuation,Overdue');
     expect((await api('hrTn', 'post', '/learning/compliance/remind').expect(200)).body).toEqual({ reminded: 1 });
-    expect(await bells('imranU', 'learning.overdue')).toBe(1);
+    expect(await bells('imranU', 'learning.overdue')).toBe(2); // the sweep's own note, then Remind overdue
     expect((await api('adminB', 'get', '/learning/compliance').expect(200)).body.rows).toEqual([]);
     expect(await audits('learning.report.exported')).toHaveLength(1);
   });
@@ -384,5 +445,11 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     await api('hrTn', 'get', `/learning/people/${ids.arjun}`).expect(404);
     await api('hrTn', 'get', `/learning/people/${ids.imran}`).expect(200);
     await api('adminB', 'get', `/learning/people/${ids.arjun}`).expect(404);
+    // Answer 2608: results for the person, their manager chain and L&D; training reports (HR in scope) see status only.
+    const forklift = (rows: { course: string }[]) => rows.find((r) => r.course === 'Forklift refresher') as Record<string, unknown> | undefined;
+    for (const who of ['imranU', 'mgrU', 'ldA'] as const) expect(forklift((await api(who, 'get', `/learning/people/${ids.imran}`).expect(200)).body)).toMatchObject({ status: 'Completed', result: 'Attended 1 of 2 slots' });
+    const hr = forklift((await api('hrTn', 'get', `/learning/people/${ids.imran}`).expect(200)).body);
+    expect(hr).toMatchObject({ status: 'Completed' });
+    expect(hr).not.toHaveProperty('result');
   });
 });

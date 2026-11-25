@@ -84,7 +84,7 @@ export { DispatchProofDialog, StartAbscondingDialog, StopAbscondingDialog } from
 export { SetupHubScreen, type LiveSetupHub, type ModuleCard, type SetupHubProps } from '../platform-a/setup-admin';
 // Learning (the core): My learning and catalogue, the player, courses and the builder, assignment rules, compliance, the team.
 export { MyLearningScreen, CoursePlayerScreen, type Course as LearningCourse } from '../growth/learn-me';
-export { CourseBuilderScreen, AssignmentRulesScreen, ComplianceDashboardScreen } from '../growth/learn-admin';
+export { CourseBuilderScreen, AssignmentRulesScreen, ComplianceDashboardScreen, SessionsScreen, TrainerQrScreen } from '../growth/learn-admin';
 export {
   CoursesListScreen,
   TeamLearningScreen,
@@ -125,3 +125,6 @@ export {
   type TrainerInput,
   type SessionOption,
 } from '../growth/learn-sessions-live';
+// LRN-12: a session's rating and the manager's training check (ported onto the sessions above).
+export { TrainingFeedbackScreen } from '../growth/learn-me';
+export type { LiveFeedback } from '../growth/learn-feedback-live';

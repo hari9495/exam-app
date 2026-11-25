@@ -152,6 +152,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'learning.waitlist_promoted', group: 'assignments', label: 'A seat came free for you in a training session' },
   { type: 'learning.session_changed', group: 'reminders', label: 'A training session you are in changed or was cancelled' },
   { type: 'learning.nomination_declined', group: 'reminders', label: 'Someone in your team declined a nomination' },
+  { type: 'learning.rate_session', group: 'reminders', label: 'Rate a training session you attended' },
+  { type: 'learning.training_check', group: 'reminders', label: 'Is your team applying what they learnt? (training check)' },
   // M05 E4: trips and advances.
   { type: 'expense.trip.update', group: 'assignments', label: 'A trip was approved, or needs bookings from the travel desk' },
   { type: 'expense.advance.update', group: 'reminders', label: 'An expense advance was paid, is due to be settled, or is overdue' },

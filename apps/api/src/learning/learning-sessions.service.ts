@@ -208,7 +208,8 @@ export class LearningSessionsService {
           const how = [...new Set(mine.filter(Boolean).map((m) => METHOD[m!.method]))].join(', ');
           return { enrolmentId: e.id, name: people.get(e.employeeId) ?? '', marks: mine.map((m) => (m ? WORD[m.status] : null)), method: how || 'Not marked' };
         }),
-        results: s.attendanceConfirmedAt ? seated.map((e) => ({ name: people.get(e.employeeId) ?? '', status: e.status === 'completed' ? 'Completed' : e.status === 'no_show' ? 'No-show' : e.status === 'failed' ? 'Not completed' : 'Pending', reason: e.resultReason ?? '' })) : [],
+        // Answer 2608: results are the learner's, their manager chain's and L&D's; a trainer sees attendance only.
+        results: s.attendanceConfirmedAt && this.ld(v) ? seated.map((e) => ({ name: people.get(e.employeeId) ?? '', status: e.status === 'completed' ? 'Completed' : e.status === 'no_show' ? 'No-show' : e.status === 'failed' ? 'Not completed' : 'Pending', reason: e.resultReason ?? '' })) : [],
         costLines: s.costLines as { label: string; amount: number }[],
       };
     });

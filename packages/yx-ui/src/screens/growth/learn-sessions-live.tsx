@@ -2,11 +2,12 @@
 // the designed screens with live data. Forms the design shows only as a button (schedule, add trainer, nominate from the
 // session page, choose a session) are drawn here in the same parts and words, with their own stories.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { PlainTable } from '../../components/plain-table';
 import { Check, Plus, QrCode, UserCheck, Video } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { Text } from '../../components/foundations';
-import { EmptyState, ErrorState, InlineAlert, Skeleton } from '../../components/feedback';
+import { EmptyState, ErrorState, InlineAlert, Meter, Skeleton } from '../../components/feedback';
 import { Card, DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
@@ -342,6 +343,8 @@ export interface LiveSessionPageData {
   attendance: { enrolmentId: string; name: string; marks: ('Present' | 'Late' | 'Absent' | null)[]; method: string }[];
   results: { name: string; status: 'Completed' | 'No-show' | 'Not completed' | 'Pending'; reason: string }[];
   costLines: { label: string; amount: number }[];
+  /** LRN-12: the attendees' ratings after attendance is confirmed (no names). */
+  feedback?: { responses: number; overall: number | null; trainer: number | null; comments: string[] };
 }
 export interface LiveSessionPage {
   state: LoadState;
@@ -409,7 +412,9 @@ export function LiveSessionPageScreen({ live }: { live: LiveSessionPage }) {
                     Attendees
                   </TabsTrigger>
                   <TabsTrigger value="attendance">Attendance</TabsTrigger>
-                  <TabsTrigger value="results">Results</TabsTrigger>
+                  {/* Answer 2608: results are for L&D (and the learner and their managers elsewhere), not the trainer. */}
+                  {ld && <TabsTrigger value="results">Results</TabsTrigger>}
+                  <TabsTrigger value="feedback">Feedback</TabsTrigger>
                   {ld && <TabsTrigger value="cost">Cost</TabsTrigger>}
                 </TabsList>
                 <TabsContent value="attendees">
@@ -466,34 +471,16 @@ export function LiveSessionPageScreen({ live }: { live: LiveSessionPage }) {
                     <EmptyState compact title="No one to mark yet" />
                   ) : (
                     <div className="yx-growth-stack">
-                      <div className="yx-growth-scroll" tabIndex={0} role="region" aria-label="Attendance by slot">
-                        <table className="yx-growth-matrix">
-                          <thead>
-                            <tr>
-                              <th scope="col">Attendee</th>
-                              {s.slots.map((x) => (
-                                <th key={x.id} scope="col">
-                                  {x.label}
-                                </th>
-                              ))}
-                              <th scope="col">How</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {d.attendance.map((a) => (
-                              <tr key={a.enrolmentId}>
-                                <th scope="row">{a.name}</th>
-                                {a.marks.map((m, i) => (
-                                  <td key={i} data-tone={m === 'Absent' ? 'bad' : m === 'Late' ? 'gap' : undefined}>
-                                    {m ?? 'Not marked'}
-                                  </td>
-                                ))}
-                                <td className="yx-growth-meta">{a.method}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                      <PlainTable
+                        label="Attendance by slot"
+                        rows={d.attendance}
+                        getRowId={(a) => a.enrolmentId}
+                        columns={[
+                          { key: 'name', header: 'Attendee', rowHeader: true, cell: (a) => a.name },
+                          ...s.slots.map((x, i) => ({ key: x.id, header: x.label, cell: (a: (typeof d.attendance)[number]) => a.marks[i] ?? 'Not marked' })),
+                          { key: 'how', header: 'How', cell: (a) => <span className="yx-growth-meta">{a.method}</span> },
+                        ]}
+                      />
                       {!s.confirmed && (
                         <div className="yx-growth-row">
                           <Button onClick={() => setMarking(openSlot?.id ?? s.slots[0].id)}>Mark manually</Button>
@@ -512,48 +499,51 @@ export function LiveSessionPageScreen({ live }: { live: LiveSessionPage }) {
                   {d.results.length === 0 ? (
                     <EmptyState compact title="No results yet" description={`Results come when L&D confirms attendance. Attending ${s.attendancePct}% of the slots completes the course; anyone who attended no slot is a no-show.`} />
                   ) : (
-                    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Results">
-                      <table className="yx-growth-matrix">
-                        <thead>
-                          <tr>
-                            <th scope="col">Attendee</th>
-                            <th scope="col">Result</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {d.results.map((r) => (
-                            <tr key={r.name}>
-                              <th scope="row">{r.name}</th>
-                              <td>
-                                <Badge tone={RESULT_TONE[r.status]}>{r.status}</Badge> <span className="yx-growth-meta">{r.reason}</span>
-                              </td>
-                            </tr>
+                    <PlainTable
+                      label="Results"
+                      rows={d.results}
+                      getRowId={(r) => r.name}
+                      columns={[
+                        { key: 'name', header: 'Attendee', rowHeader: true, cell: (r) => r.name },
+                        { key: 'result', header: 'Result', cell: (r) => (<><Badge tone={RESULT_TONE[r.status]}>{r.status}</Badge> <span className="yx-growth-meta">{r.reason}</span></>) },
+                      ]}
+                    />
+                  )}
+                </TabsContent>
+                <TabsContent value="feedback">
+                  {!d.feedback?.responses ? (
+                    <EmptyState compact title="No feedback yet" description="Attendees are asked to rate the session once L&D confirms attendance." />
+                  ) : (
+                    <div className="yx-growth-stack">
+                      <div className="yx-growth-kpis">
+                        <Meter label="Session rating" value={d.feedback.overall ?? 0} max={5} valueText={`${d.feedback.overall} of 5 · ${d.feedback.responses} ${d.feedback.responses === 1 ? 'response' : 'responses'}`} />
+                        <Meter label="Trainer score" value={d.feedback.trainer ?? 0} max={5} valueText={`${d.feedback.trainer} of 5`} />
+                      </div>
+                      {d.feedback.comments.length > 0 && (
+                        <ul className="yx-growth-list">
+                          {d.feedback.comments.map((c, i) => (
+                            <li key={i} className="yx-growth-list__item">
+                              “{c}”
+                            </li>
                           ))}
-                        </tbody>
-                      </table>
+                        </ul>
+                      )}
                     </div>
                   )}
                 </TabsContent>
                 {ld && (
                   <TabsContent value="cost">
-                    <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Cost">
-                      <table className="yx-growth-matrix">
-                        <tbody>
-                          {d.costLines.map((c) => (
-                            <tr key={c.label}>
-                              <th scope="row">{c.label}</th>
-                              <td className="yx-growth-num">{inr(Number(c.amount))}</td>
-                            </tr>
-                          ))}
-                          <tr>
-                            <th scope="row">Total · {inr(Math.round(total / Math.max(1, d.enrolled.length)))} per attendee</th>
-                            <td className="yx-growth-num">
-                              <strong>{inr(total)}</strong>
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
+                    <PlainTable
+                      label="Cost"
+                      rows={d.costLines}
+                      getRowId={(c) => c.label}
+                      empty={<EmptyState compact title="No costs recorded" />}
+                      columns={[
+                        { key: 'label', header: 'Item', rowHeader: true, cell: (c) => c.label },
+                        { key: 'amount', header: 'Amount', num: true, cell: (c) => inr(Number(c.amount)) },
+                      ]}
+                      footer={[{ id: 'total', label: `Total · ${inr(Math.round(total / Math.max(1, d.enrolled.length)))} per attendee`, cells: { amount: <strong>{inr(total)}</strong> } }]}
+                    />
                   </TabsContent>
                 )}
               </Tabs>

@@ -9,7 +9,8 @@ import { FilesService } from '../documents/files.service';
 import { registerVerifier, verifyCode, verifyLink } from '../documents/verify-code';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
 import { holdersOf } from '../time/time-core';
-import { LEARNING_KEYS, asDate, iso, ownEmployee } from './learning-core';
+import { ANY_ENTITY, LEARNING_KEYS, asDate, iso, ownEmployee } from './learning-core';
+import { settingFor } from '../people/probation';
 import { addMonths, durationText, progressPct, shownStatus } from './learning-rules';
 import { placeInSession } from './session-place';
 
@@ -351,7 +352,9 @@ export class LearningService implements OnModuleInit {
       await tx.learningItemProgress.upsert({ where: { enrolmentId_itemId: { enrolmentId: e.id, itemId } }, create: { organizationId: c.organizationId, enrolmentId: e.id, itemId }, update: {} });
       const required = await tx.learningCourseItem.findMany({ where: { organizationId: c.organizationId, courseId: e.courseId, required: true }, select: { id: true } });
       const done = await tx.learningItemProgress.count({ where: { organizationId: c.organizationId, enrolmentId: e.id, itemId: { in: required.map((r) => r.id) } } });
-      if (required.length && done >= required.length) return { completed: true, certificateId: await this.completeIn(tx, c, e.id) };
+      // A classroom or virtual course completes only by attending its session (confirmed attendance), never by its items.
+      const { type } = await tx.learningCourse.findFirstOrThrow({ where: { organizationId: c.organizationId, id: e.courseId }, select: { type: true } });
+      if (type === 'self_paced' && required.length && done >= required.length) return { completed: true, certificateId: await this.completeIn(tx, c, e.id) };
       // Optimistic: one change at a time on the enrolment.
       const moved = await tx.learningEnrolment.updateMany({ where: { id: e.id, version: e.version }, data: { status: 'in_progress', startedAt: e.startedAt ?? new Date(), version: { increment: 1 } } });
       if (!moved.count) throw new ConflictException('This course changed. Reload it.');
@@ -459,7 +462,9 @@ export class LearningService implements OnModuleInit {
       this.checkCourse(dto);
       return this.run(ctx, async (tx, c) => {
         try {
-          const course = await tx.learningCourse.create({ data: { organizationId: c.organizationId, ...this.courseData(dto), createdBy: c.userId ?? null } });
+          // A new course without its own share takes the company's (learning.attendance_share, 75 by default).
+          const share = dto.attendancePct ?? (Number(await settingFor(tx, c, 'learning.attendance_share', ANY_ENTITY)) || 75);
+          const course = await tx.learningCourse.create({ data: { organizationId: c.organizationId, ...this.courseData(dto), attendancePct: share, createdBy: c.userId ?? null } });
           await audit(tx, c, 'learning.course.created', 'learning_course', course.id, { title: course.title });
           return { id: course.id };
         } catch (e) {

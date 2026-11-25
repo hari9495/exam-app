@@ -485,7 +485,7 @@ export function buildNav(n: NavInput): NavArea[] {
     title: 'Learning',
     sections: sec(undefined, [
       ...when(self, L('my-learning', 'My learning', '/yx/learning'), L('catalogue', 'Catalogue', '/yx/learning/catalogue')),
-      ...when(self && manager, L('team-learning', 'My team', '/yx/learning/team')),
+      ...when(self && manager, L('team-learning', 'My team', '/yx/learning/team'), L('training-checks', 'Training checks', '/yx/learning/checks')),
       ...when(!support && (has('learning.manage') || Boolean(n.trainer)), L('learning-sessions', 'Sessions', '/yx/learning/sessions')),
       ...when(!support && has('learning.report.view'), L('learning-compliance', 'Compliance', '/yx/learning/compliance')),
       ...when(!support && has('learning.manage'), L('course-builder', 'Course builder', '/yx/learning/courses')),

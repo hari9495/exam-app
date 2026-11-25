@@ -64,7 +64,7 @@ const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successo
   'employee_import_drafts'];
 // Learning: courses, rules, enrolments, progress, certificates and the reminder log.
 const LEARNING_SUPPORT_EXCLUDED = ['learning_courses', 'learning_course_items', 'learning_rules', 'learning_enrolments', 'learning_item_progress', 'learning_certificates', 'learning_reminders', 'learning_external_requests',
-  'learning_trainers', 'learning_sessions', 'learning_session_slots', 'learning_attendance'];
+  'learning_trainers', 'learning_sessions', 'learning_session_slots', 'learning_attendance', 'learning_feedback'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Later features that also carry the RESTRICTIVE support_session_excluded policy (added 9 Nov 2026 from the catalogue,
 // pg_policy, when this list had fallen behind): helpdesk cases, BFSI and pay extras, expenses cards, performance disputes.

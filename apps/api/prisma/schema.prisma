@@ -15590,6 +15590,8 @@ model LearningSession {
   attendanceConfirmedAt DateTime? @map("attendance_confirmed_at") @db.Timestamptz(3)
   createdBy             String?   @map("created_by") @db.Uuid
   createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// When managers were asked whether attendees apply what they learnt (LRN-12).
+  checkSentAt           DateTime? @map("check_sent_at") @db.Timestamptz(3)
   version               Int       @default(1)
 
   @@index([organizationId, courseId], map: "learning_sessions_course_idx")
@@ -15622,4 +15624,25 @@ model LearningAttendance {
 
   @@id([slotId, enrolmentId])
   @@map("learning_attendance")
+}
+
+/// LRN-12: an attendee's reaction to a confirmed session (once), and their manager's later check (once).
+model LearningFeedback {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  sessionId      String   @map("session_id") @db.Uuid
+  enrolmentId    String   @map("enrolment_id") @db.Uuid
+  /// reaction · check
+  kind           String   @db.VarChar(8)
+  byUserId       String   @map("by_user_id") @db.Uuid
+  overall        Int?     @db.SmallInt
+  trainer        Int?     @db.SmallInt
+  /// yes · partly · no · early
+  applying       String?  @db.VarChar(8)
+  comment        String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([enrolmentId, kind], map: "learning_feedback_once")
+  @@index([organizationId, sessionId], map: "learning_feedback_session_idx")
+  @@map("learning_feedback")
 }

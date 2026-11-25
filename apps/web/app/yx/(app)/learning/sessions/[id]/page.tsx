@@ -2,7 +2,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useToast } from '@yukthix/ui';
-import { LiveSessionPageScreen, type LiveSessionPageData, type LiveTrainerRow } from '@yukthix/ui/frame';
+import { SessionsScreen, type LiveSessionPageData, type LiveTrainerRow } from '@yukthix/ui/frame';
 import { loadState, useYxPermissions } from '../../../../../../lib/yx-org';
 import { useJoinerPlaces } from '../../../../../../lib/yx-lifecycle';
 import { useLearning, useLearningWrite } from '../../../../../../lib/yx-learning';
@@ -31,8 +31,8 @@ export default function YxSessionPage() {
   };
   const course = page.data?.session.course ?? 'the course';
   return (
-    <LiveSessionPageScreen
-      live={{
+    <SessionsScreen
+      livePage={{
         state: learnState(loadState(page)),
         onRetry: () => void page.refetch(),
         data: page.data ?? null,

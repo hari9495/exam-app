@@ -2,6 +2,7 @@
 // list and course builder (LRN-03), assignment rules (LRN-07), the compliance dashboard (LRN-08) and the manager's
 // team view. Each keeps its design's layout and words; what the core does not have yet is left out, never faked.
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { PlainTable } from '../../components/plain-table';
 import { ArrowDown, ArrowUp, Award, BookOpen, CheckCircle2, ClipboardCheck, Download, ExternalLink, FileText, Film, Package, Play, Plus, Trash2 } from 'lucide-react';
 import { Button, IconButton, Link } from '../../components/button';
 import { Badge, type BadgeTone } from '../../components/display';
@@ -1265,42 +1266,31 @@ export function TeamLearningScreen({ data: sample, live }: { data?: TeamLearning
       <EmptyState title="No mandatory courses yet" description="When L&D makes a course mandatory, your team’s progress on it shows here." />
     ) : (
       <div className="yx-growth-stack">
-        <div className="yx-scroll-x" tabIndex={0} role="region" aria-label="Team training, scrolls sideways on small screens">
-          <table className="yx-growth-matrix">
-            <caption className="yx-visually-hidden">Mandatory courses for your team</caption>
-            <thead>
-              <tr>
-                <th scope="col">Person</th>
-                {d.courses.map((c) => (
-                  <th key={c} scope="col">
-                    {c}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {d.people.map((p) => (
-                <tr key={p.employeeId}>
-                  <th scope="row">
-                    {live ? (
-                      <Link href={`#${p.employeeId}`} onClick={(e) => (e.preventDefault(), live.onPerson(p.employeeId))}>
-                        {p.name}
-                      </Link>
-                    ) : (
-                      p.name
-                    )}
-                    <div className="yx-growth-meta">{p.role}</div>
-                  </th>
-                  {p.cells.map((c, i) => (
-                    <td key={d.courses[i]}>
-                      <Badge tone={CELL_TONE[c] ?? 'neutral'}>{c}</Badge>
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <PlainTable
+          label="Mandatory courses for your team"
+          rows={d.people}
+          getRowId={(p) => p.employeeId}
+          columns={[
+            {
+              key: 'person',
+              header: 'Person',
+              rowHeader: true,
+              cell: (p) => (
+                <>
+                  {live ? (
+                    <Link href={`#${p.employeeId}`} onClick={(e) => (e.preventDefault(), live.onPerson(p.employeeId))}>
+                      {p.name}
+                    </Link>
+                  ) : (
+                    p.name
+                  )}
+                  <div className="yx-growth-meta">{p.role}</div>
+                </>
+              ),
+            },
+            ...d.courses.map((c, i) => ({ key: `c${i}`, header: c, cell: (p: (typeof d.people)[number]) => <Badge tone={CELL_TONE[p.cells[i]] ?? 'neutral'}>{p.cells[i]}</Badge> })),
+          ]}
+        />
         {d.overdue.length > 0 && (
           <InlineAlert tone="warning" title={`${d.overdue.length} overdue`}>
             {d.overdue.map((o) => `${o.name}: ${o.course} (due ${formatDate(day(o.due))})`).join(' · ')}

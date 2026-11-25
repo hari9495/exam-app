@@ -170,6 +170,12 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'engage.celebrate.birthdays': { label: 'Engage: show birthdays on the feed (without the year)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'engage.celebrate.anniversaries': { label: 'Engage: show work anniversaries on the feed', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'engage.celebrate.new_joiners': { label: 'Engage: welcome new joiners on the feed (their first week)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // Learning (M07): the default attendance share for new classroom and virtual courses, the manager's later check
+  // (LRN-12), and who hears about an overdue mandatory course when (answer 2609).
+  'learning.attendance_share': { label: 'Learning: share of the session slots someone must attend to complete it, for new courses (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '75', '80', '90', '100'], default: '75' },
+  'learning.check_after_days': { label: 'Learning: days after a session that managers are asked if the skill is applied', scopes: ['tenant'], dated: false, values: ['30', '45', '60', '90'], default: '60' },
+  'learning.overdue.manager_days': { label: 'Learning: days past the due date before the manager is told', scopes: ['tenant'], dated: false, values: ['1', '3', '7', '14'], default: '7' },
+  'learning.overdue.hr_days': { label: 'Learning: days past the due date before training reports (HR) are told', scopes: ['tenant'], dated: false, values: ['7', '14', '21', '30'], default: '14' },
   'engage.hide_after_reports': { label: 'Engage: reports that hide a post or comment until a moderator reviews it', scopes: ['tenant'], dated: false, values: ['2', '3', '5', '10'], default: '3' },
   'speakup.anonymous': { label: 'Speak-up: who may report without a name', scopes: ['tenant'], dated: false, values: ['all', 'ethics_only', 'off'], default: 'all' },
   'speakup.ack_days': { label: 'Speak-up: days for the case team to acknowledge a report', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '5', '7'], default: '2' },

@@ -15,6 +15,7 @@ import { LearningService } from './learning.service';
 import { LearningAssignService } from './learning-assign.service';
 import { LearningReportsService } from './learning-reports.service';
 import { LearningSessionsService } from './learning-sessions.service';
+import { LearningFeedbackService } from './learning-feedback.service';
 
 export class CourseDto {
   @IsString() @MinLength(2) @MaxLength(200) title!: string;
@@ -140,6 +141,17 @@ export class MarksDto {
   @IsArray() @ArrayMaxSize(500) @ValidateNested({ each: true }) @Type(() => MarkDto) marks!: MarkDto[];
 }
 
+export class ReactionDto {
+  @IsInt() @Min(1) @Max(5) overall!: number;
+  @IsInt() @Min(1) @Max(5) trainer!: number;
+  @IsOptional() @IsString() @MaxLength(1000) comment?: string;
+}
+
+export class TrainingCheckDto {
+  @IsIn(['yes', 'partly', 'no', 'early']) applying!: 'yes' | 'partly' | 'no' | 'early';
+  @IsOptional() @IsString() @MaxLength(1000) comment?: string;
+}
+
 export class CheckInDto {
   @IsUUID() sessionId!: string;
   @IsUUID() slotId!: string;
@@ -184,6 +196,7 @@ export class LearningController {
     private readonly assign: LearningAssignService,
     private readonly reports: LearningReportsService,
     private readonly sessions: LearningSessionsService,
+    private readonly feedback: LearningFeedbackService,
   ) {}
 
   private user(req: Request) {
@@ -370,8 +383,9 @@ export class LearningController {
   }
 
   @Get('sessions/:id')
-  sessionPage(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.sessions.page(ctx, this.user(req), id);
+  async sessionPage(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    const page = await this.sessions.page(ctx, this.user(req), id);
+    return { ...page, feedback: await this.feedback.summaryOf(ctx, id) };
   }
 
   @Patch('sessions/:id')
@@ -418,9 +432,37 @@ export class LearningController {
   @Post('sessions/:id/confirm')
   @HttpCode(200)
   @RequirePermissions('learning.manage')
-  confirm(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionDto) {
+  async confirm(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: VersionDto) {
     ownSession(req);
-    return this.sessions.confirm(ctx, this.user(req), id, dto.version);
+    const out = await this.sessions.confirm(ctx, this.user(req), id, dto.version);
+    await this.feedback.askRatings(ctx, id);
+    return out;
+  }
+
+  // ---- LRN-12: rating a confirmed session (once), and the manager's later training check (once per person)
+
+  @Get('feedback/due')
+  feedbackDue(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.feedback.due(ctx, this.user(req));
+  }
+
+  @Post('sessions/:id/reaction')
+  @HttpCode(200)
+  react(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ReactionDto) {
+    ownSession(req);
+    return this.feedback.react(ctx, this.user(req), id, dto);
+  }
+
+  @Get('checks')
+  checks(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.feedback.checks(ctx, this.user(req));
+  }
+
+  @Post('checks/:enrolmentId')
+  @HttpCode(200)
+  check(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('enrolmentId', ParseUUIDPipe) enrolmentId: string, @Body() dto: TrainingCheckDto) {
+    ownSession(req);
+    return this.feedback.check(ctx, this.user(req), enrolmentId, dto);
   }
 
   @Post('check-in')

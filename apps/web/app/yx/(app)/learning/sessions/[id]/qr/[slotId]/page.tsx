@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import QRCode from 'qrcode';
 import { useToast } from '@yukthix/ui';
-import { LiveTrainerQrScreen, type LiveSessionPageData } from '@yukthix/ui/frame';
+import { TrainerQrScreen, type LiveSessionPageData } from '@yukthix/ui/frame';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '../../../../../../../../lib/api-client';
 import { useAuth } from '../../../../../../../../lib/auth-context';
@@ -35,7 +35,7 @@ export default function YxSessionQrPage() {
   }, [code.data?.code, id, slotId]);
   const slot = page.data?.session.slots.find((x) => x.id === slotId);
   return (
-    <LiveTrainerQrScreen
+    <TrainerQrScreen
       live={{
         session: page.data?.session.course ?? '',
         slot: slot?.label ?? '',

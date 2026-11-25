@@ -241,6 +241,11 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Engage feed', key: 'engage.celebrate.birthdays', synonyms: ['birthdays', 'celebrations'] },
       { section: 'Engage feed', key: 'engage.celebrate.anniversaries', synonyms: ['work anniversary', 'celebrations'] },
       { section: 'Engage feed', key: 'engage.celebrate.new_joiners', synonyms: ['new joiners', 'welcome'] },
+      // Learning (M07): the attendance share for new courses, the manager's training check, and overdue escalation (2609).
+      { section: 'Learning', key: 'learning.attendance_share', synonyms: ['attendance', 'sessions', 'training'] },
+      { section: 'Learning', key: 'learning.check_after_days', synonyms: ['training check', 'manager check'] },
+      { section: 'Learning', key: 'learning.overdue.manager_days', synonyms: ['overdue', 'mandatory training', 'escalation'] },
+      { section: 'Learning', key: 'learning.overdue.hr_days', synonyms: ['overdue', 'mandatory training', 'escalation'] },
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },

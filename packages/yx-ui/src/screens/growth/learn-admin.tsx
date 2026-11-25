@@ -27,6 +27,7 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, QrTile, SkillLevel, SplitLayout } from './growth-kit';
 import { complianceCell, completionStatus, withdraw } from './growth-logic';
 import type { Course } from './learn-me';
+import { LiveSessionPageScreen, LiveSessionsScreen, LiveTrainerQrScreen, type LiveSessionPage, type LiveSessions, type LiveTrainerQr } from './learn-sessions-live';
 import { CourseDetailsFields, LiveAssignmentRulesScreen, LiveComplianceScreen, LiveCourseBuilderScreen, NEW_COURSE, type CourseDetails, type LiveBuilder, type LiveCompliance, type LiveRules } from './learn-live';
 import type { LoadState } from './perf-goals';
 import './growth.css';
@@ -479,7 +480,14 @@ function SessionPage({ page, persona, tab }: { page: SessionPageData; persona: '
 }
 
 /** LRN-04 Sessions (T3): list, one session record for attendees, attendance, results, feedback, cost (YX-LRN-08), trainer master; external trainer portal. */
-export function SessionsScreen({ persona, view, sessions, page, trainers = [], tab, state = 'ready' }: SessionsProps) {
+/** LRN-04 with real records: `live` is the list and trainers, `livePage` one session. */
+export function SessionsScreen(props: SessionsProps | { live: LiveSessions } | { livePage: LiveSessionPage }) {
+  if ('live' in props) return <LiveSessionsScreen live={props.live} />;
+  if ('livePage' in props) return <LiveSessionPageScreen live={props.livePage} />;
+  return <SessionsDesign {...props} />;
+}
+
+function SessionsDesign({ persona, view, sessions, page, trainers = [], tab, state = 'ready' }: SessionsProps) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const shown = useMemo(() => sessions.filter((s) => (!q || s.course.toLowerCase().includes(q.toLowerCase())) && filters.every((f) => matchesFilter((s as unknown as Record<string, unknown>)[f.key], f))), [sessions, filters, q]);
@@ -559,7 +567,20 @@ export function SessionsScreen({ persona, view, sessions, page, trainers = [], t
 /* ================================================================== LRN-05 · Trainer QR attendance (phone) */
 
 /** LRN-05 Trainer QR screen (T8): rotating code per slot, live count, manual and kiosk-code fallback (M07 Q7). */
-export function TrainerQrScreen({ session, slot, present, expected, closed, manual }: { session: string; slot: string; present: string[]; expected: string[]; closed?: boolean; manual?: boolean }) {
+export function TrainerQrScreen(props: TrainerQrProps | { live: LiveTrainerQr }) {
+  return 'live' in props ? <LiveTrainerQrScreen live={props.live} /> : <TrainerQrDesign {...props} />;
+}
+
+interface TrainerQrProps {
+  session: string;
+  slot: string;
+  present: string[];
+  expected: string[];
+  closed?: boolean;
+  manual?: boolean;
+}
+
+function TrainerQrDesign({ session, slot, present, expected, closed, manual }: TrainerQrProps) {
   const [marked, setMarked] = useState<string[]>(present);
   return (
     <GrowthFrame area="learning" active="Sessions" persona="ld" device="phone" phone={{ title: 'Attendance', back: true, hideTabs: true }}>

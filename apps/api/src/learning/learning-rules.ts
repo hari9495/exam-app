@@ -53,15 +53,17 @@ export function ruleEnrols(input: { today: string; dueDays: number; repeatMonths
   return { enrol: true, dueOn: runsOut > input.today ? runsOut : addDays(input.today, input.dueDays), renewal: true };
 }
 
-export type ReminderKind = 'before_7' | 'before_2' | 'overdue_manager' | 'overdue_hr';
+export type ReminderKind = 'before_7' | 'before_2' | 'overdue' | 'overdue_manager' | 'overdue_hr';
 
 /**
- * The reminder a day brings for an open enrolment (LRN-07: 7 and 2 days before; the manager the day after it is
- * missed; HR after 7 days). A sweep that missed a day still sends the latest one that applies.
+ * The reminder a day brings for an open enrolment (LRN-07: 7 and 2 days before; the learner the day after it is
+ * missed; answer 2609: the manager after `managerDays` (7) and HR after `hrDays` (14), both company settings). A sweep
+ * that missed a day still sends the latest one that applies.
  */
-export function reminderDue(dueOn: string, today: string): ReminderKind | null {
-  if (today > addDays(dueOn, 6)) return 'overdue_hr';
-  if (today > dueOn) return 'overdue_manager';
+export function reminderDue(dueOn: string, today: string, managerDays = 7, hrDays = 14): ReminderKind | null {
+  if (today >= addDays(dueOn, hrDays)) return 'overdue_hr';
+  if (today >= addDays(dueOn, managerDays)) return 'overdue_manager';
+  if (today > dueOn) return 'overdue';
   if (today >= addDays(dueOn, -2)) return 'before_2';
   if (today >= addDays(dueOn, -7)) return 'before_7';
   return null;

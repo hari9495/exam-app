@@ -5,7 +5,9 @@ import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, buildViewer, tenantWide } from '../access/scope';
 import { holdersOf } from '../time/time-core';
 import { NotificationsService } from '../notifications/notifications.service';
-import { JobToday, LEARNING_KEYS, asDate, iso, jobsToday } from './learning-core';
+import { ANY_ENTITY, JobToday, LEARNING_KEYS, asDate, iso, jobsToday } from './learning-core';
+import { settingFor } from '../people/probation';
+import { LearningFeedbackService } from './learning-feedback.service';
 import { ReminderKind, addDays, covers, reminderDue, ruleEnrols } from './learning-rules';
 
 // LRN-07 Assignment rules: who must complete a course, by when, how often. A rule is checked when it is saved and
@@ -35,6 +37,7 @@ export class LearningAssignService {
     private readonly prisma: PrismaService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly notifications: NotificationsService,
+    private readonly feedback: LearningFeedbackService,
   ) {}
 
   private async manager(user: ScopeUser) {
@@ -172,7 +175,7 @@ export class LearningAssignService {
   }
 
   /** The daily check: every company's active rules, then the reminders. */
-  async sweep(): Promise<{ enrolled: number; reminded: number }> {
+  async sweep(): Promise<{ enrolled: number; reminded: number; checks: number }> {
     const today = todayIst();
     const orgs = await this.tenantPrisma.forTenant(SUPER, (tx) => tx.learningRule.findMany({ where: { active: true }, distinct: ['organizationId'], select: { organizationId: true } }));
     let enrolled = 0;
@@ -188,8 +191,9 @@ export class LearningAssignService {
       }
     }
     const reminded = await this.remind(today);
-    if (enrolled || reminded) this.logger.log(`Learning: ${enrolled} enrolled by rules, ${reminded} reminders sent`);
-    return { enrolled, reminded };
+    const checks = await this.feedback.askChecks();
+    if (enrolled || reminded || checks) this.logger.log(`Learning: ${enrolled} enrolled by rules, ${reminded} reminders sent, ${checks} training checks asked`);
+    return { enrolled, reminded, checks };
   }
 
   /** Reminders due today, in every company; each kind once per enrolment. */
@@ -220,8 +224,10 @@ export class LearningAssignService {
       const jobs = new Map((await jobsToday(tx, c, today, open.map((o) => o.employeeId))).map((j) => [j.employeeId, j]));
       const managers = new Map((await jobsToday(tx, c, today, [...jobs.values()].flatMap((j) => (j.managerEmployeeId ? [j.managerEmployeeId] : [])))).map((j) => [j.employeeId, j]));
       const courses = new Map((await tx.learningCourse.findMany({ where: { organizationId, id: { in: [...new Set(open.map((o) => o.courseId))] } }, select: { id: true, title: true } })).map((x) => [x.id, x.title]));
+      const managerDays = Number(await settingFor(tx, c, 'learning.overdue.manager_days', ANY_ENTITY)) || 7;
+      const hrDays = Number(await settingFor(tx, c, 'learning.overdue.hr_days', ANY_ENTITY)) || 14;
       for (const e of open) {
-        const kind = reminderDue(iso(e.dueOn)!, today);
+        const kind = reminderDue(iso(e.dueOn)!, today, managerDays, hrDays);
         const job = jobs.get(e.employeeId);
         if (!kind || !job || sentBefore.some((s) => s.enrolmentId === e.id && s.kind === kind)) continue;
         const to =
@@ -237,9 +243,10 @@ export class LearningAssignService {
     // Sent after the commit, so a failed mail never undoes the record that it was due.
     for (const m of out) {
       const due = new Date(`${m.due}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-      const text = m.kind === 'before_7' || m.kind === 'before_2' ? `${m.course} is due on ${due}` : `${m.name} has not completed ${m.course} (due ${due})`;
-      const link = m.kind === 'before_7' || m.kind === 'before_2' ? `/yx/learning/enrolments/${m.enrolmentId}` : m.kind === 'overdue_manager' ? '/yx/learning/team' : '/yx/learning/compliance';
-      await this.notifications.notifySystem(ctx, m.to, `learning.${m.kind}`, { entityType: 'learning', entityId: m.enrolmentId, contextText: text, linkPath: link }, { subject: text, html: `<p>${text}. Open YukthiX to see it.</p>` }, m.kind.startsWith('overdue') ? m.about : null).catch(() => undefined);
+      const own = m.kind === 'before_7' || m.kind === 'before_2' || m.kind === 'overdue';
+      const text = m.kind === 'overdue' ? `${m.course} was due on ${due}. Please complete it` : own ? `${m.course} is due on ${due}` : `${m.name} has not completed ${m.course} (due ${due})`;
+      const link = own ? `/yx/learning/enrolments/${m.enrolmentId}` : m.kind === 'overdue_manager' ? '/yx/learning/team' : '/yx/learning/compliance';
+      await this.notifications.notifySystem(ctx, m.to, `learning.${m.kind}`, { entityType: 'learning', entityId: m.enrolmentId, contextText: text, linkPath: link }, { subject: text, html: `<p>${text}. Open YukthiX to see it.</p>` }, m.kind === 'overdue_manager' || m.kind === 'overdue_hr' ? m.about : null).catch(() => undefined);
     }
     return out.length;
   }
