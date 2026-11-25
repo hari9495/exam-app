@@ -7,6 +7,7 @@ import * as http from 'http';
 import { AppModule } from '../src/app.module';
 import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { EmailService } from '../src/email/email.service';
+import * as ssrf from '../src/common/ssrf';
 import { markSteppedUp } from './fixtures/step-up';
 import { asApproved } from './fixtures/approved-question';
 
@@ -46,6 +47,7 @@ describe('Webhook delivery HTTP flow', () => {
 
   let receiverServer: http.Server;
   let fetchSpy: jest.SpyInstance;
+  let pinnedSpy: jest.SpyInstance;
   let receiverPort: number;
   const receivedRequests: Array<{ rawBody: string; signature: string | undefined }> = [];
 
@@ -73,6 +75,14 @@ describe('Webhook delivery HTTP flow', () => {
       .spyOn(global, 'fetch')
       .mockImplementation((input, init) =>
         String(input) === PUBLIC_WEBHOOK_URL ? realFetch(`http://127.0.0.1:${receiverPort}`, init) : realFetch(input, init),
+      );
+    // The worker sends through the pinned fetch (security review F13), which refuses loopback; send the test's public
+    // URL to the local receiver and leave every other URL to the real pinned fetch.
+    const realPinned = ssrf.pinnedFetch;
+    pinnedSpy = jest
+      .spyOn(ssrf, 'pinnedFetch')
+      .mockImplementation((input, init) =>
+        String(input) === PUBLIC_WEBHOOK_URL ? realFetch(`http://127.0.0.1:${receiverPort}`, init) : realPinned(input, init),
       );
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
@@ -212,6 +222,7 @@ describe('Webhook delivery HTTP flow', () => {
     await app.close();
     await new Promise<void>((resolve) => receiverServer.close(() => resolve()));
     fetchSpy.mockRestore();
+    pinnedSpy.mockRestore();
   });
 
   it('delivers invitation.created to the configured webhook URL with a verifiable signature', async () => {
