@@ -13210,6 +13210,48 @@ model SpeakupCase {
   @@map("speakup_cases")
 }
 
+/// Batch G2 (M09 Engage): one post in the feed: an announcement (item 12) now; updates, polls, kudos, celebrations next.
+model EngPost {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  kind          String    @db.VarChar(12)
+  spaceId       String?   @map("space_id") @db.Uuid
+  authorUserId  String?   @map("author_user_id") @db.Uuid
+  title         String?   @db.VarChar(200)
+  body          String
+  locationIds   String[]  @default([]) @map("location_ids") @db.Uuid
+  departmentIds String[]  @default([]) @map("department_ids") @db.Uuid
+  email         Boolean   @default(false)
+  ackRequired   Boolean   @default(false) @map("ack_required")
+  ackDueOn      DateTime? @map("ack_due_on") @db.Date
+  pinned        Boolean   @default(false)
+  state         String    @default("published") @db.VarChar(10)
+  publishAt     DateTime  @default(now()) @map("publish_at") @db.Timestamptz(3)
+  notifiedAt    DateTime? @map("notified_at") @db.Timestamptz(3)
+  remindersSent Int       @default(0) @map("reminders_sent")
+  remindedOn    DateTime? @map("reminded_on") @db.Date
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  reads         EngPostRead[]
+
+  @@index([organizationId, kind, publishAt(sort: Desc)], map: "eng_posts_feed_idx")
+  @@map("eng_posts")
+}
+
+/// Batch G2 item 12: who read an announcement, and when they acknowledged it.
+model EngPostRead {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  postId         String    @map("post_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  readAt         DateTime  @default(now()) @map("read_at") @db.Timestamptz(3)
+  ackedAt        DateTime? @map("acked_at") @db.Timestamptz(3)
+  post           EngPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId], map: "eng_post_reads_key")
+  @@map("eng_post_reads")
+}
+
 /// Batch G1 answer 2593: an awareness session the Internal Committee held (one committee; RLS: its members only).
 model PoshAwarenessSession {
   id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

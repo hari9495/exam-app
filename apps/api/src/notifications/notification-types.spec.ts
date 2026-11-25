@@ -98,6 +98,9 @@ describe('notification catalog', () => {
       'perf.pip.handed_over',
       'perf.pip.extended',
       // HLP-10 / HLP-11 company policies.
+      // Batch G2 item 12: announcements.
+      'engage.announcement.published',
+      'engage.announcement.reminder',
       'helpdesk.policy.to_acknowledge',
       'helpdesk.policy.overdue_report',
       'helpdesk.policy.to_publish',

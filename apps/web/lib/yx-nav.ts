@@ -571,6 +571,16 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
+  // Engage (batch G2, M09): the feed for everyone with a job; announcements for engage.announce (never on a support session).
+  const engage: NavArea = {
+    id: 'engage',
+    title: 'Engage',
+    sections: sec(undefined, [
+      ...when(!support && employee, L('engage-feed', 'Feed', '/yx/engage')),
+      ...when(!support && has('engage.announce'), L('engage-announcements', 'Announcements', '/yx/engage/announcements')),
+    ]),
+  };
+
   // Projects P-1 (answer 1401): only once the company switched Projects on.
   const projects: NavArea = { id: 'projects', title: 'Projects', sections: sec(undefined, [...when(!support && Boolean(n.projects), L('projects', 'Projects', '/yx/projects')), ...when(!support && Boolean(n.projects), L('capacity', 'Capacity & utilisation', '/yx/projects/capacity'), L('resource-requests', 'Resource requests', '/yx/projects/requests')), ...when(!support && Boolean(n.projects) && has('projects.finance'), L('costs', 'Costing & margin', '/yx/projects/costs')), ...when(!support && Boolean(n.projects) && any('projects.finance', 'ats.staffing.manage'), L('billing', 'Billing workbench', '/yx/projects/billing')), ...when(!support && (Boolean(n.projects) || Boolean(n.lineApprovals)), L('timesheet-approvals', 'Timesheet approvals', '/yx/projects/approvals'))]) };
 
@@ -657,7 +667,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, helpdesk, visitors, settings];
+  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, helpdesk, engage, visitors, settings];
   // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.
   const mine = new Set(areas.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))));
   if (Object.values(SETTINGS_PAGE_EDITORS).some((hrefs) => hrefs.some((h) => mine.has(h)))) settings.sections.unshift({ items: [L('settings-home', 'All settings', SETTINGS_HOME)] });

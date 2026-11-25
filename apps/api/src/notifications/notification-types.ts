@@ -38,6 +38,9 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.app.owner_left', group: 'reminders', label: "An application's owner has left or was deactivated" },
   { type: 'helpdesk.privacy.request', group: 'approvals', label: 'A privacy request about desk data is waiting' },
   // HLP-10 / HLP-11 company policies.
+  // Batch G2 item 12: an announcement for you, and the day-2 / day-5 reminder to acknowledge it.
+  { type: 'engage.announcement.published', group: 'mentions', label: 'A company announcement is for you' },
+  { type: 'engage.announcement.reminder', group: 'reminders', label: 'An announcement is waiting for you to acknowledge it' },
   { type: 'helpdesk.policy.to_acknowledge', group: 'reminders', label: 'A company policy is waiting for you to acknowledge it' },
   { type: 'helpdesk.policy.overdue_report', group: 'reminders', label: 'Someone in your team is overdue acknowledging a policy' },
   { type: 'helpdesk.policy.to_publish', group: 'approvals', label: 'A policy version is waiting for you to publish it' },

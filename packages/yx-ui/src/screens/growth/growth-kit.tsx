@@ -684,7 +684,8 @@ export interface FeedPost {
 const TYPE_TONE: Record<PostType, BadgeTone> = { Announcement: 'info', Update: 'neutral', Kudos: 'success', Celebration: 'success', Poll: 'neutral', Event: 'neutral' };
 
 /** One feed item: author, space, type, body, poll / kudos / event block, reactions, comments, report (M09 §3). */
-export function PostCard({ post, now, onAck, onReport }: { post: FeedPost; now: Date; onAck?: () => void; onReport?: () => void }) {
+/** `social` false hides Like and Comment (batch G2: an announcement before the feed's reactions are live). onAck may be async: a failure undoes it. */
+export function PostCard({ post, now, onAck, onReport, social = true }: { post: FeedPost; now: Date; onAck?: () => void | Promise<unknown>; onReport?: () => void; social?: boolean }) {
   const [reacted, setReacted] = useState(!!post.reacted);
   const [acked, setAcked] = useState(!!post.ack?.done);
   const mins = Math.round((now.getTime() - post.at.getTime()) / 60000);
@@ -747,7 +748,7 @@ export function PostCard({ post, now, onAck, onReport }: { post: FeedPost; now: 
                 size="sm"
                 onClick={() => {
                   setAcked(true);
-                  onAck?.();
+                  void Promise.resolve(onAck?.()).catch(() => setAcked(false));
                 }}
               >
                 Acknowledge
@@ -756,14 +757,14 @@ export function PostCard({ post, now, onAck, onReport }: { post: FeedPost; now: 
           )}
         </div>
       )}
-      <footer className="yx-post__foot">
+      {social && <footer className="yx-post__foot">
         <Button size="sm" icon={Heart} aria-pressed={reacted} onClick={() => setReacted((r) => !r)}>
           {reacted ? 'Liked' : 'Like'} · {post.reactions + (reacted && !post.reacted ? 1 : !reacted && post.reacted ? -1 : 0)}
         </Button>
         <Button size="sm" icon={MessageSquare}>
           Comment · {post.comments}
         </Button>
-      </footer>
+      </footer>}
     </article>
   );
 }

@@ -2,6 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { FeedScreen } from './engage-feed';
 import { CELEBRATIONS, POSTS, SPACES } from './engage-data';
 import { d } from './perf-data';
+import { liveFeed } from './engage-live-samples';
 
 const meta: Meta = { title: 'Screens/Engage/ENG-01 · Feed and spaces', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -17,3 +18,6 @@ export const Phone: S = { name: 'Phone · Home tab', globals: PHONE, render: () 
 export const EmptySpace: S = { name: 'Empty space', render: () => <FeedScreen posts={POSTS} spaces={SPACES} celebrations={[]} space="cricket" /> };
 export const Loading: S = { render: () => <FeedScreen posts={POSTS} spaces={SPACES} celebrations={CELEBRATIONS} state="loading" /> };
 export const HrView: S = { name: 'HR · feed with announcements in the panel', render: () => <FeedScreen persona="hr" posts={POSTS} spaces={SPACES} celebrations={CELEBRATIONS} openSurvey={SURVEY} /> };
+// Batch G2 item 12: company announcements for me, with acknowledgement.
+export const Announcements: S = { name: 'Feed · company announcements to acknowledge', render: () => <FeedScreen live={liveFeed()} /> };
+export const AnnouncementsEmpty: S = { name: 'Feed · nothing for me yet', render: () => <FeedScreen live={liveFeed({ posts: [] })} /> };

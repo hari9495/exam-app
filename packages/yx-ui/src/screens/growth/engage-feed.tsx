@@ -24,6 +24,10 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, PostCard, type Device, type FeedPost } from './growth-kit';
 import { moderate } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { LiveAnnouncementScreen, type LiveAnnouncements } from './engage-announce-live';
+import { MessageBody } from '../desk/desk-kit';
+import { useToast } from '../../components/notify';
+import { errorText } from '../org/org-kit';
 import './growth.css';
 
 /* ================================================================== ENG-01 · Feed + spaces directory */
@@ -81,8 +85,85 @@ function CelebrationStrip({ items }: { items: Celebration[] }) {
   );
 }
 
-/** ENG-01 Feed (T2): space filter, pinned announcements, polls, celebrations, kudos; spaces directory. */
-export function FeedScreen({ device = 'desktop', persona = 'emp', posts, spaces, celebrations, openSurvey, tab = 'feed', space: spaceProp = null, heldNotice, state = 'ready' }: FeedProps) {
+/** Batch G2 item 12: what the feed shows from the company's records (announcements now; posts, kudos next). */
+export interface LiveFeedPost {
+  id: string;
+  kind: 'announcement';
+  title: string;
+  /** Cleaned HTML (the server's allow-list). */
+  body: string;
+  author: string;
+  authorLeft: boolean;
+  at: string;
+  pinned: boolean;
+  ack: { due: string | null; done: boolean } | null;
+}
+export interface LiveFeed {
+  state: 'ready' | 'loading' | 'error';
+  onRetry?: () => void;
+  posts: LiveFeedPost[];
+  onAck: (id: string) => Promise<unknown>;
+  now: Date;
+  persona?: 'emp' | 'hr' | 'mgr';
+}
+
+function LiveFeedScreen({ live }: { live: LiveFeed }) {
+  const { toast } = useToast();
+  const posts: FeedPost[] = live.posts.map((p) => ({
+    id: p.id,
+    type: 'Announcement',
+    author: p.author,
+    authorNote: p.authorLeft ? 'Former employee' : undefined,
+    space: 'Company',
+    at: new Date(p.at),
+    body: (
+      <>
+        <strong>{p.title}</strong>
+        <MessageBody html={p.body} />
+      </>
+    ),
+    pinned: p.pinned,
+    reactions: 0,
+    comments: 0,
+    ack: p.ack ? { required: true, done: p.ack.done, due: p.ack.due ? new Date(`${p.ack.due}T00:00:00`) : undefined } : undefined,
+  }));
+  const ack = (id: string) =>
+    live.onAck(id).then(
+      () => toast({ tone: 'success', title: 'Acknowledged.' }),
+      (e: unknown) => {
+        toast({ tone: 'error', title: errorText(e) });
+        throw e;
+      },
+    );
+  return (
+    <GrowthFrame area="engage" active="Feed" persona={live.persona ?? 'emp'}>
+      <PageHeader title="Feed" />
+      {live.state === 'error' ? (
+        <EmptyState title="We couldn't load the feed" description="Try again in a moment." action={<Button onClick={live.onRetry}>Try again</Button>} />
+      ) : live.state === 'loading' ? (
+        <div className="yx-growth-stack">
+          <Skeleton height={140} />
+          <Skeleton height={180} />
+        </div>
+      ) : posts.length === 0 ? (
+        <EmptyState title="Your feed is empty" description="Company announcements for you show here." />
+      ) : (
+        <div className="yx-growth-stack" aria-live="polite">
+          {posts.map((p) => (
+            <PostCard key={p.id} post={p} now={live.now} social={false} onAck={() => ack(p.id)} />
+          ))}
+        </div>
+      )}
+    </GrowthFrame>
+  );
+}
+
+/** ENG-01 Feed (T2): space filter, pinned announcements, polls, celebrations, kudos; spaces directory. With `live`, the company's records. */
+export function FeedScreen(props: FeedProps | { live: LiveFeed }) {
+  return 'live' in props ? <LiveFeedScreen live={props.live} /> : <FeedDesign {...props} />;
+}
+
+function FeedDesign({ device = 'desktop', persona = 'emp', posts, spaces, celebrations, openSurvey, tab = 'feed', space: spaceProp = null, heldNotice, state = 'ready' }: FeedProps) {
   const [space, setSpace] = useState<string | null>(spaceProp);
   const [reported, setReported] = useState<string | null>(null);
   const shown = useMemo(() => posts.filter((p) => !space || p.space === spaces.find((s) => s.id === space)?.name), [posts, space, spaces]);
@@ -335,7 +416,13 @@ export interface AckRow {
 const AUDIENCE_COUNTS: Record<string, number> = { everyone: 248, hosur: 96, chennai: 58, blr: 94, ops: 72, quality: 17 };
 
 /** ENG-03 Announcement composer (T4): audience with live count, channels (external ones carry no sensitive values), acknowledgement, schedule; tracking (T2). */
-export function AnnouncementScreen({ view, rows = [], sensitive, state = 'ready' }: { view: 'compose' | 'tracking'; rows?: AckRow[]; sensitive?: boolean; state?: LoadState }) {
+type AnnouncementDesignProps = { view: 'compose' | 'tracking'; rows?: AckRow[]; sensitive?: boolean; state?: LoadState };
+/** ENG-03; batch G2 item 12: with `live`, the list, composer and tracking from the company's records. */
+export function AnnouncementScreen(props: AnnouncementDesignProps | { live: LiveAnnouncements }) {
+  return 'live' in props ? <LiveAnnouncementScreen live={props.live} /> : <AnnouncementDesign {...props} />;
+}
+
+function AnnouncementDesign({ view, rows = [], sensitive, state = 'ready' }: AnnouncementDesignProps) {
   const [audience, setAudience] = useState<string[]>(['hosur']);
   const [channels, setChannels] = useState<string[]>(['app', 'push', 'whatsapp']);
   const [ack, setAck] = useState(true);

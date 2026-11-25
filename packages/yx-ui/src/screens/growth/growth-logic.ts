@@ -488,3 +488,6 @@ export function progressSummary(goals: Goal[], all: Goal[] = goals): { average: 
     done: goals.filter((g) => g.status === 'Closed').length,
   };
 }
+
+/** Batch G2 item 12 (ENG-03): a pay amount or similar value that must stay in the app (email carries none). Same rule as the API. */
+export const carriesAmount = (s: string) => /(₹|\bRs\.?|\bINR)\s?\d/i.test(s);

@@ -27919,5 +27919,28 @@
                               "Screens/Compliance/CMP-09 · IC console"
                     ],
                     "note": "Positive and negative (service-desk-hlp06 e2e: outsiders 404, future day / short name / negative attendance / unknown field 400, the database hides the log from a non-member, a non-presiding member 403, steps out of order 409, reviewed without action 400, an old year 400, three audited steps; rls-isolation; kit posh-live 15/15). New tables posh_awareness_sessions and posh_annual_reports (RLS tenant + RESTRICTIVE ic_member_only per committee + support excluded) in rls-isolation. New routes POST /desk/speakup/ic/awareness and /ic/report in the endpoint-permissions list. The figures are counted from the committee's POSH complaints of the calendar year."
+          },
+          {
+                    "id": "MT-G2-12-ANNOUNCEMENTS",
+                    "area": "Batch G2 item 12: announcements (M09, ENG-03; answers 2601-2602) and the Engage feed (25 Nov 2026)",
+                    "screen": "Engage › Announcements (list, New, one announcement); Engage › Feed",
+                    "url": "http://localhost:3000/yx/engage/announcements",
+                    "account": "HR admin (engage.announce; also the System Admin); two employees at different locations; an employee with no job record; a manager without the key.",
+                    "steps": [
+                              "As HR open Engage › Announcements › New announcement. Press Publish with nothing filled.",
+                              "Write a title with '₹12,000' and tick Email.",
+                              "Fix the title. Choose Audience 'Location: <one plant>', watch the count; ask to acknowledge by a date; pin it; Publish and confirm.",
+                              "As an employee at that plant open Engage › Feed; as an employee elsewhere open it too.",
+                              "As the plant employee press Acknowledge.",
+                              "As HR open the announcement: read and acknowledged per person; press Remind; press it again; Export.",
+                              "Write another one, Schedule for later (tomorrow); check the list and the plant employee's feed.",
+                              "As the manager without the key open /yx/engage/announcements."
+                    ],
+                    "expected": "Step 1: 'Write a title…' and 'Write the message.' under the fields; nothing sent. Step 2: red 'Remove the amount before sending outside the app'; the confirm button stays off (the server refuses it too). Step 3: the count shows (e.g. 'Publish to 96 people'); toast 'Announcement published.'; the tracking page opens. Step 4: the plant employee sees it pinned at the top with 'Acknowledgement required by …'; the other employee does not see it; both get nothing else. A bell notice for the audience (and an email with the title and a link only when Email was ticked). Step 5: toast 'Acknowledged.' and 'You acknowledged this'. Step 6: rows say Acknowledged / Read, not acknowledged / Not read; Remind sends to the ones not acknowledged (toast with the number); then the button says 'Reminded today'; Export downloads a CSV. Step 7: the list says 'Scheduled for …'; the feed does not show it until 9 am that day. Step 8: no menu item, and the page says no access. Reminders also go by themselves on day 2 and day 5 to people who have not acknowledged. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Engage/ENG-03 · Announcement composer and acknowledgement tracking",
+                              "Screens/Engage/ENG-01 · Feed and spaces"
+                    ],
+                    "note": "Positive and negative (engage-g2 e2e 8/8: key 403, audience by location and department, short title / empty or script-only message / amount by email / due day without acknowledging / past or far schedule / another company's place / nobody in the audience / unknown field 400, the message cleaned, only the audience sees and acknowledges (others 404), email title only, reminders once a day 409, scheduled kept back and sent once by the job, day-2 / day-5 job reminders to non-acknowledgers only, company B sees nothing incl. the database; rls 33/33; kit 9/9). New key engage.announce (System Admin and HR Admin). New tables eng_posts and eng_post_reads (RLS tenant + support excluded) in rls-isolation. New menu area Engage (Feed; Announcements with the key)."
           }
 ]

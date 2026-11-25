@@ -128,6 +128,8 @@ export const YX_KEYS = [
   'speakup.setup.manage',
   // HLP-08 disciplinary show-cause cases.
   'case.disciplinary.raise',
+  // Batch G2 item 12: announcements.
+  'engage.announce',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',

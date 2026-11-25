@@ -21,8 +21,9 @@ describe('buildNav: areas', () => {
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
     const n = nav(['employee.profile.view', 'payroll.run.view', 'statutory.filing.view', 'pipeline:manage', 'perf.goal.view', 'org.settings.manage'], { employee: true });
-    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'visitors', 'settings']);
-    for (const unbuilt of ['assess', 'learning', 'analytics', 'engage', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
+    // Batch G2: Engage (the feed) for everyone with a job.
+    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'helpdesk', 'engage', 'visitors', 'settings']);
+    for (const unbuilt of ['assess', 'learning', 'analytics', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
   });
 
   it('YukthiX Hiring for hiring; no menu link leads to the older /v2 screens (decision 2398, step 5)', () => {
@@ -508,5 +509,20 @@ describe('buildNav: Settings S-6', () => {
     expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(expect.arrayContaining(['Approvals', 'Approval policies']));
     expect(labels(nav(['employee.profile.view', 'org.structure.view']), 'settings')).toEqual(expect.arrayContaining(['Approvals', 'Approval policies']));
     expect(labels(nav(['leave.settings.manage']), 'settings')).not.toContain('Approval policies');
+  });
+});
+
+describe('buildNav: Engage (batch G2)', () => {
+  const engage = (over: Partial<NavInput>, keys: string[] = []) => labels(nav(keys, { employee: true, ...over }), 'engage');
+  it('the feed for everyone with a job; Announcements only with engage.announce; nothing on a support session', () => {
+    expect(engage({})).toEqual(['Feed']);
+    expect(engage({}, ['engage.announce'])).toEqual(['Feed', 'Announcements']);
+    expect(engage({ employee: false }, ['engage.announce'])).toEqual(['Announcements']);
+    expect(engage({ support: true }, ['engage.announce'])).toEqual([]);
+  });
+  it('pages name themselves', () => {
+    const all = nav(['engage.announce'], { employee: true });
+    expect(pageLink(all, '/yx/engage/announcements/new')?.link.label).toBe('Announcements');
+    expect(pageLink(all, '/yx/engage')?.link.label).toBe('Feed');
   });
 });

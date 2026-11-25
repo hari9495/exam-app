@@ -123,6 +123,8 @@ export const PERMISSIONS = [
   { key: 'speakup.setup.manage', description: 'Choose the speak-up case officers: the grievance team, the ethics team, the Internal Committee and the escalation list' },
   // HLP-08 disciplinary show-cause cases (also in the disciplinary_cases migration).
   { key: 'case.disciplinary.raise', description: 'Open a disciplinary show-cause case about an employee (HR); the case is seen only by its HR members and the employee' },
+  // Batch G2 item 12 (answer 2602): announcements (also in the engage_announcements migration).
+  { key: 'engage.announce', description: 'Write and publish company announcements, choose who they go to and see who read and acknowledged them' },
 ];
 
 export const ROLE_PERMISSIONS: Record<string, string[]> = {
@@ -224,6 +226,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     'speakup.setup.manage',
     // HLP-08: HR opens disciplinary show-cause cases (never a manager by default).
     'case.disciplinary.raise',
+    // Batch G2 item 12 (answer 2602): announcements (System Admin and HR by default).
+    'engage.announce',
     // E2: claims of people in scope, and the finance check.
     'expense.claim.view',
     'expense.finance.review',
