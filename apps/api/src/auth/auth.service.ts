@@ -44,7 +44,8 @@ import { emailDomain } from './identity-providers';
 import { action, appUrl, details, passwordResetEmail, text } from '../email/account-emails';
 import { EmailLookService } from '../email/email-look.service';
 import { PASSWORD_RESET_EXPIRY_MINUTES, issuePasswordToken } from './password-tokens';
-import { inactiveAccountError } from './paused-access';
+// INVALID_CREDENTIALS is shared with the inactive-account refusal (security review F11): both answers are the same text.
+import { INVALID_CREDENTIALS, inactiveAccountError } from './paused-access';
 
 interface TokenPair {
   accessToken: string;
@@ -170,7 +171,6 @@ export interface SocialProof extends SocialIdentity {
 type ParsedIdentifier = { kind: 'email' | 'mobile'; value: string };
 
 export const PASSWORD_CHANGE_REQUIRED_CODE = 'PASSWORD_CHANGE_REQUIRED';
-const INVALID_CREDENTIALS = 'Invalid credentials';
 
 // Verified against when no account matched, so an unknown email costs the same argon2 work as
 // a wrong password and response timing cannot enumerate accounts. Same default parameters as
@@ -247,7 +247,8 @@ export class AuthService {
     if (!user || !passwordOk) return this.rejectLogin(PLATFORM_SCOPE, attempt, null, user, user ? 'bad_password' : 'unknown_user', reserved);
     if (user.status !== 'active') {
       await this.sessions.recordLoginEvent({ ...attempt, organizationId: null, userId: user.id, result: 'failed', reason: 'account_inactive' });
-      throw new UnauthorizedException('This account has been deactivated');
+      // Security review F11: the same answer as a wrong password; the real reason stays in the login event.
+      throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
     await this.loginProtection.registerSuccess(PLATFORM_SCOPE, identifier, meta.ip);
     if (user.passwordRecheckPending) await this.passwordPolicy.recheckAfterLogin(user, dto.password);
@@ -317,6 +318,7 @@ export class AuthService {
 
     if (user.status !== 'active') {
       await this.sessions.recordLoginEvent({ ...attempt, organizationId, userId: user.id, result: 'failed', reason: 'account_inactive' });
+      // Security review F11: only a running block-leave pause is named; anything else answers like a wrong password.
       throw await inactiveAccountError(this.tenantPrisma, user);
     }
     // The password is right: its guess counter is cleared (the device is trusted only once the

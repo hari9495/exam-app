@@ -205,11 +205,12 @@ describe('Time follow-ups', () => {
       // Negative: a wrong password reveals nothing about the pause.
       const wrong = await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `paused@fu-${run}.test`, password: 'Not-The-Password-1' }).expect(401);
       expect(wrong.body.message).not.toMatch(/paused|block leave|deactivated/i);
-      // Paused with no running block (say HR paused it some other way): "deactivated".
+      // Paused with no running block (say HR paused it some other way), or deactivated: the same answer as a wrong
+      // password (security review F11), so a right password is never confirmed.
       await inA((tx) => tx.blockLeavePlan.updateMany({ where: { employeeId: ids.pausedEmp }, data: { accessPause: 'none' } }));
-      expect((await login('paused').expect(401)).body.message).toBe('This account has been deactivated');
+      expect((await login('paused').expect(401)).body.message).toBe(wrong.body.message);
       await inA((tx) => tx.user.update({ where: { id: users.gone }, data: { status: 'deactivated' } }));
-      expect((await login('gone').expect(401)).body.message).toBe('This account has been deactivated');
+      expect((await login('gone').expect(401)).body.message).toBe(wrong.body.message);
       await inA((tx) => tx.user.update({ where: { id: users.paused }, data: { status: 'active' } }));
       // (Signing in again works once access is back: TIM-39 in time-gaps; the sign-in throttle stops a fifth try here.)
     });

@@ -282,7 +282,7 @@ describe('AuthService', () => {
     );
     await expect(
       service.login({ organizationSlug: 'acme', email: 'a@b.com', password: 'password1' }, META),
-    ).rejects.toThrow('This account has been deactivated');
+    ).rejects.toThrow('Invalid credentials'); // security review F11: the same answer as a wrong password
   });
 
   it('revokes the whole refresh-token family and audits the incident, attributed to the compromised user\'s real org, on reuse detection', async () => {
@@ -1110,7 +1110,7 @@ describe('AuthService', () => {
     it('a deactivated account with the right password is recorded, not counted as a guess', async () => {
       tenantPrisma.forTenant.mockResolvedValueOnce({ ...activeUser(), status: 'deactivated' });
 
-      await expect(service.login(DTO, META)).rejects.toThrow('deactivated');
+      await expect(service.login(DTO, META)).rejects.toThrow('Invalid credentials');
       expect(loginProtection.registerFailure).not.toHaveBeenCalled();
       expect(sessions.recordLoginEvent).toHaveBeenCalledWith(expect.objectContaining({ result: 'failed', reason: 'account_inactive' }));
       expect(sessions.create).not.toHaveBeenCalled();
@@ -1375,7 +1375,7 @@ describe('AuthService', () => {
 
     it('a deactivated account or a network outside the desk allow-list cannot finish', async () => {
       mfa.loadUser.mockResolvedValue({ ...ACCOUNT, status: 'deactivated' });
-      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow('deactivated');
+      await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow('Invalid credentials');
       mfa.loadUser.mockResolvedValue(ACCOUNT);
       deskIpAllowed.mockResolvedValue(false);
       await expect(service.completeMfaLogin(PROOF, META)).rejects.toThrow(ForbiddenException);
@@ -1643,7 +1643,7 @@ describe('AuthService', () => {
 
         setPolicy({ otpSignInChannels: ['email', 'sms'] });
         mfa.loadUser.mockResolvedValue({ ...USER, status: 'deactivated' });
-        await expect(verify()).rejects.toThrow('deactivated');
+        await expect(verify()).rejects.toThrow('Invalid credentials');
 
         mfa.loadUser.mockResolvedValue({ ...USER, mobileNumber: '+919000000000' });
         otp.peek.mockResolvedValue(stored({ channel: 'sms' }));
