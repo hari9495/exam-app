@@ -21,7 +21,7 @@ export type PeoplePage =
   | 'Onboarding board' | 'Ready to onboard' | 'Batches' | 'Probation' | 'Buddies' | 'Life events' | 'My checklist tasks'
   | 'Change action' | 'Scheduled' | 'Bulk changes' | 'Restructure' | 'Import' | 'Team pay access'
   | 'Exit cases' | 'F&F' | 'Clearance' | 'Retirements and contracts'
-  | 'Documents & letters' | 'Assets' | 'Succession'
+  | 'Documents & letters' | 'Company documents' | 'Assets' | 'Succession'
   | 'Possible same person' | 'Union register' | 'VRS schemes' | 'Re-verification' | 'Declarations';
 
 const COUNTS: Partial<Record<PeoplePage, number>> = { 'Ready to onboard': 3, Probation: 5, 'Exit cases': 6, Clearance: 5, 'Documents & letters': 5, 'Possible same person': 3 };
@@ -35,10 +35,10 @@ export function useSay() {
 
 export function peoplePanel(active: PeoplePage, persona: Persona = 'hr'): PanelSection[] {
   const it = (label: PeoplePage) => ({ label, active: label === active, count: persona === 'mgr' && label === 'Probation' ? 1 : COUNTS[label] });
-  if (persona === 'emp') return [{ items: (['Directory', 'Org chart'] as PeoplePage[]).map(it) }];
+  if (persona === 'emp') return [{ items: (['Directory', 'Org chart', 'Company documents'] as PeoplePage[]).map(it) }];
   if (persona === 'mgr')
     return [
-      { items: (['Directory', 'Org chart', 'My team'] as PeoplePage[]).map(it) },
+      { items: (['Directory', 'Org chart', 'My team', 'Company documents'] as PeoplePage[]).map(it) },
       { label: 'For my team', items: (['Probation', 'Change action', 'Exit cases', 'Clearance', 'Buddies'] as PeoplePage[]).map(it) },
     ];
   return [
@@ -46,7 +46,7 @@ export function peoplePanel(active: PeoplePage, persona: Persona = 'hr'): PanelS
     { label: 'Onboarding', items: (['Onboarding board', 'Ready to onboard', 'Batches', 'Probation', 'Buddies', 'Life events', 'My checklist tasks'] as PeoplePage[]).map(it) },
     { label: 'Changes', items: (['Change action', 'Scheduled', 'Bulk changes', 'Restructure', 'Import', 'Team pay access'] as PeoplePage[]).map(it) },
     { label: 'Exits', items: (['Exit cases', 'F&F', 'Clearance', 'Retirements and contracts'] as PeoplePage[]).map(it) },
-    { items: (['Documents & letters', 'Assets', 'Succession'] as PeoplePage[]).map(it) },
+    { items: (['Documents & letters', 'Company documents', 'Assets', 'Succession'] as PeoplePage[]).map(it) },
     { label: 'More', items: (['Possible same person', 'Union register', 'VRS schemes', 'Re-verification', 'Declarations'] as PeoplePage[]).map(it) },
   ];
 }

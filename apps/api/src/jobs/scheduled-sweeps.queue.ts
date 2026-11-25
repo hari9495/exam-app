@@ -95,4 +95,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'learning-daily', cron: '0 1 * * *' },
   // Answer 2623: Internal Committee terms ending within 30 days, one note to the System Admins (07:00 IST).
   { id: 'speakup-ic-terms', cron: '30 1 * * *' },
+  // G4 (answer 2696): company documents expiring within the company's days, one note each (07:15 IST).
+  { id: 'company-docs-expiry', cron: '45 1 * * *' },
 ];

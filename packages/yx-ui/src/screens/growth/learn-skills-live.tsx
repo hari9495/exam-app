@@ -2,7 +2,7 @@
 // confirm, LRN-11 training needs and budgets, and the HR counts of the Internal Committees (answer 2620) shown on the
 // compliance dashboard. The designed screens (learn-me.tsx, learn-admin.tsx) render these when given `live`.
 import { useState } from 'react';
-import { CheckCircle2, Plus, X } from 'lucide-react';
+import { CheckCircle2, Download, Plus, X } from 'lucide-react';
 import { Button, Link } from '../../components/button';
 import { Badge, PersonLabel } from '../../components/display';
 import { Text } from '../../components/foundations';
@@ -333,6 +333,8 @@ export interface LiveTrainingNeeds {
   onPlan: (ids: string[], courseId: string) => Promise<unknown>;
   onStatus: (ids: string[], status: 'in_progress' | 'closed') => Promise<unknown>;
   onBudget: (departmentId: string, amount: number) => Promise<unknown>;
+  /** Answer 2676: the year's budgets as CSV. */
+  onExport?: () => Promise<unknown>;
 }
 
 export function LiveTrainingNeedsScreen({ live }: { live: LiveTrainingNeeds }) {
@@ -409,6 +411,11 @@ export function LiveTrainingNeedsScreen({ live }: { live: LiveTrainingNeeds }) {
             <div className="yx-growth-row">
               <Text weight="semibold">{b ? `Financial year ${b.year}-${String(b.year + 1).slice(2)}` : ''}</Text>
               <span className="yx-growth-grow" />
+              {live.onExport && (
+                <Button icon={Download} onClick={() => void run(live.onExport!, 'Budgets downloaded.')}>
+                  Export budgets
+                </Button>
+              )}
               <Button icon={Plus} onClick={() => setBudget(true)}>
                 Set a budget
               </Button>

@@ -535,6 +535,15 @@ export class LearningController {
     return this.skills.budgets(ctx, this.user(req), q.year);
   }
 
+  // Answer 2676: the budgets export.
+  @Get('budgets/export')
+  @RequirePermissions('learning.manage')
+  async budgetsExport(@Req() req: Request, @Res({ passthrough: true }) res: Response, @CurrentTenant() ctx: TenantContext, @Query() q: BudgetQueryDto) {
+    const out = await this.skills.budgetsCsv(ctx, this.user(req), q.year);
+    download(res, 'text/csv; charset=utf-8', `training-budgets-FY${out.year}.csv`);
+    return out.csv;
+  }
+
   @Post('budgets')
   @HttpCode(200)
   @RequirePermissions('learning.manage')

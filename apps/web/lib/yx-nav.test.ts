@@ -21,9 +21,10 @@ describe('buildNav: areas', () => {
 
   it('areas come in the designed rail order, Settings last; unbuilt modules never appear', () => {
     const n = nav(['employee.profile.view', 'payroll.run.view', 'statutory.filing.view', 'pipeline:manage', 'perf.goal.view', 'org.settings.manage'], { employee: true });
-    // Learning (PR #210) for everyone with a job; batch G2: Engage (the feed) for everyone with a job.
-    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'learning', 'helpdesk', 'engage', 'visitors', 'settings']);
-    for (const unbuilt of ['assess', 'analytics', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
+    // Learning (PR #210) for everyone with a job; batch G2: Engage (the feed) for everyone with a job; G4: Analytics (the
+    // report library) for anyone a report opens for (statutory.filing.view here).
+    expect(areas(n)).toEqual(['home', 'people', 'time', 'pay', 'compliance', 'hire', 'performance', 'learning', 'helpdesk', 'engage', 'visitors', 'analytics', 'settings']);
+    for (const unbuilt of ['assess', 'projects', 'contract']) expect(areas(n)).not.toContain(unbuilt);
   });
 
   it('YukthiX Hiring for hiring; no menu link leads to the older /v2 screens (decision 2398, step 5)', () => {
@@ -89,6 +90,17 @@ describe('buildNav: scorecard templates (answer 345)', () => {
   });
 });
 
+describe('buildNav: G4 report library and company documents', () => {
+  it('Report library for a report key or a manager, never a plain employee or a support session; Company documents for everyone with a job or the key', () => {
+    expect(areas(nav([], { employee: true }))).not.toContain('analytics');
+    expect(labels(nav(['expense.report.view']), 'analytics')).toEqual(['Report library']);
+    expect(labels(nav([], { employee: true, manager: true }), 'analytics')).toEqual(['Report library']);
+    expect(areas(nav(['expense.report.view'], { support: true }))).not.toContain('analytics');
+    expect(labels(nav(['company.documents.manage']), 'people')).toContain('Company documents');
+    expect(labels(nav([], { employee: true, support: true }), 'people')).not.toContain('Company documents');
+  });
+});
+
 describe('buildNav: Learning', () => {
   it('employees learn; managers add My team; training reports and L&D add Compliance and Course builder', () => {
     expect(labels(nav([], { employee: true }), 'learning')).toEqual(['My learning', 'Catalogue', 'My skills']);
@@ -131,12 +143,12 @@ describe('buildNav: People', () => {
 
   it('a manager without HR keys gets "For my team"; raising on behalf adds Change action', () => {
     const n = nav(['request.raise_on_behalf'], { employee: true, manager: true, history: true });
-    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'My team', 'Probation', 'Change action', 'Exit cases', 'Job history']);
+    expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'My team', 'Company documents', 'Probation', 'Change action', 'Exit cases', 'Job history']);
     expect(sections(n, 'people')).toEqual(['', 'For my team', 'Changes']);
   });
 
   it('an employee without reports sees the directory and their history; someone with no record sees no People area', () => {
-    expect(labels(nav([], { employee: true, history: true }), 'people')).toEqual(['Directory', 'Org chart', 'Job history']);
+    expect(labels(nav([], { employee: true, history: true }), 'people')).toEqual(['Directory', 'Org chart', 'Company documents', 'Job history']);
     expect(areas(nav())).not.toContain('people');
   });
 

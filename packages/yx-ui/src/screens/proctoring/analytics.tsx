@@ -22,6 +22,7 @@ import { AnlFrame } from './proctoring-shared';
 import { HiringDashboardScreen, LiveSchedulesScreen, type LiveHiringDashboard, type LiveSchedules } from './analytics-live';
 import { deliveryMode, inheritedSensitivity, suppress, type Sensitivity } from './proctoring-logic';
 import { EXPORTS, METRICS, MONTHS, REPORTS, SCHEDULES, d, type MetricRow, type ReportRow, type ScheduleRow } from './proctoring-data';
+import { LiveReportLibraryScreen, type LiveReportLibrary } from './report-library-live';
 
 const DEPTS = ['Engineering', 'Operations', 'Finance', 'People', 'Sales', 'Quality'];
 const SENS_TONE: Record<Sensitivity, 'neutral' | 'warning' | 'danger'> = { Internal: 'neutral', Confidential: 'warning', Special: 'danger' };
@@ -532,7 +533,11 @@ export function ReportBuilderScreen({ grouped = true, chartOn = false, empty = f
 /* ANL-06 · Report library                                             */
 /* ================================================================== */
 
-export function ReportLibraryScreen({ query = '', favouritesOnly = false }: { query?: string; favouritesOnly?: boolean }) {
+export function ReportLibraryScreen(props: { query?: string; favouritesOnly?: boolean } | { live: LiveReportLibrary }) {
+  return 'live' in props ? <LiveReportLibraryScreen live={props.live} /> : <SampleReportLibrary {...props} />;
+}
+
+function SampleReportLibrary({ query = '', favouritesOnly = false }: { query?: string; favouritesOnly?: boolean }) {
   // ANL-06
   const [q, setQ] = useState(query);
   const [fav, setFav] = useState(favouritesOnly);

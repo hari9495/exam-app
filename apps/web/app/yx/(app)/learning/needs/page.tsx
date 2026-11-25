@@ -3,7 +3,7 @@
 import { TrainingNeedsScreen, type CourseRow, type LiveNeedRow } from '@yukthix/ui/frame';
 import { loadState } from '../../../../../lib/yx-org';
 import { useJoinerPlaces } from '../../../../../lib/yx-lifecycle';
-import { useLearning, useLearningWrite } from '../../../../../lib/yx-learning';
+import { useLearning, useLearningFiles, useLearningWrite } from '../../../../../lib/yx-learning';
 import { learnState } from '../my-learning';
 
 type Budgets = { year: number; rows: { departmentId: string; dept: string; planned: number; spent: number; committed: number }[]; departments: { value: string; label: string }[]; skills: { value: string; label: string }[] };
@@ -15,6 +15,7 @@ export default function YxTrainingNeedsPage() {
   const courses = useLearning<CourseRow[]>('/admin/courses');
   const places = useJoinerPlaces(true);
   const write = useLearningWrite();
+  const files = useLearningFiles();
   const b = budgets.data;
   return (
     <TrainingNeedsScreen
@@ -31,6 +32,7 @@ export default function YxTrainingNeedsPage() {
         onPlan: (ids, courseId) => write('PATCH', '/needs', { ids, status: 'planned', courseId }),
         onStatus: (ids, status) => write('PATCH', '/needs', { ids, status }),
         onBudget: (departmentId, amount) => write('POST', '/budgets', { departmentId, year: b!.year, amount }),
+        onExport: () => files.download(`/budgets/export?year=${b?.year ?? ''}`, 'training-budgets.csv'),
       }}
     />
   );

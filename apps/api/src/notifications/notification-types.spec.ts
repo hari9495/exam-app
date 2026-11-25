@@ -111,6 +111,7 @@ describe('notification catalog', () => {
       'helpdesk.policy.decided',
       'helpdesk.speakup.received',
       'helpdesk.ic.term_ending',
+      'people.company_doc.expiring',
       'helpdesk.case.update',
       'helpdesk.case.task',
       'helpdesk.case.misconduct_reported',

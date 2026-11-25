@@ -263,6 +263,8 @@ export const ROLE_PERMISSIONS: Record<string, string[]> = {
     // Learning: courses and assignment rules; training compliance.
     'learning.manage',
     'learning.report.view',
+    // G4: company documents.
+    'company.documents.manage',
   ],
   recruiter: ['org:view', 'question_bank:manage', 'exam:manage', 'candidate:manage', 'results:view', 'ai_jobs:view', 'pipeline:manage', 'interview:view_assigned', 'payroll.equity.own'],
   // Founder answer 511: a plain employee holds no interviewer key; being on an interview panel opens interviews.

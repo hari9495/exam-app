@@ -15726,3 +15726,48 @@ model LearningBudget {
   @@index([organizationId, year], map: "learning_budgets_org_idx")
   @@map("learning_budgets")
 }
+
+/// G4 (ANL-06): a report the person marked as a favourite in the report library (report_id from the code catalogue).
+model ReportFavourite {
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  reportId       String   @map("report_id") @db.VarChar(60)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([userId, reportId])
+  @@index([organizationId], map: "report_favourites_org_idx")
+  @@map("report_favourites")
+}
+
+/// G4 (item 21): a folder of company documents (everyone, or the document managers only).
+model CompanyDocFolder {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  name           String    @db.VarChar(80)
+  /// everyone · managers
+  audience       String    @default("everyone") @db.VarChar(10)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+
+  @@map("company_doc_folders")
+}
+
+/// G4 (item 21): a company document with its stored file and an optional expiry.
+model CompanyDocument {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  folderId       String    @map("folder_id") @db.Uuid
+  title          String    @db.VarChar(200)
+  fileId         String    @map("file_id") @db.Uuid
+  expiresOn      DateTime? @map("expires_on") @db.Date
+  remindedAt     DateTime? @map("reminded_at") @db.Timestamptz(3)
+  uploadedBy     String    @map("uploaded_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  removedBy      String?   @map("removed_by") @db.Uuid
+
+  @@index([organizationId, folderId], map: "company_documents_folder_idx")
+  @@map("company_documents")
+}

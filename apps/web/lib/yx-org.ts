@@ -197,6 +197,7 @@ export const YX_KEYS = [
   'perf.report.view',
   'learning.manage',
   'learning.report.view',
+  'company.documents.manage',
   'perf.comp.manage',
   'perf.comp.approve',
   'perf.pip.manage',

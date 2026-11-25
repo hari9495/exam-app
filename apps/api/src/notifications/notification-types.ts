@@ -51,6 +51,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'helpdesk.policy.decided', group: 'approvals', label: 'A policy version you wrote was published or sent back' },
   // HLP-06 speak-up.
   { type: 'helpdesk.speakup.received', group: 'assignments', label: 'A speak-up report was routed to you' },
+  { type: 'people.company_doc.expiring', group: 'reminders', label: 'A company document expires soon' },
   { type: 'helpdesk.ic.term_ending', group: 'reminders', label: 'An Internal Committee member\'s term ends within 30 days' },
   // HLP-07/08/09 cases.
   { type: 'helpdesk.case.update', group: 'assignments', label: 'There is an update on a case you are part of' },

@@ -515,6 +515,12 @@ describe('Learning: courses, rules, completion, certificates, reminders, complia
     const external = await tenantPrisma.forTenant(SUPER, (tx) => tx.learningExternalRequest.findMany({ where: { organizationId: org.A.id, status: 'approved', employeeId: { in: [ids.arjun, ids.divya] } } }));
     expect(b.rows.find((r: { dept: string }) => r.dept === 'Quality KF')).toMatchObject({ planned: 4000, spent: 5000 + external.reduce((a, x) => a + Number(x.cost), 0) });
     expect((await api('adminB', 'get', '/learning/budgets').expect(200)).body.rows).toEqual([]);
+    // Answer 2676: the export, L&D only, audited.
+    await api('arjunU', 'get', `/learning/budgets/export?year=${fy}`).expect(403);
+    const csv = (await api('ldA', 'get', `/learning/budgets/export?year=${fy}`).expect(200)).text;
+    expect(csv.split('\r\n')[0]).toBe(`Department,Budget FY ${fy}-${String(fy + 1).slice(2)},Spent,Committed,Left`);
+    expect(csv).toContain('Quality KF,4000,');
+    expect(await audits('learning.budgets.exported')).toHaveLength(1);
   });
 
   it('answers 2620 and 2624: HR counts of the committees (company-wide training reports only, none below 5); POSH course completions count', async () => {

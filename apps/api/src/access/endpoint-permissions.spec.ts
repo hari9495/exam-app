@@ -35,6 +35,7 @@ import { SpeakupController } from '../speakup/speakup.controller';
 import { AnnouncementsController, ModerationController, MyEngageController, SurveysController } from '../engage/engage.controller';
 import { CasesController, EthicsController, MisconductReportsController, MyCasesController } from '../cases/cases.controller';
 import { LearningController } from '../learning/learning.controller';
+import { LibraryController } from '../library/library.controller';
 
 // P02 YX-SEC-01: every HR endpoint declares its permission. The only exceptions are the routes open to the
 // implicit grants (YX-SEC-04: the person themselves, their managers, colleagues' Public fields) and public
@@ -101,6 +102,8 @@ const IMPLICIT: Record<string, string[]> = {
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
   PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap'], // batch F item 30: the manager's own team, checked in the service
   // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
+  // G4: the report library (entries follow their area's keys) and company documents (the service decides per folder).
+  LibraryController: ['reports', 'favourite', 'documents', 'file'],
   LearningController: ['me', 'mySkills', 'teamSkills', 'personSkills', 'assessSkill', 'decideSkill', 'feedbackDue', 'react', 'checks', 'check', 'roles', 'external', 'sessionList', 'upcoming', 'sessionPage', 'nominate', 'checkinCode', 'closeCheckin', 'mark', 'checkIn', 'decline', 'enrol', 'player', 'markDone', 'itemFile', 'certificatePdf', 'team', 'person'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   // counts: the record's Performance tab, counts only; the service checks who may ask.
@@ -143,7 +146,7 @@ const IMPLICIT: Record<string, string[]> = {
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {
-  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController]) {
+  for (const controller of [PeopleController, EmployeeHistoryController, OrgStructureController, AccessController, LifecycleController, DocumentsController, ReverificationController, RestructureController, EmployeeImportController, PeopleRegistersController, LettersController, ExitsController, SpecialCasesController, ExpensesController, ExpenseClaimsController, ExpenseTripsController, ExpenseReportsController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller, PerformanceHomeController, PersonPanelsController, BfsiController, PoliciesAdminController, MyPoliciesController, SpeakupController, AnnouncementsController, MyEngageController, ModerationController, SurveysController, CasesController, EthicsController, MyCasesController, MisconductReportsController, LearningController, LibraryController]) {
     it(`${controller.name}`, () => {
       const proto = controller.prototype as unknown as Record<string, unknown>;
       const handlers = Object.getOwnPropertyNames(proto).filter((m) => m !== 'constructor' && typeof proto[m] === 'function' && Reflect.getMetadata(PATH_METADATA, proto[m] as object) !== undefined);

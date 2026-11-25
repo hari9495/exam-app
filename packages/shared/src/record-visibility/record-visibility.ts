@@ -45,7 +45,7 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'billing.view') return ['tenant', 'legal_entity'];
   // Engage (batch G2) and Learning's course builder sit on the HR Admin template (typically per legal entity); they act
   // company-wide only, so a legal-entity grant passes the route but confers nothing (the services check tenantWide).
-  if (key === 'engage.announce' || key === 'engage.moderate' || key === 'engage.survey.manage' || key === 'learning.manage') return ['tenant', 'legal_entity'];
+  if (key === 'engage.announce' || key === 'engage.moderate' || key === 'engage.survey.manage' || key === 'learning.manage' || key === 'company.documents.manage') return ['tenant', 'legal_entity'];
   // Visitors slice 1 (answer 613): reception and the log work per location (or entity); visitor settings are company-wide.
   if (key === 'visitors.desk.manage' || key === 'visitors.log.view' || key === 'visitors.rollcall.view') return ['tenant', 'legal_entity', 'location'];
   if (key === 'visitors.settings.manage' || key === 'visitors.watchlist.manage') return ['tenant'];

@@ -276,6 +276,18 @@ export class LearningSkillsService {
     });
   }
 
+  /** Answer 2676: the year's budgets as CSV (text that starts like a formula is written as text); audited. */
+  async budgetsCsv(ctx: TenantContext, user: ScopeUser, year?: number) {
+    const b = await this.budgets(ctx, user, year);
+    const cell = (v: string | number) => {
+      const t = typeof v === 'string' && /^[=+\-@\t\r]/.test(v) ? `'${v}` : String(v);
+      return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+    };
+    const lines = [['Department', `Budget FY ${b.year}-${String(b.year + 1).slice(2)}`, 'Spent', 'Committed', 'Left'], ...b.rows.map((r) => [r.dept, r.planned, r.spent, r.committed, r.planned - r.spent - r.committed])];
+    await inCompany(this.tenantPrisma, ctx, (tx, c) => audit(tx, c, 'learning.budgets.exported', 'organization', c.organizationId, { year: b.year, rows: b.rows.length }));
+    return { year: b.year, csv: `${lines.map((l) => l.map(cell).join(',')).join('\r\n')}\r\n` };
+  }
+
   async setBudget(ctx: TenantContext, user: ScopeUser, dto: { departmentId: string; year: number; amount: number }) {
     await this.needL(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {

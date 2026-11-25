@@ -16,6 +16,7 @@ import { EmployeeHistoryModule } from '../employee-history/employee-history.modu
 import { PeopleModule } from '../people/people.module';
 import { LearningModule } from '../learning/learning.module';
 import { SpeakupModule } from '../speakup/speakup.module';
+import { LibraryModule } from '../library/library.module';
 import { AuthModule } from '../auth/auth.module';
 import { TalentModule } from '../talent/talent.module';
 import { TalentCrmModule } from '../talent-crm/talent-crm.module';
@@ -49,6 +50,7 @@ import { QuestionsModule } from '../questions/questions.module';
     DripModule,
     LearningModule,
     SpeakupModule,
+    LibraryModule,
     EmployeeHistoryModule,
     PeopleModule,
     AuthModule,

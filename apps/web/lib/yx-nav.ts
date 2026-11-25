@@ -214,6 +214,9 @@ export function panelOf(area: NavArea, linkId: string | undefined): { title: str
   return { title: area.title, sections: area.sections.filter((s) => s !== me) };
 }
 
+/** Keys that open at least one report in the library (apps/api/src/library/report-catalogue.ts). */
+const REPORT_KEYS = ['payroll.reports.view', 'statutory.filing.view', 'expense.report.view', 'attendance.view', 'perf.report.view', 'learning.report.view', 'desk.report.view', 'visitors.log.view', 'visitors.desk.manage', 'ats.costs.manage'];
+
 export function buildNav(n: NavInput): NavArea[] {
   const { has, support, employee, manager } = n;
   const any = (...keys: string[]) => keys.some(has);
@@ -254,7 +257,7 @@ export function buildNav(n: NavInput): NavArea[] {
   // Managers without HR keys get the designed "For my team" group instead of Onboarding / Changes / Exits.
   const team = !hr;
   const peopleWork: NavSection[] = [
-    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
+    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team')), ...when(!support && (employee || has('company.documents.manage')), L('company-docs', 'Company documents', '/yx/people/company-documents'))]),
     ...sec(team ? 'For my team' : 'Onboarding', [
       ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
       ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
@@ -692,7 +695,13 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, learning, helpdesk, engage, visitors, settings];
+  // G4 (ANL-06): the report library, for anyone a report opens for (an area report key, or a manager's team reports).
+  const analytics: NavArea = {
+    id: 'analytics',
+    title: 'Analytics',
+    sections: sec(undefined, when(!support && (manager || REPORT_KEYS.some(has)), L('report-library', 'Report library', '/yx/analytics/reports'))),
+  };
+  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, learning, helpdesk, engage, visitors, analytics, settings];
   // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.
   const mine = new Set(areas.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))));
   if (Object.values(SETTINGS_PAGE_EDITORS).some((hrefs) => hrefs.some((h) => mine.has(h)))) settings.sections.unshift({ items: [L('settings-home', 'All settings', SETTINGS_HOME)] });
