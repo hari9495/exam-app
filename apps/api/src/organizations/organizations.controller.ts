@@ -22,7 +22,6 @@ import { UpdateOrganizationDto, UpdateOrganizationStatusDto } from './dto/update
 import { UpdatePipelineSettingsDto } from './dto/update-pipeline-settings.dto';
 import { UpdateReminderSettingsDto } from './dto/update-reminder-settings.dto';
 import { UpdateScheduledReportSettingsDto } from './dto/update-scheduled-report-settings.dto';
-import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 import { ApiUsageQueryDto } from './dto/api-usage-query.dto';
 import { UpdateCareersDto } from './dto/update-careers.dto';
 import { UpdateSmsConfigDto } from './dto/update-sms-config.dto';
@@ -244,27 +243,16 @@ export class OrganizationsController {
     return this.organizationsService.updatePipelineSettings(tenant, userId, dto);
   }
 
-  // Deliberately no @RequirePermissions, same precedent as getBranding above:
-  // the recruiter slot picker reads org business hours/holidays as any authenticated
-  // user. Mutation stays behind org:manage_settings like the other settings routes.
-  @Get('business-hours')
-  getBusinessHours(@CurrentTenant() tenant: TenantContext) {
-    return this.organizationsService.getBusinessHours(tenant);
-  }
-
-  @Patch('business-hours')
-  @RequirePermissions('org:manage_settings')
-  updateBusinessHours(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateBusinessHoursDto) {
-    return this.organizationsService.updateBusinessHours(tenant, userId, dto);
-  }
-
+  // Answer 2422 (Settings 1.1): never while acting for someone else.
   @Patch('branding')
+  @UseGuards(OwnSessionGuard)
   @RequirePermissions('org:manage_settings')
   updateBrandingColors(@CurrentTenant() tenant: TenantContext, @CurrentUserId() userId: string, @Body() dto: UpdateBrandingColorsDto) {
     return this.organizationsService.updateBrandingColors(tenant, userId, dto);
   }
 
   @Post('branding/logo')
+  @UseGuards(OwnSessionGuard)
   @RequirePermissions('org:manage_settings')
   @UseInterceptors(FileInterceptor('file'))
   @Throttle(MODERATE_UPLOAD_THROTTLE)

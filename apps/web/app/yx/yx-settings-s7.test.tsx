@@ -32,7 +32,9 @@ const REGISTRY = {
 const calls: [string, unknown][] = [];
 const routes = (perms: string[]) =>
   api.mockImplementation(async (path: string, init?: RequestInit) => {
-    if (init?.method === 'PUT' || init?.method === 'POST') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), { pending: true });
+    if (init?.body instanceof FormData) return (calls.push([`${init.method} ${path}`, (init.body.get('file') as File).name]), {});
+    if (init?.method === 'PUT' || init?.method === 'POST' || init?.method === 'PATCH') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), { pending: true });
+    if (path === '/organizations/branding') return { logoUrl: null, primaryColor: '#0053E2' };
     if (path.startsWith('/rbac/me/permissions')) return perms;
     if (path === '/org/settings') return { registry: REGISTRY, limits: {}, pending: [], overrides: [] };
     if (path === '/org/legal-entities') return [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }];
@@ -67,6 +69,41 @@ describe('Settings S-7: the new homes of the retired pages', () => {
     expect(await screen.findByRole('combobox', { name: /Normal working week/ })).toBeInTheDocument();
     await ue.click(await screen.findByRole('combobox', { name: /Apply changes to/ }));
     expect(await screen.findByRole('option', { name: 'Kaveri Foods Pvt Ltd' })).toBeInTheDocument();
+  });
+
+  it('1.1 logo and brand colour (answer 2422): the logo uploads at once with a toast; a light colour is refused, a dark one saves', async () => {
+    routes(['org.settings.manage', 'org:manage_settings']);
+    const { container } = show(YxOrgSettingsPage, 'company-and-branding');
+    expect(await screen.findByText('Logo and brand colour')).toBeInTheDocument();
+    const file = new File([new Uint8Array([137, 80, 78, 71])], 'logo.png', { type: 'image/png' });
+    await ue.upload(container.querySelector('input[type=file]') as HTMLInputElement, file);
+    await waitFor(() => expect(calls).toEqual([['POST /organizations/branding/logo', 'logo.png']]));
+    expect((await screen.findAllByText('Logo saved')).length).toBeGreaterThan(0);
+    calls.length = 0;
+    const colour = screen.getByDisplayValue('#0053E2');
+    await ue.clear(colour);
+    await ue.type(colour, '#FFEE00');
+    await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
+    expect((await screen.findAllByText('White button text is hard to read on this colour. Choose a darker one.')).length).toBeGreaterThan(0);
+    expect(calls).toEqual([]);
+    await ue.clear(colour);
+    await ue.type(colour, '#1f6f5c');
+    await ue.click(screen.getAllByRole('button', { name: 'Save changes' })[0]!);
+    await waitFor(() => expect(calls).toEqual([['PATCH /organizations/branding', { primaryColor: '#1F6F5C' }]]));
+  });
+
+  it('negative (1.1): without the company settings key, or while acting, the logo and colour are view only', async () => {
+    routes(['org.settings.manage']);
+    const { container, unmount } = show(YxOrgSettingsPage, 'company-and-branding');
+    expect(await screen.findByText('Logo and brand colour')).toBeInTheDocument();
+    expect(container.querySelector('input[type=file]')).toBeNull();
+    expect(screen.queryByDisplayValue('#0053E2')).toBeNull();
+    unmount();
+    (useAuth as jest.Mock).mockReturnValue({ accessToken: 't', impersonating: true });
+    routes(['org.settings.manage', 'org:manage_settings']);
+    const again = show(YxOrgSettingsPage, 'company-and-branding');
+    expect(await screen.findByText('Logo and brand colour')).toBeInTheDocument();
+    expect(again.container.querySelector('input[type=file]')).toBeNull();
   });
 
   it('Policies and Help and tips open their drawn pages', async () => {

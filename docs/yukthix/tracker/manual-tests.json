@@ -27247,5 +27247,243 @@
                               "Screens/Analytics/ANL-08 · Schedules and export log › Live · weekly hiring digest on / off / loading / could not load"
                     ],
                     "note": "Positive and negative (kit analytics-live.test.tsx; web yx-report-schedules.test.tsx; API hiring-dashboard.e2e-spec.ts and organizations.service.spec.ts). GET /organizations/scheduled-report-settings now also returns lastSentAt. The export log tab of ANL-08 waits for analytics exports."
+          },
+          {
+                    "id": "MT-V2-HIRE-SWITCHES",
+                    "area": "Retire /v2: record visibility and daily reminders on Settings 6.1 Hiring (answer 2427, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test; a recruiter with two candidates (one assigned to them, one to someone else); employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Recruiters see only their own candidates' and 'Send the hiring team daily reminders'.",
+                              "Turn 'Recruiters see only their own candidates' on and press Save changes.",
+                              "As the recruiter: open Hire › Candidates.",
+                              "As admin: turn it off again and save; turn on the daily reminders and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/record-visibility and /v2/settings/reminders.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: both switches, off by default, with what each does. No page scroll at 1278 x 635. Step 2: 5-second toast 'Hiring settings saved'. Step 3: only the candidate assigned to them (and any unassigned ones). Step 4: the recruiter sees every candidate again; the next daily sweep sends the reminders. Step 5: one entry per change with before and after. Step 6: Settings › Hiring. Step 7: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › Hiring"
+                    ],
+                    "note": "Positive and negative (kit hiring-live.test.tsx; API hiring-dashboard.e2e-spec.ts). The values stay on the company row (record-visibility RLS and the reminder sweep read them there)."
+          },
+          {
+                    "id": "MT-V2-HIRE-MESSAGES",
+                    "area": "Retire /v2: stage message templates on Settings 6.1 Hiring (answer 2434, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test (holds the pipeline key); employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Stage message templates'.",
+                              "Press Edit on 'Application received' (Email, standard wording). Change the message and press Save template.",
+                              "Press Add message template. Choose SMS, leave the name empty and press Save template.",
+                              "Enter a name 'Interview call', choose the Interview stage, choose 'Ask before sending', enter a message and save.",
+                              "Paste a message longer than 1600 characters into an SMS template and save.",
+                              "Edit 'Application received' again: choose 'Send automatically' and save. On a job board, move a candidate to Applied (or add one).",
+                              "Open the 'Interview call' template and press Delete template, then confirm.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/message-templates, /v2/sms-templates and /v2/whatsapp-templates.",
+                              "Start acting as another person (Support › Act as) and open Settings › Hiring.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: a list with each template, how it is sent (Email, SMS, WhatsApp), its stage and when it is sent; no page scroll at 1278 x 635. Step 2: 5-second toast 'Message template saved'; the row no longer says Standard wording. Step 3: nothing saved, 'Enter the name.' under Name and the cursor is in Name; the button is never greyed out. Step 4: saved with a toast; the row shows SMS, Interview, Ask before sending. Step 5: 'Keep it to 1600 characters.', nothing saved. Step 6: the email arrives in Mailpit (http://localhost:8025) and shows in the candidate's messages. Step 7: a toast 'Message template deleted'; for a stage with standard wording, the standard wording comes back. Step 8: one entry per save with before and after. Step 9: Settings › Hiring. Step 10: the list shows, but no Add or Edit. Step 11: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · add message template",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · edit message template",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · standard message (saved as your copy)",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring · message template, view only"
+                    ],
+                    "note": "Positive and negative (kit stage-message-sheet.test.tsx and hiring-live.test.tsx; web yx-settings-hiring.test.tsx; API retire-v2-settings.e2e-spec.ts). The three template APIs now refuse another company's stage (400) and any change while acting for someone else (403), and audit before and after."
+          },
+          {
+                    "id": "MT-V2-HIRE-HOURS",
+                    "area": "Retire /v2: interview hours on Settings 6.1 Hiring (answers 2423 and 2510, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Hiring",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "Admin admin-tester@demo-org.test; a recruiter with a candidate on an open job; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Hiring. Find 'Candidates may book interviews from', 'until' and 'Days candidates may book interviews'.",
+                              "Set 'until' to 08:00 (before the start) and press Save changes.",
+                              "Type 09:15 in 'from' and save.",
+                              "Clear every day and save.",
+                              "Set from 10:00, until 13:00, days Monday and Saturday, and save.",
+                              "In Time › Holidays, check the published calendar for the job's location (or the company-wide one) has a holiday next week; add a national holiday on a coming Monday if not.",
+                              "As the recruiter: on the job board, schedule an interview for a candidate with 'Let the candidate pick a slot' for the next two weeks. Open the link from Mailpit.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/business-hours.",
+                              "As arjun: open /yx/settings/hiring."
+                    ],
+                    "expected": "Step 1: 09:30, 6:30 pm and Monday to Friday, marked as the starter values; no page scroll at 1278 x 635. Step 2: an error under 'until' and nothing saved. Step 3: refused with 'Choose a time on the hour or half hour, like 09:30.' Step 4: refused, 'Choose at least one day for interviews.' Step 5: a 5-second toast 'Hiring settings saved'. Step 7: only Monday and Saturday slots between 10:00 and 13:00 (India time), and none on the holiday. Step 8: one entry per change with before and after. Step 9: Settings › Hiring. Step 10: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.1 Hiring"
+                    ],
+                    "note": "Positive and negative (kit hiring-live.test.tsx; API interview-hours.spec.ts and retire-v2-settings.e2e-spec.ts). Old /v2 hours are copied by migration 202617z0000541. Holidays only in the old /v2 list are listed by apps/api/scripts/v2-holiday-compare.ts (none on the local databases) and never added to a calendar automatically."
+          },
+          {
+                    "id": "MT-V2-ASMT-CERT",
+                    "area": "Retire /v2: pass certificate on Settings 6.5 Assessments (answer 2424, 18 Nov 2026)",
+                    "screen": "Settings › Hiring & Assessments › Assessments",
+                    "url": "http://localhost:3000/yx/settings/talent/assessments",
+                    "account": "Admin admin-tester@demo-org.test (assessments settings); a candidate who passed a test with certificates on; employee arjun@demo-org.test.",
+                    "steps": [
+                              "As admin: open Settings › Assessments. Find the 'Pass certificate' section.",
+                              "Press Edit certificate. Clear the Title and press Save certificate.",
+                              "Enter the title 'Certificate of Merit', add 'Signed by' Meenakshi Sundaram and save.",
+                              "Open the passing candidate's report and download the certificate.",
+                              "Edit again, untick 'Use this wording' and save. Download the certificate again.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/certificate.",
+                              "Start acting as another person and open Settings › Assessments.",
+                              "As arjun: open /yx/settings/talent/assessments."
+                    ],
+                    "expected": "Step 1: the section shows 'Standard wording', the title, the text and 'No name'; no page scroll at 1278 x 635 apart from the settings list itself. Step 2: 'Enter the title.' under Title, the cursor is there, nothing saved, the button is never greyed out. Step 3: a 5-second toast 'Certificate saved'; the section shows 'Your wording'. Step 4: the PDF has the new title and the signatory name. Step 5: the section says your wording is off; the PDF has the standard wording. Step 6: one entry per save with before and after. Step 7: Settings › Assessments. Step 8: the section shows without Edit certificate. Step 9: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate, standard wording",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · edit pass certificate",
+                              "Screens/Settings/Group 6 · Hiring & Assessments › 6.5 Assessments · pass certificate, view only"
+                    ],
+                    "note": "Positive and negative (kit certificate-card.test.tsx; web yx-settings-s8.test.tsx; API retire-v2-settings.e2e-spec.ts). The certificate API now audits before and after."
+          },
+          {
+                    "id": "MT-V2-ORG-BRANDING",
+                    "area": "Retire /v2: logo and brand colour on Settings 1.1 Company & branding (answer 2422, 18 Nov 2026)",
+                    "screen": "Settings › Organisation › Company & branding",
+                    "url": "http://localhost:3000/yx/settings/org/company-and-branding",
+                    "account": "Admin admin-tester@demo-org.test (company settings); an HR user with only HR's settings key; a PNG logo, an SVG file and a text file renamed logo.png.",
+                    "steps": [
+                              "As admin: open Settings › Company & branding. Find 'Logo and brand colour'.",
+                              "Press Upload logo (or Replace) and choose the PNG.",
+                              "Choose the SVG file, then the renamed text file.",
+                              "Change Brand colour to #FFEE00 and press Save changes.",
+                              "Change it to #1F6F5C and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/branding and /settings/branding.",
+                              "As the HR user: open the page. Then, as admin, act as another person and open it.",
+                              "As arjun@demo-org.test: open the page."
+                    ],
+                    "expected": "Step 1: the current logo (or 'No logo yet') and the brand colour with a button preview and a contrast badge; no page scroll at 1278 x 635 beyond the settings list. Step 2: a 5-second toast 'Logo saved' and the new logo shows at once (no Save needed). Step 3: refused with 'Logo must be a PNG or JPEG image'; the old logo stays. Step 4: 'White button text is hard to read on this colour. Choose a darker one.' and nothing saved. Step 5: saved with a toast. Step 6: one entry per change with before and after. Step 7: Settings › Company & branding. Step 8: logo and colour are shown but cannot be changed. Step 9: no access.",
+                    "stories": [
+                              "Screens/Settings/Group 1 · Organisation › 1.1 Company & branding · logo and colour (live)"
+                    ],
+                    "note": "Positive and negative (kit settings-branding.test.tsx; web yx-settings-s7.test.tsx; API retire-v2-settings.e2e-spec.ts and organizations.service.spec.ts). Logos and careers banners are now checked by their bytes; SVG is refused (it can carry script). The /v2 accent colour, text colour and sign-in watermark are not used by any YukthiX page, so they are not on 1.1."
+          },
+          {
+                    "id": "MT-V2-HIRE-ASK-FIRST",
+                    "area": "Retire /v2: 'Ask before sending' stage messages on the job board (answer 2434 follow-up, 18 Nov 2026)",
+                    "screen": "Hiring › Jobs › a job › Pipeline",
+                    "url": "http://localhost:3000/yx/hiring/jobs",
+                    "account": "Recruiter or admin admin-tester@demo-org.test (pipeline key); a job with a candidate in Applied; Mailpit at http://localhost:8025.",
+                    "steps": [
+                              "In Settings › Hiring › Stage message templates, set the Interview stage's email to 'Ask before sending' and save.",
+                              "Open the job's pipeline and move a candidate from Applied to Interview.",
+                              "Press Edit first, clear the message and press Send edited message.",
+                              "Type a short message and press Send edited message.",
+                              "Move another candidate to Interview and press Don't send.",
+                              "Move a candidate to a stage with no 'ask' message.",
+                              "Open Settings › Audit log.",
+                              "Act as another person and open the same pipeline."
+                    ],
+                    "expected": "Step 2: a question 'Send the Email message to <name>?' with the subject and message. Step 3: 'Enter the message.' and the cursor in Message; nothing sent. Step 4: a 5-second toast 'Email sent to <name>'; the email is in Mailpit and on the candidate's messages. Step 5: a toast 'Email not sent'; nothing in Mailpit. Step 6: no question. Step 7: the sent email and an 'ats.stage_message.skipped' entry for the skip. Step 8: the board is read-only; nothing to send.",
+                    "stories": [
+                              "Screens/Hiring/HIR-04 · Pipeline board › Ask before sending · email after a move",
+                              "Screens/Hiring/HIR-04 · Pipeline board › Ask before sending · SMS"
+                    ],
+                    "note": "Positive and negative (kit stage-message-prompt.test.tsx; web yx-hiring-hir04.test.tsx; API retire-v2-settings.e2e-spec.ts). One question per channel (email, SMS, WhatsApp); closing the question counts as Don't send. Only the board asks; the candidate record's 'Move to next stage' does not yet."
+          },
+          {
+                    "id": "MT-V2-NTF-HIRING-EMAILS",
+                    "area": "Retire /v2: approval, interview and sender emails on Settings 5.4 Notifications (answer 2429, 18 Nov 2026)",
+                    "screen": "Settings › Documents & Communication › Notifications",
+                    "url": "http://localhost:3000/yx/settings/documents/notifications",
+                    "account": "Admin admin-tester@demo-org.test (company settings, pipeline and approvals keys); hr@demo-org.test (HR settings only); Mailpit at http://localhost:8025.",
+                    "steps": [
+                              "As admin: open Settings › Notifications. Find 'Hiring emails'.",
+                              "Press Add address. Enter the name 'Plant hiring' and the address 'plant-hiring' (no @) and press Save address.",
+                              "Correct the address to plant.hiring@demo-org.test, tick 'Use when the recruiter does not choose' and save.",
+                              "Press Edit on 'Invitation to the candidate'. Clear the Subject and press Save wording.",
+                              "Write your own subject and save. Then schedule an interview for a candidate and open the email in Mailpit.",
+                              "Press Edit on 'Approval requested', write a subject and message with {{actorName}} and {{link}}, and save.",
+                              "Open Settings › Audit log.",
+                              "Open the old addresses /v2/settings/approval-emails, /v2/settings/interview-emails and /v2/settings/sender-addresses.",
+                              "As hr@demo-org.test: open the page. As admin acting as another person: open it."
+                    ],
+                    "expected": "Step 1: three lists (addresses recruiters send from, interview emails, hiring approval emails) with Standard or Yours; no page scroll at 1278 x 635 beyond the settings list. Step 2: 'Enter an email address, like careers@yourcompany.in.' and nothing saved. Step 3: a 5-second toast 'Sender address saved'; it shows Default Yes. Step 4: 'Enter the subject.', the cursor in Subject, nothing saved. Step 5: toast 'Email wording saved'; the candidate's invitation uses your subject. Step 6: saved; approvers get your wording. Step 7: one entry per change with before and after. Step 8: Settings › Notifications. Step 9: HR sees no hiring email lists; acting shows the lists without Add or Edit.",
+                    "stories": [
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · add sender address",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · edit sender address",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · interview email (standard wording)",
+                              "Screens/Settings/Group 5 · Documents & Communication › 5.4 Notifications · approval email, view only"
+                    ],
+                    "note": "Positive and negative (kit hiring-emails.test.tsx; web yx-settings-s8.test.tsx; API retire-v2-settings.e2e-spec.ts and the template service specs). The three APIs now refuse changes while acting; interview and approval saves are audited with before and after; approval wording is limited to 300 / 10,000 characters. Hiring approval emails apply to the old job and offer approval chains, which answers 2511-2512 move into P03 approvals."
+          },
+          {
+                    "id": "MT-V2-CUSTOM-FIELDS-ENTITY",
+                    "area": "Retire /v2: candidate and job custom fields on Settings › Custom fields (answer 2425, 18 Nov 2026)",
+                    "screen": "Settings › People & Access › Custom fields",
+                    "url": "http://localhost:3000/yx/settings/custom-fields",
+                    "account": "Admin admin-tester@demo-org.test (company settings and HR settings); hr@demo-org.test (HR settings only).",
+                    "steps": [
+                              "As admin: open Settings › Custom fields. Find 'Fields for' with Employees, Candidates and Jobs.",
+                              "Choose Candidates. Press Add custom field, leave the name empty and press Add field.",
+                              "Name it 'Notice period (days)', type Number, tick 'Must be filled in' and 'Ask on the application form', and add it.",
+                              "Open a job's careers page and start an application.",
+                              "Choose Jobs, add 'Cost centre' (must be filled in), then open Hiring › Jobs › Add job.",
+                              "Remove the Cost centre field and confirm.",
+                              "Open Settings › Audit log.",
+                              "Open the old address /v2/settings/custom-fields.",
+                              "As hr@demo-org.test: open the page. As admin acting as another person: open it and choose Candidates."
+                    ],
+                    "expected": "Step 1: the switch shows, Employees chosen, with the employee fields as before; no page scroll at 1278 x 635. Step 2: 'Give the field a name.' and nothing saved. Step 3: the field shows with Must be filled in Yes and On the application form Yes. Step 4: the form asks for the notice period and will not send without it. Step 5: the new job form asks for the cost centre. Step 6: it leaves the job form; values already saved are kept. Step 7: one entry for each add, change and removal with before and after. Step 8: Settings › Custom fields. Step 9: HR sees only the employee fields (no switch); acting shows the candidate fields without Add, Edit or Remove.",
+                    "stories": [
+                              "Screens/People/PPL-03 · Person record › Settings · custom fields (candidates)",
+                              "Screens/People/PPL-03 · Person record › Settings · custom fields (jobs, view only)"
+                    ],
+                    "note": "Positive and negative (kit custom-fields.test.tsx; web yx-org-pages.test.tsx; API retire-v2-settings.e2e-spec.ts and custom-fields.service.spec.ts). Field definition changes are now audited with before and after (they were not before), and the candidate and job API refuses changes while acting."
+          },
+          {
+                    "id": "MT-V2-ROLES-HIRING-FIELDS-GROUPS",
+                    "area": "Retire /v2: hiring field access and staff groups on Settings › Roles & access (answers 2426, 2430, 25 Nov 2026)",
+                    "screen": "Settings › People & Access › Roles & access",
+                    "url": "http://localhost:3000/yx/settings/access?view=fields",
+                    "account": "Admin admin-tester@demo-org.test (company settings and user groups); hr@demo-org.test (no company settings).",
+                    "steps": [
+                              "As admin: open Settings › Roles & access. Find the Show switch with People, Waiting, Requests, Roles, Hiring fields and Groups.",
+                              "Choose Hiring fields. For Candidate fields, set Email for Interview panel to Hidden and press Save field access.",
+                              "Sign in as a panel member and open a candidate in a job you are on the panel for.",
+                              "As admin: set it back to Can change, then press Discard changes before saving.",
+                              "Choose Groups. Press New group and press Make group with the name empty; then type the name of a group that exists.",
+                              "Make 'Plant recruiters', press Members, choose two people and press Save members.",
+                              "Press Edit, rename it, then Delete and confirm.",
+                              "Open Settings › Audit log; then Settings › Recycle bin.",
+                              "Open the old addresses /v2/settings/field-permissions and /v2/settings/user-groups.",
+                              "As hr@demo-org.test: open Roles & access. As admin acting as another person: choose Groups and press New group."
+                    ],
+                    "expected": "Step 1: both tabs show; no page scroll at 1278 x 635. Step 2: a toast says 'Field access saved.'. Step 3: the candidate's email is blanked out for the panel member. Step 4: the matrix returns to what was saved. Step 5: 'Enter a name.', then 'Another group has this name.'; nothing saved. Step 6: the row lists the two members and a toast confirms. Step 7: the row is gone after the confirm, which says it goes to the recycle bin. Step 8: the field access change with before and after; group made, renamed (before and after), members changed (who joined and who left), deleted; the group is in the recycle bin. Step 9: Roles & access on the Hiring fields and Groups tabs. Step 10: HR sees neither tab; acting, saving is refused ('Not available while acting for someone else').",
+                    "stories": [
+                              "Screens/People/Access and privacy › Roles & access · hiring field access (2426)",
+                              "Screens/People/Access and privacy › Roles & access · staff groups (2430)",
+                              "Screens/People/Access and privacy › Roles & access · staff groups, none yet"
+                    ],
+                    "note": "Positive and negative (kit access.test.tsx; web yx-access-pages.test.tsx, next.config.test.ts; API retire-v2-settings.e2e-spec.ts, user-groups and field-permissions service specs). Both APIs now refuse changes while acting; the field matrix is audited with before and after, group renames with before and after, membership changes with who joined and who left (they were only a count)."
+          },
+          {
+                    "id": "MT-TIM39-BLOCK-NEXT-YEAR",
+                    "area": "Block leave may run into the next leave year when it starts within 60 days (answer 2629, 25 Nov 2026)",
+                    "screen": "Time › Block leave; Settings › Time & Leave › Leave types (Company choices)",
+                    "url": "http://localhost:3000/yx/time/block-leave",
+                    "account": "hr@demo-org.test (plans block leave, leave settings); panel@demo-org.test (manager, no settings key).",
+                    "steps": [
+                              "As HR: open Settings › Leave types. Under Company choices find 'A block may run into the next leave year if it starts within (days)'.",
+                              "Open Time › Block leave. For someone who needs block leave, press Plan block leave and choose 28 Dec to 8 Jan; press Plan block.",
+                              "Plan again with a first day more than 60 days from today that ends next year.",
+                              "Set the setting to 0 and plan 28 Dec to 8 Jan again; then set it back to 60.",
+                              "As panel@demo-org.test (manager): open the same settings page."
+                    ],
+                    "expected": "Step 1: the setting shows 60, marked as the starter value; no page scroll at 1278 x 635. Step 2: a toast says the block is planned; the row shows Planned with 28 Dec to 8 Jan. Step 3: refused: 'A block that runs into the next leave year starts by <today + 60 days>.' Step 4: refused: the last day must be by 31 Dec. Step 5: the setting cannot be changed (read only or not shown).",
+                    "stories": [],
+                    "note": "Positive and negative (API leave-rules.spec.ts with fixed late-December dates; time-leave-v2.e2e-spec.ts TIM-39 plans a window across 31 Dec in November and December, refuses a start beyond 60 days and refuses the setting change by a manager and an employee). The block is stored as the current leave year's plan; working days in the next year use that year's weekly offs and holidays."
           }
 ]

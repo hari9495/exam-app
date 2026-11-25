@@ -30,11 +30,11 @@ export function useUserDirectory(params: UseUserDirectoryParams = {}) {
 // Org-scoped active teammates for the pipeline assign/@mention pickers. Backed by
 // GET /users/teammates (results:view) — the recruiter-safe counterpart to the super-admin
 // /users/directory. Returns a plain array (no pagination); the org's staff list is small.
-export function useTeammates() {
+export function useTeammates(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<DirectoryUser[]>({
     queryKey: ['users', 'teammates'],
     queryFn: () => apiFetch('/users/teammates', {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
   });
 }

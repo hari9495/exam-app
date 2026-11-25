@@ -96,9 +96,6 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
   it.each([
     ['/v2/users', '/yx/settings/access'],
     ['/v2/audit-log', '/yx/settings/audit-log'],
-    ['/v2/system-logs', '/yx/settings/audit-log'],
-    ['/v2/approvals', '/yx/approvals'],
-    ['/v2/campaigns', '/yx/hiring/pools'],
     ['/v2/data-rights', '/yx/hiring/retention'],
     ['/v2/settings/roles', '/yx/settings/access'],
     ['/v2/settings/permission-profiles', '/yx/settings/access'],
@@ -116,6 +113,25 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
     ['/v2/reports/:examId', '/yx/hiring/assessments/tests/:examId?tab=results'],
     ['/v2/dashboard', '/yx/hiring/dashboard'],
     ['/v2/settings/scheduled-reports', '/yx/hiring/schedules'],
+    ['/v2/settings/record-visibility', '/yx/settings/hiring'],
+    ['/v2/settings/reminders', '/yx/settings/hiring'],
+    ['/v2/message-templates', '/yx/settings/hiring'],
+    ['/v2/sms-templates', '/yx/settings/hiring'],
+    ['/v2/whatsapp-templates', '/yx/settings/hiring'],
+    ['/message-templates', '/yx/settings/hiring'],
+    ['/v2/settings/business-hours', '/yx/settings/hiring'],
+    ['/v2/settings/certificate', '/yx/settings/talent/assessments'],
+    ['/v2/settings/branding', '/yx/settings/org/company-and-branding'],
+    ['/settings/branding', '/yx/settings/org/company-and-branding'],
+    ['/v2/settings/approval-emails', '/yx/settings/documents/notifications'],
+    ['/v2/settings/interview-emails', '/yx/settings/documents/notifications'],
+    ['/v2/settings/sender-addresses', '/yx/settings/documents/notifications'],
+    ['/v2/settings/custom-fields', '/yx/settings/custom-fields'],
+    ['/v2/settings/field-permissions', '/yx/settings/access?view=fields'],
+    ['/v2/settings/user-groups', '/yx/settings/access?view=groups'],
+    ['/v2/settings/integrations', '/yx/settings/integrations/integrations'],
+    ['/v2/calendar', '/yx/settings/integrations/calendar-and-chat'],
+    ['/v2/settings/billing', '/yx/settings/account/plan-and-add-ons'],
     ['/dashboard', '/yx/hiring/dashboard'],
     ['/analytics/hiring', '/yx/hiring/dashboard'],
     ['/v2/panel/reports', '/yx/hiring/assessments/results'],
@@ -133,7 +149,7 @@ describe('retiring /v2: old bookmarks reach the new pages', () => {
   });
 
   it('gap pages stay (2438): their addresses are not redirected away yet', () => {
-    for (const gap of ['/v2/surveys', '/v2/settings/branding'])
+    for (const gap of ['/v2/surveys']) // field permissions moved to Roles & access (2426)
       expect(redirects.some((r) => r.source === gap)).toBe(false);
   });
 });

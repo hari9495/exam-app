@@ -11,7 +11,7 @@ import { CurrentUserRole } from '../auth/current-user-role.decorator';
 import { HiringBoardService } from './hiring-board.service';
 import { ScorecardTemplatesService } from './scorecard-templates.service';
 import { ScorecardsService, type Viewer } from './scorecards.service';
-import { BoardRejectDto, BulkBoardDto, InterviewDayDto, InterviewRangeDto, JobScorecardDto, MoveDto, NotetakerConsentDto, NotetakerTranscriptDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto, DayRemindersDto, DaySwapDto } from './interviewing-dto';
+import { BoardRejectDto, BulkBoardDto, InterviewDayDto, InterviewRangeDto, JobScorecardDto, MoveDto, NotetakerConsentDto, NotetakerTranscriptDto, ScorecardCommentDto, ScorecardDto, ScorecardTemplateDto, SendOnStageDto, DayRemindersDto, DaySwapDto, StageMessageSkipDto } from './interviewing-dto';
 import { InterviewDaysService } from './interview-days.service';
 import { NotetakerService } from './notetaker.service';
 import { ResultsScope, ResultsScopeOf, ScopesResults } from '../rbac/results-scope';
@@ -148,6 +148,15 @@ export class InterviewingController {
   move(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @CurrentUserId() userId: string, @Param('id', ParseUUIDPipe) id: string, @Body() dto: MoveDto) {
     notActing(req);
     return this.board.move(ctx, userId, id, dto.statusId, dto.fromStatusId);
+  }
+
+  // Answer 2434 follow-up: the board's "ask before sending" prompt, answered "Don't send" (recorded in the audit log).
+  @Post('entries/:id/stage-message/skip')
+  @HttpCode(200)
+  @RequirePermissions('pipeline:manage')
+  skipStageMessage(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: StageMessageSkipDto) {
+    notActing(req);
+    return this.board.skipStageMessage(ctx, id, dto.channel, dto.templateId ?? null);
   }
 
   // Answer 531: send the New York City notice to a candidate added by hand who was never told.

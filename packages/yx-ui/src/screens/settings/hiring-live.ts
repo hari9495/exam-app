@@ -4,6 +4,7 @@
 import { formatINR } from '../../lib/format';
 import type { ScorecardTemplateView } from '../hiring/live/types';
 import { asPerCent } from '../hiring/scorecard-template-sheet';
+import { stageMessageRow, type StageMessageView } from '../hiring/stage-message-sheet';
 import type { SettingDef, SettingsPageDef, SettingValue } from './settings-types';
 
 /** GET /hiring/settings. */
@@ -19,6 +20,8 @@ export interface HiringSettingsData {
   lastChange: { by: string; at: string; what: string } | null;
   pipelines: { id: string; name: string; isDefault: boolean; jobs: number; stages: { id: string; name: string; category: string; daysTarget: number | null; limit: number | null }[] }[];
   scorecards: ScorecardTemplateView[];
+  /** Answer 2434: the email, SMS and WhatsApp templates (the page reads the three template lists; absent: not shown). */
+  messages?: StageMessageView[];
   /** HIR-09 answer 332: people who may approve an offer above the range (they hold the offer-pay key). */
   offerApprovers?: { id: string; name: string }[];
   /** Answer 473: the company's locations in New York City (the bias-audit law's city rules). */
@@ -62,6 +65,13 @@ const KEY = {
   'hire.crm_send_window': 'hiring.crm.send_window',
   'hire.crm_daily_cap': 'hiring.crm.daily_cap',
   'hire.sourced_keep_days': 'hiring.sourced.keep_days',
+  // Answer 2427: kept on the organisation row, changed through this page.
+  'hire.record_visibility': 'hiring.record_visibility',
+  'hire.reminders': 'hiring.reminders',
+  // Answers 2423 and 2510: interview hours for self-booking.
+  'hire.interview_from': 'hiring.interview_hours.from',
+  'hire.interview_to': 'hiring.interview_hours.to',
+  'hire.interview_days': 'hiring.interview_hours.days',
 } as const;
 /** On/off fields: the stored value for on and for off. */
 const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
@@ -77,12 +87,15 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.bgv_decider_other_person': ['on', 'off'],
   'hire.resume_quarantine_notice': ['on', 'off'],
   'hire.bias_audit_nyc': ['on', 'off'],
+  'hire.record_visibility': ['on', 'off'],
+  'hire.reminders': ['on', 'off'],
 };
+const WEEK = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 const BASIS: Record<string, string> = { full: 'All of it', pro_rata: 'The part for the months not served' };
 const BONUS = 'ats.referral.bonus_inr';
 const DAYS = 'ats.referral.qualify_days';
 /** The designed fields that are live; everything else on the designed page is left out. */
-const LIVE_FIELDS = new Set(['hire.pipelines', 'hire.scorecards', 'hire.referral_rules', 'hire.offer_esign', ...Object.keys(KEY)]);
+const LIVE_FIELDS = new Set(['hire.pipelines', 'hire.scorecards', 'hire.stage_messages', 'hire.referral_rules', 'hire.offer_esign', ...Object.keys(KEY)]);
 
 const bonusLabel = (v: string) => formatINR(Number(v));
 const daysLabel = (v: string) => `${v} days`;
@@ -130,6 +143,12 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
             return [s.name, s.items.map((i, k) => `${i.label} ${pc[k]} %`).join(', ') || 'None yet', `1–${s.scaleMax}`, String(s.passBar)];
           }),
         };
+      case 'hire.stage_messages': {
+        // Answer 2434: Add and Edit open the stage message sheet (listEditors) for people with the pipelines key.
+        if (!data.messages) return null;
+        const names = new Map(data.pipelines.flatMap((p) => p.stages.map((st) => [st.id, data.pipelines.length > 1 ? `${p.name} › ${st.name}` : st.name] as const)));
+        return { ...base, readOnlyList: true, rowAction: undefined, starter: false, rows: data.messages.map((t) => stageMessageRow(t, (id) => names.get(id))) };
+      }
       case 'hire.default_recruiter': {
         const k = KEY[d.key];
         const options = ['none', ...people.map((p) => p.value)];
@@ -160,7 +179,9 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.notetaker_enabled':
       case 'hire.notetaker_ai_draft':
       case 'hire.bgv_decider_other_person':
-      case 'hire.resume_quarantine_notice': {
+      case 'hire.resume_quarantine_notice':
+      case 'hire.record_visibility':
+      case 'hire.reminders': {
         const k = KEY[d.key];
         return { ...base, value: v[k] === TOGGLE[d.key]![0], starter: v[k] === data.defaults[k] };
       }
@@ -199,6 +220,15 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
         const value = options.includes(v[k]!) ? v[k]! : 'hr_head';
         const warning = stale ? `${stale.name} can no longer see offer pay or has left, so offers above the range go to the company admins instead. Choose someone else.` : undefined;
         return { ...base, kind: 'select', options, optionLabels: { hr_head: 'HR head', hiring_manager: 'Hiring manager', ...Object.fromEntries(approvers.map((p) => [p.value, p.label])), ...(stale ? { [stale.id]: `${stale.name} (cannot approve)` } : {}) }, value, warning, starter: value === data.defaults[k] && !warning };
+      }
+      case 'hire.interview_from':
+      case 'hire.interview_to': {
+        const k = KEY[d.key];
+        return { ...base, value: v[k] ?? data.defaults[k]!, starter: v[k] === data.defaults[k] };
+      }
+      case 'hire.interview_days': {
+        const k = KEY[d.key];
+        return { ...base, value: (v[k] ?? data.defaults[k] ?? '').split(',').filter(Boolean), starter: v[k] === data.defaults[k] };
       }
       case 'hire.offer_expiry': {
         // Answer 404: one expiry for single and bulk offers.
@@ -246,7 +276,9 @@ export function hiringSettingsChanges(values: Record<string, SettingValue>, rows
     if (!key) continue;
     const toggle = TOGGLE[field as keyof typeof KEY];
     const empty = field === 'hire.clawback_basis' ? 'full' : field === 'hire.band_approver' ? 'hr_head' : 'none';
-    out.push({ key, value: toggle ? toggle[value === true ? 0 : 1] : String(value ?? empty) });
+    // Answer 2510: the interview days in week order, as a comma list.
+    if (Array.isArray(value)) out.push({ key, value: WEEK.filter((w) => value.includes(w)).join(',') });
+    else out.push({ key, value: toggle ? toggle[value === true ? 0 : 1] : String(value ?? empty) });
   }
   // HIR-09 answer 337: each offer letter whose e-sign switch changed ('offer_template.esign' = '<id>:on|off').
   const chosen = values['hire.offer_esign'];

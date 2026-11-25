@@ -41,6 +41,9 @@ export { BulkInterviewDayScreen, InterviewCalendarScreen, ScorecardScreen, type 
 export { DraftScorecardReview, NotetakerConsentPanel, type DraftRating, type LiveDraftReview, type NotetakerControls, type Participant } from '../hiring-pipeline';
 // Settings 6.1 shows templates read-only; this old page stays until template editing is drawn (answer 345).
 export { ScorecardTemplateSheet, asPerCent, type ScorecardTemplateSheetProps } from '../scorecard-template-sheet';
+// Answer 2434: the stage message templates (email, SMS, WhatsApp) on 6.1.
+export { StageMessagePrompt, type PendingStageMessage, type StageMessagePromptProps } from '../stage-message-prompt';
+export { StageMessageSheet, CHANNEL_LABEL, SENDING_LABEL, stageMessageRow, type MessageChannel, type MessageSending, type StageMessageInput, type StageMessageSheetProps, type StageMessageView } from '../stage-message-sheet';
 // HIR-11 and HIR-12: the designed screens themselves (hiring-plan.tsx), made live with their `live` prop.
 export { AllReferralsScreen, RecruitingCostsScreen, ReferralsScreen, type AllReferral, type LiveAllReferrals, type CostEntry, type CostInput, type LiveRecruitingCosts, type LiveReferrals, type ReferInput, type ReferJob, type Referral } from '../hiring-plan';
 // HIR-13: the designed internal jobs page (hiring-plan.tsx), live with its `live` prop (the phone view stays a story).
@@ -54,6 +57,10 @@ export type { Score as PipelineScore } from '../hiring-kit';
 export { SettingsGroupScreen, SettingsHomeScreen, SettingsPageScreen, type LiveSettingsNav, type LiveSettingsPage } from '../../settings/settings-screens';
 export { SETTINGS_GROUPS } from '../../settings/settings-groups';
 export { hiringSettingsPage, hiringSettingsChanges, type HiringSettingsData } from '../../settings/hiring-live';
+// Answer 2429: the hiring emails on Settings 5.4 Notifications.
+export { EventEmailSheet, SenderAddressSheet, hiringEmailsPage, type EventEmailInput, type EventEmailView, type HiringEmailsData, type SenderAddressInput, type SenderAddressView } from '../../settings/hiring-emails';
+// Answer 2424: the pass certificate section on Settings 6.5 Assessments.
+export { CertificateCard, type CertificateCardProps, type CertificateTemplateInput, type CertificateTemplateView } from '../../settings/certificate-card';
 // HIR-10 and HIR-20: the designed BGV tracker and Talent CRM (hiring-offers.tsx), live with their `live` prop (the
 // pools stand-in is gone).
 export { BgvTrackerScreen, TalentCrmScreen, type BgvResultInput, type LiveBgv, type LiveBgvCheck, type LiveBgvJoiner, type LivePool, type LivePoolMember, type LivePostingJob, type LiveTalentCrm, type LiveCrm } from '../hiring-offers';
@@ -78,7 +85,7 @@ export { CreateInvoicesSheet, ExportSheet, type DraftInput, type ExportInput, ty
 export { PlacementFee, type LivePlacementFee } from '../hiring-staffing';
 export { ClientPortalScreen, type LiveClientPortal, type LiveClientTab } from '../../portals/t9-business';
 export { PortalSignInScreen } from '../../portals/portals-kit';
-export type { SettingsGroupDef } from '../../settings/settings-types';
+export type { SettingDef, SettingValue, SettingsGroupDef, SettingsPageDef } from '../../settings/settings-types';
 // Projects P-1 (answers 1401 to 1405, 1412, 1420): the designed PRJ-01 list and workspace, live with their `live` prop,
 // and Settings 3.11 Projects & timesheets.
 export { ProjectsListScreen, ProjectWorkspaceScreen, type LiveProjectsList, type LiveProjectWorkspace, type LiveProjectBilling } from '../projects';

@@ -253,6 +253,8 @@ export const YX_KEYS = [
   // AT5: interviews (panellists) and scorecard templates.
   'interview:view_assigned',
   'pipelines:configure',
+  // Answer 2430: staff groups on Settings › Roles & access.
+  'users:manage_groups',
 ] as const;
 export type YxKey = (typeof YX_KEYS)[number];
 

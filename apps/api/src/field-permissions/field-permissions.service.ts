@@ -75,15 +75,18 @@ export class FieldPermissionsService {
       throw new BadRequestException((error as Error).message);
     }
 
+    const before = await this.getConfig(context);
     await this.prisma.organization.update({
       where: { id: organizationId },
       data: { fieldPermissionsJson: JSON.stringify(cfg) },
     });
+    // Answer 2426: the audit keeps the matrix before and after.
     await this.audit.record(context, {
       actorUserId,
       action: 'organization.field_permissions_updated',
       entityType: 'organization',
       entityId: organizationId,
+      metadata: { before, after: cfg },
     });
     return cfg;
   }

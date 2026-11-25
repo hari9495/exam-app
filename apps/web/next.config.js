@@ -65,6 +65,28 @@ const nextConfig = {
       '/v2/analytics/hiring': '/yx/hiring/dashboard',
       // Answer 2428: the weekly hiring digest is ANL-08 Report schedules.
       '/v2/settings/scheduled-reports': '/yx/hiring/schedules',
+      // Answer 2427: record visibility and the daily reminders are switches on Settings 6.1 Hiring.
+      '/v2/settings/record-visibility': '/yx/settings/hiring',
+      '/v2/settings/reminders': '/yx/settings/hiring',
+      // Answer 2434: email, SMS and WhatsApp stage messages are the Stage message templates on Settings 6.1 Hiring.
+      '/v2/message-templates': '/yx/settings/hiring',
+      '/v2/sms-templates': '/yx/settings/hiring',
+      '/v2/whatsapp-templates': '/yx/settings/hiring',
+      // Answers 2423 and 2510: business hours are the interview hours on Settings 6.1 Hiring (holidays: the holiday calendars).
+      '/v2/settings/business-hours': '/yx/settings/hiring',
+      // Answer 2424: the pass certificate is a section on Settings 6.5 Assessments.
+      '/v2/settings/certificate': '/yx/settings/talent/assessments',
+      // Answer 2422: logo and brand colour are on Settings 1.1 Company & branding.
+      '/v2/settings/branding': '/yx/settings/org/company-and-branding',
+      // Answer 2429: approval, interview and sender emails are the Hiring emails on Settings 5.4 Notifications.
+      '/v2/settings/approval-emails': '/yx/settings/documents/notifications',
+      '/v2/settings/interview-emails': '/yx/settings/documents/notifications',
+      '/v2/settings/sender-addresses': '/yx/settings/documents/notifications',
+      // Answer 2425: candidate and job fields are on Settings › Custom fields (with the employee fields).
+      '/v2/settings/custom-fields': '/yx/settings/custom-fields',
+      // Answers 2426 and 2430: hiring field access and staff groups are tabs of Settings › Roles & access.
+      '/v2/settings/field-permissions': '/yx/settings/access?view=fields',
+      '/v2/settings/user-groups': '/yx/settings/access?view=groups',
       // Answer 2437: results lists and compare: a test writer's Results tab, a reader's Test results page.
       '/v2/reports': '/yx/hiring/assessments/tests',
       '/v2/reports/:examId': '/yx/hiring/assessments/tests/:examId?tab=results',

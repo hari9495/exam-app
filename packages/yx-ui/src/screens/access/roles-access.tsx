@@ -15,6 +15,7 @@ import { dayKey } from '../../lib/dates';
 import { dateLabel, errorText } from '../org/org-kit';
 import { codeOf, ConfidentialBadge, GrantStatusBadge, isSystemAdmin, SCOPE_LABEL, SCOPE_TARGET, SystemAdminBadge } from './access-kit';
 import { Badge } from '../../components/display';
+import { HiringFieldAccess, UserGroupsPanel, type HiringFieldAccessProps, type UserGroupsPanelProps } from './hiring-access';
 import type { AccessRequestRow, AccessRole, AccessUser, EffectiveAccess, Grant, GrantInput, LoadState, RoleTemplate, ScopeChoices, ScopeType } from './types';
 
 // Settings › Roles & access (PLT-11; P02 §4.2–4.3, §4.6, §7): who holds which role over which people. A role
@@ -54,9 +55,13 @@ export interface RolesAccessScreenProps {
   deletingRoleId?: string;
   /** Makes the person a System Admin (true) or takes it away (false); the API asks for a second factor and refuses the last one. */
   onSystemAdmin: (userId: string, makeAdmin: boolean, reason: string) => Promise<void>;
+  /** Answer 2426 (from /v2): what each hiring role may do with governed candidate and job fields (absent hides the tab). */
+  hiringFields?: HiringFieldAccessProps;
+  /** Answer 2430 (from /v2): named staff groups that hiring work goes to (absent hides the tab). */
+  groups?: UserGroupsPanelProps;
 }
 
-type View = 'people' | 'waiting' | 'requests' | 'roles';
+type View = 'people' | 'waiting' | 'requests' | 'roles' | 'fields' | 'groups';
 const REQUEST_STATE: Record<AccessRequestRow['state'], { label: string; tone: 'info' | 'warning' | 'success' | 'neutral' | 'danger' }> = {
   waiting: { label: 'Waiting for you', tone: 'warning' },
   approval: { label: 'Given · second admin approves', tone: 'info' },
@@ -454,7 +459,7 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
       {state === 'no-access' && <NoAccessState grantedBy="your System Admin" what="roles and access" />}
       {state === 'ready' && (
         <>
-          <Segment label="Show" value={view} onChange={setView} options={[{ value: 'people', label: 'People' }, { value: 'waiting', label: `Waiting (${waiting.length})` }, ...(requests ? [{ value: 'requests' as const, label: `Requests (${open.length})` }] : []), { value: 'roles', label: 'Roles' }]} />
+          <Segment label="Show" value={view} onChange={setView} options={[{ value: 'people', label: 'People' }, { value: 'waiting', label: `Waiting (${waiting.length})` }, ...(requests ? [{ value: 'requests' as const, label: `Requests (${open.length})` }] : []), { value: 'roles', label: 'Roles' }, ...(props.hiringFields ? [{ value: 'fields' as const, label: 'Hiring fields' }] : []), ...(props.groups ? [{ value: 'groups' as const, label: `Groups (${props.groups.groups.length})` }] : [])]} />
           {error && <InlineAlert tone="danger" title={error} />}
           {view === 'people' && (
             <>
@@ -534,6 +539,8 @@ export function RolesAccessScreen(props: RolesAccessScreenProps) {
               }
             />
           )}
+          {view === 'fields' && props.hiringFields && <HiringFieldAccess {...props.hiringFields} />}
+          {view === 'groups' && props.groups && <UserGroupsPanel {...props.groups} />}
           {view === 'roles' && (
             <>
               <div className="yx-ppl2__row">

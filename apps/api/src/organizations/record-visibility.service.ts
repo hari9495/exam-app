@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrismaService, TenantContext, AuditService } from '@exam-platform/shared';
 
 // Small dedicated service (mirrors field-permissions.service.ts) rather than growing the
-// already-809-line organizations.service.ts. Same idiom as getBusinessHours/updateBusinessHours:
+// already-809-line organizations.service.ts. Same idiom as the other organisation settings:
 // plain PrismaService scoped by requireOrganizationId, audit written after the update (no tx).
 @Injectable()
 export class RecordVisibilityService {

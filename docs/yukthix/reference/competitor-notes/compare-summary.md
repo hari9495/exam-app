@@ -406,6 +406,7 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2508: frequent breaks are a setting, default more than 3 breaks or 60+ minutes a day. Where clock-in-again is off, the report says breaks are not recorded.
 - 2509: team calendar dots are for the manager's own team now; peers come with C2 (tier 2).
 - 2510: interview hours become one setting on 6.1 plus the company holiday calendars. Before the old holiday list is dropped, every date found only in the old list is reported to the founder; none are added automatically.
+  - Built (18 Nov 2026, feat/yukthix-retire-v2-settings): interview business hours (2423) are one hiring setting on 6.1 Hiring: candidates may book interviews from / until (half hours, India time, default 09:30 to 18:30) and on which days (default Monday to Friday). Holidays come from the holiday calendars: the published calendar of the job's location, else the company-wide one; optional and restricted holidays stay open. Only the candidate self-booking link checks them, as before. Existing /v2 hours are copied once (open days, earliest opening, latest closing). Addition: before the old /v2 holiday list is dropped, every date only in the old list is reported per company (apps/api/scripts/v2-holiday-compare.ts, read-only) and nothing is added to a calendar automatically; the founder decides. On the local databases (examapp_pay, examapp_org, examapp) no company had /v2 hours or holidays, so the report was empty; the lead then had the old /organizations/business-hours endpoints, the report script and the two old columns removed (migration 202617z0000551).
 - 2511 to 2517 (18 Nov 2026, "ok for all"), retiring the /v2 console (builder 2's half):
   - 2511: pending old approval_requests move into P03 at their current step with the same approvers; the move is re-runnable, keyed on the old id. Approved and rejected requests stay read-only.
   - 2512: the old job open/close gate in pipeline.service is replaced by P03 'ats.requisition'; ApprovalsService.submit/decide are then dropped.
@@ -452,3 +453,110 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
   - 2554: Finance's To pay filters come later.
   - 2555: make the "payroll not set up" FirstUse empty state live in batch E.
   - 2556: a step with several approvers shows the first name and "and N more".
+
+**Enterprise batch plan, builder 1 (25 Nov 2026).** The Enterprise batch is the founder's 2340: positions, the approval rules editor, automatic back-dated pay, costing and payroll controls (rows O1–O26 in `compare-oracle.md`). It also makes the designed, not-live screens in those areas live (2411). It comes after G and G4 in the agreed order (2410). Before writing this plan, I checked each area in code on `feat/yukthix-retire-v2-settings` (test main of 25 Nov):
+- **Positions:** there is no position record. Headcount plans already exist, with lines per designation, grade and location, a count and a budget, approved through P03. A hiring job links to a plan line.
+- **Approvals:** there are two systems.
+  - The old chains (`approval_chains` / `approval_requests`, gates `requisition` and `offer`) still run the requisition gate in pipeline.service, the old offer submit in offers.service and hiring home. The live Hiring › Approvals page edits them.
+  - The P03 engine already has skip conditions (P19), user groups, named users, the manager at level N, the cost-centre owner and HR. Its company editor (PLT-12, Settings 2.4) offers only 13 people request types, with "manager / manager's manager / HR" and "any / all".
+- **Back-dated pay:** arrears worksheets are strong (corrected minus as-paid, per month and component, maker-checker). They are made by hand from a salary change, a statutory rule change or manually. Late attendance corrections are already paid automatically (late-corrections.ts).
+- **Costing:**
+  - The journal per run and its export are live.
+  - The ledger mapping engine is live (cost centre, then entity, then company; unmapped amounts block export). Its API (`ledger-mappings`) is live, but no screen uses it; the PAY-16 set-up wizard's Accounting mapping step is only drawn.
+  - The per-person cost-centre split by percent is live and dated with the assignment.
+  - There are no department, location or project dimensions, and no reversal.
+- **Payroll controls:** a pay group has a cut-off day and a pay day. Nothing exists for a separate payment, gross-up or a payslip release date.
+
+Because of its size, the batch is built in five parts, each with its own commits and report. **Nothing in E2 or E3 is built before the Mythos review** (week of 23 Nov) passes the approval rules engine plan and the back-dated pay plan. E1, E4 and E5 can start first.
+
+- **E1. Positions** (O1–O6, O8, O9; company setting, off by default, 2341):
+  - **The record:** a position (seat) is a dated record: legal entity, department, location, designation, grade (the valid grades, with one default), FTE, headcount (1 or more), supervisor position, cost centre and a proposed entry salary (pay range check only). Its status is proposed, active, frozen or eliminated. History is dated like assignments: as-of views and "what changed when". New tables `positions` and `position_versions` (RLS, in rls-isolation).
+  - **Filling a seat:** an assignment gets an optional position. When positions are on, a hire, transfer or promotion must name a seat with room. Then headcount minus incumbents gives the vacancies, and an empty seat is a vacancy.
+  - **Org chart:** the chart can draw by position, so a vacant seat still shows, with its reports rolled up to the next filled seat. The reporting line by person stays the default.
+  - **Requisitions (O4):** a requisition is raised against a seat. The seat's open headcount caps its openings. A requisition outside a seat is allowed only with the existing "outside the plan" reason.
+  - **Budget (O5):** the headcount plan line gets an optional position. Each seat shows filled vs vacant vs budget, with the cost from the employee cost rates.
+  - **Changes and bulk edits (O8):** creating, changing, freezing and eliminating a seat goes through P03 (new request type `org.position.change`, in the editor's list). Mass update (department, cost centre or supervisor for several seats, previewed first) and "copy seat" are included.
+  - **Switching positions on:** a wizard builds one seat per current assignment (same designation, grade, location and department; grouped when identical, with headcount = count). Nothing moves until HR confirms the preview. Switching it off again keeps the data and hides it.
+  - **Screens:** there are no position designs yet, so they are drawn in the kit first: POS-01 Positions list (filters, vacancies, budget strip), POS-02 Position record (details, incumbents, history, requisitions), POS-03 Switch-on wizard, POS-04 Mass update, plus the "by position" view on the org chart. Menu: People › Positions (shown only when the setting is on), with its yx-nav entry and test. Setting on 1.x Organisation.
+- **E2. Approval rules editor** (O24–O26; after the Mythos review; the PLT-12 shape grown, never a second editor):
+  - **The shape:** request type → its attributes → ordered rules (conditions → steps) → a fallback rule. This follows Oracle AME's order: transaction type, attributes, conditions, actions.
+  - **Attributes (O24):** each request type declares typed attributes, so a company never types a field name. For example: amount, grade, department, legal entity, location, leave type and days, employment type, cost centre, "above the pay range". The engine's payload fields already carry most of them.
+  - **Conditions:** these are the P19 conditions the engine already evaluates (skipIf), drawn with the PLT-32 Rule builder (conditions, summary in words, overlap warning).
+  - **Approver kinds:** the steps reuse the engine's approvers, plus three new kinds:
+    1. Up the manager chain until the approver's grade rank reaches a grade, or their approval limit covers the amount (O26). Approval limits are a new company table: grade → limit per request family, default empty, meaning the rule cannot be saved.
+    2. An approver group (O25): a fixed user group (live), or a derived group, "holders of a key in the request's entity / department / location" (for example "the finance head of this entity" = holders of payroll.run.approve scoped to that entity).
+    3. The holder of the supervisor position, or of a named position (only when positions are on). A vacant seat goes to the next filled seat up.
+  - **Saving and testing:** a policy is versioned (new table `approval_policy_versions`, RLS). In-flight requests keep their snapshot; a change applies to new requests only, as now. Before saving, "Try it" runs the rules on a sample or real past request and shows who would approve (PLT-57 Test preview, PLT-33 Impact preview: how many open requests each rule would have caught). The edit is audited with before and after, and payroll and pay types need step-up.
+  - **Floors a company can never remove:**
+    - the requester never approves their own request;
+    - payroll and pay keep maker-checker;
+    - an offer above the grade range keeps its extra step (offer-builder);
+    - exits and letters keep their module's minimum step.
+    The editor shows these as locked steps.
+  - **Request types:** the list grows from 13 to every engine type, grouped by area: People, Time, Expenses, Hiring (`ats.requisition`, `ats.offer`), Pay (revisions, arrears, one-time pay), Lifecycle (exits, letters), Org (headcount plan, `org.position.change`).
+  - **How it replaces the old pieces** (2511, 2512 and 2515 already decided the moves; E2 finishes them):
+    - **Old approval chains:** the requisition gate moves to `ats.requisition` (2512) and the old offer submit to `ats.offer`. Each company's enabled chain becomes its first rule for that type, step by step:
+      - "users" become named users;
+      - "reporting_manager" becomes the manager at the same level;
+      - "hiring_manager" becomes a new attribute-based approver, the job's hiring manager;
+      - a chain's group becomes the same user group.
+      The move is re-runnable and keyed on the chain id. Pending `approval_requests` move to P03 at their current step (2511); decided ones stay read-only under the request's history. Then ApprovalsService.submit / decide, the chain endpoints and the four `approval_*` chain tables are dropped. This takes a separate migration after a release with the data move, never in the same one.
+    - **The approval-email list** (`approval_email_templates`, 3 rows in the demo data, on Settings 5.4): the engine already sends requested, reminder, escalated, approved, turned down and sent back notices. Those notices get company-editable subject and body per event on 5.4 Notifications, for every request type (merge fields: request, requester, step, link). The 3 old rows are copied onto the matching events for the hiring types, and the old table and endpoints go once nothing reads them.
+    - **/v2/approvals** (the old requisition and offer inbox): once pending requests are on P03, they appear in the live YukthiX Approvals inbox and "Everyone's pending" (2500). /v2/approvals then redirects to /yx/approvals, and the page and its old hooks are deleted.
+    - **/v2/offer-template:** offer templates become Letters (5.2) offer templates (2515, 2520–2524, 2541–2543; being built on feat/yukthix-offer-issue). Their approval is `ats.offer` in this editor, and letter templates needing the company digital signature stay refused for offers (2543). When that branch merges, /v2/offer-template redirects to the Letters offer templates and is deleted. E2 only adds the redirect test if it is not there yet.
+    - **Hiring › Approvals** (the live ApprovalRoutesScreen copy on the old chains API) becomes the editor opened on the two hiring types (a re-wire, 2411), so there is one editor and one engine.
+- **E3. Automatic back-dated pay** (O13, O14; after the Mythos review):
+  - **Recalculate when (O14):** each pay component gets "recalculate when" switches: salary change, joining date change, LOP change, statutory rule change. The defaults follow the component's flags: Basic and allowances on salary and joining, PF / ESI / PT on the statutory rule.
+  - **Triggers:** a back-dated change to a closed month fires a trigger that drafts an arrears worksheet for exactly the components switched on, from the change's date. A drafted worksheet is never paid by itself. It waits in Pay › Arrears with "drafted by the system, from <change>", and goes through the existing maker-checker. Payroll can discard a draft with a reason.
+  - **Policy changes (O13):** a back-dated change to a salary template version, pay range or statutory rule (the StatutoryArrearsProposal path) drafts one worksheet per affected person, with an impact preview first (PLT-33 drawer: how many people, the total, the largest change).
+  - **Mid-year moves:** a mid-year entity or grade move gets a true-up of the year's PF wage ceiling and tax projection, as a worksheet line kind.
+  - **Overlaps:** never two open drafts for the same person, period and component; a newer trigger re-drafts the open draft and keeps its history. Recoveries still need the employee's agreement, as today.
+- **E4. Costing** (O19–O22):
+  - **GL mapping screen (O19):** a screen for company, entity and cost-centre mappings on the live `ledger-mappings` API. This makes the PAY-16 Accounting mapping step live, plus a Settings › Payroll › Accounting page.
+  - **Suspense (O20):** a company setting (default on) sends an unmapped amount to a named suspense account instead of blocking export. The run shows "₹X in suspense" with a fix list, and a re-post moves it once mapped.
+  - **Splits (O21):** the per-person cost-centre percentage split is live (assignment_cost_centres). E4 adds a split by project from a date, from the project allocations (ProjectAllocation), as a costing choice per company: by cost centre (default) or by project hours.
+  - **Dimensions and formats (O22):**
+    - department, location and project are optional dimensions on each journal line;
+    - journal reversal is a reversing journal for a voided or reopened run, linked to the original;
+    - export formats are the current CSV, plus Tally (already in the ledger export), SAP (IDoc-style flat file) and Oracle GL interface CSV.
+    Columns are mapped per format, and the format choice is on the Accounting page.
+- **E5. Payroll controls** (O16, O17):
+  - **Separate payment and gross-up (O16):** a one-time pay item (special pay) can be "paid separately": its own bank file line and payslip section, same month and same tax year. Gross-up ("the company pays the tax") is a per-item switch: the item's TDS is computed and added as a company-borne perquisite, so the person receives the full amount. Its main use is a joining bonus net of TDS. Gross-up needs the payroll approver and is shown on the payslip.
+  - **Cut-off and release dates (O17):** each pay group gets an input cut-off date (the existing cut-off day becomes a date per period, editable for one month) and a payslip release date.
+    - Inputs that arrive after the cut-off roll to next month's run with a notice to the person who sent them, and are listed on the run.
+    - Payslips stay hidden from employees until the release date, even when published. Publishing early needs a reason.
+    - This makes PAY-02 Run readiness live: the pre-flight list before Calculate, with cut-off, missing inputs and blocking checks.
+- **Designed, not-live screens made live (2411):**
+  - **E2:** PLT-32 Rule builder (conditions), PLT-57 Test preview and PLT-33 Impact preview inside the editor; PLT-34 Lookup tables for the approval limits table; the Hiring ApprovalRoutesScreen live copy re-wired to the editor.
+  - **E3:** PLT-33 for back-dated policy changes.
+  - **E4:** the PAY-16 Accounting mapping step.
+  - **E5:** PAY-02 Run readiness.
+  - **Not in this batch:** PLT-24 Request-type builder, PLT-55 / 58 Workflow studio and versions, PLT-36 / 37 Validation rules and Why panel (platform builder tools, at the end per 2411); PLT-54 Payout readiness (needs the payout partner); PAY-43 Group health (benefits partner).
+  - **New screens drawn first:** POS-01 to POS-04 for positions, plus the approval limits and suspense screens if the existing designs don't cover them.
+- **Order and builder rules:**
+  - Order: E1 → E4 → E5 → (Mythos review passed) E2 → E3.
+  - Kit first and design story first.
+  - Every new table in rls-isolation, with its migration made by hand (never `migrate diff`).
+  - Policy choices are company settings with defaults, and each new settings page gets its yx-nav entry and test.
+  - P+N tests by the builder and P+N manual tests in manual-tests.json; schema check; heavy steps one at a time.
+  - The old chain tables are dropped only in a release after the data move.
+- 2640: E2 (approval rules editor) and E3 (back-dated pay) are built only after the Mythos review passes their plans. E1, E4 and E5 go first, in the order E1 → E4 → E5. Suggested answer: yes.
+- 2641: positions. One record per seat with headcount 1 or more (not one record per person), dated history, and statuses proposed / active / frozen / eliminated. A hire, transfer or promotion must name a seat with room only when the company setting is on. Suggested answer: yes.
+- 2642: switching positions on builds a seat for each current assignment (identical ones grouped), shown as a preview that HR confirms. Switching off keeps the data and hides it. Suggested answer: yes.
+- 2643: a requisition outside a seat (when positions are on) is allowed only with the existing "outside the plan" reason, and goes through `ats.requisition`. Suggested answer: yes.
+- 2644: the approval rules editor covers every request type in the engine, grouped by area. Payroll and pay types keep maker-checker, offers above the pay range keep their extra step, and exits and letters keep their module's minimum step: these show as locked steps a company cannot remove. Suggested answer: yes.
+- 2645: "approve up the chain until a level" (O26) uses grade rank, or an approval limit per grade for amount-based types. The limits are a new company table (Settings 2.4), empty by default, so the rule cannot be saved until limits are set. Suggested answer: yes.
+- 2646: derived approver groups are "holders of a key in the request's entity, department or location" (for example payroll.run.approve in this entity = the finance head). No free-form formulas. Suggested answer: yes.
+- 2647: old approval chains move into rules re-runnably, keyed on the chain id. "Hiring manager" becomes a new approver kind (the job's hiring manager). The old tables and endpoints are dropped in a later release than the data move. Suggested answer: yes.
+- 2648: the approval emails become company-editable notices per event (requested, reminder, escalated, approved, turned down, sent back) on 5.4 Notifications, for every request type. The old approval-email rows are copied onto the hiring types' events. Suggested answer: yes.
+- 2649: /v2/approvals redirects to /yx/approvals once its pending requests have moved, and /v2/offer-template redirects to the Letters offer templates when the offer-issue work merges. Both pages are then deleted. Suggested answer: yes.
+- 2650: Hiring › Approvals stays in the Hiring menu, but opens the same editor filtered to requisitions and offers (one editor, one engine). Suggested answer: yes.
+- 2651: back-dated pay. Each component gets "recalculate when" switches (salary change, joining date, LOP, statutory rule), with defaults from its flags. A trigger only drafts a worksheet; payroll still checks and approves it (maker-checker), and can discard it with a reason. Suggested answer: yes.
+- 2652: a back-dated policy change (template version, pay range, statutory rule) shows an impact preview (people, total, largest change) before drafts are made for everyone affected. Suggested answer: yes.
+- 2653: unmapped journal amounts go to a suspense account (company setting, default on) instead of blocking export, and the run shows the amount in suspense with a fix list. Suggested answer: yes.
+- 2654: project split. A company chooses cost-centre split (default) or project-hours split for payroll costs. The project split uses approved timesheet hours of the month, else the allocations. Suggested answer: yes.
+- 2655: journal formats. Keep CSV and Tally, and add SAP flat file and Oracle GL interface CSV, with department, location and project dimensions. A voided or reopened run gets a reversing journal. Suggested answer: yes.
+- 2656: gross-up (company pays the tax) is per one-time pay item, needs the payroll approver, and shows on the payslip as tax paid by the company. A "paid separately" item gets its own bank file line in the same month. Suggested answer: yes.
+- 2657: each pay group gets an input cut-off date and a payslip release date per period. Late inputs roll to next month with a notice. Payslips stay hidden until the release date, and publishing early needs a reason. Suggested answer: yes.
+- 2658: PLT-24 Request-type builder, PLT-55 / 58 Workflow studio and versions, PLT-36 / 37 Validation rules and Why panel, PLT-54 Payout readiness and PAY-43 Group health stay out of this batch (platform tools at the end; partners not chosen). Suggested answer: yes.
+- Founder answers (25 Nov 2026, "ok for all"): 2640-2658 approved exactly as suggested above.

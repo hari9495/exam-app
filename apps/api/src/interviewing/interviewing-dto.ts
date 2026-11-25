@@ -278,3 +278,12 @@ export class DayRemindersDto {
   @IsBoolean() on!: boolean;
 }
 
+/** Answer 2434 follow-up: the recruiter chose not to send a stage's "ask before sending" message. */
+export class StageMessageSkipDto {
+  @IsIn(['email', 'sms', 'whatsapp'])
+  channel!: 'email' | 'sms' | 'whatsapp';
+
+  @IsOptional()
+  @IsUUID()
+  templateId?: string | null;
+}

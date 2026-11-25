@@ -40,7 +40,7 @@ const DAY_HOURS = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 
  */
 export const LEAVE_PAGE_KEYS: ReadonlySet<string> = new Set([
   'leave.notice_days.default', 'leave.on_behalf.approval', 'leave.send_back', 'leave.encashment.window', 'leave.year_end.encash_excess',
-  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.block_leave.days',
+  'leave.liability.divisor', 'leave.probation.leave', 'leave.comp_off.claim_within_days', 'leave.comp_off.expiry_days', 'leave.block_leave.days', 'leave.block_leave.next_year_days',
   'leave.optional_holiday.prorate_on_move', 'leave.year_start_month', 'leave.block_dates.mode',
 ]);
 
@@ -377,6 +377,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // slots first across every panel, as drawn; by_panel: one panel's slots before the next panel's).
   'hiring.interview_day.slot_minutes': { label: 'Hiring: each interview on an interview day lasts (minutes)', scopes: ['tenant'], dated: false, values: ['30', '45', '60', '90'], default: '45' },
   'hiring.interview_day.assign': { label: 'Hiring: Auto-assign on an interview day fills', scopes: ['tenant'], dated: false, values: ['by_slot', 'by_panel'], default: 'by_slot' },
+  // Answers 2423 and 2510 (retiring /v2 Business hours): the hours and days a candidate may book an interview themselves,
+  // in India time; holidays come from the company's holiday calendars (the job's location, else the company-wide one).
+  'hiring.interview_hours.from': { label: 'Hiring: candidates may book interviews from', scopes: ['tenant'], dated: false, values: DAY_HOURS, default: '09:30' },
+  'hiring.interview_hours.to': { label: 'Hiring: candidates may book interviews until', scopes: ['tenant'], dated: false, values: DAY_HOURS, default: '18:30' },
+  'hiring.interview_hours.days': { label: 'Hiring: days candidates may book interviews', scopes: ['tenant'], dated: false, values: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], multi: true, default: 'mon,tue,wed,thu,fri' },
   // Staffing desk (slice 1; Settings 6.2). Off by default: the staffing area shows only to a company that turns it on.
   'staffing.desk.enabled': { label: 'Staffing desk: place people with client companies', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // Projects P-1 (answers 1401, 1404, 1405): the Projects menu, who may book time, and the burn alerts.
@@ -553,6 +558,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'leave.send_back': { label: 'Approvers can send leave back for changes', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   'leave.block_leave.required': { label: 'Block leave is required', scopes: ['tenant', 'legal_entity', 'location', 'department', 'designation'], dated: false, values: ['no', 'yes'], default: 'no' },
   'leave.block_leave.days': { label: 'Block leave length (working days in a row)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },
+  // Answer 2629: a block may run into the next leave year when it starts within this many days.
+  'leave.block_leave.next_year_days': { label: 'A block may run into the next leave year if it starts within (days)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['0', '30', '60', '90'], default: '60' },
   // TIM-42: public-holiday feeds (provider: to decide; dev-fake until then).
   'holiday.feeds': { label: 'Use public-holiday feeds', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   // M02 Q5: regularisations a month with manager approval; beyond that HR approves too.

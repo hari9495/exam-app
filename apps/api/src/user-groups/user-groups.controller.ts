@@ -5,13 +5,15 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequireAnyPermission, RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { UserGroupsService } from './user-groups.service';
 import { CreateUserGroupDto } from './dto/create-user-group.dto';
 import { UpdateUserGroupDto } from './dto/update-user-group.dto';
 import { SetMembersDto } from './dto/set-members.dto';
 
 @Controller('user-groups')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// Answer 2430: no change while acting for someone else (reads stay open).
+@UseGuards(JwtAuthGuard, PermissionsGuard, OwnSessionChangesGuard)
 export class UserGroupsController {
   constructor(private readonly service: UserGroupsService) {}
 

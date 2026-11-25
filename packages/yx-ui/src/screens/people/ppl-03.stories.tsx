@@ -58,6 +58,19 @@ export const CustomFieldsSettingsEmpty: S = {
   name: 'Settings · custom fields (none yet)',
   render: () => <EmployeeFieldsScreen state="ready" fields={[]} canManage onCreate={async () => undefined} onUpdate={async () => undefined} onArchive={async () => undefined} />,
 };
+// Answer 2425 (retiring /v2): the same page switches between employee, candidate and job fields.
+const CANDIDATE_FIELDS = [
+  { id: 'c1', label: 'Notice period (days)', fieldType: 'number' as const, options: null, dataClass: 'internal' as const, required: true, showOnApply: true },
+  { id: 'c2', label: 'Willing to relocate', fieldType: 'select' as const, options: ['Yes', 'No', 'Maybe'], dataClass: 'internal' as const, required: false, showOnApply: true },
+];
+export const CustomFieldsCandidates: S = {
+  name: 'Settings · custom fields (candidates)',
+  render: () => <EmployeeFieldsScreen state="ready" entity="candidate" onEntity={() => undefined} fields={CANDIDATE_FIELDS} canManage onCreate={async () => undefined} onUpdate={async () => undefined} onArchive={async () => undefined} />,
+};
+export const CustomFieldsJobs: S = {
+  name: 'Settings · custom fields (jobs, view only)',
+  render: () => <EmployeeFieldsScreen state="ready" entity="job" onEntity={() => undefined} fields={[{ id: 'j1', label: 'Cost centre', fieldType: 'text', options: null, dataClass: 'internal', required: true }]} canManage={false} onCreate={async () => undefined} onUpdate={async () => undefined} onArchive={async () => undefined} />,
+};
 
 // The record's own dialogs: personal details (edited at once), identity or bank change (sent for approval), withdraw.
 const STATES = [{ code: 'IN-KA', name: 'Karnataka' }, { code: 'IN-TN', name: 'Tamil Nadu' }, { code: 'IN-MH', name: 'Maharashtra' }];

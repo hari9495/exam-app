@@ -20,6 +20,7 @@ describe('Hiring dashboard figures (ANL-02)', () => {
   const org: Record<string, string> = {};
   let planId = '';
   const api = (who: string, path: string) => request(app.getHttpServer()).get(`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
+  const put = (who: string, path: string) => request(app.getHttpServer()).put(`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const patch = (who: string, path: string) => request(app.getHttpServer()).patch(`/api/v1${path}`).set('Authorization', `Bearer ${token[who]}`);
   const at = <T>(k: string, fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant({ organizationId: org[k]!, isSuperAdmin: false }, fn);
 
@@ -72,5 +73,22 @@ describe('Hiring dashboard figures (ANL-02)', () => {
     await api('plainA', '/organizations/scheduled-report-settings').expect(403);
     await patch('plainA', '/organizations/scheduled-report-settings').send({ enabled: false }).expect(403);
     expect((await api('adminB', '/organizations/scheduled-report-settings').expect(200)).body).toMatchObject({ enabled: false, recipientUserIds: [] });
+  });
+
+  // Answer 2427: record visibility and the daily reminders are switches on Settings 6.1 Hiring.
+  it('6.1 shows both switches off; the admin turns record visibility on (kept on the company row, audited)', async () => {
+    expect((await api('adminA', '/hiring/settings').expect(200)).body.values).toMatchObject({ 'hiring.record_visibility': 'off', 'hiring.reminders': 'off' });
+    const after = (await put('adminA', '/hiring/settings').send({ changes: [{ key: 'hiring.record_visibility', value: 'on' }, { key: 'hiring.reminders', value: 'off' }] }).expect(200)).body;
+    expect(after.values).toMatchObject({ 'hiring.record_visibility': 'on', 'hiring.reminders': 'off' });
+    expect((await prisma.organization.findUniqueOrThrow({ where: { id: org.A! } })).recordVisibilityEnabled).toBe(true);
+    const logged = await at('A', (tx) => tx.auditLog.findMany({ where: { action: 'org.setting.changed', entityId: org.A! } }));
+    expect(logged.map((l) => JSON.parse(l.metadataJson ?? '{}'))).toEqual([expect.objectContaining({ key: 'hiring.record_visibility', from: 'off', to: 'on' })]);
+  });
+
+  it('negative: a bad value or someone without the settings key changes nothing; another company is untouched', async () => {
+    await put('adminA', '/hiring/settings').send({ changes: [{ key: 'hiring.reminders', value: 'maybe' }] }).expect(400);
+    await put('plainA', '/hiring/settings').send({ changes: [{ key: 'hiring.reminders', value: 'on' }] }).expect(403);
+    expect((await prisma.organization.findUniqueOrThrow({ where: { id: org.A! } })).remindersEnabled).toBe(false);
+    expect((await api('adminB', '/hiring/settings').expect(200)).body.values).toMatchObject({ 'hiring.record_visibility': 'off' });
   });
 });
