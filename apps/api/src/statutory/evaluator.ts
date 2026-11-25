@@ -80,6 +80,14 @@ export function pf(rs: RuleSet, i: { pfWage: Prisma.Decimal.Value; onActualWage:
   return { employee, eps, epf: employer.sub(eps), edli, base, citation: cite(rs) };
 }
 
+/** Review F1: the PF admin charges an establishment pays for a month: the payslips' charges, at least the rule's minimum. */
+export function pfAdminDue(rs: RuleSet, i: { charges: Prisma.Decimal.Value }) {
+  const v = need(rs, 'pf');
+  const total = D(i.charges);
+  const minimum = v.adminMinimum === undefined ? ZERO : D(v.adminMinimum as string);
+  return { due: total.isZero() ? ZERO : Prisma.Decimal.max(total, minimum), minimumApplied: !total.isZero() && total.lt(minimum), citation: cite(rs) };
+}
+
 /** ESI: covered for the whole contribution period once covered at its start; amounts rounded up to the rupee. */
 export function esi(rs: RuleSet, i: { esiWage: Prisma.Decimal.Value; covered: boolean; days?: number }) {
   const v = need(rs, 'esi');
@@ -326,7 +334,7 @@ interface TdsRegime {
   superSeniorExemption?: string;
 }
 /** Annual tax on taxable income for a regime and age: slabs, rebate with marginal relief, surcharge, cess. */
-export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'new' | 'old'; age: number; resident?: boolean }) {
+export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'new' | 'old'; age: number; resident?: boolean }): { slabTax: Prisma.Decimal; rebate: Prisma.Decimal; surcharge: Prisma.Decimal; tax: Prisma.Decimal; citation: Citation } {
   const v = need(rs, 'tds');
   const r = (v.regimes as Record<string, TdsRegime>)[i.regime];
   if (!r) throw new StatutoryError(`No ${i.regime} regime in ${rs.version}`);
