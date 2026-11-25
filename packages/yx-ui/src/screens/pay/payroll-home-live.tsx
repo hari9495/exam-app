@@ -140,7 +140,8 @@ export function LivePayrollHomeScreen({ live }: { live: LivePayrollHome }) {
 }
 
 function LiveHome({ live }: { live: LivePayrollHome }) {
-  const [creating, setCreating] = useState<'regular' | 'offcycle' | null>(null);
+  // A row's Start run opens on that row's pay group; the page buttons on the first group.
+  const [creating, setCreating] = useState<{ kind: 'regular' | 'offcycle'; groupId?: string } | null>(null);
   const [help, setHelp] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const { toast } = useToast();
@@ -184,7 +185,7 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
   const open = (r: PayRun, label: string) => ({ label, href: live.runHref(r.id), onClick: (e: { preventDefault: () => void }) => (e.preventDefault(), live.onOpen(r.id)) });
   const primary = !cur ? (
     live.canPrepare && !notSetUp ? (
-      <Button variant="primary" icon={Plus} onClick={() => setCreating('regular')}>
+      <Button variant="primary" icon={Plus} onClick={() => setCreating({ kind: 'regular' })}>
         Start {monthLabel(live.month).split(' ')[0]} payroll
       </Button>
     ) : null
@@ -214,7 +215,7 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
         actions={
           live.state === 'ready' ? (
             <>
-              {live.canOffcycle && !notSetUp && <Button onClick={() => (live.onNewOffcycle ? live.onNewOffcycle() : setCreating('offcycle'))}>Start off-cycle run</Button>}
+              {live.canOffcycle && !notSetUp && <Button onClick={() => (live.onNewOffcycle ? live.onNewOffcycle() : setCreating({ kind: 'offcycle' }))}>Start off-cycle run</Button>}
               {primary}
             </>
           ) : undefined
@@ -277,7 +278,7 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
                         Open run
                       </Button>
                     ) : live.canPrepare ? (
-                      <Button size="sm" onClick={() => setCreating('regular')}>
+                      <Button size="sm" onClick={() => setCreating({ kind: 'regular', groupId })}>
                         Start run
                       </Button>
                     ) : null,
@@ -426,16 +427,16 @@ function LiveHome({ live }: { live: LivePayrollHome }) {
           </>
         )}
       </LiveStates>
-      {creating && <NewRunDrawer live={live} groups={live.groups ?? []} initial={creating} onClose={() => setCreating(null)} />}
+      {creating && <NewRunDrawer live={live} groups={live.groups ?? []} initial={creating.kind} initialGroup={creating.groupId} onClose={() => setCreating(null)} />}
     </div>
   );
 }
 
 /** New run: monthly payroll or an off-cycle run (the F&F run starts from the settlement); weekly groups pick a period. */
-function NewRunDrawer({ live, groups, initial, onClose }: { live: LivePayrollHome; groups: PayGroupRef[]; initial: 'regular' | 'offcycle'; onClose: () => void }) {
+function NewRunDrawer({ live, groups, initial, initialGroup, onClose }: { live: LivePayrollHome; groups: PayGroupRef[]; initial: 'regular' | 'offcycle'; initialGroup?: string; onClose: () => void }) {
   const [kind, setKind] = useState<'regular' | 'offcycle'>(live.canPrepare ? initial : 'offcycle');
   const [off, setOff] = useState<Exclude<OffcycleKind, 'fnf'>>('bonus');
-  const [group, setGroup] = useState<string | null>(groups[0]?.id ?? null);
+  const [group, setGroup] = useState<string | null>(initialGroup ?? groups[0]?.id ?? null);
   const [month, setMonth] = useState(live.month);
   const [period, setPeriod] = useState<string | null>(null);
   const { busy, error, run } = useRun();

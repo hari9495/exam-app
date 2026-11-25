@@ -271,6 +271,9 @@ function Toolbar({ editor, mergeFields, hide = [], disabled }: { editor: Editor;
   const editorTakesFocus = useRef(false);
   const run = (fn: (c: Chain) => Chain) => {
     editorTakesFocus.current = true;
+    // Focus now, not on TipTap's next animation frame: a late frame took focus from a picker opened just after (its
+    // popover then closed by itself, and under load the colour or highlight was never chosen).
+    editor.view.focus();
     return fn(editor.chain().focus()).run();
   };
   const keepEditorFocus = (e: Event, also = false) => {

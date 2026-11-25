@@ -301,7 +301,8 @@ describe('PAY-01 Payroll home, live: statutory dues and pay groups (round 2)', (
     await ue.click(within(rows[1]).getByRole('button', { name: 'Open run' }));
     expect(live.onOpen).toHaveBeenCalledWith('r5');
     await ue.click(within(rows[2]).getByRole('button', { name: 'Start run' }));
-    expect(await screen.findByRole('dialog', { name: 'Start a payroll run' })).toBeInTheDocument();
+    // The row's own pay group, not the first one.
+    expect(within(await screen.findByRole('dialog', { name: 'Start a payroll run' })).getByRole('combobox', { name: /Pay group/ })).toHaveTextContent('Tamil Nadu staff');
   });
 
   it('one pay group keeps the single stage track; a finance approver gets no Start run (negative)', () => {

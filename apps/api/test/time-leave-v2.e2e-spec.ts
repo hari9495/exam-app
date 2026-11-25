@@ -472,19 +472,25 @@ describe('Leave v2', () => {
       await setting('leave.block_leave.days', '5');
       const list = (await api('hrExec', 'get', '/time/hr/block-leave').expect(200)).body.rows;
       expect(list.find((x: { employeeId: string }) => x.employeeId === ids.empEmp)).toMatchObject({ status: 'not_planned', need: 5, earnedLeft: 15 });
-      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from: d(30), to: d(32) }).expect(400);
+      // A block stays inside the current leave year (calendar year here), so the window ends by 31 Dec: 12 days hold
+      // 5 working days whatever weekends and holidays fall in them. shortcut: fails in the last 12 days of a year, when
+      // HR cannot plan a block for this year at all; move the window to next year if planning ahead is ever allowed.
+      const to = [d(41), `${today.slice(0, 4)}-12-31`].sort()[0];
+      const from = addDays(to, -11);
+      expect(from > today).toBe(true);
+      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to: addDays(from, 2) }).expect(400);
       await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from: d(-3), to: d(10) }).expect(400);
-      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from: d(30), to: d(10) }).expect(400);
-      await api('mgr', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from: d(30), to: d(37) }).expect(403);
-      await api('hrB', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from: d(30), to: d(37) }).expect(404);
-      expect((await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from: d(30), to: d(37) }).expect(200)).body.workingDays).toBeGreaterThanOrEqual(5);
+      await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to: addDays(from, -1) }).expect(400);
+      await api('mgr', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to }).expect(403);
+      await api('hrB', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to }).expect(404);
+      expect((await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/plan`).send({ from, to }).expect(200)).body.workingDays).toBeGreaterThanOrEqual(5);
       await api('hrExec', 'post', `/time/hr/block-leave/${ids.peerEmp}/pause`).send({ pause: true }).expect(409);
       await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/pause`).send({ pause: true }).expect(200);
       await api('hrExec', 'post', `/time/hr/block-leave/${ids.empEmp}/pause`).send({ pause: true }).expect(409);
       await api('hrExec', 'post', `/time/hr/block-leave/${ids.peerEmp}/nudge`).expect(200);
       await api('hrExec', 'post', `/time/hr/block-leave/${ids.peerEmp}/nudge`).expect(409);
       const after = (await api('hrExec', 'get', '/time/hr/block-leave').expect(200)).body.rows;
-      expect(after.find((x: { employeeId: string }) => x.employeeId === ids.empEmp)).toMatchObject({ status: 'planned', plan: { from: d(30), to: d(37), accessPause: 'scheduled' } });
+      expect(after.find((x: { employeeId: string }) => x.employeeId === ids.empEmp)).toMatchObject({ status: 'planned', plan: { from, to, accessPause: 'scheduled' } });
       // A manager sees their team read only.
       const team = (await api('mgr', 'get', '/time/hr/block-leave').expect(200)).body.rows.map((x: { employeeId: string }) => x.employeeId);
       expect(team).toEqual(expect.arrayContaining([ids.empEmp, ids.peerEmp]));
