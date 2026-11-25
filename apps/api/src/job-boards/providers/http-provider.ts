@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { assertPublicHttpsUrl } from '../../common/ssrf';
+import { assertPublicHttpsUrl, pinnedFetch } from '../../common/ssrf';
 import { JobBoardAdapter, JobPostingInput, extractExternalId, isBlank } from './types';
 
 // Substitutes {{title}} etc. into a template. When the contentType is JSON, each value is escaped
@@ -52,7 +52,8 @@ export const httpProvider: JobBoardAdapter = {
     }
   },
 
-  async postJob(config, job: JobPostingInput, fetchImpl = fetch): Promise<{ externalPostId: string }> {
+  // Security review F13: by default the pinned fetch (the board URL is company-supplied).
+  async postJob(config, job: JobPostingInput, fetchImpl = pinnedFetch): Promise<{ externalPostId: string }> {
     const contentType = (config.contentType as string) || 'application/json';
     const isJson = contentType.includes('json');
     const url = config.postUrl as string;
@@ -73,7 +74,7 @@ export const httpProvider: JobBoardAdapter = {
     return { externalPostId: extractExternalId(parsed) ?? job.reference };
   },
 
-  async closeJob(config, externalPostId, fetchImpl = fetch): Promise<void> {
+  async closeJob(config, externalPostId, fetchImpl = pinnedFetch): Promise<void> {
     const template = config.closeUrlTemplate as string | undefined;
     if (isBlank(template)) return; // board has no close endpoint configured -- nothing to do
     const url = template!.replace(/\{\{externalPostId\}\}/g, encodeURIComponent(externalPostId));

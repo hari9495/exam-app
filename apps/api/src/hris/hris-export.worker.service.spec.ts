@@ -6,6 +6,9 @@ jest.mock('bullmq', () => ({
 
 import { HrisExportWorkerService } from './hris-export.worker.service';
 
+// Security review F13: the worker posts through the pinned fetch; here it hands over to the test's fetch mock.
+jest.mock('../common/ssrf', () => ({ ...jest.requireActual('../common/ssrf'), pinnedFetch: (...a: unknown[]) => (global as any).fetch(...a) }));
+
 describe('HrisExportWorkerService.deliver', () => {
   const crypto = { decrypt: jest.fn((b: string) => b.replace('enc:', '')) } as any;
   const tenantPrisma = { forTenant: jest.fn() } as any;
@@ -31,7 +34,6 @@ describe('HrisExportWorkerService.deliver', () => {
       'https://93.184.216.34/in',
       expect.objectContaining({
         method: 'POST',
-        redirect: 'error',
         headers: expect.objectContaining({ 'Content-Type': 'application/json', Authorization: 'Bearer tok' }),
         body: '{"event":"candidate.hired"}',
       }),

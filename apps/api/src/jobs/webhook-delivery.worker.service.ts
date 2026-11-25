@@ -6,6 +6,7 @@ import { TenantPrismaService, OrgSecretsCryptoService } from '@exam-platform/sha
 import { REDIS_CONNECTION, logBullErrors, bullOpts } from './redis-connection';
 import { WEBHOOK_DELIVERIES_QUEUE_NAME } from './webhook-deliveries.queue';
 import { assertPublicWebhookTarget } from '../integrations/webhook-url-allowlist';
+import { pinnedFetch } from '../common/ssrf';
 
 const SUPER_ADMIN_CONTEXT = { organizationId: null, isSuperAdmin: true };
 
@@ -53,9 +54,9 @@ export class WebhookDeliveryWorkerService implements OnModuleDestroy {
     const secret = this.cryptoService.decrypt(webhookSecretEncrypted);
     const signature = createHmac('sha256', secret).update(delivery.payloadJson).digest('hex');
 
-    const response = await fetch(webhookUrl, {
+    // Security review F13: the pinned fetch connects to the address that was checked (no second DNS lookup).
+    const response = await pinnedFetch(webhookUrl, {
       method: 'POST',
-      redirect: 'error',
       headers: { 'Content-Type': 'application/json', 'X-Webhook-Signature': signature },
       body: delivery.payloadJson,
     });
