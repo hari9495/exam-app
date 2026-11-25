@@ -7,8 +7,9 @@ import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { assertOwnSession } from '../service-desk/desk-access';
 import type { ScopeUser } from '../access/scope';
-import { ActionPlanDto, AnnouncementDto, AnswersDto, AudienceDto, CommentDto, FeedQueryDto, KudosDto, KudosQueryDto, ModerateDto, PeopleQueryDto, PostDto, ResultsQueryDto, SpaceApprovalDto, SurveyDto, VoteDto } from './dto';
+import { ActionPlanDto, AnnouncementDto, CelebrationPrefsDto, AnswersDto, AudienceDto, CommentDto, FeedQueryDto, KudosDto, KudosQueryDto, ModerateDto, PeopleQueryDto, PostDto, ResultsQueryDto, SpaceApprovalDto, SurveyDto, VoteDto } from './dto';
 import { SurveysService } from './surveys.service';
+import { CelebrationsService } from './celebrations.service';
 import { KudosService } from './kudos.service';
 import { FeedService } from './feed.service';
 import { AnnouncementsService } from './announcements.service';
@@ -77,7 +78,25 @@ export class MyEngageController {
     private readonly feedSvc: FeedService,
     private readonly kudosSvc: KudosService,
     private readonly surveys: SurveysService,
+    private readonly celebrations: CelebrationsService,
   ) {}
+
+  // Batch G2 item 76: today's celebrations, and my own choices.
+  @Get('celebrations')
+  celebrationsToday(@CurrentTenant() ctx: TenantContext) {
+    return this.celebrations.today(ctx);
+  }
+
+  @Get('celebrations/mine')
+  myCelebrations(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.celebrations.mine(ctx, req.user as ScopeUser);
+  }
+
+  @Put('celebrations/mine')
+  setMyCelebrations(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: CelebrationPrefsDto) {
+    assertOwnSession(req);
+    return this.celebrations.setMine(ctx, req.user as ScopeUser, dto);
+  }
 
   // Batch G2 item 75: a vote on a poll.
   @Post('posts/:id/vote')

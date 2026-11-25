@@ -21,7 +21,7 @@ import { useToast } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import { errorText } from '../org/org-kit';
 import { MessageBody } from '../desk/desk-kit';
-import { CommentsDrawer, GrowthFrame, PostCard, type FeedComment, type FeedPost } from './growth-kit';
+import { CelebrationChoices, CelebrationStrip, CommentsDrawer, GrowthFrame, PostCard, type Celebration, type FeedComment, type FeedPost } from './growth-kit';
 import { moderate } from './growth-logic';
 
 /** An announcement for me (item 12). */
@@ -89,6 +89,10 @@ export interface LiveFeed {
   /** Batch G2 item 74: an open survey for me (the side card). */
   openSurvey?: { id: string; name: string; closesOn: string; questions: number; anonymous: boolean } | null;
   onTakeSurvey?: (id: string) => void;
+  /** Batch G2 item 76: today's celebrations, and my own choices of which of mine show. */
+  celebrations?: Celebration[];
+  myCelebrations?: { birthday: boolean; anniversary: boolean; newJoiner: boolean } | null;
+  onMyCelebrations?: (v: { birthday: boolean; anniversary: boolean; newJoiner: boolean }) => Promise<unknown>;
   /** A moderator switches approval on a location or department space. */
   onApproval?: (spaceId: string, approval: boolean) => Promise<unknown>;
   /** Stories and tests only. */
@@ -251,8 +255,9 @@ export function LiveFeedScreen({ live }: { live: LiveFeed }) {
               {spaceFilter}
               {feed}
             </div>
-            {((live.spaces && live.spaces.length > 0) || live.openSurvey) && (
+            {((live.spaces && live.spaces.length > 0) || live.openSurvey || live.celebrations?.length || live.myCelebrations) && (
               <aside className="yx-growth-stack">
+                {live.celebrations && <CelebrationStrip items={live.celebrations} />}
                 {live.openSurvey && (
                   <Card title="Open survey">
                     <Text>{live.openSurvey.name}</Text>
@@ -282,6 +287,11 @@ export function LiveFeedScreen({ live }: { live: LiveFeed }) {
                     ))}
                   </ul>
                 </Card>}
+                {live.myCelebrations && live.onMyCelebrations && (
+                  <Card title="My celebrations">
+                    <CelebrationChoices value={live.myCelebrations} onChange={(v) => live.onMyCelebrations!(v).then(() => toast({ tone: 'success', title: 'Saved.' }), (e: unknown) => toast({ tone: 'error', title: errorText(e) }))} />
+                  </Card>
+                )}
               </aside>
             )}
           </div>

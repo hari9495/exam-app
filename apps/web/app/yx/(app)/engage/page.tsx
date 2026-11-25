@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FeedScreen, type FeedComment, type LiveFeedPost, type LiveSpace, type LiveUpdate } from '@yukthix/ui/engage';
+import { FeedScreen, type Celebration, type FeedComment, type LiveFeedPost, type LiveSpace, type LiveUpdate } from '@yukthix/ui/engage';
 import { engageState, useEngage, useEngageWrite } from '../../../../lib/yx-engage';
 import { useAuth } from '../../../../lib/auth-context';
 import { apiFetch } from '../../../../lib/api-client';
@@ -20,6 +20,8 @@ export default function YxEngageFeedPage() {
   const feed = useEngage<{ spaces: LiveSpace[]; posts: LiveUpdate[]; can: { moderate: boolean } }>(`/my/feed${space ? `?spaceId=${id(space)}` : ''}`);
   const directory = useEngage<LiveSpace[]>('/my/spaces');
   const surveys = useEngage<{ id: string; name: string; closesOn: string; questions: number; anonymous: boolean }[]>('/my/surveys');
+  const celebrations = useEngage<Celebration[]>('/my/celebrations');
+  const mine = useEngage<{ birthday: boolean; anniversary: boolean; newJoiner: boolean }>('/my/celebrations/mine');
   const write = useEngageWrite();
   const state = engageState(posts, feed);
   return (
@@ -46,6 +48,10 @@ export default function YxEngageFeedPage() {
         onVote: (p, option) => write('POST', `/my/posts/${id(p)}/vote`, { option }),
         openSurvey: surveys.data?.[0] ?? null,
         onTakeSurvey: (s) => router.push(`/yx/engage/surveys/${id(s)}/take`),
+        // Batch G2 item 76: today's celebrations and my own choices.
+        celebrations: celebrations.data ?? [],
+        myCelebrations: mine.data ?? null,
+        onMyCelebrations: (v) => write('PUT', '/my/celebrations/mine', v),
       }}
     />
   );

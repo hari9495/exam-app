@@ -21,7 +21,8 @@ import { MenuItem } from '../../components/menu';
 import { formatDate } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { TODAY } from '../_kit/data';
-import { GrowthFrame, PostCard, type Device, type FeedPost } from './growth-kit';
+import { CelebrationStrip, GrowthFrame, PostCard, type Celebration, type Device, type FeedPost } from './growth-kit';
+export type { Celebration } from './growth-kit';
 import { moderate } from './growth-logic';
 import type { LoadState } from './perf-goals';
 import { LiveAnnouncementScreen, type LiveAnnouncements } from './engage-announce-live';
@@ -39,13 +40,6 @@ export interface Space {
   joined: boolean;
 }
 
-export interface Celebration {
-  id: string;
-  name: string;
-  kind: 'Birthday' | 'Work anniversary' | 'New joiner' | 'Promotion';
-  detail: string;
-}
-
 export interface FeedProps {
   device?: Device;
   persona?: 'emp' | 'hr' | 'mgr';
@@ -57,30 +51,6 @@ export interface FeedProps {
   space?: string | null;
   heldNotice?: string;
   state?: LoadState;
-}
-
-const CELEB_ICON = { Birthday: Cake, 'Work anniversary': PartyPopper, 'New joiner': Plus, Promotion: Gift };
-
-function CelebrationStrip({ items }: { items: Celebration[] }) {
-  if (items.length === 0) return null;
-  return (
-    <section aria-label="Celebrations today" className="yx-growth-stack" data-gap="sm">
-      <h2 className="yx-growth-h">Today</h2>
-      {/* Scrolls sideways, so it is a focusable, labelled region (keyboard users can scroll it). */}
-      <div className="yx-growth-strip" tabIndex={0} role="region" aria-label="Celebrations today, scroll sideways for more">
-        <ul className="yx-growth-strip__list">
-        {items.map((c) => (
-          <li key={c.id} className="yx-growth-strip__item">
-            <PersonLabel name={c.name} />
-            <span className="yx-growth-meta">
-              <Icon icon={CELEB_ICON[c.kind]} /> {c.detail}
-            </span>
-          </li>
-        ))}
-        </ul>
-      </div>
-    </section>
-  );
 }
 
 /** ENG-01 Feed (T2): space filter, pinned announcements, polls, celebrations, kudos; spaces directory. With `live`, the company's records. */

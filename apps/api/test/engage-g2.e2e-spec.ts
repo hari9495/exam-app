@@ -550,4 +550,46 @@ describe('Batch G2 Engage', () => {
       expect((await api('empB', 'get', '/engage/my/surveys').expect(200)).body).toEqual([]);
     });
   });
+
+  describe('item 76: celebrations', () => {
+    const list = async (who: Who) => (await api(who, 'get', '/engage/my/celebrations').expect(200)).body as { id: string; name: string; kind: string; detail: string }[];
+    const employeeOf = (who: Who) => inA((tx) => tx.employee.findFirstOrThrow({ where: { userId: users[who] }, select: { id: true } }));
+
+    it('birthdays (never the year), work anniversaries in whole years and this week’s joiners', async () => {
+      const e1 = await employeeOf('emp1');
+      await inA((tx) => tx.employeePersonalDetails.upsert({ where: { organizationId_employeeId: { organizationId: org.A.id, employeeId: e1.id } }, create: { organizationId: org.A.id, employeeId: e1.id, dateOfBirth: new Date(`1990-${today.slice(5)}T00:00:00Z`) }, update: { dateOfBirth: new Date(`1990-${today.slice(5)}T00:00:00Z`), hideBirthday: false } }));
+      const e2 = await employeeOf('emp2');
+      const threeYears = `${Number(today.slice(0, 4)) - 3}-${today.slice(5)}`;
+      await inA((tx) => tx.employment.updateMany({ where: { employeeId: e2.id }, data: { joinedOn: new Date(`${threeYears}T00:00:00Z`) } }));
+      const l = await list('r1');
+      expect(l).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: `emp1 ${run}`, kind: 'Birthday', detail: 'Birthday today' }),
+        expect.objectContaining({ name: `emp2 ${run}`, kind: 'Work anniversary', detail: '3 years with us' }),
+        expect.objectContaining({ name: `r1 ${run}`, kind: 'New joiner', detail: 'Joined today' }),
+      ]));
+      expect(JSON.stringify(l)).not.toContain('1990');
+      expect(l.find((x) => x.name === `emp2 ${run}` && x.kind === 'New joiner')).toBeUndefined();
+    });
+
+    it('a hidden birthday never shows; each person turns their own kinds off; the company turns a kind off', async () => {
+      const e1 = await employeeOf('emp1');
+      await inA((tx) => tx.employeePersonalDetails.update({ where: { organizationId_employeeId: { organizationId: org.A.id, employeeId: e1.id } }, data: { hideBirthday: true } }));
+      expect((await list('r1')).find((x) => x.kind === 'Birthday')).toBeUndefined();
+      await inA((tx) => tx.employeePersonalDetails.update({ where: { organizationId_employeeId: { organizationId: org.A.id, employeeId: e1.id } }, data: { hideBirthday: false } }));
+      expect((await api('emp1', 'get', '/engage/my/celebrations/mine').expect(200)).body).toEqual({ birthday: true, anniversary: true, newJoiner: true });
+      await api('emp1', 'put', '/engage/my/celebrations/mine').send({ birthday: 'no', anniversary: true, newJoiner: true }).expect(400);
+      await api('emp1', 'put', '/engage/my/celebrations/mine').send({ birthday: false, anniversary: true, newJoiner: false }).expect(200);
+      expect((await api('emp1', 'get', '/engage/my/celebrations/mine').expect(200)).body).toEqual({ birthday: false, anniversary: true, newJoiner: false });
+      const l = await list('r1');
+      expect(l.filter((x) => x.name === `emp1 ${run}`)).toEqual([]);
+      await api('emp1', 'put', '/engage/my/celebrations/mine').send({ birthday: true, anniversary: true, newJoiner: true }).expect(200);
+      expect((await list('r1')).filter((x) => x.name === `emp1 ${run}`).length).toBe(2);
+      await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'engage.celebrate.new_joiners', value: 'off' } }));
+      expect((await list('r1')).filter((x) => x.kind === 'New joiner')).toEqual([]);
+    });
+
+    it('another company sees none of them', async () => {
+      expect((await list('empB')).filter((x) => x.name.endsWith(run) && !x.name.startsWith('empB'))).toEqual([]);
+    });
+  });
 });

@@ -11,3 +11,5 @@ export type { KudosInput, KudosOptions, LiveGiveKudos, LiveRecognitionWall, Wall
 // Items 74 and 75: ENG-04 to ENG-07 surveys, results and action plans; polls are feed posts.
 export { SurveysListScreen, SurveyBuilderScreen, TakeSurveyScreen, SurveyResultsScreen, ActionPlanScreen } from './engage-surveys';
 export type { LiveActionPlan, LivePlanItem, LiveQuestion, LiveResultsData, LiveSurveyBuilder, LiveSurveyResults, LiveSurveyRow, LiveSurveysList, LiveTakeSurvey, SurveyInput, SurveyType } from './engage-surveys-live';
+// Item 76: celebrations (the ENG-01 strip) and my own choices.
+export { CelebrationStrip, CelebrationChoices, type Celebration } from './growth-kit';

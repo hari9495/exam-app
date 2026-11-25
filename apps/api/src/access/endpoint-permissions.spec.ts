@@ -133,7 +133,7 @@ const IMPLICIT: Record<string, string[]> = {
   // Batch G2 item 12: announcements need engage.announce; the feed is one's own (audience checked per announcement).
   AnnouncementsController: [],
   // Items 100, 73, 74, 75: my spaces, an invitation, my own team or a readable post (404 otherwise).
-  MyEngageController: ['announcements', 'acknowledge', 'feed', 'spaces', 'post', 'like', 'comments', 'comment', 'reportPost', 'reportComment', 'kudosOptions', 'giveKudos', 'wall', 'vote', 'mySurveys', 'toTake', 'answer', 'teamSurveys', 'teamResults', 'myPlan', 'savePlan'],
+  MyEngageController: ['announcements', 'acknowledge', 'feed', 'spaces', 'post', 'like', 'comments', 'comment', 'reportPost', 'reportComment', 'kudosOptions', 'giveKudos', 'wall', 'vote', 'mySurveys', 'toTake', 'answer', 'teamSurveys', 'teamResults', 'myPlan', 'savePlan', 'celebrationsToday', 'myCelebrations', 'setMyCelebrations'],
   SurveysController: [],
   ModerationController: [],
   ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets'],

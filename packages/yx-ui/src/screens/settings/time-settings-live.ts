@@ -237,6 +237,10 @@ export const MORE_SETTINGS: Record<string, { links: string[]; settings: Place[];
       { section: 'Engage feed', key: 'engage.badges', synonyms: ['badges', 'kudos'] },
       // Batch G2 item 74: survey results are shown only for groups this big or bigger.
       { section: 'Engage feed', key: 'engage.survey.min_group', synonyms: ['surveys', 'anonymous', 'smallest group'] },
+      // Batch G2 item 76: which celebrations the feed shows.
+      { section: 'Engage feed', key: 'engage.celebrate.birthdays', synonyms: ['birthdays', 'celebrations'] },
+      { section: 'Engage feed', key: 'engage.celebrate.anniversaries', synonyms: ['work anniversary', 'celebrations'] },
+      { section: 'Engage feed', key: 'engage.celebrate.new_joiners', synonyms: ['new joiners', 'welcome'] },
     ],
   },
   '8.6': { links: [], settings: [{ section: 'Help', key: 'help.whats_new.show', synonyms: ["what's new"] }, { section: 'Help', key: 'help.tours.show', synonyms: ['tours'] }] },

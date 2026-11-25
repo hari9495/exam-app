@@ -6,6 +6,7 @@ import { REDIS_CONNECTION, bullOpts, createRedisConnection, logBullErrors } from
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AnnouncementsController, ModerationController, MyEngageController, SurveysController } from './engage.controller';
 import { SurveysService } from './surveys.service';
+import { CelebrationsService } from './celebrations.service';
 import { FeedService } from './feed.service';
 import { KudosService } from './kudos.service';
 import { AnnouncementsService } from './announcements.service';
@@ -51,6 +52,6 @@ export class EngageJobs implements OnModuleInit, OnModuleDestroy {
 @Module({
   imports: [AuthModule, NotificationsModule],
   controllers: [AnnouncementsController, MyEngageController, ModerationController, SurveysController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, AnnouncementsService, FeedService, KudosService, SurveysService, EngageJobs],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, AnnouncementsService, FeedService, KudosService, SurveysService, CelebrationsService, EngageJobs],
 })
 export class EngageModule {}

@@ -19,7 +19,7 @@ import {
   StageTrack,
   SuppressedNotice,
 } from './growth-kit';
-import { CommentsDrawer } from './growth-kit';
+import { CelebrationChoices, CommentsDrawer } from './growth-kit';
 import { detectBiasFlags } from './growth-logic';
 import { GOALS, MY_STAGES, NUDGES, d } from './perf-data';
 import { POSTS } from './engage-data';
@@ -156,3 +156,4 @@ export const Comments: S = {
     />
   ),
 };
+export const Celebrations: S = { name: 'My celebrations (personal choices)', render: () => <div style={box}><CelebrationChoices value={{ birthday: true, anniversary: false, newJoiner: true }} onChange={() => {}} /></div> };

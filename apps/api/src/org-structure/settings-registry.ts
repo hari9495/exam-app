@@ -166,6 +166,10 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'engage.badges': { label: 'Engage: badges a kudos may carry (one a line)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 600 }, default: 'Above and beyond\nTeam player\nProblem solver\nGreat mentor' },
   // Batch G2 item 74 (answer 2604): survey results show only for groups of this many responses or more.
   'engage.survey.min_group': { label: 'Engage: smallest group whose survey results are shown', scopes: ['tenant'], dated: false, values: ['3', '4', '5', '6', '7', '8', '9', '10'], default: '5' },
+  // Batch G2 item 76 (M09 Q5, answer 2605): which celebrations the feed shows (each person can still opt out).
+  'engage.celebrate.birthdays': { label: 'Engage: show birthdays on the feed (without the year)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'engage.celebrate.anniversaries': { label: 'Engage: show work anniversaries on the feed', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  'engage.celebrate.new_joiners': { label: 'Engage: welcome new joiners on the feed (their first week)', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'engage.hide_after_reports': { label: 'Engage: reports that hide a post or comment until a moderator reviews it', scopes: ['tenant'], dated: false, values: ['2', '3', '5', '10'], default: '3' },
   'speakup.anonymous': { label: 'Speak-up: who may report without a name', scopes: ['tenant'], dated: false, values: ['all', 'ethics_only', 'off'], default: 'all' },
   'speakup.ack_days': { label: 'Speak-up: days for the case team to acknowledge a report', scopes: ['tenant'], dated: false, values: ['1', '2', '3', '5', '7'], default: '2' },

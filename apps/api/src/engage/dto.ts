@@ -137,6 +137,18 @@ export class VoteDto {
   option!: number;
 }
 
+/** Batch G2 item 76: my own celebration choices. */
+export class CelebrationPrefsDto {
+  @IsBoolean()
+  birthday!: boolean;
+
+  @IsBoolean()
+  anniversary!: boolean;
+
+  @IsBoolean()
+  newJoiner!: boolean;
+}
+
 /** Batch G2 item 100: an update to a space. */
 export class PostDto {
   @IsUUID()

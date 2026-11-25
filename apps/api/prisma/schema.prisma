@@ -13337,6 +13337,18 @@ model EngActionPlan {
   @@map("eng_action_plans")
 }
 
+/// Batch G2 item 76 (answer 2605): a person keeps one kind of celebration of themselves off the feed.
+model EngCelebrationOptout {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  kind           String   @db.VarChar(12)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, userId, kind], map: "eng_celebration_optouts_key")
+  @@map("eng_celebration_optouts")
+}
+
 /// Batch G2 item 75: one vote per person on a poll.
 model EngPollVote {
   id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid

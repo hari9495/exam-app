@@ -65,6 +65,22 @@ describe('ENG-01 feed (live): updates', () => {
   });
 });
 
+describe('ENG-01 feed (live): celebrations (item 76)', () => {
+  it('shows today’s celebrations and saves my own choices', async () => {
+    const onMyCelebrations = vi.fn().mockResolvedValue(undefined);
+    show(<FeedScreen live={liveFeedWithPosts({ celebrations: [{ id: 'b1', name: 'Meera Iyer', kind: 'Birthday', detail: 'Birthday today' }], myCelebrations: { birthday: true, anniversary: true, newJoiner: true }, onMyCelebrations })} />);
+    expect(screen.getByText('Birthday today')).toBeInTheDocument();
+    await ue.click(screen.getByRole('switch', { name: /My work anniversary/ }));
+    expect(onMyCelebrations).toHaveBeenCalledWith({ birthday: true, anniversary: false, newJoiner: true });
+    expect((await screen.findAllByText('Saved.')).length).toBeGreaterThan(0);
+  });
+
+  it('no celebrations today: no strip', () => {
+    show(<FeedScreen live={liveFeedWithPosts({ celebrations: [] })} />);
+    expect(screen.queryByText('Today')).toBeNull();
+  });
+});
+
 describe('ENG-02 composer (live)', () => {
   it('Post with nothing written says so; a blocked word warns; posting tells the outcome', async () => {
     const onPost = vi.fn().mockResolvedValue({ state: 'held' });

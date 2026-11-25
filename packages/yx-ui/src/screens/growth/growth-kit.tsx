@@ -4,6 +4,10 @@
 import { useId, useMemo, useState, type DragEvent, type ReactNode } from 'react';
 import {
   ArrowLeft,
+  Cake,
+  Gift,
+  PartyPopper,
+  Plus,
   BarChart3,
   CalendarDays,
   Check,
@@ -23,12 +27,12 @@ import {
 } from 'lucide-react';
 import { DesktopFrame, PhoneFrame, SCREEN_RAIL, type PanelSection } from '../_kit/frames';
 import { Button, IconButton, Link } from '../../components/button';
-import { Badge, AiBadge, Avatar, type BadgeTone } from '../../components/display';
+import { Badge, AiBadge, Avatar, PersonLabel, type BadgeTone } from '../../components/display';
 import { Icon, Text, VisuallyHidden } from '../../components/foundations';
 import { InlineAlert, Skeleton } from '../../components/feedback';
 import { Drawer } from '../../components/drawer';
 import { Menu, MenuContent, MenuItem, MenuLabel, MenuTrigger } from '../../components/menu';
-import { RadioGroup } from '../../components/choice';
+import { RadioGroup, Switch } from '../../components/choice';
 import { ConfirmDialog, Dialog } from '../../components/overlay';
 import { PlainTable } from '../../components/plain-table';
 import { MultiSelect, Select } from '../../components/select';
@@ -1119,5 +1123,50 @@ export function CommentsDrawer({ open, onClose, title, comments, onAdd, onReport
         </FormField>
       </div>
     </Drawer>
+  );
+}
+
+/* ================================================================== Celebrations (ENG-01 strip; batch G2 item 76) */
+
+export interface Celebration {
+  id: string;
+  name: string;
+  kind: 'Birthday' | 'Work anniversary' | 'New joiner' | 'Promotion';
+  detail: string;
+}
+
+const CELEB_ICON = { Birthday: Cake, 'Work anniversary': PartyPopper, 'New joiner': Plus, Promotion: Gift };
+
+export function CelebrationStrip({ items }: { items: Celebration[] }) {
+  if (items.length === 0) return null;
+  return (
+    <section aria-label="Celebrations today" className="yx-growth-stack" data-gap="sm">
+      <h2 className="yx-growth-h">Today</h2>
+      {/* Scrolls sideways, so it is a focusable, labelled region (keyboard users can scroll it). */}
+      <div className="yx-growth-strip" tabIndex={0} role="region" aria-label="Celebrations today, scroll sideways for more">
+        <ul className="yx-growth-strip__list">
+        {items.map((c) => (
+          <li key={c.id} className="yx-growth-strip__item">
+            <PersonLabel name={c.name} />
+            <span className="yx-growth-meta">
+              <Icon icon={CELEB_ICON[c.kind]} /> {c.detail}
+            </span>
+          </li>
+        ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+
+/** Batch G2 item 76: which of my own celebrations the feed shows (a personal opt-out per kind). */
+export function CelebrationChoices({ value, onChange }: { value: { birthday: boolean; anniversary: boolean; newJoiner: boolean }; onChange: (v: { birthday: boolean; anniversary: boolean; newJoiner: boolean }) => void | Promise<unknown> }) {
+  return (
+    <div className="yx-growth-stack" data-gap="sm">
+      <Switch checked={value.birthday} onChange={(c) => void onChange({ ...value, birthday: c })} label="My birthday" description="Never the year. Hidden too when you hide your birthday in your profile." />
+      <Switch checked={value.anniversary} onChange={(c) => void onChange({ ...value, anniversary: c })} label="My work anniversary" />
+      <Switch checked={value.newJoiner} onChange={(c) => void onChange({ ...value, newJoiner: c })} label="Welcome me as a new joiner" />
+    </div>
   );
 }
