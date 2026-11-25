@@ -154,6 +154,12 @@ describe('Security review 2026-11-25: proofs', () => {
       const res = await api('auditorA', 'post', `/entries/${entryId}/feedback`).send({ rating: 1, note: 'Weak' });
       expect(res.status).toBe(403);
     });
+
+    it('a recruiter (pipeline:manage) still reassigns and rates the candidate (positive)', async () => {
+      await api('recruiterA', 'patch', `/entries/${entryId}/assignment`).send({ assigneeUserId: users.adminA }).expect(200);
+      await api('recruiterA', 'post', `/entries/${entryId}/feedback`).send({ rating: 4, note: 'Strong' }).expect(201);
+      await api('auditorA', 'get', `/entries/${entryId}/feedback`).expect(200);
+    });
   });
 
   // ---------------------------------------------------------------- F7 (Medium): one public throttle bucket for every caller
