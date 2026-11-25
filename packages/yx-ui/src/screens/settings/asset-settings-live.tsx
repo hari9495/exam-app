@@ -2,9 +2,11 @@
 // categories (name, tracked by, default recovery, useful life), each opened in a drawer by HR's company-wide settings
 // key; the acknowledgement method ("Click to accept" or "None"; "E-sign" waits for the e-sign partner) and the F&F
 // recovery of an asset not returned. "Written-down value" needs depreciation, a later part: until then HR decides the
-// amount each time, and the page says so.
+// amount each time, and the page says so. Answer 2720: a category may number its tags (LAP-2026-0042).
 import { useState } from 'react';
 import { Button } from '../../components/button';
+import { Checkbox } from '../../components/choice';
+import { Segment } from '../../components/segment';
 import { Drawer } from '../../components/drawer';
 import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
@@ -19,11 +21,16 @@ export interface AssetCategoryRow {
   trackedBy: string | null;
   defaultRecovery: string | null;
   usefulLifeYears: number | null;
+  /** Answer 2720: the tag pattern (no prefix: none) and the next tag it gives. */
+  tagPrefix: string | null;
+  tagYear: boolean;
+  tagDigits: number;
+  nextTag: string | null;
   /** How many assets are in it. */
   assets: number;
   version: number;
 }
-export type AssetCategoryInput = Pick<AssetCategoryRow, 'name' | 'trackedBy' | 'defaultRecovery' | 'usefulLifeYears'>;
+export type AssetCategoryInput = Pick<AssetCategoryRow, 'name' | 'trackedBy' | 'defaultRecovery' | 'usefulLifeYears' | 'tagPrefix' | 'tagYear' | 'tagDigits'>;
 
 const rupees = (s: string) => `₹${Number(s).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -33,8 +40,8 @@ export function assetSettingsPage(page: SettingsPageDef, design: SettingsPageDef
   const def = drawn.settings.find((d) => d.key === 'asset.categories')!;
   const list: SettingDef = {
     ...def,
-    columns: ['Category', 'Tracked by', 'Default recovery', 'Useful life', 'Assets'],
-    rows: rows.map((r) => [r.name, r.trackedBy ?? '—', r.defaultRecovery ? rupees(r.defaultRecovery) : 'Asset cost', r.usefulLifeYears ? `${r.usefulLifeYears} ${r.usefulLifeYears === 1 ? 'year' : 'years'}` : '—', String(r.assets)]),
+    columns: ['Category', 'Tracked by', 'Default recovery', 'Useful life', 'Next tag', 'Assets'],
+    rows: rows.map((r) => [r.name, r.trackedBy ?? '—', r.defaultRecovery ? rupees(r.defaultRecovery) : 'Asset cost', r.usefulLifeYears ? `${r.usefulLifeYears} ${r.usefulLifeYears === 1 ? 'year' : 'years'}` : '—', r.nextTag ?? 'Typed by hand', String(r.assets)]),
     starter: false,
     readOnlyList: !canEdit,
     helper: 'Add asset and the asset page pick from this list. With no default recovery, an unreturned asset starts from its cost.',
@@ -58,6 +65,9 @@ export function AssetCategoryDrawer({ initial, onClose, onSave, onRetire }: { in
   const [trackedBy, setTrackedBy] = useState(initial?.trackedBy ?? '');
   const [recovery, setRecovery] = useState<number | null>(initial?.defaultRecovery ? Number(initial.defaultRecovery) : null);
   const [life, setLife] = useState<number | null>(initial?.usefulLifeYears ?? null);
+  const [prefix, setPrefix] = useState(initial?.tagPrefix ?? '');
+  const [withYear, setWithYear] = useState(initial?.tagYear ?? true);
+  const [digits, setDigits] = useState(String(initial?.tagDigits ?? 4));
   const [tried, setTried] = useState(false);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -65,7 +75,10 @@ export function AssetCategoryDrawer({ initial, onClose, onSave, onRetire }: { in
     name: name.trim().length < 2 ? 'Give the category a name of at least 2 characters.' : /[<>]/.test(name) ? 'Leave out < and >.' : null,
     trackedBy: /[<>]/.test(trackedBy) ? 'Leave out < and >.' : null,
     life: life == null || (Number.isInteger(life) && life >= 1 && life <= 50) ? null : 'Enter 1 to 50 years.',
+    prefix: !prefix || /^[A-Za-z0-9]{1,12}$/.test(prefix.trim()) ? null : 'Use up to 12 letters or digits, for example LAP.',
   };
+  const P = prefix.trim().toUpperCase();
+  const sample = `${P}-${withYear ? `${new Date().getFullYear()}-` : ''}${'1'.padStart(Number(digits), '0')}`;
   const shown = (k: keyof typeof problems) => (tried ? problems[k] : null);
   const fail = (e: unknown) => setFailed(e instanceof Error ? e.message : 'It could not be saved. Try again.');
   const save = () => {
@@ -74,7 +87,7 @@ export function AssetCategoryDrawer({ initial, onClose, onSave, onRetire }: { in
     if (first) return document.getElementById(`ac-${first}`)?.focus();
     setBusy(true);
     setFailed(null);
-    onSave({ name: name.trim(), trackedBy: trackedBy.trim() || null, defaultRecovery: recovery == null ? null : recovery.toFixed(2), usefulLifeYears: life })
+    onSave({ name: name.trim(), trackedBy: trackedBy.trim() || null, defaultRecovery: recovery == null ? null : recovery.toFixed(2), usefulLifeYears: life, tagPrefix: P || null, tagYear: withYear, tagDigits: Number(digits) })
       .then(() => (toast({ tone: 'success', title: initial ? 'Category saved' : 'Category added' }), onClose()))
       .catch(fail)
       .finally(() => setBusy(false));
@@ -110,6 +123,17 @@ export function AssetCategoryDrawer({ initial, onClose, onSave, onRetire }: { in
         <FormField id="ac-life" label="Useful life" optional helper="Years, for depreciation later." error={shown('life')}>
           <NumberField value={life} onChange={setLife} min={1} max={50} suffix="years" />
         </FormField>
+        <FormField id="ac-prefix" label="Tag prefix" optional helper={P ? `Add asset suggests tags like ${sample}. A typed tag still works.` : 'With a prefix, Add asset suggests the next tag, for example LAP-2026-0042.'} error={shown('prefix')}>
+          <TextField value={prefix} onChange={setPrefix} maxLength={12} />
+        </FormField>
+        {P && (
+          <>
+            <Checkbox checked={withYear} onChange={setWithYear} label="Add the year" description="The counter starts again at 1 each year." />
+            <FormField id="ac-digits" label="Counter digits">
+              <Segment label="Counter digits" value={digits} onChange={setDigits} options={['3', '4', '5', '6'].map((d) => ({ value: d, label: d }))} />
+            </FormField>
+          </>
+        )}
         {initial && onRetire && <InlineAlert tone="info" title="Retiring takes it out of the Add asset list. Assets already in it keep it." />}
       </div>
     </Drawer>

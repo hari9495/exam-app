@@ -26,10 +26,27 @@ describe('People popups explain instead of disabling', () => {
     await ue.click(screen.getByRole('combobox', { name: 'Category' }));
     await ue.click(screen.getByRole('option', { name: 'Laptop' }));
     await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Dell Latitude 5450');
+    await ue.clear(screen.getByRole('textbox', { name: /^Asset tag/ })); // the category's suggested tag, replaced by a typed one
     await ue.type(screen.getByRole('textbox', { name: /^Asset tag/ }), 'LT-0418');
     await ue.clear(screen.getByRole('textbox', { name: /^Cost/ }));
     await ue.click(add);
     expect(onAdd).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'cat-laptop', tag: 'LT-0418', cost: null }));
+  });
+
+  it('Add asset (2720): the category suggests its next tag; a typed tag stays as typed', async () => {
+    const onAdd = vi.fn(async () => undefined);
+    render(<AddAssetDrawer categories={ASSET_CATEGORY_CHOICES} entities={ENTITY_CHOICES} locations={JOINER_PLACES.locations} onClose={vi.fn()} onAdd={onAdd} />);
+    await ue.click(screen.getByRole('combobox', { name: 'Category' }));
+    await ue.click(screen.getByRole('option', { name: 'Laptop' }));
+    expect(screen.getByRole('textbox', { name: /^Asset tag/ })).toHaveValue('LAP-2026-0042');
+    expect(screen.getByText('The next tag of this category. You can type your own.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('combobox', { name: 'Category' }));
+    await ue.click(screen.getByRole('option', { name: 'Phone' }));
+    expect(screen.getByRole('textbox', { name: /^Asset tag/ })).toHaveValue('');
+    await ue.type(screen.getByRole('textbox', { name: /^Asset tag/ }), 'OLD-7');
+    await ue.click(screen.getByRole('combobox', { name: 'Category' }));
+    await ue.click(screen.getByRole('option', { name: 'Laptop' }));
+    expect(screen.getByRole('textbox', { name: /^Asset tag/ })).toHaveValue('OLD-7');
   });
 
   it('Import joiners: Check the file with nothing asks for a file; with rows it previews', async () => {

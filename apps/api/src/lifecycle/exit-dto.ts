@@ -289,6 +289,21 @@ export class AssetCategoryDto {
   @Max(50)
   usefulLifeYears?: number | null;
 
+  // Answer 2720: an optional tag pattern, PREFIX-[YEAR-]0042.
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9]{1,12}$/, { message: 'tagPrefix is 1 to 12 letters or digits' })
+  tagPrefix?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  tagYear?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(8)
+  tagDigits?: number;
+
   @IsOptional()
   @IsInt()
   version?: number;

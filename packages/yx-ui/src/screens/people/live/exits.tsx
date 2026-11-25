@@ -396,13 +396,21 @@ export interface AssetsScreenProps {
 }
 
 
-/** IT assets part 1 (answer 2712): a category from the company list (Settings 2.8). */
-export type AssetCategoryChoice = Choice;
+/** IT assets part 1 (answer 2712): a category from the company list (Settings 2.8), with its next tag (2720). */
+export type AssetCategoryChoice = Choice & { nextTag?: string | null };
 
 export function AddAssetDrawer({ categories, entities, locations, onClose, onAdd }: { categories: AssetCategoryChoice[]; entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
   const [category, setCategory] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');
+  // Answer 2720: the category's next tag fills the tag while it is empty or still the last suggestion.
+  const [suggested, setSuggested] = useState<string | null>(null);
+  const pickCategory = (x: string | null) => {
+    setCategory(x);
+    const next = categories.find((c) => c.value === x)?.nextTag ?? null;
+    if (!tag || tag === suggested) setTag(next ?? '');
+    setSuggested(next);
+  };
   const [serial, setSerial] = useState('');
   const [entity, setEntity] = useState<string | null>(entities.length === 1 ? entities[0].value : null);
   const [location, setLocation] = useState<string | null>(null);
@@ -456,12 +464,12 @@ export function AddAssetDrawer({ categories, entities, locations, onClose, onAdd
       )}
       <div className="yx-lif-grid">
         <FormField id="as-cat" label="Category" required helper="The list is in Settings › Assets." error={shown('category')}>
-          <Select aria-label="Category" value={category} onChange={setCategory} options={categories} />
+          <Select aria-label="Category" value={category} onChange={pickCategory} options={categories} />
         </FormField>
         <FormField id="as-name" label="Name" required error={shown('name')}>
           <TextField value={name} onChange={setName} maxLength={150} />
         </FormField>
-        <FormField id="as-tag" label="Asset tag" required helper="Unique in the company: letters, digits, dot, dash, slash." error={shown('tag')}>
+        <FormField id="as-tag" label="Asset tag" required helper={suggested && tag === suggested ? 'The next tag of this category. You can type your own.' : 'Unique in the company: letters, digits, dot, dash, slash.'} error={shown('tag')}>
           <TextField value={tag} onChange={setTag} maxLength={60} />
         </FormField>
         <FormField id="as-serial" label="Serial number" optional>

@@ -21,7 +21,7 @@ export default function YxAssetsPage() {
   const canManage = perms.has('asset.manage');
   const data = useLife<{ today: string; money?: boolean; recovery?: { toFnf: boolean; basis: string }; rows: AssetRow[] }>('/lifecycle/assets');
   // IT assets part 1 (answer 2712): Add asset picks a category from the company list (Settings › Assets).
-  const cats = useLife<{ rows: { id: string; name: string }[] }>(canManage ? '/lifecycle/asset-categories' : null);
+  const cats = useLife<{ rows: { id: string; name: string; nextTag: string | null }[] }>(canManage ? '/lifecycle/asset-categories' : null);
   const places = useJoinerPlaces(canManage);
   // Who an asset can go to: its own list for asset.manage (IT holds no employee grant, so /employees is empty for it).
   const people = useLife<PersonOption[]>(canManage ? '/lifecycle/assets/people' : null);
@@ -67,7 +67,7 @@ export default function YxAssetsPage() {
         },
         children: adding && (
           <AddAssetDrawer
-            categories={(cats.data?.rows ?? []).map((c) => ({ value: c.id, label: c.name }))}
+            categories={(cats.data?.rows ?? []).map((c) => ({ value: c.id, label: c.name, nextTag: c.nextTag }))}
             entities={places.entities}
             locations={places.locations}
             onClose={() => setAdding(false)}

@@ -14,8 +14,8 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const design = SETTINGS_GROUPS.flatMap((g) => g.pages).find((p) => p.id === '2.8')!;
 const DATA: TimeSettingsData = { registry: TIME_REGISTRY_SAMPLE, company: {}, elsewhere: {}, limits: {}, canEdit: true, canGuard: false, lastChange: null };
 const ROWS: AssetCategoryRow[] = [
-  { id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, assets: 2, version: 1 },
-  { id: 'c4', name: 'Tools', trackedBy: null, defaultRecovery: null, usefulLifeYears: null, assets: 0, version: 1 },
+  { id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, nextTag: 'LAP-2026-0042', assets: 2, version: 1 },
+  { id: 'c4', name: 'Tools', trackedBy: null, defaultRecovery: null, usefulLifeYears: null, tagPrefix: null, tagYear: false, tagDigits: 4, nextTag: null, assets: 0, version: 1 },
 ];
 const page = (canEdit = true, data = DATA) => assetSettingsPage(timeSettingsPage(design, data, new Set()), design, ROWS, canEdit);
 
@@ -24,7 +24,7 @@ describe('2.8 Assets live', () => {
     const p = page();
     expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return']);
     const f = (k: string) => allSettings(p).find((d) => d.key === k)!;
-    expect(f('asset.categories').rows).toEqual([['Laptop', 'Serial number', '₹45,000', '3 years', '2'], ['Tools', '—', 'Asset cost', '—', '0']]);
+    expect(f('asset.categories').rows).toEqual([['Laptop', 'Serial number', '₹45,000', '3 years', 'LAP-2026-0042', '2'], ['Tools', '—', 'Asset cost', '—', 'Typed by hand', '0']]);
     expect(f('asset.ack_method')).toMatchObject({ kind: 'radio', value: 'click', options: ['click', 'none'], starter: true, helper: expect.stringMatching(/E-sign comes when/) });
     expect(f('asset.recovery_to_fnf')).toMatchObject({ kind: 'toggle', value: true });
     expect(f('asset.recovery_basis')).toMatchObject({ kind: 'radio', value: 'category_default', helper: expect.stringMatching(/HR decides the amount each time/) });
@@ -49,7 +49,7 @@ describe('2.8 Assets live', () => {
     await ue.type(within(d).getByRole('textbox', { name: /Default recovery/ }), '20000');
     await ue.type(within(d).getByRole('textbox', { name: /Useful life/ }), '3');
     await ue.click(within(d).getByRole('button', { name: 'Add category' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ name: 'Tablet', trackedBy: 'Serial number', defaultRecovery: '20000.00', usefulLifeYears: 3 }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ name: 'Tablet', trackedBy: 'Serial number', defaultRecovery: '20000.00', usefulLifeYears: 3, tagPrefix: null, tagYear: true, tagDigits: 4 }));
     expect((await screen.findAllByText('Category added')).length).toBeGreaterThan(0);
   });
 
@@ -65,6 +65,31 @@ describe('2.8 Assets live', () => {
     await ue.clear(within(d).getByRole('textbox', { name: /Useful life/ }));
     await ue.click(within(d).getByRole('button', { name: 'Add category' }));
     expect(await within(d).findByText('Another category already has that name.')).toBeInTheDocument();
+  });
+
+  it('2720: a tag pattern is the prefix, the year if wanted and the counter digits; the helper shows how tags look', async () => {
+    const onSave = vi.fn().mockResolvedValue({ id: 'n' });
+    render(<ToastProvider><AssetCategoryDrawer initial={null} onClose={() => {}} onSave={onSave} /></ToastProvider>);
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /Name/ }), 'Tablet');
+    expect(within(d).queryByRole('checkbox', { name: /Add the year/ })).toBeNull();
+    await ue.type(within(d).getByRole('textbox', { name: /Tag prefix/ }), 'tab');
+    await ue.click(within(d).getByRole('checkbox', { name: /Add the year/ }));
+    await ue.click(within(d).getByRole('radio', { name: '3' }));
+    expect(within(d).getByText(/suggests tags like TAB-001/)).toBeInTheDocument();
+    await ue.click(within(d).getByRole('button', { name: 'Add category' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ tagPrefix: 'TAB', tagYear: false, tagDigits: 3 })));
+  });
+
+  it('negative (2720): a prefix with a dash or space is not sent', async () => {
+    const onSave = vi.fn();
+    render(<ToastProvider><AssetCategoryDrawer initial={null} onClose={() => {}} onSave={onSave} /></ToastProvider>);
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /Name/ }), 'Tablet');
+    await ue.type(within(d).getByRole('textbox', { name: /Tag prefix/ }), 'TA B');
+    await ue.click(within(d).getByRole('button', { name: 'Add category' }));
+    expect(within(d).getByText('Use up to 12 letters or digits, for example LAP.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it('a category in use is retired, never deleted (the drawer says assets keep it)', async () => {

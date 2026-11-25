@@ -7999,6 +7999,10 @@ model AssetCategory {
   trackedBy       String?   @map("tracked_by") @db.VarChar(40)
   defaultRecovery Decimal?  @map("default_recovery") @db.Decimal(14, 2)
   usefulLifeYears Int?      @map("useful_life_years") @db.SmallInt
+  /// Answer 2720: an optional tag pattern: PREFIX-[YEAR-]counter padded to tagDigits (LAP-2026-0042).
+  tagPrefix       String?   @map("tag_prefix") @db.VarChar(12)
+  tagYear         Boolean   @default(false) @map("tag_year")
+  tagDigits       Int       @default(4) @map("tag_digits") @db.SmallInt
   retiredAt       DateTime? @map("retired_at") @db.Timestamptz(3)
   version         Int       @default(1)
   createdBy       String?   @map("created_by") @db.Uuid

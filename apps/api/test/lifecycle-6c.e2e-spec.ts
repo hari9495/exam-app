@@ -504,6 +504,21 @@ describe('Lifecycle batch 6c', () => {
     expect(actions).toEqual(expect.arrayContaining(['asset.category.added', 'asset.category.updated', 'asset.category.retired']));
   });
 
+  it('IT assets part 1 (2720): a category tag pattern suggests the next tag; a typed tag still works; tags stay unique', async () => {
+    const year = today.slice(0, 4);
+    const prefix = `Q${run.replace(/[^a-z0-9]/gi, '').slice(0, 6)}`.toUpperCase();
+    const cat = (await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Scanner ${run}`, tagPrefix: prefix.toLowerCase(), tagYear: true, tagDigits: 4 }).expect(201)).body.id as string;
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Bad ${run}`, tagPrefix: 'A-B' }).expect(400);
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Bad ${run}`, tagPrefix: 'AB', tagDigits: 9 }).expect(400);
+    const next = async () => (await api('it', 'get', '/lifecycle/asset-categories').expect(200)).body.rows.find((x: { id: string }) => x.id === cat);
+    expect(await next()).toMatchObject({ tagPrefix: prefix, tagYear: true, tagDigits: 4, nextTag: `${prefix}-${year}-0001` });
+    await api('it', 'post', '/lifecycle/assets').send({ categoryId: cat, name: 'Scanner 1', tag: `${prefix}-${year}-0001`, legalEntityId: ids.entity }).expect(201);
+    await api('it', 'post', '/lifecycle/assets').send({ categoryId: cat, name: 'Scanner typed', tag: `SC-OWN-${run}`, legalEntityId: ids.entity }).expect(201);
+    expect((await next()).nextTag).toBe(`${prefix}-${year}-0002`);
+    // The same tag again (any case) is refused.
+    await api('it', 'post', '/lifecycle/assets').send({ categoryId: cat, name: 'Scanner dup', tag: `${prefix.toLowerCase()}-${year}-0001`, legalEntityId: ids.entity }).expect(409);
+  });
+
   it('IT assets part 1 (2711): cost only for asset managers of the place and asset.finance.view; never sent to anyone else', async () => {
     const tag = `MN-${run}`;
     const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'ThinkPad X1', tag, legalEntityId: ids.entity, locationId: ids.blr, cost: '120000.00' }).expect(201)).body.id as string;

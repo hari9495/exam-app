@@ -13,6 +13,31 @@ export const STARTER_CATEGORIES: { name: string; trackedBy: string; defaultRecov
   { name: 'Tools', trackedBy: 'Tag', defaultRecovery: null, usefulLifeYears: null },
 ];
 
+/** Answer 2720: a category's tag pattern (no prefix: no pattern). */
+export interface TagPattern {
+  tagPrefix: string | null;
+  tagYear: boolean;
+  tagDigits: number;
+}
+
+/** What every tag of the pattern starts with this year ("LAP-2026-"), or null without a pattern. */
+export const tagHead = (p: TagPattern, year: string): string | null => (p.tagPrefix ? `${p.tagPrefix}-${p.tagYear ? `${year}-` : ''}` : null);
+
+/**
+ * The next tag of the pattern: one more than the highest counter among the tags already made with it (typed tags that
+ * do not follow it are ignored), padded to the digits; null without a pattern. Tags compare without case.
+ */
+export function nextTag(p: TagPattern, year: string, tags: string[]): string | null {
+  const head = tagHead(p, year);
+  if (!head) return null;
+  let max = 0;
+  for (const t of tags) {
+    const rest = t.toUpperCase().startsWith(head.toUpperCase()) ? t.slice(head.length) : '';
+    if (/^\d{1,9}$/.test(rest)) max = Math.max(max, Number(rest));
+  }
+  return `${head}${String(max + 1).padStart(p.tagDigits, '0')}`;
+}
+
 export type RecoveryBasis = 'category_default' | 'written_down' | 'hr_decides';
 
 /**

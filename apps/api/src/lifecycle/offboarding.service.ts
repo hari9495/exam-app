@@ -12,7 +12,7 @@ import { EXIT_INTERVIEW_FORM } from './exit-rules';
 import { ExitsService } from './exits.service';
 import { freezeSettlementIn } from './settlement';
 import { settingFor } from '../people/probation';
-import { STARTER_CATEGORIES, recoveryAmount } from './asset-categories';
+import { STARTER_CATEGORIES, nextTag, recoveryAmount, tagHead } from './asset-categories';
 
 // Lifecycle batch 6c (design §10.6): clearance sign-offs (LIFE-3.05), the exit interview (LIFE-3.06) and the shared
 // asset list (LIFE-3.07, D3).
@@ -67,6 +67,10 @@ export interface AssetCategoryDto {
   trackedBy?: string | null;
   defaultRecovery?: string | null;
   usefulLifeYears?: number | null;
+  /** Answer 2720: the tag pattern (no prefix: none). */
+  tagPrefix?: string | null;
+  tagYear?: boolean;
+  tagDigits?: number;
   version?: number;
 }
 /** A company-wide setting (the asset keys are company-wide only, so no place is needed). */
@@ -392,9 +396,13 @@ export class OffboardingService {
       const org = c.organizationId;
       const rows = (await this.categoriesIn(tx, org, c.userId ?? null)).filter((x) => !x.retiredAt);
       const used = await tx.asset.groupBy({ by: ['categoryId'], where: { organizationId: org, categoryId: { in: rows.map((x) => x.id) } }, _count: { _all: true } });
+      // Answer 2720: the next tag of each pattern, from the tags already made with it this year.
+      const year = todayIst().slice(0, 4);
+      const heads = [...new Set(rows.map((x) => tagHead(x, year)).filter((h): h is string => Boolean(h)))];
+      const tags = heads.length ? (await tx.asset.findMany({ where: { organizationId: org, OR: heads.map((h) => ({ tag: { startsWith: h, mode: 'insensitive' as const } })) }, select: { tag: true } })).map((a) => a.tag) : [];
       return {
         canEdit: tenantWide(v, 'org.settings.manage') && !v.actingForOther,
-        rows: rows.map((x) => ({ id: x.id, name: x.name, trackedBy: x.trackedBy, defaultRecovery: x.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: x.usefulLifeYears, assets: used.find((u) => u.categoryId === x.id)?._count._all ?? 0, version: x.version })),
+        rows: rows.map((x) => ({ id: x.id, name: x.name, trackedBy: x.trackedBy, defaultRecovery: x.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: x.usefulLifeYears, tagPrefix: x.tagPrefix, tagYear: x.tagYear, tagDigits: x.tagDigits, nextTag: nextTag(x, year, tags), assets: used.find((u) => u.categoryId === x.id)?._count._all ?? 0, version: x.version })),
       };
     });
   }
@@ -405,7 +413,7 @@ export class OffboardingService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       await this.categoriesIn(tx, org, c.userId ?? null);
-      const data = { name: dto.name.trim(), trackedBy: dto.trackedBy?.trim() || null, defaultRecovery: dto.defaultRecovery ? new Prisma.Decimal(dto.defaultRecovery) : null, usefulLifeYears: dto.usefulLifeYears ?? null };
+      const data = { name: dto.name.trim(), trackedBy: dto.trackedBy?.trim() || null, defaultRecovery: dto.defaultRecovery ? new Prisma.Decimal(dto.defaultRecovery) : null, usefulLifeYears: dto.usefulLifeYears ?? null, tagPrefix: dto.tagPrefix?.trim().toUpperCase() || null, tagYear: Boolean(dto.tagYear), tagDigits: dto.tagDigits ?? 4 };
       try {
         if (!id) {
           const x = await tx.assetCategory.create({ data: { organizationId: org, ...data, createdBy: c.userId ?? null } });
@@ -416,7 +424,7 @@ export class OffboardingService {
         if (!cur) throw new NotFoundException('No such category.');
         const n = await tx.assetCategory.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...data, version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this category. Reload it.');
-        await audit(tx, c, 'asset.category.updated', 'asset_category', id, { from: { name: cur.name, trackedBy: cur.trackedBy, defaultRecovery: cur.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: cur.usefulLifeYears }, to: { ...data, defaultRecovery: data.defaultRecovery?.toFixed(2) ?? null } });
+        await audit(tx, c, 'asset.category.updated', 'asset_category', id, { from: { name: cur.name, trackedBy: cur.trackedBy, defaultRecovery: cur.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: cur.usefulLifeYears, tagPrefix: cur.tagPrefix, tagYear: cur.tagYear, tagDigits: cur.tagDigits }, to: { ...data, defaultRecovery: data.defaultRecovery?.toFixed(2) ?? null } });
         return { id };
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another category already has that name.');

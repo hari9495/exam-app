@@ -23,7 +23,7 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const base: NavInput = { has: () => false, role: 'panel', support: false, employee: false, manager: false, history: false, clearance: false, tasks: false, firstDays: false };
 const ADMIN = buildNav({ ...base, has: () => true, role: 'org_admin' });
 const calls: [string, unknown][] = [];
-const CATS = [{ id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, assets: 4, version: 2 }];
+const CATS = [{ id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, nextTag: 'LAP-2026-0007', assets: 4, version: 2 }];
 const routes = (perms: string[], overrides: object[] = [], canEditCats = true) =>
   api.mockImplementation(async (path: string, init?: RequestInit) => {
     if (init?.method === 'PUT' || init?.method === 'POST') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body ?? '{}'))]), {});
@@ -89,7 +89,7 @@ describe('Settings S-4: People pages', () => {
     await ue.clear(name);
     await ue.type(name, 'Laptops');
     await ue.click(within(d).getByRole('button', { name: 'Save category' }));
-    await waitFor(() => expect(calls).toContainEqual(['PUT /lifecycle/asset-categories/c1', { name: 'Laptops', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, version: 2 }]));
+    await waitFor(() => expect(calls).toContainEqual(['PUT /lifecycle/asset-categories/c1', { name: 'Laptops', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, version: 2 }]));
     expect(screen.getByRole('radio', { name: 'Click to accept' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'E-sign' })).toBeNull();
   });

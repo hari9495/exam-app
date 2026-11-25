@@ -19,13 +19,13 @@ export const Empty: S = { name: '· empty', render: () => <AssetRegister rows={[
 export const Acknowledge: S = { name: 'Employee · acknowledge (phone)', ...phone, render: () => <AssetAcknowledgePhone /> };
 export const Acknowledged: S = { name: 'Employee · acknowledged (phone)', ...phone, render: () => <AssetAcknowledgePhone acknowledged /> };
 
-// Add asset (People › Assets): the live drawer with sample data.
+// Add asset (People › Assets): the live drawer with sample data; Laptop suggests its next tag (answer 2720).
 const addAsset = (onAdd: Parameters<typeof AddAssetDrawer>[0]['onAdd'] = ok) => <AddAssetDrawer categories={ASSET_CATEGORY_CHOICES} entities={ENTITY_CHOICES} locations={JOINER_PLACES.locations} onClose={() => undefined} onAdd={onAdd} />;
-const fillAsset = [pick('Category', 'Laptop'), type(/^Name/, 'Dell Latitude 5450'), type(/^Asset tag/, 'LT-0418'), type(/^Serial number/, '7QK2X93'), pick('Legal entity', 'Kaveri Foods Pvt Ltd (Tamil Nadu)'), pick('Location', 'Hosur plant'), type(/^Cost/, '84500')];
+const fillAsset = [pick('Category', 'Laptop'), type(/^Name/, 'Dell Latitude 5450'), type(/^Serial number/, '7QK2X93'), pick('Legal entity', 'Kaveri Foods Pvt Ltd (Tamil Nadu)'), pick('Location', 'Hosur plant'), type(/^Cost/, '84500')];
 export const AddAsset: S = { name: 'Add asset · open', render: () => addAsset() };
 export const AddAssetFilled: S = { name: 'Add asset · filled', render: () => addAsset(), play: play(...fillAsset) };
 export const AddAssetMissing: S = { name: 'Add asset · nothing filled, Add asset pressed', render: () => addAsset(), play: play(type(/^Asset tag/, '-bad tag'), press('Add asset')) };
-export const AddAssetFailed: S = { name: 'Add asset · the server refuses (tag already used)', render: () => addAsset(fails('Asset tag LT-0418 is already used by Dell Latitude 5440.')), play: play(...fillAsset, press('Add asset')) };
+export const AddAssetFailed: S = { name: 'Add asset · the server refuses (tag already used)', render: () => addAsset(fails('Another asset already has that tag.')), play: play(...fillAsset, press('Add asset')) };
 
 // The asset page (IT assets plan, 26 Nov 2026): opened from the register's tag; Details and History; asset managers edit.
 export const AssetPage: S = { name: 'Asset page · details', render: () => <AssetPageScreen data={ASSET_PAGE} /> };
