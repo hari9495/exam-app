@@ -590,3 +590,4 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2699: the older campaigns could enrol a candidate automatically when they reached a pipeline stage; HIR-20 campaigns send only to a talent pool whose members gave talent-pool consent. Suggested answer: keep HIR-20 as it is (consent first); stage-triggered enrolment later, asking for talent-pool consent at that stage.
 - Founder answers (25 Nov 2026, "ok for all"): 2670-2678 approved exactly as suggested above.
 - Founder answers (25 Nov 2026, "ok for all"): 2690-2697 approved exactly as suggested above.
+- Founder answers (25 Nov 2026, "ok for all"): 2698-2699 (hiring settings) approved exactly as suggested above.
