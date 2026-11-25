@@ -39,6 +39,9 @@ export const CANDIDATE_TABLES = {
   staffing_submissions: 'move',
   // A data erasure request is a record of what was asked about that candidate: it stays with them.
   asmt_erasure_requests: 'record',
+  // M10 D4 (2524): an offer letter issued as a P05 letter is addressed to the candidate it was issued to and never changes
+  // (letter_issues_guard); the offer it belongs to moves, and still points at it.
+  letter_issues: 'record',
   // HIR-20 campaigns: a membership moves unless the kept candidate is in the same campaign; its sends follow the membership.
   talent_campaign_members: 'unique',
   talent_campaign_sends: 'unique',
