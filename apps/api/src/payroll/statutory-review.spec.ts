@@ -125,6 +125,18 @@ describe('payroll statutory review (26 Nov 2026): figures the code gets wrong to
     expect(amount(calculatePayslip(mp(3, '30000', '1826', '330000'), RULES), 'pt')).toBe('174.00');
   });
 
+  it('M7 employer PF, pension and NPS above Rs 7.5 lakh a year is taxable; at or below it nothing is added', () => {
+    const t = (er: string): TaxInputs => ({
+      taxYear: '2026-27', lawVersion: 'IT-2025', regime: 'new', age: 35, resident: true, pan: 'ok', proofStage: 'declared',
+      past: { gross: '0', tds: '0', pt: '0', months: [], otherEntities: [] }, previous: { gross: '0', exemptions: '0', tds: '0', pt: '0' },
+      otherIncome: '0', perquisites: '0', futureMonths: 11, future: { gross: '500000', basic: '250000', hra: '0' }, deductions: [], rent: null, employerRetirement: er,
+    });
+    const run = (er: string) => projectTax(t(er), [...RULES, ...TAX_RULES], { month: '2026-04', gross: '500000', basic: '250000', hra: '0', pt: '0' });
+    expect(run('900000').income.perquisites).toBe('150000.00');
+    expect(run('750000').income.perquisites).toBe('0.00');
+    expect(Number(run('900000').taxable) - Number(run('750000').taxable)).toBe(150000);
+  });
+
   it('R8 employer NPS (80CCD(2), now s.124(1)(a)) is capped at 14% of basic + DA in the new regime', () => {
     // Basic 50,000 a month for the year = 6,00,000; 14% = 84,000. A claim of 2,00,000 is allowed in full today.
     const t: TaxInputs = {
