@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { MassUpdateDrawer, PositionRecordScreen, PositionsScreen, PositionsSwitchOnScreen, SEAT_LIST, SEAT_OPTIONS, SEAT_RECORD, SEAT_ROWS, SWITCH_ON, SeatChangeDrawer, seatValues } from './positions';
+import { GiveSeatDrawer, MassUpdateDrawer, PositionRecordScreen, PositionsScreen, PositionsSwitchOnScreen, SEAT_LIST, SEAT_OPTIONS, SEAT_RECORD, SEAT_ROWS, SWITCH_ON, SeatChangeDrawer, seatValues } from './positions';
 
 const meta: Meta = { title: 'Screens/People/POS-01…04 · Positions', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -18,7 +18,8 @@ export const Pos01ReadOnly: S = { name: 'POS-01 · Read only (org structure view
 export const Pos01Loading: S = { name: 'POS-01 · Loading', render: () => <PositionsScreen state="loading" data={null} {...list} /> };
 export const Pos01Error: S = { name: 'POS-01 · Error', render: () => <PositionsScreen state="error" data={null} {...list} /> };
 /* POS-02 */
-export const Pos02Record: S = { name: 'POS-02 · Position record', render: () => <PositionRecordScreen state="ready" data={SEAT_RECORD} options={SEAT_OPTIONS} today={today} onRetry={() => undefined} onBack={() => undefined} hrefs={hrefs} onSend={noop} onWithdraw={noop} /> };
+export const Pos02Record: S = { name: 'POS-02 · Position record', render: () => <PositionRecordScreen state="ready" data={SEAT_RECORD} options={SEAT_OPTIONS} today={today} onRetry={() => undefined} onBack={() => undefined} hrefs={hrefs} onSend={noop} onWithdraw={noop} onGiveSeat={noop} /> };
+export const Pos02GiveSeat: S = { name: 'POS-02 · Give a seat (answer 2683)', render: () => <GiveSeatDrawer open seat={{ code: SEAT_RECORD.code, title: SEAT_RECORD.current.title }} people={SEAT_RECORD.unseated ?? []} today={today} onSend={noop} onClose={() => undefined} /> };
 export const Pos02Waiting: S = {
   name: 'POS-02 · Change waiting for approval',
   render: () => <PositionRecordScreen state="ready" data={{ ...SEAT_RECORD, changes: [{ ...SEAT_RECORD.changes[0], status: 'submitted' }] }} options={SEAT_OPTIONS} today={today} onRetry={() => undefined} onBack={() => undefined} hrefs={hrefs} onSend={noop} onWithdraw={noop} />,

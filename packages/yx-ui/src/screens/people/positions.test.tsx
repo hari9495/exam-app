@@ -110,6 +110,31 @@ describe('POS-02 position record', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
     expect(props.onWithdraw).toHaveBeenCalledWith('b1');
   });
+  it('answer 2683: Give a seat sends the person, day and reason for approval (positive)', async () => {
+    const onGiveSeat = vi.fn(async () => undefined);
+    wrap(<PositionRecordScreen state="ready" data={SEAT_RECORD} {...props} onGiveSeat={onGiveSeat} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Give a seat' }));
+    const drawer = await screen.findByRole('dialog', { name: /Give .* to someone/ });
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Send for approval' }));
+    expect(within(drawer).getByText('Choose the person.')).toBeInTheDocument();
+    expect(within(drawer).getByText('Say why, in 10 characters or more.')).toBeInTheDocument();
+    expect(onGiveSeat).not.toHaveBeenCalled();
+    await userEvent.click(within(drawer).getByRole('combobox', { name: /Person without a seat/ }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Priya Shah · KF-0009' }));
+    await userEvent.type(within(drawer).getByRole('textbox', { name: /Reason/ }), 'Left out at the switch-on');
+    await userEvent.click(within(drawer).getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() => expect(onGiveSeat).toHaveBeenCalledWith('e9', '2026-11-25', 'Left out at the switch-on'));
+  });
+  it('answer 2683: no Give a seat when nobody is without one, the seat is full, or the viewer cannot change jobs (negative)', () => {
+    const { unmount } = wrap(<PositionRecordScreen state="ready" data={{ ...SEAT_RECORD, unseated: [] }} {...props} onGiveSeat={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Give a seat' })).not.toBeInTheDocument();
+    unmount();
+    const full = wrap(<PositionRecordScreen state="ready" data={{ ...SEAT_RECORD, vacant: 0 }} {...props} onGiveSeat={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Give a seat' })).not.toBeInTheDocument();
+    full.unmount();
+    wrap(<PositionRecordScreen state="ready" data={{ ...SEAT_RECORD, unseated: undefined }} {...props} onGiveSeat={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Give a seat' })).not.toBeInTheDocument();
+  });
   it('a viewer sees no Change and no entry salary (negative)', () => {
     const { entrySalary: _e, ...current } = SEAT_RECORD.current;
     wrap(<PositionRecordScreen state="ready" data={{ ...SEAT_RECORD, canManage: false, current }} {...props} />);

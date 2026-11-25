@@ -54,6 +54,8 @@ export interface RestructureInput {
   letterType?: string;
   /** The saved draft this plan came from (deleted once sent). */
   draftId?: string;
+  /** Enterprise E1 (answer 2680): each person's seat after the move (employee id → seat id), while positions are on. */
+  seatMap?: Record<string, string>;
 }
 /** The wizard as it was left ("Save and exit"); every field may still be empty. */
 export interface RestructureDraftState {
@@ -73,6 +75,7 @@ export interface RestructureDraftState {
   reason?: string;
   letterType?: string;
   step?: string;
+  seatMap?: Record<string, string>;
 }
 export interface RestructurePersonResult {
   employeeId: string;
@@ -143,6 +146,8 @@ export interface RestructureSetup {
   open: RestructureSummary[];
   /** The company's transfer options (Settings › Inter-entity transfer defaults). */
   defaults?: MoveOptions;
+  /** Enterprise E1 (answer 2680): the entities that use positions and their active seats with the room left today (null: none does). */
+  positions?: { entityIds: string[]; seats: { id: string; code: string; title: string; legalEntityId: string; open: number }[] } | null;
 }
 export interface LiveRestructure {
   state: 'loading' | 'ready' | 'error';
@@ -273,6 +278,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
     if (!d0.defaults && s?.defaults) setDefaults(s.defaults);
   }, [s?.defaults]); // eslint-disable-line react-hooks/exhaustive-deps
   const [overrides, setOverrides] = useState<RestructureOverride[]>(d0.overrides ?? []);
+  const [seatMap, setSeatMap] = useState<Record<string, string>>(d0.seatMap ?? {});
   const [editing, setEditing] = useState<RestructureOverride | 'new' | null>(null);
   const { say } = useSay();
   const [reason, setReason] = useState(d0.reason ?? '');
@@ -365,8 +371,9 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
       defaults,
       overrides,
       reason: reason.trim(),
+      ...(Object.keys(seatMap).length ? { seatMap } : {}),
     };
-  }, [kind, from, into, effective, locations, departments, picking, picked, entityPeople, map, masterMap, target, defaults, overrides, reason, across, moving, closedMasters, unmapped]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [kind, from, into, effective, locations, departments, picking, picked, entityPeople, map, masterMap, target, defaults, overrides, reason, across, moving, closedMasters, unmapped, seatMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Every edit is checked again (a dry run through the API) half a second after the last one.
   const key = JSON.stringify(input);
@@ -461,6 +468,9 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
         ]
       : []),
   ];
+  // Answer 2680: with positions on where people land, each person takes a seat there (a move is a transfer or a join).
+  const landing = across ? into : from;
+  const seatsHere = landing && s.positions?.entityIds.includes(landing) ? s.positions.seats.filter((x) => x.legalEntityId === landing) : null;
   const cols: TableColumn<RestructurePersonResult>[] = [
     { key: 'name', header: 'Employee', type: 'person', value: (r) => r.name, person: (r) => ({ name: r.name, secondary: r.code }), width: 200 },
     { key: 'to', header: 'After the move', value: (r) => (r.to ? `${r.to.location}` : ''), render: (r) => (r.to ? <span className="yx-ppl__type"><span>{across ? `${r.to.entity} · ${r.to.code}` : r.to.department}</span><span className="yx-ppl__sub">{across ? r.to.location : `${r.to.location}${r.to.manager ? ` · manager ${r.to.manager}` : ''}`}</span></span> : <span className="yx-ppl__sub">{r.reason}</span>), width: 260 },
@@ -468,6 +478,30 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
       ? [
           { key: 'service', header: 'Service from', value: (r: RestructurePersonResult) => (r.service ? formatDate(day(r.service.from)) : ''), width: 130 },
           { key: 'leave', header: 'Leave', value: (r: RestructurePersonResult) => (r.leave.length ? r.leave.map((l) => `${l.name} ${l.days} ${l.action}`).join(', ') : r.to ? 'No balance' : ''), width: 180 },
+        ]
+      : []),
+    ...(seatsHere
+      ? [
+          {
+            key: 'seat',
+            header: 'Seat',
+            value: (r: RestructurePersonResult) => seatsHere.find((x) => x.id === seatMap[r.employeeId])?.code ?? '',
+            render: (r: RestructurePersonResult) =>
+              r.status === 'left_out' ? (
+                <span className="yx-ppl__sub">Left out</span>
+              ) : (
+                <Select
+                  aria-label={`Seat for ${r.name}`}
+                  size="sm"
+                  options={seatsHere.map((x) => ({ value: x.id, label: `${x.code} · ${x.title} · ${x.open} open` }))}
+                  value={seatMap[r.employeeId] ?? null}
+                  onChange={(v) => setSeatMap(v ? { ...seatMap, [r.employeeId]: v } : Object.fromEntries(Object.entries(seatMap).filter(([k]) => k !== r.employeeId)))}
+                  placeholder={seatsHere.length ? 'Choose a seat' : 'No active seats'}
+                  disabled={!seatsHere.length}
+                />
+              ),
+            width: 240,
+          },
         ]
       : []),
     { key: 'status', header: 'Status', type: 'status', value: (r) => (r.status === 'ready' ? 'Ready' : r.status === 'left_out' ? 'Left out' : "Can't move"), statusTone: (v) => (v === 'Ready' ? 'success' : v === 'Left out' ? 'neutral' : 'danger'), width: 120 },
@@ -531,7 +565,7 @@ export function LiveRestructureWizard({ live }: { live: LiveRestructure }) {
           {...(live.onSaveDraft
             ? {
                 onSaveAndExit: () => {
-                  const state: RestructureDraftState = { kind, fromEntityId: from, intoEntityId: into, effectiveDate: effective ? iso(effective) : null, locationIds: locations, departmentIds: departments, ...(picking ? { employeeIds: picked } : {}), locationMap: map, masterMap, target, defaults, overrides, reason, ...(letterType ? { letterType } : {}), step };
+                  const state: RestructureDraftState = { kind, fromEntityId: from, intoEntityId: into, effectiveDate: effective ? iso(effective) : null, locationIds: locations, departmentIds: departments, ...(picking ? { employeeIds: picked } : {}), locationMap: map, masterMap, target, defaults, overrides, reason, ...(letterType ? { letterType } : {}), ...(Object.keys(seatMap).length ? { seatMap } : {}), step };
                   live.onSaveDraft!(state, heading, live.draft?.id ?? null).catch((e) => setSaving(e instanceof Error ? e.message : 'Try again.'));
                 },
               }

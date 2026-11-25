@@ -12,8 +12,8 @@ export const positionsOn = async (tx: Tx, c: CompanyContext, legalEntityId: stri
 
 /** The version of each seat in force on `date` (latest valid_from on or before it). */
 export async function seatsOn(tx: Tx, org: string, date: string, ids?: string[]) {
-  return tx.$queryRaw<{ position_id: string; status: string; headcount: number; legal_entity_id: string }[]>`
-    SELECT DISTINCT ON (v.position_id) v.position_id, v.status, v.headcount, p.legal_entity_id
+  return tx.$queryRaw<{ position_id: string; status: string; headcount: number; legal_entity_id: string; title: string; code: string }[]>`
+    SELECT DISTINCT ON (v.position_id) v.position_id, v.status, v.headcount, p.legal_entity_id, v.title, p.code
     FROM position_versions v JOIN positions p ON p.organization_id = v.organization_id AND p.id = v.position_id
     WHERE v.organization_id = ${org}::uuid AND v.valid_from <= ${date}::date ${ids ? Prisma.sql`AND v.position_id = ANY(${ids}::uuid[])` : Prisma.empty}
     ORDER BY v.position_id, v.valid_from DESC`;
@@ -29,6 +29,23 @@ export async function incumbentsOn(tx: Tx, org: string, date: string, ids: strin
       ${exceptEmploymentId ? Prisma.sql`AND employment_id <> ${exceptEmploymentId}::uuid` : Prisma.empty}
     GROUP BY position_id`;
   return new Map(rows.map((r) => [r.position_id, r.n]));
+}
+
+/**
+ * Enterprise E1 (answer 2680): the seats in the legal entities that use positions whose latest version is active (a seat
+ * planned from a later day included), with the room left after the people in it on `date`, for a seat picker (null: none
+ * of them uses positions). The change engine still checks the seat on the move's own date.
+ */
+export async function seatChoices(tx: Tx, c: CompanyContext, date: string, entityIds: string[]) {
+  const on: string[] = [];
+  for (const id of entityIds) if (await positionsOn(tx, c, id)) on.push(id);
+  if (!on.length) return null;
+  const active = (await seatsOn(tx, c.organizationId, '9999-12-31')).filter((v) => v.status === 'active' && on.includes(v.legal_entity_id));
+  const taken = await incumbentsOn(tx, c.organizationId, date, active.map((v) => v.position_id));
+  const seats = active
+    .map((v) => ({ id: v.position_id, code: v.code, title: v.title, legalEntityId: v.legal_entity_id, open: Math.max(0, v.headcount - (taken.get(v.position_id) ?? 0)) }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+  return { entityIds: on, seats };
 }
 
 /** Refuses a change whose seat is missing, wrong or full. shortcut: room is checked on the change's date only, not on every later day; check the whole span if seats start being shrunk under scheduled moves. */

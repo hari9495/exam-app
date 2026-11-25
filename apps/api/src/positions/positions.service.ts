@@ -221,6 +221,27 @@ export class PositionsService implements OnModuleInit {
         SELECT DISTINCT ON (v.position_id) v.position_id AS id, p.code, v.title FROM position_versions v JOIN positions p ON p.organization_id = v.organization_id AND p.id = v.position_id
         WHERE v.organization_id = ${org}::uuid AND v.valid_from <= ${date}::date AND v.supervisor_position_id = ${id}::uuid ORDER BY v.position_id, v.valid_from DESC`;
       const money = has(v, 'pay.range.view');
+      // Answer 2683: people in this seat's entity with no seat today and none to come (the switch-on left them out), for "Give a seat":
+      // only someone who can request job changes, and only the people their change grant reaches.
+      const unseated: { employeeId: string; name: string; code: string }[] = [];
+      if (has(v, 'employee.change.manage') && !v.actingForOther && (await positionsOn(tx, c, s.legalEntityId))) {
+        const rows = await tx.$queryRaw<{ employment_id: string; employee_id: string; code: string; given_name: string; family_name: string | null; preferred_name: string | null }[]>`
+          SELECT DISTINCT ON (a.employment_id) a.employment_id, a.employee_id, em.employee_code AS code, e.given_name, e.family_name, e.preferred_name
+          FROM employee_assignments a JOIN employments em ON em.organization_id = a.organization_id AND em.id = a.employment_id
+          JOIN employees e ON e.organization_id = a.organization_id AND e.id = a.employee_id
+          WHERE a.organization_id = ${org}::uuid AND em.legal_entity_id = ${s.legalEntityId}::uuid AND em.exited_on IS NULL AND a.position_id IS NULL
+            AND a.superseded_at IS NULL AND a.valid_from <= ${todayIst()}::date AND (a.valid_to IS NULL OR a.valid_to >= ${todayIst()}::date)
+            AND NOT EXISTS (SELECT 1 FROM employee_assignments b WHERE b.organization_id = a.organization_id AND b.employment_id = a.employment_id
+              AND b.superseded_at IS NULL AND b.position_id IS NOT NULL AND b.valid_from > ${todayIst()}::date)
+          ORDER BY a.employment_id LIMIT 200`;
+        const ems = await tx.employment.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.employment_id) } } });
+        for (const r of rows) {
+          const em = ems.find((x) => x.id === r.employment_id);
+          if (em && (await this.history.reachesFrom(tx, c, v, 'employee.change.manage', em, todayIst())))
+            unseated.push({ employeeId: r.employee_id, name: displayName({ givenName: r.given_name, familyName: r.family_name, preferredName: r.preferred_name }), code: r.code });
+        }
+        unseated.sort((x, y) => x.name.localeCompare(y.name));
+      }
       const view = (r: VersionRow) => ({
         validFrom: iso(r.validFrom),
         status: r.status,
@@ -251,6 +272,7 @@ export class PositionsService implements OnModuleInit {
         requisitions: jobs,
         changes: changes.map((ch) => ({ id: ch.id, batchId: ch.batchId, kind: ch.kind, effectiveOn: iso(ch.effectiveOn), status: ch.status, reason: ch.reason, createdAt: ch.createdAt.toISOString(), mine: ch.requestedBy === c.userId })),
         canManage: has(v, 'org.position.manage') && !v.actingForOther,
+        ...(has(v, 'employee.change.manage') && !v.actingForOther ? { unseated } : {}),
       };
     });
   }

@@ -11,6 +11,7 @@ import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { todayIst } from '../src/org-structure/org-validation';
 import { addDays } from '../src/time/time-maths';
+import { markSteppedUp } from './fixtures/step-up';
 
 // Enterprise E1 positions end to end (answers 2340, 2341, 2641-2643): off by default; the switch-on plan is sent by one HR
 // person and approved by another, who links everyone to a seat built from today's jobs; seat changes (one or many) go
@@ -237,6 +238,58 @@ describe('Enterprise E1 positions', () => {
     expect(row.yearlyCost).toBe((30000 + 28000) * 12);
     expect((await api('hrB', 'get', '/org/positions').expect(200)).body.rows.find((r: { id: string }) => r.id === ids.seniorSeat)?.yearlyCost ?? null).toBeNull();
     expect((await api('hrA', 'get', '/org/positions').expect(200)).body.rows[0]).not.toHaveProperty('yearlyCost');
+  });
+
+  it('answer 2680: a restructure names each person\'s seat; without one, or a full one, the person cannot move (positive and negative)', async () => {
+    const billing = await inA(async (tx) => {
+      const id = randomUUID();
+      return (await tx.department.create({ data: { organizationId: org.A.id, id, name: 'Billing', code: 'BIL', path: `/${id}/` } })).id;
+    });
+    const setup = (await api('hrA', 'get', '/people/restructures/setup').expect(200)).body;
+    expect(setup.positions.entityIds).toEqual([ids.entityA]);
+    // The seat planned from tomorrow is offered with its room.
+    expect(setup.positions.seats.find((x: { id: string }) => x.id === ids.seniorSeat)).toMatchObject({ title: 'Senior cashier', open: 1, legalEntityId: ids.entityA });
+    const plan = (seatMap?: Record<string, unknown>) => ({
+      kind: 'within', fromEntityId: ids.entityA, effectiveDate: addDays(today, 1), employeeIds: [ids.cash2], target: { departmentId: billing },
+      defaults: { leave: 'carry', service: 'keep', code: 'keep', salary: 'keep' }, reason: 'Billing desk opens', ...(seatMap ? { seatMap } : {}),
+    });
+    const person = async (body: object) => (await api('hrA', 'post', '/people/restructures/preview').send(body).expect(200)).body.people[0];
+    expect(await person(plan())).toMatchObject({ status: 'failed', reason: expect.stringMatching(/choose the seat/) });
+    expect(await person(plan({ [ids.cash2]: ids.leadSeat }))).toMatchObject({ status: 'failed', reason: expect.stringMatching(/full/) });
+    expect((await api('hrA', 'post', '/people/restructures/preview').send(plan({ [ids.cash2]: 'not-a-seat' })).expect(400)).body.message).toMatch(/seatMap maps ids to ids/);
+    expect(await person(plan({ [ids.cash2]: ids.seniorSeat }))).toMatchObject({ status: 'ready' });
+    await api('hrA', 'post', '/people/restructures').send(plan()).expect(400);
+    const sent = (await api('hrA', 'post', '/people/restructures').send(plan({ [ids.cash2]: ids.seniorSeat })).expect(201)).body;
+    await markSteppedUp(tenantPrisma, token.hrA);
+    await markSteppedUp(tenantPrisma, token.hrB);
+    await api('hrA', 'post', `/people/restructures/${sent.id}/approve`).send({}).expect(403);
+    await api('hrB', 'post', `/people/restructures/${sent.id}/approve`).send({}).expect(200);
+    const change = await inA((tx) => tx.employeeChange.findFirstOrThrow({ where: { employeeId: ids.cash2, changeType: 'transfer' } }));
+    expect(change.payload).toMatchObject({ assignment: { departmentId: billing, positionId: ids.seniorSeat } });
+    expect((await api('hrA', 'get', `/org/positions/${ids.seniorSeat}?asOf=${addDays(today, 1)}`).expect(200)).body).toMatchObject({ filled: 1, vacant: 0 });
+  });
+
+  it('answer 2683: someone left without a seat is given one by a correction another HR person approves (positive and negative)', async () => {
+    // Someone with no seat (as the switch-on leaves out its own approver): Kiran joined while positions were briefly off.
+    const flag = (value: string) => inA((tx) => tx.setting.updateMany({ where: { organizationId: org.A.id, key: 'org.positions.enabled' }, data: { value } }));
+    await flag('off');
+    ids.kiran = (await hire('adminA', 'Kiran', 'cashier', undefined, ids.lead1).expect(201)).body.id;
+    await flag('on');
+    const record = (await api('hrA', 'get', `/org/positions/${ids.cashierSeat}`).expect(200)).body;
+    expect(record.unseated).toEqual([expect.objectContaining({ employeeId: ids.kiran, name: `Kiran ${run}` })]);
+    expect((await api('viewer', 'get', `/org/positions/${ids.cashierSeat}`).expect(200)).body).not.toHaveProperty('unseated');
+    const give = (positionId: string) => api('hrA', 'post', '/people/changes').send({ employeeId: ids.kiran, changeType: 'correction', effectiveDate: addDays(today, 1), payload: { assignment: { positionId } }, reason: 'Left out at the switch-on' });
+    expect((await give(ids.leadSeat).expect(400)).body.message).toMatch(/full/);
+    await api('viewer', 'post', '/people/changes').send({ employeeId: ids.kiran, changeType: 'correction', effectiveDate: addDays(today, 1), payload: { assignment: { positionId: ids.cashierSeat } }, reason: 'Left out at the switch-on' }).expect(403);
+    const sent = (await give(ids.cashierSeat).expect(201)).body;
+    expect(sent.status).toBe('pending');
+    await markSteppedUp(tenantPrisma, token.hrA);
+    await markSteppedUp(tenantPrisma, token.hrB);
+    await api('hrA', 'post', `/people/changes/${sent.id}/approve`).send({}).expect(403);
+    await api('hrB', 'post', `/people/changes/${sent.id}/approve`).send({}).expect(201);
+    const after = (await api('hrA', 'get', `/org/positions/${ids.cashierSeat}?asOf=${addDays(today, 1)}`).expect(200)).body;
+    expect(after.incumbents.map((p: { employeeId: string }) => p.employeeId)).toContain(ids.kiran);
+    expect(after.unseated).toEqual([]);
   });
 
   it('another company sees nothing; a stranger seat or entity is refused (negative)', async () => {

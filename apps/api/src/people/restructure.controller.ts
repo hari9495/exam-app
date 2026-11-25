@@ -64,6 +64,8 @@ export class RestructureDto {
   @IsOptional() @IsString() @Matches(LETTER_TYPE) letterType?: string;
   /** The saved draft this plan came from: deleted once the plan is sent. */
   @IsOptional() @IsUUID() draftId?: string;
+  /** Enterprise E1 (answer 2680): employee id → the seat they take (positions on). */
+  @IsOptional() @IsObject() seatMap?: Record<string, string>;
 }
 
 /** The wizard as it was left: every field optional (half filled in), each one the same shape as when sending. */
@@ -84,6 +86,7 @@ export class DraftStateDto {
   @IsOptional() @IsString() @MaxLength(500) reason?: string;
   @IsOptional() @IsString() @Matches(LETTER_TYPE) letterType?: string;
   @IsOptional() @IsIn(['scope', 'options', 'close', 'letters', 'review']) step?: string;
+  @IsOptional() @IsObject() seatMap?: Record<string, string>;
 }
 export class DraftDto {
   @IsString() @MinLength(1) @MaxLength(200) title!: string;
@@ -130,11 +133,11 @@ export class RestructureController {
   private viewer(req: Request) {
     return this.history.viewer(this.user(req));
   }
-  private maps(dto: { locationMap?: Record<string, string>; masterMap?: Record<string, string> }) {
-    // The location map is a plain object of ids: anything else is refused here.
-    for (const [name, m] of [['locationMap', dto.locationMap], ['masterMap', dto.masterMap]] as const) {
+  private maps(dto: { locationMap?: Record<string, string>; masterMap?: Record<string, string>; seatMap?: Record<string, string> }) {
+    // The maps are plain objects of ids: anything else is refused here.
+    for (const [name, m, most] of [['locationMap', dto.locationMap, 400], ['masterMap', dto.masterMap, 400], ['seatMap', dto.seatMap, 2000]] as const) {
       const entries = Object.entries(m ?? {});
-      if (entries.length > 400) throw new BadRequestException(`${name} is too long.`);
+      if (entries.length > most) throw new BadRequestException(`${name} is too long.`);
       for (const [k, v] of entries) if (!UUID_MAP.test(k) || typeof v !== 'string' || !UUID_MAP.test(v)) throw new BadRequestException(`${name} maps ids to ids.`);
     }
   }

@@ -108,6 +108,8 @@ export interface SeatRecord {
   requisitions: { id: string; title: string; status: string; headcount: number | null }[];
   changes: { id: string; batchId: string; kind: string; effectiveOn: string; status: string; reason: string; createdAt: string; mine: boolean }[];
   canManage: boolean;
+  /** Answer 2683: people in the seat's legal entity with no seat (the switch-on left them out); only for someone who can request job changes. */
+  unseated?: { employeeId: string; name: string; code: string }[];
 }
 type Option = { value: string; label: string };
 /** The choices a seat form needs (the app loads them from the org masters and the seat list). */
@@ -544,10 +546,74 @@ export interface PositionRecordProps {
   hrefs: { person: (employeeId: string) => string; seat: (id: string) => string };
   onSend: SeatDrawerProps['onSend'];
   onWithdraw: (batchId: string) => Promise<void>;
+  /** Answer 2683: puts a person with no seat in this one (a dated job correction someone else approves). */
+  onGiveSeat?: (employeeId: string, effectiveOn: string, reason: string) => Promise<void>;
 }
 
-export function PositionRecordScreen({ state, onRetry, data, options, today, onBack, hrefs, onSend, onWithdraw }: PositionRecordProps) {
+/** Answer 2683: give a person with no seat this seat, from a day, with a reason; another HR person approves the change. */
+export function GiveSeatDrawer({ open, onClose, seat, people, today, onSend }: { open: boolean; onClose: () => void; seat: { code: string; title: string }; people: { employeeId: string; name: string; code: string }[]; today: Date; onSend: (employeeId: string, effectiveOn: string, reason: string) => Promise<void> }) {
+  const [who, setWho] = useState<string | null>(null);
+  const [from, setFrom] = useState<Date | null>(today);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const toast = useToastIfAny();
+  const errors = {
+    who: who ? null : 'Choose the person.',
+    from: from ? null : 'Choose the day they take the seat.',
+    reason: reason.trim().length < 10 ? 'Say why, in 10 characters or more.' : null,
+  };
+  const send = async () => {
+    setTried(true);
+    if (Object.values(errors).some(Boolean)) return;
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onSend(who!, iso(from!), reason.trim());
+      toast?.toast({ title: 'Sent for approval', description: 'Someone else in HR approves it before the person is in the seat.' });
+      onClose();
+    } catch (e) {
+      setFailed((e as Error).message || 'It could not be sent. Try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const err = (k: keyof typeof errors) => (tried && errors[k]) || undefined;
+  return (
+    <Drawer
+      open={open}
+      onOpenChange={(o) => !o && onClose()}
+      title={`Give ${seat.code} to someone`}
+      subtitle={`${seat.title} · approved by someone else before it counts`}
+      size="md"
+      dirty={reason.length > 0 || !!who}
+      notice={failed ? <InlineAlert tone="danger" title={failed} /> : undefined}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" loading={busy} onClick={() => void send()}>
+            Send for approval
+          </Button>
+        </>
+      }
+    >
+      <FormField label="Person without a seat" required error={err('who')}>
+        <Select searchable options={people.map((p) => ({ value: p.employeeId, label: `${p.name} · ${p.code}` }))} value={who} onChange={setWho} placeholder="Choose the person" />
+      </FormField>
+      <FormField label="From" required error={err('from')} helper="A past day corrects their job history from then.">
+        <DatePicker value={from} onChange={setFrom} />
+      </FormField>
+      <FormField label="Reason" required error={err('reason')} helper="The approver sees this.">
+        <TextArea value={reason} onChange={setReason} rows={3} />
+      </FormField>
+    </Drawer>
+  );
+}
+
+export function PositionRecordScreen({ state, onRetry, data, options, today, onBack, hrefs, onSend, onWithdraw, onGiveSeat }: PositionRecordProps) {
   const [drawer, setDrawer] = useState<Open>(null);
+  const [giving, setGiving] = useState(false);
   const toast = useToastIfAny();
   if (state === 'error') return <PeopleFrame active="Positions"><ErrorState title="We couldn't load this seat" description="Check your connection and try again." onRetry={onRetry} /></PeopleFrame>;
   if (state === 'forbidden') return <PeopleFrame active="Positions"><NoAccessState what="positions" grantedBy="your HR admin" /></PeopleFrame>;
@@ -610,7 +676,16 @@ export function PositionRecordScreen({ state, onRetry, data, options, today, onB
             ]}
           />
         </Card>
-        <Card title={`People in the seat · ${data.filled}`}>
+        <Card
+          title={`People in the seat · ${data.filled}`}
+          actions={
+            onGiveSeat && data.unseated?.length && c.status === 'active' && data.vacant > 0 ? (
+              <Button size="sm" icon={Plus} onClick={() => setGiving(true)}>
+                Give a seat
+              </Button>
+            ) : undefined
+          }
+        >
           {data.incumbents.length ? (
             <PlainTable
               label="People in the seat"
@@ -686,6 +761,7 @@ export function PositionRecordScreen({ state, onRetry, data, options, today, onB
         </div>
       )}
       {drawer && <SeatChangeDrawer key={drawer.kind} open kind={drawer.kind} seat={drawer.seat} options={options} today={today} onSend={onSend} onClose={() => setDrawer(null)} />}
+      {giving && onGiveSeat && <GiveSeatDrawer open seat={{ code: data.code, title: c.title }} people={data.unseated ?? []} today={today} onSend={onGiveSeat} onClose={() => setGiving(false)} />}
     </PeopleFrame>
   );
 }
@@ -853,6 +929,7 @@ export const SEAT_RECORD: SeatRecord = {
   requisitions: [{ id: 'j1', title: 'Cashier, Bengaluru', status: 'open', headcount: 1 }],
   changes: [{ id: 'c1', batchId: 'b1', kind: 'change', effectiveOn: '2026-11-25', status: 'approved', reason: 'A new counter opens at the store', createdAt: '2026-11-20T10:00:00Z', mine: true }],
   canManage: true,
+  unseated: [{ employeeId: 'e9', name: 'Priya Shah', code: 'KF-0009' }],
 };
 export const SWITCH_ON: SwitchOnData = {
   enabled: false,

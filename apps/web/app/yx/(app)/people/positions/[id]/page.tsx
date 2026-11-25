@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { PositionRecordScreen, type SeatList, type SeatRecord } from '@yukthix/ui/frame';
 import { loadState, useOrg, useOrgWrite } from '../../../../../../lib/yx-org';
 import { useSeatOptions, useSendSeatChanges } from '../../../../../../lib/yx-positions';
+import { usePeopleWrite } from '../../../../../../lib/yx-people';
 
 const enc = encodeURIComponent;
 
 // People › Positions › a seat (POS-02, Enterprise E1): details, the people in it, the seats under it, its dated history,
-// requisitions and changes. The requester may withdraw a change still waiting for approval.
+// requisitions and changes. The requester may withdraw a change still waiting for approval. Answer 2683: "Give a seat"
+// sends a dated job correction for a person with no seat; someone else approves it (People › Changes).
 export default function YxPositionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
@@ -18,6 +20,7 @@ export default function YxPositionPage({ params }: { params: Promise<{ id: strin
   const options = useSeatOptions(Boolean(seat.data?.canManage), list.data);
   const send = useSendSeatChanges();
   const write = useOrgWrite();
+  const change = usePeopleWrite();
   const st = loadState(seat);
   return (
     <PositionRecordScreen
@@ -31,6 +34,10 @@ export default function YxPositionPage({ params }: { params: Promise<{ id: strin
       onSend={send}
       onWithdraw={async (batchId) => {
         await write('POST', `/positions/changes/${enc(batchId)}/withdraw`);
+      }}
+      onGiveSeat={async (employeeId, effectiveDate, reason) => {
+        await change('POST', '/changes', { employeeId, changeType: 'correction', effectiveDate, payload: { assignment: { positionId: id } }, reason });
+        await seat.refetch();
       }}
     />
   );

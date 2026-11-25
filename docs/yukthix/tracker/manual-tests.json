@@ -27550,6 +27550,44 @@
                     "note": "Enterprise E1 (answers 2340, 2341, 2641-2643). Positive and negative: API positions.e2e-spec.ts and position-rules.spec.ts; kit positions.test.tsx; web yx-positions-pages.test.tsx and yx-nav.test.ts."
           },
           {
+                    "id": "MT-E1-2680-RESTRUCTURE-SEATS",
+                    "area": "Enterprise E1 follow-up: a seat column in the restructure plan (answer 2680)",
+                    "screen": "People › Restructure (PPL-09), step Checks › Each person",
+                    "url": "http://localhost:3000/yx/people/restructure",
+                    "account": "hr@demo-org.test (HR Admin) sends; panel@demo-org.test (a second HR person) approves. Positions switched on for the entity people land in.",
+                    "steps": [
+                              "Start a move inside the entity (or a merge into an entity that uses positions). Pick two people and a new department; go to the Checks step.",
+                              "Look at the Each person table. Leave the Seat cells empty.",
+                              "Choose a full seat for one person.",
+                              "Choose a seat with room for each person.",
+                              "Send for approval. As panel@, approve it.",
+                              "Repeat step 1 with an entity that does not use positions."
+                    ],
+                    "expected": "Step 2: a Seat column; each person shows \"Can't move\" with 'choose the seat'. Step 3: that person says the seat is full. Step 4: both are Ready; each list shows only the seats of the entity people land in, with the room left. Step 5: the sender cannot approve their own; after panel@ approves, the seat page shows the people in their seats from the move date. Step 6: no Seat column. No sideways scroll at 1278 x 635.",
+                    "stories": [],
+                    "note": "Answer 2680 (founder 25 Nov 2026). Positive and negative: API positions.e2e-spec.ts ('answer 2680'); kit restructure-live.test.tsx ('answer 2680')."
+          },
+          {
+                    "id": "MT-E1-2683-GIVE-SEAT",
+                    "area": "Enterprise E1 follow-up: Give a seat to someone the switch-on left out (answer 2683)",
+                    "screen": "People › Positions › a seat (POS-02), card People in the seat",
+                    "url": "http://localhost:3000/yx/people/positions",
+                    "account": "hr@demo-org.test sends; panel@demo-org.test approves; a viewer with org.structure.view only.",
+                    "steps": [
+                              "Open a seat with a vacancy in an entity where someone has no seat (for example the HR person who approved the switch-on).",
+                              "Press Give a seat, then Send for approval with nothing filled in.",
+                              "Choose the person, keep today's date, write a reason, and send.",
+                              "Try to approve the change yourself in People › Changes.",
+                              "As panel@, approve it. Open the seat again.",
+                              "Open a full seat; then open any seat as the viewer."
+                    ],
+                    "expected": "Step 1: a Give a seat button on the People in the seat card. Step 2: 'Choose the person.' and 'Say why, in 10 characters or more.'; nothing is sent. Step 3: a toast 'Sent for approval'. Step 4: refused: someone else approves. Step 5: the person shows in the seat and is no longer offered. Step 6: no Give a seat on a full seat, and none for the viewer.",
+                    "stories": [
+                              "People › Positions › POS-02 · Give a seat (answer 2683)"
+                    ],
+                    "note": "Answer 2683 (founder 25 Nov 2026). Positive and negative: API positions.e2e-spec.ts ('answer 2683'); kit positions.test.tsx; web yx-positions-pages.test.tsx."
+          },
+          {
                     "id": "MT-E4-LEDGER-MAPPING",
                     "area": "Enterprise E4: ledger mapping and the suspense account (O19, O20)",
                     "screen": "Pay › Ledger mapping (PAY-62); Settings › Payroll & Statutory › Accounting & costing (4.12)",
