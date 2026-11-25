@@ -167,21 +167,32 @@ describe('RichTextEditor', () => {
     const u = userEvent.setup();
     const onChange = vi.fn();
     render(<RichTextEditor aria-label="Message" defaultValue="<p>Hello</p>" onChange={onChange} />);
-    for (const name of ['Strikethrough', 'Code']) {
+    // Format selected text, as a person does. (With an empty cursor the marks were only "stored" marks, which
+    // ProseMirror drops whenever it re-reads the DOM selection: after a popover hands focus back, that read came
+    // before or after the check depending on load, so the test failed on a busy CI runner.)
+    await u.click(await screen.findByRole('textbox', { name: 'Message' }));
+    await u.keyboard('{Control>}a{/Control}');
+    const last = () => String(onChange.mock.lastCall?.[0] ?? '');
+    for (const [name, tag] of [['Strikethrough', '<s>'], ['Code', '<code>']] as const) {
       const b = await screen.findByRole('button', { name });
       await u.click(b);
       await waitFor(() => expect(b).toHaveAttribute('aria-pressed', 'true'));
+      expect(last()).toContain(tag);
+      await u.click(b); // off again: code excludes every other mark
+      await waitFor(() => expect(b).toHaveAttribute('aria-pressed', 'false'));
     }
     await u.click(screen.getByRole('button', { name: 'Quote' }));
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.stringContaining('<blockquote>')));
-    const pick = async (tool: string, choice: string, role: 'button' | 'radio') => {
+    await waitFor(() => expect(last()).toContain('<blockquote>'));
+    // Each picker opens right after the previous change (the case that failed under load) and its choice is saved.
+    const pick = async (tool: string, choice: string, role: 'button' | 'radio', html: RegExp) => {
       await u.click(screen.getByRole('button', { name: tool }));
       await u.click(await screen.findByRole(role, { name: choice }));
+      await waitFor(() => expect(last()).toMatch(html));
       await waitFor(() => expect(screen.getByRole('button', { name: tool })).toHaveAttribute('aria-pressed', 'true'));
     };
-    await pick('Highlight', 'Yellow', 'button');
-    await pick('Text colour', 'Red', 'button');
-    await pick('Font size', 'Large', 'radio');
+    await pick('Highlight', 'Yellow', 'button', /<mark[^>]*data-color/);
+    await pick('Text colour', 'Red', 'button', /color:/);
+    await pick('Font size', 'Large', 'radio', /font-size:/);
   });
 
   it('refuses a link that is not https or mailto (founder 27 Oct 2026)', async () => {
