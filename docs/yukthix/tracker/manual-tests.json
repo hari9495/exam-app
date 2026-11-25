@@ -28063,5 +28063,30 @@
                               "Screens/Learning/LRN-12 · Session feedback and 60-day check"
                     ],
                     "note": "Positive and negative (learning e2e 12/12 incl. new: rating 1-5 only (400), not an attendee (404), another company (404), once (409); summary without names; trainer has no results (2608); checks only after the company's days, only own reports (404 for others), bad answer 400, asked once, answered once (404 after); person tab result for self, manager chain and L&D only (2608); classroom items never complete; course share from the setting; 2609 timings with the HR-days setting). New table learning_feedback in rls-isolation; new routes in endpoint-permissions; settings learning.attendance_share, learning.check_after_days, learning.overdue.manager_days, learning.overdue.hr_days; menu Learning › Training checks for managers. PR #210 base: courses, rules, compliance, requests, external training with bonds, trainers, sessions, QR, team view and the person's Learning tab (its own 10 e2e scenarios pass)."
+          },
+          {
+                    "id": "MT-G3D-SKILLS-NEEDS",
+                    "area": "Batch G3d: skills profile and suggestions, team skills, training needs and budgets, the committees' counts for HR (2620) and POSH awareness course completions in the annual report (2624) (25 Nov 2026)",
+                    "screen": "Learning › My skills (and Skills to confirm); Learning › Team skills; a report's skills; Learning › Needs & budgets; Learning › Compliance (Internal Committees card); Desk › Internal Committee (annual report); Course builder (POSH awareness switch)",
+                    "url": "http://localhost:3000/yx/learning/skills",
+                    "account": "HR admin (L&D, training reports company-wide); a manager (panel@, Divya) with reports; one report; HR with training reports for one legal entity; an Internal Committee member; an employee of another company.",
+                    "steps": [
+                              "As HR in Settings › Performance add a skill 'Forklift handling' under a domain, make it a competency and map it to the report's job title at level 3.",
+                              "As HR build a self-paced course with the skill 'forklift handling' (any case) and a required link; publish. As the report enrol and finish it.",
+                              "As the report open Learning › My skills: see the skill, the gap (required 3) and the banner; Review suggestions; Confirm. Try Confirm again from another tab.",
+                              "As Divya open Learning › Team skills, click the report, Set a level: save with nothing chosen, then level 4. As the report try the person URL of a colleague.",
+                              "As HR open Learning › Needs & budgets › Add need: save empty; then for the report, Skill gap, High, ₹5,000. Select it › Plan with a course (choose none, then a course). Close another need.",
+                              "Budgets tab › Set a budget: none chosen; then the report's department ₹4,000. Check Spent (completed course costs + approved external training) and 'Over by'.",
+                              "In the course builder turn on 'POSH awareness training' for a course; an employee completes it. As a committee member open the Internal Committee annual report.",
+                              "As HR open Learning › Compliance (Internal Committees card). As the entity-only HR open it. As another company open the same pages."
+                    ],
+                    "expected": "Step 2: on completion a pending suggestion (level 2, from the course) appears; skills not in the library are ignored. Step 3: My skills lists the skill 'Not assessed yet' against 3 with the gap; Confirm gives a toast and the level 2 from the course; the second confirm says it was decided already. Step 4: 'Choose the skill.' / 'Choose the level.'; then 'Level saved'; the matrix shows 4 against 3; a colleague's skills page is not found. Step 5: errors for name and person; then 'Need added.'; plan needs a course; the row shows Planned with the course. Step 6: 'Choose the department.'; then the row with Spent and 'Over by …'. Step 7: the report shows 'Awareness course completions 1' next to the sessions. Step 8: HR sees each committee with 'Fewer than 5' instead of complaint counts below 5, sessions and course completions, no names; the entity-only HR and other companies see no card (403). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Learning/LRN-09 · Team skills matrix",
+                              "Screens/Learning/LRN-10 · Skills profile",
+                              "Screens/Learning/LRN-15 · Skill suggestions to confirm",
+                              "Screens/Learning/LRN-11 · Training needs and budgets"
+                    ],
+                    "note": "Positive and negative (learning e2e 15/15 incl. G3d: suggestion from a completed course once; others 404, another company 404; L&D sees but neither decides nor assesses; decide once (409); assess by the manager only (403 self), level 1-5 (400), library skills only (400); team matrix for direct reports; needs L&D only (403), person or department not both (400), bad priority 400, plan needs a course (400), unknown ids 404; budget negative 400, unknown department 400, spent = completed course costs + approved external; 2620 counts company-wide training reports only (403 entity-scoped and employees), none below 5, no names; 2624 POSH course completions in the committee report; rls 33/33; kit learn-skills-live 9). New tables learning_skill_levels, learning_skill_suggestions, learning_needs, learning_budgets in rls-isolation; learning_courses.posh_awareness; new routes in endpoint-permissions; menu: My skills (everyone), Team skills (managers), Needs & budgets (learning.manage)."
           }
 ]
