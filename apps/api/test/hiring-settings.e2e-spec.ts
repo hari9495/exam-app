@@ -178,6 +178,7 @@ describe('Settings 6.1 Hiring', () => {
     expect(after.values).toEqual({
       'ats.retention_months': '18',
       'hiring.reject.email_candidate': 'on',
+      'hiring.reminders': 'off',
       'ats.referral.bonus_inr': '50000',
       'ats.referral.qualify_days': '60',
       'hiring.requisition.default_recruiter': users.rec,
@@ -185,6 +186,7 @@ describe('Settings 6.1 Hiring', () => {
       'ats.headcount_plan.manager_view': 'off',
       'ats.referral.self_apply_days': '30',
       'hiring.pay_range.show': 'on',
+      'hiring.record_visibility': 'off',
       'hiring.pay_history.ask': 'on',
       'hiring.rediscovery.ai': 'on',
       'hiring.rehire_flag.blocks_screening': 'on',
@@ -195,6 +197,10 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.offer.clawback_basis': 'full',
       'hiring.bgv.decider_other_person': 'off',
       'hiring.interview_day.slot_minutes': '60',
+      // Retire /v2 (2427, 2429): interview hours and the two organisation switches are on 6.1 too.
+      'hiring.interview_hours.days': 'mon,tue,wed,thu,fri',
+      'hiring.interview_hours.from': '09:30',
+      'hiring.interview_hours.to': '18:30',
       'hiring.interview_day.assign': 'by_panel',
       'hiring.notetaker.enabled': 'on',
       'hiring.notetaker.ai_draft': 'on',
