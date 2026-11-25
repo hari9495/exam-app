@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { CoursePlayerScreen } from './learn-me';
 import { COURSES, PLAYER_ITEMS } from './learn-data';
-import { livePlayer } from './learn-live-samples';
+import { FOOD_SAFETY, liveMySessions, livePlayer } from './learn-live-samples';
 
 const meta: Meta = { title: 'Screens/Learning/LRN-02 · Course player', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -17,3 +17,4 @@ export const Phone: S = { name: 'Phone', globals: PHONE, render: () => <CoursePl
 // Batch G3a: a course I am enrolled in; and completed with the certificate.
 export const Enrolled: S = { name: 'Enrolled · required items to finish', render: () => <CoursePlayerScreen live={livePlayer()} /> };
 export const EnrolledDone: S = { name: 'Completed · certificate issued', render: () => <CoursePlayerScreen live={livePlayer({ data: { ...livePlayer().data!, status: 'completed', certificate: { title: 'Food safety basics', issuedOn: '2026-10-01', expiresOn: '2027-10-01' } } })} /> };
+export const LiveClassroom: S = { name: 'Classroom · book a seat and check in', render: () => <CoursePlayerScreen live={livePlayer({ data: { ...livePlayer().data!, course: { ...FOOD_SAFETY, title: 'Forklift safety', type: 'classroom' } }, sessions: liveMySessions() })} /> };

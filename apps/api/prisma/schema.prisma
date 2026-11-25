@@ -13357,8 +13357,86 @@ model LrnCourse {
   updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz(3)
   items           LrnCourseItem[]
   enrolments      LrnEnrolment[]
+  sessions        LrnSession[]
 
   @@map("lrn_courses")
+}
+
+/// Batch G3b (M07 Q6-Q8): a session of a classroom or virtual course: slots [{ id, date, start, end }], seats, waitlist.
+model LrnSession {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  courseId       String    @map("course_id") @db.Uuid
+  slots          Json
+  venue          String?   @db.VarChar(200)
+  link           String?   @db.VarChar(1000)
+  trainerUserId  String    @map("trainer_user_id") @db.Uuid
+  seats          Int
+  costs          Json      @default("[]")
+  status         String    @default("scheduled") @db.VarChar(10)
+  codeSecret     String    @map("code_secret") @db.VarChar(64)
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz(3)
+  checkSentAt    DateTime? @map("check_sent_at") @db.Timestamptz(3)
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  course         LrnCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  seatRows       LrnSessionSeat[]
+  attendance     LrnAttendance[]
+  feedback       LrnFeedback[]
+
+  @@index([organizationId, courseId], map: "lrn_sessions_course_idx")
+  @@map("lrn_sessions")
+}
+
+/// Batch G3b: a seat in a session (seated or waiting, first come first served; withdrawn ones stay as history).
+model LrnSessionSeat {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  sessionId      String       @map("session_id") @db.Uuid
+  enrolmentId    String       @map("enrolment_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  status         String       @db.VarChar(10)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  session        LrnSession   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  enrolment      LrnEnrolment @relation(fields: [enrolmentId], references: [id], onDelete: Cascade)
+
+  @@map("lrn_session_seats")
+}
+
+/// Batch G3b: one person's mark for one slot (by the check-in code, or by hand).
+model LrnAttendance {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  sessionId      String     @map("session_id") @db.Uuid
+  slotId         String     @map("slot_id") @db.VarChar(20)
+  userId         String     @map("user_id") @db.Uuid
+  mark           String     @db.VarChar(8)
+  method         String     @db.VarChar(8)
+  markedBy       String?    @map("marked_by") @db.Uuid
+  markedAt       DateTime   @default(now()) @map("marked_at") @db.Timestamptz(3)
+  session        LrnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, slotId, userId], map: "lrn_attendance_key")
+  @@map("lrn_attendance")
+}
+
+/// Batch G3b (M07 Q8): an attendee's reaction (overall and trainer, 1-5), or the manager's check of applying the skill.
+model LrnFeedback {
+  id             String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  sessionId      String     @map("session_id") @db.Uuid
+  kind           String     @db.VarChar(8)
+  aboutUserId    String     @map("about_user_id") @db.Uuid
+  byUserId       String     @map("by_user_id") @db.Uuid
+  overall        Int?
+  trainer        Int?
+  applying       String?    @db.VarChar(8)
+  comment        String?    @db.VarChar(1000)
+  createdAt      DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  session        LrnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, kind, aboutUserId], map: "lrn_feedback_key")
+  @@map("lrn_feedback")
 }
 
 /// Batch G3a: one item of a course: a video or PDF (a scanned file) or an https link.
@@ -13397,6 +13475,7 @@ model LrnEnrolment {
   course         LrnCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
   progress       LrnItemProgress[]
   certificate    LrnCertificate?
+  seats          LrnSessionSeat[]
 
   @@index([organizationId, userId], map: "lrn_enrolments_user_idx")
   @@map("lrn_enrolments")

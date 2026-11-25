@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
-import { Tx, audit, companyContext, inCompany } from '../org-structure/org-structure.service';
+import { CompanyContext, Tx, audit, companyContext, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { ScopeUser, buildViewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -312,20 +312,25 @@ export class CoursesService {
       if (!e.course.items.some((i) => i.id === itemId)) throw new NotFoundException('No such item.');
       await tx.lrnItemProgress.createMany({ data: [{ organizationId: c.organizationId, enrolmentId: e.id, itemId }], skipDuplicates: true });
       const done = new Set([...e.progress.map((p) => p.itemId), itemId]);
-      const complete = e.course.items.filter((i) => i.required).every((i) => done.has(i.id));
-      let certificate = null;
-      if (complete) {
-        const today = todayIst();
-        await tx.lrnEnrolment.update({ where: { id: e.id }, data: { status: 'completed', completedAt: new Date() } });
-        if (e.course.certificate) {
-          const expires = e.course.validMonths ? addMonths(today, e.course.validMonths) : null;
-          await tx.lrnCertificate.create({ data: { organizationId: c.organizationId, enrolmentId: e.id, courseId: e.courseId, userId: me, title: e.course.title, issuedOn: new Date(`${today}T00:00:00Z`), expiresOn: expires ? new Date(`${expires}T00:00:00Z`) : null } });
-          certificate = { title: e.course.title, issuedOn: today, expiresOn: expires };
-        }
-        await audit(tx, c, 'learning.enrolment.completed', 'lrn_enrolment', e.id, { courseId: e.courseId, certificate: Boolean(certificate) });
-      }
+      // Classroom and virtual courses complete only through an attended session (G3b close), not by reading the items.
+      const complete = e.course.type === 'self_paced' && e.course.items.filter((i) => i.required).every((i) => done.has(i.id));
+      const certificate = complete ? await this.complete(tx, c, e, e.course) : null;
       return { progress: progressOf(e.course.items, [...done]), completed: complete, certificate };
     });
+  }
+
+  /** Completes an enrolment and issues the course's certificate (valid for its months); shared with sessions (G3b). */
+  async complete(tx: Tx, c: CompanyContext, e: { id: string; courseId: string; userId: string }, course: { title: string; certificate: boolean; validMonths: number | null }) {
+    const today = todayIst();
+    await tx.lrnEnrolment.update({ where: { id: e.id }, data: { status: 'completed', completedAt: new Date() } });
+    let certificate = null;
+    if (course.certificate) {
+      const expires = course.validMonths ? addMonths(today, course.validMonths) : null;
+      await tx.lrnCertificate.create({ data: { organizationId: c.organizationId, enrolmentId: e.id, courseId: e.courseId, userId: e.userId, title: course.title, issuedOn: new Date(`${today}T00:00:00Z`), expiresOn: expires ? new Date(`${expires}T00:00:00Z`) : null } });
+      certificate = { title: course.title, issuedOn: today, expiresOn: expires };
+    }
+    await audit(tx, c, 'learning.enrolment.completed', 'lrn_enrolment', e.id, { courseId: e.courseId, certificate: Boolean(certificate) });
+    return certificate;
   }
 
   /** An item's video or PDF, for someone enrolled (or finished); only clean files open. */

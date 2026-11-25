@@ -1,4 +1,5 @@
 import type { LiveCourse, LiveCourseBuilder, LiveMyLearning, LiveNominate, LivePlayer } from './learn-courses-live';
+import type { LiveFeedback, LiveMySessions, LiveSessionPage, LiveSessions, LiveTrainerCode } from './learn-sessions-live';
 
 // Batch G3: sample live data for the Learning screens (stories and tests).
 export const LRN_TODAY = new Date(2026, 9, 1, 10, 0);
@@ -83,5 +84,90 @@ export const liveNominate = (over: Partial<LiveNominate> = {}): LiveNominate => 
   today: LRN_TODAY,
   onSend: async (ids) => ({ nominated: ids.length }),
   onClose: () => undefined,
+  ...over,
+});
+
+/* G3b sessions */
+const SLOTS = [
+  { id: 's1', date: '2026-10-01', start: '09:30', end: '13:00' },
+  { id: 's2', date: '2026-10-02', start: '09:30', end: '13:00' },
+];
+export const SESSION_LIVE_PAGE: LiveSessionPage = {
+  id: 'ss1',
+  course: 'Forklift safety',
+  type: 'classroom',
+  venue: 'Hosur training room',
+  link: null,
+  trainer: 'Divya Rao',
+  isLd: true,
+  seats: 2,
+  status: 'scheduled',
+  slots: SLOTS,
+  share: 75,
+  seated: [
+    { userId: 'u1', name: 'Rohit Bhat' },
+    { userId: 'u2', name: 'Meena Iyer' },
+  ],
+  waiting: [{ userId: 'u3', name: 'Arjun Nair' }],
+  attendance: [
+    { userId: 'u1', name: 'Rohit Bhat', marks: ['present', null], method: 'code' },
+    { userId: 'u2', name: 'Meena Iyer', marks: ['late', null], method: 'manual' },
+  ],
+  results: [
+    { userId: 'u1', name: 'Rohit Bhat', attended: 1, ok: false },
+    { userId: 'u2', name: 'Meena Iyer', attended: 1, ok: false },
+  ],
+  feedback: { responses: 0, overall: null, trainer: null, comments: [] },
+  costs: [{ label: 'Trainer fee', amount: 5000 }],
+};
+const ok = <T,>(v: T) => () => Promise.resolve(v);
+export const liveSessions = (over: Partial<LiveSessions> = {}): LiveSessions => ({
+  view: 'list',
+  state: 'ready',
+  isLd: true,
+  sessions: [{ id: 'ss1', course: 'Forklift safety', type: 'classroom', start: '2026-10-01', venue: 'Hosur training room', trainer: 'Divya Rao', seats: 2, seated: 2, waiting: 1, status: 'scheduled' }],
+  page: SESSION_LIVE_PAGE,
+  courses: [{ id: 'c9', title: 'Forklift safety', type: 'classroom' }, { id: 'c10', title: 'Excel for planners', type: 'virtual' }],
+  people: [{ id: 'u9', name: 'Divya Rao' }, { id: 'u1', name: 'Rohit Bhat' }],
+  today: LRN_TODAY,
+  onOpen: () => {},
+  onSchedule: ok({ id: 'ss2' }),
+  onShowCode: () => {},
+  onMarks: ok({ marked: 1 }),
+  onWithdraw: ok({ promoted: 'u3' }),
+  onClose: ok({ completed: 1, noShow: 1 }),
+  ...over,
+});
+export const liveTrainerCode = (over: Partial<LiveTrainerCode> = {}): LiveTrainerCode => ({
+  state: 'ready',
+  page: SESSION_LIVE_PAGE,
+  slotId: 's1',
+  onSlot: () => {},
+  code: { code: '482913', secondsLeft: 21 },
+  onRefresh: () => {},
+  onMarks: ok({ marked: 2 }),
+  ...over,
+});
+export const liveMySessions = (over: Partial<LiveMySessions> = {}): LiveMySessions => ({
+  today: '2026-10-01',
+  sessions: [
+    { id: 'ss1', courseId: 'c9', course: 'Forklift safety', type: 'classroom', trainer: 'Divya Rao', slots: SLOTS, venue: 'Hosur training room', link: null, status: 'scheduled', seatsLeft: 0, mySeat: 'seated', canRate: false },
+    { id: 'ss2', courseId: 'c9', course: 'Forklift safety', type: 'classroom', trainer: 'Divya Rao', slots: [{ id: 's1', date: '2026-11-05', start: '09:30', end: '13:00' }], venue: 'Hosur training room', link: null, status: 'scheduled', seatsLeft: 12, mySeat: null, canRate: false },
+  ],
+  onBook: ok({ status: 'seated', position: null }),
+  onCancel: ok({ cancelled: true }),
+  onCheckIn: ok({ checkedIn: true }),
+  onRate: () => {},
+  ...over,
+});
+export const liveFeedback = (over: Partial<LiveFeedback> = {}): LiveFeedback => ({
+  mode: 'reaction',
+  state: 'ready',
+  session: { id: 'ss1', course: 'Forklift safety', trainer: 'Divya Rao', when: '1 Oct 2026 · Hosur training room' },
+  checks: [{ sessionId: 'ss1', userId: 'u1', person: 'Rohit Bhat', course: 'Forklift safety', closedOn: '2026-08-01' }],
+  afterDays: 60,
+  onReact: ok({ rated: true }),
+  onCheck: ok({ checked: true }),
+  onDone: () => {},
   ...over,
 });

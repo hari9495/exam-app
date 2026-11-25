@@ -21,6 +21,7 @@ import { FileUpload } from '../../components/upload';
 import { formatDate, formatINR } from '../../lib/format';
 import { errorText } from '../org/org-kit';
 import { GrowthFrame, ProgressRing, SkillLevel } from './growth-kit';
+import { MySessionsCard, type LiveMySessions } from './learn-sessions-live';
 
 export type LiveCourseType = 'self_paced' | 'classroom' | 'virtual';
 export interface LiveCourseItem {
@@ -298,6 +299,8 @@ export interface LivePlayer {
   /** Opens an item's video or PDF (fetched with the person's sign-in). */
   onOpenFile: (itemId: string) => Promise<unknown>;
   onDone: (itemId: string) => Promise<{ completed: boolean }>;
+  /** Classroom and virtual courses: the course's sessions (book a seat, check in, rate). */
+  sessions?: LiveMySessions;
 }
 
 export function LivePlayerScreen({ live }: { live: LivePlayer }) {
@@ -377,6 +380,7 @@ export function LivePlayerScreen({ live }: { live: LivePlayer }) {
         </ol>
         {stage}
       </div>
+      {d.course.type !== 'self_paced' && live.sessions && <MySessionsCard live={live.sessions} />}
     </GrowthFrame>
   );
 }

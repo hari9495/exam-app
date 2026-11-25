@@ -101,7 +101,9 @@ const LATER_SUPPORT_EXCLUDED = [
   // Batch G2 item 76: personal celebration opt-outs.
   'eng_celebration_optouts',
   // Batch G3a: Learning courses, items, enrolments, progress and certificates.
-  'lrn_courses', 'lrn_course_items', 'lrn_enrolments', 'lrn_item_progress', 'lrn_certificates'];
+  'lrn_courses', 'lrn_course_items', 'lrn_enrolments', 'lrn_item_progress', 'lrn_certificates',
+  // Batch G3b: sessions, seats, attendance and feedback.
+  'lrn_sessions', 'lrn_session_seats', 'lrn_attendance', 'lrn_feedback'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 

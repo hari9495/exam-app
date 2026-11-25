@@ -24,6 +24,7 @@ import { GrowthFrame, ProgressRing, RatingScale, SkillLevel, type Device } from 
 import { budgetCheck, enrol } from './growth-logic';
 import type { LoadState } from './perf-goals';
 import { LiveMyLearningScreen, LiveNominateSheet, LivePlayerScreen, type LiveMyLearning, type LiveNominate, type LivePlayer } from './learn-courses-live';
+import { LiveTrainingFeedbackScreen, type LiveFeedback } from './learn-sessions-live';
 import './growth.css';
 
 /* ================================================================== Shared types */
@@ -641,7 +642,20 @@ export function SkillsProfileScreen({ persona, device = 'desktop', person, role,
 /* ================================================================== LRN-12 · Session feedback + 60-day manager check */
 
 /** LRN-12 (T4): reaction survey after a session (Emp) and the manager's 60-day "applying the skill?" check (Q8). */
-export function TrainingFeedbackScreen({ mode, device = 'desktop', course, trainer, person, sent }: { mode: 'reaction' | 'manager-check'; device?: Device; course: string; trainer: string; person?: string; sent?: boolean }) {
+export function TrainingFeedbackScreen(props: TrainingFeedbackProps | { live: LiveFeedback }) {
+  return 'live' in props ? <LiveTrainingFeedbackScreen live={props.live} /> : <TrainingFeedbackDesign {...props} />;
+}
+
+interface TrainingFeedbackProps {
+  mode: 'reaction' | 'manager-check';
+  device?: Device;
+  course: string;
+  trainer: string;
+  person?: string;
+  sent?: boolean;
+}
+
+function TrainingFeedbackDesign({ mode, device = 'desktop', course, trainer, person, sent }: TrainingFeedbackProps) {
   const [overall, setOverall] = useState<number | null>(null);
   const [trainerScore, setTrainerScore] = useState<number | null>(null);
   const [applying, setApplying] = useState('');
