@@ -39,6 +39,7 @@ test('a month of payroll: run, approve, bank file, publish, file PF, and the emp
   await suresh.getByRole('list', { name: 'Runs by pay group' }).getByRole('listitem').filter({ hasText: 'Monthly staff · KFPL' }).filter({ hasNotText: 'KFPL-TN' }).getByRole('button', { name: 'Start run' }).click();
   const start = suresh.getByRole('dialog', { name: 'Start a payroll run' });
   await expect(start.getByRole('combobox', { name: /Pay group/ })).toContainText('Monthly staff · KFPL');
+  await expect(start.getByRole('combobox', { name: /Pay group/ })).not.toContainText('KFPL-TN');
   await start.getByRole('textbox', { name: /^Month/ }).fill(last);
   await start.getByRole('button', { name: 'Create run' }).click();
   await expect(suresh.getByRole('heading', { name: `Payroll · ${lastText}` })).toBeVisible({ timeout: 30_000 });
