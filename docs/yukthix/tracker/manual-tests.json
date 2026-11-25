@@ -28234,5 +28234,25 @@
                               "Screens/People/PPL-25 · Asset register (Asset page · details, history, edit details, view only, in stock warranty ended)"
                     ],
                     "note": "Positive and negative (lifecycle-6c e2e 'the asset page': warranty months 121 and -1 refused 400, details with warranty end 2026-01-31 + 13 months = 2027-02-28, five history events with who, holder cleared on return, IT reads it, employee 403, unknown 404, other company 404; kit asset-page tests 5). Migration 761 (maker, model, invoice_number, warranty_months on assets); route GET lifecycle/assets/:id (asset.view, checked per place)."
+          },
+          {
+                    "id": "MT-T2A-LEAVE-REQUEST-LIMITS",
+                    "area": "T2-A (item 39, D8): leave request limits: most requests a month, days between two requests, weekdays (26 Nov 2026)",
+                    "screen": "Time › Set-up › a leave type › Rules (TIM-27); Apply leave",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin (time set-up); an employee with a balance of that type; another employee; another company's admin.",
+                    "steps": [
+                              "As HR open a leave type › Rules: set Most requests in a month 1, Days between two requests 10, untick every day and Save; then tick Monday and Wednesday and Save.",
+                              "As the employee apply for that type on a Tuesday.",
+                              "Apply for a Monday; then for the Monday two weeks later in the same month; then for the Wednesday 9 days after the first Monday.",
+                              "As another employee apply for the Monday a week after the first.",
+                              "Withdraw the first request and apply for the later Monday again.",
+                              "Try (API) Most requests in a month 0, Days between 91, weekday 7."
+                    ],
+                    "expected": "Step 1: 'Tick at least one day.' and nothing saved; then saved. Step 2: '<type> can be taken only on Monday and Wednesday.' Step 3: the first Monday is accepted; the second: 'can be asked for at most once a month. You already have 1 request starting in <month>'; the Wednesday: 'needs 10 days between two requests' naming the earlier dates. Step 4: accepted (someone else's requests never count). Step 5: accepted. Step 6: 400 with a plain message. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-27 · Leave type (Rules tab)"
+                    ],
+                    "note": "Positive and negative (time-leave-rules e2e 'T2-A (D8)': bad values 400, saved and returned, Tuesday refused, Monday allowed, once a month, 10-day gap, other person not counted, withdrawn not counted; kit leave-rules-live test). Rules live in the leave type's rules JSON (no migration). Each limit is off until HR sets it."
           }
 ]

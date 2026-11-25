@@ -30,6 +30,25 @@ describe('TIM-27 type rules, live', () => {
     await waitFor(() => expect(live.onSaveType).toHaveBeenCalledWith('el', expect.objectContaining({ rules: expect.objectContaining({ maxDaysPerMonth: 3, maxDays: null }) })));
   });
 
+  it('T2-A (D8): requests a month, days between requests and weekdays are saved; no day ticked is refused', async () => {
+    const live = editor('el');
+    wrap(<LeaveTypeEditorScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: 'Rules' }));
+    await ue.type(screen.getByLabelText(/^Most requests in a month/), '2');
+    await ue.type(screen.getByLabelText(/^Days between two requests/), '10');
+    const days = screen.getByRole('group', { name: 'Can be taken on' });
+    for (const d of ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']) await ue.click(within(days).getByRole('checkbox', { name: d }));
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    expect(screen.getAllByText('Tick at least one day.').length).toBeGreaterThan(0);
+    expect(live.onSaveType).not.toHaveBeenCalled();
+    // Save re-renders the tab, so the group is found again.
+    const again = screen.getByRole('group', { name: 'Can be taken on' });
+    await ue.click(within(again).getByRole('checkbox', { name: 'Wednesday' }));
+    await ue.click(within(days).getByRole('checkbox', { name: 'Monday' }));
+    await ue.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(live.onSaveType).toHaveBeenCalledWith('el', expect.objectContaining({ rules: expect.objectContaining({ maxRequestsPerMonth: 2, minGapDays: 10, allowedWeekdays: [1, 3] }) })));
+  });
+
   it('partially paid needs a share of 1 to 99; it saves as one pay step', async () => {
     const live = editor('cl');
     wrap(<LeaveTypeEditorScreen live={live} />);
