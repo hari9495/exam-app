@@ -20,6 +20,9 @@ import { pdfText } from './fixtures/pdf-text';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { OfferBuilderService } from '../src/offers/offer-builder.service';
 
+// Offer letters are P05 letters: their files must pass the (fake) virus check before they open; CI has no ClamAV.
+process.env.SD_SCANNER = 'dev-fake';
+
 // HIR-09 offer builder and HIR-29 conditions end to end against the real database (forced RLS, the app role). A recruiter
 // with the offer-pay key drafts an offer from the company's salary structure (Pay's own breakup), sends it for approval
 // (the company's chain; never approved by the sender), and sends it; above the grade range adds the step from the company

@@ -12,6 +12,9 @@ import { docxBlocks } from '../src/documents/letters/docx';
 import { OfferTemplatesToLetters } from '../src/offers/offer-letters';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
+// Offer letters are P05 letters: their files must pass the (fake) virus check before they open; CI has no ClamAV.
+process.env.SD_SCANNER = 'dev-fake';
+
 // Answer 2515: each older offer template becomes a P05 'offer' letter template once (the one-off command): the same text
 // as a .docx, merge fields mapped, e-sign → "person signs", switched on; a name HR already uses waits as a draft; running
 // it again makes nothing; one company never touches another; the older routes send people to Letters.
