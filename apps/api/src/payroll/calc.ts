@@ -240,6 +240,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     let eps = ZERO;
     let edli = ZERO;
     let base = ZERO;
+    let paidOn = ZERO;
     // shortcut: an item-only off-cycle takes PF on all its PF wage under one full-month ceiling, not each arrears month's own.
     (itemsOnly ? [{ ...s.segments[0], days: monthDays }] : s.segments).forEach((g, i) => {
       const f = D(g.days).div(monthDays);
@@ -253,6 +254,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       emp = emp.add(r.employee);
       edli = edli.add(r.edli);
       base = base.add(wage);
+      paidOn = paidOn.add(r.base);
       if (s.profile.eps) {
         epf = epf.add(r.epf);
         eps = eps.add(r.eps);
@@ -265,7 +267,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     add({ code: statCode('pf_employer'), name: nameOf(statCode('pf_employer'), 'Provident fund (employer)'), kind: 'employer', segmentNo: 0, amount: epf, explanation: s.profile.eps ? 'Employer share to the provident fund (after the pension part).' : 'Employer share, all to the provident fund (not a pension member).', rule: c });
     add({ code: 'eps_employer', name: 'Pension fund (employer)', kind: 'employer', segmentNo: 0, amount: eps, explanation: `Employer share to the pension fund (capped; none from age ${String(pfRs.values.epsStopAge)}).`, rule: c });
     add({ code: 'edli_employer', name: 'EDLI (employer)', kind: 'employer', segmentNo: 0, amount: edli, explanation: 'Deposit-linked insurance on the PF wage up to its ceiling.', rule: c });
-    add({ code: 'pf_admin', name: 'PF admin charges (employer)', kind: 'employer', segmentNo: 0, amount: roundFor(base.mul(String(pfRs.values.adminRate)), 'rupee'), explanation: 'PF administration charges on this wage (the establishment minimum is settled on the challan).', rule: c });
+    add({ code: 'pf_admin', name: 'PF admin charges (employer)', kind: 'employer', segmentNo: 0, amount: roundFor(paidOn.mul(String(pfRs.values.adminRate)), 'rupee'), explanation: 'PF administration charges on this wage (the establishment minimum is settled on the challan).', rule: c });
   }
   const esiRs = rule('IN.ESI');
   if (esiRs && s.profile.esi !== 'no') {

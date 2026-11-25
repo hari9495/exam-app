@@ -22,6 +22,12 @@ describe('payroll statutory review (26 Nov 2026): figures the code gets wrong to
     expect(amount(r, 'pf_admin')).toBe('125.00');
   });
 
+  it('R1 (negative): below the ceiling, and with PF on the actual wage, admin follows the wage PF is paid on', () => {
+    expect(amount(calculatePayslip(snapshot({ segments: [{ ...snapshot().segments[0], lines: withBasic('20000') }] }), RULES), 'pf_admin')).toBe('100.00');
+    const s = snapshot({ segments: [{ ...snapshot().segments[0], lines: withBasic('60000') }] });
+    expect(amount(calculatePayslip({ ...s, profile: { ...s.profile, pfOnActualWage: true } }, RULES), 'pf_admin')).toBe('300.00');
+  });
+
   it('R2 a mid-month joiner gets the full monthly PF ceiling, not a ceiling cut by the days worked', () => {
     // Joins 16 Oct 2026 on basic 40,000: earned basic 40,000 x 16/31 = 20,645 (below 25,000), so PF = 12% x 20,645 = 2,477.
     // Code: ceiling 25,000 x 16/31 = 12,903, PF 1,548 (employee and employer both short by 929; the ECR shows the wrong wage).

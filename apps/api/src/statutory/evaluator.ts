@@ -76,7 +76,8 @@ export function pf(rs: RuleSet, i: { pfWage: Prisma.Decimal.Value; onActualWage:
   const employer = round(base.mul(D(v.employerRate as string)), how);
   const eps = i.age >= Number(v.epsStopAge) ? ZERO : Prisma.Decimal.min(round(Prisma.Decimal.min(wage, D(v.epsCeiling as string)).mul(D(v.epsRate as string)), how), employer);
   const edli = round(Prisma.Decimal.min(wage, D(v.edliCeiling as string)).mul(D(v.edliRate as string)), how);
-  return { employee, eps, epf: employer.sub(eps), edli, citation: cite(rs) };
+  // `base`: the wage contributions are paid on (the admin charges follow it, review R1).
+  return { employee, eps, epf: employer.sub(eps), edli, base, citation: cite(rs) };
 }
 
 /** ESI: covered for the whole contribution period once covered at its start; amounts rounded up to the rupee. */
