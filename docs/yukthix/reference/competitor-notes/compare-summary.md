@@ -550,3 +550,8 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2667: the recognition wall has no leaderboard, because the company thanks with badges only (2603). Suggested answer: keep it off until points are chosen.
 - 2668: survey results cannot be exported yet. Suggested answer: a CSV of the shown (above the smallest group) results only.
 - 2669: a manager's team in survey results is their direct reports today. Suggested answer: yes; reports further down roll up only into the company and department results.
+- 2630-2632 (the 11 /v2 pages with no replacement, builder 1, 25 Nov):
+  - 2630: /v2/approvals, /v2/offer-template and the approval-email list stay until the Enterprise approval rules editor (E2) replaces them.
+  - 2631: /v2 brand, campaigns, settings/easy-apply and settings/pipelines get YukthiX versions in a small hiring-settings batch right after batch G, then the old pages are deleted.
+  - 2632: /v2 all-users, organizations, plans, platform-admins and system-logs move into the staff console with the platform screens, then the old pages are deleted.
+- Founder answers (25 Nov 2026, "ok for all"): 2630-2632 and 2660-2669 approved exactly as suggested; 2640-2658 (Enterprise plan, on feat/yukthix-retire-v2-settings) approved exactly as suggested.
