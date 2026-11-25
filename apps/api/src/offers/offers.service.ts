@@ -15,7 +15,7 @@ import { OfferTemplatesService } from './offer-templates.service';
 import { CreateOfferDto } from './dto/create-offer.dto';
 import { buildOfferPdf } from './offer-pdf';
 import { renderOfferTemplate } from './offer-render';
-import { ApprovalsService, ApprovalSummary, SubmitResult } from '../approvals/approvals.service';
+import { ApprovalsService, ApprovalSummary } from '../approvals/approvals.service';
 import { OtpService } from '../auth/otp.service';
 import { publicBrand } from '../public-applications/public-brand';
 
@@ -204,10 +204,16 @@ export class OffersService {
     return this.withApprovalSummaries(context, offers);
   }
 
-  // One batched getSummariesFor call for the whole list, not one per offer -- avoids N+1.
+  // The P03 approval timeline of each offer (one batched read), in the summary shape the offer lists read.
   private async withApprovalSummaries(context: TenantContext, offers: Offer[]): Promise<(Offer & { approval: ApprovalSummary | null })[]> {
-    const approvalByOfferId = await this.approvals.getSummariesFor(context, 'offer', offers.map((o) => o.id));
-    return offers.map((offer) => ({ ...offer, approval: approvalByOfferId.get(offer.id) ?? null }));
+    const ids = offers.flatMap((o) => (o.wfRequestId ? [o.wfRequestId] : []));
+    const reqs = ids.length ? await this.tenantPrisma.forTenant(context, (tx) => tx.wfRequest.findMany({ where: { organizationId: context.organizationId as string, id: { in: ids } } })) : [];
+    return offers.map((offer) => {
+      const r = reqs.find((x) => x.id === offer.wfRequestId);
+      if (!r) return { ...offer, approval: null };
+      const steps = (r.steps as { name: string; state: string }[]).map((st) => ({ name: st.name, state: (st.state === 'approved' || st.state === 'skipped' ? 'approved' : st.state === 'rejected' ? 'rejected' : 'pending') as 'pending' | 'approved' | 'rejected' }));
+      return { ...offer, approval: { status: r.status, currentStep: r.currentStep, steps } };
+    });
   }
 
   // Org-scoped status flips for the offer approval lifecycle -- mirrors
@@ -227,33 +233,7 @@ export class OffersService {
   }
 
   // Submits the offer through the approvals engine. Only a draft offer is eligible -- one
-  // already pending, approved, or sent has either cleared this gate already or isn't
-  // resubmittable. Mirrors PipelineService.submitRequisition's auto-pass/pending split.
-  async submitOffer(context: TenantContext, actorUserId: string, offerId: string): Promise<SubmitResult> {
-    const offer = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.offer.findFirst({ where: { id: offerId, organizationId: context.organizationId as string } }),
-    );
-    if (!offer) throw new NotFoundException(`Offer ${offerId} not found`);
-    if (offer.status !== 'draft') throw new ConflictException('Only a draft offer can be submitted');
-
-    const result = await this.approvals.submit(context, 'offer', offerId, actorUserId);
-    if (result.status === 'approved') {
-      await this.markApproved(context, offerId);
-    } else {
-      await this.setOfferStatus(context, offerId, 'pending_approval');
-    }
-    return result;
-  }
-
-  // Cancels the offer's open approval request (permission-checked by ApprovalsService.cancel via
-  // isConfigurer) and puts the offer back in draft so it can be edited and resubmitted.
-  async cancelOfferApproval(context: TenantContext, actorUserId: string, offerId: string): Promise<void> {
-    const isConfigurer = await this.approvals.isConfigurer(context, actorUserId);
-    await this.approvals.cancelForSubject(context, 'offer', offerId, actorUserId, isConfigurer);
-    await this.markDraft(context, offerId);
-  }
-
-  async sendOffer(context: TenantContext, actorUserId: string, offerId: string): Promise<Offer> {
+   async sendOffer(context: TenantContext, actorUserId: string, offerId: string): Promise<Offer> {
     const orgId = context.organizationId as string;
 
     // Offer gate: when the org has an enabled offer approval chain, only an approved offer may

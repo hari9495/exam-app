@@ -2020,6 +2020,8 @@ model DripCampaign {
   enabled           Boolean  @default(false)
   targetGlobalStage String?  @map("target_global_stage") @db.VarChar(1000) // e.g. 'available'; null = manual enrol only
   stepsJson         String   @default("[]") @map("steps_json") @db.Text
+  /// Retire /v2 (answer 2512): the draft HIR-20 campaign this was moved into (moved once; null = not moved yet).
+  migratedCampaignId String?  @unique(map: "drip_campaigns_migrated_campaign_key") @map("migrated_campaign_id") @db.Uuid
   createdByUserId   String?  @map("created_by_user_id") @db.Uuid
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)

@@ -3,7 +3,6 @@ import { PrismaService, TenantContext, TenantPrismaService, resolvePermissionGra
 import { inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { addDays } from '../time/time-maths';
-import { ApprovalsService } from '../approvals/approvals.service';
 import type { RequestUser } from '../employee-history/employee-history.service';
 import { ScorecardsService } from './scorecards.service';
 
@@ -33,7 +32,6 @@ export class HiringHomeService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly prisma: PrismaService,
     private readonly scorecards: ScorecardsService,
-    private readonly approvals: ApprovalsService,
   ) {}
 
   async home(ctx: TenantContext, user: RequestUser): Promise<HiringHome | null> {
@@ -59,7 +57,6 @@ export class HiringHomeService {
       .sort((a, b) => a.when!.getTime() - b.when!.getTime())
       .map((i) => ({ interviewId: i.id, candidate: i.candidateName, job: i.jobTitle, at: i.when!.toISOString() }));
 
-    const toApprove = (await this.approvals.listRequests(ctx, me, 'inbox')).filter((r) => r.gate === 'offer').map((r) => r.subjectId);
     const jobsKey = keys.has('pipeline:manage') || keys.has('results:view');
     // This week runs Monday to Sunday in IST, as on the HR Home.
     const monday = addDays(today, -((new Date(`${today}T00:00:00Z`).getUTCDay() + 6) % 7));
@@ -80,7 +77,7 @@ export class HiringHomeService {
         where: {
           organizationId: org,
           OR: [
-            { id: { in: [...toApprove, ...p03.map((r) => r.subjectId)] }, status: 'pending_approval' },
+            { id: { in: p03.map((r) => r.subjectId) }, status: 'pending_approval' },
             ...(keys.has('pipeline:manage') ? [{ status: { in: ['draft', 'approved'] }, pipelineEntry: { jobId: { in: jobIds } } }] : []),
           ],
         },

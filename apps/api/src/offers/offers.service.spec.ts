@@ -21,6 +21,7 @@ describe('OffersService', () => {
     offer: Record<string, jest.Mock>;
     organization: Record<string, jest.Mock>;
     user: Record<string, jest.Mock>;
+    wfRequest?: Record<string, jest.Mock>;
   };
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
@@ -202,16 +203,14 @@ describe('OffersService', () => {
       });
     });
 
-    it('batches the approval summary lookup in one call and attaches it per offer (?? null)', async () => {
-      tx.offer.findMany.mockResolvedValue([{ id: 'offer-1' }, { id: 'offer-2' }]);
-      const summary = { status: 'pending_approval', currentStep: 0, steps: [] };
-      approvals.getSummariesFor.mockResolvedValue(new Map([['offer-1', summary]]));
+    it('reads the P03 approval of each offer in one call and attaches it per offer (null without one)', async () => {
+      tx.offer.findMany.mockResolvedValue([{ id: 'offer-1', wfRequestId: 'wf-1' }, { id: 'offer-2', wfRequestId: null }]);
+      tx.wfRequest = { findMany: jest.fn().mockResolvedValue([{ id: 'wf-1', status: 'pending', currentStep: 1, steps: [{ name: 'HR', state: 'approved' }, { name: 'Finance', state: 'waiting' }] }]) };
 
       const offers = await service.listForEntry(context, 'entry-1');
 
-      expect(approvals.getSummariesFor).toHaveBeenCalledTimes(1);
-      expect(approvals.getSummariesFor).toHaveBeenCalledWith(context, 'offer', ['offer-1', 'offer-2']);
-      expect(offers.find((o) => o.id === 'offer-1')!.approval).toEqual(summary);
+      expect(tx.wfRequest.findMany).toHaveBeenCalledTimes(1);
+      expect(offers.find((o) => o.id === 'offer-1')!.approval).toEqual({ status: 'pending', currentStep: 1, steps: [{ name: 'HR', state: 'approved' }, { name: 'Finance', state: 'pending' }] });
       expect(offers.find((o) => o.id === 'offer-2')!.approval).toBeNull();
     });
   });
@@ -227,8 +226,7 @@ describe('OffersService', () => {
     });
 
     it('attaches approval: null for an offer with no open request', async () => {
-      tx.offer.findMany.mockResolvedValue([{ id: 'offer-1' }]);
-      approvals.getSummariesFor.mockResolvedValue(new Map());
+      tx.offer.findMany.mockResolvedValue([{ id: 'offer-1', wfRequestId: null }]);
 
       const offers = await service.listForCandidate(context, 'cand-1');
 
@@ -397,64 +395,6 @@ describe('OffersService', () => {
 
     it('markDraft updates the org-scoped offer status to draft', async () => {
       await service.markDraft(context, 'offer-1');
-      expect(tx.offer.updateMany).toHaveBeenCalledWith({
-        where: { id: 'offer-1', organizationId: 'org-1' },
-        data: { status: 'draft' },
-      });
-    });
-  });
-
-  describe('submitOffer', () => {
-    it('submits a draft offer and sets pending_approval when submit returns pending', async () => {
-      tx.offer.findFirst.mockResolvedValue({ id: 'offer-1', organizationId: 'org-1', status: 'draft' });
-      approvals.submit.mockResolvedValue({ status: 'pending_approval', requestId: 'req-1' });
-
-      const result = await service.submitOffer(context, 'user-1', 'offer-1');
-
-      expect(approvals.submit).toHaveBeenCalledWith(context, 'offer', 'offer-1', 'user-1');
-      expect(tx.offer.updateMany).toHaveBeenCalledWith({
-        where: { id: 'offer-1', organizationId: 'org-1' },
-        data: { status: 'pending_approval' },
-      });
-      expect(result).toEqual({ status: 'pending_approval', requestId: 'req-1' });
-    });
-
-    it('sets status approved immediately when submit auto-passes', async () => {
-      tx.offer.findFirst.mockResolvedValue({ id: 'offer-1', organizationId: 'org-1', status: 'draft' });
-      approvals.submit.mockResolvedValue({ status: 'approved' });
-
-      const result = await service.submitOffer(context, 'user-1', 'offer-1');
-
-      expect(tx.offer.updateMany).toHaveBeenCalledWith({
-        where: { id: 'offer-1', organizationId: 'org-1' },
-        data: { status: 'approved' },
-      });
-      expect(result).toEqual({ status: 'approved' });
-    });
-
-    it('throws NotFoundException for an offer outside the org', async () => {
-      tx.offer.findFirst.mockResolvedValue(null);
-
-      await expect(service.submitOffer(context, 'user-1', 'offer-x')).rejects.toThrow(NotFoundException);
-      expect(approvals.submit).not.toHaveBeenCalled();
-    });
-
-    it('throws ConflictException when the offer is not in draft', async () => {
-      tx.offer.findFirst.mockResolvedValue({ id: 'offer-1', organizationId: 'org-1', status: 'pending_approval' });
-
-      await expect(service.submitOffer(context, 'user-1', 'offer-1')).rejects.toThrow(ConflictException);
-      expect(approvals.submit).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('cancelOfferApproval', () => {
-    it('checks isConfigurer, cancels the open request for the offer subject, then resets to draft', async () => {
-      approvals.isConfigurer.mockResolvedValue(true);
-
-      await service.cancelOfferApproval(context, 'user-1', 'offer-1');
-
-      expect(approvals.isConfigurer).toHaveBeenCalledWith(context, 'user-1');
-      expect(approvals.cancelForSubject).toHaveBeenCalledWith(context, 'offer', 'offer-1', 'user-1', true);
       expect(tx.offer.updateMany).toHaveBeenCalledWith({
         where: { id: 'offer-1', organizationId: 'org-1' },
         data: { status: 'draft' },

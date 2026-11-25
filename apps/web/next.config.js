@@ -35,6 +35,11 @@ const nextConfig = {
     const v2Moved = {
       '/v2/users': '/yx/settings/access',
       '/v2/audit-log': '/yx/settings/audit-log',
+      // Answer 2421: system logs are staff-console only (/staff/system-logs); a company admin's old bookmark opens their audit log.
+      '/v2/system-logs': '/yx/settings/audit-log',
+      // Answers 2433, 2511, 2512: the older approvals inbox is the YukthiX one; drip campaigns are HIR-20 campaigns.
+      '/v2/approvals': '/yx/approvals',
+      '/v2/campaigns': '/yx/hiring/pools',
       '/v2/data-rights': '/yx/hiring/retention',
       '/v2/settings/roles': '/yx/settings/access',
       '/v2/settings/permission-profiles': '/yx/settings/access',
