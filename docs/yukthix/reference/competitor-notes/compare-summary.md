@@ -569,3 +569,4 @@ Because of its size, the batch is built in five parts, each with its own commits
 - 2685: the Positions menu shows for org.position.manage only; org.structure.view holders read seats through the API and see empty seats on the org chart. Suggested answer: keep.
 - 2686: seat changes start today or later (never back-dated). Suggested answer: keep.
 - 2687: positions and the succession register's critical positions are separate lists. Suggested answer: link a critical position to a seat later, with the succession work.
+- Founder answers (25 Nov 2026, "ok for all"): 2680-2687 (Positions) approved exactly as suggested above.
