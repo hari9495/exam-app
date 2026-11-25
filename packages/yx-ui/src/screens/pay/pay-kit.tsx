@@ -347,26 +347,30 @@ export interface ExplainedLine {
   /** Where the source link goes (attendance day, tax workspace). Without it the source is plain text. */
   sourceHref?: string;
   ytd?: number;
+  /** Enterprise E5 (O16): paid separately, on its own bank payment (shown in its own section). */
+  separate?: boolean;
 }
 
 /** Each line with formula, inputs, rule version and segment (YX-PAY-12). Lines expand to show the working. */
 export function WhyThisNumber({ lines, onQuery, defaultOpenId }: { lines: ExplainedLine[]; onQuery?: (line: ExplainedLine) => void; defaultOpenId?: string }) {
   const [open, setOpen] = useState<string | null>(defaultOpenId ?? null);
-  const groups: [ExplainedLine['kind'], string][] = [
-    ['earning', 'Earnings'],
-    ['deduction', 'Deductions'],
-    ['employer', 'Paid by the company (not in your net)'],
+  const groups: [string, string, (l: ExplainedLine) => boolean][] = [
+    ['earning', 'Earnings', (l) => l.kind === 'earning' && !l.separate],
+    ['deduction', 'Deductions', (l) => l.kind === 'deduction' && !l.separate],
+    ['employer', 'Paid by the company (not in your net)', (l) => l.kind === 'employer'],
+    ['separate', 'Paid separately (its own bank payment)', (l) => !!l.separate && l.kind !== 'employer'],
   ];
+  const signed = (l: ExplainedLine) => (l.kind === 'deduction' ? -l.amount : l.amount);
   return (
     <div className="yx-pay-why">
-      {groups.map(([k, title]) => {
-        const ls = lines.filter((l) => l.kind === k);
+      {groups.map(([k, title, inGroup]) => {
+        const ls = lines.filter(inGroup);
         if (!ls.length) return null;
         return (
           <section key={k} className="yx-pay-why__group" aria-label={title}>
             <h3 className="yx-pay-why__title">
               <span>{title}</span>
-              <Amount value={(k === 'deduction' ? -1 : 1) * ls.reduce((a, l) => a + l.amount, 0)} strong />
+              <Amount value={ls.reduce((a, l) => a + signed(l), 0)} strong />
             </h3>
             <ul>
               {ls.map((l) => {
@@ -378,7 +382,7 @@ export function WhyThisNumber({ lines, onQuery, defaultOpenId }: { lines: Explai
                         {l.label}
                         {l.segment && <Badge>{l.segment}</Badge>}
                       </span>
-                      <Amount value={k === 'deduction' ? -l.amount : l.amount} />
+                      <Amount value={signed(l)} />
                     </button>
                     {expanded && (
                       <div className="yx-pay-why__detail">

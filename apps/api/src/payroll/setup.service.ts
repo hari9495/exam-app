@@ -5,11 +5,12 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import type { ScopeUser, Viewer } from '../access/scope';
-import { asDate, dateOf } from '../time/time-core';
+import { asDate, dateOf, monthRange } from '../time/time-core';
 import { addDays } from '../time/time-maths';
 import { StatutoryRulesService } from '../statutory/statutory.service';
 import { coverage, inForce, noPt } from '../statutory/evaluator';
-import { BudgetDto, LayoutDto, LegalOptionDto, MemberDto, PayGroupDto, RegistrationsDto } from './dto-5b';
+import { BudgetDto, LayoutDto, LegalOptionDto, MemberDto, PayGroupDto, PeriodDatesDto, RegistrationsDto } from './dto-5b';
+import { periodDates } from './pay-dates';
 import { entitiesFor, payScope, payViewer, requireEntity, requireSelf } from './pay-access';
 import { SAMPLE_VALUES, renderPayslipPdf } from './payslip-pdf';
 
@@ -277,7 +278,7 @@ export class PaySetupService {
   // ------------------------------------------------------------------------------------------ pay groups (PAY-2.05)
 
   private groupView(g: Prisma.PayGroupGetPayload<object>) {
-    return { id: g.id, legalEntityId: g.legalEntityId, name: g.name, frequency: g.frequency, anchorDate: g.anchorDate ? g.anchorDate.toISOString().slice(0, 10) : null, currency: g.currency, dayBasis: g.dayBasis, cutOffDay: g.cutOffDay, payDay: g.payDay, bankFormat: g.bankFormat, status: g.status, version: g.version };
+    return { id: g.id, legalEntityId: g.legalEntityId, name: g.name, frequency: g.frequency, anchorDate: g.anchorDate ? g.anchorDate.toISOString().slice(0, 10) : null, currency: g.currency, dayBasis: g.dayBasis, cutOffDay: g.cutOffDay, payDay: g.payDay, releaseDay: g.releaseDay, bankFormat: g.bankFormat, status: g.status, version: g.version };
   }
 
   payGroups(ctx: TenantContext, user: ScopeUser) {
@@ -292,7 +293,7 @@ export class PaySetupService {
     return this.run(ctx, user, async (tx, c, v) => {
       await requireEntity(tx, c, v, 'payroll.setup.manage', dto.legalEntityId);
       if ((dto.frequency ?? 'monthly') !== 'monthly' && !dto.anchorDate) throw new BadRequestException('A weekly or fortnightly group needs the first day of one of its pay periods.');
-      const g = await tx.payGroup.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, dayBasis: dto.dayBasis ?? 'calendar', cutOffDay: dto.cutOffDay, payDay: dto.payDay, bankFormat: dto.bankFormat ?? null, frequency: dto.frequency ?? 'monthly', anchorDate: dto.frequency && dto.frequency !== 'monthly' ? new Date(`${dto.anchorDate}T00:00:00Z`) : null, createdBy: c.userId } });
+      const g = await tx.payGroup.create({ data: { organizationId: c.organizationId, legalEntityId: dto.legalEntityId, name: dto.name, dayBasis: dto.dayBasis ?? 'calendar', cutOffDay: dto.cutOffDay, payDay: dto.payDay, releaseDay: dto.releaseDay ?? 0, bankFormat: dto.bankFormat ?? null, frequency: dto.frequency ?? 'monthly', anchorDate: dto.frequency && dto.frequency !== 'monthly' ? new Date(`${dto.anchorDate}T00:00:00Z`) : null, createdBy: c.userId } });
       await audit(tx, c, 'payroll.pay_group.created', 'pay_group', g.id, { name: g.name, legalEntityId: g.legalEntityId });
       return this.groupView(g);
     });
@@ -309,7 +310,7 @@ export class PaySetupService {
     return this.run(ctx, user, async (tx, c, v) => {
       const g = await this.groupIn(tx, c, v, id);
       if (dto.legalEntityId !== g.legalEntityId) throw new BadRequestException('A pay group stays in its legal entity.');
-      const n = await tx.payGroup.updateMany({ where: { id, version: dto.version ?? g.version }, data: { name: dto.name, dayBasis: dto.dayBasis ?? g.dayBasis, cutOffDay: dto.cutOffDay, payDay: dto.payDay, bankFormat: dto.bankFormat ?? null, version: { increment: 1 } } });
+      const n = await tx.payGroup.updateMany({ where: { id, version: dto.version ?? g.version }, data: { name: dto.name, dayBasis: dto.dayBasis ?? g.dayBasis, cutOffDay: dto.cutOffDay, payDay: dto.payDay, releaseDay: dto.releaseDay ?? g.releaseDay, bankFormat: dto.bankFormat ?? null, version: { increment: 1 } } });
       if (!n.count) throw new ConflictException('Someone else changed this pay group. Reload and try again.');
       await audit(tx, c, 'payroll.pay_group.updated', 'pay_group', id, { name: dto.name });
       return this.groupView(await tx.payGroup.findFirstOrThrow({ where: { id } }));
@@ -355,16 +356,45 @@ export class PaySetupService {
     });
   }
 
-  /** The group's pay calendar for a year: each month's period, cut-off and pay date (no rows until a run, 5c). */
+  /** The group's pay calendar for a year: each month's period, cut-off, release and pay date (E5: a month's own dates). */
   calendar(ctx: TenantContext, user: ScopeUser, id: string, year: string) {
     return this.run(ctx, user, async (tx, c, v) => {
       const g = await this.groupIn(tx, c, v, id);
-      return Array.from({ length: 12 }, (_, i) => {
-        const month = `${year}-${String(i + 1).padStart(2, '0')}`;
-        const end = addDays(new Date(Date.UTC(Number(year), i + 1, 1)).toISOString().slice(0, 10), -1);
-        const pay = g.payDay === 0 ? end : addDays(end, g.payDay);
-        return { month, periodStart: `${month}-01`, periodEnd: end, cutOff: `${month}-${String(g.cutOffDay).padStart(2, '0')}`, payDate: pay };
-      });
+      return Promise.all(
+        Array.from({ length: 12 }, async (_, i) => {
+          const month = `${year}-${String(i + 1).padStart(2, '0')}`;
+          const end = addDays(new Date(Date.UTC(Number(year), i + 1, 1)).toISOString().slice(0, 10), -1);
+          const pay = g.payDay === 0 ? end : addDays(end, g.payDay);
+          const d = await periodDates(tx, c.organizationId, g, month);
+          return { month, periodStart: `${month}-01`, periodEnd: end, cutOff: d.cutOff, release: d.release, changed: d.changed, payDate: pay };
+        }),
+      );
+    });
+  }
+
+  /**
+   * Enterprise E5 (O17, answer 2657): one month's own cut-off and release dates, with a reason (the group's days stay for
+   * the other months). Only a month not locked yet; the cut-off falls inside the month, the release on or after it.
+   */
+  setPeriodDates(ctx: TenantContext, user: ScopeUser, id: string, month: string, dto: PeriodDatesDto) {
+    return this.run(ctx, user, async (tx, c, v) => {
+      const org = c.organizationId;
+      const g = await this.groupIn(tx, c, v, id);
+      const { from, to } = monthRange(month);
+      const locked = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: g.legalEntityId, payGroupId: null, periodStart: asDate(from), stage: { in: ['locked', 'filed'] } } });
+      if (locked) throw new ConflictException(`${month} is locked: its dates no longer change.`);
+      if (dto.cutOffOn < from || dto.cutOffOn > to) throw new BadRequestException(`The cut-off is a day in ${month}.`);
+      if (dto.releaseOn && dto.releaseOn < dto.cutOffOn) throw new BadRequestException('Payslips are released on or after the cut-off.');
+      const at = asDate(from);
+      const was = await periodDates(tx, org, g, month);
+      const own = await tx.payGroupPeriodDate.findFirst({ where: { organizationId: org, payGroupId: id, periodStart: at } });
+      const data = { cutOffOn: asDate(dto.cutOffOn), releaseOn: dto.releaseOn ? asDate(dto.releaseOn) : null, reason: dto.reason, changedBy: v.userId!, changedAt: new Date() };
+      if (own) {
+        const n = await tx.payGroupPeriodDate.updateMany({ where: { id: own.id, version: dto.version ?? own.version }, data: { ...data, version: { increment: 1 } } });
+        if (!n.count) throw new ConflictException('Someone else changed these dates. Reload and try again.');
+      } else await tx.payGroupPeriodDate.create({ data: { organizationId: org, legalEntityId: g.legalEntityId, payGroupId: id, periodStart: at, ...data } });
+      await audit(tx, c, 'payroll.period_dates.changed', 'pay_group', id, { month, from: { cutOff: was.cutOff, release: was.release }, to: { cutOff: dto.cutOffOn, release: dto.releaseOn ?? null }, reason: dto.reason });
+      return periodDates(tx, org, g, month);
     });
   }
 

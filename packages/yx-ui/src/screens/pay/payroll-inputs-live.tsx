@@ -106,10 +106,10 @@ export interface LiveInputs {
   };
   oneTime: {
     rows: OneTimeItem[] | null;
-    onAdd: (row: { employeeId: string; componentCode: string; amount: string; month: string; reason: string; endOn?: string; draft?: boolean }) => Promise<{ status: string }>;
+    onAdd: (row: { employeeId: string; componentCode: string; amount: string; month: string; reason: string; endOn?: string; draft?: boolean; paidSeparately?: boolean; grossUp?: boolean }) => Promise<{ status: string; rolledTo?: string }>;
     onCancel: (id: string) => Promise<unknown>;
     /** PAY-05 bulk actions on drafts (POST one-time-pays/bulk). */
-    onBulk?: (ids: string[], action: 'submit' | 'delete') => Promise<{ items: { id: string; status: string }[] }>;
+    onBulk?: (ids: string[], action: 'submit' | 'delete') => Promise<{ items: { id: string; status: string; rolledTo?: string }[] }>;
     /** PAY-05 effect summary: gross, PF, ESI, TDS and net change from the payroll calculator (GET one-time-pays/effect). */
     onEffect?: (x: { employeeId: string; componentCode: string; amount: string; month: string }) => Promise<OneTimeEffect>;
   };
@@ -498,6 +498,8 @@ function LiveOneTimePanel({ live }: { live: LiveInputs }) {
     { key: 'amount', header: 'Amount', type: 'money', value: (r) => Number(r.amount), total: 'sum', width: 120 },
     { key: 'period', header: 'Pay in', value: (r) => monthName(r.month), width: 140 },
     { key: 'recurring', header: 'Recurring', value: (r) => (r.endOn ? `Until ${formatDate(day(r.endOn))}` : 'One time'), width: 160, optional: true },
+    // Enterprise E5: paid separately, the tax paid by the company, and an item moved on after the cut-off.
+    { key: 'how', header: 'How paid', value: (r) => [r.paidSeparately && 'Separately', r.grossUp && 'Tax paid by company', r.rolledFrom && `Late for ${monthName(r.rolledFrom)}`].filter(Boolean).join(' · '), width: 220, optional: true },
     { key: 'reason', header: 'Reason', value: (r) => r.reason, width: 220, optional: true },
     { key: 'source', header: 'Source', value: (r) => (r.source === 'manual' ? 'Manual' : componentText(r.source)), width: 110, optional: true },
     { key: 'status', header: 'Status', type: 'status', value: (r) => otStatus(r.status).label, statusTone: (v) => Object.values(OT_STATUS).find((s) => s.label === v)?.tone ?? 'neutral', width: 170 },
@@ -510,7 +512,8 @@ function LiveOneTimePanel({ live }: { live: LiveInputs }) {
         const out = await live.oneTime.onBulk!(ids, action);
         setSelected([]);
         const waiting = out.items.filter((i) => i.status === 'pending').length;
-        say(action === 'delete' ? `${plural(ids.length, 'draft')} deleted` : `${plural(ids.length, 'item')} sent${waiting ? `; ${waiting} above the company's limit ${waiting === 1 ? 'waits' : 'wait'} for approval` : ''}`);
+        const rolled = out.items.filter((i) => i.rolledTo).length;
+        say(action === 'delete' ? `${plural(ids.length, 'draft')} deleted` : `${plural(ids.length, 'item')} sent${waiting ? `; ${waiting} ${waiting === 1 ? 'waits' : 'wait'} for approval` : ''}${rolled ? `; ${rolled} came after the cut-off and ${rolled === 1 ? 'moves' : 'move'} to next month` : ''}`);
       } catch (e) {
         say(failText(e), 'error');
         throw e;
@@ -675,6 +678,8 @@ function OneTimeDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: 
   const [recurring, setRecurring] = useState(false);
   const [end, setEnd] = useState<Date | null>(null);
   const [reason, setReason] = useState('');
+  const [separate, setSeparate] = useState(false);
+  const [grossUp, setGrossUp] = useState(false);
   const { busy, error, run } = useRun();
   const [effect, setEffect] = useState<OneTimeEffect | null>(null);
   const [effectError, setEffectError] = useState<string | null>(null);
@@ -716,8 +721,11 @@ function OneTimeDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: 
       return;
     }
     void run(draft ? 'draft' : 'add', async () => {
-      const r = await live.oneTime.onAdd({ employeeId: who!.id, componentCode: component, amount: String(amount), month, reason: reason.trim(), ...(recurring && end ? { endOn: isoOf(end) } : {}), ...(draft ? { draft: true } : {}) });
-      onSaved(draft ? `${componentText(component)} of ${formatINR(amount!)} for ${who!.name} saved as a draft` : r.status === 'pending' ? `${componentText(component)} of ${formatINR(amount!)} for ${who!.name} added; above the company's limit, so it waits for approval` : `${componentText(component)} of ${formatINR(amount!)}${recurring ? ' a month' : ''} for ${who!.name} added`);
+      const r = await live.oneTime.onAdd({ employeeId: who!.id, componentCode: component, amount: String(amount), month, reason: reason.trim(), ...(recurring && end ? { endOn: isoOf(end) } : {}), ...(draft ? { draft: true } : {}), ...(!recurring && separate ? { paidSeparately: true } : {}), ...(!recurring && grossUp ? { grossUp: true } : {}) });
+      const what = `${componentText(component)} of ${formatINR(amount!)}${recurring ? ' a month' : ''} for ${who!.name}`;
+      // Answer 2657: an item after the month's cut-off moves to the next run, and the sender is told here.
+      const late = r.rolledTo ? `. It came after the cut-off for ${monthName(month)}, so it is paid in ${monthName(r.rolledTo)}` : '';
+      onSaved(draft ? `${what} saved as a draft` : r.status === 'pending' ? `${what} added; it waits for approval${late}` : `${what} added${late}`);
       onClose();
     });
   };
@@ -775,6 +783,12 @@ function OneTimeDrawer({ live, onClose, onSaved }: { live: LiveInputs; onClose: 
             </FormField>
           </FieldRow>
           <Checkbox label="Recurring (has a start and end)" checked={recurring} onChange={setRecurring} description="The last month is paid prorated." />
+          {!recurring && (
+            <>
+              <Checkbox label="Pay separately" checked={separate} onChange={setSeparate} description="Its own line in the bank file and its own section on the payslip, in the same month." />
+              <Checkbox label="Company pays the tax (gross-up)" checked={grossUp} onChange={setGrossUp} description="The person gets the full amount; the tax is paid by the company and shown on the payslip. Needs the payroll approver." />
+            </>
+          )}
           {recurring && (
             <FormField id="ot-end" label="End date" required error={shown.errorOf('ot-end')}>
               <DatePicker value={end} onChange={setEnd} min={start} />

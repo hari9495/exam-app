@@ -71,7 +71,7 @@ export interface Snapshot {
   /** Review M3: the employment's joining date (LWF coverage by days employed). */
   joinedOn?: string;
   /** `label`: the payslip text of an arrears or F&F item (batch 5g). */
-  oneTime: { id: string; code: string; amount: string; days: number | null; label?: string }[];
+  oneTime: { id: string; code: string; amount: string; days: number | null; label?: string; separate?: boolean; grossUp?: boolean }[];
   /** inFeedDays: the part of `days` the Time feed already counts as unpaid (HLP-12 answer 65), not taken off again. */
   special: { kind: 'suspension' | 'maternity' | 'injury'; days: string; daysBefore: number; inFeedDays?: string }[];
   averageDailyWage: string | null;
@@ -108,6 +108,8 @@ export interface CalcLine {
   rule?: Citation;
   verify?: boolean;
   sourceRef?: string;
+  /** Enterprise E5 (O16): paid separately (its own bank file line and payslip section). */
+  separate?: boolean;
 }
 
 export interface CalcResult {
@@ -207,7 +209,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   for (const o of s.oneTime) {
     const c = comps.get(o.code);
     const amount = o.days === null ? D(o.amount) : D(o.amount).mul(o.days).div(monthDays);
-    add({ code: o.code, name: c?.name ?? o.code, kind: c?.kind === 'deduction' || c?.kind === 'employer' || c?.kind === 'reimbursement' ? c.kind : 'earning', segmentNo: 0, amount: r2(amount), explanation: o.label ?? (o.days === null ? 'One-time pay for this month.' : `Recurring pay ${rupees(o.amount)} for ${o.days} of ${monthDays} days (its last month).`), sourceRef: o.id });
+    add({ code: o.code, name: c?.name ?? o.code, kind: c?.kind === 'deduction' || c?.kind === 'employer' || c?.kind === 'reimbursement' ? c.kind : 'earning', segmentNo: 0, amount: r2(amount), explanation: o.label ?? (o.days === null ? `One-time pay for this month${o.separate ? ', paid separately' : ''}.` : `Recurring pay ${rupees(o.amount)} for ${o.days} of ${monthDays} days (its last month).`), sourceRef: o.id, ...(o.separate ? { separate: true } : {}) });
   }
 
   // 3. Wage bases from flags; the Code wage add-back (YX-PAY-47).
@@ -353,15 +355,41 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
         add({ code: 'loan_perquisite', name: 'Loan perquisite (taxable, not paid)', kind: 'info', segmentNo: 0, amount: l.value, explanation: `Interest benefit on a loan: ${rupees(l.maxOutstanding)}, the most owed this month, × (SBI rate ${l.refRate}% − loan rate ${D(s.perqLoans.find((x) => x.id === l.id)?.ratePct ?? 0).toString()}%) ÷ 12. Counted for income tax; not paid to you.`, rule: r.citation, sourceRef: l.id ?? undefined });
       }
     }
+    // Enterprise E5 (O16, answer 2656): grossed-up one-time items: the company pays their tax, so the person gets the whole
+    // amount. That tax is itself taxable pay, so it is found by repeating P = tax(with the items + P) − tax(without them).
+    const upIds = new Set(s.oneTime.filter((o) => o.grossUp).map((o) => o.id));
+    const up = lines.filter((l) => l.kind === 'earning' && !!l.sourceRef && upIds.has(l.sourceRef));
+    const upAmount = up.reduce((t, l) => t.add(l.amount), ZERO);
+    const upSeparate = up.length > 0 && up.every((l) => l.separate);
+    const grossUp = (extraOf: (p: Prisma.Decimal) => Prisma.Decimal) => {
+      let p = ZERO;
+      for (let i = 0; i < 100; i++) {
+        const next = extraOf(p).toDecimalPlaces(0, Prisma.Decimal.ROUND_UP);
+        if (next.eq(p)) return p;
+        p = next;
+      }
+      throw new StatutoryError('The tax paid by the company on a grossed-up item did not settle. Pay it without gross-up, or check the amount.');
+    };
+    const addGrossUp = (p: Prisma.Decimal) => {
+      if (p.isZero()) return;
+      const names = [...new Set(up.map((l) => l.name))].join(', ');
+      add({ code: 'tax_paid_by_company', name: 'Tax paid by the company', kind: 'earning', segmentNo: 0, amount: p, explanation: `The income tax on ${names}, paid by the company (gross-up); it is taxable pay too, so it is included in the tax worked out.`, ...(upSeparate ? { separate: true } : {}) });
+      add({ code: statCode('tds'), name: `${nameOf(statCode('tds'), 'Income tax (TDS)')} on ${names}`.slice(0, 80), kind: 'deduction', segmentNo: 0, amount: p, explanation: `The tax on ${names} and on the tax paid for it, deducted in full now and paid by the company, so ${names} is paid in full.`, rule: tdsRs ? cite(tdsRs) : undefined, ...(upSeparate ? { separate: true } : {}) });
+    };
     if (itemsOnly) {
       // The extra tax for the year that these items cause (the year's pay with and without them), deducted in full now.
       const t = s.tax;
       const month0 = { month: on.slice(0, 7), gross: t.future.gross, basic: t.future.basic, hra: t.future.hra, pt: t.future.pt ?? '0' };
+      const at = (g: Prisma.Decimal) => projectTax(t, rules, { ...month0, gross: D(t.future.gross).add(g).toFixed(2) });
       const without = projectTax(t, rules, month0);
-      const withItems = projectTax(t, rules, { ...month0, gross: D(t.future.gross).add(taxable).toFixed(2) });
+      const rest = D(taxable).sub(upAmount);
+      const withItems = at(rest);
       const extra = Prisma.Decimal.max(ZERO, D(withItems.tax.total).sub(without.tax.total));
-      tax = { ...withItems, monthTds: extra.toFixed(2) };
+      const p = upAmount.gt(0) ? grossUp((x) => Prisma.Decimal.max(ZERO, D(at(rest.add(upAmount).add(x)).tax.total).sub(withItems.tax.total))) : ZERO;
+      const final = upAmount.gt(0) ? at(rest.add(upAmount).add(p)) : withItems;
+      tax = { ...final, monthTds: extra.add(p).toFixed(2) };
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: extra, explanation: `The year's tax with this payment ${rupees(withItems.tax.total)} less without it ${rupees(without.tax.total)} (${withItems.regime} regime), deducted in full now.`, rule: tdsRs ? cite(tdsRs) : undefined });
+      addGrossUp(p);
     } else {
       const plus = (x: string, y?: string) => D(x).add(y ?? 0).toFixed(2);
       // Answer 2451: this month's loan perquisite also counts for each month left in the year (spread evenly).
@@ -369,8 +397,17 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       const employerNow = sumOf((l) => l.kind === 'employer' && [statCode('pf_employer'), 'eps_employer'].includes(l.code));
       const nps = s.tax.deductions.filter((x) => x.key === 'sec80ccd2').reduce((t, x) => t.add(x.amount), ZERO);
       const withRetire = s.tax.employerRetirementPast === undefined ? s.tax : { ...s.tax, employerRetirement: D(s.tax.employerRetirementPast).add(D(employerNow).mul(1 + s.tax.futureMonths)).add(nps).toFixed(2) };
-      tax = projectTax(perqMonth.gt(0) ? { ...withRetire, perquisites: plus(withRetire.perquisites, perqMonth.mul(1 + withRetire.futureMonths).toFixed(2)) } : withRetire, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
+      const taxIn = perqMonth.gt(0) ? { ...withRetire, perquisites: plus(withRetire.perquisites, perqMonth.mul(1 + withRetire.futureMonths).toFixed(2)) } : withRetire;
+      const at = (g: Prisma.Decimal) => projectTax(taxIn, rules, { month: on.slice(0, 7), gross: plus(g.toFixed(2), mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
+      // The month's TDS is on the pay without the grossed-up items (spread as usual); their tax is deducted in full now.
+      const rest = D(taxable).sub(upAmount);
+      tax = at(rest);
+      const p = upAmount.gt(0) ? grossUp((x) => Prisma.Decimal.max(ZERO, D(at(rest.add(upAmount).add(x)).tax.total).sub(tax!.tax.total))) : ZERO;
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: D(tax.monthTds), explanation: `Tax for the year ${rupees(tax.tax.total)} (${tax.regime} regime) less ${rupees(tax.alreadyDeducted)} already deducted, over ${tax.remainingPeriods} pay ${tax.remainingPeriods === 1 ? 'period' : 'periods'}.`, rule: tdsRs ? cite(tdsRs) : undefined });
+      if (upAmount.gt(0)) {
+        tax = { ...at(rest.add(upAmount).add(p)), monthTds: D(tax.monthTds).add(p).toFixed(2) };
+        addGrossUp(p);
+      }
     }
   }
 

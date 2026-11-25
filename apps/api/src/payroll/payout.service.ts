@@ -207,6 +207,14 @@ export class PayoutService implements OnModuleInit {
       const deaths = await tx.fnfSettlement.findMany({ where: { organizationId: org, exitType: 'death', OR: [{ runId: run.id }, { secondRunId: run.id }] } });
       // PAY-10: an invalid IFSC waits for the corrected account (the reimbursement account route is a different account).
       const ifscWait = only?.purpose === 'reimbursement' ? new Set<string>() : await waitingForIfsc(tx, org, slips);
+      // Enterprise E5 (O16, answer 2656): what a payslip pays separately goes on its own line (same month, same account).
+      // shortcut: a pay split or an F&F payee list pays the whole net as before; split the separate part too if asked.
+      const sepLines = await tx.payslipLine.findMany({ where: { organizationId: org, payslipId: { in: slips.map((s) => s.id) }, separate: true }, select: { payslipId: true, kind: true, amount: true, name: true } });
+      const separateOf = (s: Slip) => {
+        const ls = sepLines.filter((l) => l.payslipId === s.id);
+        const amount = ls.reduce((t, l) => (l.kind === 'earning' ? t.add(l.amount) : l.kind === 'deduction' ? t.sub(l.amount) : t), D(0));
+        return { amount: Prisma.Decimal.max(D(0), Prisma.Decimal.min(amount, s.net)), name: ls.find((l) => l.kind === 'earning')?.name ?? 'Paid separately' };
+      };
       for (const s of slips) {
         if (ifscWait.has(s.id)) {
           excluded.push({ employeeId: s.employeeId, reason: 'Waiting for the employee to correct the IFSC of their bank account.' });
@@ -260,16 +268,14 @@ export class PayoutService implements OnModuleInit {
         if (mode !== 'bank') excluded.push({ employeeId: s.employeeId, reason: `Paid by ${mode} (disbursement register).` });
         else if (!a) excluded.push({ employeeId: s.employeeId, reason: `No ${only?.purpose ?? 'salary'} bank account.` });
         else if (a.usableFrom > now) excluded.push({ employeeId: s.employeeId, reason: `A new bank account is in its cooling period until ${a.usableFrom.toISOString()}.` });
-        else
-          rows.push({
-            slip: s,
-            account: this.open(org, s.employeeId, a.accountEnc),
-            ifsc: a.ifsc,
-            name: a.holderName,
-            amount: s.net.toFixed(2),
-            code: employments.find((e) => e.id === s.employmentId)?.employeeCode ?? '',
-            narration: `Salary ${dateOf(s.periodStart).slice(0, 7)}`,
-          });
+        else {
+          const base = { slip: s, account: this.open(org, s.employeeId, a.accountEnc), ifsc: a.ifsc, name: a.holderName, code: employments.find((e) => e.id === s.employmentId)?.employeeCode ?? '' };
+          const month = dateOf(s.periodStart).slice(0, 7);
+          const sep = separateOf(s);
+          const salary = s.net.sub(sep.amount);
+          if (salary.gt(0)) rows.push({ ...base, amount: salary.toFixed(2), narration: `Salary ${month}` });
+          if (sep.amount.gt(0)) rows.push({ ...base, amount: sep.amount.toFixed(2), narration: `${sep.name} ${month}`.slice(0, 60) });
+        }
       }
       if (!rows.length && !remits.length) throw new ConflictException({ statusCode: 409, message: 'Nobody in this run is waiting to be paid by bank.', excluded });
       let out: Awaited<ReturnType<typeof writeBankFile>>;

@@ -62,6 +62,32 @@ describe('Payroll › Inputs (PAY-04 … 06 live)', () => {
     expect((await screen.findAllByText(/Bonus of ₹25,000 for Divya Raghunathan added/)).length).toBeGreaterThan(0);
   });
 
+  it('E5 (2656, 2657): paid separately and gross-up go with a one-time item; late items say where they are paid', async () => {
+    const live = inputs();
+    live.oneTime.onAdd = vi.fn(async () => ({ status: 'pending', rolledTo: '2026-10' }));
+    render(<OneTimePayScreen live={live} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Add one-time pay' })[0]);
+    const drawer = screen.getByRole('dialog');
+    await pick();
+    await ue.type(within(drawer).getByRole('textbox', { name: /^Amount/ }), '100000');
+    await ue.type(within(drawer).getByRole('textbox', { name: /Reason/ }), 'Joining bonus');
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Pay separately/ }));
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Company pays the tax/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Add one-time pay' }));
+    await waitFor(() => expect(live.oneTime.onAdd).toHaveBeenCalledWith({ employeeId: 'p2', componentCode: 'bonus', amount: '100000', month: '2026-09', reason: 'Joining bonus', paidSeparately: true, grossUp: true }));
+    expect((await screen.findAllByText(/came after the cut-off for September 2026, so it is paid in October 2026/)).length).toBeGreaterThan(0);
+  });
+
+  it('E5 (negative): a recurring item offers neither paying separately nor gross-up', async () => {
+    render(<OneTimePayScreen live={inputs()} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Add one-time pay' })[0]);
+    const drawer = screen.getByRole('dialog');
+    expect(within(drawer).getByRole('checkbox', { name: /Pay separately/ })).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Recurring/ }));
+    expect(within(drawer).queryByRole('checkbox', { name: /Pay separately/ })).not.toBeInTheDocument();
+    expect(within(drawer).queryByRole('checkbox', { name: /Company pays the tax/ })).not.toBeInTheDocument();
+  });
+
   it('one-time pay above the company limit says it waits for approval; an API refusal stays in the drawer', async () => {
     const live = inputs();
     live.oneTime.onAdd = vi.fn().mockResolvedValueOnce({ status: 'pending' }).mockRejectedValueOnce(new Error('September 2026 is locked. Add it to the next month.'));
@@ -99,7 +125,7 @@ describe('Payroll › Inputs (PAY-04 … 06 live)', () => {
     await ue.click(screen.getByRole('checkbox', { name: /Arjun Kulkarni/ }));
     await ue.click(screen.getByRole('button', { name: 'Send 1 for approval' }));
     await waitFor(() => expect(onBulk).toHaveBeenCalledWith(['d1'], 'submit'));
-    expect((await screen.findAllByText(/1 item sent; 1 above the company's limit waits for approval/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/1 item sent; 1 waits for approval/)).length).toBeGreaterThan(0);
     await ue.click(screen.getByRole('checkbox', { name: /Sridhar Fernandes/ }));
     await ue.click(screen.getByRole('button', { name: 'Delete 1 draft' }));
     await ue.click(screen.getByRole('button', { name: 'Delete drafts' }));

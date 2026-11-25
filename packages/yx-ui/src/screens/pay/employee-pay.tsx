@@ -1917,6 +1917,7 @@ const toExplained = (lines: PayslipLine[]): ExplainedLine[] =>
             formula: l.explanation || undefined,
             inputs: l.quantity && l.rate ? `${l.quantity} × ${rupees(l.rate)}` : undefined,
             rule: l.rule ? `${l.rule.statute} ${l.rule.jurisdiction} ${l.rule.version}${l.rule.verify || l.verify ? ' (to verify)' : ''}` : undefined,
+            ...(l.separate ? { separate: true } : {}),
           },
         ]
       : [],

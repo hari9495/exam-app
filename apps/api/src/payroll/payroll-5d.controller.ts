@@ -131,7 +131,7 @@ export class Payroll5dController {
   @RequirePermissions('payroll.payslip.publish')
   @RequireStepUp()
   publish(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PublishDto) {
-    return this.payslips.publish(ctx, this.user(req), id, dto.confirmation, dto.selfApprovalReason);
+    return this.payslips.publish(ctx, this.user(req), id, dto.confirmation, dto.selfApprovalReason, { now: !!dto.releaseNow, reason: dto.releaseReason });
   }
 
   @Get('me/payslips')

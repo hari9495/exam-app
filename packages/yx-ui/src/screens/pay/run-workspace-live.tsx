@@ -17,7 +17,11 @@ import { MenuItem } from '../../components/menu';
 import { useToast } from '../../components/notify';
 import { Dialog } from '../../components/overlay';
 import { Segment } from '../../components/segment';
-import { DescriptionList, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { dateText } from '../time/live/kit';
+import { DescriptionList, ObjectHeader, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
+import { Stepper, type StepperStep } from '../../components/stepper';
+import { DatePicker } from '../../components/date';
+import { Checkbox } from '../../components/choice';
 import { PlainTable } from '../../components/plain-table';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar } from '../../components/filters';
@@ -26,11 +30,11 @@ import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { useRun } from '../org/org-kit';
 import { AttendanceGroupsPanel, FrequencyRunSteps, type AttendanceGroup } from './payroll-run';
-import { FactRow, RunProgress, RunStageTrack, SectionTitle, StateBlock, WhyThisNumber, type ExplainedLine, type RunStage } from './pay-kit';
+import { FactRow, PayFrame, RunProgress, RunStageTrack, SectionTitle, StateBlock, WhyThisNumber, type ExplainedLine, type RunStage } from './pay-kit';
 import { IrreversibleSheet } from '../../components/irreversible';
 import { RunStatusBadge, rupees, runName } from './live/runs';
 import type { Confirmation, LoadState } from './live/types';
-import type { BankFileMade, BankFileRow, FilingRow, PayRun, PayslipDetail, PayslipLine, RunCheck, RunPayslip, RunPerson, RunProgressData, RunReadiness, RunVariance } from './live/types-5j';
+import type { BankFileMade, BankFileRow, FilingRow, PayRun, PayslipDetail, PayslipLine, RunCheck, RunDates, RunPayslip, RunPerson, RunProgressData, RunReadiness, RunVariance } from './live/types-5j';
 
 /** What /yx/payroll/runs/[id] passes to the designed run workspace. */
 export interface LiveRunWorkspaceData {
@@ -58,7 +62,7 @@ export interface LiveRunWorkspaceData {
   onReleaseBank: (bankFileId: string, confirmation: Confirmation) => Promise<unknown>;
   onDownload: (fileId: string, name: string) => Promise<unknown>;
   /** selfApprovalReason: only when the viewer is the sole payroll admin (run.publishAlone, PAY-09). */
-  onPublish: (confirmation: Confirmation, selfApprovalReason?: string) => Promise<unknown>;
+  onPublish: (confirmation: Confirmation, selfApprovalReason?: string, release?: { now: boolean; reason?: string }) => Promise<unknown>;
   /** Off-cycle runs: add an item for a person (search by name). */
   onSearchPeople?: (q: string) => Promise<{ id: string; name: string; employeeCode?: string }[]>;
   /** Opens the run's payments (bank results, cash and cheque, journal) once it is approved. */
@@ -89,6 +93,8 @@ export interface LiveRunWorkspaceData {
   onStatutory?: () => void;
   /** PAY-02: opens the manual LOP input for assumed-present groups. */
   onLopInput?: () => void;
+  /** PAY-02 (Enterprise E5): opens the run's readiness page (dates, late inputs, checks) before calculating. */
+  onReadiness?: () => void;
 }
 
 /** GET /payroll/runs/:id/input-sources: per source, the people it touches and its days or amount. */
@@ -117,10 +123,15 @@ export const explained = (l: PayslipLine, i: number): ExplainedLine => ({
   formula: l.quantity && l.rate ? `${l.quantity} × ${rupees(l.rate)}` : undefined,
   inputs: l.explanation,
   rule: l.rule ? `${l.rule.statute} ${l.rule.jurisdiction} ${l.rule.version}${l.rule.verify || l.verify ? ', verify' : ''}` : undefined,
+  ...(l.separate ? { separate: true } : {}),
 });
 
 export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
   const r = p.run;
+  // Enterprise E5 (O17): a release date still ahead keeps published payslips hidden until then, unless released now.
+  const [releaseNow, setReleaseNow] = useState(false);
+  const releaseOn = p.readiness?.dates?.release ?? null;
+  const laterRelease = !!releaseOn && releaseOn > new Date().toLocaleDateString('en-CA');
   const { toast } = useToast();
   const say = (title: string, tone: 'success' | 'default' | 'error' = 'success') => toast({ title, tone });
   const [tab, setTab] = useState<Tab>('validations');
@@ -203,9 +214,12 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
   };
 
   const headerAction = !r ? null : (editable && (r.status === 'draft' || r.status === 'reopened') && p.can.prepare) ? (
-    <Button variant="primary" icon={Play} loading={busy === 'calc'} onClick={calculate}>
-      Calculate
-    </Button>
+    <>
+      {p.onReadiness && <Button onClick={p.onReadiness}>Run readiness</Button>}
+      <Button variant="primary" icon={Play} loading={busy === 'calc'} onClick={calculate}>
+        Calculate
+      </Button>
+    </>
   ) : (r.status === 'calculated' || r.status === 'in_review') && p.can.prepare ? (
     <>
       {unacked.length > 0 && (
@@ -472,17 +486,27 @@ export function LiveRunWorkspace({ live: p }: { live: LiveRunWorkspaceData }) {
           maker="The preparer"
           checker="You"
           selfApproval={!!r.publishAlone}
+          reasonRequired={laterRelease && releaseNow}
           confirmLabel="Publish payslips"
           error={error}
           onConfirm={(reason) =>
             void run('publish', async () => {
               const confirmation = { phrase: `PUBLISH ${toPublish}`, impact: [{ label: 'Payslips', value: String(toPublish) }] };
-              await (r.publishAlone ? p.onPublish(confirmation, reason.trim()) : p.onPublish(confirmation));
+              const release = laterRelease ? { now: releaseNow, ...(releaseNow ? { reason: reason.trim() } : {}) } : undefined;
+              if (release) await p.onPublish(confirmation, r.publishAlone ? reason.trim() : undefined, release);
+              else await (r.publishAlone ? p.onPublish(confirmation, reason.trim()) : p.onPublish(confirmation));
               setSheet(null);
-              say(`${count(toPublish, 'payslip')} published`);
+              say(laterRelease && !releaseNow ? `${count(toPublish, 'payslip')} published; employees see them on ${dateText(releaseOn!)}` : `${count(toPublish, 'payslip')} published`);
             })
           }
-        />
+        >
+          {/* Enterprise E5 (O17, answer 2657): payslips stay hidden until the pay group's release date; early needs a reason. */}
+          {laterRelease && (
+            <FormField label="Employees see them" helper={releaseNow ? 'Give the reason below: releasing before the date is recorded.' : `On ${dateText(releaseOn!)}, the release date of ${p.readiness?.dates?.payGroup.name ?? 'the pay group'}. They are told that day.`}>
+              <Segment label="Employees see them" value={releaseNow ? 'now' : 'date'} onChange={(v) => setReleaseNow(v === 'now')} options={[{ value: 'date', label: `On ${dateText(releaseOn!)}` }, { value: 'now', label: 'Now' }]} />
+            </FormField>
+          )}
+        </IrreversibleSheet>
       )}
       {sheet === 'bank' && (
         <BankFileDialog
@@ -602,7 +626,7 @@ export const attendanceGroup = (g: NonNullable<RunReadiness['groups']>[number]):
 
 const SEV: Record<RunCheck['severity'], { label: string; icon: typeof AlertCircle }> = { block: { label: 'Blocking', icon: AlertCircle }, warn: { label: 'Warning', icon: AlertTriangle }, info: { label: 'Note', icon: CheckCircle2 } };
 
-function ValidationsPanel({ p, checks, calcBlocks, editable, nameOf }: { p: LiveRunWorkspaceData; checks: RunCheck[]; calcBlocks: RunCheck[]; editable: boolean; nameOf: (id: string | null) => string }) {
+function ValidationsPanel({ p, checks, calcBlocks, editable, nameOf }: { p: Pick<LiveRunWorkspaceData, 'readiness' | 'onLopInput' | 'inputSources' | 'can' | 'onWaive'>; checks: RunCheck[]; calcBlocks: RunCheck[]; editable: boolean; nameOf: (id: string | null) => string }) {
   const [waiving, setWaiving] = useState<RunCheck | null>(null);
   const approvalBlocks = checks.filter((c) => c.severity === 'block' && c.blocks === 'approval' && !c.waived);
   const blocks = calcBlocks.length + approvalBlocks.length;
@@ -1193,3 +1217,184 @@ function ReasonDialog({ title, description, label, confirm, optional, variant = 
     </Dialog>
   );
 }
+
+/* ------------------------------------------------------------------ PAY-02 Run readiness, live (Enterprise E5, 2411) */
+
+/** What /yx/payroll/runs/[id]/readiness passes to the designed PAY-02 screen. */
+export interface LiveRunReadinessData extends Pick<LiveRunWorkspaceData, 'state' | 'run' | 'people' | 'readiness' | 'can' | 'onWaive' | 'onCalculate' | 'inputSources' | 'onLopInput'> {
+  onRetry: () => void;
+  /** Opens the run workspace (calculation progress, payslips). */
+  onOpenRun: () => void;
+  /** Answer 2657: one month's own cut-off and release dates, with a reason (payroll.setup.manage). */
+  onSaveDates?: (x: { payGroupId: string; month: string; cutOffOn: string; releaseOn: string | null; reason: string; version?: number }) => Promise<unknown>;
+}
+
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const dayOf = (iso: string) => new Date(`${iso}T00:00:00`);
+
+/** Answer 2657: change one month's input cut-off and payslip release dates, with a reason. */
+function RunDatesDrawer({ dates, onClose, onSave }: { dates: RunDates; onClose: () => void; onSave: NonNullable<LiveRunReadinessData['onSaveDates']> }) {
+  const [cutOff, setCutOff] = useState<Date | null>(dayOf(dates.cutOff));
+  const [onPublish, setOnPublish] = useState(!dates.release);
+  const [release, setRelease] = useState<Date | null>(dates.release ? dayOf(dates.release) : null);
+  const [reason, setReason] = useState('');
+  const { busy, error, run } = useRun();
+  const { toast } = useToast();
+  const first = `${dates.month}-01`;
+  const last = isoDay(new Date(Number(dates.month.slice(0, 4)), Number(dates.month.slice(5, 7)), 0));
+  const early = useTooEarly([
+    ...(!cutOff || isoDay(cutOff) < first || isoDay(cutOff) > last ? [{ fieldId: 'rd-cutoff', message: `Choose a day in ${monthLong(dates.month)}.` }] : []),
+    ...(!onPublish && (!release || (cutOff && release < cutOff)) ? [{ fieldId: 'rd-release', message: 'Choose a release day on or after the cut-off.' }] : []),
+    ...(reason.trim().length < 10 ? [{ fieldId: 'rd-reason', message: 'Say why, in 10 characters or more.' }] : []),
+  ]);
+  return (
+    <Drawer
+      open
+      onOpenChange={(o) => !o && onClose()}
+      title={`Dates for ${monthLong(dates.month)}`}
+      subtitle={`${dates.payGroup.name} · only this month changes; the pay group's days stay for the others`}
+      dirty={reason.length > 0}
+      notice={error ? <InlineAlert tone="danger" title={error} /> : undefined}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            loading={busy === 'save'}
+            onClick={() =>
+              !early.stop() &&
+              void run('save', async () => {
+                await onSave({ payGroupId: dates.payGroup.id, month: dates.month, cutOffOn: isoDay(cutOff!), releaseOn: onPublish ? null : isoDay(release!), reason: reason.trim(), ...(dates.changed ? { version: dates.changed.version } : {}) });
+                toast({ tone: 'success', title: `Dates for ${monthLong(dates.month)} saved` });
+                onClose();
+              })
+            }
+          >
+            Save dates
+          </Button>
+        </>
+      }
+    >
+      <div className="yx-pay-stack">
+        <FormField id="rd-cutoff" label="Input cut-off" required helper="One-time pay sent after this day is paid next month; the sender is told." error={early.errorOf('rd-cutoff')}>
+          <DatePicker value={cutOff} onChange={setCutOff} min={dayOf(first)} max={dayOf(last)} />
+        </FormField>
+        <Checkbox label="Employees see payslips when they are published" checked={onPublish} onChange={setOnPublish} />
+        {!onPublish && (
+          <FormField id="rd-release" label="Payslips shown to employees" required helper="Published payslips stay hidden until this day; publishing early needs a reason." error={early.errorOf('rd-release')}>
+            <DatePicker value={release} onChange={setRelease} min={cutOff ?? dayOf(first)} />
+          </FormField>
+        )}
+        <FormField id="rd-reason" label="Reason" required helper="Kept on the audit trail." error={early.errorOf('rd-reason')}>
+          <TextArea value={reason} onChange={setReason} rows={3} maxLength={500} />
+        </FormField>
+      </div>
+    </Drawer>
+  );
+}
+
+/** PAY-02 live: the pre-flight before Calculate: dates, late inputs, attendance, inputs and the checks to fix or waive. */
+export function LiveRunReadiness({ live: p }: { live: LiveRunReadinessData }) {
+  const [editing, setEditing] = useState(false);
+  const { busy, run } = useRun();
+  const { toast } = useToast();
+  const r = p.run;
+  const dates = p.readiness?.dates ?? null;
+  const late = p.readiness?.late ?? [];
+  const checks = p.readiness?.checks ?? [];
+  const calcBlocks = checks.filter((c) => c.severity === 'block' && c.blocks === 'calculation' && !c.waived);
+  const editable = !!r && EDITABLE.includes(r.status);
+  const nameOf = (id: string | null) => (id ? (p.people.find((x) => x.employeeId === id)?.name ?? 'Someone') : 'Everyone');
+  const state = p.state === 'error' ? 'error' : !r || !p.readiness ? 'loading' : 'ready';
+  const lateIn = late.filter((x) => x.direction === 'in');
+  const lateOut = late.filter((x) => x.direction === 'out');
+  if (p.state === 'no-access')
+    return (
+      <PayFrame page="runs">
+        <NoAccessState grantedBy="your payroll admin" what="this payroll run" />
+      </PayFrame>
+    );
+  const readiness = p.readiness && (
+    <div className="yx-pay-stack">
+      {dates && (
+        <section className="yx-pay-panel" aria-label="Dates for this month">
+          <SectionTitle actions={dates.canChange && editable && p.onSaveDates ? <Button size="sm" onClick={() => setEditing(true)}>Change dates</Button> : undefined}>Dates for this month</SectionTitle>
+          <DescriptionList
+            items={[
+              { label: 'Pay group', value: dates.payGroup.name },
+              { label: 'Input cut-off', value: dateText(dates.cutOff) },
+              { label: 'Payslips shown to employees', value: dates.release ? dateText(dates.release) : 'When published' },
+              ...(dates.changed ? [{ label: 'Changed for this month', value: dates.changed.reason }] : []),
+            ]}
+          />
+        </section>
+      )}
+      <section className="yx-pay-panel" aria-label="Inputs after the cut-off">
+        <SectionTitle>Inputs after the cut-off</SectionTitle>
+        {late.length ? (
+          <PlainTable
+            label="Inputs after the cut-off"
+            rows={late}
+            getRowId={(x) => x.id}
+            columns={[
+              { key: 'who', header: 'Employee', rowHeader: true, cell: (x) => x.name },
+              { key: 'what', header: 'What', cell: (x) => x.component },
+              { key: 'amount', header: 'Amount', num: true, cell: (x) => money(x.amount) },
+              { key: 'from', header: 'Asked for', cell: (x) => monthLong(x.from) },
+              { key: 'to', header: 'Paid in', cell: (x) => monthLong(x.to) },
+            ]}
+          />
+        ) : (
+          <p className="yx-pay-muted">Nothing came after the cut-off.</p>
+        )}
+        {(lateIn.length > 0 || lateOut.length > 0) && (
+          <p className="yx-pay-muted">
+            {lateIn.length ? `${count(lateIn.length, 'item')} from earlier months ${lateIn.length === 1 ? 'is' : 'are'} paid in this run. ` : ''}
+            {lateOut.length ? `${count(lateOut.length, 'item')} asked for this month ${lateOut.length === 1 ? 'is' : 'are'} paid next month.` : ''}
+          </p>
+        )}
+      </section>
+      <ValidationsPanel p={p} checks={checks} calcBlocks={calcBlocks} editable={editable} nameOf={nameOf} />
+    </div>
+  );
+  const later = (title: string, note: string): StepperStep => ({ id: title, title, status: 'locked', statusNote: note, content: <p className="yx-pay-muted">{note}</p> });
+  const calcBlocked = calcBlocks.length ? `${count(calcBlocks.length, 'item')} to resolve or waive` : !editable ? 'This run is past calculation' : !p.can.prepare ? 'Only payroll with the run key calculates' : undefined;
+  return (
+    <PayFrame page="runs">
+      <PageHeader
+        title="Run readiness"
+        description={r ? runName(r) : undefined}
+        facts={state === 'ready' && dates ? `Inputs cut-off ${dateText(dates.cutOff)} · payslips shown ${dates.release ? dateText(dates.release) : 'when published'} · ${count(p.readiness!.people, 'employee')}` : undefined}
+        status={r ? <RunStatusBadge status={r.status} /> : undefined}
+      />
+      <StateBlock state={state} rows={8} errorTitle="We couldn't load run readiness." onRetry={p.onRetry}>
+        {r && (
+          <Stepper
+            title={r ? runName(r) : 'Payroll run'}
+            finishLabel="Calculate payroll"
+            continueBlocked={calcBlocked}
+            onFinish={() =>
+              void run('calc', async () => {
+                await p.onCalculate();
+                toast({ tone: 'success', title: `Calculating ${monthLong(r.month)}` });
+                p.onOpenRun();
+              })
+            }
+            steps={[
+              { id: 'ready', title: 'Readiness', description: 'Dates, inputs, attendance and checks', content: readiness },
+              calcBlocked
+                ? later('Calculate', `Available once ${lowerFirst(calcBlocked)}.`)
+                : { id: 'calc', title: 'Calculate', description: count(p.readiness?.people ?? 0, 'payslip'), content: <p>Calculates the payslips from the inputs as they are now. You can calculate again any time before approval.{busy === 'calc' ? ' Starting…' : ''}</p> },
+              later('Review variance', 'Available after calculation.'),
+              later('Approve and lock', 'Needs the payroll approver (maker ≠ checker).'),
+              later('Bank file', 'After approval.'),
+              later('Publish payslips', dates?.release ? `After payment; employees see them on ${dateText(dates.release)}.` : 'After payment.'),
+            ]}
+          />
+        )}
+      </StateBlock>
+      {editing && dates && p.onSaveDates && <RunDatesDrawer dates={dates} onClose={() => setEditing(false)} onSave={p.onSaveDates} />}
+    </PayFrame>
+  );
+}
+const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);

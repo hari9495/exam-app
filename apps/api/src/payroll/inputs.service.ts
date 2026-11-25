@@ -7,6 +7,8 @@ import { settingFor } from '../people/probation';
 import type { ScopeUser, Viewer } from '../access/scope';
 import { asDate, dateOf, monthRange } from '../time/time-core';
 import { fillInjuryDays } from './injury-days';
+import { groupOf, periodDates } from './pay-dates';
+import { nextMonth } from './tax';
 import { ApprovalsEngine, type Notice } from '../workflow/approvals-engine.service';
 import { CourtOrderDto, HoldDto, HoldReleaseDto, LoanChangeDto, LoanPerquisiteDto, LoanRequestDto, LopRowDto, OneTimeDto, SpecialDaysDto } from './dto-5c';
 import { PayKey, entitiesFor, payHolders, payScope, payViewer, requireEntity, requireSelf, withPayScope } from './pay-access';
@@ -148,7 +150,7 @@ export class PayInputsService implements OnModuleInit {
       const ids = await entitiesFor(tx, c, v, 'payroll.input.manage');
       await payScope(tx, ids);
       const rows = await tx.oneTimePay.findMany({ where: { organizationId: c.organizationId, legalEntityId: { in: ids }, ...(month ? { periodStart: asDate(`${month}-01`) } : {}) }, orderBy: { createdAt: 'desc' }, take: 500 });
-      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, componentCode: r.componentCode, amount: r.amount.toFixed(2), month: dateOf(r.periodStart).slice(0, 7), endOn: r.endOn ? dateOf(r.endOn) : null, source: r.source, reason: r.reason, status: r.status }));
+      return rows.map((r) => ({ id: r.id, employeeId: r.employeeId, componentCode: r.componentCode, amount: r.amount.toFixed(2), month: dateOf(r.periodStart).slice(0, 7), endOn: r.endOn ? dateOf(r.endOn) : null, source: r.source, reason: r.reason, status: r.status, paidSeparately: r.paidSeparately, grossUp: r.grossUp, rolledFrom: r.rolledFrom ? dateOf(r.rolledFrom).slice(0, 7) : null }));
     });
   }
 
@@ -161,35 +163,54 @@ export class PayInputsService implements OnModuleInit {
       await this.notLocked(tx, org, e.legalEntityId, dto.month);
       const comp = await tx.payComponent.findFirst({ where: { organizationId: org, code: dto.componentCode, status: 'active' } });
       if (!comp || comp.statutory || !['earning', 'deduction', 'reimbursement'].includes(comp.kind)) throw new BadRequestException('Choose an earning, deduction or reimbursement component (not a statutory one).');
-      const row = await tx.oneTimePay.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, componentCode: comp.code, amount: dto.amount, periodStart: asDate(`${dto.month}-01`), endOn: dto.endOn ? asDate(dto.endOn) : null, reason: dto.reason, status: 'draft', createdBy: v.userId! } });
+      // Answer 2656: paying separately and gross-up are for a one-time earning (not a recurring item or a deduction).
+      if ((dto.paidSeparately || dto.grossUp) && (comp.kind !== 'earning' || dto.endOn)) throw new BadRequestException('Only a one-time earning can be paid separately or grossed up.');
+      if (dto.grossUp && comp.taxable === false) throw new BadRequestException('This component is not taxable, so there is no tax to gross up.');
+      const row = await tx.oneTimePay.create({ data: { organizationId: org, legalEntityId: e.legalEntityId, employeeId: e.employeeId, employmentId: e.id, componentCode: comp.code, amount: dto.amount, periodStart: asDate(`${dto.month}-01`), endOn: dto.endOn ? asDate(dto.endOn) : null, reason: dto.reason, status: 'draft', createdBy: v.userId!, paidSeparately: !!dto.paidSeparately, grossUp: !!dto.grossUp } });
       // PAY-05: a draft waits in the list until it is sent for approval (one by one or in bulk); nothing is paid from it.
       if (dto.draft) {
         await audit(tx, c, 'payroll.one_time.drafted', 'one_time_pay', row.id, { employeeId: e.employeeId, componentCode: comp.code, month: dto.month });
         return { id: row.id, status: 'draft' };
       }
-      return { id: row.id, status: await this.sendOneTime(tx, c, v, row, comp.name, notices) };
+      return { id: row.id, ...(await this.sendOneTime(tx, c, v, row, comp.name, notices)) };
     });
     await this.engine.send(ctx, notices);
     return out;
   }
 
   /** A draft goes in: approved at once, or above the company's limit to someone else for approval. */
-  private async sendOneTime(tx: Tx, c: CompanyContext, v: Viewer, row: Prisma.OneTimePayGetPayload<object>, componentName: string, notices: Notice[]) {
+  private async sendOneTime(tx: Tx, c: CompanyContext, v: Viewer, row: Prisma.OneTimePayGetPayload<object>, componentName: string, notices: Notice[]): Promise<{ status: string; rolledTo?: string }> {
     const org = c.organizationId;
+    // Enterprise E5 (O17, answer 2657): sent after its month's input cut-off (the person's pay group), a one-time item rolls
+    // to next month's run; the answer says so to the sender, and the item keeps the month it was asked for.
+    let rolledTo: string | undefined;
+    const asked = dateOf(row.periodStart).slice(0, 7);
+    const g = row.endOn ? null : await groupOf(tx, org, row.employmentId, monthRange(asked).to);
+    const today = todayIst();
+    const cutOff = g && g.frequency === 'monthly' ? (await periodDates(tx, org, g, asked)).cutOff : null;
+    if (g && cutOff && today > cutOff) {
+      // The first month whose cut-off is still ahead (an item for a month long past is never parked in a closed run).
+      rolledTo = nextMonth(asked);
+      for (let i = 0; i < 24 && today > (await periodDates(tx, org, g, rolledTo)).cutOff; i++) rolledTo = nextMonth(rolledTo);
+      await this.notLocked(tx, org, row.legalEntityId, rolledTo);
+      row = await tx.oneTimePay.update({ where: { id: row.id }, data: { periodStart: asDate(`${rolledTo}-01`), rolledFrom: row.periodStart } });
+      await audit(tx, c, 'payroll.one_time.rolled', 'one_time_pay', row.id, { from: asked, to: rolledTo, cutOff });
+    }
     const month = dateOf(row.periodStart).slice(0, 7);
     const amount = row.amount.toFixed(2);
     const limit = await settingFor(tx, c, 'payroll.one_time_review_above', { legalEntityId: row.legalEntityId });
-    const review = limit !== 'none' && row.amount.gt(limit);
+    // Answer 2656: a grossed-up item always goes to the payroll approver (the company pays its tax).
+    const review = row.grossUp || (limit !== 'none' && row.amount.gt(limit));
     await tx.oneTimePay.update({ where: { id: row.id }, data: { status: review ? 'pending' : 'approved' } });
     if (review) {
       const approvers = await this.approversFor(tx, org, 'payroll.run.approve', row.legalEntityId, v.userId!, row.employeeId);
-      if (!approvers.length) throw new BadRequestException(`One-time pay above ₹${limit} needs someone else to approve it. Give a second person "payroll.run.approve".`);
-      const sub = await this.engine.submit(tx, c, { type: ONE_TIME, subjectType: 'one_time_pay', subjectId: row.id, title: `One-time pay of ₹${amount}`, summary: [{ label: 'Component', value: componentName }, { label: 'Month', value: month }, { label: 'Why', value: row.reason.slice(0, 200) }], subjectPersonId: null, requesterUserId: v.userId!, raisedByUserId: v.userId!, steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 24 }], payload: {}, payloadFields: [], fallbackUserIds: [] });
+      if (!approvers.length) throw new BadRequestException(row.grossUp ? 'One-time pay with the tax paid by the company needs someone else to approve it. Give a second person "payroll.run.approve".' : `One-time pay above ₹${limit} needs someone else to approve it. Give a second person "payroll.run.approve".`);
+      const sub = await this.engine.submit(tx, c, { type: ONE_TIME, subjectType: 'one_time_pay', subjectId: row.id, title: `One-time pay of ₹${amount}`, summary: [{ label: 'Component', value: componentName }, { label: 'Month', value: month }, ...(row.grossUp ? [{ label: 'Tax', value: 'Paid by the company (gross-up)' }] : []), ...(row.paidSeparately ? [{ label: 'Payment', value: 'Paid separately' }] : []), { label: 'Why', value: row.reason.slice(0, 200) }], subjectPersonId: null, requesterUserId: v.userId!, raisedByUserId: v.userId!, steps: [{ name: 'Payroll approval', approvers: [{ kind: 'users', userIds: approvers }], mode: 'any', remindAfterHours: 24 }], payload: {}, payloadFields: [], fallbackUserIds: [] });
       notices.push(...sub.notices);
       await tx.oneTimePay.update({ where: { id: row.id }, data: { wfRequestId: sub.id } });
     }
     await audit(tx, c, 'payroll.one_time.added', 'one_time_pay', row.id, { employeeId: row.employeeId, componentCode: row.componentCode, month, review });
-    return review ? 'pending' : 'approved';
+    return { status: review ? 'pending' : 'approved', ...(rolledTo ? { rolledTo } : {}) };
   }
 
   /**
@@ -213,13 +234,13 @@ export class PayInputsService implements OnModuleInit {
         await this.notLocked(tx, org, r.legalEntityId, dateOf(r.periodStart).slice(0, 7));
       }
       const names = new Map((await tx.payComponent.findMany({ where: { organizationId: org, code: { in: rows.map((r) => r.componentCode) } }, select: { code: true, name: true } })).map((x) => [x.code, x.name]));
-      const out: { id: string; status: string }[] = [];
+      const out: { id: string; status: string; rolledTo?: string }[] = [];
       for (const r of rows) {
         if (action === 'delete') {
           await tx.oneTimePay.update({ where: { id: r.id }, data: { status: 'cancelled' } });
           await audit(tx, c, 'payroll.one_time.draft_deleted', 'one_time_pay', r.id, { employeeId: r.employeeId });
           out.push({ id: r.id, status: 'cancelled' });
-        } else out.push({ id: r.id, status: await this.sendOneTime(tx, c, v, r, names.get(r.componentCode) ?? r.componentCode, notices) });
+        } else out.push({ id: r.id, ...(await this.sendOneTime(tx, c, v, r, names.get(r.componentCode) ?? r.componentCode, notices)) });
       }
       return { action, items: out };
     });
@@ -242,7 +263,7 @@ export class PayInputsService implements OnModuleInit {
   }
 
   private async oneTimeDecided(tx: Tx, wf: Prisma.WfRequestGetPayload<object>, outcome: 'approved' | 'rejected') {
-    const entity = await tx.$queryRaw<{ id: string }[]>`SELECT legal_entity_id::text AS id FROM legal_entities WHERE organization_id = ${wf.organizationId}::uuid`;
+    const entity = await tx.$queryRaw<{ id: string }[]>`SELECT id::text AS id FROM legal_entities WHERE organization_id = ${wf.organizationId}::uuid`;
     await payScope(tx, entity.map((x) => x.id));
     await tx.oneTimePay.updateMany({ where: { organizationId: wf.organizationId, id: wf.subjectId, status: 'pending' }, data: { status: outcome } });
     await payScope(tx, []);
