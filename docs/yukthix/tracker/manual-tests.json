@@ -28150,5 +28150,26 @@
                               "Hiring · Job boards"
                     ],
                     "note": "Positive and negative (kit pipeline-sheet tests 4: new needs a name, test rule needs a test, first stage can't move up, refused removal shows the reason, view only, Easy Apply secret 16+; API UpdateEasyApplyConfigDto spec: short secret and unknown board refused, blank keeps, turn off; the pipelines API and its blueprint rules keep their own specs). The /v2 pipelines, easy-apply and campaigns pages are deleted and redirect. /v2/brand waits on 2698; stage-triggered campaigns on 2699."
+          },
+          {
+                    "id": "MT-G4-SCHEDULES-EXPORT-LOG",
+                    "area": "G4 (answers 2690-2692): scheduled report emails and the export log (ANL-08); /v2/brand retired (2698) (25 Nov 2026)",
+                    "screen": "Analytics › Schedules and exports (Schedules, Export log, New schedule, Stop, Download log)",
+                    "url": "http://localhost:3000/yx/analytics/schedules",
+                    "account": "System Admin (learning, expense reports, export log); HR Admin (training reports, performance reports); an auditor; a plain employee; another company's admin.",
+                    "steps": [
+                              "As the System Admin open Analytics › Schedules and exports › New schedule: save with nothing; then Mandatory training compliance, weekly, to yourself and HR; try the plain employee as a recipient.",
+                              "Run the report-schedules sweep after the next Monday 07:00 (test DB: move next run back). Check both mailboxes; run it again at once.",
+                              "Remove training reports from HR's profile; run the sweep again; look at Last run.",
+                              "As HR schedule Review completion (confidential) daily to yourself; run the sweep; open the email.",
+                              "Stop the System Admin's schedule; as HR try to stop it (API).",
+                              "Export Learning › Compliance as the System Admin, then open the Export log tab; Download log. As HR and as the plain employee open /yx/analytics/schedules. As another company's admin open the export log. As an auditor open it.",
+                              "Open /v2/brand."
+                    ],
+                    "expected": "Step 1: 'Choose the report.' / 'Choose at least one person.'; then 'Schedule saved.' with the next run Monday 7:00 am; the employee as recipient is refused (must open the report). Step 2: each gets their own compliance-training.csv; the second run sends nothing. Step 3: only the System Admin gets it; Last run says 'Sent to 1 of 2'. Step 4: the email has no attachment, only a link to sign in. Step 5: stopped; HR gets not found. Step 6: the log shows 'Training compliance' and then 'Export log' (the download is logged); HR and the employee see no Export log tab (403); other companies see none of it; the auditor sees the log only. Step 7: not found (retired). No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Analytics/ANL-08 · Schedules and export log"
+                    ],
+                    "note": "Positive and negative (library-g4 e2e 5/5 incl. schedules: report you can't open 404, bad frequency 400, no recipients 400, recipient who can't open it 400, manager-only report 404, weekly runs Monday 07:00 IST, own copy each, claimed once, lost access gets nothing, confidential is a link, end only your own (404); export log: key only (403), bad date 400, CSV with header, its own download logged, other company empty; nextRunAt unit spec; kit report-schedules-live 2). New table report_schedules in rls-isolation; key exports.log.view (System Admin, auditor); routes in endpoint-permissions; sweep report-schedules every 15 minutes; menu Analytics › Schedules and exports."
           }
 ]
