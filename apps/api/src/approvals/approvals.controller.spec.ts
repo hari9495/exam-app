@@ -52,9 +52,9 @@ describe('ApprovalsController', () => {
     expect(approvals.listRequests).toHaveBeenCalledWith(tenant, 'user-1', 'submitted', 'pending_approval');
   });
 
-  it('getRequestDetail delegates with the request id', async () => {
-    await controller.getRequestDetail(tenant, 'req-1');
-    expect(approvals.getRequestDetail).toHaveBeenCalledWith(tenant, 'req-1');
+  it('getRequestDetail delegates with the request id and the caller (F3: the service checks who may read it)', async () => {
+    await controller.getRequestDetail(tenant, 'user-1', 'req-1');
+    expect(approvals.getRequestDetail).toHaveBeenCalledWith(tenant, 'req-1', 'user-1');
   });
 
   // Regression for Finding 1: any authenticated org user (not just approvals:configure
