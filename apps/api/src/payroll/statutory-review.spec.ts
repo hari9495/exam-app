@@ -102,6 +102,29 @@ describe('payroll statutory review (26 Nov 2026): figures the code gets wrong to
     expect(pfAdminDue(rs, { charges: '0' }).due.toFixed(2)).toBe('0.00');
   });
 
+  it('M5 Tamil Nadu half-yearly PT is on the half-year’s actual income: a December joiner pays the January band of 60,000', () => {
+    // Joins in December on 15,000: Dec 15,000 paid + Jan 15,000 + Feb and Mar 30,000 = 60,000 -> 930 (old: 15,000 x 6 -> 1,250).
+    const tn = (half: string) => snapshot({ period: { start: '2027-01-01', end: '2027-01-31', days: 31 }, segments: [{ ...snapshot().segments[0], from: '2027-01-01', to: '2027-01-31', state: 'IN-TN', lines: [{ code: 'basic', monthly: '15000' }] }], profile: { ...snapshot().profile, ptState: 'IN-TN' }, ytd: { pt: '0', ptWage: half, halfPtWage: half } });
+    expect(amount(calculatePayslip(tn('15000'), RULES), 'pt')).toBe('930.00');
+    // Negative: the whole half-year at 15,000 is 90,000 -> 1,250.
+    expect(amount(calculatePayslip(tn('45000'), RULES), 'pt')).toBe('1250.00');
+  });
+
+  it('M6 Madhya Pradesh yearly PT after a raise into a higher band: the shortfall is spread, the year totals the band', () => {
+    // Apr-Nov at 30,000 (band 2,000: 166 a month, 1,328 paid); from December 45,000: the year is 4,20,000 -> 2,500.
+    const mp = (monthNo: number, basic: string, paid: string, wage: string) => {
+      const mm = String(monthNo).padStart(2, '0');
+      const y = monthNo <= 3 ? '2027' : '2026';
+      const days = new Date(Date.UTC(Number(y), monthNo, 0)).getUTCDate();
+      return snapshot({ period: { start: `${y}-${mm}-01`, end: `${y}-${mm}-${days}`, days }, segments: [{ ...snapshot().segments[0], from: `${y}-${mm}-01`, to: `${y}-${mm}-${days}`, days, state: 'IN-MP', lines: [{ code: 'basic', monthly: basic }] }], profile: { ...snapshot().profile, ptState: 'IN-MP' }, ytd: { pt: paid, ptWage: wage } });
+    };
+    expect(amount(calculatePayslip(mp(12, '45000', '1328', '240000'), RULES), 'pt')).toBe('292.00');
+    expect(amount(calculatePayslip(mp(3, '45000', '2204', '375000'), RULES), 'pt')).toBe('296.00');
+    // Negative: no change all year at 30,000: 166 in December, 174 in March (2,000 = 166 x 11 + 174).
+    expect(amount(calculatePayslip(mp(12, '30000', '1328', '240000'), RULES), 'pt')).toBe('166.00');
+    expect(amount(calculatePayslip(mp(3, '30000', '1826', '330000'), RULES), 'pt')).toBe('174.00');
+  });
+
   it('R8 employer NPS (80CCD(2), now s.124(1)(a)) is capped at 14% of basic + DA in the new regime', () => {
     // Basic 50,000 a month for the year = 6,00,000; 14% = 84,000. A claim of 2,00,000 is allowed in full today.
     const t: TaxInputs = {

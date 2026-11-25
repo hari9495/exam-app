@@ -117,7 +117,7 @@ interface Slab {
  * month's instalment of a yearly amount (annual basis, on the year's salary): the whole rupees of a twelfth each month and
  * the rest in the rule's last month (Madhya Pradesh: 2,500 = 208 x 11 + 212 in March).
  */
-export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number; gender?: string | null }) {
+export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number; gender?: string | null; paidSoFar?: Prisma.Decimal.Value; monthsLeft?: number }) {
   const v = need(rs, 'pt');
   const months = v.deductMonths as number[] | undefined;
   if (months && !months.includes(i.month)) return { amount: ZERO, citation: cite(rs) };
@@ -125,6 +125,15 @@ export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number
   const slabs = (v.slabs as Slab[]).filter((s) => !s.gender || !i.gender || s.gender === i.gender).filter((s) => !s.gender || i.gender || s.gender === 'male');
   const s = slabs.find((x) => wage.gte(D(x.from)) && (x.to === null || wage.lte(D(x.to))));
   const amount = s ? D(s.months?.[String(i.month)] ?? s.amount) : ZERO;
+  if (v.basis === 'annual' && i.paidSoFar !== undefined && i.monthsLeft !== undefined) {
+    // Review M6: the usual twelfth, plus any shortfall from earlier months (a raise into a higher band, joining late) spread
+    // over this month and the months left; the last month takes the rest (2,500 = 208 x 11 + 212 when nothing changes).
+    const due = Prisma.Decimal.max(ZERO, amount.sub(D(i.paidSoFar)));
+    if (i.month === Number(v.lastMonth) || i.monthsLeft === 0) return { amount: due, citation: cite(rs) };
+    const part = amount.div(12).floor();
+    const behind = Prisma.Decimal.max(ZERO, due.sub(part.mul(i.monthsLeft + 1)).sub(amount.sub(part.mul(12))));
+    return { amount: Prisma.Decimal.min(due, part.add(behind.div(i.monthsLeft + 1).floor())), citation: cite(rs) };
+  }
   if (v.basis === 'annual') {
     const part = amount.div(12).floor();
     return { amount: i.month === Number(v.lastMonth) ? amount.sub(part.mul(11)) : part, citation: cite(rs) };

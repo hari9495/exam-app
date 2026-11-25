@@ -66,7 +66,8 @@ export interface Snapshot {
   /** Attendance (the frozen M02 feed) and manual LOP (assumed-present groups) as used. */
   attendance: { lopDays: string; source: 'feed' | 'manual' | 'none'; otMinutes: { normal: number; weeklyOff: number; holiday: number }; timesheetMinutes: number };
   profile: { pf: boolean; eps: boolean; vpfPercent: string; pfOnActualWage: boolean; esi: 'yes' | 'no' | 'by_wage'; esiCoveredThisPeriod: boolean; pwd: boolean; ptState: string; lwfState: string | null; gender: string | null; age: number };
-  ytd: { pt: string };
+  /** ptWage / halfPtWage (review M5, M6): the PT wage of approved payslips earlier in the financial year / half-year. */
+  ytd: { pt: string; ptWage?: string; halfPtWage?: string };
   /** `label`: the payslip text of an arrears or F&F item (batch 5g). */
   oneTime: { id: string; code: string; amount: string; days: number | null; label?: string }[];
   /** inFeedDays: the part of `days` the Time feed already counts as unpaid (HLP-12 answer 65), not taken off again. */
@@ -283,8 +284,12 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   if (ptRs) {
     const basis = (ptRs.values as { basis?: string }).basis;
     const ptWage = earned('ptWage').add(mtd?.ptWage ?? 0);
-    // Half-yearly slabs are on the half-year's income, yearly ones (2385) on this month's PT wage x 12.
-    const r = pt(ptRs, { ptWage: basis === 'half_yearly' ? ptWage.mul(6) : basis === 'annual' ? ptWage.mul(12) : ptWage, month, gender: s.profile.gender });
+    // Half-yearly slabs are on the half-year's income, yearly ones (2385) on the year's. Review M5 / M6: what was paid
+    // earlier in the half-year or year, this month, and this month's PT wage for each month left (not this month x 6 or 12).
+    const leftIn = (lastMonth: number) => Math.min((lastMonth - month + 12) % 12, s.tax ? s.tax.futureMonths : 12);
+    const halfEnd = month >= 4 && month <= 9 ? 9 : 3;
+    const income = basis === 'half_yearly' ? (s.ytd.halfPtWage === undefined ? ptWage.mul(6) : D(s.ytd.halfPtWage).add(ptWage).add(ptWage.mul(leftIn(halfEnd)))) : basis === 'annual' ? (s.ytd.ptWage === undefined ? ptWage.mul(12) : D(s.ytd.ptWage).add(ptWage).add(ptWage.mul(leftIn(3)))) : ptWage;
+    const r = pt(ptRs, { ptWage: income, month, gender: s.profile.gender, ...(basis === 'annual' && s.ytd.ptWage !== undefined ? { paidSoFar: s.ytd.pt, monthsLeft: leftIn(3) } : {}) });
     const capRs = rule('IN.PT');
     const room = capRs && capRs.values.kind === 'pt_limit' ? Prisma.Decimal.max(ZERO, D(String(capRs.values.annualMax)).sub(s.ytd.pt)) : r.amount;
     const amount = Prisma.Decimal.min(r.amount, room);
