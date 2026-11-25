@@ -132,7 +132,6 @@ export const YX_KEYS = [
   'engage.announce',
   'engage.moderate',
   'engage.survey.manage',
-  'learning.manage',
   'expense.claim.view',
   'expense.finance.review',
   'travel.booking.manage',

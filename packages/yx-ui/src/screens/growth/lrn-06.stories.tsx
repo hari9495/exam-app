@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { EnrolmentSheet } from './learn-me';
 import { COURSES, SESSION_PEOPLE } from './learn-data';
-import { liveNominate } from './learn-live-samples';
 
 const meta: Meta = { title: 'Screens/Learning/LRN-06 · Nomination, enrolment and external request', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -19,5 +18,3 @@ export const ExternalPhone: S = { name: 'Employee · external request on phone',
 export const Decline: S = { name: 'Employee · decline nomination', globals: PHONE, render: () => <EnrolmentSheet mode="decline" persona="emp" device="phone" course={COURSES[3]} budget={{ ...QUALITY, mode: 'warn' }} /> };
 export const DeclineMandatory: S = { name: 'Employee · mandatory cannot be declined', render: () => <EnrolmentSheet mode="decline" persona="emp" course={COURSES[2]} mandatory budget={{ ...QUALITY, mode: 'warn' }} /> };
 export const LdNominates: S = { name: 'L&D · nominate a group', render: () => <EnrolmentSheet mode="nominate" persona="ld" course={COURSES[2]} session={{ label: 'Fire safety, 28 Oct, Chennai office', seats: 25, enrolled: [], waitlist: [] }} people={PEOPLE} budget={{ ...QUALITY, mode: 'warn' }} /> };
-// Batch G3a: nominating people (a manager their team; L&D anyone).
-export const NominateTeam: S = { name: 'Nominate my team', render: () => <EnrolmentSheet live={liveNominate()} /> };

@@ -571,16 +571,6 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  // Learning (batch G3, M07): my learning for everyone with a job; the course builder for learning.manage.
-  const learning: NavArea = {
-    id: 'learning',
-    title: 'Learning',
-    sections: sec(undefined, [
-      ...when(!support && employee, L('learning-mine', 'My learning', '/yx/learning')),
-      ...when(!support && has('learning.manage'), L('learning-courses', 'Courses', '/yx/learning/courses')),
-    ]),
-  };
-
   // Engage (batch G2, M09): the feed for everyone with a job; announcements for engage.announce (never on a support session).
   const engage: NavArea = {
     id: 'engage',
@@ -684,7 +674,7 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, learning, helpdesk, engage, visitors, settings];
+  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, helpdesk, engage, visitors, settings];
   // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.
   const mine = new Set(areas.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))));
   if (Object.values(SETTINGS_PAGE_EDITORS).some((hrefs) => hrefs.some((h) => mine.has(h)))) settings.sections.unshift({ items: [L('settings-home', 'All settings', SETTINGS_HOME)] });

@@ -28,7 +28,6 @@ import { GrowthFrame, QrTile, SkillLevel, SplitLayout } from './growth-kit';
 import { complianceCell, completionStatus, withdraw } from './growth-logic';
 import type { Course } from './learn-me';
 import type { LoadState } from './perf-goals';
-import { LiveCourseBuilderScreen, type LiveCourseBuilder } from './learn-courses-live';
 import './growth.css';
 
 /* ================================================================== LRN-03 · Course builder + learning paths */
@@ -50,12 +49,7 @@ export interface CourseBuilderProps {
 }
 
 /** LRN-03 Course builder (T3): content items, assessment picker, certificate (+ Open Badge / Credly), skill mapping, settings; learning paths. */
-/** LRN-03; batch G3a: with `live`, the company's courses and one course. */
-export function CourseBuilderScreen(props: CourseBuilderProps | { live: LiveCourseBuilder }) {
-  return 'live' in props ? <LiveCourseBuilderScreen live={props.live} /> : <CourseBuilderDesign {...props} />;
-}
-
-function CourseBuilderDesign({ course, items: initial, tab = 'content', paths = [], status = 'Draft' }: CourseBuilderProps) {
+export function CourseBuilderScreen({ course, items: initial, tab = 'content', paths = [], status = 'Draft' }: CourseBuilderProps) {
   const [items, setItems] = useState(initial);
   const [badge, setBadge] = useState(true);
   const [credly, setCredly] = useState(false);

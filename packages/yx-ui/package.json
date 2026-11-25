@@ -25,7 +25,6 @@
     "./expenses": "./src/screens/expenses/live/index.ts",
     "./performance": "./src/screens/performance/live/index.ts",
     "./engage": "./src/screens/growth/engage-live.ts",
-    "./learning": "./src/screens/growth/learn-live.ts",
     "./hiring": "./src/screens/hiring/live/index.ts",
     "./visitors": "./src/screens/ops/visitors-live.ts",
     "./assessments": "./src/screens/proctoring/assessments-live.ts",
