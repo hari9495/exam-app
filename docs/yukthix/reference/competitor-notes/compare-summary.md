@@ -589,3 +589,4 @@ Audit of 69 local branches not in test main: 54 already in (by content or merged
 - 2698: /v2/brand is the older product's (Workfox) brand guidelines page, not a company setting. YukthiX's brand is its design system (the Storybook foundations and brand/DESIGN-SYSTEM.md). Suggested answer: no YukthiX page; delete /v2/brand and point the web app's notes at the YukthiX design system.
 - 2699: the older campaigns could enrol a candidate automatically when they reached a pipeline stage; HIR-20 campaigns send only to a talent pool whose members gave talent-pool consent. Suggested answer: keep HIR-20 as it is (consent first); stage-triggered enrolment later, asking for talent-pool consent at that stage.
 - Founder answers (25 Nov 2026, "ok for all"): 2670-2678 approved exactly as suggested above.
+- Founder answers (25 Nov 2026, "ok for all"): 2690-2697 approved exactly as suggested above.
