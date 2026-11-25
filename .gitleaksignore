@@ -14,3 +14,7 @@
 d6ea28d461acbf37388c718a056dfbe19d6d2ddc:packages/yx-ui/src/screens/auth/data.ts:generic-api-key:42
 # Reviewed false positive (9 Oct 2026): the fixed HMAC test secret of the batch-3 webhook signature unit tests.
 85da18b09ce51fc591741ba96fe3d4e43c744687:apps/api/src/service-desk/esm3.spec.ts:generic-api-key:16
+# Reviewed false positives (26 Nov 2026): attendance setting keys (attendance.short_hours.band1-3) after "key:", not secrets.
+df9ced4e98e574415baa8151732f16afd7e23479:packages/yx-ui/src/screens/settings/time-settings-live.ts:generic-api-key:100
+df9ced4e98e574415baa8151732f16afd7e23479:packages/yx-ui/src/screens/settings/time-settings-live.ts:generic-api-key:101
+df9ced4e98e574415baa8151732f16afd7e23479:packages/yx-ui/src/screens/settings/time-settings-live.ts:generic-api-key:102
