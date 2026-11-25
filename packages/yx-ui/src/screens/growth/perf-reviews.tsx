@@ -21,7 +21,7 @@ import { DatePicker } from '../../components/date';
 import { Stepper, useNarrow } from '../../components/stepper';
 import { FileUpload } from '../../components/upload';
 import { ApprovalTimeline, Timeline, type ApprovalStep, type TimelineItem } from '../../components/timeline';
-import { formatDate } from '../../lib/format';
+import { formatDate, heldBackText } from '../../lib/format';
 import { TODAY } from '../_kit/data';
 import { BiasFlagList, CalibrationPlan, ConfidentialTag, PotentialChoice, GrowthFrame, RatingScale, ScoreBand, SplitLayout, StageTrack, type Device, type PlannedSession, type StageItem } from './growth-kit';
 import { anonymityGroups, bandFor, detectBiasFlags, nominationCheck, RATING_LABELS, reviewScore, type BiasFlag, type Relationship, type ReviewSection } from './growth-logic';
@@ -418,7 +418,7 @@ function SampleReviewWorkspace({ persona, review, assistant, submitted }: Review
               </li>
             ))}
           </ul>
-          {groups.heldBack > 0 && <InlineAlert tone="info">{groups.heldBack} anonymous responses are held back: fewer than 3 in the group, so they can’t be shown without identifying someone.</InlineAlert>}
+          {groups.heldBack > 0 && <InlineAlert tone="info">{heldBackText(groups.heldBack)}</InlineAlert>}
           <ul className="yx-growth-list">
             {review.peer
               .filter((p) => !p.anonymous || groups.shown.some((g) => g.group === p.relationship))
