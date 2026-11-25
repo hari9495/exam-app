@@ -1303,7 +1303,8 @@ export function PipRecordScreen({ persona, device: deviceProp, pip, tab = 'plan'
   const held = rows.filter((r) => r.status === 'held').length;
   const shownRows = rows.filter((r) => r.status !== 'cancelled');
   // A check-in is recorded when it is near: at most a week before it is due (the API checks the same).
-  const recordable = rows.filter((r) => (r.status === 'due' || r.status === 'missed') && r.due.getTime() - today.getTime() <= 7 * 86_400_000).map((r) => ({ value: r.id, label: `${formatDate(r.due)}${r.status === 'missed' ? ' (missed)' : ''}` }));
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const recordable = rows.filter((r) => (r.status === 'due' || r.status === 'missed') && Math.round((r.due.getTime() - todayDay.getTime()) / 86_400_000) <= 7).map((r) => ({ value: r.id, label: `${formatDate(r.due)}${r.status === 'missed' ? ' (missed)' : ''}` }));
   const extendTo = new Date(end.getFullYear(), end.getMonth(), end.getDate() + (live?.extendDays ?? 30));
   const canCheckin = live ? live.can.checkin : persona === 'mgr';
   const canOutcome = live ? live.can.outcome : persona !== 'emp' && !closed;

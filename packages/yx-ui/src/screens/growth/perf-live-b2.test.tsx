@@ -181,6 +181,16 @@ describe('PRF-12 PIP record, live', () => {
     await waitFor(() => expect(live.onCheckin).toHaveBeenCalledWith({ checkinId: 'k1', note: 'Cases for 7.3 in on time.', rating: 'on_track' }));
   });
 
+  it('a check-in a week ahead by the calendar can be recorded; eight days ahead cannot', () => {
+    // Late in the evening of 20 July: the check-in on 27 July is 7 days away by the calendar (not 7 days and some hours).
+    const live = pipLive({ today: new Date(2026, 6, 20, 23, 30), can: { ...pipLive().can, checkin: true } });
+    const { unmount } = render(<PipRecordScreen persona="mgr" pip={{ ...PIP, schedule: [{ id: 'k1', due: new Date(2026, 6, 27), status: 'due' as const }] }} live={live} checkinOpen />);
+    expect(within(screen.getByRole('dialog')).queryByText('No check-in due')).toBeNull();
+    unmount();
+    render(<PipRecordScreen persona="mgr" pip={{ ...PIP, schedule: [{ id: 'k2', due: new Date(2026, 6, 28), status: 'due' as const }] }} live={live} checkinOpen />);
+    expect(within(screen.getByRole('dialog')).getByText('No check-in due')).toBeInTheDocument();
+  });
+
   it('extending sends the date the company setting gives', async () => {
     const live = pipLive({ can: { ...pipLive().can, outcome: true }, extendDays: 15 });
     render(<PipRecordScreen persona="hr" pip={{ ...PIP, end: new Date(2026, 7, 30) }} tab="outcome" outcomeOpen live={live} />);

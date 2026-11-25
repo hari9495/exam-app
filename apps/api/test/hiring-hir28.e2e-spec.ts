@@ -15,6 +15,9 @@ import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 
+// Offer letters are P05 letters: their files must pass the (fake) virus check before they open; CI has no ClamAV.
+process.env.SD_SCANNER = 'dev-fake';
+
 // HIR-28 bulk offers end to end against the real database (forced RLS, the app role). One job, one letter, one salary
 // structure, one joining day and a CTC per candidate; every row is an ordinary HIR-09 offer (the pay key, the band step,
 // the route, conditions, the template's e-sign, an idempotent send). One bad row never blocks the others; rows beyond the
