@@ -28038,5 +28038,30 @@
                               "Screens/Performance/Kit · Growth building blocks"
                     ],
                     "note": "Positive and negative (engage-g2 e2e: birthday without the year, anniversary in whole years, joiners of this week only, hidden birthday never shows, personal opt-outs per kind (bad value 400), company setting off, company B sees none; unit: 29 Feb on 28 Feb outside leap years). Nothing is posted or stored except the opt-outs (new table eng_celebration_optouts in rls-isolation). Settings engage.celebrate.birthdays / anniversaries / new_joiners on 5.7. Kit: CelebrationStrip moved into the kit; new CelebrationChoices (story)."
+          },
+          {
+                    "id": "MT-G3-LEARNING-PORT",
+                    "area": "Batch G3: Learning on PR #210's base, with session rating, the manager's training check, overdue timing (2609) and who sees results (2608) (25 Nov 2026)",
+                    "screen": "Learning › Sessions (one session: Attendance, Results, Feedback); Learning › My team › Training checks; the rating page from the notice; a person's record › Learning; Settings › Learning",
+                    "url": "http://localhost:3000/yx/learning/sessions",
+                    "account": "HR admin (L&D); a manager with a report who is also the session's trainer (panel@, Divya); the report; another employee; HR with training reports for one legal entity only; an employee of another company.",
+                    "steps": [
+                              "As HR make a classroom course (note its attendance share comes from Settings › Learning, 75% by default) and a session with Divya as trainer; nominate her report.",
+                              "As the report open the course and mark its items done.",
+                              "As Divya open the session: show the code; the report checks in; Divya marks the second slot.",
+                              "As HR confirm attendance after the last slot. As the report open the notice › rate the session: send with no rating, then 4 and 5 with a comment; try again.",
+                              "As Divya open the session page: look for Results and Feedback. As HR open it.",
+                              "Open the report's record › Learning as the report, as Divya, as HR (L&D) and as the entity-only training-reports HR.",
+                              "Set the check days to 30 (test DB: move the confirmation date back). Next morning as Divya open Learning › Training checks: send with no answer, then Partly; open it again.",
+                              "Give the report a mandatory course due yesterday; run the daily sweep on days +1, +7 and +14 (or move the due date). Set the HR days to 21 and repeat day +14.",
+                              "As the other employee and as another company's user open the session and the rating link."
+                    ],
+                    "expected": "Step 1: 'Session scheduled'; the course shows 75% (or the company setting). Step 2: items tick but the course stays In progress (a classroom course completes only by attending). Step 3: code check-in works; marks saved. Step 4: on confirm the report completes (1 of 2 slots at 50%/the share) and is asked to rate; 'Choose a rating.' twice; then a toast; a second rating is refused ('You rated this session already.'). Step 5: Divya sees Attendance and Feedback but no Results tab; HR sees Results and Feedback (1 response, 4 and 5, the comment, no name). Step 6: the result line ('Attended … slots') shows for the report, Divya and L&D, not for the entity-only training-reports HR (status only). Step 7: 'Choose one.'; then 'Recorded…' and the check disappears; the notice came once. Step 8: day +1 the report is reminded; day +7 Divya; day +14 the training-reports holders; with 21 days nothing at +14. Step 9: not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Learning/LRN-04 · Sessions and trainers",
+                              "Screens/Learning/LRN-05 · Trainer QR attendance",
+                              "Screens/Learning/LRN-12 · Session feedback and 60-day check"
+                    ],
+                    "note": "Positive and negative (learning e2e 12/12 incl. new: rating 1-5 only (400), not an attendee (404), another company (404), once (409); summary without names; trainer has no results (2608); checks only after the company's days, only own reports (404 for others), bad answer 400, asked once, answered once (404 after); person tab result for self, manager chain and L&D only (2608); classroom items never complete; course share from the setting; 2609 timings with the HR-days setting). New table learning_feedback in rls-isolation; new routes in endpoint-permissions; settings learning.attendance_share, learning.check_after_days, learning.overdue.manager_days, learning.overdue.hr_days; menu Learning › Training checks for managers. PR #210 base: courses, rules, compliance, requests, external training with bonds, trainers, sessions, QR, team view and the person's Learning tab (its own 10 e2e scenarios pass)."
           }
 ]
