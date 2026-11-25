@@ -406,7 +406,7 @@ export function PositionsScreen({ state, onRetry, data, options, today, onOpen, 
   const budget = Boolean(data?.rows.some((r) => 'budget' in r));
   const act = async (kind: SeatChangeKind, r: SeatRow) => setDrawer({ kind, seat: { id: r.id, code: r.code, title: r.title, legalEntityId: r.legalEntity?.id ?? null, values: await valuesOf(r.id) } });
   const columns: TableColumn<SeatRow>[] = [
-    { key: 'code', header: 'Seat', type: 'id', value: (r) => r.code, render: (r) => <span>{r.code}</span>, width: 110 },
+    { key: 'code', header: 'Seat', type: 'id', value: (r) => r.code, width: 132 },
     { key: 'title', header: 'Title', value: (r) => r.title, render: (r) => <span>{r.title}{r.pendingChange ? <> <Badge tone="warning">Change waiting</Badge></> : null}</span>, width: 220 },
     { key: 'department', header: 'Department', value: (r) => r.department?.name ?? '', optional: true },
     { key: 'location', header: 'Location', value: (r) => r.location?.name ?? '', optional: true },
@@ -731,7 +731,7 @@ export function PositionsSwitchOnScreen({ state, onRetry, data, onBack, onSend, 
       {header}
       {failed && <InlineAlert tone="danger" title={failed} />}
       {data.enabled ? (
-        <InlineAlert tone="success" title="Positions are on.">
+        <InlineAlert tone="info" title="Positions are on.">
           {r ? `${r.seats} seats made; ${people(r.linked)} given a seat${r.failed.length ? `; ${people(r.failed.length)} could not be given one (listed below)` : ''}.` : null}
         </InlineAlert>
       ) : data.plan ? (

@@ -114,6 +114,12 @@ describe('buildNav: People', () => {
     expect(meOf(n)).toEqual(['Profile']);
   });
 
+  it('Enterprise E1: Positions sits after the org chart for the seat key only (positive and negative)', () => {
+    expect(labels(nav(['employee.profile.view', 'org.position.manage']), 'people').slice(0, 3)).toEqual(['Directory', 'Org chart', 'Positions']);
+    expect(labels(nav(['employee.profile.view', 'org.structure.view']), 'people')).not.toContain('Positions');
+    expect(labels(nav([], { employee: true, manager: true }), 'people')).not.toContain('Positions');
+  });
+
   it('a manager without HR keys gets "For my team"; raising on behalf adds Change action', () => {
     const n = nav(['request.raise_on_behalf'], { employee: true, manager: true, history: true });
     expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'My team', 'Probation', 'Change action', 'Exit cases', 'Job history']);
