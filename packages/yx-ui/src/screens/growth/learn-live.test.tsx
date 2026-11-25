@@ -161,6 +161,34 @@ describe('Answer 2672: level gained per course skill', () => {
   });
 });
 
+describe('Answer 2672: levels stay with their skills when the names are edited', () => {
+  it('removing, reordering and retyping skill names keeps each level on its skill; a new skill starts at 2', async () => {
+    const onSave = vi.fn(async () => undefined);
+    const live: LiveBuilder = {
+      state: 'ready',
+      onRetry: vi.fn(),
+      data: { course: { ...course(), skills: ['Fire safety', 'First aid'], skillLevels: [3, 5], status: 'draft', version: 1, description: null, durationMinutes: 45, certificateMonths: 12 }, items: [] },
+      onSave,
+      onStatus: vi.fn(async () => undefined),
+      onAddItem: vi.fn(async () => undefined),
+      onItem: vi.fn(async () => undefined),
+      onRemove: vi.fn(async () => undefined),
+      onBack: vi.fn(),
+    };
+    wrap(<LiveCourseBuilderScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: 'Skills' }));
+    const names = screen.getByRole('textbox', { name: /Skills it builds/ });
+    // Retyped from scratch in a new order, through partial names, with a new skill in front.
+    await ue.clear(names);
+    await ue.type(names, 'Rigging, First aid, Fire safety');
+    expect(screen.getByRole('combobox', { name: 'Level gained for First aid' })).toHaveTextContent('Level 5');
+    expect(screen.getByRole('combobox', { name: 'Level gained for Fire safety' })).toHaveTextContent('Level 3');
+    expect(screen.getByRole('combobox', { name: 'Level gained for Rigging' })).toHaveTextContent('Level 2');
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(onSave).toHaveBeenLastCalledWith(expect.objectContaining({ skills: ['Rigging', 'First aid', 'Fire safety'], skillLevels: [2, 5, 3] }));
+  });
+});
+
 describe('Assignment rules (LRN-07)', () => {
   it('only "all of these" and "is one of" are kept', () => {
     const rule = (join: 'and' | 'or') => ({ trigger: null, actions: [], conditions: { id: 'g', join, items: [{ id: 'a', field: 'location', operator: 'one_of' as const, value: ['hsr'] }, { id: 'b', field: 'designation', operator: 'contains' as const, value: 'operator' }] } });

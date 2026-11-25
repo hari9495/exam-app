@@ -781,7 +781,13 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
   const [details, setDetails] = useState<CourseDetails | null>(null);
   const [adding, setAdding] = useState<'file' | 'link' | null>(null);
   const [removing, setRemoving] = useState<BuilderLiveItem | null>(null);
-  useEffect(() => setDetails(d ? detailsOf(d.course) : null), [d]);
+  // Levels are kept by skill name (not position), so editing the names never moves a level to another skill.
+  const [levelMap, setLevelMap] = useState<Record<string, number>>({});
+  useEffect(() => {
+    setDetails(d ? detailsOf(d.course) : null);
+    setLevelMap(d ? Object.fromEntries(d.course.skills.map((s, i) => [s.trim().toLowerCase(), d.course.skillLevels?.[i] ?? 2])) : {});
+  }, [d]);
+  const leveled = (v: CourseDetails, m = levelMap): CourseDetails => ({ ...v, skillLevels: v.skills.map((s) => m[s.trim().toLowerCase()] ?? 2) });
   const items = d?.items ?? [];
   const noRequired = !items.some((i) => i.required);
   const published = d?.course.status === 'published';
@@ -880,7 +886,7 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
                 <TabsContent value="skills">
                   <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
                     <FormField label="Skills it builds" helper="Separate skills with commas.">
-                      <TextField value={details.skills.join(', ')} onChange={(v) => setDetails({ ...details, skills: v.split(',').map((s) => s.trimStart()) })} />
+                      <TextField value={details.skills.join(', ')} onChange={(v) => setDetails(leveled({ ...details, skills: v.split(',').map((s) => s.trimStart()) }))} />
                     </FormField>
                     {details.skills.some((s) => s.trim()) && (
                       <FormField label="Level gained" helper="On completion each skill is suggested at this level; the person or their manager confirms it.">
@@ -892,7 +898,11 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
                                 <Select
                                   aria-label={`Level gained for ${s.trim()}`}
                                   value={String(details.skillLevels?.[i] ?? 2)}
-                                  onChange={(v) => setDetails({ ...details, skillLevels: details.skills.map((_, j) => (j === i ? Number(v ?? 2) : (details.skillLevels?.[j] ?? 2))) })}
+                                  onChange={(v) => {
+                                    const m = { ...levelMap, [s.trim().toLowerCase()]: Number(v ?? 2) };
+                                    setLevelMap(m);
+                                    setDetails(leveled(details, m));
+                                  }}
                                   options={GAIN_LEVELS}
                                 />
                               </FieldRow>
@@ -906,7 +916,7 @@ export function LiveCourseBuilderScreen({ live }: { live: LiveBuilder }) {
                 </TabsContent>
                 <TabsContent value="settings">
                   <div className="yx-growth-stack">
-                    <CourseDetailsFields value={details} onChange={setDetails} />
+                    <CourseDetailsFields value={details} onChange={(v) => setDetails(leveled(v))} />
                     {saveBar}
                     {published && (
                       <div className="yx-growth-row">
