@@ -4,7 +4,6 @@ import { PAY_RUN_EDITABLE, payScope, withPayScope } from '../payroll/pay-access'
 import { daysFrom, wagesDueBy } from './exit-rules';
 import { settingFor } from '../people/probation';
 import { netBookValue, recoveryAmount } from './asset-categories';
-import { todayIst } from '../org-structure/org-validation';
 
 // LIFE-4.05 the payroll hand-off (design §11): one frozen record per exit case, a new revision whenever something
 // payroll needs changes (accepted, last day moved, recovery recorded, asset returned, exited). Payroll reads the
@@ -45,7 +44,8 @@ export async function freezeSettlementIn(tx: Tx, c: CompanyContext, exitCaseId: 
     if (i.recoveryAmount) recoveries.push({ source: i.department === 'asset' ? 'asset' : 'clearance', title, amount: i.recoveryAmount.toFixed(2), reason: x?.returnCondition ?? i.recoveryReason, status: 'recorded' });
     // Not returned yet: payroll sees the possible recovery (Settings 2.8's basis; null: HR decides) until it comes back
     // or is signed off. With recovery to F&F off, an unreturned asset is not a recovery line.
-    else if (i.status === 'open' && x && toFnf) recoveries.push({ source: 'asset', title, amount: recoveryAmount(basis, category?.defaultRecovery, asset?.cost, category && asset ? netBookValue(asset.cost, asset.purchasedOn?.toISOString().slice(0, 10) ?? null, todayIst(), category) : null), reason: 'Not returned yet', status: 'open' });
+    // Answer 2820: a written-down value is fixed at the last working day, so later revisions keep the same amount.
+    else if (i.status === 'open' && x && toFnf) recoveries.push({ source: 'asset', title, amount: recoveryAmount(basis, category?.defaultRecovery, asset?.cost, category && asset ? netBookValue(asset.cost, asset.purchasedOn?.toISOString().slice(0, 10) ?? null, lwd, category) : null), reason: 'Not returned yet', status: 'open' });
   }
   // M05 XP-4.06: expense advances not yet settled go to F&F (M01 Q7); from the last day on they are marked as such.
   const advances = await tx.expenseAdvance.findMany({ where: { organizationId: org, employmentId: e.id, status: { in: ['paid', 'to_fnf'] } } });

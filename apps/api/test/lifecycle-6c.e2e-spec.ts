@@ -12,7 +12,8 @@ import { AutomationService } from '../src/rules-engine/automation.service';
 import { addDays } from '../src/lifecycle/journey-rules';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { AssetAlertsService } from '../src/lifecycle/asset-alerts.service';
-import { addMonthsIso, contractEndsOn } from '../src/lifecycle/asset-categories';
+import { addMonthsIso, contractEndsOn, netBookValue } from '../src/lifecycle/asset-categories';
+import { Prisma } from '@prisma/client';
 
 // Lifecycle batch 6c end to end against the real database (forced RLS, the app role): the notice from the policy in
 // force on the day, a resignation accepted by the manager then HR (on notice, the offboarding checklist on the last day,
@@ -610,6 +611,43 @@ describe('Lifecycle batch 6c', () => {
     const upd = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { entityType: 'asset_category', entityId: srv, action: 'asset.category.updated' } }));
     expect(JSON.parse(upd.metadataJson ?? '{}')).toMatchObject({ from: { depreciationMethod: 'declining', depreciationRate: '40.00' }, to: { depreciationMethod: 'straight_line', depreciationRate: null } });
     expect((await page('hr', s1)).asset.depreciation).toBe('Straight line over 6 years');
+  });
+
+  it('IT assets follow-up (2820): a written-down recovery is the net book value on the last working day, kept when the settlement changes', async () => {
+    const o = { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id };
+    const basis = await inA((tx) => tx.setting.create({ data: { ...o, key: 'asset.recovery_basis', value: 'written_down' } }));
+    try {
+      const nisha = (await api('adminA', 'post', '/people/employees').send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'Nisha', familyName: run, employeeCode: 'EX-W01', joinedOn: '2026-04-06', workEmail: `ex-w01@life6c-${run}.test`, assignment: { locationId: ids.blr, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: emp.mgr } }).expect(201)).body.id as string;
+      const bought = `${Number(today.slice(0, 4)) - 1}${today.slice(4)}`.replace(/-02-29$/, '-02-28');
+      const tag = `WD-${run}`;
+      const id = (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Written-down laptop', tag, legalEntityId: ids.entity, locationId: ids.blr, purchasedOn: bought, cost: '90000.00' }).expect(201)).body.id as string;
+      await api('hr', 'post', `/lifecycle/assets/${id}/issue`).send({ employeeId: nisha, issuedOn: today, condition: 'Good' }).expect(200);
+      const lwd = addDays(today, 60);
+      const k = (await api('hr', 'post', '/lifecycle/exits').send({ employeeId: nisha, exitType: 'end_of_contract', lwd, reasonText: 'Contract ends' }).expect(201)).body;
+      expect(k.status).toBe('accepted');
+      const rule = { depreciationMethod: 'straight_line', usefulLifeYears: 3, depreciationRate: null };
+      const atLwd = netBookValue(new Prisma.Decimal('90000.00'), bought, lwd, rule)!;
+      const atToday = netBookValue(new Prisma.Decimal('90000.00'), bought, today, rule)!;
+      expect(atLwd).not.toBe(atToday); // 60 days of depreciation apart
+      const current = () =>
+        inA(async (tx) => {
+          await tx.$executeRaw`SELECT set_config('app.pay_entities', ${`{${ids.entity}}`}, true)`;
+          return tx.exitSettlementInput.findFirstOrThrow({ where: { exitCaseId: k.id, supersededAt: null } });
+        });
+      const line = (r: { recoveries: unknown }) => (r.recoveries as { title: string; amount: string | null; status: string }[]).find((x) => x.title.includes(tag));
+      const first = await current();
+      expect(line(first)).toMatchObject({ amount: atLwd, status: 'open' });
+      // The return form starts from the same amount.
+      expect((await api('hr', 'get', '/lifecycle/assets').expect(200)).body.rows.find((r: { id: string }) => r.id === id).holder).toMatchObject({ leavingOn: lwd, recoveryDefault: atLwd });
+      // A later revision (letters put on hold) keeps it, not today's value.
+      await api('hr', 'put', `/lifecycle/exits/${k.id}/hr`).send({ hold: true, holdReason: 'Laptop not back', version: k.version }).expect(200);
+      const second = await current();
+      expect(second.revision).toBeGreaterThan(first.revision);
+      expect(line(second)).toMatchObject({ amount: atLwd, status: 'open' });
+      expect(line(second)!.amount).not.toBe(atToday);
+    } finally {
+      await inA((tx) => tx.setting.update({ where: { id: basis.id }, data: { value: 'category_default' } }));
+    }
   });
 
   it('IT assets part 2 (2714): asset managers of the place are told once before a warranty ends; the register shows the end', async () => {

@@ -389,7 +389,7 @@ export class OffboardingService {
                   acknowledged: Boolean(o.ackEvidence),
                   ackNone: (o.ackEvidence as { method?: string } | null)?.method === 'none',
                   leavingOn,
-                  ...(manage && leavingOn ? { recoveryDefault: recoveryAmount(basis, cat?.defaultRecovery, a.cost, cat ? netBookValue(a.cost, a.purchasedOn ? iso(a.purchasedOn) : null, todayIst(), cat) : null) } : {}),
+                  ...(manage && leavingOn ? { recoveryDefault: recoveryAmount(basis, cat?.defaultRecovery, a.cost, cat ? netBookValue(a.cost, a.purchasedOn ? iso(a.purchasedOn) : null, leavingOn, cat) : null) } : {}),
                 }
               : null,
           };
