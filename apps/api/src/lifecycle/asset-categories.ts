@@ -59,6 +59,15 @@ export function addMonthsIso(day: string, months: number): string {
   return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, last))).toISOString().slice(0, 10);
 }
 
+/** A day plus n days (n may be negative). */
+export const addDaysIso = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/** Answer 2717: a contract's last day: start + length x (renewals + 1), less a day (12 months from 1 Jan ends 31 Dec). */
+export const contractEndsOn = (startsOn: string, months: number, renewals = 0) => addDaysIso(addMonthsIso(startsOn, months * (renewals + 1)), -1);
+
+/** Answer 2714: the day notice must be given by: the end date less the notice period. */
+export const contractNoticeOn = (endsOn: string, noticeDays: number) => addDaysIso(endsOn, -noticeDays);
+
 /** Answer 2713: how a category depreciates (straight line over its useful life by default, or declining at a yearly rate). */
 export interface DepreciationRule {
   depreciationMethod: string;

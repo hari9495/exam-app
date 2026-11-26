@@ -8039,6 +8039,51 @@ model ItSupplier {
   @@map("it_suppliers")
 }
 
+/// IT assets part 3 (answer 2717): an asset contract. endsOn = startsOn + months x (renewals + 1) - 1 day; a tacit contract
+/// renews itself for the same length when its end passes, an express one ends. noticeAlertedFor: the end date whose
+/// notice its owners were told about (answer 2714).
+model AssetContract {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  kind             String    @db.VarChar(16)
+  number           String    @db.VarChar(60)
+  supplierId       String    @map("supplier_id") @db.Uuid
+  legalEntityId    String?   @map("legal_entity_id") @db.Uuid
+  locationId       String?   @map("location_id") @db.Uuid
+  startsOn         DateTime  @map("starts_on") @db.Date
+  months           Int       @db.SmallInt
+  renewal          String    @db.VarChar(8)
+  noticeDays       Int       @default(0) @map("notice_days") @db.SmallInt
+  supportHours     String?   @map("support_hours") @db.VarChar(120)
+  value            Decimal?  @db.Decimal(14, 2)
+  assetCap         Int?      @map("asset_cap") @db.SmallInt
+  renewals         Int       @default(0) @db.SmallInt
+  endsOn           DateTime  @map("ends_on") @db.Date
+  status           String    @default("active") @db.VarChar(8)
+  noticeAlertedFor DateTime? @map("notice_alerted_for") @db.Date
+  version          Int       @default(1)
+  createdBy        String?   @map("created_by") @db.Uuid
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id])
+  @@index([status, endsOn])
+  @@map("asset_contracts")
+}
+
+/// Answer 2717: the assets a contract covers.
+model AssetContractAsset {
+  organizationId String   @map("organization_id") @db.Uuid
+  contractId     String   @map("contract_id") @db.Uuid
+  assetId        String   @map("asset_id") @db.Uuid
+  addedBy        String?  @map("added_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([contractId, assetId])
+  @@index([organizationId, assetId])
+  @@map("asset_contract_assets")
+}
+
 model AssetAssignment {
   id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId  String    @map("organization_id") @db.Uuid

@@ -11,7 +11,7 @@ import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
 import { ItAssetsService } from './it-assets.service';
-import { SupplierDto } from './it-assets-dto';
+import { ContractDto, SupplierDto } from './it-assets-dto';
 import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // Lifecycle batch 6c (design §13). Keys (P02 YX-SEC-01), checked again per person, case, item and asset:
@@ -252,6 +252,26 @@ export class ExitsController {
   @RequirePermissions('asset.manage')
   saveAssetSupplier(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SupplierDto) {
     return this.itAssets.saveSupplier(ctx, this.user(req), id, dto);
+  }
+
+  // Answer 2717: asset contracts (asset.view over the contract's place reads; asset.manage over it changes; checked again
+  // per contract by the service, with the value only for money holders).
+  @Get('asset-contracts')
+  @RequirePermissions('asset.view')
+  assetContracts(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.itAssets.contracts(ctx, this.user(req));
+  }
+
+  @Post('asset-contracts')
+  @RequirePermissions('asset.manage')
+  addAssetContract(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: ContractDto) {
+    return this.itAssets.saveContract(ctx, this.user(req), null, dto);
+  }
+
+  @Put('asset-contracts/:id')
+  @RequirePermissions('asset.manage')
+  saveAssetContract(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ContractDto) {
+    return this.itAssets.saveContract(ctx, this.user(req), id, dto);
   }
 
   /** Who an asset can be issued to: current employees, name only. IT holds asset.manage without any employee grant. */

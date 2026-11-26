@@ -28720,5 +28720,25 @@
                               "Screens/People/PPL-25 · Asset register (Add asset · open, Asset page · details, edit details)"
                     ],
                     "note": "Positive and negative: lifecycle-6c e2e '2716' (add by IT, 403 for asset.view and Finance, 403 for no key, 400 bad GSTIN / email / six contacts, 409 same name, retire with version, 409 stale version, retired not offered for a new asset but kept on edit, five audit rows, other company 404 / empty / 400); kit asset-suppliers tests 6; yx-nav test. Scoping: the list is company-wide; asset.view or asset.manage at any scope reads it, asset.manage at any scope changes it. Migration 804 (it_suppliers with RLS and support_session_excluded; assets.supplier_id)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2717",
+                    "area": "IT assets part 3 (answer 2717): asset contracts",
+                    "screen": "People › Asset contracts (also Helpdesk › IT contracts); the asset page's Contracts tab",
+                    "url": "http://localhost:3000/yx/people/assets/contracts",
+                    "account": "IT / Admin coordinator (asset.view and asset.manage, company-wide); a site IT person with asset.manage on one location only; Finance (asset.finance.view); an IT desk agent with asset.view only; an employee; another company's admin.",
+                    "steps": [
+                              "As IT open People › Asset contracts, press Add contract, then Add contract with nothing filled.",
+                              "Fill Type Maintenance (AMC), number AMC-27, a supplier, your legal entity and location, start 1 Jan 2027, length 12 months, notice 30 days, Tacit, support hours, value 120000, Asset cap 1, and pick two assets; press Add contract. Then clear the cap and add it.",
+                              "Add a second contract with the same number and supplier.",
+                              "Open the contract: look at its details and assets; press a tag. On that asset page open the Contracts tab and press the number.",
+                              "Edit the contract: length 24 months, Express; save. Open it in another tab, save there too.",
+                              "As Finance and as the desk agent open Helpdesk › IT contracts and the contract. As the site IT person (another location) open the list and try to add a contract for IT's location, and one with no place. As the employee open the page; as another company's admin look at the list."
+                    ],
+                    "expected": "Step 1: 'Choose the type.', 'Enter the contract number.', 'Choose the supplier.', 'Give the start date.'; nothing saved. Step 2: the Length field says 'Ends on 31 Dec 2027.' and Notice 'Give notice by 1 Dec 2027.'; with the cap 'It covers 2 assets; the cap is 1.'; then toast 'Contract AMC-27 saved.' and the row shows Ends 31 Dec 2027, Tacit, 2 assets, the value. Step 3: 'This supplier already has a contract with that number.' Step 4: the drawer lists both assets; the tag opens the asset page; its Contracts tab lists AMC-27 and the number opens the contract again. Step 5: Ends 31 Dec 2028, Express; the second save says 'Someone else changed this contract. Reload it.' Step 6: Finance sees the value, the desk agent sees no Value column and no Edit; the site IT person does not see IT's contract and is refused for that place and for no place ('Only company-wide asset managers keep a contract with no place…'); the employee gets no access; the other company sees none. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset contracts (all)"
+                    ],
+                    "note": "Positive and negative: lifecycle-6c e2e '2717' (end and notice dates, value only for IT and Finance, none for asset.view, asset page contracts, 403 no key and view only, 400 cap / months 0 / bad renewal / another place's asset / retired supplier, 409 same number and stale version, a site manager cannot see, change or add for another place or no place, assets at other places kept and counted, audit, other company 404 / empty); kit asset-contracts tests 7; unit contract dates; yx-nav test. Migration 805 (asset_contracts, asset_contract_assets with RLS and support_session_excluded). Types: Maintenance (AMC), Support, Lease or rental, Insurance, Subscription, Other. Helpdesk tickets to a supplier: later (M14)."
           }
 ]

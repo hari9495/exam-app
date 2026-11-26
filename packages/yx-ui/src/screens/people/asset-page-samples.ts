@@ -36,6 +36,8 @@ export const ASSET_PAGE: AssetPageData = {
     { id: 'h2', at: '2025-08-20', who: 'Prakash Rao', what: 'issued it to Meera Iyer (New)' },
     { id: 'h1', at: '2025-08-14T09:05:00.000Z', who: 'Prakash Rao', what: 'added the asset' },
   ],
+  // Answer 2717: one AMC covers it.
+  contracts: [{ id: 'k1', kind: 'amc', number: 'AMC-2026-014', supplier: 'Dell India Pvt Ltd', endsOn: '2026-12-31', renewal: 'tacit', status: 'active' }],
   // Answer 2722: three tickets about it; this viewer is an agent of the IT desk that holds two.
   tickets: {
     count: 3,

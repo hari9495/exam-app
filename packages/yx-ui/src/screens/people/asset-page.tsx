@@ -20,6 +20,7 @@ import { Timeline } from '../../components/timeline';
 import { useToast } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import { PeopleFrame } from './people-kit';
+import { CONTRACT_KIND_LABEL, type ContractKind } from './asset-contracts';
 
 export type AssetStatus = 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
 export interface AssetPageData {
@@ -59,6 +60,17 @@ export interface AssetPageData {
   history: { id: string; at: string; who: string; what: string }[];
   /** Answer 2722: how many Helpdesk tickets are about it, and the ones this viewer may see (newest first). */
   tickets?: { count: number; rows: AssetTicket[] };
+  /** Answer 2717: the contracts covering it that the viewer sees. */
+  contracts?: AssetContractRef[];
+}
+export interface AssetContractRef {
+  id: string;
+  kind: ContractKind;
+  number: string;
+  supplier: string;
+  endsOn: string;
+  renewal: 'tacit' | 'express';
+  status: 'active' | 'ended';
 }
 export interface AssetTicket {
   id: string;
@@ -95,8 +107,10 @@ export interface LiveAssetPage {
   suppliers?: { value: string; label: string }[];
   /** Answer 2722: opens a listed ticket on the Helpdesk. */
   onOpenTicket?: (id: string) => void;
+  /** Answer 2717: opens a contract on People › Asset contracts. */
+  onOpenContract?: (id: string) => void;
 }
-type Tab = 'details' | 'history' | 'tickets';
+type Tab = 'details' | 'history' | 'tickets' | 'contracts';
 
 const SAMPLE_CATEGORIES = ['Laptop', 'Phone', 'SIM', 'Tools'].map((x) => ({ value: x, label: x }));
 const SAMPLE_SUPPLIERS = [{ value: 's1', label: 'Dell India Pvt Ltd' }, { value: 's2', label: 'Redington Ltd' }];
@@ -121,9 +135,9 @@ export function AssetPageScreen(props: { data: AssetPageData; tab?: Tab; editing
     if (l.state === 'no-access') return <Frame onBack={l.onBack}><NoAccessState what="the assets" grantedBy="your IT or HR admin" /></Frame>;
     if (l.state === 'error') return <Frame onBack={l.onBack}><ErrorState title="We couldn't load this asset" description="Check your connection and try again." onRetry={l.onRetry} /></Frame>;
     if (l.state === 'loading' || !l.data) return <Frame onBack={l.onBack}><Skeleton height={360} /></Frame>;
-    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} suppliers={l.suppliers} onOpenTicket={l.onOpenTicket} />;
+    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} suppliers={l.suppliers} onOpenTicket={l.onOpenTicket} onOpenContract={l.onOpenContract} />;
   }
-  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} suppliers={SAMPLE_SUPPLIERS} onOpenTicket={() => undefined} />;
+  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} suppliers={SAMPLE_SUPPLIERS} onOpenTicket={() => undefined} onOpenContract={() => undefined} />;
 }
 
 function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; children: React.ReactNode }) {
@@ -135,7 +149,7 @@ function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; ch
   );
 }
 
-function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, suppliers, onOpenTicket }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; suppliers?: LiveAssetPage['suppliers']; onOpenTicket?: LiveAssetPage['onOpenTicket'] }) {
+function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, suppliers, onOpenTicket, onOpenContract }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; suppliers?: LiveAssetPage['suppliers']; onOpenTicket?: LiveAssetPage['onOpenTicket']; onOpenContract?: LiveAssetPage['onOpenContract'] }) {
   const [open, setOpen] = useState(editing);
   const a = data.asset;
   const ended = a.warrantyEndsOn != null && a.warrantyEndsOn < data.today;
@@ -165,6 +179,7 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
           <TabsTrigger value="details">Details</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
           {data.tickets && <TabsTrigger value="tickets">{`Tickets (${data.tickets.count})`}</TabsTrigger>}
+          {data.contracts && <TabsTrigger value="contracts">{`Contracts (${data.contracts.length})`}</TabsTrigger>}
         </TabsList>
         <TabsContent value="details">
           <Card>
@@ -203,6 +218,11 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
             <Timeline aria-label="Asset history" items={data.history.map((h) => ({ id: h.id, actor: { name: h.who }, action: h.what, at: at(h.at) }))} today={day(data.today)} />
           </Card>
         </TabsContent>
+        {data.contracts && (
+          <TabsContent value="contracts">
+            <ContractsTab contracts={data.contracts} onOpenContract={onOpenContract} />
+          </TabsContent>
+        )}
         {data.tickets && (
           <TabsContent value="tickets">
             <TicketsTab tickets={data.tickets} onOpenTicket={onOpenTicket} />
@@ -241,6 +261,24 @@ function TicketsTab({ tickets, onOpenTicket }: { tickets: NonNullable<AssetPageD
         <DataTable label="Tickets about this device" columns={cols} rows={tickets.rows} getRowId={(t) => t.id} state="ready" />
         {hidden > 0 && <InlineAlert tone="info" title={`${hidden} more ${hidden === 1 ? 'is' : 'are'} on desks you are not an agent of.`} />}
       </div>
+    </Card>
+  );
+}
+
+/** Answer 2717: the contracts covering the device (opened on People › Asset contracts). */
+function ContractsTab({ contracts, onOpenContract }: { contracts: AssetContractRef[]; onOpenContract?: (id: string) => void }) {
+  const cols: TableColumn<AssetContractRef>[] = [
+    { key: 'number', header: 'Contract', type: 'id', value: (k) => k.number, render: onOpenContract ? (k) => <Link href={`#${k.id}`} onClick={(e) => (e.preventDefault(), onOpenContract(k.id))}>{k.number}</Link> : undefined, width: 160 },
+    { key: 'kind', header: 'Type', value: (k) => CONTRACT_KIND_LABEL[k.kind], width: 170 },
+    { key: 'supplier', header: 'Supplier', value: (k) => k.supplier, width: 220 },
+    { key: 'endsOn', header: 'Ends', type: 'date', value: (k) => day(k.endsOn), width: 130 },
+    { key: 'renewal', header: 'Renewal', value: (k) => (k.renewal === 'tacit' ? 'Tacit' : 'Express'), width: 110 },
+    { key: 'status', header: 'Status', type: 'status', value: (k) => (k.status === 'active' ? 'Active' : 'Ended'), statusTone: (v) => (v === 'Active' ? 'success' : 'neutral'), width: 110 },
+  ];
+  if (!contracts.length) return <Card><InlineAlert tone="info" title="No contracts you see cover this device." /></Card>;
+  return (
+    <Card>
+      <DataTable label="Contracts covering this device" columns={cols} rows={contracts} getRowId={(k) => k.id} state="ready" />
     </Card>
   );
 }

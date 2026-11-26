@@ -60,3 +60,73 @@ export class SupplierDto {
   @IsInt()
   version?: number;
 }
+
+export const CONTRACT_KINDS = ['amc', 'support', 'lease', 'insurance', 'subscription', 'other'] as const;
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
+
+/** Answer 2717: an asset contract. */
+export class ContractDto {
+  @IsIn(CONTRACT_KINDS)
+  kind!: (typeof CONTRACT_KINDS)[number];
+
+  @trim()
+  @IsString()
+  @Length(1, 60)
+  @Matches(/^[^<>]*$/, NO_TAGS)
+  number!: string;
+
+  @IsUUID()
+  supplierId!: string;
+
+  @IsOptional()
+  @IsUUID()
+  legalEntityId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  locationId?: string | null;
+
+  @Matches(ISO)
+  startsOn!: string;
+
+  @IsInt()
+  @Min(1)
+  @Max(120)
+  months!: number;
+
+  @IsIn(['tacit', 'express'])
+  renewal!: 'tacit' | 'express';
+
+  @IsInt()
+  @Min(0)
+  @Max(365)
+  noticeDays!: number;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(120)
+  @Matches(/^[^<>]*$/, NO_TAGS)
+  supportHours?: string | null;
+
+  @IsOptional()
+  @Matches(MONEY)
+  value?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(10000)
+  assetCap?: number | null;
+
+  /** The covered assets the caller sees; links to assets they cannot see are kept as they are. */
+  @IsArray()
+  @ArrayMaxSize(10000)
+  @IsUUID('all', { each: true })
+  assetIds!: string[];
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}

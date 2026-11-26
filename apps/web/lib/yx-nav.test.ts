@@ -451,6 +451,14 @@ describe('IT assets (answer 2710): one register, also reached from the Helpdesk'
     expect(labels(nav(['desk.ticket.view'], { employee: true }), 'helpdesk')).not.toContain('IT suppliers');
     expect(labels(nav([], { employee: true }), 'people')).not.toContain('Asset suppliers');
   });
+  it('IT assets part 3 (2717): "Asset contracts" under People and "IT contracts" on the Helpdesk, the same page', () => {
+    const n = nav(['desk.ticket.view', 'asset.view'], { employee: true });
+    const find = (area: string, label: string) => n.find((a) => a.id === area)!.sections.flatMap((s) => s.items).find((l) => l.label === label);
+    expect(find('people', 'Asset contracts')?.href).toBe('/yx/people/assets/contracts');
+    expect(find('helpdesk', 'IT contracts')?.href).toBe('/yx/people/assets/contracts');
+    expect(labels(nav(['desk.ticket.view'], { employee: true }), 'helpdesk')).not.toContain('IT contracts');
+    expect(labels(nav([], { employee: true }), 'people')).not.toContain('Asset contracts');
+  });
 });
 
 describe('Cases and Ethics desk only for the people they concern (HLP-07/08/09, founder answer 36)', () => {

@@ -510,6 +510,9 @@ export class OffboardingService {
       const cat = a.categoryId ? await tx.assetCategory.findFirst({ where: { organizationId: org, id: a.categoryId }, select: { name: true, usefulLifeYears: true, depreciationMethod: true, depreciationRate: true } }) : null;
       const money = this.seesMoney(v, a);
       const supplier = a.supplierId ? await tx.itSupplier.findFirst({ where: { organizationId: org, id: a.supplierId }, select: { name: true } }) : null;
+      // Answer 2717: the contracts covering it that this viewer sees (asset.view over the contract's place).
+      const covering = (await tx.assetContract.findMany({ where: { organizationId: org, id: { in: (await tx.assetContractAsset.findMany({ where: { organizationId: org, assetId: a.id }, select: { contractId: true } })).map((l) => l.contractId) } }, orderBy: { endsOn: 'desc' } })).filter((k) => reachesPlace(v, 'asset.view', k));
+      const contractSuppliers = new Map((await tx.itSupplier.findMany({ where: { organizationId: org, id: { in: covering.map((k) => k.supplierId) } }, select: { id: true, name: true } })).map((x) => [x.id, x.name]));
       const warrantyEndsOn = a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null;
       // Answer 2722: every viewer of the asset gets how many tickets are about it; only the ones they may see are listed.
       const ticketCount = await tx.sdTicket.count({ where: { organizationId: org, assetId: a.id } });
@@ -546,6 +549,7 @@ export class OffboardingService {
         },
         holder: open ? { name: nameOf(open.personId), issuedOn: iso(open.issuedOn), acknowledged: Boolean(open.ackEvidence), ackNone: (open.ackEvidence as { method?: string } | null)?.method === 'none' } : null,
         history,
+        contracts: covering.map((k) => ({ id: k.id, kind: k.kind, number: k.number, supplier: contractSuppliers.get(k.supplierId) ?? 'Unknown supplier', endsOn: iso(k.endsOn), renewal: k.renewal, status: k.status })),
         tickets: { count: ticketCount, rows: seen.map((t) => ({ id: t.id, number: t.number, subject: t.subject, state: t.systemState, raisedAt: t.createdAt.toISOString() })) },
       };
     });

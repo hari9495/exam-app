@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { netBookValue, nextTag, recoveryAmount } from './asset-categories';
+import { netBookValue, nextTag, recoveryAmount, contractEndsOn, contractNoticeOn } from './asset-categories';
 
 // IT assets part 1: tag numbering (answer 2720) and the F&F recovery basis (answer 2712).
 describe('nextTag', () => {
@@ -63,5 +63,19 @@ describe('netBookValue', () => {
     expect(netBookValue(d('90000'), '2024-01-01', '2026-01-01', sl(null))).toBeNull();
     expect(netBookValue(d('90000'), '2024-01-01', '2026-01-01', db(null))).toBeNull();
     expect(netBookValue(d('90000'), '2024-01-01', '2026-01-01', db('100'))).toBeNull();
+  });
+});
+
+describe('contract dates (answers 2717, 2714)', () => {
+  it('the end is the day before start + length; each renewal adds one more length; month ends clamp', () => {
+    expect(contractEndsOn('2026-01-01', 12)).toBe('2026-12-31');
+    expect(contractEndsOn('2026-01-01', 12, 2)).toBe('2028-12-31');
+    expect(contractEndsOn('2026-01-31', 1)).toBe('2026-02-27');
+    expect(contractEndsOn('2026-03-15', 3)).toBe('2026-06-14');
+  });
+  it('the notice date is the end less the notice days; 0 days is the end itself', () => {
+    expect(contractNoticeOn('2026-12-31', 30)).toBe('2026-12-01');
+    expect(contractNoticeOn('2026-12-31', 0)).toBe('2026-12-31');
+    expect(contractNoticeOn('2027-03-01', 1)).toBe('2027-02-28');
   });
 });

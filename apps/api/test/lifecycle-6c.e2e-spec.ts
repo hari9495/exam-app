@@ -734,6 +734,70 @@ describe('Lifecycle batch 6c', () => {
     await api('adminB', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Theirs', tag: `SUPB-${run}`, supplierId: id }).expect(400);
   });
 
+  it('IT assets part 3 (2717): contracts with their place, value for money holders only, covered assets with a cap', async () => {
+    const o = { organizationId: org.A.id };
+    const sup = (await api('it', 'post', '/lifecycle/asset-suppliers').send({ name: `HCL Services ${run}`, contacts: [] }).expect(201)).body.id as string;
+    // A Pune site IT person: asset.view and asset.manage on that location only (a grant), signed in fresh.
+    const pune = await inA((tx) => tx.location.create({ data: { ...o, legalEntityId: ids.entity, name: `Pune ${run}`, code: `P${run.slice(0, 4)}`, address: {}, country: 'IN', state: 'IN-MH', timezone: 'Asia/Kolkata' } }));
+    const puneIt = await inA(async (tx) => {
+      const u = await tx.user.create({ data: { ...o, email: `pune-it@life6c-${run}.test`, name: `Pune IT ${run}`, passwordHash: await argon2.hash(PASSWORD), role: 'panel', permissionProfileId: (await tx.permissionProfile.create({ data: { ...o, name: `pune-none-${run}`, permissionsJson: '[]' } })).id } });
+      const role = await tx.permissionProfile.create({ data: { ...o, name: `asset-pune-${run}`, permissionsJson: JSON.stringify(['asset.view', 'asset.manage']) } });
+      await tx.roleGrant.create({ data: { ...o, userId: u.id, permissionProfileId: role.id, scopeType: 'location', locationId: pune.id, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Pune IT', grantedBy: users.adminA } });
+      return u.id;
+    });
+    const puneToken = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `pune-it@life6c-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken as string;
+    const asPune = (method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${puneToken}`);
+    const add = async (tag: string, locationId: string) => (await api('it', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: `Covered ${tag}`, tag: `${tag}-${run}`, legalEntityId: ids.entity, locationId }).expect(201)).body.id as string;
+    const [b1, b2, b3, p1] = [await add('CB1', ids.blr), await add('CB2', ids.blr), await add('CB3', ids.blr), await add('CP1', pune.id)];
+    const body = { kind: 'amc', number: `AMC-${run}`, supplierId: sup, legalEntityId: ids.entity, locationId: ids.blr, startsOn: '2026-01-01', months: 12, renewal: 'tacit', noticeDays: 30, supportHours: 'Mon to Sat, 9:00 to 18:00', value: '120000.00', assetCap: 2, assetIds: [b1, b2] };
+    const k = (await api('it', 'post', '/lifecycle/asset-contracts').send(body).expect(201)).body.id as string;
+    ids.contract = k;
+    const rowsOf = async (r: request.Test) => (await r.expect(200)).body.rows as { id: string }[];
+    const row = async (who: Who | 'pune', id = k) => (await rowsOf(who === 'pune' ? asPune('get', '/lifecycle/asset-contracts') : api(who, 'get', '/lifecycle/asset-contracts'))).find((r) => r.id === id) as Record<string, any> | undefined;
+    expect(await row('it')).toMatchObject({ number: `AMC-${run}`, supplier: `HCL Services ${run}`, place: 'Bengaluru', startsOn: '2026-01-01', endsOn: '2026-12-31', noticeOn: '2026-12-01', renewal: 'tacit', value: '120000.00', assetCap: 2, hiddenAssets: 0, status: 'active', canManage: true });
+    expect((await row('it'))!.assets.map((a: { id: string }) => a.id).sort()).toEqual([b1, b2].sort());
+    // Answer 2711: the value for Finance (asset.finance.view) and the managers; an asset.view agent gets no value at all.
+    expect((await row('fin'))!.value).toBe('120000.00');
+    const seen = await row('agent');
+    expect(seen).not.toHaveProperty('value');
+    expect(seen!.canManage).toBe(false);
+    // The asset page lists the contracts covering the device.
+    expect((await api('agent', 'get', `/lifecycle/assets/${b1}`).expect(200)).body.contracts).toEqual([{ id: k, kind: 'amc', number: `AMC-${run}`, supplier: `HCL Services ${run}`, endsOn: '2026-12-31', renewal: 'tacit', status: 'active' }]);
+    expect((await api('agent', 'get', `/lifecycle/assets/${b3}`).expect(200)).body.contracts).toEqual([]);
+    // Negative: no key, view only, the cap, bad values, a stale version, the same number twice.
+    await api('ravi', 'get', '/lifecycle/asset-contracts').expect(403);
+    await api('agent', 'post', '/lifecycle/asset-contracts').send({ ...body, number: `X-${run}` }).expect(403);
+    await api('it', 'put', `/lifecycle/asset-contracts/${k}`).send({ ...body, assetIds: [b1, b2, b3], version: 1 }).expect(400);
+    await api('it', 'post', '/lifecycle/asset-contracts').send({ ...body, number: `Y-${run}`, months: 0 }).expect(400);
+    await api('it', 'post', '/lifecycle/asset-contracts').send({ ...body, number: `Y-${run}`, renewal: 'auto' }).expect(400);
+    await api('it', 'post', '/lifecycle/asset-contracts').send({ ...body, number: `amc-${run}` }).expect(409);
+    await api('it', 'put', `/lifecycle/asset-contracts/${k}`).send({ ...body, months: 24, assetCap: 3, assetIds: [b1, b2, b3], version: 1 }).expect(200);
+    expect(await row('it')).toMatchObject({ endsOn: '2027-12-31', noticeOn: '2027-12-01' });
+    await api('it', 'put', `/lifecycle/asset-contracts/${k}`).send({ ...body, version: 1 }).expect(409);
+    // The Pune IT person (Pune only): cannot see or change the Bengaluru contract, cannot keep one with no place; keeps a Pune one.
+    expect(await row('pune')).toBeUndefined();
+    expect(puneIt).toBeTruthy();
+    await asPune('put', `/lifecycle/asset-contracts/${k}`).send({ ...body, version: 2 }).expect(404);
+    await asPune('post', '/lifecycle/asset-contracts').send({ ...body, number: `K-${run}`, assetIds: [] }).expect(403);
+    await asPune('post', '/lifecycle/asset-contracts').send({ ...body, number: `K-${run}`, legalEntityId: null, locationId: null, assetIds: [] }).expect(403);
+    await asPune('post', '/lifecycle/asset-contracts').send({ ...body, number: `K-${run}`, locationId: pune.id, assetIds: [b1] }).expect(400);
+    const kp = (await asPune('post', '/lifecycle/asset-contracts').send({ ...body, number: `K-${run}`, locationId: pune.id, assetCap: null, assetIds: [p1] }).expect(201)).body.id as string;
+    // IT adds a Bengaluru device to the Pune contract: The Pune IT person sees it only as a count, and saving keeps it.
+    await api('it', 'put', `/lifecycle/asset-contracts/${kp}`).send({ ...body, number: `K-${run}`, locationId: pune.id, assetCap: null, assetIds: [p1, b3], version: 1 }).expect(200);
+    expect(await row('pune', kp)).toMatchObject({ hiddenAssets: 1, assets: [{ id: p1 }] });
+    await asPune('put', `/lifecycle/asset-contracts/${kp}`).send({ ...body, number: `K-${run}`, locationId: pune.id, assetCap: null, assetIds: [p1], supportHours: '24 x 7', version: 2 }).expect(200);
+    expect((await row('it', kp))!.assets.map((a: { id: string }) => a.id).sort()).toEqual([p1, b3].sort());
+    // A retired supplier is not offered for a new contract.
+    await api('it', 'put', `/lifecycle/asset-suppliers/${sup}`).send({ name: `HCL Services ${run}`, contacts: [], retired: true, version: 1 }).expect(200);
+    await api('it', 'post', '/lifecycle/asset-contracts').send({ ...body, number: `Z-${run}` }).expect(400);
+    await api('it', 'put', `/lifecycle/asset-suppliers/${sup}`).send({ name: `HCL Services ${run}`, contacts: [], retired: false, version: 2 }).expect(200);
+    // Audited: added, then one change (refused saves leave nothing).
+    expect((await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'asset_contract', entityId: k }, orderBy: { createdAt: 'asc' } }))).map((x) => x.action)).toEqual(['asset.contract.added', 'asset.contract.updated']);
+    // Another company: nothing.
+    expect((await api('adminB', 'get', '/lifecycle/asset-contracts').expect(200)).body.rows).toHaveLength(0);
+    await api('adminB', 'put', `/lifecycle/asset-contracts/${k}`).send({ ...body, version: 2 }).expect(404);
+  });
+
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);
