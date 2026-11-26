@@ -312,9 +312,12 @@ describe('Payroll: state statutory rules (batch H)', () => {
   });
 
   describe('H6: Madhya Pradesh (a yearly amount), Mizoram and Sikkim', () => {
-    it('October: MP on 25,000 a month (3,00,000 a year) is 1,500 a year, 125 a month; Mizoram 208; Sikkim 125; each version recorded', async () => {
+    // Review M6 and the rule's own text ("a yearly amount on the year's salary"): the August joiner on 25,000 a month earns
+    // 2,00,000 in the year (August to March), inside the nil band to 2,25,000, so no MP PT; the old "25,000 x 12 = 3,00,000"
+    // counted months before joining. The bands themselves are pinned by statutory-review.spec.ts (M6).
+    it('October: MP for an August joiner on 25,000 a month is nil (the year is 2,00,000); Mizoram 208; Sikkim 125; each version recorded', async () => {
       const oct = await calcMonth('2026-10');
-      expect(oct[emp['IN-MP']]).toMatchObject({ pt: '125.00', version: 'IN-MP 2025-v1' });
+      expect(oct[emp['IN-MP']]).toMatchObject({ pt: null, version: 'IN-MP 2025-v1' });
       expect(oct[emp['IN-MZ']]).toMatchObject({ pt: '208.00', version: 'IN-MZ 2025-v1' });
       expect(oct[emp['IN-SK']]).toMatchObject({ pt: '125.00', version: 'IN-SK 2025-v1' });
     });

@@ -653,6 +653,8 @@ export interface Pip {
   endsOn: string;
   pausedDays: number;
   pausedNow: boolean;
+  /** The company's day (YYYY-MM-DD): check-ins due within a week of it can be recorded. */
+  today?: string;
   checkinEveryDays: number;
   status: PipStatus;
   acknowledgedAt: string | null;

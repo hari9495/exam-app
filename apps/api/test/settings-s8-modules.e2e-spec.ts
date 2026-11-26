@@ -71,9 +71,10 @@ describe('Settings S-8: expenses and performance settings and who changes them',
     await app.close();
   });
 
-  it('every expenses and performance setting is listed (14 and 18): each has its place on 4.8 or 6.3', async () => {
+  it('every expenses and performance setting is listed (14 and 19): each has its place on 4.8 or 6.3', async () => {
     expect(Object.keys(SETTINGS).filter((k) => k.startsWith('expense.'))).toHaveLength(14);
-    expect(Object.keys(SETTINGS).filter((k) => k.startsWith('perf.'))).toHaveLength(18);
+    // 19 since batch F item 30 (perf.goal.stale_days, on 6.3 in the kit).
+    expect(Object.keys(SETTINGS).filter((k) => k.startsWith('perf.'))).toHaveLength(19);
     const body = (await api('expview', 'get', '/org/settings').expect(200)).body as { registry: Record<string, unknown> };
     expect(body.registry['expense.finance_audit']).toBeDefined();
   });

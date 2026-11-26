@@ -113,7 +113,8 @@ describe('Organization branding flow', () => {
   });
 
   it('uploads a logo to blob storage, returns its URL, and rejects a non-image file', async () => {
-    const pngBuffer = Buffer.from('89504e470d0a1a0a', 'hex');
+    // A real 1x1 PNG: the logo's type is read from its bytes (answer 2422), so the bare signature is not enough.
+    const pngBuffer = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 
     const uploadResponse = await request(app.getHttpServer())
       .post('/api/v1/organizations/branding/logo')

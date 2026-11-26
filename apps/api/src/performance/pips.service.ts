@@ -148,6 +148,8 @@ export class PerformancePipsService implements OnModuleInit {
       endsOn: end.endsOn,
       pausedDays: end.pausedDays,
       pausedNow: live && onLeave(today, leave),
+      // The company's day (IST): the screen offers check-ins due within a week of it, as checkin() allows.
+      today,
       checkinEveryDays: p.checkinEveryDays,
       status: p.status,
       acknowledgedAt: p.acknowledgedAt?.toISOString() ?? null,

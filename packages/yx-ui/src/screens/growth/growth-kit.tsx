@@ -53,6 +53,7 @@ import {
   type Goal,
 } from './growth-logic';
 import './growth-kit.css';
+import './growth.css';
 
 /* ================================================================== Frame helper */
 
@@ -1163,7 +1164,7 @@ export function CelebrationStrip({ items }: { items: Celebration[] }) {
 /** Batch G2 item 76: which of my own celebrations the feed shows (a personal opt-out per kind). */
 export function CelebrationChoices({ value, onChange }: { value: { birthday: boolean; anniversary: boolean; newJoiner: boolean }; onChange: (v: { birthday: boolean; anniversary: boolean; newJoiner: boolean }) => void | Promise<unknown> }) {
   return (
-    <div className="yx-growth-stack" data-gap="sm">
+    <div className="yx-growth-stack">
       <Switch checked={value.birthday} onChange={(c) => void onChange({ ...value, birthday: c })} label="My birthday" description="Never the year. Hidden too when you hide your birthday in your profile." />
       <Switch checked={value.anniversary} onChange={(c) => void onChange({ ...value, anniversary: c })} label="My work anniversary" />
       <Switch checked={value.newJoiner} onChange={(c) => void onChange({ ...value, newJoiner: c })} label="Welcome me as a new joiner" />
