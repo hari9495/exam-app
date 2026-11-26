@@ -29545,5 +29545,24 @@
                               "Screens/People/PPL-02 · Org chart"
                     ],
                     "note": ""
+          },
+          {
+                    "id": "MT-T2F-78",
+                    "area": "Batch T2-F item 78: bonafide certificate",
+                    "screen": "Settings › Letters (starters); Me › Documents › Request a certificate (PPL-31)",
+                    "url": "http://localhost:3000/yx/me/documents/certificate",
+                    "account": "HR admin (letters); an employee.",
+                    "steps": [
+                              "As the employee open Request a certificate before HR adds the starter.",
+                              "As HR open the letter templates, add the 'Bonafide certificate' starter, preview it and switch it on.",
+                              "As the employee open Request a certificate again, choose 'Bonafide certificate', pick a purpose and press Generate certificate.",
+                              "Open the certificate and check the verification code on the public check page.",
+                              "As HR switch on approval for that template; as the employee ask for it again."
+                    ],
+                    "expected": "Step 1: no Bonafide certificate in the list. Step 2: the starter says the person is a bonafide employee of the company, with the designation, department, location and joining date. Step 3: it is issued at once with a reference number and a check code; a 5-second toast says so. Step 4: the public check shows 'Bonafide certificate', the name and 'current'. Step 5: it now waits for HR, like the NOC.",
+                    "stories": [
+                              "Screens/People/PPL-31 · Certificate request"
+                    ],
+                    "note": ""
           }
 ]

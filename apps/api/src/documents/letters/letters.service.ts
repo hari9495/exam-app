@@ -33,7 +33,7 @@ import { appUrl, button, noticeEmail, text } from '../../email/account-emails';
  * PPL-31 (P05 Q8): letter types an employee may ask for themselves, in the order offered. The company decides which by
  * switching the template on, and which need HR first by the template's "needs approval".
  */
-export const SELF_CERTIFICATES = ['salary_certificate', 'address_proof', 'employment_certificate', 'noc'];
+export const SELF_CERTIFICATES = ['salary_certificate', 'address_proof', 'employment_certificate', 'bonafide_certificate', 'noc'];
 /** The approval subject of a certificate the employee asked for (its decision notice links back to their page). */
 const SELF_REQUEST = 'certificate_request';
 type BulkInput = { templateId: string; source: 'people' | 'no_appointment'; personIds?: string[] };
