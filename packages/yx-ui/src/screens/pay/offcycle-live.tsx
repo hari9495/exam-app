@@ -89,7 +89,7 @@ function ArrearsChanges({ c }: { c: LiveArrearsChanges }) {
       <Failed error={error} />
       {early && <InlineAlert tone="warning" title={early} />}
       <SectionTitle>Statutory rule changes</SectionTitle>
-      <p className="yx-pay-note">A rule set published for months already paid. Work out the impact first: people, total and the largest change. Accepting drafts a worksheet for each person; payroll still approves each one.</p>
+      <p className="yx-pay-note">Rules published for months already paid. Work out the impact, then accept: each person gets a worksheet to approve.</p>
       <DataTable
         label="Statutory rule changes"
         columns={pcols}
@@ -122,11 +122,11 @@ function ArrearsChanges({ c }: { c: LiveArrearsChanges }) {
             </>
           ) : null
         }
-        empty={<EmptyState title="No rule changes for paid months" description="When a statutory rule is published for a month already paid, it shows here." />}
+        empty={<EmptyState compact title="No rule changes for paid months" description="A statutory rule published for a month already paid shows here." />}
       />
       <SectionTitle>Drafted by changes</SectionTitle>
-      <p className="yx-pay-note">A back-dated salary change or joining date drafts arrears by itself (Settings › Payroll policies), for the components set to recalculate. The person who made the change never approves them.</p>
-      <DataTable label="Arrears drafted by changes" columns={jcols} rows={c.jobs ?? []} state={c.jobs ? 'ready' : 'loading'} getRowId={(j) => j.id} defaultGroupBy={null} empty={<EmptyState title="Nothing drafted by a change yet" description="Back-dated salary changes and joining dates show here." />} />
+      <p className="yx-pay-note">Back-dated salary changes and joining dates draft arrears by themselves. Whoever made the change never approves them.</p>
+      <DataTable label="Arrears drafted by changes" columns={jcols} rows={c.jobs ?? []} state={c.jobs ? 'ready' : 'loading'} getRowId={(j) => j.id} defaultGroupBy={null} empty={<EmptyState compact title="Nothing drafted by a change yet" description="Back-dated salary changes and joining dates show here." />} />
       {dismissing && (
         <ConfirmDialog
           open
