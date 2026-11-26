@@ -159,6 +159,7 @@ export const PAY_SETTINGS: Record<string, { links: string[]; settings: Place[] }
       { section: 'Mid-month changes', key: 'payroll.mid_period.exit', synonyms: ['leaver', 'proration'] },
       { section: 'Mid-month changes', key: 'payroll.mid_period.revision', synonyms: ['increment', 'arrears'] },
       { section: 'Mid-month changes', key: 'payroll.mid_period.cutoff_day', synonyms: ['cut-off'] },
+      { section: 'Back-dated pay', key: 'payroll.arrears.auto_draft', synonyms: ['arrears', 'back-dated', 'retro pay'] },
       { section: 'Changes to these settings', key: 'payroll.settings.second_person', synonyms: ['second approver', 'maker checker', 'four eyes'] },
       { section: 'Changes to these settings', key: 'payroll.settings.lapse_days', synonyms: ['expire', 'pending change'] },
     ],

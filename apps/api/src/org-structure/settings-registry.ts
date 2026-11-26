@@ -698,6 +698,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // items always follow the legal basis whatever is chosen here.
   // M03 batch 5c (PAY-3.08, 3.12, §9.4): variance threshold, protected net, net rounding, standard hours, one-time review.
   // Enterprise E4 (O20-O22, answers 2653-2655): accounting and costing, on Settings 4.12.
+  // Enterprise E3 (answer 2651): a back-dated salary change or joining date drafts arrears worksheets by itself.
+  'payroll.arrears.auto_draft': { label: 'Draft arrears by themselves after a back-dated salary change or joining date', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'On: draft them; payroll still checks and approves each one', off: 'Off: payroll drafts them by hand' } },
   'payroll.journal.suspense': { label: 'Pay lines with no ledger account go to the suspense account', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on', labels: { on: 'On: park them there and let the journal go to the books', off: 'Off: refuse the export until every line is mapped' } },
   'payroll.costing.split': { label: 'Split each person\'s payroll cost by', scopes: ['tenant', 'legal_entity'], dated: false, values: ['cost_centre', 'project_hours'], default: 'cost_centre', labels: { cost_centre: 'Cost centre (from the job)', project_hours: 'Project hours (approved timesheets, else allocations)' } },
   'payroll.journal.format': { label: 'Journal export format', scopes: ['tenant', 'legal_entity'], dated: false, values: ['csv', 'tally', 'zoho', 'sap', 'oracle'], default: 'csv', labels: { csv: 'CSV', tally: 'Tally (XML)', zoho: 'Zoho Books (CSV)', sap: 'SAP (flat file)', oracle: 'Oracle GL (interface CSV)' } },

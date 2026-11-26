@@ -974,7 +974,7 @@ export interface LiveComponentLibrary {
 }
 
 const KIND: Record<ComponentKind, string> = { earning: 'Earnings', deduction: 'Deductions', employer: 'Employer contributions', reimbursement: 'Reimbursements', info: 'Information only' };
-type FlagKey = 'taxable' | 'pfWage' | 'esiWage' | 'ptWage' | 'gratuityWage' | 'bonusWage' | 'codeWagePart' | 'codeExclusion' | 'prorated' | 'onPayslip' | 'inCtc';
+type FlagKey = 'taxable' | 'pfWage' | 'esiWage' | 'ptWage' | 'gratuityWage' | 'bonusWage' | 'codeWagePart' | 'codeExclusion' | 'prorated' | 'onPayslip' | 'inCtc' | 'arrearsOnSalaryChange' | 'arrearsOnJoining';
 /** Key, drawer label, drawer description, short table header, column width. */
 const FLAGS: [FlagKey, string, string, string, number][] = [
   ['taxable', 'Taxable', 'Part of taxable salary', 'Taxable', 84],
@@ -988,6 +988,9 @@ const FLAGS: [FlagKey, string, string, string, number][] = [
   ['prorated', 'Prorated by payable days', '', 'Prorated', 90],
   ['onPayslip', 'Shown on payslip', '', 'Payslip', 84],
   ['inCtc', 'Part of the CTC', '', 'In CTC', 76],
+  // E3 (answer 2651): "recalculate when" (LOP is not a trigger, 2786).
+  ['arrearsOnSalaryChange', 'Recalculate when a back-dated salary change reaches a paid month', 'Drafts arrears for this component; payroll still checks and approves them', 'On raise', 84],
+  ['arrearsOnJoining', 'Recalculate when a joining date reaches a paid month', '', 'On joining', 90],
 ];
 type PfMode = 'no' | 'yes' | 'below';
 const PF_MODES: { value: PfMode; label: string }[] = [
@@ -1011,6 +1014,8 @@ const blankComponent = (): ComponentInput => ({
   prorated: true,
   onPayslip: true,
   inCtc: true,
+  arrearsOnSalaryChange: true,
+  arrearsOnJoining: true,
   prorationText: null,
   rounding: 'rupee',
   ledger: null,
@@ -1174,7 +1179,7 @@ export function LiveComponentLibraryScreen({ live: p }: { live: LiveComponentLib
                     <Segment label={label} value={pfModeOf(draft)} onChange={(m) => setDraft({ ...draft, pfWage: m !== 'no', pfBelowCeiling: m === 'below' })} options={PF_MODES} disabled={statutory} />
                   </FormField>
                 ) : (
-                  <Checkbox key={k} label={label} description={desc || undefined} checked={draft[k]} onChange={(c) => setDraft({ ...draft, [k]: c })} disabled={statutory && k !== 'onPayslip'} />
+                  <Checkbox key={k} label={label} description={desc || undefined} checked={!!draft[k]} onChange={(c) => setDraft({ ...draft, [k]: c })} disabled={statutory && k !== 'onPayslip'} />
                 ),
               )}
             </FormSection>

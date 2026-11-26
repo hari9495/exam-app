@@ -39,7 +39,7 @@ export type { LivePayrollSetup, SetupStep, SetupLink, GroupInput, GoLiveReadines
 export { CompensationScreen, TemplateBuilderScreen, ComponentLibraryScreen, PayslipLayoutScreen } from '../comp-setup';
 export { type LiveCompensation, type LiveTemplates, type LiveComponentLibrary, type LivePayslipLayout, type SplitSuggestion, type CompensationHistoryItem, type SplitFreshness } from '../comp-setup-live';
 export { ArrearsBaseScreen, ActuarialScreen, BonusComputationScreen } from '../offcycle';
-export type { LiveArrears, LiveActuarial } from '../offcycle-live';
+export type { LiveArrears, LiveActuarial, LiveArrearsChanges, RuleProposal, ArrearsJobRow } from '../offcycle-live';
 // PAY-25 payroll reports (design with `live`).
 export { defaultMonth, effectiveFilters } from '../reports-live';
 export type { LivePayrollReports, PayReport, PayReportKind, ReportFilters, ReportOptions, ReportsAccessRequest } from '../reports-live';

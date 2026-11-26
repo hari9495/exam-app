@@ -26,6 +26,8 @@ const PAYROLL_SUPPORT_EXCLUDED = ['pay_periods', 'period_lock_events', 'period_r
   'statutory_filings', 'statutory_penalty_lines', 'tds_challans', 'tds_returns', 'statutory_registers', 'register_rows', 'inspection_packs', 'advisory_reviews',
   // Batch 5g.
   'arrears_worksheets', 'arrears_worksheet_lines', 'statutory_arrears_proposals', 'fnf_settlements', 'overpayment_recoveries',
+  // Enterprise E3: the arrears trigger jobs (their totals are pay amounts; the pay guard too).
+  'arrears_runs',
   // Batch 5j.
   'parallel_runs',
   // Batch 5h.

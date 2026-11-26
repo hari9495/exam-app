@@ -17,6 +17,7 @@ import { loadRuleSets, type RuleFileSet } from '../src/statutory/load-rule-file'
 import { StatutoryRulesService } from '../src/statutory/statutory.service';
 import { freezeSettlementIn } from '../src/lifecycle/settlement';
 import { FnfService, moneyText } from '../src/payroll/fnf.service';
+import { ArrearsJobs } from '../src/payroll/arrears-jobs';
 import { MODULE_COMPONENTS } from '../src/payroll/starter';
 import { serviceYears } from '../src/statutory/evaluator';
 import type { CompanyContext } from '../src/org-structure/org-structure.service';
@@ -35,6 +36,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
   let prisma: PrismaService;
   let tenantPrisma: TenantPrismaService;
   let fnf: FnfService;
+  let jobs: ArrearsJobs;
   const PASSWORD = 'Corr3ct-Horse-Battery';
   const run = randomUUID().slice(0, 8);
   const SUPER: TenantContext = { organizationId: null, isSuperAdmin: true };
@@ -88,6 +90,15 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     }
     return (await api('payAdmin', 'get', `/payroll/runs/${runId}/payslips`).expect(200)).body as { id: string; employeeId: string; net: string; held: boolean; status: string }[];
   };
+  /** E3: waits for the arrears job (bounded: 120 tries a quarter-second apart). */
+  const until = async <T>(fn: () => Promise<T | null | undefined | false>): Promise<T> => {
+    for (let i = 0; i < 120; i++) {
+      const r = await fn();
+      if (r) return r;
+      await new Promise((ok) => setTimeout(ok, 250));
+    }
+    throw new Error('the arrears job did not finish');
+  };
   const linesOf = (payslipId: string) => api('payAdmin', 'get', `/payroll/payslips/${payslipId}`).expect(200);
 
   /** An accepted company exit recorded straight in lifecycle's table, then the payroll hand-off frozen (as lifecycle does). */
@@ -137,6 +148,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     prisma = moduleRef.get(PrismaService);
     tenantPrisma = moduleRef.get(TenantPrismaService);
     fnf = moduleRef.get(FnfService);
+    jobs = moduleRef.get(ArrearsJobs);
     await prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.is_super_admin', 'on', true)`;
       const staff = async (email: string) => (await tx.user.findFirstOrThrow({ where: { email, organizationId: null } })).id;
@@ -220,6 +232,9 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     ids.emp1 = await hire('emp1', 'P5G-001', first);
     ids.emp2 = await hire('emp2', 'P5G-002', first);
     ids.emp3 = await hire('emp3', 'P5G-003', prevFirst);
+    // E3: arrears draft themselves after a back-dated salary change; off here so the hand-made worksheets below are the only
+    // ones (the E3 test switches it on).
+    await inA((tx) => tx.setting.create({ data: { organizationId: org.A.id, scopeType: 'tenant', scopeId: org.A.id, key: 'payroll.arrears.auto_draft', value: 'off' } }));
     await api('payAdmin', 'post', '/payroll/components/starter').expect(201);
     ids.version = ((await api('payAdmin', 'get', '/payroll/templates').expect(200)).body as { versions: { id: string }[] }[])[0].versions[0].id;
     ids.group = (await api('payAdmin', 'post', '/payroll/pay-groups').send({ legalEntityId: ids.entity, name: 'Monthly', cutOffDay: 25, payDay: 0 }).expect(201)).body.id;
@@ -421,6 +436,88 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     await api('payAdmin', 'post', `/payroll/arrears-worksheets/${a.id}/cancel`).send({ reason: 'Out of date: drafted again later' }).expect(200);
   });
 
+  it('E3: a back-dated raise drafts arrears by itself (once, by who asked, switched-on components only); a re-draft keeps confirmed bases', async () => {
+    await inA((tx) => tx.setting.updateMany({ where: { organizationId: org.A.id, key: 'payroll.arrears.auto_draft' }, data: { value: 'on' } }));
+    await scoped((tx) => tx.payComponent.updateMany({ where: { organizationId: org.A.id, code: 'hra' }, data: { arrearsOnSalaryChange: false } }));
+    const em = await scoped((tx) => tx.employment.findFirstOrThrow({ where: { employeeId: ids.emp3 } }));
+    const raise = async (from: string, ctc: string) => {
+      const ch = (await api('payAdmin', 'post', `/payroll/employees/${ids.emp3}/compensation-changes`).send({ employeeId: ids.emp3, effectiveDate: from, templateVersionId: ids.version, entryMode: 'ctc', annualCtc: ctc, reason: 'Back-dated raise' }).expect(201)).body;
+      await stepUp('approver1');
+      await api('approver1', 'post', `/people/changes/${ch.changeId}/approve`).send({ confirmRebase: true }).expect(201);
+      return ch.changeId as string;
+    };
+    type RunRow = { id: string; ref: string; status: string };
+    type Sheet = { id: string; sourceRef: string; status: string; source: string; createdBy: string; lines: { componentCode: string; period: string; base: string; asPaid: string | null; corrected: string; confirmReason: string | null }[] };
+    const doneRun = (ref: string) => until(async () => ((await api('approver1', 'get', '/payroll/arrears-runs').expect(200)).body as RunRow[]).find((r) => r.ref === ref && r.status === 'done'));
+    const sheetOf = async (ref: string) => ((await api('approver1', 'get', '/payroll/arrears-worksheets').expect(200)).body as Sheet[]).find((w) => w.sourceRef === ref && w.status === 'draft')!;
+    const changeId = await raise(first, '480000');
+    expect(await doneRun(changeId)).toMatchObject({ kind: 'change', mode: 'draft', people: 1, done: 1, skipped: [] });
+    const w = await sheetOf(changeId);
+    // Review item 3: the person who asked for the change is the maker, so they cannot approve these arrears.
+    expect(w).toMatchObject({ source: 'salary', createdBy: users.payAdmin });
+    expect(w.lines.some((l) => l.componentCode === 'basic')).toBe(true);
+    expect(w.lines.some((l) => l.componentCode === 'hra')).toBe(false);
+    expect((await api('payAdmin', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(403)).body.message).toMatch(/Someone other/);
+    // Keyed on the change: the event again, or a retried job, drafts nothing more.
+    expect(await jobs.fromTrigger(org.A.id, 'change', changeId, em.id, first, users.payAdmin)).toBeNull();
+    expect(await scoped((tx) => tx.arrearsWorksheet.count({ where: { sourceRef: changeId } }))).toBe(1);
+    // Negative: another company sees none of the jobs; someone without the arrears key is refused.
+    expect((await api('payAdminB', 'get', '/payroll/arrears-runs').expect(200)).body).toEqual([]);
+    await api('emp1', 'get', '/payroll/arrears-runs').expect(403);
+    // A joining date reaching back to last month: drafts both months, replacing the salary draft over this month.
+    expect(await jobs.fromTrigger(org.A.id, 'join', em.id, em.id, prevFirst, users.payAdmin)).toEqual(expect.any(String));
+    await doneRun(em.id);
+    const j = await sheetOf(em.id);
+    expect(j).toMatchObject({ source: 'joining', createdBy: users.payAdmin });
+    expect((await api('approver1', 'get', `/payroll/arrears-worksheets/${w.id}`).expect(200)).body).toMatchObject({ status: 'discarded', discardReason: expect.stringMatching(/Replaced by a newer draft/) });
+    // Last month has no payslip: someone confirms what was paid, by hand.
+    const missing = j.lines.filter((l) => l.period.startsWith(prevMonth) && l.base === 'missing');
+    expect(missing.length).toBeGreaterThan(0);
+    const basicPaid = (Number(missing.find((l) => l.componentCode === 'basic')!.corrected) - 100).toFixed(2);
+    await api('approver1', 'post', `/payroll/arrears-worksheets/${j.id}/confirm-base`)
+      .send({ period: prevMonth, lines: missing.map((l) => ({ componentCode: l.componentCode, asPaid: l.componentCode === 'basic' ? basicPaid : l.corrected })), reason: 'From the old payroll register' })
+      .expect(200);
+    // E3: a later back-dated raise drafts again over both months; the base confirmed by hand is kept, not wiped.
+    const again = await raise(prevFirst, '500000');
+    await doneRun(again);
+    const k = await sheetOf(again);
+    expect(k.source).toBe('salary');
+    expect(k.lines.find((l) => l.period.startsWith(prevMonth) && l.componentCode === 'basic')).toMatchObject({ base: 'confirmed', asPaid: basicPaid, confirmReason: 'From the old payroll register' });
+    expect((await api('approver1', 'get', `/payroll/arrears-worksheets/${j.id}`).expect(200)).body.status).toBe('discarded');
+    // Taken off so the later tests start clean.
+    await api('approver1', 'post', `/payroll/arrears-worksheets/${k.id}/cancel`).send({ reason: 'Test drafts, not to be paid' }).expect(200);
+    await inA((tx) => tx.setting.updateMany({ where: { organizationId: org.A.id, key: 'payroll.arrears.auto_draft' }, data: { value: 'off' } }));
+  }, 180_000);
+
+  it('E3: ESI on arrears for a raise back-dated to 1 April keeps the coverage April really had (no refund)', async () => {
+    const april = `${today.slice(5, 7) >= '04' ? today.slice(0, 4) : Number(today.slice(0, 4)) - 1}-04`;
+    const emp4 = (
+      await api('adminA', 'post', '/people/employees')
+        .send({ legalEntityId: ids.entity, status: 'confirmed', reason: 'Joined', givenName: 'emp4', familyName: run, employeeCode: 'P5G-004', joinedOn: `${april}-01`, workEmail: `emp4@pay5g-${run}.test`, assignment: { locationId: ids.loc, departmentId: ids.dept, designationId: ids.desig, employmentTypeId: ids.perm, managerEmployeeId: null } })
+        .expect(201)
+    ).body.id as string;
+    const grp = (await api('payAdmin', 'post', '/payroll/pay-groups').send({ legalEntityId: ids.entity, name: `April ${run}`, cutOffDay: 25, payDay: 0 }).expect(201)).body.id;
+    await api('payAdmin', 'post', `/payroll/pay-groups/${grp}/members`).send({ employeeIds: [emp4], from: `${april}-01` }).expect(201);
+    const pay = async (ctc: string, reason: string) => {
+      const ch = (await api('payAdmin', 'post', `/payroll/employees/${emp4}/compensation-changes`).send({ employeeId: emp4, effectiveDate: `${april}-01`, templateVersionId: ids.version, entryMode: 'ctc', annualCtc: ctc, reason }).expect(201)).body;
+      await stepUp('approver1');
+      await api('approver1', 'post', `/people/changes/${ch.changeId}/approve`).send({ confirmRebase: true }).expect(201);
+    };
+    // 2,16,000 a year: about 18,000 a month, under the ESI wage ceiling, so April is covered.
+    await pay('216000', 'Joining salary');
+    const aprilRun = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: grp, month: april }).expect(201)).body.id;
+    const slips = await approveRun(aprilRun);
+    const esiPaid = Number(((await linesOf(slips[0]!.id)).body.lines as { code: string; amount: string }[]).find((l) => l.code === 'esi_employee')?.amount ?? 0);
+    expect(esiPaid).toBeGreaterThan(0);
+    // A raise back-dated to 1 April takes the wage over the ceiling: April's coverage still holds for the period.
+    await pay('360000', 'Raise back-dated to 1 April');
+    const w = (await api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: emp4, from: april, to: april, reason: 'Raise approved late' }).expect(201)).body;
+    const esi = (w.lines as { componentCode: string; corrected: string; difference: string | null }[]).find((l) => l.componentCode === 'esi_employee');
+    expect(Number(esi?.corrected ?? 0)).toBeGreaterThan(esiPaid);
+    expect(Number(esi?.difference ?? 0)).toBeGreaterThan(0);
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${w.id}/cancel`).send({ reason: 'Test sheet, not to be paid' }).expect(200);
+  }, 180_000);
+
   it('write-off: someone other than who raised it, with step-up; cross-year recoveries are listed for tax', async () => {
     await api('payAdmin', 'post', `/payroll/overpayments/${ids.recovery}/write-off`).send({ reason: 'Not worth recovering' }).expect(403);
     await stepUp('approver1');
@@ -452,9 +549,17 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect(list.map((p: { id: string }) => p.id)).toEqual(expect.arrayContaining([p1.id, p2.id]));
     await api('approver1', 'post', `/statutory/arrears-proposals/${p1.id}/dismiss`).send({ reason: 'no' }).expect(400);
     expect((await api('approver1', 'post', `/statutory/arrears-proposals/${p1.id}/dismiss`).send({ reason: 'Already settled by hand' }).expect(200)).body.status).toBe('dismissed');
+    // E3 (answer 2787): the preview works out the people, total and largest change on the arrears job; nothing is drafted.
+    expect((await api('approver1', 'post', `/statutory/arrears-proposals/${p2.id}/accept`).expect(409)).body.message).toMatch(/Work out the impact first/);
+    expect((await api('approver1', 'post', `/statutory/arrears-proposals/${p2.id}/preview`).expect(200)).body).toEqual({ id: p2.id, impactStatus: 'running' });
+    const impact = await until(async () => ((await api('approver1', 'get', '/statutory/arrears-proposals').expect(200)).body as { id: string; impact: { status: string } | null }[]).find((p) => p.id === p2.id && p.impact?.status === 'ready'));
+    expect(impact).toMatchObject({ impact: { status: 'ready', people: 1 } });
+    expect(await scoped((tx) => tx.arrearsWorksheet.count({ where: { sourceRef: p2.id } }))).toBe(0);
+    // Accepted, the same job drafts in chunks (E3 review item 6); the acceptor is the maker.
     const acc = (await api('approver1', 'post', `/statutory/arrears-proposals/${p2.id}/accept`).expect(200)).body;
-    expect(acc.worksheets).toHaveLength(1);
-    expect((await api('payAdmin', 'get', `/payroll/arrears-worksheets/${acc.worksheets[0]}`).expect(200)).body).toMatchObject({ source: 'rule', sourceRef: p2.id, createdBy: users.approver1 });
+    expect(acc).toMatchObject({ id: p2.id, status: 'accepted', runId: expect.any(String) });
+    const sheetId = await until(async () => (await scoped((tx) => tx.arrearsWorksheet.findFirst({ where: { sourceRef: p2.id, source: 'rule' }, select: { id: true } })))?.id);
+    expect((await api('payAdmin', 'get', `/payroll/arrears-worksheets/${sheetId}`).expect(200)).body).toMatchObject({ source: 'rule', sourceRef: p2.id, createdBy: users.approver1 });
     await api('approver1', 'post', `/statutory/arrears-proposals/${p2.id}/accept`).expect(409);
     await api('payAdminB', 'post', `/statutory/arrears-proposals/${p1.id}/accept`).expect(404);
   });

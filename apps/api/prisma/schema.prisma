@@ -8761,6 +8761,9 @@ model PayComponent {
   version        Int       @default(1)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// E3 (answer 2651): recalculate back-dated pay when a salary change or a joining date reaches a paid month.
+  arrearsOnSalaryChange Boolean @default(true) @map("arrears_on_salary_change")
+  arrearsOnJoining      Boolean @default(true) @map("arrears_on_joining")
 
   @@map("pay_components")
 }
@@ -10624,8 +10627,38 @@ model StatutoryArrearsProposal {
   decidedBy      String?   @map("decided_by") @db.Uuid
   decidedAt      DateTime? @map("decided_at") @db.Timestamptz(3)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// E3 (answer 2787): the preview's people, total and largest change (worked out by the arrears job).
+  impactStatus   String?   @map("impact_status") @db.VarChar(10)
+  impactPeople   Int?      @map("impact_people")
+  impactTotal    Decimal?  @map("impact_total") @db.Decimal(14, 2)
+  impactLargest  Decimal?  @map("impact_largest") @db.Decimal(14, 2)
 
   @@map("statutory_arrears_proposals")
+}
+
+/// E3: one arrears trigger job (a salary change, a joining date, a statutory proposal's preview or drafting), unique on
+/// what fired it so a retry never drafts twice, with its impact.
+model ArrearsRun {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId    String    @map("organization_id") @db.Uuid
+  legalEntityId     String    @map("legal_entity_id") @db.Uuid
+  kind              String    @db.VarChar(10)
+  ref               String    @db.Uuid
+  mode              String    @db.VarChar(10)
+  status            String    @default("queued") @db.VarChar(10)
+  people            Int       @default(0)
+  drafted           Int       @default(0)
+  skipped           Json      @default("[]")
+  total             Decimal   @default(0) @db.Decimal(14, 2)
+  largest           Decimal   @default(0) @db.Decimal(14, 2)
+  largestEmployeeId String?   @map("largest_employee_id") @db.Uuid
+  createdBy         String    @map("created_by") @db.Uuid
+  error             String?   @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  finishedAt        DateTime? @map("finished_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, kind, ref, mode], map: "arrears_runs_org_kind_ref_mode_key")
+  @@map("arrears_runs")
 }
 
 model FnfSettlement {
