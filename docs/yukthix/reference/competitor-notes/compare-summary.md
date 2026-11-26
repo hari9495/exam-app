@@ -891,3 +891,14 @@ Because of its size, the batch is built in five parts, each with its own commits
 - 2815: once a company has its own requisition or offer policy, hiring stops reading the old route, and every requisition goes through the policy (no more opening at once when there is no route). Suggested answer: yes.
 - 2816: "Reassigned to you" notices use the company's "Approval needed" text. Suggested answer: yes; add a separate "Reassigned" text only if a customer asks.
 - 2817: the move of old hiring routes runs per company from Hiring › Approvals, and for every company with `npm run hiring:move-chains`. Suggested answer: run the command once after this release; companies that do not match see the differences in Hiring › Approvals until HR sets their rules.
+- Founder answers (27 Nov 2026, "ok for all"), approved exactly as suggested:
+  - 2790: one shared sandboxed content origin for all SCORM packages; a subdomain per package only if packages ever need their own storage.
+  - 2791: the SCORM launch link lasts 3 hours, fixed (not a company setting).
+  - 2810: IT cost lines get a date field: not in the future and not before the ticket was opened.
+  - 2811: removed IT cost lines show struck through, with who removed them and why, to the desk's agents only.
+  - 2812-2817: approval rules editor (E2) answers as suggested in the E2 report: Hiring › Approvals follows the editor's keys; loans need payroll.loan.approve to edit; one-time pay and loan add-on steps allow only named people, groups, HR Admins or pay-key holders; with its own policy hiring never reads the old route and a requisition never opens without approval; "reassigned to you" uses the "Approval needed" text; run npm run hiring:move-chains once after release.
+  - 2818: the rule editor may scroll (an editing screen, an exception to the no-scroll rule); the move card's table of differences on Hiring › Approvals is collapsed by default so that page fits.
+  - 2850: whoever approved the salary change cannot approve its arrears either (a third person approves).
+  - 2851: a joining-date correction flow later, using the same trigger.
+  - 2852: template version and pay-range re-pricing through a bulk salary revision with its own preview, when a customer asks.
+  - 2853: a newer trigger draft replaces an older one; drafts made by hand are never replaced.
