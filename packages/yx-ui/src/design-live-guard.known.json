@@ -1,11 +1,5 @@
 {
-  "liveCopies": [
-    "performance: CompCyclesScreen",
-    "performance: PerformanceReportsScreen",
-    "performance: PerformanceSetupScreen",
-    "performance: PipsScreen",
-    "performance: ReviewerBlocksScreen"
-  ],
+  "liveCopies": [],
   "notLive": [
     "_kit: LinksFrame",
     "growth: AiCourseDraftScreen",

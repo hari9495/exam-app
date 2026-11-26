@@ -10,6 +10,10 @@ import { CertificateCard, type CertificateTemplateView } from './certificate-car
 import { InvoiceSeriesSheet } from '../hiring/staffing-sheets';
 import type { ScorecardTemplateView } from '../hiring/live/types';
 import type { SettingsPageDef } from './settings-types';
+import { PerfStartersCard, RatingScaleSheet, ReviewTemplateSheet, SkillSheet, perfSetupPage } from './perf-setup-live';
+import { AgendaTemplateSheet, type AgendaTemplate } from './agenda-templates-live';
+import { GoalTemplateSheet, type GoalTemplate } from './goal-templates-live';
+import type { RatingScale, ReviewTemplate, Skill } from '../performance/live/types';
 import './settings.css';
 
 const meta: Meta = {
@@ -128,6 +132,53 @@ export const P6_2_InvoiceSeries: S = {
 };
 export const P6_3: S = { name: '6.3 Performance', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.3" /> };
 export const P6_3_ReadOnly: S = { name: '6.3 Performance · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.3" readOnly /> };
+// Batch T2-C (2411): the live editors of 6.3, review templates, rating scales and the skills library (answer 2671), as
+// lists on the drawn page; Add and Edit open their sheets. Competencies stay on the PRF-14 framework, linked.
+const FIVE: RatingScale = {
+  id: 's1', name: 'Five-point scale', min: 1, max: 5, step: 1, status: 'active', starter: true, inUse: true, version: 1,
+  levels: ['Needs improvement', 'Partly meets', 'Meets', 'Exceeds', 'Outstanding'].map((label, i) => ({ value: i + 1, label, description: null })),
+  bands: [{ fromScore: 1, toScore: 2.49, label: 'Below' }, { fromScore: 2.5, toScore: 3.49, label: 'Meets' }, { fromScore: 3.5, toScore: 5, label: 'Above' }],
+};
+const THREE: RatingScale = { ...FIVE, id: 's2', name: 'Three-point scale (plant)', max: 3, starter: false, inUse: false, levels: ['Below', 'Meets', 'Above'].map((label, i) => ({ value: i + 1, label, description: null })), bands: [{ fromScore: 1, toScore: 3, label: 'All' }] };
+const ANNUAL: ReviewTemplate = {
+  id: 't1', familyId: 'f1', templateVersion: 1, name: 'Annual review', kind: 'annual', scaleId: 's1', scoring: 'weighted', status: 'active', starter: true, activatedAt: '2026-04-01T09:00:00Z', problem: null, version: 1,
+  sections: [
+    { kind: 'goals', title: 'Goals', weight: 60, rated: true, whoAnswers: ['self', 'manager'], questions: [] },
+    { kind: 'competencies', title: 'Competencies', weight: 40, rated: true, whoAnswers: ['self', 'manager', 'peer'], questions: [] },
+  ],
+};
+const PROBATION: ReviewTemplate = { ...ANNUAL, id: 't2', familyId: 'f2', name: 'Probation review', kind: 'probation', status: 'draft', starter: false, activatedAt: null, problem: 'The weights of rated sections add up to 90, not 100.', sections: [{ ...ANNUAL.sections[0]!, weight: 50 }, { ...ANNUAL.sections[1]!, weight: 40 }] };
+const SKILLS: Skill[] = [
+  { id: 'k1', name: 'Quality', kind: 'domain', parentId: null, status: 'active', mergedIntoId: null, starter: true, competency: false },
+  { id: 'k2', name: 'Root cause analysis', kind: 'skill', parentId: 'k1', status: 'active', mergedIntoId: null, starter: true, competency: true },
+  { id: 'k3', name: 'Why-why analysis', kind: 'sub_skill', parentId: 'k2', status: 'active', mergedIntoId: null, starter: false, competency: false },
+  { id: 'k4', name: 'RCA', kind: 'skill', parentId: 'k1', status: 'merged', mergedIntoId: 'k2', starter: false, competency: false },
+] as Skill[];
+const perfSetupGroups = (data: Parameters<typeof perfSetupPage>[1]) => SETTINGS_GROUPS.map((g) => (g.id === 6 ? { ...g, pages: g.pages.map((p) => (p.id === '6.3' ? perfSetupPage(p, data) : p)) } : g));
+const ok = async () => ({});
+const close = () => undefined;
+export const P6_3_Setup: S = { name: '6.3 Performance · templates, scales and skills', render: () => <SettingsPageScreen groups={perfSetupGroups({ templates: [ANNUAL, PROBATION], scales: [FIVE, THREE], skills: SKILLS })} pageId="6.3" highlightKey="perf.review_templates" /> };
+export const P6_3_Starters: S = { name: '6.3 Performance · new company, use the starters', render: () => <div className="yx-auth__page"><PerfStartersCard onUseStarters={ok} /></div> };
+const templateSheet = (template: ReviewTemplate | null, hasDraft = false) => <ReviewTemplateSheet template={template} scales={[FIVE, THREE]} hasDraft={hasDraft} onClose={close} onSave={ok} onActivate={ok} onNewVersion={ok} onRetire={ok} />;
+export const P6_3_TemplateNew: S = { name: '6.3 Performance · add a review template', render: () => templateSheet(null) };
+export const P6_3_TemplateDraft: S = { name: '6.3 Performance · draft template not ready', render: () => templateSheet(PROBATION) };
+export const P6_3_TemplateActive: S = { name: '6.3 Performance · active template (new version)', render: () => templateSheet(ANNUAL) };
+export const P6_3_TemplateHasDraft: S = { name: '6.3 Performance · active template with a draft', render: () => templateSheet(ANNUAL, true) };
+export const P6_3_ScaleEdit: S = { name: '6.3 Performance · edit a rating scale', render: () => <RatingScaleSheet scale={THREE} onClose={close} onSave={ok} onRetire={ok} /> };
+export const P6_3_ScaleInUse: S = { name: '6.3 Performance · rating scale in use', render: () => <RatingScaleSheet scale={FIVE} onClose={close} onSave={ok} onRetire={ok} /> };
+export const P6_3_ScaleNew: S = { name: '6.3 Performance · add a rating scale', render: () => <RatingScaleSheet scale={null} onClose={close} onSave={ok} onRetire={ok} /> };
+export const P6_3_SkillNew: S = { name: '6.3 Performance · add a skill', render: () => <SkillSheet skill={null} skills={SKILLS} onClose={close} onAdd={ok} onMerge={ok} onRetire={ok} /> };
+export const P6_3_SkillMerge: S = { name: '6.3 Performance · merge or retire a skill', render: () => <SkillSheet skill={SKILLS[2]!} skills={SKILLS} onClose={close} onAdd={ok} onMerge={ok} onRetire={ok} /> };
+export const P6_3_SkillMerged: S = { name: '6.3 Performance · merged skill', render: () => <SkillSheet skill={SKILLS[3]!} skills={SKILLS} onClose={close} onAdd={ok} onMerge={ok} onRetire={ok} /> };
+// T2-C item 70 (answer 2843): the company's 1:1 agenda templates on 6.3, and their sheet.
+const WEEKLY: AgendaTemplate = { id: 'a1', name: 'Weekly check-in', items: ['Wins this week', 'Blockers', 'Help needed', 'Goals on track?'], company: true, mine: false, updatedAt: '2026-11-27T10:00:00Z' };
+export const P6_3_AgendaTemplates: S = { name: '6.3 Performance · 1:1 agenda templates', render: () => <SettingsPageScreen groups={perfSetupGroups({ templates: [ANNUAL], scales: [FIVE], skills: SKILLS, agendaTemplates: [WEEKLY, { ...WEEKLY, id: 'a2', name: 'Career talk', items: ['Where do you want to be in a year?', 'What would help?'] }] })} pageId="6.3" highlightKey="perf.one_on_one_templates" /> };
+export const P6_3_AgendaTemplateNew: S = { name: '6.3 Performance · add a 1:1 template', render: () => <AgendaTemplateSheet template={null} onClose={close} onSave={ok} onDelete={ok} /> };
+export const P6_3_AgendaTemplateEdit: S = { name: '6.3 Performance · edit a 1:1 template', render: () => <AgendaTemplateSheet template={WEEKLY} onClose={close} onSave={ok} onDelete={ok} /> };
+// T2-C item 71 (answer 2844): goal templates on 6.3, and their sheet.
+const GROW: GoalTemplate = { id: 'g1', title: 'Grow my accounts', description: 'Key customers in the region', kind: 'okr', keyResults: ['New accounts', 'Renewals'], departmentId: 'd1', department: 'Sales', designationId: null, designation: null };
+export const P6_3_GoalTemplates: S = { name: '6.3 Performance · goal templates', render: () => <SettingsPageScreen groups={perfSetupGroups({ templates: [ANNUAL], scales: [FIVE], skills: SKILLS, goalTemplates: [GROW, { ...GROW, id: 'g2', title: 'Learn one new skill', kind: 'kpi', keyResults: [], departmentId: null, department: null }] })} pageId="6.3" highlightKey="perf.goal_templates" /> };
+export const P6_3_GoalTemplateEdit: S = { name: '6.3 Performance · edit a goal template', render: () => <GoalTemplateSheet template={GROW} departments={[{ value: 'd1', label: 'Sales' }]} designations={[{ value: 'x1', label: 'Executive' }]} onClose={close} onSave={ok} onDelete={ok} /> };
 export const P6_4: S = { name: '6.4 Learning', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.4" /> };
 export const P6_4_ReadOnly: S = { name: '6.4 Learning · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.4" readOnly /> };
 export const P6_5: S = { name: '6.5 Assessments', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.5" /> };

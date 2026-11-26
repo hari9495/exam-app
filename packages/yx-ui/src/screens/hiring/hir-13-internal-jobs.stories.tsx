@@ -18,3 +18,6 @@ export const ApplyRelease: S = { name: 'Apply sheet · manager releases', render
 export const Empty: S = { name: 'Empty · no openings', render: () => <InternalJobsScreen jobs={[]} applications={[]} /> };
 export const Phone: S = { name: 'phone', globals: PHONE, render: () => <InternalJobsPhone jobs={INTERNAL} applications={INTERNAL_APPS} /> };
 export const PhoneApply: S = { name: 'phone · apply', globals: PHONE, render: () => <InternalJobsPhone jobs={INTERNAL} applications={INTERNAL_APPS} applyFor="j1" /> };
+// Answer 2841: an internal-move release is pending: My applications says it is waiting for the manager.
+export const WaitingForManager: S = { name: 'My applications · waiting for your manager', render: () => <InternalJobsScreen jobs={INTERNAL} applications={INTERNAL_APPS.map((a, i) => (i === 0 ? { ...a, waitingForManager: true } : a))} /> };
+

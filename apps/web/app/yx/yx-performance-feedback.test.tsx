@@ -88,4 +88,42 @@ describe('Feedback and 1:1s (M06 batch PM3)', () => {
     fireEvent.blur(note);
     await waitFor(() => expect(put).toEqual([{ text: 'Ask about the course.' }]));
   });
+
+  it('T2-C item 70: a planned 1:1 starts its agenda from a template; the manager saves the agenda as their own; the employee cannot', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'm1' });
+    const posted: [string, unknown][] = [];
+    const meeting = { id: 'm1', employee: 'Arjun', employeeId: 'e1', manager: 'Priya', managerEmployeeId: 'e3', role: 'manager', on: '2026-12-13', status: 'planned', sharedNotes: null, agenda: [{ id: 'i1', text: 'Wins', done: false, addedBy: 'Priya' }], actions: [], privateNote: '', cadenceDays: 14, lastHeldOn: null, goals: [], version: 1 };
+    const pairs = (role: string) => ({ pairs: [{ id: 'm1', role, employee: 'Arjun', manager: 'Priya', partnerRole: 'Executive', on: '2026-12-13', status: 'planned', lastHeldOn: null, cadenceDays: 14, agendaItems: 1, openActions: 0 }], partners: [], defaultCadenceDays: 14 });
+    const post = (path: string) => (_p: string, init: RequestInit) => (posted.push([path, JSON.parse(String(init.body))]), meeting);
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /performance/one-on-ones': pairs('manager'),
+      'GET /performance/one-on-ones/m1': meeting,
+      'GET /performance/one-on-ones/m1/suggested-agenda': [],
+      'GET /performance/one-on-one-templates': [{ id: 't1', name: 'Weekly check-in', items: ['Wins', 'Blockers'], company: true, mine: false, updatedAt: '2026-11-27T10:00:00Z' }],
+      'POST /performance/one-on-ones/m1/agenda/from-template': post('use'),
+      'POST /performance/one-on-one-templates': post('save'),
+    });
+    const first = wrap(<YxOneOnOnePage />);
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Agenda template' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Weekly check-in (company)' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Use template' }));
+    await waitFor(() => expect(posted).toEqual([['use', { templateId: 't1' }]]));
+    await userEvent.click(screen.getByRole('button', { name: 'Save agenda as my template' }));
+    await userEvent.type(within(screen.getByRole('dialog', { name: 'Save as my 1:1 template' })).getByRole('textbox', { name: /Template name/ }), 'Fortnightly');
+    await userEvent.click(screen.getByRole('button', { name: 'Save template' }));
+    await waitFor(() => expect(posted[1]).toEqual(['save', { name: 'Fortnightly', items: ['Wins'] }]));
+    first.unmount();
+    // Negative: the employee may pick a template but has no Save as my template.
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /performance/one-on-ones': pairs('employee'),
+      'GET /performance/one-on-ones/m1': { ...meeting, role: 'employee' },
+      'GET /performance/one-on-ones/m1/suggested-agenda': [],
+      'GET /performance/one-on-one-templates': [{ id: 't1', name: 'Weekly check-in', items: ['Wins'], company: true, mine: false, updatedAt: '2026-11-27T10:00:00Z' }],
+    });
+    wrap(<YxOneOnOnePage />);
+    expect(await screen.findByRole('combobox', { name: 'Agenda template' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save agenda as my template' })).toBeNull();
+  });
 });

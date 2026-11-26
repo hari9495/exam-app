@@ -244,6 +244,54 @@ describe('Performance batch PM2', () => {
     expect(rows.map((r) => r.metadataJson ?? '').join(' ')).not.toContain('client calls');
   });
 
+  it('T2-C 71 (answer 2844): HR keeps goal templates by department or designation; each person sees the ones that fit', async () => {
+    type T = { id: string; title: string; kind: string; keyResults: string[]; department: string | null };
+    const plantId = randomUUID();
+    const other = await inA((tx) => tx.department.create({ data: { organizationId: org.A.id, id: plantId, name: `Plant ${run}`, code: 'PLT', path: `/${plantId}/` } }));
+    await api('hr', 'post', '/goal-templates').send({ title: 'Grow revenue', kind: 'kpi', keyResults: [] }).expect(403);
+    await api('adminA', 'post', '/goal-templates').send({ title: 'Grow revenue', kind: 'okr', keyResults: [] }).expect(400);
+    await api('adminA', 'post', '/goal-templates').send({ title: 'Grow revenue', kind: 'kpi', keyResults: [], departmentId: '00000000-0000-0000-0000-000000000001' }).expect(400);
+    const all = (await api('adminA', 'post', '/goal-templates').send({ title: 'Learn one new skill', kind: 'kpi', keyResults: [] }).expect(201)).body as T;
+    const sales = (await api('adminA', 'post', '/goal-templates').send({ title: 'Grow my accounts', kind: 'okr', keyResults: ['New accounts', 'Renewals', 'New accounts'], departmentId: ids.dept, designationId: ids.desig }).expect(201)).body as T;
+    expect(sales).toMatchObject({ keyResults: ['New accounts', 'Renewals'], department: expect.any(String) });
+    const plant = (await api('adminA', 'post', '/goal-templates').send({ title: 'Cut scrap', kind: 'kpi', keyResults: ['ignored for a KPI'], departmentId: other.id }).expect(201)).body as T;
+    expect(plant.keyResults).toEqual([]);
+    expect(((await api('arjun', 'get', '/goal-templates').expect(200)).body as T[]).map((t) => t.title)).toEqual(['Grow my accounts', 'Learn one new skill']);
+    expect(((await api('adminA', 'get', '/goal-templates').expect(200)).body as T[]).map((t) => t.title)).toEqual(['Cut scrap', 'Grow my accounts', 'Learn one new skill']);
+    expect((await api('adminB', 'get', '/goal-templates').expect(200)).body).toEqual([]);
+    await api('adminA', 'put', `/goal-templates/${all.id}`).send({ title: 'Learn two new skills', kind: 'kpi', keyResults: [] }).expect(200);
+    await api('hr', 'delete', `/goal-templates/${plant.id}`).expect(403);
+    await api('adminB', 'delete', `/goal-templates/${plant.id}`).expect(404);
+    await api('adminA', 'delete', `/goal-templates/${plant.id}`).expect(200);
+  });
+
+  it('T2-C 71 (answer 2844): a CSV of goals for people in scope, with a preview and a reason per refused row; all or nothing', async () => {
+    const csv = (rows: string[]) => ['employee_code,title,weight,description', ...rows].join('\n');
+    const good = csv(['KF-003,Imported goal one,30,From the file', 'KF-004,Imported goal two,,', 'kf-003,Imported goal three,20,']);
+    await api('arjun', 'post', '/goals/import').send({ periodId: ids.period, csv: good, preview: true }).expect(403);
+    const preview = (await api('hr', 'post', '/goals/import').send({ periodId: ids.period, csv: good, preview: true }).expect(200)).body;
+    expect(preview).toMatchObject({ preview: true, problems: [] });
+    expect(preview.rows.map((r: { employeeCode: string; title: string }) => [r.employeeCode, r.title])).toEqual([['KF-003', 'Imported goal one'], ['KF-004', 'Imported goal two'], ['KF-003', 'Imported goal three']]);
+    // Nothing is saved by a preview.
+    expect(await inA((tx) => tx.goal.count({ where: { periodId: ids.period, title: { startsWith: 'Imported goal' } } }))).toBe(0);
+    // A file with a bad row is refused whole, each row with its reason.
+    const bad = csv(['KF-003,Imported goal four,30,', 'KF-999,Unknown person goal,10,', 'KF-004,No,10,']);
+    const refused = (await api('hr', 'post', '/goals/import').send({ periodId: ids.period, csv: bad }).expect(400)).body;
+    expect(refused.message).toMatch(/2 rows have problems\. Nothing was imported/);
+    expect(refused.problems.map((p: { line: number; problems: string[] }) => [p.line, p.problems[0]])).toEqual([[3, 'No employee with the code KF-999 in this company.'], [4, 'Give a title of 3 to 200 characters.']]);
+    await api('hr', 'post', '/goals/import').send({ periodId: ids.period, csv: 'name\nx' }).expect(400);
+    expect((await api('hr', 'post', '/goals/import').send({ periodId: ids.period, csv: good }).expect(200)).body).toEqual({ imported: 3 });
+    const arjun = (await api('arjun', 'get', `/goals?period=${ids.period}&view=mine`).expect(200)).body.goals as { title: string; status: string }[];
+    expect(arjun.filter((g) => g.title.startsWith('Imported goal')).map((g) => g.status)).toEqual(['draft', 'draft']);
+    // The same file again: each row already exists for the person.
+    const again = (await api('hr', 'post', '/goals/import').send({ periodId: ids.period, csv: good, preview: true }).expect(200)).body;
+    expect(again.rows).toEqual([]);
+    expect(again.problems[0].problems).toEqual(['This person already has a goal with this title in the period.']);
+    // Another company's people are not found.
+    const other = (await api('adminB', 'post', '/goals/import').send({ periodId: ids.period, csv: good, preview: true }).expect(400)).body;
+    expect(other.message).toMatch(/open goal period/);
+  });
+
   it('two companies stay apart', async () => {
     await api('adminB', 'get', `/goals/${ids.arjunGoal}`).expect(404);
     expect((await api('adminB', 'get', '/goal-periods').expect(200)).body).toEqual([]);

@@ -29375,5 +29375,157 @@
                               "Screens/Time/TIM-15 · Timesheets › Phone · day list, submit week"
                     ],
                     "note": "T2-D item 61 (no answer needed). The choice is a per-device convenience (local storage), not a setting. Positive and negative: kit timesheet-t2d.test.tsx (61 tests)."
+          },
+          {
+                    "id": "MT-T2C-72",
+                    "area": "Batch T2-C item 72 (C2): the calibration bell-curve guide, the part that is already live",
+                    "screen": "Performance › Review cycles › a cycle (control room) › Calibration › Open a session; Performance › Calibration › a session (PRF-09 board)",
+                    "url": "http://localhost:3000/yx/performance/cycles",
+                    "account": "HR admin who runs review cycles (admin@demo-org.test, perf.cycle.manage); the facilitator chosen for the session; an employee with no performance keys.",
+                    "steps": [
+                              "As HR open a review cycle that has reached calibration, press Open a session. Give a name and a facilitator, choose 'Use a guide' and type shares that add up to 90 (for example 10, 20, 50, 10 across the bands). Press Open.",
+                              "Make the shares add up to 100 (for example 10, 20, 55, 10, 5), set the tolerance to 60, press Open; then set the tolerance to 10 and press Open.",
+                              "Open a second session with 'No guide'.",
+                              "Open the first session's board as the facilitator. Look at the distribution chart and the notes under it. Move one person to a band that is already above its guide share, with a reason.",
+                              "With some bands still outside the guide by more than the tolerance, close (sign off) the session.",
+                              "Open the second session (no guide): look at the chart.",
+                              "Negative access: as the employee open /yx/performance/calibrations and a session's address directly; call GET /api/v1/performance/calibrations."
+                    ],
+                    "expected": "Step 1: the dialog says 'Make the shares add up to 100 (now 90).' and nothing is opened. Step 2: a tolerance of 60 is refused (it must be from 0 to 50); with 10 the session opens with a 5-second toast and shows in the list. Step 3: opens with no guide. Step 4: the chart shows 'This group, %' beside 'Guide, %'; each band more than 10 points away from its guide gets a note like 'Meets: 70% against a guide of 55%.'; the 'Guide only' box says nobody is forced into a curve; the move needs a reason and is saved. Step 5: the session closes; the guide never blocks sign-off. Step 6: only 'This group, %' is drawn and there are no guide notes. Step 7: the employee gets the no-access page and the API answers 403. A group smaller than the company's minimum shows no chart, so no one is singled out.",
+                    "stories": [
+                              "Screens/Performance/PRF-09 · Calibration board and 9-box",
+                              "Screens/Performance/Live · Calibration (Sessions)"
+                    ],
+                    "note": "Only the live part of 72 (2753). The company default guide (2845: Settings › Performance, off by default, fills a new session's guide, still changeable per session) is built next in T2-C and gets its own manual test."
+          },
+          {
+                    "id": "MT-T2C-72-DEFAULT",
+                    "area": "Batch T2-C item 72 (answer 2845): the company bell-curve guide",
+                    "screen": "Settings › Performance (6.3) › 360° and calibration; Performance › Review cycles › a cycle › Calibration › Open a session",
+                    "url": "http://localhost:3000/yx/settings/talent/performance",
+                    "account": "HR admin (admin@demo-org.test, performance set-up); a person who can only facilitate calibration; an employee with no performance keys.",
+                    "steps": [
+                              "As HR open Settings › Performance. Under '360° and calibration' look at 'fill a new calibration session with the company guide', the Rating / Guide share table and the tolerance.",
+                              "Open a running review cycle › Calibration › Open a session (the company guide is still off).",
+                              "Back in Settings › Performance, change the table so the shares add up to 95 (for example Outstanding 15, Exceeds 20, Meets 45, Partly meets 10, Needs improvement 5) and save.",
+                              "Make the shares add up to 100 using the rating names of the cycle's scale (for example 10, 20, 55, 10, 5), set the tolerance to 5, turn the company guide on, and save.",
+                              "Open the cycle's Calibration tab › Open a session again. Change one share for this session only, so the shares add up to 100 again, and open the session.",
+                              "In Settings change one rating name in the table to a name the scale does not have (for example 'Star'), save, and open a new session again.",
+                              "Negative access: as the facilitator-only person and as the employee open Settings › Performance; call PUT /api/v1/org/settings with key perf.calibration.default_guide."
+                    ],
+                    "expected": "Step 1: the company guide is off by default; the table shows the starter shares (10, 20, 55, 10, 5 %) with 'Total 100 %' under it; the helper says it is a guide only and never blocks sign-off. Step 2: the dialog starts with 'None' chosen and no shares. Step 3: the table shows 'Total 95 %, must be 100 %' and saving is refused with 'The shares add up to 95, not 100.' Step 4: saved with a 5-second toast. Step 5: 'Use a guide' is already chosen, each band's share and the tolerance 5 are filled, and the note says 'Filled from the company guide; change it for this session if needed.'; the changed shares are kept for this session only and the session opens with a toast; the Settings table is unchanged. Step 6: the dialog starts with 'None' again (a guide that names other ratings never fills anything). Step 7: the facilitator and the employee cannot open the page or change the setting (no-access page; the API answers 403). The guide never blocks sign-off.",
+                    "stories": [
+                              "Screens/Performance/Live · Calibration (With company guide)",
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance)"
+                    ],
+                    "note": "Stored as three company settings (on/off, the Rating:share pairs, the tolerance), not a new table: the settings code already keeps company choices with history, audit and the 6.3 page."
+          },
+          {
+                    "id": "MT-T2C-2661",
+                    "area": "Batch T2-C 2661 (answer 2846): kudos in reviews",
+                    "screen": "Performance › Reviews › a review (PRF-05 workspace), Kudos this period",
+                    "url": "http://localhost:3000/yx/performance/reviews",
+                    "account": "An employee with an open review in a running cycle; their manager; the manager's manager (skip-level); a colleague to give kudos (Engage › Recognition).",
+                    "steps": [
+                              "As the colleague, give the employee two kudos in Engage › Recognition with two different company values (the cycle's period must include today; if not, use a cycle whose period does).",
+                              "As the employee open your review. Look at the 'Kudos this period' card.",
+                              "Turn on 'Hide from review' for one kudos.",
+                              "As the manager open the same review; then as the skip-level.",
+                              "As the employee turn the switch off again, then on again.",
+                              "As the manager submit the manager review. As the employee open the review again and try to change a switch (or call POST /api/v1/performance/reviews/<id>/kudos/<kudosId> with {\"hidden\": false}).",
+                              "Negative: as the manager call POST /api/v1/performance/reviews/<id>/kudos/<kudosId> with {\"hidden\": true}; as the employee call it for a kudos given outside the review period."
+                    ],
+                    "expected": "Step 2: the card lists the kudos grouped by value (for example 'Customer first · 1'), each with the message, who gave it, the date and badge, and says 'Context only, never scored.' with a 'Hide from review' switch on each. Step 3: a 5-second toast 'Hidden from this review.'; the kudos shows 'Hidden from reviewers'. Step 4: the manager and the skip-level see only the other kudos, with no switches and the note 'Kudos the person hid are not shown.'; the hidden one is not on the page at all. Step 5: 'Shown on this review again.' then hidden again. Step 6: the switches are gone and the card says the review was submitted so they can no longer be hidden; the API answers 409. The score is the same as without kudos. Step 7: 404 for both (only the person hides; only the period's kudos are on the review).",
+                    "stories": [
+                              "Screens/Performance/PRF-05 · Review workspace (Employee · kudos this period, Manager · kudos this period)"
+                    ],
+                    "note": "Kudos held for a moderator, or given outside the review period, never show. A former manager added as an other reviewer sees no kudos."
+          },
+          {
+                    "id": "MT-T2C-68",
+                    "area": "Batch T2-C item 68 (answer 2842): What is expected of me",
+                    "screen": "Performance › What is expected of me (PRF-18)",
+                    "url": "http://localhost:3000/yx/performance/expected",
+                    "account": "An employee whose designation has competencies set in Performance › Competencies (PRF-14); their manager (panel@demo-org.test); a colleague in another team; HR to set competencies.",
+                    "steps": [
+                              "As HR open Performance › Competencies and make sure two competencies are set for the employee's designation with an expected level, and each level has behaviours. Check Settings › Engage values (the company's core values).",
+                              "As the employee open Performance › What is expected of me.",
+                              "Look for anything that can be rated or typed.",
+                              "As the manager open the page, then pick the employee in 'Show the page for'. Pick 'Me' again.",
+                              "As HR end one competency's link to the designation (or retire the competency) and reload the employee's page.",
+                              "Negative: as the colleague in another team open /yx/performance/expected?employee=<the employee's id>; as the employee open the page with their manager's id; call GET /api/v1/performance/expectations?employeeId=not-a-uuid.",
+                              "Negative: a person whose designation has no competencies opens the page."
+                    ],
+                    "expected": "Step 2: the title is 'What is expected of me' with the designation; 'Competencies for <designation>' lists each competency with its group (Core, Functional, Leadership), the description, 'Expected: level N of M · <level name>' and the behaviours at that level; then 'Our core values' lists the company values. Step 3: nothing to rate or type; no scores. Step 4: the title changes to 'What is expected of <name>' with the same parts; 'Me' goes back to the manager's own page. Step 5: the ended or retired competency is gone. Step 6: 'This page didn’t load' (the API answers 404, nothing is shown); the bad id gets 400. Step 7: 'No competencies are set for this job yet.' with the values still shown. The page fits the screen without a scroll bar for a few competencies.",
+                    "stories": [
+                              "Screens/Performance/PRF-18 · What is expected of me"
+                    ],
+                    "note": "Competencies come from the designation (the PRF-14 framework links competencies to designations, not grades). A competency weight is not kept anywhere yet, so the page shows the expected level and behaviours, not a weight (question 2880)."
+          },
+          {
+                    "id": "MT-T2C-70",
+                    "area": "Batch T2-C item 70 (answer 2843): 1:1 agenda templates",
+                    "screen": "Settings › Performance (6.3) › Competencies and 1:1s › 1:1 agenda templates; Performance › 1:1s › a planned 1:1",
+                    "url": "http://localhost:3000/yx/settings/talent/performance",
+                    "account": "HR admin (admin@demo-org.test, performance set-up); a manager (panel@demo-org.test, Divya) with a report; that report (employee); an employee with no reports.",
+                    "steps": [
+                              "As HR open Settings › Performance. Under 'Competencies and 1:1s' find '1:1 agenda templates'. Press 'Add a 1:1 template' and press Save with nothing filled in.",
+                              "Name it 'Weekly check-in' and write the lines 'Wins this week', 'Blockers', 'Blockers' and an empty line (one a line). Save.",
+                              "Add another company template with the same name in capitals.",
+                              "As the manager open a planned 1:1 with the report. In the agenda part pick 'Weekly check-in (company)' and press 'Use template'. Press it again.",
+                              "Add an agenda item by hand. Then press 'Save agenda as my template', press 'Save template' without a name, then name it 'My weekly' and save.",
+                              "Open another planned 1:1 and pick 'My weekly (mine)'.",
+                              "As the report open the same 1:1: pick a template; look for 'Save agenda as my template'.",
+                              "As HR edit 'Weekly check-in' (change a line), then delete it. Open the manager's 1:1 again.",
+                              "Negative: as the employee with no reports call POST /api/v1/performance/one-on-one-templates with a name and lines; as the manager call it with \"company\": true; as the report use the manager's own template id on the 1:1 (POST /api/v1/performance/one-on-ones/<id>/agenda/from-template); open a held 1:1."
+                    ],
+                    "expected": "Step 1: 'Name the template.' and 'Write at least one agenda line.'; nothing is saved. Step 2: a 5-second toast '1:1 template saved'; the list shows 'Weekly check-in' with '2 · Wins this week · Blockers' (the repeat and the blank line are dropped). Step 3: refused: a template with that name already exists. Step 4: 'Template lines added to the agenda' toast; the two lines are on the agenda once, even after the second press. Step 5: the hand-added item stays; the name is required; then 'Saved as your 1:1 template'. Step 6: its lines fill that agenda; the managers' own templates are not listed in Settings. Step 7: the report can pick a company template but has no 'Save agenda as my template' and does not see the manager's own one. Step 8: the change and the delete each show a toast; agendas already filled keep their lines. Step 9: 403, 403, 404; a held 1:1 shows no template picker.",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance · 1:1 agenda templates, add a 1:1 template, edit a 1:1 template)",
+                              "Screens/Performance/PRF-11 · 1:1s (Manager · start the agenda from a template)"
+                    ],
+                    "note": "New table one_on_one_templates (forced RLS, in rls-isolation). Calendar sync of 1:1s stays with tier 3 item 90 (2748)."
+          },
+          {
+                    "id": "MT-T2C-71",
+                    "area": "Batch T2-C item 71 (answer 2844): goal templates and goal import",
+                    "screen": "Settings › Performance (6.3) › Goals and reviews › Goal templates; Performance › Goals › Add goal and Import goals",
+                    "url": "http://localhost:3000/yx/settings/talent/performance",
+                    "account": "HR admin (admin@demo-org.test, performance set-up and goal-setting); an employee in Sales; an employee in another department; a person with no goal-setting key.",
+                    "steps": [
+                              "As HR open Settings › Performance. Under 'Goals and reviews' find 'Goal templates'. Add one: 'Learn one new skill', KPI, no department or designation. Add another: 'Grow my accounts', 'Objective with key results', press Save with no key results; then add 'New accounts' and 'Renewals', department Sales.",
+                              "As the Sales employee open Performance › Goals › Add goal. Open 'Start from a template'.",
+                              "Pick 'Grow my accounts'. Change the title and fill in the key result numbers, then save.",
+                              "As the employee in another department open Add goal › Start from a template.",
+                              "As HR (goal-setting key) open Performance › Goals › Import goals. Choose a CSV with the header employee_code,title,weight,description and three rows: two good rows for people in your scope, and one row with an unknown employee code.",
+                              "Fix the file (remove the bad row) and choose it again. Press 'Import 2 goals'.",
+                              "Choose the same file again.",
+                              "Negative: as the person with no goal-setting key open Performance › Goals; call POST /api/v1/performance/goals/import; as HR call POST /api/v1/performance/goal-templates as someone without performance set-up (403)."
+                    ],
+                    "expected": "Step 1: each save shows a 5-second toast; the list shows the two templates with 'KPI' or 'Objective · 2 key results' and 'Everyone' or 'Sales'; the objective without key results is refused with 'An objective needs at least one key result.' Step 2: both templates are offered. Step 3: the title, description, kind and key result names fill in; everything stays editable; the goal saves as a draft. Step 4: only 'Learn one new skill' is offered. Step 5: the preview lists the two good goals (person, code, goal, weight) and 'Rows with problems' with 'No employee with the code … in this company.'; the Import button stays off. Step 6: '2 goals imported as drafts' toast; the people see them as drafts to send to their manager. Step 7: every row says 'This person already has a goal with this title in the period.' Step 8: no 'Import goals' button; 403 for both calls. People outside the importer's goal-setting scope are refused per row ('This person is not in your goal-setting scope.').",
+                    "stories": [
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance · goal templates, edit a goal template)",
+                              "Screens/Performance/Kit · Growth building blocks (Goal import)"
+                    ],
+                    "note": "New table goal_templates (forced RLS, in rls-isolation). The CSV takes KPI goals; objectives with key results are added on the Goals page (question 2881). Imported goals are drafts (question 2882)."
+          },
+          {
+                    "id": "MT-T2C-2841",
+                    "area": "Answer 2841: 'Waiting for your manager' on HIR-13 My applications",
+                    "screen": "Hiring › Internal jobs (HIR-13) › My applications",
+                    "url": "http://localhost:3000/yx/hiring/internal-jobs",
+                    "account": "HR admin (to turn on the internal-move release); an employee with a manager; that manager (panel@demo-org.test).",
+                    "steps": [
+                              "As HR turn on 'the current manager releases an internal applicant' (Settings › Hiring). Open an internal job.",
+                              "As the employee open Hiring › Internal jobs and apply for the job. Look at My applications.",
+                              "As the manager approve the release in the approvals inbox. As the employee reload My applications.",
+                              "Apply for a second internal job; as the manager refuse the release. Reload My applications as the employee.",
+                              "Negative: turn the setting off and apply for a third job; look at My applications."
+                    ],
+                    "expected": "Step 2: the new application shows 'Applied … · Waiting for your manager'. Step 3: the line no longer says it; the status follows the pipeline as before. Step 4: the refused one does not say 'Waiting for your manager' either (the usual approval notice tells the person). Step 5: no waiting line, because the manager is only told. Phone view shows the same line.",
+                    "stories": [
+                              "Screens/Hiring/HIR-13 · Internal jobs (My applications · waiting for your manager)"
+                    ],
+                    "note": "GET /api/v1/internal-applications/mine now sends waitingForManager per application."
           }
 ]

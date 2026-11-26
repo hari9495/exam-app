@@ -2338,6 +2338,8 @@ export interface InternalApplication {
   applied: Date;
   /** Live adds Selected (the hired stage). */
   status: 'Applied' | 'Assessment' | 'Interview' | 'Offer' | 'Selected' | 'Not selected';
+  /** Answer 2841: the current manager has not yet released the applicant (internal-move release). */
+  waitingForManager?: boolean;
 }
 
 /** What Send application sends (live). */
@@ -2490,6 +2492,7 @@ export function InternalJobsScreen({ jobs, applications, applyFor = null, eligib
                       <Text weight="medium">{a.job}</Text>
                       <Text size="sm" tone="secondary">
                         Applied {formatDate(a.applied)}
+                        {a.waitingForManager ? ' · Waiting for your manager' : ''}
                       </Text>
                     </div>
                     <Badge tone={APP_TONE[a.status]}>{a.status}</Badge>
@@ -2535,6 +2538,7 @@ export function InternalJobsPhone({ jobs, applications, applyFor = null, eligibl
       {applications.map((a) => (
         <div key={a.id} className="yx-hire-row">
           <Text>{a.job}</Text>
+          {a.waitingForManager && <Text size="sm" tone="secondary">Waiting for your manager</Text>}
           <Badge tone={APP_TONE[a.status]}>{a.status}</Badge>
         </div>
       ))}

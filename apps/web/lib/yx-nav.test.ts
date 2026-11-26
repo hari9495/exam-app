@@ -320,7 +320,7 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['visitors.desk.manage']), 'visitors')).not.toContain('Watch-list');
     // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
     expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
-    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance', 'Performance settings']);
+    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance settings']);
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['All settings', 'Roles & access']);
   });
 
@@ -358,6 +358,9 @@ describe('activeLink and meLinks', () => {
     expect(activeLink(n, '/yx/performance/cycles/c-1')?.link.label).toBe('Review cycles');
     expect(activeLink(n, '/yx/performance')?.link.label).toBe('Performance home');
     expect(activeLink(n, '/yx/performance/goals')?.link.label).toBe('Goals');
+    // T2-C item 68: everyone with an employee record has What is expected of me; a login with no record does not.
+    expect(activeLink(n, '/yx/performance/expected')?.link.label).toBe('What is expected of me');
+    expect(activeLink(nav(['perf.cycle.manage']), '/yx/performance/expected')?.link.label).not.toBe('What is expected of me');
     expect(activeLink(n, '/yx/nowhere')).toBeNull();
   });
   it('the designed Me menu (PPL-30), and the personal settings in the avatar menu', () => {

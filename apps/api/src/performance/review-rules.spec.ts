@@ -1,4 +1,4 @@
-import { DEFAULT_RULES, eligibilityFor, scoreReview, stagesProblem } from './review-rules';
+import { DEFAULT_RULES, eligibilityFor, kudosForReview, scoreReview, stagesProblem } from './review-rules';
 
 // PM-4.02 / PM-4.04 (J11, YX-PERF-02, YX-PERF-21).
 const FY = { periodFrom: '2026-04-01', periodTo: '2027-03-31', today: '2027-04-10', exitedOn: null, protectedLeave: false };
@@ -47,5 +47,24 @@ describe('scoring (§9.1)', () => {
   });
   it('manager-overall takes the overall rating', () => {
     expect(scoreReview('manager_overall', sections, { q1: { rating: 2 } }, 4).finalScore).toBe(4);
+  });
+});
+
+describe('kudos on a review (T2-C 2661, answer 2846)', () => {
+  const k = (id: string, value: string, on: string) => ({ id, value, badge: null, message: `m-${id}`, from: 'Kiran', on });
+  const rows = [k('a', 'Own it', '2026-05-01'), k('b', 'Customer first', '2026-06-01'), k('c', 'Own it', '2026-07-01'), k('d', 'Old value', '2026-04-10')];
+  const values = ['Customer first', 'Own it'];
+
+  it('groups by value in the company order, newest first; the person sees hidden ones marked', () => {
+    const g = kudosForReview(rows, ['c'], values, true);
+    expect(g.map((x) => x.value)).toEqual(['Customer first', 'Own it', 'Old value']);
+    expect(g[1].items.map((x) => [x.id, x.hidden])).toEqual([['c', true], ['a', false]]);
+  });
+
+  it('negative: a reviewer never sees a hidden kudos, and an emptied value is left out', () => {
+    const g = kudosForReview(rows, ['b', 'c'], values, false);
+    expect(g.map((x) => x.value)).toEqual(['Own it', 'Old value']);
+    expect(JSON.stringify(g)).not.toMatch(/"id":"(b|c)"/);
+    expect(kudosForReview([], [], values, false)).toEqual([]);
   });
 });

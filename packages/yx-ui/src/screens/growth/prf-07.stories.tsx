@@ -4,7 +4,8 @@ import { NOMINATIONS } from './perf-data-3';
 import { PEOPLE } from './perf-data-2';
 
 import { FeedbackTasksScreen, PeerFormScreen } from './peer-answer';
-import type { PeerForm } from '../performance/live/types';
+import { ReviewerBlocksScreen } from './reviewer-blocks';
+import type { PeerForm, ReviewerBlock } from '../performance/live/types';
 const meta: Meta = { title: 'Screens/Performance/PRF-07 · 360° nominations', parameters: { layout: 'fullscreen' } };
 export default meta;
 type S = StoryObj;
@@ -35,3 +36,14 @@ export const AskedTasks: S = { name: 'Colleague · feedback I was asked for', re
 export const AskedEmpty: S = { name: 'Colleague · nobody asked yet', render: () => <FeedbackTasksScreen state="ready" tasks={[]} onOpen={() => undefined} /> };
 export const AnswerRequest: S = { name: 'Colleague · answer a request', render: () => <PeerFormScreen state="ready" form={ASKED_FORM} onBack={() => undefined} onSave={async () => ({})} /> };
 export const AnswerSent: S = { name: 'Colleague · answer sent', render: () => <PeerFormScreen state="ready" form={{ ...ASKED_FORM, entry: { status: 'submitted', answers: {}, comment: null }, can: { answer: false } }} onBack={() => undefined} onSave={async () => ({})} /> };
+
+// Batch T2-C (2411, 2847): reviewer blocks, HR who handle concerns keep a pair from reviewing each other (§15.3).
+const BLOCKS: ReviewerBlock[] = [
+  { id: 'b1', a: 'Arjun Rao', b: 'Sita Iyer', employeeA: 'e1', employeeB: 'e2', reasonCode: 'conflict', untilOn: null },
+  { id: 'b2', a: 'Karthik Subramanian', b: 'Meena Raghavan', employeeA: 'e3', employeeB: 'e4', reasonCode: 'confidential_matter', untilOn: '2027-03-31' },
+];
+const blockProps = { people: PEOPLE.slice(0, 4), onSearch: () => undefined, onBlock: async () => ({}), onEnd: async () => ({}) };
+export const Blocks: S = { name: 'HR · reviewer blocks', render: () => <ReviewerBlocksScreen state="ready" blocks={BLOCKS} {...blockProps} /> };
+export const BlocksEmpty: S = { name: 'HR · reviewer blocks · none yet', render: () => <ReviewerBlocksScreen state="ready" blocks={[]} {...blockProps} /> };
+export const BlocksLoading: S = { name: 'HR · reviewer blocks · loading', render: () => <ReviewerBlocksScreen state="loading" blocks={[]} {...blockProps} /> };
+export const BlocksError: S = { name: 'HR · reviewer blocks · could not load', render: () => <ReviewerBlocksScreen state="error" onRetry={() => undefined} blocks={[]} {...blockProps} /> };

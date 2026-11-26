@@ -7,7 +7,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { AcknowledgeDto, CommentDto, CycleDto, DecideDisagreementDto, DisagreeDto, EntryDto, OtherReviewerDto, OverrideDto, ReasonDto, RemindDto, ReviewListDto, StageQueryDto, ExtendDto } from './review-dto';
+import { AcknowledgeDto, CommentDto, KudosHideDto, CycleDto, DecideDisagreementDto, DisagreeDto, EntryDto, OtherReviewerDto, OverrideDto, ReasonDto, RemindDto, ReviewListDto, StageQueryDto, ExtendDto } from './review-dto';
 import { MODERATE_UPLOAD_THROTTLE } from '../rate-limit-tiers';
 import { VersionDto } from './dto';
 import { PerformanceReviewsService } from './reviews.service';
@@ -177,6 +177,13 @@ export class PerformanceReviewsController {
   @HttpCode(200)
   acknowledge(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AcknowledgeDto) {
     return this.svc.acknowledge(ctx, this.user(req), id, dto.comment ?? null, dto.disagreement ?? null);
+  }
+
+  /** T2-C 2661 (answer 2846): the person hides one kudos from their review until the manager submits (the service decides). */
+  @Post('reviews/:id/kudos/:kudosId')
+  @HttpCode(200)
+  hideKudos(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('kudosId', ParseUUIDPipe) kudosId: string, @Body() dto: KudosHideDto) {
+    return this.svc.hideKudos(ctx, this.user(req), id, kudosId, dto.hidden);
   }
 
   @Post('reviews/:id/disagree')

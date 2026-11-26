@@ -192,10 +192,49 @@ describe('Performance batch PM4', () => {
     expect((await api('priya', 'post', `/reviews/${meenaReview}/entries/manager/submit`).send({ answers: answers(mr, 'manager', { Goals: 3 }) }).expect(409)).body.message).toMatch(/Wait for the self review/);
   });
 
+  it('T2-C 2661 (answer 2846): the period kudos by value; the person hides one, which reviewers never see; never scored', async () => {
+    type K = { kudos: { value: string; items: { id: string; hidden: boolean; message: string; from: string }[] }[]; can: { hideKudos: boolean }; finalScore: number | null };
+    // Kudos to Arjun: two in the review period (published), one after it, one held for a moderator.
+    const give = (value: string, at: string, state = 'published') =>
+      inA(async (tx) => {
+        const p = await tx.engPost.create({ data: { organizationId: org.A.id, kind: 'kudos', authorUserId: users.sita, body: `Thanks ${value} ${at}`, state, publishAt: new Date(at) } });
+        return (await tx.engKudos.create({ data: { organizationId: org.A.id, postId: p.id, giverUserId: users.sita, receiverIds: [users.arjun], value, createdAt: new Date(at) } })).id;
+      });
+    ids.k1 = await give('Own it', '2025-06-10T10:00:00Z');
+    ids.k2 = await give('Customer first', '2026-03-31T17:00:00Z'); // 31 Mar, 10:30 pm in India: still in the period
+    ids.k3 = await give('Own it', '2026-04-02T10:00:00Z');
+    ids.k4 = await give('Own it', '2025-07-01T10:00:00Z', 'held');
+    const own = (await api('arjun', 'get', `/reviews/${ids.review}`).expect(200)).body as K;
+    expect(own.can.hideKudos).toBe(true);
+    expect(own.kudos.map((g) => [g.value, g.items.map((i) => i.id)])).toEqual([['Customer first', [ids.k2]], ['Own it', [ids.k1]]]);
+    expect(own.kudos[0].items[0]).toMatchObject({ hidden: false, from: expect.stringMatching(/^sita/), message: expect.stringMatching(/^Thanks Customer first/) });
+    // Negative: the manager cannot hide them; a kudos not on the review cannot be hidden; a bad body is refused.
+    await api('priya', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: true }).expect(404);
+    expect((await api('priya', 'get', `/reviews/${ids.review}`).expect(200)).body.can.hideKudos).toBe(false);
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k3}`).send({ hidden: true }).expect(404);
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k4}`).send({ hidden: true }).expect(404);
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: 'yes' }).expect(400);
+    // Arjun hides one: he still sees it, marked; the manager and the skip-level never do.
+    const hid = (await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: true }).expect(200)).body as K;
+    expect(hid.kudos.find((g) => g.value === 'Own it')!.items[0]).toMatchObject({ id: ids.k1, hidden: true });
+    for (const who of ['priya', 'head'] as const) {
+      const seen = (await api(who, 'get', `/reviews/${ids.review}`).expect(200)).body as K;
+      expect(seen.kudos.map((g) => g.value)).toEqual(['Customer first']);
+      expect(JSON.stringify(seen)).not.toContain(ids.k1);
+    }
+    // Shown again, then hidden again (the manager submits next, with it hidden).
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: false }).expect(200);
+    expect((await api('priya', 'get', `/reviews/${ids.review}`).expect(200)).body.kudos.map((g: { value: string }) => g.value)).toEqual(['Customer first', 'Own it']);
+    await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k1}`).send({ hidden: true }).expect(200);
+  });
+
   it('a section left unrated is named and left out of the score; the employee still sees no score before release (PM-4.04, YX-PERF-02)', async () => {
     const m = (await api('priya', 'get', `/reviews/${ids.review}`).expect(200)).body as Review;
     const done = (await api('priya', 'post', `/reviews/${ids.review}/entries/manager/submit`).send({ answers: answers(m, 'manager', { Goals: 4 }) }).expect(200)).body as Review;
     expect(done).toMatchObject({ status: 'ready', finalScore: 4, band: expect.any(String), excludedSections: ['Competencies'] });
+    // T2-C 2661: kudos are never scored (4 from the Goals answer alone), and once the manager submits they can no longer be hidden.
+    expect((await api('arjun', 'post', `/reviews/${ids.review}/kudos/${ids.k2}`).send({ hidden: true }).expect(409)).body.message).toMatch(/no longer change/);
+    expect((await api('arjun', 'get', `/reviews/${ids.review}`).expect(200)).body.can.hideKudos).toBe(false);
     expect(done.next.stage).toBe('release');
     const own = (await api('arjun', 'get', `/reviews/${ids.review}`).expect(200)).body as Review;
     expect(own).toMatchObject({ finalScore: null, band: null, managerEntry: null, excludedSections: [] });
@@ -350,6 +389,38 @@ describe('Performance batch PM4', () => {
     const funnel = (await api('adminA', 'get', `/cycles/${c.id}/funnel`).expect(200)).body as { stage: string; count: number }[];
     expect(funnel.find((f) => f.stage === 'self')!.count).toBe(520);
   }, 120_000);
+
+  it('T2-C 68 (answer 2842): What is expected of me: the designation competencies at the expected level, then the values; the manager chain reads a report’s', async () => {
+    await inA(async (tx) => {
+      const x = { organizationId: org.A.id };
+      const domain = await tx.companySkill.create({ data: { ...x, name: `Plant ${run}`, kind: 'domain' } });
+      const skill = await tx.companySkill.create({ data: { ...x, parentId: domain.id, name: `Line safety ${run}`, kind: 'skill' } });
+      const comp = await tx.competency.create({ data: { ...x, companySkillId: skill.id, group: 'functional', description: 'Keeps the line safe.' } });
+      await tx.competencyLevel.createMany({ data: [1, 2, 3].map((level) => ({ ...x, competencyId: comp.id, level, label: `L${level}`, behaviours: `Behaviour at ${level}` })) });
+      await tx.roleCompetencyMap.create({ data: { ...x, designationId: ids.desig, competencyId: comp.id, expectedLevel: 2, validFrom: new Date('2020-01-01T00:00:00Z') } });
+      // Ended last year: not expected any more.
+      const old = await tx.competency.create({ data: { ...x, companySkillId: (await tx.companySkill.create({ data: { ...x, parentId: domain.id, name: `Old skill ${run}`, kind: 'skill' } })).id, group: 'core' } });
+      await tx.roleCompetencyMap.create({ data: { ...x, designationId: ids.desig, competencyId: old.id, expectedLevel: 1, validFrom: new Date('2020-01-01T00:00:00Z'), validTo: new Date('2025-01-01T00:00:00Z') } });
+    });
+    type E = { employee: { id: string; designation: string; mine: boolean }; competencies: { name: string; expectedLevel: number; levelLabel: string; behaviours: string }[]; values: string[]; reports: { value: string }[] };
+    const own = (await api('arjun', 'get', '/expectations').expect(200)).body as E;
+    expect(own.employee).toMatchObject({ id: emp.arjun, designation: 'Executive', mine: true });
+    expect(own.competencies).toContainEqual(expect.objectContaining({ name: `Line safety ${run}`, expectedLevel: 2, levelLabel: 'L2', behaviours: 'Behaviour at 2' }));
+    expect(own.competencies.some((c) => c.name === `Old skill ${run}`)).toBe(false);
+    expect(own.values).toEqual(['Customer first', 'Own it', 'Win together', 'Do the right thing']);
+    expect(JSON.stringify(own)).not.toMatch(/rating|score/i);
+    // The manager and the skip-level read Arjun's page; the manager's pick list has her reports.
+    const mgr = (await api('priya', 'get', `/expectations?employeeId=${emp.arjun}`).expect(200)).body as E;
+    expect(mgr.employee).toMatchObject({ id: emp.arjun, mine: false });
+    expect(mgr.reports.map((r) => r.value)).toContain(emp.arjun);
+    await api('head', 'get', `/expectations?employeeId=${emp.arjun}`).expect(200);
+    // Negative: a peer, someone outside the chain and another company get nothing; a bad id is refused.
+    await api('sita', 'get', `/expectations?employeeId=${emp.arjun}`).expect(404);
+    await api('ravi', 'get', `/expectations?employeeId=${emp.arjun}`).expect(404);
+    await api('arjun', 'get', `/expectations?employeeId=${emp.priya}`).expect(404);
+    await api('adminB', 'get', `/expectations?employeeId=${emp.arjun}`).expect(404);
+    await api('arjun', 'get', '/expectations?employeeId=not-a-uuid').expect(400);
+  });
 
   it('keeps companies apart', async () => {
     await api('adminB', 'get', `/reviews/${ids.review}`).expect(404);

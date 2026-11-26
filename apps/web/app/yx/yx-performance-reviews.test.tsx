@@ -61,6 +61,37 @@ describe('PRF-04 … 06 live (performance builder 1)', () => {
     await waitFor(() => expect(posted).toEqual([{ overdueOnly: true }]));
   });
 
+  it('answer 2845: a new calibration session starts from the company guide the API sends; without one it starts with none', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c1' });
+    const base = {
+      'GET /rbac/me/permissions': ['perf.cycle.manage'],
+      'GET /performance/cycles/c1': CYCLE,
+      'GET /performance/cycles/c1/funnel': [],
+      'GET /performance/cycles/c1/overdue': [],
+      'GET /performance/cycles/c1/eligibility': [],
+      'GET /performance/cycles/c1/disagreements': [],
+      'GET /performance/calibration-facilitators': [],
+      'GET /org/masters/departments': [],
+    };
+    route({ ...base, 'GET /performance/cycles/c1/calibrations': { bands: ['Meets', 'Exceeds'], sessions: [], defaultGuide: { bands: [{ label: 'Meets', share: 80 }, { label: 'Exceeds', share: 20 }], tolerance: 5 } } });
+    const first = wrap(<YxReviewCyclePage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Calibration' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Open a session' }));
+    let d = screen.getByRole('dialog');
+    expect(within(d).getByRole('radio', { name: 'Use a guide' })).toBeChecked();
+    expect(within(d).getByRole('textbox', { name: /^Meets/ })).toHaveValue('80');
+    expect(within(d).getByText(/Filled from the company guide/)).toBeInTheDocument();
+    first.unmount();
+    // Negative: the company guide is off (or names other ratings), so the API sends none and nothing is filled.
+    route({ ...base, 'GET /performance/cycles/c1/calibrations': { bands: ['Meets', 'Exceeds'], sessions: [], defaultGuide: null } });
+    wrap(<YxReviewCyclePage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Calibration' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Open a session' }));
+    d = screen.getByRole('dialog');
+    expect(within(d).getByRole('radio', { name: 'None' })).toBeChecked();
+    expect(within(d).queryByText(/Filled from the company guide/)).toBeNull();
+  });
+
   it('a self review saves its draft to the self entry', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'r1' });
     const put: unknown[] = [];
@@ -74,6 +105,33 @@ describe('PRF-04 … 06 live (performance builder 1)', () => {
     await userEvent.click(await screen.findByRole('radio', { name: '4 · Exceeds' }));
     await userEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(put).toEqual([{ answers: [{ questionId: 'g', rating: 4, text: null }], overallRating: null, comment: null }]));
+  });
+
+  it('T2-C 2661: the person hides a kudos from the review; the manager sees no switch and never the hidden one', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'r1' });
+    const posted: { path: string; body: unknown }[] = [];
+    const KUDOS = [{ value: 'Own it', items: [{ id: 'k1', message: 'Built the mock', from: 'Sita', on: '2025-06-10T10:00:00Z', badge: null, hidden: false }] }];
+    const nominations = { peer: null, nominations: [], can: { propose: false, decide: false, add: false } };
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /performance/reviews/r1': { ...REVIEW, kudos: KUDOS, can: { ...REVIEW.can, hideKudos: true } },
+      'GET /performance/reviews/r1/nominations': nominations,
+      'POST /performance/reviews/r1/kudos/k1': (path: string, init: RequestInit) => (posted.push({ path, body: JSON.parse(String(init.body)) }), { ...REVIEW, kudos: [{ ...KUDOS[0], items: [{ ...KUDOS[0].items[0], hidden: true }] }] }),
+    });
+    const first = wrap(<YxReviewPage />);
+    await userEvent.click(await screen.findByRole('switch', { name: 'Hide from review' }));
+    await waitFor(() => expect(posted).toEqual([{ path: '/performance/reviews/r1/kudos/k1', body: { hidden: true } }]));
+    first.unmount();
+    // Negative: the manager's view has the kudos the API sent (never a hidden one) and no switch.
+    route({
+      'GET /rbac/me/permissions': [],
+      'GET /performance/reviews/r1': { ...REVIEW, role: 'manager', kudos: [{ value: 'Customer first', items: [{ id: 'k2', message: 'Re-ran the tests', from: 'Kiran', on: '2025-07-01T10:00:00Z', badge: null, hidden: false }] }], can: { self: false, manager: true, hideKudos: false } },
+      'GET /performance/reviews/r1/nominations': nominations,
+    });
+    wrap(<YxReviewPage />);
+    expect(await screen.findByText(/Re-ran the tests/)).toBeInTheDocument();
+    expect(screen.queryByRole('switch', { name: 'Hide from review' })).toBeNull();
+    expect(screen.queryByText(/Built the mock/)).toBeNull();
   });
 
   it('after release the employee acknowledges with a disagreement in one step; a short reason is refused', async () => {

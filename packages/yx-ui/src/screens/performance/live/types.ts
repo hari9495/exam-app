@@ -386,7 +386,9 @@ export interface ReviewDetail {
   formerManagers?: Choice[];
   released?: { at: string; acknowledgedAt: string | null; acknowledgeComment: string | null; disagreeBy: string | null } | null;
   disagreements?: { id: string; text: string; status: 'open' | 'answered' | 'upheld' | 'not_upheld'; hrNote: string | null }[];
-  can: { self: boolean; manager: boolean; skip?: boolean; acknowledge?: boolean; disagree?: boolean; reopen?: boolean; other?: boolean; addOther?: boolean };
+  /** T2-C 2661 (answer 2846): the period's kudos by value; context only, never scored; reviewers never get hidden ones. */
+  kudos?: { value: string; items: { id: string; message: string; from: string; on: string; badge: string | null; hidden: boolean }[] }[];
+  can: { self: boolean; manager: boolean; skip?: boolean; acknowledge?: boolean; disagree?: boolean; reopen?: boolean; other?: boolean; addOther?: boolean; hideKudos?: boolean };
   version: number;
 }
 

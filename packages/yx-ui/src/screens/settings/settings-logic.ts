@@ -384,5 +384,6 @@ export const LIST_CHECKS: Record<string, (rows: string[][]) => ListCheck[]> = {
   'case.ic.members': poshCheck,
   'holiday.calendars': holidayCheck,
   'perf.calibration_guide': shareTotalCheck,
+  'perf.calibration.guide_shares': shareTotalCheck,
   'lrn.budgets': budgetCheck,
 };
