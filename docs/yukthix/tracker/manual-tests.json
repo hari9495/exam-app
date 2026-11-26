@@ -28921,5 +28921,24 @@
                               "Screens/Learning/LRN-06 · Nomination / enrolment (all six)"
                     ],
                     "note": "Positive and negative (api scorm.spec 19: manifest 1.2/2004/broken/entity/escape, each zip limit and refusal, bridge fields, oversize suspend data, tokens, CSP; e2e learning-scorm 5: upload refusals and keys, launch link on the content origin, serving refusals (app host, unsigned, tampered, expired, other package, other company, pending and infected files), CSP and no cookies, allowed fields only, oversize 400, other learner and other company 404, completion and certificate through the usual path; kit scorm-bridge 3 and learn-scorm-live 5). Migration 840 (learning_scorm_files, learning_scorm_attempts, scorm columns on learning_course_items). scorm-again 3.5.0, MIT. Multi-frame packages (frames inside the package) need a browser check: frame-ancestors on an opaque sandboxed parent."
+          },
+          {
+                    "id": "MT-T2A-ROW-AND-TOUCH",
+                    "area": "T2-A (answers 2756, 2758): most days in a row; leave types that can't be taken next to each other (27 Nov 2026)",
+                    "screen": "Time › Set-up › a leave type › Rules (TIM-27); Apply leave",
+                    "url": "http://localhost:3000/yx/time/setup",
+                    "account": "HR Admin; an employee with balances of two types (for example EL and CL).",
+                    "steps": [
+                              "As HR set EL Most days in a row 3 and Most days in one request 4; Save. Clear the request limit and Save.",
+                              "Set EL Can't be taken next to: CL. Save.",
+                              "As the employee apply EL Thursday and Friday; then EL Monday and Tuesday of the next week.",
+                              "Apply CL on the Wednesday after a Monday-Tuesday EL; then CL on a Friday with EL the next Monday.",
+                              "Apply CL two working days away from EL."
+                    ],
+                    "expected": "Step 1: 'More than the limit in a row of 3 days.' and nothing saved; then saved. Step 3: the second request is refused: 'EL is at most 3 days in a row, counting leave next to it. This would make 4 days.' (the weekend joins them). Step 4: both refused: 'CL can't be taken next to EL (<date>).' (across the weekend too). Step 5: accepted. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-27 · Leave type (Rules tab)"
+                    ],
+                    "note": "Positive and negative (joined-run.spec 5 tests; kit leave-rules-live test; leave e2e unchanged and green). Rules in the type's rules JSON (no migration); either type naming the other refuses."
           }
 ]
