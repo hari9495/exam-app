@@ -612,3 +612,48 @@ export class FromTemplateDto {
   @IsUUID()
   templateId!: string;
 }
+
+/** T2-C item 71 (answer 2844): a goal template; empty department and designation = for everyone. */
+export class GoalTemplateDto {
+  @trim()
+  @IsString()
+  @Length(3, 200)
+  title!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(1000)
+  description?: string | null;
+
+  @IsIn(['okr', 'kpi'])
+  kind!: 'okr' | 'kpi';
+
+  @IsArray()
+  @ArrayMaxSize(10)
+  @IsString({ each: true })
+  @Length(2, 200, { each: true })
+  keyResults!: string[];
+
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string | null;
+
+  @IsOptional()
+  @IsUUID()
+  designationId?: string | null;
+}
+
+/** T2-C item 71: a CSV of goals for a period; `preview` checks it and saves nothing. */
+export class GoalImportDto {
+  @IsUUID()
+  periodId!: string;
+
+  @IsString()
+  @MaxLength(262_144)
+  csv!: string;
+
+  @IsOptional()
+  @IsBoolean()
+  preview?: boolean;
+}

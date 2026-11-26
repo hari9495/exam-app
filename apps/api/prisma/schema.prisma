@@ -10928,6 +10928,25 @@ model Goal {
   @@map("goals")
 }
 
+/// T2-C item 71 (answer 2844): a goal template HR keeps (Settings › Performance) for everyone, a department and/or a
+/// designation; anyone adding a goal can start from one that fits them. keyResults: suggested key result names (OKR).
+model GoalTemplate {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  title          String   @db.VarChar(200)
+  description    String?  @db.VarChar(1000)
+  kind           String   @db.VarChar(4)
+  keyResults     String[] @default([]) @map("key_results")
+  departmentId   String?  @map("department_id") @db.Uuid
+  designationId  String?  @map("designation_id") @db.Uuid
+  createdBy      String?  @map("created_by") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([organizationId], map: "goal_templates_org_idx")
+  @@map("goal_templates")
+}
+
 model KeyResult {
   id             String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   organizationId String  @map("organization_id") @db.Uuid

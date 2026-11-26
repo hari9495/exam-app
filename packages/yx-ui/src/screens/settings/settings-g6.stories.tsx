@@ -12,6 +12,7 @@ import type { ScorecardTemplateView } from '../hiring/live/types';
 import type { SettingsPageDef } from './settings-types';
 import { PerfStartersCard, RatingScaleSheet, ReviewTemplateSheet, SkillSheet, perfSetupPage } from './perf-setup-live';
 import { AgendaTemplateSheet, type AgendaTemplate } from './agenda-templates-live';
+import { GoalTemplateSheet, type GoalTemplate } from './goal-templates-live';
 import type { RatingScale, ReviewTemplate, Skill } from '../performance/live/types';
 import './settings.css';
 
@@ -174,6 +175,10 @@ const WEEKLY: AgendaTemplate = { id: 'a1', name: 'Weekly check-in', items: ['Win
 export const P6_3_AgendaTemplates: S = { name: '6.3 Performance · 1:1 agenda templates', render: () => <SettingsPageScreen groups={perfSetupGroups({ templates: [ANNUAL], scales: [FIVE], skills: SKILLS, agendaTemplates: [WEEKLY, { ...WEEKLY, id: 'a2', name: 'Career talk', items: ['Where do you want to be in a year?', 'What would help?'] }] })} pageId="6.3" highlightKey="perf.one_on_one_templates" /> };
 export const P6_3_AgendaTemplateNew: S = { name: '6.3 Performance · add a 1:1 template', render: () => <AgendaTemplateSheet template={null} onClose={close} onSave={ok} onDelete={ok} /> };
 export const P6_3_AgendaTemplateEdit: S = { name: '6.3 Performance · edit a 1:1 template', render: () => <AgendaTemplateSheet template={WEEKLY} onClose={close} onSave={ok} onDelete={ok} /> };
+// T2-C item 71 (answer 2844): goal templates on 6.3, and their sheet.
+const GROW: GoalTemplate = { id: 'g1', title: 'Grow my accounts', description: 'Key customers in the region', kind: 'okr', keyResults: ['New accounts', 'Renewals'], departmentId: 'd1', department: 'Sales', designationId: null, designation: null };
+export const P6_3_GoalTemplates: S = { name: '6.3 Performance · goal templates', render: () => <SettingsPageScreen groups={perfSetupGroups({ templates: [ANNUAL], scales: [FIVE], skills: SKILLS, goalTemplates: [GROW, { ...GROW, id: 'g2', title: 'Learn one new skill', kind: 'kpi', keyResults: [], departmentId: null, department: null }] })} pageId="6.3" highlightKey="perf.goal_templates" /> };
+export const P6_3_GoalTemplateEdit: S = { name: '6.3 Performance · edit a goal template', render: () => <GoalTemplateSheet template={GROW} departments={[{ value: 'd1', label: 'Sales' }]} designations={[{ value: 'x1', label: 'Executive' }]} onClose={close} onSave={ok} onDelete={ok} /> };
 export const P6_4: S = { name: '6.4 Learning', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.4" /> };
 export const P6_4_ReadOnly: S = { name: '6.4 Learning · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.4" readOnly /> };
 export const P6_5: S = { name: '6.5 Assessments', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="6.5" /> };

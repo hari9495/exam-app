@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { CertificateCard, type CertificateTemplateView } from '@yukthix/ui/hiring';
-import { AgendaTemplateSheet, PERF_SETUP_LISTS, PerfStartersCard, RatingScaleSheet, ReviewTemplateSheet, SkillSheet, perfSetupPage, skillsInOrder, type AgendaTemplate, type RatingScale, type ReviewTemplate, type Skill } from '@yukthix/ui/performance';
+import { AgendaTemplateSheet, GoalTemplateSheet, PERF_SETUP_LISTS, PerfStartersCard, RatingScaleSheet, ReviewTemplateSheet, SkillSheet, perfSetupPage, skillsInOrder, type AgendaTemplate, type GoalTemplate, type RatingScale, type ReviewTemplate, type Skill } from '@yukthix/ui/performance';
 import { RegistrySettingsPage } from '../../../../../../lib/yx-registry-settings';
 import { useApi, useApiWrite } from '../../../../../../lib/yx-hiring';
-import { useYxPermissions } from '../../../../../../lib/yx-org';
+import { useOrg, useYxPermissions } from '../../../../../../lib/yx-org';
+import type { MasterRecord } from '@yukthix/ui/org';
 import { usePerf, usePerfWrite } from '../../../../../../lib/yx-performance';
 import { useAuth } from '../../../../../../lib/auth-context';
 
@@ -24,7 +25,7 @@ const LINKS: Record<string, string> = {
   'perf.competencies': '/yx/performance/competencies',
 };
 const canEdit = (has: (k: string) => boolean, page: { id: string }) => has('org.settings.manage') || has(page.id === '6.5' ? 'assessments.settings.manage' : 'perf.setup.manage');
-type Open = { list: 'templates' | 'scales' | 'skills' | 'agenda'; row: number | 'new' } | null;
+type Open = { list: 'templates' | 'scales' | 'skills' | 'agenda' | 'goals'; row: number | 'new' } | null;
 
 // Answer 2424 (retiring /v2): 6.5's Pass certificate section, the wording on a passing candidate's certificate, read and
 // saved through its own API with the same keys (never while acting for someone else).
@@ -42,9 +43,14 @@ export default function YxTalentSettingsPage() {
   const skills = usePerf<Skill[]>(setup ? '/skills' : null);
   // T2-C item 70 (answer 2843): the company's 1:1 agenda templates (a manager's own are not listed here).
   const agenda = usePerf<AgendaTemplate[]>(setup ? '/one-on-one-templates' : null);
+  // T2-C item 71 (answer 2844): goal templates by department or designation.
+  const goalTemplates = usePerf<GoalTemplate[]>(setup ? '/goal-templates' : null);
+  const departments = useOrg<MasterRecord[]>('/masters/departments', setup);
+  const designations = useOrg<MasterRecord[]>('/masters/designations', setup);
+  const choices = (rows?: MasterRecord[]) => (rows ?? []).filter((d) => !d.archivedAt).map((d) => ({ value: d.id, label: d.name }));
   const perfWrite = usePerfWrite();
   const [open, setOpen] = useState<Open>(null);
-  const data = templates.data && scales.data && skills.data && agenda.data ? { templates: templates.data, scales: scales.data, skills: skills.data, agendaTemplates: agenda.data } : null;
+  const data = templates.data && scales.data && skills.data && agenda.data && goalTemplates.data ? { templates: templates.data, scales: scales.data, skills: skills.data, agendaTemplates: agenda.data, goalTemplates: goalTemplates.data } : null;
   const companyAgenda = (agenda.data ?? []).filter((t) => t.company);
   const at = <T,>(rows: T[], row: number | 'new') => (row === 'new' ? null : (rows[row] ?? null));
   const close = () => setOpen(null);
@@ -66,7 +72,7 @@ export default function YxTalentSettingsPage() {
         canEdit={canEdit}
         extra={extra}
         decorate={data ? (p) => (p.id === '6.3' ? perfSetupPage(p, data) : p) : undefined}
-        listEditors={data ? { [PERF_SETUP_LISTS.templates]: (row) => setOpen({ list: 'templates', row }), [PERF_SETUP_LISTS.scales]: (row) => setOpen({ list: 'scales', row }), [PERF_SETUP_LISTS.skills]: (row) => setOpen({ list: 'skills', row }), [PERF_SETUP_LISTS.agendaTemplates]: (row) => setOpen({ list: 'agenda', row }) } : undefined}
+        listEditors={data ? { [PERF_SETUP_LISTS.templates]: (row) => setOpen({ list: 'templates', row }), [PERF_SETUP_LISTS.scales]: (row) => setOpen({ list: 'scales', row }), [PERF_SETUP_LISTS.skills]: (row) => setOpen({ list: 'skills', row }), [PERF_SETUP_LISTS.agendaTemplates]: (row) => setOpen({ list: 'agenda', row }), [PERF_SETUP_LISTS.goalTemplates]: (row) => setOpen({ list: 'goals', row }) } : undefined}
       />
       {data && open?.list === 'templates' && (
         <ReviewTemplateSheet
@@ -83,6 +89,10 @@ export default function YxTalentSettingsPage() {
       {data && open?.list === 'scales' && (
         <RatingScaleSheet scale={scale} onClose={close} onSave={(input) => (scale ? perfWrite('PUT', `/scales/${id(scale)}`, input) : perfWrite('POST', '/scales', input))} onRetire={() => perfWrite('POST', `/scales/${id(scale!)}/retire`)} />
       )}
+      {data && open?.list === 'goals' && (() => {
+        const t = at(data.goalTemplates, open.row);
+        return <GoalTemplateSheet template={t} departments={choices(departments.data)} designations={choices(designations.data)} onClose={close} onSave={(input) => (t ? perfWrite('PUT', `/goal-templates/${id(t)}`, input) : perfWrite('POST', '/goal-templates', input))} onDelete={() => perfWrite('DELETE', `/goal-templates/${id(t!)}`)} />;
+      })()}
       {data && open?.list === 'agenda' && (() => {
         const t = at(companyAgenda, open.row);
         return <AgendaTemplateSheet template={t} onClose={close} onSave={(input) => (t ? perfWrite('PUT', `/one-on-one-templates/${id(t)}`, input) : perfWrite('POST', '/one-on-one-templates', { ...input, company: true }))} onDelete={() => perfWrite('DELETE', `/one-on-one-templates/${id(t!)}`)} />;

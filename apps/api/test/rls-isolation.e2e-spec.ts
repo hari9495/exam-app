@@ -881,7 +881,7 @@ describe('PostgreSQL row-level security (app role)', () => {
   });
 
   // Batch T2-C: 1:1 agenda templates (item 70) and goal templates (item 71).
-  const T2C_TABLES = ['one_on_one_templates'];
+  const T2C_TABLES = ['one_on_one_templates', 'goal_templates'];
   it('the T2-C performance template tables are forced-RLS tenant tables', async () => {
     const rows = await prisma.$queryRaw<{ table: string; forced: boolean; policies: bigint }[]>`
       SELECT c.relname AS table, (c.relrowsecurity AND c.relforcerowsecurity) AS forced, (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies
@@ -893,18 +893,27 @@ describe('PostgreSQL row-level security (app role)', () => {
   it("(b) org A cannot read, change, delete or plant org B's 1:1 and goal templates", async () => {
     const asB = { organizationId: orgB, isSuperAdmin: false };
     await tenantPrisma.forTenant(asB, (tx) => tx.oneOnOneTemplate.create({ data: { organizationId: orgB, name: `B weekly ${randomUUID().slice(0, 6)}`, items: ['B line'] } }));
+    await tenantPrisma.forTenant(asB, (tx) => tx.goalTemplate.create({ data: { organizationId: orgB, title: 'B goal', kind: 'kpi' } }));
     try {
       const seenByA = await tenantPrisma.forTenant(asA(), async (tx) => ({
         agenda: await tx.oneOnOneTemplate.count({ where: { organizationId: orgB } }),
         renamed: await tx.$executeRaw`UPDATE one_on_one_templates SET name = 'hijacked' WHERE organization_id = ${orgB}::uuid`,
         removed: await tx.$executeRaw`DELETE FROM one_on_one_templates WHERE organization_id = ${orgB}::uuid`,
+        goals: await tx.goalTemplate.count({ where: { organizationId: orgB } }),
+        retitled: await tx.$executeRaw`UPDATE goal_templates SET title = 'hijacked' WHERE organization_id = ${orgB}::uuid`,
+        goalsRemoved: await tx.$executeRaw`DELETE FROM goal_templates WHERE organization_id = ${orgB}::uuid`,
       }));
-      expect(seenByA).toEqual({ agenda: 0, renamed: 0, removed: 0 });
+      expect(seenByA).toEqual({ agenda: 0, renamed: 0, removed: 0, goals: 0, retitled: 0, goalsRemoved: 0 });
+      await expect(tenantPrisma.forTenant(asA(), (tx) => tx.goalTemplate.create({ data: { organizationId: orgB, title: 'planted', kind: 'kpi' } }))).rejects.toThrow(RLS_VIOLATION);
+      expect((await tenantPrisma.forTenant(SUPER, (tx) => tx.goalTemplate.findMany({ where: { organizationId: orgB } }))).map((r) => r.title)).toEqual(['B goal']);
       await expect(tenantPrisma.forTenant(asA(), (tx) => tx.oneOnOneTemplate.create({ data: { organizationId: orgB, name: 'planted', items: ['x'] } }))).rejects.toThrow(RLS_VIOLATION);
       const still = await tenantPrisma.forTenant(SUPER, (tx) => tx.oneOnOneTemplate.findMany({ where: { organizationId: orgB } }));
       expect(still.map((r) => r.items)).toEqual([['B line']]);
     } finally {
-      await tenantPrisma.forTenant(SUPER, (tx) => tx.oneOnOneTemplate.deleteMany({ where: { organizationId: orgB } }));
+      await tenantPrisma.forTenant(SUPER, async (tx) => {
+        await tx.oneOnOneTemplate.deleteMany({ where: { organizationId: orgB } });
+        await tx.goalTemplate.deleteMany({ where: { organizationId: orgB } });
+      });
     }
   });
 

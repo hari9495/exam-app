@@ -103,7 +103,7 @@ const IMPLICIT: Record<string, string[]> = {
   // PRF-01: the home; each part is the viewer's own, their team's, or HR's with perf.cycle.manage (checked by the service).
   PerformanceHomeController: ['home', 'expectations'], // T2-C 68: one's own expectations, or a report's for the manager chain
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
-  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap'], // batch F item 30: the manager's own team, checked in the service
+  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap', 'goalTemplates'], // batch F item 30: the manager's own team, checked in the service
   // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
   // G4: the report library (entries follow their area's keys) and company documents (the service decides per folder).
   LibraryController: ['reports', 'favourite', 'documents', 'file', 'schedulesList', 'schedule', 'endSchedule'],

@@ -41,3 +41,6 @@ export { PerfNoAccessScreen, type PerfNoAccessProps } from '../../growth/perf-ac
 export { ExpectationsScreen, type Expectations } from '../../growth/perf-expectations';
 // T2-C item 70 (answer 2843): 1:1 agenda templates.
 export { AgendaTemplateSheet, agendaLines, type AgendaTemplate, type AgendaTemplateInput } from '../../settings/agenda-templates-live';
+// T2-C item 71 (answer 2844): goal templates and the goal import.
+export { GoalTemplateSheet, goalTemplateFor, type GoalTemplate, type GoalTemplateInput } from '../../settings/goal-templates-live';
+export { GoalImportDialog, type GoalImportPreview, type GoalImportResult } from '../../growth/goal-import';
