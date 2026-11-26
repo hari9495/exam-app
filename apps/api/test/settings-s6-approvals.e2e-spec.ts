@@ -177,6 +177,36 @@ describe('Settings S-6: approval policies', () => {
     });
   });
 
+  describe('E2 part 1: a request keeps its routing values and policy version; a saved policy never allows self-approval', () => {
+    const fields = [{ key: 'amount', label: 'Amount', type: 'number' as const }];
+    const send = (steps: Parameters<typeof engine.submit>[2]['steps']) =>
+      tenantPrisma.forTenant(ctxA(), (tx) =>
+        engine.submit(tx, ctxA(), { type: 'expense.advance', subjectType: 'test', subjectId: randomUUID(), title: `Advance ${run}`, summary: [], subjectPersonId: null, requesterUserId: users.hr1A!, raisedByUserId: users.hr1A!, steps, payload: { amount: 4200, secret: 'not declared' }, payloadFields: fields, fallbackUserIds: [] }),
+      );
+    const row = (id: string) => tenantPrisma.forTenant(ctxA(), (tx) => tx.wfRequest.findFirstOrThrow({ where: { id } }));
+    const builtIn = () => [{ name: 'Built-in', approvers: [{ kind: 'users' as const, userIds: [users.hr2A!] }], mode: 'any' as const }];
+
+    it('built-in steps: the declared fields only, and no policy version', async () => {
+      const r = await row((await send(builtIn())).id);
+      expect(r.payload).toEqual({ amount: 4200 });
+      expect(r.policyVersion).toBeNull();
+    });
+
+    it('a saved policy: its version is kept; self-approval sent to the editor is dropped and the requester is never an approver', async () => {
+      const cur = ((await api('hr1A', 'get', '/workflow/policies').expect(200)).body.types as { key: string; version: number }[]).find((t) => t.key === 'expense.advance')!;
+      const saved = (await api('hr1A', 'put', '/workflow/policies/expense.advance').send({ steps: [{ name: 'HR look', approver: 'hr', mode: 'any', selfApproval: 'allowed' }], version: cur.version }).expect(200)).body;
+      const t = (saved.types as { key: string; version: number; steps: object[] }[]).find((x) => x.key === 'expense.advance')!;
+      expect(t.steps).toEqual([{ name: 'HR look', approver: 'hr', mode: 'any' }]);
+      const r = await row((await send(builtIn())).id);
+      expect(r.policyVersion).toBe(t.version);
+      const step = (r.steps as { name: string; selfApproval?: string; approverIds: string[] }[])[0]!;
+      expect(step).toMatchObject({ name: 'HR look', selfApproval: 'never' });
+      // hr1A is an HR Admin and the requester: never on their own request.
+      expect(step.approverIds).not.toContain(users.hr1A);
+      await api('hr1A', 'post', '/workflow/policies/expense.advance/reset').send({ version: t.version }).expect(200);
+    });
+  });
+
   describe('reminder and escalation at the company hours', () => {
     it('the hours are company settings (24 and 48 by default); a reminder and then escalation fire at the set hours', async () => {
       await api('hr1A', 'put', '/org/settings').send({ key: 'approval.remind_hours', value: '4', scopeType: 'tenant' }).expect(200);

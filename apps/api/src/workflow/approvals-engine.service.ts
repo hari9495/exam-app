@@ -412,7 +412,8 @@ export class ApprovalsEngine {
     const noApprover: string[] = [];
     // Settings S-6 (answer 1330): the company's own steps for this request type, when it set them (a request the module
     // decides at once, with no steps, stays that way).
-    const own = input.steps.length && this.policies ? await this.policies.stepsFor(tx, ctx, input.type) : null;
+    const policy = input.steps.length && this.policies ? await this.policies.stepsFor(tx, ctx, input.type) : null;
+    const own = policy?.steps ?? null;
     // Answer 1765: built-in steps of a people request take the company's reminder and escalation hours too.
     const builtIn = own || !this.policies ? input.steps : await this.policies.builtIn(tx, ctx, input.type, input.steps);
     // E2 review item 1: the module's required steps follow the company's own, so a saved policy can never drop a control.
@@ -442,6 +443,9 @@ export class ApprovalsEngine {
         raisedByUserId: input.raisedByUserId,
         subjectPersonId: input.subjectPersonId,
         steps: steps as unknown as Prisma.InputJsonValue,
+        // E2 (review item 6): only the type's declared fields, as they routed it, and the policy version used.
+        payload: Object.fromEntries(input.payloadFields.filter((f) => input.payload[f.key] !== undefined).map((f) => [f.key, input.payload[f.key]])) as Prisma.InputJsonValue,
+        policyVersion: policy?.version ?? null,
         risk: input.risk ?? type.risk,
       },
     });

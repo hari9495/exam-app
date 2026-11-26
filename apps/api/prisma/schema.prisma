@@ -5654,6 +5654,10 @@ model WfRequest {
   /// Who the request is about: the inbox names this person.
   subjectPersonId String?   @map("subject_person_id") @db.Uuid
   steps           Json
+  /// E2: the request type's declared fields as submitted (what routed it), for "Try it" and audit.
+  payload         Json      @default("{}")
+  /// E2: the company policy version that gave the steps; null for the module's built-in steps.
+  policyVersion   Int?      @map("policy_version")
   status          String    @default("pending") @db.VarChar(10)
   currentStep     Int       @default(0) @map("current_step") @db.SmallInt
   risk            String    @default("normal") @db.VarChar(6)

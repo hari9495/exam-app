@@ -87,7 +87,8 @@ export function checkSteps(input: unknown): PolicyStep[] {
 /** A company step as the engine's: a reminder and escalation (to the approver's manager) after the company's hours. */
 export function toStepSpec(s: PolicyStep, remindHours: number, escalateHours: number): StepSpec {
   const approvers: ApproverSpec[] = s.approver === 'hr' ? [{ kind: 'hr' }] : [{ kind: 'manager', level: s.approver === 'manager_2' ? 2 : 1 }];
-  return { name: s.name, approvers, mode: s.mode, remindAfterHours: remindHours, timeoutHours: escalateHours, onTimeout: 'escalate' };
+  // E2 review item 3: a company's own step never allows self-approval (only a module's built-in sole-approver path may).
+  return { name: s.name, approvers, mode: s.mode, remindAfterHours: remindHours, timeoutHours: escalateHours, onTimeout: 'escalate', selfApproval: 'never' };
 }
 
 const APPROVER_WORDS: Record<PolicyApprover, string> = { manager: 'Manager', manager_2: "Manager's manager", hr: 'HR Admins' };
@@ -142,13 +143,13 @@ export class ApprovalPolicies {
     return withCompanyHours(steps, h.remind, h.escalate);
   }
 
-  /** The steps to use for this request type at this company, or null for the module's built-in steps. */
-  async stepsFor(tx: Tx, c: CompanyContext, type: string): Promise<StepSpec[] | null> {
+  /** The steps to use for this request type at this company and the policy version, or null for the module's built-in steps. */
+  async stepsFor(tx: Tx, c: CompanyContext, type: string): Promise<{ steps: StepSpec[]; version: number } | null> {
     if (!TYPE_KEYS.has(type)) return null;
     const row = await tx.approvalPolicy.findFirst({ where: { organizationId: c.organizationId, requestType: type } });
     if (!row) return null;
     const h = await this.hours(tx, c);
-    return (row.steps as unknown as PolicyStep[]).map((s) => toStepSpec(s, h.remind, h.escalate));
+    return { steps: (row.steps as unknown as PolicyStep[]).map((s) => toStepSpec(s, h.remind, h.escalate)), version: row.version };
   }
 
   async list(ctx: { organizationId: string | null; userId?: string | null }) {
