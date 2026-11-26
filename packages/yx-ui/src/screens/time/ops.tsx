@@ -18,6 +18,7 @@ import { useNarrow } from '../../components/stepper';
 import { Tooltip } from '../../components/tooltip';
 import { Card, PageHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
+import { PlainTable } from '../../components/plain-table';
 import { FilterBar } from '../../components/filters';
 import { Select } from '../../components/select';
 import { BarChart, LineChart } from '../../components/charts';
@@ -29,7 +30,7 @@ import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TEAM, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
 import { ApplyLeavePanel, type LiveLeaveHome } from './leave';
-import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyLeave, MyTimesheet, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyLeave, MyProject, MyTimesheet, TimesheetActivity, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, RevokeKioskDialog, RevokedKiosksTable, ShowRevoked, type RevokedKiosk, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
@@ -636,6 +637,88 @@ export interface LiveTimesheet {
   leave?: { data: MyLeave | null; live: LiveLeaveHome };
   /** Batch D A5: my weeks not sent (GET /time/me/timesheet/not-sent); `onShowOlder` asks for a year. */
   notSent?: { state: LoadState; data: { weeks: NotSentWeek[] } | null; onShowOlder?: () => void };
+  /** T2-D 55: the projects I am or was on, with my hours (GET /time/me/timesheet/projects). */
+  myProjects?: { state: LoadState; data: MyProject[] | null; onRetry?: () => void };
+}
+
+const ACTIVITY_TEXT: Record<string, string> = {
+  'timesheet.submitted': 'Sent to the project manager',
+  'timesheet.withdrawn': 'Recalled to edit',
+  'timesheet.approved': 'Week approved',
+  'timesheet.rejected': 'Week sent back',
+  'timesheet_line.approved': 'approved',
+  'timesheet_line.reduced': 'reduced',
+  'timesheet_line.rejected': 'rejected',
+};
+
+/** T2-D 62 (Keka A6): the week's activity, newest first, with who and when. */
+export function TimesheetActivityCard({ activity, projects }: { activity: TimesheetActivity[]; projects: { id: string; code: string }[] }) {
+  if (!activity.length) return null;
+  const code = (id: string | null) => projects.find((x) => x.id === id)?.code ?? 'A line';
+  return (
+    <Card title="Activity">
+      <ul className="yx-tim-list" aria-label="Timesheet activity">
+        {activity.map((a, i) => (
+          <li key={`${a.action}-${a.at}-${i}`}>
+            <strong>{a.action.startsWith('timesheet_line.') ? `${code(a.projectId)}${a.task ? ` · ${a.task}` : ''} ${ACTIVITY_TEXT[a.action] ?? a.action}` : (ACTIVITY_TEXT[a.action] ?? a.action)}</strong>
+            <span className="yx-tim-muted">
+              {' '}
+              · {formatDate(new Date(a.at))}, {new Date(a.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
+              {a.by ? ` · ${a.by}` : ''}
+              {a.reason ? ` · Reason: ${a.reason}` : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+const hoursText = (m: number) => `${Math.round((m / 60) * 100) / 100} h`;
+
+/** T2-D 55 (Keka A10 / A11): my projects, current first, with my allocation and my hours booked and approved. */
+export function MyProjectsTable({ projects }: { projects: MyProject[] }) {
+  const rows = [...projects].sort((a, b) => Number(b.current) - Number(a.current) || a.code.localeCompare(b.code));
+  if (!rows.length) return <EmptyState compact title="No projects yet." description="Projects you are allocated to show here with your hours." />;
+  return (
+    <PlainTable<MyProject>
+      label="My projects"
+      columns={[
+        { key: 'project', header: 'Project', cell: (p) => `${p.code} · ${p.name}`, rowHeader: true },
+        { key: 'me', header: 'My allocation', cell: (p) => p.allocations.map((a) => `${a.role ? `${a.role}, ` : ''}${a.percent}% from ${isoDate(a.fromOn)}${a.toOn ? ` to ${isoDate(a.toOn)}` : ''}${a.tentative ? ' (tentative)' : ''}`).join('; ') || 'Not allocated' },
+        { key: 'status', header: 'Status', cell: (p) => <Badge tone={p.current ? 'success' : 'neutral'}>{p.current ? 'On it now' : p.status === 'active' ? 'Not on it now' : 'Project ' + p.status}</Badge> },
+        { key: 'pm', header: 'Project manager', cell: (p) => p.manager ?? '—' },
+        { key: 'booked', header: 'My hours booked', cell: (p) => hoursText(p.bookedMinutes), num: true },
+        { key: 'approved', header: 'Approved', cell: (p) => hoursText(p.approvedMinutes), num: true },
+      ]}
+      rows={rows}
+      getRowId={(p) => p.id}
+    />
+  );
+}
+
+/** T2-D 61: the person's choice of grid or day cards, kept on this device only. */
+const VIEW_KEY = 'yx.timesheet.layout';
+function useWeekLayout(): ['auto' | 'grid' | 'days', (v: 'grid' | 'days') => void] {
+  const [v, setV] = useState<'auto' | 'grid' | 'days'>(() => {
+    try {
+      const x = window.localStorage.getItem(VIEW_KEY);
+      return x === 'grid' || x === 'days' ? x : 'auto';
+    } catch {
+      return 'auto';
+    }
+  });
+  return [
+    v,
+    (x) => {
+      setV(x);
+      try {
+        window.localStorage.setItem(VIEW_KEY, x);
+      } catch {
+        /* storage off: the choice lasts this visit */
+      }
+    },
+  ];
 }
 const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
 const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
@@ -649,6 +732,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const [problems, setProblems] = useState<string[]>([]);
   const [pf, setPf] = useState(false);
   const [view, setView] = useState('week');
+  const [layout, setLayout] = useWeekLayout();
   const { busy, error, run } = useRun();
   useEffect(() => {
     if (d) setLines(d.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)), comments: Array.from({ length: 7 }, (_, k) => l.comments?.[k] ?? '') })));
@@ -704,7 +788,11 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             </InlineAlert>
           )}
           {error && <InlineAlert tone="danger" title="That did not work">{error}</InlineAlert>}
+          <div className="yx-tim-row">
+            <Segment label="Show the week as" value={layout === 'days' ? 'days' : 'grid'} onChange={(x) => setLayout(x as 'grid' | 'days')} options={[{ value: 'grid', label: 'Grid' }, { value: 'days', label: 'Day cards' }]} />
+          </div>
           <TimesheetGrid
+            layout={layout}
             weekStart={localDay(d.week)}
             days={days}
             status={st}
@@ -758,6 +846,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             );
           })()}
           {st === 'approved' && <p className="yx-tim-muted">Approved by the project manager.</p>}
+          <TimesheetActivityCard activity={d.activity ?? []} projects={d.projects} />
         </div>
       )}
     </LiveGate>
@@ -773,7 +862,15 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             <TabsTrigger value="week">Week</TabsTrigger>
             <TabsTrigger value="summary">Time summary</TabsTrigger>
             {live.notSent && <TabsTrigger value="not-sent">{`Not sent${live.notSent.data?.weeks.length ? ` (${live.notSent.data.weeks.length})` : ''}`}</TabsTrigger>}
+            {live.myProjects && <TabsTrigger value="projects">My projects</TabsTrigger>}
           </TabsList>
+          {live.myProjects && (
+            <TabsContent value="projects">
+              <LiveGate state={live.myProjects.state} onRetry={live.myProjects.onRetry} what="your projects">
+                {live.myProjects.data && <MyProjectsTable projects={live.myProjects.data} />}
+              </LiveGate>
+            </TabsContent>
+          )}
           <TabsContent value="week">{gate}</TabsContent>
           {live.notSent && (
             <TabsContent value="not-sent">

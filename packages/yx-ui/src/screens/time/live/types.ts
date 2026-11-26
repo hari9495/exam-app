@@ -796,6 +796,8 @@ export interface MyTimesheet {
   /** `leaveRequested` (batch D A8): leave asked for that day, not decided yet. */
   days: { on: string; holiday: string | null; leave: string | null; leaveRequested?: boolean; locked: boolean }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];
+  /** T2-D 62: what happened to the week, newest first (from the audit log). */
+  activity?: TimesheetActivity[];
   /** Answer 1787: the company's comment rule, per day with hours (absent from an older API: none asked). */
   noteRule?: { required: boolean; minWords: number };
 }
@@ -1252,4 +1254,27 @@ export interface LateMarks {
     /** Answer 2527: a manager's request to waive it (HR's list: open ones; the manager's own list: the latest). */
     request?: { id: string; reason: string; by: string; at: string; status: 'pending' | 'waived' | 'declined'; declineReason: string | null } | null;
   }[];
+}
+
+/** T2-D 62: one event on my week: 'timesheet.submitted' | 'timesheet.withdrawn' | 'timesheet.approved' | 'timesheet.rejected' | 'timesheet_line.approved' | 'timesheet_line.reduced' | 'timesheet_line.rejected'. */
+export interface TimesheetActivity {
+  action: string;
+  at: string;
+  by: string | null;
+  projectId: string | null;
+  task: string | null;
+  reason: string | null;
+}
+
+/** T2-D 55: a project I am or was on, with my allocations and my hours (GET /time/me/timesheet/projects). */
+export interface MyProject {
+  id: string;
+  code: string;
+  name: string;
+  status: string;
+  manager: string | null;
+  current: boolean;
+  allocations: { role: string | null; fromOn: string; toOn: string | null; percent: number; tentative: boolean }[];
+  bookedMinutes: number;
+  approvedMinutes: number;
 }

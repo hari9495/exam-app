@@ -29318,5 +29318,62 @@
                               "Screens/Pay/PAY-21 · Payslip viewer"
                     ],
                     "note": "T2-B item 64 was found live (2753, answer 2864): no change. Kit employee-pay.test.tsx covers the payslip page."
+          },
+          {
+                    "id": "MT-T2D-62-WEEK-ACTIVITY",
+                    "area": "T2-D 62 (Timesheet A6): the Activity card on my week",
+                    "screen": "Me › My timesheet (TIM-15), Week tab, under the grid",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "panel@demo-org.test (employee allocated to two projects); the two project managers; a second employee.",
+                    "steps": [
+                              "As the employee fill this week on both projects and press Submit week. Press Recall to edit, then Submit week again.",
+                              "As one project manager reduce that project's line with the reason 'Offsite on Tuesday'; as the other approve theirs.",
+                              "As the employee open the week again and read the Activity card.",
+                              "Negative: open a week with no timesheet yet; save a draft without sending it.",
+                              "Negative: as the second employee open their own week."
+                    ],
+                    "expected": "Step 1: toasts 'Week sent to the project manager' and 'Week withdrawn; you can change it' (5 s). Step 3: an Activity card, newest first: '<project> line approved' with the manager's name and time, '<project> reduced' with 'Reason: Offsite on Tuesday', 'Sent to the project manager', 'Recalled to edit', 'Sent to the project manager', each with who and when. Step 4: no Activity card (saving a draft is not listed). Step 5: only their own week's events, nothing of the first employee's.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Activity card · sent, a line reduced, recalled (T2-D 62)"
+                    ],
+                    "note": "T2-D item 62 (no answer needed). Recalling a week is now audited (time.timesheet.withdrawn). Positive and negative: API projects-p2 e2e (T2-D 62 and 55 test); kit timesheet-t2d.test.tsx (62 tests)."
+          },
+          {
+                    "id": "MT-T2D-55-MY-PROJECTS",
+                    "area": "T2-D 55 (Timesheet A10 / A11): My projects with my hours",
+                    "screen": "Me › My timesheet (TIM-15), My projects tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "panel@demo-org.test (allocated now to one project and earlier to another, with approved and waiting hours on both); an employee on no project.",
+                    "steps": [
+                              "Open Me › My timesheet and press the My projects tab.",
+                              "Read the row of the project you are on now and the row of the earlier project.",
+                              "Negative: as the employee on no project open the tab.",
+                              "Negative (API): as the first employee call GET /api/v1/time/me/timesheet/projects and look for anyone else's hours."
+                    ],
+                    "expected": "Step 1: a table Project / My allocation / Status / Project manager / My hours booked / Approved, the current project first. Step 2: the current one says 'On it now' with role, % and from date; the earlier one 'Not on it now' or 'Project closed' with its dates; hours booked count every week sent or saved, Approved only lines approved or reduced (waiting lines are not counted). Step 3: 'No projects yet.' with no table. Step 4: only the caller's own projects and hours. The page has no scroll bar at 1278 x 635 for up to 6 projects.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › My projects tab · my allocations and hours (T2-D 55)",
+                              "Screens/Time/TIM-15 · Timesheets › My projects tab · none yet (T2-D 55)"
+                    ],
+                    "note": "T2-D item 55 (no answer needed). New route GET /time/me/timesheet/projects (the caller's own, no key; access endpoint-permissions.spec.ts). Positive and negative: API projects-p2 e2e (T2-D 62 and 55 test); kit timesheet-t2d.test.tsx (55 tests)."
+          },
+          {
+                    "id": "MT-T2D-61-VIEW-SWITCH",
+                    "area": "T2-D 61 (Timesheet A2): Grid or Day cards on my week",
+                    "screen": "Me › My timesheet (TIM-15), Week tab",
+                    "url": "http://localhost:3000/yx/time/timesheet",
+                    "account": "panel@demo-org.test (employee on a timesheet).",
+                    "steps": [
+                              "Open Me › My timesheet. Above the week choose 'Day cards'; type hours on a day card and press Save draft.",
+                              "Reload the page.",
+                              "Choose 'Grid'. Use Tab and the arrow keys to move between Grid and Day cards.",
+                              "Negative: open the page in a private window (or with site data blocked) and switch."
+                    ],
+                    "expected": "Step 1: the week shows one card per day with the same hours, and the draft saves with a toast (5 s). Step 2: the page opens on Day cards again (kept on this device). Step 3: back to the grid; the switch is one joined control with a visible focus ring. Step 4: the switch works for that visit; nothing breaks. On a phone width the week starts as day cards until the person picks.",
+                    "stories": [
+                              "Screens/Time/TIM-15 · Timesheets › Desk · weekly grid",
+                              "Screens/Time/TIM-15 · Timesheets › Phone · day list, submit week"
+                    ],
+                    "note": "T2-D item 61 (no answer needed). The choice is a per-device convenience (local storage), not a setting. Positive and negative: kit timesheet-t2d.test.tsx (61 tests)."
           }
 ]
