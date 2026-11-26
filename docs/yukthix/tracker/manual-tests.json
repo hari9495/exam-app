@@ -28990,5 +28990,27 @@
                               "Screens/Pay/PAY-28 · Arrears base confirmation (E3 · Rule changes and triggers, all three)"
                     ],
                     "note": "Positive and negative (api payroll-5g e2e: E3 trigger test (maker, switches, once per change, joining replace, confirmed base kept, other company and no-key refusals), E3 ESI April test, proposal preview and accept; payroll-pf-ceiling; kit offcycle-live E3 tests). Migrations 860 (switches, arrears_runs, proposal impact) and 861 (trigger sources)."
+          },
+          {
+                    "id": "MT-T2C-72",
+                    "area": "Batch T2-C item 72 (C2): the calibration bell-curve guide, the part that is already live",
+                    "screen": "Performance › Review cycles › a cycle (control room) › Calibration › Open a session; Performance › Calibration › a session (PRF-09 board)",
+                    "url": "http://localhost:3000/yx/performance/cycles",
+                    "account": "HR admin who runs review cycles (admin@demo-org.test, perf.cycle.manage); the facilitator chosen for the session; an employee with no performance keys.",
+                    "steps": [
+                              "As HR open a review cycle that has reached calibration, press Open a session. Give a name and a facilitator, choose 'Use a guide' and type shares that add up to 90 (for example 10, 20, 50, 10 across the bands). Press Open.",
+                              "Make the shares add up to 100 (for example 10, 20, 55, 10, 5), set the tolerance to 60, press Open; then set the tolerance to 10 and press Open.",
+                              "Open a second session with 'No guide'.",
+                              "Open the first session's board as the facilitator. Look at the distribution chart and the notes under it. Move one person to a band that is already above its guide share, with a reason.",
+                              "With some bands still outside the guide by more than the tolerance, close (sign off) the session.",
+                              "Open the second session (no guide): look at the chart.",
+                              "Negative access: as the employee open /yx/performance/calibrations and a session's address directly; call GET /api/v1/performance/calibrations."
+                    ],
+                    "expected": "Step 1: the dialog says 'Make the shares add up to 100 (now 90).' and nothing is opened. Step 2: a tolerance of 60 is refused (it must be from 0 to 50); with 10 the session opens with a 5-second toast and shows in the list. Step 3: opens with no guide. Step 4: the chart shows 'This group, %' beside 'Guide, %'; each band more than 10 points away from its guide gets a note like 'Meets: 70% against a guide of 55%.'; the 'Guide only' box says nobody is forced into a curve; the move needs a reason and is saved. Step 5: the session closes; the guide never blocks sign-off. Step 6: only 'This group, %' is drawn and there are no guide notes. Step 7: the employee gets the no-access page and the API answers 403. A group smaller than the company's minimum shows no chart, so no one is singled out.",
+                    "stories": [
+                              "Screens/Performance/PRF-09 · Calibration board and 9-box",
+                              "Screens/Performance/Live · Calibration (Sessions)"
+                    ],
+                    "note": "Only the live part of 72 (2753). The company default guide (2845: Settings › Performance, off by default, fills a new session's guide, still changeable per session) is built next in T2-C and gets its own manual test."
           }
 ]
