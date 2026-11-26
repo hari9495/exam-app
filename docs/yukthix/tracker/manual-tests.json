@@ -29017,5 +29017,23 @@
                               "Screens/Time/TIM-17 · Leave home (Manager · overview cards)"
                     ],
                     "note": "Positive and negative (kit leave-mgr-live 2; web yx-time-team-overview 2). Setting leave.overview.no_leave_days (default 90). Unplanned is counted for leave starting this month (question 2830). Sick or medical types show as 'Leave' everywhere on the manager overview (away, who else is off)."
+          },
+          {
+                    "id": "MT-T2A-PEERS-AWAY",
+                    "area": "T2-A (answer 2760): peers away (27 Nov 2026)",
+                    "screen": "Me › Leave (TIM-17 Employee): Peers away card",
+                    "url": "http://localhost:3000/yx/time/leave",
+                    "account": "Two employees with the same manager (for example two of panel@'s reports); one from another team.",
+                    "steps": [
+                              "Approve 2 days of sick leave next week for peer A.",
+                              "As peer B open Me › Leave: the Peers away card lists the two days with 'A · away'.",
+                              "Negative: the card shows no leave type, half day or times; pending leave of A is not shown; someone from another team never appears; an employee with no manager sees 'No one else has your manager.'",
+                              "Negative: GET /time/me/peers-away as a person shows only their own peers (no id can be passed)."
+                    ],
+                    "expected": "Step 2: read-only list for the next 14 days. Step 3 and 4: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Time/TIM-17 · Leave home (Employee · peers away)"
+                    ],
+                    "note": "Positive and negative (kit leave-live 2; web yx-time-peers 2). Peers are the people with the same manager today (current assignment)."
           }
 ]

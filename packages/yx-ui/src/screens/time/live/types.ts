@@ -949,6 +949,15 @@ export interface TeamLeaveHome {
   cards?: { unplanned: { count: number; people: { employeeId: string; name: string; requests: number }[] }; noLeave: { days: number; count: number; people: { employeeId: string; name: string }[] } } | null;
 }
 
+/** Answer 2760: GET /time/me/peers-away. */
+export interface PeersAway {
+  from: string;
+  to: string;
+  /** How many peers I have (0: no one else has my manager). */
+  peers: number;
+  days: { on: string; names: string[] }[];
+}
+
 /** TIM-19 Manager: GET /time/requests/:id as someone else's request (team availability, balance after, my task). */
 export interface LeaveRequestDetailView extends LeaveRequestRow {
   person: { name: string; code: string | null } | null;

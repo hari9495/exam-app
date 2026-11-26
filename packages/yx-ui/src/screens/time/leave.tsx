@@ -24,7 +24,7 @@ import { useRun } from '../org/org-kit';
 import { LivePicker } from '../desk/service-form';
 import { LEAVE_STATUS, LeaveStatusBadge } from './live/kit';
 import { LeaveHistoryDrawer, type LeaveHistoryPage, type LeaveHistoryQuery } from './leave-history-live';
-import type { ApplyForForm, HrBalances, HrLeaveHome, LeaveRequestDetailView, TeamLeaveHome, LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
+import type { ApplyForForm, HrBalances, PeersAway, HrLeaveHome, LeaveRequestDetailView, TeamLeaveHome, LeaveBalanceRow, LeaveInput, LeavePlan, LeaveRequestRow as LiveRequest, LedgerRow, LoadState, LongAbsenceCheck, LongAbsenceInput, LongAbsenceRow, MaternityCase, MyCompOff, MyEncashment, MyLeave, MyLeaveCard, PersonOption as LivePersonOption, TeamCalendar as LiveCalendarData } from './live/types';
 import {
   BALANCES,
   CLAIM,
@@ -2460,6 +2460,8 @@ export interface LiveLeaveHome {
   absence?: { data: LongAbsenceRow | null; onAskReturn: (id: string, on: string, note: string) => Promise<unknown> };
   /** My leave card (TIM-21 employee). */
   onOpenCard?: () => void;
+  /** Answer 2760: my peers away in the next two weeks ("away" only). */
+  peers?: { data: PeersAway | null };
   /** Batch A item 2 (C2): my full leave history, a page at a time. */
   onHistory?: (q: LeaveHistoryQuery) => Promise<LeaveHistoryPage>;
 }
@@ -2623,6 +2625,23 @@ const halvesText = (r: LiveRequest) => `${r.fromHalf === 'second' ? ' · from th
 /** Approved leave can be cancelled up to the start of last month (the API's own limit). */
 const cancellable = (r: LiveRequest, today: string) => r.status === 'approved' && r.to >= isoAdd(`${today.slice(0, 7)}-01`, -31);
 
+/** Answer 2760: peers (the same manager today) away in the next two weeks. Read-only; never the type of leave or times. */
+function PeersAwayCard({ data }: { data: PeersAway }) {
+  return (
+    <Card title="Peers away">
+      {data.peers === 0 ? <p className="yx-tim-muted">No one else has your manager.</p> : data.days.length === 0 ? <p className="yx-tim-muted">None of your peers is away in the next two weeks.</p> : (
+        <ul className="yx-tim-list" aria-label="Peers away">
+          {data.days.map((x) => (
+            <li key={x.on}>
+              <span className="yx-tim-list__main"><span><DayDate date={isoDate(x.on)} /></span><span className="yx-tim-muted">{x.names.join(', ')} · away</span></span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
 function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
   const d = live.data;
   const [apply, setApply] = useState(Boolean(live.startApplying));
@@ -2724,7 +2743,8 @@ function LiveLeaveHomeScreen({ live }: { live: LiveLeaveHome }) {
                   )}
                 </Card>
               </div>
-              <div data-span="5">
+              <div data-span="5" className="yx-tim-stack">
+                {live.peers?.data && <PeersAwayCard data={live.peers.data} />}
                 <Card title="Upcoming holidays">
                   {!d.holidays.calendar ? (
                     <EmptyState compact title="No holiday calendar yet" description="HR has not set up holidays for your location." />

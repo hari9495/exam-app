@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LeaveHomePhone, LeaveHomeScreen } from './leave';
+import { MY_LEAVE } from './live/fixtures';
 
 const meta: Meta<typeof LeaveHomeScreen> = { title: 'Screens/Time/TIM-17 · Leave home', component: LeaveHomeScreen, render: (args) => <LeaveHomeScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -37,6 +38,25 @@ export const ManagerOverviewCards: S = {
         onDecide: async () => ({}),
         onNavigate: () => undefined,
         hrefs: { approvals: '#', calendar: '#' },
+      }}
+    />
+  ),
+};
+// Answer 2760: the peers-away card on the employee's leave home ("away" only, no type or times).
+export const EmployeePeersAway: S = {
+  name: 'Employee · peers away',
+  render: () => (
+    <LeaveHomeScreen
+      live={{
+        state: 'ready',
+        data: MY_LEAVE,
+        onPreview: async () => { throw new Error('Not in this story'); },
+        onApply: async () => ({}),
+        onWithdraw: async () => ({}),
+        onCancel: async () => ({}),
+        onChooseHoliday: async () => ({}),
+        onFindPeople: async () => [],
+        peers: { data: { from: MY_LEAVE.today, to: '2026-12-09', peers: 4, days: [{ on: '2026-11-27', names: ['Ravi Kumar'] }, { on: '2026-12-01', names: ['Meera Krishnan', 'Arjun Kulkarni'] }] } },
       }}
     />
   ),

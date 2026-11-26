@@ -48,6 +48,12 @@ export class TimeController {
     return this.leave.me(ctx);
   }
 
+  /** Answer 2760: my peers (the same manager today) away in the next two weeks; "away" only, no type or times. */
+  @Get('me/peers-away')
+  myPeersAway(@CurrentTenant() ctx: TenantContext) {
+    return this.leave.peersAway(ctx);
+  }
+
   // Batch A item 2 (C2): every request, filtered, a page at a time (the Home shows the last 13 months).
   @Get('me/leave/history')
   myLeaveHistory(@CurrentTenant() ctx: TenantContext, @Query() q: LeaveHistoryQueryDto) {

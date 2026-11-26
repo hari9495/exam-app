@@ -295,3 +295,23 @@ describe('Leave card (TIM-21 HR live)', () => {
     expect(screen.getByText('No one to show')).toBeInTheDocument();
   });
 });
+
+describe('answer 2760: peers away (live)', () => {
+  it('shows each day with the names of peers away, and only "away"', () => {
+    render(<LeaveHomeScreen live={home({ peers: { data: { from: '2026-11-26', to: '2026-12-09', peers: 3, days: [{ on: '2026-11-27', names: ['Ravi Kumar', 'Meera Krishnan'] }] } } })} />);
+    const list = screen.getByRole('list', { name: 'Peers away' });
+    expect(within(list).getByText('Ravi Kumar, Meera Krishnan · away')).toBeInTheDocument();
+    expect(within(list).queryByText(/leave|Sick|Casual|half|:/i)).not.toBeInTheDocument();
+  });
+
+  it('negative: no peers, or none away, say so; no data shows no card', () => {
+    const { unmount } = render(<LeaveHomeScreen live={home({ peers: { data: { from: '2026-11-26', to: '2026-12-09', peers: 0, days: [] } } })} />);
+    expect(screen.getByText('No one else has your manager.')).toBeInTheDocument();
+    unmount();
+    const second = render(<LeaveHomeScreen live={home({ peers: { data: { from: '2026-11-26', to: '2026-12-09', peers: 2, days: [] } } })} />);
+    expect(screen.getByText('None of your peers is away in the next two weeks.')).toBeInTheDocument();
+    second.unmount();
+    render(<LeaveHomeScreen live={home()} />);
+    expect(screen.queryByText('Peers away')).not.toBeInTheDocument();
+  });
+});

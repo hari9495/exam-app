@@ -493,6 +493,30 @@ export class LeaveService implements OnModuleInit {
     });
   }
 
+  /**
+   * Answer 2760 (GET me/peers-away): people with the same manager as me today, and the days in the next 14 they are away
+   * on approved leave. Only "away": never the leave type, the part of the day or times. Read-only; only my own peers.
+   */
+  peersAway(ctx: TenantContext) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const { f, today } = await this.meFacts(tx, c, c.userId);
+      const to = addDays(today, 13);
+      if (!f.managerEmployeeId) return { from: today, to, peers: 0, days: [] };
+      const peers = Prisma.sql`SELECT a.employee_id FROM employee_assignments a WHERE a.organization_id = ${c.organizationId}::uuid AND a.superseded_at IS NULL
+        AND ${today}::date <@ daterange(a.valid_from, a.valid_to, '[]') AND a.manager_employee_id = ${f.managerEmployeeId}::uuid AND a.employee_id <> ${f.employeeId}::uuid`;
+      const [{ n }] = await tx.$queryRaw<{ n: number }[]>`SELECT count(DISTINCT employee_id)::int AS n FROM (${peers}) p`;
+      const rows = await tx.$queryRaw<{ on: string; name: string }[]>`
+        SELECT DISTINCT d.leave_on::text AS on, ${NAME} AS name
+        FROM leave_request_days d JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id AND r.status IN ('approved', 'cancel_pending')
+        JOIN employees e ON e.organization_id = d.organization_id AND e.id = d.employee_id
+        WHERE d.organization_id = ${c.organizationId}::uuid AND d.active AND d.portion > 0 AND d.leave_on BETWEEN ${today}::date AND ${to}::date AND d.employee_id IN (${peers})
+        ORDER BY 1, 2 LIMIT 500`;
+      const days = new Map<string, string[]>();
+      for (const r of rows) days.set(r.on, [...(days.get(r.on) ?? []), r.name]);
+      return { from: today, to, peers: n, days: [...days].map(([on, names]) => ({ on, names })) };
+    });
+  }
+
   async meFacts(tx: Tx, c: CompanyContext, userId: string | null | undefined): Promise<{ f: Facts; today: string }> {
     const id = await myEmployeeId(tx, c.organizationId, userId);
     const now = await factsOn(tx, c.organizationId, id, new Date().toISOString().slice(0, 10));
