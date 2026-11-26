@@ -524,6 +524,8 @@ export interface OfferRecordView {
   joiner: { id: string; status: string } | null;
   /** Answer 377: the sealed copy of an e-signed acceptance; missing = not made yet (HR makes it again); null = none expected. */
   sealedCopy?: 'made' | 'missing' | null;
+  /** M10 D4: the P05 letter the offer was issued as (latest), or null before it is sent. */
+  letter?: { referenceNo: string | null; status: string; acceptedAt?: string | null } | null;
 }
 
 export interface LiveOfferRecord {

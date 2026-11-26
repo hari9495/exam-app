@@ -6,7 +6,7 @@ import { AttendanceRequestSheet, DeviceBackfillWizard, IndustrialActionScreen, O
 import { AttendanceReportsScreen } from './ops';
 import { PresenceDayScreen } from './field';
 import { OT_REVIEW, PERIODS, PREFLIGHT_READY } from './live/fixtures';
-import type { DayCard, DevicePreview, ExceptionsList, IndustrialEvent, Muster, MyAttendance, OtReview, TodayBoard } from './live/types';
+import type { DayCard, DevicePreview, ExceptionsList, HoursReport, IndustrialEvent, LateMarks, Muster, MyAttendance, OtReview, TodayBoard } from './live/types';
 
 // Time ops (29 Oct 2026): the designed TIM-01, 02, 03, 04, 07, 09, 10, 11, 16, 36 and 37 screens with live data. Each
 // state renders; pressed too early, a button says why and focuses the field; every action calls the API once.
@@ -265,6 +265,161 @@ describe('TIM-11 Periods two-step (live)', () => {
     await ue.click(within(screen.getAllByRole('dialog').at(-1)!).getByRole('button', { name: 'Send for approval' }));
     await waitFor(() => expect(l.onSend).toHaveBeenCalledWith('le-kfpl', '2026-09'));
     expect(l.onLock).not.toHaveBeenCalled();
+  });
+});
+
+// Batch C item 6 (answers 2505, 2506): late-mark penalty waivers from the month card.
+describe('TIM-11 late marks (live)', () => {
+  const late: LateMarks = {
+    legalEntityId: 'le-kfpl',
+    month: '2026-09',
+    unlocked: true,
+    rows: [
+      { employeeId: 'e1', name: 'Kavya Reddy', code: 'KF-1', on: '2026-09-03', lateMinutes: 14, waiver: null },
+      { employeeId: 'e2', name: 'Ravi Kumar', code: 'KF-2', on: '2026-09-04', lateMinutes: 30, waiver: { id: 'w1', reason: 'Bus breakdown, confirmed', by: 'Lakshmi', at: '2026-09-28T06:00:00Z' } },
+    ],
+  };
+  const live = (o: Partial<LivePeriods> = {}): LivePeriods => ({ state: 'ready', data: { ...PERIODS, entities: [{ ...PERIODS.entities[0]!, canLock: true, canApprove: false }] }, year: '2026', onYear: vi.fn(), onPreflight: vi.fn(async () => PREFLIGHT_READY), onLock: ok(), onUnlock: ok(), onLateMarks: vi.fn(async () => late), onWaiveLate: vi.fn(async () => ({ waived: [{}], skipped: [] })), onUndoLate: ok(), ...o });
+  const open = async (l: LivePeriods) => {
+    render(<PeriodsScreen live={l} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Late marks' })[1]!);
+    return screen.findByRole('dialog', { name: /Late marks · September 2026/ });
+  };
+
+  it('waives the chosen marks with one reason; under 10 characters is a field error and nothing is sent; the waived one stays visible', async () => {
+    const l = live();
+    const drawer = await open(l);
+    expect(within(drawer).getByText('Waived')).toBeInTheDocument();
+    expect(within(drawer).getByText(/Lakshmi · Bus breakdown/)).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Kavya Reddy/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Waive 1' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Too short');
+    await ue.click(within(dlg).getByRole('button', { name: 'Waive 1' }));
+    expect(within(dlg).getByText('Say why in at least 10 characters.')).toBeInTheDocument();
+    expect(l.onWaiveLate).not.toHaveBeenCalled();
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), ' to explain');
+    await ue.click(within(dlg).getByRole('button', { name: 'Waive 1' }));
+    await waitFor(() => expect(l.onWaiveLate).toHaveBeenCalledWith('le-kfpl', '2026-09', [{ employeeId: 'e1', on: '2026-09-03' }], 'Too short to explain'));
+  });
+
+  it('undoes a waiver with a reason; a locked month is read only', async () => {
+    const l = live();
+    const drawer = await open(l);
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Ravi Kumar/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Undo 1 waiver' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Transport did not confirm it');
+    await ue.click(within(dlg).getByRole('button', { name: 'Undo 1' }));
+    await waitFor(() => expect(l.onUndoLate).toHaveBeenCalledWith('le-kfpl', '2026-09', ['w1'], 'Transport did not confirm it'));
+  });
+
+  it('a locked month: no selection, the reason is shown', async () => {
+    const drawer = await open(live({ onLateMarks: vi.fn(async () => ({ ...late, unlocked: false })) }));
+    expect(within(drawer).getByText('This month is locked')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('checkbox')).toBeNull();
+  });
+});
+
+// Founder answer 2527: a manager asks HR to waive their team's late marks; HR declines (or waives) from the same list.
+describe('2527 ask HR to waive late marks (live)', () => {
+  const team: LateMarks = {
+    legalEntityId: '',
+    month: '2026-09',
+    unlocked: true,
+    rows: [
+      { employeeId: 'e1', name: 'Kavya Reddy', code: null, on: '2026-09-03', lateMinutes: 14, waiver: null, request: null },
+      { employeeId: 'e2', name: 'Ravi Kumar', code: null, on: '2026-09-04', lateMinutes: 30, waiver: null, request: { id: 'r1', reason: 'Bus breakdown, confirmed', by: 'Divya', at: '2026-09-28T06:00:00Z', status: 'pending', declineReason: null } },
+      { employeeId: 'e2', name: 'Ravi Kumar', code: null, on: '2026-09-09', lateMinutes: 12, waiver: null, request: { id: 'r0', reason: 'Traffic diversion near the plant', by: 'Divya', at: '2026-09-20T06:00:00Z', status: 'declined', declineReason: 'Inside the grace rule already' } },
+    ],
+  };
+  const base: Muster = {
+    month: '2026-09', from: '2026-09-01', to: '2026-09-30', scope: 'team',
+    people: [
+      { id: 'me', name: 'Divya', code: 'K0', location: 'Hosur', me: true, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [] },
+      { id: 'e1', name: 'Kavya Reddy', code: 'K1', location: 'Hosur', me: false, mode: 'punch', missingPunchEffect: 'block_payroll_approval', days: [], ot: { aheadDays: 30, factoriesAct: false } },
+    ],
+  };
+  const muster = (o: Partial<LiveMusterData> = {}, data: Muster = base): LiveMusterData => ({ state: 'ready', data, month: '2026-09', onMonth: vi.fn(), today: '2026-10-05', onOpenDay: vi.fn(), onTeamLateMarks: vi.fn(async () => team), onAskLate: vi.fn(async () => ({ skipped: [] })), ...o });
+
+  it('the manager picks days and a reason (10+ characters, else a field error and nothing sent); asked and declined days say so', async () => {
+    const l = muster();
+    render(<MusterScreen live={l} />);
+    await ue.click(screen.getByRole('button', { name: 'Late marks' }));
+    const drawer = await screen.findByRole('dialog', { name: /Late marks · September 2026 · Your team/ });
+    expect(l.onTeamLateMarks).toHaveBeenCalledWith('2026-09');
+    expect(within(drawer).getByText('Asked HR')).toBeInTheDocument();
+    expect(within(drawer).getByText('Declined')).toBeInTheDocument();
+    expect(within(drawer).getByText('Inside the grace rule already')).toBeInTheDocument();
+    // An open request is not asked again; a declined day may be.
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Select all/i }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Ask HR to waive 2' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Too short');
+    await ue.click(within(dlg).getByRole('button', { name: 'Ask HR to waive 2' }));
+    expect(within(dlg).getByText('Say why in at least 10 characters.')).toBeInTheDocument();
+    expect(l.onAskLate).not.toHaveBeenCalled();
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), ' to explain');
+    await ue.click(within(dlg).getByRole('button', { name: 'Ask HR to waive 2' }));
+    await waitFor(() => expect(l.onAskLate).toHaveBeenCalledWith('2026-09', [{ employeeId: 'e1', on: '2026-09-03' }, { employeeId: 'e2', on: '2026-09-09' }], 'Too short to explain'));
+  });
+
+  it('negative: no reports (or no handlers), no Late marks button; a locked month cannot be asked', async () => {
+    const { unmount } = render(<MusterScreen live={muster({}, { ...base, people: [base.people[0]!] })} />);
+    expect(screen.queryByRole('button', { name: 'Late marks' })).toBeNull();
+    unmount();
+    render(<MusterScreen live={muster({ onTeamLateMarks: vi.fn(async () => ({ ...team, unlocked: false })) })} />);
+    await ue.click(screen.getByRole('button', { name: 'Late marks' }));
+    const drawer = await screen.findByRole('dialog', { name: /Your team/ });
+    expect(within(drawer).getByText('This month is locked')).toBeInTheDocument();
+    expect(within(drawer).queryByRole('checkbox')).toBeNull();
+  });
+
+  it('HR sees the open request on Late marks and declines it with a reason the manager sees', async () => {
+    const onDeclineLate = ok();
+    const hrLate: LateMarks = { ...team, legalEntityId: 'le-kfpl', rows: team.rows.slice(0, 2) };
+    render(<PeriodsScreen live={{ state: 'ready', data: { ...PERIODS, entities: [{ ...PERIODS.entities[0]!, canLock: true, canApprove: false }] }, year: '2026', onYear: vi.fn(), onPreflight: vi.fn(async () => PREFLIGHT_READY), onLock: ok(), onUnlock: ok(), onLateMarks: vi.fn(async () => hrLate), onWaiveLate: vi.fn(async () => ({ waived: [], skipped: [] })), onUndoLate: ok(), onDeclineLate }} />);
+    await ue.click(screen.getAllByRole('button', { name: 'Late marks' })[1]!);
+    const drawer = await screen.findByRole('dialog', { name: /Late marks · September 2026/ });
+    expect(within(drawer).getByText('Asked by manager')).toBeInTheDocument();
+    expect(within(drawer).getByText(/Divya · Bus breakdown/)).toBeInTheDocument();
+    await ue.click(within(drawer).getByRole('checkbox', { name: /Ravi Kumar/ }));
+    await ue.click(within(drawer).getByRole('button', { name: 'Decline 1' }));
+    const dlg = screen.getAllByRole('dialog').at(-1)!;
+    await ue.type(within(dlg).getByRole('textbox', { name: /Reason/ }), 'Inside the grace rule already');
+    await ue.click(within(dlg).getByRole('button', { name: 'Decline 1' }));
+    await waitFor(() => expect(onDeclineLate).toHaveBeenCalledWith('le-kfpl', '2026-09', ['r1'], 'Inside the grace rule already'));
+  });
+});
+
+// Batch C item 16 (answers 2507, 2508): Short hours and Breaks.
+describe('TIM-16 short hours and breaks (live)', () => {
+  const data: HoursReport = {
+    month: '2026-10',
+    upTo: '2026-10-31',
+    scope: 'team',
+    rows: [
+      { id: 'a', name: 'Kavya Reddy', code: 'KF-1', dept: 'Quality', location: 'Bengaluru', short: { b1: 1, b2: 2, b3: 0 }, breaksRecorded: true, breaks: 20, breakMinutes: 410, frequentBreakDays: 3, bands: [4, 6, 8], limit: { count: 3, minutes: 60 } },
+      { id: 'b', name: 'Ravi Kumar', code: 'KF-2', dept: 'Production', location: 'Hosur', short: { b1: 0, b2: 0, b3: 4 }, breaksRecorded: false, breaks: null, breakMinutes: null, frequentBreakDays: null, bands: [4, 6, 8], limit: { count: 3, minutes: 60 } },
+    ],
+  };
+  it("shows the company's bands, frequent-break days, and says breaks are not recorded where clock-in-again is off", () => {
+    const onReport = vi.fn();
+    render(<AttendanceReportsScreen live={{ report: 'hours', state: 'ready', data, month: '2026-10', onMonth: vi.fn(), onReport }} />);
+    expect(screen.getByRole('columnheader', { name: /Under 4 h/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /4–6 h/ })).toBeInTheDocument();
+    expect(screen.getByText(/more than 3 breaks or 60 minutes/)).toBeInTheDocument();
+    expect(screen.getByText('Breaks are not recorded for 1 person')).toBeInTheDocument();
+    const ravi = screen.getByRole('row', { name: /Ravi Kumar/ });
+    expect(within(ravi).getByText('Breaks not recorded')).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /Kavya Reddy/ })).getAllByText('3').length).toBeGreaterThan(0);
+  });
+
+  it('nobody has clock-in-again: the note says anyone here; an empty month says so', () => {
+    const { rerender } = render(<AttendanceReportsScreen live={{ report: 'hours', state: 'ready', data: { ...data, rows: [data.rows[1]!] }, month: '2026-10', onMonth: vi.fn(), onReport: vi.fn() }} />);
+    expect(screen.getByText('Breaks are not recorded for anyone here')).toBeInTheDocument();
+    rerender(<AttendanceReportsScreen live={{ report: 'hours', state: 'ready', data: { ...data, rows: [] }, month: '2026-10', onMonth: vi.fn(), onReport: vi.fn() }} />);
+    expect(screen.getByText('No short days or breaks this month')).toBeInTheDocument();
   });
 });
 

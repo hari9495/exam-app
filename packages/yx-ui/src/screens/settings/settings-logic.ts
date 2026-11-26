@@ -52,6 +52,8 @@ export function formatValue(def: SettingDef, v: SettingValue = def.value ?? null
   if (def.kind === 'link') return def.linkLabel ?? 'Open editor';
   if (v == null || v === '') return 'Not set';
   if (typeof v === 'boolean') return v ? 'On' : 'Off';
+  // Answer 2422: a live logo is a picture's address, never shown as text.
+  if (def.kind === 'image' && typeof v === 'string' && /^(https?:|blob:|data:image\/|\/)/.test(v)) return 'Uploaded';
   if (Array.isArray(v)) return v.length ? (def.kind === 'offsets' ? `${v.join(', ')} ${def.unit ?? ''}`.trim() : v.join(', ')) : 'None';
   if (typeof v === 'number') {
     if (def.kind === 'usage') return `${groupIndian(v)} of ${groupIndian(def.max ?? 0)}${def.unit ? ` ${def.unit}` : ''}`;
@@ -111,6 +113,12 @@ export function refExample(pattern: string, type = 'APT', year = 2026, next = 14
 }
 
 export function validateSetting(def: SettingDef, v: SettingValue): string | null {
+  // Answer 2422: the brand colour is a 6-digit code, dark enough for white button text (WCAG AA 4.5 : 1).
+  if (def.kind === 'colour' && typeof v === 'string' && v) {
+    const ratio = contrastOnWhite(v);
+    if (ratio == null || !v.trim().startsWith('#')) return 'Use a colour code: # and six letters or digits, like #1F6F5C.';
+    if (ratio < 4.5) return 'White button text is hard to read on this colour. Choose a darker one.';
+  }
   if (def.refPattern && typeof v === 'string' && !/\{seq(:\d)?\}/.test(v)) return 'Add {seq} (the running number) so every letter gets its own reference.';
   // S-2 (answer 1324): a live select of numbers ('48') is checked against the legal limit too.
   if (def.legal && typeof v === 'string' && /^\d+(\.\d+)?$/.test(v)) {

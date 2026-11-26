@@ -271,3 +271,14 @@ export function yearChangeProblem(fromOn: string, oldStartMonth: number, newStar
   if (fromOn <= today) return 'Choose a leave year that has not started yet.';
   return null;
 }
+
+/**
+ * TIM-39, answer 2629: a block lies in the current leave year, or runs into the next one when it starts within
+ * `nextYearDays` of today (0: never). Gives why the dates cannot be used, or null. Dates are ISO days; `from` is after today.
+ */
+export function blockWindowProblem(w: { from: string; to: string; today: string; yearEnd: string; nextYearEnd: string; nextYearDays: number }): 'order' | 'next_year_late' | 'beyond_next_year' | null {
+  if (w.to < w.from) return 'order';
+  if (w.to <= w.yearEnd) return null;
+  if (!w.nextYearDays || w.from > addDays(w.today, w.nextYearDays)) return 'next_year_late';
+  return w.to > w.nextYearEnd ? 'beyond_next_year' : null;
+}

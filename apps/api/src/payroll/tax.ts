@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { RuleSet, StatutoryError, hraExempt, inForce, taxDeduction, tds } from '../statutory/evaluator';
+import { RuleSet, StatutoryError, hraExempt, inForce, retireExcess, taxDeduction, tds } from '../statutory/evaluator';
 
 // Income tax on salary (M03-BUILD-DESIGN §8.5, PAY-5.02 … 5.07): one pure function makes both the employee's tax sheet
 // and the TDS on the payslip (YX-TAX-06). Annual tax on the projected year's income, less tax already deducted (here and
@@ -53,6 +53,10 @@ export interface TaxInputs {
   future: { gross: string; basic: string; hra: string; pt?: string | null };
   deductions: { key: string; amount: string }[];
   rent: { monthly: string; from: string; to: string; metro: boolean } | null;
+  /** Review M7: the employer's PF, pension and NPS contributions for the year (projected); above the cap they are taxable. */
+  employerRetirement?: string;
+  /** Review M7: the employer's PF and pension on this year's approved payslips before this month. */
+  employerRetirementPast?: string;
   /** 5e-D3: a treaty (DTAA) claim; no treaty relief is worked out, payroll handles it by hand. */
   treatyCountry?: string | null;
 }
@@ -99,7 +103,11 @@ export function projectTax(t: TaxInputs, rules: RuleSet[], m: ThisMonth): TaxPro
   const n = t.futureMonths;
 
   const salary = sum([t.past.gross, m.gross, D(t.future.gross).mul(n), t.paidOutside ?? '0']);
-  const total = sum([salary, t.previous.gross, t.perquisites, t.otherIncome]);
+  // Review M7: employer PF + NPS + superannuation above the yearly cap is a perquisite.
+  const capRs = t.employerRetirement !== undefined ? inForce(rules, 'IN.RETIRE-CAP', ['IN'], on) : null;
+  const retireExtra = capRs ? retireExcess(capRs, { employer: t.employerRetirement! }).excess : ZERO;
+  if (retireExtra.gt(0)) notes.push(`Employer PF, pension and NPS above ₹${String(capRs!.values.cap)} a year (₹${retireExtra.toFixed(0)}) is taxable.`);
+  const total = sum([salary, t.previous.gross, t.perquisites, t.otherIncome, retireExtra]);
   const standard = Prisma.Decimal.min(D(regime.standardDeduction), salary.add(t.previous.gross));
 
   // HRA, month by month over the months of employment and rent (old regime only).
@@ -136,13 +144,13 @@ export function projectTax(t: TaxInputs, rules: RuleSet[], m: ThisMonth): TaxPro
   const deducted = D(t.past.tds).add(t.previous.tds);
   const remaining = 1 + n;
   const monthTds = Prisma.Decimal.max(ZERO, r0(annual.sub(deducted).div(remaining)));
-  const ruleVersions: Record<string, string> = { [`${tdsRs.statute}|${tdsRs.jurisdiction}`]: tdsRs.version, ...(dedRs ? { [`${dedRs.statute}|${dedRs.jurisdiction}`]: dedRs.version } : {}) };
+  const ruleVersions: Record<string, string> = { [`${tdsRs.statute}|${tdsRs.jurisdiction}`]: tdsRs.version, ...(dedRs ? { [`${dedRs.statute}|${dedRs.jurisdiction}`]: dedRs.version } : {}), ...(capRs ? { [`${capRs.statute}|${capRs.jurisdiction}`]: capRs.version } : {}) };
   return {
     calcVersion: TAX_CALC_VERSION,
     taxYear: t.taxYear,
     lawVersion: t.lawVersion,
     regime: t.regime,
-    income: { salary: salary.toFixed(2), previousEmployers: D(t.previous.gross).toFixed(2), perquisites: D(t.perquisites).toFixed(2), other: D(t.otherIncome).toFixed(2), total: total.toFixed(2) },
+    income: { salary: salary.toFixed(2), previousEmployers: D(t.previous.gross).toFixed(2), perquisites: D(t.perquisites).add(retireExtra).toFixed(2), other: D(t.otherIncome).toFixed(2), total: total.toFixed(2) },
     exemptions: { standardDeduction: standard.toFixed(2), hra: hra.toFixed(2), professionalTax: pt.toFixed(2), previousEmployers: prevExempt.toFixed(2) },
     deductions,
     taxable: taxable.toFixed(2),

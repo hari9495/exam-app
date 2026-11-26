@@ -21,9 +21,9 @@ export { BfsiComplianceList, BfsiDeclarations, type BfsiHolding, type BfsiRelate
 export { DeclarationsSwitch, DisabilityDeclaration, type DeclarationsPage, type DisabilityInput, type LiveDisability, type LiveDisabilityList } from '../people/selfservice';
 // PPL-46: the salary account abroad (HR's page and the person's own).
 export { InternationalBankPhone, InternationalBankTab, type LiveIntlBank, type LiveSplit, type SplitLineInput } from '../people/record';
-export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
+export { PersonWorkspace, type LiveRecord, type LiveRecordPay, type RecordAsset, type RecordDoc, type RecordEvent, type RecordFact, type RecordLearning, type RecordPerformance, type RecordRole, type RecordTab } from '../people/record';
 export type { FieldRow, JobChange } from '../people/people-data';
-export { CustomFieldsDrawer, EmployeeFieldsScreen, CLASS_LABEL as CUSTOM_CLASS_LABEL, customValueText, type DataClass, type EmployeeFieldDef, type EmployeeFieldsScreenProps, type RecordCustomField } from '../people/custom-fields';
+export { CustomFieldsDrawer, EmployeeFieldsScreen, CLASS_LABEL as CUSTOM_CLASS_LABEL, customValueText, type DataClass, type EmployeeFieldDef, type EmployeeFieldsScreenProps, type FieldEntity, type RecordCustomField } from '../people/custom-fields';
 export type { CustomField as RecordCustomRow } from '../people/record';
 export { ContactsDrawer, FamilyDrawer, type EmergencyContact, type FamilyMember, type Nomination, type RecordFamily } from '../people/family';
 // PPL-02 Org chart and PPL-08 My team with live data.
@@ -70,6 +70,7 @@ export { MyDocuments, type LiveMyDocuments, type MyDocSource, type MyLetter, typ
 // PPL-31 Me › Request a certificate: the kinds the company switched on, made at once or sent to HR.
 export { CertificateRequest, type LiveCertificateRequest, type MyCertificateKind } from '../people/documents';
 export { AssetRegister, type Asset as AssetListRow, type LiveAssets } from '../people/assets';
+export { AssetPageScreen, type AssetPageData, type AssetDetailsInput, type LiveAssetPage } from '../people/asset-page';
 // People › Import (PPL-07), Buddies (PPL-41), Succession (PPL-26) and Union register (PPL-39) with live data.
 export { EmployeeImportWizard } from '../people/changes';
 export type { ImportDraftState, ImportDraftSummary, ImportFile, ImportInput, ImportResult, LiveImport } from '../people/import';
@@ -78,7 +79,66 @@ export { SuccessionScreen, type LiveSuccession } from '../people/assets';
 export { UnionRegister, type LiveUnionRegister } from '../people/relations';
 // People › Restructure (PPL-09): the wizard, the record with approval and results, and the PPL-10 checklist.
 export { RestructureWizard } from '../people/changes';
+export { MassUpdateDrawer, PositionRecordScreen, PositionsScreen, PositionsSwitchOnScreen, SeatChangeDrawer, seatStatusBadge, type SeatChangeInput, type SeatList, type SeatOptions, type SeatRecord, type SeatRow, type SeatValues, type SwitchOnData } from '../people/positions';
 export { FinishedRestructuresScreen, RestructureRecord, type ContinuityItemData, type FinishedRestructure, type LiveRestructure, type RestructureDraftState, type RestructureInput, type RestructurePreview, type RestructureRecordData, type RestructureSetup, type RestructureSummary } from '../people/restructure';
 export { AskDocumentDialog, SendBackDialog, UploadForPersonDialog, WorkPhoneDialog, workPhoneOk, type AskableType } from '../people/record-dialogs';
 export { DispatchProofDialog, StartAbscondingDialog, StopAbscondingDialog } from '../people/exits';
 export { SetupHubScreen, type LiveSetupHub, type ModuleCard, type SetupHubProps } from '../platform-a/setup-admin';
+// Learning (the core): My learning and catalogue, the player, courses and the builder, assignment rules, compliance, the team.
+export { MyLearningScreen, CoursePlayerScreen, type Course as LearningCourse } from '../growth/learn-me';
+export { CourseBuilderScreen, AssignmentRulesScreen, ComplianceDashboardScreen, SessionsScreen, TrainerQrScreen } from '../growth/learn-admin';
+export {
+  CoursesListScreen,
+  TeamLearningScreen,
+  fromConditions,
+  type CourseDetails,
+  type CourseRow,
+  type BuilderLiveItem,
+  type LiveBuilder,
+  type LiveCertificate,
+  type LiveCompliance,
+  type LiveComplianceData,
+  type LiveCourses,
+  type LiveEnrolment,
+  type LiveExternal,
+  type ExternalInput,
+  type LiveMyLearning,
+  type LivePlayer,
+  type LivePlayerItem,
+  type LiveRule,
+  type LiveRules,
+  type LiveTeamLearning,
+  type RuleInput as LearningRuleInput,
+  type TeamLearningData,
+} from '../growth/learn-live';
+// Learning sessions (LRN-04, 05, 06).
+export {
+  LiveSessionsScreen,
+  LiveSessionPageScreen,
+  LiveTrainerQrScreen,
+  CheckInScreen,
+  type LiveSessions,
+  type LiveSessionRow,
+  type LiveTrainerRow,
+  type LiveSessionPage,
+  type LiveSessionPageData,
+  type LiveTrainerQr,
+  type ScheduleInput,
+  type TrainerInput,
+  type SessionOption,
+} from '../growth/learn-sessions-live';
+// LRN-12: a session's rating and the manager's training check (ported onto the sessions above).
+export { TrainingFeedbackScreen } from '../growth/learn-me';
+export type { LiveFeedback } from '../growth/learn-feedback-live';
+// G3d: skills (LRN-09, 10, 15), training needs and budgets (LRN-11), and the committees' counts (answer 2620).
+export { SkillsProfileScreen, SkillSuggestionsScreen } from '../growth/learn-me';
+export { TeamSkillsMatrixScreen, TrainingNeedsScreen } from '../growth/learn-admin';
+export type { LiveNeedRow, LiveSkillProfileData, LiveSkillSuggestions, LiveSkillsProfile, LiveTeamSkills, LiveTeamSkillsData, LiveTrainingNeeds, NeedInput, PoshCounts } from '../growth/learn-skills-live';
+// G4: the report library (ANL-06) and company documents (PPL-51).
+export { ReportLibraryScreen } from '../proctoring/analytics';
+export type { LiveReportLibrary, LiveReportRow } from '../proctoring/report-library-live';
+export { CompanyDocumentsScreen } from '../people/company-docs';
+export type { CompanyDocRow, CompanyDocsData, LiveCompanyDocs, UploadInput } from '../people/company-docs';
+// G4 (2690-2692): scheduled report emails and the export log (ANL-08).
+export { SchedulesScreen } from '../proctoring/analytics';
+export type { LiveExportRow, LiveReportSchedules, LiveScheduleRow, ScheduleFrequency } from '../proctoring/report-schedules-live';

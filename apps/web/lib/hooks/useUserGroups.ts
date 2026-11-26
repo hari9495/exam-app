@@ -7,12 +7,12 @@ import type { UserGroup, UserGroupDirectoryEntry, MyGroups } from '../types';
 // users:manage_groups; directory/mine gated behind results:view). Mirrors usePipelines.ts's
 // fetch-wrapper/invalidation conventions.
 
-export function useUserGroups() {
+export function useUserGroups(enabled = true) {
   const { accessToken } = useAuth();
   return useQuery<UserGroup[]>({
     queryKey: ['user-groups'],
     queryFn: () => apiFetch('/user-groups', {}, accessToken ?? undefined),
-    enabled: Boolean(accessToken),
+    enabled: Boolean(accessToken) && enabled,
   });
 }
 

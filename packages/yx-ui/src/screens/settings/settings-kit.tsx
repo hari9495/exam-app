@@ -7,7 +7,9 @@ import { Button, IconButton } from '../../components/button';
 import { Checkbox, RadioGroup } from '../../components/choice';
 import { DatePicker } from '../../components/date';
 import { Drawer } from '../../components/drawer';
+import { InlineAlert } from '../../components/feedback';
 import { FormField } from '../../components/field';
+import { useToastIfAny } from '../../components/notify';
 import { Icon } from '../../components/foundations';
 import { CurrencyField, NumberField, TextArea, TextField, TimeField } from '../../components/inputs';
 import { MultiSelect, Select } from '../../components/select';
@@ -82,9 +84,11 @@ export interface SettingFieldProps {
   onRowAction?: (rowIndex: number) => void;
   /** list kind: Add and each row's Edit open the caller's own editor (e.g. a scorecard template) instead of the row drawer. */
   onListEdit?: (rowIndex: number | 'new') => void;
+  /** image kind (answer 2422): the chosen file is uploaded at once, not with Save. Rejects with a plain message. */
+  onUploadImage?: (file: File) => Promise<unknown>;
 }
 
-export function SettingField({ def, value, onChange, error, readOnly, highlighted, onResetScope, rows, onRowsChange, onOpenLink, onPickOverride, onRowAction, onListEdit }: SettingFieldProps) {
+export function SettingField({ def, value, onChange, error, readOnly, highlighted, onResetScope, rows, onRowsChange, onOpenLink, onPickOverride, onRowAction, onListEdit, onUploadImage }: SettingFieldProps) {
   const wrap = (children: ReactNode) => (
     <div className="yx-set-field" id={`setting-${def.key}`} data-highlight={highlighted || undefined} data-kind={def.kind}>
       {children}
@@ -216,7 +220,7 @@ export function SettingField({ def, value, onChange, error, readOnly, highlighte
       control = <Segment label={def.label} value={typeof value === 'string' ? value : null} onChange={onChange} options={opts(def.options, def.optionLabels)} />;
       break;
     case 'image':
-      control = <ImageField value={typeof value === 'string' ? value : null} onChange={onChange} />;
+      control = <ImageField value={typeof value === 'string' ? value : null} onChange={onChange} onUpload={onUploadImage} />;
       break;
     case 'colour':
       control = <ColourField value={typeof value === 'string' ? value : ''} onChange={onChange} />;
@@ -464,25 +468,47 @@ function OffsetsField({ value, onChange, unit, label }: { value: string[]; onCha
 }
 
 /** Logo: a preview with Replace and Remove, not a filename in a text box. */
-function ImageField({ value, onChange }: { value: string | null; onChange: (v: string | null) => void }) {
+/** A picture's address (live): shown as the picture; a file name (design): shown as initials. */
+const isPicture = (v: string) => /^(https?:|blob:|data:image\/|\/)/.test(v);
+
+function ImageField({ value, onChange, onUpload }: { value: string | null; onChange: (v: string | null) => void; onUpload?: (file: File) => Promise<unknown> }) {
   const input = useRef<HTMLInputElement>(null);
+  const toast = useToastIfAny();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const pick = async (file: File) => {
+    if (!onUpload) return onChange(file.name);
+    setBusy(true);
+    setFailed(null);
+    try {
+      await onUpload(file);
+      toast?.toast({ tone: 'success', title: 'Logo saved', description: 'It shows in the app, emails and the sign-in page.' });
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not upload. Try again.');
+    } finally {
+      setBusy(false);
+      if (input.current) input.current.value = '';
+    }
+  };
+  const live = Boolean(onUpload);
   return (
     <div className="yx-set-image">
-      <span className="yx-set-image__preview" aria-hidden="true">
-        {value ? 'KF' : ''}
+      <span className="yx-set-image__preview" aria-hidden={value && isPicture(value) ? undefined : 'true'}>
+        {value && isPicture(value) ? <img src={value} alt="Your logo" className="yx-set-image__img" /> : value ? 'KF' : ''}
       </span>
-      <span className="yx-set-image__name">{value ?? 'No logo yet'}</span>
+      <span className="yx-set-image__name">{value ? (isPicture(value) ? 'Your logo' : value) : 'No logo yet'}</span>
       <span className="yx-set-image__acts">
-        <Button size="sm" onClick={() => input.current?.click()}>
+        <Button size="sm" loading={busy} onClick={() => input.current?.click()}>
           {value ? 'Replace' : 'Upload logo'}
         </Button>
-        {value && (
+        {value && !live && (
           <Button size="sm" onClick={() => onChange(null)}>
             Remove
           </Button>
         )}
       </span>
-      <input ref={input} type="file" accept="image/svg+xml,image/png" hidden onChange={(e) => e.target.files?.[0] && onChange(e.target.files[0].name)} />
+      {failed && <InlineAlert tone="danger" title={failed} />}
+      <input ref={input} type="file" accept={live ? 'image/png,image/jpeg' : 'image/svg+xml,image/png'} hidden onChange={(e) => e.target.files?.[0] && void pick(e.target.files[0])} />
     </div>
   );
 }

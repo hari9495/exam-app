@@ -2,7 +2,7 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { Download, Plus, Upload } from 'lucide-react';
 import { PhoneFrame } from '../_kit/frames';
-import { Button } from '../../components/button';
+import { Button, Link } from '../../components/button';
 import { Card, PageHeader } from '../../components/shell';
 import { DataTable, type TableColumn } from '../../components/table';
 import { FilterBar, type FilterFieldDef } from '../../components/filters';
@@ -55,6 +55,8 @@ export interface LiveAssets {
   onReturn: (a: AssetRow, input: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost'; recoveryAmount?: string }) => Promise<void>;
   /** The add-asset form the page opens. */
   children?: ReactNode;
+  /** Opens the asset page (IT assets plan, 26 Nov 2026). */
+  onOpen?: (a: AssetRow) => void;
 }
 
 const dayKeyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -189,7 +191,7 @@ function LiveAssetRegister({ live, persona }: { live: LiveAssets; persona: Perso
     return (!s || [r.tag, r.name, r.serial, r.holder].some((x) => x.toLowerCase().includes(s))) && filters.every((f) => matchesFilter((r as unknown as Record<string, unknown>)[f.key], f));
   });
   const cols: TableColumn<Asset & { live: AssetRow }>[] = [
-    { key: 'tag', header: 'Tag', type: 'id', value: (r) => r.tag, width: 130 },
+    { key: 'tag', header: 'Tag', type: 'id', value: (r) => r.tag, render: live.onOpen ? (r) => <Link href={`#${r.id}`} onClick={(e) => (e.preventDefault(), live.onOpen!(r.live))}>{r.tag}</Link> : undefined, width: 130 },
     { key: 'name', header: 'Asset', value: (r) => r.name, render: (r) => <span>{r.name}<Text size="sm" tone="secondary" as="div">{[r.type, r.serial].filter(Boolean).join(' · ')}</Text></span>, width: 240 },
     { key: 'holder', header: 'With', value: (r) => r.holder, render: (r) => (r.holder ? <span>{r.holder}{r.live.holder && <Text size="sm" tone="secondary" as="div">{r.live.holder.acknowledged ? 'Confirmed' : 'Waiting for confirmation'}</Text>}</span> : <span className="yx-table__none">—</span>), width: 200 },
     { key: 'location', header: 'Location', value: (r) => r.location, groupable: true, width: 180 },

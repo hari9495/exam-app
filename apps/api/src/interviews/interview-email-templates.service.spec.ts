@@ -5,12 +5,12 @@ import { INTERVIEW_EMAIL_EVENT_TYPES, INTERVIEW_EMAIL_DEFAULTS } from './intervi
 describe('InterviewEmailTemplatesService', () => {
   let tenantPrisma: { forTenant: jest.Mock };
   let audit: { record: jest.Mock };
-  let tx: { interviewEmailTemplate: { findMany: jest.Mock; upsert: jest.Mock } };
+  let tx: { interviewEmailTemplate: { findMany: jest.Mock; findUnique: jest.Mock; upsert: jest.Mock } };
   let service: InterviewEmailTemplatesService;
   const context = { organizationId: 'org-1', isSuperAdmin: false } as any;
 
   beforeEach(() => {
-    tx = { interviewEmailTemplate: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn() } };
+    tx = { interviewEmailTemplate: { findMany: jest.fn().mockResolvedValue([]), findUnique: jest.fn().mockResolvedValue(null), upsert: jest.fn() } };
     tenantPrisma = { forTenant: jest.fn().mockImplementation((_c, fn) => fn(tx)) };
     audit = { record: jest.fn() };
     service = new InterviewEmailTemplatesService(tenantPrisma as any, audit as any);
@@ -27,7 +27,8 @@ describe('InterviewEmailTemplatesService', () => {
       tx.interviewEmailTemplate.findMany.mockResolvedValue([{ eventType: 'invite', subject: 'S', body: 'B', enabled: false }]);
       const slots = await service.list(context);
       const invite = slots.find((s) => s.eventType === 'invite');
-      expect(invite).toEqual({ eventType: 'invite', subject: 'S', body: 'B', enabled: false });
+      // Answer 2429: each slot also carries the standard wording (5.4 starts the editor from it).
+      expect(invite).toEqual({ eventType: 'invite', subject: 'S', body: 'B', enabled: false, defaultSubject: INTERVIEW_EMAIL_DEFAULTS.invite.subject, defaultBody: INTERVIEW_EMAIL_DEFAULTS.invite.body });
     });
   });
 
@@ -38,12 +39,12 @@ describe('InterviewEmailTemplatesService', () => {
     });
 
     it('upserts by (org, eventType) and audits', async () => {
-      tx.interviewEmailTemplate.upsert.mockResolvedValue({ id: 'row-1' });
+      tx.interviewEmailTemplate.upsert.mockResolvedValue({ id: 'row-1', subject: 'S', body: 'B', enabled: true });
       await service.upsert(context, 'user-1', 'invite', { subject: 'S', body: 'B', enabled: true });
       expect(tx.interviewEmailTemplate.upsert).toHaveBeenCalledWith(
         expect.objectContaining({ where: { organizationId_eventType: { organizationId: 'org-1', eventType: 'invite' } } }),
       );
-      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'interview_email_template.saved', metadata: { eventType: 'invite' } }));
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'interview_email_template.saved', metadata: { eventType: 'invite', before: null, after: { subject: 'S', body: 'B', enabled: true } } }));
     });
   });
 

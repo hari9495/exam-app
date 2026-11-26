@@ -9,7 +9,6 @@ import { buildNav, type NavInput } from '../../lib/yx-nav';
 import { YxNavContext } from '../../lib/yx-shell';
 import YxAccountSettingsPage from './(app)/settings/account/[page]/page';
 import YxTimeSettingsPage from './(app)/settings/time/[page]/page';
-import V2BillingPage from '../v2/(org-admin)/settings/billing/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn(), redirect: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -150,10 +149,5 @@ describe('Settings S-9: Billing & Account', () => {
   });
 
   // Answer 1885: the /v2 billing page is retired; bookmarks and payment return links land on Plan & add-ons.
-  it('1885: /v2/settings/billing redirects to Plan & add-ons, and nowhere else', () => {
-    const go = jest.requireMock('next/navigation').redirect as jest.Mock;
-    go.mockClear();
-    V2BillingPage();
-    expect(go.mock.calls).toEqual([['/yx/settings/account/plan-and-add-ons']]);
-  });
+  // 1885: /v2/settings/billing redirects to Plan & add-ons in next.config.js (next.config.test.ts; the page is deleted).
 });

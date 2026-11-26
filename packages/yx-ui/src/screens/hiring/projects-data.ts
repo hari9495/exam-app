@@ -47,12 +47,14 @@ export interface Allocation {
   tentative?: boolean;
   bookedThisWeek: number;
   expectedThisWeek: number;
+  /** Batch D B3 (answer 2537): the range's approved billable, approved non-billable and booked hours. */
+  hours?: { billable: number; nonBillable: number; booked: number };
 }
 export const ALLOCATIONS: Allocation[] = [
-  { id: 'a1', person: 'Priya Nair', role: 'Senior developer', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 100, bookedThisWeek: 40, expectedThisWeek: 40 },
-  { id: 'a2', person: 'Rohit Bhat', role: 'Developer', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 100, bookedThisWeek: 42, expectedThisWeek: 40 },
-  { id: 'a3', person: 'Sana Nizami', role: 'Developer', from: D(2026, 8, 1), to: D(2026, 12, 31), percent: 50, bookedThisWeek: 20, expectedThisWeek: 20 },
-  { id: 'a4', person: 'Divya Raghunathan', role: 'QA lead', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 50, bookedThisWeek: 18, expectedThisWeek: 20 },
+  { id: 'a1', person: 'Priya Nair', role: 'Senior developer', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 100, bookedThisWeek: 40, expectedThisWeek: 40, hours: { billable: 36, nonBillable: 4, booked: 40 } },
+  { id: 'a2', person: 'Rohit Bhat', role: 'Developer', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 100, bookedThisWeek: 42, expectedThisWeek: 40, hours: { billable: 34, nonBillable: 0, booked: 42 } },
+  { id: 'a3', person: 'Sana Nizami', role: 'Developer', from: D(2026, 8, 1), to: D(2026, 12, 31), percent: 50, bookedThisWeek: 20, expectedThisWeek: 20, hours: { billable: 18, nonBillable: 2, booked: 20 } },
+  { id: 'a4', person: 'Divya Raghunathan', role: 'QA lead', from: D(2026, 6, 1), to: D(2026, 12, 31), percent: 50, bookedThisWeek: 18, expectedThisWeek: 20, hours: { billable: 0, nonBillable: 16, booked: 18 } },
   { id: 'a5', person: 'Thomas George', role: 'Designer', from: D(2026, 6, 1), to: D(2026, 10, 31), percent: 25, bookedThisWeek: 10, expectedThisWeek: 10 },
   { id: 'a6', person: 'Meera Iyer', role: 'Developer', from: D(2026, 10, 12), to: D(2026, 12, 31), percent: 100, tentative: true, bookedThisWeek: 0, expectedThisWeek: 0 },
 ];
@@ -100,22 +102,31 @@ export const WIP_LINES: WipLine[] = [
 export interface ApprovalGroup {
   project: string;
   week: string;
-  items: { id: string; employee: string; role: string; allocatedHours: number; lines: TimesheetApprovalLine[]; mismatch?: string }[];
+  /** Batch D B1: the week's Monday (yyyy-mm-dd) for the week → day → task drill-down. */
+  weekStart?: string;
+  /** B1: each line's hours Monday to Sunday. */
+  items: { id: string; employee: string; role: string; allocatedHours: number; lines: (TimesheetApprovalLine & { days?: number[] })[]; mismatch?: string }[];
 }
 export const APPROVAL_GROUPS: ApprovalGroup[] = [
   {
     project: 'NRP-WEB · Store locator and loyalty web app',
     week: 'Week of 21 Sep 2026',
+    weekStart: '2026-09-21',
     items: [
-      { id: 'ta1', employee: 'Priya Nair', role: 'Senior developer', allocatedHours: 40, lines: [{ id: 'l1', project: 'NRP-WEB', task: 'Loyalty engine', hours: 34, billable: true }, { id: 'l2', project: 'NRP-WEB', task: 'Testing', hours: 6, billable: true }] },
-      { id: 'ta2', employee: 'Rohit Bhat', role: 'Developer', allocatedHours: 40, lines: [{ id: 'l3', project: 'NRP-WEB', task: 'Store locator build', hours: 38, billable: true }, { id: 'l4', project: 'NRP-WEB', task: 'Stand-up (duplicate entry?)', hours: 4, billable: true }], mismatch: 'Timesheet 42 h vs attendance 40 h worked' },
-      { id: 'ta3', employee: 'Sana Nizami', role: 'Developer', allocatedHours: 20, lines: [{ id: 'l5', project: 'NRP-WEB', task: 'Loyalty engine', hours: 20, billable: true }] },
+      { id: 'ta1', employee: 'Priya Nair', role: 'Senior developer', allocatedHours: 40, lines: [{ id: 'l1', project: 'NRP-WEB', task: 'Loyalty engine', hours: 34, billable: true, days: [8, 8, 6, 6, 6, 0, 0] }, { id: 'l2', project: 'NRP-WEB', task: 'Testing', hours: 6, billable: true, days: [0, 0, 2, 2, 2, 0, 0] }] },
+      { id: 'ta2', employee: 'Rohit Bhat', role: 'Developer', allocatedHours: 40, lines: [{ id: 'l3', project: 'NRP-WEB', task: 'Store locator build', hours: 38, billable: true, days: [8, 8, 8, 8, 6, 0, 0] }, { id: 'l4', project: 'NRP-WEB', task: 'Stand-up (duplicate entry?)', hours: 4, billable: true, days: [1, 1, 1, 1, 0, 0, 0] }], mismatch: 'Timesheet 42 h vs attendance 40 h worked' },
+      { id: 'ta3', employee: 'Sana Nizami', role: 'Developer', allocatedHours: 20, lines: [{ id: 'l5', project: 'NRP-WEB', task: 'Loyalty engine', hours: 20, billable: true, days: [4, 4, 4, 4, 4, 0, 0] }] },
     ],
   },
   {
     project: 'CLL-WMS · Warehouse app integration',
     week: 'Week of 21 Sep 2026',
-    items: [{ id: 'ta4', employee: 'Imran Qureshi', role: 'Developer', allocatedHours: 40, lines: [{ id: 'l6', project: 'CLL-WMS', task: 'Integration', hours: 36, billable: false }, { id: 'l7', project: 'CLL-WMS', task: 'Go-live support', hours: 4, billable: false }] }],
+    weekStart: '2026-09-21',
+    items: [
+      { id: 'ta4', employee: 'Imran Qureshi', role: 'Developer', allocatedHours: 40, lines: [{ id: 'l6', project: 'CLL-WMS', task: 'Integration', hours: 36, billable: false, days: [8, 8, 8, 8, 4, 0, 0] }, { id: 'l7', project: 'CLL-WMS', task: 'Go-live support', hours: 4, billable: false, days: [0, 0, 0, 0, 4, 0, 0] }] },
+      // B1: Priya also booked hours here, so "By person" shows her two projects together.
+      { id: 'ta5', employee: 'Priya Nair', role: 'Senior developer', allocatedHours: 8, lines: [{ id: 'l8', project: 'CLL-WMS', task: 'Code review', hours: 4, billable: false, days: [0, 2, 0, 2, 0, 0, 0] }] },
+    ],
   },
 ];
 

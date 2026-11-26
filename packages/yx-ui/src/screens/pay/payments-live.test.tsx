@@ -215,6 +215,36 @@ describe('PAY-10 live · a run’s payments', () => {
     expect(blocked.onExportJournal).not.toHaveBeenCalled();
     expect((await screen.findAllByText('Map every pay line to a ledger account first.')).length).toBeGreaterThan(0);
   });
+
+  it('Enterprise E4: a parked amount in suspense still exports (SAP, the company default), with the fix list and dimensions (positive)', async () => {
+    const journal: RunJournal = {
+      runId: 'r1', postedAt: null, canPost: true, exports: [], defaultFormat: 'sap', split: 'cost_centre',
+      unmapped: [{ componentCode: 'BONUS', side: 'expense', costCentreId: null, amount: '100.00' }],
+      suspense: { on: true, account: '9999 · Payroll suspense', amount: '100.00' },
+      lines: [{ accountCode: '9999', accountName: 'Payroll suspense', ledger: 'Payroll suspense', costCentre: null, department: 'Stores', location: 'Bengaluru', project: null, debit: '100.00', credit: '0.00' }],
+      reversal: null,
+    };
+    const live = runLive({ journal, can: { record: true, journal: true } });
+    render(<PaymentsScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: /Journal export/ }));
+    expect(screen.getByText(/is in suspense \(9999 · Payroll suspense\)/)).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Department' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Project' })).not.toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: 'SAP (flat file)' })).toBeChecked();
+    await ue.click(screen.getByRole('button', { name: 'Export journal' }));
+    await waitFor(() => expect(live.onExportJournal).toHaveBeenCalledWith('sap'));
+  });
+
+  it('Enterprise E4: a reopened run offers only its reversing journal, never a new one (negative)', async () => {
+    const journal: RunJournal = { runId: 'r1', postedAt: null, canPost: false, exports: [], unmapped: [], lines: [], reversal: { exportedAt: '2026-11-02T10:00:00Z', lines: [{ accountCode: '2001', accountName: 'Net salary payable', debit: '160860.00', credit: '0.00' }] } };
+    const live = runLive({ journal, can: { record: true, journal: true } });
+    render(<PaymentsScreen live={live} />);
+    await ue.click(screen.getByRole('tab', { name: /Journal export/ }));
+    expect(screen.getByText('This run was reopened or voided after its journal went to the books')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Export journal' })).not.toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Export reversing journal' }));
+    await waitFor(() => expect(live.onExportJournal).toHaveBeenCalledWith('csv'));
+  });
 });
 
 const filesLive = (over: Partial<LivePayrollFiles> = {}): LivePayrollFiles => ({ view: 'files', state: 'ready', data: EXCHANGE_FILES, me: 'Meena Raghavan', onDownload: fn(), onRelease: fn(), ...over });

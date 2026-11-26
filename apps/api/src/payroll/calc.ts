@@ -66,7 +66,10 @@ export interface Snapshot {
   /** Attendance (the frozen M02 feed) and manual LOP (assumed-present groups) as used. */
   attendance: { lopDays: string; source: 'feed' | 'manual' | 'none'; otMinutes: { normal: number; weeklyOff: number; holiday: number }; timesheetMinutes: number };
   profile: { pf: boolean; eps: boolean; vpfPercent: string; pfOnActualWage: boolean; esi: 'yes' | 'no' | 'by_wage'; esiCoveredThisPeriod: boolean; pwd: boolean; ptState: string; lwfState: string | null; gender: string | null; age: number };
-  ytd: { pt: string };
+  /** ptWage / halfPtWage (review M5, M6): the PT wage of approved payslips earlier in the financial year / half-year. */
+  ytd: { pt: string; ptWage?: string; halfPtWage?: string };
+  /** Review M3: the employment's joining date (LWF coverage by days employed). */
+  joinedOn?: string;
   /** `label`: the payslip text of an arrears or F&F item (batch 5g). */
   oneTime: { id: string; code: string; amount: string; days: number | null; label?: string }[];
   /** inFeedDays: the part of `days` the Time feed already counts as unpaid (HLP-12 answer 65), not taken off again. */
@@ -240,6 +243,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     let eps = ZERO;
     let edli = ZERO;
     let base = ZERO;
+    let paidOn = ZERO;
     // shortcut: an item-only off-cycle takes PF on all its PF wage under one full-month ceiling, not each arrears month's own.
     (itemsOnly ? [{ ...s.segments[0], days: monthDays }] : s.segments).forEach((g, i) => {
       const f = D(g.days).div(monthDays);
@@ -253,6 +257,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
       emp = emp.add(r.employee);
       edli = edli.add(r.edli);
       base = base.add(wage);
+      paidOn = paidOn.add(r.base);
       if (s.profile.eps) {
         epf = epf.add(r.epf);
         eps = eps.add(r.eps);
@@ -265,13 +270,14 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     add({ code: statCode('pf_employer'), name: nameOf(statCode('pf_employer'), 'Provident fund (employer)'), kind: 'employer', segmentNo: 0, amount: epf, explanation: s.profile.eps ? 'Employer share to the provident fund (after the pension part).' : 'Employer share, all to the provident fund (not a pension member).', rule: c });
     add({ code: 'eps_employer', name: 'Pension fund (employer)', kind: 'employer', segmentNo: 0, amount: eps, explanation: `Employer share to the pension fund (capped; none from age ${String(pfRs.values.epsStopAge)}).`, rule: c });
     add({ code: 'edli_employer', name: 'EDLI (employer)', kind: 'employer', segmentNo: 0, amount: edli, explanation: 'Deposit-linked insurance on the PF wage up to its ceiling.', rule: c });
-    add({ code: 'pf_admin', name: 'PF admin charges (employer)', kind: 'employer', segmentNo: 0, amount: roundFor(base.mul(String(pfRs.values.adminRate)), 'rupee'), explanation: 'PF administration charges on this wage (the establishment minimum is settled on the challan).', rule: c });
+    add({ code: 'pf_admin', name: 'PF admin charges (employer)', kind: 'employer', segmentNo: 0, amount: roundFor(paidOn.mul(String(pfRs.values.adminRate)), 'rupee'), explanation: 'PF administration charges on this wage (the establishment minimum is settled on the challan).', rule: c });
   }
   const esiRs = rule('IN.ESI');
   if (esiRs && s.profile.esi !== 'no') {
     const covered = s.profile.esi === 'yes' || s.profile.esiCoveredThisPeriod;
-    const r = esi(esiRs, { esiWage: earned('esiWage').add(addBack), covered });
-    add({ code: statCode('esi_employee'), name: nameOf(statCode('esi_employee'), 'ESI'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: covered ? `ESI on the ESI wage ${rupees(earned('esiWage').add(addBack))}, rounded up to the rupee (covered for this contribution period).` : 'Not covered by ESI this contribution period.', rule: r.citation });
+    // The average daily wage is over the days paid in the period (days employed less unpaid days).
+    const r = esi(esiRs, { esiWage: earned('esiWage').add(addBack), covered, days: Math.max(0, segDays - Number(unpaid)) });
+    add({ code: statCode('esi_employee'), name: nameOf(statCode('esi_employee'), 'ESI'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: !covered ? 'Not covered by ESI this contribution period.' : 'lowWage' in r && r.lowWage ? `No employee ESI: the average daily wage is at or below ₹${String(esiRs.values.dailyWageExempt)}; the employer still pays.` : `ESI on the ESI wage ${rupees(earned('esiWage').add(addBack))}, rounded up to the rupee (covered for this contribution period).`, rule: r.citation });
     add({ code: statCode('esi_employer'), name: nameOf(statCode('esi_employer'), 'ESI (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer ESI on the same wage, rounded up.', rule: r.citation });
   }
   const partial = !!s.sub && !s.sub.final;
@@ -280,8 +286,12 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   if (ptRs) {
     const basis = (ptRs.values as { basis?: string }).basis;
     const ptWage = earned('ptWage').add(mtd?.ptWage ?? 0);
-    // Half-yearly slabs are on the half-year's income, yearly ones (2385) on this month's PT wage x 12.
-    const r = pt(ptRs, { ptWage: basis === 'half_yearly' ? ptWage.mul(6) : basis === 'annual' ? ptWage.mul(12) : ptWage, month, gender: s.profile.gender });
+    // Half-yearly slabs are on the half-year's income, yearly ones (2385) on the year's. Review M5 / M6: what was paid
+    // earlier in the half-year or year, this month, and this month's PT wage for each month left (not this month x 6 or 12).
+    const leftIn = (lastMonth: number) => Math.min((lastMonth - month + 12) % 12, s.tax ? s.tax.futureMonths : 12);
+    const halfEnd = month >= 4 && month <= 9 ? 9 : 3;
+    const income = basis === 'half_yearly' ? (s.ytd.halfPtWage === undefined ? ptWage.mul(6) : D(s.ytd.halfPtWage).add(ptWage).add(ptWage.mul(leftIn(halfEnd)))) : basis === 'annual' ? (s.ytd.ptWage === undefined ? ptWage.mul(12) : D(s.ytd.ptWage).add(ptWage).add(ptWage.mul(leftIn(3)))) : ptWage;
+    const r = pt(ptRs, { ptWage: income, month, gender: s.profile.gender, ...(basis === 'annual' && s.ytd.ptWage !== undefined ? { paidSoFar: s.ytd.pt, monthsLeft: leftIn(3) } : {}) });
     const capRs = rule('IN.PT');
     const room = capRs && capRs.values.kind === 'pt_limit' ? Prisma.Decimal.max(ZERO, D(String(capRs.values.annualMax)).sub(s.ytd.pt)) : r.amount;
     const amount = Prisma.Decimal.min(r.amount, room);
@@ -290,7 +300,8 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   const lwfRs = !itemsOnly && !partial && s.profile.lwfState ? rule('IN.LWF', [s.profile.lwfState]) : null;
   if (lwfRs) {
     // 2384: a rate-based LWF (Haryana) is on the month's gross earnings.
-    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO) });
+    const daysEmployed = s.joinedOn ? Math.round((Date.parse(`${on}T00:00:00Z`) - Date.parse(`${s.joinedOn}T00:00:00Z`)) / 86_400_000) + 1 : undefined;
+    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO), daysEmployed });
     add({ code: statCode('lwf_employee'), name: nameOf(statCode('lwf_employee'), 'Labour welfare fund'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: `${s.profile.lwfState} labour welfare fund for this month.`, rule: r.citation });
     add({ code: statCode('lwf_employer'), name: nameOf(statCode('lwf_employer'), 'Labour welfare fund (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer labour welfare fund for this month.', rule: r.citation });
   }
@@ -354,7 +365,11 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
     } else {
       const plus = (x: string, y?: string) => D(x).add(y ?? 0).toFixed(2);
       // Answer 2451: this month's loan perquisite also counts for each month left in the year (spread evenly).
-      tax = projectTax(perqMonth.gt(0) ? { ...s.tax, perquisites: plus(s.tax.perquisites, perqMonth.mul(1 + s.tax.futureMonths).toFixed(2)) } : s.tax, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
+      // Review M7: the employer's PF and pension this year (past payslips, this month for each month left) and the NPS declared.
+      const employerNow = sumOf((l) => l.kind === 'employer' && [statCode('pf_employer'), 'eps_employer'].includes(l.code));
+      const nps = s.tax.deductions.filter((x) => x.key === 'sec80ccd2').reduce((t, x) => t.add(x.amount), ZERO);
+      const withRetire = s.tax.employerRetirementPast === undefined ? s.tax : { ...s.tax, employerRetirement: D(s.tax.employerRetirementPast).add(D(employerNow).mul(1 + s.tax.futureMonths)).add(nps).toFixed(2) };
+      tax = projectTax(perqMonth.gt(0) ? { ...withRetire, perquisites: plus(withRetire.perquisites, perqMonth.mul(1 + withRetire.futureMonths).toFixed(2)) } : withRetire, rules, { month: on.slice(0, 7), gross: plus(taxable, mtd?.taxable), basic: plus(sumOf((l) => l.code === 'basic'), mtd?.basic), hra: plus(sumOf((l) => l.code === 'hra'), mtd?.hra), pt: sumOf((l) => l.code === statCode('pt')) });
       add({ code: statCode('tds'), name: nameOf(statCode('tds'), 'Income tax (TDS)'), kind: 'deduction', segmentNo: 0, amount: D(tax.monthTds), explanation: `Tax for the year ${rupees(tax.tax.total)} (${tax.regime} regime) less ${rupees(tax.alreadyDeducted)} already deducted, over ${tax.remainingPeriods} pay ${tax.remainingPeriods === 1 ? 'period' : 'periods'}.`, rule: tdsRs ? cite(tdsRs) : undefined });
     }
   }

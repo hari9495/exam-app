@@ -302,7 +302,7 @@ export interface TeamCalendar {
   from: string;
   to: string;
   scope: 'team' | 'granted' | 'company';
-  people: { id: string; name: string; code: string | null; me: boolean; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[] }[];
+  people: { id: string; name: string; code: string | null; me: boolean; holidays: { on: string; name: string; halfDay: boolean }[]; days: { on: string; part: Half; status: 'pending' | 'approved'; code: string; colour: string; name: string }[]; attendance?: { on: string; dot: 'present' | 'late' | 'remote' | 'half_day' | 'absent' | 'missing' }[] }[];
 }
 
 export interface Muster {
@@ -361,6 +361,8 @@ export interface DayCard {
   /** TIM-03 HrFix: null when the viewer may not resolve; otherwise whether they may now, and why not. */
   hrFix?: { ok: boolean; why: string | null } | null;
   resolution?: { how: 'present' | 'absent'; inMinute: number | null; outMinute: number | null; reason: string; by: string | null; at: string } | null;
+  /** Batch C item 6: this day's late mark is waived (it stays shown; only the penalty went). */
+  lateWaived?: { reason: string; by: string | null; at: string } | null;
   /** TIM-03 OnDuty: an on-duty request for the day (approved, else waiting). */
   onDuty?: { id: string; place: string; inMinute: number; outMinute: number; reason: string; status: 'approved' | 'pending' } | null;
 }
@@ -408,6 +410,10 @@ export interface LeaveRules {
   paySteps?: { days: number; percent: number }[] | null;
   /** TIM-27 Rules: the most days in one calendar month (null: no limit). */
   maxDaysPerMonth?: number | null;
+  /** T2-A (D8): most requests starting in a month; whole days between two requests; the only weekdays (0 Sunday … 6 Saturday). null: no limit. */
+  maxRequestsPerMonth?: number | null;
+  minGapDays?: number | null;
+  allowedWeekdays?: number[] | null;
   /** TIM-27 Year end: cash-in limits and payout (null: the company's). */
   encashMaxDays?: number | null;
   encashMinLeft?: number | null;
@@ -767,7 +773,8 @@ export interface MyTimesheet {
   /** Projects P-2 (1406): each line's decision, its reason (the person sees it) and the hours approved; 1408: the client's decision. */
   lines: { id: string; projectId: string; activity: string | null; billable: boolean; minutes: number[]; /** Answer 1787: a comment per day, Monday to Sunday. */ comments?: string[]; decision?: 'pending' | 'approved' | 'reduced' | 'rejected' | null; reason?: string | null; approvedMinutes?: number[] | null; unallocated?: boolean; clientStatus?: 'waiting' | 'approved' | 'sent_back' | null; clientNote?: string | null }[];
   projects: { id: string; code: string; name: string; billable: boolean; activities: string[]; active: boolean }[];
-  days: { on: string; holiday: string | null; leave: string | null; locked: boolean }[];
+  /** `leaveRequested` (batch D A8): leave asked for that day, not decided yet. */
+  days: { on: string; holiday: string | null; leave: string | null; leaveRequested?: boolean; locked: boolean }[];
   recent: { id: string; week: string; status: string; totalMinutes: number }[];
   /** Answer 1787: the company's comment rule, per day with hours (absent from an older API: none asked). */
   noteRule?: { required: boolean; minWords: number };
@@ -1067,6 +1074,13 @@ export interface AttendanceReport {
   stage: 'open' | 'frozen' | 'locked' | 'filed' | null;
   rows: { id: string; name: string; code: string | null; dept: string; location: string; late: number; early: number; otMinutes: number; lop: number }[];
 }
+/** Batch C item 16 (answers 2507, 2508): GET /time/reports/hours. Breaks are null where clock-in-again is off. */
+export interface HoursReport {
+  month: string;
+  upTo: string;
+  scope: Scope;
+  rows: { id: string; name: string; code: string | null; dept: string; location: string; short: { b1: number; b2: number; b3: number }; breaksRecorded: boolean; breaks: number | null; breakMinutes: number | null; frequentBreakDays: number | null; bands: [number, number, number]; limit: { count: number; minutes: number } }[];
+}
 export interface NightRegister {
   month: string;
   stage: 'open' | 'frozen' | 'locked' | 'filed' | null;
@@ -1189,4 +1203,22 @@ export interface FactoriesActCover {
   exclusions: { scopeType: string; name: string }[];
   /** Answer 151: the location's own setting value in force today (null: none). */
   locationSetting?: string | null;
+}
+
+/** Batch C item 6: an entity's late marks for a month, each with its penalty waiver (GET /time/periods/late-marks). */
+export interface LateMarks {
+  legalEntityId: string;
+  month: string;
+  /** Open or frozen: waivers can still be added or undone. */
+  unlocked: boolean;
+  rows: {
+    employeeId: string;
+    name: string;
+    code: string | null;
+    on: string;
+    lateMinutes: number;
+    waiver: { id: string; reason: string; by: string; at: string } | null;
+    /** Answer 2527: a manager's request to waive it (HR's list: open ones; the manager's own list: the latest). */
+    request?: { id: string; reason: string; by: string; at: string; status: 'pending' | 'waived' | 'declined'; declineReason: string | null } | null;
+  }[];
 }

@@ -21,9 +21,12 @@ import { MenuItem } from '../../components/menu';
 import { formatDate } from '../../lib/format';
 import { matchesFilter, type FilterValue } from '../../lib/table';
 import { TODAY } from '../_kit/data';
-import { GrowthFrame, PostCard, type Device, type FeedPost } from './growth-kit';
+import { CelebrationStrip, GrowthFrame, PostCard, type Celebration, type Device, type FeedPost } from './growth-kit';
+export type { Celebration } from './growth-kit';
 import { moderate } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { LiveAnnouncementScreen, type LiveAnnouncements } from './engage-announce-live';
+import { LiveFeedScreen, LiveModerationScreen, LivePostComposerScreen, type LiveFeed, type LiveModeration, type LivePostComposer } from './engage-feed-live';
 import './growth.css';
 
 /* ================================================================== ENG-01 · Feed + spaces directory */
@@ -35,13 +38,6 @@ export interface Space {
   members: number;
   policy: 'Everyone posts' | 'Announcers post; others need approval' | 'Pre-approval on';
   joined: boolean;
-}
-
-export interface Celebration {
-  id: string;
-  name: string;
-  kind: 'Birthday' | 'Work anniversary' | 'New joiner' | 'Promotion';
-  detail: string;
 }
 
 export interface FeedProps {
@@ -57,32 +53,12 @@ export interface FeedProps {
   state?: LoadState;
 }
 
-const CELEB_ICON = { Birthday: Cake, 'Work anniversary': PartyPopper, 'New joiner': Plus, Promotion: Gift };
-
-function CelebrationStrip({ items }: { items: Celebration[] }) {
-  if (items.length === 0) return null;
-  return (
-    <section aria-label="Celebrations today" className="yx-growth-stack" data-gap="sm">
-      <h2 className="yx-growth-h">Today</h2>
-      {/* Scrolls sideways, so it is a focusable, labelled region (keyboard users can scroll it). */}
-      <div className="yx-growth-strip" tabIndex={0} role="region" aria-label="Celebrations today, scroll sideways for more">
-        <ul className="yx-growth-strip__list">
-        {items.map((c) => (
-          <li key={c.id} className="yx-growth-strip__item">
-            <PersonLabel name={c.name} />
-            <span className="yx-growth-meta">
-              <Icon icon={CELEB_ICON[c.kind]} /> {c.detail}
-            </span>
-          </li>
-        ))}
-        </ul>
-      </div>
-    </section>
-  );
+/** ENG-01 Feed (T2): space filter, pinned announcements, polls, celebrations, kudos; spaces directory. With `live`, the company's records. */
+export function FeedScreen(props: FeedProps | { live: LiveFeed }) {
+  return 'live' in props ? <LiveFeedScreen live={props.live} /> : <FeedDesign {...props} />;
 }
 
-/** ENG-01 Feed (T2): space filter, pinned announcements, polls, celebrations, kudos; spaces directory. */
-export function FeedScreen({ device = 'desktop', persona = 'emp', posts, spaces, celebrations, openSurvey, tab = 'feed', space: spaceProp = null, heldNotice, state = 'ready' }: FeedProps) {
+function FeedDesign({ device = 'desktop', persona = 'emp', posts, spaces, celebrations, openSurvey, tab = 'feed', space: spaceProp = null, heldNotice, state = 'ready' }: FeedProps) {
   const [space, setSpace] = useState<string | null>(spaceProp);
   const [reported, setReported] = useState<string | null>(null);
   const shown = useMemo(() => posts.filter((p) => !space || p.space === spaces.find((s) => s.id === space)?.name), [posts, space, spaces]);
@@ -228,7 +204,12 @@ export interface PostComposerProps {
 }
 
 /** ENG-02 Post composer (T4): update, poll or event; space by posting policy; moderation check before posting (YX-ENG-02/03). */
-export function PostComposerScreen({ device = 'desktop', kind: kind0 = 'Update', spaces, defaultSpace, defaultText = '', blockedWords }: PostComposerProps) {
+/** ENG-02; batch G2 item 100: with `live`, posting an update to one of my spaces. */
+export function PostComposerScreen(props: PostComposerProps | { live: LivePostComposer }) {
+  return 'live' in props ? <LivePostComposerScreen live={props.live} /> : <PostComposerDesign {...props} />;
+}
+
+function PostComposerDesign({ device = 'desktop', kind: kind0 = 'Update', spaces, defaultSpace, defaultText = '', blockedWords }: PostComposerProps) {
   const [kind, setKind] = useState(kind0);
   const [space, setSpace] = useState<string | null>(defaultSpace ?? spaces.find((s) => s.joined)?.id ?? null);
   const [text, setText] = useState(defaultText);
@@ -335,7 +316,13 @@ export interface AckRow {
 const AUDIENCE_COUNTS: Record<string, number> = { everyone: 248, hosur: 96, chennai: 58, blr: 94, ops: 72, quality: 17 };
 
 /** ENG-03 Announcement composer (T4): audience with live count, channels (external ones carry no sensitive values), acknowledgement, schedule; tracking (T2). */
-export function AnnouncementScreen({ view, rows = [], sensitive, state = 'ready' }: { view: 'compose' | 'tracking'; rows?: AckRow[]; sensitive?: boolean; state?: LoadState }) {
+type AnnouncementDesignProps = { view: 'compose' | 'tracking'; rows?: AckRow[]; sensitive?: boolean; state?: LoadState };
+/** ENG-03; batch G2 item 12: with `live`, the list, composer and tracking from the company's records. */
+export function AnnouncementScreen(props: AnnouncementDesignProps | { live: LiveAnnouncements }) {
+  return 'live' in props ? <LiveAnnouncementScreen live={props.live} /> : <AnnouncementDesign {...props} />;
+}
+
+function AnnouncementDesign({ view, rows = [], sensitive, state = 'ready' }: AnnouncementDesignProps) {
   const [audience, setAudience] = useState<string[]>(['hosur']);
   const [channels, setChannels] = useState<string[]>(['app', 'push', 'whatsapp']);
   const [ack, setAck] = useState(true);
@@ -496,7 +483,13 @@ export interface ModItem {
 }
 
 /** ENG-11 Moderation queue (T2): held and reported items; restore, hide, delete (confirmed), warn; repeat offenders to HR. All actions audited. */
-export function ModerationScreen({ items: initial, openId, deleteOpen, state = 'ready' }: { items: ModItem[]; openId?: string; deleteOpen?: boolean; state?: LoadState }) {
+type ModerationDesignProps = { items: ModItem[]; openId?: string; deleteOpen?: boolean; state?: LoadState };
+/** ENG-11; batch G2 item 100: with `live`, the company's queue and the actions. */
+export function ModerationScreen(props: ModerationDesignProps | { live: LiveModeration }) {
+  return 'live' in props ? <LiveModerationScreen live={props.live} /> : <ModerationDesign {...props} />;
+}
+
+function ModerationDesign({ items: initial, openId, deleteOpen, state = 'ready' }: ModerationDesignProps) {
   const [items, setItems] = useState(initial);
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const [del, setDel] = useState(!!deleteOpen);

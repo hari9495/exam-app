@@ -62,9 +62,11 @@ export class UserGroupsService {
 
   async update(context: TenantContext, actorUserId: string, id: string, dto: UpdateUserGroupDto): Promise<UserGroupWithMembers> {
     const orgId = context.organizationId as string;
+    let before: { name: string; description: string | null } | null = null;
     const result = await this.tenantPrisma.forTenant(context, async (tx) => {
-      const existing = await tx.userGroup.findFirst({ where: { id, organizationId: orgId }, select: { id: true } });
+      const existing = await tx.userGroup.findFirst({ where: { id, organizationId: orgId }, select: { id: true, name: true, description: true } });
       if (!existing) throw new NotFoundException(`User group ${id} not found`);
+      before = { name: existing.name, description: existing.description };
       if (dto.name !== undefined) {
         const clash = await tx.userGroup.findFirst({ where: { organizationId: orgId, name: dto.name, id: { not: id } }, select: { id: true } });
         if (clash) throw new BadRequestException(`A group named "${dto.name}" already exists`);
@@ -76,7 +78,8 @@ export class UserGroupsService {
       });
       return (await this.hydrate(tx, orgId, [group]))[0];
     });
-    await this.audit.record(context, { actorUserId, action: 'user_group.updated', entityType: 'user_group', entityId: id, metadata: {} });
+    // Answer 2430: the audit keeps the name and description before and after.
+    await this.audit.record(context, { actorUserId, action: 'user_group.updated', entityType: 'user_group', entityId: id, metadata: { before, after: { name: result.name, description: result.description } } });
     return result;
   }
 
@@ -99,19 +102,21 @@ export class UserGroupsService {
 
   async setMembers(context: TenantContext, actorUserId: string, id: string, userIds: string[]): Promise<UserGroupWithMembers> {
     const orgId = context.organizationId as string;
-    const { result, count } = await this.tenantPrisma.forTenant(context, async (tx) => {
+    const { result, count, was } = await this.tenantPrisma.forTenant(context, async (tx) => {
       const group = await tx.userGroup.findFirst({ where: { id, organizationId: orgId }, select: { id: true, name: true, description: true } });
       if (!group) throw new NotFoundException(`User group ${id} not found`);
-      await this.applyMembers(tx, orgId, id, userIds);
+      const was = await this.applyMembers(tx, orgId, id, userIds);
       const result = (await this.hydrate(tx, orgId, [group]))[0];
-      return { result, count: [...new Set(userIds)].length };
+      return { result, count: [...new Set(userIds)].length, was };
     });
-    await this.audit.record(context, { actorUserId, action: 'user_group.members_changed', entityType: 'user_group', entityId: id, metadata: { count } });
+    // Answer 2430: who joined and who left, not only the count.
+    const now = [...new Set(userIds)];
+    await this.audit.record(context, { actorUserId, action: 'user_group.members_changed', entityType: 'user_group', entityId: id, metadata: { count, added: now.filter((u) => !was.includes(u)), removed: was.filter((u) => !now.includes(u)) } });
     return result;
   }
 
-  // Validate + diff membership to the desired set.
-  private async applyMembers(tx: any, orgId: string, groupId: string, desiredRaw: string[]): Promise<void> {
+  // Validate + diff membership to the desired set; returns who was in it before.
+  private async applyMembers(tx: any, orgId: string, groupId: string, desiredRaw: string[]): Promise<string[]> {
     const desired = [...new Set(desiredRaw)];
     if (desired.length) {
       const valid = await tx.user.findMany({ where: { id: { in: desired }, organizationId: orgId, status: 'active' }, select: { id: true } });
@@ -124,6 +129,7 @@ export class UserGroupsService {
     const toRemove = [...currentSet].filter((u) => !desiredSet.has(u as string)) as string[];
     if (toRemove.length) await tx.userGroupMember.deleteMany({ where: { organizationId: orgId, groupId, userId: { in: toRemove } } });
     if (toAdd.length) await tx.userGroupMember.createMany({ data: toAdd.map((userId) => ({ organizationId: orgId, groupId, userId })) });
+    return [...currentSet] as string[];
   }
 
   directory(context: TenantContext): Promise<{ id: string; name: string; memberIds: string[] }[]> {

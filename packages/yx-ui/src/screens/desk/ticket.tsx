@@ -27,6 +27,7 @@ const EVENT_WORDS: Record<string, string> = {
   created: 'Ticket raised',
   assigned: 'Owner changed',
   status_changed: 'Status changed',
+  requester_chased: 'Reminder sent to the requester',
   priority_changed: 'Priority changed',
   category_changed: 'Category changed',
   group_changed: 'Group changed',

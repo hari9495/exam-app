@@ -363,6 +363,8 @@ export interface LiveSettingsPage {
    * their own API at once) instead of the row drawer. Pass a key only when the viewer may change that list.
    */
   listEditors?: Record<string, (rowIndex: number | 'new') => void>;
+  /** image kind, by setting key (answer 2422: the company logo): the chosen file is uploaded at once, not with Save. */
+  onUploadImage?: (key: string, file: File) => Promise<unknown>;
   onOpenScreen?: (screenId: string) => void;
   /** Title of the success toast. */
   savedTitle?: string;
@@ -700,6 +702,7 @@ function SettingsForm({
       onOpenLink={onOpenScreen}
       onRowAction={live?.onRowAction ? (i) => live.onRowAction!(d.key, i) : undefined}
       onListEdit={live?.listEditors?.[d.key]}
+      onUploadImage={live?.onUploadImage && !readOnly ? (file) => live.onUploadImage!(d.key, file) : undefined}
     />
     );
   };

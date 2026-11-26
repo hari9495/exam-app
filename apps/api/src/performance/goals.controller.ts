@@ -6,7 +6,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { CascadeDto, CheckinDto, DecideGoalsDto, DropDto, GoalDto, GoalListDto, GoalPeriodDto, PeriodQueryDto, SubmitGoalsDto, SuggestParentDto } from './dto';
+import { CascadeDto, CheckinDto, DecideGoalsDto, DropDto, GoalDto, GoalListDto, GoalPeriodDto, GoalRemindDto, PeriodQueryDto, SubmitGoalsDto, SuggestParentDto } from './dto';
 import { PerformanceGoalsService } from './goals.service';
 
 // Performance batch PM2 (M06-BUILD-DESIGN §19 "Goals"). Goals are open to the implicit grants (my own goals, my
@@ -41,6 +41,18 @@ export class PerformanceGoalsController {
   @Get('goals')
   list(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: GoalListDto) {
     return this.goals.list(ctx, this.user(req), q.period, q.view, q.employeeId);
+  }
+
+  // Batch F item 30 (answer 2575): my own team's people with no goals or goals not updated, and a once-a-day Remind.
+  @Get('goals/team-gaps')
+  teamGaps(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PeriodQueryDto) {
+    return this.goals.teamGaps(ctx, this.user(req), q.period);
+  }
+
+  @Post('goals/team-gaps/:employeeId/remind')
+  @HttpCode(200)
+  remindGap(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('employeeId', ParseUUIDPipe) employeeId: string, @Body() dto: GoalRemindDto) {
+    return this.goals.remindGap(ctx, this.user(req), dto.period, employeeId, dto.kind);
   }
 
   @Get('goal-map')

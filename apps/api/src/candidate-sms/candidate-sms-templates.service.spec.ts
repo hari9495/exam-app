@@ -148,6 +148,8 @@ describe('CandidateSmsTemplatesService', () => {
   });
 
   describe('upsert', () => {
+    // The stage is the company's own (answer 2434: a foreign stage is refused).
+    beforeEach(() => tx.pipelineStage.findFirst.mockResolvedValue({ id: 'stage-1' }));
     it('creates a new row when no id is given, org-scoped, and audits candidate_sms_template.saved', async () => {
       tx.candidateSmsTemplate.create.mockResolvedValue({ id: 'new-1', name: 'Offer', triggerStageId: 'st-offer', triggerMode: 'prompt', body: 'B', enabled: true });
 

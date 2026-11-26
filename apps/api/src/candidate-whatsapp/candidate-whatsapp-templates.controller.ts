@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -10,7 +11,8 @@ import { UpsertWhatsappTemplateDto } from './dto/upsert-whatsapp-template.dto';
 import { SetWhatsappTemplateEnabledDto } from './dto/set-whatsapp-template-enabled.dto';
 
 @Controller('candidate-whatsapp-templates')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// Settings 6.1 stage messages (answer 2434): no change while acting for someone else.
+@UseGuards(JwtAuthGuard, PermissionsGuard, OwnSessionChangesGuard)
 export class CandidateWhatsappTemplatesController {
   constructor(private readonly templates: CandidateWhatsappTemplatesService) {}
 

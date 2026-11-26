@@ -7,7 +7,7 @@ export { type ExpenseSetupScreenProps, type CategoryInput, type TierInput } from
 export { fromRows, toRows, sameRules, type MatrixRow, type Per } from '../../ops/expenses-matrix';
 // Round 1 of the design wiring: the designed EXP-01 home, EXP-02 composer and EXP-03 review take `live`.
 export { ExpensesHomeScreen, ClaimComposerScreen, ClaimReviewScreen } from '../../ops/expenses';
-export { EXP_LINKS, type AddKind, type LiveClaim, type LiveHome } from '../../ops/expenses-live';
+export { EXP_LINKS, claimQuery, parseClaimQuery, type AddKind, type LiveClaim, type LiveHome, type LiveMyClaims } from '../../ops/expenses-live';
 // Keka ideas (2026-11): expenses saved first, claimed later.
 export { PickSavedExpenses, SavedExpensesCard, type LiveSavedExpenses, type SavedExpense, type SavedExpenseInput } from '../../ops/expenses-saved';
 export { STATUS as CLAIM_STATUS, PAYMENT as CLAIM_PAYMENT, paymentText } from '../../ops/expenses-live-data';

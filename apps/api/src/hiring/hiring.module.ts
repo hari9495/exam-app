@@ -1,3 +1,4 @@
+import { OldApprovalsMigration } from './old-approvals-migration';
 import { StorageModule } from '@exam-platform/shared';
 import { BiasAuditService } from './bias-audit.service';
 import { Module } from '@nestjs/common';
@@ -21,7 +22,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
 @Module({
   imports: [StorageModule, AuthModule, WorkflowModule, RulesEngineModule, JobBoardsModule, CryptoModule, AiModule, FieldPermissionsModule, NotificationsModule, OrgStructureModule],
   controllers: [HiringController],
-  providers: [HiringRequisitionsService, CareersAdminService, RediscoveryService, HiringSettingsService, BiasAuditService],
+  providers: [OldApprovalsMigration, HiringRequisitionsService, CareersAdminService, RediscoveryService, HiringSettingsService, BiasAuditService],
   exports: [HiringRequisitionsService, HiringSettingsService],
 })
 export class HiringModule {}

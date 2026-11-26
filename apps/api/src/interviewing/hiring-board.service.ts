@@ -85,6 +85,16 @@ export class HiringBoardService {
     return r;
   }
 
+  /** Answer 2434 follow-up: a stage message the recruiter chose not to send, recorded with the channel and template. */
+  async skipStageMessage(ctx: TenantContext, entryId: string, channel: 'email' | 'sms' | 'whatsapp', templateId: string | null) {
+    return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+      const e = await tx.pipelineEntry.findFirst({ where: { organizationId: c.organizationId, id: entryId }, select: { id: true } });
+      if (!e) throw new NotFoundException('Application not found.');
+      await audit(tx, c, 'ats.stage_message.skipped', 'pipeline_entry', entryId, { channel, templateId });
+      return { skipped: true };
+    });
+  }
+
   private async autoSendTests(ctx: TenantContext, entryId: string) {
     const info = await this.tenantPrisma.forTenant(ctx, async (tx) => {
       const e = await tx.pipelineEntry.findFirst({ where: { id: entryId, organizationId: ctx.organizationId as string }, select: { candidateId: true, jobId: true, status: { select: { stageId: true } } } });

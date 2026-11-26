@@ -72,6 +72,8 @@ export interface ApprovalRow {
   decideAt?: string | null;
   /** Live: the approver may send it back for changes (leave; the company allows it). */
   canSendBack?: boolean;
+  /** Answer 2500: who holds it now ("Everyone's pending", for HR). */
+  approver?: string;
 }
 
 export const APPROVALS: ApprovalRow[] = [

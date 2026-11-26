@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { PeriodsScreen, type Periods, type Preflight } from '@yukthix/ui/time';
+import { PeriodsScreen, type LateMarks, type Periods, type Preflight } from '@yukthix/ui/time';
 import { timeState, todayIndia, useTime, useTimeRead, useTimeWrite } from '../../../../../lib/yx-time';
 import { useScopeParams, withParams } from '../../../../../lib/yx-shell';
 
@@ -29,6 +29,12 @@ export default function YxPeriodsPage() {
         // TIM-11 two-step flow (company setting): HR sends, payroll approves with the second sign-in step.
         onSend: (legalEntityId, month) => write('/periods/send', 'POST', { legalEntityId, month }, true, 'Sent for payroll approval'),
         onApproveLock: (legalEntityId, month) => write('/periods/approve-lock', 'POST', { legalEntityId, month }, true, 'Month locked'),
+        // Batch C item 6: late marks and their penalty waivers (the drawer says "done" itself).
+        onLateMarks: (legalEntityId, month) => read<LateMarks>(`/periods/late-marks?legalEntityId=${encodeURIComponent(legalEntityId)}&month=${month}`),
+        onWaiveLate: (legalEntityId, month, items, reason) => write('/periods/late-marks/waive', 'POST', { legalEntityId, month, items, reason }),
+        onUndoLate: (legalEntityId, month, waiverIds, reason) => write('/periods/late-marks/undo', 'POST', { legalEntityId, month, waiverIds, reason }),
+        // Answer 2527: decline a manager's requests to waive, with a reason they see.
+        onDeclineLate: (legalEntityId, month, requestIds, reason) => write('/periods/late-marks/decline', 'POST', { legalEntityId, month, requestIds, reason }),
       }}
     />
   );

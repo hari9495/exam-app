@@ -20,6 +20,7 @@ import { TODAY } from '../_kit/data';
 import { EnpsScale, GrowthFrame, SplitLayout, SuppressedNotice, type Device } from './growth-kit';
 import { actionPlanDue, canSlice, enps } from './growth-logic';
 import type { LoadState } from './perf-goals';
+import { LiveActionPlanScreen, LiveSurveyBuilderScreen, LiveSurveyResultsScreen, LiveSurveysListScreen, LiveTakeSurveyScreen, type LiveActionPlan, type LiveSurveyBuilder, type LiveSurveyResults, type LiveSurveysList, type LiveTakeSurvey } from './engage-surveys-live';
 import './growth.css';
 
 export type QuestionKind = 'eNPS (0–10)' | 'Rating (1–5)' | 'Single choice' | 'Multiple choice' | 'Text';
@@ -47,7 +48,12 @@ export interface SurveyRow {
 }
 
 /** ENG-04 Surveys list (T2): type, anonymity, audience, status and response rate. */
-export function SurveysListScreen({ surveys, state = 'ready' }: { surveys: SurveyRow[]; state?: LoadState }) {
+/** ENG-04; batch G2 item 74: with `live`, the company's surveys. */
+export function SurveysListScreen(props: { surveys: SurveyRow[]; state?: LoadState } | { live: LiveSurveysList }) {
+  return 'live' in props ? <LiveSurveysListScreen live={props.live} /> : <SurveysListDesign {...props} />;
+}
+
+function SurveysListDesign({ surveys, state = 'ready' }: { surveys: SurveyRow[]; state?: LoadState }) {
   const cols: TableColumn<SurveyRow>[] = [
     { key: 'name', header: 'Survey', value: (r) => r.name, width: 280 },
     { key: 'type', header: 'Type', value: (r) => r.type, groupable: true, width: 130 },
@@ -83,7 +89,12 @@ const LIBRARY: SurveyQuestion[] = [
 ];
 
 /** ENG-04 Survey builder (T5): template, questions (library, list, preview), audience and schedule, anonymity (locked after launch). */
-export function SurveyBuilderScreen({ defaultStep = 'questions', questions: q0 }: { defaultStep?: string; questions: SurveyQuestion[] }) {
+/** ENG-04 builder; batch G2 item 74: with `live`, a draft saved and launched. */
+export function SurveyBuilderScreen(props: { defaultStep?: string; questions: SurveyQuestion[] } | { live: LiveSurveyBuilder }) {
+  return 'live' in props ? <LiveSurveyBuilderScreen live={props.live} /> : <SurveyBuilderDesign {...props} />;
+}
+
+function SurveyBuilderDesign({ defaultStep = 'questions', questions: q0 }: { defaultStep?: string; questions: SurveyQuestion[] }) {
   const [questions, setQuestions] = useState(q0);
   const [anon, setAnon] = useState('anonymous');
   const [min, setMin] = useState<number | null>(5);
@@ -291,7 +302,12 @@ export interface TakeSurveyProps {
 }
 
 /** ENG-05 Take a survey (T4): anonymity shown first, 0–10 eNPS scale, ratings, choices, text; progress; thank-you. */
-export function TakeSurveyScreen({ device = 'desktop', title, anonymity, closes, questions, submitted, closed, prefill }: TakeSurveyProps) {
+/** ENG-05; batch G2 item 74: with `live`, a survey I was invited to. */
+export function TakeSurveyScreen(props: TakeSurveyProps | { live: LiveTakeSurvey }) {
+  return 'live' in props ? <LiveTakeSurveyScreen live={props.live} /> : <TakeSurveyDesign {...props} />;
+}
+
+function TakeSurveyDesign({ device = 'desktop', title, anonymity, closes, questions, submitted, closed, prefill }: TakeSurveyProps) {
   const [answers, setAnswers] = useState<Record<string, string | number>>(prefill ? { [questions[0].id]: 8 } : {});
   const [done, setDone] = useState(!!submitted);
   const answered = questions.filter((q) => answers[q.id] != null && answers[q.id] !== '').length;
@@ -376,7 +392,13 @@ export interface SurveyResults {
 }
 
 /** ENG-06 Results (T6): eNPS scale, participation, theme heatmap with suppressed groups, comment themes (AI, anonymous text only); filters below minimum disabled. */
-export function SurveyResultsScreen({ persona, results, team, state = 'ready' }: { persona: 'hr' | 'mgr'; results: SurveyResults; team?: { name: string; size: number; scores: number[] }; state?: LoadState }) {
+type ResultsDesignProps = { persona: 'hr' | 'mgr'; results: SurveyResults; team?: { name: string; size: number; scores: number[] }; state?: LoadState };
+/** ENG-06; batch G2 item 74: with `live`, company or team results above the smallest group. */
+export function SurveyResultsScreen(props: ResultsDesignProps | { live: LiveSurveyResults }) {
+  return 'live' in props ? <LiveSurveyResultsScreen live={props.live} /> : <SurveyResultsDesign {...props} />;
+}
+
+function SurveyResultsDesign({ persona, results, team, state = 'ready' }: ResultsDesignProps) {
   const [dept, setDept] = useState<string | null>(null);
   const e = enps(team ? team.scores : results.scores);
   const teamSuppressed = team ? !canSlice(team.size) : false;
@@ -477,7 +499,13 @@ export interface ActionPlan {
 }
 
 /** ENG-07 Action plans (T3): focus area from results, actions with owner and due date, due 30 days after results (Q8); HR completion view. */
-export function ActionPlanScreen({ persona, device = 'desktop', plan, plans = [] }: { persona: 'mgr' | 'hr'; device?: Device; plan?: ActionPlan; plans?: (ActionPlan & { size: number })[] }) {
+type PlanDesignProps = { persona: 'mgr' | 'hr'; device?: Device; plan?: ActionPlan; plans?: (ActionPlan & { size: number })[] };
+/** ENG-07; batch G2 item 74: with `live`, a manager's plan or HR's list of plans. */
+export function ActionPlanScreen(props: PlanDesignProps | { live: LiveActionPlan }) {
+  return 'live' in props ? <LiveActionPlanScreen live={props.live} /> : <ActionPlanDesign {...props} />;
+}
+
+function ActionPlanDesign({ persona, device = 'desktop', plan, plans = [] }: PlanDesignProps) {
   const [items, setItems] = useState(plan?.items ?? []);
   const [draft, setDraft] = useState('');
   if (persona === 'hr')

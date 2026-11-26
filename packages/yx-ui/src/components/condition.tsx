@@ -44,12 +44,14 @@ export interface ConditionBuilderProps {
   parts?: Part[];
   /** Plain-English summary under the builder. Default true. */
   showSummary?: boolean;
+  /** Words when there are no conditions yet (default: the rule applies every time the trigger happens). */
+  emptyText?: string;
 }
 
 export const emptyRule = (): Rule => ({ trigger: null, conditions: { ...emptyGroup(), items: [] }, actions: [] });
 
 /** P19 rule builder as plain "When / If / Then" form rows (§46: the text alternative to the canvas). */
-export function ConditionBuilder({ schema, value, defaultValue, onChange, showErrors, readOnly, parts = ['when', 'if', 'then'], showSummary = true }: ConditionBuilderProps) {
+export function ConditionBuilder({ schema, value, defaultValue, onChange, showErrors, readOnly, parts = ['when', 'if', 'then'], showSummary = true, emptyText }: ConditionBuilderProps) {
   const [rule, setRule] = useControllable(value, defaultValue ?? emptyRule(), onChange);
   const summary = summariseRule(rule, schema);
 
@@ -81,7 +83,7 @@ export function ConditionBuilder({ schema, value, defaultValue, onChange, showEr
       )}
       {parts.includes('if') && (
         <RuleSection keyword="If">
-          <GroupEditor group={rule.conditions} onChange={(conditions) => set({ conditions })} fields={schema.fields} errors={errors} top />
+          <GroupEditor group={rule.conditions} onChange={(conditions) => set({ conditions })} fields={schema.fields} errors={errors} top emptyText={emptyText} />
         </RuleSection>
       )}
       {parts.includes('then') && (
@@ -125,9 +127,10 @@ interface GroupEditorProps {
   errors: RuleErrors;
   top?: boolean;
   onRemove?: () => void;
+  emptyText?: string;
 }
 
-function GroupEditor({ group, onChange, fields, errors, top, onRemove }: GroupEditorProps) {
+function GroupEditor({ group, onChange, fields, errors, top, onRemove, emptyText }: GroupEditorProps) {
   const joinId = useId();
   const setItem = (i: number, it: RuleCondition | RuleGroup) => onChange({ ...group, items: group.items.map((x, j) => (j === i ? it : x)) });
   const removeItem = (i: number) => onChange({ ...group, items: group.items.filter((_, j) => j !== i) });
@@ -152,7 +155,7 @@ function GroupEditor({ group, onChange, fields, errors, top, onRemove }: GroupEd
           {!top && <IconButton icon={Trash2} label="Remove group" onClick={onRemove} className="yx-rule__remove" />}
         </div>
       )}
-      {group.items.length === 0 && top && <p className="yx-rule__empty">No conditions. The rule applies every time the trigger happens.</p>}
+      {group.items.length === 0 && top && <p className="yx-rule__empty">{emptyText ?? 'No conditions. The rule applies every time the trigger happens.'}</p>}
       <ol className="yx-rule__rows">
         {group.items.map((it, i) => (
           <li key={it.id} className="yx-rule__item">

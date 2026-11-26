@@ -4,6 +4,7 @@
 
 import { useState } from 'react';
 import { Button } from '../../components/button';
+import { Checkbox } from '../../components/choice';
 import { Drawer } from '../../components/drawer';
 import { EmptyState, InlineAlert, Skeleton } from '../../components/feedback';
 import { FormField } from '../../components/field';
@@ -42,7 +43,21 @@ export interface EmployeeFieldDef {
   fieldType: CustomFieldType;
   options: string[] | null;
   dataClass: DataClass;
+  /** Candidate and job fields (answer 2425): must be filled in. */
+  required?: boolean;
+  /** Candidate fields: asked on the careers application form. */
+  showOnApply?: boolean;
 }
+
+/** Answer 2425 (retiring /v2): which record the fields belong to. */
+export type FieldEntity = 'employee' | 'candidate' | 'job';
+const ENTITY_LABEL: Record<FieldEntity, string> = { employee: 'Employees', candidate: 'Candidates', job: 'Jobs' };
+const ENTITY_TITLE: Record<FieldEntity, string> = { employee: 'Employee record fields', candidate: 'Candidate fields', job: 'Job fields' };
+const ENTITY_WHERE: Record<FieldEntity, string> = {
+  employee: "Shown under Additional details on each person's record.",
+  candidate: 'Shown on each candidate record, and on the application form when you ask it there.',
+  job: 'Shown on each job, and filled in when a job is opened.',
+};
 
 export const CLASS_LABEL: Record<DataClass, FieldClass> = { public: 'Public', internal: 'Internal', personal: 'Personal', confidential: 'Confidential' };
 const CLASS_HELP: Record<DataClass, string> = {
@@ -122,14 +137,18 @@ export interface EmployeeFieldsScreenProps {
   fields: EmployeeFieldDef[];
   canManage: boolean;
   onCreate: (f: Omit<EmployeeFieldDef, 'id'>) => Promise<void>;
-  onUpdate: (id: string, f: Pick<EmployeeFieldDef, 'label' | 'dataClass' | 'options'>) => Promise<void>;
+  onUpdate: (id: string, f: Pick<EmployeeFieldDef, 'label' | 'dataClass' | 'options' | 'required' | 'showOnApply'>) => Promise<void>;
   onArchive: (id: string) => Promise<void>;
+  /** Answer 2425: the record the list is for (default employees). */
+  entity?: FieldEntity;
+  /** Given: a switch between employee, candidate and job fields. */
+  onEntity?: (e: FieldEntity) => void;
 }
 
-type Draft = { label: string; fieldType: CustomFieldType; dataClass: DataClass; options: string };
+type Draft = { label: string; fieldType: CustomFieldType; dataClass: DataClass; options: string; required: boolean; showOnApply: boolean };
 
-function FieldEditor({ field, onClose, onSave }: { field: EmployeeFieldDef | null; onClose: () => void; onSave: (d: Draft) => Promise<void> }) {
-  const [d, setD] = useState<Draft>({ label: field?.label ?? '', fieldType: field?.fieldType ?? 'text', dataClass: field?.dataClass ?? 'internal', options: (field?.options ?? []).join('\n') });
+function FieldEditor({ field, entity, onClose, onSave }: { field: EmployeeFieldDef | null; entity: FieldEntity; onClose: () => void; onSave: (d: Draft) => Promise<void> }) {
+  const [d, setD] = useState<Draft>({ label: field?.label ?? '', fieldType: field?.fieldType ?? 'text', dataClass: field?.dataClass ?? 'internal', options: (field?.options ?? []).join('\n'), required: field?.required ?? false, showOnApply: field?.showOnApply ?? false });
   const [dirty, setDirty] = useState(false);
   const [tried, setTried] = useState(false);
   const { busy, error, run } = useRun();
@@ -148,7 +167,7 @@ function FieldEditor({ field, onClose, onSave }: { field: EmployeeFieldDef | nul
   };
   const shown = tried ? problems : [];
   return (
-    <EditorDrawer open onClose={onClose} dirty={dirty} title={field ? `Edit ${field.label}` : 'Add custom field'} subtitle="Shown under Additional details on each person's record." errors={shown} saving={busy === 'save'} failed={error} saveLabel={field ? 'Save' : 'Add field'} onSave={save}>
+    <EditorDrawer open onClose={onClose} dirty={dirty} title={field ? `Edit ${field.label}` : 'Add custom field'} subtitle={ENTITY_WHERE[entity]} errors={shown} saving={busy === 'save'} failed={error} saveLabel={field ? 'Save' : 'Add field'} onSave={save}>
       <FormField id="cf-label" label="Name" required error={shown.find((p) => p.fieldId === 'cf-label')?.message}>
         <TextField value={d.label} onChange={(v) => set({ label: v })} maxLength={200} />
       </FormField>
@@ -160,22 +179,31 @@ function FieldEditor({ field, onClose, onSave }: { field: EmployeeFieldDef | nul
           <TextArea value={d.options} onChange={(v) => set({ options: v })} rows={5} />
         </FormField>
       )}
-      <FormField id="cf-class" label="Who can see it" helper={CLASS_HELP[d.dataClass]}>
-        <Segment label="Who can see it" value={d.dataClass} onChange={(v) => set({ dataClass: v })} options={(Object.keys(CLASS_LABEL) as DataClass[]).map((c) => ({ value: c, label: CLASS_LABEL[c] }))} />
-      </FormField>
+      {entity === 'employee' ? (
+        <FormField id="cf-class" label="Who can see it" helper={CLASS_HELP[d.dataClass]}>
+          <Segment label="Who can see it" value={d.dataClass} onChange={(v) => set({ dataClass: v })} options={(Object.keys(CLASS_LABEL) as DataClass[]).map((c) => ({ value: c, label: CLASS_LABEL[c] }))} />
+        </FormField>
+      ) : (
+        <>
+          <Checkbox checked={d.required} onChange={(v) => set({ required: v })} label="Must be filled in" />
+          {entity === 'candidate' && <Checkbox checked={d.showOnApply} onChange={(v) => set({ showOnApply: v })} label="Ask on the application form" description="Applicants answer it on the careers page." />}
+        </>
+      )}
     </EditorDrawer>
   );
 }
 
-export function EmployeeFieldsScreen({ state, onRetry, fields, canManage, onCreate, onUpdate, onArchive }: EmployeeFieldsScreenProps) {
+export function EmployeeFieldsScreen({ state, onRetry, fields, canManage, onCreate, onUpdate, onArchive, entity = 'employee', onEntity }: EmployeeFieldsScreenProps) {
   const [editing, setEditing] = useState<EmployeeFieldDef | 'new' | null>(null);
   const [removing, setRemoving] = useState<EmployeeFieldDef | null>(null);
   const columns: TableColumn<EmployeeFieldDef>[] = [
     { key: 'label', header: 'Field', value: (f) => f.label, render: (f) => <Text weight="medium">{f.label}</Text>, hideable: false },
     { key: 'type', header: 'Type', value: (f) => TYPE_LABEL[f.fieldType] },
-    { key: 'class', header: 'Sensitivity', value: (f) => CLASS_LABEL[f.dataClass], render: (f) => <ClassBadge cls={CLASS_LABEL[f.dataClass]} /> },
+    ...(entity === 'employee' ? [{ key: 'class', header: 'Sensitivity', value: (f: EmployeeFieldDef) => CLASS_LABEL[f.dataClass], render: (f: EmployeeFieldDef) => <ClassBadge cls={CLASS_LABEL[f.dataClass]} /> }] : []),
     { key: 'options', header: 'Choices', value: (f) => (f.options ?? []).join(', '), render: (f) => (f.options?.length ? f.options.join(', ') : <Text tone="secondary">—</Text>) },
-    { key: 'self', header: 'Employee can edit', value: (f) => (f.dataClass === 'personal' ? 'Yes' : 'No') },
+    ...(entity === 'employee'
+      ? [{ key: 'self', header: 'Employee can edit', value: (f: EmployeeFieldDef) => (f.dataClass === 'personal' ? 'Yes' : 'No') }]
+      : [{ key: 'required', header: 'Must be filled in', value: (f: EmployeeFieldDef) => (f.required ? 'Yes' : 'No') }, ...(entity === 'candidate' ? [{ key: 'apply', header: 'On the application form', value: (f: EmployeeFieldDef) => (f.showOnApply ? 'Yes' : 'No') }] : [])]),
     ...(canManage
       ? [
           {
@@ -200,13 +228,14 @@ export function EmployeeFieldsScreen({ state, onRetry, fields, canManage, onCrea
       group="People & Access"
       crumb="Custom fields"
       title="Custom fields"
-      description="Fields you add to the employee record. Each says how private it is: who sees it and who can change it."
+      description="Fields you add to employee, candidate and job records. An employee field says how private it is: who sees it and who can change it."
       state={state}
       onRetry={onRetry}
       what="custom fields"
       actions={canManage ? <Button variant="primary" onClick={() => setEditing('new')}>Add custom field</Button> : undefined}
     >
-      <Card title="Employee record fields">
+      {onEntity && <Segment label="Fields for" value={entity} onChange={onEntity} options={(Object.keys(ENTITY_LABEL) as FieldEntity[]).map((e) => ({ value: e, label: ENTITY_LABEL[e] }))} />}
+      <Card title={ENTITY_TITLE[entity]}>
         {state !== 'ready' ? (
           <Skeleton height={160} />
         ) : (
@@ -215,12 +244,14 @@ export function EmployeeFieldsScreen({ state, onRetry, fields, canManage, onCrea
       </Card>
       {editing && (
         <FieldEditor
+          key={`${entity}-${editing === 'new' ? 'new' : editing.id}`}
+          entity={entity}
           field={editing === 'new' ? null : editing}
           onClose={() => setEditing(null)}
           onSave={(d) =>
             editing === 'new'
-              ? onCreate({ label: d.label.trim(), fieldType: d.fieldType, dataClass: d.dataClass, options: d.fieldType === 'select' ? options(d.options) : null })
-              : onUpdate(editing.id, { label: d.label.trim(), dataClass: d.dataClass, options: editing.fieldType === 'select' ? options(d.options) : null })
+              ? onCreate({ label: d.label.trim(), fieldType: d.fieldType, dataClass: d.dataClass, options: d.fieldType === 'select' ? options(d.options) : null, ...(entity === 'employee' ? {} : { required: d.required, ...(entity === 'candidate' ? { showOnApply: d.showOnApply } : {}) }) })
+              : onUpdate(editing.id, { label: d.label.trim(), dataClass: d.dataClass, options: editing.fieldType === 'select' ? options(d.options) : null, ...(entity === 'employee' ? {} : { required: d.required, ...(entity === 'candidate' ? { showOnApply: d.showOnApply } : {}) }) })
           }
         />
       )}
@@ -228,7 +259,7 @@ export function EmployeeFieldsScreen({ state, onRetry, fields, canManage, onCrea
         open={Boolean(removing)}
         onOpenChange={(o) => !o && setRemoving(null)}
         title={`Remove custom field ${removing?.label ?? ''}?`}
-        consequence="It leaves every person's record. Values already saved are kept in the history but no longer shown."
+        consequence={entity === 'employee' ? "It leaves every person's record. Values already saved are kept in the history but no longer shown." : `It leaves every ${entity} record and form. Values already saved are kept but no longer shown.`}
         confirmLabel="Remove field"
         destructive
         onConfirm={async () => {

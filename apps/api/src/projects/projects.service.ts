@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { allocatedMinutes, attendanceMismatch } from './capacity';
+import { allocatedMinutes, attendanceMismatch, rangeFrom, teamHours, type HoursRange } from './capacity';
 import { lineApproved } from '../time/line-rules';
 import { mondayOf } from '../time/time-rules';
 import { Prisma } from '@prisma/client';
@@ -33,7 +33,7 @@ const hoursOf = (minutes: number) => Math.round((minutes / 60) * 100) / 100;
 export const BURN_WARN = 'projects.burn.warn_pct';
 export const BURN_OVER = 'projects.burn.over_pct';
 /** Settings 3.11 Projects & timesheets: the company settings P-1 puts behind the designed page. */
-export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words_per_day'] as const;
+export const PROJECT_SETTING_KEYS = ['projects.enabled', 'projects.booking.allocated_only', BURN_WARN, BURN_OVER, 'timesheet.tool_suggestions', 'projects.default_billing_model', 'projects.bulk.within_allocation', 'projects.utilisation.target_pct', 'projects.small_team.limit', 'projects.cost.min_people', 'projects.expenses.enabled', 'projects.billing.am_approval', 'projects.correction.pay_recovery', 'timesheet.note.required', 'timesheet.note.min_words_per_day', 'timesheet.nudge.daily_from', 'timesheet.reminder.cutoff_day', 'timesheet.reminder.time'] as const;
 
 /** Answer 1405: the burn level reached (0, the warning level or the over level) for hours used against the budget. */
 export function burnLevel(usedHours: number, budgetHours: number | null, warn: number, over: number): number {
@@ -234,7 +234,7 @@ export class ProjectsService {
   }
 
   /** One project's workspace: the project, its team, tasks with hours used, milestones and this week's hours. */
-  async get(ctx: TenantContext, user: ScopeUser, id: string) {
+  async get(ctx: TenantContext, user: ScopeUser, id: string, range: HoursRange = 'week') {
     const w = await this.who(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       await this.needOn(tx, c);
@@ -255,8 +255,17 @@ export class ProjectsService {
       };
       const today = todayIst();
       const used = booked.reduce((t, b) => t + b.minutes, 0);
+      // Batch D B3 (answer 2537): approved billable, approved non-billable and booked hours per person over the range.
+      const from = rangeFrom(range, today, mondayOf);
+      const lines = await tx.$queryRaw<Parameters<typeof teamHours>[0]>`
+        SELECT t.employee_id::text, l.billable, l.minutes::int[] AS minutes, l.status, l.approved_minutes::int[] AS approved_minutes, t.status AS sheet
+        FROM timesheet_lines l JOIN timesheets t ON t.organization_id = l.organization_id AND t.id = l.timesheet_id
+        WHERE l.organization_id = ${org}::uuid AND l.project_id = ${id}::uuid AND t.status IN ('pending', 'approved')
+          AND (${from}::date IS NULL OR t.week_start >= ${from}::date)`;
+      const range$ = teamHours(lines, lineApproved);
       return {
         project: this.row(p, w, { clientName: client?.name ?? null, managerName: manager ? manager.name?.trim() || manager.email : null, usedHours: hoursOf(used), people: allocations.filter((a) => !a.toOn || day(a.toOn)! >= today).length }),
+        hoursRange: range,
         can: { edit: w.manage, run: this.canRun(p, w), team: this.canRun(p, w, true), finance: w.finance },
         allocations: allocations.map((a) => ({
           id: a.id,
@@ -268,6 +277,7 @@ export class ProjectsService {
           percent: a.percent,
           tentative: a.tentative,
           bookedHours: hoursOf(booked.filter((b) => b.employee_id === a.employeeId).reduce((t, b) => t + b.minutes, 0)),
+          hours: ((h) => ({ billable: hoursOf(h.billable), nonBillable: hoursOf(h.nonBillable), booked: hoursOf(h.booked) }))(range$.get(a.employeeId) ?? { billable: 0, nonBillable: 0, booked: 0 }),
           version: a.version,
         })),
         tasks: tasks.map((t) => ({ id: t.id, name: t.name, budgetHours: num(t.budgetHours), usedHours: hoursOf(booked.filter((b) => b.activity === t.name).reduce((s, b) => s + b.minutes, 0)), billable: t.billable, active: t.active })),

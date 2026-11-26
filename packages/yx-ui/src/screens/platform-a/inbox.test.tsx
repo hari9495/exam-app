@@ -180,6 +180,112 @@ describe('PLT-04 live (the approvals engine)', () => {
     expect(l.onDone).toHaveBeenCalledWith('Approved 1 request. The people who asked are told.');
   });
 
+  // Answer 2503: bulk "Do not approve", one shared reason, the same 100 cap.
+  it('bulk do not approve: no reason is a field error and nothing is sent; then one reason for all, refused ones listed', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live({ onBulkReject: vi.fn(async () => [{ id: 'b', message: 'This approval is already closed.' }]) });
+    render(<ApprovalsInboxScreen waiting={[row('a'), row('b', { requester: 'Meera Iyer', lowRisk: false })]} sent={[]} history={[]} live={l} />);
+    await u.click(screen.getByRole('checkbox', { name: /Arjun/ }));
+    await u.click(screen.getByRole('checkbox', { name: /Meera/ }));
+    // A high-risk one blocks bulk approve, never bulk "Do not approve".
+    expect(screen.getByText(/Only low-risk requests can be approved together/)).toBeInTheDocument();
+    await u.click(screen.getByRole('button', { name: 'Do not approve 2' }));
+    const dialog = (await screen.findByText('Do not approve 2 requests?')).closest('[role="dialog"],[role="alertdialog"]') as HTMLElement;
+    await u.click(within(dialog).getByRole('button', { name: 'Do not approve 2' }));
+    expect(within(dialog).getByText('Say why, so the people who asked know.')).toBeInTheDocument();
+    expect(l.onBulkReject).not.toHaveBeenCalled();
+    await u.type(within(dialog).getByRole('textbox', { name: /Reason/ }), 'Budget is frozen this quarter');
+    await u.click(within(dialog).getByRole('button', { name: 'Do not approve 2' }));
+    await waitFor(() => expect(l.onBulkReject).toHaveBeenCalledWith([expect.objectContaining({ id: 'a' }), expect.objectContaining({ id: 'b' })], 'Budget is frozen this quarter'));
+    expect(await screen.findByText('1 request was not decided')).toBeInTheDocument();
+    expect(l.onDone).toHaveBeenCalledWith('Not approved: 1 request. The people who asked are told why.');
+  });
+
+  it('bulk: more than 100 selected is refused for both; one decided on its own page blocks Do not approve', () => {
+    const many = Array.from({ length: 101 }, (_, i) => row(`r${i}`));
+    render(<ApprovalsInboxScreen waiting={many} sent={[]} history={[]} live={live()} defaultSelected={many.map((r) => r.id)} />);
+    expect(screen.getByText('Choose 100 requests or fewer at a time.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Do not approve 101/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Approve 101/ })).toBeNull();
+  });
+
+  // Answers 2500 to 2502: HR's "Everyone's pending" and reassign (HR, or the approver for their own).
+  const people = [{ id: 'u2', name: 'Ravi Shankar' }, { id: 'u3', name: 'Anita Desai' }];
+  it("Everyone's pending: only with the list; reassign asks who and why (field errors), then moves it", async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const onReassign = vi.fn(async () => undefined);
+    const l = live({ reassign: { people, onFindPeople: vi.fn(), onReassign } });
+    const { unmount } = render(<ApprovalsInboxScreen waiting={[]} sent={[]} history={[]} live={l} />);
+    expect(screen.queryByRole('tab', { name: /Everyone/ })).toBeNull();
+    unmount();
+    render(<ApprovalsInboxScreen waiting={[]} sent={[]} history={[]} everyone={[row('x', { approver: 'Divya Raghunathan' })]} defaultTab="everyone" openId="x" live={l} />);
+    expect(screen.getAllByText(/^Waiting for$/).length).toBeGreaterThan(0);
+    const panel = await screen.findByRole('dialog');
+    // HR is not the approver: no Approve or Do not approve here.
+    expect(within(panel).queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(within(panel).queryByRole('button', { name: 'Do not approve' })).toBeNull();
+    await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
+    await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
+    expect(within(panel).getByText('Choose who approves it instead.')).toBeInTheDocument();
+    expect(within(panel).getByText('Say why you are moving it in at least 10 characters, so both approvers know.')).toBeInTheDocument();
+    expect(onReassign).not.toHaveBeenCalled();
+    await u.click(within(panel).getByRole('combobox', { name: /Reassign to/ }));
+    await u.click(await screen.findByRole('option', { name: /Anita Desai/ }));
+    // Answer 2525: 9 characters are not enough.
+    await u.type(within(panel).getByRole('textbox', { name: /Reason/ }), 'Away now.');
+    await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
+    expect(within(panel).getByText(/at least 10 characters/)).toBeInTheDocument();
+    expect(onReassign).not.toHaveBeenCalled();
+    await u.clear(within(panel).getByRole('textbox', { name: /Reason/ }));
+    await u.type(within(panel).getByRole('textbox', { name: /Reason/ }), 'Divya is on long leave');
+    await u.click(within(panel).getByRole('button', { name: 'Reassign' }));
+    await waitFor(() => expect(onReassign).toHaveBeenCalledWith(expect.objectContaining({ id: 'x' }), 'u3', 'Divya is on long leave'));
+    expect(l.onDone).toHaveBeenCalledWith('Reassigned to Anita Desai: Laptop x. Both approvers are told.');
+  });
+
+  it('the approver can reassign their own; with no reassign set up there is no button', async () => {
+    const { unmount } = render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={live({ reassign: { people, onFindPeople: vi.fn(), onReassign: vi.fn() } })} />);
+    expect(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Reassign' })).toBeInTheDocument();
+    unmount();
+    render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={live()} />);
+    expect(within(await screen.findByRole('dialog')).queryByRole('button', { name: 'Reassign' })).toBeNull();
+  });
+
+  // Answer 2504: the three-column desk at 1440 px or wider; the list and drawer below that.
+  it('desk: kinds in a column, the list, and the request in the third column (no drawer); deciding works there', async () => {
+    const u = userEvent.setup({ pointerEventsCheck: 0 });
+    const l = live();
+    render(<ApprovalsInboxScreen waiting={[row('a'), row('b', { type: 'Leave', requester: 'Meera Iyer' })]} sent={[]} history={[]} live={l} desk />);
+    const kinds = screen.getByRole('radiogroup', { name: 'Kind of request' });
+    expect(kinds).toHaveAttribute('aria-orientation', 'vertical');
+    expect(within(screen.getByRole('complementary', { name: 'The request' })).getByText('Choose a request.')).toBeInTheDocument();
+    await u.click(within(kinds).getByRole('radio', { name: 'Leave · 1' }));
+    expect(screen.queryByText('Laptop a')).toBeNull();
+    await u.click(screen.getByText('Laptop b'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const pane = screen.getByRole('complementary', { name: 'The request' });
+    await u.click(within(pane).getByRole('button', { name: 'Approve' }));
+    expect(l.onDecide).toHaveBeenCalledWith(expect.objectContaining({ id: 'b' }), 'approve', '');
+  });
+
+  it('the desk follows the screen: 1440 px or wider only; narrower keeps the drawer', async () => {
+    const real = window.matchMedia;
+    const at = (w: number) => ((q: string) => ({ matches: /min-width: (\d+)px/.test(q) ? w >= Number(/min-width: (\d+)px/.exec(q)![1]) : /max-width: (\d+)px/.test(q) ? w <= Number(/max-width: (\d+)px/.exec(q)![1]) : false, media: q, addEventListener: () => {}, removeEventListener: () => {} })) as unknown as typeof window.matchMedia;
+    try {
+      window.matchMedia = at(1440);
+      const { unmount } = render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={live()} />);
+      expect(screen.getByRole('complementary', { name: 'The request' })).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      unmount();
+      window.matchMedia = at(1439);
+      render(<ApprovalsInboxScreen waiting={[row('a')]} sent={[]} history={[]} openId="a" live={live()} />);
+      expect(screen.queryByRole('complementary', { name: 'The request' })).toBeNull();
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    } finally {
+      window.matchMedia = real;
+    }
+  });
+
   it('a request decided on its own page links there; Set up delegation opens When I am away', async () => {
     const u = userEvent.setup({ pointerEventsCheck: 0 });
     render(<ApprovalsInboxScreen waiting={[row('p', { lowRisk: false, decideAt: '/yx/payroll/reopen-requests' })]} sent={[]} history={[]} openId="p" live={live()} />);

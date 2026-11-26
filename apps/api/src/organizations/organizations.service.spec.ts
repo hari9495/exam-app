@@ -14,12 +14,9 @@ jest.mock('openai', () => jest.fn().mockImplementation(() => ({ chat: { completi
 import { Test } from '@nestjs/testing';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { createHash } from 'crypto';
-import { validate } from 'class-validator';
-import { plainToInstance } from 'class-transformer';
 import { OrganizationsService } from './organizations.service';
 import { PrismaService, TenantPrismaService, AuditService, OrgSecretsCryptoService, BlobStorageService } from '@exam-platform/shared';
 import { EmailService } from '../email/email.service';
-import { UpdateBusinessHoursDto } from './dto/update-business-hours.dto';
 
 describe('OrganizationsService', () => {
   let service: OrganizationsService;
@@ -772,7 +769,7 @@ describe('OrganizationsService', () => {
       expect(prisma.organization.update).toHaveBeenCalledWith({ where: { id: 'org-1' }, data: { primaryColor: '#1a73e8' } });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
-        { actorUserId: 'user-1', action: 'organization.branding_updated', entityType: 'organization', entityId: 'org-1' },
+        expect.objectContaining({ actorUserId: 'user-1', action: 'organization.branding_updated', entityType: 'organization', entityId: 'org-1', metadata: expect.objectContaining({ before: null }) }),
       );
       expect(result).toEqual({ name: 'Acme Corp', logoUrl: null, primaryColor: '#1a73e8', accentColor: null });
     });
@@ -832,7 +829,8 @@ describe('OrganizationsService', () => {
   });
 
   describe('uploadLogo', () => {
-    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
+    // A real PNG header: the type is read from the bytes (answer 2422).
+    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001080600000000', 'hex') } as Express.Multer.File;
 
     beforeEach(() => {
       blobStorage.upload.mockReset().mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png');
@@ -855,7 +853,7 @@ describe('OrganizationsService', () => {
       });
       expect(audit.record).toHaveBeenCalledWith(
         { organizationId: 'org-1', isSuperAdmin: false },
-        { actorUserId: 'user-1', action: 'organization.logo_updated', entityType: 'organization', entityId: 'org-1' },
+        { actorUserId: 'user-1', action: 'organization.logo_updated', entityType: 'organization', entityId: 'org-1', metadata: { before: null, after: 'https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png' } },
       );
       expect(result.logoUrl).toBe('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/logos/org-1.png');
     });
@@ -864,6 +862,14 @@ describe('OrganizationsService', () => {
       const badFile = { mimetype: 'application/pdf', size: 1024, buffer: Buffer.from('x') } as Express.Multer.File;
 
       await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', badFile)).rejects.toThrow(BadRequestException);
+      expect(blobStorage.upload).not.toHaveBeenCalled();
+    });
+
+    it('refuses an SVG, or a file whose bytes are not an image whatever the browser called it', async () => {
+      const svg = { mimetype: 'image/svg+xml', size: 60, buffer: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>') } as Express.Multer.File;
+      const html = { mimetype: 'image/png', size: 20, buffer: Buffer.from('<html><body>hi</body></html>') } as Express.Multer.File;
+      await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', svg)).rejects.toThrow('Logo must be a PNG or JPEG image');
+      await expect(service.uploadLogo({ organizationId: 'org-1', isSuperAdmin: false }, 'user-1', html)).rejects.toThrow('Logo must be a PNG or JPEG image');
       expect(blobStorage.upload).not.toHaveBeenCalled();
     });
 
@@ -989,7 +995,7 @@ describe('OrganizationsService', () => {
   });
 
   describe('uploadCareersBanner', () => {
-    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('fake-png-bytes') } as Express.Multer.File;
+    const pngFile = { mimetype: 'image/png', size: 1024, buffer: Buffer.from('89504e470d0a1a0a0000000d494844520000000100000001080600000000', 'hex') } as Express.Multer.File;
 
     beforeEach(() => {
       blobStorage.upload.mockReset().mockResolvedValue('https://sfstoragepoc.blob.core.windows.net/ptc-vss-sf-interview-storage-container/careers-banners/org-1.png');
@@ -1820,97 +1826,6 @@ describe('OrganizationsService', () => {
     });
   });
 
-  describe('getBusinessHours', () => {
-    it('returns the parsed businessHours + holidays for the org', async () => {
-      const businessHours = {
-        timeZone: 'America/New_York',
-        days: {
-          mon: { enabled: true, open: '09:00', close: '17:00' },
-          tue: { enabled: true, open: '09:00', close: '17:00' },
-          wed: { enabled: true, open: '09:00', close: '17:00' },
-          thu: { enabled: true, open: '09:00', close: '17:00' },
-          fri: { enabled: true, open: '09:00', close: '17:00' },
-          sat: { enabled: false, open: '09:00', close: '17:00' },
-          sun: { enabled: false, open: '09:00', close: '17:00' },
-        },
-      };
-      const holidays = [{ date: '2026-12-25', name: 'Christmas' }];
-      prisma.organization.findUnique.mockResolvedValue({
-        businessHoursJson: JSON.stringify(businessHours),
-        holidaysJson: JSON.stringify(holidays),
-      });
-
-      const result = await service.getBusinessHours({ organizationId: 'org-1', isSuperAdmin: false });
-
-      expect(result).toEqual({ businessHours, holidays });
-      expect(prisma.organization.findUnique).toHaveBeenCalledWith({
-        where: { id: 'org-1' },
-        select: { businessHoursJson: true, holidaysJson: true },
-      });
-    });
-
-    it('returns businessHours:null and holidays:[] when the columns are unset', async () => {
-      prisma.organization.findUnique.mockResolvedValue({ businessHoursJson: null, holidaysJson: null });
-
-      const result = await service.getBusinessHours({ organizationId: 'org-1', isSuperAdmin: false });
-
-      expect(result).toEqual({ businessHours: null, holidays: [] });
-    });
-
-    it('throws BadRequestException when the caller has no organization context', async () => {
-      await expect(
-        service.getBusinessHours({ organizationId: null, isSuperAdmin: true }),
-      ).rejects.toThrow(BadRequestException);
-      expect(prisma.organization.findUnique).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('updateBusinessHours', () => {
-    const context = { organizationId: 'org-1', isSuperAdmin: false };
-    const businessHours = {
-      timeZone: 'UTC',
-      days: {
-        mon: { enabled: true, open: '09:00', close: '17:00' },
-        tue: { enabled: true, open: '09:00', close: '17:00' },
-        wed: { enabled: true, open: '09:00', close: '17:00' },
-        thu: { enabled: true, open: '09:00', close: '17:00' },
-        fri: { enabled: true, open: '09:00', close: '17:00' },
-        sat: { enabled: false, open: '09:00', close: '17:00' },
-        sun: { enabled: false, open: '09:00', close: '17:00' },
-      },
-    };
-    const holidays = [{ date: '2026-01-01', name: "New Year's Day" }];
-
-    it('persists both columns as JSON, audits, and round-trips the parsed value', async () => {
-      prisma.organization.update.mockResolvedValue({
-        businessHoursJson: JSON.stringify(businessHours),
-        holidaysJson: JSON.stringify(holidays),
-      });
-
-      const result = await service.updateBusinessHours(context, 'user-1', { businessHours, holidays });
-
-      expect(prisma.organization.update).toHaveBeenCalledWith({
-        where: { id: 'org-1' },
-        data: { businessHoursJson: JSON.stringify(businessHours), holidaysJson: JSON.stringify(holidays) },
-        select: { businessHoursJson: true, holidaysJson: true },
-      });
-      expect(audit.record).toHaveBeenCalledWith(
-        context,
-        expect.objectContaining({ actorUserId: 'user-1', action: 'organization.business_hours_updated' }),
-      );
-      expect(result).toEqual({ businessHours, holidays });
-    });
-
-    it('throws BadRequestException when the caller has no organization context', async () => {
-      await expect(
-        service.updateBusinessHours({ organizationId: null, isSuperAdmin: true }, 'user-1', { businessHours, holidays }),
-      ).rejects.toThrow(BadRequestException);
-      expect(prisma.organization.update).not.toHaveBeenCalled();
-    });
-  });
-
-  // Security-critical: getWhatsappConfig must never return a provider's secret
-  // field (authToken/authHeader), for either registered adapter.
   describe('getWhatsappConfig', () => {
     const context = { organizationId: 'org-1', isSuperAdmin: false };
 
@@ -2225,66 +2140,5 @@ describe('OrganizationsService', () => {
       expect(out.providers.find((p) => p.id === 'linkedin')!.configured).toBe(false);
       expect(JSON.stringify(out)).not.toContain('sekret');
     });
-  });
-});
-
-describe('UpdateBusinessHoursDto validation', () => {
-  const validDays = {
-    mon: { enabled: true, open: '09:00', close: '17:00' },
-    tue: { enabled: true, open: '09:00', close: '17:00' },
-    wed: { enabled: true, open: '09:00', close: '17:00' },
-    thu: { enabled: true, open: '09:00', close: '17:00' },
-    fri: { enabled: true, open: '09:00', close: '17:00' },
-    sat: { enabled: false, open: '09:00', close: '17:00' },
-    sun: { enabled: false, open: '09:00', close: '17:00' },
-  };
-
-  it('accepts a well-formed payload', async () => {
-    const dto = plainToInstance(UpdateBusinessHoursDto, {
-      businessHours: { timeZone: 'UTC', days: validDays },
-      holidays: [{ date: '2026-12-25', name: 'Christmas' }],
-    });
-    expect(await validate(dto)).toHaveLength(0);
-  });
-
-  it('rejects a day where open >= close', async () => {
-    const dto = plainToInstance(UpdateBusinessHoursDto, {
-      businessHours: { timeZone: 'UTC', days: { ...validDays, mon: { enabled: true, open: '17:00', close: '09:00' } } },
-      holidays: [],
-    });
-    expect(await validate(dto)).not.toHaveLength(0);
-  });
-
-  it('rejects a payload missing a weekday', async () => {
-    const { sun, ...missingSun } = validDays;
-    const dto = plainToInstance(UpdateBusinessHoursDto, {
-      businessHours: { timeZone: 'UTC', days: missingSun },
-      holidays: [],
-    });
-    expect(await validate(dto)).not.toHaveLength(0);
-  });
-
-  it('rejects an invalid IANA timeZone', async () => {
-    const dto = plainToInstance(UpdateBusinessHoursDto, {
-      businessHours: { timeZone: 'Not/AZone', days: validDays },
-      holidays: [],
-    });
-    expect(await validate(dto)).not.toHaveLength(0);
-  });
-
-  it('rejects a holiday with a malformed date', async () => {
-    const dto = plainToInstance(UpdateBusinessHoursDto, {
-      businessHours: { timeZone: 'UTC', days: validDays },
-      holidays: [{ date: '12/25/2026', name: 'Christmas' }],
-    });
-    expect(await validate(dto)).not.toHaveLength(0);
-  });
-
-  it('rejects more than 100 holidays', async () => {
-    const dto = plainToInstance(UpdateBusinessHoursDto, {
-      businessHours: { timeZone: 'UTC', days: validDays },
-      holidays: Array.from({ length: 101 }, (_, i) => ({ date: '2026-01-01', name: `Holiday ${i}` })),
-    });
-    expect(await validate(dto)).not.toHaveLength(0);
   });
 });

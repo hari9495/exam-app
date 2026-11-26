@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsDateString, IsEmail, IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
 
 // HLP-06 speak-up inputs. Whitelisted by the global ValidationPipe (unknown fields are refused).
 
@@ -59,6 +59,63 @@ export class ReportDto {
   @IsOptional()
   @IsUUID()
   aboutUserId?: string;
+
+  /** Answer 2597 (POSH only): filed on her behalf: her name and the filer's relationship to her (both or neither). */
+  @Opt(150)
+  onBehalfName?: string;
+
+  @Opt(100)
+  onBehalfRelation?: string;
+
+  /** Answer 2597 (POSH only): why it was not filed within the window. */
+  @Opt(1000)
+  lateReason?: string;
+
+  /** Answer 2597 (POSH only): she asks to try conciliation first (never a money settlement). */
+  @IsOptional()
+  @IsBoolean()
+  conciliation?: boolean;
+}
+
+/** Batch G1 answer 2593: an awareness session the Internal Committee held. */
+export class AwarenessSessionDto {
+  /** The workplace committee; left out for the company committee. */
+  @IsOptional()
+  @IsUUID()
+  committeeId?: string;
+
+  @IsDateString({ strict: true })
+  heldOn!: string;
+
+  @Text(3, 200)
+  title!: string;
+
+  @Opt(200)
+  audience?: string;
+
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  attended!: number;
+}
+
+/** Batch G1 answer 2593: the presiding officer moves the annual report on (reviewed, sent to the employer, the District Officer). */
+export class AnnualReportStepDto {
+  @IsOptional()
+  @IsUUID()
+  committeeId?: string;
+
+  @IsInt()
+  @Min(2013)
+  @Max(2100)
+  year!: number;
+
+  @IsIn(['reviewed', 'employer', 'district'])
+  step!: 'reviewed' | 'employer' | 'district';
+
+  /** With "reviewed": the action taken in the year (for example "1 transfer, 1 written warning"). */
+  @Opt(1000)
+  actionTaken?: string;
 }
 
 /** Anonymous filing through the no-login route: the company by its sign-in name. POSH is never anonymous. */
@@ -92,6 +149,21 @@ export class TeamReplyDto {
   body!: string;
 }
 
+/** Answer 2625: change a member on a list (Internal Committee: role, woman, term end; IR team: company or outside lawyer). */
+export class EditMemberDto {
+  @IsOptional()
+  @IsIn(['member', 'presiding', 'external'])
+  role?: 'member' | 'presiding' | 'external';
+
+  @IsOptional()
+  @IsBoolean()
+  woman?: boolean;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  termEndsOn?: string;
+}
+
 export class TeamMemberDto {
   @IsIn(SPEAKUP_TEAMS)
   team!: SpeakupTeam;
@@ -102,4 +174,18 @@ export class TeamMemberDto {
   @IsOptional()
   @IsIn(['member', 'presiding', 'external'])
   role?: 'member' | 'presiding' | 'external';
+
+  /** Answer 2591: Internal Committee only, and required there. */
+  @IsOptional()
+  @IsBoolean()
+  woman?: boolean;
+
+  @IsOptional()
+  @IsDateString({ strict: true })
+  termEndsOn?: string;
+
+  /** Answer 2592: a workplace's own committee (Internal Committee only); left out for the company committee. */
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
 }

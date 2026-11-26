@@ -79,8 +79,11 @@ test('nominate → approve → anonymous answer, held back below three', async (
   await expect(pageOf(mu).getByRole('listitem').filter({ hasText: 'Kiran Joshi' })).toContainText('Proposed');
 
   // Kavya, his manager, approves the list; Kiran is invited.
+  // Answer 2626: the sent list is a task on her Performance home.
   const kv = await signedIn(browser, 'kavya@demo-org.test', PASSWORD);
-  await kv.goto(nominationsUrl);
+  await kv.goto('/yx/performance');
+  await kv.getByRole('listitem').filter({ hasText: 'Murugan Selvam' }).getByRole('link', { name: `Review: Approve 360° reviewers · ${name}` }).click();
+  await kv.waitForURL(nominationsUrl, { timeout: 30_000 });
   await pageOf(kv).getByRole('button', { name: 'Approve list and invite' }).click();
   await expect(pageOf(kv).getByRole('status').filter({ hasText: /^Reviewers invited/ })).toBeVisible({ timeout: 30_000 });
   await expect(pageOf(kv).getByRole('listitem').filter({ hasText: 'Kiran Joshi' })).toContainText('Approved');
@@ -97,6 +100,6 @@ test('nominate → approve → anonymous answer, held back below three', async (
 
   // One answer is fewer than three: it is held back on the review, and Kiran is never named.
   await kv.goto(nominationsUrl.replace(/\/nominations$/, ''));
-  await expect(pageOf(kv).getByRole('status').filter({ hasText: /anonymous responses are held back: fewer than 3 in the group/ })).toBeVisible({ timeout: 30_000 });
+  await expect(pageOf(kv).getByRole('status').filter({ hasText: /^1 anonymous response is held back: fewer than 3 in the group/ })).toBeVisible({ timeout: 30_000 });
   await expect(pageOf(kv).getByText(/Kiran/)).toHaveCount(0);
 });

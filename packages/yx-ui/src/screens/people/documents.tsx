@@ -1387,7 +1387,8 @@ function NewTemplateDrawer({ mode, data, entities, onClose, onStarter, onSpec }:
             <FormField label="Before issue" helper="Approval: the legal entity's signatory approves each letter first.">
               <Segment label="Before issue" value={approval} onChange={setApproval} options={[{ value: 'instant', label: 'Instant' }, { value: 'approval', label: 'Approval' }]} />
             </FormField>
-            <FormField label="The person">
+            {/* Answer 2523: an offer letter's e-sign is set here only (no longer on Settings 6.1 Hiring). */}
+            <FormField label="The person" helper={type === 'offer' ? 'For an offer letter, "Accepts it" means the candidate signs it with a one-time code sent to their email.' : undefined}>
               <Segment label="The person" value={signs} onChange={setSigns} options={[{ value: 'no', label: 'Only receives it' }, { value: 'yes', label: 'Accepts it' }]} />
             </FormField>
             <FormField label="Per person" helper={ONE_PER_PERSON}>

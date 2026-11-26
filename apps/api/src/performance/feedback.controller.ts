@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
@@ -10,6 +10,8 @@ import { PUBLIC_API_THROTTLE } from '../rate-limit-tiers';
 import type { ScopeUser } from '../access/scope';
 import { ActionDto, AgendaDto, DoneDto, FeedbackDto, FeedbackListDto, FeedbackRequestDto, OneOnOneDto, OneOnOneUpdateDto, PrivateNoteDto, SealDto } from './dto';
 import { PerformanceFeedbackService } from './feedback.service';
+import { PerformancePersonNotesService } from './person-notes.service';
+import { NewPersonNoteDto, PersonNoteDto, PersonNotesQueryDto } from './dto';
 
 // Performance batch PM3 (M06-BUILD-DESIGN §19 "Feedback", "1:1s"). Feedback and 1:1s are open to every employee; the
 // service decides who sees what (the two people of a 1:1; the recipient, giver and manager chain of feedback).
@@ -17,7 +19,32 @@ import { PerformanceFeedbackService } from './feedback.service';
 @Controller('performance')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class PerformanceFeedbackController {
-  constructor(private readonly svc: PerformanceFeedbackService) {}
+  constructor(
+    private readonly svc: PerformanceFeedbackService,
+    private readonly notes: PerformancePersonNotesService,
+  ) {}
+
+  // Batch F item 32 (answer 2577): my private notes about a colleague (the author alone, also in the database).
+  @Get('notes')
+  myNotes(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: PersonNotesQueryDto) {
+    return this.notes.list(ctx, this.user(req), q.employeeId);
+  }
+
+  @Post('notes')
+  @Throttle(PUBLIC_API_THROTTLE)
+  addNote(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: NewPersonNoteDto) {
+    return this.notes.add(ctx, this.user(req), dto.employeeId, dto.text);
+  }
+
+  @Put('notes/:id')
+  editNote(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: PersonNoteDto) {
+    return this.notes.update(ctx, this.user(req), id, dto.text);
+  }
+
+  @Delete('notes/:id')
+  deleteNote(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.notes.remove(ctx, this.user(req), id);
+  }
 
   private user(req: Request) {
     return req.user as ScopeUser;

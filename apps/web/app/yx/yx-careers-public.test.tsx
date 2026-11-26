@@ -177,6 +177,14 @@ describe('Candidate pages outside the app (decision 10)', () => {
     await waitFor(() => expect(calls.find((c) => c.url.endsWith('/offers/of2/respond'))?.body).toEqual({ action: 'accept', code: '654321', disclosureAccepted: true }));
   });
 
+  it('M10 D4: an offer issued as a company letter shows its reference and downloads the issued letter by the link', async () => {
+    (useParams as jest.Mock).mockReturnValue({ token: 'of4' });
+    mockFetch({ 'GET /offers/of4': { body: { jobTitle: 'QA Chemist', orgName: 'Kaveri Foods', compensation: '₹6,00,000 a year', startDate: '2026-12-01T00:00:00.000Z', expiresAt: '2099-12-01T00:00:00.000Z', status: 'sent', pdfUrl: null, esign: true, letter: { referenceNo: 'KF/OFR/2026/000012' } } } });
+    wrap(<YxOfferPage />);
+    expect(await screen.findByText('KF/OFR/2026/000012')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Download the offer letter' }).getAttribute('href')).toMatch(/\/public\/offers\/of4\/letter$/);
+  });
+
   it('interview: confirms the chosen proposed time', async () => {
     (useParams as jest.Mock).mockReturnValue({ token: 'iv1' });
     mockFetch({

@@ -17,14 +17,14 @@ import { DatePicker } from '../../components/date';
 import { Checkbox, RadioGroup, Switch } from '../../components/choice';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/menu';
 import { Icon } from '../../components/foundations';
-import { useNarrow } from '../../components/stepper';
+import { useMinWidth, useNarrow } from '../../components/stepper';
 import type { TableColumn } from '../../components/table';
 import { formatDate, formatINR } from '../../lib/format';
 import { dayLabel } from '../../components/notify';
 import { timeOf } from '../../lib/dates';
 import { DesktopFrame, PhoneFrame } from '../_kit/frames';
 import { HOLIDAYS_2026, ME, TODAY } from '../_kit/data';
-import { ListPage, bulkApprovable, homePanel, leaveEffect, toneFor, validateDelegation } from './platform-kit';
+import { ListPage, bulkApprovable, bulkNotApprovable, homePanel, leaveEffect, toneFor, validateDelegation } from './platform-kit';
 import { PEOPLE, type ApprovalRow, type MyRequest, type NotifCategory, type PlatformNotification } from './platform-data';
 
 /* ================================================================ PLT-03 Notifications inbox */
@@ -374,7 +374,7 @@ export function approvalKinds(rows: { type: string }[]): { kind: string; count: 
   return [...by.entries()].map(([kind, count]) => ({ kind, count })).sort((a, b) => b.count - a.count || a.kind.localeCompare(b.kind));
 }
 
-export type ApprovalTab = 'waiting' | 'delegated' | 'sent' | 'history';
+export type ApprovalTab = 'waiting' | 'delegated' | 'sent' | 'history' | 'everyone';
 
 const APPROVAL_TYPES = ['Leave', 'Expense', 'Timesheet', 'Regularisation', 'Bank change', 'Access request', 'Offer'];
 
@@ -427,6 +427,13 @@ const approvalColumns = (withStatus: boolean, today = TODAY, live = false): Tabl
   return withStatus ? [...base, { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: (v) => toneFor(v) }] : base;
 };
 
+/** Answer 2500: everyone's pending, with who holds each one now. */
+const everyoneColumns = (today: Date, live: boolean): TableColumn<ApprovalRow>[] => {
+  const base = approvalColumnsBase(today).filter((c) => !live || c.key !== 'policy');
+  const at = base.findIndex((c) => c.key === 'due');
+  return [...base.slice(0, at), { key: 'approver', header: 'Waiting for', type: 'person', value: (r) => r.approver ?? '', person: (r) => ({ name: r.approver ?? '', secondary: r.onBehalfOf ? `for ${r.onBehalfOf}` : r.step }), width: 190 }, ...base.slice(at)];
+};
+
 function approvalSteps(r: ApprovalRow): ApprovalStep[] {
   if (r.timeline) return r.timeline;
   return [
@@ -456,12 +463,21 @@ const LIVE_REJECT = { title: 'Do not approve this request?', field: 'Reason', co
 /** Live send back (founder 30 Oct 2026): the person changes the request and sends it again as a new one. */
 const LIVE_SENDBACK = { title: 'Send back for changes', field: 'What to change', confirm: 'Send back', done: 'Sent back for changes' };
 
-function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone: (text: string) => void, actionable: boolean, live?: { decide: LiveDecide; today: Date }) {
+/** Answers 2501 / 2502: move an open approval to someone else (its holder, or HR from "Everyone's pending"). */
+export interface LiveReassign {
+  /** People matching the last search (the server checks the chosen one again). */
+  people: PersonOption[];
+  onFindPeople: (q: string) => void;
+  onReassign: (row: ApprovalRow, toUserId: string, reason: string) => Promise<unknown>;
+}
+type LiveDecision = { decide: LiveDecide; today: Date; reassign?: LiveReassign; onlyReassign?: boolean };
+
+function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone: (text: string) => void, actionable: boolean, live?: LiveDecision) {
   const [decision, setDecision] = useState<Decision>(defaultDecision);
   const [reason, setReason] = useState('');
   const [to, setTo] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
-  const [busy, setBusy] = useState<'approve' | 'reject' | 'send_back' | null>(null);
+  const [busy, setBusy] = useState<'approve' | 'reject' | 'send_back' | 'reassign' | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const pick = (d: Decision) => {
     setDecision(d);
@@ -482,17 +498,39 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
       setBusy(null);
     }
   };
+  const people = live?.reassign?.people ?? PEOPLE.filter((p) => p.id !== 'e1');
+  const moveTo = async () => {
+    if (!live?.reassign || !to) return;
+    setBusy('reassign');
+    setFailed(null);
+    try {
+      await live.reassign.onReassign(row, to, reason.trim());
+      onDone(`Reassigned to ${people.find((p) => p.id === to)?.name ?? 'them'}`);
+    } catch (e) {
+      setFailed(e instanceof Error && e.message ? e.message : 'That did not work. Try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
   const confirm = () => {
     setTried(true);
     // Never a disabled button: pressed too early, the field says what is missing and takes focus.
-    if (decision === 'reassign' ? !to : reason.trim().length < (live ? 1 : 5)) {
+    if (decision === 'reassign') {
+      if (!to || reason.trim().length < 10) {
+        setTimeout(() => document.getElementById(!to ? 'ap-reassign-to' : 'ap-reassign-reason')?.focus(), 0);
+        return;
+      }
+      if (live) return void moveTo();
+      return onDone(DECISION_TEXT.reassign.done);
+    }
+    if (reason.trim().length < (live ? 1 : 5)) {
       setTimeout(() => document.getElementById('ap-reason')?.focus(), 0);
       return;
     }
     if (live) return void send(decision === 'sendback' ? 'send_back' : 'reject');
     onDone(decision ? DECISION_TEXT[decision].done : 'Approved');
   };
-  const text = decision ? (live ? (decision === 'sendback' ? LIVE_SENDBACK : LIVE_REJECT) : DECISION_TEXT[decision]) : null;
+  const text = decision ? (live ? (decision === 'sendback' ? LIVE_SENDBACK : decision === 'reassign' ? DECISION_TEXT.reassign : LIVE_REJECT) : DECISION_TEXT[decision]) : null;
   const body = (
     <div className="yx-plt-stack">
       {failed && (
@@ -549,9 +587,14 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
       {decision && text && (
         <Card title={text.title}>
           {decision === 'reassign' ? (
-            <FormField label={text.field} required error={tried && !to ? 'Choose an eligible approver.' : null} helper="Only people who can approve this request type are listed.">
-              <PersonPicker people={PEOPLE.filter((p) => p.id !== 'e1')} value={to} onChange={setTo} />
-            </FormField>
+            <div className="yx-plt-stack">
+              <FormField id="ap-reassign-to" label={text.field} required error={tried && !to ? 'Choose who approves it instead.' : null} helper="Never the person who asked. YukthiX checks they can approve this step.">
+                <PersonPicker people={people} value={to} onChange={setTo} onSearchChange={live?.reassign?.onFindPeople} />
+              </FormField>
+              <FormField id="ap-reassign-reason" label="Reason" required error={tried && reason.trim().length < 10 ? 'Say why you are moving it in at least 10 characters, so both approvers know.' : null} helper="Both approvers see it; it is kept in the request's history.">
+                <TextArea value={reason} onChange={setReason} rows={2} />
+              </FormField>
+            </div>
           ) : (
             <FormField
               id="ap-reason"
@@ -578,13 +621,23 @@ function useApprovalDecision(row: ApprovalRow, defaultDecision: Decision, onDone
   ) : decision && text ? (
     <div className="yx-plt-decide">
       <Button onClick={() => pick(null)}>Cancel</Button>
-      <Button variant={decision === 'reject' ? 'danger' : 'primary'} loading={busy === 'reject' || busy === 'send_back'} onClick={confirm}>
+      <Button variant={decision === 'reject' ? 'danger' : 'primary'} loading={busy === 'reject' || busy === 'send_back' || busy === 'reassign'} onClick={confirm}>
         {text.confirm}
       </Button>
     </div>
-  ) : live ? (
-    // Live: the engine approves, does not approve, or sends back (where the type has it); ask and reassign wait for their backend.
+  ) : live?.onlyReassign || (!live && row.approver) ? (
+    // "Everyone's pending" (HR): HR is not the approver, so moving it is the only action.
     <div className="yx-plt-decide">
+      <span className="yx-plt-muted">{row.approver ? `Waiting for ${row.approver}` : 'Waiting for its approver'}</span>
+      <span className="yx-plt-decide__gap" />
+      <Button variant="primary" onClick={() => pick('reassign')}>
+        Reassign
+      </Button>
+    </div>
+  ) : live ? (
+    // Live: the engine approves, does not approve, sends back (where the type has it) or moves it to someone else.
+    <div className="yx-plt-decide">
+      {live.reassign && <Button onClick={() => pick('reassign')}>Reassign</Button>}
       <span className="yx-plt-decide__gap" />
       {row.canSendBack && <Button onClick={() => pick('sendback')}>Send back</Button>}
       <Button onClick={() => pick('reject')}>Do not approve</Button>
@@ -633,7 +686,7 @@ function ApprovalDrawer({ row, list, onMove, onClose, defaultDecision, onDone, a
   defaultDecision: Decision;
   onDone: (text: string) => void;
   actionable: boolean;
-  live?: { decide: LiveDecide; today: Date };
+  live?: LiveDecision;
 }) {
   const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, actionable, live);
   const i = list.findIndex((r) => r.id === row.id);
@@ -669,6 +722,22 @@ function ApprovalDrawer({ row, list, onMove, onClose, defaultDecision, onDone, a
   );
 }
 
+/** Answer 2504: the open request in the desk's third column (the drawer's content, without the overlay). */
+function ApprovalPane({ row, defaultDecision, onDone, actionable, live }: { row: ApprovalRow; defaultDecision: Decision; onDone: (text: string) => void; actionable: boolean; live?: LiveDecision }) {
+  const { body, footer } = useApprovalDecision(row, defaultDecision, onDone, actionable, live);
+  return (
+    <Card title={`${row.summary} · ${row.requester}`}>
+      <div className="yx-plt-stack">
+        <span className="yx-plt-muted">
+          {row.ref} · {row.detail}
+        </span>
+        {body}
+        {footer}
+      </div>
+    </Card>
+  );
+}
+
 /**
  * PLT-04 live (P03 approvals engine). The page maps the engine's rows (waiting rows are task ids; delegated ones carry
  * onBehalfOf; a row with decideAt is decided on its own page) and turns "done" texts into toasts.
@@ -680,12 +749,16 @@ export interface LiveApprovals {
   onDecide: (row: ApprovalRow, decision: 'approve' | 'reject' | 'send_back', reason: string) => Promise<unknown>;
   /** Approve several: the server checks each again. Returns the ones it refused, with why. */
   onBulkApprove: (rows: ApprovalRow[]) => Promise<{ id: string; message: string }[]>;
+  /** Answer 2503: do not approve several with one reason every requester sees; the server checks each again. Returns the refused ones. */
+  onBulkReject?: (rows: ApprovalRow[], reason: string) => Promise<{ id: string; message: string }[]>;
   /** "Set up delegation" opens "When I am away": the designed delegation form (PLT-07). */
   delegation: LiveDelegation;
   /** Success messages (toasts). */
   onDone: (text: string) => void;
   /** Shown under the list (approve from chat apps). */
   footer?: ReactNode;
+  /** Answers 2501 / 2502: move an approval to someone else (my own, and everyone's for HR). */
+  reassign?: LiveReassign;
 }
 
 export interface ApprovalsInboxScreenProps {
@@ -697,12 +770,20 @@ export interface ApprovalsInboxScreenProps {
   defaultDecision?: Decision;
   defaultSelected?: string[];
   bulkConfirmOpen?: boolean;
+  /** Answer 2503: the bulk "Do not approve" dialog open for defaultSelected. */
+  bulkRejectOpen?: boolean;
+  /** Answer 2500: everyone's pending approvals (HR with workflow.approvals.oversee); the tab shows only when given. */
+  everyone?: ApprovalRow[];
+  /** Answer 2504: the three-column desk (groups, list, request). By default from the screen: 1440 px or wider. */
+  desk?: boolean;
   state?: 'ready' | 'loading' | 'error';
   live?: LiveApprovals;
 }
 
 // PLT-04 · Approvals inbox (tabs, filters, bulk, side panel). APX-D §1.1 Approvals. Manager page: no company button.
-export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, state = 'ready', live }: ApprovalsInboxScreenProps) {
+export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'waiting', openId, defaultDecision, defaultSelected, bulkConfirmOpen, bulkRejectOpen, everyone, desk: deskProp, state = 'ready', live }: ApprovalsInboxScreenProps) {
+  const wide = useMinWidth(1440);
+  const desk = deskProp ?? wide;
   const [tab, setTab] = useState<string>(defaultTab);
   const [own, setItems] = useState(() => byUrgency(waiting));
   // Live: the rows are the server's; a decided one leaves when the list reloads.
@@ -710,21 +791,25 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const [openDecision, setOpenDecision] = useState<Decision>(null);
   const [confirmIds, setConfirmIds] = useState<string[] | null>(bulkConfirmOpen ? defaultSelected ?? [] : null);
+  const [rejectIds, setRejectIds] = useState<string[] | null>(bulkRejectOpen ? defaultSelected ?? [] : null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejectTried, setRejectTried] = useState(false);
   const [away, setAway] = useState(false);
   const [busyRow, setBusyRow] = useState<string | null>(null);
   const [refused, setRefused] = useState<{ title: string; message: string }[]>([]);
+  const [refusedVerb, setRefusedVerb] = useState<'approved' | 'decided'>('approved');
   const [rowError, setRowError] = useState<string | null>(null);
   const [announce, setAnnounce] = useState('');
   const today = live?.today ?? TODAY;
   const mine = items.filter((r) => !r.onBehalfOf);
   const delegated = items.filter((r) => r.onBehalfOf);
-  const tabRows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : history;
+  const tabRows = tab === 'waiting' ? mine : tab === 'delegated' ? delegated : tab === 'sent' ? sent : tab === 'everyone' ? everyone ?? [] : history;
   // Keka ideas (2026-11): the kinds waiting in this tab, with counts, as one pick-one control (All or one kind).
   const [kind, setKind] = useState<string>('all');
   const kinds = approvalKinds(tabRows);
   const shownKind = kinds.some((k) => k.kind === kind) ? kind : 'all';
   const rows = shownKind === 'all' ? tabRows : tabRows.filter((r) => r.type === shownKind);
-  const current = [...items, ...sent, ...history].find((r) => r.id === open) ?? null;
+  const current = (tab === 'everyone' ? everyone ?? [] : [...items, ...sent, ...history]).find((r) => r.id === open) ?? null;
   const decide = (ids: string[], text: string) => {
     const next = rows.filter((r) => !ids.includes(r.id));
     if (!live) setItems((xs) => xs.filter((x) => !ids.includes(x.id)));
@@ -734,7 +819,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
     setOpen(ids.length === 1 && next.length > 0 ? next[Math.min(at, next.length - 1)].id : null);
     setOpenDecision(null);
   };
-  const doneText = (r: ApprovalRow, text: string) => `${text}: ${r.summary}${r.requester ? `. ${r.requester} is told by email and in their bell.` : '.'}`;
+  const doneText = (r: ApprovalRow, text: string) => (text.startsWith('Reassigned') ? `${text}: ${r.summary}. Both approvers are told.` : `${text}: ${r.summary}${r.requester ? `. ${r.requester} is told by email and in their bell.` : '.'}`);
   const approveRow = async (r: ApprovalRow) => {
     if (!live) return decide([r.id], 'Approved');
     setBusyRow(r.id);
@@ -754,6 +839,21 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
     setOpenDecision(d);
   };
   const actionable = tab === 'waiting' || tab === 'delegated';
+  const closeRow = () => {
+    setOpen(null);
+    setOpenDecision(null);
+  };
+  // The request, in the drawer (below 1440 px) or the desk's third column.
+  const paneProps = (r: ApprovalRow) => ({
+    row: r,
+    defaultDecision: openDecision ?? (r.id === openId ? defaultDecision ?? null : null),
+    onDone: (t: string) => {
+      live?.onDone(doneText(r, t));
+      decide([r.id], t);
+    },
+    actionable: tab === 'everyone' || (actionable && items.some((x) => x.id === r.id)),
+    live: live ? { decide: (d: 'approve' | 'reject' | 'send_back', reason: string) => live.onDecide(r, d, reason), today, reassign: live.reassign, onlyReassign: tab === 'everyone' } : undefined,
+  });
   const overdue = overdueCount(items, today);
   const page = (
       <ListPage
@@ -772,7 +872,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
               </InlineAlert>
             )}
             {refused.length > 0 && (
-              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not approved`} actions={<Button size="sm" onClick={() => setRefused([])}>Dismiss</Button>}>
+              <InlineAlert tone="warning" title={`${refused.length} request${refused.length === 1 ? ' was' : 's were'} not ${refusedVerb}`} actions={<Button size="sm" onClick={() => setRefused([])}>Dismiss</Button>}>
                 <ul className="yx-plt-list">
                   {refused.map((x) => (
                     <li key={x.title}>
@@ -789,11 +889,12 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           { id: 'delegated', label: 'Delegated to me', count: delegated.length },
           { id: 'sent', label: 'Sent by me', count: sent.length },
           { id: 'history', label: 'Team history' },
+          ...(everyone ? [{ id: 'everyone', label: 'Everyone’s pending', count: everyone.length }] : []),
         ]}
         tab={tab}
         onTabChange={setTab}
         beforeTable={
-          kinds.length > 1 ? (
+          !desk && kinds.length > 1 ? (
             <Segment
               label="Kind of request"
               value={shownKind}
@@ -803,7 +904,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
           ) : undefined
         }
         label="Approval requests"
-        columns={approvalColumns(!actionable, today, Boolean(live))}
+        columns={tab === 'everyone' ? everyoneColumns(today, Boolean(live)) : approvalColumns(!actionable, today, Boolean(live))}
         rows={rows}
         getRowId={(r) => r.id}
         filters={[
@@ -823,12 +924,24 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         defaultSelected={defaultSelected}
         bulkActions={(ids) => {
           const check = bulkApprovable(items, ids);
-          return check.ok ? (
-            <Button variant="approve" size="sm" onClick={() => setConfirmIds(ids)}>
-              Approve {ids.length}
-            </Button>
-          ) : (
-            <span className="yx-plt-muted">{check.reason}</span>
+          const no = bulkNotApprovable(items, ids);
+          return (
+            <>
+              {check.ok ? (
+                <Button variant="approve" size="sm" onClick={() => setConfirmIds(ids)}>
+                  Approve {ids.length}
+                </Button>
+              ) : (
+                <span className="yx-plt-muted">{check.reason}</span>
+              )}
+              {no.ok ? (
+                <Button size="sm" onClick={() => setRejectIds(ids)}>
+                  Do not approve {ids.length}
+                </Button>
+              ) : (
+                no.reason !== check.reason && <span className="yx-plt-muted">{no.reason}</span>
+              )}
+            </>
           );
         }}
         rowButtons={
@@ -867,25 +980,7 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
         onRowClick={(r) => openRow(r.id)}
         activeRowId={open}
       >
-        {current && (
-          <ApprovalDrawer
-            key={`${current.id}-${openDecision ?? ''}`}
-            row={current}
-            list={rows}
-            onMove={(id) => openRow(id)}
-            onClose={() => {
-              setOpen(null);
-              setOpenDecision(null);
-            }}
-            defaultDecision={openDecision ?? (current.id === openId ? defaultDecision ?? null : null)}
-            onDone={(t) => {
-              live?.onDone(doneText(current, t));
-              decide([current.id], t);
-            }}
-            actionable={actionable && items.some((x) => x.id === current.id)}
-            live={live ? { decide: (d, reason) => live.onDecide(current, d, reason), today } : undefined}
-          />
-        )}
+        {current && !desk && <ApprovalDrawer key={`${current.id}-${openDecision ?? ''}`} {...paneProps(current)} list={rows} onMove={(id) => openRow(id)} onClose={closeRow} />}
         {confirmIds && (
           <ConfirmDialog
             open
@@ -898,11 +993,49 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
               const picked = items.filter((r) => confirmIds.includes(r.id));
               const failed = await live.onBulkApprove(picked);
               const ok = picked.length - failed.length;
+              setRefusedVerb('approved');
               setRefused(failed.map((f) => ({ title: picked.find((r) => r.id === f.id)?.summary ?? f.id, message: f.message })));
               if (ok) live.onDone(`Approved ${ok} request${ok === 1 ? '' : 's'}. The people who asked are told.`);
               decide(confirmIds, 'Approved');
             }}
           />
+        )}
+        {rejectIds && (
+          <ConfirmDialog
+            open
+            onOpenChange={(o) => {
+              if (o) return;
+              setRejectIds(null);
+              setRejectReason('');
+              setRejectTried(false);
+            }}
+            title={`Do not approve ${rejectIds.length} request${rejectIds.length === 1 ? '' : 's'}?`}
+            consequence="Each request is checked again. Everyone who asked sees the same reason, by email and in their bell."
+            confirmLabel={`Do not approve ${rejectIds.length}`}
+            destructive
+            onConfirm={async () => {
+              setRejectTried(true);
+              // Never a disabled button: pressed without a reason, the field says so and takes focus.
+              if (!rejectReason.trim()) {
+                setTimeout(() => document.getElementById('ap-bulk-reason')?.focus(), 0);
+                return false;
+              }
+              if (!live?.onBulkReject) return decide(rejectIds, 'Not approved');
+              const picked = items.filter((r) => rejectIds.includes(r.id));
+              const failed = await live.onBulkReject(picked, rejectReason.trim());
+              const ok = picked.length - failed.length;
+              setRefusedVerb('decided');
+              setRefused(failed.map((f) => ({ title: picked.find((r) => r.id === f.id)?.summary ?? f.id, message: f.message })));
+              if (ok) live.onDone(`Not approved: ${ok} request${ok === 1 ? '' : 's'}. The people who asked are told why.`);
+              decide(rejectIds, 'Not approved');
+              setRejectReason('');
+              setRejectTried(false);
+            }}
+          >
+            <FormField id="ap-bulk-reason" label="Reason" required helper="Everyone who asked sees this reason." error={rejectTried && !rejectReason.trim() ? 'Say why, so the people who asked know.' : null}>
+              <TextArea value={rejectReason} onChange={setRejectReason} rows={3} />
+            </FormField>
+          </ConfirmDialog>
         )}
         {live && away && (
           <Drawer open onOpenChange={(o) => !o && setAway(false)} title="When I am away" subtitle="Choose who approves requests for you while you are away." size="md">
@@ -913,7 +1046,26 @@ export function ApprovalsInboxScreen({ waiting, sent, history, defaultTab = 'wai
   );
   return (
     <DesktopFrame area="home" panelTitle="Home" panel={homePanel('Approvals', items.length)} scope="none">
-      {page}
+      {desk ? (
+        // Answer 2504: at 1440 px or wider, three columns: kinds of request, the list, and the open request.
+        <div className="yx-plt-desk">
+          <div className="yx-plt-desk__groups">
+            <Segment
+              label="Kind of request"
+              orientation="vertical"
+              value={shownKind}
+              onChange={setKind}
+              options={[{ value: 'all', label: `All · ${tabRows.length}` }, ...kinds.map((k) => ({ value: k.kind, label: `${k.kind} · ${k.count}` }))]}
+            />
+          </div>
+          <div className="yx-plt-desk__list">{page}</div>
+          <aside className="yx-plt-desk__detail" aria-label="The request">
+            {current ? <ApprovalPane key={`${current.id}-${openDecision ?? ''}`} {...paneProps(current)} /> : <EmptyState compact title="Choose a request." description="It opens here, with what to decide." />}
+          </aside>
+        </div>
+      ) : (
+        page
+      )}
       {live?.footer}
     </DesktopFrame>
   );

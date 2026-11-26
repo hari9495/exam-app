@@ -220,6 +220,15 @@ Income tax
 54. [ ] Form 124 landlord-relationship field – not in YukthiX.
 55. [ ] Loan perquisite small-loan exemption (founder answer 2450): YukthiX uses loans totalling **₹20,000** or less (IN.PERQ-LOAN exemptAggregate, Rule 3(7)(i)); confirm whether it is ₹20,000 or **₹2,00,000** for TY 2026-27. It is one rule value; also load the SBI rate per loan type.
 56. [ ] Flexible benefit (FBP) claims under the new regime (founder answer 2461): YukthiX treats them as **taxable** in the new regime; confirm, say which FBP components (if any) stay exempt in the old regime, and where the taxable claims are shown (payslip, Form 16 / Form 130).
+57. [ ] PF ceiling for a mid-month joiner (payroll review R2, answer 2730): YukthiX cuts the ₹25,000 ceiling by the days worked (joins 16 Oct, basic ₹40,000 → PF ₹1,548). Confirm whether the ceiling applies to the wage actually paid for the month without proration (→ ₹2,477).
+58. [ ] Maharashtra professional tax for transgender, non-binary or "prefer not to say" employees (R4): YukthiX charges nil. Confirm whether the women's slab or the general slab applies (gross ₹58,900 → ₹200 under the general slab).
+59. [ ] International workers (R5) and the higher-pension option (R6): confirm PF on the full basic with no ₹25,000 cap for an international worker (basic ₹1,00,000 → ₹12,000), and the EPS share on actual basic for a member with the higher-pension option (→ ₹8,330 a month).
+60. [ ] Employer NPS deduction (F2): confirm the 14% of basic + DA cap on the employer's NPS contribution in each regime for TY 2026-27 (basic ₹6,00,000, employer NPS ₹2,00,000 → allowed ₹84,000).
+61. [ ] September 2026 PF ceiling change (₹15,000 → ₹25,000 from 17 Sep 2026): the whole month at ₹25,000, or split at the 17th (basic ₹30,000: ₹3,000 vs ₹2,360)?
+62. [ ] Minimum-wage check: compare against basic + DA (the wage-code definition), or against gross; and how to treat loss-of-pay months and part months for joiners and leavers.
+63. [ ] Tax rounding (M8): confirm rounding the year's tax to the nearest ₹10 (section 288B) and how monthly TDS is rounded.
+64. [ ] EPS membership (M1): confirm the rule for working out who joins the pension scheme (first joined after 1 Sep 2014 with PF wages above ₹15,000/₹25,000 → no EPS) so YukthiX can set it instead of defaulting to yes.
+65. [ ] Tamil Nadu half-yearly PT for a part half-year, and Madhya Pradesh yearly PT for a part year (joiners and leavers): confirm the basis (actual income for the period vs a projection).
 
 ---
 

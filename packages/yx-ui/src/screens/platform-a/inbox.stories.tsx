@@ -8,6 +8,8 @@ const meta: Meta = { title: 'Screens/Platform/Inbox & requests', parameters: { l
 export default meta;
 type S = StoryObj;
 const phone = { globals: { viewport: { value: 'mobile2', isRotated: false } } };
+// Answer 2500: everyone's pending, as HR sees it (who each one waits for).
+const EVERYONE = APPROVALS.slice(0, 5).map((a, i) => ({ ...a, id: `e${i}`, approver: ['Divya Raghunathan', 'Ravi Shankar', 'Suresh Pillai', 'Divya Raghunathan', 'Anita Desai'][i] }));
 const HISTORY = APPROVALS.slice(0, 4).map((a, i) => ({ ...a, id: `h${i}`, status: (i === 3 ? 'Rejected' : 'Approved') as 'Approved' | 'Rejected' }));
 
 /* PLT-03 */
@@ -25,7 +27,12 @@ export const PLT04Delegated: S = { name: 'PLT-04 · Approvals · delegated to me
 export const PLT04Sent: S = { name: 'PLT-04 · Approvals · sent by me', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} defaultTab="sent" /> };
 export const PLT04History: S = { name: 'PLT-04 · Approvals · team history', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} defaultTab="history" /> };
 export const PLT04Bulk: S = { name: 'PLT-04 · Approvals · bulk approve 2 leave', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} defaultSelected={['a1', 'a2']} bulkConfirmOpen /> };
+export const PLT04BulkReject: S = { name: 'PLT-04 · Approvals · bulk do not approve (one reason for all)', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} defaultSelected={['a1', 'a4']} bulkRejectOpen /> };
 export const PLT04BulkMixed: S = { name: 'PLT-04 · Approvals · bulk blocked (high risk selected)', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} defaultSelected={['a1', 'a4']} /> };
+export const PLT04Everyone: S = { name: 'PLT-04 · Approvals · everyone’s pending (HR)', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} everyone={EVERYONE} defaultTab="everyone" /> };
+export const PLT04EveryoneReassign: S = { name: 'PLT-04 · Approvals · reassign with a reason', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} everyone={EVERYONE} defaultTab="everyone" openId="e1" defaultDecision="reassign" /> };
+export const PLT04Desk: S = { name: 'PLT-04 · Approvals · three-column desk (1440 px or wider)', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} desk openId="a4" /> };
+export const PLT04DeskEmpty: S = { name: 'PLT-04 · Approvals · desk, nothing open yet', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} desk /> };
 export const PLT04Card: S = { name: 'PLT-04 · Approvals · card open (policy flag)', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} openId="a4" /> };
 export const PLT04Reject: S = { name: 'PLT-04 · Approvals · reject with reason', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} openId="a4" defaultDecision="reject" /> };
 export const PLT04SendBack: S = { name: 'PLT-04 · Approvals · send back for changes', render: () => <ApprovalsInboxScreen waiting={APPROVALS} sent={SENT_BY_ME} history={HISTORY} openId="a1" defaultDecision="sendback" /> };

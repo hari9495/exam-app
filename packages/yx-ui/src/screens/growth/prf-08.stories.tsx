@@ -16,6 +16,8 @@ export const Phone: S = { name: 'Phone', globals: PHONE, render: () => <QuickFee
 export const PhoneGive: S = { name: 'Phone · give feedback', globals: PHONE, render: () => <QuickFeedbackScreen {...base} device="phone" composerOpen /> };
 export const Empty: S = { render: () => <QuickFeedbackScreen {...base} received={[]} given={[]} requests={[]} /> };
 export const Ask: S = { name: 'Ask for feedback sheet', render: () => <QuickFeedbackScreen {...base} askOpen /> };
+// Batch F item 32 (answer 2577): the quick-actions rail and private notes (only the author sees them).
+export const PrivateNotes: S = { name: 'Private notes about a colleague', render: () => <QuickFeedbackScreen {...base} notesOpen /> };
 export const LoadError: S = { name: 'Error', render: () => <QuickFeedbackScreen {...base} state="error" /> };
 const sample: LiveQuickFeedback = {
   onRetry: () => {},

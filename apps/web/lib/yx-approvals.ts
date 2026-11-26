@@ -33,7 +33,8 @@ const day = (iso: string) => {
 };
 
 /** A task waiting for me (the row id is the task id). */
-export function waitingRow(t: ApprovalTask): ApprovalRow {
+/** A task row; `mine` false for HR's "Everyone's pending" (the step names who holds it, not "You"). */
+export function waitingRow(t: ApprovalTask, mine = true): ApprovalRow {
   const steps = `step ${t.step.index} of ${t.step.of}: ${t.step.name}`;
   const quorum = t.step.approvers > 1 ? ` (${t.step.need === t.step.approvers ? 'all' : t.step.need} of ${t.step.approvers} approve)` : '';
   return {
@@ -56,9 +57,10 @@ export function waitingRow(t: ApprovalTask): ApprovalRow {
     context: t.summary.map((s) => `${s.label}: ${shown(s.value)}`),
     decideAt: t.decideAt ?? null,
     canSendBack: Boolean(t.canSendBack),
+    ...(t.approver ? { approver: t.approver } : {}),
     timeline: [
       { id: 's', label: t.raisedBy ? `Submitted by ${t.raisedBy} for ${t.requester}` : 'Submitted', status: 'done', approver: t.raisedBy ?? t.requester, at: new Date(t.submittedAt) },
-      { id: 'c', label: `${t.step.name} (step ${t.step.index} of ${t.step.of})`, status: 'current', approver: t.onBehalfOf ? `You (for ${t.onBehalfOf})` : 'You' },
+      { id: 'c', label: `${t.step.name} (step ${t.step.index} of ${t.step.of})`, status: 'current', approver: mine ? (t.onBehalfOf ? `You (for ${t.onBehalfOf})` : 'You') : t.approver || '' },
       ...(t.step.index < t.step.of ? [{ id: 'n', label: `${t.step.of - t.step.index} more step${t.step.of - t.step.index === 1 ? '' : 's'} after this`, status: 'pending' as const }] : []),
     ],
   };

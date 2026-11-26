@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { OrgSecretsCryptoService, TenantPrismaService } from '@exam-platform/shared';
 import { Tx } from '../org-structure/org-structure.service';
@@ -8,6 +8,9 @@ import { DeskActor, SEAT_REQUIRED, activeOn, audit, canLead, canWork, deskSystem
 import { EscalateDto, LinkDto, MergeDto, ResolutionCodeDto, ResolveDto, SideConversationDto, SplitDto, StandaloneTaskDto, TaskDto, TemplateDto, UpdateTaskDto } from './dto';
 import { OPEN_STATES, Ticket, TicketsService } from './tickets.service';
 import { CatalogService, afterTaskChange } from './catalog.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { escapeHtml } from '../notifications/notification-email-render';
+import { businessDaysSince, chaseStep } from './requester-chase';
 
 // SD-1.09 merge, link, parent / child, split, side conversations and trackers (US-B-092, US-G-005, US-G-220);
 // SD-1.10 tasks and checklists, templates, resolution codes, tier escalation, auto-close (US-G-006…008, YX-SD-10…12);
@@ -23,7 +26,10 @@ export class WorkService {
     private readonly tickets: TicketsService,
     private readonly crypto: OrgSecretsCryptoService,
     private readonly catalog: CatalogService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  private readonly logger = new Logger(WorkService.name);
 
   private tx<T>(a: DeskActor, fn: (tx: Tx) => Promise<T>) {
     return this.tenantPrisma.forTenant(a.ctx, fn);
@@ -565,6 +571,70 @@ export class WorkService {
       });
     }
     return closed;
+  }
+
+  // ------------------------------------------------------------------------------------------ requester chase (GLPI 4)
+
+  /**
+   * Batch F GLPI 4 (answer 2571), job every 15 minutes: tickets waiting for the requester (a pending status) on desks
+   * that chase. One reminder a business day (the requester is told, the ticket shows it), at most the desk's number,
+   * then the ticket is solved after the desk's business days with no reply. A requester reply ends the wait.
+   */
+  async chaseRequesters(now = new Date()): Promise<{ chased: number; solved: number }> {
+    const due = await deskSystem(this.tenantPrisma, { organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.$queryRaw<{ id: string; organization_id: string }[]>`
+        SELECT t.id, t.organization_id FROM sd_tickets t JOIN sd_desks d ON d.organization_id = t.organization_id AND d.id = t.desk_id
+        WHERE t.system_state = 'pending' AND d.chase_enabled AND d.status = 'active' AND t.merged_into_id IS NULL
+        ORDER BY t.updated_at LIMIT 500`,
+    );
+    let chased = 0;
+    let solved = 0;
+    for (const r of due) {
+      const out = await deskSystem(this.tenantPrisma, { organizationId: r.organization_id, isSuperAdmin: false }, async (tx) => {
+        const org = r.organization_id;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`sd-chase:${r.id}`}))`;
+        const t = await tx.sdTicket.findFirst({ where: { organizationId: org, id: r.id, systemState: 'pending' } });
+        if (!t) return null;
+        const desk = (await tx.sdDesk.findFirst({ where: { organizationId: org, id: t.deskId } }))!;
+        // Waiting since the ticket last moved into its waiting status.
+        const moved = await tx.sdTicketEvent.findFirst({ where: { organizationId: org, ticketId: t.id, kind: 'status_changed', toValue: t.statusId }, orderBy: { at: 'desc' }, select: { at: true } });
+        const since = moved?.at ?? t.updatedAt;
+        if (await tx.sdTicketMessage.findFirst({ where: { organizationId: org, ticketId: t.id, kind: 'reply', side: 'requester', createdAt: { gt: since } }, select: { id: true } })) return null;
+        const reminders = await tx.sdTicketEvent.count({ where: { organizationId: org, ticketId: t.id, kind: 'requester_chased', at: { gt: since } } });
+        const days = businessDaysSince(await this.tickets.sla.calendarSpec(tx, org, desk.calendarId), since, now);
+        const step = chaseStep({ businessDays: days, chased: reminders, max: desk.chaseMax, solveDays: desk.chaseSolveDays });
+        if (step === 'chase') {
+          await this.tickets.event(tx, t, 'requester_chased', null, String(reminders + 1), { by: null, reason: `Reminder ${reminders + 1} of ${desk.chaseMax}: we are waiting for your reply`, requesterVisible: true });
+          await audit(tx, { ctx: { organizationId: org, isSuperAdmin: false }, userId: null as unknown as string }, 'desk.ticket.requester_chased', 'sd_ticket', t.id, { number: t.number, reminder: reminders + 1 });
+          const p = await tx.employee.findFirst({ where: { organizationId: org, personId: t.requesterPersonId, userId: { not: null } }, select: { userId: true } });
+          return { kind: 'chase' as const, t, userId: p?.userId ?? null, n: reminders + 1, max: desk.chaseMax, solveDays: desk.chaseSolveDays };
+        }
+        if (step === 'solve') {
+          const s = await tx.sdStatus.findFirst({ where: { organizationId: org, deskId: t.deskId, systemState: 'solved', active: true, OR: [{ ticketTypeId: t.typeId }, { ticketTypeId: null }] }, orderBy: [{ ticketTypeId: { sort: 'asc', nulls: 'last' } }, { sortOrder: 'asc' }] });
+          if (!s) return null;
+          await tx.sdTicket.update({ where: { id: t.id }, data: { statusId: s.id, resolvedAt: now, resolutionNote: t.resolutionNote ?? 'Solved after no reply from the requester.', version: { increment: 1 } } });
+          await this.tickets.event(tx, t, 'status_changed', t.statusId, s.id, { by: null, reason: `Solved after ${desk.chaseSolveDays} business days with no reply`, requesterVisible: true });
+          await emit(tx, org, 'helpdesk.ticket.resolved', { ticketId: t.id, deskId: t.deskId, auto: true });
+          await audit(tx, { ctx: { organizationId: org, isSuperAdmin: false }, userId: null as unknown as string }, 'desk.ticket.auto_solved', 'sd_ticket', t.id, { number: t.number, businessDays: days });
+          await this.tickets.sla.sync(tx, t.id, now);
+          const p = await tx.employee.findFirst({ where: { organizationId: org, personId: t.requesterPersonId, userId: { not: null } }, select: { userId: true } });
+          return { kind: 'solve' as const, t, userId: p?.userId ?? null, n: 0, max: desk.chaseMax, solveDays: desk.chaseSolveDays };
+        }
+        return null;
+      });
+      if (!out) continue;
+      if (out.kind === 'chase') chased++;
+      else solved++;
+      // shortcut: told in-app when the requester is an employee with a login; other requesters see it on the ticket.
+      if (!out.userId) continue;
+      // Neutral words for sensitive and private tickets (YX-SD-14).
+      const label = out.t.sensitive || out.t.private ? `Ticket ${out.t.number}` : `${out.t.number} · ${out.t.subject}`;
+      const text = out.kind === 'chase' ? `${label}: we are waiting for your reply (reminder ${out.n} of ${out.max}). With no reply it is solved after ${out.solveDays} business days.` : `${label} was solved because we had no reply. Reply to reopen it.`;
+      await this.notifications
+        .notifySystem({ organizationId: out.t.organizationId, isSuperAdmin: false }, [out.userId], out.kind === 'chase' ? 'desk.ticket.chased' : 'desk.ticket.auto_solved', { entityType: 'sd_ticket', entityId: out.t.id, contextText: text, linkPath: `/yx/desk/help/${out.t.id}` }, { subject: out.kind === 'chase' ? 'We are waiting for your reply' : 'Your ticket was solved', html: `<p>${escapeHtml(text)}</p>` })
+        .catch((e: unknown) => this.logger.error(e));
+    }
+    return { chased, solved };
   }
 
   // ------------------------------------------------------------------------------------------ PII unmask and the read log (SD-1.12)

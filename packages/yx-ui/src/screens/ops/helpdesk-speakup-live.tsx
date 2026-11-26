@@ -39,6 +39,7 @@ import {
   useSay,
 } from "./ops-kit";
 import { AnonThread } from "./cases";
+import { recordedIcIssues } from "./ops-rules";
 
 export type SpeakUpKindLive = "grievance" | "whistleblower" | "posh";
 export type SpeakUpTeam = "grievance" | "ethics" | "ic" | "escalation" | "safety" | "ir";
@@ -147,6 +148,8 @@ export interface LiveSpeakUp {
   checkHref: string;
   /** HLP-12: the accident report (the fourth choice sends people there). */
   accidentHref?: string;
+  /** CMP-10: the designed POSH complaint form (batch F item 13); without it the complaint is filed here. */
+  poshHref?: string;
   today: Date;
   /** Stories and tests only. */
   start?: {
@@ -469,7 +472,7 @@ function LiveSpeakUpForm({
           tone="info"
           title="This goes to the Internal Committee"
           actions={
-            <Button size="sm" onClick={() => setPoshForm(true)}>
+            <Button size="sm" onClick={() => (live.poshHref ? window.location.assign(live.poshHref) : setPoshForm(true))}>
               Continue to the complaint form
             </Button>
           }
@@ -881,6 +884,8 @@ export function LiveCheckReport({ live }: { live: LiveCheckReport }) {
 
 /* ---------------- Set-up: who receives reports (speakup.setup.manage) ---------------- */
 
+const isoDay = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
 export interface SpeakUpSetupData {
   members: {
     id: string;
@@ -889,8 +894,15 @@ export interface SpeakUpSetupData {
     name: string;
     role: "member" | "presiding" | "external";
     addedAt: string;
+    /** Answer 2591 (Internal Committee only; null on members added before it was asked). */
+    woman?: boolean | null;
+    termEndsOn?: string | null;
+    /** Answer 2592: a workplace's own Internal Committee; null or missing is the company committee. */
+    locationId?: string | null;
   }[];
   users: { id: string; name: string; email: string }[];
+  /** Answer 2592: the workplaces that may have their own Internal Committee. */
+  locations?: { id: string; name: string }[];
   settings: {
     anonymous: string;
     ackDays: number;
@@ -906,8 +918,13 @@ export interface LiveSpeakUpSetup {
     team: SpeakUpTeam;
     userId: string;
     role?: "member" | "presiding" | "external";
+    woman?: boolean;
+    termEndsOn?: string;
+    locationId?: string;
   }) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
+  /** Answer 2625: change a member (Internal Committee: role, woman, term end; IR team: company or outside lawyer). */
+  onEdit?: (id: string, input: { role?: "member" | "presiding" | "external"; woman?: boolean; termEndsOn?: string }) => Promise<void>;
   /** Settings › Company rules. */
   rulesHref: string;
   /** Stories and tests only. */
@@ -959,12 +976,23 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
   const [role, setRole] = useState<"member" | "presiding" | "external">(
     "member",
   );
+  const [woman, setWoman] = useState<"yes" | "no" | null>(null);
+  const [committee, setCommittee] = useState<string>("company");
+  const [termEnds, setTermEnds] = useState<Date | null>(null);
+  // Answer 2625: the same dialog edits a member; the person and committee stay as they are.
+  const [editing, setEditing] = useState<SpeakUpSetupData["members"][number] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useSay();
-  const early = useTooEarly(
-    userId ? [] : [{ fieldId: "ss-user", message: "Choose who to add." }],
-  );
+  const today = new Date();
+  const maxTerm = new Date(today.getFullYear() + 3, today.getMonth(), today.getDate());
+  // Answer 2591: the committee list asks whether the member is a woman and when the term ends (at most 3 years).
+  const early = useTooEarly([
+    ...(userId || editing ? [] : [{ fieldId: "ss-user", message: "Choose who to add." }]),
+    ...(adding === "ic" && !woman ? [{ fieldId: "ss-woman", message: "Say whether this member is a woman." }] : []),
+    ...(adding === "ic" && !termEnds ? [{ fieldId: "ss-term", message: "Choose the day their term ends." }] : []),
+    ...(adding === "ic" && role === "presiding" && woman === "no" ? [{ fieldId: "ss-woman", message: "The presiding officer must be a senior woman employee." }] : []),
+  ]);
   useEffect(() => {
     if (live.start?.tooEarly) early.stop();
     // Stories only.
@@ -982,15 +1010,47 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
       </OpsDesk>
     );
   const d = live.data;
+  const placeOf = (id: string | null) => (id ? (d?.locations?.find((l) => l.id === id)?.name ?? "A workplace") : "Whole company");
+  const close = () => {
+    setAdding(null);
+    setEditing(null);
+    setUserId(null);
+    setRole("member");
+    setWoman(null);
+    setTermEnds(null);
+    setCommittee("company");
+    early.reset();
+  };
+  const startEdit = (m: SpeakUpSetupData["members"][number]) => {
+    setEditing(m);
+    setAdding(m.team);
+    setRole(m.role);
+    setWoman(m.woman == null ? null : m.woman ? "yes" : "no");
+    setTermEnds(m.termEndsOn ? new Date(`${m.termEndsOn}T00:00:00`) : null);
+    setError(null);
+  };
   const add = async () => {
     if (early.stop() || !adding) return;
     setBusy(true);
     setError(null);
+    if (editing && live.onEdit) {
+      try {
+        await live.onEdit(editing.id, { role, ...(adding === "ic" ? { woman: woman === "yes", ...(termEnds && isoDay(termEnds) !== editing.termEndsOn ? { termEndsOn: isoDay(termEnds) } : {}) } : {}) });
+        toast({ tone: "success", title: `${editing.name} changed` });
+        close();
+      } catch (e) {
+        setError(errorText(e));
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
     try {
       await live.onAdd({
         team: adding,
         userId: userId!,
         ...(adding === "ic" || adding === "ir" ? { role } : {}),
+        ...(adding === "ic" ? { woman: woman === "yes", termEndsOn: isoDay(termEnds!), ...(committee !== "company" ? { locationId: committee } : {}) } : {}),
       });
       toast({
         tone: "success",
@@ -1000,6 +1060,9 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
       setAdding(null);
       setUserId(null);
       setRole("member");
+      setWoman(null);
+      setTermEnds(null);
+      setCommittee("company");
       early.reset();
     } catch (e) {
       setError(errorText(e));
@@ -1070,6 +1133,12 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                 >
                   <div className="yx-ops-stack">
                     <p className="yx-ops-muted">{t.note}</p>
+                    {t.team === "ic" && rows.length > 0 && (() => {
+                      // Answer 2592: each committee (the company's, a workplace's) is checked on its own.
+                      const ids = [...new Set(rows.map((r) => r.locationId ?? null))];
+                      const issues = ids.flatMap((id) => recordedIcIssues(rows.filter((r) => (r.locationId ?? null) === id).map((r) => ({ name: r.name, role: r.role, woman: r.woman ?? null, since: r.addedAt.slice(0, 10), termEndsOn: r.termEndsOn ?? null })), today).map((i) => (ids.length > 1 ? `${placeOf(id)}: ${i}` : i)));
+                      return issues.length > 0 ? <InlineAlert tone="warning" title="Committee not complete">{issues.join(". ")}.</InlineAlert> : null;
+                    })()}
                     <DataTable
                       label={t.title}
                       columns={[
@@ -1087,10 +1156,23 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                               ? "Outside lawyer"
                               : ROLE_LABEL[r.role],
                         },
+                        ...(t.team === "ic"
+                          ? [
+                              { key: "committee", header: "Committee", value: (r: SpeakUpSetupData["members"][number]) => placeOf(r.locationId ?? null) },
+                              { key: "woman", header: "Woman", value: (r: SpeakUpSetupData["members"][number]) => (r.woman == null ? "Not recorded" : r.woman ? "Yes" : "No") },
+                              { key: "term", header: "Term ends", value: (r: SpeakUpSetupData["members"][number]) => r.termEndsOn ?? "", render: (r: SpeakUpSetupData["members"][number]) => (r.termEndsOn ? formatDate(new Date(`${r.termEndsOn}T00:00:00`)) : "Not recorded") },
+                            ]
+                          : []),
                       ]}
                       rows={rows}
                       getRowId={(r) => r.id}
                       rowActions={(r) => (
+                        <>
+                        {live.onEdit && (r.team === "ic" || r.team === "ir") && (
+                          <Button size="sm" onClick={() => startEdit(r)}>
+                            Edit
+                          </Button>
+                        )}
                         <Button
                           size="sm"
                           onClick={() =>
@@ -1108,6 +1190,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                         >
                           Remove
                         </Button>
+                        </>
                       )}
                       empty={
                         <EmptyState
@@ -1152,20 +1235,21 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
       )}
       <Dialog
         open={Boolean(adding)}
-        onOpenChange={(o) => !o && setAdding(null)}
+        onOpenChange={(o) => !o && close()}
         size="sm"
-        title={`Add to ${TEAMS.find((t) => t.team === adding)?.title ?? ""}`}
+        title={editing ? `Change ${editing.name}` : `Add to ${TEAMS.find((t) => t.team === adding)?.title ?? ""}`}
         footer={
           <>
-            <Button onClick={() => setAdding(null)}>Cancel</Button>
+            <Button onClick={close}>Cancel</Button>
             <Button variant="primary" loading={busy} onClick={() => void add()}>
-              Add
+              {editing ? "Save changes" : "Add"}
             </Button>
           </>
         }
       >
         <div className="yx-ops-stack">
           {error && <InlineAlert tone="danger">{error}</InlineAlert>}
+          {!editing && (
           <FormField
             id="ss-user"
             label="Person"
@@ -1183,6 +1267,7 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
               searchable
             />
           </FormField>
+          )}
           {adding === "ir" && (
             <FormField label="Who they are">
               <Segment
@@ -1217,6 +1302,21 @@ export function SpeakUpSetupScreen({ live }: { live: LiveSpeakUpSetup }) {
                 ]}
               />
             </FormField>
+          )}
+          {adding === "ic" && (
+            <>
+              {!editing && (d?.locations ?? []).length > 0 && (
+                <FormField label="Committee" helper="A workplace's own committee takes the complaints from that workplace; the others go to the company committee.">
+                  <Select value={committee} onChange={(v) => setCommittee(v ?? "company")} options={[{ value: "company", label: "Whole company" }, ...(d?.locations ?? []).map((l) => ({ value: l.id, label: l.name }))]} />
+                </FormField>
+              )}
+              <FormField id="ss-woman" label="Is this member a woman?" required helper="At least half the committee must be women, and a woman presides." error={early.errorOf("ss-woman")}>
+                <Segment label="Is this member a woman?" value={woman} onChange={(v) => setWoman(v)} options={[{ value: "yes", label: "Yes" }, { value: "no", label: "No" }]} />
+              </FormField>
+              <FormField id="ss-term" label="Term ends" required helper="At most 3 years from today." error={early.errorOf("ss-term")}>
+                <DatePicker value={termEnds} onChange={setTermEnds} min={new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)} max={maxTerm} />
+              </FormField>
+            </>
           )}
         </div>
       </Dialog>

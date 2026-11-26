@@ -6,6 +6,7 @@ import cookieParser from 'cookie-parser';
 import { randomUUID } from 'crypto';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
+import { mondayOf } from '../src/time/time-rules';
 import { EmailService } from '../src/email/email.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { LeaveService } from '../src/time/leave.service';
@@ -206,6 +207,10 @@ describe('Time and leave batch 1', () => {
       const res = await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: d(5), to: d(6), reason: 'Visiting family' }).expect(201);
       ids.req1 = res.body.id;
       expect(res.body).toMatchObject({ status: 'pending', days: 2 });
+      // Batch D A8 (answer 2539): my timesheet week shows the day as leave requested until it is decided (not as leave).
+      const wk = (await api('emp', 'get', `/time/me/timesheet?week=${mondayOf(d(5))}`).expect(200)).body as { days: { on: string; leave: string | null; leaveRequested: boolean }[] };
+      expect(wk.days.find((x) => x.on === d(5))).toMatchObject({ leave: null, leaveRequested: true });
+      expect(wk.days.filter((x) => x.on !== d(5) && x.on !== d(6)).every((x) => !x.leaveRequested)).toBe(true);
       // The manager's email: who asks for what, in the designed YukthiX email (founder review 19 Oct 2026).
       const send = app.get(EmailService).send as jest.Mock;
       await new Promise((r) => setTimeout(r, 300));
@@ -228,6 +233,8 @@ describe('Time and leave batch 1', () => {
       await decide('mgr', card.taskId, 'approve').expect(409);
       const r = (await api('emp', 'get', `/time/requests/${ids.req1}`).expect(200)).body;
       expect(r.status).toBe('approved');
+      // Decided: the week shows it as leave now, no longer "requested".
+      expect((await api('emp', 'get', `/time/me/timesheet?week=${mondayOf(d(5))}`).expect(200)).body.days.find((x: { on: string }) => x.on === d(5))).toMatchObject({ leave: 'full', leaveRequested: false });
       const ledger = await inA((tx) => tx.leaveLedgerEntry.findMany({ where: { organizationId: org.A.id, requestId: ids.req1 } }));
       expect(ledger.map((l) => Number(l.days))).toEqual([-2]);
       expect((await balance('emp', 'EL')).balance).toBe(before.balance - 2);
@@ -291,6 +298,21 @@ describe('Time and leave batch 1', () => {
       const muster = async (who: Who) => ((await api(who, 'get', `/time/muster?month=${today.slice(0, 7)}`).expect(200)).body.people as { id: string }[]).map((p) => p.id).sort();
       expect(await muster('emp')).toEqual([ids.empEmp]);
       expect(await muster('mgr')).toEqual([ids.empEmp, ids.mgrEmp, ids.peerEmp].sort());
+      // Batch C item 15 (answer 2509): attendance dots only for the viewer's own reporting line, up to today.
+      const day = new Date(Date.now()).toISOString().slice(0, 10);
+      const at = new Date(`${day}T00:00:00Z`);
+      await inA((tx) => tx.attendanceDay.upsert({ where: { organizationId_employeeId_workOn: { organizationId: org.A.id, employeeId: ids.empEmp!, workOn: at } }, create: { organizationId: org.A.id, employeeId: ids.empEmp!, workOn: at, mode: 'punch', status: 'present', lateMinutes: 15, workedMinutes: 480 }, update: { status: 'present', lateMinutes: 15 } }));
+      type Row = { id: string; attendance?: { on: string; dot: string }[] };
+      const rows = async (who: Who) => (await api(who, 'get', `/time/team/calendar?from=${day}&to=${d(30)}`).expect(200)).body.people as Row[];
+      const mgrRows = await rows('mgr');
+      expect(mgrRows.find((r) => r.id === ids.empEmp)?.attendance).toEqual([{ on: day, dot: 'late' }]);
+      // Their own row and a peer outside their line: no dots.
+      expect(mgrRows.find((r) => r.id === ids.mgrEmp)?.attendance).toBeUndefined();
+      // HR with leave.view company-wide sees the people but no dots (not their team); the employee sees none either.
+      expect((await rows('hrExec')).find((r) => r.id === ids.empEmp)?.attendance).toBeUndefined();
+      expect((await rows('emp')).every((r) => r.attendance === undefined)).toBe(true);
+      // Another company never sees A's people.
+      expect((await rows('empB')).some((r) => r.id === ids.empEmp)).toBe(false);
     });
 
     it('a medical reason is Special: never to the manager or the approval card; HR with leave.medical.view reads it, audited', async () => {

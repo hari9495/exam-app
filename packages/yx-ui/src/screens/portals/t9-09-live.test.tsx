@@ -159,6 +159,23 @@ describe('Candidate pages outside the app (decision 10)', () => {
     expect((await screen.findAllByText('You accepted this offer')).length).toBeGreaterThan(0);
   });
 
+  it('M10 D4: an issued company letter shows its reference; a wrong or expired code is refused and the offer stays open', async () => {
+    const onRespond = vi.fn(async () => {
+      throw new Error('That code is not right or has expired. Ask for a new one.');
+    });
+    const onSendCode = vi.fn(async () => ({ to: 'j•••@gmail.com' }));
+    wrap(<OfferAcceptScreen brand={CAND_BRAND} state="ready" offer={{ ...OFFER, esign: true, letter: { referenceNo: 'KF/OFR/2026/000012' } }} live={{ onRespond, onSendCode, today: TODAY }} />);
+    expect(screen.getByText('KF/OFR/2026/000012')).toBeInTheDocument();
+    await ue.click(screen.getByRole('checkbox', { name: /sign this offer electronically/ }));
+    await ue.click(screen.getByRole('button', { name: 'Email me a code' }));
+    await waitFor(() => expect(onSendCode).toHaveBeenCalled());
+    await ue.type(screen.getByLabelText(/Code from the email/), '000000');
+    await ue.click(screen.getByRole('button', { name: 'Sign and accept' }));
+    expect(await screen.findByText('That code is not right or has expired. Ask for a new one.')).toBeInTheDocument();
+    expect(screen.queryByText('You accepted this offer')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign and accept' })).toBeInTheDocument();
+  });
+
   it('interview: Confirm without a time asks for one; confirms a proposed time; asks for another with a note', async () => {
     const onConfirm = vi.fn(async () => undefined);
     const onReschedule = vi.fn(async () => undefined);

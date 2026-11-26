@@ -1,3 +1,5 @@
+// M10 D4: offers from Letters templates are issued as P05 letters (PDFs from the dev-fake converter when Gotenberg is not set).
+process.env.LETTER_PDF_CONVERTER = 'dev-fake';
 import { Test } from '@nestjs/testing';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import request from 'supertest';
@@ -7,10 +9,14 @@ import { randomUUID } from 'crypto';
 import type Redis from 'ioredis';
 import { BlobStorageService, PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { AppModule } from '../src/app.module';
+import { OfferTemplatesToLetters } from '../src/offers/offer-letters';
 import { EmailService } from '../src/email/email.service';
 import { LOGIN_PROTECTION_REDIS } from '../src/auth/login-protection.service';
 import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+
+// Offer letters are P05 letters: their files must pass the (fake) virus check before they open; CI has no ClamAV.
+process.env.SD_SCANNER = 'dev-fake';
 
 // HIR-28 bulk offers end to end against the real database (forced RLS, the app role). One job, one letter, one salary
 // structure, one joining day and a CTC per candidate; every row is an ordinary HIR-09 offer (the pay key, the band step,
@@ -113,7 +119,10 @@ describe('HIR-28 bulk offers', () => {
     await inA((tx) => tx.job.update({ where: { id: ids.job }, data: { legalEntityId: ids.entity, gradeId: ids.g3, locationId: ids.blr, headcountPlanLineId: ids.line } }));
     for (const k of ['aditi', 'farhan', 'gayathri', 'harsha', 'ishita', 'joel', 'kavin', 'lena', 'mohan']) await entry(k);
     await entry('elsewhere', 'job2');
-    ids.tplE = (await api('rec', 'post', '/offer-template').send({ name: `Campus LOI ${run}`, subject: 'Your letter of intent', body: 'Dear {{candidateName}}, {{compensation}}. {{offerLink}}', esign: true }).expect(201)).body.id;
+    // Answer 2515: an older offer template, moved by the one-off command into a Letters 'offer' template.
+    const old = await inA((tx) => tx.offerTemplate.create({ data: { organizationId: org.A.id, name: `Campus LOI ${run}`, subject: 'Your letter of intent', body: 'Dear {{candidateName}}, {{compensation}}. {{offerLink}}', esign: true } }));
+    await app.get(OfferTemplatesToLetters).run();
+    ids.tplE = (await inA((tx) => tx.offerTemplate.findFirstOrThrow({ where: { id: old.id } }))).letterTemplateId!;
     // Gayathri already has an offer of her own: a batch skips her, never offers twice.
     ids.single = (await api('rec', 'post', '/hiring/offers').send({ entryId: ids.gayathri, templateVersionId: ids.tv, annualCtc: '480000', locationId: ids.blr, startDate: plus(40), expiresAt: plus(10) }).expect(201)).body.id;
     ids.jobB = (await api('recB', 'post', '/jobs').send({ title: 'Other company job' }).expect(201)).body.id;

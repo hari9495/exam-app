@@ -5,7 +5,7 @@ import type { AreaId } from '@yukthix/ui/frame';
 // hidden; a link shows only to someone who may open it (the API still checks every call). Pure, so it is unit-tested.
 
 /** Side-menu counts from GET /workspace/counts. */
-export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue' | 'casesOpen' | 'ethicsReports' | 'changesAsked';
+export type CountKey = 'approvals' | 'notifications' | 'documentsToVerify' | 'exitCases' | 'payslipQueries' | 'myTickets' | 'scorecardsToDo' | 'readyToOnboard' | 'probationsDue' | 'clearanceToDo' | 'possibleSamePerson' | 'declarationsDue' | 'casesOpen' | 'ethicsReports' | 'icComplaints' | 'changesAsked';
 
 export interface NavLink {
   id: string;
@@ -49,6 +49,8 @@ export interface NavInput {
   changesAsked?: boolean;
   /** HLP-09: on the ethics or escalation list. */
   ethicsDesk?: boolean;
+  /** CMP-11 (batch F item 13): a member of the Internal Committee (the server decides, via the counts). */
+  icMember?: boolean;
   /** Founder answer 511: on an interview panel (the server decides): Interviews shows without any hiring key. */
   panellist?: boolean;
   /** The company turned the staffing desk on (Settings › Staffing desk; the server decides). */
@@ -59,6 +61,8 @@ export interface NavInput {
   projects?: boolean;
   /** P-2 (1406): timesheet lines waiting for this person's decision (the server decides). */
   lineApprovals?: number;
+  /** Runs learning sessions as an internal trainer. */
+  trainer?: boolean;
 }
 
 /** Possible same person is in the menu when the server sends its count: company-wide HR while a pair waits or for 90 days after any merge, even at 0. */
@@ -98,6 +102,8 @@ export const PAY_SETTINGS_PAGES: [string, string, string][] = [
   ['4.5', 'Tax', 'tax'],
   // S-7 (answers 1321, 1521): Payroll rules' settings, under the second person.
   ['4.6', 'Bonus & loan rules', 'loans-and-advances'],
+  // Enterprise E4 (O19-O22): suspense, costing split and the journal format; the ledger mapping is its own page.
+  ['4.12', 'Accounting & costing', 'accounting-and-costing'],
 ];
 const payPage = (id: string) => PAY_SETTINGS_PAGES.filter((p) => p[0] === id).map((p) => `${SETTINGS_HOME}/payroll/${p[2]}`);
 /** S-4: the drawn People & Access pages that show the company's settings (address under /yx/settings/people). */
@@ -172,6 +178,8 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '4.10': ['/yx/payroll/ewa'],
   // B8/E5: Benefits & FBP, the flexible benefit plan (answer 2411).
   '4.11': ['/yx/settings/benefits'],
+  // Enterprise E4: Accounting & costing, with the ledger mapping page.
+  '4.12': [...payPage('4.12'), '/yx/payroll/accounting'],
   '5.1': morePage('5.1'),
   '5.2': ['/yx/settings/letters'],
   '5.3': ['/yx/settings/letters'],
@@ -209,6 +217,9 @@ export function panelOf(area: NavArea, linkId: string | undefined): { title: str
   if (me && me.items.some((l) => l.id === linkId)) return { title: ME, sections: [{ items: me.items }] };
   return { title: area.title, sections: area.sections.filter((s) => s !== me) };
 }
+
+/** Keys that open at least one report in the library (apps/api/src/library/report-catalogue.ts). */
+const REPORT_KEYS = ['payroll.reports.view', 'statutory.filing.view', 'expense.report.view', 'attendance.view', 'perf.report.view', 'learning.report.view', 'desk.report.view', 'visitors.log.view', 'visitors.desk.manage', 'ats.costs.manage'];
 
 export function buildNav(n: NavInput): NavArea[] {
   const { has, support, employee, manager } = n;
@@ -250,7 +261,7 @@ export function buildNav(n: NavInput): NavArea[] {
   // Managers without HR keys get the designed "For my team" group instead of Onboarding / Changes / Exits.
   const team = !hr;
   const peopleWork: NavSection[] = [
-    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(manager, L('team', 'My team', '/yx/people/team'))]),
+    ...sec(undefined, [...when(hr || employee, L('directory', 'Directory', '/yx/people/directory'), L('org-chart', 'Org chart', '/yx/people/org-chart')), ...when(has('org.position.manage'), L('positions', 'Positions', '/yx/people/positions')), ...when(manager, L('team', 'My team', '/yx/people/team')), ...when(!support && (employee || has('company.documents.manage')), L('company-docs', 'Company documents', '/yx/people/company-documents'))]),
     ...sec(team ? 'For my team' : 'Onboarding', [
       ...when(onboardView, L('onboarding', 'Onboarding board', '/yx/people/onboarding')),
       ...when(has('lifecycle.onboarding.manage'), L('ready-to-onboard', 'Ready to onboard', '/yx/people/ready-to-onboard', 'readyToOnboard'), L('batches', 'Batches', '/yx/people/batches')),
@@ -473,6 +484,22 @@ export function buildNav(n: NavInput): NavArea[] {
         ],
   };
 
+  // Learning (the core): the designed panel's names (LRN): My learning and Catalogue for employees, My team for
+  // managers, Compliance for training reports, Course builder for L&D. My tests, Sessions, Needs & budgets and Skills
+  // have no live page yet (hidden).
+  const learning: NavArea = {
+    id: 'learning',
+    title: 'Learning',
+    sections: sec(undefined, [
+      ...when(self, L('my-learning', 'My learning', '/yx/learning'), L('catalogue', 'Catalogue', '/yx/learning/catalogue'), L('my-skills', 'My skills', '/yx/learning/skills')),
+      ...when(self && manager, L('team-learning', 'My team', '/yx/learning/team'), L('team-skills', 'Team skills', '/yx/learning/skills/team'), L('training-checks', 'Training checks', '/yx/learning/checks')),
+      ...when(!support && (has('learning.manage') || Boolean(n.trainer)), L('learning-sessions', 'Sessions', '/yx/learning/sessions')),
+      ...when(!support && has('learning.report.view'), L('learning-compliance', 'Compliance', '/yx/learning/compliance')),
+      ...when(!support && has('learning.manage'), L('course-builder', 'Course builder', '/yx/learning/courses')),
+      ...when(!support && has('learning.manage'), L('learning-needs', 'Needs & budgets', '/yx/learning/needs')),
+    ]),
+  };
+
   const performance: NavArea = {
     id: 'performance',
     title: 'Performance',
@@ -517,6 +544,7 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(!support && manager, L('desk-report-misconduct', 'Report misconduct', '/yx/desk/report-misconduct')),
           ...when(!support && Boolean(n.caseTeam), L('desk-cases', 'Cases', '/yx/desk/cases', 'casesOpen')),
           ...when(!support && Boolean(n.ethicsDesk), L('desk-ethics', 'Ethics desk', '/yx/desk/ethics', 'ethicsReports')),
+          ...when(!support && Boolean(n.icMember), L('desk-ic', 'Internal Committee', '/yx/desk/ic', 'icComplaints')),
           ...when(has('speakup.setup.manage'), L('desk-speakup-setup', 'Speak-up set-up', '/yx/desk/speakup-setup')),
           ...when(any('policy.manage', 'policy.publish'), L('desk-policy-admin', 'Policy admin', '/yx/desk/policy-admin')),
           // HLP-14: a policy manager drafts a policy from a questionnaire (the company's AI, or a starter when AI is off).
@@ -566,6 +594,23 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(!support && any('visitors.rollcall.view', 'visitors.desk.manage'), L('visitors-rollcall', 'Roll-call', '/yx/visitors/rollcall')),
       ]),
     ],
+  };
+
+  // Engage (batch G2, M09): the feed for everyone with a job; announcements for engage.announce (never on a support session).
+  const engage: NavArea = {
+    id: 'engage',
+    title: 'Engage',
+    sections: sec(undefined, [
+      ...when(!support && employee, L('engage-feed', 'Feed', '/yx/engage')),
+      // Batch G2 item 73: kudos (badges only).
+      ...when(!support && employee, L('engage-recognition', 'Recognition', '/yx/engage/recognition')),
+      // Batch G2 item 74: company surveys (the key), or a manager's own team results.
+      ...when(!support && has('engage.survey.manage'), L('engage-surveys', 'Surveys', '/yx/engage/surveys')),
+      ...when(!support && manager && !has('engage.survey.manage'), L('engage-team-surveys', 'Team surveys', '/yx/engage/team-surveys')),
+      ...when(!support && has('engage.announce'), L('engage-announcements', 'Announcements', '/yx/engage/announcements')),
+      // Batch G2 item 100: the moderation queue (held, reported and waiting posts).
+      ...when(!support && has('engage.moderate'), L('engage-moderation', 'Moderation', '/yx/engage/moderation')),
+    ]),
   };
 
   // Projects P-1 (answer 1401): only once the company switched Projects on.
@@ -633,6 +678,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('payroll.component.manage'), L('pay-components', 'Component library', '/yx/payroll/components')),
           ...when(has('payroll.template.manage'), L('pay-templates', 'Salary templates', '/yx/payroll/templates')),
           ...when(has('payroll.import.run'), L('pay-imports', 'Import old payroll', '/yx/payroll/imports')),
+          // Enterprise E4 (O19): which ledger account each pay line goes to (payroll's ledger key).
+          ...when(has('payroll.ledger.manage'), L('pay-ledger', 'Ledger mapping', '/yx/payroll/accounting')),
         ]),
         // Settings 4.9 Contract labour (CL-1): no payroll needed.
         ...when(!support && any('clra.settings.manage', 'clra.contractor.manage', 'clra.contractor.view', 'org.settings.manage'), L('clra-settings', 'Contract labour', '/yx/settings/contract-labour')),
@@ -654,7 +701,17 @@ export function buildNav(n: NavInput): NavArea[] {
     ],
   };
 
-  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, helpdesk, visitors, settings];
+  // G4 (ANL-06): the report library, for anyone a report opens for (an area report key, or a manager's team reports).
+  const analytics: NavArea = {
+    id: 'analytics',
+    title: 'Analytics',
+    sections: sec(undefined, [
+      ...when(!support && (manager || REPORT_KEYS.some(has)), L('report-library', 'Report library', '/yx/analytics/reports')),
+      // Answers 2690-2692: scheduled report emails (report keys) and the export log (exports.log.view).
+      ...when(!support && (REPORT_KEYS.some(has) || has('exports.log.view')), L('report-schedules', 'Schedules and exports', '/yx/analytics/schedules')),
+    ]),
+  };
+  const areas = [home, people, time, pays, compliance, contract, hire, projects, performance, learning, helpdesk, engage, visitors, analytics, settings];
   // Settings S-1 (answer 1322): Settings opens the home, for anyone who may open at least one settings page.
   const mine = new Set(areas.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => l.href))));
   if (Object.values(SETTINGS_PAGE_EDITORS).some((hrefs) => hrefs.some((h) => mine.has(h)))) settings.sections.unshift({ items: [L('settings-home', 'All settings', SETTINGS_HOME)] });
@@ -675,7 +732,7 @@ export function activeLink(areas: NavArea[], pathname: string): { area: NavArea;
 
 /** Every page of the menu, as if one person held every key: names a page the viewer's own menu has no entry for. */
 let every: NavArea[] | null = null;
-const everyPage = () => (every ??= buildNav({ has: () => true, role: null, support: false, employee: true, manager: true, history: true, clearance: true, tasks: true, firstDays: true, samePerson: true, designated: true, caseTeam: true, ethicsDesk: true }));
+const everyPage = () => (every ??= buildNav({ has: () => true, role: null, support: false, employee: true, manager: true, history: true, clearance: true, tasks: true, firstDays: true, samePerson: true, designated: true, caseTeam: true, ethicsDesk: true, icMember: true }));
 
 /**
  * The page for the breadcrumb and the menu highlight (walk-through 3 Nov 2026). The viewer's own deepest entry, unless a

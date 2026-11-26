@@ -17,6 +17,7 @@ import { useMessageTemplates } from '../../../../../../../lib/hooks/useCandidate
 import { useOrgSenderAddresses } from '../../../../../../../lib/hooks/useOrgSenderAddresses';
 import { cardOf, istDateTime } from '../../../../../../../lib/yx-pipeline';
 import type { Board } from '../../../../../../../lib/yx-application';
+import { useStagePrompt, type MoveResult } from '../../../../../../../lib/yx-stage-prompt';
 import type { BoardEntryRow } from '../../../../../../../lib/types';
 
 const days = (iso: string) => Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86_400_000));
@@ -47,6 +48,8 @@ export default function YxHiringPipelinePage() {
   const templates = useMessageTemplates(perms.has('pipeline:manage'));
   const senders = useOrgSenderAddresses(perms.has('pipeline:manage'));
   const write = useApiWrite();
+  // Answer 2434 follow-up: a stage message set to "Ask before sending" is asked after the move.
+  const prompt = useStagePrompt(write);
   const enc = encodeURIComponent;
 
   const allStages = board.data?.pipeline.stages ?? [];
@@ -78,7 +81,8 @@ export default function YxHiringPipelinePage() {
   };
 
   return (
-    <PipelineBoardScreen
+    <>
+      <PipelineBoardScreen
       live={{
         state: (() => {
           const s = loadState(job, board);
@@ -98,7 +102,8 @@ export default function YxHiringPipelinePage() {
           const statusId = firstStatus(toStageId);
           if (!r || !statusId) return;
           try {
-            await write('POST', `/hiring/entries/${enc(entryId)}/move`, { statusId, fromStatusId: r.statusId });
+            const moved = await write<MoveResult>('POST', `/hiring/entries/${enc(entryId)}/move`, { statusId, fromStatusId: r.statusId });
+            prompt.offer(entryId, r.candidateName, stages.find((s) => s.id === toStageId)?.name ?? 'the next stage', moved);
           } finally {
             await board.refetch();
           }
@@ -157,5 +162,7 @@ export default function YxHiringPipelinePage() {
         },
       }}
     />
+      {prompt.element}
+    </>
   );
 }

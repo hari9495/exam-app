@@ -53,6 +53,8 @@ export interface LiveAllocation {
   percent: number;
   tentative: boolean;
   bookedHours: number;
+  /** Batch D B3 (answer 2537): over the chosen range (absent from an older API). */
+  hours?: { billable: number; nonBillable: number; booked: number };
   version: number;
 }
 export interface LiveTask {
@@ -72,6 +74,8 @@ export interface LiveMilestone {
   version: number;
 }
 export interface LiveProjectDetail {
+  /** Batch D B3: the range the team's hours are for. */
+  hoursRange?: 'week' | 'month' | 'all';
   project: LiveProjectRow;
   can: { edit: boolean; run: boolean; team: boolean; finance: boolean };
   allocations: LiveAllocation[];
@@ -154,7 +158,7 @@ export function toProject(r: LiveProjectRow): Project {
   };
 }
 
-export const toAllocation = (a: LiveAllocation): Allocation => ({ id: a.id, person: a.person, role: a.role ?? '', from: d(a.fromOn)!, to: d(a.toOn) ?? new Date(NaN), percent: a.percent, tentative: a.tentative, bookedThisWeek: a.bookedHours, expectedThisWeek: 0 });
+export const toAllocation = (a: LiveAllocation): Allocation => ({ id: a.id, person: a.person, role: a.role ?? '', from: d(a.fromOn)!, to: d(a.toOn) ?? new Date(NaN), percent: a.percent, tentative: a.tentative, bookedThisWeek: a.bookedHours, expectedThisWeek: 0, hours: a.hours });
 export const toTask = (t: LiveTask): Task => ({ id: t.id, name: t.name, budgetHours: t.budgetHours ?? 0, usedHours: t.usedHours, billable: t.billable });
 export const toMilestone = (m: LiveMilestone, clientAccepts: boolean): Milestone => ({ id: m.id, name: m.name, pct: m.pct, due: d(m.dueOn)!, status: m.status, needsClientAcceptance: clientAccepts });
 

@@ -8,6 +8,7 @@ import { ApprovalsEngine } from './approvals-engine.service';
 import { ApprovalPolicies } from './approval-policies';
 import { ApprovalPoliciesController } from './approval-policies.controller';
 import { WorkflowController } from './workflow.controller';
+import { ApprovalsOversight } from './approvals-oversight';
 import { ApprovalCards } from './approval-channels';
 import { ActionLinkController, ChannelLinksController } from './approval-links.controller';
 
@@ -52,7 +53,7 @@ export class WorkflowJobs implements OnModuleInit, OnModuleDestroy {
 @Module({
   imports: [AuditModule, NotificationsModule],
   controllers: [WorkflowController, ActionLinkController, ChannelLinksController, ApprovalPoliciesController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ApprovalCards, ApprovalPolicies, ApprovalsEngine, WorkflowJobs],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, ApprovalCards, ApprovalPolicies, ApprovalsEngine, ApprovalsOversight, WorkflowJobs],
   exports: [ApprovalsEngine, ApprovalCards],
 })
 export class WorkflowModule {}

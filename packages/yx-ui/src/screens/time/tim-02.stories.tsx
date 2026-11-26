@@ -28,4 +28,7 @@ export const PreApproveFilled: S = { name: 'Manager · Pre-approve overtime · f
 export const PreApproveErrors: S = { name: 'Manager · Pre-approve overtime · pressed too early', args: { persona: 'mgr', preApprove: 'errors' } };
 export const PreApproveRefused: S = { name: 'Manager · Pre-approve overtime · refused', args: { persona: 'mgr', preApprove: 'refused' } };
 // Founder 2 Nov 2026: a factory worker's overtime is paid by law, so the sheet offers only Paid overtime.
+// Answer 2527: a manager asks HR to waive late marks of their own team; HR answers from Late marks (TIM-11).
+export const ManagerLateMarks: S = { name: 'Manager · late marks of my team', args: { persona: 'mgr', lateAsk: 'list' } };
+export const ManagerAskWaive: S = { name: 'Manager · ask HR to waive 2 late marks', args: { persona: 'mgr', lateAsk: 'ask' } };
 export const PreApproveFactory: S = { name: 'Manager · Pre-approve overtime · factory worker (paid only)', args: { persona: 'mgr', preApprove: 'factory' } };

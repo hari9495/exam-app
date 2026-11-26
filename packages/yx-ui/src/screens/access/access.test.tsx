@@ -347,3 +347,74 @@ describe('masked values', () => {
     expect(shown({ holderName: 'Divya Raghunathan', ifsc: 'UTIB0000456', account: '•••• 1234' })).toBe('Divya Raghunathan · UTIB0000456 · •••• 1234');
   });
 });
+
+// Answers 2426 and 2430 (from /v2): hiring field access and staff groups on Roles & access.
+describe('Roles & access · hiring fields and groups', () => {
+  const fields = () => ({ config: { job: { panel: { salaryMin: 'hidden' as const } } }, fields: { candidate: ['email', 'phone'], job: ['salaryMin', 'headcount'] }, roles: ['recruiter', 'panel'], onSave: ok() });
+  const groups = () => ({
+    groups: [{ id: 'g1', name: 'Plant recruiters', description: null, members: [{ userId: USERS[0]!.id, name: 'First', email: 'first@x.test' }] }],
+    people: USERS.map((u) => ({ value: u.id, label: u.name ?? u.email })),
+    onCreate: ok(),
+    onUpdate: ok(),
+    onMembers: ok(),
+    onDelete: ok(),
+  });
+
+  it('the tabs show only when given', () => {
+    roles();
+    expect(screen.queryByRole('radio', { name: 'Hiring fields' })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /^Groups/ })).toBeNull();
+  });
+
+  it('a field level is changed and the whole matrix is saved; untouched fields stay editable', async () => {
+    const f = fields();
+    roles({ hiringFields: f, initialView: 'fields' });
+    expect(screen.getByRole('combobox', { name: 'Pay from for Interview panel' })).toHaveTextContent('Hidden');
+    await pick('Email for Interview panel', 'Hidden');
+    await pick('Pay from for Interview panel', 'Can change');
+    await ue.click(screen.getByRole('button', { name: 'Save field access' }));
+    await waitFor(() => expect(f.onSave).toHaveBeenCalledWith({ candidate: { panel: { email: 'hidden' } } }));
+    expect((await screen.findAllByText('Field access saved.')).length).toBeGreaterThan(0);
+  });
+
+  it('a refused save says why and keeps the changes', async () => {
+    const f = { ...fields(), onSave: vi.fn().mockRejectedValue(new Error('Unknown field')) };
+    roles({ hiringFields: f, initialView: 'fields' });
+    await pick('Phone for Recruiter', 'Can see');
+    await ue.click(screen.getByRole('button', { name: 'Save field access' }));
+    expect(await screen.findByText('Unknown field')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Phone for Recruiter' })).toHaveTextContent('Can see');
+  });
+
+  it('a new group needs a name that is not taken', async () => {
+    const g = groups();
+    roles({ groups: g, initialView: 'groups' });
+    await ue.click(screen.getAllByRole('button', { name: 'New group' })[0]!);
+    const dlg = screen.getByRole('dialog', { name: 'New group' });
+    await ue.click(within(dlg).getByRole('button', { name: 'Make group' }));
+    expect(within(dlg).getByText('Enter a name.')).toBeInTheDocument();
+    await ue.type(within(dlg).getByRole('textbox', { name: /Name/ }), 'plant recruiters');
+    await ue.click(within(dlg).getByRole('button', { name: 'Make group' }));
+    expect(within(dlg).getByText('Another group has this name.')).toBeInTheDocument();
+    expect(g.onCreate).not.toHaveBeenCalled();
+    await ue.clear(within(dlg).getByRole('textbox', { name: /Name/ }));
+    await ue.type(within(dlg).getByRole('textbox', { name: /Name/ }), 'Campus panel');
+    await ue.click(within(dlg).getByRole('button', { name: 'Make group' }));
+    await waitFor(() => expect(g.onCreate).toHaveBeenCalledWith({ name: 'Campus panel' }));
+  });
+
+  it('members are saved; deleting asks first', async () => {
+    const g = groups();
+    roles({ groups: g, initialView: 'groups' });
+    const row = () => screen.getByRole('row', { name: /Plant recruiters/ });
+    await ue.click(within(row()).getByRole('button', { name: 'Members' }));
+    const dlg = screen.getByRole('dialog', { name: 'Members of Plant recruiters' });
+    await ue.click(within(dlg).getByRole('button', { name: 'Save members' }));
+    await waitFor(() => expect(g.onMembers).toHaveBeenCalledWith('g1', [USERS[0]!.id]));
+    await ue.click(within(row()).getByRole('button', { name: 'Delete' }));
+    const sure = screen.getByRole('dialog', { name: 'Delete Plant recruiters?' });
+    expect(sure).toHaveTextContent('recycle bin');
+    await ue.click(within(sure).getByRole('button', { name: 'Delete group' }));
+    await waitFor(() => expect(g.onDelete).toHaveBeenCalledWith('g1'));
+  });
+});

@@ -27,6 +27,9 @@ import { TODAY } from '../_kit/data';
 import { GrowthFrame, QrTile, SkillLevel, SplitLayout } from './growth-kit';
 import { complianceCell, completionStatus, withdraw } from './growth-logic';
 import type { Course } from './learn-me';
+import { LiveTeamSkillsScreen, LiveTrainingNeedsScreen, type LiveTeamSkills, type LiveTrainingNeeds } from './learn-skills-live';
+import { LiveSessionPageScreen, LiveSessionsScreen, LiveTrainerQrScreen, type LiveSessionPage, type LiveSessions, type LiveTrainerQr } from './learn-sessions-live';
+import { CourseDetailsFields, LiveAssignmentRulesScreen, LiveComplianceScreen, LiveCourseBuilderScreen, NEW_COURSE, type CourseDetails, type LiveBuilder, type LiveCompliance, type LiveRules } from './learn-live';
 import type { LoadState } from './perf-goals';
 import './growth.css';
 
@@ -46,11 +49,18 @@ export interface CourseBuilderProps {
   tab?: 'content' | 'assessment' | 'certificate' | 'skills' | 'settings' | 'paths';
   paths?: { id: string; name: string; courses: string[]; certificate: boolean; enrolled: number }[];
   status?: 'Draft' | 'Published';
+  /** Wired to the API (the core: content, certificate, skills, settings). */
+  live?: LiveBuilder;
 }
 
 /** LRN-03 Course builder (T3): content items, assessment picker, certificate (+ Open Badge / Credly), skill mapping, settings; learning paths. */
-export function CourseBuilderScreen({ course, items: initial, tab = 'content', paths = [], status = 'Draft' }: CourseBuilderProps) {
+export function CourseBuilderScreen(props: CourseBuilderProps) {
+  return props.live ? <LiveCourseBuilderScreen live={props.live} /> : <SampleCourseBuilder {...props} />;
+}
+
+function SampleCourseBuilder({ course, items: initial, tab = 'content', paths = [], status = 'Draft' }: CourseBuilderProps) {
   const [items, setItems] = useState(initial);
+  const [details, setDetails] = useState<CourseDetails>({ ...NEW_COURSE, title: course.title, source: course.source === 'Provider' ? 'provider' : course.source === 'Partner pack' ? 'partner' : 'company', provider: course.provider ?? '', cost: course.cost, mandatory: Boolean(course.mandatory), needsApproval: Boolean(course.approval), certificate: Boolean(course.certificate), skills: course.skills });
   const [badge, setBadge] = useState(true);
   const [credly, setCredly] = useState(false);
   const [threshold, setThreshold] = useState<number | null>(75);
@@ -144,6 +154,7 @@ export function CourseBuilderScreen({ course, items: initial, tab = 'content', p
         </TabsContent>
         <TabsContent value="certificate">
           <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
+            <Switch checked={details.certificate} onChange={(c) => setDetails({ ...details, certificate: c })} label="Issue a certificate on completion" description="A PDF with a code anyone can check on the verify page." />
             <FormField label="Certificate template">
               <Select value="c1" onChange={() => {}} options={[{ value: 'c1', label: 'Training certificate with QR verification' }]} />
             </FormField>
@@ -178,6 +189,7 @@ export function CourseBuilderScreen({ course, items: initial, tab = 'content', p
         </TabsContent>
         <TabsContent value="settings">
           <div className="yx-growth-stack" style={{ maxWidth: 'var(--yx-form-max)' }}>
+            <CourseDetailsFields value={details} onChange={setDetails} />
             <FieldRow>
               <FormField label="Cost per person">
                 <CurrencyField value={course.cost} onChange={() => {}} />
@@ -469,7 +481,14 @@ function SessionPage({ page, persona, tab }: { page: SessionPageData; persona: '
 }
 
 /** LRN-04 Sessions (T3): list, one session record for attendees, attendance, results, feedback, cost (YX-LRN-08), trainer master; external trainer portal. */
-export function SessionsScreen({ persona, view, sessions, page, trainers = [], tab, state = 'ready' }: SessionsProps) {
+/** LRN-04 with real records: `live` is the list and trainers, `livePage` one session. */
+export function SessionsScreen(props: SessionsProps | { live: LiveSessions } | { livePage: LiveSessionPage }) {
+  if ('live' in props) return <LiveSessionsScreen live={props.live} />;
+  if ('livePage' in props) return <LiveSessionPageScreen live={props.livePage} />;
+  return <SessionsDesign {...props} />;
+}
+
+function SessionsDesign({ persona, view, sessions, page, trainers = [], tab, state = 'ready' }: SessionsProps) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const shown = useMemo(() => sessions.filter((s) => (!q || s.course.toLowerCase().includes(q.toLowerCase())) && filters.every((f) => matchesFilter((s as unknown as Record<string, unknown>)[f.key], f))), [sessions, filters, q]);
@@ -549,7 +568,20 @@ export function SessionsScreen({ persona, view, sessions, page, trainers = [], t
 /* ================================================================== LRN-05 · Trainer QR attendance (phone) */
 
 /** LRN-05 Trainer QR screen (T8): rotating code per slot, live count, manual and kiosk-code fallback (M07 Q7). */
-export function TrainerQrScreen({ session, slot, present, expected, closed, manual }: { session: string; slot: string; present: string[]; expected: string[]; closed?: boolean; manual?: boolean }) {
+export function TrainerQrScreen(props: TrainerQrProps | { live: LiveTrainerQr }) {
+  return 'live' in props ? <LiveTrainerQrScreen live={props.live} /> : <TrainerQrDesign {...props} />;
+}
+
+interface TrainerQrProps {
+  session: string;
+  slot: string;
+  present: string[];
+  expected: string[];
+  closed?: boolean;
+  manual?: boolean;
+}
+
+function TrainerQrDesign({ session, slot, present, expected, closed, manual }: TrainerQrProps) {
   const [marked, setMarked] = useState<string[]>(present);
   return (
     <GrowthFrame area="learning" active="Sessions" persona="ld" device="phone" phone={{ title: 'Attendance', back: true, hideTabs: true }}>
@@ -636,7 +668,12 @@ const HOSUR_RULE: Rule = {
 };
 
 /** LRN-07 Assignment rules (T3): population, course, due in N days, recurrence, reminders and escalation; preview of who matches (Q3). */
-export function AssignmentRulesScreen({ rules, openId }: { rules: AssignmentRule[]; openId?: string }) {
+export function AssignmentRulesScreen({ rules, openId, live }: { rules: AssignmentRule[]; openId?: string; live?: LiveRules }) {
+  if (live) return <LiveAssignmentRulesScreen live={live} />;
+  return <SampleAssignmentRules rules={rules} openId={openId} />;
+}
+
+function SampleAssignmentRules({ rules, openId }: { rules: AssignmentRule[]; openId?: string }) {
   const [open, setOpen] = useState<string | null>(openId ?? null);
   const current = rules.find((r) => r.id === open);
   return (
@@ -673,6 +710,9 @@ export function AssignmentRulesScreen({ rules, openId }: { rules: AssignmentRule
           }
         >
           <div className="yx-growth-stack">
+            <FormField label="Rule name" required>
+              <TextField value={current.name} onChange={() => {}} />
+            </FormField>
             <ConditionBuilder schema={RULE_SCHEMA} defaultValue={HOSUR_RULE} parts={['when', 'if']} />
             <FieldRow>
               <FormField label="Course">
@@ -688,6 +728,7 @@ export function AssignmentRulesScreen({ rules, openId }: { rules: AssignmentRule
             <FormField label="Reminders and escalation">
               <Text>Reminders 7 and 2 days before the due date; the manager is told the day after it’s missed, then HR after 7 days.</Text>
             </FormField>
+            <Switch defaultChecked={current.active} label="Active" description="A paused rule enrols nobody new. Enrolments it made stay." />
             <div className="yx-growth-effect">
               <span className="yx-growth-effect__title">Preview</span>
               <ul>
@@ -712,7 +753,8 @@ export interface ComplianceData {
 }
 
 /** LRN-08 Compliance dashboard (T6): department × mandatory course heatmap with % in every cell, overdue list, audit export. */
-export function ComplianceDashboardScreen({ persona = 'ld', data, state = 'ready' }: { persona?: 'ld' | 'hr'; data: ComplianceData; state?: LoadState }) {
+export function ComplianceDashboardScreen({ persona = 'ld', data, state = 'ready', live }: { persona?: 'ld' | 'hr'; data: ComplianceData; state?: LoadState; live?: LiveCompliance }) {
+  if (live) return <LiveComplianceScreen live={live} persona={persona} />;
   const cells = data.rows.map((r) => ({ label: r.dept, groupSize: r.size, values: r.done.map((d, i) => complianceCell(d, r.assigned[i]).pct) }));
   const all = data.rows.flatMap((r) => r.done.map((d, i) => ({ d, a: r.assigned[i] })));
   const overall = complianceCell(all.reduce((a, x) => a + x.d, 0), all.reduce((a, x) => a + x.a, 0));
@@ -766,7 +808,17 @@ export function ComplianceDashboardScreen({ persona = 'ld', data, state = 'ready
 /* ================================================================== LRN-09 · Team skills matrix */
 
 /** LRN-09 Team skills matrix (T6, Mgr): people × competencies, gaps against the role highlighted with words (U87). */
-export function TeamSkillsMatrixScreen({ people, skills, state = 'ready' }: { people: { name: string; role: string; levels: (number | null)[]; required: number[] }[]; skills: string[]; state?: LoadState }) {
+export function TeamSkillsMatrixScreen(props: TeamSkillsProps | { live: LiveTeamSkills }) {
+  return 'live' in props ? <LiveTeamSkillsScreen live={props.live} /> : <TeamSkillsDesign {...props} />;
+}
+
+interface TeamSkillsProps {
+  people: { name: string; role: string; levels: (number | null)[]; required: number[] }[];
+  skills: string[];
+  state?: LoadState;
+}
+
+function TeamSkillsDesign({ people, skills, state = 'ready' }: TeamSkillsProps) {
   const gaps = people.reduce((a, p) => a + p.levels.filter((l, i) => l == null || l < p.required[i]).length, 0);
   return (
     <GrowthFrame area="learning" active="Skills" persona="mgr">
@@ -834,7 +886,19 @@ const NEED_FIELDS: FilterFieldDef[] = [
 ];
 
 /** LRN-11 Training needs (T2) grouped into plans, and department budgets per FY (planned, spent, committed) (Q4, Q5). */
-export function TrainingNeedsScreen({ persona, needs, budgets, tab = 'needs', state = 'ready' }: { persona: 'ld' | 'fin'; needs: TrainingNeed[]; budgets: { dept: string; planned: number; spent: number; committed: number }[]; tab?: 'needs' | 'budgets'; state?: LoadState }) {
+export function TrainingNeedsScreen(props: TrainingNeedsProps | { live: LiveTrainingNeeds }) {
+  return 'live' in props ? <LiveTrainingNeedsScreen live={props.live} /> : <TrainingNeedsDesign {...props} />;
+}
+
+interface TrainingNeedsProps {
+  persona: 'ld' | 'fin';
+  needs: TrainingNeed[];
+  budgets: { dept: string; planned: number; spent: number; committed: number }[];
+  tab?: 'needs' | 'budgets';
+  state?: LoadState;
+}
+
+function TrainingNeedsDesign({ persona, needs, budgets, tab = 'needs', state = 'ready' }: TrainingNeedsProps) {
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<string[]>([]);

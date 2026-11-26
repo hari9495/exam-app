@@ -26,9 +26,10 @@ import { formatDate, formatINR } from '../../lib/format';
 import type { FilterValue } from '../../lib/table';
 import { DueBadge, Kpis, NoRecordState, TimePage } from './time-kit';
 import { relativeDue } from './time-logic';
-import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TODAY, type TimeUser } from './time-data';
+import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TEAM, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
-import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyTimesheet, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import { ApplyLeavePanel, type LiveLeaveHome } from './leave';
+import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyLeave, MyTimesheet, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, RevokeKioskDialog, RevokedKiosksTable, ShowRevoked, type RevokedKiosk, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
@@ -501,6 +502,8 @@ const SEP14_LINES: TimesheetLine[] = [
 const THIS_MONDAY = new Date(2026, 8, 28);
 /** Today is Tue 29 Sep: hours from Wed 30 Sep can't be entered yet. */
 const LOCK_FROM = new Date(2026, 8, 30);
+/** Batch D A8 (design): Request leave starts on today, Tue 29 Sep. */
+const TODAY0_TS = new Date(2026, 8, 29);
 /** The queried cell on the sent-back week: SRF-24 audit visits, Tue 22 Sep, 3 h. */
 const QUERIED = { lineId: 'p2', day: 1, hours: 3 };
 type WeekData = { days: TimesheetDay[]; lines: TimesheetLine[]; status: TimesheetStatus };
@@ -515,26 +518,99 @@ function weekData(o: number, storyStatus: TimesheetStatus): WeekData {
 const addWeeks = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7 * n);
 /** "6 Sep 2026": the house date, always with the year. */
 const dayMonth = formatDate;
+/**
+ * TIM-15 "Copy last week" (answer 2533): fills only this week's empty cells, only on the `open` days (working days up to
+ * today, not locked), from last week's hours of the same project and task; a project not in `allowed` (no longer
+ * allocated) is skipped. Daily notes are never copied. Returns the new lines and the days that changed.
+ */
+export function copyWeekInto(lines: TimesheetLine[], from: TimesheetLine[], open: number[], allowed: (projectId: string | null) => boolean = () => true): [TimesheetLine[], number[]] {
+  const changed = new Set<number>();
+  const fill = (hours: (number | null)[], src: (number | null)[]) =>
+    hours.map((h, i) => {
+      if (h != null || src[i] == null || !src[i] || !open.includes(i)) return h;
+      changed.add(i);
+      return src[i];
+    });
+  const usable = from.filter((x) => x.projectId && allowed(x.projectId));
+  const out = lines.map((l) => {
+    const src = usable.find((x) => x.projectId === l.projectId && x.taskId === l.taskId);
+    return src ? { ...l, hours: fill(l.hours, src.hours) } : l;
+  });
+  usable
+    .filter((x) => !lines.some((l) => l.projectId === x.projectId && l.taskId === x.taskId))
+    .forEach((x) => {
+      const hours = fill(Array(7).fill(null), x.hours);
+      if (hours.some((h) => h != null)) out.push({ ...x, id: `cp-${x.id}`, hours, comments: Array(7).fill('') });
+    });
+  return [out, [...changed].sort()];
+}
+
 /** Fills this week's empty cells before `LOCK_FROM` from last week's hours. Returns the new lines and the days that changed. */
 function copyLastWeek(lines: TimesheetLine[]): [TimesheetLine[], number[]] {
   const open = TS_DAYS.map((_, i) => i).filter((i) => new Date(THIS_MONDAY.getFullYear(), THIS_MONDAY.getMonth(), THIS_MONDAY.getDate() + i) < LOCK_FROM && TS_DAYS[i].expected > 0);
-  const changed = new Set<number>();
-  const fill = (hours: (number | null)[], from: (number | null)[]) =>
-    hours.map((h, i) => {
-      if (h != null || from[i] == null || !open.includes(i)) return h;
-      changed.add(i);
-      return from[i];
-    });
-  const out = lines.map((l) => {
-    const src = LAST_LINES.find((x) => x.projectId === l.projectId && x.taskId === l.taskId);
-    return src ? { ...l, hours: fill(l.hours, src.hours) } : l;
-  });
-  LAST_LINES.filter((x) => !lines.some((l) => l.projectId === x.projectId && l.taskId === x.taskId)).forEach((x) => {
-    const hours = fill(Array(7).fill(null), x.hours);
-    if (hours.some((h) => h != null)) out.push({ ...x, id: `cp-${x.id}`, hours });
-  });
-  return [out, [...changed].sort()];
+  return copyWeekInto(lines, LAST_LINES, open);
 }
+
+/* ---------- batch D A14: the Home nudge (answer 2536) ---------- */
+
+/** Home: today has no hours yet (from the company's time on a working day, for people allocated to a project). */
+export function TimesheetNudgeCard({ href, onDismiss }: { href: string; onDismiss?: () => void }) {
+  return (
+    <Card title="You have not logged time today">
+      <p className="yx-tim-muted">Add today's hours while you remember them. Your week goes to the project manager when you send it.</p>
+      <div className="yx-tim-row">
+        <Button size="sm" variant="primary" asChild>
+          <a href={href}>Fill in today</a>
+        </Button>
+        {onDismiss && (
+          <Button size="sm" onClick={onDismiss}>
+            Not now
+          </Button>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+/* ---------- batch D A5: weeks not sent (TIM-15 "Not sent" tab) ---------- */
+
+/** A past week never sent (answer 2534): none saved, a draft, or sent back; a week in a locked month is read-only. */
+export type NotSentWeek = { week: string; status: 'not_started' | 'draft' | 'sent_back'; totalMinutes: number; locked: boolean };
+const NOT_SENT_LABEL: Record<NotSentWeek['status'], { label: string; tone: 'warning' | 'danger' | 'neutral' }> = {
+  not_started: { label: 'Nothing saved', tone: 'warning' },
+  draft: { label: 'Draft, not sent', tone: 'neutral' },
+  sent_back: { label: 'Sent back', tone: 'danger' },
+};
+
+/** TIM-15 Not sent: the person's past weeks to send, newest first; "Open week" goes to the grid; payroll needs full weeks. */
+export function NotSentWeeks({ weeks, onOpenWeek, onShowOlder }: { weeks: NotSentWeek[]; onOpenWeek: (week: string) => void; /** The last 12 weeks are shown; this asks for up to a year. */ onShowOlder?: () => void }) {
+  const columns: TableColumn<NotSentWeek & { id: string }>[] = [
+    { key: 'week', header: 'Week', value: (r) => `${formatDate(new Date(`${r.week}T00:00:00`))} – ${formatDate(new Date(new Date(`${r.week}T00:00:00`).getTime() + 6 * 864e5))}` },
+    { key: 'status', header: 'Status', type: 'status', value: (r) => NOT_SENT_LABEL[r.status].label, statusTone: (v) => Object.values(NOT_SENT_LABEL).find((x) => x.label === v)?.tone ?? 'neutral' },
+    { key: 'hours', header: 'Hours saved', type: 'number', value: (r) => (r.totalMinutes ? Math.round((r.totalMinutes / 60) * 10) / 10 : null) },
+    { key: 'note', header: 'Note', value: (r) => (r.locked ? 'Month locked: ask HR for a correction' : '') },
+  ];
+  return (
+    <div className="yx-tim-stack">
+      <p className="yx-tim-muted">Past weeks you have not sent yet. Payroll needs full weeks, so send each one.</p>
+      {weeks.length === 0 ? (
+        <EmptyState title="Every past week is sent." description="Weeks you still have to send appear here, with any your project manager sent back." />
+      ) : (
+        <DataTable label="Weeks not sent" rows={weeks.map((w) => ({ ...w, id: w.week }))} columns={columns} getRowId={(r) => r.id} rowButtons={(r) => (r.locked ? null : <Button size="sm" onClick={() => onOpenWeek(r.week)}>Open week</Button>)} />
+      )}
+      {onShowOlder && (
+        <div>
+          <Button size="sm" onClick={onShowOlder}>Show older</Button>
+        </div>
+      )}
+    </div>
+  );
+}
+const SAMPLE_NOT_SENT: NotSentWeek[] = [
+  { week: '2026-09-21', status: 'sent_back', totalMinutes: 2280, locked: false },
+  { week: '2026-09-07', status: 'draft', totalMinutes: 960, locked: false },
+  { week: '2026-08-24', status: 'not_started', totalMinutes: 0, locked: true },
+];
 
 /* ---------- live: /time/timesheet (TIM-15) ---------- */
 
@@ -554,6 +630,12 @@ export interface LiveTimesheet {
   prefill?: LivePrefill;
   /** Keka ideas (2026-11): the Time summary view (GET /time/me/timesheet/summary). */
   summary?: { state: LoadState; data: { year: number; years: number[]; weeks: TimeSummaryWeek[] } | null; onYear: (year: number) => void };
+  /** Batch D A3: last week's sheet, loaded while this week is shown (for "Copy last week"). */
+  lastWeek?: MyTimesheet | null;
+  /** Batch D A8: my leave, so "Request leave" opens the leave drawer here (unsaved hours stay on the grid). */
+  leave?: { data: MyLeave | null; live: LiveLeaveHome };
+  /** Batch D A5: my weeks not sent (GET /time/me/timesheet/not-sent); `onShowOlder` asks for a year. */
+  notSent?: { state: LoadState; data: { weeks: NotSentWeek[] } | null; onShowOlder?: () => void };
 }
 const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
 const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
@@ -575,7 +657,9 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const input = (): TimesheetLineInput[] => lines.filter((l) => l.projectId).map((l) => ({ projectId: l.projectId!, activity: l.taskId, billable: l.billable, minutes: l.hours.map((h) => Math.round((h ?? 0) * 60)), comments: Array.from({ length: 7 }, (_, k) => (l.comments?.[k] ?? '').trim()) }));
   // Answer 1787: the company's comment rule, per day with hours (the API checks it again on submit).
   const noteRule = d?.noteRule;
-  const days: TimesheetDay[] = (d?.days ?? []).map((x) => (x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : { expected: 0, kind: 'workday' }));
+  const days: TimesheetDay[] = (d?.days ?? []).map((x) => (x.holiday ? { expected: 0, kind: 'holiday', label: x.holiday } : x.leave === 'full' ? { expected: 0, kind: 'leave', label: 'On leave' } : x.leaveRequested ? { expected: 0, kind: 'workday', label: 'Leave requested' } : { expected: 0, kind: 'workday' }));
+  // Batch D A8 (answer 2539): the leave drawer opens on today in this week, else on the week's Monday.
+  const [leaveOn, setLeaveOn] = useState<string | null>(null);
   const locked = (d?.days ?? []).filter((x) => x.locked);
   const allLocked = !!d && locked.length === d.days.length;
   const st: TimesheetStatus = allLocked ? 'locked' : d?.sheet ? LIVE_STATUS[d.sheet.status] : 'draft';
@@ -584,6 +668,22 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   const go = (week: string) => {
     setProblems([]);
     live.onWeek(week);
+  };
+  // Batch D A3 (answer 2533): as drawn, into this week's empty cells, working days up to today, still-allocated projects.
+  const copyLast = () => {
+    if (!d || !live.lastWeek) return;
+    const from: TimesheetLine[] = live.lastWeek.lines.map((l) => ({ id: l.id, projectId: l.projectId, taskId: l.activity, billable: l.billable, hours: l.minutes.map((m) => (m ? Math.round((m / 60) * 100) / 100 : null)) }));
+    const open = d.days.map((x, i) => (!x.holiday && x.leave !== 'full' && !x.locked && x.on <= live.today ? i : -1)).filter((i) => i >= 0);
+    const active = new Set(d.projects.filter((x) => x.active).map((x) => x.id));
+    const [ls, changed] = copyWeekInto(lines, from, open, (pid) => active.has(pid ?? ''));
+    setLines(ls);
+    const after = isoPlus(live.today, 1);
+    toast({
+      tone: changed.length ? 'success' : 'default',
+      title: changed.length
+        ? `Copied ${changed.map((i) => isoDate(d.days[i]!.on)).join(', ')} from ${weekRange(live.lastWeek.week)} into empty cells.${after <= isoPlus(d.week, 6) ? ` Days from ${isoDate(after)} fill in on the day.` : ''} Save the draft to keep them.`
+        : 'Nothing to copy: the open days already have hours, or last week has none for your current projects.',
+    });
   };
   const send = () => {
     const p = checkTimesheet(lines, 24, noteRule).map((x) => x.message);
@@ -615,6 +715,8 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             // At this week the arrow stays and says why.
             onNextWeek={() => (d.week >= thisWeek ? toast({ title: 'Next week opens on Monday.' }) : go(isoPlus(d.week, 7)))}
             onThisWeek={d.week < isoPlus(thisWeek, -7) ? () => go(thisWeek) : undefined}
+            onCopyLastWeek={editable && d.week === thisWeek && live.lastWeek ? copyLast : undefined}
+            onRequestLeave={live.leave?.data && !allLocked ? () => setLeaveOn(live.today >= d.week && live.today <= isoPlus(d.week, 6) ? live.today : d.week) : undefined}
             onSaveDraft={editable ? () => void run('save', async () => { await live.onSave(d.week, input()); toast({ tone: 'success', title: `Draft saved for ${weekRange(d.week)}.` }); }) : undefined}
             saving={busy === 'save'}
             today={localDay(live.today)}
@@ -663,14 +765,32 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   return (
     <TimePage active="My timesheet">
       <PageHeader title="My timesheet" description={d ? `Approver: the project manager · ${d.mode === 'timesheet' ? 'your days come from this timesheet' : 'your days come from your check-ins; hours here don’t change your attendance'}` : 'Approver: the project manager'} actions={live.prefill && d && editable && d.week <= thisWeek ? <Button icon={Link2} onClick={() => setPf(true)}>Pre-fill from my tools</Button> : undefined} />
+      {live.leave?.data && leaveOn && <ApplyLeavePanel open onOpenChange={(o) => !o && setLeaveOn(null)} live={{ data: live.leave.data, live: live.leave.live, startOn: leaveOn }} />}
       {live.prefill && d && <PrefillDrawer open={pf} onOpenChange={setPf} lines={lines} onLinesChange={setLines} live={{ prefill: live.prefill, week: d.week, projects: d.projects.filter((x) => x.active) }} />}
       {live.summary ? (
         <Tabs value={view} onValueChange={setView}>
           <TabsList aria-label="My timesheet views">
             <TabsTrigger value="week">Week</TabsTrigger>
             <TabsTrigger value="summary">Time summary</TabsTrigger>
+            {live.notSent && <TabsTrigger value="not-sent">{`Not sent${live.notSent.data?.weeks.length ? ` (${live.notSent.data.weeks.length})` : ''}`}</TabsTrigger>}
           </TabsList>
           <TabsContent value="week">{gate}</TabsContent>
+          {live.notSent && (
+            <TabsContent value="not-sent">
+              <LiveGate state={live.notSent.state} what="your weeks not sent">
+                {live.notSent.data && (
+                  <NotSentWeeks
+                    weeks={live.notSent.data.weeks}
+                    onShowOlder={live.notSent.onShowOlder}
+                    onOpenWeek={(w) => {
+                      setView('week');
+                      go(w);
+                    }}
+                  />
+                )}
+              </LiveGate>
+            </TabsContent>
+          )}
           <TabsContent value="summary">
             <LiveGate state={live.summary.state} what="your time summary">
               {live.summary.data && (
@@ -695,9 +815,9 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
   );
 }
 
-export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, view, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** Keka ideas: open on the Time summary. */ view?: 'week' | 'summary'; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
+export function TimesheetScreen({ status = 'draft', layout = 'auto', prefillOpen = false, prefillView = 'suggestions', initialLines, noteRule, view, leaveOpen, live }: { status?: TimesheetStatus; layout?: 'auto' | 'days'; prefillOpen?: boolean; prefillView?: PrefillView; initialLines?: TimesheetLine[]; /** Answer 1787: a comment per day with hours, with a live word count. */ noteRule?: TimesheetNoteRule; /** Keka ideas: open on the Time summary. */ view?: 'week' | 'summary' | 'not-sent'; /** Batch D A8: the leave drawer open (story). */ leaveOpen?: boolean; /** The live app's /time/timesheet. */ live?: LiveTimesheet }) {
   if (live) return <LiveTimesheetScreen live={live} />;
-  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} view={view} />;
+  return <SampleTimesheet status={status} layout={layout} prefillOpen={prefillOpen} prefillView={prefillView} initialLines={initialLines} noteRule={noteRule} view={view} leaveOpen={leaveOpen} />;
 }
 
 /** Keka ideas: the sample year for the Time summary, Monday 5 Jan to the week before this one (sample hours). */
@@ -707,9 +827,11 @@ const SAMPLE_WEEKS: TimeSummaryWeek[] = Array.from({ length: 38 }, (_, i) => {
   return { week, totalMinutes: [2400, 2280, 2520, 2400, 1920, 2400, 2700][i % 7]!, status: i === 37 ? 'pending' : i === 30 ? 'rejected' : 'approved' };
 });
 
-function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule, view = 'week' }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule; view?: 'week' | 'summary' }) {
+function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLines, noteRule, view = 'week', leaveOpen: leaveOpen0 = false }: { status: TimesheetStatus; layout: 'auto' | 'days'; prefillOpen: boolean; prefillView: PrefillView; initialLines?: TimesheetLine[]; noteRule?: TimesheetNoteRule; view?: 'week' | 'summary' | 'not-sent'; leaveOpen?: boolean }) {
   const { toast } = useToast();
   const [tab, setTab] = useState<string>(view);
+  // Batch D A8: Request leave opens the leave drawer on the timesheet (the design's own Apply leave).
+  const [leaveOpen, setLeaveOpen] = useState(leaveOpen0);
   // `status` is for the week the story opens on: a draft is this week, locked is the August week, every other status is last week.
   const [offset, setOffset] = useState(status === 'draft' ? 0 : status === 'locked' ? -5 : -1);
   const [edits, setEdits] = useState<Record<number, TimesheetLine[]>>(initialLines ? { 0: initialLines } : {});
@@ -802,6 +924,7 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
       onThisWeek={offset < -1 ? () => go(0) : undefined}
       // Copying last week would overwrite hours fixed for a sent-back week.
       onCopyLastWeek={onThis ? copyLast : undefined}
+      onRequestLeave={() => setLeaveOpen(true)}
       onSaveDraft={() => toast({ tone: 'success', title: `Draft saved for ${range(weekStart)}.` })}
       sentBackReason={st === 'sent_back' ? 'SRF-24 audit visits on Tue 22 Sep look high: 3 h for a 1 h visit. Move the travel time to Internal.' : undefined}
       sentBackCell={st === 'sent_back' ? { lineId: QUERIED.lineId, day: QUERIED.day, by: ME.manager } : undefined}
@@ -816,7 +939,12 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
     />
   );
   const prefillBtn = onThis && editable && <Button icon={Link2} onClick={() => setPf(true)}>Pre-fill from my tools</Button>;
-  const drawer = onThis && <PrefillDrawer open={pf} onOpenChange={setPf} view={prefillView} lines={thisLines} onLinesChange={setThisLines} />;
+  const drawer = (
+    <>
+      {onThis && <PrefillDrawer open={pf} onOpenChange={setPf} view={prefillView} lines={thisLines} onLinesChange={setThisLines} />}
+      <ApplyLeavePanel open={leaveOpen} onOpenChange={setLeaveOpen} from={TODAY0_TS} to={TODAY0_TS} />
+    </>
+  );
   if (layout === 'days')
     return (
       <PhoneFrame tab="time" title="My timesheet">
@@ -837,7 +965,11 @@ function SampleTimesheet({ status, layout, prefillOpen, prefillView, initialLine
         <TabsList aria-label="My timesheet views">
           <TabsTrigger value="week">Week</TabsTrigger>
           <TabsTrigger value="summary">Time summary</TabsTrigger>
+          <TabsTrigger value="not-sent">{`Not sent (${SAMPLE_NOT_SENT.length})`}</TabsTrigger>
         </TabsList>
+        <TabsContent value="not-sent">
+          <NotSentWeeks weeks={SAMPLE_NOT_SENT} onShowOlder={() => {}} onOpenWeek={(w) => { setTab('week'); go(Math.round((new Date(`${w}T00:00:00`).getTime() - THIS_MONDAY.getTime()) / (7 * 864e5))); }} />
+        </TabsContent>
         <TabsContent value="week">
           <div className="yx-tim-stack">
             {correctionAlert}
@@ -1215,7 +1347,7 @@ export interface LivePayrollFeed extends LiveReportBase {
   entityId: string | null;
   onEntity: (id: string) => void;
 }
-export type LiveReports = LiveRegisters | LivePayrollFeed | LiveAttendanceReport | LiveNightRegister;
+export type LiveReports = LiveRegisters | LivePayrollFeed | LiveAttendanceReport | LiveNightRegister | LiveHoursReport;
 
 const STATE_TEXT: Record<string, string> = { 'IN-KA': 'Karnataka', 'IN-TN': 'Tamil Nadu' };
 const MODE_LABEL: Record<string, string> = { punch: 'Check in and out', assumed_present: 'Present unless on leave', timesheet: 'Timesheet' };
@@ -1329,13 +1461,19 @@ function LiveReportsScreen({ live }: { live: LiveRegisters | LivePayrollFeed }) 
 export interface LiveAttendanceReport extends LiveReportBase {
   report: 'late' | 'ot';
   data: AttendanceReport | null;
-  onReport: (report: 'late' | 'ot' | 'night') => void;
+  onReport: (report: 'late' | 'ot' | 'night' | 'hours') => void;
+}
+/** Batch C item 16: Short hours and Breaks (a manager's team by person; HR's scope by person too). */
+export interface LiveHoursReport extends LiveReportBase {
+  report: 'hours';
+  data: HoursReport | null;
+  onReport: (report: 'late' | 'ot' | 'night' | 'hours') => void;
 }
 /** HR only: women who worked a night shift in the month, with their consent on file (OSH Code / Factories Act). */
 export interface LiveNightRegister extends LiveReportBase {
   report: 'night';
   data: NightRegister | null;
-  onReport: (report: 'late' | 'ot' | 'night') => void;
+  onReport: (report: 'late' | 'ot' | 'night' | 'hours') => void;
 }
 type ReportRow = { id: string; label: string; loc: string; late: number; early: number; ot: number; lop: number };
 
@@ -1347,12 +1485,51 @@ function saveCsv(name: string, rows: (string | number)[][]) {
   URL.revokeObjectURL(a.href);
 }
 
-function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNightRegister }) {
+/**
+ * Batch C item 16 (answers 2507, 2508): Short hours (worked days short of the shift, in the company's bands) and Breaks
+ * (frequent-break days: more breaks than the company's number, or its minutes). Where clock-in-again is off, the row says
+ * breaks are not recorded instead of showing zero.
+ */
+export function HoursReportCard({ data, month, state, onRetry, onExport }: { data: HoursReport | null; month: string; state: ReturnType<typeof liveTable>; onRetry?: () => void; onExport: () => void }) {
+  const rows = data?.rows ?? [];
+  const b = rows[0]?.bands ?? [4, 6, 8];
+  const lim = rows[0]?.limit ?? { count: 3, minutes: 60 };
+  const notRecorded = rows.filter((r) => !r.breaksRecorded).length;
+  type Row = HoursReport['rows'][number];
+  const muted = (r: Row, v: number | null) => (r.breaksRecorded ? v ?? 0 : null);
+  const cols: TableColumn<Row>[] = [
+    { key: 'name', header: 'Employee', type: 'person', width: 220, value: (x) => x.name, person: (x) => ({ name: x.name, secondary: [x.dept, x.location].filter(Boolean).join(' · ') }) },
+    { key: 'b1', header: `Under ${b[0]} h`, type: 'number', value: (x) => x.short.b1, total: 'sum' },
+    { key: 'b2', header: `${b[0]}–${b[1]} h`, type: 'number', value: (x) => x.short.b2, total: 'sum' },
+    { key: 'b3', header: `${b[1]}–${b[2]} h`, type: 'number', value: (x) => x.short.b3, total: 'sum' },
+    { key: 'freq', header: 'Frequent-break days', value: (x) => muted(x, x.frequentBreakDays) ?? -1, render: (x) => (x.breaksRecorded ? String(x.frequentBreakDays ?? 0) : <span className="yx-tim-muted">Breaks not recorded</span>) },
+    { key: 'breaks', header: 'Breaks', type: 'number', value: (x) => muted(x, x.breaks) ?? 0, optional: true },
+    { key: 'mins', header: 'Break time (h)', type: 'number', value: (x) => (x.breaksRecorded ? hoursOf(x.breakMinutes ?? 0) : 0), optional: true },
+  ];
+  return (
+    <Card title={`Short hours and breaks · ${monthText(month)}`}>
+      <div className="yx-tim-stack">
+        <p className="yx-tim-muted">
+          Days worked short of the shift, by hours worked: under {b[0]} h, {b[0]}–{b[1]} h and {b[1]}–{b[2]} h. A frequent-break day has more than {lim.count} breaks or {lim.minutes} minutes of breaks. Your company sets these in Settings › Time.
+        </p>
+        {notRecorded > 0 && (
+          <InlineAlert tone="info" title={`Breaks are not recorded for ${notRecorded === rows.length ? 'anyone here' : plural(notRecorded, 'person', 'people')}`}>
+            Their shifts do not let people clock in again after clocking out, so their breaks are not recorded. Turn on clock-in-again for the shift to see them.
+          </InlineAlert>
+        )}
+        <DataTable label="Short hours and breaks" columns={cols} rows={rows} getRowId={(x) => x.id} state={state} onRetry={onRetry} exportFormats={['csv']} onExport={onExport} empty={<EmptyState compact title="No short days or breaks this month" description="Days worked short of the shift appear here." />} />
+      </div>
+    </Card>
+  );
+}
+
+function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNightRegister | LiveHoursReport }) {
   const { toast } = useToast();
   const [filters, setFilters] = useState<FilterValue[]>([]);
   const night = live.report === 'night';
-  const rep = live.report !== 'night' ? live : null;
-  const mgr = rep?.data?.scope === 'team';
+  const hours = live.report === 'hours' ? live : null;
+  const rep = live.report === 'late' || live.report === 'ot' ? live : null;
+  const mgr = (rep?.data ?? hours?.data)?.scope === 'team';
   const isOt = live.report === 'ot';
   // HR adds people up by department and site; a manager sees each person.
   const rows: ReportRow[] = !rep?.data
@@ -1402,10 +1579,11 @@ function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNigh
   ];
   const stage = (live.data as { stage?: string | null } | null)?.stage;
   const draft = stage !== 'locked' && stage !== 'filed';
-  const reportName = night ? 'Register of women night-shift workers' : isOt ? 'Overtime' : 'Late and early';
+  const reportName = night ? 'Register of women night-shift workers' : hours ? 'Short hours and breaks' : isOt ? 'Overtime' : 'Late and early';
   const exportRows = (fmt: 'csv' | 'xlsx') => {
     const file = `${reportName} · ${monthText(live.month)}.csv`;
     if (night) saveCsv(file, [['Worker', 'Code', 'Night shifts', 'Night hours', 'Consent', 'Given', 'Withdrawn'], ...nightRows.map((x) => [x.name, x.code ?? '', x.shifts, hoursOf(x.nightMinutes), x.consent?.reference ?? 'None', x.consent?.givenOn ?? '', x.consent?.withdrawnOn ?? ''])]);
+    else if (hours) saveCsv(file, [['Employee', 'Code', 'Department', 'Location', 'Short band 1', 'Short band 2', 'Short band 3', 'Frequent-break days', 'Breaks', 'Break minutes'], ...(hours.data?.rows ?? []).map((x) => [x.name, x.code ?? '', x.dept, x.location, x.short.b1, x.short.b2, x.short.b3, x.breaksRecorded ? x.frequentBreakDays ?? 0 : 'Not recorded', x.breaksRecorded ? x.breaks ?? 0 : 'Not recorded', x.breaksRecorded ? x.breakMinutes ?? 0 : 'Not recorded'])]);
     else saveCsv(file, [[mgr ? 'Employee' : 'Department', 'Location', 'Late marks', 'Early exits', 'Overtime hours', 'Unpaid days'], ...shown.map((x) => [x.label, x.loc, x.late, x.early, x.ot, x.lop])]);
     toast({ tone: 'success', title: `${file} downloaded.${draft ? ' Draft: the month is not locked yet.' : ''}${fmt === 'xlsx' ? ' Saved as CSV, which Excel opens.' : ''}` });
   };
@@ -1418,13 +1596,15 @@ function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNigh
         facts={<span className="yx-tim-row"><span>{monthText(live.month)}{rep?.data && draft ? ` · up to ${isoDate(rep.data.upTo)}` : ''}</span>{stage ? <Badge tone={draft ? 'warning' : 'neutral'}>{draft ? 'Not locked' : 'Locked'}</Badge> : null}</span>}
         actions={
           <div className="yx-tim-row">
-            <div className="yx-tim-picker"><Select aria-label="Report" value={live.report} onChange={(v) => v && live.onReport(v as 'late' | 'ot' | 'night')} options={[{ value: 'late', label: 'Late and early' }, { value: 'ot', label: 'Overtime' }, ...(mgr ? [] : [{ value: 'night', label: 'Register of women night-shift workers' }])]} /></div>
+            <div className="yx-tim-picker"><Select aria-label="Report" value={live.report} onChange={(v) => v && live.onReport(v as 'late' | 'ot' | 'night' | 'hours')} options={[{ value: 'late', label: 'Late and early' }, { value: 'ot', label: 'Overtime' }, { value: 'hours', label: 'Short hours and breaks' }, ...(mgr ? [] : [{ value: 'night', label: 'Register of women night-shift workers' }])]} /></div>
             <div className="yx-tim-picker"><Select aria-label="Month" value={live.month} onChange={(v) => v && live.onMonth(v)} options={monthOptions(live.month)} /></div>
           </div>
         }
       />
       {live.state === 'no-access' ? (
         <LiveGate state="no-access" what={night ? 'the night-shift register' : 'attendance reports'} />
+      ) : hours ? (
+        <HoursReportCard data={hours.data} month={live.month} state={tableState} onRetry={live.onRetry} onExport={() => exportRows('csv')} />
       ) : night ? (
         <Card title={`Register of women night-shift workers · ${monthText(live.month)}`}>
           <div className="yx-tim-stack">
@@ -1470,9 +1650,30 @@ function LiveTimeReportsScreen({ live }: { live: LiveAttendanceReport | LiveNigh
   );
 }
 
-export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready', live }: { report?: 'late' | 'ot' | 'form25' | 'night'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState; /** The live app's /time/registers or /time/payroll-feed. */ live?: LiveReports }) {
+export function AttendanceReportsScreen({ report = 'late', persona = 'hr', month: startMonth = 'sep', filters: startFilters = [], state = 'ready', live }: { report?: 'late' | 'ot' | 'form25' | 'night' | 'hours'; persona?: 'hr' | 'manager'; month?: Month; filters?: FilterValue[]; state?: ViewState; /** The live app's /time/registers or /time/payroll-feed. */ live?: LiveReports }) {
   if (live) return live.report === 'registers' || live.report === 'feed' ? <LiveReportsScreen live={live} /> : <LiveTimeReportsScreen live={live} />;
+  if (report === 'hours') return <SampleHoursReport persona={persona} />;
   return <SampleAttendanceReports report={report} persona={persona} month={startMonth} filters={startFilters} state={state} />;
+}
+
+/** Batch C item 16 (design): September 2026, the manager's team; the Hosur plant's shift has clock-in-again off. */
+function SampleHoursReport({ persona }: { persona: 'hr' | 'manager' }) {
+  const people = persona === 'manager' ? myReports() : TEAM;
+  const data: HoursReport = {
+    month: '2026-09',
+    upTo: '2026-09-30',
+    scope: persona === 'manager' ? 'team' : 'company',
+    rows: people.map((p, i) => {
+      const recorded = !p.location.includes('Hosur');
+      return { id: p.id, name: p.name, code: p.code, dept: p.dept, location: p.location, short: { b1: i % 4 === 1 ? 1 : 0, b2: i % 3, b3: (i * 2) % 5 }, breaksRecorded: recorded, breaks: recorded ? 18 + i * 3 : null, breakMinutes: recorded ? 400 + i * 35 : null, frequentBreakDays: recorded ? i % 4 : null, bands: [4, 6, 8], limit: { count: 3, minutes: 60 } };
+    }),
+  };
+  return (
+    <TimePage active="Reports">
+      <PageHeader title={persona === 'manager' ? 'My team · attendance' : 'Attendance reports'} description="Short hours and breaks" facts="September 2026" />
+      <HoursReportCard data={data} month="2026-09" state="ready" onExport={() => undefined} />
+    </TimePage>
+  );
 }
 
 function SampleAttendanceReports({ report, persona, month: startMonth, filters: startFilters, state }: { report: 'late' | 'ot' | 'form25' | 'night'; persona: 'hr' | 'manager'; month: Month; filters: FilterValue[]; state: ViewState }) {

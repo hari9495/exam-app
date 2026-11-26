@@ -208,7 +208,7 @@ describe('UserGroupsService', () => {
         data: [{ organizationId: 'org-1', groupId: 'g1', userId: 'u3' }],
       });
       expect(audit.record).toHaveBeenCalledTimes(1);
-      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'user_group.members_changed', entityId: 'g1', metadata: { count: 2 } }));
+      expect(audit.record).toHaveBeenCalledWith(context, expect.objectContaining({ action: 'user_group.members_changed', entityId: 'g1', metadata: { count: 2, added: ['u3'], removed: ['u2'] } }));
     });
 
     it('leaves unchanged members untouched: no add/remove calls when desired set matches current', async () => {

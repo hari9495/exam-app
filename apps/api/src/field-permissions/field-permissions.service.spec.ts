@@ -153,6 +153,7 @@ describe('FieldPermissionsService', () => {
         action: 'organization.field_permissions_updated',
         entityType: 'organization',
         entityId: 'org-1',
+        metadata: { before: {}, after: { candidate: { recruiter: { email: 'hidden' } } } },
       });
     });
 

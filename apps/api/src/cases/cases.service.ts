@@ -170,6 +170,8 @@ export class CasesService {
           id: row.id,
           ref: this.ref(row),
           kind: KIND[row.kind]!,
+          // Batch F item 13: the CMP-09 console counts the 90-day inquiry from the filing day.
+          filedOn: isoDay(row.filedAt),
           subject: this.subject(row),
           location: locs.find((x) => x.id === row.locationId)?.name ?? '—',
           stage: this.stage(row, f).stage,
@@ -204,7 +206,7 @@ export class CasesService {
       const today = todayIst();
       const me = c.userId!;
       const { dates, source } = await this.dates(tx, l, today);
-      const ic = await tx.speakupTeamMember.findMany({ where: { organizationId: c.organizationId, team: 'ic', removedAt: null }, select: { userId: true, role: true } });
+      const ic = await tx.speakupTeamMember.findMany({ where: { organizationId: c.organizationId, team: 'ic', removedAt: null, locationId: row.icLocationId }, select: { userId: true, role: true } });
       const presidingId = ic.find((m) => m.role === 'presiding')?.userId ?? null;
       const externals = new Set((await tx.speakupTeamMember.findMany({ where: { organizationId: c.organizationId, role: 'external', removedAt: null }, select: { userId: true } })).map((m) => m.userId));
       const msgs = await tx.speakupMessage.findMany({ where: { organizationId: c.organizationId, caseId: row.id }, orderBy: { sentAt: 'asc' } });
@@ -248,7 +250,7 @@ export class CasesService {
         respondent: row.respondentUserId ? nm(row.respondentUserId) : null,
         rule: row.ruleClause,
         letter: row.kind === 'disciplinary' && f.outcome.decision === 'warning' && f.outcome.status === 'approved' ? ((await this.warningLetter(tx, c.organizationId, row.id)) ?? { id: null, status: 'waiting', referenceNo: null, renderError: null }) : null,
-        report: { summary: row.summary, category: row.category, happenedOn: iso(row.happenedOn), involved: row.involved, witnesses: row.witnesses, outside: row.outsideName ? `${row.outsideName}${row.outsideEmployer ? ` (${row.outsideEmployer})` : ''}` : null, retaliationWorry: row.retaliationWorry, late: row.late },
+        report: { summary: row.summary, category: row.category, happenedOn: iso(row.happenedOn), involved: row.involved, witnesses: row.witnesses, outside: row.outsideName ? `${row.outsideName}${row.outsideEmployer ? ` (${row.outsideEmployer})` : ''}` : null, retaliationWorry: row.retaliationWorry, late: row.late, onBehalf: row.onBehalfName ? { name: row.onBehalfName, relation: row.onBehalfRelation ?? '' } : null, lateReason: row.lateReason, conciliation: row.conciliationAsked },
         dates,
         datesSource: source,
         severity: row.kind === 'whistleblower' ? severityOf(f, row.retaliationWorry) : null,
@@ -491,7 +493,7 @@ export class CasesService {
       const l = await this.memberCase(tx, c, id);
       this.open(l);
       this.poshCase(l);
-      const presiding = await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ic', role: 'presiding', removedAt: null, userId: c.userId! }, select: { id: true } });
+      const presiding = await tx.speakupTeamMember.findFirst({ where: { organizationId: c.organizationId, team: 'ic', role: 'presiding', removedAt: null, userId: c.userId!, locationId: l.row.icLocationId }, select: { id: true } });
       if (!presiding) throw new ForbiddenException({ statusCode: 403, code: 'CASE_NOT_PRESIDING', message: 'Only the presiding officer signs the report.' });
       if (l.f.ic.status !== 'draft') throw new ConflictException('There is no draft report to sign.');
       const agree = [...l.members.keys()].filter((u) => l.f.ic.votes.get(u)?.vote === 'agree').length;

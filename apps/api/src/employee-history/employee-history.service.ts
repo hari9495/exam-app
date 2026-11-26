@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { checkSeat } from '../positions/seat-rules';
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { buildViewer, covers, coversRange, grantPeriods, grantPeriodsFor, has as holds, implicitPeriods, implicitSql, inScopeSql, overlaps, Period, started, tenantWide, Viewer } from '../access/scope';
@@ -138,6 +139,7 @@ function assignmentValues(r: AssignmentRow): AssignmentValues {
     hoursPerWeek: r.hoursPerWeek === null ? null : r.hoursPerWeek.toFixed(1),
     employmentTypeId: r.employmentTypeId,
     managerEmployeeId: r.managerEmployeeId,
+    positionId: r.positionId ?? null,
     costCentres: r.costCentres.map((x) => ({ costCentreId: x.costCentreId, percent: x.percent.toFixed(2) })).sort((a, b) => a.costCentreId.localeCompare(b.costCentreId)),
     dottedLineManagerIds: r.dottedLines.map((x) => x.managerEmployeeId).sort(),
   };
@@ -1088,11 +1090,12 @@ export class EmployeeHistoryService implements OnModuleInit {
     if (dto.effectiveDate < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
     await this.checkReach(tx, c, v, e, dto.effectiveDate, dto.overrideReason);
     await this.checkRefs(tx, c, e, payload);
+    await checkSeat(tx, c, e, payload, dto.changeType, dto.effectiveDate);
     // PPL-04: a transfer to where the person already works (or a promotion to the same job) changes nothing.
     const day = asDate(dto.effectiveDate);
     const now = await tx.employeeAssignment.findFirst({
       where: { organizationId: c.organizationId, employmentId: e.id, supersededAt: null, validFrom: { lte: day }, OR: [{ validTo: null }, { validTo: { gte: day } }] },
-      select: { locationId: true, departmentId: true, designationId: true, gradeId: true },
+      select: { locationId: true, departmentId: true, designationId: true, gradeId: true, positionId: true },
     });
     const unchanged = unchangedProblem(dto.changeType, payload, now);
     if (unchanged) throw new BadRequestException(unchanged);
@@ -1132,6 +1135,7 @@ export class EmployeeHistoryService implements OnModuleInit {
       await this.checkReach(tx, c, v, e, date, ch.overrideReason);
     }
     await this.checkRefs(tx, c, e, payload);
+    await checkSeat(tx, c, e, payload, ch.changeType as ChangeType, date);
     // Answer 364: no confirmation while a "must be clear before confirmation" background check is open (a preview still shows).
     if (ch.changeType === 'confirmation' && !opts.simulate) await assertClearForConfirmation(tx, c.organizationId, e.id);
     const today = todayIst();
@@ -1520,6 +1524,7 @@ export class EmployeeHistoryService implements OnModuleInit {
         if (date < isoDate(e.joinedOn)) throw new BadRequestException('The effective date is before the employee joined.');
         await this.checkReach(tx, c, v, e, date, dto.overrideReason ?? fresh.overrideReason);
         await this.checkRefs(tx, c, e, payload);
+        await checkSeat(tx, c, e, payload, fresh.changeType as ChangeType, date);
         if (fresh.changeType === 'promotion') {
           const day = asDate(date);
           const now = await tx.employeeAssignment.findFirst({
@@ -1657,6 +1662,7 @@ export class EmployeeHistoryService implements OnModuleInit {
       // YX-HIS-12: a joining date in the past needs employee.change.retro, before the retro limit the override and a reason.
       await this.checkReach(tx, c, v, e, dto.joinedOn, dto.overrideReason);
       await this.checkRefs(tx, c, e, payload);
+      await checkSeat(tx, c, e, payload, 'join', dto.joinedOn);
       await addRole(tx, c, personId, 'employee', { table: 'employments', id: e.id }, e.joinedOn);
       // Letters asked for while the person was joining (appointment, letter of intent) are for this employment (PPL-28).
       await tx.letterIssue.updateMany({ where: { organizationId: c.organizationId, personId, employmentId: null }, data: { employmentId: e.id } });

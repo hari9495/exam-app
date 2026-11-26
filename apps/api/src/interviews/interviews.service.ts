@@ -13,6 +13,7 @@ import { InterviewEmailTemplatesService, ResolvedInterviewTemplate } from './int
 import { InterviewEmailEventType } from './interview-email-types';
 import { buildInterviewIcs } from './interview-ics';
 import { generateBookableSlots, BusyInterval } from './booking-slots';
+import { interviewBookingRules } from './interview-hours';
 import { CalendarSyncService, PushEventResult } from '../calendar-sync/calendar-sync.service';
 
 const LOGO_SIGN_TTL_MS = 90 * 24 * 60 * 60 * 1000;
@@ -467,21 +468,15 @@ export class InterviewsService {
     return slots.map((s) => ({ startsAt: s.startsAt.toISOString(), endsAt: s.endsAt.toISOString() }));
   }
 
-  // Shared by getPublicInterview and respondPublic's book branch -- same org config source the
-  // slot picker / business-hours settings page uses (organizations.service.getBusinessHours),
-  // read here directly since this runs inside an already-open tenant tx.
+  // Shared by getPublicInterview and respondPublic's book branch. Answers 2423 and 2510: the 6.1 interview hours and the
+  // holiday calendar of the job's location (else the company-wide one), read inside the already-open tenant tx.
   private async getBusinessHoursConfig(
     tx: Prisma.TransactionClient,
     organizationId: string,
+    pipelineEntryId: string,
   ): Promise<{ businessHours: BusinessHours | null; holidays: Holiday[] }> {
-    const org = await tx.organization.findUnique({
-      where: { id: organizationId },
-      select: { businessHoursJson: true, holidaysJson: true },
-    });
-    return {
-      businessHours: org?.businessHoursJson ? (JSON.parse(org.businessHoursJson) as BusinessHours) : null,
-      holidays: org?.holidaysJson ? (JSON.parse(org.holidaysJson) as Holiday[]) : [],
-    };
+    const entry = await tx.pipelineEntry.findFirst({ where: { id: pipelineEntryId, organizationId }, select: { job: { select: { locationId: true } } } });
+    return interviewBookingRules(tx, organizationId, entry?.job?.locationId ?? null);
   }
 
   async getPublicInterview(token: string) {
@@ -522,7 +517,7 @@ export class InterviewsService {
             panelistRows.map((p) => p.userId),
             interview.id,
           );
-          const { businessHours, holidays } = await this.getBusinessHoursConfig(tx, interview.organizationId);
+          const { businessHours, holidays } = await this.getBusinessHoursConfig(tx, interview.organizationId, interview.pipelineEntryId);
           availableSlots = generateBookableSlots({
             windowStart: interview.bookingWindowStart!.toISOString(),
             windowEnd: interview.bookingWindowEnd!.toISOString(),
@@ -644,7 +639,7 @@ export class InterviewsService {
           panelistRows.map((p) => p.userId),
           interview.id,
         );
-        const { businessHours, holidays } = await this.getBusinessHoursConfig(tx, interview.organizationId);
+        const { businessHours, holidays } = await this.getBusinessHoursConfig(tx, interview.organizationId, interview.pipelineEntryId);
         const available = generateBookableSlots({
           windowStart: interview.bookingWindowStart!.toISOString(),
           windowEnd: interview.bookingWindowEnd!.toISOString(),

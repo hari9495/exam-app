@@ -716,9 +716,9 @@ export function RangeMarker({
   );
 }
 
-/** Empty state for a first-use list, with the primary action. */
-export function FirstUse({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
-  return <EmptyState title={title} description={description} action={action} help={<Link href="#help">How this works</Link>} />;
+/** Empty state for a first use (a list, or payroll not set up), with the primary action and a way to learn more. */
+export function FirstUse({ title, description, action, help }: { title: string; description: string; action?: ReactNode; help?: ReactNode }) {
+  return <EmptyState title={title} description={description} action={action} help={help ?? <Link href="#help">How this works</Link>} />;
 }
 
 /** Bordered action to an external partner screen (opens outside YukthiX); pass the partner's own URL. */

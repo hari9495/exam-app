@@ -1,8 +1,11 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { CustomFieldDefinition } from '@prisma/client';
-import { TenantPrismaService, TenantContext } from '@exam-platform/shared';
+import { AuditService, TenantPrismaService, TenantContext } from '@exam-platform/shared';
 import { CF_ENTITY_TYPES, CreateCustomFieldDto, type CustomFieldEntityType } from './dto/create-custom-field.dto';
 import { UpdateCustomFieldDto } from './dto/update-custom-field.dto';
+
+/** Answer 2425 (Settings › Custom fields): what an audit row keeps of a field definition. */
+const look = (d: CustomFieldDefinition) => ({ entityType: d.entityType, label: d.label, fieldType: d.fieldType, options: d.optionsJson ? (JSON.parse(d.optionsJson) as string[]) : null, required: d.required, showOnApply: d.showOnApply, dataClass: d.dataClass, archivedAt: d.archivedAt });
 
 export function slugify(label: string): string {
   return label.toLowerCase().trim().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 90) || 'field';
@@ -41,7 +44,7 @@ export class CustomFieldsService {
         if (!clash) break;
         key = `${base}-${i}`;
       }
-      return tx.customFieldDefinition.create({
+      const made = await tx.customFieldDefinition.create({
         data: {
           organizationId: orgId,
           entityType: dto.entityType,
@@ -55,6 +58,8 @@ export class CustomFieldsService {
           position: dto.position ?? 0,
         },
       });
+      await AuditService.recordIn(tx, context, { actorUserId: context.userId ?? null, action: 'custom_field.created', entityType: 'custom_field', entityId: made.id, metadata: { before: null, after: look(made) } });
+      return made;
     });
   }
 
@@ -67,7 +72,7 @@ export class CustomFieldsService {
       if (existing.fieldType === 'select' && dto.options !== undefined && dto.options.length === 0) {
         throw new BadRequestException('A select field needs at least one option');
       }
-      return tx.customFieldDefinition.update({
+      const saved = await tx.customFieldDefinition.update({
         where: { id },
         data: {
           ...(dto.label !== undefined ? { label: dto.label } : {}),
@@ -79,16 +84,19 @@ export class CustomFieldsService {
           // entityType, key, fieldType are immutable — never written here.
         },
       });
+      await AuditService.recordIn(tx, context, { actorUserId: context.userId ?? null, action: 'custom_field.updated', entityType: 'custom_field', entityId: id, metadata: { before: look(existing), after: look(saved) } });
+      return saved;
     });
   }
 
   async archive(context: TenantContext, id: string, kinds: readonly CustomFieldEntityType[] = CF_ENTITY_TYPES): Promise<{ id: string; archivedAt: Date }> {
     const orgId = context.organizationId as string;
     return this.tenantPrisma.forTenant(context, async (tx) => {
-      const existing = await tx.customFieldDefinition.findFirst({ where: { id, organizationId: orgId, entityType: { in: [...kinds] } }, select: { id: true } });
+      const existing = await tx.customFieldDefinition.findFirst({ where: { id, organizationId: orgId, entityType: { in: [...kinds] } } });
       if (!existing) throw new NotFoundException(`Custom field ${id} not found`);
       const archivedAt = new Date();
-      await tx.customFieldDefinition.update({ where: { id }, data: { archivedAt } });
+      const saved = await tx.customFieldDefinition.update({ where: { id }, data: { archivedAt } });
+      await AuditService.recordIn(tx, context, { actorUserId: context.userId ?? null, action: 'custom_field.archived', entityType: 'custom_field', entityId: id, metadata: { before: look(existing), after: look(saved) } });
       return { id, archivedAt };
     });
   }

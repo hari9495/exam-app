@@ -32,6 +32,11 @@ export class PlanLineDto {
   @Min(0)
   @Max(1_000_000_000_000)
   budget?: number | null;
+
+  /** Enterprise E1 (O5): the seat this line budgets for (positions on). */
+  @IsOptional()
+  @IsUUID()
+  positionId?: string | null;
 }
 
 export class PlanDto {

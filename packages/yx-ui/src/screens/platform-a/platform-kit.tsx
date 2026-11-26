@@ -311,9 +311,22 @@ export function validateDelegation(v: { from: Date | null; to: Date | null; dele
 }
 
 /** Only low-risk items of one type may be bulk approved (P03 §4.5, APX-D §6.4). */
+/** Answer 2503: bulk approve and bulk "Do not approve" both take at most 100 requests at a time (the API's limit too). */
+export const BULK_MAX = 100;
+
+/** Answer 2503: any requests can be not approved together, up to 100, except those decided on their own page. */
+export function bulkNotApprovable<T extends { id: string; decideAt?: string | null }>(items: T[], ids: string[]): { ok: boolean; reason?: string } {
+  const picked = items.filter((i) => ids.includes(i.id));
+  if (picked.length === 0) return { ok: false, reason: 'Select at least one request.' };
+  if (picked.length > BULK_MAX) return { ok: false, reason: `Choose ${BULK_MAX} requests or fewer at a time.` };
+  if (picked.some((i) => i.decideAt)) return { ok: false, reason: 'Some of these are decided on their own page. Open them one by one.' };
+  return { ok: true };
+}
+
 export function bulkApprovable<T extends { id: string; type: string; lowRisk?: boolean }>(items: T[], ids: string[]): { ok: boolean; reason?: string } {
   const picked = items.filter((i) => ids.includes(i.id));
   if (picked.length === 0) return { ok: false, reason: 'Select at least one request.' };
+  if (picked.length > BULK_MAX) return { ok: false, reason: `Choose ${BULK_MAX} requests or fewer at a time.` };
   if (picked.some((i) => !i.lowRisk)) return { ok: false, reason: 'Only low-risk requests can be approved together. Open the others one by one.' };
   if (new Set(picked.map((i) => i.type)).size > 1) return { ok: false, reason: 'Bulk approve works for one request type at a time.' };
   return { ok: true };

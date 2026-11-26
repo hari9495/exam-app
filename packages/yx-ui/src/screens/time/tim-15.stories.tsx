@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { TimesheetScreen, TS_LINES } from './ops';
+import { TimesheetNudgeCard, TimesheetScreen, TS_LINES } from './ops';
 
 const meta: Meta<typeof TimesheetScreen> = { title: 'Screens/Time/TIM-15 · Timesheets', component: TimesheetScreen, render: (args) => <TimesheetScreen {...args} />, parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -27,4 +27,10 @@ export const CommentOptional: S = { name: 'Comments · optional (company setting
 export const PhoneComments: S = { name: 'Phone · a comment under each day', args: { layout: 'days', noteRule: RULE, initialLines: COMMENTED }, ...phone };
 
 // Keka ideas (2026-11): Time summary, a bar per week across the year, then each week with its hours and status.
+// Batch D A5 (answer 2534): past weeks not sent, with sent-back ones and a locked month.
+export const NotSent: S = { name: 'Not sent · past weeks to send', args: { view: 'not-sent' } };
+// Batch D A8 (answer 2539): Request leave on the week opens Apply leave on today.
+export const RequestLeave: S = { name: 'Request leave from the week', args: { leaveOpen: true } };
+// Batch D A14 (answer 2536): the Home card when today has no hours.
+export const HomeNudge: S = { name: 'Home nudge · no hours today', render: () => <div style={{ maxWidth: 420, padding: 24 }}><TimesheetNudgeCard href="#" onDismiss={() => {}} /></div> };
 export const TimeSummary: S = { name: 'Time summary · hours per week this year', args: { view: 'summary' } };

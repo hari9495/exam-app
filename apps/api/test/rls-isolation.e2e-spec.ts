@@ -62,6 +62,12 @@ const PEOPLE_SUPPORT_EXCLUDED = ['buddy_pool', 'succession_positions', 'successo
   'employee_change_drafts',
   // PPL-07: saved employee imports (also restricted to the person who saved them).
   'employee_import_drafts'];
+// Learning: courses, rules, enrolments, progress, certificates and the reminder log.
+const LEARNING_SUPPORT_EXCLUDED = ['learning_courses', 'learning_course_items', 'learning_rules', 'learning_enrolments', 'learning_item_progress', 'learning_certificates', 'learning_reminders', 'learning_external_requests',
+  'learning_trainers', 'learning_sessions', 'learning_session_slots', 'learning_attendance', 'learning_feedback',
+    'learning_skill_levels', 'learning_skill_suggestions', 'learning_needs', 'learning_budgets',
+    // G4: report favourites and company documents.
+    'report_favourites', 'company_doc_folders', 'company_documents', 'report_schedules'];
 const HIRING_SUPPORT_EXCLUDED = ['offers', 'pipeline_feedback', 'referrals', 'recruiting_costs', 'scorecards', 'scorecard_ratings'];
 // Later features that also carry the RESTRICTIVE support_session_excluded policy (added 9 Nov 2026 from the catalogue,
 // pg_policy, when this list had fallen behind): helpdesk cases, BFSI and pay extras, expenses cards, performance disputes.
@@ -81,9 +87,26 @@ const LATER_SUPPORT_EXCLUDED = [
   'tax_window_actions',
   // Batch H part 3, B8/E5: flexible benefit components and settlements.
   'flex_components', 'flex_settlements',
+  'positions', 'position_versions', 'position_changes',
   // Expenses cards; performance market rates, coach and disputes.
   'expense_cards', 'expense_card_lines', 'expense_card_mappings', 'expense_card_statements',
-  'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots'];
+  'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots',
+  // Batch C item 6: late-mark penalty waivers (they change pay); answer 2527: a manager's requests for them.
+  'late_mark_waivers', 'late_mark_waiver_requests',
+  // Batch F item 32: private notes about a colleague (author only, also a RESTRICTIVE author_only policy).
+  'perf_person_notes',
+  // Batch G1 answer 2593: the Internal Committee's awareness log and annual report (also RESTRICTIVE ic_member_only).
+  'posh_awareness_sessions', 'posh_annual_reports',
+  // Batch G2 item 12 (M09 Engage): feed posts and who read / acknowledged them.
+  'eng_posts', 'eng_post_reads',
+  // Batch G2 item 100: spaces, comments, likes, reports and moderation actions.
+  'eng_spaces', 'eng_comments', 'eng_reactions', 'eng_reports', 'eng_mod_actions',
+  // Batch G2 item 73: kudos.
+  'eng_kudos',
+  // Batch G2 items 74 and 75: surveys, invitations, anonymous responses, action plans, poll votes.
+  'eng_surveys', 'eng_survey_invites', 'eng_survey_responses', 'eng_action_plans', 'eng_poll_votes',
+  // Batch G2 item 76: personal celebration opt-outs.
+  'eng_celebration_optouts'];
 // Founder decision 5a-D4: compensations also carry the RESTRICTIVE pay guard (5b).
 const policiesOf = (table: string) => BigInt(([...SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED].includes(table) ? 2 : 1) + (table === 'compensations' ? 1 : 0));
 
@@ -738,7 +761,7 @@ describe('PostgreSQL row-level security (app role)', () => {
     const restrictive = await prisma.$queryRaw<{ table: string }[]>`
       SELECT c.relname AS table FROM pg_policy p JOIN pg_class c ON c.oid = p.polrelid
       WHERE p.polname = 'support_session_excluded' AND NOT p.polpermissive ORDER BY c.relname`;
-    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED, ...LATER_SUPPORT_EXCLUDED].sort());
+    expect(restrictive.map((r) => r.table)).toEqual([...SUPPORT_EXCLUDED, ...PAYROLL_SUPPORT_EXCLUDED, ...LIFECYCLE_SUPPORT_EXCLUDED, ...EXPENSES_SUPPORT_EXCLUDED, ...PERFORMANCE_SUPPORT_EXCLUDED, ...HIRING_SUPPORT_EXCLUDED, ...PEOPLE_SUPPORT_EXCLUDED, ...LATER_SUPPORT_EXCLUDED, ...LEARNING_SUPPORT_EXCLUDED].sort());
   });
 
   it("(b) org A cannot read, change or point at org B's grants, personal data, identifiers, bank accounts or requests", async () => {

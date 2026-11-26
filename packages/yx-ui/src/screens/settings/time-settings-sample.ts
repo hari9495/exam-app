@@ -198,6 +198,56 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "0"
   },
+  "attendance.short_hours.band1": {
+    "label": "Short day: the shortest band is worked time under (hours)",
+    "values": [
+      "2",
+      "3",
+      "4",
+      "5"
+    ],
+    "default": "4"
+  },
+  "attendance.short_hours.band2": {
+    "label": "Short day: the middle band ends at (hours)",
+    "values": [
+      "5",
+      "6",
+      "7"
+    ],
+    "default": "6"
+  },
+  "attendance.short_hours.band3": {
+    "label": "Short day: the longest band ends at (hours; a full day from here)",
+    "values": [
+      "7",
+      "8",
+      "9"
+    ],
+    "default": "8"
+  },
+  "attendance.frequent_breaks.count": {
+    "label": "Frequent breaks: more breaks than this in a day",
+    "values": [
+      "2",
+      "3",
+      "4",
+      "5",
+      "6"
+    ],
+    "default": "3"
+  },
+  "attendance.frequent_breaks.minutes": {
+    "label": "Frequent breaks: or breaks adding up to at least (minutes a day)",
+    "values": [
+      "30",
+      "45",
+      "60",
+      "90",
+      "120"
+    ],
+    "default": "60"
+  },
   "attendance.regularise_monthly_limit": {
     "label": "Fixes a month with manager approval only",
     "values": [
@@ -423,6 +473,16 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "10"
   },
+  "leave.block_leave.next_year_days": {
+    "label": "A block may run into the next leave year if it starts within (days)",
+    "values": [
+      "0",
+      "30",
+      "60",
+      "90"
+    ],
+    "default": "60"
+  },
   "leave.optional_holiday.prorate_on_move": {
     "label": "Prorate optional holidays after a move to another office",
     "values": [
@@ -456,6 +516,24 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
       "warn"
     ],
     "default": "block"
+  },
+  "payroll.journal.suspense": {
+    "label": "Pay lines with no ledger account go to the suspense account",
+    "values": ["on", "off"],
+    "default": "on",
+    "labels": { "on": "On: park them there and let the journal go to the books", "off": "Off: refuse the export until every line is mapped" }
+  },
+  "payroll.costing.split": {
+    "label": "Split each person's payroll cost by",
+    "values": ["cost_centre", "project_hours"],
+    "default": "cost_centre",
+    "labels": { "cost_centre": "Cost centre (from the job)", "project_hours": "Project hours (approved timesheets, else allocations)" }
+  },
+  "payroll.journal.format": {
+    "label": "Journal export format",
+    "values": ["csv", "tally", "zoho", "sap", "oracle"],
+    "default": "csv",
+    "labels": { "csv": "CSV", "tally": "Tally (XML)", "zoho": "Zoho Books (CSV)", "sap": "SAP (flat file)", "oracle": "Oracle GL (interface CSV)" }
   },
   "payroll.variance_threshold_pct": {
     "label": "Ask to confirm a net pay change above (%)",

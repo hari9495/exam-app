@@ -8,8 +8,6 @@ import { useAuth } from '../../lib/auth-context';
 import { buildNav, type NavInput } from '../../lib/yx-nav';
 import { YxNavContext } from '../../lib/yx-shell';
 import YxIntegrationSettingsPage from './(app)/settings/integrations/[page]/page';
-import V2Integrations from '../v2/(org-admin)/settings/integrations/page';
-import V2Calendar from '../v2/(recruiter)/calendar/page';
 
 jest.mock('next/navigation', () => ({ useRouter: jest.fn(), usePathname: jest.fn(), useSearchParams: jest.fn(), useParams: jest.fn(), redirect: jest.fn() }));
 jest.mock('../../lib/api-client', () => ({ apiFetch: jest.fn(), apiFetchBlob: jest.fn() }));
@@ -126,10 +124,5 @@ describe('Settings S-10: Integrations & Developers', () => {
     expect(calls).toEqual([]);
   });
 
-  it('the retired /v2 Integrations and Calendar pages redirect to their new pages', () => {
-    const go = jest.requireMock('next/navigation').redirect as jest.Mock;
-    V2Integrations();
-    V2Calendar();
-    expect(go.mock.calls.map((c) => c[0])).toEqual(['/yx/settings/integrations/integrations', '/yx/settings/integrations/calendar-and-chat']);
-  });
+  // The retired /v2 Integrations and Calendar addresses redirect in next.config.js (next.config.test.ts).
 });

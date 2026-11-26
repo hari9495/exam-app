@@ -9,7 +9,7 @@ import { RoleHomeScreen, type LiveHome, type RoleHomeScreenProps } from '@yukthi
 import { NudgeCard } from '@yukthix/ui/console';
 import { TalkToUsLiveDialog } from '@yukthix/ui/desk';
 import { Button } from '@yukthix/ui';
-import { HomeClockCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar, type TeamLeaveHome } from '@yukthix/ui/time';
+import { HomeClockCard, TimesheetNudgeCard, type MyAttendance, type MyLeave, type Muster, type PunchResult, type TeamCalendar, type TeamLeaveHome } from '@yukthix/ui/time';
 import type { TeamMember } from '@yukthix/ui/workforce';
 import { apiFetch } from '../../../../lib/api-client';
 import { useAuth } from '../../../../lib/auth-context';
@@ -61,6 +61,9 @@ export default function YxHomePage() {
   // C-8 (YX-12): the one nudge for this person, if any (the API applies the switches, who can act and the weekly limit).
   const nudge = useQuery<{ nudge: { id: string; featureLabel: string; heading: string; body: string; switchHref: string | null } | null }>({ queryKey: ['yx', 'nudge'], queryFn: () => apiFetch('/help/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false, staleTime: Infinity });
   const n = nudge.data?.nudge;
+  // Batch D A14 (answer 2536): today has no hours yet (the API applies the company time, working day and allocation).
+  const tsNudge = useQuery<{ show: boolean }>({ queryKey: ['time', '/me/timesheet/nudge'], queryFn: () => apiFetch('/time/me/timesheet/nudge', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
+  const [tsHidden, setTsHidden] = useState(false);
   // Answer 1210: Talk to us on the card asks YukthiX to call (the sales-assist queue).
   const [talking, setTalking] = useState(false);
   const inbox = useQuery<ApprovalTask[]>({ queryKey: ['workflow', '/approvals/inbox'], queryFn: () => apiFetch('/workflow/approvals/inbox', {}, accessToken ?? undefined), enabled: Boolean(accessToken) && !actingSuperAdmin, retry: false });
@@ -145,8 +148,10 @@ export default function YxHomePage() {
       void qc.invalidateQueries({ queryKey: ['yx', 'workspace', 'counts'] });
     },
     onReview: () => router.push('/yx/approvals'),
-    nudge: n ? (
-      <NudgeCard
+    nudge: n || (tsNudge.data?.show && !tsHidden) ? (
+      <>
+      {tsNudge.data?.show && !tsHidden && <TimesheetNudgeCard href="/yx/time/timesheet" onDismiss={() => setTsHidden(true)} />}
+      {n && <NudgeCard
         heading={n.heading}
         body={n.body}
         switchHref={n.switchHref}
@@ -159,7 +164,8 @@ export default function YxHomePage() {
           qc.setQueryData(['yx', 'nudge'], { nudge: null });
           void apiFetch(`/help/nudge/${encodeURIComponent(n.id)}/dismiss`, { method: 'POST' }, accessToken ?? undefined).catch(() => undefined);
         }}
-      />
+      />}
+      </>
     ) : undefined,
     clock: attendance.data ? (
       <HomeClockCard

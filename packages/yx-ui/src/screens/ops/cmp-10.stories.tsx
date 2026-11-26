@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { PoshComplaintScreen } from './posh';
 import { TODAY } from '../_kit/data';
+import { livePoshFiling } from './posh-live-samples';
 
 const meta: Meta = { title: 'Screens/Compliance/CMP-10 · POSH complaint filing', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -15,3 +16,6 @@ export const Alumni: S = { name: 'Ex-employee (alumni login)', render: () => <Po
 export const Filed: S = { name: 'Filed · statutory clock', render: () => <PoshComplaintScreen today={TODAY} filed /> };
 export const Phone: S = { name: 'File a complaint · phone', globals: PHONE, render: () => <PoshComplaintScreen device="phone" today={TODAY} incidentDate={new Date(2026, 8, 18)} /> };
 export const PhoneFiled: S = { name: 'Filed · phone', globals: PHONE, render: () => <PoshComplaintScreen device="phone" today={TODAY} filed /> };
+// Batch F item 13: the same designed form filled from the company's records.
+export const CompanyWorkplaces: S = { name: 'File a complaint · company workplaces', render: () => <PoshComplaintScreen today={TODAY} incidentDate={new Date(2026, 8, 18)} live={livePoshFiling()} /> };
+export const NoCommittee: S = { name: 'No Internal Committee yet', render: () => <PoshComplaintScreen today={TODAY} live={livePoshFiling({ icReady: false })} /> };

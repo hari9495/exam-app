@@ -402,6 +402,21 @@
         { "name": "Loans totalling 20,000 (the limit): exempt", "fn": "loan_perquisite", "input": { "loans": [{ "purpose": "personal", "ratePct": "0", "maxOutstanding": "20000", "exempt": false }] }, "expected": { "total": "0", "ratesMissing": false, "smallTotal": true } },
         { "name": "A medical loan: exempt", "fn": "loan_perquisite", "input": { "loans": [{ "purpose": "personal", "ratePct": "0", "maxOutstanding": "300000", "exempt": true }] }, "expected": { "total": "0", "ratesMissing": false, "smallTotal": false } }
       ]
+    },
+    {
+      "statute": "IN.RETIRE-CAP",
+      "jurisdiction": "IN",
+      "version": "2020-v1",
+      "validFrom": "2020-04-01",
+      "validTo": null,
+      "lawVersion": "IT-1961",
+      "verify": true,
+      "source": "Income-tax Act 1961 s.17(2)(vii) (from TY 2020-21): the employer's contributions in a year to a recognised provident fund, the NPS (s.80CCD) and an approved superannuation fund above Rs 7.5 lakh in total are a taxable perquisite (the yearly accretion on the excess, s.17(2)(viia), is not worked out). Carried into the Income-tax Act 2025. verify (review M7).",
+      "values": { "kind": "retire_cap", "cap": "750000" },
+      "golden": [
+        { "name": "Employer 9,00,000: 1,50,000 taxable", "fn": "retire_cap", "input": { "employer": "900000" }, "expected": { "excess": "150000" } },
+        { "name": "Employer 7,50,000 (the cap): nothing", "fn": "retire_cap", "input": { "employer": "750000" }, "expected": { "excess": "0" } }
+      ]
     }
   ]
 }

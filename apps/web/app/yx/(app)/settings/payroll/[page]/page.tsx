@@ -8,7 +8,7 @@ import { RegistrySettingsPage } from '../../../../../../lib/yx-registry-settings
 // with the company's settings. HR's settings key changes them (payroll set-up reads them: payroll never changes policy);
 // each change waits for a second person with HR's settings key while the company switch is on (the default).
 const PAGES = Object.keys(PAY_SETTINGS);
-const LINKS: Record<string, string> = { 'payslip.editor': '/yx/payroll/payslip-layout' };
+const LINKS: Record<string, string> = { 'payslip.editor': '/yx/payroll/payslip-layout', 'ledger.mapping': '/yx/payroll/accounting' };
 const canEdit = (has: (k: string) => boolean) => has('org.settings.manage');
 
 export default function YxPayrollSettingsPage() {

@@ -1289,3 +1289,17 @@ Founder answers 2310–2316 (compare-summary.md); builder questions 2320 onwards
 
 Checked at 1278 × 635 in Storybook by script (17 Nov 2026): TIM-07's five-option type Segment is one row (398 px in a
 481 px drawer); the reverse-LOP drawer's per-day Segment is one row after moving it under the date; blocks 16 px apart. TIM-19's Cancel some days and Extend drawers: no scroll, 16 px gaps.
+
+## Answer 2527: a manager asks HR to waive late marks (18 Nov 2026)
+
+- TIM-02 Manager: a "Late marks" button on the muster (manager with reports) opens the kit `LateMarksDrawer` in its ask mode
+  (stories "Manager · late marks of my team" and "Manager · ask HR to waive 2 late marks"): the manager's own reporting
+  line's late marks of the month; pick days, one reason (10+ characters), "Ask HR to waive N". Rows say Counts, Waived,
+  Asked HR or Declined (with HR's reason). API: `GET /time/team/late-marks`, `POST /time/team/late-marks/ask` (implicit
+  manager; outside the team 404, acting for someone else 403, locked month 409, repeats skipped and said).
+- TIM-11 HR: the same Late marks list shows "Asked by manager" with the reason; Waive answers the request; "Decline N"
+  needs a reason the manager sees (story "Late marks · decline a manager's request"). API:
+  `POST /time/periods/late-marks/decline` (attendance.lock; allowed after the lock, as it changes no pay).
+- Table `late_mark_waiver_requests` (migration 202617z0000571): RLS, support sessions excluded, no delete, one open
+  request per person and day. Audited time.late_mark.waiver_asked / waived (with the request id) / waiver_declined. HR
+  holders of attendance.lock are told on asking (else System Admins); the manager is told on each answer.

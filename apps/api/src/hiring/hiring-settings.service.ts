@@ -10,11 +10,17 @@ import { assertDefaultRecruiter, isRecruiter, recruiterKeyHolders } from './recr
 import { todayIst } from '../org-structure/org-validation';
 import { holdersOf } from '../time/time-core';
 import { biasLaw, coveredPlace } from './bias-audit';
+import { interviewHours } from '../interviews/interview-hours';
 
 /** Answer 332: the band approver may be a named person who holds the offer-pay key (they decide on pay). */
 const OFFER_PAY_KEY = 'ats.offer.compensation.view';
 const NONE = '00000000-0000-0000-0000-000000000000';
-const LETTER_ESIGN = 'offer_template.esign';
+/**
+ * Answer 2427 (retiring /v2): two company switches kept on the organisation row (record-visibility RLS and the daily
+ * reminder sweep read them there) shown and changed on 6.1, audited with before and after.
+ */
+export const ORG_SWITCHES = { 'hiring.record_visibility': 'recordVisibilityEnabled', 'hiring.reminders': 'remindersEnabled' } as const;
+type OrgSwitch = keyof typeof ORG_SWITCHES;
 
 /**
  * Settings 6.1 Hiring: the company hiring settings the design has a place for (answers 291, 302 and 341). Every value is a scoped company setting with a default (org-settings.service), audited there
@@ -43,6 +49,10 @@ export const HIRING_SETTING_KEYS = [
   // HIR-27: the interview day's slot length and how Auto-assign fills it.
   'hiring.interview_day.slot_minutes',
   'hiring.interview_day.assign',
+  // Answers 2423 and 2510: the hours a candidate may book an interview themselves.
+  'hiring.interview_hours.from',
+  'hiring.interview_hours.to',
+  'hiring.interview_hours.days',
   // HIR-13 (founder decision 6): who can apply for internal jobs, and when the current manager is told.
   'hiring.internal.after_probation',
   'hiring.internal.months_in_role',
@@ -170,9 +180,11 @@ export class HiringSettingsService {
           const locs = await tx.location.findMany({ where: { organizationId: org, archivedAt: null }, orderBy: { name: 'asc' }, select: { name: true, state: true, address: true } });
           return locs.filter((l) => coveredPlace(law, { state: l.state, city: (l.address as { city?: string } | null)?.city ?? null })).map((l) => l.name);
         })(),
-        offerLetters: await tx.offerTemplate.findMany({ where: { organizationId: org }, orderBy: [{ isDefault: 'desc' }, { name: 'asc' }], select: { id: true, name: true, esign: true } }),
-        values,
-        defaults: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])),
+        values: { ...values, ...(await (async () => {
+          const o = await tx.organization.findFirst({ where: { id: org }, select: { recordVisibilityEnabled: true, remindersEnabled: true } });
+          return { 'hiring.record_visibility': o?.recordVisibilityEnabled ? 'on' : 'off', 'hiring.reminders': o?.remindersEnabled ? 'on' : 'off' };
+        })()) },
+        defaults: { ...Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.default])), 'hiring.record_visibility': 'off', 'hiring.reminders': 'off' },
         choices: Object.fromEntries(HIRING_SETTING_KEYS.map((k) => [k, SETTINGS[k]!.values])),
         lastChange: last ? { by: by?.name || by?.email || 'Someone', at: last.updatedAt, what: `Changed ${SETTINGS[last.key]!.label.replace(/^Hiring: /, '').toLowerCase()}` } : null,
         pipelines: pipelines
@@ -197,20 +209,29 @@ export class HiringSettingsService {
   async save(ctx: TenantContext, user: ScopeUser, changes: { key: string; value: string }[]) {
     if (user.impersonatorUserId || user.actingSuperAdmin) throw new ForbiddenException('Not available while acting for someone else.');
     if (!(await this.canEdit(user))) throw new ForbiddenException('Only people with the hiring settings key for the whole company can change these settings.');
-    // Answer 337: an offer letter's e-sign switch rides along as 'offer_template.esign' = '<template id>:on|off'.
-    const letters = changes.filter((ch) => ch.key === LETTER_ESIGN).map((ch) => {
-      const m = /^([0-9a-f-]{36}):(on|off)$/i.exec(ch.value);
-      if (!m) throw new BadRequestException('An offer letter switch is "<letter>:on" or "<letter>:off".');
-      return { id: m[1]!, esign: m[2] === 'on' };
-    });
-    changes = changes.filter((ch) => ch.key !== LETTER_ESIGN);
+    // Answer 2523: an offer letter's e-sign is its "person signs" in Settings › Letter templates only (not on this page).
+    // Answer 2427: the organisation switches ride along as 'on' | 'off'.
+    const switches = changes.filter((ch): ch is { key: OrgSwitch; value: string } => ch.key in ORG_SWITCHES);
+    for (const ch of switches) if (!['on', 'off'].includes(ch.value)) throw new BadRequestException(`${ch.key} is on or off.`);
+    changes = changes.filter((ch) => !(ch.key in ORG_SWITCHES));
     const seen = new Set<string>();
     for (const ch of changes) {
       if (!(HIRING_SETTING_KEYS as readonly string[]).includes(ch.key)) throw new BadRequestException(`${ch.key} is not a hiring setting on this page.`);
       if (seen.has(ch.key)) throw new BadRequestException(`${SETTINGS[ch.key]!.label} is in the list twice.`);
       seen.add(ch.key);
       const def = SETTINGS[ch.key]!;
-      if (!def.oneOf && !def.values.includes(ch.value)) throw new BadRequestException(`${def.label} is one of: ${def.values.join(', ')}`);
+      if ((ch.key === 'hiring.interview_hours.from' || ch.key === 'hiring.interview_hours.to') && !def.values.includes(ch.value)) throw new BadRequestException('Choose a time on the hour or half hour, like 09:30.');
+      const parts = def.multi ? (ch.value ? ch.value.split(',') : []) : [ch.value];
+      if (!def.oneOf && (!parts.every((p) => def.values.includes(p)) || new Set(parts).size !== parts.length)) throw new BadRequestException(`${def.label} is ${def.multi ? 'any of' : 'one of'}: ${def.values.join(', ')}`);
+    }
+    // Answer 2510: interview hours end after they start, on at least one day (checked against the stored value too).
+    if (changes.some((ch) => ch.key.startsWith('hiring.interview_hours.'))) {
+      const now = await inCompany(this.tenantPrisma, ctx, (tx, c) => interviewHours(tx, c.organizationId));
+      const get = (k: string, d: string) => changes.find((ch) => ch.key === k)?.value ?? d;
+      const from = get('hiring.interview_hours.from', now.from);
+      const to = get('hiring.interview_hours.to', now.to);
+      if (!(from < to)) throw new BadRequestException('Interview hours must end after they start. Choose a later end time.');
+      if (!get('hiring.interview_hours.days', now.days.join(','))) throw new BadRequestException('Choose at least one day for interviews.');
     }
     // Answer 348 (checked again by each company setting write): before anything is written, so a bad choice saves nothing.
     const recruiter = changes.find((ch) => ch.key === 'hiring.requisition.default_recruiter');
@@ -222,14 +243,15 @@ export class HiringSettingsService {
         if (!ok) throw new NotFoundException('That person is not an active user of your company. Choose someone from the list.');
         if (!(await holdersOf(tx, c.organizationId, OFFER_PAY_KEY, NONE, todayIst())).includes(approver.value)) throw new BadRequestException('That person cannot see offer pay, so cannot approve it. Choose someone with the offer-pay key.');
       });
-    if (letters.length)
+    if (switches.length)
       await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
-        for (const l of letters) {
-          const t = await tx.offerTemplate.findFirst({ where: { organizationId: c.organizationId, id: l.id }, select: { id: true, esign: true, name: true } });
-          if (!t) throw new NotFoundException('That offer letter is not one of your company’s.');
-          if (t.esign === l.esign) continue;
-          await tx.offerTemplate.update({ where: { id: t.id }, data: { esign: l.esign } });
-          await audit(tx, c, 'offer_template.updated', 'offer_template', t.id, { name: t.name, esign: l.esign });
+        const before = await tx.organization.findFirstOrThrow({ where: { id: c.organizationId }, select: { recordVisibilityEnabled: true, remindersEnabled: true } });
+        for (const ch of switches) {
+          const col = ORG_SWITCHES[ch.key];
+          const on = ch.value === 'on';
+          if (before[col] === on) continue;
+          await tx.organization.update({ where: { id: c.organizationId }, data: { [col]: on } });
+          await audit(tx, c, 'org.setting.changed', 'organization', c.organizationId, { key: ch.key, from: before[col] ? 'on' : 'off', to: ch.value });
         }
       });
     for (const ch of changes) await this.settings.set(ctx, { key: ch.key, scopeType: 'tenant', value: ch.value } as Parameters<OrgSettingsService['set']>[1]);

@@ -24,7 +24,9 @@ export default function YxPayRunPaymentsPage() {
   const journalOk = perms.has('payroll.journal.export');
   const disbursements = usePay<Disbursement[]>(record ? `${base}/disbursements` : null);
   const bankFiles = usePay<BankFileRow[]>(approved ? `${base}/bank-files` : null);
-  const journal = usePay<RunJournal>(approved && journalOk ? `${base}/journal` : null);
+  // Enterprise E4 (O22): a reopened or voided run shows the reversing journal of what went to the books.
+  const reversible = !!run.data && ['void', 'reopened'].includes(run.data.status);
+  const journal = usePay<RunJournal>((approved || reversible) && journalOk ? `${base}/journal` : null);
   const write = usePayWrite();
   const upload = useApiWrite();
   const download = usePayDownload();

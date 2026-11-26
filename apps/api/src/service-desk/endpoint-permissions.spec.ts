@@ -39,7 +39,8 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
     expect(undeclared(PortalController).sort()).toEqual(['confirm', 'get', 'info', 'list', 'me', 'meToo', 'raise', 'reply', 'request', 'signIn', 'signOut', 'verify']);
     // Batch 4: the requester's own help, ratings and privacy requests; the portal's; and the public, keyless surfaces
     // (help centre, one-click rating link, wall screen link, sign-up, SCIM with its own bearer token).
-    expect(undeclared(MyHelpController).sort()).toEqual(['askPrivacy', 'kbArticle', 'kbClick', 'kbFeedback', 'kbHome', 'kbPage', 'privacyExport', 'privacyRequests', 'rate', 'suggest']);
+    // Batch F item 33: asked / askedOne / answer are the manager's own questions only (answer_user_id is the caller).
+    expect(undeclared(MyHelpController).sort()).toEqual(['answer', 'askPrivacy', 'asked', 'askedOne', 'kbArticle', 'kbClick', 'kbFeedback', 'kbHome', 'kbPage', 'privacyExport', 'privacyRequests', 'rate', 'suggest']);
     expect(undeclared(PortalHelpController).sort()).toEqual(['article', 'feedback', 'privacyAsk', 'privacyExport', 'privacyList', 'rate', 'suggest']);
     expect(undeclared(PublicHelpController).sort()).toEqual(['article', 'feedback', 'home', 'search', 'sitemap']);
     expect(undeclared(RateLinkController).sort()).toEqual(['answer', 'comment', 'info']);
@@ -52,7 +53,8 @@ describe('every Service Desk endpoint declares a permission (YX-SEC-01)', () => 
     expect(undeclared(MyCatalogController).sort()).toEqual(['cancel', 'cancelItem', 'catalogue', 'checkout', 'guide', 'itemPage', 'pick', 'request', 'resolveGuide']);
     // An approver is anyone a request names (P03): the engine checks the task is theirs.
     // decideMany: only tasks the caller holds (each refused otherwise); teamHistory: requests the caller holds or held a task for.
-    expect(undeclared(WorkflowController).sort()).toEqual(['decide', 'decideMany', 'delegate', 'delegations', 'history', 'inbox', 'mine', 'people', 'request', 'revoke', 'teamHistory']);
+    // everyone (answer 2500) and reassign (2501, 2502): the service checks the task holder or workflow.approvals.oversee in scope.
+    expect(undeclared(WorkflowController).sort()).toEqual(['decide', 'decideMany', 'delegate', 'delegations', 'everyone', 'history', 'inbox', 'mine', 'people', 'reassign', 'request', 'revoke', 'teamHistory']);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskCatalogController.prototype.askApproval)).toEqual(['desk.ticket.work']);
     expect(Reflect.getMetadata(PERMISSIONS_KEY, DeskRulesController.prototype.create)).toEqual(['desk.rule.manage']);
   });
@@ -131,7 +133,7 @@ describe("the requester's routes refuse anyone acting for someone else (review f
   it('impersonation and YukthiX support sessions get 403, the person themselves gets through', () => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { RequesterService } = require('./requester.service');
-    const svc = new RequesterService({} as never, {} as never, {} as never);
+    const svc = new RequesterService({} as never, {} as never, {} as never, {} as never);
     const tenant = { organizationId: 'o1', isSuperAdmin: false };
     const req = (user: object) => ({ user }) as never;
     expect(() => svc.who(req({ userId: 'u1', role: 'panel', impersonatorUserId: 'staff' }), tenant)).toThrow(/acting for someone else/);

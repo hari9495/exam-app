@@ -185,9 +185,10 @@ const JOB_DEFINITION_SELECT = {
 } as const;
 
 /** M10 AT2: the requisition columns a job create / update sets (only what the caller sent). */
-function requisitionData(dto: { headcountPlanLineId?: string | null; outsidePlan?: boolean; outsidePlanReason?: string | null; requisitionReason?: 'new' | 'replacement' | null; replacementOfEmployeeId?: string | null; budgetAmount?: number | null; targetStart?: string | null; applyBy?: string | null; experience?: string | null }) {
+function requisitionData(dto: { headcountPlanLineId?: string | null; positionId?: string | null; outsidePlan?: boolean; outsidePlanReason?: string | null; requisitionReason?: 'new' | 'replacement' | null; replacementOfEmployeeId?: string | null; budgetAmount?: number | null; targetStart?: string | null; applyBy?: string | null; experience?: string | null }) {
   const out: Record<string, unknown> = {};
   if (dto.headcountPlanLineId !== undefined) out.headcountPlanLineId = dto.headcountPlanLineId;
+  if (dto.positionId !== undefined) out.positionId = dto.positionId;
   if (dto.outsidePlan !== undefined) out.outsidePlan = dto.outsidePlan;
   if (dto.outsidePlanReason !== undefined) out.outsidePlanReason = dto.outsidePlanReason?.trim() || null;
   if (dto.requisitionReason !== undefined) out.requisitionReason = dto.requisitionReason;
@@ -510,8 +511,7 @@ export class PipelineService {
     });
 
     // One batched call for the whole list, not one per job -- avoids N+1.
-    const approvalByJobId = await this.approvals.getSummariesFor(context, 'job', jobs.map((j) => j.id));
-    for (const [k, v] of await this.hiring.summaries(context, jobs.map((j) => j.id))) approvalByJobId.set(k, v);
+    const approvalByJobId = await this.hiring.summaries(context, jobs.map((j) => j.id));
     const result = jobs.map((job) => ({ ...job, approval: approvalByJobId.get(job.id) ?? null }));
     const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
     return redactMany(result, hiddenJ);
@@ -560,7 +560,7 @@ export class PipelineService {
         jobBoardIds: publications.map((p: { jobBoardId: string }) => p.jobBoardId),
       };
     });
-    const approval = (await this.hiring.summaries(context, [jobId])).get(jobId) ?? (await this.approvals.getSummariesFor(context, 'job', [jobId])).get(jobId) ?? null;
+    const approval = (await this.hiring.summaries(context, [jobId])).get(jobId) ?? null;
     const hiddenJ = await this.fieldPerms.getHiddenFields(context, role, 'job');
     return redactFields({ ...job, linkedExams, customFields, approval, jobBoardIds }, hiddenJ);
   }
@@ -910,10 +910,8 @@ export class PipelineService {
   // isConfigurer) and puts the requisition back in draft so it can be edited and resubmitted.
   async cancelRequisitionApproval(context: TenantContext, actorUserId: string, jobId: string): Promise<void> {
     const isConfigurer = await this.approvals.isConfigurer(context, actorUserId);
-    // A P03 request is withdrawn there; one still in the older engine is cancelled there (requests finish where they began).
-    if (await this.hiring.withdraw(context, actorUserId, jobId, isConfigurer)) return;
-    await this.approvals.cancelForSubject(context, 'job', jobId, actorUserId, isConfigurer);
-    await this.markRequisitionDraft(context, jobId);
+    // P03 only: the older engine is retired and its waiting requests were moved (answer 2511).
+    if (!(await this.hiring.withdraw(context, actorUserId, jobId, isConfigurer))) throw new ConflictException('This requisition is not waiting for approval.');
   }
 
   // Candidate/pipeline CSV export for ATS/HRIS interchange. Formula-injection-safe (candidate

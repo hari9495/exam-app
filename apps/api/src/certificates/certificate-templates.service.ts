@@ -32,14 +32,18 @@ export class CertificateTemplatesService {
 
   async upsert(context: TenantContext, actorUserId: string, dto: UpsertCertificateTemplateDto): Promise<CertificateTemplateView> {
     const orgId = context.organizationId as string;
-    const row = await this.tenantPrisma.forTenant(context, (tx) =>
-      tx.certificateTemplate.upsert({
+    const view = (r: { title: string; bodyText: string; signatoryName: string | null; enabled: boolean } | null) => (r ? { title: r.title, bodyText: r.bodyText, signatoryName: r.signatoryName, enabled: r.enabled } : null);
+    const { row, before } = await this.tenantPrisma.forTenant(context, async (tx) => {
+      const was = await tx.certificateTemplate.findUnique({ where: { organizationId: orgId } });
+      const saved = await tx.certificateTemplate.upsert({
         where: { organizationId: orgId },
         create: { organizationId: orgId, title: dto.title, bodyText: dto.bodyText, signatoryName: dto.signatoryName ?? null, enabled: dto.enabled ?? true },
         update: { title: dto.title, bodyText: dto.bodyText, signatoryName: dto.signatoryName ?? null, ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}) },
-      }),
-    );
-    await this.audit.record(context, { actorUserId, action: 'certificate_template.saved', entityType: 'certificate_template', entityId: row.id });
+      });
+      return { row: saved, before: view(was) };
+    });
+    // Answer 2424 (6.5 Pass certificate): audited with before and after.
+    await this.audit.record(context, { actorUserId, action: 'certificate_template.saved', entityType: 'certificate_template', entityId: row.id, metadata: { before, after: view(row) } });
     return { title: row.title, bodyText: row.bodyText, signatoryName: row.signatoryName, enabled: row.enabled, isDefault: false };
   }
 

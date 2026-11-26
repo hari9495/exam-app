@@ -9,6 +9,7 @@ import { REDIS_CONNECTION, createRedisConnection } from '../jobs/redis-connectio
 import { NotificationsModule } from '../notifications/notifications.module';
 import { WorkflowModule } from '../workflow/workflow.module';
 import { PerformanceFeedbackController } from './feedback.controller';
+import { PerformancePersonNotesService } from './person-notes.service';
 import { PerformanceFeedbackService } from './feedback.service';
 import { PerformanceGoalsController } from './goals.controller';
 import { PerformanceGoalsService } from './goals.service';
@@ -49,7 +50,7 @@ import { ReviewDraftClient } from './review-draft.client';
 @Module({
   imports: [AuthModule, WorkflowModule, NotificationsModule, PayrollModule, EmployeeHistoryModule, DocumentsModule, LifecycleModule, AiModule, CryptoModule],
   controllers: [PerformanceHomeController, PerformanceSetupController, PerformanceGoalsController, PerformanceFeedbackController, PerformanceReviewsController, PerformancePeerController, PerformanceCalibrationController, PerformanceCompController, PerformancePipsController, PerformanceB3Controller],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PerformanceSetupService, PerformanceGoalsService, PerformanceFeedbackService, PerformanceReviewsService, PerformancePeerService, PerformanceCalibrationService, PerformanceReportsService, PerformanceCompService, PerformancePipsService, PerformanceJobs, PerformanceHandoversService, PerformanceDisputesService, PerformanceCoachService, ReviewDraftClient, PerformanceHomeService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, PerformanceSetupService, PerformanceGoalsService, PerformanceFeedbackService, PerformancePersonNotesService, PerformanceReviewsService, PerformancePeerService, PerformanceCalibrationService, PerformanceReportsService, PerformanceCompService, PerformancePipsService, PerformanceJobs, PerformanceHandoversService, PerformanceDisputesService, PerformanceCoachService, ReviewDraftClient, PerformanceHomeService],
   exports: [PerformanceSetupService, PerformanceGoalsService],
 })
 export class PerformanceModule {}

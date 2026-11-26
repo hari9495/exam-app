@@ -1,5 +1,5 @@
 import { accrualsDue } from './time-maths';
-import { pickPolicy, compOffExpiries, compOffUseBy, encashAmount, encashMax, encashWindowOpen, factoriesElEligible, lastDayAfterLeave, longestRun, optionalLimitAfterMove, probationAllows, toCsv } from './leave-rules';
+import { blockWindowProblem, pickPolicy, compOffExpiries, compOffUseBy, encashAmount, encashMax, encashWindowOpen, factoriesElEligible, lastDayAfterLeave, longestRun, optionalLimitAfterMove, probationAllows, toCsv } from './leave-rules';
 
 describe('leave v2 rules', () => {
   describe('comp-off expiry (oldest first)', () => {
@@ -134,5 +134,20 @@ describe('leave v2 rules', () => {
       expect(pickPolicy(rows, ctx, '2026-10-30', { value: 'trainee', scopeType: 'grade' }, ['other'])).toBe('trainee');
       expect(pickPolicy([], ctx, '2026-10-30', { value: '', scopeType: 'default' }, ['staff'])).toBeNull();
     });
+  });
+});
+
+describe('block leave window (TIM-39, answer 2629)', () => {
+  const w = { today: '2026-12-20', yearEnd: '2026-12-31', nextYearEnd: '2027-12-31', nextYearDays: 60 };
+  it('a block planned in late December may run into early January (positive)', () => {
+    expect(blockWindowProblem({ ...w, from: '2026-12-28', to: '2027-01-08' })).toBeNull();
+    expect(blockWindowProblem({ ...w, from: '2027-02-18', to: '2027-03-01' })).toBeNull(); // starts on day 60
+    expect(blockWindowProblem({ ...w, from: '2026-12-21', to: '2026-12-31' })).toBeNull();
+  });
+  it('refuses a start beyond the days, the setting at 0, reversed dates and a block past next year (negative)', () => {
+    expect(blockWindowProblem({ ...w, from: '2027-02-19', to: '2027-03-02' })).toBe('next_year_late');
+    expect(blockWindowProblem({ ...w, nextYearDays: 0, from: '2026-12-28', to: '2027-01-08' })).toBe('next_year_late');
+    expect(blockWindowProblem({ ...w, from: '2026-12-28', to: '2026-12-27' })).toBe('order');
+    expect(blockWindowProblem({ ...w, nextYearEnd: '2027-01-05', from: '2026-12-28', to: '2027-01-08' })).toBe('beyond_next_year');
   });
 });

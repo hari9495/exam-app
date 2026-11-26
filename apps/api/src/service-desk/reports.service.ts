@@ -252,6 +252,13 @@ export class ReportsService {
         this.funnelIn(tx, org, desks, from, to),
         this.funnelIn(tx, org, desks, before.from, before.to),
       ]);
+      // Batch F GLPI 8 (answer 2572): team targets (OLA) kept and missed by team, next to the requester's SLA.
+      const olaRows = await tx.$queryRaw<{ group_id: string | null; metric: string; kept: bigint; missed: bigint }[]>`
+        SELECT group_id, metric, count(*) FILTER (WHERE state = 'met' AND breached_at IS NULL AND NOT excluded) AS kept, count(*) FILTER (WHERE breached_at IS NOT NULL AND NOT excluded) AS missed
+        FROM sd_sla_timers WHERE organization_id = ${org}::uuid AND desk_id = ANY(${desks}::uuid[]) AND kind = 'ola' AND state <> 'cancelled'
+          AND ((met_at >= ${from} AND met_at < ${to}) OR (breached_at >= ${from} AND breached_at < ${to}))
+        GROUP BY 1, 2`;
+      const olaGroups = await tx.sdGroup.findMany({ where: { organizationId: org, id: { in: olaRows.map((r) => r.group_id).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } });
       const where = { organizationId: org, deskId: { in: desks }, systemState: { in: OPEN_STATES }, mergedIntoId: null };
       // shortcut: the newest 5000 open tickets get a live clock; a desk set with more needs a stored clock state.
       const open = await tx.sdTicket.findMany({ where, select: { id: true, deskId: true, assigneeUserId: true }, orderBy: { createdAt: 'desc' }, take: 5000 });
@@ -295,6 +302,12 @@ export class ReportsService {
         }),
         weeks: week('resolution'),
         firstResponseWeeks: week('first_response'),
+        teams: [...new Set(olaRows.map((r) => r.group_id ?? ''))]
+          .map((g) => {
+            const of = (metric: string) => olaRows.filter((r) => (r.group_id ?? '') === g && r.metric === metric).reduce((s, r) => ({ kept: s.kept + Number(r.kept), missed: s.missed + Number(r.missed) }), { kept: 0, missed: 0 });
+            return { groupId: g || null, name: olaGroups.find((x) => x.id === g)?.name ?? 'Task teams', response: of('group_response'), handOff: of('group'), tasks: of('task') };
+          })
+          .sort((x, y) => y.response.missed + y.handOff.missed + y.tasks.missed - (x.response.missed + x.handOff.missed + x.tasks.missed) || x.name.localeCompare(y.name)),
         agents: ids
           .map((id) => {
             const mine = open.filter((x) => x.assigneeUserId === id);

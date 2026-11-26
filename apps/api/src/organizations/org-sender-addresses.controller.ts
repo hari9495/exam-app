@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PermissionsGuard } from '../rbac/permissions.guard';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CurrentUserId } from '../auth/current-user-id.decorator';
@@ -10,7 +11,8 @@ import { CreateSenderAddressDto } from './dto/create-sender-address.dto';
 import { UpdateSenderAddressDto } from './dto/update-sender-address.dto';
 
 @Controller('org-sender-addresses')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// Settings 5.4 (answer 2429): no change while acting for someone else.
+@UseGuards(JwtAuthGuard, PermissionsGuard, OwnSessionChangesGuard)
 export class OrgSenderAddressesController {
   constructor(private readonly senders: OrgSenderAddressesService) {}
 

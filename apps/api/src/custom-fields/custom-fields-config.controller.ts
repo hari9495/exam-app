@@ -8,6 +8,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { CustomFieldsService } from './custom-fields.service';
 import { CreateCustomFieldDto, CF_ENTITY_TYPES } from './dto/create-custom-field.dto';
 import { UpdateCustomFieldDto } from './dto/update-custom-field.dto';
+import { OwnSessionChangesGuard } from '../auth/own-session.guard';
 
 // Web consumes `options` as string[] directly -- parse optionsJson here so web stays dumb.
 export function toResponse(def: CustomFieldDefinition) {
@@ -39,7 +40,8 @@ export function toResponse(def: CustomFieldDefinition) {
 
 // The guard reads permissions from each handler, so every route names its own (a class-level decorator is ignored).
 @Controller('custom-fields')
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+// Answer 2425: no change while acting for someone else (reads stay open).
+@UseGuards(JwtAuthGuard, PermissionsGuard, OwnSessionChangesGuard)
 export class CustomFieldsConfigController {
   constructor(private readonly service: CustomFieldsService) {}
 

@@ -43,6 +43,6 @@ import { ExpenseTripsService } from './trips.service';
     { provide: RECEIPT_READER, useFactory: () => readerFromEnv() },
     { provide: TRAVEL_BOOKING, useFactory: () => travelPartnerFromEnv() },
   ],
-  exports: [ExpenseSetupService, ExpenseClaimsService, ExpenseTripsService],
+  exports: [ExpenseSetupService, ExpenseClaimsService, ExpenseTripsService, ExpenseReportsService],
 })
 export class ExpensesModule {}

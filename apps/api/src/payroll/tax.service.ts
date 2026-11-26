@@ -180,6 +180,8 @@ export async function buildTaxInputs(
         .add(head('perquisites'))
         .toFixed(2),
       ...(outside._sum.amount?.gt(0) ? { paidOutside: outside._sum.amount.toFixed(2) } : {}),
+      // Review M7: the employer's PF and pension on this year's approved payslips.
+      employerRetirementPast: of(allIds, (x) => x === 'eps_employer' || codes('pf_employer').includes(x)).toFixed(2),
       futureMonths: Math.max(0, monthsBetween(a.month, lastMonth)),
       future: {
         gross: monthly((code) => comp.get(code)?.kind === 'earning' && comp.get(code)?.taxable !== false),

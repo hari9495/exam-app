@@ -9,6 +9,7 @@ import { buildViewer, has, tenantWide } from '../access/scope';
 import { displayName, EmployeeHistoryService, RequestUser, Viewer } from '../employee-history/employee-history.service';
 import type { ChangeRequestDto, EmployeeCreateDto } from '../employee-history/dto';
 import { FoldError } from '../employee-history/history-rules';
+import { seatChoices } from '../positions/seat-rules';
 import { withPayScope } from '../payroll/pay-access';
 import { holdersOf } from '../time/time-core';
 
@@ -54,6 +55,8 @@ export interface Plan {
   overrides: Override[];
   /** The letter template for the transfer letters (offered in the bulk issue after approval). */
   letterType?: string;
+  /** Enterprise E1 (answer 2680): each person's seat after the move (employee id → position id), while positions are on. */
+  seatMap?: Record<string, string>;
 }
 export interface RestructureInput extends Plan {
   kind: Kind;
@@ -196,6 +199,7 @@ export class RestructureService {
         departments: departments.map(shape('department', 'department_id')),
         masters: [...designations.map(shape('designation', 'designation_id')), ...types.map(shape('employmentType', 'employment_type_id')), ...grades.map(shape('grade', 'grade_id'))],
         costCentres,
+        positions: await seatChoices(tx, c, today, entities.map((e) => e.id)),
         open: await Promise.all(open.map((r) => this.summary(tx, c, v, r))),
       };
     });
@@ -414,8 +418,12 @@ export class RestructureService {
         const shares = await tx.assignmentCostCentre.findMany({ where: { organizationId: org, assignmentId: a.id } });
         if (!(shares.length === 1 && shares[0].costCentreId === t.costCentreId)) assignment.costCentres = [{ costCentreId: t.costCentreId, percent: '100' }];
       }
+      const seat = h.plan.seatMap?.[e.employeeId];
+      if (seat && seat !== a.positionId) assignment.positionId = seat;
       if (!Object.keys(assignment).length) throw new Stop('Already in the new place: nothing changes.');
       const onlyManager = Object.keys(assignment).every((k) => k === 'managerEmployeeId' || k === 'dottedLineManagerIds');
+      // The same seat again: a transfer names it while positions are on; a manager change never carries one.
+      if (seat && !onlyManager) assignment.positionId = seat;
       const { ch, e: emp } = await this.history.createChange(tx, c, sender, { employeeId: e.employeeId, changeType: onlyManager ? 'manager_change' : 'transfer', effectiveDate: eff, payload: { assignment }, reason: h.reason, ...(h.overrideReason ? { overrideReason: h.overrideReason } : {}) } as ChangeRequestDto);
       const asked = { ...ch, requestedBy: h.requestedBy };
       await tx.employeeChange.update({ where: { id: ch.id }, data: { requestedBy: h.requestedBy } });
@@ -477,6 +485,7 @@ export class RestructureService {
         ...(a.skillClass ? { skillClass: a.skillClass } : {}),
         ...(a.hoursPerWeek ? { hoursPerWeek: a.hoursPerWeek.toFixed(1) } : {}),
         ...(dotted.length ? { dottedLineManagerIds: dotted } : {}),
+        ...(h.plan.seatMap?.[e.employeeId] ? { positionId: h.plan.seatMap[e.employeeId] } : {}),
       },
       reason: `Moved from ${from.name}: ${h.reason}`.slice(0, 1000),
       ...(h.overrideReason ? { overrideReason: h.overrideReason } : {}),
@@ -572,7 +581,7 @@ export class RestructureService {
       reason: dto.reason.trim(),
       overrideReason: dto.overrideReason?.trim() || null,
       requestedBy,
-      plan: { locationIds: dto.locationIds ?? [], departmentIds: dto.departmentIds ?? [], locationMap: dto.locationMap ?? {}, masterMap: dto.masterMap ?? {}, target: dto.target ?? {}, defaults: dto.defaults, overrides: dto.overrides ?? [], ...(dto.employeeIds?.length ? { employeeIds: dto.employeeIds } : {}), ...(dto.letterType ? { letterType: dto.letterType } : {}) },
+      plan: { locationIds: dto.locationIds ?? [], departmentIds: dto.departmentIds ?? [], locationMap: dto.locationMap ?? {}, masterMap: dto.masterMap ?? {}, target: dto.target ?? {}, defaults: dto.defaults, overrides: dto.overrides ?? [], ...(dto.employeeIds?.length ? { employeeIds: dto.employeeIds } : {}), ...(dto.letterType ? { letterType: dto.letterType } : {}), ...(dto.seatMap && Object.keys(dto.seatMap).length ? { seatMap: dto.seatMap } : {}) },
     };
   }
 

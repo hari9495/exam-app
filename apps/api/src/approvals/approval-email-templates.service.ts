@@ -47,6 +47,8 @@ export class ApprovalEmailTemplatesService {
 
     return this.tenantPrisma.forTenant(context, async (tx) => {
       const organizationId = context.organizationId as string;
+      // Answer 2429 (Settings 5.4): audited with before and after.
+      const was = await tx.approvalEmailTemplate.findUnique({ where: { organizationId_eventType: { organizationId, eventType } } });
       const row = await tx.approvalEmailTemplate.upsert({
         where: { organizationId_eventType: { organizationId, eventType } },
         update: { subject: dto.subject, body: dto.body, ...(dto.enabled !== undefined ? { enabled: dto.enabled } : {}) },
@@ -58,7 +60,7 @@ export class ApprovalEmailTemplatesService {
         action: 'approval_email_template.saved',
         entityType: 'approval_email_template',
         entityId: row.id,
-        metadata: { eventType },
+        metadata: { eventType, before: was ? { subject: was.subject, body: was.body, enabled: was.enabled } : null, after: { subject: row.subject, body: row.body, enabled: row.enabled } },
       });
 
       return row;

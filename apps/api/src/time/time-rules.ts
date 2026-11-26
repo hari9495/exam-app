@@ -321,3 +321,48 @@ export function dayPlace(places: readonly WorkPlace[], rule: DayPlaceRule): Work
   const wins = rule === 'office_wins' ? 'office' : 'remote';
   return known.includes(wins) ? wins : known[0]!;
 }
+
+/** Batch C item 15: a team calendar dot. Leave, holidays and weekly offs already show as chips and shading; no dot. */
+export type TeamDot = 'present' | 'late' | 'remote' | 'half_day' | 'absent' | 'missing';
+export function teamDot(status: string, lateMinutes: number | null, place: WorkPlace): TeamDot | null {
+  if (status === 'absent') return 'absent';
+  if (status === 'missing_in' || status === 'missing_out') return 'missing';
+  if (status === 'half_day') return 'half_day';
+  if (status !== 'present') return null;
+  if ((lateMinutes ?? 0) > 0) return 'late';
+  return place === 'remote' ? 'remote' : 'present';
+}
+
+/**
+ * Batch C item 16 (answer 2507): which short-hours band a worked day falls in. Only a day short of the shift's full day
+ * counts; bands are hours (default 4, 6, 8): 'b1' under the first, 'b2' up to the second, 'b3' up to the third.
+ */
+export function shortBand(worked: number, fullDay: number, bands: readonly [number, number, number]): 'b1' | 'b2' | 'b3' | null {
+  if (worked >= fullDay) return null;
+  if (worked < bands[0] * 60) return 'b1';
+  if (worked < bands[1] * 60) return 'b2';
+  if (worked < bands[2] * 60) return 'b3';
+  return null;
+}
+
+/**
+ * Batch C item 16 (answer 2508): a day's breaks from its accepted punches, in time order: each break start to its end,
+ * and each clock-out followed by clocking in again (clock-in-again). The last clock-out of the day is not a break.
+ */
+export function dayBreaks(punches: readonly { at: Date; kind: string }[]): { count: number; minutes: number } {
+  let count = 0;
+  let minutes = 0;
+  let from: Date | null = null;
+  for (const p of punches) {
+    if (p.kind === 'break_start' || p.kind === 'out') from = p.at;
+    else if ((p.kind === 'break_end' || p.kind === 'in') && from) {
+      count++;
+      minutes += Math.max(0, Math.round((p.at.getTime() - from.getTime()) / 60_000));
+      from = null;
+    }
+  }
+  return { count, minutes };
+}
+
+/** Answer 2508: frequent breaks is more breaks than the company's number, or breaks adding up to its minutes or more. */
+export const frequentBreaks = (b: { count: number; minutes: number }, limit: { count: number; minutes: number }) => b.count > limit.count || b.minutes >= limit.minutes;

@@ -76,15 +76,33 @@ export function pf(rs: RuleSet, i: { pfWage: Prisma.Decimal.Value; onActualWage:
   const employer = round(base.mul(D(v.employerRate as string)), how);
   const eps = i.age >= Number(v.epsStopAge) ? ZERO : Prisma.Decimal.min(round(Prisma.Decimal.min(wage, D(v.epsCeiling as string)).mul(D(v.epsRate as string)), how), employer);
   const edli = round(Prisma.Decimal.min(wage, D(v.edliCeiling as string)).mul(D(v.edliRate as string)), how);
-  return { employee, eps, epf: employer.sub(eps), edli, citation: cite(rs) };
+  // `base`: the wage contributions are paid on (the admin charges follow it, review R1).
+  return { employee, eps, epf: employer.sub(eps), edli, base, citation: cite(rs) };
+}
+
+/** Review M7: the employer's yearly PF, NPS and superannuation above the cap (a taxable perquisite). */
+export function retireExcess(rs: RuleSet, i: { employer: Prisma.Decimal.Value }) {
+  const v = need(rs, 'retire_cap');
+  return { excess: money(Prisma.Decimal.max(ZERO, D(i.employer).sub(D(v.cap as string)))), citation: cite(rs) };
+}
+
+/** Review F1: the PF admin charges an establishment pays for a month: the payslips' charges, at least the rule's minimum. */
+export function pfAdminDue(rs: RuleSet, i: { charges: Prisma.Decimal.Value }) {
+  const v = need(rs, 'pf');
+  const total = D(i.charges);
+  const minimum = v.adminMinimum === undefined ? ZERO : D(v.adminMinimum as string);
+  return { due: total.isZero() ? ZERO : Prisma.Decimal.max(total, minimum), minimumApplied: !total.isZero() && total.lt(minimum), citation: cite(rs) };
 }
 
 /** ESI: covered for the whole contribution period once covered at its start; amounts rounded up to the rupee. */
-export function esi(rs: RuleSet, i: { esiWage: Prisma.Decimal.Value; covered: boolean }) {
+export function esi(rs: RuleSet, i: { esiWage: Prisma.Decimal.Value; covered: boolean; days?: number }) {
   const v = need(rs, 'esi');
   if (!i.covered) return { employee: ZERO, employer: ZERO, citation: cite(rs) };
   const wage = D(i.esiWage);
-  return { employee: round(wage.mul(D(v.employeeRate as string)), 'up'), employer: round(wage.mul(D(v.employerRate as string)), 'up'), citation: cite(rs) };
+  const employer = round(wage.mul(D(v.employerRate as string)), 'up');
+  // Review R3: no employee share when the average daily wage is at or below the exempt amount; the employer still pays.
+  const lowWage = v.dailyWageExempt !== undefined && !!i.days && i.days > 0 && wage.div(i.days).lte(D(v.dailyWageExempt as string));
+  return { employee: lowWage ? ZERO : round(wage.mul(D(v.employeeRate as string)), 'up'), employer, lowWage, citation: cite(rs) };
 }
 
 /** Is a wage within the ESI ceiling (the PwD ceiling with consent)? Decided at the start of a contribution period. */
@@ -105,7 +123,7 @@ interface Slab {
  * month's instalment of a yearly amount (annual basis, on the year's salary): the whole rupees of a twelfth each month and
  * the rest in the rule's last month (Madhya Pradesh: 2,500 = 208 x 11 + 212 in March).
  */
-export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number; gender?: string | null }) {
+export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number; gender?: string | null; paidSoFar?: Prisma.Decimal.Value; monthsLeft?: number }) {
   const v = need(rs, 'pt');
   const months = v.deductMonths as number[] | undefined;
   if (months && !months.includes(i.month)) return { amount: ZERO, citation: cite(rs) };
@@ -113,6 +131,15 @@ export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number
   const slabs = (v.slabs as Slab[]).filter((s) => !s.gender || !i.gender || s.gender === i.gender).filter((s) => !s.gender || i.gender || s.gender === 'male');
   const s = slabs.find((x) => wage.gte(D(x.from)) && (x.to === null || wage.lte(D(x.to))));
   const amount = s ? D(s.months?.[String(i.month)] ?? s.amount) : ZERO;
+  if (v.basis === 'annual' && i.paidSoFar !== undefined && i.monthsLeft !== undefined) {
+    // Review M6: the usual twelfth, plus any shortfall from earlier months (a raise into a higher band, joining late) spread
+    // over this month and the months left; the last month takes the rest (2,500 = 208 x 11 + 212 when nothing changes).
+    const due = Prisma.Decimal.max(ZERO, amount.sub(D(i.paidSoFar)));
+    if (i.month === Number(v.lastMonth) || i.monthsLeft === 0) return { amount: due, citation: cite(rs) };
+    const part = amount.div(12).floor();
+    const behind = Prisma.Decimal.max(ZERO, due.sub(part.mul(i.monthsLeft + 1)).sub(amount.sub(part.mul(12))));
+    return { amount: Prisma.Decimal.min(due, part.add(behind.div(i.monthsLeft + 1).floor())), citation: cite(rs) };
+  }
   if (v.basis === 'annual') {
     const part = amount.div(12).floor();
     return { amount: i.month === Number(v.lastMonth) ? amount.sub(part.mul(11)) : part, citation: cite(rs) };
@@ -124,9 +151,11 @@ export function pt(rs: RuleSet, i: { ptWage: Prisma.Decimal.Value; month: number
  * LWF in its deduction months: fixed amounts, or (H10, Haryana) a rate of the month's wage up to a cap, rounded as the
  * rule says (to the rupee by default), with the employer paying a multiple of the employee share.
  */
-export function lwf(rs: RuleSet, i: { month: number; wage?: Prisma.Decimal.Value }) {
+export function lwf(rs: RuleSet, i: { month: number; wage?: Prisma.Decimal.Value; daysEmployed?: number }) {
   const v = need(rs, 'lwf');
-  const due = (v.months as number[]).includes(i.month);
+  // Review M3: a state may cover only people employed for some days (Tamil Nadu: 30 days).
+  const tooNew = v.minDaysEmployed !== undefined && i.daysEmployed !== undefined && i.daysEmployed < Number(v.minDaysEmployed);
+  const due = (v.months as number[]).includes(i.month) && !tooNew;
   if (!due) return { employee: ZERO, employer: ZERO, citation: cite(rs) };
   if (v.rate === undefined) return { employee: D(v.employee as string), employer: D(v.employer as string), citation: cite(rs) };
   const employee = Prisma.Decimal.min(round(D(i.wage ?? 0).mul(D(v.rate as string)), String(v.rounding ?? 'nearest')), D(v.cap as string));
@@ -322,7 +351,7 @@ interface TdsRegime {
   superSeniorExemption?: string;
 }
 /** Annual tax on taxable income for a regime and age: slabs, rebate with marginal relief, surcharge, cess. */
-export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'new' | 'old'; age: number; resident?: boolean }) {
+export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'new' | 'old'; age: number; resident?: boolean }): { slabTax: Prisma.Decimal; rebate: Prisma.Decimal; surcharge: Prisma.Decimal; tax: Prisma.Decimal; citation: Citation } {
   const v = need(rs, 'tds');
   const r = (v.regimes as Record<string, TdsRegime>)[i.regime];
   if (!r) throw new StatutoryError(`No ${i.regime} regime in ${rs.version}`);
@@ -347,7 +376,14 @@ export function tds(rs: RuleSet, i: { taxable: Prisma.Decimal.Value; regime: 'ne
   else if (i.regime === 'new' && slabTax.gt(income.sub(limit))) rebate = slabTax.sub(income.sub(limit)); // marginal relief
   const afterRebate = slabTax.sub(rebate);
   const sc = [...r.surcharge].reverse().find((x) => income.gt(D(x.above)));
-  const surcharge = sc ? round(afterRebate.mul(D(sc.rate)), 'nearest') : ZERO;
+  let surcharge = sc ? round(afterRebate.mul(D(sc.rate)), 'nearest') : ZERO;
+  // Review R7, marginal relief: tax and surcharge never exceed the tax and surcharge at the threshold plus the income above it.
+  if (sc) {
+    const at = tds(rs, { ...i, taxable: sc.above });
+    const atThreshold = D(at.slabTax).sub(at.rebate).add(at.surcharge);
+    const room = atThreshold.add(income.sub(D(sc.above))).sub(afterRebate);
+    if (room.lt(surcharge)) surcharge = Prisma.Decimal.max(ZERO, room);
+  }
   const tax = round(afterRebate.add(surcharge).mul(D(1).add(D(v.cess as string))), 'nearest');
   return { slabTax, rebate, surcharge, tax, citation: cite(rs) };
 }
@@ -570,7 +606,7 @@ export interface GoldenCase {
   input: Record<string, unknown>;
   expected: Record<string, unknown>;
 }
-const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, eosg, f1099_due: f1099Due, pack_manifest: (rs: RuleSet) => ({ requires: (rs.values.requires as string[]).join(' ') }), wps_sif: (rs: RuleSet) => ({ currency: String(rs.values.currency) }), exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit, loan_perquisite: loanPerquisite };
+const CALCULATORS: Record<string, (rs: RuleSet, input: never) => Record<string, unknown>> = { pf, esi, pt, lwf, min_wage: minWage, min_wage_table: minWageTable, trusted_roots: trustedRoot, bank_format: (rs: RuleSet, i: Parameters<typeof bankFormatSample>[1]) => bankFormatSample(rs.values, i), subsistence, maternity, injury, hra_exempt: hraExempt, tax_deduction: taxDeduction, leave_encashment_exempt: leaveEncashmentExempt, vrs_exempt: vrsExempt, damages, register_columns: registerColumns, advisory: (rs: RuleSet) => ({ code: String(rs.values.code), title: String(rs.values.title) }), code_wage: codeWage, deduction_cap: deductionCap, bonus, gratuity, gratuity_due: gratuityDue, retrenchment, layoff, eosg, f1099_due: f1099Due, pack_manifest: (rs: RuleSet) => ({ requires: (rs.values.requires as string[]).join(' ') }), wps_sif: (rs: RuleSet) => ({ currency: String(rs.values.currency) }), exit_exempt: exitExempt, tds, tds_nonsalary: tdsNonSalary, penalty, calendar: due, coverage, emp_defaults: empDefaults, pt_limit: ptLimit, loan_perquisite: loanPerquisite, retire_cap: retireExcess };
 
 // Batch 5h (PAY-8.03, YX-TAX-16): TDS on consultant invoices from the reviewed rule set IN.TDS-NONSAL (kind tds_nonsalary).
 interface NonSalarySection {
