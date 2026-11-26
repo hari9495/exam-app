@@ -16,6 +16,7 @@ import { CalendarFeedController, DeskFilesController, DeskSetupController, DeskT
 import { SlaService } from './sla.service';
 import { TicketListsService } from './ticket-lists.service';
 import { TicketsService } from './tickets.service';
+import { ItBudgetsService } from './it-budgets.service';
 import { WorkService } from './work.service';
 import { DeskChannelsController, InboundMailController, PortalController } from './channels.controller';
 import { CustomersService } from './customers.service';
@@ -113,6 +114,7 @@ import { WidgetService } from './widget.service';
     DesksService,
     DeskTransferService,
     TicketsService,
+    ItBudgetsService,
     TicketListsService,
     RequesterService,
     AttachmentsService,

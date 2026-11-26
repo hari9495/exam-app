@@ -184,7 +184,7 @@ export class DesksService {
         types: types.map((t) => ({ id: t.id, kind: t.kind, name: t.name, active: t.active, sortOrder: t.sortOrder })),
         statuses: statuses.map((s) => ({ id: s.id, label: s.label, systemState: s.systemState, ticketTypeId: s.ticketTypeId, sortOrder: s.sortOrder, active: s.active })),
         categories: categories.map((c) => ({ id: c.id, name: c.name, parentId: c.parentId, sensitive: c.sensitive, privateByDefault: c.privateByDefault, answeredBy: c.answeredBy, defaultGroupId: c.defaultGroupId, defaultPriority: c.defaultPriority, active: c.active, sortOrder: c.sortOrder })),
-        groups: groups.map((g) => ({ id: g.id, name: g.name, tier: g.tier, assignmentMethod: g.assignmentMethod, maxOpenPerAgent: g.maxOpenPerAgent, active: g.active, memberIds: limited ? [] : groupMembers.filter((m) => m.groupId === g.id).map((m) => m.userId) })),
+        groups: groups.map((g) => ({ id: g.id, name: g.name, tier: g.tier, assignmentMethod: g.assignmentMethod, maxOpenPerAgent: g.maxOpenPerAgent, active: g.active, ...(limited ? {} : { hourlyRate: g.hourlyRate?.toFixed(2) ?? null }), memberIds: limited ? [] : groupMembers.filter((m) => m.groupId === g.id).map((m) => m.userId) })),
         matrix: matrix.map((m) => ({ impact: m.impact, urgency: m.urgency, priority: m.priority })),
         members: shown.map((m) => ({
           id: m.id,
