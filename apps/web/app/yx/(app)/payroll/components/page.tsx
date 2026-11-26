@@ -28,6 +28,9 @@ export default function YxPayComponentsPage() {
       rounding,
       status,
       version,
+      // E3 (answer 2651): recalculate back-dated pay on a salary change / joining date.
+      ...(c.arrearsOnSalaryChange !== undefined ? { arrearsOnSalaryChange: c.arrearsOnSalaryChange } : {}),
+      ...(c.arrearsOnJoining !== undefined ? { arrearsOnJoining: c.arrearsOnJoining } : {}),
       ...(c.prorationText ? { prorationText: c.prorationText } : {}),
       ...(c.ledger ? { ledger: c.ledger } : {}),
     };

@@ -526,6 +526,12 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
     ],
     "default": "block"
   },
+  "payroll.arrears.auto_draft": {
+    "label": "Draft arrears by themselves after a back-dated salary change or joining date",
+    "values": ["on", "off"],
+    "default": "on",
+    "labels": { "on": "On: draft them; payroll still checks and approves each one", "off": "Off: payroll drafts them by hand" }
+  },
   "payroll.journal.suspense": {
     "label": "Pay lines with no ledger account go to the suspense account",
     "values": ["on", "off"],

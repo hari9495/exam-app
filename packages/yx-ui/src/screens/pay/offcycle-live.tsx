@@ -42,6 +42,116 @@ const Failed = ({ error }: { error: string | null }) =>
 
 /* ================================================================== PAY-28 Arrears and recoveries */
 
+const JOB_WHAT: Record<string, string> = { 'change:draft': 'Back-dated salary change', 'join:draft': 'Joining date', 'rule:preview': 'Rule change: impact', 'rule:draft': 'Rule change: drafts' };
+const JOB_STATUS: Record<ArrearsJobRow['status'], { label: string; tone: BadgeTone }> = { queued: { label: 'Waiting', tone: 'neutral' }, running: { label: 'Working', tone: 'info' }, done: { label: 'Done', tone: 'success' }, failed: { label: 'Failed', tone: 'danger' } };
+
+/** E3: statutory rule changes (work out the impact, then accept or dismiss) and what the triggers drafted. */
+function ArrearsChanges({ c }: { c: LiveArrearsChanges }) {
+  const { toast } = useToast();
+  const { busy, error, run } = useRun();
+  const [dismissing, setDismissing] = useState<RuleProposal | null>(null);
+  const [reason, setReason] = useState('');
+  const [tried, setTried] = useState(false);
+  const [early, setEarly] = useState<string | null>(null);
+  const pcols: TableColumn<RuleProposal>[] = [
+    { key: 'rule', header: 'Rule change', value: (p) => `${p.statute} ${p.jurisdiction} · ${p.ruleVersion}` },
+    { key: 'months', header: 'Months already paid', value: (p) => p.periods.map(monthText).join(', ') },
+    { key: 'people', header: 'People', type: 'number', value: (p) => p.impact?.people ?? p.employeeCount },
+    { key: 'total', header: 'Total change', value: (p) => (p.impact?.status === 'ready' ? money(p.impact.total) : p.impact?.status === 'running' ? 'Working it out…' : 'Not worked out') },
+    { key: 'largest', header: 'Largest for one person', value: (p) => (p.impact?.status === 'ready' ? money(p.impact.largest) : '—') },
+    { key: 'status', header: 'Status', type: 'status', value: (p) => (p.status === 'open' ? 'Open' : p.status === 'accepted' ? 'Accepted' : 'Dismissed'), statusTone: (v) => (v === 'Open' ? 'warning' : v === 'Accepted' ? 'success' : 'neutral') },
+  ];
+  const jcols: TableColumn<ArrearsJobRow>[] = [
+    { key: 'what', header: 'What fired it', value: (j) => JOB_WHAT[`${j.kind}:${j.mode}`] ?? j.kind },
+    { key: 'when', header: 'Started', type: 'date', value: (j) => new Date(j.createdAt) },
+    { key: 'people', header: 'People', value: (j) => `${j.done} of ${j.people}` },
+    { key: 'total', header: 'Total', type: 'money', value: (j) => Number(j.total) },
+    { key: 'largest', header: 'Largest', value: (j) => (Number(j.largest) ? `${money(j.largest)}${j.largestPerson ? ` (${j.largestPerson})` : ''}` : '—') },
+    { key: 'skipped', header: 'Not drafted', value: (j) => (j.skipped.length ? j.skipped.map((x) => x.why).join('; ') : '—') },
+    { key: 'status', header: 'Status', type: 'status', value: (j) => JOB_STATUS[j.status].label, statusTone: (_v, j) => JOB_STATUS[j.status].tone },
+  ];
+  const preview = (p: RuleProposal) =>
+    void run(`pre:${p.id}`, async () => {
+      await c.onPreview(p);
+      toast({ tone: 'success', title: 'Working out the impact. It shows here when ready.' });
+    });
+  const accept = (p: RuleProposal) => {
+    // 2652: pressed before the impact is worked out, it says why (the server refuses it too).
+    if (p.impact?.status !== 'ready') return setEarly(`Work out the impact of ${p.statute} ${p.ruleVersion} first: people, total and the largest change.`);
+    setEarly(null);
+    void run(`acc:${p.id}`, async () => {
+      await c.onAccept(p);
+      toast({ tone: 'success', title: 'Accepted. The worksheets are being drafted.' });
+    });
+  };
+  return (
+    <div className="yx-pay-stack">
+      <Failed error={error} />
+      {early && <InlineAlert tone="warning" title={early} />}
+      <SectionTitle>Statutory rule changes</SectionTitle>
+      <p className="yx-pay-note">A rule set published for months already paid. Work out the impact first: people, total and the largest change. Accepting drafts a worksheet for each person; payroll still approves each one.</p>
+      <DataTable
+        label="Statutory rule changes"
+        columns={pcols}
+        rows={c.proposals ?? []}
+        state={c.proposals ? 'ready' : 'loading'}
+        getRowId={(p) => p.id}
+        defaultGroupBy={null}
+        rowButtons={(p) =>
+          c.canDecide && p.status === 'open' ? (
+            <>
+              {(!p.impact || p.impact.status === 'failed') && (
+                <Button size="sm" loading={busy === `pre:${p.id}`} onClick={() => preview(p)}>
+                  Work out the impact
+                </Button>
+              )}
+              <Button size="sm" variant="primary" loading={busy === `acc:${p.id}` || p.impact?.status === 'running'} onClick={() => accept(p)}>
+                Accept
+              </Button>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  setReason('');
+                  setTried(false);
+                  setDismissing(p);
+                }}
+              >
+                Dismiss
+              </Button>
+            </>
+          ) : null
+        }
+        empty={<EmptyState title="No rule changes for paid months" description="When a statutory rule is published for a month already paid, it shows here." />}
+      />
+      <SectionTitle>Drafted by changes</SectionTitle>
+      <p className="yx-pay-note">A back-dated salary change or joining date drafts arrears by itself (Settings › Payroll policies), for the components set to recalculate. The person who made the change never approves them.</p>
+      <DataTable label="Arrears drafted by changes" columns={jcols} rows={c.jobs ?? []} state={c.jobs ? 'ready' : 'loading'} getRowId={(j) => j.id} defaultGroupBy={null} empty={<EmptyState title="Nothing drafted by a change yet" description="Back-dated salary changes and joining dates show here." />} />
+      {dismissing && (
+        <ConfirmDialog
+          open
+          destructive
+          onOpenChange={(o) => !o && setDismissing(null)}
+          title={`Dismiss ${dismissing.statute} ${dismissing.ruleVersion}?`}
+          consequence="No worksheets are drafted for it. The reason is kept."
+          confirmLabel="Dismiss"
+          onConfirm={async () => {
+            setTried(true);
+            if (reason.trim().length < 10) return false;
+            await c.onDismiss(dismissing, reason.trim());
+            toast({ tone: 'success', title: 'Rule change dismissed' });
+            setDismissing(null);
+          }}
+        >
+          <FormField id="ac-reason" label="Why" required error={tried && reason.trim().length < 10 ? 'Give a reason of 10 characters or more.' : null}>
+            <TextArea value={reason} onChange={setReason} rows={3} maxLength={300} />
+          </FormField>
+        </ConfirmDialog>
+      )}
+    </div>
+  );
+}
+
 export interface LiveArrears {
   state: LoadState;
   onRetry?: () => void;
@@ -61,6 +171,46 @@ export interface LiveArrears {
    * payroll-inputs.tsx. Until the page passes it, the Recoveries tab shows the overpayments with their write-off.
    */
   recoveryTabs?: ReactNode;
+  /** Enterprise E3 (answers 2651, 2652, 2787): statutory rule changes and the drafts that triggers made. */
+  changes?: LiveArrearsChanges;
+  /** Stories and links: open on this tab. */
+  tab?: 'arrears' | 'recoveries' | 'changes';
+}
+
+/** A statutory rule set published for months already paid (one per entity and rule version). */
+export interface RuleProposal {
+  id: string;
+  statute: string;
+  jurisdiction: string;
+  ruleVersion: string;
+  periods: string[];
+  employeeCount: number;
+  status: 'open' | 'accepted' | 'dismissed';
+  reason: string | null;
+  /** The preview's people, total and largest change, once worked out (2787). */
+  impact: { status: 'running' | 'ready' | 'failed'; people: number | null; total: string | null; largest: string | null } | null;
+}
+/** One arrears job: a back-dated salary change, a joining date, or a proposal's preview or drafts. */
+export interface ArrearsJobRow {
+  id: string;
+  kind: 'change' | 'join' | 'rule';
+  mode: 'preview' | 'draft';
+  status: 'queued' | 'running' | 'done' | 'failed';
+  people: number;
+  done: number;
+  skipped: { employmentId: string | null; why: string | null }[];
+  total: string;
+  largest: string;
+  largestPerson: string | null;
+  createdAt: string;
+}
+export interface LiveArrearsChanges {
+  proposals: RuleProposal[] | null;
+  jobs: ArrearsJobRow[] | null;
+  canDecide: boolean;
+  onPreview: (p: RuleProposal) => Promise<unknown>;
+  onAccept: (p: RuleProposal) => Promise<unknown>;
+  onDismiss: (p: RuleProposal, reason: string) => Promise<unknown>;
 }
 
 const sheetStatus = (w: Worksheet): { label: string; tone: BadgeTone } =>
@@ -91,12 +241,17 @@ export function LiveArrearsScreen({ live }: { live: LiveArrears }) {
   ];
   return (
     <LivePage title="Arrears and recoveries" description="Arrears worksheets (corrected minus as paid, per month and component), court orders and overpayments." state={live.state} onRetry={live.onRetry} what="arrears" grantedBy="your payroll admin">
-      <Tabs defaultValue="arrears">
+      <Tabs defaultValue={live.tab ?? 'arrears'}>
         <TabsList aria-label="Arrears and recoveries">
           <TabsTrigger value="arrears" count={live.worksheets?.length || undefined}>
             Arrears worksheets
           </TabsTrigger>
           <TabsTrigger value="recoveries">Recoveries</TabsTrigger>
+          {live.changes && (
+            <TabsTrigger value="changes" count={live.changes.proposals?.filter((p) => p.status === 'open').length || undefined}>
+              Rule changes and triggers
+            </TabsTrigger>
+          )}
         </TabsList>
         <TabsContent value="arrears">
           <DataTable
@@ -116,6 +271,11 @@ export function LiveArrearsScreen({ live }: { live: LiveArrears }) {
           />
         </TabsContent>
         <TabsContent value="recoveries">{live.recoveryTabs ?? <Overpayments live={live} />}</TabsContent>
+        {live.changes && (
+          <TabsContent value="changes">
+            <ArrearsChanges c={live.changes} />
+          </TabsContent>
+        )}
       </Tabs>
       <Drawer open={!!open} onOpenChange={(o) => !o && setOpenId(null)} title={`${open ? live.nameOf(open.employeeId) : ''} · arrears`} subtitle={open?.reason} size="lg" footer={<Button onClick={() => setOpenId(null)}>Close</Button>}>
         {open && <WorksheetBase key={open.id} w={open} live={live} />}
