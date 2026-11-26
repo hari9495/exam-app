@@ -1043,14 +1043,14 @@ export class ExpenseClaimsService implements OnModuleInit {
     const scope = { legalEntityId: claim.legalEntityId };
     const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate', selfApproval: 'never' }];
     const ccAbove = await settingFor(tx, c, 'expense.cc_owner_above', scope);
-    if (ccAbove !== 'off' && claim.claimedTotal.gt(D(ccAbove)) && (await this.costCentreOf(tx, org, claim.employeeId))) steps.push({ name: 'Cost-centre owner', approvers: [{ kind: 'cost_centre_owner', field: 'cost_centre_id' }], mode: 'any', remindAfterHours: 24, selfApproval: 'never' });
+    if (ccAbove !== 'off' && claim.claimedTotal.gt(D(ccAbove)) && (await this.costCentreOf(tx, org, claim.employeeId))) steps.push({ name: 'Cost-centre owner', approvers: [{ kind: 'cost_centre_owner', field: 'cost_centre_id' }], mode: 'any', remindAfterHours: 24, selfApproval: 'never', required: true });
     const lines = await tx.expenseLine.findMany({ where: { organizationId: org, claimId: claim.id, removedAt: null }, select: { policyResult: true } });
-    if (lines.some((l) => (l.policyResult as { outcome?: string } | null)?.outcome === 'over_justify')) steps.push({ name: 'Over the limit', approvers: [{ kind: 'manager', level: 2 }], mode: 'any', remindAfterHours: 24, selfApproval: 'never' });
+    if (lines.some((l) => (l.policyResult as { outcome?: string } | null)?.outcome === 'over_justify')) steps.push({ name: 'Over the limit', approvers: [{ kind: 'manager', level: 2 }], mode: 'any', remindAfterHours: 24, selfApproval: 'never', required: true });
     const audit = await settingFor(tx, c, 'expense.finance_audit', scope);
     const wantFinance = audit === 'all' || (audit === 'flagged_only' && (risk !== 'none' || needsSecondLook)) || (audit === 'sample_10pct' && (risk === 'high' || Math.random() < 0.1)) || (audit !== 'off' && risk === 'high');
     if (wantFinance) {
       const finance = (await holdersOf(tx, org, 'expense.finance.review', claim.employeeId, todayIst())).filter((u) => u !== c.userId);
-      if (finance.length) steps.push({ name: 'Finance check', approvers: [{ kind: 'users', userIds: finance }], mode: 'any', remindAfterHours: 24, selfApproval: 'never' });
+      if (finance.length) steps.push({ name: 'Finance check', approvers: [{ kind: 'users', userIds: finance }], mode: 'any', remindAfterHours: 24, selfApproval: 'never', required: true });
     }
     return steps;
   }
