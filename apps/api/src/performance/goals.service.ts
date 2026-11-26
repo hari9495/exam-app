@@ -4,12 +4,14 @@ import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platfor
 import { CompanyContext, Tx, audit, inCompany } from '../org-structure/org-structure.service';
 import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
-import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, implicitPeriods, implicitSql, started } from '../access/scope';
+import { ScopeUser, Viewer, buildViewer, covers, grantPeriods, implicitPeriods, implicitSql, started, tenantWide } from '../access/scope';
 import { ApprovalsEngine } from '../workflow/approvals-engine.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { hrApprovers } from '../time/time-core';
 import { krProblem, krProgress, weightedProgress, wouldCycle } from './perf-rules';
-import type { CascadeDto, CheckinDto, GoalDto, GoalPeriodDto } from './dto';
+import type { CascadeDto, CheckinDto, GoalDto, GoalImportDto, GoalPeriodDto, GoalTemplateDto } from './dto';
+import { ImportFileProblem, type RowProblem } from './competency-import';
+import { parseGoalCsv } from './goal-import';
 
 // Performance batch PM2 (M06-BUILD-DESIGN §7; PM-2.01 … 2.03): goals owned by a person, a team or the company,
 // aligned to a parent owned by anyone, key results with worked-out progress, approval of a person's goals by their
@@ -54,7 +56,7 @@ export class PerformanceGoalsService implements OnModuleInit {
   }
 
   private viewer(user: ScopeUser) {
-    return buildViewer(this.prisma, this.tenantPrisma, user, ['perf.goal.view', 'perf.goal.manage']);
+    return buildViewer(this.prisma, this.tenantPrisma, user, ['perf.goal.view', 'perf.goal.manage', 'perf.setup.manage']);
   }
 
   private run<T>(ctx: TenantContext, fn: (tx: Tx, c: CompanyContext) => Promise<T>) {
@@ -462,6 +464,109 @@ export class PerformanceGoalsService implements OnModuleInit {
       return g.id;
     });
     return this.get(ctx, user, id);
+  }
+
+  // ------------------------------------------------------------------ T2-C item 71 (answer 2844): templates and import
+
+  private async templateNames(tx: Tx, org: string, rows: { departmentId: string | null; designationId: string | null }[]) {
+    const dep = new Map((await tx.department.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.departmentId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+    const des = new Map((await tx.designation.findMany({ where: { organizationId: org, id: { in: rows.map((r) => r.designationId).filter((x): x is string => Boolean(x)) } }, select: { id: true, name: true } })).map((d) => [d.id, d.name]));
+    return (t: Prisma.GoalTemplateGetPayload<object>) => ({ id: t.id, title: t.title, description: t.description, kind: t.kind, keyResults: t.keyResults, departmentId: t.departmentId, department: t.departmentId ? (dep.get(t.departmentId) ?? '') : null, designationId: t.designationId, designation: t.designationId ? (des.get(t.designationId) ?? '') : null });
+  }
+
+  /** HR (perf.setup.manage) sees every template; anyone else the ones for everyone or for their department or designation today. */
+  async goalTemplates(ctx: TenantContext, user: ScopeUser) {
+    const v = await this.viewer(user);
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      let where: Prisma.GoalTemplateWhereInput = { organizationId: org };
+      if (!(tenantWide(v, 'perf.setup.manage') && !v.actingForOther)) {
+        const me = await this.me(tx, org, v);
+        const [a] = me
+          ? await tx.$queryRaw<{ department_id: string | null; designation_id: string | null }[]>`
+              SELECT a.department_id::text, a.designation_id::text FROM employee_assignments a WHERE a.organization_id = ${org}::uuid AND a.employee_id = ${me.id}::uuid
+                AND a.superseded_at IS NULL AND a.valid_from <= ${todayIst()}::date AND (a.valid_to IS NULL OR a.valid_to >= ${todayIst()}::date) ORDER BY a.valid_from DESC LIMIT 1`
+          : [];
+        where = { organizationId: org, AND: [{ OR: [{ departmentId: null }, { departmentId: a?.department_id ?? '00000000-0000-0000-0000-000000000000' }] }, { OR: [{ designationId: null }, { designationId: a?.designation_id ?? '00000000-0000-0000-0000-000000000000' }] }] };
+      }
+      const rows = await tx.goalTemplate.findMany({ where, orderBy: { title: 'asc' } });
+      const view = await this.templateNames(tx, org, rows);
+      return rows.map(view);
+    });
+  }
+
+  async saveGoalTemplate(ctx: TenantContext, id: string | null, dto: GoalTemplateDto) {
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      if (dto.kind === 'okr' && !dto.keyResults.length) throw new BadRequestException('An objective template needs at least one key result.');
+      if (dto.departmentId && !(await tx.department.findFirst({ where: { organizationId: org, id: dto.departmentId }, select: { id: true } }))) throw new BadRequestException('Choose a department of this company.');
+      if (dto.designationId && !(await tx.designation.findFirst({ where: { organizationId: org, id: dto.designationId }, select: { id: true } }))) throw new BadRequestException('Choose a designation of this company.');
+      if (id && !(await tx.goalTemplate.findFirst({ where: { organizationId: org, id }, select: { id: true } }))) throw new NotFoundException('No such template.');
+      const data = { title: dto.title, description: dto.description || null, kind: dto.kind, keyResults: dto.kind === 'okr' ? [...new Set(dto.keyResults.map((k) => k.trim()))] : [], departmentId: dto.departmentId ?? null, designationId: dto.designationId ?? null };
+      const t = id ? await tx.goalTemplate.update({ where: { id }, data }) : await tx.goalTemplate.create({ data: { organizationId: org, ...data, createdBy: c.userId ?? null } });
+      await audit(tx, c, id ? 'perf.goal_template.updated' : 'perf.goal_template.created', 'goal_template', t.id, { title: t.title });
+      return (await this.templateNames(tx, org, [t]))(t);
+    });
+  }
+
+  async deleteGoalTemplate(ctx: TenantContext, id: string) {
+    return this.run(ctx, async (tx, c) => {
+      const t = await tx.goalTemplate.findFirst({ where: { organizationId: c.organizationId, id } });
+      if (!t) throw new NotFoundException('No such template.');
+      await tx.goalTemplate.delete({ where: { id } });
+      await audit(tx, c, 'perf.goal_template.deleted', 'goal_template', id, { title: t.title });
+      return { id };
+    });
+  }
+
+  /**
+   * A CSV of KPI goals for people in the importer's goal-setting scope (perf.goal.manage), like the competency import:
+   * `preview` lists what would be added; otherwise all rows or none, each refused row with its reasons. Goals come in as
+   * drafts, so each person and their manager still agree them as usual.
+   */
+  async importGoals(ctx: TenantContext, user: ScopeUser, dto: GoalImportDto) {
+    const v = await this.viewer(user);
+    if (v.actingForOther) throw new ForbiddenException('Import goals as yourself.');
+    let parsed: ReturnType<typeof parseGoalCsv>;
+    try {
+      parsed = parseGoalCsv(dto.csv);
+    } catch (e) {
+      if (e instanceof ImportFileProblem) throw new BadRequestException(e.message);
+      throw e;
+    }
+    return this.run(ctx, async (tx, c) => {
+      const org = c.organizationId;
+      const period = await this.openPeriod(tx, org, dto.periodId);
+      const today = todayIst();
+      const me = (await this.me(tx, org, v))?.id ?? null;
+      const problems: RowProblem[] = [...parsed.problems];
+      // Employee codes are case-insensitive (citext); people who have left are not found.
+      const jobs = await tx.employment.findMany({ where: { organizationId: org, exitedOn: null, employeeCode: { in: parsed.rows.map((r) => r.employeeCode) } }, select: { employeeId: true, employeeCode: true } });
+      const names = new Map((await tx.employee.findMany({ where: { organizationId: org, id: { in: jobs.map((j) => j.employeeId) } }, select: { id: true, givenName: true, familyName: true, preferredName: true } })).map((e) => [e.id, e]));
+      const people = jobs.map((j) => ({ ...names.get(j.employeeId)!, id: j.employeeId, employeeCode: j.employeeCode }));
+      const byCode = new Map(people.map((p) => [p.employeeCode.toLowerCase(), p]));
+      const existing = await tx.goal.findMany({ where: { organizationId: org, periodId: period.id, ownerType: 'person', ownerEmployeeId: { in: people.map((p) => p.id) }, status: { not: 'dropped' } }, select: { ownerEmployeeId: true, title: true } });
+      const has = new Set(existing.map((g) => `${g.ownerEmployeeId}|${g.title.toLowerCase()}`));
+      const ok: { line: number; employeeId: string; employee: string; employeeCode: string; title: string; description: string | null; weight: number }[] = [];
+      for (const r of parsed.rows) {
+        const p = byCode.get(r.employeeCode.toLowerCase());
+        const out: string[] = [];
+        if (!p) out.push(`No employee with the code ${r.employeeCode} in this company.`);
+        else if (!covers(started(await grantPeriods(tx, c, v, 'perf.goal.manage', p.id, me), today), today)) out.push('This person is not in your goal-setting scope.');
+        else if (has.has(`${p.id}|${r.title.toLowerCase()}`)) out.push('This person already has a goal with this title in the period.');
+        if (out.length || !p) problems.push({ line: r.line, name: r.title, problems: out });
+        else ok.push({ line: r.line, employeeId: p.id, employee: [p.preferredName || p.givenName, p.familyName].filter(Boolean).join(' '), employeeCode: p.employeeCode, title: r.title, description: r.description, weight: r.weight });
+      }
+      problems.sort((a, b) => a.line - b.line);
+      const rows = ok.map(({ line, employee, employeeCode, title, weight }) => ({ line, employee, employeeCode, title, weight }));
+      if (dto.preview) return { preview: true, rows, problems };
+      if (problems.length) throw new BadRequestException({ message: `${problems.length === 1 ? '1 row has a problem' : `${problems.length} rows have problems`}. Nothing was imported. Fix the file and import it again.`, problems });
+      for (const r of ok) {
+        const g = await tx.goal.create({ data: { organizationId: org, periodId: period.id, ownerType: 'person', ownerEmployeeId: r.employeeId, kind: 'kpi', title: r.title, description: r.description, weight: r.weight, status: 'draft', createdBy: v.userId } });
+        await audit(tx, c, 'perf.goal.imported', 'goal', g.id, { line: r.line });
+      }
+      return { imported: ok.length };
+    });
   }
 
   async update(ctx: TenantContext, user: ScopeUser, id: string, dto: GoalDto) {

@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { MyGoalsScreen, type GoalDetail, type GoalItem, type GoalPeriod, PerfNoAccessScreen } from '@yukthix/ui/performance';
+import { MyGoalsScreen, type GoalDetail, type GoalImportPreview, type GoalImportResult, type GoalItem, type GoalPeriod, type GoalTemplate, PerfNoAccessScreen } from '@yukthix/ui/performance';
 import type { TeamMember } from '@yukthix/ui/workforce';
-import { loadState } from '../../../../../lib/yx-org';
+import { loadState, useYxPermissions } from '../../../../../lib/yx-org';
 import { usePeople } from '../../../../../lib/yx-people';
 import { perfState, usePerf, usePerfWrite, refused } from '../../../../../lib/yx-performance';
 
@@ -31,6 +31,8 @@ export default function YxMyGoalsPage() {
   const align = usePerf<{ id: string; title: string; owner: string }[]>(periodId ? `/goals/align-options?period=${periodId}` : null);
   const team = usePeople<{ managerId: string | null; members: TeamMember[] }>('/team');
   const write = usePerfWrite();
+  const templates = usePerf<GoalTemplate[]>('/goal-templates');
+  const canImport = useYxPermissions().has('perf.goal.manage');
   const members = (team.data?.members ?? []).filter((m) => m.relation !== 'dotted');
   const ownerName = employeeId ? (members.find((m) => m.id === employeeId)?.name ?? list.data?.goals[0]?.owner ?? 'This person') : 'Me';
   const go = (goal: string | null) => {
@@ -60,6 +62,22 @@ export default function YxMyGoalsPage() {
         goal: openGoal.data ?? null,
         team: members.map((m) => ({ value: m.id, label: m.name })),
         onCreate: (input) => write('POST', '/goals', input),
+        // T2-C item 71 (answer 2844): templates that fit me; the CSV import for holders of the goal-setting key.
+        goalTemplates: templates.data ?? [],
+        ...(canImport && periodId
+          ? {
+              onImportPreview: (csv: string) => write<GoalImportPreview>('POST', '/goals/import', { periodId, csv, preview: true }),
+              onImport: async (csv: string): Promise<GoalImportResult> => {
+                try {
+                  return await write<{ imported: number }>('POST', '/goals/import', { periodId, csv });
+                } catch (e) {
+                  const problems = (e as { body?: { problems?: { line: number; name: string; problems: string[] }[] } }).body?.problems;
+                  if (problems?.length) return { problems, message: (e as Error).message };
+                  throw e;
+                }
+              },
+            }
+          : {}),
         onSave: (id, input) => write('PUT', `/goals/${encodeURIComponent(id)}`, input),
         onSubmit: () => write('POST', '/goals/submit', { periodId }),
         onCheckIn: (id, input) => write('POST', `/goals/${encodeURIComponent(id)}/checkins`, input),

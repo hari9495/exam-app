@@ -20,7 +20,7 @@ export default function YxReviewCyclePage() {
   const eligibility = usePerf<EligibilityRow[]>(running ? `${base}/eligibility` : null);
   const disagreements = usePerf<Disagreement[]>(running ? `${base}/disagreements` : null);
   const perms = useYxPermissions();
-  const sessions = usePerf<{ bands: string[]; sessions: CalibrationSession[] }>(running ? `${base}/calibrations` : null);
+  const sessions = usePerf<{ bands: string[]; sessions: CalibrationSession[]; defaultGuide?: { bands: { label: string; share: number }[]; tolerance: number } | null }>(running ? `${base}/calibrations` : null);
   const facilitators = usePerf<{ value: string; label: string }[]>('/calibration-facilitators', running && perms.has('perf.cycle.manage'));
   const departments = useOrg<MasterRecord[]>('/masters/departments');
   const write = usePerfWrite();
@@ -50,6 +50,7 @@ export default function YxReviewCyclePage() {
           <CalibrationSessions
             sessions={sessions.data.sessions}
             bands={sessions.data.bands}
+            defaultGuide={sessions.data.defaultGuide ?? null}
             departments={depts}
             facilitators={facilitators.data ?? []}
             onOpen={(sid) => router.push(`/yx/performance/calibrations/${encodeURIComponent(sid)}`)}

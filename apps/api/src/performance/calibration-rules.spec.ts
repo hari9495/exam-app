@@ -1,4 +1,4 @@
-import { changeProblem, csvCell, distribution, guideProblem, suppress, toCsv } from './calibration-rules';
+import { changeProblem, csvCell, distribution, guideForScale, guideProblem, parseGuideShares, suppress, toCsv } from './calibration-rules';
 
 // PM-6.01 / 6.02 / 6.03 (§11, §13; Q5, YX-PERF-08).
 const LABELS = ['Needs improvement', 'Meets', 'Exceeds'];
@@ -38,6 +38,29 @@ describe('guide and changes', () => {
     expect(changeProblem({ from: 4, to: 4, min: 1, max: 5, reason: 'Same' })).toMatch(/already has/);
     expect(changeProblem({ from: 4, to: 6, min: 1, max: 5, reason: 'Too high' })).toMatch(/between 1 and 5/);
     expect(changeProblem({ from: 4, to: 3, min: 1, max: 5, reason: 'Compared with the plant leads' })).toBeNull();
+  });
+});
+
+describe('company guide (answer 2845)', () => {
+  it('reads rating and share pairs that add up to 100', () => {
+    expect(parseGuideShares('Needs improvement:10, Meets:70,Exceeds:20')).toEqual({ bands: guide.bands });
+    expect(parseGuideShares('Meets:62.5,Exceeds:37.5')).toEqual({ bands: [{ label: 'Meets', share: 62.5 }, { label: 'Exceeds', share: 37.5 }] });
+  });
+
+  it('refuses a bad guide with the reason', () => {
+    expect(parseGuideShares('Meets:70,Exceeds:20')).toEqual({ problem: 'The shares add up to 90, not 100.' });
+    expect(parseGuideShares('Meets 70,Exceeds:30')).toMatchObject({ problem: expect.stringMatching(/like "Meets:55"/) });
+    expect(parseGuideShares('Meets:120,Exceeds:-20')).toMatchObject({ problem: expect.stringMatching(/between 0 and 100/) });
+    expect(parseGuideShares('Meets:50,meets:50')).toMatchObject({ problem: expect.stringMatching(/twice/) });
+    expect(parseGuideShares(' , ')).toMatchObject({ problem: expect.stringMatching(/at least one/) });
+  });
+
+  it('fills a scale only when the guide names exactly its bands, in the scale’s order and spelling', () => {
+    const g = guideForScale([{ label: 'exceeds', share: 20 }, { label: 'Meets', share: 70 }, { label: 'Needs improvement', share: 10 }], LABELS, 5);
+    expect(g).toEqual({ bands: [{ label: 'Needs improvement', share: 10 }, { label: 'Meets', share: 70 }, { label: 'Exceeds', share: 20 }], tolerance: 5 });
+    expect(guideProblem(g!, LABELS)).toBeNull();
+    expect(guideForScale([{ label: 'Meets', share: 100 }], LABELS, 5)).toBeNull();
+    expect(guideForScale([...guide.bands, { label: 'Stellar', share: 0 }], LABELS, 5)).toBeNull();
   });
 });
 

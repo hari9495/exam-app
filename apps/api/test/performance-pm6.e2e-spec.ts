@@ -117,6 +117,30 @@ describe('Performance batch PM6', () => {
     await app.close();
   });
 
+  it('answer 2845: the company guide fills a new session only when it is on and names the scale’s bands; a bad guide is refused', async () => {
+    const setting = (who: Who, key: string, value: string) => request(server()).put('/api/v1/org/settings').set('Authorization', `Bearer ${token[who]}`).send({ key, value, scopeType: 'tenant' });
+    const sessions = async () => (await api('adminA', 'get', `/cycles/${ids.cycle}/calibrations`).expect(200)).body as { bands: string[]; defaultGuide: unknown };
+    // Off by default: nothing is filled.
+    const first = await sessions();
+    expect(first.defaultGuide).toBeNull();
+    // Refused: shares not adding up to 100, a rating without its share; and a facilitator cannot change the company guide.
+    expect((await setting('adminA', 'perf.calibration.guide_shares', 'Meets:70,Exceeds:20').expect(400)).body.message).toMatch(/90, not 100/);
+    await setting('adminA', 'perf.calibration.guide_shares', 'Meets 100').expect(400);
+    await setting('fac', 'perf.calibration.default_guide', 'on').expect(403);
+    // On, with the starter shares naming the starter scale's five bands: the form is filled with the scale's spelling.
+    await setting('adminA', 'perf.calibration.default_guide', 'on').expect(200);
+    await setting('adminA', 'perf.calibration.guide_tolerance', '5').expect(200);
+    const share = Math.floor(100 / first.bands.length);
+    const pairs = first.bands.map((b, i) => `${b.toLowerCase()}:${i === first.bands.length - 1 ? 100 - share * (first.bands.length - 1) : share}`).join(',');
+    await setting('adminA', 'perf.calibration.guide_shares', pairs).expect(200);
+    const on = await sessions();
+    expect(on.defaultGuide).toEqual({ bands: first.bands.map((label, i) => ({ label, share: i === first.bands.length - 1 ? 100 - share * (first.bands.length - 1) : share })), tolerance: 5 });
+    // A guide that names other ratings than the cycle's scale fills nothing (it never guesses).
+    await setting('adminA', 'perf.calibration.guide_shares', 'Good:50,Great:50').expect(200);
+    expect((await sessions()).defaultGuide).toBeNull();
+    await setting('adminA', 'perf.calibration.default_guide', 'off').expect(200);
+  });
+
   it('HR opens a session with a facilitator who holds the key; the reviews wait there and cannot be released (PM-6.01)', async () => {
     await api('fac', 'post', `/cycles/${ids.cycle}/calibrations`).send({ name: 'Sales', facilitatorUserId: users.fac }).expect(403);
     await api('adminA', 'post', `/cycles/${ids.cycle}/calibrations`).send({ name: 'Sales', facilitatorUserId: users.kiran }).expect(400);

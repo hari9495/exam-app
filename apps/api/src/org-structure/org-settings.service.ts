@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { Prisma } from '@prisma/client';
 import { PrismaService, TenantContext, TenantPrismaService } from '@exam-platform/shared';
 import { assertDefaultRecruiter } from '../hiring/recruiter-key';
+import { parseGuideShares } from '../performance/calibration-rules';
 import { ResolveSettingQueryDto, SettingDto } from './dto';
 import { asDate, isoDate, todayIst } from './org-validation';
 import { audit, CompanyContext, inCompany, Tx } from './org-structure.service';
@@ -197,6 +198,10 @@ export class OrgSettingsService {
       dto.value = dto.value.replace(/\r\n?/g, '\n').trim();
       if (!dto.value) throw new BadRequestException(`Write what goes in "${def.label}", one thing a line.`);
       if (dto.value.length > def.text.maxLength) throw new BadRequestException(`"${def.label}" is ${dto.value.length} characters. Keep it to ${def.text.maxLength} or fewer.`);
+      if (dto.key === 'perf.calibration.guide_shares') {
+        const g = parseGuideShares(dto.value);
+        if ('problem' in g) throw new BadRequestException(g.problem);
+      }
     } else if (def.oneOf) {
       // Checked against the platform list below, inside the company's transaction.
     } else {

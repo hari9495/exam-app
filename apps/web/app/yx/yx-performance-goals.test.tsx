@@ -78,6 +78,43 @@ describe('PRF-01 … 03 live (performance builder 1)', () => {
     await waitFor(() => expect(posted).toEqual([{ periodId: 'p1' }]));
   });
 
+  it('T2-C 71: a goal starts from a template; the goal-setting key imports a CSV after a preview; without the key there is no import', async () => {
+    const posted: unknown[] = [];
+    const base = {
+      'GET /people/team': { managerId: null, members: [] },
+      'GET /performance/goal-periods': PERIODS,
+      'GET /performance/goals': (p: string) => (p.includes('view=company') ? { goals: [], totalWeight: null, canDecide: false } : { goals: [GOAL], totalWeight: 100, canDecide: false }),
+      'GET /performance/goals/align-options': [],
+      'GET /performance/goal-templates': [{ id: 't1', title: 'Learn one new skill', description: null, kind: 'kpi', keyResults: [], departmentId: null, department: null, designationId: null, designation: null }],
+    };
+    route({ ...base, 'GET /rbac/me/permissions': ['perf.goal.manage'], 'POST /performance/goals/import': (_p: string, init: RequestInit) => {
+      const body = JSON.parse(String(init.body));
+      posted.push(body);
+      return body.preview ? { preview: true, rows: [{ line: 2, employee: 'Arjun', employeeCode: 'KF-3', title: 'Goal one', weight: 10 }], problems: [] } : { imported: 1 };
+    } });
+    const first = wrap(<YxMyGoalsPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Add goal' }));
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Start from a template' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Learn one new skill' }));
+    expect(screen.getByDisplayValue('Learn one new skill')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('combobox', { name: 'Start from a template' })).toBeNull());
+    await userEvent.click(await screen.findByRole('button', { name: 'Import goals' }));
+    // jsdom's File has no text(); the browser's does.
+    if (!File.prototype.text) File.prototype.text = function (this: File) { return new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsText(this); }); };
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    await userEvent.upload(input, new File(['employee_code,title\nKF-3,Goal one'], 'goals.csv', { type: 'text/csv' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Import 1 goal' }));
+    await waitFor(() => expect(posted).toHaveLength(2));
+    expect(posted[0]).toMatchObject({ preview: true });
+    expect(posted[1]).not.toHaveProperty('preview');
+    first.unmount();
+    route({ ...base, 'GET /rbac/me/permissions': [] });
+    wrap(<YxMyGoalsPage />);
+    expect(await screen.findByRole('button', { name: 'Add goal' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Import goals' })).toBeNull();
+  });
+
   it('the manager sends a report’s goals back only with what to change, then approves', async () => {
     (useSearchParams as jest.Mock).mockReturnValue(new URLSearchParams('employee=e1'));
     const posted: unknown[] = [];

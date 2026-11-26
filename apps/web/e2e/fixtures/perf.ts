@@ -6,11 +6,11 @@ export const shown = (iso: string) => `${Number(iso.slice(8, 10))} ${MONTHS[Numb
 
 /** Copies the YukthiX performance starters once (the review templates the cycles use). */
 export async function useStarters(admin: Page) {
-  await admin.goto('/yx/settings/performance');
+  await admin.goto('/yx/settings/talent/performance');
   const starters = admin.getByRole('button', { name: 'Use the starters' });
-  await expect(starters.or(admin.getByRole('tab', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
+  await expect(starters.or(admin.getByRole('table', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
   if (await starters.isVisible()) await starters.click();
-  await expect(admin.getByRole('tab', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
+  await expect(admin.getByRole('table', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
 }
 
 /**

@@ -82,3 +82,18 @@ export function scoreReview(scoring: 'weighted' | 'manager_overall', sections: r
   const final = scored.reduce((t, s) => t + sectionScores[s.id] * s.weight, 0) / weight;
   return { sectionScores, excluded, finalScore: Math.round(final * 100) / 100 };
 }
+
+export type KudosRow = { id: string; value: string; badge: string | null; message: string; from: string; on: string };
+export type KudosGroup = { value: string; items: (KudosRow & { hidden: boolean })[] };
+
+/**
+ * T2-C 2661 (answer 2846): the period's kudos on a review, grouped by company value (the values' order, then any value no
+ * longer on the list), newest first. Context only, never scored. The person sees every one with its hidden flag; a reviewer
+ * never sees a hidden one, and a value with nothing left is left out.
+ */
+export function kudosForReview(rows: readonly KudosRow[], hidden: readonly string[], values: readonly string[], forPerson: boolean): KudosGroup[] {
+  const off = new Set(hidden);
+  const shown = rows.filter((k) => forPerson || !off.has(k.id)).sort((a, b) => b.on.localeCompare(a.on));
+  const order = [...values, ...[...new Set(shown.map((k) => k.value))].filter((v) => !values.includes(v)).sort()];
+  return order.map((value) => ({ value, items: shown.filter((k) => k.value === value).map((k) => ({ ...k, hidden: off.has(k.id) })) })).filter((g) => g.items.length > 0);
+}

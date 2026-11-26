@@ -1,39 +1,21 @@
 import { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { Button } from '../../../components/button';
-import { DatePicker } from '../../../components/date';
-import { type BadgeTone } from '../../../components/display';
-import { EmptyState, InlineAlert } from '../../../components/feedback';
-import { FormField } from '../../../components/field';
-import { Text } from '../../../components/foundations';
-import { ConfirmDialog } from '../../../components/overlay';
-import { Segment } from '../../../components/segment';
-import { PersonPicker, type PersonOption } from '../../../components/select';
-import { DataTable } from '../../../components/table';
-import { dayKey } from '../../../lib/dates';
-import { useRun } from '../../org/org-kit';
-import { LivePage, dateText } from '../../time/live/kit';
-import type { LoadState, Nomination, Nominations, PeerConfig, PeerGroups, ReviewerBlock } from './types';
+import { Button } from '../../components/button';
+import { DatePicker } from '../../components/date';
+import { EmptyState, InlineAlert } from '../../components/feedback';
+import { FormField } from '../../components/field';
+import { Text } from '../../components/foundations';
+import { ConfirmDialog } from '../../components/overlay';
+import { Segment } from '../../components/segment';
+import { PersonPicker, type PersonOption } from '../../components/select';
+import { DataTable } from '../../components/table';
+import { dayKey } from '../../lib/dates';
+import { useRun } from '../org/org-kit';
+import { LivePage, dateText } from '../time/live/kit';
+import type { LoadState, ReviewerBlock } from '../performance/live/types';
 
-// Performance batch PM5, wired (M06-BUILD-DESIGN §10, §15.3; PRF-07). Feedback from colleagues is anonymous and shown
-// only as groups of at least the company's minimum; it is advisory and never part of the score.
-
-const STATUS: Record<Nomination['status'], { label: string; tone: BadgeTone }> = {
-  proposed: { label: 'Waiting for the manager', tone: 'info' },
-  approved: { label: 'Asked', tone: 'success' },
-  declined: { label: 'Declined', tone: 'neutral' },
-  withdrawn: { label: 'Withdrawn', tone: 'neutral' },
-  submitted: { label: 'Answered', tone: 'success' },
-};
-const REL = { peer: 'Peer', report: 'Reports to them', other: 'Someone else' } as const;
-const GROUP = { peer: 'Peers', report: 'People who report to them', others: 'Others' } as const;
-
-// ------------------------------------------------------------------------------------------ on the review (PRF-07)
-
-// Batch F (answer 2579): FeedbackTasksScreen and PeerFormScreen are designed screens now (growth/peer-answer.tsx).
-export { FeedbackTasksScreen, PeerFormScreen, type FeedbackTasksScreenProps, type PeerFormScreenProps } from '../../growth/peer-answer';
-
-// ------------------------------------------------------------------------------------------ reviewer blocks (§15.3)
+// PRF-07 reviewer blocks (batch PM5, M06-BUILD-DESIGN §15.3; re-wired as a designed screen in batch T2-C, as answer
+// 2579 did for the feedback tasks): HR who handle concerns keep a pair from reviewing each other. The reason is never shown.
 
 export interface ReviewerBlocksScreenProps {
   state: LoadState;

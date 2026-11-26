@@ -25,11 +25,11 @@ test('cycle → self review → manager review with a worked-out score', async (
   const name = `Plant review ${tag}`;
 
   const admin = await signedIn(browser, 'admin@demo-org.test', 'DevAdmin123!');
-  await admin.goto('/yx/settings/performance');
+  await admin.goto('/yx/settings/talent/performance');
   const starters = admin.getByRole('button', { name: 'Use the starters' });
-  await expect(starters.or(admin.getByRole('tab', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
+  await expect(starters.or(admin.getByRole('table', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
   if (await starters.isVisible()) await starters.click();
-  await expect(admin.getByRole('tab', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
+  await expect(admin.getByRole('table', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
   // PRF-04: a new cycle is a set-up wizard (5df0b91b3); the cycles list lives on the Performance home.
   await admin.goto('/yx/performance/cycles/new');
   const setup = admin.locator('main').last();

@@ -21,6 +21,8 @@ export interface InternalApplicationRow {
   jobTitle: string;
   status: InternalStatus;
   appliedAt: Date;
+  /** Answer 2841: the current manager has not yet released the applicant (hiring.internal.manager_release). */
+  waitingForManager: boolean;
 }
 
 export type TellManager = 'on_apply' | 'at_offer';
@@ -330,11 +332,13 @@ export class InternalApplicationsService implements OnModuleInit {
       const firstActive = new Map<string, number>();
       for (const s of firsts) if (!firstActive.has(s.pipelineId)) firstActive.set(s.pipelineId, s.position);
       const jobById = new Map(jobs.map((j) => [j.id, j]));
+      const waiting = new Set((await tx.internalApplication.findMany({ where: { entryId: { in: entries.map((e) => e.id) }, releaseStatus: 'pending' }, select: { entryId: true } })).map((a) => a.entryId));
       return entries.map((e) => ({
         entryId: e.id,
         jobTitle: jobById.get(e.jobId)?.title ?? '(role removed)',
         status: internalStatus(e.rejected, Boolean(e.archivedAt), e.status?.stage ?? null, e.job?.pipelineId ? firstActive.get(e.job.pipelineId) : undefined),
         appliedAt: e.createdAt,
+        waitingForManager: waiting.has(e.id),
       }));
     });
   }

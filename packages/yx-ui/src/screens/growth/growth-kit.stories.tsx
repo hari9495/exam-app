@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
+import { GoalImportDialog } from './goal-import';
 import { useState } from 'react';
 import {
   BiasFlagList,
@@ -157,3 +158,7 @@ export const Comments: S = {
   ),
 };
 export const Celebrations: S = { name: 'My celebrations (personal choices)', render: () => <div style={box}><CelebrationChoices value={{ birthday: true, anniversary: false, newJoiner: true }} onChange={() => {}} /></div> };
+// T2-C item 71 (answer 2844): import goals from a CSV, with a preview and a reason per refused row.
+const PREVIEW = { preview: true as const, rows: [{ line: 2, employee: 'Arjun Rao', employeeCode: 'KF-003', title: 'Cut scrap on line 3 by 5%', weight: 40 }], problems: [{ line: 3, name: 'Close audits on time', problems: ['This person is not in your goal-setting scope.'] }] };
+export const GoalImport: S = { name: 'Goal import (preview and refused rows)', render: () => <GoalImportDialog open onOpenChange={() => {}} onPreview={async () => PREVIEW} onImport={async () => ({ imported: 1 })} /> };
+

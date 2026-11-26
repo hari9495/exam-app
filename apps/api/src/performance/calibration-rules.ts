@@ -24,6 +24,34 @@ export function guideProblem(g: Guide, labels: readonly string[]): string | null
 }
 
 /**
+ * Answer 2845: the company guide is kept as 'Rating:share' pairs ('Outstanding:10,Meets:70,...'). Returns the bands, or the
+ * reason the text is refused (a rating twice, a share outside 0–100, or shares not adding up to 100).
+ */
+export function parseGuideShares(text: string): { bands: GuideBand[] } | { problem: string } {
+  const bands: GuideBand[] = [];
+  for (const part of text.split(',').map((x) => x.trim()).filter(Boolean)) {
+    const at = part.lastIndexOf(':');
+    const label = at > 0 ? part.slice(0, at).trim() : '';
+    const share = at > 0 ? Number(part.slice(at + 1).trim()) : NaN;
+    if (!label || !Number.isFinite(share)) return { problem: `Write each rating with its share, like "Meets:55" (not "${part}").` };
+    if (share < 0 || share > 100) return { problem: `The share for ${label} is between 0 and 100.` };
+    if (bands.some((b) => b.label.toLowerCase() === label.toLowerCase())) return { problem: `${label} is in the guide twice.` };
+    bands.push({ label, share });
+  }
+  if (!bands.length) return { problem: 'Give at least one rating with its share.' };
+  const total = bands.reduce((t, b) => t + Math.round(b.share * 100), 0);
+  if (total !== 10_000) return { problem: `The shares add up to ${total / 100}, not 100.` };
+  return { bands };
+}
+
+/** Answer 2845: the company guide for a cycle's scale, only when it names exactly the scale's bands (else none is filled). */
+export function guideForScale(bands: readonly GuideBand[], labels: readonly string[], tolerance: number): Guide | null {
+  const byLabel = new Map(bands.map((b) => [b.label.toLowerCase(), b.share]));
+  if (byLabel.size !== labels.length || !labels.every((l) => byLabel.has(l.toLowerCase()))) return null;
+  return { bands: labels.map((label) => ({ label, share: byLabel.get(label.toLowerCase())! })), tolerance };
+}
+
+/**
  * §11.2: the actual distribution next to the guide. People on protected leave are not counted (J11); a group smaller
  * than `minGroup` shows no chart, only the list; a band outside the tolerance gets a soft note, never a block.
  */

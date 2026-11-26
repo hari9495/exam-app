@@ -134,6 +134,9 @@ describe('Answer 2761: the manager releases an internal applicant', () => {
     expect(await told('mgr')).toBe(1);
     const tasks = await openTasks(ids.e1);
     expect(tasks.map((t) => t.assigneeUserId)).toEqual([users.mgr]);
+    // Answer 2841: My applications says it is waiting for the manager; once released, it no longer does.
+    const mine = async () => ((await api('emp', 'get', '/internal-applications/mine').expect(200)).body as { entryId: string; waitingForManager: boolean }[]).find((a) => a.entryId === ids.e1)!;
+    expect((await mine()).waitingForManager).toBe(true);
     // No offer while it waits.
     expect((await api('admin', 'post', `/pipeline/entries/${ids.e1}/offers`).send(OFFER).expect(409)).body.message).toMatch(/current manager has not released them yet/);
     // Only the manager decides: not the applicant, not someone else, not another company.
@@ -143,6 +146,7 @@ describe('Answer 2761: the manager releases an internal applicant', () => {
     expect((await row(ids.e1)).releaseStatus).toBe('pending');
     await decide('mgr', tasks[0]!.id, 'approve').expect((x) => expect([200, 201]).toContain(x.status));
     expect((await row(ids.e1)).releaseStatus).toBe('approved');
+    expect((await mine()).waitingForManager).toBe(false);
     expect(await inA((tx) => tx.auditLog.count({ where: { action: 'internal_application.released', entityId: r.id } }))).toBe(1);
     await api('admin', 'post', `/pipeline/entries/${ids.e1}/offers`).send(OFFER).expect(201);
   });
@@ -152,6 +156,8 @@ describe('Answer 2761: the manager releases an internal applicant', () => {
     const [task] = await openTasks(entry);
     await decide('mgr', task!.id, 'reject').expect((x) => expect([200, 201]).toContain(x.status));
     expect((await row(entry)).releaseStatus).toBe('refused');
+    // Negative (2841): a refused release is not 'waiting' any more.
+    expect(((await api('emp', 'get', '/internal-applications/mine').expect(200)).body as { entryId: string; waitingForManager: boolean }[]).find((a) => a.entryId === entry)!.waitingForManager).toBe(false);
     expect((await api('admin', 'post', `/pipeline/entries/${entry}/offers`).send(OFFER).expect(409)).body.message).toBe('Their current manager did not release them for this job, so no offer can be made.');
   });
 

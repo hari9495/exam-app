@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -6,7 +7,7 @@ import { CurrentTenant } from '../auth/current-tenant.decorator';
 import { PermissionsGuard } from '../rbac/permissions.guard';
 import { RequirePermissions } from '../rbac/permissions.decorator';
 import type { ScopeUser } from '../access/scope';
-import { CascadeDto, CheckinDto, DecideGoalsDto, DropDto, GoalDto, GoalListDto, GoalPeriodDto, GoalRemindDto, PeriodQueryDto, SubmitGoalsDto, SuggestParentDto } from './dto';
+import { CascadeDto, CheckinDto, DecideGoalsDto, DropDto, GoalDto, GoalImportDto, GoalListDto, GoalTemplateDto, GoalPeriodDto, GoalRemindDto, PeriodQueryDto, SubmitGoalsDto, SuggestParentDto } from './dto';
 import { PerformanceGoalsService } from './goals.service';
 
 // Performance batch PM2 (M06-BUILD-DESIGN §19 "Goals"). Goals are open to the implicit grants (my own goals, my
@@ -69,6 +70,39 @@ export class PerformanceGoalsController {
   @Get('goals/:id')
   get(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.goals.get(ctx, this.user(req), id);
+  }
+
+  /** T2-C item 71 (answer 2844): goal templates; reading is for anyone (the service picks the ones that fit), changing is HR's. */
+  @Get('goal-templates')
+  goalTemplates(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.goals.goalTemplates(ctx, req.user as ScopeUser);
+  }
+
+  @Post('goal-templates')
+  @RequirePermissions('perf.setup.manage')
+  addGoalTemplate(@CurrentTenant() ctx: TenantContext, @Body() dto: GoalTemplateDto) {
+    return this.goals.saveGoalTemplate(ctx, null, dto);
+  }
+
+  @Put('goal-templates/:id')
+  @RequirePermissions('perf.setup.manage')
+  updateGoalTemplate(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: GoalTemplateDto) {
+    return this.goals.saveGoalTemplate(ctx, id, dto);
+  }
+
+  @Delete('goal-templates/:id')
+  @RequirePermissions('perf.setup.manage')
+  deleteGoalTemplate(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.goals.deleteGoalTemplate(ctx, id);
+  }
+
+  /** CSV import for holders of the goal-setting key; each row must be in their scope (the service checks). */
+  @Post('goals/import')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @RequirePermissions('perf.goal.manage')
+  importGoals(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: GoalImportDto) {
+    return this.goals.importGoals(ctx, req.user as ScopeUser, dto);
   }
 
   @Post('goals')

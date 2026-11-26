@@ -102,19 +102,19 @@ const IMPLICIT: Record<string, string[]> = {
   // M06 PM1: performance set-up is all behind perf.setup.manage.
   PerformanceSetupController: [],
   // PRF-01: the home; each part is the viewer's own, their team's, or HR's with perf.cycle.manage (checked by the service).
-  PerformanceHomeController: ['home'],
+  PerformanceHomeController: ['home', 'expectations'], // T2-C 68: one's own expectations, or a report's for the manager chain
   // PM2: goals are decided per goal (the owner, the manager chain, perf.goal.view in scope).
-  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap'], // batch F item 30: the manager's own team, checked in the service
+  PerformanceGoalsController: ['periods', 'list', 'alignOptions', 'get', 'create', 'update', 'submit', 'decide', 'checkIn', 'drop', 'cascade', 'teamGaps', 'remindGap', 'goalTemplates'], // batch F item 30: the manager's own team, checked in the service
   // One's own learning, the manager's team, a person's Learning tab (self, team or learning.report.view in scope).
   // G4: the report library (entries follow their area's keys) and company documents (the service decides per folder).
   LibraryController: ['reports', 'favourite', 'documents', 'file', 'schedulesList', 'schedule', 'endSchedule'],
   LearningController: ['me', 'mySkills', 'teamSkills', 'personSkills', 'assessSkill', 'decideSkill', 'addOwnSkill', 'raiseTeamNeed', 'feedbackDue', 'react', 'checks', 'check', 'roles', 'external', 'sessionList', 'upcoming', 'sessionPage', 'nominate', 'checkinCode', 'closeCheckin', 'mark', 'checkIn', 'decline', 'enrol', 'player', 'markDone', 'scormSave', 'itemFile', 'certificatePdf', 'team', 'person'],
   // PM3: feedback and 1:1s are decided per item (the two people of a 1:1; giver, recipient, manager chain).
   // counts: the record's Performance tab, counts only; the service checks who may ask.
-  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions', 'myNotes', 'addNote', 'editNote', 'deleteNote'], // batch F item 32: the author alone (service and RLS)
+  PerformanceFeedbackController: ['list', 'give', 'withdraw', 'requests', 'request', 'decline', 'meetings', 'createMeeting', 'meeting', 'updateMeeting', 'addAgenda', 'agendaDone', 'privateNote', 'addAction', 'actionDone', 'counts', 'goalOptions', 'myNotes', 'addNote', 'editNote', 'deleteNote', 'agendaTemplates', 'addAgendaTemplate', 'updateAgendaTemplate', 'deleteAgendaTemplate', 'agendaFromTemplate'], // batch F item 32: the author alone (service and RLS)
   // PM4: reviews are decided per review (the person, the manager, the chain above, perf.review.view in scope); pdf: the same
   // view as a file (PRF-05 / PRF-06).
-  PerformanceReviewsController: ['list', 'get', 'pdf', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther'],
+  PerformanceReviewsController: ['list', 'get', 'pdf', 'saveSelf', 'submitSelf', 'saveManager', 'submitManager', 'skipAgree', 'sendBack', 'acknowledge', 'disagree', 'handovers', 'saveOther', 'submitOther', 'hideKudos'],
   // PM5: nominations and answers are decided per review (the employee, the manager, an approved nominee).
   PerformancePeerController: ['nominations', 'options', 'nominate', 'send', 'approveAll', 'approve', 'decline', 'withdraw', 'tasks', 'form', 'savePeer', 'submitPeer', 'grouped'],
   // PM6: the board is open to its facilitator, HR and the managers of the people in it (decided per session).
