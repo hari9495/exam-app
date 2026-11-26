@@ -17,6 +17,7 @@ describe('OffersService', () => {
   let integrationEvents: { emit: jest.Mock };
   let approvals: { getChains: jest.Mock; submit: jest.Mock; isConfigurer: jest.Mock; cancelForSubject: jest.Mock; getSummariesFor: jest.Mock };
   let tx: {
+    internalApplication: Record<string, jest.Mock>;
     pipelineEntry: Record<string, jest.Mock>;
     offer: Record<string, jest.Mock>;
     organization: Record<string, jest.Mock>;
