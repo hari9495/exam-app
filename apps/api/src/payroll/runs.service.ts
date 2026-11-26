@@ -1018,6 +1018,9 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
         }),
       ),
     );
+    // E3 review item 8: arrears from a worksheet (not a correction) already carry their statutory differences.
+    const sheetRefs = oneTime.filter((o) => o.source === 'arrears' && /^[0-9a-f-]{36}$/i.test(o.sourceRef ?? '')).map((o) => o.sourceRef!);
+    const sheets = new Set(sheetRefs.length ? (await tx.arrearsWorksheet.findMany({ where: { organizationId: org, id: { in: sheetRefs } }, select: { id: true } })).map((x) => x.id) : []);
     const special = itemsOnly || !monthly ? [] : mine(await reads.once('special', () => tx.specialDays.findMany({ where: { organizationId: org, employmentId: { in: ids }, periodStart: run.periodStart } })));
     const recent = await tx.payslip.findMany({ where: { organizationId: org, employmentId, status: 'approved', runType: 'regular', periodStart: { lt: run.periodStart } }, orderBy: { periodStart: 'desc' }, take: 3 });
     const recentDays = recent.reduce((t, x) => t + Number(monthRange(dateOf(x.periodStart).slice(0, 7)).to.slice(8)), 0);
@@ -1059,7 +1062,7 @@ export class PayRunsService implements OnModuleInit, OnModuleDestroy {
       joinedOn: dateOf(em.joinedOn),
       ytd: { pt: (ytdPt._sum.amount ?? D(0)).toFixed(2), ...(await this.ptWageSoFar(tx, org, employmentId, run.periodStart, fyStart, month, components)) },
       oneTime: [
-        ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}), ...(o.paidSeparately ? { separate: true } : {}), ...(o.grossUp ? { grossUp: true } : {}) })),
+        ...oneTime.map((o) => ({ id: o.id, code: o.componentCode, amount: o.amount.toFixed(2), days: o.endOn && dateOf(o.endOn) <= to && dateOf(o.periodStart) < from ? Number(dateOf(o.endOn).slice(8)) : null, ...(o.label ? { label: o.label } : {}), ...(o.paidSeparately ? { separate: true } : {}), ...(o.grossUp ? { grossUp: true } : {}), ...(o.sourceRef && sheets.has(o.sourceRef) ? { settled: true } : {}) })),
         // Late corrections approved after their month locked, paid in this regular run (PAY-1.03 / 1.04).
         // An F&F run paying the leaver's last salary pays them too (no regular run follows for that person).
         // Answer 2283: the F&F run pays it even when the last month's regular payslip was already approved (items only).

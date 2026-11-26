@@ -27,6 +27,15 @@ describe('calculatePayslip', () => {
     expect(r.minWage).toMatchObject({ below: false });
   });
 
+  it('E3 review item 8: worksheet arrears pay their earnings but no PF again (the worksheet carries it); other one-time pay does', () => {
+    const plain = calculatePayslip(snapshot(), RULES);
+    const arrears = (settled: boolean) => calculatePayslip(snapshot({ oneTime: [{ id: 'a1', code: 'basic', amount: '4000', days: null, label: 'Arrears for 2026-09.', ...(settled ? { settled } : {}) }] }), RULES);
+    expect(amount(arrears(true), 'basic')).toBe((Number(amount(plain, 'basic')) + 4000).toFixed(2));
+    expect(amount(arrears(true), 'pf_employee')).toBe(amount(plain, 'pf_employee'));
+    expect(amount(arrears(true), 'pt')).toBe(amount(plain, 'pt'));
+    expect(Number(amount(arrears(false), 'pf_employee'))).toBeGreaterThan(Number(amount(plain, 'pf_employee')));
+  });
+
   it('PAY-9.01: a part-month run pays its days without PT; the run that ends the month takes PT on the month so far', () => {
     const base = snapshot();
     const part = (days: number, sub: Snapshot['sub']) => snapshot({ segments: [{ ...base.segments[0], days }], sub });

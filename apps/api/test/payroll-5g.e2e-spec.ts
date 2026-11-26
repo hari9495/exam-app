@@ -26,7 +26,7 @@ import { markSteppedUp } from './fixtures/step-up';
 
 // Payroll batch 5g end to end against the real database: an off-cycle bonus run on the same engine and approval, which
 // never touches the regular payslip; arrears per month and component (corrected − as-paid) after a past-dated raise,
-// paid in an arrears run with PF on them; a month with no payslip asks for a base, and what was overpaid becomes a
+// paid in an arrears run (PF, ESI, PT and LWF come from the worksheet only); a month with no payslip asks for a base, and what was overpaid becomes a
 // recovery the employee agrees to, written off only by someone else; rule-change proposals accepted or dismissed; F&F
 // made from lifecycle's hand-off with the deadline over a weekend and a holiday, retrenchment lines held without the
 // government's permission and paid in a second run; death in service split by shares; another company apart.
@@ -334,7 +334,9 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     const slips = await approveRun(arrearsRun);
     const lines = (await linesOf(slips[0].id)).body.lines as { code: string; amount: string; explanation: string }[];
     expect(lines.find((l) => l.code === 'basic')).toMatchObject({ amount: Number(basic.difference).toFixed(2), explanation: `Arrears for ${month}.` });
-    expect(Number(lines.find((l) => l.code === 'pf_employee')?.amount)).toBeGreaterThan(0);
+    // E3 review item 8: the PF difference is the worksheet's (480, recovered with consent), so the run takes no PF on it again.
+    expect(w.lines.find((l: { componentCode: string }) => l.componentCode === 'pf_employee')).toMatchObject({ kind: 'deduction', difference: '480.00' });
+    for (const code of ['pf_employee', 'pf_employer', 'esi_employee', 'pt', 'lwf_employee']) expect(Number(lines.find((l) => l.code === code)?.amount ?? 0)).toBe(0);
     // A second worksheet for the same month owes nothing more (arrears approved earlier count as paid).
     const again = (await api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: ids.emp1, from: month, to: month, reason: 'Check again' }).expect(201)).body;
     expect(Number(again.total)).toBe(0);
