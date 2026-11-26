@@ -228,6 +228,7 @@ export class ArrearsService {
       runId: w.runId,
       createdBy: w.createdBy,
       approvedBy: w.approvedBy,
+      discardReason: w.discardReason,
       missing: lines.filter((l) => l.baseSource === 'missing').length,
       lines: lines.map((l) => ({
         id: l.id,
@@ -514,14 +515,15 @@ export class ArrearsService {
     return { id: out.id, status: out.status, payMonth: out.payMonth, runId: out.runId, overpaid: out.overpaid, recoveryId: out.recoveryId };
   }
 
-  async cancelWorksheet(ctx: TenantContext, user: ScopeUser, id: string) {
+  /** E3 review item 9: a draft is discarded with a reason, kept with who and when (nothing is paid from it). */
+  async cancelWorksheet(ctx: TenantContext, user: ScopeUser, id: string, reason: string) {
     const v = await this.viewer(user);
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const w = await this.sheetIn(tx, c, v, id);
-      if (w.status !== 'draft') throw new ConflictException('Only a draft worksheet is cancelled.');
-      await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { status: 'cancelled', version: { increment: 1 } } });
-      await audit(tx, c, 'payroll.arrears.worksheet_cancelled', 'arrears_worksheet', w.id, {});
-      return { id: w.id, status: 'cancelled' };
+      if (w.status !== 'draft') throw new ConflictException('Only a draft worksheet is discarded.');
+      await tx.arrearsWorksheet.update({ where: { id: w.id }, data: { status: 'discarded', discardReason: reason, discardedBy: v.userId!, discardedAt: new Date(), version: { increment: 1 } } });
+      await audit(tx, c, 'payroll.arrears.worksheet_discarded', 'arrears_worksheet', w.id, { reason, total: w.total.toFixed(2) });
+      return { id: w.id, status: 'discarded' };
     });
   }
 

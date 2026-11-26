@@ -338,8 +338,12 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     // A second worksheet for the same month owes nothing more (arrears approved earlier count as paid).
     const again = (await api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: ids.emp1, from: month, to: month, reason: 'Check again' }).expect(201)).body;
     expect(Number(again.total)).toBe(0);
-    // Nothing to pay: discarded, so it holds no months open (E3 review item 1).
-    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({ reason: 'Nothing owed after all' }).expect(200);
+    // Nothing to pay: discarded, so it holds no months open (E3 review item 1). E3 review item 9: only with a reason, kept.
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({}).expect(400);
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({ reason: 'short' }).expect(400);
+    expect((await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({ reason: 'Nothing owed after all' }).expect(200)).body).toEqual({ id: again.id, status: 'discarded' });
+    expect((await api('payAdmin', 'get', `/payroll/arrears-worksheets/${again.id}`).expect(200)).body).toMatchObject({ status: 'discarded', discardReason: 'Nothing owed after all' });
+    await api('payAdmin', 'post', `/payroll/arrears-worksheets/${again.id}/cancel`).send({ reason: 'Nothing owed after all' }).expect(409);
   });
 
   it('a month with no payslip asks for a base; what was overpaid becomes a recovery the employee agrees to', async () => {

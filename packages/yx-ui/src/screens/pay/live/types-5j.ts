@@ -415,6 +415,8 @@ export interface Worksheet {
   reason: string;
   missing: number;
   createdBy: string;
+  /** E3 review item 9: why a draft was discarded (status 'discarded'). */
+  discardReason?: string | null;
   lines: WorksheetLine[];
 }
 
