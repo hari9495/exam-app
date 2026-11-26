@@ -28979,5 +28979,24 @@
                               "Screens/Time/TIM-28 · Leave policies (Policy drawer)"
                     ],
                     "note": "Positive and negative (api service-bands.spec 7, time-maths and accrual-limits still green; kit setup-live 1). Bands live on the policy line JSON of the dated version (no migration). A band below a state floor is raised to it."
+          },
+          {
+                    "id": "MT-T2A-COMPOFF-ROSTER",
+                    "area": "T2-A (answer 2757): comp-off credited from the roster, company setting off by default (27 Nov 2026)",
+                    "screen": "Settings › Time & Leave › Leave types (3.6) › Company choices; Me › Leave › Comp-off",
+                    "url": "http://localhost:3000/yx/settings/time/leave-types",
+                    "account": "HR Admin or a leave admin; a manager who publishes the roster; an employee whose usual weekly off is Sunday.",
+                    "steps": [
+                              "Open Leave types settings: 'Credit comp-off automatically when the roster puts someone to work on a weekly off or holiday and they work it' is off (Starter default).",
+                              "With it off, publish a roster shift for the employee on a Sunday; the employee clocks in and works 8 hours. Next day: no comp-off credit appears.",
+                              "Turn the setting on and save. Run the accrual job (or wait up to 6 hours).",
+                              "Negative: a rostered Sunday worked only 2 hours, an ordinary weekday worked, and a Sunday already claimed (claim pending) get nothing.",
+                              "Claim a holiday worked that was not on the roster: the claim and the manager's approval work as before."
+                    ],
+                    "expected": "Step 1: off. Step 2: nothing credited. Step 3: Me › Leave › Comp-off shows a credit of 1 day 'Comp-off for rostered work on <date>' with its use-by date; the day is no longer offered for a claim. Step 4: no credit. Step 5: as today. 5-second toast on save; no page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings · Time & Leave (Leave types)"
+                    ],
+                    "note": "Positive and negative (api roster-comp-off.spec 3; kit time-settings-live; web yx-settings-time 1). Job creditRosteredCompOff runs with accruals; period key roster:<date> per person makes reruns safe. 'Take now, work later' stays as the comp-off type's negative balance."
           }
 ]

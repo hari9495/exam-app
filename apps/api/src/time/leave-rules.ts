@@ -316,3 +316,13 @@ export function joinedRun(i: { from: string; to: string; total: number; typeId: 
   }
   return { run, before, after, edges: [...(byDay.get(before) ?? []), ...(byDay.get(after) ?? [])].filter((x) => x.type !== i.typeId).map((x) => ({ ...x, on: x.on })) };
 }
+
+/**
+ * Answer 2757: comp-off for a day the published roster put the person to work on their usual weekly off or a full
+ * holiday, credited without a claim when the company turns it on. Worked minutes decide a half or full day, as for a
+ * claim; a day already claimed or credited (overtime, holiday on a weekly off) gets nothing more.
+ */
+export function rosterCompOffDays(d: { usualOff: boolean; fullHoliday: boolean; rostered: boolean; workedMinutes: number; halfDayMinutes: number; fullDayMinutes: number; claimed: boolean; credited: boolean }): number {
+  if (!d.rostered || (!d.usualOff && !d.fullHoliday) || d.claimed || d.credited) return 0;
+  return d.workedMinutes >= d.fullDayMinutes ? 1 : d.workedMinutes >= d.halfDayMinutes ? 0.5 : 0;
+}

@@ -126,6 +126,7 @@ export const TIME_SETTINGS: Record<string, { links: string[]; settings: Place[] 
       { section: 'Company choices', key: 'leave.probation.leave', synonyms: ['probation'] },
       { section: 'Company choices', key: 'leave.comp_off.claim_within_days', synonyms: ['comp-off', 'compensatory off'] },
       { section: 'Company choices', key: 'leave.comp_off.expiry_days', synonyms: ['comp-off'] },
+      { section: 'Company choices', key: 'leave.comp_off.auto_from_roster', synonyms: ['comp-off', 'roster'] },
       { section: 'Company choices', key: 'leave.block_leave.days' },
       { section: 'Company choices', key: 'leave.block_leave.next_year_days', synonyms: ['block leave', 'next year'] },
     ],
