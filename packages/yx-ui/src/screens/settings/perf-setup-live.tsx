@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '../../components/button';
 import { Checkbox } from '../../components/choice';
@@ -241,6 +241,10 @@ function TemplateForm({ template, scales, onClose, onSave, onActivate, onRetire,
   const [name, setName] = useState(template?.name ?? '');
   const [kind, setKind] = useState<TemplateKind | null>(template?.kind ?? 'annual');
   const [scaleId, setScaleId] = useState<string | null>(template?.scaleId ?? scales[0]?.id ?? null);
+  // The sheet may open while the scales are still loading (just after Use the starters): take the first one when it arrives.
+  useEffect(() => {
+    if (!scaleId && scales[0]) setScaleId(scales[0].id);
+  }, [scaleId, scales]);
   const [scoring, setScoring] = useState<'weighted' | 'manager_overall'>(template?.scoring ?? 'weighted');
   const [sections, setSections] = useState<TemplateSection[]>(template?.sections.map((s) => ({ ...s, questions: s.questions.map((q) => ({ ...q })) })) ?? [{ kind: 'goals', title: 'Goals', weight: 100, rated: true, whoAnswers: ['self', 'manager'], questions: [] }]);
   const [failed, setFailed] = useState<string | null>(null);

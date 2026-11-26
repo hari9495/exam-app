@@ -134,6 +134,27 @@ describe('Settings 6.3 Performance · live editors', () => {
   });
 });
 
+describe('Settings 6.3 · a new template while the scales load (CI 226)', () => {
+  it('takes the first scale when it arrives, so Save draft is not refused for a scale the person never saw', async () => {
+    const onSave = vi.fn(ok);
+    const props = { template: null, hasDraft: false, onClose: vi.fn(), onSave, onActivate: vi.fn(ok), onNewVersion: vi.fn(ok), onRetire: vi.fn(ok) };
+    const { rerender } = render(<ReviewTemplateSheet {...props} scales={[]} />);
+    rerender(<ReviewTemplateSheet {...props} scales={[scale]} />);
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Plant annual');
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ scaleId: 's1' }));
+  });
+
+  it('negative: with no scale at all, Save draft still asks for one', async () => {
+    const onSave = vi.fn(ok);
+    render(<ReviewTemplateSheet template={null} scales={[]} hasDraft={false} onClose={vi.fn()} onSave={onSave} onActivate={vi.fn(ok)} onNewVersion={vi.fn(ok)} onRetire={vi.fn(ok)} />);
+    await ue.type(screen.getByRole('textbox', { name: /^Name/ }), 'Plant annual');
+    await ue.click(screen.getByRole('button', { name: 'Save draft' }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getAllByText('Choose a rating scale.').length).toBeGreaterThan(0);
+  });
+});
+
 // T2-C item 70 (answer 2843): the company's 1:1 agenda templates on 6.3, edited in their sheet.
 describe('Settings 6.3 · 1:1 agenda templates (70)', () => {
   const at = (o: Partial<AgendaTemplate> = {}): AgendaTemplate => ({ id: 'a1', name: 'Weekly check-in', items: ['Wins', 'Blockers', 'Help needed'], company: true, mine: false, updatedAt: '2026-11-27T10:00:00Z', ...o });
