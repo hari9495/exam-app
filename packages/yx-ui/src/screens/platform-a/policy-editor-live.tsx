@@ -382,6 +382,8 @@ function MoveCard({ move, canEdit }: { move: NonNullable<LivePolicyEditor['move'
   const toaster = useToastIfAny();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
+  // 2818: the table of differences starts folded so Hiring › Approvals fits the screen.
+  const [showDiffs, setShowDiffs] = useState(false);
   const rows = move.rows;
   if (!rows || rows.every((r) => r.status === 'none' || r.status === 'moved')) return null;
   const diffs = rows.flatMap((r) => r.differences.map((d, i) => ({ ...d, id: `${r.type}-${i}`, type: r.label })));
@@ -425,7 +427,18 @@ function MoveCard({ move, canEdit }: { move: NonNullable<LivePolicyEditor['move'
         <p className="yx-plt-muted">
           {rows.map((r: MoveRow) => `${r.label}: ${r.status === 'match' ? `the same people for all ${r.checked} checked, ready to move` : r.status === 'differs' ? 'some steps give other people, so it stays on the old route until you set its rules here' : r.status === 'moved' ? 'already on these rules' : 'no old route'}`).join('. ')}.
         </p>
-        {diffs.length > 0 && <DataTable label="Where the old route and the new rules differ" columns={cols} rows={diffs} getRowId={(d) => d.id} defaultGroupBy={null} />}
+        {diffs.length > 0 && (
+          <div className="yx-plt-row">
+            <Button size="sm" aria-expanded={showDiffs} aria-controls="move-diffs" onClick={() => setShowDiffs((v) => !v)}>
+              {showDiffs ? 'Hide differences' : `Show differences (${diffs.length})`}
+            </Button>
+          </div>
+        )}
+        {diffs.length > 0 && showDiffs && (
+          <div id="move-diffs">
+            <DataTable label="Where the old route and the new rules differ" columns={cols} rows={diffs} getRowId={(d) => d.id} defaultGroupBy={null} />
+          </div>
+        )}
       </div>
     </Card>
   );

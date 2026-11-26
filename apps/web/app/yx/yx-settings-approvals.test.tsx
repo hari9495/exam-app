@@ -138,6 +138,9 @@ describe('Hiring › Approvals (answer 2650)', () => {
     routes(['org.settings.manage']);
     wrap(<YxHiringApprovalRoutesPage />);
     expect(await screen.findByText('Requisition approvals')).toBeInTheDocument();
+    // 2818: the differences start folded; Show differences opens them.
+    expect(screen.queryByText('Different people approve.')).toBeNull();
+    await ue.click(await screen.findByRole('button', { name: 'Show differences (1)' }));
     expect(await screen.findByText('Different people approve.')).toBeInTheDocument();
     await ue.click(screen.getByRole('button', { name: 'Move offers' }));
     await waitFor(() => expect(calls.map((c) => c[0])).toContain('POST /workflow/hiring-move'));

@@ -324,6 +324,7 @@ function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
   ]);
   const draft = w.status === 'draft';
   const mine = !!live.me && w.createdBy === live.me;
+  const approvedChange = !!live.me && w.changeApprovedBy === live.me;
   const name = live.nameOf(w.employeeId);
   return (
     <div className="yx-pay-stack">
@@ -389,6 +390,8 @@ function WorksheetBase({ w, live }: { w: Worksheet; live: LiveArrears }) {
               {live.can.approve &&
                 (mine ? (
                   <p className="yx-pay-note">You made this worksheet, so someone else approves it.</p>
+                ) : approvedChange ? (
+                  <p className="yx-pay-note">You approved the salary change, so a third person approves its arrears.</p>
                 ) : (
                   <Button
                     variant="approve"

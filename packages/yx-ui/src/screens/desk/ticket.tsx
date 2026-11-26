@@ -14,6 +14,8 @@ import { RichTextEditor, STYLE_TOOLS } from '../../components/editor';
 import { InsertArticleButton, articleLinkHtml, type ArticleOption } from './ticket-kb';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../../components/menu';
 import { Dialog } from '../../components/overlay';
+import { DatePicker } from '../../components/date';
+import { dayKey } from '../../lib/dates';
 import { Card, DescriptionList, ObjectHeader, Tabs, TabsContent, TabsList, TabsTrigger } from '../../components/shell';
 import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, PRIORITY_LABEL, PriorityBadge, STATE_LABEL, StatusBadge, TicketFlags, fillCanned, minutesText, when } from './desk-kit';
@@ -314,11 +316,21 @@ export function CostsPanel({ costs, work, busy, onAdd, onRemove }: { costs: Tick
   const [kind, setKind] = useState<CostLineInput['kind']>('material');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState<number | null>(null);
+  const today = dayKey(new Date());
+  // 2810: dated from the day the ticket was opened up to today; today by default.
+  const [costOn, setCostOn] = useState<string | null>(today);
   const [removing, setRemoving] = useState<TicketCosts['lines'][number] | null>(null);
   const [reason, setReason] = useState('');
   const early = useTooEarly([
     ...(description.trim().length < 2 ? [{ fieldId: 'tc-what', message: 'Say what the cost is for.' }] : []),
     ...(!amount || amount <= 0 ? [{ fieldId: 'tc-amount', message: 'Enter the amount in rupees.' }] : []),
+    ...(!costOn
+      ? [{ fieldId: 'tc-on', message: 'Choose the date of the cost.' }]
+      : costOn > today
+        ? [{ fieldId: 'tc-on', message: 'The date cannot be in the future.' }]
+        : costOn < costs.openedOn
+          ? [{ fieldId: 'tc-on', message: 'The date cannot be before the ticket was opened.' }]
+          : []),
   ]);
   const why = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'tc-why', message: 'Say why (at least 3 letters).' }] : []);
   return (
@@ -335,12 +347,23 @@ export function CostsPanel({ costs, work, busy, onAdd, onRemove }: { costs: Tick
           {costs.lines.map((l) => (
             <li key={l.id} className="yx-ops-list__item">
               <span className="yx-ops-list__main">
-                <span>
-                  {inr(l.amount)} · {l.description}
-                </span>
+                {l.removed ? (
+                  <del aria-label={`Taken off: ${inr(l.amount)} · ${l.description}`}>
+                    {inr(l.amount)} · {l.description}
+                  </del>
+                ) : (
+                  <span>
+                    {inr(l.amount)} · {l.description}
+                  </span>
+                )}
                 <span className="yx-ops-list__sub">
                   {COST_KIND[l.kind]} · {l.costOn} · {l.who}
                 </span>
+                {l.removed && (
+                  <span className="yx-ops-list__sub">
+                    Taken off by {l.removed.by} on {l.removed.on}: {l.removed.reason}
+                  </span>
+                )}
               </span>
               {work && l.canRemove && (
                 <Button size="sm" onClick={() => setRemoving(l)}>
@@ -362,15 +385,19 @@ export function CostsPanel({ costs, work, busy, onAdd, onRemove }: { costs: Tick
           <FormField id="tc-amount" label="Amount" error={early.errorOf('tc-amount')}>
             <CurrencyField allowPaise value={amount} onChange={setAmount} />
           </FormField>
+          <FormField id="tc-on" label="Date" error={early.errorOf('tc-on')}>
+            <DatePicker value={costOn ? new Date(`${costOn}T00:00:00`) : null} onChange={(d) => setCostOn(d ? dayKey(d) : null)} min={new Date(`${costs.openedOn}T00:00:00`)} max={new Date(`${today}T00:00:00`)} />
+          </FormField>
           <div className="yx-ops-row">
             <Button
               size="sm"
               loading={busy}
               onClick={async () => {
                 if (early.stop()) return;
-                if ((await onAdd({ kind, description: description.trim(), amount: String(amount) })) === false) return;
+                if ((await onAdd({ kind, description: description.trim(), amount: String(amount), costOn: costOn ?? today })) === false) return;
                 setDescription('');
                 setAmount(null);
+                setCostOn(today);
                 early.reset();
               }}
             >

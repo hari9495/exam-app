@@ -29145,5 +29145,79 @@
                               "Screens/Settings/6.1 Hiring (Internal jobs)"
                     ],
                     "note": "Positive and negative (api e2e hiring-internal-release 7: off by default, setting values and key, asked not told, offer refused while pending and after a refusal, only the manager decides, HR after 5 working days once, rerun, other company, off again, RLS; unit release.spec 3, offers and hiring-settings specs; kit hir-13-live and hiring-live; web yx-hiring-hir13 and yx-settings-hiring). Migration 852 (internal_applications release_status, release_wf_request_id, release_asked_at, release_hr_at). Engine request type hiring.internal_release; hourly sweep internal-release-handover at :35."
+          },
+          {
+                    "id": "MT-2810-IT-COST-DATE",
+                    "area": "Helpdesk: the date of an IT cost line (answer 2810)",
+                    "screen": "Helpdesk › an IT ticket › Costs card",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "it-agent@demo-org.test (IT desk agent); panel@demo-org.test (employee) for the negative access step.",
+                    "steps": [
+                              "As the IT agent open an IT ticket opened a few days ago. In the Costs card look at Date: it shows today.",
+                              "Add Material, Spare charger, 1800 with the date set to the day the ticket was opened; press Add cost.",
+                              "Negative: set Date to the day before the ticket was opened and leave the field; then set a date in the future; then clear Date and press Add cost.",
+                              "Negative (API): POST /api/v1/desk/tickets/<id>/costs with costOn the day before the ticket was opened, then with tomorrow.",
+                              "Negative access: as the employee open the same ticket in My tickets."
+                    ],
+                    "expected": "Step 1: Date is today; the calendar greys out days before the ticket was opened and after today. Step 2: toast 'Cost added.' (5 s); the line shows the chosen date. Step 3: 'Choose a date on or after <opened day>', then 'Choose a date on or before <today>', then 'Choose the date of the cost.'; nothing is added. Step 4: 400 'A cost cannot be dated before the ticket was opened (<day>).' and 400 'A cost is recorded for today or earlier.' Step 5: no Costs card.",
+                    "stories": [
+                              "Helpdesk › HLP-03 Ticket workspace › IT ticket · costs"
+                    ],
+                    "note": "Answer 2810. Positive and negative: API service-desk-it-costs.e2e-spec.ts (2810 test and the negative test); kit it-costs.test.tsx (2810 tests)."
+          },
+          {
+                    "id": "MT-2811-IT-COST-REMOVED",
+                    "area": "Helpdesk: removed IT cost lines stay visible to the desk's agents (answer 2811)",
+                    "screen": "Helpdesk › an IT ticket › Costs card",
+                    "url": "http://localhost:3000/yx/desk/tickets",
+                    "account": "it-agent@demo-org.test (IT desk agent who adds and takes off a line); a second IT agent of the same desk; an HR desk agent; panel@demo-org.test (the requester).",
+                    "steps": [
+                              "As the IT agent, on an IT ticket add Fixed, Courier, 350. Press Take off on it and give the reason 'Charged twice'.",
+                              "As the second IT agent open the same ticket.",
+                              "Negative: on the struck-through line look for a Take off button.",
+                              "Negative access: as the requester open the ticket in My tickets; as the HR desk agent open the ticket's link."
+                    ],
+                    "expected": "Step 1: toast 'Cost taken off.' (5 s); the line stays in the list struck through, with 'Taken off by <name> on <date>: Charged twice' under it; the total drops by ₹350. Step 2: the same struck-through line with who and why. Step 3: no Take off on a removed line. Step 4: the requester sees no Costs card at all; the HR agent cannot open the IT ticket (not found or no access).",
+                    "stories": [
+                              "Helpdesk › HLP-03 Ticket workspace › IT ticket · costs"
+                    ],
+                    "note": "Answer 2811. Positive and negative: API service-desk-it-costs.e2e-spec.ts (removed line with who and why for another agent; none in the requester's view); kit it-costs.test.tsx (2811 test)."
+          },
+          {
+                    "id": "MT-2818-HIRING-APPROVALS-FOLD",
+                    "area": "Hiring › Approvals: the move card's differences start folded (answer 2818)",
+                    "screen": "Hiring › Approvals (the 'Move from the old hiring routes' card)",
+                    "url": "http://localhost:3000/yx/hiring/approval-routes",
+                    "account": "HR Admin of a company whose old requisition route differs from its new rules (demo-org admin@ after setting a different requisition rule); HR who only read the structure (org.structure.view).",
+                    "steps": [
+                              "Open Hiring › Approvals in a 1278 x 635 window (150 % laptop).",
+                              "Press 'Show differences (N)'; then press 'Hide differences'.",
+                              "Tab to the toggle and press Enter, then Space.",
+                              "Negative: as HR who only read the structure open the page; open it for a company with no old routes (or after moving every type)."
+                    ],
+                    "expected": "Step 1: the card shows the one-line summary per type and a 'Show differences (N)' button; no table; the page has no scroll bar (the rule editor below may scroll inside itself, answer 2818). Step 2: the table 'Where the old route and the new rules differ' opens with Type / Step / For a request from / Old route / New rules / Why; Hide folds it again. Step 3: the toggle has a visible focus ring and opens and closes from the keyboard. Step 4: read only: the toggle still works but there is no Move button; with no old routes the card is not shown.",
+                    "stories": [
+                              "Screens/Platform/E2 · Approval rules editor › PLT-12 · Hiring › Approvals with the move from the old routes"
+                    ],
+                    "note": "Answer 2818. Positive and negative: kit policy-editor-live.test.tsx (folded by default, Show and Hide)."
+          },
+          {
+                    "id": "MT-2850-ARREARS-THIRD-PERSON",
+                    "area": "Payroll: arrears from a salary change need a third person (answer 2850)",
+                    "screen": "Payroll › Arrears and recoveries › Arrears worksheets (a worksheet drawn from a salary change)",
+                    "url": "http://localhost:3000/yx/payroll/arrears",
+                    "account": "Payroll admin who asks for the salary change (A); a payroll approver who also approves employee changes (B, payroll.arrears.approve and employee.change.approve); a second payroll approver (C).",
+                    "steps": [
+                              "As A raise a salary change for someone, back-dated to the start of a month whose payroll is approved. As B approve the change (People › Changes).",
+                              "Open Payroll › Arrears and recoveries › Arrears worksheets and open the drafted worksheet as A, then as B.",
+                              "Negative (API): as B call POST /api/v1/payroll/arrears-worksheets/<id>/approve.",
+                              "As C open the worksheet and press Approve.",
+                              "Also: as A make a worksheet by hand for a change B approved (choose the change); open it as B."
+                    ],
+                    "expected": "Step 2: as A 'You made this worksheet, so someone else approves it.'; as B 'You approved the salary change, so a third person approves its arrears.'; neither sees Approve. Step 3: 403 'You approved the salary change, so a third person approves its arrears.' Step 4: toast 'Arrears for <name> approved; they are paid with the next run.' (5 s). Step 5: the same note for B and no Approve; a worksheet not drawn from a change (by hand with no change, joining date, rule change) has no such bar.",
+                    "stories": [
+                              "Screens/Pay/PAY-28 · Arrears base confirmation"
+                    ],
+                    "note": "Answer 2850. The change's approver is looked up from the change (employee_changes.decided_by); no new column. Positive and negative: api payroll-5g e2e (hand-made worksheet for a change: approver1 refused, approver2 approves; E3 trigger: approver1 refused; item 4 test approves as approver2); kit offcycle-live.test.tsx (2850 test)."
           }
 ]
