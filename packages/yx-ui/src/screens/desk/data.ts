@@ -310,8 +310,9 @@ export const COSTS: TicketCosts = {
   uncostedMinutes: 0,
   openedOn: '2026-11-20',
   lines: [
-    { id: 'cl-1', kind: 'material', description: 'Replacement screen, Dell Latitude 5440', amount: '8450.00', costOn: '2026-11-24', who: 'Suresh Iyer', canRemove: true },
-    { id: 'cl-2', kind: 'fixed', description: 'Courier to the repair centre', amount: '350.00', costOn: '2026-11-25', who: 'Farah Khan', canRemove: false },
+    { id: 'cl-1', kind: 'material', description: 'Replacement screen, Dell Latitude 5440', amount: '8450.00', costOn: '2026-11-24', who: 'Suresh Iyer', canRemove: true, removed: null },
+    { id: 'cl-2', kind: 'fixed', description: 'Courier to the repair centre', amount: '350.00', costOn: '2026-11-25', who: 'Farah Khan', canRemove: false, removed: null },
+    { id: 'cl-3', kind: 'fixed', description: 'Courier booked twice', amount: '350.00', costOn: '2026-11-25', who: 'Farah Khan', canRemove: false, removed: { by: 'Suresh Iyer', on: '2026-11-25', reason: 'Charged twice' } },
   ],
   total: '9775.00',
   departments: ['Engineering'],

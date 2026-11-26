@@ -945,7 +945,8 @@ export interface TicketCosts {
   uncostedMinutes: number;
   /** 2810: the day the ticket was opened (IST); a cost line is dated from then to today. */
   openedOn: string;
-  lines: { id: string; kind: 'fixed' | 'material'; description: string; amount: string; costOn: string; who: string; canRemove: boolean }[];
+  /** 2811: removed lines stay listed, struck through, with who took them off and why (agents only). */
+  lines: { id: string; kind: 'fixed' | 'material'; description: string; amount: string; costOn: string; who: string; canRemove: boolean; removed: { by: string; on: string; reason: string } | null }[];
   total: string;
   departments: string[];
 }

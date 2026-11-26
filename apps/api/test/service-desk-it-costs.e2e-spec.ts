@@ -144,7 +144,14 @@ describe('Helpdesk: IT costs into department budgets (2719)', () => {
     await api('itAgent2', 'post', `/desk/tickets/${ids.ticket}/costs/${fee.id}/remove`).send({ reason: 'Not ours' }).expect(403);
     await api('itAgent', 'post', `/desk/tickets/${ids.ticket}/costs/${fee.id}/remove`).send({ reason: 'Courier paid by the vendor' }).expect(201);
     await api('itAgent', 'post', `/desk/tickets/${ids.ticket}/costs/${fee.id}/remove`).send({ reason: 'Again' }).expect(404);
-    expect(await costs('itAgent', ids.ticket)).toMatchObject({ total: '4800.00', lines: [expect.objectContaining({ id: line.id })] });
+    // 2811: the removed line stays listed for the desk's agents, with who took it off and why; the total leaves it out.
+    expect(await costs('itAgent2', ids.ticket)).toMatchObject({
+      total: '4800.00',
+      lines: [
+        expect.objectContaining({ id: line.id, removed: null }),
+        expect.objectContaining({ id: fee.id, canRemove: false, removed: { by: `itAgent ${run}`, on: today, reason: 'Courier paid by the vendor' } }),
+      ],
+    });
     const kept = await inOrg(org.A.id, (tx) => tx.sdCostLine.findUniqueOrThrow({ where: { id: fee.id } }));
     expect(kept).toMatchObject({ removedBy: users.itAgent, removeReason: 'Courier paid by the vendor' });
   });
@@ -153,7 +160,7 @@ describe('Helpdesk: IT costs into department budgets (2719)', () => {
     const dated = (await api('itAgent', 'post', `/desk/tickets/${ids.ticket}/costs`).send({ kind: 'fixed', description: 'Data cable', amount: '120', costOn: today }).expect(201)).body;
     const c = await costs('itAgent', ids.ticket);
     expect(c.openedOn).toBe(today);
-    expect(c.lines.find((l: { id: string }) => l.id === dated.id)).toMatchObject({ costOn: today });
+    expect(c.lines.find((l: { id: string }) => l.id === dated.id)).toMatchObject({ costOn: today, removed: null });
     await api('itAgent', 'post', `/desk/tickets/${ids.ticket}/costs/${dated.id}/remove`).send({ reason: 'Test line' }).expect(201);
   });
 
@@ -171,7 +178,7 @@ describe('Helpdesk: IT costs into department budgets (2719)', () => {
     expect(await costs('hrAgent', ids.hrTicket)).toBeUndefined();
     // An agent of another desk cannot add costs to this IT ticket.
     expect([403, 404]).toContain((await api('hrAgent', 'post', `/desk/tickets/${ids.ticket}/costs`).send({ kind: 'fixed', description: 'Cab', amount: '100' })).status);
-    // The requester's own view of the ticket carries no costs.
+    // 2811: removed lines (with who and why) are only in the agents' view; the requester's own view carries no costs.
     expect((await api('emp', 'get', `/desk/my/tickets/${ids.ticket}`).expect(200)).body.costs).toBeUndefined();
   });
 

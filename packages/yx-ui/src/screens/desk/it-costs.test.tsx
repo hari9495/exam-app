@@ -55,6 +55,17 @@ describe('CostsPanel', () => {
     expect(onAdd).not.toHaveBeenCalled();
   });
 
+  it('2811: a removed line is struck through with who took it off and why, and cannot be taken off again', () => {
+    render(<CostsPanel costs={COSTS} work busy={false} onAdd={ok()} onRemove={ok()} />);
+    const struck = screen.getByLabelText('Taken off: ₹350 · Courier booked twice');
+    expect(struck.tagName).toBe('DEL');
+    expect(screen.getByText('Taken off by Suresh Iyer on 2026-11-25: Charged twice')).toBeInTheDocument();
+    const item = struck.closest('li')!;
+    expect(within(item).queryByRole('button', { name: 'Take off' })).toBeNull();
+    // The total (₹9,775) leaves the removed line out.
+    expect(screen.getByText('₹9,775')).toBeInTheDocument();
+  });
+
   it('negative: nothing is sent without what and how much; only own lines can be taken off, with a reason', async () => {
     const onAdd = ok();
     const onRemove = ok();

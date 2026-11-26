@@ -347,12 +347,23 @@ export function CostsPanel({ costs, work, busy, onAdd, onRemove }: { costs: Tick
           {costs.lines.map((l) => (
             <li key={l.id} className="yx-ops-list__item">
               <span className="yx-ops-list__main">
-                <span>
-                  {inr(l.amount)} · {l.description}
-                </span>
+                {l.removed ? (
+                  <del aria-label={`Taken off: ${inr(l.amount)} · ${l.description}`}>
+                    {inr(l.amount)} · {l.description}
+                  </del>
+                ) : (
+                  <span>
+                    {inr(l.amount)} · {l.description}
+                  </span>
+                )}
                 <span className="yx-ops-list__sub">
                   {COST_KIND[l.kind]} · {l.costOn} · {l.who}
                 </span>
+                {l.removed && (
+                  <span className="yx-ops-list__sub">
+                    Taken off by {l.removed.by} on {l.removed.on}: {l.removed.reason}
+                  </span>
+                )}
               </span>
               {work && l.canRemove && (
                 <Button size="sm" onClick={() => setRemoving(l)}>
