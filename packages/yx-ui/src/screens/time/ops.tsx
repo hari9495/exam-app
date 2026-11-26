@@ -29,7 +29,7 @@ import { relativeDue } from './time-logic';
 import { balancesFor, CLAIM, HR_ADMIN, ME, myReports, NEGATIVE_BALANCES, PAYROLL_ADMIN, TEAM, TODAY, type TimeUser } from './time-data';
 import type { ViewState } from './attendance';
 import { ApplyLeavePanel, type LiveLeaveHome } from './leave';
-import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyLeave, MyTimesheet, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
+import type { AttendanceReport, LeaveReport as LiveLeaveReport, LeaveReportKind, LeaveReportQuery, LeaveReportRow, LoadState, MyLeave, MyTimesheet, TimesheetActivity, HoursReport, NightRegister, PayrollFeed, Registers, TimesheetLineInput } from './live/types';
 import { useRun } from '../org/org-kit';
 import { LiveDevicesScreen, RevokeKioskDialog, RevokedKiosksTable, ShowRevoked, type RevokedKiosk, WebApprovalDialog, computerWords, type LiveDevices, type WebApproval } from './devices-live';
 import { TrainingTab, type TrainingRow, type TrainingTabProps } from './training-tab';
@@ -637,6 +637,40 @@ export interface LiveTimesheet {
   /** Batch D A5: my weeks not sent (GET /time/me/timesheet/not-sent); `onShowOlder` asks for a year. */
   notSent?: { state: LoadState; data: { weeks: NotSentWeek[] } | null; onShowOlder?: () => void };
 }
+
+const ACTIVITY_TEXT: Record<string, string> = {
+  'timesheet.submitted': 'Sent to the project manager',
+  'timesheet.withdrawn': 'Recalled to edit',
+  'timesheet.approved': 'Week approved',
+  'timesheet.rejected': 'Week sent back',
+  'timesheet_line.approved': 'approved',
+  'timesheet_line.reduced': 'reduced',
+  'timesheet_line.rejected': 'rejected',
+};
+
+/** T2-D 62 (Keka A6): the week's activity, newest first, with who and when. */
+export function TimesheetActivityCard({ activity, projects }: { activity: TimesheetActivity[]; projects: { id: string; code: string }[] }) {
+  if (!activity.length) return null;
+  const code = (id: string | null) => projects.find((x) => x.id === id)?.code ?? 'A line';
+  return (
+    <Card title="Activity">
+      <ul className="yx-tim-list" aria-label="Timesheet activity">
+        {activity.map((a, i) => (
+          <li key={`${a.action}-${a.at}-${i}`}>
+            <strong>{a.action.startsWith('timesheet_line.') ? `${code(a.projectId)}${a.task ? ` · ${a.task}` : ''} ${ACTIVITY_TEXT[a.action] ?? a.action}` : (ACTIVITY_TEXT[a.action] ?? a.action)}</strong>
+            <span className="yx-tim-muted">
+              {' '}
+              · {formatDate(new Date(a.at))}, {new Date(a.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Kolkata' })}
+              {a.by ? ` · ${a.by}` : ''}
+              {a.reason ? ` · Reason: ${a.reason}` : ''}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 const LIVE_STATUS: Record<NonNullable<MyTimesheet['sheet']>['status'], TimesheetStatus> = { draft: 'draft', pending: 'submitted', approved: 'approved', rejected: 'sent_back' };
 const localDay = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
 const isoPlus = (iso: string, n: number) => new Date(Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)) + n)).toISOString().slice(0, 10);
@@ -758,6 +792,7 @@ function LiveTimesheetScreen({ live }: { live: LiveTimesheet }) {
             );
           })()}
           {st === 'approved' && <p className="yx-tim-muted">Approved by the project manager.</p>}
+          <TimesheetActivityCard activity={d.activity ?? []} projects={d.projects} />
         </div>
       )}
     </LiveGate>

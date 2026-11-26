@@ -197,6 +197,17 @@ describe('Projects P-2 line approvals', () => {
     await decide('pmA', [{ lineId: nrp.id, status: 'approved', version: nrp.version + 1 }]).expect(409); // already decided
   });
 
+  it('T2-D 62: the week shows its activity with who and why', async () => {
+    const mine = (await api('emp', 'get', `/time/me/timesheet?week=${week}`).expect(want(200))).body;
+    type Act = { action: string; by: string | null; projectId: string | null; reason: string | null };
+    const acts = mine.activity as Act[];
+    expect(acts[0]).toMatchObject({ action: 'timesheet_line.reduced', by: `pmA ${run}`, projectId: ids.nrp, reason: 'Offsite on Tuesday' });
+    expect(acts.at(-1)).toMatchObject({ action: 'timesheet.submitted', by: `emp ${run}` });
+    // Only this person's own week: another person's view of their own week has none of it.
+    const peer = (await api('peer', 'get', `/time/me/timesheet?week=${week}`)).body;
+    expect(peer.activity ?? []).toEqual([]);
+  });
+
   it('bulk approves only within the allocation (1407); over it, the line is decided on its own', async () => {
     const int = await lineOf(ids.int!); // 5 h booked, 10% = 4 h allocated
     const list = (await api('mgr', 'get', '/time/line-approvals').expect(want(200))).body;

@@ -87,8 +87,35 @@ export class TimesheetService implements OnModuleInit {
         }),
         recent: recent.map((s) => ({ id: s.id, week: dateOf(s.weekStart), status: s.status, totalMinutes: s.totalMinutes })),
         noteRule: await TimesheetService.noteRule(tx, c),
+        activity: sheet ? await this.activity(tx, org, sheet.id, lines) : [],
       };
     });
+  }
+
+  /**
+   * T2-D 62 (Keka A6): what happened to my week, newest first: sent, recalled, each line decided and the week's outcome,
+   * with who and when (from the audit log; saving a draft is not listed).
+   */
+  private async activity(tx: Tx, org: string, sheetId: string, lines: { id: string; projectId: string; activity: string | null }[]) {
+    const rows = await tx.auditLog.findMany({
+      where: { organizationId: org, OR: [{ entityType: 'timesheet', entityId: sheetId }, ...(lines.length ? [{ entityType: 'timesheet_line', entityId: { in: lines.map((l) => l.id) } }] : [])] },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { action: true, entityId: true, actorName: true, createdAt: true, metadataJson: true },
+    });
+    return rows
+      .filter((r) => /^time\.timesheet(_line)?\.[a-z_]+$/.test(r.action))
+      .map((r) => {
+        const line = lines.find((l) => l.id === r.entityId);
+        const meta = (() => {
+          try {
+            return JSON.parse(r.metadataJson ?? '{}') as { reason?: string | null };
+          } catch {
+            return {};
+          }
+        })();
+        return { action: r.action.replace(/^time\./, ''), at: r.createdAt, by: r.actorName ?? null, projectId: line?.projectId ?? null, task: line?.activity ?? null, reason: meta.reason ?? null };
+      });
   }
 
   /**
@@ -412,6 +439,8 @@ export class TimesheetService implements OnModuleInit {
       if (s.wfRequestId) await this.engine.withdraw(tx, c, s.wfRequestId, c.userId ?? null, 'Withdrawn by the employee');
       else await this.lineApprovals.withdrawLines(tx, c.organizationId, s.id);
       await tx.timesheet.update({ where: { id }, data: { status: 'draft', submittedAt: null, version: { increment: 1 }, updatedAt: new Date() } });
+      // T2-D 62: shown on the week's activity.
+      await audit(tx, c, 'time.timesheet.withdrawn', 'timesheet', id, { week: dateOf(s.weekStart) });
       return { id, status: 'draft' };
     });
   }
