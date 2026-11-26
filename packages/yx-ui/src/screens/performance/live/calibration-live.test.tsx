@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
-import { CalibrationSessions, PerformanceReportsScreen } from './calibration';
+import { CalibrationSessions } from './calibration';
 
 // Performance batch PM6 screens (M06-BUILD-DESIGN §11, §13; PRF-09; PM-6.04).
 
@@ -25,13 +25,5 @@ describe('Calibration (PM6)', () => {
     await ue.type(within(d).getByRole('textbox', { name: /^Above/ }), '70');
     await ue.click(within(d).getByRole('button', { name: 'Open' }));
     expect(onCreate).toHaveBeenCalledWith({ name: 'Sales', facilitatorUserId: 'u1', departmentIds: [], guide: { bands: [{ label: 'Below', share: 30 }, { label: 'Above', share: 70 }], tolerance: 10 } });
-  });
-
-  it('reports show suppressed cells as hidden and download a CSV', async () => {
-    const onDownload = vi.fn(ok);
-    render(<PerformanceReportsScreen state="ready" cycles={[{ value: 'c1', label: 'H1' }]} cycleId="c1" onCycle={vi.fn()} kind="distribution" onKind={vi.fn()} report={{ kind: 'distribution', cycle: 'H1', header: ['department', 'band', 'people'], rows: [['Sales', 'Meets', null]] }} onDownload={onDownload} />);
-    expect(screen.getByText('Hidden (small group)')).toBeInTheDocument();
-    await ue.click(screen.getByRole('button', { name: 'Download CSV' }));
-    expect(onDownload).toHaveBeenCalled();
   });
 });

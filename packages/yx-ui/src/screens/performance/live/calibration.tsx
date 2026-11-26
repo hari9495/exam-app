@@ -10,12 +10,10 @@ import { ConfirmDialog } from '../../../components/overlay';
 import { Segment } from '../../../components/segment';
 import { MultiSelect, Select } from '../../../components/select';
 import { Card } from '../../../components/shell';
-import { DataTable } from '../../../components/table';
-import { useRun } from '../../org/org-kit';
 import { LivePage } from '../../time/live/kit';
-import type { CalibrationSession, Choice, LoadState, PerfReport } from './types';
+import type { CalibrationSession, Choice, LoadState } from './types';
 
-// Performance batch PM6, wired (M06-BUILD-DESIGN §11, §13; PRF-09 calibration, reports). The guide is a guide only:
+// Performance batch PM6, wired (M06-BUILD-DESIGN §11; PRF-09 calibration). The guide is a guide only:
 // it never blocks sign-off and never moves anyone. Every change needs a reason. No pay is shown here.
 
 // ------------------------------------------------------------------------------------------ sessions on the cycle
@@ -90,62 +88,6 @@ export function CalibrationListScreen({ state, onRetry, sessions, onOpen }: { st
   return (
     <LivePage title="Calibration" description="Sessions you run, or every session for HR." state={state} onRetry={onRetry} what="calibration sessions">
       <CalibrationSessions sessions={sessions} departments={[]} facilitators={[]} bands={[]} onOpen={onOpen} />
-    </LivePage>
-  );
-}
-
-// ------------------------------------------------------------------------------------------ the board (PRF-09)
-
-export type ReportKind = 'completion' | 'distribution' | 'calibration-changes' | 'goal-alignment' | 'pip-status';
-const REPORTS: { value: ReportKind; label: string }[] = [
-  { value: 'completion', label: 'Completion' },
-  { value: 'distribution', label: 'Distribution' },
-  { value: 'calibration-changes', label: 'Calibration changes' },
-  { value: 'goal-alignment', label: 'Goal alignment' },
-  { value: 'pip-status', label: 'Improvement plans' },
-];
-
-export interface PerformanceReportsScreenProps {
-  state: LoadState;
-  onRetry?: () => void;
-  cycles: Choice[];
-  cycleId: string | null;
-  onCycle: (id: string) => void;
-  kind: ReportKind;
-  onKind: (k: ReportKind) => void;
-  report: PerfReport | null;
-  onDownload?: () => Promise<unknown>;
-}
-
-export function PerformanceReportsScreen(p: PerformanceReportsScreenProps) {
-  const { busy, run } = useRun();
-  return (
-    <LivePage title="Performance reports" description="People in your scope. Groups smaller than the company's minimum are not shown, so no one is singled out." state={p.state} onRetry={p.onRetry} what="performance reports">
-      <div className="yx-lif-row">
-        <FormField id="pr-cycle" label="Cycle">
-          <Select aria-label="Cycle" value={p.cycleId} onChange={(x) => x && p.onCycle(x)} options={p.cycles} />
-        </FormField>
-        <FormField id="pr-kind" label="Report">
-          <Select aria-label="Report" value={p.kind} onChange={(x) => x && p.onKind(x as ReportKind)} options={REPORTS} />
-        </FormField>
-        {p.report && p.onDownload && (
-          <Button loading={busy === 'csv'} onClick={() => void run('csv', p.onDownload!)}>
-            Download CSV
-          </Button>
-        )}
-      </div>
-      {!p.report ? (
-        <EmptyState compact title="Choose a cycle." />
-      ) : (
-        <DataTable
-          label={REPORTS.find((r) => r.value === p.kind)!.label}
-          columns={p.report.header.map((h, i) => ({ key: String(i), header: h, value: (row: unknown[]) => (row[i] === null ? 'Hidden (small group)' : String(row[i] ?? '')), width: i === 0 ? 220 : 140, hideable: i !== 0 }))}
-          rows={p.report.rows}
-          getRowId={(row) => p.report!.rows.indexOf(row).toString()}
-          rowNoun={['row', 'rows']}
-          empty={<EmptyState compact title="Nothing to show for this cycle." />}
-        />
-      )}
     </LivePage>
   );
 }

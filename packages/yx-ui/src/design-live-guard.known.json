@@ -1,6 +1,5 @@
 {
   "liveCopies": [
-    "performance: PerformanceReportsScreen",
     "performance: PerformanceSetupScreen"
   ],
   "notLive": [

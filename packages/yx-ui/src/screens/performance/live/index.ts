@@ -8,7 +8,9 @@ export { ReviewerBlocksScreen, type ReviewerBlocksScreenProps } from '../../grow
 // Designed screens made live (builder 2): PRF-08 Quick feedback, PRF-11 1:1s.
 export { QuickFeedbackScreen, VISIBILITY as FEEDBACK_VISIBILITY, type FeedbackAsk, type FeedbackItem as QuickFeedbackItem, type FeedbackVisibility, type LiveQuickFeedback } from '../../growth/perf-people';
 export { OneOnOneScreen, cadenceLabel, type Cadence, type LiveOneOnOnes, type OneOnOne as OneOnOneRow } from '../../growth/perf-people';
-export { CalibrationSessions, CalibrationListScreen, PerformanceReportsScreen, type PerformanceReportsScreenProps, type ReportKind } from './calibration';
+export { CalibrationSessions, CalibrationListScreen } from './calibration';
+// Batch T2-C: the performance reports re-wired as a designed screen.
+export { PerformanceReportsScreen, type PerformanceReportsScreenProps, type ReportKind } from '../../growth/perf-reports';
 // PRF-09 Calibration board and 9-box, the designed screen made live (builder 2).
 export { CalibrationScreen, type CalibrationChange, type CalibrationPerson, type LiveCalibration } from '../../growth/perf-talent';
 // The PRF-01 … 06 designs, rendered by the live pages with `live` (performance builder 1).
