@@ -483,7 +483,8 @@ export class PayStructuresService {
 
   /**
    * PAY-12 history: every salary of the person's employment (newest first, corrected ones left out) with who asked for
-   * it, who approved it and why, plus pay changes still waiting or turned down. Same access as the salary in force:
+   * it, who approved it and why, plus pay changes still waiting or turned down (for payroll; the person sees only their
+   * approved salaries, without names, answer 2860). Same access as the salary in force:
    * the person themselves, or employee.salary.view over them; a view by someone else is audited (no amounts logged).
    */
   compensationHistory(ctx: TenantContext, user: ScopeUser, employeeId: string, asOn = todayIst()) {
@@ -521,6 +522,8 @@ export class PayStructuresService {
             .map((k) => ({ kind: 'request' as const, changeId: k.id, status: k.status, validFrom: iso(k.effectiveDate), validTo: null, annualCtc: ctcOf(k), previousCtc: null, changeType: k.changeType, reason: k.reason, requestedBy: who(k.requestedBy), requestedAt: k.requestedAt, decidedBy: who(k.decidedBy), decidedAt: k.decidedAt, template: template(k.id), decisionNote: k.decisionNote })),
         ].sort((x, y) => (y.validFrom ?? '').localeCompare(x.validFrom ?? ''));
         if (own !== employeeId) await audit(tx, c, 'payroll.compensation.history_viewed', 'employee', employeeId, { asOn, items: items.length });
+        // Answer 2860: a person's own history is their approved salaries only, without who asked or approved.
+        if (own === employeeId) return items.filter((x) => x.kind === 'salary').map((x) => ({ ...x, requestedBy: null, decidedBy: null }));
         return items;
       }),
     );
