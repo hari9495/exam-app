@@ -20,7 +20,7 @@ describe('Approval rules editor (live)', () => {
   it('shows the rules and the otherwise route; saves both as the next version', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     show(e2Live({ onSave }));
-    expect(screen.getByText(/reminded after 24 hours/)).toBeInTheDocument();
+    expect(screen.getByText(/Reminders after 24 hours/)).toBeInTheDocument();
     expect(screen.getByText('Rule 1 · Many openings')).toBeInTheDocument();
     expect(screen.getByText(/When Openings is greater than 3/)).toBeInTheDocument();
     expect(screen.getByText('Otherwise')).toBeInTheDocument();

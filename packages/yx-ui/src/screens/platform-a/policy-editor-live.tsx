@@ -46,14 +46,16 @@ export function LivePolicyEditorScreen({ live }: { live: LivePolicyEditor }) {
     <div className="yx-plt-stack">
       <PageHeader
         title={live.only ? 'Hiring approvals' : 'Approval policies'}
-        description={`Who approves each request type, rule by rule. The approver is reminded after ${live.remindHours} hours and it goes to their manager too after ${live.escalateHours} hours (Settings › Approvals). Changes apply to new requests only.`}
+        description={`Who approves each request type. Reminders after ${live.remindHours} hours, escalation to their manager after ${live.escalateHours} hours (Settings › Approvals). Changes apply to new requests only.`}
         status={!live.canEdit ? <Badge tone="neutral">View only</Badge> : undefined}
-        actions={live.limitsHref ? <Link href={live.limitsHref}>Approval limits</Link> : undefined}
+        actions={
+          <>
+            {live.limitsHref && <Link href={live.limitsHref}>Approval limits</Link>}
+            <Select aria-label="Request type" value={type || null} onChange={(v) => v && setType(v)} options={types.map((t) => ({ value: t.key, label: t.group && !live.only ? `${t.group}: ${t.label}` : t.label }))} />
+          </>
+        }
       />
       {live.move && <MoveCard move={live.move} canEdit={live.canEdit} />}
-      <FormField label="Request type">
-        <Select value={type || null} onChange={(v) => v && setType(v)} options={types.map((t) => ({ value: t.key, label: t.group && !live.only ? `${t.group}: ${t.label}` : t.label }))} />
-      </FormField>
       {live.state === 'loading' && <p className="yx-plt-muted">Loading…</p>}
       {row && <TypeEditor key={`${row.key}:${row.version}`} live={live} row={row} />}
     </div>
@@ -176,16 +178,7 @@ function TypeEditor({ live, row }: { live: LivePolicyEditor; row: PolicyTypeRow 
           </FormField>
         </div>
       </Card>
-      {canEdit &&
-        (fields.length ? (
-          <span className="yx-plt-row">
-            <Button icon={Plus} disabled={rules.length >= 10} onClick={() => setRuleOpen(null)}>
-              {rules.length >= 10 ? 'At most 10 rules' : 'Add rule'}
-            </Button>
-          </span>
-        ) : (
-          <p className="yx-plt-muted">This request type sends no values to test, so it has one route.</p>
-        ))}
+      {canEdit && !fields.length && <p className="yx-plt-muted">This request type sends no values to test, so it has one route.</p>}
     </div>
   );
 
@@ -204,6 +197,11 @@ function TypeEditor({ live, row }: { live: LivePolicyEditor; row: PolicyTypeRow 
         actions={
           canEdit ? (
             <>
+              {fields.length > 0 && (
+                <Button icon={Plus} disabled={rules.length >= 10} onClick={() => setRuleOpen(null)}>
+                  {rules.length >= 10 ? 'At most 10 rules' : 'Add rule'}
+                </Button>
+              )}
               {live.onTry && (
                 <Button onClick={() => setTryOpen(true)}>
                   Try on a past request
@@ -245,7 +243,7 @@ function TypeEditor({ live, row }: { live: LivePolicyEditor; row: PolicyTypeRow 
           {NOTICE_TYPES.includes(row.key) && live.notices ? (
             <Tabs defaultValue="rules">
               <TabsList aria-label={`${row.label} approvals`}>
-                <TabsTrigger value="rules" count={rules.length + 1}>
+                <TabsTrigger value="rules" count={rules.length}>
                   Rules
                 </TabsTrigger>
                 <TabsTrigger value="notices">Notices</TabsTrigger>
