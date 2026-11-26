@@ -314,7 +314,7 @@ describe('buildNav: Settings', () => {
     expect(labels(nav(['visitors.desk.manage']), 'visitors')).not.toContain('Watch-list');
     // Founder 30 Oct 2026 (last 10, item 5): Payroll rules for HR (org.settings.manage) or payroll set-up, never for others.
     expect(labels(nav(['payroll.run.view']), 'settings')).not.toContain('Payroll rules');
-    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance', 'Performance settings']);
+    expect(labels(nav(['perf.setup.manage']), 'settings')).toEqual(['All settings', 'Performance settings']);
     expect(labels(nav(['access.role.manage']), 'settings')).toEqual(['All settings', 'Roles & access']);
   });
 
