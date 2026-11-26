@@ -29027,5 +29027,23 @@
                               "Helpdesk › HLP-03 Ticket workspace › IT ticket · costs"
                     ],
                     "note": "Answer 2811. Positive and negative: API service-desk-it-costs.e2e-spec.ts (removed line with who and why for another agent; none in the requester's view); kit it-costs.test.tsx (2811 test)."
+          },
+          {
+                    "id": "MT-2818-HIRING-APPROVALS-FOLD",
+                    "area": "Hiring › Approvals: the move card's differences start folded (answer 2818)",
+                    "screen": "Hiring › Approvals (the 'Move from the old hiring routes' card)",
+                    "url": "http://localhost:3000/yx/hiring/approval-routes",
+                    "account": "HR Admin of a company whose old requisition route differs from its new rules (demo-org admin@ after setting a different requisition rule); HR who only read the structure (org.structure.view).",
+                    "steps": [
+                              "Open Hiring › Approvals in a 1278 x 635 window (150 % laptop).",
+                              "Press 'Show differences (N)'; then press 'Hide differences'.",
+                              "Tab to the toggle and press Enter, then Space.",
+                              "Negative: as HR who only read the structure open the page; open it for a company with no old routes (or after moving every type)."
+                    ],
+                    "expected": "Step 1: the card shows the one-line summary per type and a 'Show differences (N)' button; no table; the page has no scroll bar (the rule editor below may scroll inside itself, answer 2818). Step 2: the table 'Where the old route and the new rules differ' opens with Type / Step / For a request from / Old route / New rules / Why; Hide folds it again. Step 3: the toggle has a visible focus ring and opens and closes from the keyboard. Step 4: read only: the toggle still works but there is no Move button; with no old routes the card is not shown.",
+                    "stories": [
+                              "Screens/Platform/E2 · Approval rules editor › PLT-12 · Hiring › Approvals with the move from the old routes"
+                    ],
+                    "note": "Answer 2818. Positive and negative: kit policy-editor-live.test.tsx (folded by default, Show and Hide)."
           }
 ]

@@ -131,8 +131,15 @@ describe('Approval rules editor (live)', () => {
     const onMove = vi.fn().mockResolvedValue(undefined);
     show(e2Live({ only: ['ats.requisition', 'ats.offer'], move: { rows: E2_MOVE, onMove } }));
     expect(screen.getByText('Hiring approvals')).toBeInTheDocument();
+    // 2818: the differences start folded; the toggle shows and hides them.
+    expect(screen.queryByRole('table', { name: /differ/ })).toBeNull();
+    const toggle = screen.getByRole('button', { name: /^Show differences \(\d+\)$/ });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await ue.click(toggle);
     expect(screen.getByRole('table', { name: /differ/ })).toBeInTheDocument();
     expect(screen.getByText('Different people approve.')).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Hide differences' }));
+    expect(screen.queryByRole('table', { name: /differ/ })).toBeNull();
     await ue.click(screen.getByRole('combobox', { name: /Request type/ }));
     expect(screen.queryByRole('option', { name: /One-time pay/ })).toBeNull();
     await ue.keyboard('{Escape}');
