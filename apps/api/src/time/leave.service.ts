@@ -53,6 +53,12 @@ export const LEAVE_REQUEST = 'leave.request';
 export const LEAVE_CANCEL = 'leave.cancel';
 export const LEAVE_CANCEL_DAYS = 'leave.cancel_days';
 const ACTIVE = ['pending', 'approved', 'cancel_pending'];
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+/** "Monday, Tuesday and Friday". */
+export const weekdayList = (days: readonly number[]) => {
+  const names = days.map((d) => WEEKDAYS[d]);
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+};
 const NAME = Prisma.raw(`concat_ws(' ', coalesce(e.preferred_name, e.given_name), e.family_name)`);
 type Off = { employeeId: string; name: string; on: string; type: string };
 /** Who else is off on any day from `from` to `to` (names once each, with their leave type), leaving out `except`. */
@@ -278,6 +284,25 @@ export class LeaveService implements OnModuleInit {
         const who = onBehalf ? `${f.name} already has` : 'You already have';
         blocks.push(over.already ? `${t.name} is at most ${daysText(limit)} in a month. ${who} ${daysText(over.already)} in ${monthName(over.month)}, so up to ${daysText(Math.max(0, limit - over.already))} more can be taken then.` : `${t.name} is at most ${daysText(limit)} in a month. This asks for ${daysText(over.asked)} in ${monthName(over.month)}.`);
       }
+    }
+    // T2-A (D8): only on some weekdays; the most requests starting in a month; days that must pass between two requests.
+    const taken = counted.days.filter((x) => x.portion > 0).map((x) => x.on);
+    if (rules.allowedWeekdays && taken.some((d) => !rules.allowedWeekdays!.includes(new Date(`${d}T00:00:00Z`).getUTCDay()))) blocks.push(`${t.name} can be taken only on ${weekdayList(rules.allowedWeekdays)}.`);
+    if (rules.maxRequestsPerMonth !== null && rules.maxRequestsPerMonth !== undefined && total > 0) {
+      const [n] = await tx.$queryRaw<{ n: number }[]>`
+        SELECT count(*)::int AS n FROM leave_requests r
+        WHERE r.organization_id = ${org}::uuid AND r.employee_id = ${f.employeeId}::uuid AND r.leave_type_id = ${t.id}::uuid AND r.status = ANY(${ACTIVE}::text[])
+          AND r.from_on BETWEEN date_trunc('month', ${dto.from}::date) AND (date_trunc('month', ${dto.from}::date) + interval '1 month - 1 day')`;
+      if (n.n >= rules.maxRequestsPerMonth) blocks.push(`${t.name} can be asked for at most ${rules.maxRequestsPerMonth === 1 ? 'once' : `${rules.maxRequestsPerMonth} times`} a month. ${onBehalf ? `${f.name} already has` : 'You already have'} ${n.n === 1 ? '1 request' : `${n.n} requests`} starting in ${monthName(dto.from.slice(0, 7))}.`);
+    }
+    if (rules.minGapDays !== null && rules.minGapDays !== undefined && total > 0) {
+      const gap = rules.minGapDays;
+      const near = await tx.$queryRaw<{ from_on: string; to_on: string }[]>`
+        SELECT r.from_on::text AS from_on, r.to_on::text AS to_on FROM leave_requests r
+        WHERE r.organization_id = ${org}::uuid AND r.employee_id = ${f.employeeId}::uuid AND r.leave_type_id = ${t.id}::uuid AND r.status = ANY(${ACTIVE}::text[])
+          AND r.to_on >= (${dto.from}::date - ${gap}::int) AND r.from_on <= (${dto.to}::date + ${gap}::int)
+        ORDER BY r.from_on LIMIT 1`;
+      if (near.length) blocks.push(`${t.name} needs ${daysText(gap)} between two requests. ${onBehalf ? `${f.name} has` : 'You have'} ${t.name.toLowerCase()} from ${fmt(near[0].from_on)} to ${fmt(near[0].to_on)}.`);
     }
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
     // they will give it to HR, HR marks it verified (Special data), and approvers see only its status (YX-LV-09).

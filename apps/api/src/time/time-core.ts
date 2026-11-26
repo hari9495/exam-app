@@ -58,6 +58,12 @@ export interface LeaveRules {
   payWindow: 'leave_year' | 'rolling_12_months';
   /** TIM-27 Rules: the most days of this type in one calendar month, pending and approved together (null: no limit). */
   maxDaysPerMonth: number | null;
+  /** T2-A (D8): the most requests of this type starting in one calendar month, pending and approved (null: no limit). */
+  maxRequestsPerMonth: number | null;
+  /** T2-A (D8): whole days that must pass between two requests of this type (null: none). */
+  minGapDays: number | null;
+  /** T2-A (D8): the only weekdays it can be taken on, 0 Sunday to 6 Saturday (null: any day). */
+  allowedWeekdays: number[] | null;
   /** TIM-27 Year end: the most days cashed in a leave year (null: the company's leave.encashment.max_days). */
   encashMaxDays: number | null;
   /** Days that must stay after cashing in (null: the company's leave.encashment.min_left). */
@@ -87,7 +93,7 @@ export interface PayStep {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null, eligibleEmploymentTypes: null, minMonthsWorked: null, probation: null };
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, maxRequestsPerMonth: null, minGapDays: null, allowedWeekdays: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null, eligibleEmploymentTypes: null, minMonthsWorked: null, probation: null };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -112,6 +118,13 @@ export function parseRules(input: unknown): LeaveRules {
   if (r.minDays !== null && r.maxDays !== null && r.minDays > r.maxDays) throw new BadRequestException('The least days per request is more than the most.');
   if (r.maxDaysPerMonth !== null && !halfStep(r.maxDaysPerMonth, 0.5, 31)) throw new BadRequestException('Most days in a month is 0.5 to 31, in half days.');
   if (r.maxDaysPerMonth !== null && r.maxDays !== null && r.maxDays > r.maxDaysPerMonth) throw new BadRequestException(`Most days in one request is more than the monthly limit of ${r.maxDaysPerMonth}. A request that big could never be approved.`);
+  if (r.maxRequestsPerMonth !== null && (!Number.isInteger(r.maxRequestsPerMonth) || r.maxRequestsPerMonth < 1 || r.maxRequestsPerMonth > 31)) throw new BadRequestException('Most requests in a month is 1 to 31.');
+  if (r.minGapDays !== null && (!Number.isInteger(r.minGapDays) || r.minGapDays < 1 || r.minGapDays > 90)) throw new BadRequestException('Days between two requests is 1 to 90.');
+  if (r.allowedWeekdays !== null) {
+    if (!Array.isArray(r.allowedWeekdays) || !r.allowedWeekdays.length || r.allowedWeekdays.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) throw new BadRequestException('Choose the weekdays it can be taken on, or leave it open to every day.');
+    r.allowedWeekdays = [...new Set(r.allowedWeekdays)].sort();
+    if (r.allowedWeekdays.length === 7) r.allowedWeekdays = null;
+  }
   if (r.encashDivisor !== null && r.encashDivisor !== 26 && r.encashDivisor !== 30) throw new BadRequestException('The daily rate for cashing in is monthly pay divided by 26 or 30.');
   if (r.longAbsence !== null && r.longAbsence !== 'pause' && r.longAbsence !== 'continue') throw new BadRequestException('Choose whether crediting stops or continues during a long absence.');
   if (r.noticePeriod !== null && !['allowed', 'extends', 'blocked', 'unpaid'].includes(r.noticePeriod)) throw new BadRequestException('Choose what happens to this leave during the notice period.');

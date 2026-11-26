@@ -38,3 +38,6 @@
 .yx-tim-muster[data-pinned-totals] .yx-tim-muster__total { background: var(--yx-color-bg-subtle); }
 .yx-tim-muster[data-pinned-totals] tr > :nth-child(5) { box-shadow: inset calc(var(--yx-border-width) * -2) 0 0 var(--yx-color-border-strong); }
 .yx-tim-numcell:focus-visible { outline: var(--yx-focus-width) solid var(--yx-color-focus-ring); outline-offset: -2px; }
+
+/* T2-A (D8): the weekday ticks of a leave type. */
+.yx-time-row { display: flex; flex-wrap: wrap; gap: var(--yx-space-2) var(--yx-space-4); align-items: center; }

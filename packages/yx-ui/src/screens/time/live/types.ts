@@ -410,6 +410,10 @@ export interface LeaveRules {
   paySteps?: { days: number; percent: number }[] | null;
   /** TIM-27 Rules: the most days in one calendar month (null: no limit). */
   maxDaysPerMonth?: number | null;
+  /** T2-A (D8): most requests starting in a month; whole days between two requests; the only weekdays (0 Sunday … 6 Saturday). null: no limit. */
+  maxRequestsPerMonth?: number | null;
+  minGapDays?: number | null;
+  allowedWeekdays?: number[] | null;
   /** TIM-27 Year end: cash-in limits and payout (null: the company's). */
   encashMaxDays?: number | null;
   encashMinLeft?: number | null;

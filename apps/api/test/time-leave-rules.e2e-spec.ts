@@ -184,6 +184,36 @@ describe('Time leave rules and on duty', () => {
       expect((await api('emp2', 'post', '/time/me/encashment').send({ leaveTypeId: ids.EL, days: 2.5 }).expect(400)).body.message).toMatch(/up to 2 days \(0 days must stay; 2 days a year\)/);
     });
 
+    it('T2-A (D8): only on some weekdays, at most N requests a month, days between two requests; bad values refused', async () => {
+      const EL_RULES = { maxDaysPerMonth: 3, encashable: true, encashMaxDays: 2, encashMinLeft: 0, encashDivisor: 30, encashAtExit: false, longAbsence: 'continue', noticePeriod: 'blocked' };
+      for (const bad of [{ maxRequestsPerMonth: 0 }, { maxRequestsPerMonth: 1.5 }, { minGapDays: 91 }, { allowedWeekdays: [7] }, { allowedWeekdays: [] }])
+        await api('hr', 'put', `/time/setup/types/${ids.EL}`).send(typeBody({}, { ...EL_RULES, ...bad })).expect(400);
+      await api('hr', 'put', `/time/setup/types/${ids.EL}`).send(typeBody({}, { ...EL_RULES, maxRequestsPerMonth: 1, minGapDays: 10, allowedWeekdays: [1, 1, 3] })).expect(200);
+      expect((await api('hr', 'get', '/time/setup').expect(200)).body.types.find((x: { id: string }) => x.id === ids.EL).rules).toMatchObject({ maxRequestsPerMonth: 1, minGapDays: 10, allowedWeekdays: [1, 3] });
+      // Two months ahead of the month the monthly-days test used, so its days do not count.
+      const N = DateTime.fromISO(`${M}-01`).plus({ months: 2 });
+      let monday = N;
+      while (monday.weekday !== 1) monday = monday.plus({ days: 1 });
+      const d = (x: DateTime) => x.toISODate()!;
+      const preview = async (who: 'emp' | 'emp2', from: DateTime, to = from) => ((await api(who, 'post', '/time/me/leave/preview').send({ leaveTypeId: ids.EL, from: d(from), to: d(to) }).expect(200)).body.blocks as string[]).join(' ');
+      // A Tuesday is not allowed; Monday and Wednesday are.
+      expect(await preview('emp', monday.plus({ days: 1 }))).toMatch(/can be taken only on Monday and Wednesday/);
+      expect(await preview('emp', monday)).toBe('');
+      const id = (await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: d(monday), to: d(monday), reason: 'Family' }).expect(201)).body.id as string;
+      // Once a month: another Monday of the same month is refused; 10 days must pass after the first one.
+      const twoWeeks = monday.plus({ days: 14 });
+      expect(await preview('emp', twoWeeks)).toMatch(new RegExp(`at most once a month\\. You already have 1 request starting in ${monday.toFormat('MMMM yyyy')}`));
+      const wednesday = monday.plus({ days: 9 });
+      const gapBlocks = await preview('emp', wednesday);
+      expect(gapBlocks).toMatch(/needs 10 days between two requests/);
+      // Someone else's requests never count.
+      expect(await preview('emp2', monday.plus({ days: 7 }))).toBe('');
+      await api('emp', 'post', '/time/me/leave').send({ leaveTypeId: ids.EL, from: d(twoWeeks), to: d(twoWeeks), reason: 'Family' }).expect(400);
+      // Withdrawn requests no longer count. (The type now has requests, so its rules stay; the later tests do not depend on them.)
+      await api('emp', 'post', `/time/me/leave/${id}/withdraw`).send({}).expect((r) => expect([200, 201]).toContain(r.status));
+      expect(await preview('emp', twoWeeks)).toBe('');
+    });
+
     it('statutory maternity: locked at the legal minimum with a plain reason; more than the law is fine', async () => {
       const ml = (rules: Record<string, unknown> = {}, over: Record<string, unknown> = {}) => ({ code: 'ML', name: 'Maternity leave', kind: 'maternity', paid: true, ...over, rules: { eligibleGenders: ['female'], ...rules } });
       expect((await api('hr', 'post', '/time/setup/types').send(ml({ maxDays: 181 })).expect(400)).body.message).toBe("Maternity leave can be up to 26 weeks by law (Maternity Benefit Act 1961). The most days in one request can't be below 182.");
