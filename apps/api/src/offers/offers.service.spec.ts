@@ -27,6 +27,8 @@ describe('OffersService', () => {
 
   beforeEach(() => {
     tx = {
+      // Answer 2761: no manager release is waiting on these entries.
+      internalApplication: { findFirst: jest.fn().mockResolvedValue(null) },
       pipelineEntry: {
         findFirst: jest.fn().mockResolvedValue({ id: 'entry-1', candidateId: 'cand-1', organizationId: 'org-1' }),
         findUnique: jest.fn().mockResolvedValue({

@@ -1,4 +1,4 @@
-import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
+import { InternalApplicationsService, releaseProblem } from '../internal-applications/internal-applications.service';
 import { acceptanceCopy } from '../documents/letters/pdf';
 import { FilesService } from '../documents/files.service';
 import { createHash, randomUUID } from 'crypto';
@@ -88,6 +88,9 @@ export class OffersService {
       // HIR-05 under 18 (rule set HIR.MINOR): no offer until a parent or guardian consents.
       const minor = await minorHold(tx as unknown as Tx, orgId, entry.candidateId, todayIst(), 'offer');
       if (minor) throw new ConflictException(minor);
+      // Answer 2761: an internal applicant's current manager releases them first (company setting).
+      const held = await releaseProblem(tx as unknown as Tx, orgId, entryId);
+      if (held) throw new ConflictException(held);
 
       const offer = await tx.offer.create({
         data: {

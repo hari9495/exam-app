@@ -48,6 +48,7 @@ const KEY = {
   'hire.internal_after_probation': 'hiring.internal.after_probation',
   'hire.internal_months_in_role': 'hiring.internal.months_in_role',
   'hire.internal_tell_manager': 'hiring.internal.tell_manager',
+  'hire.internal_manager_release': 'hiring.internal.manager_release', // answer 2761
   // HIR-25 (founder decision 2).
   'hire.notetaker_enabled': 'hiring.notetaker.enabled',
   'hire.notetaker_ai_draft': 'hiring.notetaker.ai_draft',
@@ -80,6 +81,7 @@ const TOGGLE: Partial<Record<keyof typeof KEY, [on: string, off: string]>> = {
   'hire.rediscovery_ai': ['on', 'off'],
   'hire.rehire_blocks_screening': ['on', 'off'],
   'hire.internal_after_probation': ['on', 'off'],
+  'hire.internal_manager_release': ['on', 'off'],
   'hire.notetaker_enabled': ['on', 'off'],
   'hire.notetaker_ai_draft': ['on', 'off'],
   'hire.bgv_decider_other_person': ['on', 'off'],
@@ -174,6 +176,7 @@ export function hiringSettingsPage(design: SettingsPageDef, data: HiringSettings
       case 'hire.rediscovery_ai':
       case 'hire.rehire_blocks_screening':
       case 'hire.internal_after_probation':
+      case 'hire.internal_manager_release':
       case 'hire.notetaker_enabled':
       case 'hire.notetaker_ai_draft':
       case 'hire.bgv_decider_other_person':

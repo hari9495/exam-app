@@ -57,6 +57,7 @@ export const HIRING_SETTING_KEYS = [
   'hiring.internal.after_probation',
   'hiring.internal.months_in_role',
   'hiring.internal.tell_manager',
+  'hiring.internal.manager_release', // answer 2761
   // HIR-25 (founder decision 2): the notetaker, the AI draft and how long transcripts are kept.
   'hiring.notetaker.enabled',
   'hiring.notetaker.ai_draft',

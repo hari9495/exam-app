@@ -327,6 +327,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'hiring.internal.after_probation': { label: 'Hiring: only people past probation can apply for internal jobs', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   'hiring.internal.months_in_role': { label: 'Hiring: months in their current role before someone can apply for internal jobs', scopes: ['tenant'], dated: false, values: ['0', '3', '6', '9', '12', '18', '24'], default: '12' },
   'hiring.internal.tell_manager': { label: 'Hiring: the current manager is told about an internal application', scopes: ['tenant'], dated: false, values: ['on_apply', 'at_offer'], default: 'on_apply' },
+  // Answer 2761: off = the manager is told (above); on = the manager is asked to release the person before any offer, through
+  // the approvals engine; no answer in 5 working days goes to HR.
+  'hiring.internal.manager_release': { label: 'Hiring: the current manager approves releasing someone who applies for an internal job', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
   'perf.goal.checkin_days': { label: 'Performance: remind about goal check-ins after (days)', scopes: ['tenant'], dated: false, values: ['14', '30', '90'], default: '30' },
   // Settings S-8, 5.4 Notifications (answer 1323): the company switches for the channels that exist (in-app and email).
   // Notification emails can be turned off company-wide (the in-app bell always works); the daily digest goes out at

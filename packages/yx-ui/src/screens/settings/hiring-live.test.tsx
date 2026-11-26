@@ -26,6 +26,7 @@ const DEFAULTS = {
   'hiring.internal.after_probation': 'on',
   'hiring.internal.months_in_role': '12',
   'hiring.internal.tell_manager': 'on_apply',
+  'hiring.internal.manager_release': 'off',
   'hiring.notetaker.enabled': 'off',
   'hiring.notetaker.ai_draft': 'off',
   'hiring.notetaker.keep_days': '90',
@@ -146,6 +147,20 @@ describe('Settings 6.1 Hiring (live)', () => {
     const [values, rows] = onSave.mock.calls[0]!;
     expect(hiringSettingsChanges(values, rows, DATA)).toEqual(expect.arrayContaining([{ key: 'hiring.internal.after_probation', value: 'off' }, { key: 'hiring.internal.tell_manager', value: 'at_offer' }]));
     expect(hiringSettingsChanges({ 'hire.internal_months_in_role': '6' }, {}, DATA)).toEqual([{ key: 'hiring.internal.months_in_role', value: '6' }]);
+  });
+
+  it('answer 2761: the manager release is off by default; turning it on saves hiring.internal.manager_release', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    show(live({ onSave }));
+    const release = screen.getByRole('checkbox', { name: /The current manager releases the person before an offer/ });
+    expect(release).not.toBeChecked();
+    await ue.click(release);
+    await ue.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    const [values, rows] = onSave.mock.calls[0]!;
+    expect(hiringSettingsChanges(values, rows, DATA)).toEqual([{ key: 'hiring.internal.manager_release', value: 'on' }]);
+    // Negative: nothing changed, nothing saved for it.
+    expect(hiringSettingsChanges({}, {}, DATA)).toEqual([]);
   });
 
   it('HIR-25 (decision 2): the notetaker and the AI draft are off by default; changes map to the company settings', async () => {

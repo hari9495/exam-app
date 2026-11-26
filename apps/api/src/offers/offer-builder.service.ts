@@ -1,4 +1,4 @@
-import { InternalApplicationsService } from '../internal-applications/internal-applications.service';
+import { InternalApplicationsService, releaseProblem } from '../internal-applications/internal-applications.service';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit, Optional } from '@nestjs/common';
 import { minorHold } from '../talent-crm/minor';
 import { Prisma } from '@prisma/client';
@@ -311,6 +311,9 @@ export class OfferBuilderService implements OnModuleInit {
       // HIR-05 under 18 (rule set HIR.MINOR): no offer until a parent or guardian consents.
       const minor = await minorHold(tx, org, e.candidateId, todayIst(), 'offer');
       if (minor) throw new ConflictException(minor);
+      // Answer 2761: an internal applicant's current manager releases them first (company setting).
+      const held = await releaseProblem(tx, org, e.id);
+      if (held) throw new ConflictException(held);
       if (await tx.offer.findFirst({ where: { organizationId: org, pipelineEntryId: e.id, status: { in: ['draft', 'pending_approval', 'approved', 'sent', 'accepted'] } }, select: { id: true } })) throw new ConflictException('This application already has an open offer. Revise that offer instead.');
       const w = await this.work(tx, org, e.job, dto, dto.startDate);
       const letter = await this.letterOf(tx, org, e.job.legalEntityId, dto.templateId);

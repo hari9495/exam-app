@@ -28978,7 +28978,7 @@
                     "stories": [
                               "Screens/Time/TIM-28 · Leave policies (Policy drawer)"
                     ],
-                    "note": "Positive and negative (api service-bands.spec 7, time-maths and accrual-limits still green; kit setup-live 1). Bands live on the policy line JSON of the dated version (no migration). A band below a state floor is raised to it."
+                    "note": "Positive and negative (api service-bands.spec 7, time-maths and accrual-limits still green; kit setup-live 1). Bands live on the policy line JSON of the dated version (no migration). A band below a state floor is raised to it. Web: yx-time-service-bands (2)."
           },
           {
                     "id": "MT-T2A-COMPOFF-ROSTER",
@@ -28997,7 +28997,7 @@
                     "stories": [
                               "Screens/Settings · Time & Leave (Leave types)"
                     ],
-                    "note": "Positive and negative (api roster-comp-off.spec 3; kit time-settings-live; web yx-settings-time 1). Job creditRosteredCompOff runs with accruals; period key roster:<date> per person makes reruns safe. 'Take now, work later' stays as the comp-off type's negative balance."
+                    "note": "Positive and negative (api roster-comp-off.spec 3; kit time-settings-live; web yx-settings-time 1). Job creditRosteredCompOff runs with accruals; period key roster:<date> per person makes reruns safe. 'Take now, work later' stays as the comp-off type's negative balance. API e2e on the real database: time-t2a (10)."
           },
           {
                     "id": "MT-T2A-OVERVIEW-CARDS",
@@ -29016,7 +29016,7 @@
                     "stories": [
                               "Screens/Time/TIM-17 · Leave home (Manager · overview cards)"
                     ],
-                    "note": "Positive and negative (kit leave-mgr-live 2; web yx-time-team-overview 2). Setting leave.overview.no_leave_days (default 90). Unplanned is counted for leave starting this month (question 2830). Sick or medical types show as 'Leave' everywhere on the manager overview (away, who else is off)."
+                    "note": "Positive and negative (kit leave-mgr-live 2; web yx-time-team-overview 2). Setting leave.overview.no_leave_days (default 90). Unplanned is counted for leave starting this month (question 2830). Sick or medical types show as 'Leave' everywhere on the manager overview (away, who else is off). API e2e on the real database: time-t2a (10)."
           },
           {
                     "id": "MT-T2A-PEERS-AWAY",
@@ -29034,7 +29034,7 @@
                     "stories": [
                               "Screens/Time/TIM-17 · Leave home (Employee · peers away)"
                     ],
-                    "note": "Positive and negative (kit leave-live 2; web yx-time-peers 2). Peers are the people with the same manager today (current assignment)."
+                    "note": "Positive and negative (kit leave-live 2; web yx-time-peers 2). Peers are the people with the same manager today (current assignment). API e2e on the real database: time-t2a (10)."
           },
           {
                     "id": "MT-T2A-LWF-SUPERVISOR",
@@ -29053,7 +29053,7 @@
                     "stories": [
                               "Screens/People/PPL-04 · Changes"
                     ],
-                    "note": "Positive and negative (api lwf-supervisors.spec 4, statutory golden cases; kit history.test 1). Migration 851: employee_assignments.supervisory (default false) and the two rule set versions from 1 Dec 2026, verify (CA to confirm the wage compared: the month's statutory gross earnings)."
+                    "note": "Positive and negative (api lwf-supervisors.spec 4, statutory golden cases; kit history.test 1). Migration 851: employee_assignments.supervisory (default false) and the two rule set versions from 1 Dec 2026, verify (CA to confirm the wage compared: the month's statutory gross earnings). Web: yx-people-supervisory (2)."
           },
           {
                     "id": "MT-IT-ASSETS-FOLLOWUPS",
@@ -29100,5 +29100,27 @@
                               "Screens/Hiring/HIR-32 · Job boards"
                     ],
                     "note": "Positive and negative (api workflow-e2-editor e2e 12, approval-rules unit 11, settings-s6-approvals 30, workflow-e2-approvers 10, rls-isolation 35; kit policy-editor-live 12; web settings approvals and nav). Migration 842 (approval_policies.rules, approval_notice_texts). The company-wide move: npm run hiring:move-chains (apps/api, after nest build)."
+          },
+          {
+                    "id": "MT-T2A-INTERNAL-RELEASE",
+                    "area": "T2-A (answers 2761, 2836): the current manager releases someone who applies for an internal job (27 Nov 2026)",
+                    "screen": "Settings › Hiring › Internal jobs; Hiring › Internal jobs (HIR-13, Apply sheet); Approvals (the manager's and HR's inbox); the candidate's offer",
+                    "url": "http://localhost:3000/yx/settings/hiring",
+                    "account": "HR Admin (hr_admin profile); an employee past probation and 12 months in the role; their manager (panel@, Divya); a recruiter who makes offers; another company's admin.",
+                    "steps": [
+                              "Default: open Settings › Hiring › Internal jobs. 'The current manager releases the person before an offer' is off. As the employee apply for an internal job; as the recruiter make an offer on that application.",
+                              "As HR turn the setting on and save. As the employee open Hiring › Internal jobs and press Apply on another job: read the blue note, then send.",
+                              "As the manager open Approvals: the request 'Release <name> for the internal job <title>'. Before deciding, as the recruiter try to make an offer on the application.",
+                              "As the manager press Approve; then as the recruiter make the offer.",
+                              "Negative: the employee applies for a third job; the manager presses Reject with a reason; the recruiter tries an offer. As the applicant or another colleague, try to decide the release (they have no task); as another company's admin call POST /workflow/approvals/tasks/<task id>/decide.",
+                              "No answer: the employee applies for a fourth job and nobody decides. After 5 working days (Monday to Friday, less company-wide holidays; a holiday in between moves it a day) the hourly job runs (or run it in a test). Open Approvals as HR.",
+                              "Turn the setting off again and apply once more: the manager is only told; an application still waiting keeps waiting."
+                    ],
+                    "expected": "Step 1: the manager gets the usual 'applied for the internal job' notice; the offer is made. Step 2: toast 'Saved'; the Apply sheet says 'Your manager, <name>, is asked to release you when you apply. An offer can be made only once they agree; if they have not answered in 5 working days, HR decides.' Step 3: the request is in the manager's inbox (no 'applied' notice); the offer is refused: 'Their current manager has not released them yet…'. Step 4: the offer is made. Step 5: refused offer: 'Their current manager did not release them for this job, so no offer can be made.'; others cannot decide (403/404); another company 404. Step 6: HR Admins get 'Escalated to you: Current manager' (not the manager's manager); either HR or the manager can decide; it happens once. Step 7: as described. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Hiring/HIR-13 · Internal jobs (Apply sheet · manager releases)",
+                              "Screens/Settings/6.1 Hiring (Internal jobs)"
+                    ],
+                    "note": "Positive and negative (api e2e hiring-internal-release 7: off by default, setting values and key, asked not told, offer refused while pending and after a refusal, only the manager decides, HR after 5 working days once, rerun, other company, off again, RLS; unit release.spec 3, offers and hiring-settings specs; kit hir-13-live and hiring-live; web yx-hiring-hir13 and yx-settings-hiring). Migration 852 (internal_applications release_status, release_wf_request_id, release_asked_at, release_hr_at). Engine request type hiring.internal_release; hourly sweep internal-release-handover at :35."
           }
 ]
