@@ -19,6 +19,8 @@ export const ASSET_PAGE: AssetPageData = {
     location: 'Hosur plant',
     purchasedOn: '2025-08-14',
     cost: '84500.00',
+    netBookValue: '48340.33',
+    depreciation: 'Straight line over 3 years',
     invoiceNumber: 'DL/25-26/1187',
     warrantyMonths: 36,
     warrantyEndsOn: '2028-08-14',

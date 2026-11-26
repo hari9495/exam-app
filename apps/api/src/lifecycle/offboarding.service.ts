@@ -12,7 +12,7 @@ import { EXIT_INTERVIEW_FORM } from './exit-rules';
 import { ExitsService } from './exits.service';
 import { freezeSettlementIn } from './settlement';
 import { settingFor } from '../people/probation';
-import { STARTER_CATEGORIES, nextTag, recoveryAmount, tagHead } from './asset-categories';
+import { STARTER_CATEGORIES, addMonthsIso, netBookValue, nextTag, recoveryAmount, tagHead } from './asset-categories';
 
 // Lifecycle batch 6c (design §10.6): clearance sign-offs (LIFE-3.05), the exit interview (LIFE-3.06) and the shared
 // asset list (LIFE-3.07, D3).
@@ -24,12 +24,11 @@ import { STARTER_CATEGORIES, nextTag, recoveryAmount, tagHead } from './asset-ca
 //   assets     asset.view / asset.manage per legal entity or location; one open assignment per asset (database);
 //              the person acknowledges by a click; returning an asset clears its clearance item.
 
-/** A day plus whole months; the 31st becomes the month's last day (warranty ends). */
-export function addMonthsIso(day: string, months: number): string {
-  const [y, m, d] = day.split('-').map(Number);
-  const first = new Date(Date.UTC(y, m - 1 + months, 1));
-  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
-  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, last))).toISOString().slice(0, 10);
+/** Answer 2713: how the category depreciates, in words (null: it does not). */
+export function depreciationText(c: { usefulLifeYears: number | null; depreciationMethod: string; depreciationRate: Prisma.Decimal | null } | null): string | null {
+  if (!c) return null;
+  if (c.depreciationMethod === 'declining') return c.depreciationRate ? `Declining balance at ${Number(c.depreciationRate)}% a year` : null;
+  return c.usefulLifeYears ? `Straight line over ${c.usefulLifeYears} ${c.usefulLifeYears === 1 ? 'year' : 'years'}` : null;
 }
 
 const KEYS = ['lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'asset.manage', 'asset.finance.view', 'org.settings.manage'] as const;
@@ -71,6 +70,9 @@ export interface AssetCategoryDto {
   tagPrefix?: string | null;
   tagYear?: boolean;
   tagDigits?: number;
+  /** Answer 2713: straight_line (default) or declining at depreciationRate % a year. */
+  depreciationMethod?: 'straight_line' | 'declining';
+  depreciationRate?: string | null;
   version?: number;
 }
 /** A company-wide setting (the asset keys are company-wide only, so no place is needed). */
@@ -369,7 +371,7 @@ export class OffboardingService {
                   acknowledged: Boolean(o.ackEvidence),
                   ackNone: (o.ackEvidence as { method?: string } | null)?.method === 'none',
                   leavingOn,
-                  ...(manage && leavingOn ? { recoveryDefault: recoveryAmount(basis, cat?.defaultRecovery, a.cost) } : {}),
+                  ...(manage && leavingOn ? { recoveryDefault: recoveryAmount(basis, cat?.defaultRecovery, a.cost, cat ? netBookValue(a.cost, a.purchasedOn ? iso(a.purchasedOn) : null, todayIst(), cat) : null) } : {}),
                 }
               : null,
           };
@@ -402,7 +404,7 @@ export class OffboardingService {
       const tags = heads.length ? (await tx.asset.findMany({ where: { organizationId: org, OR: heads.map((h) => ({ tag: { startsWith: h, mode: 'insensitive' as const } })) }, select: { tag: true } })).map((a) => a.tag) : [];
       return {
         canEdit: tenantWide(v, 'org.settings.manage') && !v.actingForOther,
-        rows: rows.map((x) => ({ id: x.id, name: x.name, trackedBy: x.trackedBy, defaultRecovery: x.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: x.usefulLifeYears, tagPrefix: x.tagPrefix, tagYear: x.tagYear, tagDigits: x.tagDigits, nextTag: nextTag(x, year, tags), assets: used.find((u) => u.categoryId === x.id)?._count._all ?? 0, version: x.version })),
+        rows: rows.map((x) => ({ id: x.id, name: x.name, trackedBy: x.trackedBy, defaultRecovery: x.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: x.usefulLifeYears, depreciationMethod: x.depreciationMethod, depreciationRate: x.depreciationRate?.toFixed(2) ?? null, tagPrefix: x.tagPrefix, tagYear: x.tagYear, tagDigits: x.tagDigits, nextTag: nextTag(x, year, tags), assets: used.find((u) => u.categoryId === x.id)?._count._all ?? 0, version: x.version })),
       };
     });
   }
@@ -413,7 +415,8 @@ export class OffboardingService {
     return inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       await this.categoriesIn(tx, org, c.userId ?? null);
-      const data = { name: dto.name.trim(), trackedBy: dto.trackedBy?.trim() || null, defaultRecovery: dto.defaultRecovery ? new Prisma.Decimal(dto.defaultRecovery) : null, usefulLifeYears: dto.usefulLifeYears ?? null, tagPrefix: dto.tagPrefix?.trim().toUpperCase() || null, tagYear: Boolean(dto.tagYear), tagDigits: dto.tagDigits ?? 4 };
+      const data = { name: dto.name.trim(), trackedBy: dto.trackedBy?.trim() || null, defaultRecovery: dto.defaultRecovery ? new Prisma.Decimal(dto.defaultRecovery) : null, usefulLifeYears: dto.usefulLifeYears ?? null, tagPrefix: dto.tagPrefix?.trim().toUpperCase() || null, tagYear: Boolean(dto.tagYear), tagDigits: dto.tagDigits ?? 4, depreciationMethod: dto.depreciationMethod ?? 'straight_line', depreciationRate: dto.depreciationMethod === 'declining' && dto.depreciationRate ? new Prisma.Decimal(dto.depreciationRate) : null };
+      if (data.depreciationMethod === 'declining' && !data.depreciationRate) throw new BadRequestException('Give the yearly rate for declining balance.');
       try {
         if (!id) {
           const x = await tx.assetCategory.create({ data: { organizationId: org, ...data, createdBy: c.userId ?? null } });
@@ -424,7 +427,7 @@ export class OffboardingService {
         if (!cur) throw new NotFoundException('No such category.');
         const n = await tx.assetCategory.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...data, version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this category. Reload it.');
-        await audit(tx, c, 'asset.category.updated', 'asset_category', id, { from: { name: cur.name, trackedBy: cur.trackedBy, defaultRecovery: cur.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: cur.usefulLifeYears, tagPrefix: cur.tagPrefix, tagYear: cur.tagYear, tagDigits: cur.tagDigits }, to: { ...data, defaultRecovery: data.defaultRecovery?.toFixed(2) ?? null } });
+        await audit(tx, c, 'asset.category.updated', 'asset_category', id, { from: { name: cur.name, trackedBy: cur.trackedBy, defaultRecovery: cur.defaultRecovery?.toFixed(2) ?? null, usefulLifeYears: cur.usefulLifeYears, tagPrefix: cur.tagPrefix, tagYear: cur.tagYear, tagDigits: cur.tagDigits, depreciationMethod: cur.depreciationMethod, depreciationRate: cur.depreciationRate?.toFixed(2) ?? null }, to: { ...data, defaultRecovery: data.defaultRecovery?.toFixed(2) ?? null, depreciationRate: data.depreciationRate?.toFixed(2) ?? null } });
         return { id };
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another category already has that name.');
@@ -491,7 +494,7 @@ export class OffboardingService {
         ]),
       ].sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0));
       const open = spells.find((s) => !s.returnedOn);
-      const cat = a.categoryId ? await tx.assetCategory.findFirst({ where: { organizationId: org, id: a.categoryId }, select: { name: true } }) : null;
+      const cat = a.categoryId ? await tx.assetCategory.findFirst({ where: { organizationId: org, id: a.categoryId }, select: { name: true, usefulLifeYears: true, depreciationMethod: true, depreciationRate: true } }) : null;
       const money = this.seesMoney(v, a);
       const warrantyEndsOn = a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null;
       return {
@@ -514,6 +517,8 @@ export class OffboardingService {
           location: location?.name ?? null,
           purchasedOn: a.purchasedOn ? iso(a.purchasedOn) : null,
           ...(money ? { cost: a.cost?.toFixed(2) ?? null } : {}),
+          // Answer 2713: the net book value today (money, as the cost) and how it is worked out; a management figure.
+          ...(money ? { netBookValue: cat ? netBookValue(a.cost, a.purchasedOn ? iso(a.purchasedOn) : null, todayIst(), cat) : null, depreciation: depreciationText(cat) } : {}),
           invoiceNumber: a.invoiceNumber,
           warrantyMonths: a.warrantyMonths,
           warrantyEndsOn,

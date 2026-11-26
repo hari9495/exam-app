@@ -24,10 +24,10 @@ describe('2.8 Assets live', () => {
     const p = page();
     expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return']);
     const f = (k: string) => allSettings(p).find((d) => d.key === k)!;
-    expect(f('asset.categories').rows).toEqual([['Laptop', 'Serial number', '₹45,000', '3 years', 'LAP-2026-0042', '2'], ['Tools', '—', 'Asset cost', '—', 'Typed by hand', '0']]);
+    expect(f('asset.categories').rows).toEqual([['Laptop', 'Serial number', '₹45,000', 'Straight line, 3 years', 'LAP-2026-0042', '2'], ['Tools', '—', 'Asset cost', 'None', 'Typed by hand', '0']]);
     expect(f('asset.ack_method')).toMatchObject({ kind: 'radio', value: 'click', options: ['click', 'none'], starter: true, helper: expect.stringMatching(/E-sign comes when/) });
     expect(f('asset.recovery_to_fnf')).toMatchObject({ kind: 'toggle', value: true });
-    expect(f('asset.recovery_basis')).toMatchObject({ kind: 'radio', value: 'category_default', helper: expect.stringMatching(/HR decides the amount each time/) });
+    expect(f('asset.recovery_basis')).toMatchObject({ kind: 'radio', value: 'category_default', helper: expect.stringMatching(/net book value on the day/) });
   });
 
   it('negative: the drawn sample rows never show live; without the settings key the list is view only', () => {
@@ -49,7 +49,7 @@ describe('2.8 Assets live', () => {
     await ue.type(within(d).getByRole('textbox', { name: /Default recovery/ }), '20000');
     await ue.type(within(d).getByRole('textbox', { name: /Useful life/ }), '3');
     await ue.click(within(d).getByRole('button', { name: 'Add category' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ name: 'Tablet', trackedBy: 'Serial number', defaultRecovery: '20000.00', usefulLifeYears: 3, tagPrefix: null, tagYear: true, tagDigits: 4 }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ name: 'Tablet', trackedBy: 'Serial number', defaultRecovery: '20000.00', usefulLifeYears: 3, tagPrefix: null, tagYear: true, tagDigits: 4, depreciationMethod: 'straight_line', depreciationRate: null }));
     expect((await screen.findAllByText('Category added')).length).toBeGreaterThan(0);
   });
 
@@ -89,6 +89,33 @@ describe('2.8 Assets live', () => {
     await ue.type(within(d).getByRole('textbox', { name: /Tag prefix/ }), 'TA B');
     await ue.click(within(d).getByRole('button', { name: 'Add category' }));
     expect(within(d).getByText('Use up to 12 letters or digits, for example LAP.')).toBeInTheDocument();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it('2713: declining balance sends the yearly rate; straight line is the default and sends none', async () => {
+    const onSave = vi.fn().mockResolvedValue({ id: 'n' });
+    render(<ToastProvider><AssetCategoryDrawer initial={null} onClose={() => {}} onSave={onSave} /></ToastProvider>);
+    const d = screen.getByRole('dialog');
+    expect(within(d).getByRole('radio', { name: 'Straight line' })).toHaveAttribute('aria-checked', 'true');
+    expect(within(d).queryByRole('textbox', { name: /Yearly rate/ })).toBeNull();
+    await ue.type(within(d).getByRole('textbox', { name: /Name/ }), 'Server');
+    await ue.click(within(d).getByRole('radio', { name: 'Declining balance' }));
+    await ue.type(within(d).getByRole('textbox', { name: /Yearly rate/ }), '40');
+    await ue.click(within(d).getByRole('button', { name: 'Add category' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ name: 'Server', depreciationMethod: 'declining', depreciationRate: '40.00' })));
+  });
+
+  it('negative (2713): declining balance without a rate, or a rate of 100, is not sent', async () => {
+    const onSave = vi.fn();
+    render(<ToastProvider><AssetCategoryDrawer initial={null} onClose={() => {}} onSave={onSave} /></ToastProvider>);
+    const d = screen.getByRole('dialog');
+    await ue.type(within(d).getByRole('textbox', { name: /Name/ }), 'Server');
+    await ue.click(within(d).getByRole('radio', { name: 'Declining balance' }));
+    await ue.click(within(d).getByRole('button', { name: 'Add category' }));
+    expect(within(d).getByText('Enter the yearly rate, for example 40.')).toBeInTheDocument();
+    await ue.type(within(d).getByRole('textbox', { name: /Yearly rate/ }), '100');
+    await ue.click(within(d).getByRole('button', { name: 'Add category' }));
+    expect(within(d).getAllByText(/Enter a rate above 0 and below 100|Enter a value between 0.01 and 99.99/).length).toBeGreaterThan(0);
     expect(onSave).not.toHaveBeenCalled();
   });
 

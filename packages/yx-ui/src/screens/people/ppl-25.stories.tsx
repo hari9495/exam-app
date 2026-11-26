@@ -34,4 +34,6 @@ export const AssetPageEdit: S = { name: 'Asset page · edit details', render: ()
 export const AssetPageReadOnly: S = { name: 'Asset page · view only (no asset.manage)', render: () => <AssetPageScreen data={{ ...ASSET_PAGE, canManage: false }} /> };
 // Answer 2711: an IT desk agent with asset.view only sees no money (the API sends no cost).
 export const AssetPageNoMoney: S = { name: 'Asset page · view only, no money (answer 2711)', render: () => <AssetPageScreen data={{ ...ASSET_PAGE, canManage: false, money: false, asset: { ...ASSET_PAGE.asset, cost: undefined } }} /> };
+// Answer 2713: no net book value without a purchase date; the line says what is missing.
+export const AssetPageNoValue: S = { name: 'Asset page · no net book value (no purchase date)', render: () => <AssetPageScreen data={{ ...ASSET_PAGE, asset: { ...ASSET_PAGE.asset, purchasedOn: null, warrantyEndsOn: null, netBookValue: null } }} /> };
 export const AssetPageInStock: S = { name: 'Asset page · in stock, warranty ended', render: () => <AssetPageScreen data={{ ...ASSET_PAGE, holder: null, asset: { ...ASSET_PAGE.asset, status: 'in_stock', purchasedOn: '2023-03-01', warrantyMonths: 24, warrantyEndsOn: '2025-03-01' } }} /> };

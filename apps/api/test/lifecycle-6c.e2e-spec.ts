@@ -562,6 +562,51 @@ describe('Lifecycle batch 6c', () => {
     }
   });
 
+  it('IT assets part 2 (2713): depreciation per category; the net book value today on the asset page, money only', async () => {
+    // Declining balance needs its yearly rate, above 0 and below 100.
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Server ${run}`, depreciationMethod: 'declining' }).expect(400);
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Server ${run}`, depreciationMethod: 'declining', depreciationRate: '0' }).expect(400);
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Server ${run}`, depreciationMethod: 'declining', depreciationRate: '100' }).expect(400);
+    await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Server ${run}`, depreciationMethod: 'yearly', depreciationRate: '40' }).expect(400);
+    const srv = (await api('hr', 'post', '/lifecycle/asset-categories').send({ name: `Server ${run}`, depreciationMethod: 'declining', depreciationRate: '40' }).expect(201)).body.id as string;
+    const cats = (await api('hr', 'get', '/lifecycle/asset-categories').expect(200)).body.rows;
+    expect(cats.find((x: { id: string }) => x.id === srv)).toMatchObject({ depreciationMethod: 'declining', depreciationRate: '40.00' });
+    expect(cats.find((x: { name: string }) => x.name === 'Laptop')).toMatchObject({ depreciationMethod: 'straight_line', depreciationRate: null, usefulLifeYears: 3 });
+    const add = async (body: Record<string, unknown>) => (await api('hr', 'post', '/lifecycle/assets').send({ legalEntityId: ids.entity, locationId: ids.blr, ...body }).expect(201)).body.id as string;
+    const page = async (who: Who, id: string) => (await api(who, 'get', `/lifecycle/assets/${id}`).expect(200)).body;
+    const year = Number(today.slice(0, 4));
+    // Straight line over the Laptop's 3 years: a year in, two thirds left (by day); 4 years in, fully depreciated (0).
+    const oneYear = `${year - 1}${today.slice(4)}`.replace(/-02-29$/, '-02-28');
+    const a1 = await add({ category: 'Laptop', name: 'Laptop 1y', tag: `D1-${run}`, purchasedOn: oneYear, cost: '90000.00' });
+    const p1 = (await page('hr', a1)).asset;
+    expect(p1.depreciation).toBe('Straight line over 3 years');
+    expect(Number(p1.netBookValue)).toBeGreaterThan(59900);
+    expect(Number(p1.netBookValue)).toBeLessThan(60100);
+    const a4 = await add({ category: 'Laptop', name: 'Laptop 4y', tag: `D4-${run}`, purchasedOn: `${year - 4}-01-01`, cost: '90000.00' });
+    expect((await page('fin', a4)).asset.netBookValue).toBe('0.00');
+    // Declining at 40 %: a year in, 60 % left.
+    const s1 = await add({ categoryId: srv, name: 'Server 1y', tag: `DS-${run}`, purchasedOn: oneYear, cost: '100000.00' });
+    const ps = (await page('hr', s1)).asset;
+    expect(ps.depreciation).toBe('Declining balance at 40% a year');
+    expect(Number(ps.netBookValue)).toBeGreaterThan(59900);
+    expect(Number(ps.netBookValue)).toBeLessThan(60100);
+    // Negative: no purchase date or no cost: no value; a category without a useful life (SIM): no depreciation.
+    expect((await page('hr', await add({ category: 'Laptop', name: 'No date', tag: `DN-${run}`, cost: '50000.00' }))).asset.netBookValue).toBeNull();
+    expect((await page('hr', await add({ category: 'Laptop', name: 'No cost', tag: `DC-${run}`, purchasedOn: oneYear }))).asset.netBookValue).toBeNull();
+    const sim = (await page('hr', await add({ category: 'SIM', name: 'SIM', tag: `DM-${run}`, purchasedOn: oneYear, cost: '500.00' }))).asset;
+    expect(sim).toMatchObject({ netBookValue: null, depreciation: null });
+    // Money (answer 2711): an asset.view-only agent gets neither the value nor how it is worked out.
+    const ag = await page('agent', a1);
+    expect(ag.asset).not.toHaveProperty('netBookValue');
+    expect(ag.asset).not.toHaveProperty('depreciation');
+    // Changing the method is audited with before and after.
+    const v = cats.find((x: { id: string }) => x.id === srv).version;
+    await api('hr', 'put', `/lifecycle/asset-categories/${srv}`).send({ name: `Server ${run}`, depreciationMethod: 'straight_line', usefulLifeYears: 6, version: v }).expect(200);
+    const upd = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { entityType: 'asset_category', entityId: srv, action: 'asset.category.updated' } }));
+    expect(JSON.parse(upd.metadataJson ?? '{}')).toMatchObject({ from: { depreciationMethod: 'declining', depreciationRate: '40.00' }, to: { depreciationMethod: 'straight_line', depreciationRate: null } });
+    expect((await page('hr', s1)).asset.depreciation).toBe('Straight line over 6 years');
+  });
+
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);

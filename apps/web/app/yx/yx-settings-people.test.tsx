@@ -89,7 +89,7 @@ describe('Settings S-4: People pages', () => {
     await ue.clear(name);
     await ue.type(name, 'Laptops');
     await ue.click(within(d).getByRole('button', { name: 'Save category' }));
-    await waitFor(() => expect(calls).toContainEqual(['PUT /lifecycle/asset-categories/c1', { name: 'Laptops', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, version: 2 }]));
+    await waitFor(() => expect(calls).toContainEqual(['PUT /lifecycle/asset-categories/c1', { name: 'Laptops', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, depreciationMethod: 'straight_line', depreciationRate: null, version: 2 }]));
     expect(screen.getByRole('radio', { name: 'Click to accept' })).toBeInTheDocument();
     expect(screen.queryByRole('radio', { name: 'E-sign' })).toBeNull();
   });

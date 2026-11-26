@@ -304,6 +304,15 @@ export class AssetCategoryDto {
   @Max(8)
   tagDigits?: number;
 
+  // Answer 2713: straight line over the useful life (default), or declining balance at a yearly rate (0.01 to 99.99 %).
+  @IsOptional()
+  @IsIn(['straight_line', 'declining'])
+  depreciationMethod?: 'straight_line' | 'declining';
+
+  @IsOptional()
+  @Matches(/^(?!0+(\.0+)?$)\d{1,2}(\.\d{1,2})?$/, { message: 'depreciationRate is a yearly percentage above 0 and below 100' })
+  depreciationRate?: string | null;
+
   @IsOptional()
   @IsInt()
   version?: number;

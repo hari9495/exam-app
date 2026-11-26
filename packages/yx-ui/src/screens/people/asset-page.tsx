@@ -39,6 +39,9 @@ export interface AssetPageData {
     location: string | null;
     purchasedOn: string | null;
     cost?: string | null;
+    /** Answer 2713 (money, as the cost): the net book value today (null: no cost, date or depreciation) and how it is worked out. */
+    netBookValue?: string | null;
+    depreciation?: string | null;
     invoiceNumber: string | null;
     warrantyMonths: number | null;
     warrantyEndsOn: string | null;
@@ -83,6 +86,7 @@ const day = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00`);
 const at = (s: string) => (s.length > 10 ? new Date(s) : day(s));
 const dash = (s: string | null | undefined) => (s && s.trim() ? s : '—');
 const MONEY = /^\d{1,12}(\.\d{1,2})?$/;
+const inr = (s: string) => `₹${Number(s).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
 const keyOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 /** The asset page: the designed view (sample data) or, with `live`, the real asset. */
@@ -152,7 +156,14 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
                 { label: 'Location', value: dash(a.location) },
                 { label: 'Purchased', value: a.purchasedOn ? formatDate(day(a.purchasedOn)) : '—' },
                 // Answer 2711: money only for asset managers of its place and asset.finance.view holders.
-                ...(data.money === false ? [] : [{ label: 'Cost', value: a.cost ? `₹${Number(a.cost).toLocaleString('en-IN', { minimumFractionDigits: 2 })}` : '—' }]),
+                ...(data.money === false ? [] : [{ label: 'Cost', value: a.cost ? inr(a.cost) : '—' }]),
+                // Answer 2713: a management figure from the category's depreciation, not the tax books.
+                ...(data.money === false
+                  ? []
+                  : [
+                      { label: 'Net book value today', value: a.netBookValue ? inr(a.netBookValue) : '—' },
+                      { label: 'Depreciation', value: a.netBookValue ? `${a.depreciation ?? 'From its category'} · a management figure, not the tax books` : !a.cost || !a.purchasedOn ? 'Needs the cost and the purchase date' : 'Its category has no depreciation (Settings › Assets)' },
+                    ]),
                 { label: 'Invoice number', value: dash(a.invoiceNumber), mono: Boolean(a.invoiceNumber) },
                 { label: 'Warranty', value: ended ? <Badge tone="danger">{warranty}</Badge> : warranty },
               ]}

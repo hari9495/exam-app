@@ -42,10 +42,50 @@ export type RecoveryBasis = 'category_default' | 'written_down' | 'hr_decides';
 
 /**
  * The amount payroll sees for an asset not returned (a possible recovery), or null when HR decides it. "Category
- * default" uses the category's amount, else the asset's cost (as before categories). "Written-down value" needs
- * depreciation (answer 2713, a later part): until then it is decided by HR each time, like "hr_decides".
+ * default" uses the category's amount, else the asset's cost (as before categories). "Written-down value" (answer 2713)
+ * is the asset's net book value on the day; without one (no cost, purchase date or depreciation) HR decides.
  */
-export function recoveryAmount(basis: string, categoryDefault: Prisma.Decimal | null | undefined, cost: Prisma.Decimal | null | undefined): string | null {
+export function recoveryAmount(basis: string, categoryDefault: Prisma.Decimal | null | undefined, cost: Prisma.Decimal | null | undefined, writtenDown: string | null = null): string | null {
+  if (basis === 'written_down') return writtenDown;
   if (basis !== 'category_default') return null;
   return (categoryDefault ?? cost)?.toFixed(2) ?? null;
+}
+
+/** A day plus whole months; the 31st becomes the month's last day (warranty ends, useful lives). */
+export function addMonthsIso(day: string, months: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1 + months, 1));
+  const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+/** Answer 2713: how a category depreciates (straight line over its useful life by default, or declining at a yearly rate). */
+export interface DepreciationRule {
+  depreciationMethod: string;
+  usefulLifeYears: number | null;
+  depreciationRate: Prisma.Decimal | null;
+}
+
+const daysBetween = (from: string, to: string) => Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+
+/**
+ * Answer 2713: the net book value on `asOf`, a management figure (not the tax books). Straight line (Companies Act
+ * Schedule II style): the cost falls evenly, day by day, to 0 at the end of the useful life. Declining balance: the value
+ * falls by the yearly rate on what is left, pro rata by day. No residual value (the plan names none): never below 0.
+ * Null when it cannot be worked out: no cost, no purchase date, no useful life (straight line) or no rate (declining).
+ */
+export function netBookValue(cost: Prisma.Decimal | null | undefined, purchasedOn: string | null, asOf: string, rule: DepreciationRule): string | null {
+  if (!cost || !purchasedOn) return null;
+  const elapsed = Math.max(0, daysBetween(purchasedOn, asOf));
+  let value: Prisma.Decimal;
+  if (rule.depreciationMethod === 'declining') {
+    const rate = rule.depreciationRate;
+    if (!rate || rate.lte(0) || rate.gte(100)) return null;
+    value = cost.mul(new Prisma.Decimal(1).minus(rate.div(100)).pow(new Prisma.Decimal(elapsed).div(365)));
+  } else {
+    if (!rule.usefulLifeYears || rule.usefulLifeYears <= 0) return null;
+    const life = daysBetween(purchasedOn, addMonthsIso(purchasedOn, rule.usefulLifeYears * 12));
+    value = elapsed >= life ? new Prisma.Decimal(0) : cost.mul(life - elapsed).div(life);
+  }
+  return Prisma.Decimal.max(value, 0).toFixed(2);
 }

@@ -7982,6 +7982,8 @@ model Asset {
   warrantyMonths Int?      @map("warranty_months") @db.SmallInt
   /// IT assets part 1 (answer 2712): the company category it belongs to (`category` keeps the text for history).
   categoryId     String?   @map("category_id") @db.Uuid
+  /// Answer 2714: the warranty end its managers were told about (once per warranty end).
+  warrantyAlertedFor DateTime? @map("warranty_alerted_for") @db.Date
   version        Int       @default(1)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -7999,6 +8001,9 @@ model AssetCategory {
   trackedBy       String?   @map("tracked_by") @db.VarChar(40)
   defaultRecovery Decimal?  @map("default_recovery") @db.Decimal(14, 2)
   usefulLifeYears Int?      @map("useful_life_years") @db.SmallInt
+  /// Answer 2713: straight_line (over the useful life) or declining (at depreciationRate % a year).
+  depreciationMethod String   @default("straight_line") @map("depreciation_method") @db.VarChar(16)
+  depreciationRate   Decimal? @map("depreciation_rate") @db.Decimal(5, 2)
   /// Answer 2720: an optional tag pattern: PREFIX-[YEAR-]counter padded to tagDigits (LAP-2026-0042).
   tagPrefix       String?   @map("tag_prefix") @db.VarChar(12)
   tagYear         Boolean   @default(false) @map("tag_year")

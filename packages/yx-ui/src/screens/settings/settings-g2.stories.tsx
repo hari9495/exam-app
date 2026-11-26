@@ -37,7 +37,7 @@ export const P2_8_ReadOnly: S = { name: '2.8 Assets · read-only', render: () =>
 // IT assets part 1 (answer 2712): 2.8 live with the company's categories, the acknowledgement and the recovery basis.
 export const ASSET_CATEGORIES: AssetCategoryRow[] = [
   { id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, nextTag: 'LAP-2026-0043', assets: 42, version: 1 },
-  { id: 'c2', name: 'Phone', trackedBy: 'IMEI', defaultRecovery: '15000.00', usefulLifeYears: 3, tagPrefix: 'PH', tagYear: false, tagDigits: 3, nextTag: 'PH-019', assets: 18, version: 1 },
+  { id: 'c2', name: 'Phone', trackedBy: 'IMEI', defaultRecovery: '15000.00', usefulLifeYears: 3, depreciationMethod: 'declining', depreciationRate: '40.00', tagPrefix: 'PH', tagYear: false, tagDigits: 3, nextTag: 'PH-019', assets: 18, version: 1 },
   { id: 'c3', name: 'SIM', trackedBy: 'Number', defaultRecovery: '500.00', usefulLifeYears: null, tagPrefix: null, tagYear: false, tagDigits: 4, nextTag: null, assets: 18, version: 1 },
   { id: 'c4', name: 'Tools', trackedBy: 'Tag', defaultRecovery: null, usefulLifeYears: null, tagPrefix: null, tagYear: false, tagDigits: 4, nextTag: null, assets: 3, version: 1 },
 ];
@@ -55,6 +55,8 @@ const drawer = (initial: AssetCategoryRow | null, onSave: () => Promise<unknown>
 );
 export const P2_8_AddCategory: S = { name: '2.8 Assets · add a category', render: () => drawer(null) };
 export const P2_8_ChangeCategory: S = { name: '2.8 Assets · change a category', render: () => drawer(ASSET_CATEGORIES[0]!) };
+// Answer 2713: a category depreciating by declining balance at a yearly rate.
+export const P2_8_CategoryDeclining: S = { name: '2.8 Assets · a category on declining balance (2713)', render: () => drawer({ ...ASSET_CATEGORIES[0]!, depreciationMethod: 'declining', depreciationRate: '40.00' }) };
 export const P2_8_CategoryRefused: S = { name: '2.8 Assets · change refused (name taken)', render: () => drawer(ASSET_CATEGORIES[1]!, () => Promise.reject(new Error('Another category already has that name.'))) };
 export const P2_9: S = { name: '2.9 Employee relations & cases', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.9" /> };
 export const P2_9_ReadOnly: S = { name: '2.9 Employee relations & cases · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.9" readOnly /> };

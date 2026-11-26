@@ -3,7 +3,8 @@ import { CompanyContext, Tx } from '../org-structure/org-structure.service';
 import { PAY_RUN_EDITABLE, payScope, withPayScope } from '../payroll/pay-access';
 import { daysFrom, wagesDueBy } from './exit-rules';
 import { settingFor } from '../people/probation';
-import { recoveryAmount } from './asset-categories';
+import { netBookValue, recoveryAmount } from './asset-categories';
+import { todayIst } from '../org-structure/org-validation';
 
 // LIFE-4.05 the payroll hand-off (design §11): one frozen record per exit case, a new revision whenever something
 // payroll needs changes (accepted, last day moved, recovery recorded, asset returned, exited). Payroll reads the
@@ -38,13 +39,13 @@ export async function freezeSettlementIn(tx: Tx, c: CompanyContext, exitCaseId: 
   for (const i of items) {
     // An asset's line names the asset itself ("Dell Latitude 5440 (KF-LT-0002)") and the condition it came back in.
     const x = i.assetAssignmentId ? await tx.assetAssignment.findFirst({ where: { organizationId: org, id: i.assetAssignmentId } }) : null;
-    const asset = x ? await tx.asset.findFirst({ where: { organizationId: org, id: x.assetId }, select: { name: true, tag: true, cost: true, categoryId: true } }) : null;
-    const category = asset?.categoryId ? await tx.assetCategory.findFirst({ where: { organizationId: org, id: asset.categoryId }, select: { defaultRecovery: true } }) : null;
+    const asset = x ? await tx.asset.findFirst({ where: { organizationId: org, id: x.assetId }, select: { name: true, tag: true, cost: true, categoryId: true, purchasedOn: true } }) : null;
+    const category = asset?.categoryId ? await tx.assetCategory.findFirst({ where: { organizationId: org, id: asset.categoryId }, select: { defaultRecovery: true, usefulLifeYears: true, depreciationMethod: true, depreciationRate: true } }) : null;
     const title = asset ? `${asset.name} (${asset.tag})` : i.title;
     if (i.recoveryAmount) recoveries.push({ source: i.department === 'asset' ? 'asset' : 'clearance', title, amount: i.recoveryAmount.toFixed(2), reason: x?.returnCondition ?? i.recoveryReason, status: 'recorded' });
     // Not returned yet: payroll sees the possible recovery (Settings 2.8's basis; null: HR decides) until it comes back
     // or is signed off. With recovery to F&F off, an unreturned asset is not a recovery line.
-    else if (i.status === 'open' && x && toFnf) recoveries.push({ source: 'asset', title, amount: recoveryAmount(basis, category?.defaultRecovery, asset?.cost), reason: 'Not returned yet', status: 'open' });
+    else if (i.status === 'open' && x && toFnf) recoveries.push({ source: 'asset', title, amount: recoveryAmount(basis, category?.defaultRecovery, asset?.cost, category && asset ? netBookValue(asset.cost, asset.purchasedOn?.toISOString().slice(0, 10) ?? null, todayIst(), category) : null), reason: 'Not returned yet', status: 'open' });
   }
   // M05 XP-4.06: expense advances not yet settled go to F&F (M01 Q7); from the last day on they are marked as such.
   const advances = await tx.expenseAdvance.findMany({ where: { organizationId: org, employmentId: e.id, status: { in: ['paid', 'to_fnf'] } } });

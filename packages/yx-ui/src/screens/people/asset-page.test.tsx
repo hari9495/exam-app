@@ -68,10 +68,25 @@ describe('Asset page (live)', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ categoryId: 'c2', name: 'Dell Latitude 5440' }));
   });
 
+  it('2713: the net book value today, how it is worked out, and that it is not the tax books', () => {
+    show(<AssetPageScreen live={liveAssetPage()} />);
+    expect(screen.getByText('Net book value today')).toBeInTheDocument();
+    expect(screen.getByText('₹48,340.33')).toBeInTheDocument();
+    expect(screen.getByText(/Straight line over 3 years · a management figure, not the tax books/)).toBeInTheDocument();
+  });
+
+  it('negative (2713): no value without a purchase date, and the page says what is missing', () => {
+    show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, asset: { ...ASSET_PAGE.asset, purchasedOn: null, netBookValue: null } } })} />);
+    expect(screen.getByText('Needs the cost and the purchase date')).toBeInTheDocument();
+    expect(screen.queryByText('₹48,340.33')).toBeNull();
+  });
+
   it('negative (2711): without money the Cost line is not shown at all', () => {
     show(<AssetPageScreen live={liveAssetPage({ data: { ...ASSET_PAGE, canManage: false, money: false, asset: { ...ASSET_PAGE.asset, cost: undefined } } })} />);
     expect(screen.queryByText('Cost')).toBeNull();
     expect(screen.queryByText(/84,500/)).toBeNull();
+    expect(screen.queryByText('Net book value today')).toBeNull();
+    expect(screen.queryByText(/management figure/)).toBeNull();
     expect(screen.getByText('Invoice number')).toBeInTheDocument();
   });
 

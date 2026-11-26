@@ -28636,5 +28636,27 @@
                               "Screens/People/PPL-25 · Asset register (Add asset · open, filled, nothing filled, refused; Asset page · view only, no money)"
                     ],
                     "note": "Positive and negative. API e2e lifecycle-6c: starter list, add / duplicate (409) / bad name and useful life (400) / stale version (409) / other company (404) / no settings key (403), asset by category id or name, unknown category (400), retire (403 for IT, 404 twice), audit; cost only for hr and fin, never sent to the agent (list and page); acknowledgement None and recovery to F&F off (400). lifecycle-6d: the possible recovery is the Laptop default 45000. Kit tests asset-settings-live (7), popups-live, asset-page, designed-live; web yx-settings-people and yx-nav. Migrations 801 (asset_categories with RLS, assets.category_id, the free-text kinds turned into entries, asset.finance.view) and 802 (tag pattern)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2713",
+                    "area": "IT assets part 2, answer 2713: depreciation and the net book value",
+                    "screen": "Settings › People › Assets (2.8) category drawer; People › Assets › an asset (Details); the return dialog for a leaver",
+                    "url": "http://localhost:3000/yx/settings/people/assets",
+                    "account": "HR Admin (company-wide settings key and asset.manage); IT / Admin coordinator; Finance (asset.finance.view); an IT desk agent with asset.view only.",
+                    "steps": [
+                              "As HR open Settings › Assets. Look at the Depreciation column (Laptop: Straight line, 3 years; SIM: None).",
+                              "Add category 'Server': choose Declining balance and press Add category with no rate; then type 100; then 40 and add.",
+                              "Open Laptop: it shows Straight line selected and the helper 'The value falls evenly to 0 over 3 years.'",
+                              "As IT add a Laptop bought one year ago for 90000 and a Server bought one year ago for 100000. Open each asset page, Details.",
+                              "Add a Laptop with no purchase date; open its page.",
+                              "As Finance open the first Laptop; as the IT desk agent (asset.view only) open it too.",
+                              "Set Recovery amount to Written-down value in Settings › Assets. For a leaver holding the first Laptop, open Take back with condition Not returned."
+                    ],
+                    "expected": "Step 2: 'Enter the yearly rate, for example 40.', then a rate error for 100, nothing saved; with 40 the toast 'Category added' and the list shows 'Declining 40% a year'. Step 4: Laptop 'Net book value today' about ₹60,000 with 'Straight line over 3 years · a management figure, not the tax books'; Server about ₹60,000 with 'Declining balance at 40% a year'. Step 5: '—' and 'Needs the cost and the purchase date'. Step 6: Finance sees the value; the agent sees neither Cost nor Net book value nor Depreciation. Step 7: the recovery amount starts at the net book value and the helper says 'It starts from the net book value today.'; the F&F possible recovery is the same amount. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Group 2 (2.8 Assets · a category on declining balance (2713), 2.8 Assets · live)",
+                              "Screens/People/PPL-25 · Asset register (Asset page · details, Asset page · no net book value)"
+                    ],
+                    "note": "Positive and negative. API unit netBookValue (straight line by day, fully depreciated at and after the life end = 0, declining pro rata by day, purchase after the day keeps the cost, no cost / date / life 0 / no rate / rate 100 = null; written-down recovery). e2e lifecycle-6c 'IT assets part 2 (2713)': declining without rate, rate 0, 100 and an unknown method 400; values for straight line, fully depreciated, declining; no date, no cost, no life null; agent gets no value; the change audited with before and after. Kit tests: drawer declining sends the rate, negative rate missing/100; page shows the value and the not-tax-books line, negative no date, no money. Migration 803 (asset_categories.depreciation_method, depreciation_rate with checks)."
           }
 ]

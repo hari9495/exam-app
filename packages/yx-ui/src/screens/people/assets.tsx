@@ -91,7 +91,7 @@ function LiveAssetDialogs({ live, issuing, returning, onClose }: { live: LiveAss
   const leavingOn = returning?.holder?.leavingOn ?? null;
   const holderFirst = first(returning?.holder?.name ?? 'They');
   const charge = Boolean(leavingOn) && (condition === 'Damaged' || condition === 'Not returned') && live.recovery?.toFnf !== false;
-  const basisNote = live.recovery?.basis === 'written_down' ? ' Written-down value is not built yet, so enter the amount.' : live.recovery?.basis === 'hr_decides' ? ' Your company decides the amount each time.' : '';
+  const basisNote = live.recovery?.basis === 'written_down' ? (returning?.holder?.recoveryDefault ? ' It starts from the net book value today.' : ' This asset has no net book value, so enter the amount.') : live.recovery?.basis === 'hr_decides' ? ' Your company decides the amount each time.' : '';
   const issueEarly = useTooEarly([...(!who ? [{ fieldId: 'as-who', message: 'Choose who gets the asset.' }] : []), ...(!on ? [{ fieldId: 'as-on', message: 'Give the date it was issued.' }] : []), ...(!condition ? [{ fieldId: 'as-cond', message: 'Choose its condition.' }] : [])]);
   const returnEarly = useTooEarly([...(!on ? [{ fieldId: 'ar-on', message: 'Give the date.' }] : []), ...(!condition ? [{ fieldId: 'ar-cond', message: 'Choose the return condition.' }] : []), ...(condition === 'Not returned' && note.trim().length < 3 ? [{ fieldId: 'ar-note', message: 'Say what happened (at least 3 letters).' }] : [])]);
   return (
