@@ -71,7 +71,8 @@ export interface Snapshot {
   /** Review M3: the employment's joining date (LWF coverage by days employed). */
   joinedOn?: string;
   /** `label`: the payslip text of an arrears or F&F item (batch 5g). */
-  oneTime: { id: string; code: string; amount: string; days: number | null; label?: string; separate?: boolean; grossUp?: boolean }[];
+  /** settled: arrears from an approved worksheet, which already carries their PF, ESI, PT and LWF (5g-D6, E3 review item 8). */
+  oneTime: { id: string; code: string; amount: string; days: number | null; label?: string; separate?: boolean; grossUp?: boolean; settled?: boolean }[];
   /** inFeedDays: the part of `days` the Time feed already counts as unpaid (HLP-12 answer 65), not taken off again. */
   special: { kind: 'suspension' | 'maternity' | 'injury'; days: string; daysBefore: number; inFeedDays?: string }[];
   averageDailyWage: string | null;
@@ -213,8 +214,11 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   }
 
   // 3. Wage bases from flags; the Code wage add-back (YX-PAY-47).
-  const pfEarned = (seg: number, below: boolean) => lines.filter((l) => l.kind === 'earning' && l.segmentNo === seg && comps.get(l.code)?.pfWage === true && !!comps.get(l.code)?.pfBelowCeiling === below).reduce((t, l) => t.add(l.amount), ZERO);
-  const earned = (flag: keyof CalcComponent, seg?: number) => lines.filter((l) => l.kind === 'earning' && (seg === undefined || l.segmentNo === seg) && comps.get(l.code)?.[flag] === true).reduce((t, l) => t.add(l.amount), ZERO);
+  // E3 review item 8: worksheet arrears are in no PF, ESI, PT or LWF wage; their worksheet already has those differences.
+  const settled = new Set(s.oneTime.filter((o) => o.settled).map((o) => o.id));
+  const statWage = (l: { sourceRef?: string }) => !(l.sourceRef && settled.has(l.sourceRef));
+  const pfEarned = (seg: number, below: boolean) => lines.filter((l) => l.kind === 'earning' && l.segmentNo === seg && statWage(l) && comps.get(l.code)?.pfWage === true && !!comps.get(l.code)?.pfBelowCeiling === below).reduce((t, l) => t.add(l.amount), ZERO);
+  const earned = (flag: keyof CalcComponent, seg?: number) => lines.filter((l) => l.kind === 'earning' && (seg === undefined || l.segmentNo === seg) && (flag !== 'esiWage' && flag !== 'ptWage' || statWage(l)) && comps.get(l.code)?.[flag] === true).reduce((t, l) => t.add(l.amount), ZERO);
   // shortcut: the Code wage add-back tests a whole month's pay, so the regular run does it; item-only off-cycles skip it.
   const codeRs = itemsOnly ? null : rule('IN.WAGES-CODE');
   const cw = codeRs ? codeWage(codeRs, { wageParts: earned('codeWagePart'), exclusions: earned('codeExclusion') }) : null;
@@ -303,7 +307,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   if (lwfRs) {
     // 2384: a rate-based LWF (Haryana) is on the month's gross earnings.
     const daysEmployed = s.joinedOn ? Math.round((Date.parse(`${on}T00:00:00Z`) - Date.parse(`${s.joinedOn}T00:00:00Z`)) / 86_400_000) + 1 : undefined;
-    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning').reduce((t, l) => t.add(l.amount), ZERO), daysEmployed });
+    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning' && statWage(l)).reduce((t, l) => t.add(l.amount), ZERO), daysEmployed });
     add({ code: statCode('lwf_employee'), name: nameOf(statCode('lwf_employee'), 'Labour welfare fund'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: `${s.profile.lwfState} labour welfare fund for this month.`, rule: r.citation });
     add({ code: statCode('lwf_employer'), name: nameOf(statCode('lwf_employer'), 'Labour welfare fund (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer labour welfare fund for this month.', rule: r.citation });
   }

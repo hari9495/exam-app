@@ -10355,6 +10355,10 @@ model ArrearsWorksheet {
   approvedAt     DateTime? @map("approved_at") @db.Timestamptz(3)
   version        Int       @default(1)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// E3 review item 9: a draft discarded with a reason.
+  discardReason  String?   @map("discard_reason") @db.VarChar(500)
+  discardedBy    String?   @map("discarded_by") @db.Uuid
+  discardedAt    DateTime? @map("discarded_at") @db.Timestamptz(3)
 
   @@map("arrears_worksheets")
 }

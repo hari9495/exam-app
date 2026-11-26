@@ -512,9 +512,9 @@ export class HiringRequisitionsService implements OnModuleInit {
       const chainSteps: ChainStepInput[] = (chain?.steps ?? []).map((s) => ({ position: s.position, name: s.name, approverType: s.approverType as ChainStepInput['approverType'], approverUserIds: s.approverUserIds ? (JSON.parse(s.approverUserIds) as string[]) : [], managerLevel: s.managerLevel, groupId: s.groupId }));
       const { resolved } = await resolveSteps(tx, { steps: chainSteps, submitterUserId: userId, gate: 'requisition', subjectId: job.id, organizationId: org });
       const steps: StepSpec[] = resolved.map((r) => ({ name: r.name, approvers: [{ kind: 'users', userIds: r.approverUserIds }], mode: 'any', selfApproval: 'never' }));
-      if (check.extra) steps.push({ name: 'Outside the plan', approvers: [{ kind: 'users', userIds: (await this.planApprovers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never' });
+      if (check.extra) steps.push({ name: 'Outside the plan', approvers: [{ kind: 'users', userIds: (await this.planApprovers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never', required: true });
       // A manager's request never opens a job alone: without a route, recruiting (the job managers) approves it.
-      if (!steps.length && raisedByManager) steps.push({ name: 'Recruiting', approvers: [{ kind: 'users', userIds: (await this.jobManagers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never' });
+      if (!steps.length && raisedByManager) steps.push({ name: 'Recruiting', approvers: [{ kind: 'users', userIds: (await this.jobManagers(tx, org, [userId])).slice(0, 25) }], mode: 'any', selfApproval: 'never', required: true });
       if (!steps.length) {
         // Neither a chain nor a reason for the extra step: the requisition opens at once (the older auto-pass).
         await tx.job.update({ where: { id: job.id }, data: { status: 'open' } });

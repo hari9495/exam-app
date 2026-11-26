@@ -335,7 +335,7 @@ export class LeaveV2Service implements OnModuleInit {
         raisedByUserId: c.userId ?? null,
         steps: [
           { name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate' },
-          { name: 'HR', approvers: [{ kind: 'users', userIds: hrUsers }], mode: 'any', remindAfterHours: 24 },
+          { name: 'HR', approvers: [{ kind: 'users', userIds: hrUsers }], mode: 'any', remindAfterHours: 24, required: true },
         ],
         payload: { days: dto.days },
         payloadFields: [{ key: 'days', label: 'Days', type: 'number' }],

@@ -6,6 +6,7 @@ import { PrismaService, TenantPrismaService } from '@exam-platform/shared';
 import { bootAdminApp } from './dual-app';
 import { EmailService } from '../src/email/email.service';
 import { ApprovalsEngine } from '../src/workflow/approvals-engine.service';
+import { POLICY_TYPES } from '../src/workflow/approval-policies';
 import { markSteppedUp } from './fixtures/step-up';
 
 // Settings S-6, 2.4 Approvals (answer 1330), against the real database (forced RLS, app role): a company's own approval
@@ -84,7 +85,8 @@ describe('Settings S-6: approval policies', () => {
       await api('hr1A', 'put', '/workflow/policies/leave.request').send({ steps: [], version: 0 }).expect(400);
       await api('hr1A', 'put', '/workflow/policies/leave.request').send({ steps: [{ name: 'X', approver: 'hr', mode: 'any' }], version: 0 }).expect(400);
       await api('hr1A', 'put', '/workflow/policies/leave.request').send({ steps: [{ name: 'Boss', approver: 'ceo', mode: 'any' }], version: 0 }).expect(400);
-      await api('hr1A', 'put', '/workflow/policies/payroll.run').send({ steps: TWO_STEPS, version: 0 }).expect(404);
+      // E2 review item 4: a pay type first needs the pay approve key (403 for an HR Admin without it).
+      await api('hr1A', 'put', '/workflow/policies/payroll.run').send({ steps: TWO_STEPS, version: 0 }).expect(403);
       await api('hr1A', 'put', '/workflow/policies/leave.request').send({ steps: TWO_STEPS, version: 3 }).expect(409);
     });
 
@@ -131,6 +133,47 @@ describe('Settings S-6: approval policies', () => {
       expect((req.steps as { name: string }[]).map((s) => s.name)).toEqual(['Built-in manager']);
       const rows = await tenantPrisma.forTenant(ctxA(), (tx) => tx.auditLog.findMany({ where: { organizationId: org.A!, action: 'workflow.policy.reset' } }));
       expect(rows).toHaveLength(1);
+    });
+  });
+
+  // E2 review item 1: a company's own steps never drop a module's required control step (cost-centre owner, finance check,
+  // HR above the allowance, the colleague of a swap, the travel desk, the payroll approver...): the engine adds it after them.
+  describe('E2 review item 4: separation of duties on pay types', () => {
+    it('an HR Admin without the pay approve key cannot change who approves pay (403), whatever the steps', async () => {
+      for (const type of ['payroll.one_time', 'payroll.loan', 'payroll.run'])
+        expect((await api('hr1A', 'put', `/workflow/policies/${type}`).send({ steps: [{ name: 'My friend', approver: 'manager', mode: 'any' }], version: 0 }).expect(403)).body.message).toMatch(/payroll\.run\.approve in every legal entity/);
+      expect(await tenantPrisma.forTenant(ctxA(), (tx) => tx.approvalPolicy.count({ where: { organizationId: org.A!, requestType: { startsWith: 'payroll.' } } }))).toBe(0);
+    });
+    it('a holder of the key cannot route pay to HR Admins who lack it (400, naming them); pay types are not editable yet (404)', async () => {
+      // A payroll approver who may change settings; switched off at the end so the other tests' HR Admins stay as they are.
+      const slug = (await prisma.organization.findUniqueOrThrow({ where: { id: org.A! } })).slug;
+      const email = `payset-a-${run}@s6.test`;
+      const at = <T>(fn: (tx: Parameters<Parameters<TenantPrismaService['forTenant']>[1]>[0]) => Promise<T>) => tenantPrisma.forTenant(ctxA(), fn);
+      const profile = (await at((tx) => tx.permissionProfile.create({ data: { organizationId: org.A!, name: `payset-${run}`, permissionsJson: JSON.stringify(['org.settings.manage', 'payroll.run.approve']) } }))).id;
+      const passwordHash = await argon2.hash(PASSWORD);
+      users.paysetA = (await at((tx) => tx.user.create({ data: { organizationId: org.A!, email, name: `payset A ${run}`, passwordHash, role: 'panel', permissionProfileId: profile } }))).id;
+      token.paysetA = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: slug, email, password: PASSWORD }).expect(200)).body.accessToken;
+      await markSteppedUp(tenantPrisma, token.paysetA!);
+      expect((await api('paysetA', 'put', '/workflow/policies/payroll.one_time').send({ steps: [{ name: 'HR look', approver: 'hr', mode: 'any' }], version: 0 }).expect(400)).body.message).toMatch(/people without payroll\.run\.approve: .*hr1 A/);
+      await api('paysetA', 'put', '/workflow/policies/payroll.one_time').send({ steps: [{ name: 'Manager look', approver: 'manager', mode: 'any' }], version: 0 }).expect(404);
+      await at((tx) => tx.user.update({ where: { id: users.paysetA! }, data: { status: 'inactive' } }));
+    });
+  });
+
+  describe('E2 review item 1: required module steps survive a saved policy', () => {
+    it.each(POLICY_TYPES.map((t) => t.key))('%s: the saved step comes first, then the required control; a plain built-in step is replaced', async (type) => {
+      const cur = ((await api('hr1A', 'get', '/workflow/policies').expect(200)).body.types as { key: string; version: number }[]).find((t) => t.key === type)!;
+      await api('hr1A', 'put', `/workflow/policies/${type}`).send({ steps: [{ name: 'Company first look', approver: 'hr', mode: 'any' }], version: cur.version }).expect(200);
+      const builtIn = [
+        { name: 'Built-in manager', approvers: [{ kind: 'users' as const, userIds: [users.hr2A!] }], mode: 'any' as const },
+        { name: 'Required control', approvers: [{ kind: 'users' as const, userIds: [users.hr3A!] }], mode: 'any' as const, required: true },
+      ];
+      const sent = await tenantPrisma.forTenant(ctxA(), (tx) =>
+        engine.submit(tx, ctxA(), { type, subjectType: 'test', subjectId: randomUUID(), title: `Test ${type} ${run}`, summary: [], subjectPersonId: null, requesterUserId: users.hr1A!, raisedByUserId: users.hr1A!, steps: builtIn, payload: {}, payloadFields: [], fallbackUserIds: [] }),
+      );
+      const req = await tenantPrisma.forTenant(ctxA(), (tx) => tx.wfRequest.findFirstOrThrow({ where: { id: sent.id } }));
+      expect((req.steps as { name: string }[]).map((s) => s.name)).toEqual(['Company first look', 'Required control']);
+      await api('hr1A', 'post', `/workflow/policies/${type}/reset`).send({ version: cur.version + 1 }).expect(200);
     });
   });
 

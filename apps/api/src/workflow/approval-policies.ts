@@ -30,6 +30,36 @@ export const POLICY_TYPES: { key: string; label: string }[] = [
 ];
 const TYPE_KEYS = new Set(POLICY_TYPES.map((t) => t.key));
 
+/**
+ * E2 review item 4 (separation of duties): a Pay-group request type and the approve key of its area. Changing who approves
+ * one needs that key in every legal entity of the company, and every HR Admin a step would route to must hold it too, so
+ * an HR Admin with no pay keys can never route pay approvals to themselves or a friend. These types are not editable yet
+ * (E2 lists them); the guard runs first, so it already holds.
+ */
+export const PAY_APPROVE_KEYS: Readonly<Record<string, string>> = {
+  'payroll.one_time': 'payroll.run.approve',
+  'payroll.loan': 'payroll.run.approve',
+  'payroll.run': 'payroll.run.approve',
+  'payroll.correction': 'payroll.run.approve',
+  'payroll.period_reopen': 'payroll.run.approve',
+  'payroll.payment_mode': 'payroll.run.approve',
+};
+
+/** The users among `ids` who hold `key` (company-wide, or a grant for that entity) in every one of `entities`. */
+export async function holdKeyEverywhere(tx: Tx, org: string, ids: string[], key: string, entities: string[], today: string): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const like = `%"${key}"%`;
+  const rows = await tx.$queryRaw<{ user_id: string; scope: string; entity: string | null }[]>`
+    SELECT u.id::text AS user_id, 'tenant' AS scope, NULL::text AS entity FROM users u JOIN permission_profiles p ON p.organization_id = u.organization_id AND p.id = u.permission_profile_id
+    WHERE u.organization_id = ${org}::uuid AND u.id = ANY(${ids}::uuid[]) AND u.status = 'active' AND p.permissions_json LIKE ${like}
+    UNION
+    SELECT g.user_id::text, g.scope_type, g.legal_entity_id::text FROM role_grants g
+    JOIN permission_profiles p ON p.organization_id = g.organization_id AND p.id = g.permission_profile_id
+    WHERE g.organization_id = ${org}::uuid AND g.user_id = ANY(${ids}::uuid[]) AND g.status = 'active' AND p.permissions_json LIKE ${like}
+      AND g.valid_from <= ${today}::date AND (g.valid_to IS NULL OR g.valid_to >= ${today}::date) AND g.scope_type IN ('tenant', 'legal_entity')`;
+  return new Set(ids.filter((u) => rows.some((r) => r.user_id === u && r.scope === 'tenant') || (entities.length > 0 && entities.every((e) => rows.some((r) => r.user_id === u && r.entity === e)))));
+}
+
 /** Who approves a step, in the company's words: the person's manager, their manager's manager, or the HR Admins. */
 export type PolicyApprover = 'manager' | 'manager_2' | 'hr';
 export interface PolicyStep {
@@ -151,9 +181,10 @@ export class ApprovalPolicies {
   /** Saves the type's steps as a new version (version: the one the editor opened; 0 for none). Audited. */
   async save(ctx: { organizationId: string | null; userId?: string | null }, type: string, steps: unknown, version: number) {
     if (!ctx.userId) throw new ForbiddenException('Sign in to change approval policies.');
+    const c = companyContext({ organizationId: ctx.organizationId, isSuperAdmin: false, userId: ctx.userId });
+    if (PAY_APPROVE_KEYS[type]) await this.tenantPrisma.forTenant(c, (tx) => this.payGuard(tx, c, type, Array.isArray(steps) ? (steps as PolicyStep[]) : []));
     if (!TYPE_KEYS.has(type)) throw new NotFoundException('This request type has no approval policy here.');
     const clean = checkSteps(steps);
-    const c = companyContext({ organizationId: ctx.organizationId, isSuperAdmin: false, userId: ctx.userId });
     await this.tenantPrisma.forTenant(c, async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`approval-policy:${c.organizationId}:${type}`}))`;
       const before = await tx.approvalPolicy.findFirst({ where: { organizationId: c.organizationId, requestType: type } });
@@ -164,6 +195,23 @@ export class ApprovalPolicies {
       await AuditService.recordIn(tx, c, { actorUserId: ctx.userId!, action: 'workflow.policy.changed', entityType: 'approval_policy', entityId: type, metadata: { type, before: before?.steps ?? null, after: clean, version: version + 1 } });
     });
     return this.list(ctx);
+  }
+
+  /** E2 review item 4: refuses a pay policy from someone without the area's approve key everywhere, or routing to HR Admins without it. */
+  async payGuard(tx: Tx, c: CompanyContext, type: string, steps: Partial<PolicyStep>[]) {
+    const key = PAY_APPROVE_KEYS[type]!;
+    const today = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
+    const entities = (await tx.legalEntity.findMany({ where: { organizationId: c.organizationId }, select: { id: true } })).map((e) => e.id);
+    if (!(await holdKeyEverywhere(tx, c.organizationId, [c.userId!], key, entities, today)).has(c.userId!)) throw new ForbiddenException(`Changing who approves this needs ${key} in every legal entity of the company.`);
+    if (!steps.some((s) => s?.approver === 'hr')) return;
+    const profiles = (await tx.permissionProfile.findMany({ where: { organizationId: c.organizationId, permissionsJson: { contains: '"org.settings.manage"' } }, select: { id: true } })).map((p) => p.id);
+    const hr = [...new Set([...(await tx.user.findMany({ where: { organizationId: c.organizationId, status: 'active', permissionProfileId: { in: profiles } }, select: { id: true } })).map((u) => u.id), ...(await tx.roleGrant.findMany({ where: { organizationId: c.organizationId, status: 'active', permissionProfileId: { in: profiles } }, select: { userId: true } })).map((g) => g.userId)])];
+    const ok = await holdKeyEverywhere(tx, c.organizationId, hr, key, entities, today);
+    const without = hr.filter((u) => !ok.has(u));
+    if (without.length) {
+      const names = (await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: without } }, select: { name: true, email: true }, take: 5 })).map((u) => u.name?.trim() || u.email);
+      throw new BadRequestException(`An "HR Admins" step would route pay approvals to people without ${key}: ${names.join(', ')}${without.length > 5 ? ' and others' : ''}. Choose approvers who hold it.`);
+    }
   }
 
   /** Back to the module's built-in steps. Audited. */

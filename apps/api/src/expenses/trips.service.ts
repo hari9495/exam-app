@@ -348,7 +348,7 @@ export class ExpenseTripsService implements OnModuleInit {
       if (trip.bookingNeeded) {
         // §9.4: the travel desk approves second when it is asked to book.
         const desk = (await holdersOf(tx, org, 'travel.booking.manage', trip.employeeId, today)).filter((u) => u !== v.userId);
-        if (desk.length) steps.push({ name: 'Travel desk', approvers: [{ kind: 'users', userIds: desk }], mode: 'any', remindAfterHours: 24, selfApproval: 'never' });
+        if (desk.length) steps.push({ name: 'Travel desk', approvers: [{ kind: 'users', userIds: desk }], mode: 'any', remindAfterHours: 24, selfApproval: 'never', required: true });
       }
       const emp = await tx.employee.findFirstOrThrow({ where: { organizationId: org, id: trip.employeeId }, select: { personId: true } });
       const sub = await this.engine.submit(tx, c, {
@@ -527,7 +527,7 @@ export class ExpenseTripsService implements OnModuleInit {
       // §9.4: the manager, then finance (who will pay it); approve-with-changes on the amount only.
       const steps: StepSpec[] = [{ name: 'Manager', approvers: [{ kind: 'manager' }], mode: 'any', remindAfterHours: 24, timeoutHours: 72, onTimeout: 'escalate', selfApproval: 'never' }];
       const finance = (await holdersOf(tx, org, 'expense.payout.manage', me.id, today)).filter((u) => u !== v.userId);
-      if (finance.length) steps.push({ name: 'Finance', approvers: [{ kind: 'users', userIds: finance }], mode: 'any', remindAfterHours: 24, selfApproval: 'never' });
+      if (finance.length) steps.push({ name: 'Finance', approvers: [{ kind: 'users', userIds: finance }], mode: 'any', remindAfterHours: 24, selfApproval: 'never', required: true });
       const sub = await this.engine.submit(tx, c, {
         type: ADVANCE_TYPE,
         subjectType: 'expense_advance',

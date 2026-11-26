@@ -37,6 +37,11 @@ export interface StepSpec {
   /** P19 condition over the request's fields: the step is skipped when it holds. */
   skipIf?: Group;
   selfApproval?: 'never' | 'allowed';
+  /**
+   * E2 review item 1: a step the module always needs (a control, such as the cost-centre owner above an amount or the
+   * payroll approver). A company's own steps never replace it: the engine adds it after them.
+   */
+  required?: boolean;
 }
 export interface FrozenStep extends StepSpec {
   approverIds: string[];
@@ -410,7 +415,8 @@ export class ApprovalsEngine {
     const own = input.steps.length && this.policies ? await this.policies.stepsFor(tx, ctx, input.type) : null;
     // Answer 1765: built-in steps of a people request take the company's reminder and escalation hours too.
     const builtIn = own || !this.policies ? input.steps : await this.policies.builtIn(tx, ctx, input.type, input.steps);
-    for (const s of own ?? builtIn) {
+    // E2 review item 1: the module's required steps follow the company's own, so a saved policy can never drop a control.
+    for (const s of own ? [...own, ...input.steps.filter((x) => x.required)] : builtIn) {
       const skip = s.skipIf ? evaluate(s.skipIf, input.payload, input.payloadFields).pass : false;
       let ids = await this.active(tx, org, (await Promise.all(s.approvers.map((a) => this.resolve(tx, org, a, input)))).flat());
       const self = s.selfApproval === 'allowed';
