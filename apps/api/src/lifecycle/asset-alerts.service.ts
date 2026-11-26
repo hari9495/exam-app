@@ -5,6 +5,7 @@ import { todayIst } from '../org-structure/org-validation';
 import { settingFor } from '../people/probation';
 import { companyKeyHolders } from '../access/key-holders';
 import { NotificationsService } from '../notifications/notifications.service';
+import { displayName } from '../employee-history/employee-history.service';
 import { escapeHtml } from '../notifications/notification-email-render';
 import { addMonthsIso, contractEndsOn, contractNoticeOn } from './asset-categories';
 
@@ -216,6 +217,53 @@ export class AssetAlertsService {
         }
       } catch (e) {
         this.logger.error(`Licence alerts for ${org} failed: ${(e as Error).message}`);
+      }
+    }
+    return sent;
+  }
+
+  /**
+   * The daily booking sweep (answer 2715): the person is reminded the day before a handed-over asset is due back; the
+   * asset managers of its place are told when it is overdue. Once per booking per event (the time is kept on the
+   * booking), audited.
+   */
+  async bookingSweep(): Promise<number> {
+    const today = todayIst();
+    const due = await this.tenantPrisma.forTenant({ organizationId: null, isSuperAdmin: true }, (tx) =>
+      tx.$queryRaw<{ id: string; organization_id: string }[]>`
+        SELECT id::text, organization_id::text FROM asset_bookings
+        WHERE status = 'out' AND ((ends_on = ${addDays(today, 1)}::date AND due_reminded_at IS NULL) OR (ends_on < ${today}::date AND overdue_alerted_at IS NULL))
+        LIMIT 2000`,
+    );
+    let sent = 0;
+    for (const org of [...new Set(due.map((r) => r.organization_id))]) {
+      const ctx = { organizationId: org, isSuperAdmin: false };
+      try {
+        const notes = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
+          const out: { id: string; to: string[]; overdue: boolean; text: string }[] = [];
+          for (const b of await tx.assetBooking.findMany({ where: { organizationId: org, id: { in: due.filter((r) => r.organization_id === org).map((r) => r.id) } } })) {
+            const a = await tx.asset.findFirstOrThrow({ where: { organizationId: org, id: b.assetId } });
+            const endsOn = iso(b.endsOn);
+            const overdue = endsOn < today;
+            // Only the run that sets the mark sends, even if two runs overlap.
+            const n = await tx.assetBooking.updateMany({ where: { organizationId: org, id: b.id, status: 'out', ...(overdue ? { overdueAlertedAt: null } : { dueRemindedAt: null }) }, data: overdue ? { overdueAlertedAt: new Date() } : { dueRemindedAt: new Date() } });
+            if (!n.count) continue;
+            const p = await tx.employee.findFirst({ where: { organizationId: org, personId: b.personId } });
+            const to = overdue ? await assetManagers(tx, org, a, today) : p?.userId ? [p.userId] : [];
+            await audit(tx, c, overdue ? 'asset.booking.overdue' : 'asset.booking.reminded', 'asset_booking', b.id, { assetId: a.id, endsOn, told: to.length });
+            out.push({ id: b.id, to, overdue, text: overdue ? `${a.name} (${a.tag}) was due back from ${p ? displayName(p) : 'someone'} on ${endsOn}.` : `Please bring back ${a.name} (${a.tag}) tomorrow (${endsOn}).` });
+          }
+          return out;
+        });
+        for (const n of notes) {
+          if (!n.to.length) continue;
+          await this.notifications
+            .notifySystem(ctx, n.to, n.overdue ? 'asset.booking.overdue' : 'asset.booking.due', { entityType: 'asset_booking', entityId: n.id, contextText: n.text, linkPath: n.overdue ? '/yx/people/assets/bookings' : '/yx/me/bookings' }, { subject: n.overdue ? 'A booked asset was not brought back on time' : 'A booked asset is due back tomorrow', html: `<p>${escapeHtml(n.text)}</p>` })
+            .catch((e: Error) => this.logger.warn(`booking notice: ${e.message}`));
+          sent++;
+        }
+      } catch (e) {
+        this.logger.error(`Booking reminders for ${org} failed: ${(e as Error).message}`);
       }
     }
     return sent;

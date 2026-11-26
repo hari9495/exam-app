@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { netBookValue, nextTag, recoveryAmount, contractEndsOn, contractNoticeOn } from './asset-categories';
+import { netBookValue, nextTag, recoveryAmount, contractEndsOn, contractNoticeOn, bookingDates } from './asset-categories';
 
 // IT assets part 1: tag numbering (answer 2720) and the F&F recovery basis (answer 2712).
 describe('nextTag', () => {
@@ -77,5 +77,30 @@ describe('contract dates (answers 2717, 2714)', () => {
     expect(contractNoticeOn('2026-12-31', 30)).toBe('2026-12-01');
     expect(contractNoticeOn('2026-12-31', 0)).toBe('2026-12-31');
     expect(contractNoticeOn('2027-03-01', 1)).toBe('2027-02-28');
+  });
+});
+
+describe('booking dates (answer 2715)', () => {
+  const ok = (r: ReturnType<typeof bookingDates>) => ('dates' in r ? r.dates : r.error);
+  it('one booking, or a daily or weekly repeat with each occurrence its own dates', () => {
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-03', repeat: 'none' }, '2026-11-26', 14))).toEqual([{ startsOn: '2026-12-01', endsOn: '2026-12-03' }]);
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-01', repeat: 'daily', until: '2026-12-03' }, '2026-11-26', 14))).toEqual(['01', '02', '03'].map((d) => ({ startsOn: `2026-12-${d}`, endsOn: `2026-12-${d}` })));
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-02', repeat: 'weekly', until: '2026-12-15' }, '2026-11-26', 14))).toEqual([
+      { startsOn: '2026-12-01', endsOn: '2026-12-02' },
+      { startsOn: '2026-12-08', endsOn: '2026-12-09' },
+      { startsOn: '2026-12-15', endsOn: '2026-12-16' },
+    ]);
+    // Up to 3 months: 13 or 14 weekly occurrences.
+    expect((ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-01', repeat: 'weekly', until: '2027-03-01' }, '2026-11-26', 14)) as unknown[]).length).toBe(13);
+  });
+  it('negative: past start, end before start, too long, a repeat longer than its step, no or far end of repeats', () => {
+    expect(ok(bookingDates({ startsOn: '2026-11-25', endsOn: '2026-11-27', repeat: 'none' }, '2026-11-26', 14))).toBe('A booking cannot start in the past.');
+    expect(ok(bookingDates({ startsOn: '2026-12-02', endsOn: '2026-12-01', repeat: 'none' }, '2026-11-26', 14))).toBe('The last day is on or after the first day.');
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-15', repeat: 'none' }, '2026-11-26', 14))).toBe('A booking is at most 14 days.');
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-14', repeat: 'none' }, '2026-11-26', 14))).toHaveLength(1);
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-02', repeat: 'daily', until: '2026-12-09' }, '2026-11-26', 14))).toBe('A daily repeat books one day at a time.');
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-08', repeat: 'weekly', until: '2026-12-29' }, '2026-11-26', 14))).toBe('A weekly repeat books at most 7 days at a time.');
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-01', repeat: 'weekly', until: null }, '2026-11-26', 14))).toBe('Choose the day the repeats end, after the first day.');
+    expect(ok(bookingDates({ startsOn: '2026-12-01', endsOn: '2026-12-01', repeat: 'daily', until: '2027-03-02' }, '2026-11-26', 14))).toBe('Repeats go up to 3 months ahead.');
   });
 });

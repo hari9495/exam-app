@@ -58,7 +58,7 @@ describe('ScheduledSweepsWorkerService', () => {
       speakup: { remindIcTerms: jest.fn().mockResolvedValue(0) },
       companyDocs: { remindExpiring: jest.fn().mockResolvedValue(0) },
       reportSchedules: { sendDue: jest.fn().mockResolvedValue(0) },
-      assetAlerts: { warrantySweep: jest.fn().mockResolvedValue(0), contractSweep: jest.fn().mockResolvedValue(0), licenceSweep: jest.fn().mockResolvedValue(0) },
+      assetAlerts: { warrantySweep: jest.fn().mockResolvedValue(0), contractSweep: jest.fn().mockResolvedValue(0), licenceSweep: jest.fn().mockResolvedValue(0), bookingSweep: jest.fn().mockResolvedValue(0) },
     };
     const service = new ScheduledSweepsWorkerService(
       connection as never,
@@ -168,6 +168,7 @@ describe('ScheduledSweepsWorkerService', () => {
       'asset-warranty-alerts': services.assetAlerts.warrantySweep,
       'asset-contract-alerts': services.assetAlerts.contractSweep,
       'asset-licence-alerts': services.assetAlerts.licenceSweep,
+      'asset-booking-alerts': services.assetAlerts.bookingSweep,
     };
     for (const { id } of SWEEP_SCHEDULE) {
       await mockWorker.processor!({ name: id });

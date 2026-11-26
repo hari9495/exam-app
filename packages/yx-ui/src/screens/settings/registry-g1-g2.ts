@@ -1174,6 +1174,14 @@ export const GROUP_2: SettingsGroupDef = {
             { key: 'asset.licence_alert_days', label: 'Licence expiry alert', kind: 'radio', value: '30 days before', options: ['Off', '7 days before', '15 days before', '30 days before', '60 days before', '90 days before'], helper: 'Asset managers of the licence’s place (company-wide ones for a licence with no place) are told once before it expires.', synonyms: ['licence', 'license', 'software', 'expiry'] },
           ],
         },
+        // IT assets answer 2715: bookings of bookable assets (spare laptops, projectors).
+        {
+          title: 'Bookings',
+          settings: [
+            { key: 'asset.booking_max_days', label: 'Longest booking', kind: 'radio', value: '14 days', options: ['1 day', '3 days', '7 days', '14 days', '30 days'], helper: 'An employee books a bookable asset for at most this many days at a time. Repeats (every day or week) go up to 3 months ahead.', synonyms: ['booking', 'loan', 'borrow', 'spare'] },
+            { key: 'asset.booking_approval', label: 'IT approves each booking', kind: 'toggle', value: false, helper: 'Off: a booking is made at once. On: it waits until an asset manager of the asset’s place approves or declines it (with a reason); the person is told either way.', synonyms: ['booking', 'approval', 'loan'] },
+          ],
+        },
       ],
       lastChange: { by: 'Karthik Subramanian', role: 'Engineering Manager', at: '2026-06-18T09:55', what: 'Changed default laptop recovery from ₹40,000 to ₹45,000' },
       related: [{ label: 'Asset register', screenId: 'PPL-25' }],

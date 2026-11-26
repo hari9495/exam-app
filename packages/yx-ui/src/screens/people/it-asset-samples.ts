@@ -1,6 +1,7 @@
 import type { LiveSuppliers, SupplierRow } from './asset-suppliers';
 import type { ContractRow, LiveContracts } from './asset-contracts';
 import type { LicenceRow, LiveLicences } from './asset-licences';
+import type { ItBookingRow, LiveItBookings, LiveMyBookings, MyBookingRow } from './asset-bookings';
 
 // IT assets part 3 sample data (stories and tests): the IT and Admin supplier list (answer 2716).
 export const SUPPLIERS: SupplierRow[] = [
@@ -59,6 +60,61 @@ export const liveLicences = (over: Partial<LiveLicences> = {}): LiveLicences => 
   onSave: () => Promise.resolve({ id: 'l9' }),
   onGiveSeat: () => Promise.resolve({ id: 'q9' }),
   onFreeSeat: () => Promise.resolve({ ok: true }),
+  onOpenAsset: () => {},
+  ...over,
+});
+
+// Answer 2715: bookings on 26 Nov 2026. Mine: one handed over, one to come, one weekly repeat, and past ones.
+export const MY_BOOKINGS: MyBookingRow[] = [
+  { id: 'b1', seriesId: null, tag: 'LT-0507', asset: 'Dell Latitude 5440 (spare)', startsOn: '2026-11-24', endsOn: '2026-11-27', status: 'out', purpose: 'Laptop in repair', reason: null, overdue: false },
+  { id: 'b2', seriesId: 's1', tag: 'PJ-0003', asset: 'Epson EB-X51 projector', startsOn: '2026-12-02', endsOn: '2026-12-02', status: 'booked', purpose: 'Weekly plant review', reason: null, overdue: false },
+  { id: 'b3', seriesId: 's1', tag: 'PJ-0003', asset: 'Epson EB-X51 projector', startsOn: '2026-12-09', endsOn: '2026-12-09', status: 'booked', purpose: 'Weekly plant review', reason: null, overdue: false },
+  { id: 'b4', seriesId: null, tag: 'CM-0002', asset: 'Sony ZV-E10 camera', startsOn: '2026-12-14', endsOn: '2026-12-15', status: 'pending', purpose: 'Training video', reason: null, overdue: false },
+  { id: 'b5', seriesId: null, tag: 'PJ-0003', asset: 'Epson EB-X51 projector', startsOn: '2026-11-04', endsOn: '2026-11-05', status: 'returned', purpose: null, reason: null, overdue: false },
+  { id: 'b6', seriesId: null, tag: 'CM-0002', asset: 'Sony ZV-E10 camera', startsOn: '2026-11-10', endsOn: '2026-11-11', status: 'declined', purpose: null, reason: 'Booked for the town hall that day', overdue: false },
+];
+
+export const liveMyBookings = (over: Partial<LiveMyBookings> = {}): LiveMyBookings => ({
+  state: 'ready',
+  onRetry: () => {},
+  today: CONTRACTS_TODAY,
+  maxDays: 14,
+  approval: false,
+  rows: MY_BOOKINGS,
+  onSearch: () =>
+    Promise.resolve({
+      rows: [
+        { id: 'a7', tag: 'PJ-0003', name: 'Epson EB-X51 projector', categoryId: 'c2', category: 'Projector', locationId: 'l1', location: 'Hosur plant' },
+        { id: 'a8', tag: 'LT-0507', name: 'Dell Latitude 5440 (spare)', categoryId: 'c1', category: 'Laptop', locationId: 'l2', location: 'Chennai office' },
+      ],
+      categories: [{ value: 'c1', label: 'Laptop' }, { value: 'c2', label: 'Projector' }],
+      locations: [{ value: 'l2', label: 'Chennai office' }, { value: 'l1', label: 'Hosur plant' }],
+    }),
+  onBook: () => Promise.resolve({ ids: ['b9'], status: 'booked' }),
+  onCancel: () => Promise.resolve({ cancelled: 1 }),
+  ...over,
+});
+
+// IT's list: one waiting for approval, one to hand over today, one overdue, one to come, past ones.
+export const IT_BOOKINGS: ItBookingRow[] = [
+  { id: 'k1', seriesId: null, assetId: 'a9', tag: 'CM-0002', asset: 'Sony ZV-E10 camera', employeeId: 'p1', person: 'Meera Iyer', startsOn: '2026-12-14', endsOn: '2026-12-15', status: 'pending', purpose: 'Training video', reason: null, overdue: false, canManage: true },
+  { id: 'k2', seriesId: null, assetId: 'a7', tag: 'PJ-0003', asset: 'Epson EB-X51 projector', employeeId: 'p2', person: 'Arjun Kulkarni', startsOn: '2026-11-26', endsOn: '2026-11-27', status: 'booked', purpose: 'Supplier meeting', reason: null, overdue: false, canManage: true },
+  { id: 'k3', seriesId: null, assetId: 'a8', tag: 'LT-0507', asset: 'Dell Latitude 5440 (spare)', employeeId: 'p3', person: 'Kavya Reddy', startsOn: '2026-11-17', endsOn: '2026-11-24', status: 'out', purpose: 'Laptop in repair', reason: null, overdue: true, canManage: true },
+  { id: 'k4', seriesId: 's1', assetId: 'a7', tag: 'PJ-0003', asset: 'Epson EB-X51 projector', employeeId: 'p1', person: 'Meera Iyer', startsOn: '2026-12-02', endsOn: '2026-12-02', status: 'booked', purpose: 'Weekly plant review', reason: null, overdue: false, canManage: true },
+  { id: 'k5', seriesId: null, assetId: 'a7', tag: 'PJ-0003', asset: 'Epson EB-X51 projector', employeeId: 'p1', person: 'Meera Iyer', startsOn: '2026-11-04', endsOn: '2026-11-05', status: 'returned', purpose: null, reason: null, overdue: false, canManage: true },
+  { id: 'k6', seriesId: null, assetId: 'a10', tag: 'PJ-0011', asset: 'BenQ projector (Chennai)', employeeId: 'p3', person: 'Kavya Reddy', startsOn: '2026-12-01', endsOn: '2026-12-01', status: 'booked', purpose: null, reason: null, overdue: false, canManage: false },
+];
+
+export const liveItBookings = (over: Partial<LiveItBookings> = {}): LiveItBookings => ({
+  state: 'ready',
+  onRetry: () => {},
+  today: CONTRACTS_TODAY,
+  rows: IT_BOOKINGS,
+  onApprove: () => Promise.resolve({ approved: 1 }),
+  onDecline: () => Promise.resolve({ declined: 1 }),
+  onCancel: () => Promise.resolve({ cancelled: 1 }),
+  onHandOver: () => Promise.resolve({ assignmentId: 'x1' }),
+  onTakeBack: () => Promise.resolve({ ok: true }),
   onOpenAsset: () => {},
   ...over,
 });

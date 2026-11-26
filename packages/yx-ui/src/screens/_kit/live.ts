@@ -77,6 +77,8 @@ export { AssetSuppliersScreen, type LiveSuppliers, type SupplierInput, type Supp
 export { AssetContractsScreen, type ContractInput, type ContractRow, type LiveContracts } from '../people/asset-contracts';
 // Answer 2718: software licences and their seats.
 export { AssetLicencesScreen, type LicenceInput, type LicenceRow, type LiveLicences, type SeatTarget } from '../people/asset-licences';
+// Answer 2715: asset bookings (mine, and IT's list).
+export { AssetBookingsScreen, MyAssetBookingsScreen, type BookingInput, type FreeAssets, type ItBookingRow, type LiveItBookings, type LiveMyBookings, type MyBookingRow, type TakeBackInput } from '../people/asset-bookings';
 // IT assets part 1 (answer 2712): Settings 2.8 Assets, the company's asset categories.
 export { AssetCategoryDrawer, assetSettingsPage, type AssetCategoryInput, type AssetCategoryRow } from '../settings/asset-settings-live';
 // People › Import (PPL-07), Buddies (PPL-41), Succession (PPL-26) and Union register (PPL-39) with live data.

@@ -7986,6 +7986,8 @@ model Asset {
   warrantyAlertedFor DateTime? @map("warranty_alerted_for") @db.Date
   /// IT assets part 3 (answer 2716): the IT and Admin supplier it came from.
   supplierId     String?   @map("supplier_id") @db.Uuid
+  /// IT assets part 5 (answer 2715): employees may book it (only an in-stock asset is made bookable).
+  bookable       Boolean   @default(false)
   version        Int       @default(1)
   createdBy      String?   @map("created_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -8128,6 +8130,40 @@ model AssetLicenceSeat {
   @@index([organizationId, personId])
   @@index([organizationId, assetId])
   @@map("asset_licence_seats")
+}
+
+/// IT assets part 5 (answer 2715): a booking of a bookable asset by an employee for themselves. A repeat is one row per
+/// occurrence sharing seriesId. pending (waits for IT when the company asks for approval), booked, declined, cancelled,
+/// out (handed over: assignmentId is the register's issue) and returned. Live bookings never overlap (database).
+model AssetBooking {
+  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId   String    @map("organization_id") @db.Uuid
+  assetId          String    @map("asset_id") @db.Uuid
+  personId         String    @map("person_id") @db.Uuid
+  seriesId         String?   @map("series_id") @db.Uuid
+  startsOn         DateTime  @map("starts_on") @db.Date
+  endsOn           DateTime  @map("ends_on") @db.Date
+  status           String    @db.VarChar(10)
+  purpose          String?   @db.VarChar(200)
+  decidedBy        String?   @map("decided_by") @db.Uuid
+  decidedAt        DateTime? @map("decided_at") @db.Timestamptz(3)
+  declineReason    String?   @map("decline_reason") @db.VarChar(300)
+  cancelledBy      String?   @map("cancelled_by") @db.Uuid
+  cancelReason     String?   @map("cancel_reason") @db.VarChar(300)
+  assignmentId     String?   @map("assignment_id") @db.Uuid
+  dueRemindedAt    DateTime? @map("due_reminded_at") @db.Timestamptz(3)
+  overdueAlertedAt DateTime? @map("overdue_alerted_at") @db.Timestamptz(3)
+  createdBy        String?   @map("created_by") @db.Uuid
+  version          Int       @default(1)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([organizationId, id], map: "asset_bookings_org_id_key")
+  @@index([organizationId, personId], map: "asset_bookings_person_idx")
+  @@index([organizationId, assetId], map: "asset_bookings_asset_idx")
+  @@index([organizationId, seriesId], map: "asset_bookings_series_idx")
+  @@index([endsOn], map: "asset_bookings_ends_idx")
+  @@map("asset_bookings")
 }
 
 model AssetAssignment {

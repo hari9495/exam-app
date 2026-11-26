@@ -66,7 +66,11 @@ export function assetSettingsPage(page: SettingsPageDef, design: SettingsPageDef
             ? { ...d, kind: 'radio', helper: 'Asset managers of the contract’s place (company-wide ones for a contract with no place) are told once. A tacit contract renews itself at its end; an express one ends.' }
             : d.key === 'asset.licence_alert_days'
               ? { ...d, kind: 'radio', helper: 'Asset managers of the licence’s place (company-wide ones for a licence with no place) are told once before it expires.' }
-              : d;
+              : d.key === 'asset.booking_max_days'
+                ? { ...d, kind: 'radio', helper: 'An employee books a bookable asset for at most this many days at a time. Repeats (every day or week) go up to 3 months ahead.' }
+                : d.key === 'asset.booking_approval'
+                  ? { ...d, helper: 'Off: a booking is made at once. On: it waits until an asset manager of the asset’s place approves or declines it (with a reason); the person is told either way.' }
+                  : d;
   const sections = page.sections.map((s) => ({ ...s, settings: s.settings.map(tune) }));
   const own = sections.find((s) => s.title === drawn.title);
   return { ...page, sections: [{ title: drawn.title, description: drawn.description, settings: [list, ...(own?.settings ?? [])] }, ...sections.filter((s) => s.title !== drawn.title)] };

@@ -26,6 +26,7 @@ export const ASSET_PAGE: AssetPageData = {
     warrantyEndsOn: '2028-08-14',
     supplierId: 's1',
     supplier: 'Dell India Pvt Ltd',
+    bookable: false,
     version: 4,
   },
   holder: { name: 'Arjun Nair', issuedOn: '2026-09-02', acknowledged: true },
@@ -42,6 +43,11 @@ export const ASSET_PAGE: AssetPageData = {
   licences: [
     { id: 'l1', seatId: 'q3', software: 'Microsoft 365', softwareVersion: 'E3', expiresOn: '2027-03-31', givenOn: '2026-08-14' },
     { id: 'l4', seatId: 'q7', software: 'Adobe Acrobat Pro', softwareVersion: '2024', expiresOn: '2026-10-31', givenOn: '2025-11-02' },
+  ],
+  // Answer 2715: booked twice before it was issued for good.
+  bookings: [
+    { id: 'b2', person: 'Arjun Nair', startsOn: '2026-08-24', endsOn: '2026-08-28', status: 'returned', overdue: false },
+    { id: 'b1', person: 'Kavya Reddy', startsOn: '2026-08-10', endsOn: '2026-08-12', status: 'cancelled', overdue: false },
   ],
   // Answer 2722: three tickets about it; this viewer is an agent of the IT desk that holds two.
   tickets: {

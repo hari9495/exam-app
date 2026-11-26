@@ -973,6 +973,133 @@ describe('Lifecycle batch 6c', () => {
     }
   });
 
+  it('IT assets part 5 (2715): bookable assets, the free-between search, clashes and limits refused, hand-over is an issue, take-back a return', async () => {
+    const o = { organizationId: org.A.id };
+    const pj = (await api('it', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Epson projector', tag: `PJ-${run}`, legalEntityId: ids.entity, locationId: ids.blr }).expect(201)).body.id as string;
+    const free = async (who: Who, from: string, to: string, extra = '') => (await api(who, 'get', `/lifecycle/me/asset-bookings/free?from=${from}&to=${to}${extra}`).expect(200)).body;
+    const book = (who: Who, body: Record<string, unknown>) => api(who, 'post', '/lifecycle/me/asset-bookings').send({ assetId: pj, repeat: 'none', ...body });
+    // Not bookable yet: not offered, and a booking is refused.
+    expect((await free('sita', addDays(today, 1), addDays(today, 2))).rows.map((r: { id: string }) => r.id)).not.toContain(pj);
+    await book('sita', { startsOn: addDays(today, 1), endsOn: addDays(today, 2) }).expect(404);
+    // Only asset managers of its place make it bookable: wrong key 403, another company 404.
+    await api('agent', 'put', `/lifecycle/assets/${pj}/bookable`).send({ bookable: true }).expect(403);
+    await api('sita', 'put', `/lifecycle/assets/${pj}/bookable`).send({ bookable: true }).expect(403);
+    await api('adminB', 'put', `/lifecycle/assets/${pj}/bookable`).send({ bookable: true }).expect(404);
+    await api('it', 'put', `/lifecycle/assets/${pj}/bookable`).send({ bookable: true }).expect(200);
+    // A bookable asset is never issued from the register (only through a booking).
+    await api('it', 'post', `/lifecycle/assets/${pj}/issue`).send({ employeeId: emp.ravi, issuedOn: today, condition: 'New' }).expect(409);
+    const f = await free('sita', addDays(today, 1), addDays(today, 2));
+    expect(f.rows.find((r: { id: string }) => r.id === pj)).toMatchObject({ tag: `PJ-${run}`, location: 'Bengaluru' });
+    expect(f.categories.length).toBeGreaterThan(0);
+    expect((await free('sita', addDays(today, 1), addDays(today, 2), `&locationId=${randomUUID()}`)).rows).toEqual([]);
+    await api('sita', 'get', `/lifecycle/me/asset-bookings/free?from=${addDays(today, 2)}&to=${today}`).expect(400);
+    // Too long (14 days by default), in the past: refused.
+    expect((await book('sita', { startsOn: addDays(today, 1), endsOn: addDays(today, 15) }).expect(400)).body.message).toBe('A booking is at most 14 days.');
+    await book('sita', { startsOn: addDays(today, -1), endsOn: today }).expect(400);
+    // Sita books today to the day after tomorrow (no approval by default).
+    const s1 = (await book('sita', { startsOn: today, endsOn: addDays(today, 2), purpose: 'Client demo' }).expect(201)).body;
+    expect(s1).toMatchObject({ status: 'booked', seriesId: null });
+    expect((await free('mgr', addDays(today, 1), addDays(today, 1))).rows.map((r: { id: string }) => r.id)).not.toContain(pj);
+    // A daily repeat that clashes on one day refuses the whole set, naming the day.
+    const clash = await book('mgr', { startsOn: addDays(today, 2), endsOn: addDays(today, 2), repeat: 'daily', until: addDays(today, 6) }).expect(409);
+    expect(clash.body.message).toBe(`Epson projector (PJ-${run}) is already booked on ${addDays(today, 2)}. Nothing was booked.`);
+    expect(await inA((tx) => tx.assetBooking.count({ where: { assetId: pj, status: 'booked' } }))).toBe(1);
+    // A weekly repeat books each week as its own booking.
+    const w = (await book('mgr', { startsOn: addDays(today, 7), endsOn: addDays(today, 7), repeat: 'weekly', until: addDays(today, 21) }).expect(201)).body;
+    expect(w.ids).toHaveLength(3);
+    // The database itself keeps live bookings apart.
+    const sitaPerson = (await inA((tx) => tx.employee.findFirstOrThrow({ where: { id: emp.sita } }))).personId;
+    await expect(inA((tx) => tx.assetBooking.create({ data: { ...o, assetId: pj, personId: sitaPerson, startsOn: new Date(`${addDays(today, 7)}T00:00:00Z`), endsOn: new Date(`${addDays(today, 7)}T00:00:00Z`), status: 'booked' } }))).rejects.toThrow();
+    // My bookings: mine only.
+    const mine = (await api('sita', 'get', '/lifecycle/me/asset-bookings').expect(200)).body;
+    expect(mine).toMatchObject({ maxDays: 14, approval: false });
+    expect(mine.rows).toEqual([expect.objectContaining({ id: s1.ids[0], tag: `PJ-${run}`, status: 'booked', purpose: 'Client demo' })]);
+    await api('sita', 'post', `/lifecycle/me/asset-bookings/${w.ids[0]}/cancel`).send({}).expect(404);
+    // IT's list: asset.view reads; no key 403; another company sees none.
+    expect((await api('agent', 'get', '/lifecycle/asset-bookings').expect(200)).body.rows.filter((r: { assetId: string }) => r.assetId === pj)).toHaveLength(4);
+    await api('ravi', 'get', '/lifecycle/asset-bookings').expect(403);
+    expect((await api('adminB', 'get', '/lifecycle/asset-bookings').expect(200)).body.rows).toEqual([]);
+    // Hand-over: wrong key 403, another company 404, not yet started 409; then an issue on the register.
+    await api('agent', 'post', `/lifecycle/asset-bookings/${s1.ids[0]}/hand-over`).send({ condition: 'Good' }).expect(403);
+    await api('adminB', 'post', `/lifecycle/asset-bookings/${s1.ids[0]}/hand-over`).send({ condition: 'Good' }).expect(404);
+    await api('it', 'post', `/lifecycle/asset-bookings/${w.ids[0]}/hand-over`).send({ condition: 'Good' }).expect(409);
+    const ho = (await api('it', 'post', `/lifecycle/asset-bookings/${s1.ids[0]}/hand-over`).send({ condition: 'Good, with remote' }).expect(200)).body;
+    const x = await inA((tx) => tx.assetAssignment.findFirstOrThrow({ where: { id: ho.assignmentId } }));
+    expect(x).toMatchObject({ assetId: pj, personId: sitaPerson, returnedOn: null, issueCondition: 'Good, with remote' });
+    const reg = (await api('it', 'get', '/lifecycle/assets').expect(200)).body.rows.find((r: { id: string }) => r.id === pj);
+    expect(reg).toMatchObject({ status: 'assigned', holder: expect.objectContaining({ name: `Sita ${run}` }) });
+    await api('it', 'post', `/lifecycle/asset-bookings/${s1.ids[0]}/hand-over`).send({ condition: 'Good' }).expect(409);
+    await api('sita', 'post', `/lifecycle/me/asset-bookings/${s1.ids[0]}/cancel`).send({}).expect(409);
+    // Not bookable any more while bookings are live.
+    await api('it', 'put', `/lifecycle/assets/${pj}/bookable`).send({ bookable: false }).expect(409);
+    // The asset page: bookable, with its bookings.
+    const page = (await api('agent', 'get', `/lifecycle/assets/${pj}`).expect(200)).body;
+    expect(page.asset.bookable).toBe(true);
+    expect(page.bookings.map((b: { status: string }) => b.status).sort()).toEqual(['booked', 'booked', 'booked', 'out']);
+    // The day before it is due back the person is reminded; overdue, IT is told; once each, audited.
+    const alerts = app.get(AssetAlertsService);
+    await inA((tx) => tx.assetBooking.update({ where: { id: s1.ids[0] }, data: { endsOn: new Date(`${addDays(today, 1)}T00:00:00Z`) } }));
+    const told = (type: string) => inA((tx) => tx.userNotification.findMany({ where: { type, entityId: s1.ids[0] }, select: { recipientUserId: true } })).then((r) => r.map((n) => n.recipientUserId));
+    await alerts.bookingSweep();
+    expect(await told('asset.booking.due')).toEqual([users.sita]);
+    await alerts.bookingSweep();
+    expect(await told('asset.booking.due')).toEqual([users.sita]);
+    await inA((tx) => tx.assetBooking.update({ where: { id: s1.ids[0] }, data: { startsOn: new Date(`${addDays(today, -3)}T00:00:00Z`), endsOn: new Date(`${addDays(today, -1)}T00:00:00Z`) } }));
+    await alerts.bookingSweep();
+    const overdue = await told('asset.booking.overdue');
+    expect(overdue).toEqual(expect.arrayContaining([users.it, users.hr]));
+    for (const who of ['sita', 'agent', 'fin', 'adminB'] as const) expect(overdue).not.toContain(users[who]);
+    await alerts.bookingSweep();
+    expect((await told('asset.booking.overdue')).length).toBe(overdue.length);
+    expect((await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'asset_booking', entityId: s1.ids[0] } }))).map((a) => a.action)).toEqual(expect.arrayContaining(['asset.booking.made', 'asset.booking.handed_over', 'asset.booking.reminded', 'asset.booking.overdue']));
+    expect((await api('it', 'get', '/lifecycle/asset-bookings').expect(200)).body.rows.find((r: { id: string }) => r.id === s1.ids[0])).toMatchObject({ status: 'out', overdue: true, person: `Sita ${run}` });
+    // Take back (the register's return) records the return and ends the booking.
+    await api('it', 'post', `/lifecycle/assets/${pj}/return`).send({ returnedOn: today, condition: 'Fine', status: 'in_stock' }).expect(200);
+    expect(await inA((tx) => tx.assetBooking.findFirstOrThrow({ where: { id: s1.ids[0] } }))).toMatchObject({ status: 'returned', assignmentId: ho.assignmentId });
+    expect((await inA((tx) => tx.assetAssignment.findFirstOrThrow({ where: { id: ho.assignmentId } }))).returnedOn).not.toBeNull();
+    // The person cancels the later ones of their repeat; IT cancels only with a reason (the person is told).
+    expect((await api('mgr', 'post', `/lifecycle/me/asset-bookings/${w.ids[1]}/cancel`).send({ series: true }).expect(200)).body.cancelled).toBe(2);
+    await api('it', 'post', `/lifecycle/asset-bookings/${w.ids[0]}/cancel`).send({}).expect(400);
+    await api('it', 'post', `/lifecycle/asset-bookings/${w.ids[0]}/cancel`).send({ reason: 'Projector needed for the town hall' }).expect(200);
+    expect(await inA((tx) => tx.userNotification.count({ where: { type: 'asset.booking.cancelled', entityId: w.ids[0], recipientUserId: users.mgr } }))).toBe(1);
+    await api('it', 'put', `/lifecycle/assets/${pj}/bookable`).send({ bookable: false }).expect(200);
+    await api('it', 'put', `/lifecycle/assets/${pj}/bookable`).send({ bookable: true }).expect(200);
+    ids.projector = pj;
+  });
+
+  it('IT assets part 5 (2715): with the approval setting a booking waits for IT, who approves or declines with a reason; both told', async () => {
+    const o = { organizationId: org.A.id };
+    const pj = ids.projector;
+    const s = await inA((tx) => tx.setting.create({ data: { ...o, scopeType: 'tenant', scopeId: org.A.id, key: 'asset.booking_approval', value: 'on' } }));
+    try {
+      const book = (startsOn: string) => api('sita', 'post', '/lifecycle/me/asset-bookings').send({ assetId: pj, startsOn, endsOn: startsOn, repeat: 'none' });
+      const b1 = (await book(addDays(today, 30)).expect(201)).body;
+      expect(b1.status).toBe('pending');
+      expect((await inA((tx) => tx.userNotification.findMany({ where: { type: 'asset.booking.requested', entityId: b1.ids[0] } }))).map((n) => n.recipientUserId)).toEqual(expect.arrayContaining([users.it]));
+      // A pending booking blocks the day, is not handed over, and is decided only by asset managers with a reason to decline.
+      await book(addDays(today, 30)).expect(409);
+      await api('it', 'post', `/lifecycle/asset-bookings/${b1.ids[0]}/hand-over`).send({ condition: 'Good' }).expect(409);
+      await api('sita', 'post', `/lifecycle/asset-bookings/${b1.ids[0]}/approve`).expect(403);
+      await api('agent', 'post', `/lifecycle/asset-bookings/${b1.ids[0]}/approve`).expect(403);
+      await api('adminB', 'post', `/lifecycle/asset-bookings/${b1.ids[0]}/approve`).expect(404);
+      await api('it', 'post', `/lifecycle/asset-bookings/${b1.ids[0]}/decline`).send({}).expect(400);
+      await api('it', 'post', `/lifecycle/asset-bookings/${b1.ids[0]}/decline`).send({ reason: 'Out for repair that week' }).expect(200);
+      const decided = (id: string) => inA((tx) => tx.userNotification.findMany({ where: { type: 'asset.booking.decided', entityId: id }, select: { recipientUserId: true, contextText: true } }));
+      expect(await decided(b1.ids[0])).toEqual([expect.objectContaining({ recipientUserId: users.sita, contextText: expect.stringContaining('declined: Out for repair that week') })]);
+      await api('it', 'post', `/lifecycle/asset-bookings/${b1.ids[0]}/approve`).expect(409);
+      // Declined frees the day; the next one is approved.
+      const b2 = (await book(addDays(today, 30)).expect(201)).body;
+      await api('it', 'post', `/lifecycle/asset-bookings/${b2.ids[0]}/approve`).expect(200);
+      expect(await inA((tx) => tx.assetBooking.findFirstOrThrow({ where: { id: b2.ids[0] } }))).toMatchObject({ status: 'booked', decidedBy: users.it });
+      expect(await decided(b2.ids[0])).toEqual([expect.objectContaining({ recipientUserId: users.sita, contextText: expect.stringContaining('is approved') })]);
+      expect((await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'asset_booking', entityId: { in: [b1.ids[0], b2.ids[0]] } } }))).map((a) => a.action)).toEqual(expect.arrayContaining(['asset.booking.declined', 'asset.booking.approved']));
+      // The person cancels their own booking to come.
+      expect((await api('sita', 'post', `/lifecycle/me/asset-bookings/${b2.ids[0]}/cancel`).send({}).expect(200)).body.cancelled).toBe(1);
+    } finally {
+      await inA((tx) => tx.setting.update({ where: { id: s.id }, data: { value: 'off' } }));
+    }
+  });
+
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);

@@ -308,6 +308,8 @@ export function buildNav(n: NavInput): NavArea[] {
       ...when(has('asset.view'), L('asset-contracts', 'Asset contracts', '/yx/people/assets/contracts')),
       // Answer 2718: software licences.
       ...when(has('asset.view'), L('asset-licences', 'Software licences', '/yx/people/assets/licences')),
+      // Answer 2715: asset bookings (IT's list and loan report).
+      ...when(has('asset.view'), L('asset-bookings', 'Asset bookings', '/yx/people/assets/bookings')),
       ...when(has('succession.manage'), L('succession', 'Succession', '/yx/people/succession')),
     ]),
     // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
@@ -577,6 +579,7 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-suppliers', 'IT suppliers', '/yx/people/assets/suppliers')),
           ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-contracts', 'IT contracts', '/yx/people/assets/contracts')),
           ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-licences', 'IT licences', '/yx/people/assets/licences')),
+          ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-bookings', 'IT bookings', '/yx/people/assets/bookings')),
           // Helpdesk plan item 4: buildings, areas and equipment (the facilities desks' staff; their admins edit).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-facilities', 'Buildings and equipment', '/yx/desk/facilities')),
           ...when(has('desk.desk.create'), L('desk-privacy', 'Privacy requests', '/yx/desk/privacy')),
@@ -768,7 +771,8 @@ export function pageLink(areas: NavArea[], pathname: string): { area: NavArea; l
 export function accountLinks(n: Pick<NavInput, 'support' | 'employee'>): NavLink[] {
   return [
     ...when(!n.support, L('delegation', 'Delegation', '/yx/me/delegation'), L('notification-prefs', 'Notification preferences', '/yx/me/notifications')),
-    ...when(n.employee, L('my-assets', 'My assets', '/yx/me/assets'), L('my-language', 'Language', '/yx/me/language')),
+    // IT assets answer 2715: booking a spare laptop or projector sits with my assets (my own things, not a Helpdesk request).
+    ...when(n.employee, L('my-assets', 'My assets', '/yx/me/assets'), L('my-bookings', 'Asset bookings', '/yx/me/bookings'), L('my-language', 'Language', '/yx/me/language')),
     L('me', 'My security', ME_SECURITY),
   ];
 }

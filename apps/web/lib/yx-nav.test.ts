@@ -350,7 +350,7 @@ describe('activeLink and meLinks', () => {
   it('the designed Me menu (PPL-30), and the personal settings in the avatar menu', () => {
     expect(meOf(n)).toEqual(ME6);
     expect(activeLink(n, '/yx/me/letters')).toBeNull();
-    expect(accountLinks({ support: false, employee: true }).map((l) => l.label)).toEqual(['Delegation', 'Notification preferences', 'My assets', 'Language', 'My security']);
+    expect(accountLinks({ support: false, employee: true }).map((l) => l.label)).toEqual(['Delegation', 'Notification preferences', 'My assets', 'Asset bookings', 'Language', 'My security']);
     expect(accountLinks({ support: true, employee: false }).map((l) => l.label)).toEqual(['My security']);
   });
 });
@@ -466,6 +466,17 @@ describe('IT assets (answer 2710): one register, also reached from the Helpdesk'
     expect(find('helpdesk', 'IT licences')?.href).toBe('/yx/people/assets/licences');
     expect(labels(nav(['desk.ticket.view'], { employee: true }), 'helpdesk')).not.toContain('IT licences');
     expect(labels(nav([], { employee: true }), 'people')).not.toContain('Software licences');
+  });
+  it('IT assets part 5 (2715): "Asset bookings" under People and "IT bookings" on the Helpdesk for IT; every employee books from the avatar menu', () => {
+    const n = nav(['desk.ticket.view', 'asset.view'], { employee: true });
+    const find = (area: string, label: string) => n.find((a) => a.id === area)!.sections.flatMap((s) => s.items).find((l) => l.label === label);
+    expect(find('people', 'Asset bookings')?.href).toBe('/yx/people/assets/bookings');
+    expect(find('helpdesk', 'IT bookings')?.href).toBe('/yx/people/assets/bookings');
+    expect(accountLinks({ support: false, employee: true }).find((l) => l.label === 'Asset bookings')?.href).toBe('/yx/me/bookings');
+    // Negative: no asset key, no IT list; no employee record, nothing to book.
+    expect(labels(nav(['desk.ticket.view'], { employee: true }), 'helpdesk')).not.toContain('IT bookings');
+    expect(labels(nav([], { employee: true }), 'people')).not.toContain('Asset bookings');
+    expect(accountLinks({ support: false, employee: false }).map((l) => l.label)).not.toContain('Asset bookings');
   });
 });
 

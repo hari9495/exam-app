@@ -239,6 +239,9 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'asset.contract_alert_days': { label: 'Contract notice alert', scopes: ['tenant'], dated: false, values: ['off', '0', '7', '15', '30'], default: '0', labels: { off: 'Off', '0': 'On the notice date', '7': '7 days before the notice date', '15': '15 days before the notice date', '30': '30 days before the notice date' } },
   // IT assets answer 2718: how many days before a software licence expires its asset managers are told (once); off tells nobody.
   'asset.licence_alert_days': { label: 'Licence expiry alert', scopes: ['tenant'], dated: false, values: ['off', '7', '15', '30', '60', '90'], default: '30', labels: { off: 'Off', '7': '7 days before', '15': '15 days before', '30': '30 days before', '60': '60 days before', '90': '90 days before' } },
+  // IT assets answer 2715: the longest booking of a bookable asset (days), and whether IT approves each booking.
+  'asset.booking_max_days': { label: 'Longest booking', scopes: ['tenant'], dated: false, values: ['1', '3', '7', '14', '30'], default: '14', labels: { '1': '1 day', '3': '3 days', '7': '7 days', '14': '14 days', '30': '30 days' } },
+  'asset.booking_approval': { label: 'IT approves each booking', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'off' },
   'asset.recovery_basis': { label: 'Recovery amount', scopes: ['tenant'], dated: false, values: ['category_default', 'written_down', 'hr_decides'], default: 'category_default', labels: { category_default: 'Category default', written_down: 'Written-down value', hr_decides: 'Decided by HR each time' } },
   // P05 Q6 (decided): alumni read their own letters and documents for this many years after the last day.
   // M05 §13 (expenses E1): capture supplier GSTIN, invoice and tax split on GST-eligible lines, per entity (off by default, Q5).

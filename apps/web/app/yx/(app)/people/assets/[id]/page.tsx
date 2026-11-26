@@ -32,6 +32,9 @@ export default function YxAssetPage() {
         onOpenContract: (k) => router.push(`/yx/people/assets/contracts?open=${encodeURIComponent(k)}`),
         // Answer 2718: a licence with a seat on the device opens on People › Software licences.
         onOpenLicence: (l) => router.push(`/yx/people/assets/licences?open=${encodeURIComponent(l)}`),
+        // Answer 2715: the Bookings tab's Bookable switch (asset managers of its place) and the bookings list.
+        onSetBookable: (bookable) => write('PUT', `/lifecycle/assets/${encodeURIComponent(id)}/bookable`, { bookable }),
+        onOpenBookings: () => router.push('/yx/people/assets/bookings'),
         // The update sends the whole asset (tag and place stay as they are; the category as picked), with its version.
         onSave: (x) => write('PUT', `/lifecycle/assets/${encodeURIComponent(id)}`, { ...(a!.categoryId ? { categoryId: a!.categoryId } : { category: a!.category }), tag: a!.tag, legalEntityId: a!.legalEntityId, locationId: a!.locationId, ...x, version: a!.version }),
       }}

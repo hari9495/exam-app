@@ -524,6 +524,9 @@ export class OffboardingService {
       // Answer 2718: the licence seats on this device, of the licences this viewer sees (asset.view over the licence's place).
       const deviceSeats = await tx.assetLicenceSeat.findMany({ where: { organizationId: org, assetId: a.id, freedOn: null }, orderBy: { givenOn: 'desc' } });
       const seatLicences = (await tx.assetLicence.findMany({ where: { organizationId: org, id: { in: deviceSeats.map((x) => x.licenceId) } } })).filter((l) => reachesPlace(v, 'asset.view', l));
+      // Answer 2715: its bookings (past, current and to come), newest first.
+      const bookings = await tx.assetBooking.findMany({ where: { organizationId: org, assetId: a.id }, orderBy: [{ startsOn: 'desc' }, { createdAt: 'desc' }], take: 200 });
+      const bookers = await tx.employee.findMany({ where: { organizationId: org, personId: { in: [...new Set(bookings.map((b) => b.personId))] } } });
       const warrantyEndsOn = a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null;
       // Answer 2722: every viewer of the asset gets how many tickets are about it; only the ones they may see are listed.
       const ticketCount = await tx.sdTicket.count({ where: { organizationId: org, assetId: a.id } });
@@ -556,6 +559,7 @@ export class OffboardingService {
           // Answer 2716: the IT and Admin supplier.
           supplierId: a.supplierId,
           supplier: supplier?.name ?? null,
+          bookable: a.bookable,
           version: a.version,
         },
         holder: open ? { name: nameOf(open.personId), issuedOn: iso(open.issuedOn), acknowledged: Boolean(open.ackEvidence), ackNone: (open.ackEvidence as { method?: string } | null)?.method === 'none' } : null,
@@ -564,6 +568,10 @@ export class OffboardingService {
         licences: deviceSeats.flatMap((x) => {
           const l = seatLicences.find((y) => y.id === x.licenceId);
           return l ? [{ id: l.id, seatId: x.id, software: l.software, softwareVersion: l.softwareVersion, expiresOn: l.expiresOn ? iso(l.expiresOn) : null, givenOn: iso(x.givenOn) }] : [];
+        }),
+        bookings: bookings.map((b) => {
+          const p = bookers.find((x) => x.personId === b.personId);
+          return { id: b.id, person: p ? displayName(p) : 'Someone', startsOn: iso(b.startsOn), endsOn: iso(b.endsOn), status: b.status, overdue: b.status === 'out' && iso(b.endsOn) < todayIst() };
         }),
         tickets: { count: ticketCount, rows: seen.map((t) => ({ id: t.id, number: t.number, subject: t.subject, state: t.systemState, raisedAt: t.createdAt.toISOString() })) },
       };
@@ -623,6 +631,8 @@ export class OffboardingService {
         }
         if (!cur) throw new NotFoundException('No such asset.');
         if (dto.status && dto.status !== cur.status && cur.status === 'assigned') throw new ConflictException('Take the asset back before changing its status.');
+        // Answer 2715: a bookable asset with bookings to come stays in stock until they are cancelled.
+        if (dto.status && dto.status !== cur.status && dto.status !== 'in_stock' && (await tx.assetBooking.count({ where: { organizationId: org, assetId: cur.id, status: { in: ['pending', 'booked'] } } }))) throw new ConflictException('This asset has bookings to come. Cancel them before changing its status.');
         const n = await tx.asset.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...data, ...(dto.status && cur.status !== 'assigned' ? { status: dto.status } : {}), version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this asset. Reload it.');
         await audit(tx, c, 'asset.updated', 'asset', id, { status: dto.status ?? cur.status, ...(dto.supplierId !== undefined && dto.supplierId !== cur.supplierId ? { supplier: { from: cur.supplierId, to: dto.supplierId } } : {}) });
@@ -639,32 +649,45 @@ export class OffboardingService {
     const res = await inCompany(this.tenantPrisma, ctx, async (tx, c) => {
       const org = c.organizationId;
       const a = await this.assetOr404(tx, org, v, assetId, 'asset.manage');
+      // IT assets answer 2715: a bookable asset goes out only through a booking (so a booked one is never issued to someone else).
+      if (a.bookable) throw new ConflictException('This asset is bookable. Hand it over from its booking, or make it not bookable first.');
       if (a.status !== 'in_stock') throw new ConflictException(a.status === 'assigned' ? 'This asset is already with someone. Take it back first.' : 'Only an asset in stock can be issued.');
       const emp = await tx.employee.findFirst({ where: { organizationId: org, id: dto.employeeId } });
       if (!emp || !(await tx.employment.findFirst({ where: { organizationId: org, employeeId: emp.id, exitedOn: null }, select: { id: true } }))) throw new BadRequestException('Choose a current employee.');
       if (dto.issuedOn > todayIst()) throw new BadRequestException('The issue date cannot be in the future.');
-      // Settings 2.8: with acknowledgement "None" the person has nothing to confirm (recorded as such).
-      const ackNone = (await companySetting(tx, c, 'asset.ack_method')) === 'none';
-      try {
-        const x = await tx.assetAssignment.create({ data: { organizationId: org, assetId, personId: emp.personId, issuedOn: asDate(dto.issuedOn), issueCondition: dto.condition.trim(), issuedBy: c.userId ?? null, ...(ackNone ? { ackEvidence: { method: 'none', at: new Date().toISOString() } } : {}) } });
-        await tx.asset.update({ where: { id: assetId }, data: { status: 'assigned', version: { increment: 1 } } });
-        await audit(tx, c, 'asset.assigned', 'asset', assetId, { assignmentId: x.id, employeeId: emp.id });
-        await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'asset.assigned', payload: { assetId, assignmentId: x.id, personId: emp.personId } } });
-        // Someone already leaving: the asset joins their clearance list.
-        const k = await tx.exitCase.findFirst({ where: { organizationId: org, personId: emp.personId, status: 'accepted' }, select: { id: true } });
-        if (k) await this.exits.assetItemsIn(tx, org, k.id, emp.personId, c.userId ?? null);
-        return { userId: emp.userId, name: a.name, ackNone };
-      } catch (e) {
-        // The database keeps one open assignment per asset.
-        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This asset is already with someone. Take it back first.');
-        throw e;
-      }
+      return this.issueIn(tx, c, a, emp, dto.issuedOn, dto.condition);
     });
-    if (res.userId)
-      await this.notifications
-        .notifySystem(ctx, [res.userId], 'asset.assigned', { entityType: 'asset', entityId: assetId, contextText: `${res.name} was issued to you`, linkPath: '/yx/me/assets' }, { subject: 'A company asset was issued to you', html: res.ackNone ? '<p>A company asset was issued to you. You can see it in YukthiX under My assets.</p>' : '<p>A company asset was issued to you. Please confirm you received it in YukthiX.</p>' })
-        .catch(() => undefined);
+    await this.notifyIssued(ctx, assetId, res);
     return { ok: true };
+  }
+
+  /** Records an issue of an in-stock asset to a current employee (the register's Issue, and a booking's hand-over, answer 2715). */
+  async issueIn(tx: Tx, c: CompanyContext, a: { id: string; name: string }, emp: { id: string; personId: string; userId: string | null }, issuedOn: string, condition: string) {
+    const org = c.organizationId;
+    // Settings 2.8: with acknowledgement "None" the person has nothing to confirm (recorded as such).
+    const ackNone = (await companySetting(tx, c, 'asset.ack_method')) === 'none';
+    try {
+      const x = await tx.assetAssignment.create({ data: { organizationId: org, assetId: a.id, personId: emp.personId, issuedOn: asDate(issuedOn), issueCondition: condition.trim(), issuedBy: c.userId ?? null, ...(ackNone ? { ackEvidence: { method: 'none', at: new Date().toISOString() } } : {}) } });
+      await tx.asset.update({ where: { id: a.id }, data: { status: 'assigned', version: { increment: 1 } } });
+      await audit(tx, c, 'asset.assigned', 'asset', a.id, { assignmentId: x.id, employeeId: emp.id });
+      await tx.eventOutbox.create({ data: { organizationId: org, eventType: 'asset.assigned', payload: { assetId: a.id, assignmentId: x.id, personId: emp.personId } } });
+      // Someone already leaving: the asset joins their clearance list.
+      const k = await tx.exitCase.findFirst({ where: { organizationId: org, personId: emp.personId, status: 'accepted' }, select: { id: true } });
+      if (k) await this.exits.assetItemsIn(tx, org, k.id, emp.personId, c.userId ?? null);
+      return { assignmentId: x.id, userId: emp.userId, name: a.name, ackNone };
+    } catch (e) {
+      // The database keeps one open assignment per asset.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('This asset is already with someone. Take it back first.');
+      throw e;
+    }
+  }
+
+  /** Tells the person an asset was issued to them (after the transaction). */
+  async notifyIssued(ctx: TenantContext, assetId: string, res: { userId: string | null; name: string; ackNone: boolean }) {
+    if (!res.userId) return;
+    await this.notifications
+      .notifySystem(ctx, [res.userId], 'asset.assigned', { entityType: 'asset', entityId: assetId, contextText: `${res.name} was issued to you`, linkPath: '/yx/me/assets' }, { subject: 'A company asset was issued to you', html: res.ackNone ? '<p>A company asset was issued to you. You can see it in YukthiX under My assets.</p>' : '<p>A company asset was issued to you. Please confirm you received it in YukthiX.</p>' })
+      .catch(() => undefined);
   }
 
   async takeBack(ctx: TenantContext, user: ScopeUser, assetId: string, dto: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost'; recoveryAmount?: string | null }) {
@@ -679,6 +702,8 @@ export class OffboardingService {
       if (!lost) await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(dto.returnedOn), returnCondition: dto.condition.trim(), returnedBy: c.userId ?? null, version: { increment: 1 } } });
       else await tx.assetAssignment.update({ where: { id: x.id }, data: { returnedOn: asDate(dto.returnedOn), returnCondition: `Not returned: ${dto.condition.trim()}`.slice(0, 200), returnedBy: c.userId ?? null, version: { increment: 1 } } });
       await tx.asset.update({ where: { id: assetId }, data: { status: dto.status, version: { increment: 1 } } });
+      // IT assets answer 2715: taking back a booked asset ends its booking (the register and the bookings stay true).
+      await tx.assetBooking.updateMany({ where: { organizationId: org, assignmentId: x.id, status: 'out' }, data: { status: 'returned', version: { increment: 1 } } });
       // A recovery (damage or loss, founder 24 Oct 2026) signs the leaver's clearance item off with it: an F&F recovery line.
       const recovery = dto.recoveryAmount && Number(dto.recoveryAmount) > 0 ? dto.recoveryAmount : null;
       if (recovery && (await companySetting(tx, c, 'asset.recovery_to_fnf')) !== 'on') throw new BadRequestException('Recovery to F&F is off in Settings › Assets.');

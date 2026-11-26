@@ -105,4 +105,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'asset-contract-alerts', cron: '55 1 * * *' },
   // IT assets answer 2718: licences expiring within the company's days, once per expiry date (07:30 IST).
   { id: 'asset-licence-alerts', cron: '0 2 * * *' },
+  // IT assets answer 2715: the person is reminded the day before a booked asset is due back; IT when overdue (07:35 IST).
+  { id: 'asset-booking-alerts', cron: '5 2 * * *' },
 ];

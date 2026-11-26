@@ -377,6 +377,9 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
       { section: 'Contracts', key: 'asset.contract_alert_days', synonyms: ['contract', 'notice', 'renewal'] },
       // Answer 2718.
       { section: 'Licences', key: 'asset.licence_alert_days', synonyms: ['licence', 'license', 'software', 'expiry'] },
+      // Answer 2715.
+      { section: 'Bookings', key: 'asset.booking_max_days', synonyms: ['booking', 'loan', 'borrow', 'spare'] },
+      { section: 'Bookings', key: 'asset.booking_approval', synonyms: ['booking', 'approval', 'loan'] },
     ],
   },
   // Settings S-7 (answers 1321, 1561, 1564): the settings that were on Company rules and Access and privacy.

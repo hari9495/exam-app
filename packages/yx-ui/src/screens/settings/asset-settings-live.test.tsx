@@ -22,7 +22,10 @@ const page = (canEdit = true, data = DATA) => assetSettingsPage(timeSettingsPage
 describe('2.8 Assets live', () => {
   it('the company list comes first, then the acknowledgement (no E-sign yet) and the recovery basis, at their starter values', () => {
     const p = page();
-    expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return', 'Warranty', 'Contracts', 'Licences']);
+    expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return', 'Warranty', 'Contracts', 'Licences', 'Bookings']);
+    // Answer 2715: bookings up to 14 days by default; no approval by default.
+    expect(allSettings(p).find((d) => d.key === 'asset.booking_max_days')).toMatchObject({ kind: 'radio', value: '14', options: ['1', '3', '7', '14', '30'], helper: expect.stringMatching(/3 months/) });
+    expect(allSettings(p).find((d) => d.key === 'asset.booking_approval')).toMatchObject({ kind: 'toggle', value: false, helper: expect.stringMatching(/approves or declines/) });
     // Answer 2718: 30 days before a licence expires by default; off tells nobody.
     expect(allSettings(p).find((d) => d.key === 'asset.licence_alert_days')).toMatchObject({ kind: 'radio', value: '30', options: ['off', '7', '15', '30', '60', '90'], helper: expect.stringMatching(/before it expires/) });
     // Answer 2714 (contracts): on the notice date by default; off tells nobody.

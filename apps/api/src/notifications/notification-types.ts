@@ -124,6 +124,13 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'asset.contract.notice', group: 'reminders', label: 'An asset contract reaches its notice date' },
   // IT assets answer 2718: to the asset managers of the licence's place.
   { type: 'asset.licence.expiring', group: 'reminders', label: 'A software licence expires soon' },
+  // IT assets answer 2715: bookings. To IT (asset managers of the asset's place): a booking to approve, an overdue return.
+  // To the person: approved or declined, cancelled by IT, due back tomorrow.
+  { type: 'asset.booking.requested', group: 'approvals', label: 'An asset booking waits for your approval' },
+  { type: 'asset.booking.decided', group: 'approvals', label: 'Your asset booking was approved or declined' },
+  { type: 'asset.booking.cancelled', group: 'reminders', label: 'IT cancelled your asset booking' },
+  { type: 'asset.booking.due', group: 'reminders', label: 'A booked asset is due back tomorrow' },
+  { type: 'asset.booking.overdue', group: 'reminders', label: 'A booked asset was not brought back on time' },
   { type: 'exit.deprovisioning.failed', group: 'reminders', label: 'A step after someone left did not go through (HR)' },
   { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
   // HIR-13 (founder decision 6): the manager is told, never asked.

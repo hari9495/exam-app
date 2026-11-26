@@ -11,7 +11,8 @@ import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
 import { ItAssetsService } from './it-assets.service';
-import { ContractDto, FreeSeatDto, LicenceDto, LicenceSeatDto, SupplierDto } from './it-assets-dto';
+import { BookableDto, BookingDto, BookingHandOverDto, BookingReasonDto, BookingSearchDto, ContractDto, FreeSeatDto, LicenceDto, LicenceSeatDto, SupplierDto } from './it-assets-dto';
+import { AssetBookingsService } from './asset-bookings.service';
 import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // Lifecycle batch 6c (design §13). Keys (P02 YX-SEC-01), checked again per person, case, item and asset:
@@ -20,7 +21,7 @@ import { EntityFilterDto } from '../common/entity-filter.dto';
 //   lifecycle.exit.confidential.view    HR-only facts and the exit interview answers (with manage to change the facts)
 //   asset.view / asset.manage           the asset list per legal entity or location
 //   no key (self)                       my resignation and withdrawal, my exit interview, my assets, my clearance items,
-//                                       my team's probation reviews
+//                                       my team's probation reviews, my asset bookings (answer 2715: bookable assets only)
 @Controller('lifecycle')
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 export class ExitsController {
@@ -29,6 +30,7 @@ export class ExitsController {
     private readonly offboarding: OffboardingService,
     private readonly lastDay: LastDayService,
     private readonly itAssets: ItAssetsService,
+    private readonly bookings: AssetBookingsService,
   ) {}
 
   private user(req: Request) {
@@ -66,6 +68,29 @@ export class ExitsController {
   @Get('me/assets')
   myAssets(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
     return this.offboarding.myAssets(ctx, this.user(req));
+  }
+
+  // IT assets answer 2715: an employee books bookable assets for themselves (no key; the service checks they are an
+  // employee, that the asset is bookable and that the booking is theirs).
+  @Get('me/asset-bookings')
+  myBookings(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.bookings.mine(ctx, this.user(req));
+  }
+
+  @Get('me/asset-bookings/free')
+  freeAssets(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Query() q: BookingSearchDto) {
+    return this.bookings.free(ctx, this.user(req), q);
+  }
+
+  @Post('me/asset-bookings')
+  bookAsset(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: BookingDto) {
+    return this.bookings.book(ctx, this.user(req), dto);
+  }
+
+  @Post('me/asset-bookings/:id/cancel')
+  @HttpCode(200)
+  cancelMyBooking(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BookingReasonDto) {
+    return this.bookings.cancelMine(ctx, this.user(req), id, dto);
   }
 
   @Post('me/assets/:id/acknowledge')
@@ -305,6 +330,47 @@ export class ExitsController {
   @RequirePermissions('asset.manage')
   freeLicenceSeat(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('seatId', ParseUUIDPipe) seatId: string, @Body() dto: FreeSeatDto) {
     return this.itAssets.freeSeat(ctx, this.user(req), id, seatId, dto);
+  }
+
+  // Answer 2715: bookings for IT (asset.view over the asset's place reads; asset.manage over it acts; checked per booking).
+  @Put('assets/:id/bookable')
+  @RequirePermissions('asset.manage')
+  setBookable(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BookableDto) {
+    return this.bookings.setBookable(ctx, this.user(req), id, dto.bookable);
+  }
+
+  @Get('asset-bookings')
+  @RequirePermissions('asset.view')
+  assetBookings(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.bookings.list(ctx, this.user(req));
+  }
+
+  @Post('asset-bookings/:id/approve')
+  @HttpCode(200)
+  @RequirePermissions('asset.manage')
+  approveBooking(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    return this.bookings.decide(ctx, this.user(req), id, 'approve', {});
+  }
+
+  @Post('asset-bookings/:id/decline')
+  @HttpCode(200)
+  @RequirePermissions('asset.manage')
+  declineBooking(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BookingReasonDto) {
+    return this.bookings.decide(ctx, this.user(req), id, 'decline', dto);
+  }
+
+  @Post('asset-bookings/:id/cancel')
+  @HttpCode(200)
+  @RequirePermissions('asset.manage')
+  cancelBooking(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BookingReasonDto) {
+    return this.bookings.cancel(ctx, this.user(req), id, dto);
+  }
+
+  @Post('asset-bookings/:id/hand-over')
+  @HttpCode(200)
+  @RequirePermissions('asset.manage')
+  handOverBooking(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: BookingHandOverDto) {
+    return this.bookings.handOver(ctx, this.user(req), id, dto);
   }
 
   /** Who an asset can be issued to: current employees, name only. IT holds asset.manage without any employee grant. */

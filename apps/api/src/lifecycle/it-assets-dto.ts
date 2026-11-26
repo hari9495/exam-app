@@ -199,3 +199,76 @@ export class FreeSeatDto {
   @Matches(/^[^<>]*$/, NO_TAGS)
   reason?: string | null;
 }
+
+/** Answer 2715: IT makes an in-stock asset bookable (or not). */
+export class BookableDto {
+  @IsBoolean()
+  bookable!: boolean;
+}
+
+/** Answer 2715: an employee books a bookable asset for themselves, once or with daily or weekly repeats. */
+export class BookingDto {
+  @IsUUID()
+  assetId!: string;
+
+  @Matches(ISO)
+  startsOn!: string;
+
+  @Matches(ISO)
+  endsOn!: string;
+
+  @IsIn(['none', 'daily', 'weekly'])
+  repeat!: 'none' | 'daily' | 'weekly';
+
+  /** The last day a repeat may start on (up to 3 months after the first day). */
+  @IsOptional()
+  @Matches(ISO)
+  until?: string | null;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(200)
+  @Matches(/^[^<>]*$/, NO_TAGS)
+  purpose?: string | null;
+}
+
+/** Answer 2715: the "free between" search. */
+export class BookingSearchDto {
+  @Matches(ISO)
+  from!: string;
+
+  @Matches(ISO)
+  to!: string;
+
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  locationId?: string;
+}
+
+/** Answer 2715: a cancel (the person: reason optional; IT: reason needed) or a decline (reason needed). */
+export class BookingReasonDto {
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(300)
+  @Matches(/^[^<>]*$/, NO_TAGS)
+  reason?: string | null;
+
+  /** Also the later bookings of the same repeat. */
+  @IsOptional()
+  @IsBoolean()
+  series?: boolean;
+}
+
+export class BookingHandOverDto {
+  @trim()
+  @IsString()
+  @Length(2, 200)
+  @Matches(/^[^<>]*$/, NO_TAGS)
+  condition!: string;
+}

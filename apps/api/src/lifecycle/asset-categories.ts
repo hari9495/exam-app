@@ -98,3 +98,26 @@ export function netBookValue(cost: Prisma.Decimal | null | undefined, purchasedO
   }
   return Prisma.Decimal.max(value, 0).toFixed(2);
 }
+
+/** Answer 2715: daily or weekly repeats of a booking. */
+export type BookingRepeat = 'none' | 'daily' | 'weekly';
+
+/**
+ * Answer 2715: the occurrences of a booking (the first, then every day or week starting up to `until`, at most 3 months
+ * after the first day), or why it is refused: a start in the past, more days than the company allows, or a repeat
+ * longer than its step (a daily repeat books single days; a weekly one at most 7 days).
+ */
+export function bookingDates(b: { startsOn: string; endsOn: string; repeat: BookingRepeat; until?: string | null }, today: string, maxDays: number): { dates: { startsOn: string; endsOn: string }[] } | { error: string } {
+  if (b.startsOn < today) return { error: 'A booking cannot start in the past.' };
+  if (b.endsOn < b.startsOn) return { error: 'The last day is on or after the first day.' };
+  const days = Math.round((Date.parse(b.endsOn) - Date.parse(b.startsOn)) / 86_400_000) + 1;
+  if (days > maxDays) return { error: `A booking is at most ${maxDays} ${maxDays === 1 ? 'day' : 'days'}.` };
+  if (b.repeat === 'none') return { dates: [{ startsOn: b.startsOn, endsOn: b.endsOn }] };
+  const step = b.repeat === 'daily' ? 1 : 7;
+  if (days > step) return { error: b.repeat === 'daily' ? 'A daily repeat books one day at a time.' : 'A weekly repeat books at most 7 days at a time.' };
+  if (!b.until || b.until <= b.startsOn) return { error: 'Choose the day the repeats end, after the first day.' };
+  if (b.until > addMonthsIso(b.startsOn, 3)) return { error: 'Repeats go up to 3 months ahead.' };
+  const dates: { startsOn: string; endsOn: string }[] = [];
+  for (let s = b.startsOn; s <= b.until; s = addDaysIso(s, step)) dates.push({ startsOn: s, endsOn: addDaysIso(s, days - 1) });
+  return { dates };
+}

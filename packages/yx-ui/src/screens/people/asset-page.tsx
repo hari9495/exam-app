@@ -2,7 +2,8 @@
 // Details (with maker, model, invoice number and warranty) and History (added, changed, issued, confirmed, taken back).
 // Asset managers of its place edit the details. Answer 2722: the Tickets tab lists the Helpdesk tickets about the device
 // that the viewer may see there (agents of the ticket's desk); everyone else who sees the asset gets only the count.
-// Answer 2718: the Licences tab lists the licence seats on the device. Bookings join as a tab when its answer arrives.
+// Answer 2718: the Licences tab lists the licence seats on the device. Answer 2715: the Bookings tab lists its bookings
+// (past, current and to come); asset managers of its place make it bookable there.
 import { useState } from 'react';
 import { Laptop, Pencil } from 'lucide-react';
 import { Button } from '../../components/button';
@@ -22,6 +23,8 @@ import { useToast } from '../../components/notify';
 import { formatDate } from '../../lib/format';
 import { PeopleFrame } from './people-kit';
 import { CONTRACT_KIND_LABEL, type ContractKind } from './asset-contracts';
+import { BookingBadge, type BookingStatus } from './asset-bookings';
+import { Checkbox } from '../../components/choice';
 
 export type AssetStatus = 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';
 export interface AssetPageData {
@@ -54,6 +57,8 @@ export interface AssetPageData {
     /** Answer 2716: the IT and Admin supplier. */
     supplierId?: string | null;
     supplier?: string | null;
+    /** Answer 2715: employees may book it. */
+    bookable?: boolean;
     version: number;
   };
   holder: { name: string; issuedOn: string; acknowledged: boolean; ackNone?: boolean } | null;
@@ -65,6 +70,16 @@ export interface AssetPageData {
   contracts?: AssetContractRef[];
   /** Answer 2718: the licence seats on this device, of the licences the viewer sees. */
   licences?: AssetLicenceRef[];
+  /** Answer 2715: its bookings, newest first. */
+  bookings?: AssetBookingRef[];
+}
+export interface AssetBookingRef {
+  id: string;
+  person: string;
+  startsOn: string;
+  endsOn: string;
+  status: BookingStatus;
+  overdue: boolean;
 }
 export interface AssetLicenceRef {
   /** The licence. */
@@ -123,8 +138,12 @@ export interface LiveAssetPage {
   onOpenContract?: (id: string) => void;
   /** Answer 2718: opens a licence on People › Software licences. */
   onOpenLicence?: (id: string) => void;
+  /** Answer 2715: asset managers of its place make it bookable, or not. */
+  onSetBookable?: (bookable: boolean) => Promise<unknown>;
+  /** Answer 2715: opens People › Asset bookings. */
+  onOpenBookings?: () => void;
 }
-type Tab = 'details' | 'history' | 'tickets' | 'contracts' | 'licences';
+type Tab = 'details' | 'history' | 'tickets' | 'contracts' | 'licences' | 'bookings';
 
 const SAMPLE_CATEGORIES = ['Laptop', 'Phone', 'SIM', 'Tools'].map((x) => ({ value: x, label: x }));
 const SAMPLE_SUPPLIERS = [{ value: 's1', label: 'Dell India Pvt Ltd' }, { value: 's2', label: 'Redington Ltd' }];
@@ -149,9 +168,9 @@ export function AssetPageScreen(props: { data: AssetPageData; tab?: Tab; editing
     if (l.state === 'no-access') return <Frame onBack={l.onBack}><NoAccessState what="the assets" grantedBy="your IT or HR admin" /></Frame>;
     if (l.state === 'error') return <Frame onBack={l.onBack}><ErrorState title="We couldn't load this asset" description="Check your connection and try again." onRetry={l.onRetry} /></Frame>;
     if (l.state === 'loading' || !l.data) return <Frame onBack={l.onBack}><Skeleton height={360} /></Frame>;
-    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} suppliers={l.suppliers} onOpenTicket={l.onOpenTicket} onOpenContract={l.onOpenContract} onOpenLicence={l.onOpenLicence} />;
+    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} suppliers={l.suppliers} onOpenTicket={l.onOpenTicket} onOpenContract={l.onOpenContract} onOpenLicence={l.onOpenLicence} onSetBookable={l.data.canManage ? l.onSetBookable : undefined} onOpenBookings={l.onOpenBookings} />;
   }
-  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} suppliers={SAMPLE_SUPPLIERS} onOpenTicket={() => undefined} onOpenContract={() => undefined} onOpenLicence={() => undefined} />;
+  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} suppliers={SAMPLE_SUPPLIERS} onOpenTicket={() => undefined} onOpenContract={() => undefined} onOpenLicence={() => undefined} onSetBookable={props.data.canManage ? () => Promise.resolve() : undefined} onOpenBookings={() => undefined} />;
 }
 
 function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; children: React.ReactNode }) {
@@ -163,7 +182,7 @@ function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; ch
   );
 }
 
-function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, suppliers, onOpenTicket, onOpenContract, onOpenLicence }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; suppliers?: LiveAssetPage['suppliers']; onOpenTicket?: LiveAssetPage['onOpenTicket']; onOpenContract?: LiveAssetPage['onOpenContract']; onOpenLicence?: LiveAssetPage['onOpenLicence'] }) {
+function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, suppliers, onOpenTicket, onOpenContract, onOpenLicence, onSetBookable, onOpenBookings }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; suppliers?: LiveAssetPage['suppliers']; onOpenTicket?: LiveAssetPage['onOpenTicket']; onOpenContract?: LiveAssetPage['onOpenContract']; onOpenLicence?: LiveAssetPage['onOpenLicence']; onSetBookable?: LiveAssetPage['onSetBookable']; onOpenBookings?: LiveAssetPage['onOpenBookings'] }) {
   const [open, setOpen] = useState(editing);
   const a = data.asset;
   const ended = a.warrantyEndsOn != null && a.warrantyEndsOn < data.today;
@@ -195,6 +214,7 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
           {data.tickets && <TabsTrigger value="tickets">{`Tickets (${data.tickets.count})`}</TabsTrigger>}
           {data.contracts && <TabsTrigger value="contracts">{`Contracts (${data.contracts.length})`}</TabsTrigger>}
           {data.licences && <TabsTrigger value="licences">{`Licences (${data.licences.length})`}</TabsTrigger>}
+          {data.bookings && <TabsTrigger value="bookings">{`Bookings (${data.bookings.length})`}</TabsTrigger>}
         </TabsList>
         <TabsContent value="details">
           <Card>
@@ -241,6 +261,11 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
         {data.licences && (
           <TabsContent value="licences">
             <LicencesTab licences={data.licences} today={data.today} onOpenLicence={onOpenLicence} />
+          </TabsContent>
+        )}
+        {data.bookings && (
+          <TabsContent value="bookings">
+            <BookingsTab bookings={data.bookings} bookable={Boolean(a.bookable)} status={a.status} onSetBookable={onSetBookable} onOpenBookings={onOpenBookings} />
           </TabsContent>
         )}
         {data.tickets && (
@@ -315,6 +340,49 @@ function LicencesTab({ licences, today, onOpenLicence }: { licences: AssetLicenc
   return (
     <Card>
       <DataTable label="Licence seats on this device" columns={cols} rows={licences} getRowId={(l) => l.seatId} state="ready" />
+    </Card>
+  );
+}
+
+/** Answer 2715: the asset's bookings; asset managers of its place make it bookable (only in stock) or not. */
+function BookingsTab({ bookings, bookable, status, onSetBookable, onOpenBookings }: { bookings: AssetBookingRef[]; bookable: boolean; status: AssetStatus; onSetBookable?: (b: boolean) => Promise<unknown>; onOpenBookings?: () => void }) {
+  const { toast } = useToast();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cols: TableColumn<AssetBookingRef>[] = [
+    { key: 'person', header: 'Person', value: (b) => b.person, width: 200 },
+    { key: 'startsOn', header: 'From', type: 'date', value: (b) => day(b.startsOn), width: 130 },
+    { key: 'endsOn', header: 'To', type: 'date', value: (b) => day(b.endsOn), width: 130 },
+    { key: 'status', header: 'Status', value: (b) => b.status, render: (b) => <BookingBadge b={b} />, width: 150 },
+  ];
+  const set = async (b: boolean) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await onSetBookable!(b);
+      toast({ tone: 'success', title: b ? 'Employees can now book it.' : 'It can no longer be booked.' });
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card>
+      <div className="yx-set-stack">
+        {error && <InlineAlert tone="danger" title="Not changed">{error}</InlineAlert>}
+        {onSetBookable ? (
+          <Checkbox checked={bookable} onChange={(b) => void set(b)} disabled={busy || (!bookable && status !== 'in_stock')} label="Bookable" description={!bookable && status !== 'in_stock' ? 'Only an asset in stock can be made bookable.' : 'Employees book it for a few days from Me › Asset bookings. It is then handed over only through a booking.'} />
+        ) : (
+          <Text as="p" tone="secondary">{bookable ? 'Employees can book it.' : 'It is not bookable.'}</Text>
+        )}
+        {bookings.length ? <DataTable label="Bookings of this asset" columns={cols} rows={bookings} getRowId={(b) => b.id} state="ready" /> : <InlineAlert tone="info" title="No bookings of this asset yet." />}
+        {onOpenBookings && bookable && (
+          <div>
+            <Button onClick={onOpenBookings}>Open asset bookings</Button>
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
