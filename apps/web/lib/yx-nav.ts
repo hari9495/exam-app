@@ -567,6 +567,8 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(any('desk.ticket.work', 'desk.report.view'), L('desk-team', 'Team and shifts', '/yx/desk/team')),
           ...when(any('desk.customer.manage', 'desk.ticket.view'), L('desk-customers', 'Customers', '/yx/desk/customers')),
           ...when(any('desk.report.view', 'desk.survey.manage'), L('desk-reports', 'SLAs', '/yx/desk/reports')),
+          // GLPI 7 (answer 2719): each department's yearly IT budget with what IT desks spent.
+          ...when(has('desk.budget.manage'), L('desk-it-budgets', 'IT budgets', '/yx/desk/it-budgets')),
           ...when(has('desk.directory.manage'), L('desk-people-list', 'People list', '/yx/desk/people-list')),
           // Helpdesk plan item 3: the company's business applications and their owners (desk staff read, the owner edits).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-apps', 'Applications', '/yx/desk/apps')),

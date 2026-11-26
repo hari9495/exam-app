@@ -148,6 +148,13 @@ describe('buildNav: People', () => {
     expect(labels(nav([], { employee: true, manager: true }), 'people')).not.toContain('Positions');
   });
 
+  it('2719: IT budgets in the Helpdesk for the budget key only (positive and negative)', () => {
+    expect(labels(nav(['desk.budget.manage']), 'helpdesk')).toContain('IT budgets');
+    expect(pageLink(nav(['desk.budget.manage']), '/yx/desk/it-budgets')).toMatchObject({ area: { id: 'helpdesk' }, link: { label: 'IT budgets' }, inMenu: true });
+    expect(labels(nav(['desk.ticket.work', 'desk.report.view', 'desk.settings.manage']), 'helpdesk')).not.toContain('IT budgets');
+    expect(labels(nav([], { employee: true, manager: true }), 'helpdesk')).not.toContain('IT budgets');
+  });
+
   it('a manager without HR keys gets "For my team"; raising on behalf adds Change action', () => {
     const n = nav(['request.raise_on_behalf'], { employee: true, manager: true, history: true });
     expect(labels(n, 'people')).toEqual(['Directory', 'Org chart', 'My team', 'Company documents', 'Probation', 'Change action', 'Exit cases', 'Job history']);

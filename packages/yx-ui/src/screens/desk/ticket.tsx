@@ -4,7 +4,8 @@ import { Button, IconButton } from '../../components/button';
 import { Badge, PersonLabel, Tag } from '../../components/display';
 import { EmptyState, InlineAlert } from '../../components/feedback';
 import { FormField, useTooEarly } from '../../components/field';
-import { NumberField, TextArea, TextField } from '../../components/inputs';
+import { CurrencyField, NumberField, TextArea, TextField } from '../../components/inputs';
+import { formatMoney } from '../../lib/format';
 import { Switch } from '../../components/choice';
 import { MultiSelect, Select } from '../../components/select';
 import { Segment } from '../../components/segment';
@@ -17,7 +18,7 @@ import { Card, DescriptionList, ObjectHeader, Tabs, TabsContent, TabsList, TabsT
 import { useRun } from '../org/org-kit';
 import { DeskPage, MessageBody, PRIORITY_LABEL, PriorityBadge, STATE_LABEL, StatusBadge, TicketFlags, fillCanned, minutesText, when } from './desk-kit';
 import { FileList } from './help';
-import type { Attachment, CannedResponse, DeskDetail, LoadState, Person, Presence, RequesterContext, TicketChange, TicketDetail, TimelineEntry } from './types';
+import type { Attachment, CannedResponse, CostLineInput, DeskDetail, LoadState, Person, Presence, RequesterContext, TicketChange, TicketCosts, TicketDetail, TimelineEntry } from './types';
 
 // Parts of the ticket workspace (US-B-090, US-B-091, US-G-003, SD-1.08): tags, the requester and their other tickets,
 // where it came from, people on the ticket, time, the priority and type dialogs, timeline words. The page itself is the
@@ -301,6 +302,110 @@ export function TimePanel({ ticket, work, busy, onAdd }: { ticket: TicketDetail;
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+const inr = (x: string) => formatMoney(Number(x));
+const COST_KIND = { fixed: 'Fixed', material: 'Material' } as const;
+
+/** GLPI 7 (answer 2719): an IT ticket's costs: time at its team's rate, fixed and material lines, the total. */
+export function CostsPanel({ costs, work, busy, onAdd, onRemove }: { costs: TicketCosts; work: boolean; busy: boolean; onAdd: (line: CostLineInput) => Promise<unknown>; onRemove: (lineId: string, reason: string) => Promise<unknown> }) {
+  const [kind, setKind] = useState<CostLineInput['kind']>('material');
+  const [description, setDescription] = useState('');
+  const [amount, setAmount] = useState<number | null>(null);
+  const [removing, setRemoving] = useState<TicketCosts['lines'][number] | null>(null);
+  const [reason, setReason] = useState('');
+  const early = useTooEarly([
+    ...(description.trim().length < 2 ? [{ fieldId: 'tc-what', message: 'Say what the cost is for.' }] : []),
+    ...(!amount || amount <= 0 ? [{ fieldId: 'tc-amount', message: 'Enter the amount in rupees.' }] : []),
+  ]);
+  const why = useTooEarly(reason.trim().length < 3 ? [{ fieldId: 'tc-why', message: 'Say why (at least 3 letters).' }] : []);
+  return (
+    <div className="yx-ops-stack" data-gap="sm">
+      <DescriptionList
+        items={[
+          { label: 'Time', value: costs.hourlyRate ? `${inr(costs.timeCost)} at ${inr(costs.hourlyRate)} an hour` : costs.uncostedMinutes ? 'No hourly rate set for this team' : inr(costs.timeCost) },
+          { label: 'Total', value: <strong>{inr(costs.total)}</strong> },
+          { label: 'Charged to', value: costs.departments.length ? costs.departments.join(', ') : 'No department' },
+        ]}
+      />
+      {costs.lines.length > 0 && (
+        <ul className="yx-ops-list" aria-label="Cost lines">
+          {costs.lines.map((l) => (
+            <li key={l.id} className="yx-ops-list__item">
+              <span className="yx-ops-list__main">
+                <span>
+                  {inr(l.amount)} · {l.description}
+                </span>
+                <span className="yx-ops-list__sub">
+                  {COST_KIND[l.kind]} · {l.costOn} · {l.who}
+                </span>
+              </span>
+              {work && l.canRemove && (
+                <Button size="sm" onClick={() => setRemoving(l)}>
+                  Take off
+                </Button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {work && (
+        <>
+          <FormField label="Kind of cost">
+            <Segment label="Kind of cost" options={[{ value: 'material', label: 'Material' }, { value: 'fixed', label: 'Fixed' }]} value={kind} onChange={setKind} />
+          </FormField>
+          <FormField id="tc-what" label="What for" error={early.errorOf('tc-what')}>
+            <TextField value={description} onChange={setDescription} maxLength={200} />
+          </FormField>
+          <FormField id="tc-amount" label="Amount" error={early.errorOf('tc-amount')}>
+            <CurrencyField allowPaise value={amount} onChange={setAmount} />
+          </FormField>
+          <div className="yx-ops-row">
+            <Button
+              size="sm"
+              loading={busy}
+              onClick={async () => {
+                if (early.stop()) return;
+                if ((await onAdd({ kind, description: description.trim(), amount: String(amount) })) === false) return;
+                setDescription('');
+                setAmount(null);
+                early.reset();
+              }}
+            >
+              Add cost
+            </Button>
+          </div>
+        </>
+      )}
+      <Dialog
+        open={removing !== null}
+        onOpenChange={(o) => !o && setRemoving(null)}
+        title="Take this cost off?"
+        description={removing ? `${inr(removing.amount)} · ${removing.description}. It is kept with your reason.` : undefined}
+        footer={
+          <>
+            <Button onClick={() => setRemoving(null)}>Keep it</Button>
+            <Button
+              variant="primary"
+              onClick={async () => {
+                if (why.stop() || !removing) return;
+                if ((await onRemove(removing.id, reason.trim())) === false) return;
+                setRemoving(null);
+                setReason('');
+                why.reset();
+              }}
+            >
+              Take off
+            </Button>
+          </>
+        }
+      >
+        <FormField id="tc-why" label="Why" required error={why.errorOf('tc-why')}>
+          <TextArea value={reason} onChange={setReason} rows={2} maxLength={500} />
+        </FormField>
+      </Dialog>
     </div>
   );
 }

@@ -4176,6 +4176,8 @@ model SdGroup {
   version            Int      @default(1)
   createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  /// GLPI 7 (answer 2719): the team's cost of an hour of ticket work (null: its time is not costed).
+  hourlyRate         Decimal? @map("hourly_rate") @db.Decimal(10, 2)
 
   @@map("sd_groups")
 }
@@ -4456,8 +4458,48 @@ model SdTimeEntry {
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   updatedBy      String?  @map("updated_by") @db.Uuid
+  /// GLPI 7 (answer 2719): the ticket team's hourly rate when the time was logged, and the department it is charged to.
+  hourlyRate     Decimal? @map("hourly_rate") @db.Decimal(10, 2)
+  departmentId   String?  @map("department_id") @db.Uuid
 
   @@map("sd_time_entries")
+}
+
+/// GLPI 7 (answer 2719): a fixed or material cost on an IT ticket (a change too), charged to a department.
+model SdCostLine {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  deskId         String    @map("desk_id") @db.Uuid
+  ticketId       String    @map("ticket_id") @db.Uuid
+  /// fixed | material
+  kind           String    @db.VarChar(10)
+  description    String    @db.VarChar(200)
+  amount         Decimal   @db.Decimal(12, 2)
+  costOn         DateTime  @map("cost_on") @db.Date
+  departmentId   String?   @map("department_id") @db.Uuid
+  createdBy      String    @map("created_by") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  removedAt      DateTime? @map("removed_at") @db.Timestamptz(3)
+  removedBy      String?   @map("removed_by") @db.Uuid
+  removeReason   String?   @map("remove_reason") @db.VarChar(300)
+
+  @@index([organizationId, ticketId], map: "sd_cost_lines_ticket_idx")
+  @@index([organizationId, costOn], map: "sd_cost_lines_on_idx")
+  @@map("sd_cost_lines")
+}
+
+/// GLPI 7 (answer 2719): a department's IT budget for a financial year (April's year).
+model SdItBudget {
+  organizationId String   @map("organization_id") @db.Uuid
+  departmentId   String   @map("department_id") @db.Uuid
+  year           Int
+  amount         Decimal  @db.Decimal(14, 2)
+  updatedBy      String   @map("updated_by") @db.Uuid
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([departmentId, year])
+  @@index([organizationId, year], map: "sd_it_budgets_org_idx")
+  @@map("sd_it_budgets")
 }
 
 model SdCannedResponse {

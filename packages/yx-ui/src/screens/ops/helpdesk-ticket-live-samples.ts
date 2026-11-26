@@ -25,6 +25,8 @@ export function liveTicket(over: Partial<LiveTicket> = {}): LiveTicket {
     onUpload: async () => ({ ...TICKET.attachments[0], id: 'n', scanStatus: 'pending', messageId: null }),
     onOpenFile: ok,
     onAddTime: ok,
+    onAddCost: ok,
+    onRemoveCost: ok,
     onRunScenario: ok,
     onConvert: ok,
     onAddCollaborator: ok,

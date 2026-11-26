@@ -326,9 +326,9 @@ const TEMPLATES: readonly RoleTemplate[] = [
     key: 'service_desk_admin',
     name: 'Service Desk Admin',
     typicalScope: 'tenant',
-    summary: 'Creates desks, hands out agent seats (the cost is shown first), sets up every desk, its mailboxes, portals, customers and help articles, the service catalogue, automation rules and webhooks, the people list and directory sync, reports, surveys and privacy requests.',
+    summary: 'Creates desks, hands out agent seats (the cost is shown first), sets up every desk, its mailboxes, portals, customers and help articles, the service catalogue, automation rules and webhooks, the people list and directory sync, reports, surveys and privacy requests, and the yearly IT budget of each department.',
     cannot: 'See tickets without a seat on the desk, or private and sensitive tickets.',
-    permissions: ['desk.desk.create', 'desk.settings.manage', 'desk.member.manage', 'desk.sla.manage', 'desk.mailbox.manage', 'desk.portal.manage', 'desk.customer.manage', 'desk.kb.view_internal', 'desk.kb.publish', 'desk.report.view', 'desk.report.manage', 'desk.survey.manage', 'desk.directory.manage', 'desk.catalog.manage', 'desk.rule.manage', 'desk.integration.manage', 'desk.lifecycle.manage', 'desk.channel.manage'],
+    permissions: ['desk.desk.create', 'desk.settings.manage', 'desk.member.manage', 'desk.sla.manage', 'desk.mailbox.manage', 'desk.portal.manage', 'desk.customer.manage', 'desk.kb.view_internal', 'desk.kb.publish', 'desk.report.view', 'desk.report.manage', 'desk.survey.manage', 'desk.directory.manage', 'desk.catalog.manage', 'desk.rule.manage', 'desk.integration.manage', 'desk.lifecycle.manage', 'desk.channel.manage', 'desk.budget.manage'],
   },
   {
     key: 'desk_admin',

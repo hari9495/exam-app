@@ -28873,5 +28873,29 @@
                               "Screens/Settings/2.8 Assets (Bookings)"
                     ],
                     "note": "Positive and negative: lifecycle-6c e2e '2715' (not bookable 404, wrong key 403 and other company 404 on bookable/hand-over/approve, register Issue refused 409, free-between search with location filter, too long and past start 400, daily repeat clash refuses all naming the day, weekly repeat 3 bookings, database exclusion, my bookings only mine, hand-over before start 409, hand-over creates an asset_assignment and the register shows the holder, second hand-over 409, cancel out 409, unbookable with live bookings 409, asset page bookings, due reminder once to the person, overdue once to asset managers (not the person, agent, Finance, other company), audits, take back via the register return ends the booking, series cancel 2, IT cancel needs reason and tells the person; approval: pending, IT told, pending blocks the day, hand-over 409, approve 403 for employee and asset.view, 404 other company, decline needs reason, person told declined/approved, audits, person cancels); unit bookingDates; kit tests asset-bookings (11) and settings. Migration 807 (assets.bookable, asset_bookings with RLS and exclusion), settings asset.booking_max_days (14) and asset.booking_approval (off), sweep asset-booking-alerts."
+          },
+          {
+                    "id": "MT-2719-IT-COSTS",
+                    "area": "Helpdesk: IT costs into department budgets (GLPI 7, answer 2719)",
+                    "screen": "Helpdesk › Desk set-up › Groups; an IT ticket › Costs; Helpdesk › IT budgets",
+                    "url": "http://localhost:3000/yx/desk/it-budgets",
+                    "account": "admin@demo-org.test (company admin, or a Service Desk Admin) for budgets and team rates; it-agent@demo-org.test (IT desk agent); a second IT agent; panel@demo-org.test (employee).",
+                    "steps": [
+                              "In Desk set-up, open the IT desk's Groups tab, edit its team and set Hourly rate to 650; save. Open an HR desk's team: there is no Hourly rate.",
+                              "As the IT agent, open an IT ticket of that team and log 30 minutes of time.",
+                              "In the Costs card press Add cost with nothing filled; then add Material, Replacement charger, 1850.",
+                              "Change the team rate to 1000 and open the ticket again.",
+                              "As a second IT agent, open the same ticket: the charger line has no Take off. As the first agent press Take off, then Take off again with no reason; then give a reason.",
+                              "As the admin open Helpdesk › IT budgets: press Set a budget and Save with nothing filled; then choose the requester's department and 250000, save. Switch to next year.",
+                              "Open an HR desk ticket as its agent, and the IT ticket as the employee (My tickets).",
+                              "As the IT agent and as the employee, open /yx/desk/it-budgets."
+                    ],
+                    "expected": "Step 1: the team shows '₹650 an hour'; no rate field on non-IT desks. Step 2: Costs shows Time ₹325 at ₹650 an hour, charged to the requester's department. Step 3: 'Say what the cost is for.' and 'Enter the amount in rupees.' and nothing is added; then a toast 'Cost added.' and the total ₹2,175. Step 4: the rate shows ₹1,000 but the time cost stays ₹325. Step 5: no Take off for someone else's line; 'Say why (at least 3 letters).'; then 'Cost taken off.' and the total drops. Step 6: 'Choose a department.' and 'Enter the budget in rupees (0 or more).'; then 'Budget saved.' and the row shows budget, spent (time and costs) and left; next year is empty. Step 7: no Costs card on the HR ticket or in the employee's view. Step 8: 'You don't have access to IT budgets'; no IT budgets in their menu.",
+                    "stories": [
+                              "Helpdesk › IT budgets",
+                              "Helpdesk › HLP-03 Ticket workspace › IT ticket · costs",
+                              "Helpdesk › Desk set-up › Groups · team hourly rate"
+                    ],
+                    "note": "Answer 2719. Positive and negative: API service-desk-it-costs.e2e-spec.ts; kit it-costs.test.tsx; web yx-nav.test.ts. No page scroll at 1278 x 635 (walked headless 26 Nov 2026)."
           }
 ]
