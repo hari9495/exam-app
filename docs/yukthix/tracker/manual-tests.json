@@ -28740,5 +28740,26 @@
                               "Screens/People/PPL-25 · Asset contracts (all)"
                     ],
                     "note": "Positive and negative: lifecycle-6c e2e '2717' (end and notice dates, value only for IT and Finance, none for asset.view, asset page contracts, 403 no key and view only, 400 cap / months 0 / bad renewal / another place's asset / retired supplier, 409 same number and stale version, a site manager cannot see, change or add for another place or no place, assets at other places kept and counted, audit, other company 404 / empty); kit asset-contracts tests 7; unit contract dates; yx-nav test. Migration 805 (asset_contracts, asset_contract_assets with RLS and support_session_excluded). Types: Maintenance (AMC), Support, Lease or rental, Insurance, Subscription, Other. Helpdesk tickets to a supplier: later (M14)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2714-CONTRACTS",
+                    "area": "IT assets part 3 (answer 2714, contracts): notice alerts, tacit renewal and express end",
+                    "screen": "Settings › People › Assets (2.8) Contracts section; People › Asset contracts; the bell and email of the asset managers",
+                    "url": "http://localhost:3000/yx/settings/people/assets",
+                    "account": "HR Admin (settings); IT / Admin coordinator (company-wide asset.manage); a site IT person with asset.manage on one location; Finance; an employee.",
+                    "steps": [
+                              "As HR open Settings › Assets: look at the Contracts section.",
+                              "As IT add three contracts for your location: (a) tacit, start 400 days ago, 12 months; (b) express, start 200 days ago, 6 months; (c) tacit, start 10 days ago, 1 month, notice 30 days. Add (d) like (c) with no legal entity or location.",
+                              "Run the daily contract check (job asset-contract-alerts, 07:25 IST; in a test environment trigger the sweep).",
+                              "Open People › Asset contracts: Active and Ended. Open (a) and (c).",
+                              "Look at the bell as IT, as the site IT person of that location, as a site IT person of another location, as Finance and as the employee.",
+                              "Run the check again. Then set Contracts to 30 days before the notice date and add (e): tacit, start 10 days ago, 2 months, notice 30 days; run the check. Set it to Off, add another like (c), run the check."
+                    ],
+                    "expected": "Step 1: 'Contract notice alert' with Off, On the notice date (chosen), 7, 15 and 30 days before the notice date, and the helper about who is told and tacit / express. Step 4: (a) active, 'Renewed 1 time', its end a year later; (b) under Ended; (c) shows 'Give notice by <date>'. Step 5: IT and the site IT person of that location have 'Contract (c) with <supplier>: give notice by <date> if it should not renew…', linking to the contract; for (d) only company-wide asset managers; the other site's IT, Finance and the employee have nothing. Step 6: nobody is told twice; with 30 days (e) is told; with Off nobody is told. Every renewal, end and alert is in the audit log (asset.contract.renewed, asset.contract.ended, asset.contract.notice.alerted).",
+                    "stories": [
+                              "Screens/Settings (2.8 Assets, Contracts section)",
+                              "Screens/People/PPL-25 · Asset contracts (Contracts · asset manager, one in its notice window)"
+                    ],
+                    "note": "Positive and negative: lifecycle-6c e2e '2714 contracts' (tacit renewed once and audited, express ended and audited, told: company-wide managers and the location's grant holder; not Finance, the asset.view agent or an employee; place-less: company-wide only; not yet at the notice date: nobody; second run: nothing again; setting 30 reaches the later one; off: nobody; other company never); unit contract dates; kit settings test; sweeps and notification-type specs. Setting asset.contract_alert_days (off, 0 default, 7, 15, 30). Daily sweep asset-contract-alerts (AssetAlertsService.contractSweep, beside the warranty sweep)."
           }
 ]

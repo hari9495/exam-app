@@ -22,7 +22,9 @@ const page = (canEdit = true, data = DATA) => assetSettingsPage(timeSettingsPage
 describe('2.8 Assets live', () => {
   it('the company list comes first, then the acknowledgement (no E-sign yet) and the recovery basis, at their starter values', () => {
     const p = page();
-    expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return', 'Warranty']);
+    expect(p.sections.map((s) => s.title)).toEqual(['Categories', 'Issue and return', 'Warranty', 'Contracts']);
+    // Answer 2714 (contracts): on the notice date by default; off tells nobody.
+    expect(allSettings(p).find((d) => d.key === 'asset.contract_alert_days')).toMatchObject({ kind: 'radio', value: '0', options: ['off', '0', '7', '15', '30'], helper: expect.stringMatching(/tacit contract renews itself/) });
     // Answer 2714: the warranty alert, 30 days before by default; off tells nobody.
     expect(allSettings(p).find((d) => d.key === 'asset.warranty_alert_days')).toMatchObject({ kind: 'radio', value: '30', options: ['off', '7', '15', '30', '60', '90'], helper: expect.stringMatching(/told once/) });
     const f = (k: string) => allSettings(p).find((d) => d.key === k)!;

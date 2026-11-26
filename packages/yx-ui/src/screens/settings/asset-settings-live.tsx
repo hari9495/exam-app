@@ -62,7 +62,9 @@ export function assetSettingsPage(page: SettingsPageDef, design: SettingsPageDef
         ? { ...d, kind: 'radio', helper: 'Written-down value is the asset’s net book value on the day, from its category’s depreciation. Without a cost, purchase date or depreciation, HR decides the amount.', showWhen: { key: 'asset.recovery_to_fnf', equals: true } }
         : d.key === 'asset.warranty_alert_days'
           ? { ...d, kind: 'radio', helper: 'Asset managers of the asset’s place are told once. An ended warranty shows in red on the register.' }
-          : d;
+          : d.key === 'asset.contract_alert_days'
+            ? { ...d, kind: 'radio', helper: 'Asset managers of the contract’s place (company-wide ones for a contract with no place) are told once. A tacit contract renews itself at its end; an express one ends.' }
+            : d;
   const sections = page.sections.map((s) => ({ ...s, settings: s.settings.map(tune) }));
   const own = sections.find((s) => s.title === drawn.title);
   return { ...page, sections: [{ title: drawn.title, description: drawn.description, settings: [list, ...(own?.settings ?? [])] }, ...sections.filter((s) => s.title !== drawn.title)] };

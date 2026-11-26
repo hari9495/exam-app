@@ -120,6 +120,8 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   { type: 'asset.assigned', group: 'assignments', label: 'A company asset was issued to you' },
   // IT assets answer 2714: to the asset managers of the asset's place.
   { type: 'asset.warranty.ending', group: 'reminders', label: 'An asset warranty ends soon' },
+  // IT assets answer 2714 (contracts): to the asset managers of the contract's place.
+  { type: 'asset.contract.notice', group: 'reminders', label: 'An asset contract reaches its notice date' },
   { type: 'exit.deprovisioning.failed', group: 'reminders', label: 'A step after someone left did not go through (HR)' },
   { type: 'probation.review.done', group: 'reminders', label: 'A manager reviewed a probation' },
   // HIR-13 (founder decision 6): the manager is told, never asked.

@@ -12,7 +12,7 @@ import { AutomationService } from '../src/rules-engine/automation.service';
 import { addDays } from '../src/lifecycle/journey-rules';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
 import { AssetAlertsService } from '../src/lifecycle/asset-alerts.service';
-import { addMonthsIso } from '../src/lifecycle/asset-categories';
+import { addMonthsIso, contractEndsOn } from '../src/lifecycle/asset-categories';
 
 // Lifecycle batch 6c end to end against the real database (forced RLS, the app role): the notice from the policy in
 // force on the day, a resignation accepted by the manager then HR (on notice, the offboarding checklist on the last day,
@@ -796,6 +796,66 @@ describe('Lifecycle batch 6c', () => {
     // Another company: nothing.
     expect((await api('adminB', 'get', '/lifecycle/asset-contracts').expect(200)).body.rows).toHaveLength(0);
     await api('adminB', 'put', `/lifecycle/asset-contracts/${k}`).send({ ...body, version: 2 }).expect(404);
+  });
+
+  it('IT assets part 3 (2714 contracts): tacit renews, express ends, owners told once at the notice date (a company setting)', async () => {
+    const alerts = app.get(AssetAlertsService);
+    const o = { organizationId: org.A.id };
+    const sup = (await api('it', 'post', '/lifecycle/asset-suppliers').send({ name: `Notice Co ${run}`, contacts: [] }).expect(201)).body.id as string;
+    const add = async (n: string, over: Record<string, unknown>) => (await api('it', 'post', '/lifecycle/asset-contracts').send({ kind: 'support', number: `${n}-${run}`, supplierId: sup, legalEntityId: ids.entity, locationId: ids.blr, months: 1, renewal: 'tacit', noticeDays: 30, assetIds: [], ...over }).expect(201)).body.id as string;
+    const tacitStart = addDays(today, -400);
+    const renews = await add('TAC', { startsOn: tacitStart, months: 12 }); // ended about 35 days ago: renews once
+    const ends = await add('EXP', { startsOn: addDays(today, -200), months: 6, renewal: 'express' }); // ended: ends
+    const soon = await add('SOON', { startsOn: addDays(today, -10) }); // ends in about 20 days; notice date passed
+    const later = await add('LATER', { startsOn: addDays(today, -10), months: 2 }); // notice date in about 20 days
+    const nowhere = await add('ALL', { startsOn: addDays(today, -10), legalEntityId: null, locationId: null }); // company-wide
+    const told = (k: string) => inA((tx) => tx.userNotification.findMany({ where: { type: 'asset.contract.notice', entityId: k }, select: { recipientUserId: true } })).then((r) => r.map((x) => x.recipientUserId));
+    const acts = (k: string) => inA((tx) => tx.auditLog.findMany({ where: { entityType: 'asset_contract', entityId: k }, orderBy: { createdAt: 'asc' } })).then((r) => r.map((x) => x.action));
+    const row = async (k: string) => (await api('it', 'get', '/lifecycle/asset-contracts').expect(200)).body.rows.find((r: { id: string }) => r.id === k);
+    // A site manager of Bengaluru only, to check place scoping (a grant).
+    const blrIt = await inA(async (tx) => {
+      const u = await tx.user.create({ data: { ...o, email: `blr-it@life6c-${run}.test`, name: `Bengaluru IT ${run}`, passwordHash: 'not-used', role: 'panel' } });
+      const role = await tx.permissionProfile.create({ data: { ...o, name: `asset-blr-${run}`, permissionsJson: JSON.stringify(['asset.view', 'asset.manage']) } });
+      await tx.roleGrant.create({ data: { ...o, userId: u.id, permissionProfileId: role.id, scopeType: 'location', locationId: ids.blr, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Bengaluru IT', grantedBy: users.adminA } });
+      return u.id;
+    });
+    await alerts.contractSweep();
+    // Tacit: renewed for the same length, recorded and audited; express: ended.
+    expect(await row(renews)).toMatchObject({ status: 'active', renewals: 1, endsOn: contractEndsOn(tacitStart, 12, 1) });
+    expect(await acts(renews)).toEqual(['asset.contract.added', 'asset.contract.renewed']);
+    expect(await row(ends)).toMatchObject({ status: 'ended', renewals: 0 });
+    expect(await acts(ends)).toEqual(['asset.contract.added', 'asset.contract.ended']);
+    // The notice date has come: the asset managers of the place are told (company-wide ones and Bengaluru's), once.
+    const first = await told(soon);
+    expect(first).toEqual(expect.arrayContaining([users.hr, users.it, users.adminA, blrIt]));
+    for (const who of ['fin', 'agent', 'ravi'] as const) expect(first).not.toContain(users[who]);
+    expect(await acts(soon)).toEqual(['asset.contract.added', 'asset.contract.notice.alerted']);
+    // A place-less contract: company-wide managers only.
+    const all = await told(nowhere);
+    expect(all).toEqual(expect.arrayContaining([users.hr, users.it]));
+    expect(all).not.toContain(blrIt);
+    // Not yet at its notice date (setting 0 = on the notice date); ended and renewed-far-ahead ones are not told.
+    expect(await told(later)).toEqual([]);
+    expect(await told(ends)).toEqual([]);
+    expect(await told(renews)).toEqual([]);
+    // A second run tells nobody again and renews nothing again.
+    await alerts.contractSweep();
+    expect((await told(soon)).length).toBe(first.length);
+    expect((await row(renews)).renewals).toBe(1);
+    // The company setting: 30 days before the notice date reaches the later one; off tells nobody.
+    const lead = await inA((tx) => tx.setting.create({ data: { ...o, scopeType: 'tenant', scopeId: org.A.id, key: 'asset.contract_alert_days', value: '30' } }));
+    try {
+      await alerts.contractSweep();
+      expect(await told(later)).toContain(users.it);
+      await inA((tx) => tx.setting.update({ where: { id: lead.id }, data: { value: 'off' } }));
+      const quiet = await add('QUIET', { startsOn: addDays(today, -10) });
+      await alerts.contractSweep();
+      expect(await told(quiet)).toEqual([]);
+    } finally {
+      await inA((tx) => tx.setting.update({ where: { id: lead.id }, data: { value: '0' } }));
+    }
+    // Another company's people are never told.
+    expect(await told(soon)).not.toContain(users.adminB);
   });
 
   it('two companies apart', async () => {

@@ -6,6 +6,7 @@ export const TIME_REGISTRY_SAMPLE: Record<string, RegistryDef> = {
   // IT assets part 1 (answer 2712): Settings 2.8.
   "asset.ack_method": { "label": "Acknowledgement", "values": ["click", "none"], "default": "click", "labels": { "click": "Click to accept", "none": "None" }, "scopes": ["tenant"] },
   "asset.warranty_alert_days": { "label": "Warranty alert", "values": ["off", "7", "15", "30", "60", "90"], "default": "30", "labels": { "off": "Off", "7": "7 days before", "15": "15 days before", "30": "30 days before", "60": "60 days before", "90": "90 days before" }, "scopes": ["tenant"] },
+  "asset.contract_alert_days": { "label": "Contract notice alert", "values": ["off", "0", "7", "15", "30"], "default": "0", "labels": { "off": "Off", "0": "On the notice date", "7": "7 days before the notice date", "15": "15 days before the notice date", "30": "30 days before the notice date" }, "scopes": ["tenant"] },
   "asset.recovery_to_fnf": { "label": "Add unreturned-asset recovery to F&F", "values": ["on", "off"], "default": "on", "scopes": ["tenant"] },
   "asset.recovery_basis": { "label": "Recovery amount", "values": ["category_default", "written_down", "hr_decides"], "default": "category_default", "labels": { "category_default": "Category default", "written_down": "Written-down value", "hr_decides": "Decided by HR each time" }, "scopes": ["tenant"] },
   "attendance.check_in_opens_minutes": {

@@ -1160,6 +1160,13 @@ export const GROUP_2: SettingsGroupDef = {
             { key: 'asset.warranty_alert_days', label: 'Warranty alert', kind: 'radio', value: '30 days before', options: ['Off', '7 days before', '15 days before', '30 days before', '60 days before', '90 days before'], helper: 'Asset managers of the asset’s place are told once. An ended warranty shows in red on the register.', synonyms: ['warranty'] },
           ],
         },
+        // IT assets answer 2714 (contracts): the contract's owners are told once at its notice date (end less notice days).
+        {
+          title: 'Contracts',
+          settings: [
+            { key: 'asset.contract_alert_days', label: 'Contract notice alert', kind: 'radio', value: 'On the notice date', options: ['Off', 'On the notice date', '7 days before the notice date', '15 days before the notice date', '30 days before the notice date'], helper: 'Asset managers of the contract’s place (company-wide ones for a contract with no place) are told once. A tacit contract renews itself at its end; an express one ends.', synonyms: ['contract', 'notice', 'renewal'] },
+          ],
+        },
       ],
       lastChange: { by: 'Karthik Subramanian', role: 'Engineering Manager', at: '2026-06-18T09:55', what: 'Changed default laptop recovery from ₹40,000 to ₹45,000' },
       related: [{ label: 'Asset register', screenId: 'PPL-25' }],
