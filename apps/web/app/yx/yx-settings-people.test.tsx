@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@yukthix/ui';
@@ -23,9 +23,11 @@ const ue = userEvent.setup({ pointerEventsCheck: 0 });
 const base: NavInput = { has: () => false, role: 'panel', support: false, employee: false, manager: false, history: false, clearance: false, tasks: false, firstDays: false };
 const ADMIN = buildNav({ ...base, has: () => true, role: 'org_admin' });
 const calls: [string, unknown][] = [];
-const routes = (perms: string[], overrides: object[] = []) =>
+const CATS = [{ id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, nextTag: 'LAP-2026-0007', assets: 4, version: 2 }];
+const routes = (perms: string[], overrides: object[] = [], canEditCats = true) =>
   api.mockImplementation(async (path: string, init?: RequestInit) => {
-    if (init?.method === 'PUT') return (calls.push([`PUT ${path}`, JSON.parse(String(init.body))]), {});
+    if (init?.method === 'PUT' || init?.method === 'POST') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body ?? '{}'))]), {});
+    if (path === '/lifecycle/asset-categories') return { canEdit: canEditCats, rows: CATS };
     if (path.startsWith('/rbac/me/permissions')) return perms;
     if (path === '/org/settings') return { registry: TIME_REGISTRY_SAMPLE, limits: {}, pending: [], overrides };
     throw new Error(`unexpected ${path}`);
@@ -76,6 +78,28 @@ describe('Settings S-4: People pages', () => {
     expect(await screen.findByRole('combobox', { name: /Notice period once confirmed/ })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Company rules/ })).toBeNull();
     expect(PEOPLE_SETTINGS['2.7']!.settings.map((s) => s.key)).toEqual(expect.arrayContaining(['contract.max_years', 'contract_end.action']));
+  });
+
+  it('IT assets part 1 (2712): 2.8 lists the company categories; a row opens its drawer and a change is saved with its version', async () => {
+    routes(['org.settings.manage']);
+    show('assets');
+    await ue.click(await screen.findByRole('button', { name: 'Edit Laptop' }));
+    const d = await screen.findByRole('dialog');
+    const name = within(d).getByRole('textbox', { name: /Name/ });
+    await ue.clear(name);
+    await ue.type(name, 'Laptops');
+    await ue.click(within(d).getByRole('button', { name: 'Save category' }));
+    await waitFor(() => expect(calls).toContainEqual(['PUT /lifecycle/asset-categories/c1', { name: 'Laptops', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, depreciationMethod: 'straight_line', depreciationRate: null, version: 2 }]));
+    expect(screen.getByRole('radio', { name: 'Click to accept' })).toBeInTheDocument();
+    expect(screen.queryByRole('radio', { name: 'E-sign' })).toBeNull();
+  });
+
+  it('negative (2712): without the company-wide settings key the categories cannot be opened or added', async () => {
+    routes(['org.structure.view'], [], false);
+    show('assets');
+    expect(await screen.findByText('Laptop')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Edit Laptop' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Add asset category' })).toBeNull();
   });
 
   it('negative: without HR\'s settings key the page is view only', async () => {

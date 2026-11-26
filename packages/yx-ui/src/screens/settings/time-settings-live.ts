@@ -364,6 +364,24 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
       { section: 'Fixed-term contracts', key: 'contract_end.action' },
     ],
   },
+  // IT assets part 1 (answer 2712): 2.8 Assets; its category list is added by assetSettingsPage (asset-settings-live).
+  '2.8': {
+    links: [],
+    settings: [
+      { section: 'Issue and return', key: 'asset.ack_method', synonyms: ['acknowledge asset'] },
+      { section: 'Issue and return', key: 'asset.recovery_to_fnf', synonyms: ['recovery'] },
+      { section: 'Issue and return', key: 'asset.recovery_basis', synonyms: ['recovery amount', 'written-down value'] },
+      // Answer 2714.
+      { section: 'Warranty', key: 'asset.warranty_alert_days', synonyms: ['warranty', 'warranty alert'] },
+      // Answer 2714 (contracts).
+      { section: 'Contracts', key: 'asset.contract_alert_days', synonyms: ['contract', 'notice', 'renewal'] },
+      // Answer 2718.
+      { section: 'Licences', key: 'asset.licence_alert_days', synonyms: ['licence', 'license', 'software', 'expiry'] },
+      // Answer 2715.
+      { section: 'Bookings', key: 'asset.booking_max_days', synonyms: ['booking', 'loan', 'borrow', 'spare'] },
+      { section: 'Bookings', key: 'asset.booking_approval', synonyms: ['booking', 'approval', 'loan'] },
+    ],
+  },
   // Settings S-7 (answers 1321, 1561, 1564): the settings that were on Company rules and Access and privacy.
   '2.2': {
     links: [],

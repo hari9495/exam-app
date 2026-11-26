@@ -123,9 +123,9 @@ const TEMPLATES: readonly RoleTemplate[] = [
     key: 'finance',
     name: 'Finance',
     typicalScope: 'legal_entity',
-    summary: 'Structure, cost centres and pay ranges for cost reports.',
+    summary: 'Structure, cost centres and pay ranges for cost reports; the asset register with what each asset cost (answer 2711).',
     cannot: 'Individual salaries and identity details.',
-    permissions: ['org.structure.view', 'pay.range.view', 'billing.view'],
+    permissions: ['org.structure.view', 'pay.range.view', 'billing.view', 'asset.view', 'asset.finance.view'],
   },
   {
     key: 'finance_approver',

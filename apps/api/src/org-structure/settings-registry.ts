@@ -227,6 +227,22 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // uses the policy in force on the day it is submitted (YX-LC-04). Starter values: probation 15 days, confirmed 30.
   'exit.notice.probation': { label: 'Notice period during probation', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '15d' },
   'exit.notice.confirmed': { label: 'Notice period once confirmed', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '30d' },
+  // IT assets part 1 (answer 2712, Settings 2.8): how a person confirms an asset they receive ("E-sign" waits for the
+  // e-sign partner), and the F&F recovery of an asset not returned. "Written-down value" is the net book value on the day
+  // (answer 2713, from the category's depreciation; without one HR decides).
+  'asset.ack_method': { label: 'Acknowledgement', scopes: ['tenant'], dated: false, values: ['click', 'none'], default: 'click', labels: { click: 'Click to accept', none: 'None' } },
+  'asset.recovery_to_fnf': { label: 'Add unreturned-asset recovery to F&F', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // IT assets answer 2714: how many days before a warranty ends its asset managers are told (once); off tells nobody.
+  'asset.warranty_alert_days': { label: 'Warranty alert', scopes: ['tenant'], dated: false, values: ['off', '7', '15', '30', '60', '90'], default: '30', labels: { off: 'Off', '7': '7 days before', '15': '15 days before', '30': '30 days before', '60': '60 days before', '90': '90 days before' } },
+  // IT assets answer 2714 (contracts): how long before a contract's notice date (end date less its notice period) its
+  // owners are told (once); 0 is on the notice date; off tells nobody.
+  'asset.contract_alert_days': { label: 'Contract notice alert', scopes: ['tenant'], dated: false, values: ['off', '0', '7', '15', '30'], default: '0', labels: { off: 'Off', '0': 'On the notice date', '7': '7 days before the notice date', '15': '15 days before the notice date', '30': '30 days before the notice date' } },
+  // IT assets answer 2718: how many days before a software licence expires its asset managers are told (once); off tells nobody.
+  'asset.licence_alert_days': { label: 'Licence expiry alert', scopes: ['tenant'], dated: false, values: ['off', '7', '15', '30', '60', '90'], default: '30', labels: { off: 'Off', '7': '7 days before', '15': '15 days before', '30': '30 days before', '60': '60 days before', '90': '90 days before' } },
+  // IT assets answer 2715: the longest booking of a bookable asset (days), and whether IT approves each booking.
+  'asset.booking_max_days': { label: 'Longest booking', scopes: ['tenant'], dated: false, values: ['1', '3', '7', '14', '30'], default: '14', labels: { '1': '1 day', '3': '3 days', '7': '7 days', '14': '14 days', '30': '30 days' } },
+  'asset.booking_approval': { label: 'IT approves each booking', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'off' },
+  'asset.recovery_basis': { label: 'Recovery amount', scopes: ['tenant'], dated: false, values: ['category_default', 'written_down', 'hr_decides'], default: 'category_default', labels: { category_default: 'Category default', written_down: 'Written-down value', hr_decides: 'Decided by HR each time' } },
   // P05 Q6 (decided): alumni read their own letters and documents for this many years after the last day.
   // M05 §13 (expenses E1): capture supplier GSTIN, invoice and tax split on GST-eligible lines, per entity (off by default, Q5).
   // M05 E2 (§9): when finance checks claims, how old a bill may be before it needs that check, and above what claim

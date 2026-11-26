@@ -16,7 +16,7 @@ import { DataTable, type TableColumn } from '../../../components/table';
 import { dayKey } from '../../../lib/dates';
 import { LivePage, dateText } from '../../time/live/kit';
 import type { ExitStep, Handoff } from './types';
-import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitType, ExitWorkspace, LoadState, MyAsset } from './types';
+import type { AssetRow, Choice, ClearanceItem, ExitRow, ExitType, ExitWorkspace, LoadState, MyAsset, MySeat } from './types';
 
 // Lifecycle batch 6c, wired (design §10, §14): Me › Resign (PPL-18), the exit interview (PPL-21), my assets (PPL-25
 // acknowledge), HR's exit cases and the exit workspace (PPL-19, with "Start exit"), clearance sign-offs (PPL-20) and the
@@ -64,6 +64,8 @@ export interface MyAssetsScreenProps {
   onRetry?: () => void;
   rows: MyAsset[] | null;
   onAcknowledge: (a: MyAsset) => Promise<unknown>;
+  /** IT assets answer 2718: the software licence seats given to me (shown when there are any). */
+  seats?: MySeat[] | null;
 }
 
 export function MyAssetsScreen(p: MyAssetsScreenProps) {
@@ -72,11 +74,17 @@ export function MyAssetsScreen(p: MyAssetsScreenProps) {
     { key: 'name', header: 'Asset', value: (r) => r.name, render: (r) => <span className="yx-auth__item-main"><Text>{r.name}</Text><Text tone="secondary" size="sm">{`${r.category} · ${r.tag}`}</Text></span>, width: 240, hideable: false },
     { key: 'issued', header: 'Issued on', value: (r) => r.issuedOn, render: (r) => dateText(r.issuedOn), width: 130 },
     { key: 'condition', header: 'Condition when issued', value: (r) => r.condition, width: 220, optional: true },
-    { key: 'ack', header: 'Received', value: (r) => r.acknowledgedAt ?? '', render: (r) => (r.acknowledgedAt ? <Badge tone="success">Confirmed</Badge> : <Badge tone="warning">Waiting for confirmation</Badge>), width: 140 },
+    { key: 'ack', header: 'Received', value: (r) => r.acknowledgedAt ?? '', render: (r) => (r.ackNone ? <Badge tone="neutral">Not asked</Badge> : r.acknowledgedAt ? <Badge tone="success">Confirmed</Badge> : <Badge tone="warning">Waiting for confirmation</Badge>), width: 140 },
+  ];
+  const seatColumns: TableColumn<MySeat>[] = [
+    { key: 'software', header: 'Software', value: (r) => [r.software, r.softwareVersion].filter(Boolean).join(' '), width: 240, hideable: false },
+    { key: 'given', header: 'Given on', value: (r) => r.givenOn, render: (r) => dateText(r.givenOn), width: 130 },
+    { key: 'expires', header: 'Licence expires', value: (r) => r.expiresOn ?? '', render: (r) => (r.expiresOn ? dateText(r.expiresOn) : 'Does not expire'), width: 150 },
   ];
   return (
     <LivePage title="My assets" description="Company things you hold. Confirm what you received; hand them back when you leave." state={p.state} onRetry={p.onRetry} what="your assets">
       {p.rows && (
+        <div className="yx-set-stack">
         <DataTable
           label="My assets"
           columns={columns}
@@ -105,6 +113,8 @@ export function MyAssetsScreen(p: MyAssetsScreenProps) {
             )
           }
         />
+        {p.seats && p.seats.length > 0 && <DataTable label="My software licences" columns={seatColumns} rows={p.seats} getRowId={(r) => r.seatId} rowNoun={['licence', 'licences']} cardSummary />}
+        </div>
       )}
     </LivePage>
   );
@@ -390,16 +400,28 @@ export interface AssetsScreenProps {
   entities: Choice[];
   locations: (Choice & { entityId: string })[];
   people: Choice[];
-  onAdd: (input: { category: string; name: string; tag: string; serial: string | null; legalEntityId: string | null; locationId: string | null; cost: string | null }) => Promise<unknown>;
+  onAdd: (input: { categoryId: string; name: string; tag: string; serial: string | null; legalEntityId: string | null; locationId: string | null; cost: string | null; supplierId?: string }) => Promise<unknown>;
   onIssue: (a: AssetRow, input: { employeeId: string; issuedOn: string; condition: string }) => Promise<unknown>;
   onReturn: (a: AssetRow, input: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost' }) => Promise<unknown>;
 }
 
 
-export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
-  const [category, setCategory] = useState('');
+/** IT assets part 1 (answer 2712): a category from the company list (Settings 2.8), with its next tag (2720). */
+export type AssetCategoryChoice = Choice & { nextTag?: string | null };
+
+export function AddAssetDrawer({ categories, entities, locations, suppliers, onClose, onAdd }: { categories: AssetCategoryChoice[]; entities: Choice[]; locations: (Choice & { entityId: string })[]; /** Answer 2716: the active IT and Admin suppliers. */ suppliers?: Choice[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
+  const [category, setCategory] = useState<string | null>(null);
+  const [supplier, setSupplier] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');
+  // Answer 2720: the category's next tag fills the tag while it is empty or still the last suggestion.
+  const [suggested, setSuggested] = useState<string | null>(null);
+  const pickCategory = (x: string | null) => {
+    setCategory(x);
+    const next = categories.find((c) => c.value === x)?.nextTag ?? null;
+    if (!tag || tag === suggested) setTag(next ?? '');
+    setSuggested(next);
+  };
   const [serial, setSerial] = useState('');
   const [entity, setEntity] = useState<string | null>(entities.length === 1 ? entities[0].value : null);
   const [location, setLocation] = useState<string | null>(null);
@@ -408,7 +430,7 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
   const [error, setError] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
   const problems = {
-    category: category.trim() ? null : 'Enter the kind, for example Laptop.',
+    category: category ? null : 'Choose the category.',
     name: name.trim() ? null : 'Enter the name.',
     tag: !tag.trim() ? 'Enter the asset tag.' : /^[A-Za-z0-9][A-Za-z0-9._/-]{0,59}$/.test(tag.trim()) ? null : 'Use letters, digits, dot, dash or slash, starting with a letter or digit.',
     cost: !cost || MONEY.test(cost) ? null : 'Enter an amount like 54000 or 54000.50.',
@@ -432,7 +454,7 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
               setBusy(true);
               setError(null);
               try {
-                await onAdd({ category: category.trim(), name: name.trim(), tag: tag.trim(), serial: serial.trim() || null, legalEntityId: entity, locationId: location, cost: cost || null });
+                await onAdd({ categoryId: category!, name: name.trim(), tag: tag.trim(), serial: serial.trim() || null, legalEntityId: entity, locationId: location, cost: cost || null, ...(supplier ? { supplierId: supplier } : {}) });
                 onClose();
               } catch (e) {
                 setError((e as Error).message);
@@ -452,13 +474,13 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
         </InlineAlert>
       )}
       <div className="yx-lif-grid">
-        <FormField id="as-cat" label="Kind" required helper="For example Laptop, Phone, Access card." error={shown('category')}>
-          <TextField value={category} onChange={setCategory} maxLength={40} />
+        <FormField id="as-cat" label="Category" required helper="The list is in Settings › Assets." error={shown('category')}>
+          <Select aria-label="Category" value={category} onChange={pickCategory} options={categories} />
         </FormField>
         <FormField id="as-name" label="Name" required error={shown('name')}>
           <TextField value={name} onChange={setName} maxLength={150} />
         </FormField>
-        <FormField id="as-tag" label="Asset tag" required helper="Unique in the company: letters, digits, dot, dash, slash." error={shown('tag')}>
+        <FormField id="as-tag" label="Asset tag" required helper={suggested && tag === suggested ? 'The next tag of this category. You can type your own.' : 'Unique in the company: letters, digits, dot, dash, slash.'} error={shown('tag')}>
           <TextField value={tag} onChange={setTag} maxLength={60} />
         </FormField>
         <FormField id="as-serial" label="Serial number" optional>
@@ -473,6 +495,11 @@ export function AddAssetDrawer({ entities, locations, onClose, onAdd }: { entiti
         <FormField id="as-cost" label="Cost (₹)" optional helper="Used as the recovery when it is not returned." error={shown('cost')}>
           <TextField value={cost} onChange={setCost} inputMode="decimal" maxLength={15} />
         </FormField>
+        {suppliers && (
+          <FormField id="as-supplier" label="Supplier" optional helper="The list is in People › Asset suppliers.">
+            <Select aria-label="Supplier" value={supplier} onChange={setSupplier} options={suppliers} clearable />
+          </FormField>
+        )}
       </div>
     </Drawer>
   );

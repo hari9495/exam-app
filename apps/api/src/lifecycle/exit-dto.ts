@@ -193,10 +193,16 @@ export class InterviewNotesDto {
 }
 
 export class AssetDto {
+  // IT assets part 1 (answer 2712): a category from the company list, by id (or by its name, for older callers).
+  @IsOptional()
+  @IsUUID()
+  categoryId?: string | null;
+
+  @IsOptional()
   @trim()
   @IsString()
   @Length(1, 40)
-  category!: string;
+  category?: string | null;
 
   @trim()
   @IsString()
@@ -252,6 +258,65 @@ export class AssetDto {
   @Min(0)
   @Max(120)
   warrantyMonths?: number | null;
+
+  /** IT assets part 3 (answer 2716): the IT and Admin supplier (null: none; left out: unchanged). */
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  version?: number;
+}
+
+/** Settings 2.8 (answer 2712): one asset category. */
+export class AssetCategoryDto {
+  @trim()
+  @IsString()
+  @Length(2, 40)
+  @Matches(/^[^<>]*$/, { message: 'leave out < and >' })
+  name!: string;
+
+  @IsOptional()
+  @trim()
+  @IsString()
+  @MaxLength(40)
+  @Matches(/^[^<>]*$/, { message: 'leave out < and >' })
+  trackedBy?: string | null;
+
+  @IsOptional()
+  @Matches(MONEY)
+  defaultRecovery?: string | null;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  usefulLifeYears?: number | null;
+
+  // Answer 2720: an optional tag pattern, PREFIX-[YEAR-]0042.
+  @IsOptional()
+  @Matches(/^[A-Za-z0-9]{1,12}$/, { message: 'tagPrefix is 1 to 12 letters or digits' })
+  tagPrefix?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  tagYear?: boolean;
+
+  @IsOptional()
+  @IsInt()
+  @Min(2)
+  @Max(8)
+  tagDigits?: number;
+
+  // Answer 2713: straight line over the useful life (default), or declining balance at a yearly rate (0.01 to 99.99 %).
+  @IsOptional()
+  @IsIn(['straight_line', 'declining'])
+  depreciationMethod?: 'straight_line' | 'declining';
+
+  @IsOptional()
+  @Matches(/^(?!0+(\.0+)?$)\d{1,2}(\.\d{1,2})?$/, { message: 'depreciationRate is a yearly percentage above 0 and below 100' })
+  depreciationRate?: string | null;
 
   @IsOptional()
   @IsInt()

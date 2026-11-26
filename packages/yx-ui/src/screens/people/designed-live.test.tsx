@@ -452,6 +452,45 @@ describe('Assets (PPL-25)', () => {
     await ue.click(within(dialog).getByRole('button', { name: 'Mark not returned' }));
     expect(onReturn).toHaveBeenCalledWith(api, expect.objectContaining({ status: 'lost', condition: 'Not returned: Lost on the train' }));
   });
+
+  // IT assets part 1 (answers 2711, 2712).
+  const leaving: AssetRow = { ...api, holder: { ...api.holder!, leavingOn: '2026-10-30', recoveryDefault: '45000.00' } };
+  const live = (over: object = {}, r: AssetRow = leaving) => ({ state: 'ready' as const, onRetry: vi.fn(), rows: [{ ...row, live: r }], today: day('2026-10-09'), people: [], onIssue: vi.fn(), onReturn: vi.fn(async () => undefined), ...over });
+  it("a leaver's damaged asset starts from the category default recovery (Settings 2.8)", async () => {
+    const l = live({ recovery: { toFnf: true, basis: 'category_default' } });
+    wrap(<AssetRegister rows={[]} live={l} />);
+    expect(screen.getByRole('columnheader', { name: /Cost/ })).toBeInTheDocument();
+    await ue.click(screen.getByRole('button', { name: 'Return' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Return condition/ }));
+    await ue.click(screen.getByRole('option', { name: 'Damaged' }));
+    expect(within(dialog).getByRole('textbox', { name: /Recovery amount/ })).toHaveValue('45,000');
+    await ue.click(within(dialog).getByRole('button', { name: 'Record return' }));
+    expect(l.onReturn).toHaveBeenCalledWith(leaving, expect.objectContaining({ status: 'in_repair', recoveryAmount: '45000.00' }));
+  });
+
+  it('negative: recovery to F&F off offers no recovery; without money there is no Cost column (2711)', async () => {
+    wrap(<AssetRegister rows={[]} live={live({ money: false, recovery: { toFnf: false, basis: 'category_default' } })} />);
+    expect(screen.queryByRole('columnheader', { name: /Cost/ })).toBeNull();
+    await ue.click(screen.getByRole('button', { name: 'Return' }));
+    const dialog = screen.getByRole('dialog');
+    await ue.click(within(dialog).getByRole('combobox', { name: /Return condition/ }));
+    await ue.click(screen.getByRole('option', { name: 'Damaged' }));
+    expect(within(dialog).queryByRole('textbox', { name: /Recovery amount/ })).toBeNull();
+  });
+
+  it('2714: an ended warranty shows in red on the register; one still running shows its end; none shows a dash', () => {
+    const ended = { ...row, id: 'w1', tag: 'W-1', warrantyEndsOn: '2026-10-01', live: { ...api, id: 'w1' } };
+    const running = { ...row, id: 'w2', tag: 'W-2', warrantyEndsOn: '2027-03-01', live: { ...api, id: 'w2' } };
+    const none = { ...row, id: 'w3', tag: 'W-3', warrantyEndsOn: null, live: { ...api, id: 'w3' } };
+    wrap(<AssetRegister rows={[]} live={live({ rows: [ended, running, none] })} />);
+    expect(screen.getByRole('columnheader', { name: /Warranty/ })).toBeInTheDocument();
+    const red = within(screen.getByRole('row', { name: /W-1/ })).getByText(/^Ended 1 Oct 2026$/);
+    expect(red.closest('.yx-badge')).toHaveAttribute('data-tone', 'danger');
+    expect(within(screen.getByRole('row', { name: /W-2/ })).getByText(/^Ends 1 Mar 2027$/)).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /W-2/ })).queryByText(/Ended/)).toBeNull();
+    expect(within(screen.getByRole('row', { name: /W-3/ })).queryByText(/Ends|Ended/)).toBeNull();
+  });
 });
 
 describe('Document verification (PPL-27)', () => {

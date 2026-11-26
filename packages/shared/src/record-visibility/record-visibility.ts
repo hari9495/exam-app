@@ -74,7 +74,8 @@ export function grantScopesFor(key: string): readonly GrantScopeType[] {
   if (key === 'lifecycle.bgv.manage' || key === 'letter.issue') return GRANT_SCOPE_TYPES;
   // Batch 6c: exit cases are about people, scoped like their records; the asset list is kept per entity or location.
   if (key.startsWith('lifecycle.exit.')) return GRANT_SCOPE_TYPES;
-  if (key === 'asset.view' || key === 'asset.manage') return ['tenant', 'legal_entity', 'location'];
+  // IT assets (answer 2711): money on assets is seen per entity or location too.
+  if (key === 'asset.view' || key === 'asset.manage' || key === 'asset.finance.view') return ['tenant', 'legal_entity', 'location'];
   // M05 expenses E2: claims are about people, scoped like their records; finance checks them per legal entity.
   if (key === 'expense.claim.view') return GRANT_SCOPE_TYPES;
   // PPL-43 / PPL-44: the compliance officer works for the designated persons of their entities, like employee records.

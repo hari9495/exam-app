@@ -19,8 +19,12 @@ export default function YxAssetsPage() {
   const router = useRouter();
   const perms = useYxPermissions();
   const canManage = perms.has('asset.manage');
-  const data = useLife<{ today: string; rows: AssetRow[] }>('/lifecycle/assets');
+  const data = useLife<{ today: string; money?: boolean; recovery?: { toFnf: boolean; basis: string }; rows: AssetRow[] }>('/lifecycle/assets');
+  // IT assets part 1 (answer 2712): Add asset picks a category from the company list (Settings › Assets).
+  const cats = useLife<{ rows: { id: string; name: string; nextTag: string | null }[] }>(canManage ? '/lifecycle/asset-categories' : null);
   const places = useJoinerPlaces(canManage);
+  // IT assets part 3 (answer 2716): Add asset may name an active supplier.
+  const suppliers = useLife<{ rows: { id: string; name: string; retired: boolean }[] }>(canManage ? '/lifecycle/asset-suppliers' : null);
   // Who an asset can go to: its own list for asset.manage (IT holds no employee grant, so /employees is empty for it).
   const people = useLife<PersonOption[]>(canManage ? '/lifecycle/assets/people' : null);
   const write = useLifeWrite();
@@ -37,8 +41,11 @@ export default function YxAssetsPage() {
     location: where(a),
     status: STATUS[a.status],
     holder: a.holder?.name ?? '',
+    // Answer 2711: the API sends no cost to whoever may not see money.
     cost: a.cost ? Number(a.cost) : null,
     purchased: new Date(`${a.purchasedOn ?? today}T00:00:00`),
+    // Answer 2714: the register shows an ended warranty in red.
+    warrantyEndsOn: a.warrantyEndsOn ?? null,
     live: a,
   }));
   return (
@@ -48,6 +55,8 @@ export default function YxAssetsPage() {
         state: loadState(data),
         onRetry: () => void data.refetch(),
         rows,
+        money: data.data?.money,
+        recovery: data.data?.recovery,
         today: new Date(`${today}T00:00:00`),
         people: (people.data ?? []).map((p) => ({ id: p.id, name: p.name, ...(p.designation ? { role: p.designation } : {}), ...(p.department ? { department: p.department } : {}) })),
         ...(canManage ? { onAdd: () => setAdding(true) } : {}),
@@ -62,8 +71,10 @@ export default function YxAssetsPage() {
         },
         children: adding && (
           <AddAssetDrawer
+            categories={(cats.data?.rows ?? []).map((c) => ({ value: c.id, label: c.name, nextTag: c.nextTag }))}
             entities={places.entities}
             locations={places.locations}
+            suppliers={(suppliers.data?.rows ?? []).filter((s) => !s.retired).map((s) => ({ value: s.id, label: s.name }))}
             onClose={() => setAdding(false)}
             onAdd={async (x) => {
               await write('POST', '/lifecycle/assets', Object.fromEntries(Object.entries(x).filter(([, v]) => v !== null)));

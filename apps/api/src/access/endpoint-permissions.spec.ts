@@ -144,7 +144,7 @@ const IMPLICIT: Record<string, string[]> = {
   MyEngageController: ['announcements', 'acknowledge', 'feed', 'spaces', 'post', 'like', 'comments', 'comment', 'reportPost', 'reportComment', 'kudosOptions', 'giveKudos', 'wall', 'vote', 'mySurveys', 'toTake', 'answer', 'teamSurveys', 'teamResults', 'myPlan', 'savePlan', 'celebrationsToday', 'myCelebrations', 'setMyCelebrations'],
   SurveysController: [],
   ModerationController: [],
-  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets'],
+  ExitsController: ['mine', 'resign', 'withdraw', 'myInterview', 'submitInterview', 'myAssets', 'acknowledge', 'review', 'list', 'get', 'myClearance', 'signOff', 'block', 'personAssets', 'myBookings', 'freeAssets', 'bookAsset', 'cancelMyBooking'], // IT assets answer 2715: one's own asset bookings (bookable assets only)
 };
 
 describe('every HR endpoint declares a permission (P02 YX-SEC-01)', () => {

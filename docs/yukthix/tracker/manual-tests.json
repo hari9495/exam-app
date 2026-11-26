@@ -28675,5 +28675,203 @@
                               "Pay › PAY-02 Run readiness"
                     ],
                     "note": "Answer 2657. Positive and negative: API payroll-controls.e2e-spec.ts; kit payroll-controls-live.test.tsx; web yx-payroll-readiness.test.tsx. No page scroll at 1278 x 635 except where content needs it."
+          },
+          {
+                    "id": "MT-IT-ASSETS-PART1",
+                    "area": "IT assets part 1 (answers 2710, 2711, 2712, 2720): Settings 2.8 Assets, categories in Add asset and the asset page, tag numbering, money only for asset managers and Finance, IT assets in the Helpdesk menu",
+                    "screen": "Settings › People & Access › Assets (2.8); People › Assets (Add asset, Return); People › Assets › an asset; Helpdesk › IT assets",
+                    "url": "http://localhost:3000/yx/settings/people/assets",
+                    "account": "HR Admin (company-wide org.settings.manage and asset.manage); IT / Admin coordinator (asset.view, asset.manage); a Finance user (Finance template: asset.view, asset.finance.view); a desk agent with desk.ticket.view and asset.view only; an employee with no asset key.",
+                    "steps": [
+                              "As HR open Settings › People & Access › Assets. Look at the category list, Acknowledgement and Recovery amount.",
+                              "Press Add asset category: press Add category with nothing filled; then name 'Tablet', tracked by 'Serial number', default recovery 20000, useful life 60 years and press Add category; change the useful life to 3.",
+                              "Open Tablet again: tag prefix 'TA B', save; then prefix 'TAB', Add the year on, digits 4, save. Add another category named 'tablet'.",
+                              "As IT open People › Assets › Add asset: choose Laptop, then Tablet; type your own tag 'OLD-1' and choose Laptop again; add one Tablet with the suggested tag; then try to add another asset with that same tag.",
+                              "Open the new asset's page; Edit details: change the category to Phone and save.",
+                              "As HR set Acknowledgement to None and save; as IT issue an asset to an employee; as the employee open My assets. Set it back to Click to accept.",
+                              "As HR turn 'Add unreturned-asset recovery to F&F' off; as IT press Return on an asset held by someone leaving and choose Damaged. Turn it back on and repeat: the recovery starts from the category default. Choose 'Written-down value' and repeat.",
+                              "Retire Tablet in Settings; as IT open Add asset; open the Tablet asset's page.",
+                              "As the desk agent open Helpdesk › IT assets, then the asset page; as Finance open People › Assets and an asset page; as the employee open /yx/settings/people/assets and /yx/people/assets."
+                    ],
+                    "expected": "Step 1: the starter list (Laptop, Phone, SIM, ID / access card, Safety shoes and PPE kit, Tools, plus any old free-text kinds) with tracked by, default recovery (Tools: 'Asset cost'), useful life, next tag and asset count; Acknowledgement offers Click to accept (Starter default) and None only, with 'E-sign comes when the e-sign partner is chosen.'; Recovery amount says Written-down value is not built yet. Step 2: 'Give the category a name of at least 2 characters.' and 'Enter 1 to 50 years.'; then toast 'Category added' / 'Category saved' (5 s, no OK pop-up). Step 3: 'Use up to 12 letters or digits, for example LAP.'; then the list shows next tag TAB-<year>-0001; 'tablet' is refused: 'Another category already has that name.'. Step 4: Category is a list (no free text); Laptop fills its next tag and says 'The next tag of this category. You can type your own.'; the typed OLD-1 stays; the same tag twice: 'Another asset already has that tag.'. Step 5: toast '<name> (<tag>) saved.' and the page shows Category Phone. Step 6: the register says 'No confirmation asked'; the employee's My assets says 'Not asked' with no 'I have it' button. Step 7: off: no Recovery amount field; on: the field starts at the category default (Laptop ₹45,000); Written-down value: empty, with 'Written-down value is not built yet, so enter the amount.'. Step 8: Tablet is no longer in Add asset; the asset still shows Category Tablet. Step 9: the desk agent sees 'IT assets' in the Helpdesk menu, the register with no Cost column and no Cost on the asset page; Finance sees Cost on both; the employee has no Assets menu, the settings page is view only (or no access) and the register says no access. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Group 2 · People & Access (2.8 Assets · live, live view only, add a category, change a category, change refused)",
+                              "Screens/People/PPL-25 · Asset register (Add asset · open, filled, nothing filled, refused; Asset page · view only, no money)"
+                    ],
+                    "note": "Positive and negative. API e2e lifecycle-6c: starter list, add / duplicate (409) / bad name and useful life (400) / stale version (409) / other company (404) / no settings key (403), asset by category id or name, unknown category (400), retire (403 for IT, 404 twice), audit; cost only for hr and fin, never sent to the agent (list and page); acknowledgement None and recovery to F&F off (400). lifecycle-6d: the possible recovery is the Laptop default 45000. Kit tests asset-settings-live (7), popups-live, asset-page, designed-live; web yx-settings-people and yx-nav. Migrations 801 (asset_categories with RLS, assets.category_id, the free-text kinds turned into entries, asset.finance.view) and 802 (tag pattern)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2713",
+                    "area": "IT assets part 2, answer 2713: depreciation and the net book value",
+                    "screen": "Settings › People › Assets (2.8) category drawer; People › Assets › an asset (Details); the return dialog for a leaver",
+                    "url": "http://localhost:3000/yx/settings/people/assets",
+                    "account": "HR Admin (company-wide settings key and asset.manage); IT / Admin coordinator; Finance (asset.finance.view); an IT desk agent with asset.view only.",
+                    "steps": [
+                              "As HR open Settings › Assets. Look at the Depreciation column (Laptop: Straight line, 3 years; SIM: None).",
+                              "Add category 'Server': choose Declining balance and press Add category with no rate; then type 100; then 40 and add.",
+                              "Open Laptop: it shows Straight line selected and the helper 'The value falls evenly to 0 over 3 years.'",
+                              "As IT add a Laptop bought one year ago for 90000 and a Server bought one year ago for 100000. Open each asset page, Details.",
+                              "Add a Laptop with no purchase date; open its page.",
+                              "As Finance open the first Laptop; as the IT desk agent (asset.view only) open it too.",
+                              "Set Recovery amount to Written-down value in Settings › Assets. For a leaver holding the first Laptop, open Take back with condition Not returned."
+                    ],
+                    "expected": "Step 2: 'Enter the yearly rate, for example 40.', then a rate error for 100, nothing saved; with 40 the toast 'Category added' and the list shows 'Declining 40% a year'. Step 4: Laptop 'Net book value today' about ₹60,000 with 'Straight line over 3 years · a management figure, not the tax books'; Server about ₹60,000 with 'Declining balance at 40% a year'. Step 5: '—' and 'Needs the cost and the purchase date'. Step 6: Finance sees the value; the agent sees neither Cost nor Net book value nor Depreciation. Step 7: the recovery amount starts at the net book value and the helper says 'It starts from the net book value today.'; the F&F possible recovery is the same amount. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Settings/Group 2 (2.8 Assets · a category on declining balance (2713), 2.8 Assets · live)",
+                              "Screens/People/PPL-25 · Asset register (Asset page · details, Asset page · no net book value)"
+                    ],
+                    "note": "Positive and negative. API unit netBookValue (straight line by day, fully depreciated at and after the life end = 0, declining pro rata by day, purchase after the day keeps the cost, no cost / date / life 0 / no rate / rate 100 = null; written-down recovery). e2e lifecycle-6c 'IT assets part 2 (2713)': declining without rate, rate 0, 100 and an unknown method 400; values for straight line, fully depreciated, declining; no date, no cost, no life null; agent gets no value; the change audited with before and after. Kit tests: drawer declining sends the rate, negative rate missing/100; page shows the value and the not-tax-books line, negative no date, no money. Migration 803 (asset_categories.depreciation_method, depreciation_rate with checks)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2714",
+                    "area": "IT assets part 2, answer 2714: warranty alerts and the ended warranty in red",
+                    "screen": "Settings › People › Assets (2.8) Warranty; People › Assets (register, Warranty column); the bell and email of asset managers",
+                    "url": "http://localhost:3000/yx/people/assets",
+                    "account": "HR Admin (company-wide settings key and asset.manage); IT / Admin coordinator; a site IT person with asset.manage on one location only; Finance (asset.finance.view); an employee.",
+                    "steps": [
+                              "As HR open Settings › Assets. Look at the Warranty section.",
+                              "As IT add a laptop at a location bought 20 days ago with a 1-month warranty, one bought 15 days ago with 2 months, and one bought 70 days ago with 1 month. Open People › Assets.",
+                              "Run the daily job (asset-warranty-alerts, 07:20 IST, or call AssetAlertsService.warrantySweep in a test). Look at the bell of HR, IT, the site IT person of that location, a site IT person of another location, Finance and an employee.",
+                              "Run the job again.",
+                              "Set Warranty alert to 60 days before and run the job; then change the first laptop's warranty to 2 months and run it again.",
+                              "Set Warranty alert to Off, add a laptop whose warranty ends in 5 days and run the job."
+                    ],
+                    "expected": "Step 1: 'Warranty alert' with Off, 7, 15, 30 (selected), 60 and 90 days before, helper 'Asset managers of the asset’s place are told once. An ended warranty shows in red on the register.' Step 2: the Warranty column shows 'Ends <date>' for the first two and a red 'Ended <date>' badge for the third. Step 3: HR, IT and the site IT person of that location get 'The warranty of <name> (<tag>) ends on <date>.' (bell and email, link to the asset page); the other site, Finance and the employee get nothing; nothing for the 45-day or the ended one. Step 4: nobody is told again. Step 5: the 45-day one is told; the changed warranty is told again. Step 6: nobody is told. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset register (Admin · register: Warranty column)",
+                              "Screens/Settings/Group 2 (2.8 Assets, 2.8 Assets · live)"
+                    ],
+                    "note": "Positive and negative. e2e lifecycle-6c 'IT assets part 2 (2714)': told HR, IT, location grant holder and the System Admin; not Finance, asset.view agent, another location's manager, an employee or company B; not the 45-day or ended ones; audited once (asset.warranty.alerted); second run silent; 60-day lead; changed end told again; Off silent; register sends warrantyEndsOn. Kit tests: register red badge / Ends / dash; 2.8 Warranty section at 30. Unit: sweeps worker dispatch, notification type registered (asset.warranty.ending). Migration 803 (assets.warranty_alerted_for). Contract notice alerts: with contracts later (assetManagers is reusable)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2722",
+                    "area": "IT assets part 2, answer 2722: the asset page's Tickets tab",
+                    "screen": "People › Assets › an asset › Tickets",
+                    "url": "http://localhost:3000/yx/people/assets",
+                    "account": "A Helpdesk agent of IT desk 1 with asset.view; an agent of IT desk 2 with asset.view; IT / Admin coordinator (no desk seat); HR Admin; Finance; another company's admin.",
+                    "steps": [
+                              "As IT add a laptop and issue it to an employee. Open its page: look at the Tickets tab.",
+                              "As the employee raise one ticket about the laptop on IT desk 1 and one on IT desk 2 (Helpdesk › raise, pick the device).",
+                              "As the agent of IT desk 1 open the asset page › Tickets. Press the ticket number.",
+                              "As the agent of IT desk 2 open the same tab.",
+                              "As IT, HR and Finance (no desk seat) open the same tab.",
+                              "As another company's admin open /yx/people/assets/<that id>."
+                    ],
+                    "expected": "Step 1: 'Tickets (0)' and 'No Helpdesk tickets are about this device.' Step 3: 'Tickets (2)' lists only desk 1's ticket (number, subject, status, raised) and '1 more is on desks you are not an agent of.'; the number opens the ticket on the Helpdesk. Step 4: only desk 2's ticket. Step 5: 'Tickets (2)' and '2 Helpdesk tickets are about this device. Only agents of the desks they are on see them.' with no subjects. Step 6: not found. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset register (Asset page · tickets (desk agent), tickets count only, tickets none)"
+                    ],
+                    "note": "Positive and negative. The list uses the Helpdesk's own visibleTickets (agents and leads of the desk, a standard desk's admin for standard tickets, collaborators with a seat, shares), via DeskAccessService.actorOf; a session the desk refuses (two-step not used where the company asks it) gets the count only. e2e lifecycle-6c 'IT assets part 2 (2722)': count 0; each desk's agent sees only that desk's ticket with count 2; HR, IT, the asset.view agent and Finance get {count 2, rows []} and no subject anywhere in the answer; company B 404. Kit tests: list with link and hidden count, count only, none. No new route (GET lifecycle/assets/:id adds tickets)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2716",
+                    "area": "IT assets part 3 (answer 2716): the IT and Admin supplier list",
+                    "screen": "People › Asset suppliers (also Helpdesk › IT suppliers); Add asset and the asset page's Supplier",
+                    "url": "http://localhost:3000/yx/people/assets/suppliers",
+                    "account": "IT / Admin coordinator (asset.view and asset.manage); an IT desk agent with asset.view only; an employee with no asset key; another company's admin.",
+                    "steps": [
+                              "As IT open People › Asset suppliers and press Add supplier. Press Add supplier with nothing filled; then type a GSTIN 27AABCI and a contact email neha@ and press Add supplier.",
+                              "Fill name Ingram Micro India, GSTIN 27aabci1234f1z9, contact Neha Joshi, neha@ingram.example, +91 99200 55555; press Add contact and add a second one; save.",
+                              "Add a second supplier with the same name in capitals.",
+                              "Open Ingram Micro India, remove contact 2, set Status to Retired and save; look at Active and Retired.",
+                              "People › Assets › Add asset: open the Supplier list. Then make Ingram active again, add an asset with it, open the asset page: Details shows the supplier; Edit details changes it.",
+                              "As the desk agent open Helpdesk › IT suppliers; as the employee open /yx/people/assets/suppliers; as another company's admin look at the list."
+                    ],
+                    "expected": "Step 1: 'Enter the supplier name.', 'A GSTIN has 15 characters, like 29ABCDE1234F1Z5.', 'Enter the contact’s name.', 'Enter an email like name@company.com.'; nothing saved. Step 2: toast 'Ingram Micro India saved.'; the row shows GSTIN 27AABCI1234F1Z9 in capitals and both contacts. Step 3: 'Another active supplier already has that name.' Step 4: it moves to Retired. Step 5: a retired supplier is not offered; the asset page shows Supplier Ingram Micro India and the change is saved with a toast. Step 6: the desk agent reads the list with no Add supplier and no edit links; the employee gets no access; the other company sees none. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset suppliers (all)",
+                              "Screens/People/PPL-25 · Asset register (Add asset · open, Asset page · details, edit details)"
+                    ],
+                    "note": "Positive and negative: lifecycle-6c e2e '2716' (add by IT, 403 for asset.view and Finance, 403 for no key, 400 bad GSTIN / email / six contacts, 409 same name, retire with version, 409 stale version, retired not offered for a new asset but kept on edit, five audit rows, other company 404 / empty / 400); kit asset-suppliers tests 6; yx-nav test. Scoping: the list is company-wide; asset.view or asset.manage at any scope reads it, asset.manage at any scope changes it. Migration 804 (it_suppliers with RLS and support_session_excluded; assets.supplier_id)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2717",
+                    "area": "IT assets part 3 (answer 2717): asset contracts",
+                    "screen": "People › Asset contracts (also Helpdesk › IT contracts); the asset page's Contracts tab",
+                    "url": "http://localhost:3000/yx/people/assets/contracts",
+                    "account": "IT / Admin coordinator (asset.view and asset.manage, company-wide); a site IT person with asset.manage on one location only; Finance (asset.finance.view); an IT desk agent with asset.view only; an employee; another company's admin.",
+                    "steps": [
+                              "As IT open People › Asset contracts, press Add contract, then Add contract with nothing filled.",
+                              "Fill Type Maintenance (AMC), number AMC-27, a supplier, your legal entity and location, start 1 Jan 2027, length 12 months, notice 30 days, Tacit, support hours, value 120000, Asset cap 1, and pick two assets; press Add contract. Then clear the cap and add it.",
+                              "Add a second contract with the same number and supplier.",
+                              "Open the contract: look at its details and assets; press a tag. On that asset page open the Contracts tab and press the number.",
+                              "Edit the contract: length 24 months, Express; save. Open it in another tab, save there too.",
+                              "As Finance and as the desk agent open Helpdesk › IT contracts and the contract. As the site IT person (another location) open the list and try to add a contract for IT's location, and one with no place. As the employee open the page; as another company's admin look at the list."
+                    ],
+                    "expected": "Step 1: 'Choose the type.', 'Enter the contract number.', 'Choose the supplier.', 'Give the start date.'; nothing saved. Step 2: the Length field says 'Ends on 31 Dec 2027.' and Notice 'Give notice by 1 Dec 2027.'; with the cap 'It covers 2 assets; the cap is 1.'; then toast 'Contract AMC-27 saved.' and the row shows Ends 31 Dec 2027, Tacit, 2 assets, the value. Step 3: 'This supplier already has a contract with that number.' Step 4: the drawer lists both assets; the tag opens the asset page; its Contracts tab lists AMC-27 and the number opens the contract again. Step 5: Ends 31 Dec 2028, Express; the second save says 'Someone else changed this contract. Reload it.' Step 6: Finance sees the value, the desk agent sees no Value column and no Edit; the site IT person does not see IT's contract and is refused for that place and for no place ('Only company-wide asset managers keep a contract with no place…'); the employee gets no access; the other company sees none. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset contracts (all)"
+                    ],
+                    "note": "Positive and negative: lifecycle-6c e2e '2717' (end and notice dates, value only for IT and Finance, none for asset.view, asset page contracts, 403 no key and view only, 400 cap / months 0 / bad renewal / another place's asset / retired supplier, 409 same number and stale version, a site manager cannot see, change or add for another place or no place, assets at other places kept and counted, audit, other company 404 / empty); kit asset-contracts tests 7; unit contract dates; yx-nav test. Migration 805 (asset_contracts, asset_contract_assets with RLS and support_session_excluded). Types: Maintenance (AMC), Support, Lease or rental, Insurance, Subscription, Other. Helpdesk tickets to a supplier: later (M14)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2714-CONTRACTS",
+                    "area": "IT assets part 3 (answer 2714, contracts): notice alerts, tacit renewal and express end",
+                    "screen": "Settings › People › Assets (2.8) Contracts section; People › Asset contracts; the bell and email of the asset managers",
+                    "url": "http://localhost:3000/yx/settings/people/assets",
+                    "account": "HR Admin (settings); IT / Admin coordinator (company-wide asset.manage); a site IT person with asset.manage on one location; Finance; an employee.",
+                    "steps": [
+                              "As HR open Settings › Assets: look at the Contracts section.",
+                              "As IT add three contracts for your location: (a) tacit, start 400 days ago, 12 months; (b) express, start 200 days ago, 6 months; (c) tacit, start 10 days ago, 1 month, notice 30 days. Add (d) like (c) with no legal entity or location.",
+                              "Run the daily contract check (job asset-contract-alerts, 07:25 IST; in a test environment trigger the sweep).",
+                              "Open People › Asset contracts: Active and Ended. Open (a) and (c).",
+                              "Look at the bell as IT, as the site IT person of that location, as a site IT person of another location, as Finance and as the employee.",
+                              "Run the check again. Then set Contracts to 30 days before the notice date and add (e): tacit, start 10 days ago, 2 months, notice 30 days; run the check. Set it to Off, add another like (c), run the check."
+                    ],
+                    "expected": "Step 1: 'Contract notice alert' with Off, On the notice date (chosen), 7, 15 and 30 days before the notice date, and the helper about who is told and tacit / express. Step 4: (a) active, 'Renewed 1 time', its end a year later; (b) under Ended; (c) shows 'Give notice by <date>'. Step 5: IT and the site IT person of that location have 'Contract (c) with <supplier>: give notice by <date> if it should not renew…', linking to the contract; for (d) only company-wide asset managers; the other site's IT, Finance and the employee have nothing. Step 6: nobody is told twice; with 30 days (e) is told; with Off nobody is told. Every renewal, end and alert is in the audit log (asset.contract.renewed, asset.contract.ended, asset.contract.notice.alerted).",
+                    "stories": [
+                              "Screens/Settings (2.8 Assets, Contracts section)",
+                              "Screens/People/PPL-25 · Asset contracts (Contracts · asset manager, one in its notice window)"
+                    ],
+                    "note": "Positive and negative: lifecycle-6c e2e '2714 contracts' (tacit renewed once and audited, express ended and audited, told: company-wide managers and the location's grant holder; not Finance, the asset.view agent or an employee; place-less: company-wide only; not yet at the notice date: nobody; second run: nothing again; setting 30 reaches the later one; off: nobody; other company never); unit contract dates; kit settings test; sweeps and notification-type specs. Setting asset.contract_alert_days (off, 0 default, 7, 15, 30). Daily sweep asset-contract-alerts (AssetAlertsService.contractSweep, beside the warranty sweep)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2718",
+                    "area": "IT assets part 4 (founder answer 2718): software licences with seats, over quota, expiry alerts and freeing at exit",
+                    "screen": "People › Software licences (Helpdesk › IT licences): list, licence drawer with seats, Give a seat, Free seat, Add / Edit licence; asset page Licences tab; Me › My assets (my software licences); Settings 2.8 Assets › Licences; exit clearance",
+                    "url": "http://localhost:3000/yx/people/assets/licences",
+                    "account": "IT / Admin coordinator (asset.view and asset.manage); Finance (asset.finance.view); an IT desk agent with asset.view only; an employee with no asset key; HR Admin (to record an exit); another company's admin.",
+                    "steps": [
+                              "As IT open People › Software licences. Press Add licence and press Add licence again with nothing filled. Then add Microsoft 365, version E3, 2 seats, expires in 10 days, a cost, over quota not allowed.",
+                              "Open the licence, press Give a seat and press Give seat with nobody chosen. Then give a seat to an employee, and another to a device (A device).",
+                              "Give a third seat to another employee.",
+                              "Edit the licence: set 1 seat and save. Then tick Allow over quota, keep 2 seats, save, and give the third seat again. Look at the list.",
+                              "Open the device's asset page › Licences tab; sign in as the employee who got a seat and open Me › My assets.",
+                              "As Finance and as the desk agent open the licences list; as the desk agent open a licence. As the employee with no asset key open /yx/people/assets/licences. As another company's admin open the page.",
+                              "As HR record an exit for the employee with a seat. As IT open Clearance: sign off the item 'Free the Microsoft 365 E3 licence seat'. Open the licence again.",
+                              "Give a seat to someone who is already leaving; then press Free seat on it with a reason; open their clearance list.",
+                              "Settings › People › 2.8 Assets › Licences: look at Licence expiry alert. The next morning (07:30 IST sweep) check IT's notifications."
+                    ],
+                    "expected": "Step 1: 'Enter the software.' and 'Enter 1 to 100000 seats.'; then toast 'Licence Microsoft 365 E3 saved.' and the list shows '0 of 2'. Step 2: 'Choose the person.'; then toasts 'Seat of Microsoft 365 E3 given.'; the list shows '2 of 2' with an amber 'All in use'. Step 3: the drawer says 'All 2 seats are in use.' and Give seat shows 'Free a seat, add seats, or allow over quota on the licence.'; nothing given. Step 4: '2 seats are in use. Keep at least 2, or allow over quota.' and nothing saved; then the seat is given with 'This seat goes over quota.' and the list shows '3 of 2' with a red 'Over quota by 1'. Step 5: the asset page has 'Licences (1)' listing Microsoft 365 E3; My assets shows 'My software licences' with it. Step 6: Finance sees the Cost; the agent sees no Cost column and no Give a seat, Free seat or Edit licence; the employee gets no access; the other company sees no licences. Step 7: the clearance list has the IT item; after sign-off the seat is gone from the licence (used drops by one) and the seat shows 'Leaving: on their clearance' before it. Step 8: the item appears on their clearance at once; after Free seat (toast 'Seat freed: Microsoft 365 E3.') the item is signed off. Step 9: the setting shows '30 days before' (choices Off, 7, 15, 30, 60, 90); IT and the company's asset managers get 'The Microsoft 365 E3 licence (2 seats) expires on <date>.' once, linking to the licence. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Software licences (list, view only, expired, empty, licence over quota / full / no seats, Free seat, Give a seat open / missing / all in use / over quota, Add, Add missing, Edit, Asset page licences and none)",
+                              "Screens/People/Me and set-up · My assets, first 30 days, checklists and signatories (My assets · with my software licences)"
+                    ],
+                    "note": "Positive and negative (lifecycle-6c e2e 'IT assets part 4' x3: seats to a person and a device, a third refused 409 without over quota, same holder twice 409, person and device both 400, fewer seats than in use 400, over quota allowed 201 with overQuota, stale version 409, cost for Finance only, agent 403 on give/free/add, no key 403, other company 404 and empty list, asset page and My assets list the seats, free twice 409, audit trail; leaver's seat as an IT clearance item, clearing it frees the seat, a seat given to a leaver joins at once and freeing it signs the item off; expiry alert once to the place's asset managers, not Finance / agent / employee / other company, perpetual and 60-day ones not told, setting 90 and off). Kit tests 12, settings tests, nav test. Migration 806 (asset_licences, asset_licence_seats with RLS, clearance_items.licence_seat_id); routes GET/POST lifecycle/asset-licences, PUT lifecycle/asset-licences/:id, POST lifecycle/asset-licences/:id/seats, POST lifecycle/asset-licences/:id/seats/:seatId/free; sweep asset-licence-alerts; setting asset.licence_alert_days."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2715",
+                    "area": "IT assets part 5 (founder answer 2715): asset booking with repeats, the free-between search, approval, hand-over, take-back, reminders and the loan report",
+                    "screen": "Me › Asset bookings (avatar menu, Book an asset, Cancel); People › Asset bookings (Helpdesk › IT bookings): approve, decline, hand over, take back, cancel, loan report; asset page Bookings tab (Bookable); Settings 2.8 Assets › Bookings",
+                    "url": "http://localhost:3000/yx/me/bookings",
+                    "account": "IT / Admin coordinator (asset.view and asset.manage); an IT desk agent with asset.view only; two employees with no asset key; HR Admin (Settings); another company's admin.",
+                    "steps": [
+                              "As IT open an in-stock asset (a projector) in People › Assets, go to the Bookings tab and tick Bookable. Open an assigned asset's Bookings tab. Try Issue on the bookable projector from the register.",
+                              "As employee 1 open the avatar menu › Asset bookings, press Book an asset and press Find free assets with nothing filled. Then pick today to 20 days on and press Find again.",
+                              "Pick today to the day after tomorrow, purpose 'Client demo', Find free assets; filter Category and Location; press Book on the projector.",
+                              "As employee 2 book the projector from the day after tomorrow, Every day, until 5 days on. Then book it for a day next week, Every week, until 3 weeks on.",
+                              "As employee 2 cancel the second weekly booking with 'Also cancel the later repeats' ticked.",
+                              "As IT open People › Asset bookings (Booked): press Hand over on employee 1's booking (condition Good). Open People › Assets. Try Hand over on employee 2's booking next week (not offered) and untick Bookable on the asset page.",
+                              "Next day after the sweep (07:35 IST) employee 1 has a reminder the day before it is due back; after the last day passes IT is told it is overdue (red Overdue in the list).",
+                              "As IT press Take back (Goes to: In stock). Pick employee 1 in Person (loan report).",
+                              "As HR in Settings › Assets › Bookings turn on 'IT approves each booking' and set Longest booking to 7 days. As employee 2 book again: it says sent to IT. As IT Decline with no reason, then with a reason; employee 2 books again and IT Approves.",
+                              "As IT Cancel a booking with no reason, then with a reason. As the desk agent with asset.view only open People › Asset bookings. As another company's admin open /yx/people/assets/bookings."
+                    ],
+                    "expected": "Step 1: toast 'Employees can now book it.'; the assigned asset's Bookable box is greyed with 'Only an asset in stock can be made bookable.'; Issue is refused ('This asset is bookable. Hand it over from its booking…'). Step 2: 'Choose the first day.' and 'Choose the last day.'; then 'A booking is at most 14 days.' and nothing searched. Step 3: the projector is listed (filters narrow the list); toast 'Booked: <asset>, <dates>.' and it shows Booked under 'To come and with me'. Step 4: refused 'Epson … is already booked on <day after tomorrow>. Nothing was booked.' (nothing booked); the weekly one makes 3 bookings. Step 5: toast; two cancelled, the first stays. Step 6: toast '<tag> handed over to <name>'; the register shows the asset Assigned to employee 1; untick is refused ('It has N bookings not finished…'). Step 7: one reminder to employee 1, one overdue notice to IT, once each (audit asset.booking.reminded / overdue). Step 8: the register shows it in stock and the booking Returned; the loan report lists only employee 1's bookings (All). Step 9: 'Sent to IT … You are told when they decide.'; IT is told; Decline stays greyed without a reason; employee 2 is told 'declined: <reason>', then 'is approved'. Step 10: Cancel stays greyed without a reason, then employee 2 is told; the desk agent sees the list with no buttons; the other company sees no bookings. No page scroll at 1278 x 635 on My bookings and IT's list with a few rows.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset bookings (My bookings, Book an asset, IT bookings, loan report, dialogs, asset page Bookings)",
+                              "Screens/Settings/2.8 Assets (Bookings)"
+                    ],
+                    "note": "Positive and negative: lifecycle-6c e2e '2715' (not bookable 404, wrong key 403 and other company 404 on bookable/hand-over/approve, register Issue refused 409, free-between search with location filter, too long and past start 400, daily repeat clash refuses all naming the day, weekly repeat 3 bookings, database exclusion, my bookings only mine, hand-over before start 409, hand-over creates an asset_assignment and the register shows the holder, second hand-over 409, cancel out 409, unbookable with live bookings 409, asset page bookings, due reminder once to the person, overdue once to asset managers (not the person, agent, Finance, other company), audits, take back via the register return ends the booking, series cancel 2, IT cancel needs reason and tells the person; approval: pending, IT told, pending blocks the day, hand-over 409, approve 403 for employee and asset.view, 404 other company, decline needs reason, person told declined/approved, audits, person cancels); unit bookingDates; kit tests asset-bookings (11) and settings. Migration 807 (assets.bookable, asset_bookings with RLS and exclusion), settings asset.booking_max_days (14) and asset.booking_approval (off), sweep asset-booking-alerts."
           }
 ]
