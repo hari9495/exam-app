@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 
-// Performance batch PM1 on the seeded Kaveri Foods demo: the admin opens Settings › Performance, copies the starters if
+// Performance batch PM1 on the seeded Kaveri Foods demo: the admin opens Settings › Performance (the drawn 6.3 page), copies the starters if
 // needed, adds a template whose rated weights add up to 90, cannot activate it, brings them to 100 and activates it.
 // Each run makes its own template, so the test can run again.
 
@@ -10,11 +10,13 @@ test('a review template can be activated only when its weights reach 100', async
   const name = `Plant annual ${Date.now().toString(36)}`;
   await signIn(page, 'admin@demo-org.test', 'DevAdmin123!');
   await page.waitForURL((url) => !url.pathname.includes('sign-in'));
-  await page.goto('/yx/settings/performance');
+  // Batch T2-C: the drawn 6.3 page; review templates are a list there, edited in a sheet.
+  await page.goto('/yx/settings/talent/performance');
   const starters = page.getByRole('button', { name: 'Use the starters' });
-  await expect(starters.or(page.getByRole('tab', { name: 'Review templates' })).first()).toBeVisible({ timeout: 30_000 });
+  const list = page.getByRole('table', { name: 'Review templates' });
+  await expect(starters.or(list).first()).toBeVisible({ timeout: 30_000 });
   if (await starters.isVisible()) await starters.click();
-  await expect(page.getByRole('tab', { name: 'Review templates' })).toBeVisible({ timeout: 30_000 });
+  await expect(list).toBeVisible({ timeout: 30_000 });
 
   await page.getByRole('button', { name: 'Add a template' }).click();
   const sheet = page.getByRole('dialog');
@@ -24,16 +26,21 @@ test('a review template can be activated only when its weights reach 100', async
   await sheet.getByRole('button', { name: 'Save draft' }).click();
   await expect(sheet).toHaveCount(0, { timeout: 30_000 });
 
-  const row = page.getByRole('row', { name: new RegExp(name) });
-  await row.getByRole('button', { name: 'Activate' }).click();
-  await expect(page.getByText('The weights of rated sections add up to 90, not 100.').first()).toBeVisible({ timeout: 30_000 });
+  const edit = page.getByRole('button', { name: `Edit ${name} · version 1` });
+  await edit.click();
+  await expect(sheet.getByText('The weights of rated sections add up to 90, not 100.').first()).toBeVisible({ timeout: 30_000 });
+  await sheet.getByRole('button', { name: 'Activate' }).click();
+  await expect(sheet.getByText(/add up to 90, not 100/).first()).toBeVisible({ timeout: 30_000 });
 
-  await row.getByRole('button', { name: 'Edit' }).click();
-  await page.getByRole('dialog').getByRole('textbox', { name: /Weight/ }).fill('100');
-  await page.getByRole('dialog').getByRole('button', { name: 'Save draft' }).click();
-  await expect(page.getByRole('dialog')).toHaveCount(0, { timeout: 30_000 });
-  await row.getByRole('button', { name: 'Activate' }).click();
-  // Active: it now offers a new version instead of Activate.
-  await expect(row.getByRole('button', { name: 'New version' })).toBeVisible({ timeout: 30_000 });
-  await expect(row.getByText('Active', { exact: true })).toBeVisible();
+  await sheet.getByRole('textbox', { name: /Weight/ }).fill('100');
+  await sheet.getByRole('button', { name: 'Save draft' }).click();
+  await expect(sheet).toHaveCount(0, { timeout: 30_000 });
+  await edit.click();
+  await sheet.getByRole('button', { name: 'Activate' }).click();
+  await expect(sheet).toHaveCount(0, { timeout: 30_000 });
+  // Active: it now offers a new version instead of an edit.
+  await expect(list.getByRole('row', { name: new RegExp(name) }).getByText(/^Active/)).toBeVisible({ timeout: 30_000 });
+  await edit.click();
+  await expect(sheet.getByRole('button', { name: 'New version' })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Save draft' })).toHaveCount(0);
 });
