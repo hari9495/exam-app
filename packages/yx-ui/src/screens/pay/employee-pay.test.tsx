@@ -154,6 +154,30 @@ describe('PAY-21 / PAY-40 · Me › Payslips (live)', () => {
     expect(within(screen.getByRole('navigation', { name: 'Payslips by month' })).queryByRole('combobox')).toBeNull();
   });
 
+  it('T2-B 65: Download the year sends the open tax year and says so', async () => {
+    const onDownloadYear = fn();
+    const older = { ...MY_PAYSLIPS[1]!, id: 's9', month: '2026-03' };
+    render(<PayslipViewerScreen live={live({ payslips: [...MY_PAYSLIPS, older], onDownloadYear })} />);
+    const months = screen.getByRole('navigation', { name: 'Payslips by month' });
+    await ue.click(within(months).getByRole('button', { name: 'Download the year 2026-27' }));
+    await waitFor(() => expect(onDownloadYear).toHaveBeenCalledWith('2026-27'));
+    expect((await screen.findAllByText('Payslips downloaded')).length).toBeGreaterThan(0);
+    await ue.click(within(months).getByRole('combobox', { name: 'Tax year' }));
+    await ue.click(screen.getByRole('option', { name: 'Tax year 2025-26' }));
+    await ue.click(within(months).getByRole('button', { name: 'Download the year 2025-26' }));
+    await waitFor(() => expect(onDownloadYear).toHaveBeenLastCalledWith('2025-26'));
+  });
+
+  it('negative T2-B 65: a refused download shows why and no success toast; without the call there is no button', async () => {
+    const { unmount } = render(<PayslipViewerScreen live={live({ onDownloadYear: async () => Promise.reject(new Error('This link has been used or has expired. Ask for a new one.')) })} />);
+    await ue.click(within(screen.getByRole('navigation', { name: 'Payslips by month' })).getByRole('button', { name: /Download the year/ }));
+    expect(await screen.findByText('This link has been used or has expired. Ask for a new one.')).toBeInTheDocument();
+    expect(screen.queryByText('Payslips downloaded')).toBeNull();
+    unmount();
+    render(<PayslipViewerScreen live={live()} />);
+    expect(screen.queryByRole('button', { name: /Download the year/ })).toBeNull();
+  });
+
   it('an off-cycle payslip has no "why different" and the PDF downloads with a toast', async () => {
     const onPdf = fn();
     render(<PayslipViewerScreen live={live({ payslips: [{ ...MY_PAYSLIPS[0], runType: 'offcycle' }, MY_PAYSLIPS[1]], onPdf })} />);

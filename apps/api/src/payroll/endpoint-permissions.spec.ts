@@ -19,8 +19,8 @@ const SELF: Record<string, string[]> = {
   // An employee's own loans and loan request, own payslip; payroll.loan.manage / run keys in scope add others (service).
   Payroll5cController: ['loanRepayments', 'loanRules', 'loans', 'payslip', 'requestLoan'],
   // An employee's own payslips, PDF and single-use links, home pay card and payslip queries; payroll.query.handle adds
-  // the entities' queries (service).
-  Payroll5dController: ['download', 'homePay', 'mySlips', 'openLink', 'pdf', 'queries', 'raise', 'updateQuery'],
+  // the entities' queries (service). yearLink (T2-B 65): one zip of the person's own payslips of a tax year.
+  Payroll5dController: ['download', 'homePay', 'mySlips', 'openLink', 'pdf', 'queries', 'raise', 'updateQuery', 'yearLink'],
   // An employee's own recovery plans and their answer.
   Payroll5gController: ['answer', 'mine'],
   // An employee's own incentive statement.

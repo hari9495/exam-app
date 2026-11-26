@@ -18,3 +18,5 @@ export const Loading: S = { name: 'Loading', args: { state: 'loading' } };
 export const ErrorState: S = { name: 'Error', args: { state: 'error' } };
 export const Phone: S = { name: 'phone', args: { layout: 'phone' }, ...phone };
 export const PhoneQuery: S = { name: 'phone · raise a query', args: { layout: 'phone', variant: 'query' }, ...phone };
+/** T2-B 65 (Keka B4): "Download the year" under the tax year, one zip of the year's payslips. */
+export const DownloadTheYear: S = { name: 'Months list · Download the year (T2-B 65)' };

@@ -29188,5 +29188,24 @@
                               "Screens/Expenses/EXP-05 · Advance card + request › Advances list · with the most one advance can be (T2-B 67)"
                     ],
                     "note": "T2-B item 67, answers 2861 (cap per advance, pay currency; a forex trip advance has no cap) and 2862 (off: no new advance, old ones settle). Settings expense.advance.enabled (default on) and expense.advance.cap (default off; company, legal entity or grade). Positive and negative: API expenses-e4 e2e (T2-B 67 test); kit expenses-travel-live.test.tsx (two T2-B 67 tests)."
+          },
+          {
+                    "id": "MT-T2B-65-DOWNLOAD-YEAR",
+                    "area": "T2-B 65 (Pay B4): Download the year on Me › Payslips",
+                    "screen": "Me › Payslips (PAY-21), the months list",
+                    "url": "http://localhost:3000/yx/me/payslips",
+                    "account": "panel@demo-org.test (employee with published payslips in this tax year and the last one); a second employee.",
+                    "steps": [
+                              "Open Me › Payslips. Under the tax year press 'Download the year'. Open the zip.",
+                              "Choose the earlier tax year and press 'Download the year' again.",
+                              "Press 'Download PDF' on one payslip (the same kind of link).",
+                              "Negative (API): GET /api/v1/payroll/me/payslips/year/2026 and /year/2026-28; then /year/2010-11.",
+                              "Negative (API): copy the path the year link returns and open it twice; open it as the second employee."
+                    ],
+                    "expected": "Step 1: toast 'Payslips downloaded' (5 s); one file payslips-<year>.zip with one PDF per published payslip of that tax year (payslip-2026-09.pdf and so on; off-cycle ones marked -offcycle-), each with your name and the time as a watermark. Step 2: the earlier year's zip. Step 3: the PDF opens in the page and downloads (not a small text file). Step 4: 400 'Give the tax year as 2026-27.' twice; 404 'You have no payslips for that tax year.' Step 5: the second open and the other person get 404 'This link has been used or has expired. Ask for a new one.' Each payslip in the zip is in the audit log as downloaded.",
+                    "stories": [
+                              "Screens/Pay/PAY-21 · Payslip viewer › Months list · Download the year (T2-B 65)"
+                    ],
+                    "note": "T2-B item 65, answer 2863. Migration 202617z0000875 (payslip_links purpose 'year'). Also fixed: Me › Payslips now fetches the PDF through the single-use link the API returns (it was saving the link's JSON). Positive and negative: API payroll-5d e2e (T2-B 65 test); kit employee-pay.test.tsx (two T2-B 65 tests)."
           }
 ]
