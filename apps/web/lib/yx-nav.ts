@@ -407,7 +407,7 @@ export function buildNav(n: NavInput): NavArea[] {
             ...when(any('payroll.special.manage', 'payroll.journal.export'), L('pay-actuarial', 'Actuarial valuation', '/yx/payroll/actuarial')),
             ...when(has('audit.view'), L('pay-audit', 'Audit log', '/yx/payroll/audit')),
           ]),
-          ...sec('My pay', when(employee, L('my-payslips', 'Payslips', '/yx/me/payslips'), L('my-tax', 'Tax workspace', '/yx/me/tax'), L('my-declarations', 'Tax declarations', '/yx/me/tax-declarations'), L('my-loans', 'Loans & advances', '/yx/me/loans'), L('my-ewa', 'Get paid early', '/yx/me/earned-pay'), L('my-incentives', 'My incentives', '/yx/me/incentives'), L('pay-band', 'My pay band', '/yx/performance/pay-band'), L('my-equity', 'My equity', '/yx/me/equity'), L('my-fbp', 'Flexible benefits', '/yx/me/flexible-benefits'), L('my-pay-documents', 'My pay documents', '/yx/me/pay-documents'))),
+          ...sec('My pay', when(employee, L('my-payslips', 'Payslips', '/yx/me/payslips'), L('my-salary', 'My salary', '/yx/me/salary'), L('my-tax', 'Tax workspace', '/yx/me/tax'), L('my-declarations', 'Tax declarations', '/yx/me/tax-declarations'), L('my-loans', 'Loans & advances', '/yx/me/loans'), L('my-ewa', 'Get paid early', '/yx/me/earned-pay'), L('my-incentives', 'My incentives', '/yx/me/incentives'), L('pay-band', 'My pay band', '/yx/performance/pay-band'), L('my-equity', 'My equity', '/yx/me/equity'), L('my-fbp', 'Flexible benefits', '/yx/me/flexible-benefits'), L('my-pay-documents', 'My pay documents', '/yx/me/pay-documents'))),
         ],
   };
 

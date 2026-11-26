@@ -108,3 +108,5 @@ export { PayrollBudgetScreen, type PayrollBudgetScreenProps, type PayrollBudget,
 export { MyFlexBenefitsScreen, FlexSettlementScreen, FlexLedgerTable, type LiveMyFlexBenefits, type LiveFlexSettlement, type FlexLedgerView, type FlexLedgerRowView, type FlexOverview, type FlexSettlementPerson, type FlexSettleResult } from '../flex-benefits';
 // Enterprise E4 (O19-O20): PAY-62 the ledger mapping with the suspense account.
 export { LedgerMappingScreen, NET_PAY_LINE, SUSPENSE_LINE, type LedgerMappingInput, type LedgerMappingOptions, type LedgerMappingRow } from '../ledger-mapping';
+// T2-B 63: Me › My pay › My salary.
+export { MySalaryScreen, type LiveMySalary } from '../my-salary';

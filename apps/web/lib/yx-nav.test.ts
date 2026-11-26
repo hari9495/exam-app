@@ -272,12 +272,18 @@ describe('buildNav: Time, Pay, Compliance', () => {
     ['/yx/expenses/advances', 'Advances'],
     ['/yx/expenses/advances/a1', 'Advances'],
     ['/yx/expenses/card-lines', 'Expenses'],
+    // T2-B 63: the employee's salary timeline.
+    ['/yx/me/salary', 'My salary'],
   ])('the breadcrumb of %s names "%s" under Pay', (path, label) => {
     expect(pageLink(pays, path)).toMatchObject({ area: { id: 'pay' }, link: { label }, inMenu: true });
   });
 
   it('an employee has My pay; nobody in a support session sees pay, hiring, the desk or self-service', () => {
     expect(sections(nav([], { employee: true }), 'pay')).toEqual(['Expenses & advances', 'My pay']);
+    // T2-B 63: My salary sits next to Payslips; someone with no employee record has neither.
+    const mine = labels(nav([], { employee: true }), 'pay');
+    expect(mine[mine.indexOf('Payslips') + 1]).toBe('My salary');
+    expect(labels(nav([], { employee: false }), 'pay')).not.toContain('My salary');
     const s = nav(['payroll.run.view', 'pipeline:manage', 'org.support_access.approve', 'org.yukthix_support.raise'], { support: true, role: 'super_admin', employee: true });
     expect(areas(s)).toEqual(['home', 'people', 'performance', 'settings']);
     expect(labels(s, 'home')).toEqual(['Home', 'Search']);

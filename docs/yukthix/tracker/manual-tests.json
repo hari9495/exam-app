@@ -29207,5 +29207,24 @@
                               "Screens/Pay/PAY-21 · Payslip viewer › Months list · Download the year (T2-B 65)"
                     ],
                     "note": "T2-B item 65, answer 2863. Migration 202617z0000875 (payslip_links purpose 'year'). Also fixed: Me › Payslips now fetches the PDF through the single-use link the API returns (it was saving the link's JSON). Positive and negative: API payroll-5d e2e (T2-B 65 test); kit employee-pay.test.tsx (two T2-B 65 tests)."
+          },
+          {
+                    "id": "MT-T2B-63-MY-SALARY",
+                    "area": "T2-B 63 (Pay B3): the employee's salary timeline (Me › My pay › My salary)",
+                    "screen": "Me › My pay › My salary (new page next to Payslips)",
+                    "url": "http://localhost:3000/yx/me/salary",
+                    "account": "panel@demo-org.test (employee with at least two approved salaries, one raise approved for a later date, and one raise still waiting); someone with no employee record.",
+                    "steps": [
+                              "Open the Pay menu: My salary is next to Payslips. Open it (confirm it is you if asked).",
+                              "Read the list: the later raise, the salary in force, then earlier salaries.",
+                              "Press 'Show the split' on the salary in force; then 'Hide the split'; then show it again.",
+                              "Negative: look for the raise still waiting for approval, or a turned-down one, and for the names of who asked or approved.",
+                              "Negative: as someone with no employee record open /yx/me/salary; as the employee call GET /api/v1/payroll/employees/<another person's id>/compensation-history."
+                    ],
+                    "expected": "Step 1: the page 'My salary' with no page scroll at 1278 x 635 for up to four salaries. Step 2: newest first; the later raise has 'Starts on <date>', the salary in force has 'Current'; each shows the yearly CTC, the dates, the change in % on the salary before and the reason. Step 3: a table Component / A month / A year (earnings, then company contributions); it opens again without loading. Step 4: neither is shown, nor any names (answer 2860). Step 5: 'No salary yet.'; 404 for another person.",
+                    "stories": [
+                              "Screens/Pay/My salary (T2-B 63)"
+                    ],
+                    "note": "T2-B item 63, answer 2860 (approved only; the API still returns requests and names in one's own history until the founder answers). No API change: the PAY-12 history and the salary on a day already allow self. Positive and negative: kit my-salary.test.tsx (3 tests); web yx-nav.test.ts (My salary next to Payslips)."
           }
 ]
