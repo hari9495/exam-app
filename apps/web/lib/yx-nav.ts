@@ -192,7 +192,7 @@ export const SETTINGS_PAGE_EDITORS: Record<string, string[]> = {
   '5.8': ['/yx/desk/setup'],
   '6.1': ['/yx/settings/hiring'],
   '6.2': ['/yx/settings/staffing'],
-  '6.3': ['/yx/settings/talent/performance', '/yx/settings/performance'],
+  '6.3': ['/yx/settings/talent/performance'],
   // AS-2: the company's assessment defaults (Settings 6.5).
   '6.5': ['/yx/settings/talent/assessments'],
   // S-10 (answer 1327): group 7 on the checked older routes (System Admins; 7.5 is each person's own calendar).
@@ -647,7 +647,6 @@ export function buildNav(n: NavInput): NavArea[] {
         ...when(settingsAdmin, L('countries', 'Countries', '/yx/settings/countries'), L('translations', 'Translations', '/yx/settings/translations')),
         // S-7 (answer 1321): the Organisation, Documents and Account settings pages (Company rules retired).
         ...when(settingsView, ...MORE_SETTINGS_PAGES.map(([id, label, folder, slug]) => L(`more-settings-${id}`, label, `${SETTINGS_HOME}/${folder}/${slug}`))),
-        ...when(has('perf.setup.manage'), L('performance-setup', 'Performance', '/yx/settings/performance')),
         // S-8 (answer 1323): the company's expense and performance choices (4.8, 6.3); their set-up keys change them too.
         ...when(settingsView || has('expense.policy.manage') || has('expense.policy.view'), L('expense-settings', 'Expense settings', `${SETTINGS_HOME}/finance/expenses-and-travel`)),
         ...when(settingsView || has('perf.setup.manage'), L('performance-settings', 'Performance settings', `${SETTINGS_HOME}/talent/performance`)),

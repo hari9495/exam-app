@@ -47,7 +47,7 @@ const PLANS: PipSummary[] = [
   { id: 'p3', employee: 'Rahul Menon', manager: 'Karthik Subramanian', status: 'met', startsOn: '2026-06-01', endsOn: '2026-08-29', nextCheckin: null },
 ];
 const list = { onView: () => undefined, onOpen: () => undefined, team: [{ id: 'e1', name: 'Arjun Rao' }, { id: 'e2', name: 'Sita Iyer' }], lengths: [30, 60, 90], onPropose: async () => ({}) };
-export const Plans: S = { name: 'Manager · my team's plans', render: () => <PipsScreen state="ready" view="team" hasTeam canScope={false} pips={PLANS.slice(0, 2)} {...list} /> };
+export const Plans: S = { name: "Manager · my team's plans", render: () => <PipsScreen state="ready" view="team" hasTeam canScope={false} pips={PLANS.slice(0, 2)} {...list} /> };
 export const PlansHr: S = { name: 'HR · plans in my scope', render: () => <PipsScreen state="ready" view="scope" hasTeam={false} canScope pips={PLANS} {...list} /> };
 export const PlansEmpty: S = { name: 'Employee · no plans', render: () => <PipsScreen state="ready" view="mine" hasTeam={false} canScope={false} pips={[]} {...list} /> };
 export const PlansLoading: S = { name: 'Plans · loading', render: () => <PipsScreen state="loading" view="team" hasTeam canScope={false} pips={[]} {...list} /> };

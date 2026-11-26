@@ -1,7 +1,8 @@
 // Performance (M06), wired to the API (M06-BUILD-DESIGN §20). Batch PM1: Settings › Performance (6.3, PRF-14).
 // Import the stylesheet once: '@yukthix/ui/styles.css'.
 export * from './types';
-export { PerformanceSetupScreen, type PerformanceSetupScreenProps } from './setup';
+// Batch T2-C: Settings › Performance is the drawn 6.3 page; these are its live editors (lists and sheets).
+export { PERF_SETUP_LISTS, PerfStartersCard, RatingScaleSheet, ReviewTemplateSheet, SkillSheet, perfSetupPage, skillsInOrder, type PerfSetupData } from '../../settings/perf-setup-live';
 export { FeedbackTasksScreen, PeerFormScreen, type FeedbackTasksScreenProps, type PeerFormScreenProps } from '../../growth/peer-answer';
 // Batch T2-C: reviewer blocks re-wired as a designed PRF-07 screen.
 export { ReviewerBlocksScreen, type ReviewerBlocksScreenProps } from '../../growth/reviewer-blocks';

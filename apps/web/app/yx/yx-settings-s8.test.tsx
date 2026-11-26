@@ -29,13 +29,17 @@ const REGISTRY = {
   'payroll.settings.second_person': { label: 'Payroll setting changes need a second person', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
 };
 const calls: [string, unknown][] = [];
+// Batch T2-C: 6.3's live editors (the old set-up copy's review templates, rating scales and skills library).
+const SCALE = { id: 's1', name: 'Five-point scale', min: 1, max: 5, step: 1, status: 'active', starter: true, inUse: true, levels: ['A', 'B', 'C', 'D', 'E'].map((label, i) => ({ value: i + 1, label, description: null })), bands: [{ fromScore: 1, toScore: 5, label: 'All' }], version: 1 };
+const ANNUAL = { id: 't1', familyId: 'f1', templateVersion: 1, name: 'Annual review', kind: 'annual', scaleId: 's1', scoring: 'weighted', status: 'active', starter: true, activatedAt: null, sections: [{ kind: 'goals', title: 'Goals', weight: 100, rated: true, whoAnswers: ['self', 'manager'], questions: [] }], problem: null, version: 1 };
+const perfSetup: { templates: unknown[]; scales: unknown[]; skills: unknown[] } = { templates: [], scales: [], skills: [] };
 const DOC_TYPES = [
   { key: 'passport', name: 'Passport', sensitivity: 'confidential', requiresVerification: false, expiryTracked: true, reminderDays: [60, 30, 7], uploadBy: ['person', 'hr'], system: true },
   { key: 'c_gate_pass', name: 'Gate pass', sensitivity: 'internal', requiresVerification: true, expiryTracked: false, reminderDays: [], uploadBy: ['hr'], system: false },
 ];
 const routes = (perms: string[]) =>
   api.mockImplementation(async (path: string, init?: RequestInit) => {
-    if (init?.method === 'PUT' || init?.method === 'POST' || init?.method === 'PATCH') return (calls.push([`${init.method} ${path}`, JSON.parse(String(init.body))]), { pending: true });
+    if (init?.method === 'PUT' || init?.method === 'POST' || init?.method === 'PATCH') return (calls.push([`${init.method} ${path}`, init.body === undefined ? undefined : JSON.parse(String(init.body))]), { pending: true });
     if (path.startsWith('/rbac/me/permissions')) return perms;
     if (path === '/documents/types') return DOC_TYPES;
     if (path === '/org-sender-addresses') return [{ id: 's1', label: 'Kaveri Careers', address: 'careers@kaveri.test', isDefault: true }];
@@ -46,6 +50,9 @@ const routes = (perms: string[]) =>
     if (path === '/org/legal-entities') return [{ id: 'e1', name: 'Kaveri Foods Pvt Ltd' }];
     if (path === '/org/locations') return [{ id: 'l1', name: 'Hosur plant' }];
     if (path.startsWith('/org/masters/')) return [];
+    if (path === '/performance/templates') return perfSetup.templates;
+    if (path === '/performance/scales') return perfSetup.scales;
+    if (path === '/performance/skills') return perfSetup.skills;
     throw new Error(`unexpected ${path}`);
   });
 const show = (Page: () => JSX.Element, slug: string) => {
@@ -64,6 +71,7 @@ const show = (Page: () => JSX.Element, slug: string) => {
 beforeEach(() => {
   api.mockReset();
   calls.length = 0;
+  Object.assign(perfSetup, { templates: [ANNUAL], scales: [SCALE], skills: [] });
   (useAuth as jest.Mock).mockReturnValue({ accessToken: 't' });
   (useRouter as jest.Mock).mockReturnValue({ push: jest.fn(), replace: jest.fn() });
 });
@@ -96,6 +104,35 @@ describe('Settings S-8: Expenses & travel (4.8) and Performance (6.3)', () => {
     show(YxTalentSettingsPage, 'expenses-and-travel');
     expect(await screen.findByText(/You don't have access to/)).toBeInTheDocument();
     expect(screen.queryByText(/finance check of claims/)).toBeNull();
+  });
+
+  it('6.3 (batch T2-C): performance set-up lists the review templates and makes a new version of an active one in its sheet, with a toast', async () => {
+    routes(['perf.setup.manage']);
+    show(YxTalentSettingsPage, 'performance');
+    expect(await screen.findByText('Annual review · version 1')).toBeInTheDocument();
+    expect(screen.getAllByText('Five-point scale')).toHaveLength(2);
+    await ue.click(screen.getByRole('button', { name: 'Edit Annual review · version 1' }));
+    const sheet = await screen.findByRole('dialog');
+    expect(within(sheet).queryByRole('button', { name: 'Save draft' })).toBeNull();
+    await ue.click(within(sheet).getByRole('button', { name: 'New version' }));
+    await waitFor(() => expect(calls).toEqual([['POST /performance/templates/t1/new-version', undefined]]));
+    expect((await screen.findAllByText('New version made as a draft')).length).toBeGreaterThan(0);
+  });
+
+  it('6.3 (batch T2-C): a new company copies the YukthiX starters', async () => {
+    routes(['perf.setup.manage']);
+    Object.assign(perfSetup, { templates: [], scales: [] });
+    show(YxTalentSettingsPage, 'performance');
+    await ue.click(await screen.findByRole('button', { name: 'Use the starters' }));
+    await waitFor(() => expect(calls.map((c) => c[0])).toEqual(['POST /performance/setup/from-starter']));
+  });
+
+  it('negative (6.3, batch T2-C): HR with only the settings key sees the company choices but no set-up lists, and nothing is asked of /performance', async () => {
+    routes(['org.settings.manage']);
+    show(YxTalentSettingsPage, 'performance');
+    expect(await screen.findByText(/the manager approves a person/)).toBeInTheDocument();
+    expect(screen.queryByText('Annual review · version 1')).toBeNull();
+    expect(api.mock.calls.some(([p]) => String(p).startsWith('/performance'))).toBe(false);
   });
 
   it('6.5 Pass certificate (answer 2424): the assessments key edits the wording in a sheet, saved through its API with a toast', async () => {

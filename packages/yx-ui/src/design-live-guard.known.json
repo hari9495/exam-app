@@ -1,7 +1,5 @@
 {
-  "liveCopies": [
-    "performance: PerformanceSetupScreen"
-  ],
+  "liveCopies": [],
   "notLive": [
     "_kit: LinksFrame",
     "growth: AiCourseDraftScreen",

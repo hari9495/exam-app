@@ -114,7 +114,7 @@ describe('design-live guard', () => {
   if (process.env.YX_GUARD_WRITE) writeFileSync(join(__dirname, 'design-live-guard.known.json'), `${JSON.stringify(gaps, null, 2)}\n`);
 
   it('(d) no live page renders a screen that only a "Live" copy story shows', () => {
-    expect(gaps.liveCopies.filter((g) => !KNOWN.liveCopies.includes(g)), 'Render the designed screen (with `live`) instead of a live-only copy.').toEqual([]);
+    expect(gaps.liveCopies.filter((g) => !(KNOWN.liveCopies as string[]).includes(g)), 'Render the designed screen (with `live`) instead of a live-only copy.').toEqual([]);
     expect(KNOWN.liveCopies.filter((g) => !gaps.liveCopies.includes(g)), 'Fixed: remove these from design-live-guard.known.json').toEqual([]);
   });
 
