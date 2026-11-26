@@ -1,7 +1,8 @@
 import { expect, test, type Browser } from '@playwright/test';
 import { signIn } from './fixtures/sign-in';
 
-// Recruitment batch AT2 on the seeded demo: the older approval settings page redirects to Hiring approvals; a
+// Recruitment batch AT2 on the seeded demo: the older approval settings page redirects to Hiring approvals (the E2
+// rules editor for requisitions and offers); a
 // headcount plan is made, sent for approval and approved by another admin in Approvals (never its author). Re-runs
 // reuse next year's Production plan.
 
@@ -17,8 +18,14 @@ test('hiring approvals moved; a headcount plan is approved by someone else', asy
   const admin = await signedIn(browser, 'admin@demo-org.test');
   await admin.goto('/v2/settings/approvals');
   await admin.waitForURL(/\/yx\/hiring\/approval-routes$/, { timeout: 30_000 });
-  await expect(admin.getByRole('button', { name: 'Save requisition approval' })).toBeVisible({ timeout: 30_000 });
-  await expect(admin.getByRole('button', { name: 'Save offer approval' })).toBeVisible();
+  // E2 (answers 2650, 2812): Hiring approvals is the rules editor for requisitions and offers.
+  await expect(admin.getByRole('heading', { name: 'Hiring approvals', level: 1 })).toBeVisible({ timeout: 30_000 });
+  await expect(admin.getByRole('heading', { name: 'Requisition approvals', level: 1 })).toBeVisible();
+  await expect(admin.getByRole('button', { name: /^Save as version/ })).toBeVisible();
+  await admin.getByRole('combobox', { name: 'Request type' }).click();
+  await expect(admin.getByRole('option', { name: /Offer/ })).toBeVisible();
+  await expect(admin.getByRole('option', { name: /One-time pay/ })).toHaveCount(0);
+  await admin.keyboard.press('Escape');
 
   await admin.goto('/yx/hiring/plans');
   await expect(admin.getByRole('heading', { name: 'Headcount plan', level: 1 })).toBeVisible({ timeout: 30_000 });
