@@ -385,6 +385,19 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     // Next month's run is already calculated: arrears approved now would never be paid by it.
     const r = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month: next }).expect(201)).body.id;
     await calculate(r);
+    // PT follow-up to E3 review item 8: emp1's earlier worksheet arrears (paid in an arrears run) are no PT wage of this month.
+    const ptCodes = (await scoped((tx) => tx.payComponent.findMany({ where: { ptWage: true, kind: 'earning' }, select: { code: true } }))).map((x) => x.code);
+    const earlier = await scoped((tx) => tx.payslip.findMany({ where: { employeeId: ids.emp1, status: 'approved', periodStart: { lt: new Date(`${next}-01`) } }, select: { id: true } }));
+    const ptLines = await scoped((tx) => tx.payslipLine.findMany({ where: { payslipId: { in: earlier.map((x) => x.id) }, componentCode: { in: ptCodes }, kind: 'earning' } }));
+    const sheetPays = new Set((await scoped((tx) => tx.oneTimePay.findMany({ where: { employeeId: ids.emp1, source: 'arrears', sourceRef: { not: null } }, select: { id: true } }))).map((x) => x.id));
+    const arrearsPt = ptLines.filter((l) => l.sourceRef && sheetPays.has(l.sourceRef)).reduce((t, l) => t + Number(l.amount), 0);
+    expect(arrearsPt).toBeGreaterThan(0);
+    const fy = Number(next.slice(5)) >= 4 ? `${next.slice(0, 4)}-04-01` : `${Number(next.slice(0, 4)) - 1}-04-01`;
+    const fyIds = new Set((await scoped((tx) => tx.payslip.findMany({ where: { id: { in: earlier.map((x) => x.id) }, periodStart: { gte: new Date(fy) } }, select: { id: true } }))).map((x) => x.id));
+    const wantPt = ptLines.filter((l) => fyIds.has(l.payslipId) && !(l.sourceRef && sheetPays.has(l.sourceRef))).reduce((t, l) => t + Number(l.amount), 0);
+    const slip1 = await scoped((tx) => tx.payslip.findFirstOrThrow({ where: { runId: r, employeeId: ids.emp1 } }));
+    const snap1 = await scoped((tx) => tx.payslipSnapshot.findFirstOrThrow({ where: { payslipId: slip1.id } }));
+    expect(Number((snap1.inputs as { ytd: { ptWage: string } }).ytd.ptWage)).toBeCloseTo(wantPt, 2);
     expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({ payMonth: next }).expect(409)).body.message).toMatch(/already calculated/);
     // By default they roll past this (locked) month and next month's calculated run, to the month after.
     expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(200)).body).toMatchObject({ status: 'approved', payMonth: after });
