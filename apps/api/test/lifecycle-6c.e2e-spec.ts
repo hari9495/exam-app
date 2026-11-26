@@ -836,6 +836,38 @@ describe('Lifecycle batch 6c', () => {
     await api('adminB', 'put', `/lifecycle/asset-contracts/${k}`).send({ ...body, version: 2 }).expect(404);
   });
 
+  it('IT assets follow-up (2823): only company-wide asset managers retire or restore a supplier; site managers add and edit', async () => {
+    const o = { organizationId: org.A.id };
+    // A Bengaluru site asset manager (a location grant), signed in fresh.
+    await inA(async (tx) => {
+      const u = await tx.user.create({ data: { ...o, email: `site-it@life6c-${run}.test`, name: `Site IT ${run}`, passwordHash: await argon2.hash(PASSWORD), role: 'panel', permissionProfileId: (await tx.permissionProfile.create({ data: { ...o, name: `site-none-${run}`, permissionsJson: '[]' } })).id } });
+      const role = await tx.permissionProfile.create({ data: { ...o, name: `asset-site-${run}`, permissionsJson: JSON.stringify(['asset.view', 'asset.manage']) } });
+      await tx.roleGrant.create({ data: { ...o, userId: u.id, permissionProfileId: role.id, scopeType: 'location', locationId: ids.blr, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Bengaluru IT', grantedBy: users.adminA } });
+    });
+    const siteToken = (await request(server()).post('/api/v1/auth/staff/login').send({ organizationSlug: org.A.slug, email: `site-it@life6c-${run}.test`, password: PASSWORD }).expect(200)).body.accessToken as string;
+    const asSite = (method: 'get' | 'post' | 'put', path: string) => request(server())[method](`/api/v1${path}`).set('Authorization', `Bearer ${siteToken}`);
+    const sup = { name: `Site Supplier ${run}`, contacts: [] };
+    // The site manager adds and edits (the status untouched or sent unchanged) but may not retire.
+    const id = (await asSite('post', '/lifecycle/asset-suppliers').send(sup).expect(201)).body.id as string;
+    const list = (await asSite('get', '/lifecycle/asset-suppliers').expect(200)).body;
+    expect(list).toMatchObject({ canManage: true, canRetire: false });
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, notes: 'Toner', version: 1 }).expect(200);
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, notes: 'Toner and paper', retired: false, version: 2 }).expect(200);
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: true, version: 3 }).expect(403);
+    const row = async () => (await api('it', 'get', '/lifecycle/asset-suppliers').expect(200)).body.rows.find((r: { id: string }) => r.id === id);
+    expect(await row()).toMatchObject({ retired: false, notes: 'Toner and paper', version: 3 });
+    // The company-wide manager retires it; the site manager cannot restore it but still edits it.
+    expect((await api('it', 'get', '/lifecycle/asset-suppliers').expect(200)).body.canRetire).toBe(true);
+    await api('it', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: true, version: 3 }).expect(200);
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: false, version: 4 }).expect(403);
+    await asSite('put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, notes: 'Toner only', version: 4 }).expect(200);
+    expect(await row()).toMatchObject({ retired: true, notes: 'Toner only' });
+    await api('it', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: false, version: 5 }).expect(200);
+    expect((await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'it_supplier', entityId: id, action: { in: ['asset.supplier.retired', 'asset.supplier.restored'] } }, orderBy: { createdAt: 'asc' } }))).map((x) => [x.action, x.actorUserId])).toEqual([['asset.supplier.retired', users.it], ['asset.supplier.restored', users.it]]);
+    // Another company: not found.
+    await api('adminB', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: true, version: 6 }).expect(404);
+  });
+
   it('IT assets part 3 (2714 contracts): tacit renews, express ends, owners told once at the notice date (a company setting)', async () => {
     const alerts = app.get(AssetAlertsService);
     const o = { organizationId: org.A.id };

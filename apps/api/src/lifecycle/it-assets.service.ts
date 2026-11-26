@@ -13,8 +13,8 @@ import { contractEndsOn, contractNoticeOn } from './asset-categories';
 // IT assets part 3. Answer 2716: the IT and Admin supplier list, separate from hiring's staffing vendors and from
 // contract-labour contractors (they keep their own lists and compliance checks). The list is company-wide (a supplier
 // has no place): anyone holding asset.view or asset.manage at any scope reads it (to pick it on an asset); anyone holding
-// asset.manage at any scope adds, edits and retires suppliers (retired, never deleted; assets keep them). Every change
-// is audited.
+// asset.manage at any scope adds and edits suppliers; only company-wide asset managers retire or restore one (answer
+// 2823; retired, never deleted; assets keep them). Every change is audited.
 // Answer 2717: contracts. A contract has an optional place (legal entity or location; none = company-wide, like an
 // asset); asset.view over its place reads it, asset.manage over its place changes it (a place-less contract: company-wide
 // asset.manage only). Its value is money: only asset.manage of its place and asset.finance.view see it (answer 2711).
@@ -29,6 +29,8 @@ import { contractEndsOn, contractNoticeOn } from './asset-categories';
 type Contact = { name: string; email: string | null; phone: string | null };
 
 const manages = (v: Viewer) => v.grants.has('asset.manage') && !v.actingForOther;
+/** Answer 2823: asset.manage over the whole company (a place-less record), not one site. */
+const managesCompany = (v: Viewer) => reachesPlace(v, 'asset.manage', { legalEntityId: null, locationId: null });
 const seesMoney = (v: Viewer, k: { legalEntityId: string | null; locationId: string | null }) => reachesPlace(v, 'asset.manage', k) || reachesPlace(v, 'asset.finance.view', k);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
@@ -58,6 +60,7 @@ export class ItAssetsService {
       const assets = (await tx.asset.findMany({ where: { organizationId: org, supplierId: { in: rows.map((r) => r.id) } }, select: { supplierId: true, legalEntityId: true, locationId: true } })).filter((a) => reachesPlace(v, 'asset.view', a));
       return {
         canManage: manages(v),
+        canRetire: managesCompany(v),
         rows: rows.map((r) => ({
           id: r.id,
           name: r.name,
@@ -88,6 +91,7 @@ export class ItAssetsService {
         const cur = await tx.itSupplier.findFirst({ where: { organizationId: org, id } });
         if (!cur) throw new NotFoundException('No such supplier.');
         const retiredAt = dto.retired === undefined ? cur.retiredAt : dto.retired ? (cur.retiredAt ?? new Date()) : null;
+        if (Boolean(retiredAt) !== Boolean(cur.retiredAt) && !managesCompany(v)) throw new ForbiddenException('Only company-wide asset managers retire or restore a supplier.');
         const n = await tx.itSupplier.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...data, retiredAt, version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this supplier. Reload it.');
         await audit(tx, c, 'asset.supplier.updated', 'it_supplier', id, { from: { name: cur.name, gstin: cur.gstin, contacts: cur.contacts, notes: cur.notes }, to: data });
