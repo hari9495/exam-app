@@ -258,3 +258,35 @@ describe('International bank details (PPL-46), live', () => {
     expect(onBankAbroad).toHaveBeenCalled();
   });
 });
+
+describe('Assets tab: licence seats (IT assets answer 2826), live', () => {
+  const rows = [{ tag: 'KF-LAP-0231', name: 'Laptop, 14 inch', issued: day('2023-06-15'), condition: 'Good', ack: 'Acknowledged' }];
+  const seats = [
+    { seatId: 'q2', software: 'Microsoft 365', version: 'E3', given: day('2026-04-01'), expires: day('2027-03-31') },
+    { seatId: 'q7', software: 'Tally Prime', version: null, given: day('2025-06-01'), expires: null },
+  ];
+
+  it('lists the assets and, below, the licence seats; the tab counts both', async () => {
+    wrap(<PersonWorkspace persona="mgr" relation="team" today={day('2026-11-26')} live={live({ assets: { rows, seats } })} />);
+    await ue.click(screen.getByRole('tab', { name: /Assets/ }));
+    expect(screen.getByRole('tab', { name: /Assets/ })).toHaveTextContent('3');
+    expect(within(screen.getByRole('table', { name: 'Assets with Arjun Kulkarni' })).getByText('KF-LAP-0231')).toBeInTheDocument();
+    const t = screen.getByRole('table', { name: 'Licence seats of Arjun Kulkarni' });
+    expect(within(t).getByText('Microsoft 365 E3')).toBeInTheDocument();
+    expect(within(t).getByText('31 Mar 2027')).toBeInTheDocument();
+    expect(within(t).getByText('Tally Prime')).toBeInTheDocument();
+    expect(within(t).getByText('No expiry')).toBeInTheDocument();
+  });
+
+  it('negative: seats only show no "No assets" message; with neither, it says so and no seats table is drawn', async () => {
+    const { unmount } = wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-11-26')} live={live({ assets: { rows: [], seats } })} />);
+    await ue.click(screen.getByRole('tab', { name: /Assets/ }));
+    expect(screen.queryByText('No assets with Arjun Kulkarni')).toBeNull();
+    expect(screen.getByRole('table', { name: 'Licence seats of Arjun Kulkarni' })).toBeInTheDocument();
+    unmount();
+    wrap(<PersonWorkspace persona="hr" relation="other" today={day('2026-11-26')} live={live({ assets: { rows: [] } })} />);
+    await ue.click(screen.getByRole('tab', { name: /Assets/ }));
+    expect(screen.getByText('No assets with Arjun Kulkarni')).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: /Licence seats/ })).toBeNull();
+  });
+});

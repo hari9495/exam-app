@@ -1,4 +1,5 @@
 // P22 Workflow Studio & AI assistant: PLT-55…64.
+import { LiveTryDrawer, type LiveTry } from './try-live';
 import { useState, type ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Code, Lock, Pause, Play, RotateCcw, SkipForward, Square, Undo2, Workflow } from 'lucide-react';
 import { Button, Link } from '../../components/button';
@@ -267,24 +268,28 @@ export interface TraceStep {
 
 // PLT-57
 export function TestPreviewDrawer({
-  name,
-  version,
-  samples,
-  chosen,
-  traces,
-  impact,
+  name = '',
+  version = '',
+  samples = [],
+  chosen = [],
+  traces = null,
+  impact = null,
   state = 'ready',
   stored,
+  live,
 }: {
-  name: string;
-  version: string;
-  samples: { value: string; label: string }[];
-  chosen: string[];
-  traces: Record<string, TraceStep[]> | null;
-  impact: { rows: ImpactRow[]; runs: number } | null;
+  name?: string;
+  version?: string;
+  samples?: { value: string; label: string }[];
+  chosen?: string[];
+  traces?: Record<string, TraceStep[]> | null;
+  impact?: { rows: ImpactRow[]; runs: number } | null;
   state?: 'ready' | 'running';
   stored?: string;
+  /** E2 part 5: "Try it" on an approval policy (sample values or a past request). */
+  live?: LiveTry;
 }) {
+  if (live) return <LiveTryDrawer live={live} />;
   const [pick, setPick] = useState<string[]>(chosen);
   const [record, setRecord] = useState<string | null>(chosen[0] ?? null);
   const trace = record && traces ? traces[record] : null;

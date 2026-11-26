@@ -295,7 +295,7 @@ describe('buildNav: Settings', () => {
   });
 
   it('the settings admin gets the S-7 pages (no retired Company rules), Countries and Translations; set-up pages follow their keys', () => {
-    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Assets', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
+    expect(labels(nav(['org.settings.manage']), 'settings')).toEqual(['All settings', 'Set-up hub', 'Legal entities', 'Locations', 'Structure', 'Countries', 'Translations', 'Company & branding', 'Employee records', 'Set-up hub settings', 'Document types', 'Notifications', 'Policies', 'Help and tips', 'Expense settings', 'Performance settings', 'Assessment settings', 'Custom fields', 'Approvals', 'Access requests', 'Directory & privacy', 'Security rules', 'Onboarding & probation', 'Job changes & transfers', 'Exit & lifecycle policies', 'Assets', 'Employee relations & cases', 'Audit & data retention', 'Approval policies', 'Approval limits', 'Recycle bin', 'Attendance modes', 'Check-in & devices', 'Shifts & patterns', 'Weekly offs', 'Late & regularisation', 'Leave types', 'Holiday calendars', 'Leave year', 'Projects & timesheets', 'Visitors', 'Payroll policies', 'Payslip settings', 'Tax', 'Bonus & loan rules', 'Accounting & costing', 'Contract labour', 'Benefits & FBP', 'Hiring', 'Staffing desk']);
     // Settings 6.1 Hiring: recruiting, hiring admins and HR read it (the API decides who changes it).
     expect(labels(nav(['ats.settings.manage']), 'settings')).toEqual(['All settings', 'Hiring']);
     // AS-2 (Settings 6.5): a test owner with only the assessments settings key gets that page and nothing else.
@@ -630,5 +630,22 @@ describe('buildNav: Engage (batch G2)', () => {
     expect(pageLink(all, '/yx/engage/post')?.link.label).toBe('Feed');
     expect(pageLink(all, '/yx/engage/recognition')?.link.label).toBe('Recognition');
     expect(pageLink(nav(['engage.survey.manage'], { employee: true }), '/yx/engage/surveys/x/results')?.link.label).toBe('Surveys');
+  });
+});
+
+describe('buildNav: E2 approval rules editor', () => {
+  const items = (n: ReturnType<typeof buildNav>) => n.flatMap((a) => a.sections.flatMap((s) => s.items.map((l) => [l.label, l.href])));
+  it('the settings key shows Approval policies, Approval limits and Hiring approvals; HR who read the structure see them too', () => {
+    for (const keys of [['org.settings.manage'], ['employee.profile.view', 'org.structure.view']]) {
+      const all = items(nav(keys));
+      expect(all).toEqual(expect.arrayContaining([['Approval policies', '/yx/settings/approval-policies'], ['Approval limits', '/yx/settings/approval-limits'], ['Hiring approvals', '/yx/hiring/approval-routes']]));
+    }
+  });
+  it('negative: the structure key alone, or the old approvals key, shows none of them', () => {
+    for (const keys of [['org.structure.view'], ['approvals:configure']]) {
+      const labelsOf = items(nav(keys)).map(([l]) => l);
+      expect(labelsOf).not.toContain('Approval limits');
+      expect(labelsOf).not.toContain('Hiring approvals');
+    }
   });
 });

@@ -1,4 +1,5 @@
 // DSAR, AI governance, chat apps, partners, policies page, rule builder (PLT-27…32).
+import { LiveRuleBuilderScreen, type LiveRuleBuilder } from './rule-builder-live';
 import { useState, type ReactNode } from 'react';
 import { CheckCircle2, Handshake, Scale, ShieldCheck } from 'lucide-react';
 import { PageHeader, ObjectHeader, Card, Tabs, TabsContent, TabsList, TabsTrigger, DescriptionList } from '../../components/shell';
@@ -622,7 +623,8 @@ export function checkFormula(src: string): string | null {
   return bad ? `${bad} isn't a function. Use one of: ${known.join(', ')}.` : null;
 }
 
-export function RuleBuilderScreen({ tab = 'builder', formula = 'IF(location.site_type = "Mine", 14, 12)', submitted, rules = SAMPLE_RULES, lawFloor }: { tab?: 'builder' | 'formula' | 'versions'; formula?: string; submitted?: boolean; rules?: ScopedRule[]; lawFloor?: boolean }) {
+export function RuleBuilderScreen({ tab = 'builder', formula = 'IF(location.site_type = "Mine", 14, 12)', submitted, rules = SAMPLE_RULES, lawFloor, live }: { tab?: 'builder' | 'formula' | 'versions'; formula?: string; submitted?: boolean; rules?: ScopedRule[]; lawFloor?: boolean; /** E2 part 5: one approval rule of a request type. */ live?: LiveRuleBuilder }) {
+  if (live) return <LiveRuleBuilderScreen live={live} />;
   const [rule, setRule] = useState<Rule>(LEAVE_RULE);
   const [src, setSrc] = useState(formula);
   const [from, setFrom] = useState<Date | null>(d(1, 9));

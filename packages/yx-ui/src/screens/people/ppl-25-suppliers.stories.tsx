@@ -24,3 +24,5 @@ export const AddWrong: S = {
   play: play(type(/^GSTIN/, '27AABCI'), type(/^Contact name/, 'N'), type(/^Email/, 'neha@'), press('Add supplier')),
 };
 export const Edit: S = { name: 'Edit supplier · two contacts, status', render: () => <AssetSuppliersScreen rows={SUPPLIERS} open="s1" /> };
+// Answer 2823: a site asset manager edits a supplier but does not retire or restore it.
+export const EditSite: S = { name: 'Edit supplier · site asset manager, no retire (answer 2823)', render: () => <AssetSuppliersScreen rows={SUPPLIERS} open="s1" canRetire={false} /> };

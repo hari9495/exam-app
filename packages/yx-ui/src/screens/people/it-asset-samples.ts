@@ -19,6 +19,8 @@ export const CONTRACTS: ContractRow[] = [
   { id: 'k1', kind: 'amc', number: 'AMC-2026-014', supplierId: 's1', supplier: 'Dell India Pvt Ltd', legalEntityId: 'e1', locationId: 'l1', place: 'Hosur plant', startsOn: '2026-01-01', months: 12, endsOn: '2026-12-31', noticeDays: 45, noticeOn: '2026-11-16', renewal: 'tacit', renewals: 0, supportHours: 'Mon to Sat, 9:00 to 18:00', value: '185000.00', assetCap: 50, assets: [{ id: 'a1', tag: 'LT-0418', name: 'Dell Latitude 5440', category: 'Laptop' }, { id: 'a2', tag: 'LT-0419', name: 'Dell Latitude 5440', category: 'Laptop' }], hiddenAssets: 1, status: 'active', canManage: true, version: 2 },
   { id: 'k2', kind: 'lease', number: 'RL/LEASE/88', supplierId: 's2', supplier: 'Redington Ltd', legalEntityId: null, locationId: null, place: null, startsOn: '2024-04-01', months: 12, endsOn: '2027-03-31', noticeDays: 30, noticeOn: '2027-03-01', renewal: 'tacit', renewals: 2, supportHours: '24 x 7', value: '640000.00', assetCap: null, assets: [{ id: 'a3', tag: 'PR-0007', name: 'HP LaserJet M404', category: 'Printer' }], hiddenAssets: 0, status: 'active', canManage: true, version: 4 },
   { id: 'k3', kind: 'support', number: 'SUP-2025-03', supplierId: 's3', supplier: 'Hosur Office Supplies', legalEntityId: 'e1', locationId: 'l1', place: 'Hosur plant', startsOn: '2025-06-01', months: 6, endsOn: '2025-11-30', noticeDays: 0, noticeOn: '2025-11-30', renewal: 'express', renewals: 0, supportHours: null, value: null, assetCap: 5, assets: [], hiddenAssets: 0, status: 'ended', canManage: true, version: 1 },
+  // Answer 2824: an express contract an asset manager renews by hand.
+  { id: 'k4', kind: 'insurance', number: 'INS-HP-2026', supplierId: 's2', supplier: 'Redington Ltd', legalEntityId: 'e1', locationId: 'l2', place: 'Chennai office', startsOn: '2026-03-01', months: 12, endsOn: '2027-02-28', noticeDays: 30, noticeOn: '2027-01-29', renewal: 'express', renewals: 0, supportHours: null, value: '42000.00', assetCap: null, assets: [{ id: 'a3', tag: 'PR-0007', name: 'HP LaserJet M404', category: 'Printer' }], hiddenAssets: 0, status: 'active', canManage: true, version: 1 },
 ];
 
 export const liveContracts = (over: Partial<LiveContracts> = {}): LiveContracts => ({
@@ -33,6 +35,7 @@ export const liveContracts = (over: Partial<LiveContracts> = {}): LiveContracts 
   locations: [{ value: 'l1', label: 'Hosur plant', entityId: 'e1' }],
   assets: [{ value: 'a1', label: 'LT-0418 · Dell Latitude 5440' }, { value: 'a2', label: 'LT-0419 · Dell Latitude 5440' }, { value: 'a3', label: 'PR-0007 · HP LaserJet M404' }],
   onSave: () => Promise.resolve({ id: 'k9' }),
+  onRenew: () => Promise.resolve({ id: 'k4' }),
   onOpenAsset: () => {},
   ...over,
 });

@@ -233,8 +233,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'exit.notice.probation': { label: 'Notice period during probation', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '15d' },
   'exit.notice.confirmed': { label: 'Notice period once confirmed', scopes: ['tenant', 'legal_entity', 'employment_type', 'grade'], dated: true, values: ['0d', '7d', '15d', '30d', '45d', '60d', '90d', '1m', '2m', '3m'], default: '30d' },
   // IT assets part 1 (answer 2712, Settings 2.8): how a person confirms an asset they receive ("E-sign" waits for the
-  // e-sign partner), and the F&F recovery of an asset not returned. "Written-down value" is the net book value on the day
-  // (answer 2713, from the category's depreciation; without one HR decides).
+  // e-sign partner), and the F&F recovery of an asset not returned. "Written-down value" is the net book value on the
+  // leaver's last working day (answers 2713, 2820, from the category's depreciation; without one HR decides).
   'asset.ack_method': { label: 'Acknowledgement', scopes: ['tenant'], dated: false, values: ['click', 'none'], default: 'click', labels: { click: 'Click to accept', none: 'None' } },
   'asset.recovery_to_fnf': { label: 'Add unreturned-asset recovery to F&F', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
   // IT assets answer 2714: how many days before a warranty ends its asset managers are told (once); off tells nobody.

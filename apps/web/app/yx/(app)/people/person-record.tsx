@@ -97,7 +97,11 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
   // PPL-42: "Re-verification due" for the person, HR with document.manage, or the manager (the API decides).
   const reverif = useLife<{ items: ReverifDue[] }>(personId && profile.data && (self || teamView || perms.has('document.manage')) ? `/documents/reverification/person/${p}` : null);
   const assets = useLife<{ rows: AssetRow[] }>(perms.has('asset.view') ? '/lifecycle/assets' : null);
-  const teamAssets = useLife<{ rows: { tag: string; name: string; issuedOn: string; condition: string; acknowledged: boolean }[] }>(teamView && !perms.has('asset.view') && personId ? `/lifecycle/people/${p}/assets` : null);
+  // What the person holds (PPL-03): the rows for their managers; the licence seats (answer 2826) for them, their managers
+  // and asset.view holders (the API keeps only the seats of licences the viewer's asset.view reaches).
+  const teamAssets = useLife<{ rows: { tag: string; name: string; issuedOn: string; condition: string; acknowledged: boolean }[]; seats: { seatId: string; software: string; softwareVersion: string | null; expiresOn: string | null; givenOn: string }[] }>(
+    personId && profile.data && (teamView || self || perms.has('asset.view')) ? `/lifecycle/people/${p}/assets` : null,
+  );
   const teamLeave = useTime<{ balances: Balance[] }>(teamView && !perms.has('leave.view') && personId ? `/people/${p}/balances` : null);
   const myAssets = useLife<{ rows: { assignmentId: string; name: string; tag: string; issuedOn: string; condition: string; acknowledgedAt: string | null }[] }>(self && !perms.has('asset.view') ? '/lifecycle/me/assets' : null);
   const balances = useTime<{ people: { employeeId: string; balances: Balance[] }[] }>(personId && !self && perms.has('leave.view') ? '/hr/balances' : null);
@@ -277,7 +281,7 @@ export function PersonRecord({ personParam, path }: { personParam: string | null
           onDownload: (d: RecordDoc) => void reportErrors(() => download(d.id!, `${d.type}.pdf`), refused),
         }
       : null,
-    assets: assetList ? { rows: assetList, ...(perms.has('asset.manage') ? { onIssue: () => router.push('/yx/people/assets') } : {}) } : null,
+    assets: assetList ? { rows: assetList, seats: (teamAssets.data?.seats ?? []).map((x) => ({ seatId: x.seatId, software: x.software, version: x.softwareVersion, given: day(x.givenOn), expires: x.expiresOn ? day(x.expiresOn) : null })), ...(perms.has('asset.manage') ? { onIssue: () => router.push('/yx/people/assets') } : {}) } : null,
     history: h
       ? {
           rows: historyRows(h, today),

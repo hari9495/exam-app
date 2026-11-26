@@ -3,7 +3,6 @@
 export * from './types';
 // HIR-01: the designed headcount plan board, live with its `live` prop (the stand-in is gone).
 export { HeadcountPlanScreen, PlanEditorDrawer, type LiveHeadcountPlan, type LivePlan, type LivePlanLine, type PlanInput as HeadcountPlanInput, type PlanChoice } from '../hiring-plan';
-export { ApprovalRoutesScreen, type ApprovalRoutesScreenProps } from './routes';
 export { JobBoardsScreen, type JobBoardsScreenProps } from './boards';
 // T9-09 careers site and the candidate pages outside the app (founder decisions 8 and 10), live with their `live` prop.
 export { CareersJobScreen, CareersSiteScreen, type CareersJobDetail, type LiveCareersJob, type LiveCareersSite } from '../../portals/t9-candidate';
@@ -118,6 +117,9 @@ export type { LiveAuditLog, LiveAuditEntry, LiveAuditFilters } from '../../platf
 
 // Settings S-6 (answer 1330): the approval policy editor (PLT-12), live.
 export { PolicyEditorScreen } from '../../platform-a/setup-admin';
-export type { LivePolicyEditor, PolicyTypeRow, PolicyStepInput, PolicyApprover } from '../../platform-a/policy-editor-live';
+export type { LivePolicyEditor, PolicyTypeRow, PolicyStepInput, PolicyApprover, PolicyRuleInput, PolicyBodyInput, TryResult, TryInput, PastRequest, NoticeRow, MoveRow } from '../../platform-a/policy-editor-live';
+// E2 part 5: Settings › Approval limits (PLT-34 live).
+export { LookupTableScreen } from '../../platform-b/rules-screens';
+export type { LiveLimits, LimitFamily } from '../../platform-b/limits-live';
 // Answer 2631: the pipeline editor on Settings › Hiring (6.1).
 export { PipelineSheet, type EditablePipeline, type EditableStage, type PipelineSheetProps, type StageKind, type StageRule, type StageSave } from '../pipeline-sheet';

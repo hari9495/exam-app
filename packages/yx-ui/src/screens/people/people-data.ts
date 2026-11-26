@@ -320,6 +320,12 @@ export const ARJUN_ASSETS = [
   { tag: 'KF-TAB-0044', name: 'Inspection tablet', issued: d(2026, 9, 22), condition: 'New', ack: 'Waiting' },
 ];
 
+// IT assets answer 2826: the licence seats given to Arjun (Assets tab, for HR, his managers and himself).
+export const ARJUN_SEATS = [
+  { seatId: 'q2', software: 'Microsoft 365', version: 'E3', given: d(2026, 4, 1), expires: d(2027, 3, 31) },
+  { seatId: 'q7', software: 'Tally Prime', version: null, given: d(2025, 6, 1), expires: null },
+];
+
 export const ARJUN_WORK_AUTH = [
   { country: 'United Arab Emirates', type: 'Employment visa', number: 'XXXX-7731', sponsor: 'Kaveri Foods FZE', occupation: 'Quality Inspector', issued: d(2025, 11, 2), expires: d(2026, 11, 1), status: 'Expiring' },
   { country: 'United Arab Emirates', type: 'Emirates ID', number: 'XXX-XXXX-XXXXXXX-4', sponsor: 'Kaveri Foods FZE', occupation: '—', issued: d(2025, 11, 20), expires: d(2027, 11, 19), status: 'Valid' },

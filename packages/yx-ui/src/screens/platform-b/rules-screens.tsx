@@ -1,5 +1,6 @@
 // P19 rule screens: PLT-33 impact preview, PLT-34 lookup tables, PLT-35 automations, PLT-36 validation rules,
 // PLT-37 "why" panel, PLT-44 notice-of-change and policy link.
+import { LiveLimitsScreen, type LiveLimits } from './limits-live';
 import { useState } from 'react';
 import { CheckCircle2, FileSpreadsheet, Info, Pause, Play, Plus, Scale } from 'lucide-react';
 import { Button, Link } from '../../components/button';
@@ -190,7 +191,8 @@ export function LookupTablesScreen({ tables, state = 'ready', filtered }: { tabl
 }
 
 // PLT-34 (record)
-export function LookupTableScreen({ table, rows, importErrors, defaultTab = 'rows', importOpen = false }: { table: LookupTable; rows: LookupRow[]; importErrors?: { row: number; message: string }[]; defaultTab?: string; importOpen?: boolean }) {
+export function LookupTableScreen({ table, rows = [], importErrors, defaultTab = 'rows', importOpen = false, live }: { table?: LookupTable; rows?: LookupRow[]; importErrors?: { row: number; message: string }[]; defaultTab?: string; importOpen?: boolean; /** E2 part 5 (answer 2645): the company's approval limits by grade. */ live?: LiveLimits }) {
+  if (live || !table) return live ? <LiveLimitsScreen live={live} /> : null;
   const [imp, setImp] = useState(importOpen);
   const active = rows.filter((r) => r.validFrom <= TODAY && (!r.validTo || r.validTo >= TODAY));
   const cols: TableColumn<LookupRow>[] = [

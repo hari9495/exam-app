@@ -18,6 +18,9 @@ export const Ended: S = { name: 'Contracts · ended', render: () => list({ show:
 export const Empty: S = { name: 'Contracts · none yet', render: () => list({ rows: [] }) };
 export const View: S = { name: 'Contract · its assets (one at a place you do not look after)', render: () => list({ open: 'k1' }) };
 export const ViewCompanyWide: S = { name: 'Contract · company-wide, renewed twice', render: () => list({ open: 'k2' }) };
+// Answer 2824: an express contract has Renew (one more length, the start stays); a tacit one renews by itself.
+export const ViewExpress: S = { name: 'Contract · express, with Renew (answer 2824)', render: () => list({ open: 'k4' }) };
+export const Renew: S = { name: 'Contract · Renew pressed (the new end shown)', render: () => list({ open: 'k4' }), play: play(press('Renew')) };
 export const Add: S = { name: 'Add contract · open', render: () => list({ editing: 'new' }) };
 export const AddMissing: S = { name: 'Add contract · nothing filled, Add pressed', render: () => list({ editing: 'new' }), play: play(press('Add contract')) };
 export const Edit: S = { name: 'Edit contract · express renewal, cap', render: () => list({ editing: 'k1' }) };
