@@ -48,6 +48,7 @@ export const YX_KEYS = [
   'desk.sla.manage',
   // Batch 2: monthly SLA compliance for leads.
   'desk.report.view',
+  'desk.budget.manage',
   // Batch 3: email in and out, outside help pages, customers, known-issue banners.
   'desk.mailbox.manage',
   'desk.portal.manage',
