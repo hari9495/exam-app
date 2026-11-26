@@ -10,6 +10,8 @@ import { AssetCategoryDto, AssetDto, CompanyExitDto, ManualStepDto, SettledOutsi
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
 import { LastDayService } from './last-day.service';
+import { ItAssetsService } from './it-assets.service';
+import { SupplierDto } from './it-assets-dto';
 import { EntityFilterDto } from '../common/entity-filter.dto';
 
 // Lifecycle batch 6c (design §13). Keys (P02 YX-SEC-01), checked again per person, case, item and asset:
@@ -26,6 +28,7 @@ export class ExitsController {
     private readonly exits: ExitsService,
     private readonly offboarding: OffboardingService,
     private readonly lastDay: LastDayService,
+    private readonly itAssets: ItAssetsService,
   ) {}
 
   private user(req: Request) {
@@ -229,6 +232,26 @@ export class ExitsController {
   @RequirePermissions('org.settings.manage')
   retireAssetCategory(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
     return this.offboarding.retireCategory(ctx, this.user(req), id);
+  }
+
+  // IT assets part 3 (answer 2716): the IT and Admin supplier list, company-wide. Read with asset.view or asset.manage at
+  // any scope (to pick one on an asset); changed by asset.manage holders at any scope (checked again by the service).
+  @Get('asset-suppliers')
+  @RequireAnyPermission('asset.view', 'asset.manage')
+  assetSuppliers(@Req() req: Request, @CurrentTenant() ctx: TenantContext) {
+    return this.itAssets.suppliers(ctx, this.user(req));
+  }
+
+  @Post('asset-suppliers')
+  @RequirePermissions('asset.manage')
+  addAssetSupplier(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Body() dto: SupplierDto) {
+    return this.itAssets.saveSupplier(ctx, this.user(req), null, dto);
+  }
+
+  @Put('asset-suppliers/:id')
+  @RequirePermissions('asset.manage')
+  saveAssetSupplier(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Body() dto: SupplierDto) {
+    return this.itAssets.saveSupplier(ctx, this.user(req), id, dto);
   }
 
   /** Who an asset can be issued to: current employees, name only. IT holds asset.manage without any employee grant. */

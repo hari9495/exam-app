@@ -32,7 +32,14 @@ export function depreciationText(c: { usefulLifeYears: number | null; depreciati
   return c.usefulLifeYears ? `Straight line over ${c.usefulLifeYears} ${c.usefulLifeYears === 1 ? 'year' : 'years'}` : null;
 }
 
-const KEYS = ['lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'asset.manage', 'asset.finance.view', 'org.settings.manage'] as const;
+/** Does the key reach this place (company-wide, its entity or its location)? A place-less record: company-wide only. */
+export function reachesPlace(v: Viewer, key: string, a: { legalEntityId: string | null; locationId: string | null }) {
+  if (v.actingForOther && key === 'asset.manage') return false;
+  if (tenantWide(v, key)) return true;
+  return (v.scopes.get(key) ?? []).some((s) => (s.type === 'legal_entity' && s.id === a.legalEntityId) || (s.type === 'location' && s.id === a.locationId));
+}
+
+export const ASSET_KEYS = ['lifecycle.exit.manage', 'lifecycle.exit.confidential.view', 'asset.view', 'asset.manage', 'asset.finance.view', 'org.settings.manage'] as const;
 const asDate = (d: string) => new Date(`${d}T00:00:00Z`);
 const iso = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -60,6 +67,7 @@ export interface AssetDto {
   model?: string | null;
   invoiceNumber?: string | null;
   warrantyMonths?: number | null;
+  supplierId?: string | null;
 }
 
 export interface AssetCategoryDto {
@@ -91,7 +99,7 @@ export class OffboardingService {
   ) {}
 
   private viewer(user: ScopeUser) {
-    return buildViewer(this.prisma, this.tenantPrisma, user, KEYS);
+    return buildViewer(this.prisma, this.tenantPrisma, user, ASSET_KEYS);
   }
 
   private confidential(tx: Tx) {
@@ -302,9 +310,7 @@ export class OffboardingService {
 
   /** Does the key reach this asset's place (company-wide, its entity or its location)? */
   private reachesAsset(v: Viewer, key: string, a: { legalEntityId: string | null; locationId: string | null }) {
-    if (v.actingForOther && key === 'asset.manage') return false;
-    if (tenantWide(v, key)) return true;
-    return (v.scopes.get(key) ?? []).some((s) => (s.type === 'legal_entity' && s.id === a.legalEntityId) || (s.type === 'location' && s.id === a.locationId));
+    return reachesPlace(v, key, a);
   }
 
   /** Answer 2711: money on an asset (cost, later net book value) for its place's asset managers and asset.finance.view. */
@@ -503,6 +509,7 @@ export class OffboardingService {
       const open = spells.find((s) => !s.returnedOn);
       const cat = a.categoryId ? await tx.assetCategory.findFirst({ where: { organizationId: org, id: a.categoryId }, select: { name: true, usefulLifeYears: true, depreciationMethod: true, depreciationRate: true } }) : null;
       const money = this.seesMoney(v, a);
+      const supplier = a.supplierId ? await tx.itSupplier.findFirst({ where: { organizationId: org, id: a.supplierId }, select: { name: true } }) : null;
       const warrantyEndsOn = a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null;
       // Answer 2722: every viewer of the asset gets how many tickets are about it; only the ones they may see are listed.
       const ticketCount = await tx.sdTicket.count({ where: { organizationId: org, assetId: a.id } });
@@ -532,6 +539,9 @@ export class OffboardingService {
           invoiceNumber: a.invoiceNumber,
           warrantyMonths: a.warrantyMonths,
           warrantyEndsOn,
+          // Answer 2716: the IT and Admin supplier.
+          supplierId: a.supplierId,
+          supplier: supplier?.name ?? null,
           version: a.version,
         },
         holder: open ? { name: nameOf(open.personId), issuedOn: iso(open.issuedOn), acknowledged: Boolean(open.ackEvidence), ackNone: (open.ackEvidence as { method?: string } | null)?.method === 'none' } : null,
@@ -580,18 +590,23 @@ export class OffboardingService {
       const wanted = dto.category?.trim().toLowerCase();
       const cat = cats.find((x) => (dto.categoryId ? x.id === dto.categoryId : x.name.toLowerCase() === wanted) && (!x.retiredAt || x.id === cur?.categoryId));
       if (!cat) throw new BadRequestException('Choose a category from the list in Settings › Assets.');
-      const data = { categoryId: cat.id, category: cat.name, name: dto.name.trim(), tag: dto.tag.trim(), serial: dto.serial?.trim() || null, ...place, purchasedOn: dto.purchasedOn ? asDate(dto.purchasedOn) : null, cost: dto.cost ? new Prisma.Decimal(dto.cost) : null, maker: dto.maker?.trim() || null, model: dto.model?.trim() || null, invoiceNumber: dto.invoiceNumber?.trim() || null, warrantyMonths: dto.warrantyMonths ?? null };
+      // Answer 2716: a supplier from the IT and Admin list (an asset may keep a supplier retired since); left out: unchanged.
+      if (dto.supplierId) {
+        const sup = await tx.itSupplier.findFirst({ where: { organizationId: org, id: dto.supplierId }, select: { retiredAt: true } });
+        if (!sup || (sup.retiredAt && dto.supplierId !== cur?.supplierId)) throw new BadRequestException('Choose a supplier from the list.');
+      }
+      const data = { categoryId: cat.id, category: cat.name, name: dto.name.trim(), tag: dto.tag.trim(), serial: dto.serial?.trim() || null, ...place, purchasedOn: dto.purchasedOn ? asDate(dto.purchasedOn) : null, cost: dto.cost ? new Prisma.Decimal(dto.cost) : null, maker: dto.maker?.trim() || null, model: dto.model?.trim() || null, invoiceNumber: dto.invoiceNumber?.trim() || null, warrantyMonths: dto.warrantyMonths ?? null, ...(dto.supplierId !== undefined ? { supplierId: dto.supplierId } : {}) };
       try {
         if (!id) {
           const a = await tx.asset.create({ data: { organizationId: org, ...data, createdBy: c.userId ?? null } });
-          await audit(tx, c, 'asset.added', 'asset', a.id, { tag: a.tag, category: a.category, categoryId: cat.id });
+          await audit(tx, c, 'asset.added', 'asset', a.id, { tag: a.tag, category: a.category, categoryId: cat.id, supplierId: a.supplierId });
           return { id: a.id };
         }
         if (!cur) throw new NotFoundException('No such asset.');
         if (dto.status && dto.status !== cur.status && cur.status === 'assigned') throw new ConflictException('Take the asset back before changing its status.');
         const n = await tx.asset.updateMany({ where: { organizationId: org, id, version: dto.version }, data: { ...data, ...(dto.status && cur.status !== 'assigned' ? { status: dto.status } : {}), version: { increment: 1 } } });
         if (!n.count) throw new ConflictException('Someone else changed this asset. Reload it.');
-        await audit(tx, c, 'asset.updated', 'asset', id, { status: dto.status ?? cur.status });
+        await audit(tx, c, 'asset.updated', 'asset', id, { status: dto.status ?? cur.status, ...(dto.supplierId !== undefined && dto.supplierId !== cur.supplierId ? { supplier: { from: cur.supplierId, to: dto.supplierId } } : {}) });
         return { id };
       } catch (e) {
         if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') throw new ConflictException('Another asset already has that tag.');

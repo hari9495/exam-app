@@ -390,7 +390,7 @@ export interface AssetsScreenProps {
   entities: Choice[];
   locations: (Choice & { entityId: string })[];
   people: Choice[];
-  onAdd: (input: { categoryId: string; name: string; tag: string; serial: string | null; legalEntityId: string | null; locationId: string | null; cost: string | null }) => Promise<unknown>;
+  onAdd: (input: { categoryId: string; name: string; tag: string; serial: string | null; legalEntityId: string | null; locationId: string | null; cost: string | null; supplierId?: string }) => Promise<unknown>;
   onIssue: (a: AssetRow, input: { employeeId: string; issuedOn: string; condition: string }) => Promise<unknown>;
   onReturn: (a: AssetRow, input: { returnedOn: string; condition: string; status: 'in_stock' | 'in_repair' | 'lost' }) => Promise<unknown>;
 }
@@ -399,8 +399,9 @@ export interface AssetsScreenProps {
 /** IT assets part 1 (answer 2712): a category from the company list (Settings 2.8), with its next tag (2720). */
 export type AssetCategoryChoice = Choice & { nextTag?: string | null };
 
-export function AddAssetDrawer({ categories, entities, locations, onClose, onAdd }: { categories: AssetCategoryChoice[]; entities: Choice[]; locations: (Choice & { entityId: string })[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
+export function AddAssetDrawer({ categories, entities, locations, suppliers, onClose, onAdd }: { categories: AssetCategoryChoice[]; entities: Choice[]; locations: (Choice & { entityId: string })[]; /** Answer 2716: the active IT and Admin suppliers. */ suppliers?: Choice[]; onClose: () => void; onAdd: AssetsScreenProps['onAdd'] }) {
   const [category, setCategory] = useState<string | null>(null);
+  const [supplier, setSupplier] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');
   // Answer 2720: the category's next tag fills the tag while it is empty or still the last suggestion.
@@ -443,7 +444,7 @@ export function AddAssetDrawer({ categories, entities, locations, onClose, onAdd
               setBusy(true);
               setError(null);
               try {
-                await onAdd({ categoryId: category!, name: name.trim(), tag: tag.trim(), serial: serial.trim() || null, legalEntityId: entity, locationId: location, cost: cost || null });
+                await onAdd({ categoryId: category!, name: name.trim(), tag: tag.trim(), serial: serial.trim() || null, legalEntityId: entity, locationId: location, cost: cost || null, ...(supplier ? { supplierId: supplier } : {}) });
                 onClose();
               } catch (e) {
                 setError((e as Error).message);
@@ -484,6 +485,11 @@ export function AddAssetDrawer({ categories, entities, locations, onClose, onAdd
         <FormField id="as-cost" label="Cost (₹)" optional helper="Used as the recovery when it is not returned." error={shown('cost')}>
           <TextField value={cost} onChange={setCost} inputMode="decimal" maxLength={15} />
         </FormField>
+        {suppliers && (
+          <FormField id="as-supplier" label="Supplier" optional helper="The list is in People › Asset suppliers.">
+            <Select aria-label="Supplier" value={supplier} onChange={setSupplier} options={suppliers} clearable />
+          </FormField>
+        )}
       </div>
     </Drawer>
   );

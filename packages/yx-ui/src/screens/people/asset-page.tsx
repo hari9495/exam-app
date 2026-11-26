@@ -49,6 +49,9 @@ export interface AssetPageData {
     invoiceNumber: string | null;
     warrantyMonths: number | null;
     warrantyEndsOn: string | null;
+    /** Answer 2716: the IT and Admin supplier. */
+    supplierId?: string | null;
+    supplier?: string | null;
     version: number;
   };
   holder: { name: string; issuedOn: string; acknowledged: boolean; ackNone?: boolean } | null;
@@ -76,6 +79,8 @@ export interface AssetDetailsInput {
   cost: string | null;
   invoiceNumber: string | null;
   warrantyMonths: number | null;
+  /** Answer 2716: sent only when the page offers the supplier list (null: none). */
+  supplierId?: string | null;
 }
 export interface LiveAssetPage {
   state: 'ready' | 'loading' | 'error' | 'no-access';
@@ -86,12 +91,15 @@ export interface LiveAssetPage {
   onSave?: (input: AssetDetailsInput) => Promise<unknown>;
   /** The company's categories (Settings 2.8) to choose from in Edit details. */
   categories?: { value: string; label: string }[];
+  /** Answer 2716: the active suppliers to choose from in Edit details. */
+  suppliers?: { value: string; label: string }[];
   /** Answer 2722: opens a listed ticket on the Helpdesk. */
   onOpenTicket?: (id: string) => void;
 }
 type Tab = 'details' | 'history' | 'tickets';
 
 const SAMPLE_CATEGORIES = ['Laptop', 'Phone', 'SIM', 'Tools'].map((x) => ({ value: x, label: x }));
+const SAMPLE_SUPPLIERS = [{ value: 's1', label: 'Dell India Pvt Ltd' }, { value: 's2', label: 'Redington Ltd' }];
 const STATUS: Record<AssetStatus, { text: string; tone: BadgeTone }> = {
   in_stock: { text: 'In stock', tone: 'success' },
   assigned: { text: 'Assigned', tone: 'info' },
@@ -113,9 +121,9 @@ export function AssetPageScreen(props: { data: AssetPageData; tab?: Tab; editing
     if (l.state === 'no-access') return <Frame onBack={l.onBack}><NoAccessState what="the assets" grantedBy="your IT or HR admin" /></Frame>;
     if (l.state === 'error') return <Frame onBack={l.onBack}><ErrorState title="We couldn't load this asset" description="Check your connection and try again." onRetry={l.onRetry} /></Frame>;
     if (l.state === 'loading' || !l.data) return <Frame onBack={l.onBack}><Skeleton height={360} /></Frame>;
-    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} onOpenTicket={l.onOpenTicket} />;
+    return <AssetPage data={l.data} onBack={l.onBack} onSave={l.data.canManage ? l.onSave : undefined} categories={l.categories} suppliers={l.suppliers} onOpenTicket={l.onOpenTicket} />;
   }
-  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} onOpenTicket={() => undefined} />;
+  return <AssetPage data={props.data} tab={props.tab} editing={props.editing} onBack={() => undefined} onSave={props.data.canManage ? () => Promise.resolve() : undefined} categories={SAMPLE_CATEGORIES} suppliers={SAMPLE_SUPPLIERS} onOpenTicket={() => undefined} />;
 }
 
 function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; children: React.ReactNode }) {
@@ -127,7 +135,7 @@ function Frame({ onBack, tag, children }: { onBack: () => void; tag?: string; ch
   );
 }
 
-function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, onOpenTicket }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; onOpenTicket?: LiveAssetPage['onOpenTicket'] }) {
+function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, categories, suppliers, onOpenTicket }: { data: AssetPageData; tab?: Tab; editing?: boolean; onBack: () => void; onSave?: LiveAssetPage['onSave']; categories?: LiveAssetPage['categories']; suppliers?: LiveAssetPage['suppliers']; onOpenTicket?: LiveAssetPage['onOpenTicket'] }) {
   const [open, setOpen] = useState(editing);
   const a = data.asset;
   const ended = a.warrantyEndsOn != null && a.warrantyEndsOn < data.today;
@@ -183,6 +191,8 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
                       { label: 'Depreciation', value: a.netBookValue ? `${a.depreciation ?? 'From its category'} · a management figure, not the tax books` : !a.cost || !a.purchasedOn ? 'Needs the cost and the purchase date' : 'Its category has no depreciation (Settings › Assets)' },
                     ]),
                 { label: 'Invoice number', value: dash(a.invoiceNumber), mono: Boolean(a.invoiceNumber) },
+                // Answer 2716.
+                { label: 'Supplier', value: dash(a.supplier) },
                 { label: 'Warranty', value: ended ? <Badge tone="danger">{warranty}</Badge> : warranty },
               ]}
             />
@@ -199,7 +209,7 @@ function AssetPage({ data, tab = 'details', editing = false, onBack, onSave, cat
           </TabsContent>
         )}
       </Tabs>
-      {open && onSave && <EditDetailsDrawer data={data} categories={categories} onClose={() => setOpen(false)} onSave={onSave} />}
+      {open && onSave && <EditDetailsDrawer data={data} categories={categories} suppliers={suppliers} onClose={() => setOpen(false)} onSave={onSave} />}
     </Frame>
   );
 }
@@ -235,12 +245,15 @@ function TicketsTab({ tickets, onOpenTicket }: { tickets: NonNullable<AssetPageD
   );
 }
 
-function EditDetailsDrawer({ data, categories, onClose, onSave }: { data: AssetPageData; categories?: LiveAssetPage['categories']; onClose: () => void; onSave: NonNullable<LiveAssetPage['onSave']> }) {
+function EditDetailsDrawer({ data, categories, suppliers, onClose, onSave }: { data: AssetPageData; categories?: LiveAssetPage['categories']; suppliers?: LiveAssetPage['suppliers']; onClose: () => void; onSave: NonNullable<LiveAssetPage['onSave']> }) {
   const { toast } = useToast();
   const a = data.asset;
   // A category retired since stays choosable for the asset that already has it.
   const choices = categories && a.categoryId && !categories.some((x) => x.value === a.categoryId) ? [{ value: a.categoryId, label: a.category }, ...categories] : categories;
   const [category, setCategory] = useState<string | null>(a.categoryId ?? null);
+  // Answer 2716: a supplier retired since stays choosable for the asset that already names it.
+  const supplierChoices = suppliers && a.supplierId && !suppliers.some((x) => x.value === a.supplierId) ? [{ value: a.supplierId, label: a.supplier ?? 'Its supplier' }, ...suppliers] : suppliers;
+  const [supplier, setSupplier] = useState<string | null>(a.supplierId ?? null);
   const [name, setName] = useState(a.name);
   const [serial, setSerial] = useState(a.serial ?? '');
   const [maker, setMaker] = useState(a.maker ?? '');
@@ -266,7 +279,7 @@ function EditDetailsDrawer({ data, categories, onClose, onSave }: { data: AssetP
     setBusy(true);
     setError(null);
     try {
-      await onSave({ ...(choices && category ? { categoryId: category } : {}), name: name.trim(), serial: serial.trim() || null, maker: maker.trim() || null, model: model.trim() || null, purchasedOn: purchased ? keyOf(purchased) : null, cost: costText, invoiceNumber: invoice.trim() || null, warrantyMonths: months });
+      await onSave({ ...(choices && category ? { categoryId: category } : {}), name: name.trim(), serial: serial.trim() || null, maker: maker.trim() || null, model: model.trim() || null, purchasedOn: purchased ? keyOf(purchased) : null, cost: costText, invoiceNumber: invoice.trim() || null, warrantyMonths: months, ...(supplierChoices ? { supplierId: supplier } : {}) });
       toast({ tone: 'success', title: `${name.trim()} (${a.tag}) saved.` });
       onClose();
     } catch (e) {
@@ -325,6 +338,11 @@ function EditDetailsDrawer({ data, categories, onClose, onSave }: { data: AssetP
         <FormField id="ad-warranty" label="Warranty" optional helper="Months from the purchase date; the end date follows." error={shown('months')}>
           <NumberField value={months} onChange={setMonths} min={0} max={120} suffix="months" />
         </FormField>
+        {supplierChoices && (
+          <FormField id="ad-supplier" label="Supplier" optional helper="The list is in People › Asset suppliers.">
+            <Select aria-label="Supplier" value={supplier} onChange={setSupplier} options={supplierChoices} clearable />
+          </FormField>
+        )}
       </div>
     </Drawer>
   );

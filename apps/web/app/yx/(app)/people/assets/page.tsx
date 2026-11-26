@@ -23,6 +23,8 @@ export default function YxAssetsPage() {
   // IT assets part 1 (answer 2712): Add asset picks a category from the company list (Settings › Assets).
   const cats = useLife<{ rows: { id: string; name: string; nextTag: string | null }[] }>(canManage ? '/lifecycle/asset-categories' : null);
   const places = useJoinerPlaces(canManage);
+  // IT assets part 3 (answer 2716): Add asset may name an active supplier.
+  const suppliers = useLife<{ rows: { id: string; name: string; retired: boolean }[] }>(canManage ? '/lifecycle/asset-suppliers' : null);
   // Who an asset can go to: its own list for asset.manage (IT holds no employee grant, so /employees is empty for it).
   const people = useLife<PersonOption[]>(canManage ? '/lifecycle/assets/people' : null);
   const write = useLifeWrite();
@@ -72,6 +74,7 @@ export default function YxAssetsPage() {
             categories={(cats.data?.rows ?? []).map((c) => ({ value: c.id, label: c.name, nextTag: c.nextTag }))}
             entities={places.entities}
             locations={places.locations}
+            suppliers={(suppliers.data?.rows ?? []).filter((s) => !s.retired).map((s) => ({ value: s.id, label: s.name }))}
             onClose={() => setAdding(false)}
             onAdd={async (x) => {
               await write('POST', '/lifecycle/assets', Object.fromEntries(Object.entries(x).filter(([, v]) => v !== null)));

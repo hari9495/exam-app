@@ -20,7 +20,7 @@ export const Acknowledge: S = { name: 'Employee · acknowledge (phone)', ...phon
 export const Acknowledged: S = { name: 'Employee · acknowledged (phone)', ...phone, render: () => <AssetAcknowledgePhone acknowledged /> };
 
 // Add asset (People › Assets): the live drawer with sample data; Laptop suggests its next tag (answer 2720).
-const addAsset = (onAdd: Parameters<typeof AddAssetDrawer>[0]['onAdd'] = ok) => <AddAssetDrawer categories={ASSET_CATEGORY_CHOICES} entities={ENTITY_CHOICES} locations={JOINER_PLACES.locations} onClose={() => undefined} onAdd={onAdd} />;
+const addAsset = (onAdd: Parameters<typeof AddAssetDrawer>[0]['onAdd'] = ok) => <AddAssetDrawer categories={ASSET_CATEGORY_CHOICES} entities={ENTITY_CHOICES} locations={JOINER_PLACES.locations} suppliers={[{ value: 's1', label: 'Dell India Pvt Ltd' }, { value: 's2', label: 'Redington Ltd' }]} onClose={() => undefined} onAdd={onAdd} />;
 const fillAsset = [pick('Category', 'Laptop'), type(/^Name/, 'Dell Latitude 5450'), type(/^Serial number/, '7QK2X93'), pick('Legal entity', 'Kaveri Foods Pvt Ltd (Tamil Nadu)'), pick('Location', 'Hosur plant'), type(/^Cost/, '84500')];
 export const AddAsset: S = { name: 'Add asset · open', render: () => addAsset() };
 export const AddAssetFilled: S = { name: 'Add asset · filled', render: () => addAsset(), play: play(...fillAsset) };

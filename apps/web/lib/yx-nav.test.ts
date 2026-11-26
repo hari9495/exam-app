@@ -442,6 +442,15 @@ describe('IT assets (answer 2710): one register, also reached from the Helpdesk'
     expect(labels(nav(['asset.view'], { employee: true }), 'helpdesk')).not.toContain('IT assets');
     expect(labels(nav(['asset.view'], { employee: true }), 'people')).toContain('Assets');
   });
+  it('IT assets part 3 (2716): "Asset suppliers" under People and "IT suppliers" on the Helpdesk, the same page', () => {
+    const n = nav(['desk.ticket.view', 'asset.view'], { employee: true });
+    const find = (area: string, label: string) => n.find((a) => a.id === area)!.sections.flatMap((s) => s.items).find((l) => l.label === label);
+    expect(find('people', 'Asset suppliers')?.href).toBe('/yx/people/assets/suppliers');
+    expect(find('helpdesk', 'IT suppliers')?.href).toBe('/yx/people/assets/suppliers');
+    // Negative: no asset key, no supplier list; a desk agent without asset.view gets no IT suppliers.
+    expect(labels(nav(['desk.ticket.view'], { employee: true }), 'helpdesk')).not.toContain('IT suppliers');
+    expect(labels(nav([], { employee: true }), 'people')).not.toContain('Asset suppliers');
+  });
 });
 
 describe('Cases and Ethics desk only for the people they concern (HLP-07/08/09, founder answer 36)', () => {

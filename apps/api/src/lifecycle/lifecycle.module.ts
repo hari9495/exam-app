@@ -22,6 +22,7 @@ import { PayrollModule } from '../payroll/payroll.module';
 import { ExitsController } from './exits.controller';
 import { ExitsService } from './exits.service';
 import { OffboardingService } from './offboarding.service';
+import { ItAssetsService } from './it-assets.service';
 import { LastDayService } from './last-day.service';
 import { AlumniPortalService } from './alumni.service';
 import { AlumniPortalController } from './alumni.controller';
@@ -41,7 +42,7 @@ import { PreboardingPortalService } from './portal.service';
   // The alumni login shows the pay documents portal's payslips and Form 16 (PayDocumentsService).
   imports: [OffersModule, WorkflowModule, NotificationsModule, RulesEngineModule, ServiceDeskModule, DocumentsModule, AuthModule, CryptoModule, EmailModule, EmployeeHistoryModule, PeopleModule, PipelineModule, PayrollModule],
   controllers: [ContractConversionController, LifecycleController, PreboardingPortalController, ExitsController, AlumniPortalController, SpecialCasesController, PeopleRegistersController],
-  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService, ContractConversionService],
+  providers: [{ provide: REDIS_CONNECTION, useFactory: createRedisConnection }, LifecycleJourneysService, JoinersService, JoiningService, PreboardingPortalService, LifecycleJobs, ExitsService, OffboardingService, ItAssetsService, LastDayService, AlumniPortalService, OnboardingExtrasService, ExitExtrasService, LifeEventsService, PeopleRegistersService, ContractConversionService],
   // M06 PM8 opens a company exit from an improvement plan through M01's own checks.
   exports: [LifecycleJourneysService, ExitsService],
 })

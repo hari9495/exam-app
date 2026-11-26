@@ -90,6 +90,8 @@ const LATER_SUPPORT_EXCLUDED = [
   'positions', 'position_versions', 'position_changes',
   // IT assets part 1 (answer 2712): the company's asset categories.
   'asset_categories',
+  // IT assets part 3 (answers 2716, 2717): the IT and Admin supplier list.
+  'it_suppliers',
   // Expenses cards; performance market rates, coach and disputes.
   'expense_cards', 'expense_card_lines', 'expense_card_mappings', 'expense_card_statements',
   'comp_market_rates', 'comp_market_surveys', 'perf_coach_dismissals', 'perf_coach_prefs', 'perf_dispute_exports', 'perf_dispute_files', 'perf_disputes', 'perf_home_snapshots',

@@ -302,6 +302,8 @@ export function buildNav(n: NavInput): NavArea[] {
       ...when(has('document.manage'), L('documents-verify', 'Documents & letters', '/yx/people/documents', 'documentsToVerify')),
       ...when(has('letter.issue'), L('letters', 'Letters', '/yx/people/letters')),
       ...when(has('asset.view'), L('assets', 'Assets', '/yx/people/assets')),
+      // IT assets part 3 (answer 2716): the IT and Admin supplier list next to the register.
+      ...when(has('asset.view'), L('asset-suppliers', 'Asset suppliers', '/yx/people/assets/suppliers')),
       ...when(has('succession.manage'), L('succession', 'Succession', '/yx/people/succession')),
     ]),
     // Founder decision 8 Oct 2026: HR checks people the Service Desk made for logins with no person.
@@ -568,6 +570,7 @@ export function buildNav(n: NavInput): NavArea[] {
           ...when(has('desk.ticket.view'), L('desk-problems', 'Problems', '/yx/desk/problems')),
           // IT assets (answer 2710): one register; desk agents who hold asset.view reach the same page from here.
           ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-assets', 'IT assets', '/yx/people/assets')),
+          ...when(has('desk.ticket.view') && has('asset.view'), L('desk-it-suppliers', 'IT suppliers', '/yx/people/assets/suppliers')),
           // Helpdesk plan item 4: buildings, areas and equipment (the facilities desks' staff; their admins edit).
           ...when(any('desk.desk.create', 'desk.ticket.view'), L('desk-facilities', 'Buildings and equipment', '/yx/desk/facilities')),
           ...when(has('desk.desk.create'), L('desk-privacy', 'Privacy requests', '/yx/desk/privacy')),

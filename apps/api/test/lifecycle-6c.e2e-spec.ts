@@ -692,6 +692,48 @@ describe('Lifecycle batch 6c', () => {
     await api('adminB', 'get', `/lifecycle/assets/${id}`).expect(404);
   });
 
+  it('IT assets part 3 (2716): the IT and Admin supplier list; asset managers add, change and retire; an asset names its supplier', async () => {
+    const sup = { name: `Dell India ${run}`, gstin: '29aabcd1234e1z5', contacts: [{ name: 'Suresh Kumar', email: 'suresh@dell.test', phone: '+91 98450 12345' }], notes: 'Laptops and their service' };
+    const id = (await api('it', 'post', '/lifecycle/asset-suppliers').send(sup).expect(201)).body.id as string;
+    ids.supplier = id;
+    // Negative: only asset.manage holders change the list; nobody without an asset key reads it; bad values are refused.
+    await api('agent', 'post', '/lifecycle/asset-suppliers').send({ ...sup, name: `Other ${run}` }).expect(403);
+    await api('fin', 'post', '/lifecycle/asset-suppliers').send({ ...sup, name: `Other ${run}` }).expect(403);
+    await api('ravi', 'get', '/lifecycle/asset-suppliers').expect(403);
+    await api('it', 'post', '/lifecycle/asset-suppliers').send({ ...sup, name: `Bad GSTIN ${run}`, gstin: '29AABCD1234' }).expect(400);
+    await api('it', 'post', '/lifecycle/asset-suppliers').send({ ...sup, name: `Bad email ${run}`, contacts: [{ name: 'Asha', email: 'not-an-email' }] }).expect(400);
+    await api('it', 'post', '/lifecycle/asset-suppliers').send({ ...sup, name: `Six ${run}`, contacts: Array.from({ length: 6 }, (_, i) => ({ name: `Person ${i}` })) }).expect(400);
+    await api('hr', 'post', '/lifecycle/asset-suppliers').send({ ...sup, name: sup.name.toUpperCase() }).expect(409);
+    // Read by asset.view (to pick it): the GSTIN in capitals, the contacts as given.
+    const list = (await api('agent', 'get', '/lifecycle/asset-suppliers').expect(200)).body;
+    expect(list.canManage).toBe(false);
+    expect(list.rows.find((r: { id: string }) => r.id === id)).toMatchObject({ name: sup.name, gstin: '29AABCD1234E1Z5', contacts: [{ name: 'Suresh Kumar', email: 'suresh@dell.test', phone: '+91 98450 12345' }], retired: false, assets: 0 });
+    expect((await api('it', 'get', '/lifecycle/asset-suppliers').expect(200)).body.canManage).toBe(true);
+    // An asset names its supplier (Add asset, the asset page).
+    const tag = `SUP-${run}`;
+    const asset = (await api('it', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Supplied laptop', tag, legalEntityId: ids.entity, locationId: ids.blr, supplierId: id }).expect(201)).body.id as string;
+    ids.suppliedAsset = asset;
+    expect((await api('agent', 'get', `/lifecycle/assets/${asset}`).expect(200)).body.asset).toMatchObject({ supplierId: id, supplier: sup.name });
+    expect((await api('it', 'get', '/lifecycle/asset-suppliers').expect(200)).body.rows.find((r: { id: string }) => r.id === id).assets).toBe(1);
+    // Changed and retired (with its version); a stale version is refused.
+    await api('it', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, notes: 'Laptops only', retired: true, version: 1 }).expect(200);
+    await api('it', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, version: 1 }).expect(409);
+    expect((await api('it', 'get', '/lifecycle/asset-suppliers').expect(200)).body.rows.find((r: { id: string }) => r.id === id)).toMatchObject({ retired: true, notes: 'Laptops only' });
+    // A retired supplier is not offered for another asset; the asset that has it keeps it when its details change.
+    await api('it', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Late', tag: `SUP2-${run}`, legalEntityId: ids.entity, supplierId: id }).expect(400);
+    const v = (await api('it', 'get', `/lifecycle/assets/${asset}`).expect(200)).body.asset.version;
+    await api('it', 'put', `/lifecycle/assets/${asset}`).send({ category: 'Laptop', name: 'Supplied laptop (spare)', tag, legalEntityId: ids.entity, locationId: ids.blr, version: v }).expect(200);
+    expect((await api('it', 'get', `/lifecycle/assets/${asset}`).expect(200)).body.asset.supplier).toBe(sup.name);
+    // Made active again for the contracts below; every change is audited.
+    await api('it', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, retired: false, version: 2 }).expect(200);
+    const acts = (await inA((tx) => tx.auditLog.findMany({ where: { entityType: 'it_supplier', entityId: id }, orderBy: { createdAt: 'asc' } }))).map((x) => x.action);
+    expect(acts).toEqual(['asset.supplier.added', 'asset.supplier.updated', 'asset.supplier.retired', 'asset.supplier.updated', 'asset.supplier.restored']);
+    // Another company: nothing to see, nothing to change, nothing to pick.
+    expect((await api('adminB', 'get', '/lifecycle/asset-suppliers').expect(200)).body.rows).toHaveLength(0);
+    await api('adminB', 'put', `/lifecycle/asset-suppliers/${id}`).send({ ...sup, version: 3 }).expect(404);
+    await api('adminB', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: 'Theirs', tag: `SUPB-${run}`, supplierId: id }).expect(400);
+  });
+
   it('two companies apart', async () => {
     await api('adminB', 'get', `/lifecycle/exits/${ids.raviCase}`).expect(404);
     expect((await api('adminB', 'get', '/lifecycle/exits').expect(200)).body.rows).toHaveLength(0);

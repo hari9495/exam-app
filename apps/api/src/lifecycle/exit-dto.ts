@@ -259,6 +259,11 @@ export class AssetDto {
   @Max(120)
   warrantyMonths?: number | null;
 
+  /** IT assets part 3 (answer 2716): the IT and Admin supplier (null: none; left out: unchanged). */
+  @IsOptional()
+  @IsUUID()
+  supplierId?: string | null;
+
   @IsOptional()
   @IsInt()
   version?: number;

@@ -24,6 +24,8 @@ export const ASSET_PAGE: AssetPageData = {
     invoiceNumber: 'DL/25-26/1187',
     warrantyMonths: 36,
     warrantyEndsOn: '2028-08-14',
+    supplierId: 's1',
+    supplier: 'Dell India Pvt Ltd',
     version: 4,
   },
   holder: { name: 'Arjun Nair', issuedOn: '2026-09-02', acknowledged: true },
