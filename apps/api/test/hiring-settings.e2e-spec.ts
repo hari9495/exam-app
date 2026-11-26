@@ -193,6 +193,8 @@ describe('Settings 6.1 Hiring', () => {
       'hiring.internal.after_probation': 'off',
       'hiring.internal.months_in_role': '6',
       'hiring.internal.tell_manager': 'at_offer',
+      // Answer 2761 (T2-A): the current manager releases an internal applicant; off by default, on 6.1.
+      'hiring.internal.manager_release': 'off',
       'hiring.offer.band_approver': 'hr_head',
       'hiring.offer.clawback_basis': 'full',
       'hiring.bgv.decider_other_person': 'off',
