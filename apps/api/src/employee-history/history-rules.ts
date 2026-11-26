@@ -25,6 +25,8 @@ export interface AssignmentValues {
   gradeId: string | null;
   /** 5c-D2: the minimum-wage skill class of the job, or null. */
   skillClass: SkillClass | null;
+  /** Answer 2762: HR marks the job as a manager or supervisor (labour welfare fund exclusions in Tamil Nadu and Delhi). */
+  supervisory: boolean;
   /** G1 (gap pass C1): contracted hours a week, decimal string with one place ("24.0"); null = full-time. */
   hoursPerWeek: string | null;
   employmentTypeId: string;
@@ -38,7 +40,7 @@ export interface AssignmentValues {
 export const SKILL_CLASSES = ['unskilled', 'semi_skilled', 'skilled', 'highly_skilled'] as const;
 export type SkillClass = (typeof SKILL_CLASSES)[number];
 export type AssignmentField = keyof AssignmentValues;
-export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'hoursPerWeek', 'employmentTypeId', 'managerEmployeeId', 'positionId', 'costCentres', 'dottedLineManagerIds'];
+export const ASSIGNMENT_FIELDS: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'gradeId', 'skillClass', 'supervisory', 'hoursPerWeek', 'employmentTypeId', 'managerEmployeeId', 'positionId', 'costCentres', 'dottedLineManagerIds'];
 const REQUIRED_ASSIGNMENT: readonly AssignmentField[] = ['locationId', 'departmentId', 'designationId', 'employmentTypeId'];
 
 export interface StatusValues {
@@ -77,9 +79,9 @@ export const TYPE_RULES: Readonly<Record<ChangeType, TypeRule>> = {
   join: { assignment: 'all', status: ['probation', 'confirmed'], compensation: true, requires: ['assignment', 'status'] },
   // A promotion moves the designation or the grade (the comp cycle may promote within the grade); a transfer moves the
   // location or the department (a reorganisation inside one entity, PPL-09).
-  promotion: { assignment: ['designationId', 'gradeId', 'skillClass', 'positionId'], compensation: true, requires: ['assignment'], changes: ['designationId', 'gradeId'] },
+  promotion: { assignment: ['designationId', 'gradeId', 'skillClass', 'supervisory', 'positionId'], compensation: true, requires: ['assignment'], changes: ['designationId', 'gradeId'] },
   transfer: { assignment: ['locationId', 'departmentId', 'costCentres', 'managerEmployeeId', 'dottedLineManagerIds', 'positionId'], requires: ['assignment'], changes: ['locationId', 'departmentId', 'positionId'] },
-  redesignation: { assignment: ['designationId', 'skillClass', 'positionId'], requires: ['assignment'] },
+  redesignation: { assignment: ['designationId', 'skillClass', 'supervisory', 'positionId'], requires: ['assignment'] },
   // M01 §3.2: the primary manager and the dotted lines change through the same change type.
   manager_change: { assignment: ['managerEmployeeId', 'dottedLineManagerIds'], requires: ['assignment'] },
   salary_revision: { compensation: true, requires: ['compensation'] },
@@ -192,6 +194,7 @@ export function applyFact(fact: Fact, base: unknown, p: ChangePayload): unknown 
     const next = { ...(base as AssignmentValues | null), ...stripUndefined(p.assignment) } as AssignmentValues;
     next.gradeId ??= null;
     next.skillClass ??= null;
+    next.supervisory ??= false;
     next.hoursPerWeek = next.hoursPerWeek === null || next.hoursPerWeek === undefined ? null : new Prisma.Decimal(next.hoursPerWeek).toFixed(1);
     next.managerEmployeeId ??= null;
     next.positionId ??= null;

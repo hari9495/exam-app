@@ -70,6 +70,8 @@ export interface Snapshot {
   ytd: { pt: string; ptWage?: string; halfPtWage?: string };
   /** Review M3: the employment's joining date (LWF coverage by days employed). */
   joinedOn?: string;
+  /** Answer 2762: the job record marks a manager or supervisor (LWF exclusions above the state's pay level). */
+  supervisory?: boolean;
   /** `label`: the payslip text of an arrears or F&F item (batch 5g). */
   /** settled: arrears from an approved worksheet, which already carries their PF, ESI, PT and LWF (5g-D6, E3 review item 8). */
   oneTime: { id: string; code: string; amount: string; days: number | null; label?: string; separate?: boolean; grossUp?: boolean; settled?: boolean }[];
@@ -307,7 +309,7 @@ export function calculatePayslip(s: Snapshot, rules: RuleSet[]): CalcResult {
   if (lwfRs) {
     // 2384: a rate-based LWF (Haryana) is on the month's gross earnings.
     const daysEmployed = s.joinedOn ? Math.round((Date.parse(`${on}T00:00:00Z`) - Date.parse(`${s.joinedOn}T00:00:00Z`)) / 86_400_000) + 1 : undefined;
-    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning' && statWage(l)).reduce((t, l) => t.add(l.amount), ZERO), daysEmployed });
+    const r = lwf(lwfRs, { month, wage: lines.filter((l) => l.kind === 'earning' && statWage(l)).reduce((t, l) => t.add(l.amount), ZERO), daysEmployed, supervisory: s.supervisory });
     add({ code: statCode('lwf_employee'), name: nameOf(statCode('lwf_employee'), 'Labour welfare fund'), kind: 'deduction', segmentNo: 0, amount: r.employee, explanation: `${s.profile.lwfState} labour welfare fund for this month.`, rule: r.citation });
     add({ code: statCode('lwf_employer'), name: nameOf(statCode('lwf_employer'), 'Labour welfare fund (employer)'), kind: 'employer', segmentNo: 0, amount: r.employer, explanation: 'Employer labour welfare fund for this month.', rule: r.citation });
   }

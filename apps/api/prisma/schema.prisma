@@ -3275,6 +3275,8 @@ model EmployeeAssignment {
   employmentTypeId     String    @map("employment_type_id") @db.Uuid
   /// 5c-D2: minimum-wage skill class (unskilled, semi_skilled, skilled, highly_skilled); null until HR sets it.
   skillClass           String?   @map("skill_class") @db.VarChar(16)
+  /// Answer 2762: HR marks the job as a manager or supervisor role (Tamil Nadu and Delhi LWF exclusions).
+  supervisory          Boolean   @default(false)
   /// G1 (gap pass C1): contracted hours a week; null = full-time (the normal week of the location).
   hoursPerWeek         Decimal?  @map("hours_per_week") @db.Decimal(4, 1)
   managerEmployeeId    String?   @map("manager_employee_id") @db.Uuid

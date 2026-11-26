@@ -29035,5 +29035,24 @@
                               "Screens/Time/TIM-17 · Leave home (Employee · peers away)"
                     ],
                     "note": "Positive and negative (kit leave-live 2; web yx-time-peers 2). Peers are the people with the same manager today (current assignment)."
+          },
+          {
+                    "id": "MT-T2A-LWF-SUPERVISOR",
+                    "area": "Payroll review M3 (answer 2762): manager or supervisor on the job record; Tamil Nadu and Delhi LWF exclusions (27 Nov 2026)",
+                    "screen": "People › a person › Changes (PPL-04 redesignation or correction); History (job facts); Payroll › December run",
+                    "url": "http://localhost:3000/yx/people",
+                    "account": "HR Admin with employee.change.manage; payroll admin for the December run; one person in Tamil Nadu on 40,000 a month and one in Delhi on 30,000.",
+                    "steps": [
+                              "Raise a correction for the Tamil Nadu person: Manager or supervisor = Manager or supervisor, from 1 Dec 2026. Approve it.",
+                              "Open the person's History: the job shows 'Manager or supervisor: Yes'.",
+                              "Run December payroll: the Tamil Nadu person has no LWF (20 / 40) line; a non-supervisor in Tamil Nadu still pays 20 / 40.",
+                              "Do the same for the Delhi person: no LWF (0.75 / 2.25) in December.",
+                              "Negative: a supervisor in Tamil Nadu on exactly 15,000 still pays; a transfer form never shows the field; a person not marked stays covered; a November run is unchanged."
+                    ],
+                    "expected": "As described; each LWF line cites IN.LWF IN-TN 2026-v3 or IN-DL 2026-v2 (verify). Toast on saving the change; no page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-04 · Changes"
+                    ],
+                    "note": "Positive and negative (api lwf-supervisors.spec 4, statutory golden cases; kit history.test 1). Migration 851: employee_assignments.supervisory (default false) and the two rule set versions from 1 Dec 2026, verify (CA to confirm the wage compared: the month's statutory gross earnings)."
           }
 ]
