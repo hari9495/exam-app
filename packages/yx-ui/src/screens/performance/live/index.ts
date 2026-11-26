@@ -19,7 +19,7 @@ export { GoalGapsCard, type GoalGaps, type GoalGapPerson } from '../../growth/go
 export { FeedbackRail, PrivateNotesDrawer, type LivePersonNotes, type PersonNote } from '../../growth/feedback-rail';
 export { scoreSoFar, type LiveCycleSetup, type LiveControlRoom, type LiveReviewWorkspace, type LiveAcknowledge, type StagePerson } from '../../growth/perf-reviews-live';
 export { toGoal, type GoalItem, type PerfHome } from '../../growth/perf-live-data';
-export { CompCyclesScreen, type CompCyclesScreenProps } from './comp';
+export { CompCyclesScreen, type CompCyclesScreenProps } from '../../growth/comp-cycles';
 // PRF-10 Comp review sheet, the designed screen made live (builder 2).
 export { CompReviewScreen, MarketDataScreen, MARKET_TEMPLATE, type CompProposalInput, type CompRow as CompReviewRow, type LiveCompReview, type MarketDataProps, type MarketSurveyRow, type MarketVersion } from '../../growth/perf-talent';
 export { PipsScreen, type PipsScreenProps } from '../../growth/pips-list';

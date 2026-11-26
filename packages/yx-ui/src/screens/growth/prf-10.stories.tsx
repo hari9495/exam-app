@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from '@storybook/react-vite';
 import { CompReviewScreen, MarketDataScreen, type LiveCompReview } from './perf-talent';
 import { COMP_BUDGET, COMP_ROWS, EQUITY } from './perf-data-4';
 import { d } from './perf-data';
+import { CompCyclesScreen } from './comp-cycles';
+import type { CompCycle, CompMatrix } from '../performance/live/types';
 
 const meta: Meta = { title: 'Screens/Performance/PRF-10 · Comp review sheet', parameters: { layout: 'fullscreen' } };
 export default meta;
@@ -47,3 +49,14 @@ export const MarketData: S = { name: 'HR · market data (salary survey)', render
 export const MarketBadRows: S = { name: 'HR · survey upload with rows to fix', render: () => <MarketDataScreen entities={ENTITIES} entityId="kf" latest={SURVEY} versions={VERSIONS} staleMonths={12} problems={[{ row: 4, message: 'No grade "G9" in this company.' }, { row: 7, message: 'Min, median and max must go up (min ≤ median ≤ max).' }]} /> };
 export const MarketStale: S = { name: 'HR · market data out of date', render: () => <MarketDataScreen entities={ENTITIES} entityId="kf" latest={{ ...SURVEY, asOf: d(1, 3, 2025), stale: true }} versions={VERSIONS.slice(1)} staleMonths={12} /> };
 export const MarketNone: S = { name: 'HR · no market data yet', render: () => <MarketDataScreen entities={ENTITIES} entityId="kf" latest={null} versions={[]} staleMonths={12} /> };
+
+// Batch T2-C (2411, 2847): the comp review cycles; HR with perf.comp.manage sets one up, approvers and managers open it.
+const CYCLE: CompCycle = { id: 'c1', name: 'FY 2026-27 increments', reviewCycleId: 'r1', legalEntityId: 'le1', currency: 'INR', effectiveOn: '2027-04-01', matrixId: 'm1', bonus: null, status: 'open', appliedAt: null, version: 2 };
+const CYCLES: CompCycle[] = [CYCLE, { ...CYCLE, id: 'c2', name: 'FY 2025-26 increments', effectiveOn: '2026-04-01', status: 'applied', appliedAt: '2026-04-02T10:00:00Z' }];
+const MATRIX: CompMatrix = { id: 'm1', name: 'Merit matrix', axis: 'compa_ratio', status: 'active', starter: true, version: 1, cells: [] };
+const cyc = { entities: [{ value: 'le1', label: 'Kaveri Foods Pvt Ltd' }], reviewCycles: [{ value: 'r1', label: 'FY 2025-26 annual review' }], onStarterMatrix: async () => ({}), onCreate: async () => ({}), onOpen: () => undefined };
+export const Cycles: S = { name: 'HR · comp review cycles', render: () => <CompCyclesScreen state="ready" cycles={CYCLES} canManage matrices={[MATRIX]} {...cyc} /> };
+export const CyclesNoMatrix: S = { name: 'HR · no merit matrix yet', render: () => <CompCyclesScreen state="ready" cycles={[]} canManage matrices={[]} {...cyc} /> };
+export const CyclesManager: S = { name: 'Manager · cycles I can open', render: () => <CompCyclesScreen state="ready" cycles={[CYCLE]} canManage={false} matrices={[]} {...cyc} /> };
+export const CyclesLoading: S = { name: 'Cycles · loading', render: () => <CompCyclesScreen state="loading" cycles={[]} canManage matrices={[]} {...cyc} /> };
+export const CyclesError: S = { name: 'Cycles · could not load', render: () => <CompCyclesScreen state="error" onRetry={() => undefined} cycles={[]} canManage matrices={[]} {...cyc} /> };

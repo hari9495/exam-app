@@ -1,6 +1,5 @@
 {
   "liveCopies": [
-    "performance: CompCyclesScreen",
     "performance: PerformanceReportsScreen",
     "performance: PerformanceSetupScreen"
   ],
