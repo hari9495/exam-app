@@ -8,6 +8,7 @@ import { useAuth } from '../../lib/auth-context';
 import YxDirectoryPage from './(app)/people/directory/page';
 import { ScopeProvider } from '../../lib/yx-shell';
 import YxTeamPage from './(app)/people/team/page';
+import YxOrgChartPage from './(app)/people/org-chart/page';
 import YxProbationPage from './(app)/people/probation/page';
 import YxBulkChangesPage from './(app)/people/bulk-changes/page';
 
@@ -153,6 +154,21 @@ describe('/yx/people/team', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Start a change' }));
     const drawer = await screen.findByRole('dialog');
     expect(within(drawer).getByRole('combobox', { name: 'Change type' })).toBeInTheDocument();
+  });
+});
+
+describe('/yx/people/org-chart (T2-F item 86)', () => {
+  it('Go to top jumps to the top of the chart', async () => {
+    route({
+      [`GET ${PERMS_PATH}`]: [],
+      'GET /people/org-chart': CHART,
+      'GET /org/masters/departments': [],
+      'GET /org/legal-entities': [],
+      'GET /org/locations': [],
+    });
+    wrap(<YxOrgChartPage />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Go to top' }));
+    expect(await screen.findByText('Showing Divya Raghunathan')).toBeInTheDocument();
   });
 });
 

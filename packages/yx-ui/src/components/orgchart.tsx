@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { ArrowLeft, Building2, ChevronDown, ChevronRight, Crosshair, Download, Maximize, Minus, Plus, UserPlus, ZoomIn, ZoomOut } from 'lucide-react';
+import { ArrowLeft, ArrowUpToLine, Building2, ChevronDown, ChevronRight, Crosshair, Download, Maximize, Minus, Plus, UserPlus, ZoomIn, ZoomOut } from 'lucide-react';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from './menu';
 import { Button, ButtonGroup, IconButton } from './button';
 import { Avatar } from './display';
@@ -453,6 +453,12 @@ export function OrgChart({
       Show me
     </Button>
   );
+  // T2-F item 86: back to the top of the chart (the first person or box with nobody above).
+  const goTop = roots[0] && (
+    <Button size="sm" icon={ArrowUpToLine} onClick={() => jump(roots[0]!.id)}>
+      Go to top
+    </Button>
+  );
   const nameOf = (id?: string) => people.find((p) => p.id === id)?.name;
 
   const search = (
@@ -559,6 +565,7 @@ export function OrgChart({
         <div className="yx-org__toolbar">
           {search}
           {viewSwitch}
+          {goTop}
           {showMe}
         </div>
         <nav aria-label="Org chart path" className="yx-org__crumbs">
@@ -703,6 +710,7 @@ export function OrgChart({
           </span>
           <IconButton icon={ZoomIn} variant="secondary" size="sm" label="Zoom in (+)" onClick={() => zoomBy(0.1)} disabled={scale >= MAX} />
           <IconButton icon={Maximize} variant="secondary" size="sm" label="Fit to screen" onClick={() => ((userZoomed.current = true), fit())} />
+          {goTop}
           {showMe}
           {onExport && (
             <Menu>

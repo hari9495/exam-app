@@ -29527,5 +29527,23 @@
                               "Screens/Hiring/HIR-13 · Internal jobs (My applications · waiting for your manager)"
                     ],
                     "note": "GET /api/v1/internal-applications/mine now sends waitingForManager per application."
+          },
+          {
+                    "id": "MT-T2F-86",
+                    "area": "Batch T2-F item 86: org chart Go to top",
+                    "screen": "People › Org chart (PPL-02)",
+                    "url": "http://localhost:3000/yx/people/org-chart",
+                    "account": "An employee deep in the chart (for example a team member two levels below the head); HR.",
+                    "steps": [
+                              "As the employee open People › Org chart. It opens on you. Press 'Go to top'.",
+                              "Press 'Show me' to come back, then use Find to open someone else and press 'Go to top' again.",
+                              "Switch to the Department and Position views and press 'Go to top'.",
+                              "Negative: in a company with no people yet, open the org chart."
+                    ],
+                    "expected": "Step 1: the chart moves to the top person (or box) with nobody above, highlights them and announces 'Showing <name>'; the path to them is opened. Step 2: Show me returns to you; Go to top works from anywhere. Step 3: it goes to the first top box of that view. Step 4: no Go to top button. The button looks clickable (border, hover, pointer, focus ring).",
+                    "stories": [
+                              "Screens/People/PPL-02 · Org chart"
+                    ],
+                    "note": ""
           }
 ]
