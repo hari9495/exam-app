@@ -28921,5 +28921,30 @@
                               "Screens/Learning/LRN-06 · Nomination / enrolment (all six)"
                     ],
                     "note": "Positive and negative (api scorm.spec 19: manifest 1.2/2004/broken/entity/escape, each zip limit and refusal, bridge fields, oversize suspend data, tokens, CSP; e2e learning-scorm 5: upload refusals and keys, launch link on the content origin, serving refusals (app host, unsigned, tampered, expired, other package, other company, pending and infected files), CSP and no cookies, allowed fields only, oversize 400, other learner and other company 404, completion and certificate through the usual path; kit scorm-bridge 3 and learn-scorm-live 5). Migration 840 (learning_scorm_files, learning_scorm_attempts, scorm columns on learning_course_items). scorm-again 3.5.0, MIT. Multi-frame packages (frames inside the package) need a browser check: frame-ancestors on an opaque sandboxed parent."
-          }
+          },
+    {
+        "id": "MT-E2-RULES",
+        "area": "Enterprise E2 (answers 2644-2650, 2785-2789): the approval rules editor, Try it, approval limits, the move of the old hiring routes and the hiring notices",
+        "screen": "Settings › Approval policies (PLT-12 with the PLT-32 rule builder and the PLT-57 Try it drawer); Settings › Approval limits (PLT-34); Hiring › Approvals (the same editor for requisitions and offers)",
+        "url": "http://localhost:3000/yx/settings/approval-policies",
+        "account": "HR Admin (org.settings.manage, no pay keys); a payroll approver who also holds org.settings.manage (payroll.run.approve in every entity); HR who only read the structure (org.structure.view); a manager raising a requisition; another company's HR Admin.",
+        "steps": [
+            "As HR Admin open Settings › Approval policies. Look at the Request type list: areas Time and leave, Expenses, Hiring, Organisation, Pay, Exits and letters. Choose Pay: Payroll run, then Pay: One-time pay, then Exits and letters: Resignation, then Hiring: Requisition.",
+            "On Requisition press Add rule. Press Done with nothing filled. Then name it 'Many openings', condition Openings is greater than 3, add a step 'Department head' (Manager's manager). Press Done. In the Otherwise card add a step 'Hiring manager' (Hiring manager). Press Save as version 1.",
+            "In the side panel type Openings 5 and press Try it; then Openings 1 and Try it. Press Try on a past request, choose a recent requisition and press Run.",
+            "As a manager raise a requisition for 5 openings and send it; open Approvals as the department head and as the hiring manager.",
+            "Negative saves: add a step 'Up the chain to the approval limit' on Expense claim before any limits; add a step 'Up the chain to a grade' while two grades share a rank; set 'Holders of a key' with All on a key many people hold (for example expense.report.view); choose a group, delete that group in another tab, then save.",
+            "Open Settings › Approval limits. Type ₹50,000 for one grade under Expenses and save. Switch to Pay and save (as the HR Admin without pay keys).",
+            "As the payroll approver open One-time pay and add a step with a named person who does not hold payroll.run.approve; then a step 'Manager'; then a step with the Finance group whose members hold the key. Save each.",
+            "On Requisition open the Notices tab, open Reminder, type a subject with {summary}, then with {title}, a message with {requester} and {link}; save. Send a requisition and wait for or trigger the reminder; read the email.",
+            "Open Hiring › Approvals. Read the 'Move from the old hiring routes' card, then press Move for the type that matches.",
+            "Negative access: as HR who only read the structure open all three pages; as another company's HR Admin call GET /api/v1/workflow/policies/ats.requisition/try with a request id from the first company."
+        ],
+        "expected": "Step 1: Payroll run says 'Payroll run approvals are built in and cannot change' with no Save; One-time pay and Resignation show 'Built-in steps first' then 'Your add-on steps'; Requisition shows Rules and Notices tabs. Step 2: 'Give the rule a name…', 'Add at least one step.'; then 'Rule 1 · Many openings' with 'When Openings is greater than 3.'; toast 'Requisition approvals saved' (5 s), header 'Version 1'. Step 3: 'Matches: Many openings.' with the department head; 'Matches: Otherwise.' with the hiring manager; the past request shows the same people it was sent to, with 'Always added' on required steps such as Outside the plan. Step 4: the department head gets the task; the manager who raised it never approves it. Step 5: each refused in words: 'Set the approval limits for expenses first…', 'Grades X and Y share rank N in <entity>…', 'more than 25 people can hold … Choose \"Any one\"', 'that group is not in this company'. Step 6: toast 'Expenses limits saved'; Pay: 'Changing who approves this needs payroll.run.approve in every legal entity…'. Step 7: '…would route pay approvals to people without payroll.run.approve: <name>'; 'on pay approvals choose named people, a group…'; the group step saves. Step 8: '{summary}' is refused before saving; the email subject and text are yours with the title, requester, step and link filled in, nothing from the request's details, and a name with < or > shows as text. Step 9: differences listed as Step / For a request from / Old route / New rules / Why; Move moves only the matching type (toast), the other stays listed. Step 10: read-only pages with 'View only' and no Save, no Move, no Try it; the other company gets 404. No page scroll at 1278 x 635 on the editor's first view.",
+        "stories": [
+            "Screens/Platform/E2 · Approval rules editor (all 14)",
+            "Screens/Hiring/HIR-32 · Job boards"
+        ],
+        "note": "Positive and negative (api workflow-e2-editor e2e 12, approval-rules unit 11, settings-s6-approvals 30, workflow-e2-approvers 10, rls-isolation 35; kit policy-editor-live 12; web settings approvals and nav). Migration 842 (approval_policies.rules, approval_notice_texts). The company-wide move: npm run hiring:move-chains (apps/api, after nest build)."
+    }
 ]
