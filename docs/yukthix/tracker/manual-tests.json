@@ -29167,5 +29167,27 @@
                               "Screens/Performance/Live · Calibration (Sessions)"
                     ],
                     "note": "Only the live part of 72 (2753). The company default guide (2845: Settings › Performance, off by default, fills a new session's guide, still changeable per session) is built next in T2-C and gets its own manual test."
+          },
+          {
+                    "id": "MT-T2C-72-DEFAULT",
+                    "area": "Batch T2-C item 72 (answer 2845): the company bell-curve guide",
+                    "screen": "Settings › Performance (6.3) › 360° and calibration; Performance › Review cycles › a cycle › Calibration › Open a session",
+                    "url": "http://localhost:3000/yx/settings/talent/performance",
+                    "account": "HR admin (admin@demo-org.test, performance set-up); a person who can only facilitate calibration; an employee with no performance keys.",
+                    "steps": [
+                              "As HR open Settings › Performance. Under '360° and calibration' look at 'fill a new calibration session with the company guide', the Rating / Guide share table and the tolerance.",
+                              "Open a running review cycle › Calibration › Open a session (the company guide is still off).",
+                              "Back in Settings › Performance, change the table so the shares add up to 95 (for example Outstanding 15, Exceeds 20, Meets 45, Partly meets 10, Needs improvement 5) and save.",
+                              "Make the shares add up to 100 using the rating names of the cycle's scale (for example 10, 20, 55, 10, 5), set the tolerance to 5, turn the company guide on, and save.",
+                              "Open the cycle's Calibration tab › Open a session again. Change one share for this session only, so the shares add up to 100 again, and open the session.",
+                              "In Settings change one rating name in the table to a name the scale does not have (for example 'Star'), save, and open a new session again.",
+                              "Negative access: as the facilitator-only person and as the employee open Settings › Performance; call PUT /api/v1/org/settings with key perf.calibration.default_guide."
+                    ],
+                    "expected": "Step 1: the company guide is off by default; the table shows the starter shares (10, 20, 55, 10, 5 %) with 'Total 100 %' under it; the helper says it is a guide only and never blocks sign-off. Step 2: the dialog starts with 'None' chosen and no shares. Step 3: the table shows 'Total 95 %, must be 100 %' and saving is refused with 'The shares add up to 95, not 100.' Step 4: saved with a 5-second toast. Step 5: 'Use a guide' is already chosen, each band's share and the tolerance 5 are filled, and the note says 'Filled from the company guide; change it for this session if needed.'; the changed shares are kept for this session only and the session opens with a toast; the Settings table is unchanged. Step 6: the dialog starts with 'None' again (a guide that names other ratings never fills anything). Step 7: the facilitator and the employee cannot open the page or change the setting (no-access page; the API answers 403). The guide never blocks sign-off.",
+                    "stories": [
+                              "Screens/Performance/Live · Calibration (With company guide)",
+                              "Screens/Settings/Group 6 · Hiring & Assessments (6.3 Performance)"
+                    ],
+                    "note": "Stored as three company settings (on/off, the Rating:share pairs, the tolerance), not a new table: the settings code already keeps company choices with history, audit and the 6.3 page."
           }
 ]

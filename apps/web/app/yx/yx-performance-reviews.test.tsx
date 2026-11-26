@@ -61,6 +61,37 @@ describe('PRF-04 … 06 live (performance builder 1)', () => {
     await waitFor(() => expect(posted).toEqual([{ overdueOnly: true }]));
   });
 
+  it('answer 2845: a new calibration session starts from the company guide the API sends; without one it starts with none', async () => {
+    (useParams as jest.Mock).mockReturnValue({ id: 'c1' });
+    const base = {
+      'GET /rbac/me/permissions': ['perf.cycle.manage'],
+      'GET /performance/cycles/c1': CYCLE,
+      'GET /performance/cycles/c1/funnel': [],
+      'GET /performance/cycles/c1/overdue': [],
+      'GET /performance/cycles/c1/eligibility': [],
+      'GET /performance/cycles/c1/disagreements': [],
+      'GET /performance/calibration-facilitators': [],
+      'GET /org/masters/departments': [],
+    };
+    route({ ...base, 'GET /performance/cycles/c1/calibrations': { bands: ['Meets', 'Exceeds'], sessions: [], defaultGuide: { bands: [{ label: 'Meets', share: 80 }, { label: 'Exceeds', share: 20 }], tolerance: 5 } } });
+    const first = wrap(<YxReviewCyclePage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Calibration' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Open a session' }));
+    let d = screen.getByRole('dialog');
+    expect(within(d).getByRole('radio', { name: 'Use a guide' })).toBeChecked();
+    expect(within(d).getByRole('textbox', { name: /^Meets/ })).toHaveValue('80');
+    expect(within(d).getByText(/Filled from the company guide/)).toBeInTheDocument();
+    first.unmount();
+    // Negative: the company guide is off (or names other ratings), so the API sends none and nothing is filled.
+    route({ ...base, 'GET /performance/cycles/c1/calibrations': { bands: ['Meets', 'Exceeds'], sessions: [], defaultGuide: null } });
+    wrap(<YxReviewCyclePage />);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Calibration' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Open a session' }));
+    d = screen.getByRole('dialog');
+    expect(within(d).getByRole('radio', { name: 'None' })).toBeChecked();
+    expect(within(d).queryByText(/Filled from the company guide/)).toBeNull();
+  });
+
   it('a self review saves its draft to the self entry', async () => {
     (useParams as jest.Mock).mockReturnValue({ id: 'r1' });
     const put: unknown[] = [];

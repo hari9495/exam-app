@@ -279,6 +279,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   'perf.disagreement.days': { label: 'Performance: days after release to disagree with a review', scopes: ['tenant'], dated: false, values: ['7', '15', '30'], default: '15' },
   'perf.anonymity.min_responses': { label: 'Performance: fewest answers before anonymous feedback is shown (never below 3)', scopes: ['tenant'], dated: false, values: ['3', '4', '5'], default: '3' },
   'perf.report.min_cell': { label: 'Performance: smallest group shown in distributions and reports', scopes: ['tenant'], dated: false, values: ['5', '10'], default: '5' },
+  // Batch T2-C item 72 (answer 2845): a company bell-curve guide that fills a new calibration session's guide (still changeable
+  // per session; a guide only, it never blocks sign-off). Off by default. Shares are 'Rating:share' pairs adding up to 100.
+  'perf.calibration.default_guide': { label: 'Performance: fill a new calibration session with the company guide', scopes: ['tenant'], dated: false, values: ['off', 'on'], default: 'off' },
+  'perf.calibration.guide_shares': { label: 'Performance: the company calibration guide (rating and share)', scopes: ['tenant'], dated: false, values: [], text: { maxLength: 400 }, default: 'Outstanding:10,Exceeds:20,Meets:55,Partly meets:10,Needs improvement:5' },
+  'perf.calibration.guide_tolerance': { label: 'Performance: the company guide allows a band to differ by (points)', scopes: ['tenant'], dated: false, values: ['5', '10', '15', '20'], default: '10' },
   'perf.comp.budget_overrun': { label: 'Performance: a comp proposal over budget', scopes: ['tenant', 'legal_entity'], dated: false, values: ['extra_approval', 'block'], default: 'extra_approval' },
   'perf.pay_band.visible': { label: 'Performance: employees see their own pay band', scopes: ['tenant', 'legal_entity'], dated: false, values: ['on', 'off'], default: 'on' },
   'perf.pay_equity.flag_pct': { label: 'Performance: flag pay below the grade-and-role median by more than (%)', scopes: ['tenant', 'legal_entity'], dated: false, values: ['5', '10', '15'], default: '10' },

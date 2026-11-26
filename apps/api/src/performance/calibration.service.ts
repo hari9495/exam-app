@@ -8,7 +8,7 @@ import { ScopeUser, Viewer, buildViewer, tenantWide } from '../access/scope';
 import { NotificationsService } from '../notifications/notifications.service';
 import { holdersOf } from '../time/time-core';
 import { bandFor } from './perf-rules';
-import { changeProblem, distribution, guideProblem, type Guide } from './calibration-rules';
+import { changeProblem, distribution, guideForScale, guideProblem, parseGuideShares, type Guide } from './calibration-rules';
 import type { CalibrationChangeDto, PotentialDto, SessionDto } from './review-dto';
 
 // Performance batch PM6 (M06-BUILD-DESIGN §11; PM-6.01, 6.02): calibration sessions.
@@ -77,13 +77,23 @@ export class PerformanceCalibrationService {
       const cycle = cycleId ? await tx.reviewCycle.findFirst({ where: { organizationId: c.organizationId, id: cycleId } }) : null;
       if (cycleId && !cycle) throw new NotFoundException('No such cycle.');
       const bands = cycle ? (await this.scale(tx, c.organizationId, cycle.scaleId)).bands.map((b) => b.label) : [];
-      if (!this.hr(v) && !v.grants.has('perf.calibration.facilitate')) return { bands, sessions: [] };
+      if (!this.hr(v) && !v.grants.has('perf.calibration.facilitate')) return { bands, sessions: [], defaultGuide: null };
+      const defaultGuide = cycle ? await this.defaultGuide(tx, c, bands) : null;
       const where = { organizationId: c.organizationId, ...(cycleId ? { cycleId } : {}), ...(this.hr(v) ? {} : { facilitatorUserId: v.userId ?? '' }) };
       const rows = await tx.calibrationSession.findMany({ where, orderBy: { createdAt: 'asc' } });
       const counts = await tx.review.groupBy({ by: ['calibrationSessionId'], where: { organizationId: c.organizationId, calibrationSessionId: { in: rows.map((s) => s.id) } }, _count: { _all: true } });
       const users = new Map((await tx.user.findMany({ where: { organizationId: c.organizationId, id: { in: rows.map((s) => s.facilitatorUserId) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
-      return { bands, sessions: rows.map((s) => ({ id: s.id, name: s.name, facilitator: users.get(s.facilitatorUserId) ?? '', status: s.status, people: counts.find((x) => x.calibrationSessionId === s.id)?._count._all ?? 0 })) };
+      return { bands, defaultGuide, sessions: rows.map((s) => ({ id: s.id, name: s.name, facilitator: users.get(s.facilitatorUserId) ?? '', status: s.status, people: counts.find((x) => x.calibrationSessionId === s.id)?._count._all ?? 0 })) };
     });
+  }
+
+  /** Answer 2845: the company guide (Settings › Performance) when it is on and names this scale's bands; it only fills the form. */
+  private async defaultGuide(tx: Tx, c: CompanyContext, labels: string[]): Promise<Guide | null> {
+    const any = { legalEntityId: '' };
+    if ((await settingFor(tx, c, 'perf.calibration.default_guide', any)) !== 'on') return null;
+    const parsed = parseGuideShares(await settingFor(tx, c, 'perf.calibration.guide_shares', any));
+    if ('problem' in parsed) return null;
+    return guideForScale(parsed.bands, labels, Number(await settingFor(tx, c, 'perf.calibration.guide_tolerance', any)));
   }
 
   /** People who may facilitate: holders of perf.calibration.facilitate. */
