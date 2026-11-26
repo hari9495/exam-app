@@ -225,6 +225,12 @@ export class GroupDto {
   @Max(500)
   maxOpenPerAgent?: number | null;
 
+  /** GLPI 7 (answer 2719): the team's cost of an hour of ticket work, in rupees (null: not costed). */
+  @IsOptional()
+  @ValidateIf((_, v) => v !== null)
+  @Matches(/^\d{1,8}(\.\d{1,2})?$/, { message: 'The hourly rate is in rupees, e.g. 650.' })
+  hourlyRate?: string | null;
+
   @IsOptional()
   @IsBoolean()
   active?: boolean;
@@ -909,6 +915,45 @@ export class WatcherDto {
 export class CollaboratorDto {
   @IsUUID()
   userId!: string;
+}
+
+/** GLPI 7 (answer 2719): a fixed or material cost on an IT ticket. */
+export class CostLineDto {
+  @IsIn(['fixed', 'material'])
+  kind!: 'fixed' | 'material';
+
+  @Text(2, 200)
+  description!: string;
+
+  @Matches(/^\d{1,10}(\.\d{1,2})?$/, { message: 'The amount is in rupees, e.g. 4500 or 4500.50.' })
+  amount!: string;
+
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  costOn?: string;
+}
+
+export class ItBudgetYearDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  year?: number;
+}
+
+/** GLPI 7 (answer 2719): a department's IT budget for a financial year (April's year). */
+export class ItBudgetDto {
+  @IsUUID()
+  departmentId!: string;
+
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  year!: number;
+
+  @Matches(/^\d{1,12}(\.\d{1,2})?$/, { message: 'The budget is in rupees, e.g. 500000.' })
+  amount!: string;
 }
 
 export class TimeEntryDto {

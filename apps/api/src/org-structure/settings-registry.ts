@@ -173,6 +173,11 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // Learning (M07): the default attendance share for new classroom and virtual courses, the manager's later check
   // (LRN-12), and who hears about an overdue mandatory course when (answer 2609).
   'learning.attendance_share': { label: 'Learning: share of the session slots someone must attend to complete it, for new courses (%)', scopes: ['tenant'], dated: false, values: ['50', '60', '75', '80', '90', '100'], default: '75' },
+  // Answer 2781: limits on a SCORM zip L&D uploads (the platform caps the zip at 200 MB).
+  'learning.scorm.max_zip_mb': { label: 'Learning: largest SCORM zip L&D may upload (MB)', scopes: ['tenant'], dated: false, values: ['25', '50', '100', '200'], default: '100' },
+  'learning.scorm.max_unzipped_mb': { label: 'Learning: largest size a SCORM package may unzip to (MB)', scopes: ['tenant'], dated: false, values: ['100', '250', '500', '1000'], default: '250' },
+  'learning.scorm.max_files': { label: 'Learning: most files in one SCORM package', scopes: ['tenant'], dated: false, values: ['500', '1000', '2000', '5000'], default: '2000' },
+  'learning.scorm.max_ratio': { label: 'Learning: most a SCORM package may grow when unzipped (times its zip size)', scopes: ['tenant'], dated: false, values: ['20', '50', '100', '200'], default: '100' },
   'learning.check_after_days': { label: 'Learning: days after a session that managers are asked if the skill is applied', scopes: ['tenant'], dated: false, values: ['30', '45', '60', '90'], default: '60' },
   'learning.overdue.manager_days': { label: 'Learning: days past the due date before the manager is told', scopes: ['tenant'], dated: false, values: ['1', '3', '7', '14'], default: '7' },
   'company_docs.expiry_reminder_days': { label: 'Company documents: days before expiry that the uploader and document managers are told', scopes: ['tenant'], dated: false, values: ['7', '14', '30', '60', '90'], default: '30' },

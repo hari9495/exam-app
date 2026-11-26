@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Request, Response } from 'express';
 import { memoryStorage } from 'multer';
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsIn, IsInt, IsISO8601, IsNumber, IsObject, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { TenantContext } from '@exam-platform/shared';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentTenant } from '../auth/current-tenant.decorator';
@@ -17,6 +17,7 @@ import { LearningReportsService } from './learning-reports.service';
 import { LearningSessionsService } from './learning-sessions.service';
 import { LearningFeedbackService } from './learning-feedback.service';
 import { LearningSkillsService } from './learning-skills.service';
+import { MAX_ZIP_MB } from './scorm';
 
 export class CourseDto {
   @IsString() @MinLength(2) @MaxLength(200) title!: string;
@@ -52,7 +53,7 @@ const toInt = ({ value }: { value: unknown }) => (typeof value === 'string' && v
 const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : value === 'false' ? false : value);
 export class ItemDto {
   @IsString() @MinLength(2) @MaxLength(200) title!: string;
-  @IsIn(['pdf', 'video', 'link']) kind!: 'pdf' | 'video' | 'link';
+  @IsIn(['pdf', 'video', 'link', 'scorm']) kind!: 'pdf' | 'video' | 'link' | 'scorm';
   @Transform(toInt) @IsInt() @Min(0) @Max(1440) minutes!: number;
   @Transform(toBool) @IsBoolean() required!: boolean;
   @IsOptional() @IsString() @MaxLength(1000) url?: string | null;
@@ -79,6 +80,11 @@ export class RuleDto {
 
 export class RuleUpdateDto extends RuleDto {
   @IsInt() @Min(1) version!: number;
+}
+
+/** Answer 2781: one commit of a SCORM package, as the bridge forwards it; the service keeps only the allowed fields. */
+export class ScormCommitDto {
+  @IsObject() cmi!: Record<string, unknown>;
 }
 
 export class EnrolDto {
@@ -228,7 +234,8 @@ export class EntityQueryDto {
   @IsOptional() @IsUUID() entityId?: string;
 }
 
-const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 100 * 1024 * 1024, files: 1 } });
+// Items: PDFs (20 MB), videos (100 MB) and SCORM zips (the company's limit, at most MAX_ZIP_MB); the service checks each.
+const UPLOAD = FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_ZIP_MB * 1024 * 1024, files: 1 } });
 const download = (res: Response, mime: string, name: string, inline = false) =>
   res.set({
     'Content-Type': mime,
@@ -282,8 +289,16 @@ export class LearningController {
   }
 
   @Get('enrolments/:id')
-  player(@CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
-    return this.learning.player(ctx, id);
+  player(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string) {
+    // The page's origin: a SCORM package may be framed by it and send its progress to it (answer 2781).
+    return this.learning.player(ctx, id, typeof req.headers.origin === 'string' ? req.headers.origin : undefined);
+  }
+
+  @Post('enrolments/:id/items/:itemId/scorm')
+  @HttpCode(200)
+  scormSave(@Req() req: Request, @CurrentTenant() ctx: TenantContext, @Param('id', ParseUUIDPipe) id: string, @Param('itemId', ParseUUIDPipe) itemId: string, @Body() dto: ScormCommitDto) {
+    ownSession(req);
+    return this.learning.scormSave(ctx, id, itemId, dto.cmi);
   }
 
   @Post('enrolments/:id/items/:itemId/done')

@@ -1,5 +1,5 @@
 // Fictional sample data for the Service Desk stories and tests (Kaveri Foods demo company).
-import type { Banner, Bounce, CustomerAccount, CustomerAccountRow, InboundEmail, Mailbox, PortalHome, PortalTicket, PortalTicketRow, PortalView, Product, PublicBanner, SendingDomain, CalendarItem, CannedResponse, ComplianceReport, DeskDetail, DeskTemplates, SlaSetup, TicketWork, DeskSummary, MyTicket, MyTicketRow, RaiseDesk, RequesterContext, TicketDetail, TicketRow, TimelineEntry } from './types';
+import type { Banner, Bounce, CustomerAccount, CustomerAccountRow, InboundEmail, Mailbox, PortalHome, PortalTicket, PortalTicketRow, PortalView, Product, PublicBanner, SendingDomain, CalendarItem, CannedResponse, ComplianceReport, DeskDetail, DeskTemplates, SlaSetup, TicketWork, DeskSummary, MyTicket, MyTicketRow, RaiseDesk, RequesterContext, TicketDetail, TicketRow, TimelineEntry, TicketCosts, ItBudgets } from './types';
 
 export const DESK: DeskSummary = {
   id: 'd-it',
@@ -41,7 +41,7 @@ export const DETAIL: DeskDetail = {
     { id: 'c-acc', name: 'Access and accounts', parentId: null, sensitive: false, defaultGroupId: 'g-1', defaultPriority: null, active: true, sortOrder: 1 },
     { id: 'c-sec', name: 'Security incident', parentId: null, sensitive: true, defaultGroupId: 'g-1', defaultPriority: 1, active: true, sortOrder: 2 },
   ],
-  groups: [{ id: 'g-1', name: 'IT help desk team', tier: null, assignmentMethod: 'round_robin', maxOpenPerAgent: null, active: true, memberIds: ['u-suresh', 'u-farah'] }],
+  groups: [{ id: 'g-1', name: 'IT help desk team', tier: null, assignmentMethod: 'round_robin', maxOpenPerAgent: null, hourlyRate: '650.00', active: true, memberIds: ['u-suresh', 'u-farah'] }],
   matrix: [1, 2, 3, 4].flatMap((impact) => [1, 2, 3, 4].map((urgency) => ({ impact, urgency, priority: Math.max(1, Math.min(4, impact + urgency - 2)) }))),
   members: [
     { id: 'm1', userId: 'u-suresh', name: 'Suresh Pillai', email: 'it-agent@kaveri.test', role: 'agent', tier: 'L1', skills: [], validFrom: '2026-10-01', validTo: null, active: true },
@@ -301,4 +301,34 @@ export const PORTAL_TICKET: PortalTicket = {
     { id: 'pm2', side: 'agent', author: 'Suresh Pillai', mine: false, bodyHtml: '<p>We are checking with the courier.</p>', createdAt: '2026-10-07T06:30:00Z' },
   ],
   files: [],
+};
+
+/** GLPI 7 (answer 2719): an IT ticket's costs and the IT budgets page. */
+export const COSTS: TicketCosts = {
+  hourlyRate: '650.00',
+  timeCost: '975.00',
+  uncostedMinutes: 0,
+  lines: [
+    { id: 'cl-1', kind: 'material', description: 'Replacement screen, Dell Latitude 5440', amount: '8450.00', costOn: '2026-11-24', who: 'Suresh Iyer', canRemove: true },
+    { id: 'cl-2', kind: 'fixed', description: 'Courier to the repair centre', amount: '350.00', costOn: '2026-11-25', who: 'Farah Khan', canRemove: false },
+  ],
+  total: '9775.00',
+  departments: ['Engineering'],
+};
+export const IT_BUDGETS: ItBudgets = {
+  year: 2026,
+  rows: [
+    { departmentId: 'dp-eng', department: 'Engineering', budget: '500000.00', time: '84500.00', lines: '212300.00', spent: '296800.00', left: '203200.00' },
+    { departmentId: 'dp-fin', department: 'Finance', budget: '120000.00', time: '22750.00', lines: '108400.00', spent: '131150.00', left: '-11150.00' },
+    { departmentId: 'dp-ops', department: 'Operations', budget: null, time: '9100.00', lines: '0.00', spent: '9100.00', left: null },
+    { departmentId: 'dp-hr', department: 'People', budget: '80000.00', time: '0.00', lines: '0.00', spent: '0.00', left: '80000.00' },
+  ],
+  noDepartment: { time: '1950.00', lines: '0.00', spent: '1950.00' },
+  departments: [
+    { value: 'dp-eng', label: 'Engineering' },
+    { value: 'dp-fin', label: 'Finance' },
+    { value: 'dp-ops', label: 'Operations' },
+    { value: 'dp-hr', label: 'People' },
+    { value: 'dp-sal', label: 'Sales' },
+  ],
 };

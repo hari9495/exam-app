@@ -51,6 +51,17 @@ export class FilesService {
     return tx.file.create({ data: { id, organizationId: c.organizationId, area: input.area, storageRef: ref, fileName: name, mime: check.mime, size: input.data.length, sha256: sha256(input.data), uploadedBy: c.userId ?? null, uploadedVia: input.via } });
   }
 
+  /**
+   * A file unpacked from an archive the caller has already checked (answer 2781, SCORM): HTML, scripts and the like
+   * have no magic bytes to sniff, so the caller names the type. Stored encrypted now, outside any transaction; the
+   * caller inserts the returned rows and scans each after the commit. Pending until clean, like every upload.
+   */
+  async putExtracted(c: CompanyContext, input: { area: string; name: string; data: Buffer; mime: string; via: 'staff' | 'system' }): Promise<FileRow & { area: string; uploadedBy: string | null; uploadedVia: string }> {
+    const id = randomUUID();
+    const storageRef = await this.store.put(`org/${c.organizationId}/${input.area}/${id}`, input.data);
+    return { id, organizationId: c.organizationId, area: input.area, storageRef, fileName: safeName(input.name), mime: input.mime, size: input.data.length, sha256: sha256(input.data), scanStatus: 'pending', uploadedBy: c.userId ?? null, uploadedVia: input.via };
+  }
+
   /** Scan one pending file now; true when it ended clean. Errors leave it pending for the sweep. */
   async scan(organizationId: string, fileId: string): Promise<boolean> {
     const ctx = { organizationId, isSuperAdmin: false };

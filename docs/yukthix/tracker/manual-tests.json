@@ -28873,5 +28873,53 @@
                               "Screens/Settings/2.8 Assets (Bookings)"
                     ],
                     "note": "Positive and negative: lifecycle-6c e2e '2715' (not bookable 404, wrong key 403 and other company 404 on bookable/hand-over/approve, register Issue refused 409, free-between search with location filter, too long and past start 400, daily repeat clash refuses all naming the day, weekly repeat 3 bookings, database exclusion, my bookings only mine, hand-over before start 409, hand-over creates an asset_assignment and the register shows the holder, second hand-over 409, cancel out 409, unbookable with live bookings 409, asset page bookings, due reminder once to the person, overdue once to asset managers (not the person, agent, Finance, other company), audits, take back via the register return ends the booking, series cancel 2, IT cancel needs reason and tells the person; approval: pending, IT told, pending blocks the day, hand-over 409, approve 403 for employee and asset.view, 404 other company, decline needs reason, person told declined/approved, audits, person cancels); unit bookingDates; kit tests asset-bookings (11) and settings. Migration 807 (assets.bookable, asset_bookings with RLS and exclusion), settings asset.booking_max_days (14) and asset.booking_approval (off), sweep asset-booking-alerts."
+          },
+          {
+                    "id": "MT-2719-IT-COSTS",
+                    "area": "Helpdesk: IT costs into department budgets (GLPI 7, answer 2719)",
+                    "screen": "Helpdesk › Desk set-up › Groups; an IT ticket › Costs; Helpdesk › IT budgets",
+                    "url": "http://localhost:3000/yx/desk/it-budgets",
+                    "account": "admin@demo-org.test (company admin, or a Service Desk Admin) for budgets and team rates; it-agent@demo-org.test (IT desk agent); a second IT agent; panel@demo-org.test (employee).",
+                    "steps": [
+                              "In Desk set-up, open the IT desk's Groups tab, edit its team and set Hourly rate to 650; save. Open an HR desk's team: there is no Hourly rate.",
+                              "As the IT agent, open an IT ticket of that team and log 30 minutes of time.",
+                              "In the Costs card press Add cost with nothing filled; then add Material, Replacement charger, 1850.",
+                              "Change the team rate to 1000 and open the ticket again.",
+                              "As a second IT agent, open the same ticket: the charger line has no Take off. As the first agent press Take off, then Take off again with no reason; then give a reason.",
+                              "As the admin open Helpdesk › IT budgets: press Set a budget and Save with nothing filled; then choose the requester's department and 250000, save. Switch to next year.",
+                              "Open an HR desk ticket as its agent, and the IT ticket as the employee (My tickets).",
+                              "As the IT agent and as the employee, open /yx/desk/it-budgets."
+                    ],
+                    "expected": "Step 1: the team shows '₹650 an hour'; no rate field on non-IT desks. Step 2: Costs shows Time ₹325 at ₹650 an hour, charged to the requester's department. Step 3: 'Say what the cost is for.' and 'Enter the amount in rupees.' and nothing is added; then a toast 'Cost added.' and the total ₹2,175. Step 4: the rate shows ₹1,000 but the time cost stays ₹325. Step 5: no Take off for someone else's line; 'Say why (at least 3 letters).'; then 'Cost taken off.' and the total drops. Step 6: 'Choose a department.' and 'Enter the budget in rupees (0 or more).'; then 'Budget saved.' and the row shows budget, spent (time and costs) and left; next year is empty. Step 7: no Costs card on the HR ticket or in the employee's view. Step 8: 'You don't have access to IT budgets'; no IT budgets in their menu.",
+                    "stories": [
+                              "Helpdesk › IT budgets",
+                              "Helpdesk › HLP-03 Ticket workspace › IT ticket · costs",
+                              "Helpdesk › Desk set-up › Groups · team hourly rate"
+                    ],
+                    "note": "Answer 2719. Positive and negative: API service-desk-it-costs.e2e-spec.ts; kit it-costs.test.tsx; web yx-nav.test.ts. No page scroll at 1278 x 635 (walked headless 26 Nov 2026)."
+          },
+          {
+                    "id": "MT-LRN-SCORM",
+                    "area": "Learning (answer 2781): SCORM 1.2 and 2004 packages, and the LRN-06 enrolment sheet live",
+                    "screen": "Learning › Courses › a course (Content: Upload SCORM package); Learning › My learning › a course (the player); My learning › Catalogue (Enrol, Request, Nominate) and Request external training; Decline on a nomination",
+                    "url": "http://localhost:3000/yx/learning/courses",
+                    "account": "L&D (learning.manage); an employee enrolled in the course (Arjun); another employee not enrolled; a manager with a team (for Nominate); HR without learning.manage; another company's admin. The API needs SCORM_CONTENT_ORIGIN set to a second host name for the API (for example http://127.0.0.1:3001 while the app is on http://localhost:3000) and a virus scanner (SD_SCANNER=dev-fake on a laptop).",
+                    "steps": [
+                              "As L&D open a draft self-paced course, Content, press Upload SCORM package. Press Add item with no file; then upload a real SCORM 1.2 zip (Articulate, iSpring or a sample from scorm.com) with a title, required. Upload a SCORM 2004 zip as a second item.",
+                              "Negative uploads: a zip without imsmanifest.xml; a PDF renamed .zip; a zip with a file named ../evil.js (make it with a zip tool); a zip over the company's 'largest SCORM zip' setting (Settings › Learning, set it to 25 MB first).",
+                              "Publish the course. As Arjun enrol from the Catalogue, open the course and the package item; press Open. Work through part of it, close the tab, open the course again and press Open.",
+                              "Finish the package (pass its quiz). Watch the outline and the header. Then open the 2004 package and fail its quiz if it has one.",
+                              "While the package plays, open the browser's developer tools: the frame's address is on the content host; its response headers carry the Content-Security-Policy; the app's cookies are not sent to it.",
+                              "Copy the frame's address and open it in a new tab on the app's own host (swap the host for localhost:3000's API host); change one letter of the long token; wait 3 hours and reload it.",
+                              "As the other employee, and as another company's admin, open /yx/learning/enrolments/<Arjun's enrolment id>. As HR without learning.manage try to upload a package (Courses page not in the menu; POST the item by hand gives no access).",
+                              "LRN-06: as an employee on the Catalogue press Enrol on a free course, Request on a course needing approval above Rs 25,000 (bond), and Request external training; as a manager press Nominate on a classroom course and pick two people for a session with one seat; as a nominated employee press Decline with a 5-letter reason, then a proper one; on a mandatory nomination press Decline."
+                    ],
+                    "expected": "Step 1: 'Choose the zip.'; then toast '<title> added' and the item shows 'SCORM 1.2 · 15 min · <file>.zip' (and 'SCORM 2004' for the second). Step 2: each refused with a plain message naming why ('There is no imsmanifest.xml…', 'This is not a zip file we can open.', '…points outside the package (..)', 'The package is over 25 MB.'); nothing added. Step 3: the stage says 'SCORM package runs in a sandboxed frame'; Open shows the package in a frame; 'Package reports: incomplete'; no Mark as done button; on reopening, the package resumes where it was left (bookmark or 'resume' prompt). Step 4: toast 'You completed <course>', the alert turns to 'Package reports: completed · score …', the certificate is issued; the failed 2004 package says 'Package reports: failed · score …' and 'Retake the package'. Step 5: the frame's URL starts with SCORM_CONTENT_ORIGIN, the CSP has default-src 'none', frame-ancestors with the app origin, sandbox allow-scripts allow-forms; no cookie header. Step 6: on the app host 'Not found'; changed token and after 3 hours 'This link has expired. Open the course again.'. Step 7: not found (404) for both; HR gets no access (403). Step 8: the designed sheet (drawer, 'What happens' list) for each: Enrol enrols at once; Request needs the bond box ticked; external asks course, provider, cost, why; Nominate lists 'Arjun: Enrolled', 'Imran: Waitlist, position 1'; Decline stays disabled under 10 characters and on a mandatory course says 'Mandatory courses can’t be declined'. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/Learning/LRN-02 · Course player (SCORM package, SCORM failed)",
+                              "Screens/Learning/LRN-03 · Course builder and learning paths (Content items: Upload SCORM package)",
+                              "Screens/Learning/LRN-06 · Nomination / enrolment (all six)"
+                    ],
+                    "note": "Positive and negative (api scorm.spec 19: manifest 1.2/2004/broken/entity/escape, each zip limit and refusal, bridge fields, oversize suspend data, tokens, CSP; e2e learning-scorm 5: upload refusals and keys, launch link on the content origin, serving refusals (app host, unsigned, tampered, expired, other package, other company, pending and infected files), CSP and no cookies, allowed fields only, oversize 400, other learner and other company 404, completion and certificate through the usual path; kit scorm-bridge 3 and learn-scorm-live 5). Migration 840 (learning_scorm_files, learning_scorm_attempts, scorm columns on learning_course_items). scorm-again 3.5.0, MIT. Multi-frame packages (frames inside the package) need a browser check: frame-ancestors on an opaque sandboxed parent."
           }
 ]
