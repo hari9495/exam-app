@@ -64,6 +64,10 @@ export interface LeaveRules {
   minGapDays: number | null;
   /** T2-A (D8): the only weekdays it can be taken on, 0 Sunday to 6 Saturday (null: any day). */
   allowedWeekdays: number[] | null;
+  /** Answer 2756: the most days of this type in a row, counting requests that touch each other (weekly offs and holidays between join them). null: no limit. */
+  maxConsecutiveDays: number | null;
+  /** Answer 2758: leave types this type cannot touch (with only weekly offs or holidays between). null: none. */
+  notWithTypes: string[] | null;
   /** TIM-27 Year end: the most days cashed in a leave year (null: the company's leave.encashment.max_days). */
   encashMaxDays: number | null;
   /** Days that must stay after cashing in (null: the company's leave.encashment.min_left). */
@@ -93,7 +97,7 @@ export interface PayStep {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, maxRequestsPerMonth: null, minGapDays: null, allowedWeekdays: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null, eligibleEmploymentTypes: null, minMonthsWorked: null, probation: null };
+export const DEFAULT_RULES: LeaveRules = { sandwich: 'none', sandwichOn: 'both', sandwichHalfDays: false, halfDays: true, minDays: null, maxDays: null, noticeDays: null, noticeMode: 'block', certificateAfterDays: null, medical: false, negativeLimit: 0, accrualWaitMonths: 0, encashable: false, hrApprovalAboveDays: null, eligibleGenders: null, paySteps: null, payWindow: 'leave_year', maxDaysPerMonth: null, maxRequestsPerMonth: null, minGapDays: null, allowedWeekdays: null, maxConsecutiveDays: null, notWithTypes: null, encashMaxDays: null, encashMinLeft: null, encashDivisor: null, encashAtExit: true, longAbsence: null, noticePeriod: null, eligibleEmploymentTypes: null, minMonthsWorked: null, probation: null };
 export const GENDER_VALUES = ['female', 'male', 'transgender', 'non_binary', 'prefer_not_to_say'];
 
 const isObj = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
@@ -124,6 +128,12 @@ export function parseRules(input: unknown): LeaveRules {
     if (!Array.isArray(r.allowedWeekdays) || !r.allowedWeekdays.length || r.allowedWeekdays.some((d) => !Number.isInteger(d) || d < 0 || d > 6)) throw new BadRequestException('Choose the weekdays it can be taken on, or leave it open to every day.');
     r.allowedWeekdays = [...new Set(r.allowedWeekdays)].sort();
     if (r.allowedWeekdays.length === 7) r.allowedWeekdays = null;
+  }
+  if (r.maxConsecutiveDays !== null && !halfStep(r.maxConsecutiveDays, 0.5, 366)) throw new BadRequestException('Most days in a row is 0.5 to 366, in half days.');
+  if (r.maxConsecutiveDays !== null && r.maxDays !== null && r.maxDays > r.maxConsecutiveDays) throw new BadRequestException(`Most days in one request is more than the limit in a row of ${r.maxConsecutiveDays}.`);
+  if (r.notWithTypes !== null) {
+    if (!Array.isArray(r.notWithTypes) || !r.notWithTypes.length || r.notWithTypes.length > 30 || r.notWithTypes.some((x) => typeof x !== 'string' || !UUID_RE.test(x))) throw new BadRequestException('Choose the leave types it cannot be taken next to, or none.');
+    r.notWithTypes = [...new Set(r.notWithTypes)];
   }
   if (r.encashDivisor !== null && r.encashDivisor !== 26 && r.encashDivisor !== 30) throw new BadRequestException('The daily rate for cashing in is monthly pay divided by 26 or 30.');
   if (r.longAbsence !== null && r.longAbsence !== 'pause' && r.longAbsence !== 'continue') throw new BadRequestException('Choose whether crediting stops or continues during a long absence.');

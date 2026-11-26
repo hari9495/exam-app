@@ -218,6 +218,13 @@ export class LeaveService implements OnModuleInit {
 
   // ------------------------------------------------------------------------------------------ planning a request
 
+  /** Answer 2758: does this type, or any active type of the company, name the other in "cannot be taken next to"? */
+  private async touchRulesExist(tx: Tx, org: string, typeId: string, rules: LeaveRules) {
+    if (rules.notWithTypes?.length) return true;
+    const [row] = await tx.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n FROM leave_types WHERE organization_id = ${org}::uuid AND active AND rules -> 'notWithTypes' ? ${typeId}`;
+    return row.n > 0;
+  }
+
   private async plan(tx: Tx, c: CompanyContext, f: Facts, dto: LeavePlanDto, today: string): Promise<Plan> {
     const org = c.organizationId;
     const found = await tx.leaveType.findFirst({ where: { organizationId: org, id: dto.leaveTypeId, active: true } });
@@ -303,6 +310,47 @@ export class LeaveService implements OnModuleInit {
           AND r.to_on >= (${dto.from}::date - ${gap}::int) AND r.from_on <= (${dto.to}::date + ${gap}::int)
         ORDER BY r.from_on LIMIT 1`;
       if (near.length) blocks.push(`${t.name} needs ${daysText(gap)} between two requests. ${onBehalf ? `${f.name} has` : 'You have'} ${t.name.toLowerCase()} from ${fmt(near[0].from_on)} to ${fmt(near[0].to_on)}.`);
+    }
+    // Answers 2756 (most days in a row) and 2758 (types it cannot touch): look at the leave around the request, across
+    // weekly offs and holidays (they join leave on either side), up to 60 days each way.
+    if (total > 0 && ((rules.maxConsecutiveDays !== null && rules.maxConsecutiveDays !== undefined) || (await this.touchRulesExist(tx, org, t.id, rules)))) {
+      const lo = addDays(dto.from, -60);
+      const hi = addDays(dto.to, 60);
+      const around = await tx.$queryRaw<{ on: string; portion: number; type: string; name: string; rules: unknown }[]>`
+        SELECT d.leave_on::text AS on, d.portion::float AS portion, r.leave_type_id::text AS type, lt.name, lt.rules FROM leave_request_days d
+        JOIN leave_requests r ON r.organization_id = d.organization_id AND r.id = d.request_id
+        JOIN leave_types lt ON lt.organization_id = r.organization_id AND lt.id = r.leave_type_id
+        WHERE d.organization_id = ${org}::uuid AND d.employee_id = ${f.employeeId}::uuid AND d.active AND d.portion > 0 AND r.status = ANY(${ACTIVE}::text[])
+          AND d.leave_on BETWEEN ${lo}::date AND ${hi}::date`;
+      const { map: hol } = await holidaysFor(tx, org, f.locationId, lo, hi, f.employeeId);
+      await book.prime([f.employeeId], lo, hi);
+      const off = async (d: string) => hol.has(d) || (await book.day(f, d)).weeklyOff;
+      const byDay = new Map<string, typeof around>();
+      for (const x of around) byDay.set(x.on, [...(byDay.get(x.on) ?? []), x]);
+      // The first working day before and after, and the days of this type joined to the request.
+      let run = total;
+      let before = addDays(dto.from, -1);
+      while (before >= lo && ((await off(before)) || (byDay.get(before) ?? []).some((x) => x.type === t.id))) {
+        run += (byDay.get(before) ?? []).filter((x) => x.type === t.id).reduce((s2, x) => s2 + x.portion, 0);
+        before = addDays(before, -1);
+      }
+      let after = addDays(dto.to, 1);
+      while (after <= hi && ((await off(after)) || (byDay.get(after) ?? []).some((x) => x.type === t.id))) {
+        run += (byDay.get(after) ?? []).filter((x) => x.type === t.id).reduce((s2, x) => s2 + x.portion, 0);
+        after = addDays(after, 1);
+      }
+      if (rules.maxConsecutiveDays !== null && rules.maxConsecutiveDays !== undefined && run > rules.maxConsecutiveDays) blocks.push(`${t.name} is at most ${daysText(rules.maxConsecutiveDays)} in a row, counting leave next to it. This would make ${daysText(run)}.`);
+      // The other types on the working days just outside the joined run.
+      for (const edge of [before, after]) {
+        for (const x of byDay.get(edge) ?? []) {
+          if (x.type === t.id) continue;
+          const theirs = parseRules(x.rules).notWithTypes ?? [];
+          if ((rules.notWithTypes ?? []).includes(x.type) || theirs.includes(t.id)) {
+            blocks.push(`${t.name} can't be taken next to ${x.name} (${fmt(edge)}).`);
+            break;
+          }
+        }
+      }
     }
     // DECISION NEEDED: P05 documents are not built yet, so a certificate is not uploaded here: the employee confirms
     // they will give it to HR, HR marks it verified (Special data), and approvers see only its status (YX-LV-09).
