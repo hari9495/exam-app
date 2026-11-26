@@ -326,7 +326,7 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     await api('payAdminB', 'get', `/payroll/arrears-worksheets/${w.id}`).expect(404);
     // The maker cannot approve; the month is locked, so it is paid in an arrears run.
     expect((await api('payAdmin', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(403)).body.message).toMatch(/Someone other/);
-    await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(409);
+    await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({ payMonth: month }).expect(409);
     const arrearsRun = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month, offcycleKind: 'arrears' }).expect(201)).body.id;
     // From 17 Sep 2026 the PF ceiling is 25,000: the raise (basic 20,000 to 24,000) owes 480 more employee PF, which is
     // recovered only with the employee's consent (5g-D6). Under the old 15,000 ceiling both months paid the same PF.
@@ -366,6 +366,26 @@ describe('Payroll batch 5g (off-cycle, arrears, F&F)', () => {
     expect((await api('emp3', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(200)).body.status).toBe('active');
     await api('emp3', 'post', `/payroll/me/overpayments/${ok.recoveryId}/answer`).send({ agree: true }).expect(409);
     ids.recovery = ok.recoveryId;
+  });
+
+  it('E3 review item 4: arrears never go into a month whose run is calculated or in review; by default they roll on', async () => {
+    const next = iso(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 1))).slice(0, 7);
+    const after = iso(new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)) + 1, 1))).slice(0, 7);
+    const ch = (await api('payAdmin', 'post', `/payroll/employees/${ids.emp2}/compensation-changes`).send({ employeeId: ids.emp2, effectiveDate: first, templateVersionId: ids.version, entryMode: 'ctc', annualCtc: '720000', reason: 'Raise from the start of the month' }).expect(201)).body;
+    await stepUp('approver1');
+    await api('approver1', 'post', `/people/changes/${ch.changeId}/approve`).send({ confirmRebase: true }).expect(201);
+    const w = (await api('payAdmin', 'post', '/payroll/arrears-worksheets').send({ employeeId: ids.emp2, from: month, to: month, reason: 'Raise approved late', changeId: ch.changeId }).expect(201)).body;
+    expect(Number(w.total)).toBeGreaterThan(0);
+    // Next month's run is already calculated: arrears approved now would never be paid by it.
+    const r = (await api('payAdmin', 'post', '/payroll/runs').send({ payGroupId: ids.group, month: next }).expect(201)).body.id;
+    await calculate(r);
+    expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({ payMonth: next }).expect(409)).body.message).toMatch(/already calculated/);
+    // By default they roll past this (locked) month and next month's calculated run, to the month after.
+    expect((await api('approver1', 'post', `/payroll/arrears-worksheets/${w.id}/approve`).send({}).expect(200)).body).toMatchObject({ status: 'approved', payMonth: after });
+    const paid = await scoped((tx) => tx.oneTimePay.findMany({ where: { sourceRef: w.id, source: 'arrears' } }));
+    expect(paid.length).toBeGreaterThan(0);
+    expect(paid.every((o) => o.periodStart.toISOString().startsWith(after))).toBe(true);
+    await api('payAdmin', 'post', `/payroll/runs/${r}/void`).send({ reason: 'Test run, not paid' });
   });
 
   it('E3 review item 1: never two open drafts over the same months; a draft made stale by a later approval is refused', async () => {

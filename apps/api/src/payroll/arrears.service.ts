@@ -11,6 +11,7 @@ import { asDate, dateOf, monthRange } from '../time/time-core';
 import { calculatePayslip } from './calc';
 import { monthRun } from './month-run';
 import { nextMonth, taxYearOf } from './tax';
+import { groupOf, periodDates } from './pay-dates';
 import { PayRunsService } from './runs.service';
 import { FNF_COMPONENTS } from './starter';
 import { PayKey, entitiesFor, payScope, payViewer, requireSelf } from './pay-access';
@@ -33,6 +34,8 @@ const D = (x: Prisma.Decimal.Value) => new Prisma.Decimal(x);
 const lock = (tx: Tx, key: string) => tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${key}))`;
 const NIL = '00000000-0000-0000-0000-000000000000';
 const EDITABLE = ['draft', 'calculated', 'in_review', 'reopened'];
+/** A regular run past its draft: its items are fixed, so nothing new is paid into its month. */
+const PAST_DRAFT = ['calculating', 'calculated', 'in_review', 'submitted', 'approved', 'paid'];
 // Founder decisions 5g-D6 / 5g-D7 (12 Oct 2026, M03 §19.9): worksheets carry PF, ESI, PT and LWF too; the employee share
 // owed is recovered only with consent (like an overpayment), one deducted too much is refunded, and the employer share is
 // the company's cost (shown on the worksheet). The tax of an earlier-year overpayment (revised Form 16, s.89) is handled
@@ -443,6 +446,16 @@ export class ArrearsService {
         if (!run || !EDITABLE.includes(run.status)) throw new ConflictException('Choose a draft arrears or correction off-cycle run of the same legal entity.');
         payMonth = dateOf(run.periodStart).slice(0, 7);
       } else if (owed) {
+        // E3 review item 4: a run picks up only its own month's items, so arrears never go into a month whose run is past
+        // its draft (they would be lost). A chosen month is refused; otherwise they roll on past the cut-off and past such
+        // runs, as one-time pay does after its cut-off.
+        const g = await groupOf(tx, org, w.employmentId, monthRange(payMonth).to);
+        const busy = (m: string) => tx.payrollRun.findFirst({ where: { organizationId: org, legalEntityId: w.legalEntityId, runType: 'regular', periodStart: asDate(`${m}-01`), status: { in: PAST_DRAFT }, ...(g ? { payGroupId: g.id } : {}) }, select: { status: true } });
+        const late = async (m: string) => !!g && g.frequency === 'monthly' && todayIst() > (await periodDates(tx, org, g, m)).cutOff;
+        if (dto.payMonth) {
+          const r = await busy(payMonth);
+          if (r) throw new ConflictException(`The ${payMonth} payroll is already ${r.status.replace('_', ' ')}, so it would not pay these arrears. Choose a later month or an off-cycle run.`);
+        } else for (let i = 0; i < 24 && ((await late(payMonth)) || (await busy(payMonth))); i++) payMonth = nextMonth(payMonth);
         const p = await tx.payPeriod.findFirst({ where: { organizationId: org, legalEntityId: w.legalEntityId, payGroupId: null, periodStart: asDate(`${payMonth}-01`) } });
         if (p?.lockedByRunId || p?.stage === 'filed') throw new ConflictException(`${payMonth} is already paid and locked; pay the arrears next month or in an off-cycle run.`);
       }
