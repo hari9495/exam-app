@@ -35,7 +35,7 @@ export const P2_7_ReadOnly: S = { name: '2.7 Exit & lifecycle policies · read-o
 export const P2_8: S = { name: '2.8 Assets', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.8" /> };
 export const P2_8_ReadOnly: S = { name: '2.8 Assets · read-only', render: () => <SettingsPageScreen groups={SETTINGS_GROUPS} pageId="2.8" readOnly /> };
 // IT assets part 1 (answer 2712): 2.8 live with the company's categories, the acknowledgement and the recovery basis.
-export const ASSET_CATEGORIES: AssetCategoryRow[] = [
+const ASSET_CATEGORIES: AssetCategoryRow[] = [
   { id: 'c1', name: 'Laptop', trackedBy: 'Serial number', defaultRecovery: '45000.00', usefulLifeYears: 3, tagPrefix: 'LAP', tagYear: true, tagDigits: 4, nextTag: 'LAP-2026-0043', assets: 42, version: 1 },
   { id: 'c2', name: 'Phone', trackedBy: 'IMEI', defaultRecovery: '15000.00', usefulLifeYears: 3, depreciationMethod: 'declining', depreciationRate: '40.00', tagPrefix: 'PH', tagYear: false, tagDigits: 3, nextTag: 'PH-019', assets: 18, version: 1 },
   { id: 'c3', name: 'SIM', trackedBy: 'Number', defaultRecovery: '500.00', usefulLifeYears: null, tagPrefix: null, tagYear: false, tagDigits: 4, nextTag: null, assets: 18, version: 1 },
