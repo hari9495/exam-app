@@ -1153,6 +1153,13 @@ export const GROUP_2: SettingsGroupDef = {
             { key: 'asset.recovery_basis', label: 'Recovery amount', kind: 'radio', value: 'Category default', options: ['Category default', 'Written-down value', 'Decided by HR each time'] },
           ],
         },
+        // IT assets answer 2714: the asset managers of the asset's place are told once before a warranty ends.
+        {
+          title: 'Warranty',
+          settings: [
+            { key: 'asset.warranty_alert_days', label: 'Warranty alert', kind: 'radio', value: '30 days before', options: ['Off', '7 days before', '15 days before', '30 days before', '60 days before', '90 days before'], helper: 'Asset managers of the asset’s place are told once. An ended warranty shows in red on the register.', synonyms: ['warranty'] },
+          ],
+        },
       ],
       lastChange: { by: 'Karthik Subramanian', role: 'Engineering Manager', at: '2026-06-18T09:55', what: 'Changed default laptop recovery from ₹40,000 to ₹45,000' },
       related: [{ label: 'Asset register', screenId: 'PPL-25' }],

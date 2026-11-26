@@ -99,4 +99,6 @@ export const SWEEP_SCHEDULE: SweepDefinition[] = [
   { id: 'company-docs-expiry', cron: '45 1 * * *' },
   // G4 (2690): scheduled report emails, every 15 minutes (each schedule runs at 07:00 IST on its days).
   { id: 'report-schedules', cron: '*/15 * * * *' },
+  // IT assets answer 2714: warranties ending within the company's days, once per warranty end (07:20 IST).
+  { id: 'asset-warranty-alerts', cron: '50 1 * * *' },
 ];

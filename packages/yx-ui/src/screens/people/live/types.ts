@@ -509,6 +509,8 @@ export interface AssetRow {
   legalEntityId: string | null;
   locationId: string | null;
   purchasedOn: string | null;
+  /** Answer 2714: when the warranty ends (null: no purchase date or warranty months). */
+  warrantyEndsOn?: string | null;
   /** Answer 2711: absent when the viewer may not see money on this asset. */
   cost?: string | null;
   status: 'in_stock' | 'assigned' | 'in_repair' | 'retired' | 'lost';

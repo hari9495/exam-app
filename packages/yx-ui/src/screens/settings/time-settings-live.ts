@@ -371,6 +371,8 @@ export const PEOPLE_SETTINGS: Record<string, { links: string[]; settings: Place[
       { section: 'Issue and return', key: 'asset.ack_method', synonyms: ['acknowledge asset'] },
       { section: 'Issue and return', key: 'asset.recovery_to_fnf', synonyms: ['recovery'] },
       { section: 'Issue and return', key: 'asset.recovery_basis', synonyms: ['recovery amount', 'written-down value'] },
+      // Answer 2714.
+      { section: 'Warranty', key: 'asset.warranty_alert_days', synonyms: ['warranty', 'warranty alert'] },
     ],
   },
   // Settings S-7 (answers 1321, 1561, 1564): the settings that were on Company rules and Access and privacy.

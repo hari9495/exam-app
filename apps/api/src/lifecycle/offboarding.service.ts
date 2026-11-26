@@ -356,6 +356,8 @@ export class OffboardingService {
             legalEntityId: a.legalEntityId,
             locationId: a.locationId,
             purchasedOn: a.purchasedOn ? iso(a.purchasedOn) : null,
+            // Answer 2714: the register shows an ended warranty in red.
+            warrantyEndsOn: a.purchasedOn && a.warrantyMonths ? addMonthsIso(iso(a.purchasedOn), a.warrantyMonths) : null,
             // Answer 2711: no cost in the answer for whoever may not see money.
             ...(this.seesMoney(v, a) ? { cost: a.cost?.toFixed(2) ?? null } : {}),
             status: a.status,

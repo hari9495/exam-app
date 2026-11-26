@@ -68,6 +68,7 @@ describe('notification catalog', () => {
       'exit.clearance.assigned',
       'exit.interview.sent',
       'asset.assigned',
+      'asset.warranty.ending',
       'probation.review.done',
       'exit.deprovisioning.failed',
       'payroll.fnf.due',

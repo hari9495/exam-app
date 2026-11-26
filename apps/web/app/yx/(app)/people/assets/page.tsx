@@ -42,6 +42,8 @@ export default function YxAssetsPage() {
     // Answer 2711: the API sends no cost to whoever may not see money.
     cost: a.cost ? Number(a.cost) : null,
     purchased: new Date(`${a.purchasedOn ?? today}T00:00:00`),
+    // Answer 2714: the register shows an ended warranty in red.
+    warrantyEndsOn: a.warrantyEndsOn ?? null,
     live: a,
   }));
   return (

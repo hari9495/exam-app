@@ -26,7 +26,25 @@ import type { AssetRow } from './live/types';
 /* ================================================================== PPL-25 asset register */
 
 // cost: empty when the company did not record it (shown as "—", never ₹0).
-export type Asset = Omit<(typeof ASSETS)[number], 'cost'> & { cost: number | null };
+export type Asset = Omit<(typeof ASSETS)[number], 'cost' | 'warrantyEndsOn'> & { cost: number | null; warrantyEndsOn?: string | null };
+
+/** The sample register's day (stories). */
+const SAMPLE_TODAY = '2026-11-26';
+const isoOf = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+/** Answer 2714: the Warranty column; an ended warranty shows in red. */
+function warrantyColumn<R extends Asset>(today: string): TableColumn<R> {
+  return {
+    key: 'warrantyEndsOn',
+    header: 'Warranty',
+    value: (r) => r.warrantyEndsOn ?? '',
+    render: (r) => {
+      if (!r.warrantyEndsOn) return <span className="yx-table__none">—</span>;
+      const on = formatDate(new Date(`${r.warrantyEndsOn}T00:00:00`));
+      return r.warrantyEndsOn < today ? <Badge tone="danger">{`Ended ${on}`}</Badge> : <span>{`Ends ${on}`}</span>;
+    },
+    width: 150,
+  };
+}
 const opt = (xs: string[]) => xs.map((x) => ({ value: x, label: x }));
 const FIELDS: FilterFieldDef[] = [
   { key: 'type', label: 'Type', type: 'multi', options: opt(['Laptop', 'Tablet', 'Phone', 'Two-wheeler']) },
@@ -202,6 +220,7 @@ function LiveAssetRegister({ live, persona }: { live: LiveAssets; persona: Perso
     { key: 'holder', header: 'With', value: (r) => r.holder, render: (r) => (r.holder ? <span>{r.holder}{r.live.holder && <Text size="sm" tone="secondary" as="div">{r.live.holder.ackNone ? 'No confirmation asked' : r.live.holder.acknowledged ? 'Confirmed' : 'Waiting for confirmation'}</Text>}</span> : <span className="yx-table__none">—</span>), width: 200 },
     { key: 'location', header: 'Location', value: (r) => r.location, groupable: true, width: 180 },
     { key: 'purchased', header: 'Purchased', type: 'date', value: (r) => r.purchased, width: 130 },
+    warrantyColumn(isoOf(live.today)),
     // Answer 2711: money only for asset managers and asset.finance.view holders.
     ...(live.money === false ? [] : [{ key: 'cost', header: 'Cost', type: 'money', value: (r) => r.cost, total: 'sum', width: 120 } as TableColumn<Asset & { live: AssetRow }>]),
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: STATUS_TONE, groupable: true, width: 120 },
@@ -210,7 +229,7 @@ function LiveAssetRegister({ live, persona }: { live: LiveAssets; persona: Perso
     <PeopleFrame active="Assets" persona={persona}>
       <PageHeader
         title="Assets"
-        description="What each person holds. Unreturned assets flow into exit clearance and, if you set a recovery, into F&F. Depreciation stays in your finance system."
+        description="What each person holds. Unreturned assets flow into exit clearance and, if you set a recovery, into F&F. The net book value on an asset is a management figure; the tax books stay with your accountant."
         // Import and export of assets: not in the live app yet (left out).
         actions={live.onAdd ? <Button variant="primary" icon={Plus} onClick={live.onAdd}>Add asset</Button> : undefined}
       />
@@ -286,6 +305,7 @@ function SampleAssetRegister({ rows, dialog = null, persona = 'hr' }: { rows: As
     { key: 'holder', header: 'With', value: (r) => r.holder, render: (r) => r.holder || <span className="yx-table__none">—</span>, width: 180 },
     { key: 'location', header: 'Location', value: (r) => r.location, groupable: true, width: 180 },
     { key: 'purchased', header: 'Purchased', type: 'date', value: (r) => r.purchased, width: 130 },
+    warrantyColumn(SAMPLE_TODAY),
     { key: 'cost', header: 'Cost', type: 'money', value: (r) => r.cost, total: 'sum', width: 120 },
     { key: 'status', header: 'Status', type: 'status', value: (r) => r.status, statusTone: STATUS_TONE, groupable: true, width: 120 },
   ];
@@ -293,7 +313,7 @@ function SampleAssetRegister({ rows, dialog = null, persona = 'hr' }: { rows: As
     <PeopleFrame active="Assets" persona={persona}>
       <PageHeader
         title="Assets"
-        description="What each person holds. Unreturned assets flow into exit clearance and, if you set a recovery, into F&F. Depreciation stays in your finance system."
+        description="What each person holds. Unreturned assets flow into exit clearance and, if you set a recovery, into F&F. The net book value on an asset is a management figure; the tax books stay with your accountant."
         actions={
           <>
             <Button icon={Upload}>Import</Button>

@@ -11,6 +11,8 @@ import { ROLE_TEMPLATES } from '../src/access/role-templates';
 import { AutomationService } from '../src/rules-engine/automation.service';
 import { addDays } from '../src/lifecycle/journey-rules';
 import { createFakeBlobStorage } from './fixtures/fake-blob-storage';
+import { AssetAlertsService } from '../src/lifecycle/asset-alerts.service';
+import { addMonthsIso } from '../src/lifecycle/asset-categories';
 
 // Lifecycle batch 6c end to end against the real database (forced RLS, the app role): the notice from the policy in
 // force on the day, a resignation accepted by the manager then HR (on notice, the offboarding checklist on the last day,
@@ -605,6 +607,57 @@ describe('Lifecycle batch 6c', () => {
     const upd = await inA((tx) => tx.auditLog.findFirstOrThrow({ where: { entityType: 'asset_category', entityId: srv, action: 'asset.category.updated' } }));
     expect(JSON.parse(upd.metadataJson ?? '{}')).toMatchObject({ from: { depreciationMethod: 'declining', depreciationRate: '40.00' }, to: { depreciationMethod: 'straight_line', depreciationRate: null } });
     expect((await page('hr', s1)).asset.depreciation).toBe('Straight line over 6 years');
+  });
+
+  it('IT assets part 2 (2714): asset managers of the place are told once before a warranty ends; the register shows the end', async () => {
+    const alerts = app.get(AssetAlertsService);
+    const o = { organizationId: org.A.id };
+    // Meena manages assets at this location only (a grant); Kiran at another location only.
+    const other = await inA((tx) => tx.location.create({ data: { ...o, legalEntityId: ids.entity, name: `Chennai ${run}`, code: `C${run.slice(0, 4)}`, address: {}, country: 'IN', state: 'IN-TN', timezone: 'Asia/Kolkata' } }));
+    await inA(async (tx) => {
+      const role = await tx.permissionProfile.create({ data: { ...o, name: `asset-place-${run}`, permissionsJson: JSON.stringify(['asset.view', 'asset.manage']) } });
+      await tx.roleGrant.create({ data: { ...o, userId: users.meena, permissionProfileId: role.id, scopeType: 'location', locationId: ids.blr, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Site IT', grantedBy: users.adminA } });
+      await tx.roleGrant.create({ data: { ...o, userId: users.kiran, permissionProfileId: role.id, scopeType: 'location', locationId: other.id, validFrom: new Date('2020-01-01T00:00:00Z'), status: 'active', reason: 'Other site IT', grantedBy: users.adminA } });
+    });
+    const back = (days: number) => new Date(Date.parse(`${today}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10);
+    const add = async (tag: string, purchasedOn: string, warrantyMonths: number) => (await api('hr', 'post', '/lifecycle/assets').send({ category: 'Laptop', name: `Warranty ${tag}`, tag: `${tag}-${run}`, legalEntityId: ids.entity, locationId: ids.blr, purchasedOn, warrantyMonths }).expect(201)).body.id as string;
+    const soon = await add('WS', back(20), 1); // ends in about 10 days
+    const later = await add('WL', back(15), 2); // ends in about 45 days: past the 30-day lead
+    const ended = await add('WE', back(70), 1); // ended last month
+    const told = (asset: string) => inA((tx) => tx.userNotification.findMany({ where: { type: 'asset.warranty.ending', entityId: asset }, select: { recipientUserId: true } })).then((r) => r.map((x) => x.recipientUserId));
+    await alerts.warrantySweep();
+    const first = await told(soon);
+    expect(first).toEqual(expect.arrayContaining([users.hr, users.it, users.meena, users.adminA]));
+    // Negative: no asset.manage over the place (Finance, the asset.view agent, another site's manager, an employee).
+    for (const who of ['fin', 'agent', 'kiran', 'ravi'] as const) expect(first).not.toContain(users[who]);
+    expect(await told(later)).toEqual([]);
+    expect(await told(ended)).toEqual([]);
+    // Audited once; a second run tells nobody again.
+    expect(await inA((tx) => tx.auditLog.count({ where: { entityType: 'asset', entityId: soon, action: 'asset.warranty.alerted' } }))).toBe(1);
+    await alerts.warrantySweep();
+    expect((await told(soon)).length).toBe(first.length);
+    // A longer lead (60 days, a company setting) reaches the later one; a changed warranty end is told again.
+    const lead = await inA((tx) => tx.setting.create({ data: { ...o, scopeType: 'tenant', scopeId: org.A.id, key: 'asset.warranty_alert_days', value: '60' } }));
+    try {
+      await alerts.warrantySweep();
+      expect(await told(later)).toContain(users.hr);
+      const v = (await api('hr', 'get', `/lifecycle/assets/${soon}`).expect(200)).body.asset.version;
+      await api('hr', 'put', `/lifecycle/assets/${soon}`).send({ category: 'Laptop', name: 'Warranty WS', tag: `WS-${run}`, legalEntityId: ids.entity, locationId: ids.blr, purchasedOn: back(20), warrantyMonths: 2, version: v }).expect(200);
+      await alerts.warrantySweep();
+      expect((await told(soon)).length).toBe(first.length * 2);
+      // Off: nobody is told.
+      await inA((tx) => tx.setting.update({ where: { id: lead.id }, data: { value: 'off' } }));
+      const quiet = await add('WO', back(25), 1);
+      await alerts.warrantySweep();
+      expect(await told(quiet)).toEqual([]);
+    } finally {
+      await inA((tx) => tx.setting.update({ where: { id: lead.id }, data: { value: '30' } }));
+    }
+    // The register sends the warranty end (red when it has passed, in the page).
+    const rows = (await api('it', 'get', '/lifecycle/assets').expect(200)).body.rows;
+    expect(rows.find((r: { id: string }) => r.id === ended).warrantyEndsOn).toBe(addMonthsIso(back(70), 1));
+    // Another company's people are never told.
+    expect(await told(soon)).not.toContain(users.adminB);
   });
 
   it('two companies apart', async () => {

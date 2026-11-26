@@ -232,6 +232,8 @@ export const SETTINGS: Readonly<Record<string, SettingDef>> = {
   // (answer 2713, from the category's depreciation; without one HR decides).
   'asset.ack_method': { label: 'Acknowledgement', scopes: ['tenant'], dated: false, values: ['click', 'none'], default: 'click', labels: { click: 'Click to accept', none: 'None' } },
   'asset.recovery_to_fnf': { label: 'Add unreturned-asset recovery to F&F', scopes: ['tenant'], dated: false, values: ['on', 'off'], default: 'on' },
+  // IT assets answer 2714: how many days before a warranty ends its asset managers are told (once); off tells nobody.
+  'asset.warranty_alert_days': { label: 'Warranty alert', scopes: ['tenant'], dated: false, values: ['off', '7', '15', '30', '60', '90'], default: '30', labels: { off: 'Off', '7': '7 days before', '15': '15 days before', '30': '30 days before', '60': '60 days before', '90': '90 days before' } },
   'asset.recovery_basis': { label: 'Recovery amount', scopes: ['tenant'], dated: false, values: ['category_default', 'written_down', 'hr_decides'], default: 'category_default', labels: { category_default: 'Category default', written_down: 'Written-down value', hr_decides: 'Decided by HR each time' } },
   // P05 Q6 (decided): alumni read their own letters and documents for this many years after the last day.
   // M05 §13 (expenses E1): capture supplier GSTIN, invoice and tax split on GST-eligible lines, per entity (off by default, Q5).

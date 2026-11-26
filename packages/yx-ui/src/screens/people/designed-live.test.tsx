@@ -478,6 +478,19 @@ describe('Assets (PPL-25)', () => {
     await ue.click(screen.getByRole('option', { name: 'Damaged' }));
     expect(within(dialog).queryByRole('textbox', { name: /Recovery amount/ })).toBeNull();
   });
+
+  it('2714: an ended warranty shows in red on the register; one still running shows its end; none shows a dash', () => {
+    const ended = { ...row, id: 'w1', tag: 'W-1', warrantyEndsOn: '2026-10-01', live: { ...api, id: 'w1' } };
+    const running = { ...row, id: 'w2', tag: 'W-2', warrantyEndsOn: '2027-03-01', live: { ...api, id: 'w2' } };
+    const none = { ...row, id: 'w3', tag: 'W-3', warrantyEndsOn: null, live: { ...api, id: 'w3' } };
+    wrap(<AssetRegister rows={[]} live={live({ rows: [ended, running, none] })} />);
+    expect(screen.getByRole('columnheader', { name: /Warranty/ })).toBeInTheDocument();
+    const red = within(screen.getByRole('row', { name: /W-1/ })).getByText(/^Ended 1 Oct 2026$/);
+    expect(red.closest('.yx-badge')).toHaveAttribute('data-tone', 'danger');
+    expect(within(screen.getByRole('row', { name: /W-2/ })).getByText(/^Ends 1 Mar 2027$/)).toBeInTheDocument();
+    expect(within(screen.getByRole('row', { name: /W-2/ })).queryByText(/Ended/)).toBeNull();
+    expect(within(screen.getByRole('row', { name: /W-3/ })).queryByText(/Ends|Ended/)).toBeNull();
+  });
 });
 
 describe('Document verification (PPL-27)', () => {

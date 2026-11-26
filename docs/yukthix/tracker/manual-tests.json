@@ -28658,5 +28658,26 @@
                               "Screens/People/PPL-25 · Asset register (Asset page · details, Asset page · no net book value)"
                     ],
                     "note": "Positive and negative. API unit netBookValue (straight line by day, fully depreciated at and after the life end = 0, declining pro rata by day, purchase after the day keeps the cost, no cost / date / life 0 / no rate / rate 100 = null; written-down recovery). e2e lifecycle-6c 'IT assets part 2 (2713)': declining without rate, rate 0, 100 and an unknown method 400; values for straight line, fully depreciated, declining; no date, no cost, no life null; agent gets no value; the change audited with before and after. Kit tests: drawer declining sends the rate, negative rate missing/100; page shows the value and the not-tax-books line, negative no date, no money. Migration 803 (asset_categories.depreciation_method, depreciation_rate with checks)."
+          },
+          {
+                    "id": "MT-IT-ASSETS-2714",
+                    "area": "IT assets part 2, answer 2714: warranty alerts and the ended warranty in red",
+                    "screen": "Settings › People › Assets (2.8) Warranty; People › Assets (register, Warranty column); the bell and email of asset managers",
+                    "url": "http://localhost:3000/yx/people/assets",
+                    "account": "HR Admin (company-wide settings key and asset.manage); IT / Admin coordinator; a site IT person with asset.manage on one location only; Finance (asset.finance.view); an employee.",
+                    "steps": [
+                              "As HR open Settings › Assets. Look at the Warranty section.",
+                              "As IT add a laptop at a location bought 20 days ago with a 1-month warranty, one bought 15 days ago with 2 months, and one bought 70 days ago with 1 month. Open People › Assets.",
+                              "Run the daily job (asset-warranty-alerts, 07:20 IST, or call AssetAlertsService.warrantySweep in a test). Look at the bell of HR, IT, the site IT person of that location, a site IT person of another location, Finance and an employee.",
+                              "Run the job again.",
+                              "Set Warranty alert to 60 days before and run the job; then change the first laptop's warranty to 2 months and run it again.",
+                              "Set Warranty alert to Off, add a laptop whose warranty ends in 5 days and run the job."
+                    ],
+                    "expected": "Step 1: 'Warranty alert' with Off, 7, 15, 30 (selected), 60 and 90 days before, helper 'Asset managers of the asset’s place are told once. An ended warranty shows in red on the register.' Step 2: the Warranty column shows 'Ends <date>' for the first two and a red 'Ended <date>' badge for the third. Step 3: HR, IT and the site IT person of that location get 'The warranty of <name> (<tag>) ends on <date>.' (bell and email, link to the asset page); the other site, Finance and the employee get nothing; nothing for the 45-day or the ended one. Step 4: nobody is told again. Step 5: the 45-day one is told; the changed warranty is told again. Step 6: nobody is told. No page scroll at 1278 x 635.",
+                    "stories": [
+                              "Screens/People/PPL-25 · Asset register (Admin · register: Warranty column)",
+                              "Screens/Settings/Group 2 (2.8 Assets, 2.8 Assets · live)"
+                    ],
+                    "note": "Positive and negative. e2e lifecycle-6c 'IT assets part 2 (2714)': told HR, IT, location grant holder and the System Admin; not Finance, asset.view agent, another location's manager, an employee or company B; not the 45-day or ended ones; audited once (asset.warranty.alerted); second run silent; 60-day lead; changed end told again; Off silent; register sends warrantyEndsOn. Kit tests: register red badge / Ends / dash; 2.8 Warranty section at 30. Unit: sweeps worker dispatch, notification type registered (asset.warranty.ending). Migration 803 (assets.warranty_alerted_for). Contract notice alerts: with contracts later (assetManagers is reusable)."
           }
 ]
